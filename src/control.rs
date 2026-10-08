@@ -796,7 +796,21 @@ pub async fn self_offboard(state: &AppState, tenant: &Tenant) -> Result<Value, A
 // unused there) as its first step, so `host.quickstart kind=chain`'s
 // example resolves on a tenant that has already published this starter.
 pub(crate) const STARTER_TOOL_NAME: &str = "table_note";
-pub(crate) const STARTER_TOOL_SOURCE: &str = "import mcphost\n\nNOTES_TABLE = \"quickstart_notes\"\n\n\ndef main(args):\n    note = args.get(\"note\", \"\")\n    if not isinstance(note, str) or not note:\n        return {\"error\": \"note must be a non-empty string\"}\n    try:\n        mcphost.table.create(name=NOTES_TABLE, columns={\"note\": \"text\"})\n    except mcphost.table.TableError as e:\n        if e.code != \"table_already_exists\":\n            raise\n    result = mcphost.table.append(table=NOTES_TABLE, rows=[{\"note\": note}])\n    return {\"appended\": result[\"appended\"], \"table\": NOTES_TABLE}\n";
+/// PRD-mcphost-sandbox-return-shape-contract requirement 5 (AC5): the starter
+/// also reads its rows back with `mcphost.table.query(...)["rows"]`, and the
+/// comment above that line states the shape -- rendered from
+/// [`crate::kinds::python::BRIDGE_RETURNS`], never typed here, so the example
+/// every agent copies cannot disagree with the bridge.
+pub(crate) fn starter_tool_source() -> &'static str {
+    static SOURCE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    SOURCE.get_or_init(|| {
+        let shape = crate::kinds::python::bridge_return_text("mcphost.table.query")
+            .expect("mcphost.table.query has a BRIDGE_RETURNS row");
+        format!(
+            "import mcphost\n\nNOTES_TABLE = \"quickstart_notes\"\n\n\ndef main(args):\n    note = args.get(\"note\", \"\")\n    if not isinstance(note, str) or not note:\n        return {{\"error\": \"note must be a non-empty string\"}}\n    try:\n        mcphost.table.create(name=NOTES_TABLE, columns={{\"note\": \"text\"}})\n    except mcphost.table.TableError as e:\n        if e.code != \"table_already_exists\":\n            raise\n    result = mcphost.table.append(table=NOTES_TABLE, rows=[{{\"note\": note}}])\n    # mcphost.table.query() returns {shape} -- read [\"rows\"]; iterating the result itself raises BridgeShapeError\n    rows = mcphost.table.query(sql=\"SELECT note FROM \" + NOTES_TABLE)[\"rows\"]\n    return {{\"appended\": result[\"appended\"], \"table\": NOTES_TABLE, \"total\": len(rows)}}\n"
+        )
+    })
+}
 
 /// PRD-mcphost-first-publish-real-kind requirement 6 (AC8): `host.quickstart
 /// {kind: "http"}`'s own starter -- a public JSON API with no auth, for a
@@ -1003,13 +1017,13 @@ pub fn quickstart(
         json!({
             "name": STARTER_TOOL_NAME,
             "kind": "python",
-            "spec": {"source": STARTER_TOOL_SOURCE},
+            "spec": {"source": starter_tool_source()},
             "publish_call": {
                 "call": "host.tool_publish",
                 "arguments": {
                     "name": STARTER_TOOL_NAME,
                     "kind": "python",
-                    "spec": {"source": STARTER_TOOL_SOURCE},
+                    "spec": {"source": starter_tool_source()},
                 },
             },
             "test_call": {
@@ -1047,6 +1061,10 @@ pub fn quickstart(
         // registration reads from (see `kinds::python::runner_script_registered_modules`'s
         // own doc comment for how a test proves the two never drift).
         "sandbox_api": crate::kinds::python::build_sandbox_api(crate::kinds::python::BRIDGE_MODULES),
+        // PRD-mcphost-sandbox-return-shape-contract requirement 6 (AC6): what
+        // every bridge function returns, rendered from the same table the
+        // runner's `help()` docstrings and `BridgeShapeError` come from.
+        "bridge_returns": crate::kinds::python::bridge_returns_json(),
         "next": next,
         "steps": steps,
         "limits": quickstart_limits(state, &tenant.plan),

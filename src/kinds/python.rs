@@ -2037,6 +2037,249 @@ pub const BRIDGE_ATTRS: &[&str] = &[
     "mcphost.progress(pct=None, msg=None) -- report progress from inside a job",
 ];
 
+// ---- bridge return shapes (PRD-mcphost-sandbox-return-shape-contract) -------
+//
+// One table naming what every bridge function RETURNS -- the counterpart of
+// [`BRIDGE_MODULES`] (what it is called with). The runner script's `help()`
+// docstrings, the `BridgeShapeError` guard, `host.quickstart`'s
+// `bridge_returns` and the starter tool's shape comment are all rendered from
+// this table; `retshape_ac01_*` ties it to the values the bridge really
+// returns, so a prose description can no longer drift from the Rust struct.
+
+/// What one bridge function returns.
+#[derive(Clone, Copy)]
+pub enum ReturnShape {
+    /// A JSON object with exactly these top-level `(key, type)` pairs.
+    Envelope(&'static [(&'static str, &'static str)]),
+    /// Anything that is not an object envelope (a scalar, a bare value, ...).
+    Plain(&'static str),
+}
+
+#[derive(Clone, Copy)]
+pub struct BridgeReturn {
+    /// `mcphost.<module>.<fn>`, or `mcphost.<fn>` for [`BRIDGE_ATTRS`].
+    pub function: &'static str,
+    pub shape: ReturnShape,
+}
+
+use ReturnShape::{Envelope, Plain};
+
+pub const BRIDGE_RETURNS: &[BridgeReturn] = &[
+    BridgeReturn { function: "mcphost.state.get", shape: Plain("any (the stored value, or default if unset)") },
+    BridgeReturn {
+        function: "mcphost.state.set",
+        shape: Envelope(&[("key", "str"), ("set", "bool"), ("bytes_delta", "int")]),
+    },
+    BridgeReturn {
+        function: "mcphost.state.delete",
+        shape: Envelope(&[("key", "str"), ("deleted", "bool"), ("bytes_delta", "int")]),
+    },
+    BridgeReturn { function: "mcphost.state.list", shape: Envelope(&[("keys", "list")]) },
+    BridgeReturn {
+        function: "mcphost.state.table_create",
+        shape: Envelope(&[("name", "str"), ("created", "bool"), ("bytes_delta", "int")]),
+    },
+    BridgeReturn {
+        function: "mcphost.state.table_drop",
+        shape: Envelope(&[("name", "str"), ("dropped", "bool"), ("bytes_delta", "int")]),
+    },
+    BridgeReturn {
+        function: "mcphost.state.insert",
+        shape: Envelope(&[("table", "str"), ("inserted", "int"), ("ids", "list"), ("bytes_delta", "int")]),
+    },
+    BridgeReturn { function: "mcphost.state.query", shape: Envelope(&[("table", "str"), ("rows", "list")]) },
+    BridgeReturn {
+        function: "mcphost.state.delete_rows",
+        shape: Envelope(&[("table", "str"), ("deleted", "int"), ("bytes_delta", "int")]),
+    },
+    BridgeReturn { function: "mcphost.table.create", shape: Envelope(&[("name", "str"), ("created", "bool")]) },
+    BridgeReturn {
+        function: "mcphost.table.append",
+        shape: Envelope(&[("table", "str"), ("appended", "int"), ("ids", "list")]),
+    },
+    BridgeReturn { function: "mcphost.table.query", shape: Envelope(&[("rows", "list")]) },
+    // `handle=True` materialises a result handle instead of returning rows
+    // (PRD-mcphost-result-handles): a different envelope, so its own row.
+    BridgeReturn {
+        function: "mcphost.table.query(handle=True)",
+        shape: Envelope(&[
+            ("handle", "str"),
+            ("table", "str"),
+            ("row_count", "int"),
+            ("sample", "list"),
+            ("columns", "list"),
+            ("sample_cap", "int"),
+            ("stats", "dict"),
+            ("bytes", "int"),
+            ("expires_unix", "int"),
+            ("derived_from", "str"),
+        ]),
+    },
+    BridgeReturn {
+        function: "mcphost.table.list",
+        shape: Envelope(&[("tables", "list"), ("bytes_used", "int")]),
+    },
+    BridgeReturn { function: "mcphost.table.drop", shape: Envelope(&[("name", "str"), ("dropped", "bool")]) },
+    BridgeReturn {
+        function: "mcphost.table.schema",
+        shape: Envelope(&[("table", "str"), ("columns", "dict"), ("rows", "int"), ("bytes_used", "int")]),
+    },
+    BridgeReturn {
+        function: "mcphost.table.chart",
+        shape: Envelope(&[
+            ("schema", "str"),
+            ("title", "str"),
+            ("row_count", "int"),
+            ("profile", "dict"),
+            ("recommendation", "dict"),
+            ("vega_lite", "dict"),
+            ("caption", "dict"),
+        ]),
+    },
+    BridgeReturn { function: "mcphost.docs.get", shape: Plain("str (the document's extracted text)") },
+    BridgeReturn {
+        function: "mcphost.docs.search",
+        shape: Envelope(&[("results", "list"), ("index", "dict")]),
+    },
+    BridgeReturn {
+        function: "mcphost.lineage.trace",
+        shape: Envelope(&[
+            ("id", "str"),
+            ("kind", "str"),
+            ("label", "str"),
+            ("uses", "int"),
+            ("orphaned", "bool"),
+            ("upstream", "list"),
+            ("downstream", "list"),
+            ("downstream_count", "int"),
+        ]),
+    },
+    BridgeReturn {
+        function: "mcphost.lineage.blast_radius",
+        shape: Envelope(&[("impacted", "list"), ("truncated", "bool")]),
+    },
+    BridgeReturn { function: "mcphost.drift.reviews", shape: Envelope(&[("reviews", "list")]) },
+    BridgeReturn {
+        function: "mcphost.channel.post",
+        shape: Envelope(&[
+            ("channel_id", "str"),
+            ("post_id", "str"),
+            ("seq", "int"),
+            ("from_address", "str"),
+            ("created_at", "int"),
+        ]),
+    },
+    BridgeReturn {
+        function: "mcphost.channel.read",
+        shape: Envelope(&[("posts", "list"), ("next_cursor", "any")]),
+    },
+    BridgeReturn {
+        function: "mcphost.msg.send",
+        shape: Envelope(&[
+            ("message_id", "str"),
+            ("thread_id", "str"),
+            ("seq", "int"),
+            ("delivered_to", "list"),
+            ("refused", "list"),
+        ]),
+    },
+    BridgeReturn {
+        function: "mcphost.msg.inbox",
+        shape: Envelope(&[("messages", "list"), ("next_cursor", "any")]),
+    },
+    BridgeReturn { function: "mcphost.call", shape: Plain("any (the called tool's result)") },
+    BridgeReturn { function: "mcphost.progress", shape: Plain("bool or None") },
+];
+
+/// One [`ReturnShape`] as the text a `Returns:` docstring line, the
+/// `BridgeShapeError` message and `sandbox_api` all show:
+/// `{"table": str, "rows": list}` for an envelope, the plain description
+/// otherwise.
+pub fn render_return_shape(shape: &ReturnShape) -> String {
+    match shape {
+        Envelope(keys) => {
+            let pairs: Vec<String> = keys.iter().map(|(k, t)| format!("\"{k}\": {t}")).collect();
+            format!("{{{}}}", pairs.join(", "))
+        }
+        Plain(text) => (*text).to_string(),
+    }
+}
+
+/// The table as the runner script embeds it: `{function: {returns, envelope,
+/// hint}}`. The Python side holds no shape knowledge of its own -- it only
+/// attaches these strings to the functions it registers.
+fn runner_returns_json() -> String {
+    let mut out = serde_json::Map::new();
+    for row in BRIDGE_RETURNS {
+        let (envelope, hint) = match row.shape {
+            Envelope(keys) => {
+                let hint = match keys.iter().find(|(_, t)| *t == "list").or(keys.first()) {
+                    Some((k, "list")) => format!("iterate result[\"{k}\"]"),
+                    Some((k, _)) => format!("read result[\"{k}\"]"),
+                    None => String::new(),
+                };
+                (true, hint)
+            }
+            Plain(_) => (false, String::new()),
+        };
+        out.insert(
+            row.function.to_string(),
+            json!({"returns": render_return_shape(&row.shape), "envelope": envelope, "hint": hint}),
+        );
+    }
+    Value::Object(out).to_string()
+}
+
+/// The runner script every sandbox runs: [`PY_RUNNER_SCRIPT_TEMPLATE`] with the
+/// return-shape table rendered into it (`help()` docstrings, `BridgeShapeError`
+/// guard), built once.
+pub fn py_runner_script() -> &'static str {
+    static SCRIPT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    SCRIPT.get_or_init(|| PY_RUNNER_SCRIPT_TEMPLATE.replace("__BRIDGE_RETURNS_JSON__", &runner_returns_json()))
+}
+
+/// `host.quickstart`'s `bridge_returns`: every [`BRIDGE_RETURNS`] row as
+/// `{"mcphost.state.query": {"table": "str", "rows": "list"}, ...}` -- an
+/// envelope maps to its `key: type` object, anything else to its description.
+pub fn bridge_returns_json() -> Value {
+    let mut out = serde_json::Map::new();
+    for row in BRIDGE_RETURNS {
+        let shape = match row.shape {
+            Envelope(keys) => Value::Object(keys.iter().map(|(k, t)| (k.to_string(), json!(t))).collect()),
+            Plain(text) => json!(text),
+        };
+        out.insert(row.function.to_string(), shape);
+    }
+    Value::Object(out)
+}
+
+/// The rendered return shape of one bridge function, e.g.
+/// `{"rows": list}` for `mcphost.table.query` -- `None` if the table has no row.
+pub fn bridge_return_text(function: &str) -> Option<String> {
+    BRIDGE_RETURNS.iter().find(|r| r.function == function).map(|r| render_return_shape(&r.shape))
+}
+
+/// `mcphost.<module>.<fn>` for one [`BridgeModule`] signature line
+/// (`"mcphost.state.get(key, default=None) -- read a value ..."`).
+pub fn signature_function(signature: &str) -> &str {
+    signature.split('(').next().unwrap_or(signature).trim()
+}
+
+/// Every function [`BRIDGE_MODULES`] and [`BRIDGE_ATTRS`] name that has no row
+/// in `returns` -- empty when the table is complete. `retshape_ac01`/`ac02`
+/// call it with a fixture module added to the constant to prove a bridge
+/// function without a table row is caught.
+pub fn bridge_functions_without_return_row(modules: &[BridgeModule], returns: &[BridgeReturn]) -> Vec<String> {
+    modules
+        .iter()
+        .flat_map(|m| m.signatures.iter().copied())
+        .chain(BRIDGE_ATTRS.iter().copied())
+        .map(signature_function)
+        .filter(|f| !returns.iter().any(|r| r.function == *f))
+        .map(str::to_string)
+        .collect()
+}
+
 /// Requirement 1 (AC1): `host.quickstart`'s `sandbox_api` field, built from
 /// `modules` alone -- `control::quickstart` always calls this with
 /// [`BRIDGE_MODULES`]; a test proving "a module added to the registration
@@ -2061,7 +2304,8 @@ pub fn build_sandbox_api(modules: &[BridgeModule]) -> Value {
 /// reads `help(mcphost.docs)` back, so the docstring is proven on the real
 /// module rather than by grepping source text.
 pub fn runner_script_module_prelude() -> &'static str {
-    PY_RUNNER_SCRIPT.split("\ndef run_one(").next().unwrap_or(PY_RUNNER_SCRIPT)
+    let script = py_runner_script();
+    script.split("\ndef run_one(").next().unwrap_or(script)
 }
 
 /// AC1: the independent check that [`BRIDGE_MODULES`] hasn't drifted from
@@ -2070,7 +2314,7 @@ pub fn runner_script_module_prelude() -> &'static str {
 /// (never re-reads [`BRIDGE_MODULES`] itself), so a test comparing the two
 /// lists is a real proof, not a tautology.
 pub fn runner_script_registered_modules() -> Vec<String> {
-    PY_RUNNER_SCRIPT
+    py_runner_script()
         .lines()
         .filter_map(|line| {
             let rest = line.trim().strip_prefix("sys.modules[\"mcphost.")?;
@@ -2118,6 +2362,7 @@ fn known_mcphost_names() -> std::collections::BTreeSet<&'static str> {
     names.insert("progress");
     names.insert("CallError");
     names.insert("BridgeError");
+    names.insert("BridgeShapeError");
     names
 }
 
@@ -2249,7 +2494,7 @@ fn runtime_unknown_import_in_text(text: &str) -> Option<&'static str> {
 // `stdout_capture`/`stderr_capture` instead -- `host.tool_run` (this PRD's
 // other half) reads those two fields for its "full stdout and stderr"
 // response; an ordinary call simply ignores them.
-const PY_RUNNER_SCRIPT: &str = r#"
+const PY_RUNNER_SCRIPT_TEMPLATE: &str = r#"
 import sys, json, importlib.util, traceback, io, errno, os
 
 _real_stdout = sys.stdout
@@ -2274,6 +2519,8 @@ def emit(obj):
 # final response line is ever sent -- from the tool's code this is
 # indistinguishable from a local function call.
 import types as _mcphost_types
+import functools as _functools
+import inspect as _inspect
 
 class McphostStateError(Exception):
     def __init__(self, code, message, data=None):
@@ -2827,6 +3074,95 @@ sys.modules["mcphost.lineage"] = _mcphost_lineage_mod
 sys.modules["mcphost.drift"] = _mcphost_drift_mod
 sys.modules["mcphost.channel"] = _mcphost_channel_mod
 sys.modules["mcphost.msg"] = _mcphost_msg_mod
+
+# ---- return shapes (PRD-mcphost-sandbox-return-shape-contract) --------------
+#
+# `_BRIDGE_RETURNS` is the Rust table `BRIDGE_RETURNS`, rendered into this
+# script at startup (`py_runner_script`): this side holds no shape knowledge
+# of its own, it only attaches the table's text to the functions registered
+# above so `help(mcphost.table.query)` shows `Returns: {...}`.
+_BRIDGE_RETURNS = json.loads(r"""__BRIDGE_RETURNS_JSON__""")
+
+def _bridge_target(fqn):
+    mod_name, _, fn_name = fqn.rpartition(".")
+    return sys.modules[mod_name], fn_name
+
+def _attach_returns_doc(fn, line):
+    fn.__doc__ = (fn.__doc__.rstrip() + "\n\n" if fn.__doc__ else "") + line
+
+# An envelope result is a plain `dict` in every respect except two: treating
+# it as a list (`env[0]`, `for r in env`) raises `BridgeShapeError` naming the
+# correct access. `.get`, `in`, `len`, `==`, `.items()`, `json.dumps` and
+# `copy.deepcopy` are untouched `dict` behaviour. The error is raised inside
+# the caller's frame, so the traceback's `tool.py` line is the user's own.
+class BridgeShapeError(Exception):
+    pass
+
+class _Envelope(dict):
+    def __init__(self, data, message):
+        dict.__init__(self, data)
+        self._shape_message = message
+
+    def __getitem__(self, key):
+        if isinstance(key, (int, slice)):
+            raise BridgeShapeError(self._shape_message)
+        return dict.__getitem__(self, key)
+
+    def __iter__(self):
+        raise BridgeShapeError(self._shape_message)
+
+# `variants` is `[(argument_name, message), ...]`: a call made with that
+# argument truthy (`mcphost.table.query(sql, handle=True)`) returns a
+# different envelope, so it gets its own message.
+def _wrap_envelope(fn, message, variants):
+    signature = _inspect.signature(fn)
+    @_functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        result = fn(*args, **kwargs)
+        if type(result) is not dict:
+            return result
+        shown = message
+        if variants:
+            try:
+                bound = signature.bind(*args, **kwargs).arguments
+            except TypeError:
+                bound = {}
+            for arg_name, variant_message in variants:
+                if bound.get(arg_name):
+                    shown = variant_message
+        return _Envelope(result, shown)
+    return wrapper
+
+def _shape_message(fqn, info):
+    return fqn + ("" if "(" in fqn else "()") + " returns " + info["returns"] + "; " + info["hint"]
+
+# Table rows named `module.fn(arg=True)` describe what a call with that
+# argument returns; they extend `module.fn`'s docstring and message.
+_BRIDGE_VARIANTS = {}
+for _fqn, _info in _BRIDGE_RETURNS.items():
+    _base, _paren, _cond = _fqn.partition("(")
+    if _paren:
+        _BRIDGE_VARIANTS.setdefault(_base, []).append((_cond.rstrip(")").partition("=")[0], _fqn, _info))
+
+for _fqn, _info in _BRIDGE_RETURNS.items():
+    if "(" in _fqn:
+        continue
+    _mod, _name = _bridge_target(_fqn)
+    _fn = getattr(_mod, _name, None)
+    if _fn is None:
+        continue
+    _variants = _BRIDGE_VARIANTS.get(_fqn, [])
+    if _info["envelope"]:
+        _fn = _wrap_envelope(
+            _fn,
+            _shape_message(_fqn, _info),
+            [(_arg, _shape_message(_vfqn, _vinfo)) for _arg, _vfqn, _vinfo in _variants],
+        )
+        setattr(_mod, _name, _fn)
+    _attach_returns_doc(_fn, "Returns: " + _info["returns"])
+    for _arg, _vfqn, _vinfo in _variants:
+        _attach_returns_doc(_fn, "Returns (" + _arg + "=True): " + _vinfo["returns"])
+_mcphost_mod.BridgeShapeError = BridgeShapeError
 
 _END_USER_ENV_KEYS = (
     "MCPHOST_END_USER_ID",
@@ -4478,7 +4814,7 @@ impl PythonKind {
         tokio::fs::write(scratch.join("tool.py"), source)
             .await
             .map_err(|e| KindError::Exec(format!("write tool source: {e}")))?;
-        tokio::fs::write(scratch.join("runner.py"), PY_RUNNER_SCRIPT)
+        tokio::fs::write(scratch.join("runner.py"), py_runner_script())
             .await
             .map_err(|e| KindError::Exec(format!("write runner: {e}")))?;
         let payload = json!({"args": args, "site_packages": site_packages, "end_user": end_user});
@@ -4509,7 +4845,7 @@ impl PythonKind {
         tokio::fs::write(scratch.join("tool.py"), source)
             .await
             .map_err(|e| KindError::Exec(format!("write tool source: {e}")))?;
-        tokio::fs::write(scratch.join("runner.py"), PY_RUNNER_SCRIPT)
+        tokio::fs::write(scratch.join("runner.py"), py_runner_script())
             .await
             .map_err(|e| KindError::Exec(format!("write runner: {e}")))?;
         Ok(scratch)

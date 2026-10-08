@@ -6653,6 +6653,30 @@ impl McpHostHandler {
                 }
                 Ok(value)
             }
+            // PRD-mcphost-sandbox-return-shape-contract requirement 4 (AC3): a
+            // tool that treats a bridge envelope as a list dies with the
+            // runner's `BridgeShapeError`; the dry run reports that as a
+            // `will_fail` verdict with the error text and the user's own
+            // line, not as a bare tool error the agent has to decode.
+            Ok(Err(KindError::Structured { code: "tool_exception", message, data }))
+                if data.get("exception_class").and_then(Value::as_str) == Some("BridgeShapeError") =>
+            {
+                let mut report = json!({
+                    "verdict": "will_fail",
+                    "error": message,
+                    "exception_class": "BridgeShapeError",
+                    "state": state_backend.snapshot().to_json(),
+                    "dry_run": {"writes": dry_run.writes(), "delivered": false, "rolled_back": true},
+                });
+                if let Value::Object(map) = &mut report {
+                    for key in ["line", "source_line"] {
+                        if let Some(v) = data.get(key) {
+                            map.insert(key.to_string(), v.clone());
+                        }
+                    }
+                }
+                Ok(report)
+            }
             Ok(Err(kind_err)) => Err(AppError::from(kind_err)),
             Err(_elapsed) => Err(AppError::CallTimeout(resolved_timeout.as_secs())),
         }
