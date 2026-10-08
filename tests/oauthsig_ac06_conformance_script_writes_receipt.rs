@@ -21,11 +21,31 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// A minimal PATH with no plausible `npx` on it -- excludes every common
-/// Node install location (`~/.nvm`, `/usr/local/bin`, `~/.local/bin`,
-/// `/opt/homebrew/bin`, `~/.cargo/bin`) rather than trusting this build
-/// box happens to have none installed.
-const NPX_FREE_PATH: &str = "/usr/bin:/bin";
+/// A PATH that is guaranteed to have no `npx` on it, on any host: a scratch
+/// directory holding symlinks to just the coreutils the script needs before
+/// its `command -v npx` check (`bash` for the shebang, `dirname`, `date`,
+/// `mkdir`, ...). The old
+/// `/usr/bin:/bin` assumed no Node install lives there, which is false on any
+/// box where npm came from apt (`/usr/bin/npx`), so the "absent" scenario ran
+/// the real conformance suite instead and exited 1.
+fn npx_free_path() -> PathBuf {
+    let dir = std::env::temp_dir()
+        .join(format!("mcphost-oauthsig-ac06-npx-free-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("create npx-free PATH dir");
+    for tool in ["bash", "sh", "env", "dirname", "date", "mkdir", "rm", "cat", "tee", "sed"] {
+        let Some(real) = ["/usr/bin", "/bin"]
+            .iter()
+            .map(|d| Path::new(d).join(tool))
+            .find(|p| p.is_file())
+        else {
+            continue;
+        };
+        let _ = std::os::unix::fs::symlink(&real, dir.join(tool));
+    }
+    assert!(!dir.join("npx").exists(), "npx-free PATH dir must not contain npx");
+    dir
+}
 
 fn scratch_repo_root(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("mcphost-oauthsig-ac06-{name}-{}", std::process::id()));
@@ -79,7 +99,7 @@ fn npx_absent_exits_2_with_a_one_line_reason_and_writes_no_receipt() {
 
     let output = Command::new(scratch.join("scripts/oauth-conformance.sh"))
         .arg("http://127.0.0.1:1/mcp")
-        .env("PATH", NPX_FREE_PATH)
+        .env("PATH", npx_free_path())
         .output()
         .expect("run oauth-conformance.sh");
 
@@ -96,7 +116,7 @@ fn npx_absent_exits_2_with_a_one_line_reason_and_writes_no_receipt() {
 fn npx_present_and_passing_exits_0_and_writes_the_receipt() {
     let scratch = scratch_repo_root("npx-pass");
     write_fake_npx(&scratch, 0);
-    let path = format!("{}:{NPX_FREE_PATH}", scratch.join("bin").display());
+    let path = format!("{}:{}", scratch.join("bin").display(), npx_free_path().display());
 
     let output = Command::new(scratch.join("scripts/oauth-conformance.sh"))
         .arg("http://127.0.0.1:1/mcp")
@@ -118,7 +138,7 @@ fn npx_present_and_passing_exits_0_and_writes_the_receipt() {
 fn npx_present_and_failing_exits_non_zero_and_still_writes_the_receipt() {
     let scratch = scratch_repo_root("npx-fail");
     write_fake_npx(&scratch, 1);
-    let path = format!("{}:{NPX_FREE_PATH}", scratch.join("bin").display());
+    let path = format!("{}:{}", scratch.join("bin").display(), npx_free_path().display());
 
     let output = Command::new(scratch.join("scripts/oauth-conformance.sh"))
         .arg("http://127.0.0.1:1/mcp")

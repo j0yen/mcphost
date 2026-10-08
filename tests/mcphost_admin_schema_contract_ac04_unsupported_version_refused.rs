@@ -27,10 +27,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use crate::common;
-use common::{ADMIN_KEY, McpClient, TestServer, extract_structured, signup};
+use common::{extract_structured, signup, McpClient, TestServer, ADMIN_KEY};
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -178,10 +178,28 @@ fn cross_repo_ac4_pointer_is_not_dangling() {
         // Present on this machine (the operator's checkout): the pointer has
         // to resolve. Absent (the runner box, CI): nothing to check against,
         // and a missing sibling checkout is not an AC failure.
+        //
+        // The entry pins the deploy-side commit, so the pointer is "not
+        // dangling" when that commit carries the file -- independent of which
+        // branch the local clone has checked out (a stale or different
+        // checkout used to fail this on any host that merely has the repo
+        // cloned). The working-tree check stays as a fallback for a clone
+        // that never fetched the pinned commit.
+        let at_commit = std::process::Command::new("git")
+            .args([
+                "-C",
+                repo,
+                "cat-file",
+                "-e",
+                &format!("{commit}:{test_file}"),
+            ])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
         assert!(
-            repo_dir.join(test_file).is_file(),
-            "{repo}/{test_file} does not exist, but agent/test-map.json's AC4 entry \
-             claims it proves AC4"
+            at_commit || repo_dir.join(test_file).is_file(),
+            "{repo}: {test_file} exists neither at the pinned commit {commit} nor in the \
+             working tree, but agent/test-map.json's AC4 entry claims it proves AC4"
         );
     }
 }

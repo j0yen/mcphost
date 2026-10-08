@@ -193,6 +193,11 @@ async fn synthorg_binary_preflight_exits_zero_when_available() {
     let mut cmd = Command::new(&invocation[0]);
     cmd.args(&invocation[1..]);
     cmd.args(["consume", "--preflight", "--endpoint", &mcp_url]);
+    // `consume --preflight` resolves its corpus (`corpora/mcphost/consumer-tasks.yaml`)
+    // relative to the synthorg project root, not to this crate's test cwd.
+    if std::path::Path::new(SYNTHORG_PROJECT).is_dir() {
+        cmd.current_dir(SYNTHORG_PROJECT);
+    }
     let output = cmd.output().expect("run synthorg consume --preflight");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
