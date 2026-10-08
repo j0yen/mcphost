@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
-  "description": "One MCP endpoint an agent can join and administer without a human",
+  "description": "Hosted MCP runtime where your agent publishes its own tools by tool call and keeps working.",
   "license": "MIT OR Apache-2.0",
   "name": "dev.mcphost/mcphost",
   "remotes": [

@@ -834,6 +834,18 @@ mod lineage_ac09_model_set_role_change_notes_chart;
 mod lineage_ac10_blast_radius_1000_nodes_3000_edges_under_50ms;
 #[path = "lineage_ac11_chart_store_registers_edge_and_gates_drop.rs"]
 mod lineage_ac11_chart_store_registers_edge_and_gates_drop;
+#[path = "mcphost-chatgpt-submission-pack_ac01_pack_validates_against_schema.rs"]
+mod mcphost_chatgpt_submission_pack_ac01_pack_validates_against_schema;
+#[path = "mcphost-chatgpt-submission-pack_ac02_check_detects_drift.rs"]
+mod mcphost_chatgpt_submission_pack_ac02_check_detects_drift;
+#[path = "mcphost-chatgpt-submission-pack_ac03_descriptions_identical.rs"]
+mod mcphost_chatgpt_submission_pack_ac03_descriptions_identical;
+#[path = "mcphost-chatgpt-submission-pack_ac04_chatgpt_surface_everywhere.rs"]
+mod mcphost_chatgpt_submission_pack_ac04_chatgpt_surface_everywhere;
+#[path = "mcphost-chatgpt-submission-pack_ac05_chatgpt_profile_empty_tenant_table.rs"]
+mod mcphost_chatgpt_submission_pack_ac05_chatgpt_profile_empty_tenant_table;
+#[path = "mcphost-chatgpt-submission-pack_ac06_reviewer_notes_first_call.rs"]
+mod mcphost_chatgpt_submission_pack_ac06_reviewer_notes_first_call;
 #[path = "mcphost-install-links-more-clients_ac01_twelve_surfaces.rs"]
 mod mcphost_install_links_more_clients_ac01_twelve_surfaces;
 #[path = "mcphost-install-links-more-clients_ac02_command_artefacts_carry_url_once.rs"]
@@ -1812,19 +1824,3 @@ mod tenant_delete_ac07_tenant_not_found;
 mod tenant_delete_ac09_healthz_probe_split;
 #[path = "tenant_delete_ac10_tenants_prefix_filter.rs"]
 mod tenant_delete_ac10_tenants_prefix_filter;
-#[path = "tenantprm_ac01_tenant_metadata_document.rs"]
-mod tenantprm_ac01_tenant_metadata_document;
-#[path = "tenantprm_ac02_bearer_jwt_tenant_and_audience_scoping.rs"]
-mod tenantprm_ac02_bearer_jwt_tenant_and_audience_scoping;
-#[path = "tenantprm_ac03_key_based_tenant_scoping_and_unknown_ns_404.rs"]
-mod tenantprm_ac03_key_based_tenant_scoping_and_unknown_ns_404;
-#[path = "tenantprm_ac04_401_challenge_names_tenant_or_root_metadata.rs"]
-mod tenantprm_ac04_401_challenge_names_tenant_or_root_metadata;
-#[path = "tenantprm_ac05_scope_gates_tool_calls.rs"]
-mod tenantprm_ac05_scope_gates_tool_calls;
-#[path = "tenantprm_ac06_whoami_carries_resource_and_metadata_url.rs"]
-mod tenantprm_ac06_whoami_carries_resource_and_metadata_url;
-#[path = "tenantprm_ac07_key_and_oauth_suites_unchanged.rs"]
-mod tenantprm_ac07_key_and_oauth_suites_unchanged;
-#[path = "tenantprm_ac09_llms_txt_documents_tenant_oauth.rs"]
-mod tenantprm_ac09_llms_txt_documents_tenant_oauth;

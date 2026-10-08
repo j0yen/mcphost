@@ -19,7 +19,7 @@ async fn connect_lists_every_surface_once_under_its_kind_heading_without_script(
     assert_eq!(response.status(), 200);
     let body = response.text().await.expect("/connect body");
 
-    assert_eq!(table.len(), 12);
+    assert_eq!(table.len(), install_links::SURFACE_IDS.len());
     for s in &table {
         assert_eq!(
             body.matches(&format!("id=\"{}\"", s.id)).count(),

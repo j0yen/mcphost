@@ -80,12 +80,13 @@ pub struct Surface {
     pub checked: &'static str,
 }
 
-/// The twelve surface ids, in table order.
-pub const SURFACE_IDS: [&str; 12] = [
+/// The thirteen surface ids, in table order.
+pub const SURFACE_IDS: [&str; 13] = [
     "claude_code",
     "cursor",
     "vscode",
     "claude_ai",
+    "chatgpt",
     "codex_cli",
     "gemini_cli",
     "opencode",
@@ -143,6 +144,9 @@ fn numbered(steps: &[String]) -> String {
 /// endpoint in this crate already is (see e.g. `control::key_rotate`'s own
 /// `trim_end_matches('/')`).
 ///
+/// ChatGPT row (PRD-mcphost-chatgpt-submission-pack): steps only, no deep
+/// link exists; `doc_url` is OpenAI's MCP page, `checked` is [`CHECKED`].
+///
 /// Rows added by PRD-mcphost-install-links-more-clients (each `doc_url`
 /// read 2026-10-07; flag spellings are the ones that page documents):
 /// Codex CLI `codex mcp add <name> --url <url>`; Gemini CLI
@@ -173,6 +177,13 @@ pub fn for_url(base: &str) -> Links {
         "Save, then enable the connector in a chat to connect.".to_string(),
     ];
 
+    let chatgpt_steps = vec![
+        "Open ChatGPT, then Plugins, then Add.".to_string(),
+        "Choose Create custom MCP server.".to_string(),
+        format!("Name: {CLIENT_NAME}"),
+        format!("MCP server URL: {mcp_url}"),
+        "Choose OAuth, then Create. On the consent page press Create a new workspace.".to_string(),
+    ];
     let goose_steps = vec![
         "In a Goose session, type /extension.".to_string(),
         "Choose Add Remote Extension (Streamable HTTP).".to_string(),
@@ -205,6 +216,7 @@ pub fn for_url(base: &str) -> Links {
         row("cursor", "Cursor", Kind::Deeplink, cursor.clone(), "https://docs.cursor.com/en/tools/mcp"),
         row("vscode", "VS Code", Kind::Deeplink, vscode.clone(), "https://code.visualstudio.com/api/extension-guides/ai/mcp"),
         row("claude_ai", "Claude.ai", Kind::Steps, numbered(&claude_ai_steps), "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp"),
+        row("chatgpt", "ChatGPT", Kind::Steps, numbered(&chatgpt_steps), "https://platform.openai.com/docs/mcp"),
         row("codex_cli", "Codex CLI", Kind::Command, format!("codex mcp add {CLIENT_NAME} --url {mcp_url}"), "https://developers.openai.com/codex/mcp"),
         row("gemini_cli", "Gemini CLI", Kind::Command, format!("gemini mcp add --transport http {CLIENT_NAME} {mcp_url}"), "https://geminicli.com/docs/tools/mcp-server/"),
         row("opencode", "OpenCode", Kind::Command, format!("opencode mcp add {CLIENT_NAME} --url {mcp_url}"), "https://opencode.ai/docs/mcp-servers/"),

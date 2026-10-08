@@ -61,7 +61,7 @@ async fn quickstart_install_links_carry_twelve_personal_artefacts() {
             .expect("host.quickstart"),
     );
     let surfaces = quickstart["install_links"]["surfaces"].as_array().expect("surfaces array");
-    assert_eq!(surfaces.len(), 12, "{quickstart}");
+    assert_eq!(surfaces.len(), mcphost::install_links::SURFACE_IDS.len(), "{quickstart}");
 
     let personal_prefix = url.trim_end_matches("/mcp").to_string();
     for s in surfaces {
