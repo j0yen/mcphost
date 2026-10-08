@@ -262,6 +262,7 @@ pub fn resolve_and_validate(
                             "ceiling": ceiling,
                             "requested": requested_value,
                             "next": next,
+                            "see": BUDGET_CEILING_SEE,
                         }),
                     });
                 }
@@ -275,6 +276,11 @@ pub fn resolve_and_validate(
     field!("max_wall_ms", max_wall_ms);
     Ok(limits)
 }
+
+/// PRD-mcphost-plan-limits-generated: the generated surface a
+/// `budget_ceiling_exceeded` error points at (`host.quickstart`'s
+/// `limits.plan.budget`, rendered by `Plan::ceilings_json`).
+pub const BUDGET_CEILING_SEE: &str = "host.quickstart.limits.plan";
 
 /// Technical considerations: "the estimate is `chars / 4` over arguments
 /// and results the host sees" -- `ceil((args_bytes + result_bytes) / 4)`,

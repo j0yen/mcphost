@@ -9,6 +9,44 @@
 
 use serde_json::{Value, json};
 
+/// PRD-mcphost-plan-limits-generated: the plan `network: "public"`/`"egress"`
+/// needs -- the one place that names it (publish gate, run gate and the
+/// generated schema/quickstart text all read this).
+pub const EGRESS_PLAN: &str = "pro";
+
+/// Every accepted python `network` value with the plan that unlocks it.
+/// [`wants_egress`] is true exactly for the values gated on
+/// [`EGRESS_PLAN`] (asserted in this module's tests).
+pub const NETWORK_VALUES: &[(&str, &str)] = &[
+    ("none", "free"),
+    ("public", EGRESS_PLAN),
+    ("egress", EGRESS_PLAN),
+];
+
+/// The `network` field description with the plan-gated values listed,
+/// rendered from [`NETWORK_VALUES`].
+pub fn network_field_description() -> &'static str {
+    static TEXT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    TEXT.get_or_init(|| {
+        let values: Vec<String> = NETWORK_VALUES
+            .iter()
+            .map(|(value, plan)| {
+                if *plan == "free" {
+                    format!("\"{value}\" (every plan)")
+                } else {
+                    format!("\"{value}\" (requires the {plan} plan)")
+                }
+            })
+            .collect();
+        format!(
+            "{} -- a tool's own code reaches this tenant's data with `import mcphost` \
+             (mcphost.table, mcphost.state, mcphost.docs, mcphost.lineage) even when \
+             network is \"none\"",
+            values.join(", ")
+        )
+    })
+}
+
 /// `"public"` and `"egress"` have always meant the same sandbox grant; only
 /// the plan gate used to see one spelling. `None`/anything else (including
 /// absent, i.e. the default) is not egress.
@@ -41,5 +79,12 @@ mod tests {
         assert!(wants_egress(Some("egress")));
         assert!(!wants_egress(Some("none")));
         assert!(!wants_egress(None));
+    }
+
+    #[test]
+    fn network_values_table_agrees_with_wants_egress() {
+        for (value, plan) in NETWORK_VALUES {
+            assert_eq!(wants_egress(Some(value)), *plan == EGRESS_PLAN, "{value}");
+        }
     }
 }

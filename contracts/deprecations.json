@@ -1,1 +1,20 @@
-[]
+[
+  {
+    "path": "host.tool_call.budget",
+    "since": "2026-10-08",
+    "sunset": "2026-12-07",
+    "replacement": "PRD-mcphost-plan-limits-generated: budget fields now carry a schema maximum (the free-plan ceiling); read host.quickstart.limits.plan.budget for your plan's ceilings"
+  },
+  {
+    "path": "host.tool.call.budget",
+    "since": "2026-10-08",
+    "sunset": "2026-12-07",
+    "replacement": "PRD-mcphost-plan-limits-generated: budget fields now carry a schema maximum (the free-plan ceiling); read host.quickstart.limits.plan.budget for your plan's ceilings"
+  },
+  {
+    "path": "host_tool_call.budget",
+    "since": "2026-10-08",
+    "sunset": "2026-12-07",
+    "replacement": "PRD-mcphost-plan-limits-generated: budget fields now carry a schema maximum (the free-plan ceiling); read host.quickstart.limits.plan.budget for your plan's ceilings"
+  }
+]

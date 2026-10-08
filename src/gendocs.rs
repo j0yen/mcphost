@@ -114,6 +114,42 @@ pub fn render_plans_markdown(catalog: &PlanCatalog) -> String {
          up, the ones `billing.plans` itself returns.\n",
     );
     out.push_str("\nMachine-readable: [`/plans.json`](/plans.json).\n");
+    out.push_str(&render_ceilings_table(catalog));
+    out
+}
+
+/// PRD-mcphost-plan-limits-generated: one row per numeric plan ceiling, one
+/// column per plan, derived from [`crate::plans::Plan::ceilings_flat`] -- the
+/// same function `host.quickstart`'s `limits.plan` is built from.
+pub fn render_ceilings_table(catalog: &PlanCatalog) -> String {
+    let mut out = String::from("\n## Plan ceilings\n\n");
+    out.push_str(
+        "Every numeric ceiling in the plan table, as `host.quickstart` \
+         `limits.plan` reports it for your plan. A `budget` value above \
+         your plan's row is refused with `budget_ceiling_exceeded`.\n\n",
+    );
+    out.push_str("| ceiling |");
+    for plan in &catalog.plans {
+        out.push_str(&format!(" {} |", plan.name));
+    }
+    out.push_str("\n|---|");
+    for _ in &catalog.plans {
+        out.push_str("---|");
+    }
+    out.push('\n');
+    let columns: Vec<Vec<(String, i64)>> = catalog.plans.iter().map(|p| p.ceilings_flat()).collect();
+    if let Some(first) = columns.first() {
+        for (i, (name, _)) in first.iter().enumerate() {
+            out.push_str(&format!("| `{name}` |"));
+            for col in &columns {
+                match col.get(i) {
+                    Some((n, v)) if n == name => out.push_str(&format!(" {v} |")),
+                    _ => out.push_str(" - |"),
+                }
+            }
+            out.push('\n');
+        }
+    }
     out
 }
 

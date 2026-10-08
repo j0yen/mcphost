@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-llms-install-doc.md (test_prefix: mcphost-llms-install-doc)",
+  "ac_test_map_prd": "PRD-mcphost-plan-limits-generated.md (test_prefix: planlim)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,15 +28,26 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/mcphost-llms-install-doc_ac01_generator_sections.rs",
-    "AC2": "tests/mcphost-llms-install-doc_ac02_served_unauthenticated.rs",
-    "AC3": "tests/mcphost-llms-install-doc_ac03_committed_copy_drift.rs",
-    "AC4": "tests/mcphost-llms-install-doc_ac04_linked_from_every_entry_point.rs",
-    "AC5": "tests/mcphost-llms-install-doc_ac05_sitemap_lists_the_page.rs",
-    "AC6": "tests/mcphost-llms-install-doc_ac06_install_doc_funnel_event.rs",
-    "AC7": "deferred -- operator-provisioned: live prod observation after deploy (deploy journal tag line + curl header paste)"
+    "AC1": "tests/planlim_ac01_quickstart_limits_plan_every_ceiling.rs",
+    "AC2": "tests/planlim_ac02_tool_call_budget_schema_maximum.rs",
+    "AC3": "tests/planlim_ac03_ceiling_error_points_at_quickstart.rs",
+    "AC4": "tests/planlim_ac04_ceilings_table_in_generated_docs.rs",
+    "AC5": "tests/planlim_ac05_publish_network_description_lists_gated_values.rs",
+    "AC6": "tests/planlim_ac06_tool_test_warns_timeout_above_latency_ceiling.rs",
+    "AC7": "tests/planlim_ac07_contract_drift_with_deprecation_entry.rs",
+    "AC8": "deferred -- operator-provisioned: live observation of the first nightly explore friction.json after deploy"
   },
   "ac_test_map_by_prefix": {
+    "mcphost-llms-install-doc": {
+      "_prd": "PRD-mcphost-llms-install-doc.md (test_prefix: mcphost-llms-install-doc)",
+      "AC1": "tests/mcphost-llms-install-doc_ac01_generator_sections.rs",
+      "AC2": "tests/mcphost-llms-install-doc_ac02_served_unauthenticated.rs",
+      "AC3": "tests/mcphost-llms-install-doc_ac03_committed_copy_drift.rs",
+      "AC4": "tests/mcphost-llms-install-doc_ac04_linked_from_every_entry_point.rs",
+      "AC5": "tests/mcphost-llms-install-doc_ac05_sitemap_lists_the_page.rs",
+      "AC6": "tests/mcphost-llms-install-doc_ac06_install_doc_funnel_event.rs",
+      "AC7": "deferred -- operator-provisioned: live prod observation after deploy (deploy journal tag line + curl header paste)"
+    },
     "testtruth": {
       "_prd": "PRD-mcphost-tool-test-truth.md (test_prefix: testtruth)",
       "AC1": "tests/testtruth_ac01_chain_prev_will_fail.rs",

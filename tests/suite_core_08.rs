@@ -14,6 +14,24 @@ mod oauth;
 #[path = "support/oauthclient.rs"]
 mod oauthclient;
 
+#[path = "tenant_delete_ac01_cascade_delete.rs"]
+mod tenant_delete_ac01_cascade_delete;
+#[path = "tenant_delete_ac02_forbidden.rs"]
+mod tenant_delete_ac02_forbidden;
+#[path = "tenant_delete_ac03_dry_run_prefix.rs"]
+mod tenant_delete_ac03_dry_run_prefix;
+#[path = "tenant_delete_ac04_prefix_delete.rs"]
+mod tenant_delete_ac04_prefix_delete;
+#[path = "tenant_delete_ac05_prefix_too_short.rs"]
+mod tenant_delete_ac05_prefix_too_short;
+#[path = "tenant_delete_ac06_migration_cascade.rs"]
+mod tenant_delete_ac06_migration_cascade;
+#[path = "tenant_delete_ac07_tenant_not_found.rs"]
+mod tenant_delete_ac07_tenant_not_found;
+#[path = "tenant_delete_ac09_healthz_probe_split.rs"]
+mod tenant_delete_ac09_healthz_probe_split;
+#[path = "tenant_delete_ac10_tenants_prefix_filter.rs"]
+mod tenant_delete_ac10_tenants_prefix_filter;
 #[path = "tenantprm_ac01_tenant_metadata_document.rs"]
 mod tenantprm_ac01_tenant_metadata_document;
 #[path = "tenantprm_ac02_bearer_jwt_tenant_and_audience_scoping.rs"]

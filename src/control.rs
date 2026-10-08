@@ -811,43 +811,17 @@ pub fn quickstart(
     // column and the catalog are both this host's own state) degrades to
     // omitting the block rather than failing an otherwise read-only call.
     let plan_limits = state.plans.get(&tenant.plan).map(|plan| {
-        json!({
-            "name": tenant.plan,
-            "tools_max": plan.tools_max,
-            "calls_per_day": plan.calls_per_day,
-            "secrets_max": plan.secrets_max,
-            // PRD-mcphost-tenant-state requirement 6 / AC10.
-            "state_bytes_max": plan.state_bytes_max,
-            "state_rows_max": plan.state_rows_max,
-            "state_ops_per_call_max": plan.state_ops_per_call_max,
-            // PRD-mcphost-sharing requirement 4: "host.quickstart limits
-            // lists it".
-            "shared_tools_max": plan.shared_tools_max,
-            // PRD-mcphost-tenant-tables requirement 4: "host.quickstart
-            // limits lists them", same shape as state_*_max above.
-            "table_tables_max": plan.table_tables_max,
-            "table_rows_max": plan.table_rows_max,
-            "table_bytes_max": plan.table_bytes_max,
-            // PRD-mcphost-runs-and-jobs P0 requirement 8.
-            "job_max_s": plan.job_max_s,
-            "jobs_concurrent": plan.jobs_concurrent,
-            // PRD-mcphost-schedules P0 requirement 4: "host.quickstart
-            // limits lists both".
-            "schedules_max": plan.schedules_max,
-            "schedule_min_interval_s": plan.schedule_min_interval_s,
-            // PRD-mcphost-inbound-events requirement 4: "host.quickstart
-            // limits lists them".
-            "event_triggers_max": plan.event_triggers_max,
-            "events_per_minute": plan.events_per_minute,
-            "event_body_bytes_max": plan.event_body_bytes_max,
-            // PRD-mcphost-sandbox-bridge-discoverability requirement 5
-            // (AC5): names the plan `network: "public"`/`"egress"` needs --
-            // the same one `network_policy::plan_required_fields` and
-            // `AppError::plan_required("network", "pro")` already gate on,
-            // so a free-plan tenant reading quickstart alone learns this
-            // without first hitting the republish-with-network-none refusal.
-            "network_public": "pro",
-        })
+        // PRD-mcphost-plan-limits-generated: every numeric ceiling of the
+        // plan struct, rendered by `Plan::ceilings_json` so a new field
+        // appears here with no edit. `network_public` names the plan
+        // `network: "public"`/`"egress"` needs (the same one
+        // `network_policy::plan_required_fields` gates on).
+        let mut limits = plan.ceilings_json();
+        if let Some(obj) = limits.as_object_mut() {
+            obj.insert("name".to_string(), json!(tenant.plan));
+            obj.insert("network_public".to_string(), json!(crate::network_policy::EGRESS_PLAN));
+        }
+        limits
     });
     // PRD-mcphost-call-limits-honest requirement 5 / AC6: the six limits an
     // agent would set or read at call time, read straight from the same
@@ -1692,7 +1666,7 @@ pub async fn tool_publish(
             ));
         }
         if network_denied {
-            return Err(attach_gates(AppError::plan_required("network", "pro"), &gates));
+            return Err(attach_gates(AppError::plan_required("network", crate::network_policy::EGRESS_PLAN), &gates));
         }
         if let Some(e) = deps_err {
             return Err(attach_gates(e, &gates));

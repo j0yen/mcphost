@@ -343,9 +343,7 @@ pub(crate) fn python_field_hint(field: &str) -> Option<(&'static str, Value)> {
         "timeout_s" => ("a positive integer number of seconds", json!(10)),
         "memory_mb" => ("a positive integer number of megabytes", json!(256)),
         "network" => (
-            "\"none\", \"public\", or \"egress\" -- a tool's own code reaches this tenant's \
-             data with `import mcphost` (mcphost.table, mcphost.state, mcphost.docs, \
-             mcphost.lineage) even when network is \"none\"",
+            crate::network_policy::network_field_description(),
             json!("none"),
         ),
         "secrets" => ("a list of strings", json!(["api_key"])),
@@ -4543,7 +4541,7 @@ impl PythonKind {
             return Ok(NetworkMode::None);
         }
         if !egress_allowed {
-            let (message, data) = crate::network_policy::plan_required_fields("network", "pro");
+            let (message, data) = crate::network_policy::plan_required_fields("network", crate::network_policy::EGRESS_PLAN);
             return Err(KindError::structured_with("plan_required", message, data));
         }
         match std::env::var("MCPHOST_EGRESS_PROXY").ok() {

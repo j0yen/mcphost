@@ -7,6 +7,7 @@
 #
 # Source files, in the order they appear in the assembled output:
 #   README.md            the canonical agent-readable doc (requirement 1)
+#   docs/plans.md        the plan table + generated ceilings table (mcphost gen-docs)
 #   docs/kinds/*.md       the tool kinds (echo, http, python, wasm)
 #   docs/benchmarks/*.md  every measured proof point cited from README/llms.txt
 #   docs/receipts/*.md    supporting measurement receipts cited elsewhere
@@ -32,6 +33,11 @@ render() {
   echo "## README"
   echo
   cat README.md
+  echo
+
+  echo "## Plans"
+  echo
+  cat docs/plans.md
   echo
 
   for f in docs/kinds/*.md; do
