@@ -52,6 +52,24 @@ pub const SUPPORT_SPLICED_DOCS: &[&str] =
 /// reverse direction: every name docs/plugin mention exists here).
 pub const TOOLS_DOC_PATH: &str = "docs/tools.md";
 
+/// PRD-mcphost-llms-install-doc: the committed repo-root copy of the document
+/// `GET /llms-install.md` serves, rendered against the production hostname.
+pub const INSTALL_DOC_PATH: &str = crate::install_links::INSTALL_DOC_FILE;
+
+/// The same bytes under `www/`, the directory `mcphost-deploy vendor-www`
+/// imports -- so the page the reverse proxy serves is the generated one.
+pub const INSTALL_DOC_WWW_PATH: &str = "www/llms-install.md";
+
+/// `Err(message)` naming [`INSTALL_DOC_PATH`] iff `current` (the committed
+/// file's content) differs from a fresh render over `base`.
+pub fn check_install_doc(current: &str, base: &str) -> Result<(), String> {
+    if current == crate::install_links::render_install_doc(base) {
+        Ok(())
+    } else {
+        Err(format!("gen-docs --check: {INSTALL_DOC_PATH} is stale (run `mcphost gen-docs`)"))
+    }
+}
+
 /// One `billing::plans_from_catalog`-shaped row, rendered as a markdown
 /// table row -- requirement 3's own fields (name, price, tools, calls/day,
 /// secrets), plus a short prose description already on the `Plan` struct.
@@ -301,6 +319,14 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
         (Path::new(PLANS_DOC_PATH), render_plans_markdown(&catalog)),
         (Path::new(PLANS_HTML_PATH), render_plans_html()),
         (Path::new(TOOLS_DOC_PATH), render_tools_markdown(kinds)),
+        (
+            Path::new(INSTALL_DOC_PATH),
+            crate::install_links::render_install_doc(crate::install_links::CANONICAL_PUBLIC_URL),
+        ),
+        (
+            Path::new(INSTALL_DOC_WWW_PATH),
+            crate::install_links::render_install_doc(crate::install_links::CANONICAL_PUBLIC_URL),
+        ),
     ] {
         if check {
             let current = std::fs::read_to_string(path).unwrap_or_default();

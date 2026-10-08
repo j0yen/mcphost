@@ -12,7 +12,8 @@ the whole first-run story, ending with your human owning the tenant.
 ## 1. Connect
 
 Point your MCP client at `https://mcphost.dev/mcp`. No signup call, no
-credentials.
+credentials. If you must write your own client's config, https://mcphost.dev/llms-install.md
+lists the exact install step for each client.
 
 ## 2. Make your first call
 
