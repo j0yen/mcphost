@@ -54,19 +54,19 @@ async fn materialize_50000_rows_returns_honest_summary_under_2s() {
         start += BATCH;
     }
 
-    let began = std::time::Instant::now();
+    // Median-of-5 warm budget; skipped under MCPHOST_PERF_SKIP=1 (loaded host).
+    crate::perf_budget!(2_000, {
+        client
+            .tools_call("host.table.query", json!({"sql": "SELECT * FROM big", "handle": true}))
+            .await
+            .expect("materialize handle");
+    });
+
     let result = client
         .tools_call("host.table.query", json!({"sql": "SELECT * FROM big", "handle": true}))
         .await
         .expect("materialize handle");
-    let elapsed = began.elapsed();
     let summary = extract_structured(&result);
-
-    assert!(
-        elapsed.as_millis() < 2_000,
-        "materialise took {}ms, expected under 2s on the builder",
-        elapsed.as_millis()
-    );
 
     assert_eq!(summary["row_count"], TOTAL_ROWS, "summary: {summary}");
     let handle = summary["handle"].as_str().expect("handle name").to_string();

@@ -572,6 +572,8 @@ mod flakelint_ac03_receipt_read;
 mod flakelint_ac04_allow_list;
 #[path = "flakelint_ac06_perf_budget_skip_and_median.rs"]
 mod flakelint_ac06_perf_budget_skip_and_median;
+#[path = "flakelint_ac07_timing_tests_use_perf_budget.rs"]
+mod flakelint_ac07_timing_tests_use_perf_budget;
 #[path = "fleetips_reclassify_backfill.rs"]
 mod fleetips_reclassify_backfill;
 #[path = "ftruth_ac01_never_unknown_at_insert.rs"]

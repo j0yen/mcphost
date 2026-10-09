@@ -12,7 +12,6 @@
 use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
-use std::time::Instant;
 
 const TOTAL_CALLS: i64 = 1_000_000;
 // Strictly less than 30: `host.usage {window: "30d"}` only counts
@@ -56,12 +55,18 @@ async fn thirty_day_breakdown_answers_fast_after_rollup() {
         .expect("rollup_usage_daily");
     assert!(rolled > 0, "the rollup must have written at least one usage_daily row");
 
-    let start = Instant::now();
+    // Median-of-5 warm budget; skipped under MCPHOST_PERF_SKIP=1 (loaded host).
+    crate::perf_budget!(200, {
+        client_o
+            .tools_call("host.usage", json!({"by": "tool", "window": "30d"}))
+            .await
+            .expect("host.usage by tool over 30d");
+    });
+
     let usage = client_o
         .tools_call("host.usage", json!({"by": "tool", "window": "30d"}))
         .await
         .expect("host.usage by tool over 30d");
-    let elapsed = start.elapsed();
 
     let body = extract_structured(&usage);
     let rows = body["rows"].as_array().expect("rows array");
@@ -70,8 +75,4 @@ async fn thirty_day_breakdown_answers_fast_after_rollup() {
         .find(|r| r["key"] == json!("loadtest"))
         .expect("loadtest row must be present");
     assert_eq!(row["calls"], json!(TOTAL_CALLS), "{row}");
-    assert!(
-        elapsed.as_millis() < 200,
-        "30d host.usage must answer in < 200ms from usage_daily, took {elapsed:?}"
-    );
 }

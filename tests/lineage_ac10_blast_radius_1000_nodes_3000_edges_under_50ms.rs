@@ -3,7 +3,6 @@
 
 use mcphost::lineage::graph::{ChangeKind, LineageGraph, LineageNode, NodeKind, node_id};
 use std::collections::HashSet;
-use std::time::Instant;
 
 fn tool_id(i: usize) -> String {
     node_id(NodeKind::Tool, &format!("n{i}"))
@@ -67,13 +66,11 @@ fn blast_radius_over_1000_nodes_3000_edges_completes_under_50ms() {
     }
     assert_eq!(edges.len(), 3000);
 
-    let start = Instant::now();
     let report = graph.blast_radius(&root_id, ChangeKind::Drop, usize::MAX, usize::MAX);
-    let elapsed = start.elapsed();
-
     assert_eq!(report.impacted.len(), 999, "every tool node must be reachable from root");
-    assert!(
-        elapsed.as_millis() < 50,
-        "blast_radius over 1,000 nodes / 3,000 edges took {elapsed:?}, must be under 50ms"
-    );
+
+    // Median-of-5 warm budget; skipped under MCPHOST_PERF_SKIP=1 (loaded host).
+    crate::perf_budget!(50, {
+        graph.blast_radius(&root_id, ChangeKind::Drop, usize::MAX, usize::MAX);
+    });
 }
