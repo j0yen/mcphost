@@ -58,6 +58,8 @@ async fn dry_run_gate_reports_will_fail_and_publishes_nothing() {
             "step": 2,
             "path": "$.prev.rows",
             "predecessor_keys": ["result", "count"],
+            "available": ["result", "count"],
+            "did_you_mean": "$.prev.result.rows",
         }]),
         "{structured}"
     );
@@ -108,6 +110,8 @@ async fn real_publish_lands_and_carries_the_advisory_verdict() {
             "step": 2,
             "path": "$.prev.rows",
             "predecessor_keys": ["result", "count"],
+            "available": ["result", "count"],
+            "did_you_mean": "$.prev.result.rows",
         }]),
         "{structured}"
     );

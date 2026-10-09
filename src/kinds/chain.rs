@@ -111,40 +111,173 @@ pub async fn resolve_steps(db: &crate::db::Db, tenant_id: i64, spec: &Value) -> 
     Ok(())
 }
 
-/// PRD-mcphost-tool-test-truth P0 requirement 2 (AC1/AC2/AC3): which step a
-/// `$.prev...`/`$.steps[i]...` path's prefix names (1-based, same numbering
-/// as everywhere else in this module), and the first segment immediately
-/// following that prefix -- the inner `Option` is `None` for a bare
-/// `$.prev`/`$.steps[i]` with nothing further (the whole predecessor value
-/// is mapped as-is, nothing to check against a schema). The outer
-/// `Option` is `None` for anything else: a
-/// literal, a `$.input.*` path, or a malformed `$.steps[...]` index --
-/// none of this check's concern (a malformed path is `resolve_args`'s own
-/// call-time error to report, not a publish/test-time one). Deliberately
-/// raw-string parsing (like [`input_arg_name`] above), not [`Path::parse`]
-/// -- this only needs the prefix and first segment, and [`Path`]'s own
-/// segments are private to this crate's call-time resolution.
-fn step_ref_and_first_segment(raw: &str, this_step_no: usize) -> Option<(usize, Option<String>)> {
-    if let Some(rest) = raw.strip_prefix("$.prev") {
-        let predecessor_no = this_step_no.checked_sub(1).filter(|n| *n > 0)?;
-        return Some((predecessor_no, next_path_segment(rest)));
-    }
-    if let Some(rest) = raw.strip_prefix("$.steps[") {
-        let end = rest.find(']')?;
-        let idx: usize = rest[..end].parse().ok()?;
-        return Some((idx + 1, next_path_segment(&rest[end + 1..])));
-    }
-    None
+/// PRD-mcphost-chain-prev-contract P0 requirement 1: the ONE constructor of
+/// the context a step's mappings resolve against -- `{"input": <chain args>,
+/// "prev": {"result": <predecessor result>} | null, "steps": [{"result":
+/// ...}, ...]}`. [`ChainKind::call`] and [`dry_run_report`] both build their
+/// context here, and [`accepted_prev_keys`]/[`accepted_step_keys`] read the
+/// checker's accepted first-level keys back out of a context this function
+/// built, so the two cannot drift apart.
+pub fn step_context(input: &Value, prev: Option<&Value>, steps: &[Value]) -> Value {
+    json!({
+        "input": input,
+        "prev": prev.map(|r| json!({"result": r})),
+        "steps": steps.iter().map(|r| json!({"result": r})).collect::<Vec<_>>(),
+    })
 }
 
-/// The first dotted/bracketed segment of `rest` (which itself follows
-/// right after a `$.prev`/`$.steps[i]` prefix, so `rest` is either empty or
-/// starts with `.`/`[`) -- `None` for an empty `rest` (nothing follows the
-/// prefix at all).
-fn next_path_segment(rest: &str) -> Option<String> {
-    let rest = rest.strip_prefix('.')?;
-    let end = rest.find(['.', '[']).unwrap_or(rest.len());
-    (!rest[..end].is_empty()).then(|| rest[..end].to_string())
+fn object_keys(v: &Value) -> std::collections::BTreeSet<String> {
+    v.as_object().map(|m| m.keys().cloned().collect()).unwrap_or_default()
+}
+
+/// The first-level keys a mapping may use under `$.prev` (today `{result}`),
+/// read from a sample context [`step_context`] built.
+pub fn accepted_prev_keys() -> std::collections::BTreeSet<String> {
+    object_keys(&step_context(&Value::Null, Some(&Value::Null), &[])["prev"])
+}
+
+/// The first-level keys a mapping may use under `$.steps[i]` (today
+/// `{result}`), read from a sample context [`step_context`] built.
+pub fn accepted_step_keys() -> std::collections::BTreeSet<String> {
+    object_keys(&step_context(&Value::Null, None, &[Value::Null])["steps"][0])
+}
+
+fn keys_phrase(keys: &std::collections::BTreeSet<String>) -> String {
+    let names = keys.iter().map(|k| format!("`{k}`")).collect::<Vec<_>>().join(", ");
+    match keys.len() {
+        1 => format!("exactly one key, {names}"),
+        n => format!("exactly {n} keys, {names}"),
+    }
+}
+
+/// PRD-mcphost-chain-prev-contract P1 requirement 7: the one-sentence
+/// statement of the mapping grammar, rendered from the derived key sets
+/// ([`accepted_prev_keys`]/[`accepted_step_keys`]) -- used verbatim by
+/// `docs/kinds/chain.md` and [`ChainKind::example`], and checked by a test.
+pub fn grammar_sentence() -> String {
+    format!(
+        "`$.prev` has {}; `$.steps[i]` has {}.",
+        keys_phrase(&accepted_prev_keys()),
+        keys_phrase(&accepted_step_keys())
+    )
+}
+
+/// One `$.prev...`/`$.steps[i]...` mapping split for checking: which step it
+/// reads (1-based, same numbering as everywhere else in this module), the
+/// `prefix` that named it (`$.prev` or `$.steps[i]`), and the raw path
+/// `tokens` after it (`.name` or `[idx]`, in order). Deliberately raw-string
+/// parsing (like [`input_arg_name`] below), not [`Path::parse`] -- a malformed
+/// path is `resolve_args`'s own call-time error to report, not a
+/// publish/test-time one. `None` for a literal, a `$.input.*` path, or a
+/// malformed `$.steps[...]` index.
+struct StepRef {
+    predecessor_no: usize,
+    is_prev: bool,
+    prefix: String,
+    tokens: Vec<String>,
+}
+
+impl StepRef {
+    fn parse(raw: &str, this_step_no: usize) -> Option<StepRef> {
+        if let Some(rest) = raw.strip_prefix("$.prev") {
+            let predecessor_no = this_step_no.checked_sub(1).filter(|n| *n > 0)?;
+            return Some(StepRef {
+                predecessor_no,
+                is_prev: true,
+                prefix: "$.prev".to_string(),
+                tokens: path_tokens(rest),
+            });
+        }
+        let rest = raw.strip_prefix("$.steps[")?;
+        let end = rest.find(']')?;
+        let idx: usize = rest[..end].parse().ok()?;
+        Some(StepRef {
+            predecessor_no: idx + 1,
+            is_prev: false,
+            prefix: format!("$.steps[{idx}]"),
+            tokens: path_tokens(&rest[end + 1..]),
+        })
+    }
+
+    /// The name of token `i` when it is a dotted `.name` segment.
+    fn name(&self, i: usize) -> Option<&str> {
+        self.tokens.get(i)?.strip_prefix('.')
+    }
+
+    /// The accepted first-level keys under this reference's prefix, read
+    /// from the context constructor ([`step_context`]).
+    fn accepted_keys(&self) -> std::collections::BTreeSet<String> {
+        if self.is_prev { accepted_prev_keys() } else { accepted_step_keys() }
+    }
+
+    /// The predecessor's actual result in `context` this reference reads
+    /// from (`None` when that step never produced one).
+    fn base_result<'a>(&self, context: &'a Value) -> Option<&'a Value> {
+        let holder = if self.is_prev {
+            &context["prev"]
+        } else {
+            &context["steps"][self.predecessor_no - 1]
+        };
+        holder.get("result").filter(|v| !v.is_null())
+    }
+
+    /// This path rebuilt with the `hop` names inserted ahead of every
+    /// token, and token `at.0` (when given) replaced by the dotted name
+    /// `at.1`.
+    fn rebuilt(&self, hop: &[&str], at: Option<(usize, &str)>) -> String {
+        let mut out = self.prefix.clone();
+        for h in hop {
+            out.push('.');
+            out.push_str(h);
+        }
+        for (i, t) in self.tokens.iter().enumerate() {
+            match at {
+                Some((idx, name)) if idx == i => {
+                    out.push('.');
+                    out.push_str(name);
+                }
+                _ => out.push_str(t),
+            }
+        }
+        out
+    }
+}
+
+/// Splits the remainder of a path after its `$.prev`/`$.steps[i]` prefix
+/// into `.name` / `[idx]` tokens. Stops (returns what it has) at anything
+/// that is neither -- a malformed tail is `resolve_args`'s to report.
+fn path_tokens(mut rest: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    while !rest.is_empty() {
+        let end = if let Some(tail) = rest.strip_prefix('.') {
+            tail.find(['.', '[']).map_or(rest.len(), |e| e + 1)
+        } else if rest.starts_with('[') {
+            match rest.find(']') {
+                Some(e) => e + 1,
+                None => break,
+            }
+        } else {
+            break;
+        };
+        if end <= 1 {
+            break;
+        }
+        out.push(rest[..end].to_string());
+        rest = &rest[end..];
+    }
+    out
+}
+
+/// The nearest of `known` to `name` by edit distance, only when it is
+/// close enough to be a plausible typo (distance <= 2, e.g. `lead` ->
+/// `leads`).
+fn closest_name<'a>(name: &str, known: &'a [String]) -> Option<&'a str> {
+    known
+        .iter()
+        .map(|k| (crate::errors::levenshtein(name, k), k.as_str()))
+        .filter(|(d, _)| *d <= 2)
+        .min_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(b.1)))
+        .map(|(_, k)| k)
 }
 
 /// Requirement 2: the declared output field names of tenant tool
@@ -169,16 +302,24 @@ async fn declared_output_names(
     Some(kind.declared_outputs(&row.spec).into_iter().map(|d| d.name).collect())
 }
 
-/// Requirement 2: how one `$.prev`/`$.steps[i]` mapping, whose first
-/// segment is `segment` and whose predecessor step names tool
-/// `predecessor_tool`, classifies. `db`/`kinds` are `None` whenever a
+/// Requirement 2: how one `$.prev`/`$.steps[i]` mapping into
+/// `predecessor_tool` classifies. `db`/`kinds` are `None` whenever a
 /// caller has no descriptor lookup available at all ([`CallCtx::for_test`]'s
 /// own `compose_db`/`compose_kinds`, left unset there) -- that degrades to
 /// `Unverifiable`, same as a lookup miss, rather than panicking or
 /// guessing.
+///
+/// PRD-mcphost-chain-prev-contract P0 requirement 2: the first segment must
+/// be one of the context constructor's own keys ([`StepRef::accepted_keys`],
+/// today `result`); a missing hop is `WillFail` with a corrected
+/// `did_you_mean` whether or not the predecessor declares anything. The
+/// segment after the hop is then checked against the predecessor's declared
+/// `outputs` (and the envelope wrapper keys) when it declares any.
 enum RefCheck {
     Pass,
-    WillFail(Vec<String>),
+    /// Extra evidence fields (`available`, `predecessor_keys`,
+    /// `did_you_mean`) merged into the failure entry.
+    WillFail(Map<String, Value>),
     Unverifiable,
 }
 
@@ -187,20 +328,48 @@ async fn check_step_ref(
     kinds: Option<&KindRegistry>,
     tenant_id: i64,
     predecessor_tool: &str,
-    segment: &str,
+    r: &StepRef,
 ) -> RefCheck {
-    let (Some(db), Some(kinds)) = (db, kinds) else {
+    let declared = match (db, kinds) {
+        (Some(db), Some(kinds)) => declared_output_names(db, kinds, tenant_id, predecessor_tool)
+            .await
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    };
+    let mut evidence = Map::new();
+    if !declared.is_empty() {
+        evidence.insert("available".to_string(), json!(declared));
+        evidence.insert("predecessor_keys".to_string(), json!(declared));
+    }
+    let Some(first) = r.name(0) else {
         return RefCheck::Unverifiable;
     };
-    match declared_output_names(db, kinds, tenant_id, predecessor_tool).await {
-        Some(names) if !names.is_empty() => {
-            if names.iter().any(|n| n == segment) {
-                RefCheck::Pass
-            } else {
-                RefCheck::WillFail(names)
-            }
+    if !r.accepted_keys().contains(first) {
+        // Missing hop: `$.prev.<seg>` should be `$.prev.result.<seg>`; when
+        // the predecessor's declared fields name a close match for `<seg>`,
+        // point at that field instead.
+        let suggestion = match closest_name(first, &declared) {
+            Some(near) if !declared.iter().any(|d| d == first) => r.rebuilt(&["result"], Some((0, near))),
+            _ => r.rebuilt(&["result"], None),
+        };
+        evidence.insert("did_you_mean".to_string(), json!(suggestion));
+        return RefCheck::WillFail(evidence);
+    }
+    let Some(field) = r.name(1) else {
+        // Whole predecessor value (`$.prev.result`): nothing to check
+        // against a schema; Pass only if the predecessor declares one.
+        return if declared.is_empty() { RefCheck::Unverifiable } else { RefCheck::Pass };
+    };
+    if declared.is_empty() {
+        return RefCheck::Unverifiable;
+    }
+    if declared.iter().any(|d| d == field) || super::ENVELOPE_WRAPPER_KEYS.contains(&field) {
+        RefCheck::Pass
+    } else {
+        if let Some(near) = closest_name(field, &declared) {
+            evidence.insert("did_you_mean".to_string(), json!(r.rebuilt(&[], Some((1, near)))));
         }
-        _ => RefCheck::Unverifiable,
+        RefCheck::WillFail(evidence)
     }
 }
 
@@ -244,25 +413,26 @@ async fn steps_verdict(
         let step_no = i + 1;
         for v in step.args.values() {
             let Value::String(raw) = v else { continue };
-            let Some((predecessor_no, segment)) = step_ref_and_first_segment(raw, step_no) else {
+            let Some(r) = StepRef::parse(raw, step_no) else {
                 continue;
             };
-            let Some(segment) = segment else {
+            if r.tokens.is_empty() {
                 continue; // whole-value mapping -- nothing to check.
-            };
+            }
+            let predecessor_no = r.predecessor_no;
             let Some(predecessor) = steps.get(predecessor_no - 1) else {
                 continue; // out of range -- not this check's concern.
             };
-            match check_step_ref(db, kinds, tenant_id, &predecessor.tool, &segment).await {
+            match check_step_ref(db, kinds, tenant_id, &predecessor.tool, &r).await {
                 RefCheck::Pass => {
                     passes.insert((step_no, raw.clone()));
                 }
-                RefCheck::WillFail(names) => {
-                    failures.push(json!({
-                        "step": step_no,
-                        "path": raw,
-                        "predecessor_keys": names,
-                    }));
+                RefCheck::WillFail(extra) => {
+                    let mut entry = Map::new();
+                    entry.insert("step".to_string(), json!(step_no));
+                    entry.insert("path".to_string(), json!(raw));
+                    entry.extend(extra);
+                    failures.push(Value::Object(entry));
                 }
                 RefCheck::Unverifiable => {
                     if unverifiable_step.is_none() {
@@ -274,7 +444,7 @@ async fn steps_verdict(
     }
 
     let overall = if !failures.is_empty() {
-        json!({"verdict": "will_fail", "failures": failures})
+        json!({"verdict": "will_fail", "failures": failures, "evidence": failures})
     } else if let Some(predecessor_no) = unverifiable_step {
         json!({
             "verdict": "unverifiable",
@@ -303,6 +473,36 @@ pub(crate) async fn verdict(
         return json!({"verdict": "unverifiable", "reason": "spec does not parse"});
     };
     steps_verdict(Some(db), Some(kinds), tenant_id, &steps).await.overall
+}
+
+/// PRD-mcphost-chain-prev-contract P1 requirement 6: per step after the
+/// first, the fields it may read from its predecessor under
+/// `$.prev.result` -- the predecessor's declared `outputs` when it has any
+/// (`prev_fields_source: "declared"`); otherwise `prev_fields` is `null`
+/// until a `host.tool_test` dry run reports it from the actual result.
+pub(crate) async fn prev_fields(
+    db: &crate::db::Db,
+    kinds: &KindRegistry,
+    tenant_id: i64,
+    spec: &Value,
+) -> Value {
+    let Ok(steps) = parse_steps(spec) else {
+        return json!([]);
+    };
+    let mut out = Vec::new();
+    for (i, step) in steps.iter().enumerate().skip(1) {
+        let declared = declared_output_names(db, kinds, tenant_id, &steps[i - 1].tool)
+            .await
+            .unwrap_or_default();
+        let entry = if declared.is_empty() {
+            json!({"step": i + 1, "tool": step.tool, "prev_fields": null,
+                   "hint": "predecessor declares no outputs; host.tool_test reports prev_fields from its dry-run result"})
+        } else {
+            json!({"step": i + 1, "tool": step.tool, "prev_fields": declared, "prev_fields_source": "declared"})
+        };
+        out.push(entry);
+    }
+    Value::Array(out)
 }
 
 /// PRD-mcphost-chain-run-lineage requirement 1: one `$.input.<name>`
@@ -514,6 +714,68 @@ fn resolve_args(raw: &Map<String, Value>, context: &Value) -> Result<Value, Stri
 /// `input_schema.required` -- alongside the existing per-step trace, so a
 /// caller dry-running a chain (with or without a complete `call_args`)
 /// learns what it must pass without needing a second `host.tool_spec` read.
+/// PRD-mcphost-chain-prev-contract P0 requirement 3: executes tenant tool
+/// `tool` once, under the dry run's own `ctx` (so its writes land in the
+/// open `DryRunCtx` savepoint and roll back), to learn the shape of the
+/// result a later step's `$.prev.result.<field>` reads from. `Err` carries
+/// why the predecessor could not be dry-run (no such tool, nested chain,
+/// upstream down, deadline) -- the only case a mapping into it is
+/// `unverifiable`.
+async fn dry_run_predecessor(ctx: &CallCtx, tool: &str, args: Value) -> Result<Value, String> {
+    let (Some(db), Some(kinds)) = (ctx.compose_db.as_ref(), ctx.compose_kinds.as_ref()) else {
+        return Err("no tool lookup available in this call context".to_string());
+    };
+    let row = db
+        .get_tool(ctx.tenant_id, tool.to_string())
+        .await
+        .map_err(|e| format!("tool lookup failed: {e}"))?
+        .ok_or_else(|| format!("no such tool: {tool}"))?;
+    let kind = kinds
+        .get(&row.kind)
+        .ok_or_else(|| format!("unregistered kind '{}'", row.kind))?;
+    if kind.name() == "chain" {
+        return Err("a nested chain has no single result shape to dry-run".to_string());
+    }
+    let remaining = ctx.deadline.saturating_duration_since(std::time::Instant::now());
+    let value = tokio::time::timeout(remaining, kind.call(&row.spec, args, ctx))
+        .await
+        .map_err(|_| "dry run deadline reached".to_string())?
+        .map_err(|e| e.to_string())?;
+    // `http` in test mode wraps what a real call would return in
+    // `{request, response, schema}`; the real result is `response`.
+    Ok(match (kind.name(), value) {
+        ("http", Value::Object(mut m)) if m.contains_key("response") => m.remove("response").unwrap_or(Value::Null),
+        (_, v) => v,
+    })
+}
+
+/// The mapping failure evidence for a `$.prev`/`$.steps[i]` path that did
+/// not resolve against `base` (the predecessor's actual result):
+/// `available` is its top-level keys, `did_you_mean` the corrected path
+/// when a key is a plausible match for the missing segment.
+fn actual_result_evidence(r: &StepRef, base: &Value) -> Map<String, Value> {
+    let available: Vec<String> = match base {
+        Value::Object(m) => m.keys().cloned().collect(),
+        _ => Vec::new(),
+    };
+    let mut out = Map::new();
+    let suggestion = match (r.name(0), r.name(1)) {
+        // Missing hop: `$.prev.<seg>` where `<seg>` is a field of the result.
+        (Some(seg), _) if !r.accepted_keys().contains(seg) => {
+            closest_name(seg, &available).map(|near| r.rebuilt(&["result"], Some((0, near))))
+        }
+        (Some("result"), Some(field)) if !available.iter().any(|k| k == field) => {
+            closest_name(field, &available).map(|near| r.rebuilt(&[], Some((1, near))))
+        }
+        _ => None,
+    };
+    if let Some(s) = suggestion {
+        out.insert("did_you_mean".to_string(), json!(s));
+    }
+    out.insert("available".to_string(), json!(available));
+    out
+}
+
 async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) -> Value {
     let inputs_required: Vec<String> = collect_input_refs(steps).into_iter().map(|r| r.name).collect();
     let sv = steps_verdict(
@@ -530,19 +792,35 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
             "inputs_required": inputs_required,
             "verdict": "will_fail",
             "failures": sv.overall["failures"].clone(),
+            "evidence": sv.overall["failures"].clone(),
         });
+    }
+
+    // Steps whose actual dry-run result some later mapping reads and the
+    // static check could not already settle from declared `outputs`.
+    let mut needed: std::collections::HashSet<usize> = std::collections::HashSet::new();
+    for (i, step) in steps.iter().enumerate() {
+        for v in step.args.values() {
+            if let Value::String(raw) = v
+                && let Some(r) = StepRef::parse(raw, i + 1)
+                && !r.tokens.is_empty()
+                && !sv.passes.contains(&(i + 1, raw.clone()))
+            {
+                needed.insert(r.predecessor_no);
+            }
+        }
     }
 
     let mut prev: Option<Value> = None;
     let mut step_results: Vec<Value> = Vec::with_capacity(steps.len());
     let mut report: Vec<Value> = Vec::with_capacity(steps.len());
+    let mut actual_failures: Vec<Value> = Vec::new();
+    // step_no -> (tool, why it could not be dry-run)
+    let mut not_runnable: std::collections::BTreeMap<usize, (String, String)> = std::collections::BTreeMap::new();
+    let mut any_unresolved: Option<(usize, String)> = None;
     for (i, step) in steps.iter().enumerate() {
         let step_no = i + 1;
-        let context = json!({
-            "input": call_args,
-            "prev": prev.as_ref().map(|r| json!({"result": r})),
-            "steps": step_results.iter().map(|r| json!({"result": r})).collect::<Vec<_>>(),
-        });
+        let context = step_context(call_args, prev.as_ref(), &step_results);
         let mut resolved = Map::with_capacity(step.args.len());
         let mut unresolved = false;
         for (k, v) in &step.args {
@@ -553,6 +831,19 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
                         None if sv.passes.contains(&(step_no, s.clone())) => Value::Null,
                         None => {
                             unresolved = true;
+                            any_unresolved.get_or_insert((step_no, s.clone()));
+                            // The predecessor ran and its actual result
+                            // lacks this path: a proven failure, with the
+                            // fields it does carry.
+                            if let Some(r) = StepRef::parse(s, step_no)
+                                && let Some(base) = r.base_result(&context)
+                            {
+                                let mut entry = Map::new();
+                                entry.insert("step".to_string(), json!(step_no));
+                                entry.insert("path".to_string(), json!(s));
+                                entry.extend(actual_result_evidence(&r, base));
+                                actual_failures.push(Value::Object(entry));
+                            }
                             json!({"unresolved_path": s})
                         }
                     }
@@ -561,6 +852,12 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
             };
             resolved.insert(k.clone(), value);
         }
+        let mut prev_fields = None;
+        if i > 0
+            && let Some(Value::Object(m)) = prev.as_ref()
+        {
+            prev_fields = Some(m.keys().cloned().collect::<Vec<_>>());
+        }
         let is_host = HOST_STEPS_ALLOWED.contains(&step.tool.as_str());
         if is_host
             && !unresolved
@@ -568,7 +865,7 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
         {
             match host.call(&step.tool, Value::Object(resolved.clone())).await {
                 Ok(result) => {
-                    report.push(json!({
+                    let mut entry = json!({
                         "step": step_no,
                         "tool": step.tool,
                         "resolved_args": resolved,
@@ -576,13 +873,15 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
                         "side_effects": true,
                         "dispatched": true,
                         "result": result,
-                    }));
+                    });
+                    insert_prev_fields(&mut entry, &prev_fields);
+                    report.push(entry);
                     step_results.push(result.clone());
                     prev = Some(result);
                     continue;
                 }
                 Err(e) => {
-                    report.push(json!({
+                    let mut entry = json!({
                         "step": step_no,
                         "tool": step.tool,
                         "resolved_args": resolved,
@@ -590,7 +889,10 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
                         "side_effects": true,
                         "dispatched": true,
                         "error": e.to_string(),
-                    }));
+                    });
+                    insert_prev_fields(&mut entry, &prev_fields);
+                    report.push(entry);
+                    not_runnable.insert(step_no, (step.tool.clone(), e.to_string()));
                     step_results.push(Value::Null);
                     prev = None;
                     continue;
@@ -608,24 +910,80 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
         {
             map.insert("side_effects".to_string(), json!(true));
         }
+        insert_prev_fields(&mut entry, &prev_fields);
+        // PRD-mcphost-chain-prev-contract P0 requirement 3: a tenant step a
+        // later mapping reads is dry-run once so that mapping can be
+        // resolved against its actual result.
+        if !is_host && needed.contains(&step_no) {
+            let outcome = if unresolved {
+                Err("its own arguments did not resolve".to_string())
+            } else {
+                dry_run_predecessor(ctx, &step.tool, Value::Object(resolved.clone())).await
+            };
+            match outcome {
+                Ok(result) => {
+                    if let Value::Object(map) = &mut entry {
+                        map.insert("dispatched".to_string(), json!(true));
+                        map.insert("result".to_string(), result.clone());
+                    }
+                    report.push(entry);
+                    step_results.push(result.clone());
+                    prev = Some(result);
+                    continue;
+                }
+                Err(why) => {
+                    if let Value::Object(map) = &mut entry {
+                        map.insert("error".to_string(), json!(why));
+                    }
+                    not_runnable.insert(step_no, (step.tool.clone(), why));
+                }
+            }
+        }
         report.push(entry);
         step_results.push(Value::Null);
         prev = None;
     }
     let mut out = json!({"chain_dry_run": true, "steps": report, "inputs_required": inputs_required});
-    // PRD-mcphost-tool-test-truth P0 requirement 1 (AC2/AC3): `pass` or
-    // `unverifiable` (`will_fail` already returned early above) --
-    // `reason`/`next` present only for `unverifiable`.
+    // Verdict: a proven mismatch against an actual result is `will_fail`;
+    // `unverifiable` only when a predecessor a mapping reads could not be
+    // dry-run (or a path is still unresolved for another reason -- a
+    // dry run never reports `pass` with an `unresolved_path` in it);
+    // otherwise the static verdict, upgraded to `pass` when every mapping
+    // it could not settle was resolved against an actual result.
+    let unreadable = needed.iter().find_map(|n| not_runnable.get(n).map(|w| (*n, w.clone())));
+    let (verdict, reason): (&str, Option<String>) = if !actual_failures.is_empty() {
+        ("will_fail", None)
+    } else if let Some((n, (tool, why))) = unreadable {
+        (
+            "unverifiable",
+            Some(format!("no output schema for step {n} ('{tool}'), and it could not be dry-run: {why}")),
+        )
+    } else if let Some((n, path)) = any_unresolved {
+        (
+            "unverifiable",
+            Some(format!("step {n}: mapping path '{path}' did not resolve in the dry run")),
+        )
+    } else {
+        ("pass", None)
+    };
     if let Value::Object(map) = &mut out {
-        map.insert("verdict".to_string(), sv.overall["verdict"].clone());
-        if let Some(reason) = sv.overall.get("reason") {
-            map.insert("reason".to_string(), reason.clone());
+        map.insert("verdict".to_string(), json!(verdict));
+        if verdict == "will_fail" {
+            map.insert("failures".to_string(), json!(actual_failures));
+            map.insert("evidence".to_string(), json!(actual_failures));
         }
-        if let Some(next) = sv.overall.get("next") {
-            map.insert("next".to_string(), next.clone());
+        if let Some(reason) = reason {
+            map.insert("reason".to_string(), json!(reason));
+            map.insert("next".to_string(), json!({"tool": "host_tool_call"}));
         }
     }
     out
+}
+
+fn insert_prev_fields(entry: &mut Value, prev_fields: &Option<Vec<String>>) {
+    if let (Value::Object(map), Some(fields)) = (entry, prev_fields) {
+        map.insert("prev_fields".to_string(), json!(fields));
+    }
 }
 
 #[async_trait::async_trait]
@@ -729,30 +1087,37 @@ impl Kind for ChainKind {
 
         for (i, step) in steps.iter().enumerate() {
             let failed_step_no = i + 1;
-            let steps_context: Vec<Value> = step_results
-                .iter()
-                .map(|r| json!({"result": r}))
-                .collect();
-            let context = json!({
-                "input": &args,
-                "prev": prev.as_ref().map(|r| json!({"result": r})),
-                "steps": steps_context,
-            });
+            let context = step_context(&args, prev.as_ref(), &step_results);
 
             let resolved_args = match resolve_args(&step.args, &context) {
                 Ok(v) => v,
                 Err(path) => {
+                    // PRD-mcphost-chain-prev-contract P0 requirement 5: a
+                    // `$.prev`/`$.steps[i]` miss names the fields the
+                    // predecessor's result actually carries, and the
+                    // corrected path when one matches.
+                    let mut data = Map::new();
+                    data.insert("path".to_string(), json!(path));
+                    data.insert("failed_step".to_string(), json!(failed_step_no));
+                    data.insert("step_tool".to_string(), json!(step.tool));
+                    let mut hint = String::new();
+                    if let Some(r) = StepRef::parse(&path, failed_step_no)
+                        && let Some(base) = r.base_result(&context)
+                    {
+                        let evidence = actual_result_evidence(&r, base);
+                        hint = format!("; available: {}", evidence["available"]);
+                        if let Some(d) = evidence.get("did_you_mean") {
+                            hint.push_str(&format!("; did you mean '{}'", d.as_str().unwrap_or_default()));
+                        }
+                        data.extend(evidence);
+                    }
                     let err = KindError::structured_with(
                         "compose_mapping_missing",
                         format!(
-                            "step {failed_step_no} ('{}'): mapping path '{path}' resolved to nothing",
+                            "step {failed_step_no} ('{}'): mapping path '{path}' resolved to nothing{hint}",
                             step.tool
                         ),
-                        json!({
-                            "path": path,
-                            "failed_step": failed_step_no,
-                            "step_tool": step.tool,
-                        }),
+                        Value::Object(data),
                     );
                     if step.continue_on_error {
                         failed_steps.push(failed_step_no);
@@ -883,7 +1248,7 @@ impl Kind for ChainKind {
             // dry run now reports for every `$.prev`/`$.steps[i]` mapping
             // (`pass`, `will_fail` naming the predecessor's actual declared
             // outputs, or `unverifiable` naming the next call).
-            blurb: "steps run in order; each step's args may pull from $.input (this call's own args), $.prev (the previous step's result, e.g. $.prev.result.<field>), or $.steps[i] (any earlier step's result by 0-based index). A step may also name an allowlisted host.* verb (host.quickstart's own host_steps_allowed) -- it runs under this chain's own tenant, metered as one step. host.tool_test's dry run reports a verdict (pass, will_fail, or unverifiable) for every $.prev/$.steps mapping.".to_string(),
+            blurb: format!("steps run in order; each step's args may pull from $.input (this call's own args), $.prev (the previous step's result, e.g. $.prev.result.<field>), or $.steps[i] (any earlier step's result by 0-based index). A step may also name an allowlisted host.* verb (host.quickstart's own host_steps_allowed) -- it runs under this chain's own tenant, metered as one step. host.tool_test's dry run reports a verdict (pass, will_fail, or unverifiable) for every $.prev/$.steps mapping. {}", grammar_sentence()),
         }
     }
 }

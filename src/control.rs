@@ -1460,6 +1460,11 @@ pub async fn tool_publish(
     // advisory either way (Open questions: "stay advisory" was the
     // default): a `will_fail` chain still publishes once every other gate
     // passes, same as before this PRD.
+    let chain_prev_fields: Option<Value> = if kind_name == "chain" {
+        Some(crate::kinds::chain::prev_fields(&state.db, &state.kinds, tenant.id, &spec).await)
+    } else {
+        None
+    };
     let chain_verdict: Option<Value> = if kind_name == "chain" {
         Some(crate::kinds::chain::verdict(&state.db, &state.kinds, tenant.id, &spec).await)
     } else {
@@ -1634,6 +1639,7 @@ pub async fn tool_publish(
             map.insert("verdict".to_string(), v["verdict"].clone());
             if let Some(failures) = v.get("failures") {
                 map.insert("failures".to_string(), failures.clone());
+                map.insert("evidence".to_string(), failures.clone());
             }
             if let Some(reason) = v.get("reason") {
                 map.insert("reason".to_string(), reason.clone());
@@ -1820,10 +1826,16 @@ pub async fn tool_publish(
     // publish of a `will_fail` chain still landed above (advisory, never
     // blocking); this is the one place that outcome is visible on a
     // non-`dry_run` call.
+    // PRD-mcphost-chain-prev-contract P1 requirement 6 (AC7): what each
+    // step after the first may read from its predecessor.
+    if let (Some(fields), Value::Object(map)) = (chain_prev_fields, &mut response) {
+        map.insert("steps".to_string(), fields);
+    }
     if let (Some(v), Value::Object(map)) = (&chain_verdict, &mut response) {
         map.insert("verdict".to_string(), v["verdict"].clone());
         if let Some(failures) = v.get("failures") {
             map.insert("failures".to_string(), failures.clone());
+            map.insert("evidence".to_string(), failures.clone());
         }
         if let Some(reason) = v.get("reason") {
             map.insert("reason".to_string(), reason.clone());

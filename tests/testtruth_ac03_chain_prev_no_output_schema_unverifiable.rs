@@ -1,6 +1,6 @@
 //! PRD-mcphost-tool-test-truth AC3 (P0) — Given a chain whose step 1 is an
 //! `http` tool with no declared `outputs`, When step 2 maps
-//! `$.prev.anything`, Then `verdict: unverifiable` with `reason` naming
+//! `$.prev.result.anything`, Then `verdict: unverifiable` with `reason` naming
 //! step 1 and `next` pointing at `host_tool_call`.
 
 use crate::common;
@@ -25,7 +25,7 @@ async fn prev_mapping_into_a_predecessor_with_no_output_schema_is_unverifiable()
     let chain_spec = json!({
         "steps": [
             {"tool": "step1", "args": {}},
-            {"tool": "step2", "args": {"rows": "$.prev.anything"}},
+            {"tool": "step2", "args": {"rows": "$.prev.result.anything"}},
         ]
     });
     publish(&client, "pipeline", "chain", chain_spec).await;
@@ -37,9 +37,10 @@ async fn prev_mapping_into_a_predecessor_with_no_output_schema_is_unverifiable()
     let structured = common::extract_structured(&result);
 
     assert_eq!(structured["verdict"], json!("unverifiable"), "{structured}");
-    assert_eq!(
-        structured["reason"],
-        json!("no output schema for step 1"),
+    assert!(
+        structured["reason"]
+            .as_str()
+            .is_some_and(|r| r.starts_with("no output schema for step 1")),
         "{structured}"
     );
     assert_eq!(
