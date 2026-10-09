@@ -91,6 +91,13 @@ pub const OUTCOMES: &[Outcome] = &[
     },
 ];
 
+/// Every outcome word, in table order -- the words `find` matches exactly
+/// (PRD-mcphost-publish-schema-from-registry: the `kind` enum on
+/// `host.tool_publish` reads this same table).
+pub fn all_words() -> Vec<&'static str> {
+    OUTCOMES.iter().flat_map(|o| o.words.iter().copied()).collect()
+}
+
 /// Matching key for a requested `kind`: trimmed, lowercase.
 pub fn normalize(word: &str) -> String {
     word.trim().to_ascii_lowercase()

@@ -57,7 +57,7 @@ async fn manifest_entries_validate_against_tool_publish_schema() {
         .clone();
     assert_eq!(manifest.len(), 2, "manifest: {manifest:?}");
 
-    let schema = mcphost::handler::tool_publish_input_schema();
+    let schema = mcphost::handler::tool_publish_input_schema(&mcphost::kinds::KindRegistry::with_builtin());
     let validator = jsonschema::validator_for(&schema).expect("compile host.tool_publish schema");
     for entry in &manifest {
         assert!(

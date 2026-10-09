@@ -16,5 +16,12 @@
     "since": "2026-10-08",
     "sunset": "2026-12-07",
     "replacement": "PRD-mcphost-plan-limits-generated: budget fields now carry a schema maximum (the free-plan ceiling); read host.quickstart.limits.plan.budget for your plan's ceilings"
+  },
+  {
+    "path": "host.tool_publish.kind",
+    "since": "2026-10-07",
+    "sunset": "2026-12-07",
+    "replacement": "PRD-mcphost-publish-schema-from-registry: kind now carries an enum rendered from the kind registry (names, aliases, outcome words); the server always enforced this set, the schema just did not say so",
+    "narrowing_only": true
   }
 ]

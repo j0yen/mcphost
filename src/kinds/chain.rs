@@ -1004,6 +1004,10 @@ impl Kind for ChainKind {
         &["steps"]
     }
 
+    fn required_spec_field(&self) -> Option<&'static str> {
+        Some("steps")
+    }
+
     /// PRD-mcphost-chain-run-lineage requirement 1: `input_schema` is
     /// derived from every step's `$.input.<name>` mapping path
     /// ([`chain_input_schema`]) -- exactly `{"type": "object"}` (unchanged

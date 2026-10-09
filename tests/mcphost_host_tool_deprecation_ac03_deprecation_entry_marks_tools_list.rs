@@ -23,6 +23,7 @@ fn valid_entry(path: &str) -> Deprecation {
         since: "2026-01-01".to_string(),
         sunset: "2026-03-02".to_string(), // exactly 60 days after since
         replacement: "host.tool_publish.kind_v2".to_string(),
+        narrowing_only: false,
     }
 }
 
