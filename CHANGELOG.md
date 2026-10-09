@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.107.1 — 2026-10-09
+
+`args_invalid` messages are rendered from the same `ArgsError` value the wire
+`data` serializes (PRD-mcphost-args-invalid-message-from-data): `args.qty:
+expected integer, got number (4.78); no coercion is applied — send an integer
+or change the schema`. `data` gains `field`, `got` and `docs`
+(`host.tool_test`); clients matching jsonschema's `is not of type` text break
+by design.
+
 ## v0.94.0 — 2026-10-06
 
 Every document an agent reads before acting now teaches the one-URL flow

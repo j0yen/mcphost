@@ -971,7 +971,9 @@ impl AppError {
         // Requirement 2 / requirement 4: every rejection names the
         // quickstart tool that gives the caller a filled-in working
         // example for whatever it was trying to publish.
-        obj.insert("docs".to_string(), json!("host.quickstart"));
+        // A payload that already names its own `docs` (`args_invalid` ->
+        // `host.tool_test`) keeps it.
+        obj.entry("docs".to_string()).or_insert(json!("host.quickstart"));
         // PRD-mcphost-first-hour-support-surface requirement 1 (AC1):
         // every payload carries its own correlation id, not just
         // `Internal`'s (which also folds it into `message` above, unchanged

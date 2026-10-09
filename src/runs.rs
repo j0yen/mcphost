@@ -731,11 +731,11 @@ pub async fn enqueue(
         && let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
         && let Err(e) = validator.validate(&args)
     {
-        let data = crate::kinds::describe_args_error(&e);
+        let args_err = crate::kinds::describe_args_error(&e);
         return Err(AppError::Structured {
             code: "args_invalid",
-            message: e.to_string(),
-            data,
+            message: args_err.message(),
+            data: args_err.data(),
         });
     }
     let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
@@ -815,11 +815,11 @@ pub async fn enqueue_url(
     if let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
         && let Err(e) = validator.validate(&args)
     {
-        let data = crate::kinds::describe_args_error(&e);
+        let args_err = crate::kinds::describe_args_error(&e);
         return Err(AppError::Structured {
             code: "args_invalid",
-            message: e.to_string(),
-            data,
+            message: args_err.message(),
+            data: args_err.data(),
         });
     }
     let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
@@ -888,11 +888,11 @@ pub async fn enqueue_shared(
         && let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
         && let Err(e) = validator.validate(&args)
     {
-        let data = crate::kinds::describe_args_error(&e);
+        let args_err = crate::kinds::describe_args_error(&e);
         return Err(AppError::Structured {
             code: "args_invalid",
-            message: e.to_string(),
-            data,
+            message: args_err.message(),
+            data: args_err.data(),
         });
     }
     let plan = state.plans.get(&caller.plan).ok_or_else(|| {

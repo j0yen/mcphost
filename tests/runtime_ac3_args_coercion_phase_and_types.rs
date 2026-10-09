@@ -63,4 +63,7 @@ async fn wrong_typed_argument_names_argument_and_both_types() {
     assert_eq!(err.data["argument"].as_str(), Some("top_k"));
     assert_eq!(err.data["expected_type"].as_str(), Some("integer"));
     assert_eq!(err.data["actual_type"].as_str(), Some("string"));
+    assert_eq!(err.data["field"].as_str(), Some("top_k"));
+    assert_eq!(err.data["got"].as_str(), Some("\"five\""));
+    assert_eq!(err.data["docs"].as_str(), Some("host.tool_test"));
 }

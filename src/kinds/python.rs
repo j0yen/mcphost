@@ -5425,8 +5425,8 @@ impl Kind for PythonKind {
         if let Err(e) = validator.validate(&args) {
             // Requirement 1/AC3: phase `args_coercion`, naming the
             // argument and both types -- see `describe_args_error`.
-            let data = super::describe_args_error(&e);
-            return Err(KindError::structured_with("args_invalid", e.to_string(), data));
+            let args_err = super::describe_args_error(&e);
+            return Err(KindError::structured_with("args_invalid", args_err.message(), args_err.data()));
         }
 
         // Requirement 3 (AC4): the tenant's own admission cap is checked
@@ -5739,8 +5739,8 @@ impl Kind for PythonKind {
         if let Err(e) = validator.validate(&args) {
             // Requirement 1/AC3: phase `args_coercion`, naming the
             // argument and both types -- see `describe_args_error`.
-            let data = super::describe_args_error(&e);
-            return Err(KindError::structured_with("args_invalid", e.to_string(), data));
+            let args_err = super::describe_args_error(&e);
+            return Err(KindError::structured_with("args_invalid", args_err.message(), args_err.data()));
         }
 
         let secret_env = self.secret_env(&parsed, ctx);

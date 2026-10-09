@@ -5954,11 +5954,11 @@ impl McpHostHandler {
             // `AppError::Structured` (not `ArgsInvalid`) so the extra `data`
             // fields survive into the JSON-RPC response; the wire code stays
             // pinned to exactly `args_invalid` either way.
-            let data = describe_args_error(&e);
+            let args_err = describe_args_error(&e);
             return Err(AppError::Structured {
                 code: "args_invalid",
-                message: e.to_string(),
-                data,
+                message: args_err.message(),
+                data: args_err.data(),
             });
         }
 
@@ -6446,11 +6446,11 @@ impl McpHostHandler {
             // `AppError::Structured` (not `ArgsInvalid`) so the extra `data`
             // fields survive into the JSON-RPC response; the wire code stays
             // pinned to exactly `args_invalid` either way.
-            let data = describe_args_error(&e);
+            let args_err = describe_args_error(&e);
             return Err(AppError::Structured {
                 code: "args_invalid",
-                message: e.to_string(),
-                data,
+                message: args_err.message(),
+                data: args_err.data(),
             });
         }
 
@@ -6735,11 +6735,11 @@ impl McpHostHandler {
         if let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
             && let Err(e) = validator.validate(&call_args)
         {
-            let data = describe_args_error(&e);
+            let args_err = describe_args_error(&e);
             return Err(AppError::Structured {
                 code: "args_invalid",
-                message: e.to_string(),
-                data,
+                message: args_err.message(),
+                data: args_err.data(),
             });
         }
 
@@ -7170,11 +7170,11 @@ impl McpHostHandler {
             // `AppError::Structured` (not `ArgsInvalid`) so the extra `data`
             // fields survive into the JSON-RPC response; the wire code stays
             // pinned to exactly `args_invalid` either way.
-            let data = describe_args_error(&e);
+            let args_err = describe_args_error(&e);
             return Err(AppError::Structured {
                 code: "args_invalid",
-                message: e.to_string(),
-                data,
+                message: args_err.message(),
+                data: args_err.data(),
             });
         }
 

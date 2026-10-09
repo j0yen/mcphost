@@ -116,6 +116,20 @@ mod althost_ac03_reach_endpoint_unauthenticated;
 mod althost_ac04_hsts_header_on_https_public_url;
 #[path = "althost_ac05_no_alt_no_fallback_lines.rs"]
 mod althost_ac05_no_alt_no_fallback_lines;
+#[path = "argmsg_ac01_message_names_field_and_no_coercion.rs"]
+mod argmsg_ac01_message_names_field_and_no_coercion;
+#[path = "argmsg_ac02_nested_path.rs"]
+mod argmsg_ac02_nested_path;
+#[path = "argmsg_ac03_non_type_failures.rs"]
+mod argmsg_ac03_non_type_failures;
+#[path = "argmsg_ac04_got_excerpt_cap.rs"]
+mod argmsg_ac04_got_excerpt_cap;
+#[path = "argmsg_ac05_message_data_drift.rs"]
+mod argmsg_ac05_message_data_drift;
+#[path = "argmsg_ac06_sites_render_from_one_args_error.rs"]
+mod argmsg_ac06_sites_render_from_one_args_error;
+#[path = "argmsg_ac07_tool_test_equals_tools_call.rs"]
+mod argmsg_ac07_tool_test_equals_tools_call;
 #[path = "attrib_ac1_loopback_signup_unstamped.rs"]
 mod attrib_ac1_loopback_signup_unstamped;
 #[path = "attrib_ac2_clientinfo_captured.rs"]
@@ -1810,21 +1824,3 @@ mod surface_ac08_get_info_mentions_try_before_call;
 mod surface_tool_description_min_length;
 #[path = "surface_vault_tools_registered.rs"]
 mod surface_vault_tools_registered;
-#[path = "synthetic_ac01_migration_null_default.rs"]
-mod synthetic_ac01_migration_null_default;
-#[path = "synthetic_ac02_signup_header_sets_label.rs"]
-mod synthetic_ac02_signup_header_sets_label;
-#[path = "synthetic_ac04_tenant_facing_byte_identical.rs"]
-mod synthetic_ac04_tenant_facing_byte_identical;
-#[path = "synthetic_ac05_admin_tenant_set_synthetic.rs"]
-mod synthetic_ac05_admin_tenant_set_synthetic;
-#[path = "synthetic_ac06_bulk_retro_tag.rs"]
-mod synthetic_ac06_bulk_retro_tag;
-#[path = "synthetic_ac07_healthz_counts.rs"]
-mod synthetic_ac07_healthz_counts;
-#[path = "synthetic_ac08_admin_tenants_field.rs"]
-mod synthetic_ac08_admin_tenants_field;
-#[path = "synthetic_ac09_metering_filter.rs"]
-mod synthetic_ac09_metering_filter;
-#[path = "synthetic_ac10_healthz_paying_real.rs"]
-mod synthetic_ac10_healthz_paying_real;
