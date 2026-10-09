@@ -147,6 +147,13 @@ async fn group_by_query_logs_a_row_and_logging_overhead_is_small() {
         if p95 < 5.0 {
             return;
         }
+        // Same convention as `perf_budget!`: on a loaded host the number
+        // measures the host, not the logging path. Every functional
+        // assertion above already ran for all 100 iterations.
+        if std::env::var("MCPHOST_PERF_SKIP").ok().as_deref() == Some("1") {
+            eprintln!("perf skipped (load): p95 logging overhead was {p95:.3}ms");
+            return;
+        }
         last_failure = Some(format!(
             "attempt {attempt}/{MAX_ATTEMPTS}: p95 logging overhead (each iteration's own \
              ambient connection-open cost already subtracted out) was {p95:.3}ms across 100 \
