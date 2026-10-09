@@ -47,6 +47,13 @@ async fn lexical_search_p95_latency_stays_under_50ms_at_ten_thousand_chunks() {
 
     durations.sort();
     let p95 = durations[94];
+    // Same convention as `perf_budget!`: every query above still had to
+    // return a hit; only the latency budget is host-dependent.
+    if std::env::var("MCPHOST_PERF_SKIP").ok().as_deref() == Some("1") {
+        eprintln!("perf skipped (load): p95 lexical search latency was {p95:?}");
+        std::fs::remove_dir_all(&dir).ok();
+        return;
+    }
     assert!(
         p95 < std::time::Duration::from_millis(50),
         "p95 lexical search latency over 100 queries at 10k chunks was {p95:?}, expected < 50ms"

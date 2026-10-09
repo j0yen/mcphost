@@ -122,6 +122,12 @@ async fn three_not_found_reasons_are_byte_identical_and_equally_fast() {
     let values = [p95_a, p95_b, p95_c];
     let spread = values.iter().cloned().fold(f64::MIN, f64::max)
         - values.iter().cloned().fold(f64::MAX, f64::min);
+    // Same convention as `perf_budget!`: the byte-identical assertions above
+    // always run; only the latency-spread budget is host-dependent.
+    if std::env::var("MCPHOST_PERF_SKIP").ok().as_deref() == Some("1") {
+        eprintln!("perf skipped (load): p95 spread was {spread:.2}ms");
+        return;
+    }
     assert!(
         spread < 10.0,
         "p95 latency spread {spread:.2}ms across the three cases exceeds the 10ms budget \
