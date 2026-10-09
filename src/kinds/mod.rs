@@ -132,21 +132,17 @@ fn plain_json_type_name(v: &Value) -> &'static str {
 /// schema violations (pattern, enum, range, ...) still get `phase` +
 /// `argument` but no `expected_type`/`actual_type`, since those keywords
 /// don't name a single expected JSON type.
-pub fn describe_args_error(err: &jsonschema::ValidationError<'_>) -> Value {
+pub fn describe_args_error(err: &jsonschema::ValidationError<'_>) -> ArgsError {
     let path = err.instance_path.as_str();
-    let argument = path
+    let mut segments = path.trim_start_matches('/').split('/').filter(|s| !s.is_empty());
+    let argument = segments.next().map(str::to_string);
+    let field = path
         .trim_start_matches('/')
-        .split('/')
+        .rsplit('/')
         .next()
-        .filter(|s| !s.is_empty());
-    let mut data = json!({"phase": "args_coercion", "instance_path": path});
-    let Some(obj) = data.as_object_mut() else {
-        unreachable!("json!({{...}}) always builds an object")
-    };
-    if let Some(argument) = argument {
-        obj.insert("argument".to_string(), json!(argument));
-    }
-    if let ValidationErrorKind::Type { kind } = &err.kind {
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    let (expected_type, actual_type) = if let ValidationErrorKind::Type { kind } = &err.kind {
         let expected = match kind {
             TypeKind::Single(t) => t.to_string(),
             TypeKind::Multiple(bitmap) => (*bitmap)
@@ -155,13 +151,88 @@ pub fn describe_args_error(err: &jsonschema::ValidationError<'_>) -> Value {
                 .collect::<Vec<_>>()
                 .join(" or "),
         };
-        obj.insert("expected_type".to_string(), json!(expected));
-        obj.insert(
-            "actual_type".to_string(),
-            json!(json_type_name(&err.instance)),
-        );
+        (Some(expected), Some(json_type_name(&err.instance).to_string()))
+    } else {
+        (None, None)
+    };
+    ArgsError {
+        phase: "args_coercion",
+        instance_path: path.to_string(),
+        argument,
+        field,
+        expected_type,
+        actual_type,
+        got: excerpt_of(&err.instance),
+        docs: "host.tool_test",
+        raw: err.to_string(),
     }
-    data
+}
+
+/// Longest `got` excerpt, in chars, before the trailing `…`.
+const ARGS_GOT_MAX_CHARS: usize = 40;
+
+fn excerpt_of(v: &Value) -> String {
+    let text = serde_json::to_string(v).unwrap_or_default();
+    if text.chars().count() > ARGS_GOT_MAX_CHARS {
+        let head: String = text.chars().take(ARGS_GOT_MAX_CHARS).collect();
+        format!("{head}…")
+    } else {
+        text
+    }
+}
+
+/// One schema-invalid-argument failure: the single value both the wire
+/// `data` ([`Serialize`]) and the human `message` ([`Self::message`]) are
+/// rendered from, so the two cannot drift. `raw` is jsonschema's own text
+/// and is never serialized.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ArgsError {
+    pub phase: &'static str,
+    pub instance_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub argument: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub field: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual_type: Option<String>,
+    pub got: String,
+    pub docs: &'static str,
+    #[serde(skip)]
+    pub raw: String,
+}
+
+impl ArgsError {
+    /// The human message: names the field path, and for a `type` mismatch
+    /// both types, the received excerpt and that nothing is coerced.
+    pub fn message(&self) -> String {
+        let dotted = self.instance_path.trim_start_matches('/').replace('/', ".");
+        let prefix = if dotted.is_empty() {
+            "args".to_string()
+        } else {
+            format!("args.{dotted}")
+        };
+        match (&self.expected_type, &self.actual_type) {
+            (Some(expected), Some(actual)) => {
+                let article = if expected.starts_with(['a', 'e', 'i', 'o', 'u']) {
+                    "an"
+                } else {
+                    "a"
+                };
+                format!(
+                    "{prefix}: expected {expected}, got {actual} ({got}); no coercion is applied — send {article} {expected} or change the schema",
+                    got = self.got
+                )
+            }
+            _ => format!("{prefix}: {}; see {}", self.raw, self.docs),
+        }
+    }
+
+    /// The wire `data` object.
+    pub fn data(&self) -> Value {
+        serde_json::to_value(self).unwrap_or(Value::Null)
+    }
 }
 
 /// PRD-mcphost-tool-test AC7: `host.spec_test` refuses a request naming more
@@ -1611,11 +1682,11 @@ async fn compose_dispatch(
         && let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
         && let Err(e) = validator.validate(&args)
     {
-        let data = describe_args_error(&e);
+        let args_err = describe_args_error(&e);
         return Err(KindError::Structured {
             code: "args_invalid",
-            message: e.to_string(),
-            data,
+            message: args_err.message(),
+            data: args_err.data(),
         });
     }
 

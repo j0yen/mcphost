@@ -14,6 +14,24 @@ mod oauth;
 #[path = "support/oauthclient.rs"]
 mod oauthclient;
 
+#[path = "synthetic_ac01_migration_null_default.rs"]
+mod synthetic_ac01_migration_null_default;
+#[path = "synthetic_ac02_signup_header_sets_label.rs"]
+mod synthetic_ac02_signup_header_sets_label;
+#[path = "synthetic_ac04_tenant_facing_byte_identical.rs"]
+mod synthetic_ac04_tenant_facing_byte_identical;
+#[path = "synthetic_ac05_admin_tenant_set_synthetic.rs"]
+mod synthetic_ac05_admin_tenant_set_synthetic;
+#[path = "synthetic_ac06_bulk_retro_tag.rs"]
+mod synthetic_ac06_bulk_retro_tag;
+#[path = "synthetic_ac07_healthz_counts.rs"]
+mod synthetic_ac07_healthz_counts;
+#[path = "synthetic_ac08_admin_tenants_field.rs"]
+mod synthetic_ac08_admin_tenants_field;
+#[path = "synthetic_ac09_metering_filter.rs"]
+mod synthetic_ac09_metering_filter;
+#[path = "synthetic_ac10_healthz_paying_real.rs"]
+mod synthetic_ac10_healthz_paying_real;
 #[path = "tablemodel_ac01_key_id_measure_category_date_roles.rs"]
 mod tablemodel_ac01_key_id_measure_category_date_roles;
 #[path = "tablemodel_ac02_foreign_key_detected_against_customers_id.rs"]

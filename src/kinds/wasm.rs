@@ -574,11 +574,12 @@ impl Kind for WasmKind {
         let validator = jsonschema::validator_for(&effective_schema)
             .map_err(|e| KindError::InvalidSpec(format!("args_schema: {e}")))?;
         if let Err(e) = validator.validate(&args) {
-            let data = json!({
-                "schema_path": e.schema_path.to_string(),
-                "instance_path": e.instance_path.to_string(),
-            });
-            return Err(KindError::structured_with("args_invalid", e.to_string(), data));
+            let args_err = super::describe_args_error(&e);
+            let mut data = args_err.data();
+            if let Some(obj) = data.as_object_mut() {
+                obj.insert("schema_path".to_string(), json!(e.schema_path.to_string()));
+            }
+            return Err(KindError::structured_with("args_invalid", args_err.message(), data));
         }
 
         let component =
