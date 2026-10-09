@@ -290,6 +290,20 @@ mod python_ac13_capacity_admission;
 mod python_ac14_cpu_budget_rate_limit;
 #[path = "qdiag_ac09_python_bridge_query_stats.rs"]
 mod qdiag_ac09_python_bridge_query_stats;
+#[path = "retshape_ac01_return_shape_table_parity.rs"]
+mod retshape_ac01_return_shape_table_parity;
+#[path = "retshape_ac02_runner_docstrings_carry_returns.rs"]
+mod retshape_ac02_runner_docstrings_carry_returns;
+#[path = "retshape_ac03_list_access_is_a_named_will_fail.rs"]
+mod retshape_ac03_list_access_is_a_named_will_fail;
+#[path = "retshape_ac04_envelope_behaves_as_plain_dict.rs"]
+mod retshape_ac04_envelope_behaves_as_plain_dict;
+#[path = "retshape_ac05_starter_example_shows_rows_access.rs"]
+mod retshape_ac05_starter_example_shows_rows_access;
+#[path = "retshape_ac06_quickstart_carries_bridge_returns.rs"]
+mod retshape_ac06_quickstart_carries_bridge_returns;
+#[path = "retshape_ac07_handle_query_shape_in_table.rs"]
+mod retshape_ac07_handle_query_shape_in_table;
 #[path = "rowpol_ac12_python_bridge_threads_end_user_through_table_query.rs"]
 mod rowpol_ac12_python_bridge_threads_end_user_through_table_query;
 #[path = "runenvelope_ac1_call_and_tool_run_parity.rs"]
