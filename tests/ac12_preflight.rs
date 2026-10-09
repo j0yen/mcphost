@@ -112,25 +112,47 @@ async fn protocol_half_matches_synthorg_preflight() {
 /// not on PATH.
 const SYNTHORG_PROJECT: &str = "/home/jsy/repos/synthorg";
 
+/// Hard wall-clock cap on one `--help` probe: `uv run` can block on locks or
+/// the network indefinitely, which stalled the whole suite binary.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Spawn `cmd`, poll `try_wait()` every 100 ms up to `PROBE_TIMEOUT`, and
+/// `kill()` on expiry. A timeout, a spawn failure and a non-zero exit all
+/// mean "not available" (`false`).
+fn probe_succeeds(cmd: &mut Command) -> bool {
+    let Ok(mut child) = cmd.stdout(Stdio::null()).stderr(Stdio::null()).spawn() else {
+        return false;
+    };
+    let deadline = Instant::now() + PROBE_TIMEOUT;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status.success(),
+            Ok(None) if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return false;
+            }
+        }
+    }
+}
+
 /// The argv prefix to invoke `synthorg` with, preferring the bare binary
 /// and falling back to `uv run --project`. `None` if neither works here.
 fn synthorg_invocation() -> Option<Vec<String>> {
-    if Command::new("synthorg")
-        .arg("--help")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
-    {
+    if probe_succeeds(Command::new("synthorg").arg("--help")) {
         return Some(vec!["synthorg".to_string()]);
     }
     if std::path::Path::new(SYNTHORG_PROJECT).exists()
-        && Command::new("uv")
-            .args(["run", "--project", SYNTHORG_PROJECT, "synthorg", "--help"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .is_ok_and(|s| s.success())
+        && probe_succeeds(Command::new("uv").args([
+            "run",
+            "--project",
+            SYNTHORG_PROJECT,
+            "synthorg",
+            "--help",
+        ]))
     {
         return Some(vec![
             "uv".to_string(),
