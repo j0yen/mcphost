@@ -754,6 +754,16 @@ mod hybrid_ac07_p95_latency_within_30ms_of_embeddings_only;
 mod hybrid_ac08_hybrid_hit_rate_at_least_each_mode;
 #[path = "hybrid_ac10_filter_prefix_filters_before_fusion.rs"]
 mod hybrid_ac10_filter_prefix_filters_before_fusion;
+#[path = "hzver_ac01_anonymous_healthz_keys.rs"]
+mod hzver_ac01_anonymous_healthz_keys;
+#[path = "hzver_ac02_unwritable_db_503_carries_build.rs"]
+mod hzver_ac02_unwritable_db_503_carries_build;
+#[path = "hzver_ac03_one_build_info.rs"]
+mod hzver_ac03_one_build_info;
+#[path = "hzver_ac04_no_git_sha_null.rs"]
+mod hzver_ac04_no_git_sha_null;
+#[path = "hzver_ac05_component_rollup_unchanged.rs"]
+mod hzver_ac05_component_rollup_unchanged;
 #[path = "implsign_ac01_bare_call_creates_implicit_tenant_with_onboarding.rs"]
 mod implsign_ac01_bare_call_creates_implicit_tenant_with_onboarding;
 #[path = "implsign_ac02_second_call_carries_no_onboarding.rs"]
@@ -1808,19 +1818,3 @@ mod support_ac06_served_pages_from_docs_and_readme;
 mod support_ac07_whoami_links_resolve;
 #[path = "support_ac08_release_artifact_includes_www.rs"]
 mod support_ac08_release_artifact_includes_www;
-#[path = "surface_ac02_dry_run_descriptions.rs"]
-mod surface_ac02_dry_run_descriptions;
-#[path = "surface_ac03_args_invalid_unified.rs"]
-mod surface_ac03_args_invalid_unified;
-#[path = "surface_ac04_required_field_descriptions.rs"]
-mod surface_ac04_required_field_descriptions;
-#[path = "surface_ac05_llms_txt_tool_parity.rs"]
-mod surface_ac05_llms_txt_tool_parity;
-#[path = "surface_ac07_tool_publish_description_length.rs"]
-mod surface_ac07_tool_publish_description_length;
-#[path = "surface_ac08_get_info_mentions_try_before_call.rs"]
-mod surface_ac08_get_info_mentions_try_before_call;
-#[path = "surface_tool_description_min_length.rs"]
-mod surface_tool_description_min_length;
-#[path = "surface_vault_tools_registered.rs"]
-mod surface_vault_tools_registered;

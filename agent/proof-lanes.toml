@@ -8,7 +8,7 @@
 [[lane]]
 id = "rust-source"
 description = "Behavior changes in src/"
-globs = ["src/**/*.rs"]
+globs = ["src/**/*.rs", "build.rs"]
 required_commands = [
   "cargo check --workspace",
   "cargo clippy --workspace -- -D warnings",

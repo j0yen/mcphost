@@ -14,6 +14,7 @@
 use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, signup};
 use reqwest::StatusCode;
+use mcphost::build_info::BUILD;
 use serde_json::json;
 
 async fn admin_healthz(base_url: &str) -> serde_json::Value {
@@ -53,7 +54,7 @@ async fn unwritable_database_degrades_gracefully_and_recovers() {
     assert_eq!(health["db_ok"], json!(true));
     let (status, anon) = anonymous_healthz(&server.base_url).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(anon, json!({"ok": true}));
+    assert_eq!(anon, json!({"ok": true, "version": BUILD.version, "git_sha": BUILD.git_sha}));
 
     server
         .state
@@ -80,7 +81,7 @@ async fn unwritable_database_degrades_gracefully_and_recovers() {
         StatusCode::SERVICE_UNAVAILABLE,
         "anonymous healthz must 503 while the liveness check (db writability) fails"
     );
-    assert_eq!(anon, json!({"ok": false}));
+    assert_eq!(anon, json!({"ok": false, "version": BUILD.version, "git_sha": BUILD.git_sha}));
 
     // The process stays up: a read-only-safe endpoint keeps answering.
     let tools = client
@@ -103,5 +104,5 @@ async fn unwritable_database_degrades_gracefully_and_recovers() {
     );
     let (status, anon) = anonymous_healthz(&server.base_url).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(anon, json!({"ok": true}));
+    assert_eq!(anon, json!({"ok": true, "version": BUILD.version, "git_sha": BUILD.git_sha}));
 }

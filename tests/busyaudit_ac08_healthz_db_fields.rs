@@ -19,10 +19,12 @@ async fn operator_healthz_carries_db_counters_anonymous_body_unchanged() {
         .json()
         .await
         .expect("anonymous healthz json");
+    let mut keys: Vec<&str> = anon.as_object().expect("object").keys().map(String::as_str).collect();
+    keys.sort_unstable();
     assert_eq!(
-        anon,
-        serde_json::json!({"ok": true}),
-        "anonymous healthz body must be unchanged: {anon:?}"
+        keys,
+        ["git_sha", "ok", "version"],
+        "anonymous healthz body carries no db counters: {anon:?}"
     );
 
     let operator: serde_json::Value = http

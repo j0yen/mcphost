@@ -881,6 +881,7 @@ async fn main() -> anyhow::Result<()> {
                 deprecations: Arc::new(deprecations),
                 disk_guard: mcphost::retention::DiskGuard::from_env(),
                 compat_token: std::env::var("MCPHOST_COMPAT_TOKEN").ok(),
+                build: &mcphost::build_info::BUILD,
                 signup_pause: mcphost::state::SignupPause::from_env(&data_dir()),
                 claim_token_ttl_secs,
                 claim_rate_limit_per_hour,

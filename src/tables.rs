@@ -2559,6 +2559,7 @@ mod tests {
             deprecations: std::sync::Arc::new(Vec::new()),
             disk_guard: crate::retention::DiskGuard::from_env(),
             compat_token: None,
+            build: &crate::build_info::BUILD,
             signup_pause: crate::state::SignupPause::from_env(dir),
             claim_token_ttl_secs: crate::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,
             claim_rate_limit_per_hour: crate::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
