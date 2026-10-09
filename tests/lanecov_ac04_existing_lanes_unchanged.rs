@@ -177,6 +177,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "admin-schemas",
             "checkcompat-race-soak",
             "contracts",
+            "docs-links",
             "docsearch-fixtures",
             "event-trigger-self-test-fixtures",
             "examples",
@@ -193,7 +194,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "vendor",
             "wasm-fixtures"
         ],
-        "only admin-schemas, checkcompat-race-soak, contracts, docsearch-fixtures, \
+        "only admin-schemas, checkcompat-race-soak, contracts, docs-links, docsearch-fixtures, \
          event-trigger-self-test-fixtures, examples, flake-lint, launch-docs, loop-config, \
          oauthconf-data, plugin, registry-manifest, sandbox-api-docs, sharing-docs, \
          spec-fields-doc-check, tool-naming, vendor, and wasm-fixtures may have been added since \

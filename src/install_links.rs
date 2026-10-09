@@ -97,9 +97,6 @@ pub const SURFACE_IDS: [&str; 13] = [
     "cline",
 ];
 
-/// Date every row's `doc_url` was last read against its artefact.
-const CHECKED: &str = "2026-10-07";
-
 /// The full install table built from one base URL, plus the `mcp_url` it
 /// was built from and the original four forms under their original field
 /// names: a thin compatibility view (the PRD's technical considerations),
@@ -145,7 +142,7 @@ fn numbered(steps: &[String]) -> String {
 /// `trim_end_matches('/')`).
 ///
 /// ChatGPT row (PRD-mcphost-chatgpt-submission-pack): steps only, no deep
-/// link exists; `doc_url` is OpenAI's MCP page, `checked` is [`CHECKED`].
+/// link exists; `doc_url` is OpenAI's MCP page, `checked` come from `docs/clients.toml`.
 ///
 /// Rows added by PRD-mcphost-install-links-more-clients (each `doc_url`
 /// read 2026-10-07; flag spellings are the ones that page documents):
@@ -203,28 +200,26 @@ pub fn for_url(base: &str) -> Links {
         serde_json::to_string_pretty(&json!({"mcpServers": {CLIENT_NAME: server}})).unwrap_or_default()
     };
 
-    let row = |id, label, kind, artefact: String, doc_url| Surface {
-        id,
-        label,
-        kind,
-        artefact,
-        doc_url,
-        checked: CHECKED,
+    // `doc_url`/`checked` come from `docs/clients.toml` (keyed by label), the
+    // one place a client's docs link lives -- see `crate::clients`.
+    let row = |id, label, kind, artefact: String| {
+        let (doc_url, checked) = crate::clients::docs_for(label);
+        Surface { id, label, kind, artefact, doc_url, checked }
     };
     let surfaces = vec![
-        row("claude_code", "Claude Code", Kind::Command, claude_code_command.clone(), "https://code.claude.com/docs/en/mcp"),
-        row("cursor", "Cursor", Kind::Deeplink, cursor.clone(), "https://docs.cursor.com/en/tools/mcp"),
-        row("vscode", "VS Code", Kind::Deeplink, vscode.clone(), "https://code.visualstudio.com/api/extension-guides/ai/mcp"),
-        row("claude_ai", "Claude.ai", Kind::Steps, numbered(&claude_ai_steps), "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp"),
-        row("chatgpt", "ChatGPT", Kind::Steps, numbered(&chatgpt_steps), "https://platform.openai.com/docs/mcp"),
-        row("codex_cli", "Codex CLI", Kind::Command, format!("codex mcp add {CLIENT_NAME} --url {mcp_url}"), "https://developers.openai.com/codex/mcp"),
-        row("gemini_cli", "Gemini CLI", Kind::Command, format!("gemini mcp add --transport http {CLIENT_NAME} {mcp_url}"), "https://geminicli.com/docs/tools/mcp-server/"),
-        row("opencode", "OpenCode", Kind::Command, format!("opencode mcp add {CLIENT_NAME} --url {mcp_url}"), "https://opencode.ai/docs/mcp-servers/"),
-        row("amp", "Amp", Kind::Command, format!("amp mcp add {CLIENT_NAME} {mcp_url}"), "https://ampcode.com/manual#mcp"),
-        row("goose", "Goose", Kind::Steps, numbered(&goose_steps), "https://block.github.io/goose/docs/getting-started/using-extensions/"),
-        row("warp", "Warp", Kind::Steps, numbered(&warp_steps), "https://docs.warp.dev/agent-platform/capabilities/mcp"),
-        row("windsurf", "Windsurf", Kind::Json, json_block(json!({})), "https://docs.windsurf.com/windsurf/cascade/mcp"),
-        row("cline", "Cline / Roo", Kind::Json, json_block(json!({"type": "streamableHttp"})), "https://docs.cline.bot/mcp/configuring-mcp-servers"),
+        row("claude_code", "Claude Code", Kind::Command, claude_code_command.clone()),
+        row("cursor", "Cursor", Kind::Deeplink, cursor.clone()),
+        row("vscode", "VS Code", Kind::Deeplink, vscode.clone()),
+        row("claude_ai", "Claude.ai", Kind::Steps, numbered(&claude_ai_steps)),
+        row("chatgpt", "ChatGPT", Kind::Steps, numbered(&chatgpt_steps)),
+        row("codex_cli", "Codex CLI", Kind::Command, format!("codex mcp add {CLIENT_NAME} --url {mcp_url}")),
+        row("gemini_cli", "Gemini CLI", Kind::Command, format!("gemini mcp add --transport http {CLIENT_NAME} {mcp_url}")),
+        row("opencode", "OpenCode", Kind::Command, format!("opencode mcp add {CLIENT_NAME} --url {mcp_url}")),
+        row("amp", "Amp", Kind::Command, format!("amp mcp add {CLIENT_NAME} {mcp_url}")),
+        row("goose", "Goose", Kind::Steps, numbered(&goose_steps)),
+        row("warp", "Warp", Kind::Steps, numbered(&warp_steps)),
+        row("windsurf", "Windsurf", Kind::Json, json_block(json!({}))),
+        row("cline", "Cline / Roo", Kind::Json, json_block(json!({"type": "streamableHttp"}))),
     ];
 
     Links { mcp_url, cursor, vscode, claude_code_command, claude_ai_steps, surfaces }

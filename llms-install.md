@@ -32,7 +32,7 @@ Run this command in a shell:
 claude mcp add --transport http mcphost https://mcphost.dev/mcp
 ```
 
-Docs: <https://code.claude.com/docs/en/mcp> (checked 2026-10-07)
+Docs: <https://code.claude.com/docs/en/mcp> (checked 2026-10-09)
 
 ## Cursor (`cursor`)
 
@@ -42,7 +42,7 @@ Open this link (the client handles it), or add the endpoint to its MCP config by
 cursor://anysphere.cursor-deeplink/mcp/install?name=mcphost&config=eyJ1cmwiOiJodHRwczovL21jcGhvc3QuZGV2L21jcCJ9
 ```
 
-Docs: <https://docs.cursor.com/en/tools/mcp> (checked 2026-10-07)
+Docs: <https://docs.cursor.com/en/tools/mcp> (checked 2026-10-09)
 
 ## VS Code (`vscode`)
 
@@ -52,7 +52,7 @@ Open this link (the client handles it), or add the endpoint to its MCP config by
 vscode:mcp/install?%7B%22name%22%3A%22mcphost%22%2C%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fmcphost%2Edev%2Fmcp%22%7D
 ```
 
-Docs: <https://code.visualstudio.com/api/extension-guides/ai/mcp> (checked 2026-10-07)
+Docs: <https://code.visualstudio.com/api/extension-guides/ai/mcp> (checked 2026-10-09)
 
 ## Claude.ai (`claude_ai`)
 
@@ -65,7 +65,7 @@ Follow these steps:
 4. Save, then enable the connector in a chat to connect.
 ```
 
-Docs: <https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp> (checked 2026-10-07)
+Docs: <https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp> (checked 2026-10-09)
 
 ## ChatGPT (`chatgpt`)
 
@@ -79,7 +79,7 @@ Follow these steps:
 5. Choose OAuth, then Create. On the consent page press Create a new workspace.
 ```
 
-Docs: <https://platform.openai.com/docs/mcp> (checked 2026-10-07)
+Docs: <https://platform.openai.com/docs/mcp> (checked 2026-10-09)
 
 ## Codex CLI (`codex_cli`)
 
@@ -89,7 +89,7 @@ Run this command in a shell:
 codex mcp add mcphost --url https://mcphost.dev/mcp
 ```
 
-Docs: <https://developers.openai.com/codex/mcp> (checked 2026-10-07)
+Docs: <https://developers.openai.com/codex/mcp> (checked 2026-10-09)
 
 ## Gemini CLI (`gemini_cli`)
 
@@ -99,7 +99,7 @@ Run this command in a shell:
 gemini mcp add --transport http mcphost https://mcphost.dev/mcp
 ```
 
-Docs: <https://geminicli.com/docs/tools/mcp-server/> (checked 2026-10-07)
+Docs: <https://geminicli.com/docs/tools/mcp-server/> (checked 2026-10-09)
 
 ## OpenCode (`opencode`)
 
@@ -109,7 +109,7 @@ Run this command in a shell:
 opencode mcp add mcphost --url https://mcphost.dev/mcp
 ```
 
-Docs: <https://opencode.ai/docs/mcp-servers/> (checked 2026-10-07)
+Docs: <https://opencode.ai/docs/mcp-servers/> (checked 2026-10-09)
 
 ## Amp (`amp`)
 
@@ -119,7 +119,7 @@ Run this command in a shell:
 amp mcp add mcphost https://mcphost.dev/mcp
 ```
 
-Docs: <https://ampcode.com/manual#mcp> (checked 2026-10-07)
+Docs: <https://ampcode.com/manual#mcp> (checked 2026-10-09)
 
 ## Goose (`goose`)
 
@@ -132,7 +132,7 @@ Follow these steps:
 4. Endpoint URL: https://mcphost.dev/mcp
 ```
 
-Docs: <https://block.github.io/goose/docs/getting-started/using-extensions/> (checked 2026-10-07)
+Docs: <https://goose-docs.ai/docs/getting-started/using-extensions/> (checked 2026-10-09)
 
 ## Warp (`warp`)
 
@@ -144,7 +144,7 @@ Follow these steps:
 3. Save; Warp starts the server and lists its tools.
 ```
 
-Docs: <https://docs.warp.dev/agent-platform/capabilities/mcp> (checked 2026-10-07)
+Docs: <https://docs.warp.dev/agents/capabilities/mcp/> (checked 2026-10-09)
 
 ## Windsurf (`windsurf`)
 
@@ -160,7 +160,7 @@ Merge this block into the client's MCP config file:
 }
 ```
 
-Docs: <https://docs.windsurf.com/windsurf/cascade/mcp> (checked 2026-10-07)
+Docs: <https://docs.windsurf.com/windsurf/cascade/mcp> (checked 2026-10-09)
 
 ## Cline / Roo (`cline`)
 
@@ -177,7 +177,7 @@ Merge this block into the client's MCP config file:
 }
 ```
 
-Docs: <https://docs.cline.bot/mcp/configuring-mcp-servers> (checked 2026-10-07)
+Docs: <https://docs.cline.bot/mcp/configuring-mcp-servers> (checked 2026-10-09)
 
 ## First call
 

@@ -1,0 +1,155 @@
+# docs/clients.toml -- the ONE list of MCP-client install blocks and their
+# docs links (PRD-mcphost-docs-external-links-resolve R3). `mcphost llms-txt`
+# renders it between `<!-- clients:start -->` / `<!-- clients:end -->` in
+# README.md and www/llms.txt; `mcphost llms-txt --check` fails when either
+# file differs from the render. `checked` is stamped by
+# `scripts/docs-link-check.sh --stamp-clients` on a green run -- do not edit
+# it by hand. `install` is the markdown block shown above the Docs line; it
+# must equal what src/install_links.rs builds for https://mcphost.dev
+# (asserted by tests/xlinks_ac04_*).
+
+[registry]
+search_url = "https://registry.modelcontextprotocol.io/v0.1/servers/dev.mcphost%2Fmcphost/versions/latest"
+
+[[client]]
+name = "Claude Code"
+install = '''
+```
+claude mcp add --transport http mcphost https://mcphost.dev/mcp
+```
+'''
+docs_url = "https://code.claude.com/docs/en/mcp"
+checked = "2026-10-09"
+
+[[client]]
+name = "Cursor"
+install = '''
+[Add to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=mcphost&config=eyJ1cmwiOiJodHRwczovL21jcGhvc3QuZGV2L21jcCJ9), or add `https://mcphost.dev/mcp` to your MCP config directly.
+'''
+docs_url = "https://docs.cursor.com/en/tools/mcp"
+checked = "2026-10-09"
+
+[[client]]
+name = "VS Code"
+install = '''
+[Add to VS Code](vscode:mcp/install?%7B%22name%22%3A%22mcphost%22%2C%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fmcphost%2Edev%2Fmcp%22%7D), or add `https://mcphost.dev/mcp` to your MCP config directly.
+'''
+docs_url = "https://code.visualstudio.com/api/extension-guides/ai/mcp"
+checked = "2026-10-09"
+
+[[client]]
+name = "Claude.ai"
+install = '''
+1. Open Settings, then Connectors, then Add custom connector.
+2. Name: mcphost
+3. Remote MCP server URL: https://mcphost.dev/mcp
+4. Save, then enable the connector in a chat to connect.
+'''
+docs_url = "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp"
+checked = "2026-10-09"
+
+[[client]]
+name = "ChatGPT"
+install = '''
+1. Open ChatGPT, then Plugins, then Add.
+2. Choose Create custom MCP server.
+3. Name: mcphost
+4. MCP server URL: https://mcphost.dev/mcp
+5. Choose OAuth, then Create. On the consent page press Create a new workspace.
+'''
+docs_url = "https://platform.openai.com/docs/mcp"
+checked = "2026-10-09"
+
+[[client]]
+name = "Codex CLI"
+install = '''
+```
+codex mcp add mcphost --url https://mcphost.dev/mcp
+```
+'''
+docs_url = "https://developers.openai.com/codex/mcp"
+checked = "2026-10-09"
+
+[[client]]
+name = "Gemini CLI"
+install = '''
+```
+gemini mcp add --transport http mcphost https://mcphost.dev/mcp
+```
+'''
+docs_url = "https://geminicli.com/docs/tools/mcp-server/"
+checked = "2026-10-09"
+
+[[client]]
+name = "OpenCode"
+install = '''
+```
+opencode mcp add mcphost --url https://mcphost.dev/mcp
+```
+'''
+docs_url = "https://opencode.ai/docs/mcp-servers/"
+checked = "2026-10-09"
+
+[[client]]
+name = "Amp"
+install = '''
+```
+amp mcp add mcphost https://mcphost.dev/mcp
+```
+'''
+docs_url = "https://ampcode.com/manual#mcp"
+checked = "2026-10-09"
+
+[[client]]
+name = "Goose"
+install = '''
+1. In a Goose session, type /extension.
+2. Choose Add Remote Extension (Streamable HTTP).
+3. Name: mcphost
+4. Endpoint URL: https://mcphost.dev/mcp
+'''
+docs_url = "https://goose-docs.ai/docs/getting-started/using-extensions/"
+checked = "2026-10-09"
+
+[[client]]
+name = "Warp"
+install = '''
+1. In a Warp agent session, type /agent-add-mcp.
+2. Paste this server config: {"mcphost":{"url":"https://mcphost.dev/mcp"}}
+3. Save; Warp starts the server and lists its tools.
+'''
+docs_url = "https://docs.warp.dev/agents/capabilities/mcp/"
+checked = "2026-10-09"
+
+[[client]]
+name = "Windsurf"
+install = '''
+```json
+{
+  "mcpServers": {
+    "mcphost": {
+      "url": "https://mcphost.dev/mcp"
+    }
+  }
+}
+```
+'''
+docs_url = "https://docs.windsurf.com/windsurf/cascade/mcp"
+checked = "2026-10-09"
+
+[[client]]
+name = "Cline / Roo"
+install = '''
+```json
+{
+  "mcpServers": {
+    "mcphost": {
+      "type": "streamableHttp",
+      "url": "https://mcphost.dev/mcp"
+    }
+  }
+}
+```
+'''
+docs_url = "https://docs.cline.bot/mcp/configuring-mcp-servers"
+checked = "2026-10-09"

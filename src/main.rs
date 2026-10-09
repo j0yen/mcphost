@@ -108,6 +108,14 @@ enum Command {
         /// relative to the current directory (run from the repo root).
         #[arg(long)]
         path: Option<PathBuf>,
+        /// PRD-mcphost-docs-external-links-resolve R3: README to render the
+        /// `<!-- clients:start/end -->` block into. Defaults to `README.md`.
+        #[arg(long)]
+        readme: Option<PathBuf>,
+        /// The client list rendered into both files. Defaults to
+        /// `docs/clients.toml`.
+        #[arg(long)]
+        clients: Option<PathBuf>,
     },
     /// PRD-mcphost-first-hour-support-surface requirement 3 (AC4):
     /// regenerate `docs/plans.md` from `billing::plans_from_catalog` over
@@ -548,38 +556,56 @@ async fn main() -> anyhow::Result<()> {
                 Ok(())
             }
         }
-        Command::LlmsTxt { check, path } => {
+        Command::LlmsTxt { check, path, readme, clients } => {
             // Deliberately no `init_tracing()`: same rationale as
             // `SandboxCheck`/`Funnel` above -- this subcommand's contract is
             // plain stdout/exit-code, no JSON log line ahead of it.
             let path = path.unwrap_or_else(|| PathBuf::from("www/llms.txt"));
-            let existing = std::fs::read_to_string(&path).unwrap_or_else(|e| {
-                eprintln!("llms-txt: failed to read {}: {e}", path.display());
+            let readme = readme.unwrap_or_else(|| PathBuf::from("README.md"));
+            let clients_path = clients.unwrap_or_else(|| PathBuf::from("docs/clients.toml"));
+            let read = |p: &PathBuf| {
+                std::fs::read_to_string(p).unwrap_or_else(|e| {
+                    eprintln!("llms-txt: failed to read {}: {e}", p.display());
+                    std::process::exit(2);
+                })
+            };
+            let clients_file = mcphost::clients::parse(&read(&clients_path)).unwrap_or_else(|e| {
+                eprintln!("llms-txt: {} does not parse: {e}", clients_path.display());
                 std::process::exit(2);
             });
             let kinds = KindRegistry::with_builtin();
             let section = mcphost::llms_txt::render_tools_section(&kinds);
-            let updated = mcphost::llms_txt::splice_into(&existing, &section);
-            if check {
+            // (file, current content, regenerated content)
+            let mut files = Vec::new();
+            let existing = read(&path);
+            let with_tools = mcphost::llms_txt::splice_into(&existing, &section);
+            let with_clients = mcphost::clients::render_into(&with_tools, &clients_file).unwrap_or_else(|why| {
+                eprintln!("llms-txt: {}: {why}", path.display());
+                std::process::exit(2);
+            });
+            files.push((path, existing, with_clients));
+            let readme_existing = read(&readme);
+            let readme_updated = mcphost::clients::render_into(&readme_existing, &clients_file).unwrap_or_else(|why| {
+                eprintln!("llms-txt: {}: {why}", readme.display());
+                std::process::exit(2);
+            });
+            files.push((readme, readme_existing, readme_updated));
+            let mut stale = false;
+            for (p, existing, updated) in &files {
                 if updated == existing {
-                    println!("llms-txt --check: {} is up to date", path.display());
-                    Ok(())
+                    println!("llms-txt{}: {} is up to date", if check { " --check" } else { "" }, p.display());
+                } else if check {
+                    eprintln!("llms-txt --check: {} is stale (run `mcphost llms-txt`)", p.display());
+                    stale = true;
                 } else {
-                    eprintln!(
-                        "llms-txt --check: {} is stale (run `mcphost llms-txt`)",
-                        path.display()
-                    );
-                    std::process::exit(1);
+                    std::fs::write(p, updated)?;
+                    println!("llms-txt: regenerated {}", p.display());
                 }
-            } else {
-                if updated != existing {
-                    std::fs::write(&path, &updated)?;
-                    println!("llms-txt: regenerated {}", path.display());
-                } else {
-                    println!("llms-txt: {} already up to date", path.display());
-                }
-                Ok(())
             }
+            if stale {
+                std::process::exit(1);
+            }
+            Ok(())
         }
         Command::GenDocs { check } => {
             // Deliberately no `init_tracing()`: same rationale as `LlmsTxt`

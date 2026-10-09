@@ -270,3 +270,11 @@ globs = ["registry/**", "docs/chatgpt-submission.schema.json", "submission/**"]
 required_commands = [
   "cargo test --workspace reglist_ac",
 ]
+
+[[lane]]
+id = "docs-links"
+description = "PRD-mcphost-docs-external-links-resolve: scripts/docs-link-check.sh (external-link checker run in CI), its allowlist scripts/docs-link-allow.txt, and docs/clients.toml (the one client-install list rendered into README.md and www/llms.txt by `mcphost llms-txt`). Added project-locally: the shipped scaffold has no lane for these paths. Proof is the xlinks_ac integration tests, which run the real script against a loopback server and the real generator against the committed files."
+globs = ["scripts/docs-link-check.sh", "scripts/docs-link-allow.txt", "docs/clients.toml"]
+required_commands = [
+  "cargo test --workspace xlinks_ac",
+]

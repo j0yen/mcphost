@@ -1,0 +1,16 @@
+# docs-link-allow.txt -- URLs the link checker never fetches
+# (scripts/docs-link-check.sh; PRD-mcphost-docs-external-links-resolve R2).
+# One pattern per line: `<pattern>  # <reason>`. A pattern is a plain
+# substring matched against the URL and against the file path the URL was
+# found in. An allowlisted hit prints SKIP with the reason and never fails.
+# A host that bot-walls curl (403) belongs here with its reason, never
+# silently passed.
+api.example.com  # documentation placeholder host
+example.com  # reserved example domain (RFC 2606)
+<host>  # template placeholder, not a real host
+{{  # template placeholder (unrendered substitution)
+docs/benchmarks/  # measurement dumps, not maintained prose
+https://mcphost.dev  # our own origin; the uptime probes check it
+example.test  # reserved .test TLD (RFC 2606) used in doc examples
+https://api.stripe.com/v1/balance  # example upstream API call in a spec snippet; needs a bearer key (401 unauthenticated)
+docs/launch/wave1-checklist.md  # submission checklist: the listing pages it names do not exist until submitted; the site is bot-walled (403 to scripts)

@@ -46,6 +46,7 @@ pub mod install_links;
 pub mod invites;
 pub mod kinds;
 pub mod lineage;
+pub mod clients;
 pub mod llms_txt;
 pub mod messaging;
 pub mod metering;

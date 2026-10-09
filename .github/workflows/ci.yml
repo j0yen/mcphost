@@ -242,6 +242,42 @@ jobs:
       - name: scripts/flake-lint.sh tests
         run: ./scripts/flake-lint.sh tests
 
+  # PRD-mcphost-docs-external-links-resolve R5 (AC7). Every external link in
+  # README.md, docs/**, www/llms.txt and plugin/** must resolve; a PR that
+  # adds a 404 fails here and the log carries `FAIL <status> <url>
+  # <file>:<line>`. Python stdlib + the runner's network only: no Rust
+  # toolchain, no sandbox partition, no `needs:` -- it runs concurrently with
+  # the other jobs and finishes in seconds (budget: 60 s). The client-block
+  # drift check needs the mcphost binary, so it is its own job below and
+  # never slows this one.
+  docs:
+    name: docs external links resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: scripts/docs-link-check.sh
+        run: ./scripts/docs-link-check.sh
+
+  # R5, second half: README.md's and www/llms.txt's `<!-- clients:start/end
+  # -->` blocks are the render of docs/clients.toml. Needs the binary, so it
+  # builds it; no `needs:`, no sandbox partition.
+  docs-clients:
+    name: docs client blocks match docs/clients.toml
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: install rust toolchain (pinned by rust-toolchain.toml)
+        uses: actions-rust-lang/setup-rust-toolchain@9d7e65c320fdb52dcd45ffaa68deb6c02c8754d9 # v1.10.1
+
+      - name: mcphost llms-txt --check
+        run: cargo run --quiet --bin mcphost -- llms-txt --check
+
   # Defect (10-03): a dependency bump (wasmtime 48 / cranelift 0.135, needing
   # rustc 1.95) landed on main while `rust-version` in Cargo.toml stayed at
   # 1.94. `gate` and `sandbox` both build with the toolchain pinned in
