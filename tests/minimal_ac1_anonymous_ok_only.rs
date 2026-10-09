@@ -1,11 +1,12 @@
 //! PRD-mcphost-healthz-minimal
 //! AC1 — Given a running server, When `GET /healthz` arrives with no
-//! `Authorization` header, Then the body is exactly `{"ok": true}` and none
-//! of paying_tenants/tenants_total/tools_total/billing_mode/sandbox_*/
-//! version appear.
+//! `Authorization` header, Then the body is exactly the keys `ok`, `version`,
+//! `git_sha` (PRD-mcphost-healthz-version-field R5) and none of
+//! paying_tenants/tenants_total/tools_total/billing_mode/sandbox_* appear.
 
 use crate::common;
 use common::TestServer;
+use mcphost::build_info::BUILD;
 use serde_json::json;
 
 #[tokio::test]
@@ -20,7 +21,7 @@ async fn anonymous_healthz_is_exactly_ok_true() {
     let body: serde_json::Value = resp.json().await.expect("parse /healthz");
     assert_eq!(
         body,
-        json!({"ok": true}),
-        "anonymous healthz must be exactly {{\"ok\": true}}, no other fields: {body:?}"
+        json!({"ok": true, "version": BUILD.version, "git_sha": BUILD.git_sha}),
+        "anonymous healthz must be exactly ok/version/git_sha, no other fields: {body:?}"
     );
 }

@@ -398,14 +398,20 @@ pub async fn status_json(state: &AppState) -> Result<Value, AppError> {
     let warnings: Vec<&str> = crate::help::support_unconfigured_warning(support_url.as_deref())
         .into_iter()
         .collect();
-    Ok(json!({
+    let mut body = json!({
         "state": overall,
         "generated_at": now_unix(),
         "components": components,
         "incidents_open": open_incidents.iter().map(incident_json).collect::<Vec<_>>(),
         "incidents_recent_30d": recent_closed.iter().map(incident_json).collect::<Vec<_>>(),
         "warnings": warnings,
-    }))
+    });
+    // PRD-mcphost-healthz-version-field requirement 3: whole-feed only; the
+    // per-component rollup (`daily_rows`) stays unchanged.
+    if let Some(obj) = body.as_object_mut() {
+        obj.extend(crate::build_info::BUILD.json());
+    }
+    Ok(body)
 }
 
 /// AC10: `GET /status.json?component=<name>&days=<n>` -- the daily rows

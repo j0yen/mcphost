@@ -298,6 +298,9 @@ pub struct AppState {
     /// the response came from the process it actually spawned, not a
     /// foreign server that happens to answer on the same address.
     pub compat_token: Option<String>,
+    /// PRD-mcphost-healthz-version-field: the build identity `/healthz`
+    /// renders; production always carries [`crate::build_info::BUILD`].
+    pub build: &'static crate::build_info::BuildInfo,
     /// PRD-mcphost-signup-kill-switch-and-source requirement 3: `signup`'s
     /// pause-file kill switch. See [`SignupPause`].
     pub signup_pause: SignupPause,

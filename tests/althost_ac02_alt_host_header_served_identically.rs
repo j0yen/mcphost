@@ -28,7 +28,8 @@ async fn alt_host_header_is_served_identically_to_primary() {
         .expect("GET /healthz with alt Host");
     assert_eq!(resp.status(), reqwest::StatusCode::OK);
     let body: serde_json::Value = resp.json().await.expect("json body");
-    assert_eq!(body, json!({"ok": true}));
+    assert_eq!(body["ok"], json!(true));
+    assert_eq!(body["version"], env!("CARGO_PKG_VERSION"));
 
     // A tenant signs up, then the SAME tenant key authenticates a
     // tools/call sent with the alt Host header over `/mcp`.

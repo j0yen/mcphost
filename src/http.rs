@@ -73,8 +73,9 @@ fn is_admin_request(state: &AppState, headers: &HeaderMap) -> bool {
 }
 
 /// PRD-mcphost-healthz-minimal requirement 1: the anonymous body is
-/// `{"ok": true}` (200) or `{"ok": false}` (503) and nothing else --
-/// `paying_tenants`/`tenants_total`/`tools_total`/`billing_mode`/
+/// `{"ok": true}` (200) or `{"ok": false}` (503) plus, since
+/// PRD-mcphost-healthz-version-field, `version` and `git_sha` and nothing
+/// else -- `paying_tenants`/`tenants_total`/`tools_total`/`billing_mode`/
 /// `sandbox_*`/`version` are business metrics and reconnaissance-grade
 /// facts that used to leak to any unauthenticated caller. The full
 /// document (unchanged shape from before this PRD) now requires the admin
@@ -104,11 +105,14 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
     let disk_ok = state.disk_guard.is_ok(state.db.data_dir());
 
     if !is_admin_request(state, headers) {
-        return if db_ok && disk_ok {
-            (StatusCode::OK, Json(json!({"ok": true}))).into_response()
-        } else {
-            (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"ok": false}))).into_response()
-        };
+        // PRD-mcphost-healthz-version-field requirement 2: `ok` plus the
+        // two build-identity keys from the single `BuildInfo` renderer.
+        let ok = db_ok && disk_ok;
+        let mut body = serde_json::Map::new();
+        body.insert("ok".into(), json!(ok));
+        body.extend(state.build.json());
+        let status = if ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE };
+        return (status, Json(serde_json::Value::Object(body))).into_response();
     }
 
     let (tools_total, tenants_total) = state.db.counts().await.unwrap_or((0, 0));
@@ -140,7 +144,6 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
     let (calls_external, calls_synthetic) =
         state.db.count_calls_by_origin().await.unwrap_or((0, 0));
     let mut body = json!({
-        "version": env!("CARGO_PKG_VERSION"),
         "db_ok": db_ok,
         "disk_ok": disk_ok,
         "tools_total": tools_total,
@@ -157,6 +160,7 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
     // (top 10 `clientInfo.name` values by tenant count) -- both additive,
     // both empty arrays (not absent) on a box with nothing classified yet.
     if let Some(obj) = body.as_object_mut() {
+        obj.extend(state.build.json());
         let by_class = state
             .db
             .count_tenants_by_source_class()

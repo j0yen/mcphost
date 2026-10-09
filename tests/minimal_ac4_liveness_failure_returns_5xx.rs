@@ -10,6 +10,7 @@
 
 use crate::common;
 use common::TestServer;
+use mcphost::build_info::BUILD;
 use serde_json::json;
 
 #[tokio::test]
@@ -34,7 +35,7 @@ async fn anonymous_healthz_reports_ok_false_and_5xx_on_liveness_failure() {
     let body: serde_json::Value = resp.json().await.expect("parse /healthz");
     assert_eq!(
         body,
-        json!({"ok": false}),
+        json!({"ok": false, "version": BUILD.version, "git_sha": BUILD.git_sha}),
         "anonymous body must stay minimal even on a liveness failure: {body:?}"
     );
 }
