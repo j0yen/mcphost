@@ -1430,6 +1430,20 @@ mod publishfirsttry_ac01_tool_publish_description;
 mod publishfirsttry_ac02_structured_error_fields;
 #[path = "publishfirsttry_ac07_signup_next.rs"]
 mod publishfirsttry_ac07_signup_next;
+#[path = "pubschema_ac01_kind_enum_from_registry.rs"]
+mod pubschema_ac01_kind_enum_from_registry;
+#[path = "pubschema_ac02_spec_branch_per_kind.rs"]
+mod pubschema_ac02_spec_branch_per_kind;
+#[path = "pubschema_ac03_unknown_field_list_equals_branch.rs"]
+mod pubschema_ac03_unknown_field_list_equals_branch;
+#[path = "pubschema_ac04_quickstart_no_kind_index_without_tenant.rs"]
+mod pubschema_ac04_quickstart_no_kind_index_without_tenant;
+#[path = "pubschema_ac05_generated_artifacts_match_and_drift_excused.rs"]
+mod pubschema_ac05_generated_artifacts_match_and_drift_excused;
+#[path = "pubschema_ac06_no_literal_kind_list_in_descriptors.rs"]
+mod pubschema_ac06_no_literal_kind_list_in_descriptors;
+#[path = "pubschema_ac07_quickstart_example_validates_against_branch.rs"]
+mod pubschema_ac07_quickstart_example_validates_against_branch;
 #[path = "pubtool_ac01_tool_share_mints_stable_url.rs"]
 mod pubtool_ac01_tool_share_mints_stable_url;
 #[path = "pubtool_ac02_post_json_runs_tool.rs"]

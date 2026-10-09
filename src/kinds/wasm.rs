@@ -518,6 +518,10 @@ impl Kind for WasmKind {
         &["component", "args_schema", "outputs", "timeout_s", "memory_mb"]
     }
 
+    fn required_spec_field(&self) -> Option<&'static str> {
+        Some("component")
+    }
+
     fn describe(&self, spec: &Value) -> ToolDescriptor {
         match parse_spec(spec) {
             Ok(parsed) => ToolDescriptor {

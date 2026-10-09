@@ -46,6 +46,129 @@ fn resolve_kind(kinds: &KindRegistry, requested: &str) -> Result<ResolvedKind, A
     })
 }
 
+/// PRD-mcphost-publish-schema-from-registry requirement 4: the `limits`
+/// object `host.quickstart` returns, factored out so the tenant-less index
+/// (no `kind`, no tenant) reports the same constants; `plan_name` is the
+/// tenant's plan, or `free` for a caller with no tenant.
+fn quickstart_limits(state: &AppState, plan_name: &str) -> Value {
+    // PRD-grand-loop-billing requirement "host.quickstart's limits object
+    // reports the tenant's plan quotas": additive, best-effort -- a plan
+    // name plans.toml no longer carries (should never happen; the plan
+    // column and the catalog are both this host's own state) degrades to
+    // omitting the block rather than failing an otherwise read-only call.
+    let plan_limits = state.plans.get(plan_name).map(|plan| {
+        // PRD-mcphost-plan-limits-generated: every numeric ceiling of the
+        // plan struct, rendered by `Plan::ceilings_json` so a new field
+        // appears here with no edit. `network_public` names the plan
+        // `network: "public"`/`"egress"` needs (the same one
+        // `network_policy::plan_required_fields` gates on).
+        let mut limits = plan.ceilings_json();
+        if let Some(obj) = limits.as_object_mut() {
+            obj.insert("name".to_string(), json!(plan_name));
+            obj.insert("network_public".to_string(), json!(crate::network_policy::EGRESS_PLAN));
+        }
+        limits
+    });
+    // PRD-mcphost-call-limits-honest requirement 5 / AC6: the six limits an
+    // agent would set or read at call time, read straight from the same
+    // constants/catalog entry the enforcement path reads -- never a
+    // hand-copied number that can drift from what the code actually does.
+    // A tenant's plan gone missing from the catalog (should never happen)
+    // degrades to the `free` default, same as `plan_limits` above.
+    let concurrent_calls_per_tenant = state
+        .plans
+        .get(plan_name)
+        .map(|plan| plan.concurrent_calls_per_tenant)
+        .unwrap_or(4);
+
+    json!({
+        "max_spec_bytes": MAX_SPEC_BYTES,
+        "max_tools_per_tenant": MAX_TOOLS_PER_TENANT,
+        "name_pattern": "^[a-z][a-z0-9_]{1,40}$",
+        "plan": plan_limits,
+        // Requirement 5 / AC6: named here, and in README/llms.txt, from
+        // the exact same constants the enforcement path in
+        // `handler.rs`/`kinds::python` reads -- see
+        // `tests/limits_ac06_quickstart_docs_match_constants.rs`.
+        "call_timeout_default_s": CALL_TIMEOUT.as_secs(),
+        "call_timeout_max_s": crate::kinds::python::MAX_TIMEOUT_S,
+        "output_bytes_max": MAX_TOOL_OUTPUT_BYTES,
+        "request_body_bytes_max": MAX_REQUEST_BODY_BYTES,
+        "concurrent_calls_per_tenant": concurrent_calls_per_tenant,
+        "concurrent_calls_host": crate::kinds::python::DEFAULT_MAX_CONCURRENT_CALLS,
+        // PRD-mcphost-tool-call-host-verb-forward requirement P2: lets
+        // synthorg (or any other reader of this response) assert that
+        // a host verb sent through host.tool_call/host.tool_test is
+        // forwarded rather than refused -- always true now that the
+        // feature is unconditional, so this is a plain constant, not a
+        // per-tenant/per-plan computed value.
+        "forwarding": true,
+        })
+}
+
+/// The `try_before_call` table `host.quickstart` returns (PRD-mcphost-
+/// surface-fluidity requirement 1), factored out so the no-`kind` index
+/// builds the identical rows. `kind_name`/`example` pick the kind the
+/// generic rows use; `tool_name` is the placeholder tool name.
+fn quickstart_try_before_call(
+    state: &AppState,
+    kind_name: &str,
+    example: &crate::kinds::KindExample,
+    tool_name: &str,
+) -> Vec<Value> {
+    // PRD-mcphost-surface-fluidity requirement 1 (Goal 1, AC1): the one
+    // place naming which of the four dry-run tools fits which case, each
+    // row with the exact call an agent can make right now -- every dry-run
+    // tool's own descriptor (handler.rs's `host_tools`) is now one sentence
+    // plus a pointer here instead of re-explaining the other three.
+    // `host.bridge_test` is `http`-kind-specific and `host.tool_run` is
+    // `python`-kind-specific (see their own descriptions), so those two
+    // rows use that kind's own example regardless of the `kind` this call
+    // requested; `host.tool_test`/`host.spec_test` work for any kind, so
+    // those two use the requested one, same as `steps` above.
+    let mut try_before_call = vec![json!({
+        "case": "a published tool, by name",
+        "call": "host.tool_test",
+        "arguments": {"name": tool_name, "args": example.call_args},
+    })];
+    if let Some(http) = state.kinds.get("http") {
+        let http_example = http.example();
+        try_before_call.push(json!({
+            "case": "an unpublished http spec, against its real upstream",
+            "call": "host.bridge_test",
+            "arguments": {"spec": http_example.spec, "args": http_example.call_args},
+        }));
+    }
+    try_before_call.push(json!({
+        "case": "an unpublished spec of any kind, with example invocations",
+        "call": "host.spec_test",
+        "arguments": {
+            "kind": kind_name,
+            "spec": example.spec,
+            "invocations": [example.call_args],
+        },
+    }));
+    if let Some(python) = state.kinds.get("python") {
+        let python_example = python.example();
+        // PRD-mcphost-tool-run-envelope requirement 3 / AC3: the case text
+        // now names the standard envelope (`result.payload`) alongside the
+        // run metadata, matching `TOOL_RUN_DESC` in `handler.rs`.
+        // PRD-mcphost-sandbox-bridge-discoverability requirement 5 (AC5):
+        // the one row a python-publishing agent reads before designing
+        // around egress it doesn't have -- paired with `limits.plan.
+        // network_public` above (the plan that lifts the default).
+        try_before_call.push(json!({
+            "case": "a published python tool, for result.payload plus stdout, stderr and exit code",
+            "call": "host.tool_run",
+            "arguments": {"name": tool_name, "args": python_example.call_args},
+            "note": "network is off by default (network: \"none\"); network: \"public\" needs the \
+                pro plan (limits.plan.network_public).",
+        }));
+    }
+
+    try_before_call
+}
+
 fn arg_str(args: &Value, name: &str) -> Result<String, AppError> {
     args.get(name)
         .and_then(Value::as_str)
@@ -748,14 +871,14 @@ pub fn quickstart(
     path_url_secret: Option<&str>,
 ) -> Result<Value, AppError> {
     let Some(tenant) = tenant else {
-        return Ok(json!({
+        let mut response = json!({
             "authenticated": false,
             "install_doc_url": crate::install_links::install_doc_url(),
             "steps": [{
                 "call": "signup",
                 "arguments": {"name": "<your name>", "handoff": true},
                 "note": "Sign up first to get a tenant_key and namespace, then call \
-                    host.quickstart again (kind still required) with that key -- as the \
+                    host.quickstart again (kind optional) with that key -- as the \
                     tenant_key argument, or reconnected with an Authorization header -- \
                     for a filled-in example. Recommended: signup with handoff: true (shown \
                     above) and call host.redeem once with the returned handoff_token to get \
@@ -769,7 +892,29 @@ pub fn quickstart(
                     a tenant_key that doesn't match any tenant still fails \
                     tenant_key_invalid.",
             }],
-        }));
+        });
+        // PRD-mcphost-publish-schema-from-registry requirement 4 (AC4): no
+        // `kind` means "show me what exists" (the description's own
+        // promise), so a caller with no tenant still gets the index --
+        // every registered kind, alias and recipe name, the dry-run table
+        // and the limits -- read-only, creating no tenant. A named `kind`
+        // keeps the signup-first response above, unchanged.
+        if arg_str_opt(args, "kind").is_none()
+            && let Value::Object(map) = &mut response
+        {
+            let kind = state.kinds.get("python").or_else(|| state.kinds.all().next().cloned());
+            if let Some(kind) = kind {
+                map.insert(
+                    "try_before_call".to_string(),
+                    json!(quickstart_try_before_call(state, kind.name(), &kind.example(), "my_tool")),
+                );
+            }
+            map.insert("kinds".to_string(), json!(state.kinds.names()));
+            map.insert("aliases".to_string(), json!(crate::kinds::aliases::alias_names()));
+            map.insert("recipes".to_string(), json!(crate::kinds::aliases::recipe_names()));
+            map.insert("limits".to_string(), quickstart_limits(state, "free"));
+        }
+        return Ok(response);
     };
 
     // PRD-mcphost-first-publish-real-kind requirement 1 (AC1): `kind` is now
@@ -805,85 +950,7 @@ pub fn quickstart(
     let tool_name = "my_tool";
     let qualified_name = format!("{}.{}", tenant.namespace, tool_name);
 
-    // PRD-grand-loop-billing requirement "host.quickstart's limits object
-    // reports the tenant's plan quotas": additive, best-effort -- a plan
-    // name plans.toml no longer carries (should never happen; the plan
-    // column and the catalog are both this host's own state) degrades to
-    // omitting the block rather than failing an otherwise read-only call.
-    let plan_limits = state.plans.get(&tenant.plan).map(|plan| {
-        // PRD-mcphost-plan-limits-generated: every numeric ceiling of the
-        // plan struct, rendered by `Plan::ceilings_json` so a new field
-        // appears here with no edit. `network_public` names the plan
-        // `network: "public"`/`"egress"` needs (the same one
-        // `network_policy::plan_required_fields` gates on).
-        let mut limits = plan.ceilings_json();
-        if let Some(obj) = limits.as_object_mut() {
-            obj.insert("name".to_string(), json!(tenant.plan));
-            obj.insert("network_public".to_string(), json!(crate::network_policy::EGRESS_PLAN));
-        }
-        limits
-    });
-    // PRD-mcphost-call-limits-honest requirement 5 / AC6: the six limits an
-    // agent would set or read at call time, read straight from the same
-    // constants/catalog entry the enforcement path reads -- never a
-    // hand-copied number that can drift from what the code actually does.
-    // A tenant's plan gone missing from the catalog (should never happen)
-    // degrades to the `free` default, same as `plan_limits` above.
-    let concurrent_calls_per_tenant = state
-        .plans
-        .get(&tenant.plan)
-        .map(|plan| plan.concurrent_calls_per_tenant)
-        .unwrap_or(4);
-
-    // PRD-mcphost-surface-fluidity requirement 1 (Goal 1, AC1): the one
-    // place naming which of the four dry-run tools fits which case, each
-    // row with the exact call an agent can make right now -- every dry-run
-    // tool's own descriptor (handler.rs's `host_tools`) is now one sentence
-    // plus a pointer here instead of re-explaining the other three.
-    // `host.bridge_test` is `http`-kind-specific and `host.tool_run` is
-    // `python`-kind-specific (see their own descriptions), so those two
-    // rows use that kind's own example regardless of the `kind` this call
-    // requested; `host.tool_test`/`host.spec_test` work for any kind, so
-    // those two use the requested one, same as `steps` above.
-    let mut try_before_call = vec![json!({
-        "case": "a published tool, by name",
-        "call": "host.tool_test",
-        "arguments": {"name": tool_name, "args": example.call_args},
-    })];
-    if let Some(http) = state.kinds.get("http") {
-        let http_example = http.example();
-        try_before_call.push(json!({
-            "case": "an unpublished http spec, against its real upstream",
-            "call": "host.bridge_test",
-            "arguments": {"spec": http_example.spec, "args": http_example.call_args},
-        }));
-    }
-    try_before_call.push(json!({
-        "case": "an unpublished spec of any kind, with example invocations",
-        "call": "host.spec_test",
-        "arguments": {
-            "kind": kind_name,
-            "spec": example.spec,
-            "invocations": [example.call_args],
-        },
-    }));
-    if let Some(python) = state.kinds.get("python") {
-        let python_example = python.example();
-        // PRD-mcphost-tool-run-envelope requirement 3 / AC3: the case text
-        // now names the standard envelope (`result.payload`) alongside the
-        // run metadata, matching `TOOL_RUN_DESC` in `handler.rs`.
-        // PRD-mcphost-sandbox-bridge-discoverability requirement 5 (AC5):
-        // the one row a python-publishing agent reads before designing
-        // around egress it doesn't have -- paired with `limits.plan.
-        // network_public` above (the plan that lifts the default).
-        try_before_call.push(json!({
-            "case": "a published python tool, for result.payload plus stdout, stderr and exit code",
-            "call": "host.tool_run",
-            "arguments": {"name": tool_name, "args": python_example.call_args},
-            "note": "network is off by default (network: \"none\"); network: \"public\" needs the \
-                pro plan (limits.plan.network_public).",
-        }));
-    }
+    let try_before_call = quickstart_try_before_call(state, &kind_name, &example, tool_name);
 
     let steps = vec![
         json!({
@@ -982,29 +1049,7 @@ pub fn quickstart(
         "sandbox_api": crate::kinds::python::build_sandbox_api(crate::kinds::python::BRIDGE_MODULES),
         "next": next,
         "steps": steps,
-        "limits": {
-            "max_spec_bytes": MAX_SPEC_BYTES,
-            "max_tools_per_tenant": MAX_TOOLS_PER_TENANT,
-            "name_pattern": "^[a-z][a-z0-9_]{1,40}$",
-            "plan": plan_limits,
-            // Requirement 5 / AC6: named here, and in README/llms.txt, from
-            // the exact same constants the enforcement path in
-            // `handler.rs`/`kinds::python` reads -- see
-            // `tests/limits_ac06_quickstart_docs_match_constants.rs`.
-            "call_timeout_default_s": CALL_TIMEOUT.as_secs(),
-            "call_timeout_max_s": crate::kinds::python::MAX_TIMEOUT_S,
-            "output_bytes_max": MAX_TOOL_OUTPUT_BYTES,
-            "request_body_bytes_max": MAX_REQUEST_BODY_BYTES,
-            "concurrent_calls_per_tenant": concurrent_calls_per_tenant,
-            "concurrent_calls_host": crate::kinds::python::DEFAULT_MAX_CONCURRENT_CALLS,
-            // PRD-mcphost-tool-call-host-verb-forward requirement P2: lets
-            // synthorg (or any other reader of this response) assert that
-            // a host verb sent through host.tool_call/host.tool_test is
-            // forwarded rather than refused -- always true now that the
-            // feature is unconditional, so this is a plain constant, not a
-            // per-tenant/per-plan computed value.
-            "forwarding": true,
-        },
+        "limits": quickstart_limits(state, &tenant.plan),
     });
     // PRD-mcphost-reachability-alt-host requirement 2 / AC1: `endpoint` is
     // additive (every other field above is unchanged); `alt_endpoint` and

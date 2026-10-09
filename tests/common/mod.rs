@@ -112,6 +112,16 @@ pub fn all_kinds_registry(data_dir: &Path) -> KindRegistry {
     kinds
 }
 
+/// All five shipped kinds (`echo`, `http`, `python`, `chain`, `wasm`) --
+/// PRD-mcphost-publish-schema-from-registry's `pubschema_*` tests need the
+/// full production registry so the published schema covers every kind.
+pub fn five_kinds_registry(data_dir: &Path) -> KindRegistry {
+    let mut kinds = all_kinds_registry(data_dir);
+    kinds.register(Arc::new(mcphost::kinds::chain::ChainKind));
+    kinds.register(Arc::new(mcphost::kinds::wasm::WasmKind::new()));
+    kinds
+}
+
 /// `echo` (base) + `chain` + a `python` kind rooted at `data_dir` --
 /// PRD-mcphost-chain-host-steps AC5's own entry point: a tenant must be
 /// able to publish the `host.quickstart kind=chain` example's first step

@@ -37,6 +37,7 @@ fn entry_with_sunset(sunset: &str) -> Deprecation {
         since: "2026-01-01".to_string(),
         sunset: sunset.to_string(),
         replacement: "host.tool_publish.kind".to_string(),
+        narrowing_only: false,
     }
 }
 

@@ -589,7 +589,7 @@ impl Path {
 /// (`lineage::register_tool_publish`) is read directly off the raw spec by
 /// every kind, not owned by any one kind's own parser, so it would
 /// otherwise look "unknown" on every kind it's used with.
-const UNIVERSAL_SPEC_FIELDS: &[&str] = &["reads"];
+pub const UNIVERSAL_SPEC_FIELDS: &[&str] = &["reads"];
 
 /// Requirement 1's Levenshtein `did_you_mean`: the single nearest field in
 /// `known` within [`MAX_DID_YOU_MEAN_SPEC_FIELD_DISTANCE`] edits, nearest
@@ -622,6 +622,17 @@ fn nearest_known_field(field: &str, known: &[&'static str]) -> Option<&'static s
 pub fn check_unknown_spec_field(kind: &dyn Kind, spec: &Value, registry: &KindRegistry) -> Option<KindError> {
     let obj = spec.as_object()?;
     let known = kind.known_spec_fields();
+    // PRD-mcphost-publish-schema-from-registry requirement 3: the list
+    // this rejection names is the same set `host.tool_publish`'s per-kind
+    // schema branch publishes as `properties` -- `known_spec_fields()` plus
+    // `UNIVERSAL_SPEC_FIELDS`, sorted -- so client and server never differ.
+    let mut listed: Vec<&'static str> = known.to_vec();
+    for universal in UNIVERSAL_SPEC_FIELDS {
+        if !listed.contains(universal) {
+            listed.push(universal);
+        }
+    }
+    listed.sort_unstable();
     for key in obj.keys() {
         let key = key.as_str();
         if known.contains(&key) || UNIVERSAL_SPEC_FIELDS.contains(&key) {
@@ -637,9 +648,9 @@ pub fn check_unknown_spec_field(kind: &dyn Kind, spec: &Value, registry: &KindRe
         let message = format!(
             "'{key}' is not a {} spec field; known: {}",
             kind.name(),
-            known.join(", "),
+            listed.join(", "),
         );
-        let mut data = json!({"field": key, "kind": kind.name(), "known": known});
+        let mut data = json!({"field": key, "kind": kind.name(), "known": listed});
         if let Some(obj) = data.as_object_mut() {
             if !valid_for.is_empty() {
                 obj.insert("valid_for".to_string(), json!(valid_for));
@@ -1896,6 +1907,24 @@ pub trait Kind: Send + Sync {
         &[]
     }
 
+    /// PRD-mcphost-publish-schema-from-registry requirement 2: the one spec
+    /// field this kind's parser requires unconditionally (`echo.schema`,
+    /// `python.source`, `chain.steps`, `wasm.component`), rendered as the
+    /// `required` of its `host.tool_publish` schema branch. `None` (the
+    /// default) when a kind has no single unconditional field -- `http`'s
+    /// `method`+`url` XOR `upstream` stays a runtime check.
+    fn required_spec_field(&self) -> Option<&'static str> {
+        None
+    }
+
+    /// PRD-mcphost-publish-schema-from-registry requirement 6: a one-line
+    /// description of `field` for the published schema, read from the same
+    /// per-field hints the kind's own error messages use. `None` (the
+    /// default) when the kind keeps no hint for it.
+    fn spec_field_description(&self, _field: &str) -> Option<String> {
+        None
+    }
+
     /// Every simultaneously-failing field, not just the first (requirement 3
     /// / AC2): a `Kind` that can cheaply check more than one field
     /// independently should override this to collect every violation
@@ -2200,6 +2229,27 @@ impl KindRegistry {
     /// Registered kind names, stable order, for error messages.
     pub fn names(&self) -> Vec<&'static str> {
         self.kinds.keys().copied().collect()
+    }
+
+    /// PRD-mcphost-publish-schema-from-registry requirement 1: every value
+    /// the server resolves on `host.tool_publish`'s `kind` -- registered
+    /// names, then job-word aliases (`aliases::alias_names`, what
+    /// `resolve_kind` falls back to), then outcome words
+    /// (`outcomes::all_words`, what `did_you_mean` answers), first
+    /// occurrence wins so the enum has no duplicates.
+    pub fn publish_kind_enum(&self) -> Vec<&'static str> {
+        let mut out: Vec<&'static str> = Vec::new();
+        for name in self
+            .names()
+            .into_iter()
+            .chain(aliases::alias_names())
+            .chain(outcomes::all_words())
+        {
+            if !out.contains(&name) {
+                out.push(name);
+            }
+        }
+        out
     }
 
     /// Every registered kind, for a lifecycle notification

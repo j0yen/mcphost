@@ -74,6 +74,14 @@ pub struct Deprecation {
     /// What to use instead, shown to a caller via `x-deprecated` and the
     /// call-time `deprecations` note.
     pub replacement: String,
+    /// PRD-mcphost-publish-schema-from-registry: `true` marks an entry that
+    /// only excuses a documented narrowing (the schema now enforces what
+    /// the server always did) -- the field is NOT deprecated, so such an
+    /// entry is skipped by `tools/list` annotation, the call-time
+    /// `deprecations` notice and `host.changelog`. `replacement` then
+    /// carries the PRD name and reason.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub narrowing_only: bool,
 }
 
 impl Deprecation {
@@ -454,6 +462,7 @@ pub fn deprecation_notices(tool: &str, args: &Value, deprecations: &[Deprecation
     };
     deprecations
         .iter()
+        .filter(|d| !d.narrowing_only)
         .filter_map(|d| {
             let field = d.path.strip_prefix(tool)?.strip_prefix('.')?;
             if field.contains('.') || !obj.contains_key(field) {
@@ -524,7 +533,7 @@ pub fn changelog(kinds: &KindRegistry, deprecations: &[Deprecation], since: &str
     // the other half of a deprecation entry's lifecycle.
     let mut deprecated_entries: Vec<&Deprecation> = deprecations
         .iter()
-        .filter(|d| version_gt(&d.since, since) && live_field_exists(&d.path))
+        .filter(|d| !d.narrowing_only && version_gt(&d.since, since) && live_field_exists(&d.path))
         .collect();
     deprecated_entries.sort_by(|a, b| a.path.cmp(&b.path));
     let announced: Vec<Value> = deprecated_entries
@@ -541,7 +550,7 @@ pub fn changelog(kinds: &KindRegistry, deprecations: &[Deprecation], since: &str
 
     let mut removed: Vec<&Deprecation> = deprecations
         .iter()
-        .filter(|d| version_gt(&d.since, since) && !live_field_exists(&d.path))
+        .filter(|d| !d.narrowing_only && version_gt(&d.since, since) && !live_field_exists(&d.path))
         .collect();
     removed.sort_by(|a, b| a.path.cmp(&b.path));
     let removals: Vec<Value> = removed
@@ -608,6 +617,7 @@ mod tests {
             since: "2026-01-01".into(),
             sunset: "2026-02-01".into(), // 31 days
             replacement: "y".into(),
+            narrowing_only: false,
         };
         let long = Deprecation {
             sunset: "2026-03-02".into(), // exactly 60 days after since (2026-01-01)

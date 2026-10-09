@@ -4917,6 +4917,14 @@ impl Kind for PythonKind {
         ]
     }
 
+    fn required_spec_field(&self) -> Option<&'static str> {
+        Some("source")
+    }
+
+    fn spec_field_description(&self, field: &str) -> Option<String> {
+        python_field_hint(field).map(|(hint, _)| hint.to_string())
+    }
+
     fn validate_all(&self, spec: &Value) -> Vec<KindError> {
         match parse_spec(spec) {
             Ok(parsed) => validate_spec_fields_all(&parsed),

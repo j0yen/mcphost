@@ -2495,9 +2495,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "kind"
-        ],
+        "required": [],
         "type": "object"
       },
       "name": "host.quickstart",
@@ -3921,12 +3919,73 @@
       "since": "0.58.0"
     },
     {
-      "description": "Publish a tool of a registered kind (echo) under this tenant's namespace. Call host.quickstart(kind) first for a filled-in example spec and the full publish-to-call sequence. Python's sandbox API: import mcphost (mcphost.table, mcphost.state, mcphost.docs). Name must match ^[a-z][a-z0-9_]{1,40}$; a rejection names the failing field and a corrected example. Try host.tool_test before a real call.",
+      "description": "Publish a tool of a registered kind (e.g. python, http or echo; the kind argument's enum lists them all) under this tenant's namespace. Call host.quickstart(kind) first for a filled-in example spec and the full publish-to-call sequence. Python's sandbox API: import mcphost (mcphost.table, mcphost.state, mcphost.docs). Name must match ^[a-z][a-z0-9_]{1,40}$; a rejection names the failing field and a corrected example. Try host.tool_test before a real call.",
       "input_schema": {
         "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "echo"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "spec": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "reads": {},
+                    "schema": {}
+                  },
+                  "required": [
+                    "schema"
+                  ],
+                  "type": "object"
+                }
+              }
+            }
+          }
+        ],
         "properties": {
           "kind": {
-            "description": "Which registered kind to publish under: chain, echo, http, python, wasm. A job-word alias also resolves here -- event, events, webhook, webhooks, inbound or trigger for an inbound webhook, cron, schedule or scheduled for a timed run -- both resolve to kind http and the descriptor comes back with resolved_from naming the alias you asked for.",
+            "description": "Which registered kind to publish under: one of this field's `enum` (host.quickstart with no kind lists every kind, alias and recipe). A job-word alias in the enum also resolves here -- webhook-style words for an inbound webhook, cron-style words for a timed run -- both resolve to kind http and the descriptor comes back with resolved_from naming the alias you asked for.",
+            "enum": [
+              "echo",
+              "event",
+              "events",
+              "webhook",
+              "webhooks",
+              "inbound",
+              "trigger",
+              "cron",
+              "schedule",
+              "scheduled",
+              "doc",
+              "docs",
+              "document",
+              "documents",
+              "message",
+              "messages",
+              "inbox",
+              "msg",
+              "database",
+              "db",
+              "table",
+              "tables",
+              "csv",
+              "sql",
+              "schedules",
+              "uptime",
+              "probe",
+              "probes",
+              "memory",
+              "memories"
+            ],
             "type": "string"
           },
           "name": {
@@ -4331,12 +4390,73 @@
       "since": "0.58.0"
     },
     {
-      "description": "Publish a tool of a registered kind (echo) under this tenant's namespace. Call host.quickstart(kind) first for a filled-in example spec and the full publish-to-call sequence. Python's sandbox API: import mcphost (mcphost.table, mcphost.state, mcphost.docs). Name must match ^[a-z][a-z0-9_]{1,40}$; a rejection names the failing field and a corrected example. Try host.tool_test before a real call.",
+      "description": "Publish a tool of a registered kind (e.g. python, http or echo; the kind argument's enum lists them all) under this tenant's namespace. Call host.quickstart(kind) first for a filled-in example spec and the full publish-to-call sequence. Python's sandbox API: import mcphost (mcphost.table, mcphost.state, mcphost.docs). Name must match ^[a-z][a-z0-9_]{1,40}$; a rejection names the failing field and a corrected example. Try host.tool_test before a real call.",
       "input_schema": {
         "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "echo"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "spec": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "reads": {},
+                    "schema": {}
+                  },
+                  "required": [
+                    "schema"
+                  ],
+                  "type": "object"
+                }
+              }
+            }
+          }
+        ],
         "properties": {
           "kind": {
-            "description": "Which registered kind to publish under: chain, echo, http, python, wasm. A job-word alias also resolves here -- event, events, webhook, webhooks, inbound or trigger for an inbound webhook, cron, schedule or scheduled for a timed run -- both resolve to kind http and the descriptor comes back with resolved_from naming the alias you asked for.",
+            "description": "Which registered kind to publish under: one of this field's `enum` (host.quickstart with no kind lists every kind, alias and recipe). A job-word alias in the enum also resolves here -- webhook-style words for an inbound webhook, cron-style words for a timed run -- both resolve to kind http and the descriptor comes back with resolved_from naming the alias you asked for.",
+            "enum": [
+              "echo",
+              "event",
+              "events",
+              "webhook",
+              "webhooks",
+              "inbound",
+              "trigger",
+              "cron",
+              "schedule",
+              "scheduled",
+              "doc",
+              "docs",
+              "document",
+              "documents",
+              "message",
+              "messages",
+              "inbox",
+              "msg",
+              "database",
+              "db",
+              "table",
+              "tables",
+              "csv",
+              "sql",
+              "schedules",
+              "uptime",
+              "probe",
+              "probes",
+              "memory",
+              "memories"
+            ],
             "type": "string"
           },
           "name": {
@@ -7408,9 +7528,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "kind"
-        ],
+        "required": [],
         "type": "object"
       },
       "name": "host_quickstart",
@@ -8703,12 +8821,73 @@
       "since": "0.58.0"
     },
     {
-      "description": "Publish a tool of a registered kind (echo) under this tenant's namespace. Call host.quickstart(kind) first for a filled-in example spec and the full publish-to-call sequence. Python's sandbox API: import mcphost (mcphost.table, mcphost.state, mcphost.docs). Name must match ^[a-z][a-z0-9_]{1,40}$; a rejection names the failing field and a corrected example. Try host.tool_test before a real call.",
+      "description": "Publish a tool of a registered kind (e.g. python, http or echo; the kind argument's enum lists them all) under this tenant's namespace. Call host.quickstart(kind) first for a filled-in example spec and the full publish-to-call sequence. Python's sandbox API: import mcphost (mcphost.table, mcphost.state, mcphost.docs). Name must match ^[a-z][a-z0-9_]{1,40}$; a rejection names the failing field and a corrected example. Try host.tool_test before a real call.",
       "input_schema": {
         "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "echo"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "properties": {
+                "spec": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "reads": {},
+                    "schema": {}
+                  },
+                  "required": [
+                    "schema"
+                  ],
+                  "type": "object"
+                }
+              }
+            }
+          }
+        ],
         "properties": {
           "kind": {
-            "description": "Which registered kind to publish under: chain, echo, http, python, wasm. A job-word alias also resolves here -- event, events, webhook, webhooks, inbound or trigger for an inbound webhook, cron, schedule or scheduled for a timed run -- both resolve to kind http and the descriptor comes back with resolved_from naming the alias you asked for.",
+            "description": "Which registered kind to publish under: one of this field's `enum` (host.quickstart with no kind lists every kind, alias and recipe). A job-word alias in the enum also resolves here -- webhook-style words for an inbound webhook, cron-style words for a timed run -- both resolve to kind http and the descriptor comes back with resolved_from naming the alias you asked for.",
+            "enum": [
+              "echo",
+              "event",
+              "events",
+              "webhook",
+              "webhooks",
+              "inbound",
+              "trigger",
+              "cron",
+              "schedule",
+              "scheduled",
+              "doc",
+              "docs",
+              "document",
+              "documents",
+              "message",
+              "messages",
+              "inbox",
+              "msg",
+              "database",
+              "db",
+              "table",
+              "tables",
+              "csv",
+              "sql",
+              "schedules",
+              "uptime",
+              "probe",
+              "probes",
+              "memory",
+              "memories"
+            ],
             "type": "string"
           },
           "name": {

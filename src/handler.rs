@@ -596,7 +596,7 @@ fn schema(props: Value, required: &[&str]) -> Map<String, Value> {
 /// manifest entry), factored out so both its own `Tool::new` descriptor
 /// below and [`tool_publish_input_schema`] build from the exact same
 /// literal -- a hand-copied twin here would drift the moment either changed.
-fn tool_publish_props() -> Value {
+fn tool_publish_props(kinds: &KindRegistry) -> Value {
     json!({
         "name": {
             "type": "string",
@@ -604,11 +604,15 @@ fn tool_publish_props() -> Value {
         },
         "kind": {
             "type": "string",
-            "description": "Which registered kind to publish under: chain, echo, http, python, \
-                wasm. A job-word alias also resolves here -- event, events, webhook, webhooks, \
-                inbound or trigger for an inbound webhook, cron, schedule or scheduled for a \
-                timed run -- both resolve to kind http and the descriptor comes back with \
-                resolved_from naming the alias you asked for.",
+            // PRD-mcphost-publish-schema-from-registry requirement 1: the
+            // enum is the registry's own set (names, aliases, outcome
+            // words), never a literal list.
+            "enum": kinds.publish_kind_enum(),
+            "description": "Which registered kind to publish under: one of this field's `enum` \
+                (host.quickstart with no kind lists every kind, alias and recipe). A job-word \
+                alias in the enum also resolves here -- webhook-style words for an inbound \
+                webhook, cron-style words for a timed run -- both resolve to kind http and the \
+                descriptor comes back with resolved_from naming the alias you asked for.",
         },
         "spec": {
             "type": "object",
@@ -635,6 +639,66 @@ fn tool_publish_props() -> Value {
     })
 }
 
+/// PRD-mcphost-publish-schema-from-registry requirement 2: one `if/then`
+/// branch per registered kind, keyed on the sibling `kind` argument, whose
+/// `spec` schema lists exactly `known_spec_fields()` plus
+/// `UNIVERSAL_SPEC_FIELDS` -- the sets `check_unknown_spec_field` accepts
+/// -- with `additionalProperties: false`. `required` is the kind's single
+/// unconditional field when it has one. Alias and outcome-word kinds get
+/// no branch (the server resolves them). Rendered as top-level `allOf`
+/// entries (`if/then` can only read `kind` from the parent object), which
+/// the contract comparator's one-level `properties` walk does not visit.
+fn tool_publish_spec_branches(kinds: &KindRegistry) -> Value {
+    let branches: Vec<Value> = kinds
+        .all()
+        .map(|kind| {
+            let mut fields: Vec<&str> = kind.known_spec_fields().to_vec();
+            for universal in crate::kinds::UNIVERSAL_SPEC_FIELDS {
+                if !fields.contains(universal) {
+                    fields.push(universal);
+                }
+            }
+            fields.sort_unstable();
+            let properties: Map<String, Value> = fields
+                .into_iter()
+                .map(|field| {
+                    let schema = match kind.spec_field_description(field) {
+                        Some(description) => json!({"description": description}),
+                        None => json!({}),
+                    };
+                    (field.to_string(), schema)
+                })
+                .collect();
+            let mut spec = json!({
+                "type": "object",
+                "properties": properties,
+                "additionalProperties": false,
+            });
+            if let Some(required) = kind.required_spec_field() {
+                spec["required"] = json!([required]);
+            }
+            json!({
+                "if": {"properties": {"kind": {"const": kind.name()}}, "required": ["kind"]},
+                "then": {"properties": {"spec": spec}},
+            })
+        })
+        .collect();
+    Value::Array(branches)
+}
+
+/// `host.tool_publish`'s input schema (`schema` + the per-kind `allOf`
+/// branches), optionally wrapped by `host_schema` for the `tenant_key`.
+fn tool_publish_schema(kinds: &KindRegistry, with_tenant_key: bool) -> Map<String, Value> {
+    let props = tool_publish_props(kinds);
+    let mut out = if with_tenant_key {
+        host_schema(props, TOOL_PUBLISH_REQUIRED)
+    } else {
+        schema(props, TOOL_PUBLISH_REQUIRED)
+    };
+    out.insert("allOf".to_string(), tool_publish_spec_branches(kinds));
+    out
+}
+
 const TOOL_PUBLISH_REQUIRED: &[&str] = &["name", "kind", "spec"];
 
 /// PRD-mcphost-tenant-data-export P1 requirement 4 / AC5: the plain
@@ -644,8 +708,8 @@ const TOOL_PUBLISH_REQUIRED: &[&str] = &["name", "kind", "spec"];
 /// suite checks them against this SAME schema (not a hand-copied twin) so
 /// AC5's proof can never silently drift from what a real `host.tool_publish`
 /// call actually requires.
-pub fn tool_publish_input_schema() -> Value {
-    Value::Object(schema(tool_publish_props(), TOOL_PUBLISH_REQUIRED))
+pub fn tool_publish_input_schema(kinds: &KindRegistry) -> Value {
+    Value::Object(tool_publish_schema(kinds, false))
 }
 
 /// PRD-mcphost-session-key requirement 2 / AC3: every `host.*` descriptor
@@ -793,10 +857,11 @@ pub(crate) fn signup_tool() -> Tool {
 /// in `host.quickstart` instead of being re-explained on every kind's own
 /// publish.
 fn tool_publish_description(kinds: &KindRegistry) -> String {
-    let kind_names = kinds.names().join(", ");
-    let mut out = format!(
-        "Publish a tool of a registered kind ({kind_names}) under this tenant's namespace. \
-         Call host.quickstart(kind) first for a filled-in example spec and the full \
+    // PRD-mcphost-publish-schema-from-registry P1: no literal
+    // kind list here -- the `kind` argument's `enum` is the one rendering.
+    let mut out = String::from(
+        "Publish a tool of a registered kind (e.g. python, http or echo; the kind \
+         argument's enum lists them all) under this tenant's namespace. Call host.quickstart(kind) first for a filled-in example spec and the full \
          publish-to-call sequence. Python's sandbox API: import mcphost (mcphost.table, \
          mcphost.state, mcphost.docs)."
     );
@@ -912,7 +977,7 @@ pub fn known_control_plane_args(name: &str, kinds: &KindRegistry) -> Option<Vec<
 fn annotate_deprecated_tools(tools: &mut [Tool], deprecations: &[crate::api_contract::Deprecation]) {
     for tool in tools.iter_mut() {
         let name = tool.name.to_string();
-        for dep in deprecations {
+        for dep in deprecations.iter().filter(|d| !d.narrowing_only) {
             let note = format!(
                 "[DEPRECATED since {}, sunset {}: use {} instead] ",
                 dep.since, dep.sunset, dep.replacement
@@ -1025,7 +1090,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         Tool::new(
             "host.tool.publish",
             tool_publish_description(kinds),
-            host_schema(tool_publish_props(), TOOL_PUBLISH_REQUIRED),
+            tool_publish_schema(kinds, true),
         ),
         Tool::new(
             "host.quickstart",
@@ -1046,7 +1111,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                             recipe name.",
                     },
                 }),
-                &["kind"],
+                &[],
             ),
         ),
         Tool::new(
