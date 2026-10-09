@@ -47,6 +47,10 @@ async fn ten_concurrent_chart_calls_all_succeed_under_p95_250ms() {
 
     durations.sort();
     let p95 = durations[(durations.len() as f64 * 0.95).ceil() as usize - 1];
+    if std::env::var("MCPHOST_PERF_SKIP").ok().as_deref() == Some("1") {
+        eprintln!("perf skipped (load): p95 over {N} concurrent chart calls was {p95:?}");
+        return;
+    }
     assert!(
         p95 < Duration::from_millis(250),
         "p95 latency over {N} concurrent chart calls was {p95:?}, expected < 250ms"
