@@ -47,6 +47,8 @@ async fn prev_mapping_absent_from_predecessor_outputs_is_will_fail() {
             "step": 2,
             "path": "$.prev.rows",
             "predecessor_keys": ["result", "count"],
+            "available": ["result", "count"],
+            "did_you_mean": "$.prev.result.rows",
         }]),
         "{structured}"
     );
