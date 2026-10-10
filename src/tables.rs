@@ -2534,6 +2534,7 @@ mod tests {
         AppState {
             db,
             kinds: crate::kinds::KindRegistry::with_builtin(),
+            contract: std::sync::Arc::new(crate::api_contract::ContractSnapshot::builtin()),
             secrets: crate::secrets::SecretBox::from_passphrase("test-secret-key"),
             admin_key: Some("test-admin-key".to_string()),
             public_url: "http://127.0.0.1:0".to_string(),

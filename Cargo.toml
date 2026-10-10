@@ -169,6 +169,7 @@ mqo-chart-caption = { path = "vendor/mqo-chart-caption", version = "0.1.0" }
 test-support = []
 
 [dev-dependencies]
+semver = "1"
 tokio = { version = "1", features = ["full", "test-util"] }
 proptest = "1"
 # AC19: mocks the registry API in tests/ac19_registry_publish.rs (the

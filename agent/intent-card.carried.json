@@ -1,5 +1,5 @@
 {
-  "ambiguities_resolved": false,
+  "ambiguities_resolved": true,
   "created_at": false,
   "five_whys_trace": false,
   "hard_constraints": false,

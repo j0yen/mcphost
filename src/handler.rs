@@ -1339,8 +1339,9 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 json!({
                     "since": {
                         "type": "string",
-                        "description": "Only list changes after this version, e.g. \"0.57.0\". \
-                            Omit to list every tracked change.",
+                        "description": "Only list changes after this version, e.g. \"0.57.0\", or a \
+                            contract_version string from host.whoami. Omit to list every \
+                            tracked change.",
                     },
                 }),
                 &[],
@@ -7880,6 +7881,16 @@ impl ServerHandler for McpHostHandler {
                 .enable_tool_list_changed()
                 .build(),
         )
+        // PRD-mcphost-contract-version-reported R4: the crate version with
+        // the contract identity as semver build metadata.
+        .with_server_info(Implementation::new(
+            "mcphost",
+            format!(
+                "{}+contract.{}",
+                env!("CARGO_PKG_VERSION"),
+                self.state.contract.version
+            ),
+        ))
         .with_instructions(instructions)
     }
 
@@ -8628,7 +8639,7 @@ impl ServerHandler for McpHostHandler {
             // tenant) may reach directly -- so an operator already holding
             // the admin key can learn the admin schema version with no
             // extra tenant signup.
-            (Auth::Admin, "host.whoami") => Ok(control::whoami_admin()),
+            (Auth::Admin, "host.whoami") => Ok(control::whoami_admin(&self.state)),
             (Auth::Admin, _) => Err(AppError::Forbidden),
             (Auth::Tenant(_, _), name) if name.starts_with("admin.") => {
                 let _ = name;

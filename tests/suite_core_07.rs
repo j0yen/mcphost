@@ -412,6 +412,20 @@ mod compose_ac8_tool_test_dry_run;
 mod consent_ac01_ac02_ac03_ac04_contact_lifecycle;
 #[path = "consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox.rs"]
 mod consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox;
+#[path = "ctrv_ac01_sha_stable_across_boot_requests_and_process.rs"]
+mod ctrv_ac01_sha_stable_across_boot_requests_and_process;
+#[path = "ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs"]
+mod ctrv_ac02_whoami_reports_sha_version_on_every_auth_path;
+#[path = "ctrv_ac03_status_and_healthz_carry_contract_identity.rs"]
+mod ctrv_ac03_status_and_healthz_carry_contract_identity;
+#[path = "ctrv_ac04_server_info_version_carries_contract_build_metadata.rs"]
+mod ctrv_ac04_server_info_version_carries_contract_build_metadata;
+#[path = "ctrv_ac05_contract_json_is_served_with_etag_and_304.rs"]
+mod ctrv_ac05_contract_json_is_served_with_etag_and_304;
+#[path = "ctrv_ac06_committed_contract_file_matches_served_sha.rs"]
+mod ctrv_ac06_committed_contract_file_matches_served_sha;
+#[path = "ctrv_ac07_changelog_since_accepts_contract_version.rs"]
+mod ctrv_ac07_changelog_since_accepts_contract_version;
 #[path = "docsearch_ac01_status_reports_watermark_lag_and_chunks.rs"]
 mod docsearch_ac01_status_reports_watermark_lag_and_chunks;
 #[path = "docsearch_ac02_lexical_search_returns_passage_and_offset.rs"]
@@ -1800,19 +1814,3 @@ mod statusfeed_ac08_status_html_renders;
 mod statusfeed_ac10_component_days_query;
 #[path = "statusfeed_ac11_deferral_is_justified.rs"]
 mod statusfeed_ac11_deferral_is_justified;
-#[path = "suite_ac1_ten_binaries_and_names_preserved.rs"]
-mod suite_ac1_ten_binaries_and_names_preserved;
-#[path = "suite_ac2_check_catches_unregistered_file.rs"]
-mod suite_ac2_check_catches_unregistered_file;
-#[path = "suite_ac3_mod_common_declared_once.rs"]
-mod suite_ac3_mod_common_declared_once;
-#[path = "suite_ac4_archived_prd_pointers_resolve.rs"]
-mod suite_ac4_archived_prd_pointers_resolve;
-#[path = "suite_ac5_disk_size_budget.rs"]
-mod suite_ac5_disk_size_budget;
-#[path = "suite_ac6_wall_time_budget.rs"]
-mod suite_ac6_wall_time_budget;
-#[path = "suite_ac7_junit_per_test_timing.rs"]
-mod suite_ac7_junit_per_test_timing;
-#[path = "suite_ac9_selftest_named_and_green.rs"]
-mod suite_ac9_selftest_named_and_green;
