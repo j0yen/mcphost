@@ -144,7 +144,7 @@ async fn tool_logs_never_carry_the_vault_token() {
         )
         .await
         .expect_err("upstream 401 must surface as a call error");
-    assert_eq!(err.error_code.as_deref(), Some("upstream_status"));
+    assert_eq!(err.error_code.as_deref(), Some("upstream_auth"));
     // The error's own structured data proves the upstream really did echo
     // the token back, and that the existing redaction already scrubs it
     // from the surface the caller sees directly.

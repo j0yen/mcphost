@@ -91,7 +91,7 @@ async fn upstream_500_with_body_excerpts_the_body() {
         .tools_call(&format!("{ns}.broken_bridge"), json!({}))
         .await
         .expect_err("a 500 upstream must surface as a tool error");
-    assert_eq!(err.error_code.as_deref(), Some("upstream_status"));
+    assert_eq!(err.error_code.as_deref(), Some("upstream_error"));
     assert_eq!(err.data["upstream_status"], 500);
     assert!(
         err.data["body_excerpt"]

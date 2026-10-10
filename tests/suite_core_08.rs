@@ -254,6 +254,20 @@ mod unkfield_ac04_trigger_set_unknown_argument;
 mod unkfield_ac05_tools_list_additional_properties_false;
 #[path = "unkfield_ac07_spec_fields_doc_check_script.rs"]
 mod unkfield_ac07_spec_fields_doc_check_script;
+#[path = "upfam_ac01_auth_family_401_403.rs"]
+mod upfam_ac01_auth_family_401_403;
+#[path = "upfam_ac02_rate_limited_retry_after.rs"]
+mod upfam_ac02_rate_limited_retry_after;
+#[path = "upfam_ac03_client_and_server_error_families.rs"]
+mod upfam_ac03_client_and_server_error_families;
+#[path = "upfam_ac04_remedy_table_total_and_single_source.rs"]
+mod upfam_ac04_remedy_table_total_and_single_source;
+#[path = "upfam_ac05_hints_name_real_tools.rs"]
+mod upfam_ac05_hints_name_real_tools;
+#[path = "upfam_ac06_host_not_allowed_names_tool_call.rs"]
+mod upfam_ac06_host_not_allowed_names_tool_call;
+#[path = "upfam_ac07_tool_test_matches_real_call.rs"]
+mod upfam_ac07_tool_test_matches_real_call;
 #[path = "upgrade_ac01_calls_per_day_next_checkout.rs"]
 mod upgrade_ac01_calls_per_day_next_checkout;
 #[path = "upgrade_ac02_billing_off_refusal_text.rs"]

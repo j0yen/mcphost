@@ -1,5 +1,5 @@
 //! AC5 — Given an upstream that returns 429 with `Retry-After: 7`, When
-//! called, Then the tool error is `upstream_status` with status 429 and
+//! called, Then the tool error is `upstream_rate_limited` with status 429 and
 //! `retry_after_s: 7`.
 
 use crate::common;
@@ -41,7 +41,7 @@ async fn rate_limited_upstream_surfaces_status_and_retry_after() {
         .tools_call(&format!("{ns}.flaky"), json!({}))
         .await
         .expect_err("a 429 upstream must surface as a tool error");
-    assert_eq!(err.error_code.as_deref(), Some("upstream_status"));
+    assert_eq!(err.error_code.as_deref(), Some("upstream_rate_limited"));
     assert_eq!(err.data["upstream_status"], 429);
     assert_eq!(err.data["retry_after_s"], 7);
 }

@@ -592,6 +592,78 @@ pub(crate) fn is_disallowed_ip(ip: IpAddr, allow_loopback: bool) -> bool {
     }
 }
 
+/// One row of [`UPSTREAM_REMEDIES`]: an error `code`, the HTTP `statuses` it
+/// answers (empty for a non-status row such as `host_not_allowed`), and the
+/// `hint` rendered into `data.hint`. The only place a hint for these codes
+/// is written down.
+pub struct Remedy {
+    pub code: &'static str,
+    pub statuses: &'static [std::ops::RangeInclusive<u16>],
+    pub hint: &'static str,
+}
+
+// BEGIN UPSTREAM_REMEDIES
+/// The `data` key every remedy hint is rendered under.
+pub const HINT_KEY: &str = "hint";
+
+#[allow(clippy::single_range_in_vec_init)]
+pub const UPSTREAM_REMEDIES: &[Remedy] = &[
+    Remedy {
+        code: "upstream_auth",
+        statuses: &[401..=401, 403..=403],
+        hint: "upstream rejected credentials; store the key with host.secret.set(name=...) and reference it as {{ secret.<name> }} in headers or url",
+    },
+    Remedy {
+        code: "upstream_rate_limited",
+        statuses: &[429..=429],
+        hint: "upstream is rate limiting this tool; wait retry_after_s seconds (when present) before calling again instead of retrying immediately",
+    },
+    Remedy {
+        code: "upstream_client_error",
+        statuses: &[400..=400, 402..=402, 404..=428, 430..=499],
+        hint: "upstream rejected the request itself; check the spec's method, url path, query and body against the API's documentation",
+    },
+    Remedy {
+        code: "upstream_error",
+        statuses: &[500..=599],
+        hint: "upstream failed on its own side; retry with backoff and raise budget.max_tool_latency_ms if calls are timing out",
+    },
+    Remedy {
+        code: "host_not_allowed",
+        statuses: &[],
+        hint: "call your own tools with host.tool_call; the http kind targets third-party APIs",
+    },
+];
+// END UPSTREAM_REMEDIES
+
+/// The row for `code`. Panics on a code the table does not carry (a
+/// programming error, caught by every test that reaches the call site).
+pub fn remedy_by_code(code: &str) -> &'static Remedy {
+    UPSTREAM_REMEDIES
+        .iter()
+        .find(|r| r.code == code)
+        .unwrap_or_else(|| panic!("no UPSTREAM_REMEDIES row for {code}"))
+}
+
+/// The one status -> remedy mapping. Every status 400..=599 matches exactly
+/// one [`UPSTREAM_REMEDIES`] row; anything else falls back to `upstream_error`.
+pub fn remedy_for(status: u16) -> &'static Remedy {
+    UPSTREAM_REMEDIES
+        .iter()
+        .find(|r| r.statuses.iter().any(|range| range.contains(&status)))
+        .unwrap_or_else(|| remedy_by_code("upstream_error"))
+}
+
+/// A `host_not_allowed` error for the spec's `url` field, carrying the
+/// remedy row's hint (call your own tools with `host.tool_call`).
+fn host_not_allowed_error(message: impl Into<String>) -> KindError {
+    KindError::structured_with(
+        "host_not_allowed",
+        message.into(),
+        json!({"field": "url", (HINT_KEY): remedy_by_code("host_not_allowed").hint}),
+    )
+}
+
 /// Syntactic host checks that don't require DNS: a literal IP in a
 /// disallowed range, `.internal`, `localhost`, or the host's own domain.
 pub(crate) fn is_disallowed_literal_host(host: &str, own_domain: &str, allow_loopback: bool) -> bool {
@@ -719,7 +791,7 @@ fn classify_reqwest_error(err: reqwest::Error) -> KindError {
     let mut source: Option<&(dyn std::error::Error + 'static)> = Some(&err);
     while let Some(e) = source {
         if let Some(hna) = e.downcast_ref::<HostNotAllowed>() {
-            return KindError::structured("host_not_allowed", format!("{hna}"));
+            return host_not_allowed_error(format!("{hna}"));
         }
         source = e.source();
     }
@@ -1070,17 +1142,9 @@ impl Kind for HttpKind {
                 if host.is_empty() {
                     errors.push(KindError::InvalidSpec("url: missing host".into()));
                 } else if !self.scheme_allowed(scheme) {
-                    errors.push(KindError::structured_with(
-                        "host_not_allowed",
-                        "url: must use https://",
-                        json!({"field": "url"}),
-                    ));
+                    errors.push(host_not_allowed_error("url: must use https://"));
                 } else if is_disallowed_literal_host(host, &self.own_domain, self.allow_loopback) {
-                    errors.push(KindError::structured_with(
-                        "host_not_allowed",
-                        format!("url: host '{host}' is not a publicly callable host"),
-                        json!({"field": "url"}),
-                    ));
+                    errors.push(host_not_allowed_error(format!("url: host '{host}' is not a publicly callable host")));
                 }
             }
         }
@@ -1251,18 +1315,10 @@ impl Kind for HttpKind {
         let env = build_template_env();
         let rendered_url = render_str(&env, "url", &parsed.url, &context)?;
         let (scheme, host) = split_scheme_host(&rendered_url).ok_or_else(|| {
-            KindError::structured_with(
-                "host_not_allowed",
-                "url: did not render to a valid https URL",
-                json!({"field": "url"}),
-            )
+            host_not_allowed_error("url: did not render to a valid https URL")
         })?;
         if !self.scheme_allowed(scheme) {
-            return Err(KindError::structured_with(
-                "host_not_allowed",
-                "url: rendered url must use https://",
-                json!({"field": "url"}),
-            ));
+            return Err(host_not_allowed_error("url: rendered url must use https://"));
         }
         // A literal IP in the rendered host never reaches our DNS resolver
         // hook (reqwest skips resolution for an address it already has),
@@ -1271,11 +1327,7 @@ impl Kind for HttpKind {
         if let Ok(ip) = host.parse::<IpAddr>()
             && is_disallowed_ip(ip, self.allow_loopback)
         {
-            return Err(KindError::structured_with(
-                "host_not_allowed",
-                format!("url: rendered host '{host}' is not a publicly callable address"),
-                json!({"field": "url"}),
-            ));
+            return Err(host_not_allowed_error(format!("url: rendered host '{host}' is not a publicly callable address")));
         }
 
         let mut header_map = reqwest::header::HeaderMap::new();
@@ -1472,13 +1524,18 @@ impl Kind for HttpKind {
         });
 
         if let Some(excerpt) = error_excerpt {
-            let mut data = json!({"upstream_status": status.as_u16(), "body_excerpt": excerpt});
+            let remedy = remedy_for(status.as_u16());
+            let mut data = json!({
+                "upstream_status": status.as_u16(),
+                "body_excerpt": excerpt,
+                (HINT_KEY): remedy.hint,
+            });
             if let Some(retry) = retry_after_s {
                 data["retry_after_s"] = json!(retry);
             }
             return Err(KindError::structured_with(
-                "upstream_status",
-                format!("upstream returned HTTP {}", status.as_u16()),
+                remedy.code,
+                format!("upstream returned HTTP {} ({})", status.as_u16(), remedy.code),
                 data,
             ));
         }
