@@ -1839,6 +1839,14 @@ impl AdvisoryModeGuard {
 /// `crate::perf_budget!(...)`, not `common::perf_budget!(...)`.
 pub const PERF_BUDGET_SAMPLES: usize = 5;
 
+/// True when `MCPHOST_PERF_SKIP=1` (the gate sets it on a loaded host). The ONE
+/// place the variable is read for timing assertions: `perf_budget!`,
+/// `perf_overhead_budget!`, and tests whose timing assertion cannot be
+/// re-run as a repeated body (one-shot publish, concurrent p95) call this.
+pub fn perf_skipped() -> bool {
+    std::env::var("MCPHOST_PERF_SKIP").ok().as_deref() == Some("1")
+}
+
 /// Shared sampler: untimed warm-up, then [`PERF_BUDGET_SAMPLES`] timed runs of
 /// `body`; evaluates to the MEDIAN elapsed `Duration`. A macro (not a fn) so
 /// `body` may `.await`. Used by `perf_budget!` and `perf_overhead_budget!`.
@@ -1862,7 +1870,7 @@ macro_rules! perf_median {
 #[macro_export]
 macro_rules! perf_budget {
     ($budget_ms:expr, $body:block) => {{
-        if std::env::var("MCPHOST_PERF_SKIP").ok().as_deref() == Some("1") {
+        if $crate::common::perf_skipped() {
             eprintln!("perf skipped (load)");
         } else {
             let median = $crate::perf_median!($body);
@@ -1885,7 +1893,7 @@ macro_rules! perf_budget {
 #[macro_export]
 macro_rules! perf_overhead_budget {
     ($budget_ms:expr, $base:block, $measured:block) => {{
-        if std::env::var("MCPHOST_PERF_SKIP").ok().as_deref() == Some("1") {
+        if $crate::common::perf_skipped() {
             eprintln!("perf skipped (load)");
         } else {
             let base = $crate::perf_median!($base);

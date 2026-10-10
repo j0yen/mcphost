@@ -73,7 +73,7 @@ def main(args):
     let publish_elapsed = publish_started.elapsed();
     println!("[receipt] measured publish latency: {publish_elapsed:?}");
     assert!(
-        publish_elapsed <= Duration::from_secs(10),
+        common::perf_skipped() || publish_elapsed <= Duration::from_secs(10),
         "publish must complete within 10s, took {publish_elapsed:?}"
     );
 
@@ -90,7 +90,7 @@ def main(args):
     println!("[receipt] measured first-call latency (incl. tool_building polling): {call_elapsed:?}");
     assert!(result["structuredContent"]["latency_ms"].is_number());
     assert!(
-        call_elapsed <= Duration::from_secs(5),
+        common::perf_skipped() || call_elapsed <= Duration::from_secs(5),
         "first successful call must complete within 5s of the env being ready \
          (measured including the tool_building poll loop), took {call_elapsed:?}"
     );

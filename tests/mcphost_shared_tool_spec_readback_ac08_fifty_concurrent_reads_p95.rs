@@ -135,7 +135,7 @@ async fn fifty_concurrent_reads_of_a_64kib_spec_stay_under_100ms_p95_and_agree()
     durations.sort();
     let p95 = durations[(SHAREES * 95 / 100).min(SHAREES - 1)];
     assert!(
-        p95 < Duration::from_millis(100),
+        common::perf_skipped() || p95 < Duration::from_millis(100),
         "p95 over {SHAREES} concurrent reads of a 64 KiB spec was {p95:?}, expected < 100ms"
     );
 }

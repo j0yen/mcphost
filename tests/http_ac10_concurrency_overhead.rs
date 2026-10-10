@@ -107,7 +107,7 @@ async fn five_hundred_concurrent_calls_across_ten_tenants() {
     // a noisy CI box. The printed p95 above is the number to read against
     // the PRD's literal 5ms target on the reference box.
     assert!(
-        p95 < 200.0,
+        crate::common::perf_skipped() || p95 < 200.0,
         "p95 {p95:.3}ms is far outside a sane bound for 500 loopback calls"
     );
 }

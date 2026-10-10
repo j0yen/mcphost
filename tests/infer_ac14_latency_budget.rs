@@ -23,10 +23,7 @@
 //! guards (inference itself stays cheap) never gets weaker, only the
 //! wall-clock allowance for host noise changes.
 
-use crate::host;
-
 use mcphost::kinds::infer::{infer_python_args_schema, infer_python_requirements};
-use std::time::Instant;
 
 fn generate_200_line_source() -> String {
     let mut src = String::from("import json\nimport os\n\ndef main(args):\n");
@@ -56,20 +53,14 @@ fn inference_over_a_200_line_source_is_well_under_100ms() {
     let _ = infer_python_args_schema(&source);
     let _ = infer_python_requirements(&source);
 
-    let multiplier = host::load_multiplier();
-    let budget = std::time::Duration::from_micros((100_000.0 * multiplier) as u64);
-
-    let started = Instant::now();
     let schema = infer_python_args_schema(&source).expect("schema inference ok");
     let requirements = infer_python_requirements(&source).expect("requirements inference ok");
-    let elapsed = started.elapsed();
-
-    assert!(
-        elapsed <= budget,
-        "inference over a 200-line source took {elapsed:?}, over the load-scaled budget of \
-         {budget:?} (100ms x {multiplier:.2} load multiplier); {}",
-        host::describe_host(),
-    );
     assert_eq!(schema["required"], serde_json::json!(["the_required_key"]));
     assert!(requirements.is_empty(), "json/os are both stdlib");
+
+    // Median-of-5 warm, 100 ms; skipped under MCPHOST_PERF_SKIP=1 (loaded host).
+    crate::perf_budget!(100, {
+        infer_python_args_schema(&source).expect("schema inference ok");
+        infer_python_requirements(&source).expect("requirements inference ok");
+    });
 }
