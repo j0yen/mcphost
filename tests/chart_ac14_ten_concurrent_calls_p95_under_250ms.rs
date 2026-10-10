@@ -6,7 +6,6 @@
 use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
-use std::time::{Duration, Instant};
 
 use crate::chart_fixture;
 
@@ -18,41 +17,29 @@ async fn ten_concurrent_chart_calls_all_succeed_under_p95_250ms() {
     chart_fixture::seed_expenses(&seeding_client).await;
 
     const N: usize = 10;
-    let mut tasks = Vec::with_capacity(N);
-    for _ in 0..N {
-        let base_url = server.base_url.clone();
-        let key = key.clone();
-        tasks.push(tokio::spawn(async move {
-            let client = McpClient::with_bearer(&base_url, &key);
-            let start = Instant::now();
-            let result = client
-                .tools_call(
-                    "host.table.chart",
-                    json!({"sql": "SELECT category, SUM(amount) AS total FROM expenses GROUP BY category"}),
-                )
-                .await
-                .expect("host.table.chart");
-            let elapsed = start.elapsed();
-            let chart = extract_structured(&result);
-            (elapsed, chart)
-        }));
-    }
-
-    let mut durations = Vec::with_capacity(N);
-    for task in tasks {
-        let (elapsed, chart) = task.await.expect("task must not panic");
-        assert_eq!(chart["schema"], json!("chart.v1"), "chart: {chart}");
-        durations.push(elapsed);
-    }
-
-    durations.sort();
-    let p95 = durations[(durations.len() as f64 * 0.95).ceil() as usize - 1];
-    if std::env::var("MCPHOST_PERF_SKIP").ok().as_deref() == Some("1") {
-        eprintln!("perf skipped (load): p95 over {N} concurrent chart calls was {p95:?}");
-        return;
-    }
-    assert!(
-        p95 < Duration::from_millis(250),
-        "p95 latency over {N} concurrent chart calls was {p95:?}, expected < 250ms"
-    );
+    // One round = N concurrent chart calls, all of which must return chart.v1.
+    // The wall time of the whole round bounds every call's latency (>= p95).
+    // Median-of-5 warm rounds; skipped under MCPHOST_PERF_SKIP=1 (loaded host).
+    crate::perf_budget!(250, {
+        let mut tasks = Vec::with_capacity(N);
+        for _ in 0..N {
+            let base_url = server.base_url.clone();
+            let key = key.clone();
+            tasks.push(tokio::spawn(async move {
+                let client = McpClient::with_bearer(&base_url, &key);
+                let result = client
+                    .tools_call(
+                        "host.table.chart",
+                        json!({"sql": "SELECT category, SUM(amount) AS total FROM expenses GROUP BY category"}),
+                    )
+                    .await
+                    .expect("host.table.chart");
+                extract_structured(&result)
+            }));
+        }
+        for task in tasks {
+            let chart = task.await.expect("task must not panic");
+            assert_eq!(chart["schema"], json!("chart.v1"), "chart: {chart}");
+        }
+    });
 }

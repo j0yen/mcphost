@@ -1836,28 +1836,65 @@ impl AdvisoryModeGuard {
 /// `crate::perf_budget!(...)`, not `common::perf_budget!(...)`.
 pub const PERF_BUDGET_SAMPLES: usize = 5;
 
+/// Shared sampler: untimed warm-up, then [`PERF_BUDGET_SAMPLES`] timed runs of
+/// `body`; evaluates to the MEDIAN elapsed `Duration`. A macro (not a fn) so
+/// `body` may `.await`. Used by `perf_budget!` and `perf_overhead_budget!`.
+#[macro_export]
+macro_rules! perf_median {
+    ($body:block) => {{
+        // Untimed warm-up.
+        { $body }
+        let mut samples: Vec<std::time::Duration> =
+            Vec::with_capacity($crate::common::PERF_BUDGET_SAMPLES);
+        for _ in 0..$crate::common::PERF_BUDGET_SAMPLES {
+            let __perf_start = std::time::Instant::now();
+            { $body }
+            samples.push(__perf_start.elapsed());
+        }
+        samples.sort();
+        samples[samples.len() / 2]
+    }};
+}
+
 #[macro_export]
 macro_rules! perf_budget {
     ($budget_ms:expr, $body:block) => {{
         if std::env::var("MCPHOST_PERF_SKIP").ok().as_deref() == Some("1") {
             eprintln!("perf skipped (load)");
         } else {
-            // Untimed warm-up.
-            { $body }
-            let mut samples: Vec<std::time::Duration> =
-                Vec::with_capacity($crate::common::PERF_BUDGET_SAMPLES);
-            for _ in 0..$crate::common::PERF_BUDGET_SAMPLES {
-                let __perf_budget_start = std::time::Instant::now();
-                { $body }
-                samples.push(__perf_budget_start.elapsed());
-            }
-            samples.sort();
-            let median = samples[samples.len() / 2];
+            let median = $crate::perf_median!($body);
             let budget = std::time::Duration::from_millis($budget_ms as u64);
             eprintln!("perf_budget: median={median:?} budget={budget:?}");
             assert!(
                 median <= budget,
                 "perf budget exceeded: median {median:?} over {} samples > budget {budget:?}",
+                $crate::common::PERF_BUDGET_SAMPLES,
+            );
+        }
+    }};
+}
+
+/// `perf_overhead_budget!(budget_ms, { base }, { measured })` — asserts that
+/// `median(measured) - median(base)` (saturating at zero) is at most
+/// `budget_ms`, for budgets on the OVERHEAD a feature adds (e.g. query
+/// logging) rather than on a whole call. Same skip (`MCPHOST_PERF_SKIP=1`),
+/// warm-up and median sampling as `perf_budget!` (shared `perf_median!`).
+#[macro_export]
+macro_rules! perf_overhead_budget {
+    ($budget_ms:expr, $base:block, $measured:block) => {{
+        if std::env::var("MCPHOST_PERF_SKIP").ok().as_deref() == Some("1") {
+            eprintln!("perf skipped (load)");
+        } else {
+            let base = $crate::perf_median!($base);
+            let measured = $crate::perf_median!($measured);
+            let overhead = measured.saturating_sub(base);
+            let budget = std::time::Duration::from_millis($budget_ms as u64);
+            eprintln!(
+                "perf_overhead_budget: base={base:?} measured={measured:?} overhead={overhead:?} budget={budget:?}"
+            );
+            assert!(
+                overhead <= budget,
+                "perf overhead budget exceeded: overhead {overhead:?} (measured {measured:?} - base {base:?}, median of {} samples) > budget {budget:?}",
                 $crate::common::PERF_BUDGET_SAMPLES,
             );
         }
