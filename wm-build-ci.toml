@@ -1,0 +1,22 @@
+# Which CI jobs back which wm-build gate producers (CI-as-gate). Job names are
+# the check-run names GitHub reports; branch protection keys on them too.
+# Checked by `wm-build gate ci-map --check <repo>`.
+
+[[ci_covers]]
+producer = "msrv-verify"
+workflow = "ci.yml"
+jobs = ["msrv check (builds with the declared rust-version toolchain)"]
+
+[[ci_covers]]
+producer = "flake-lint"
+workflow = "ci.yml"
+jobs = ["flake-lint (env-mutation, single-shot-perf, receipt-read)"]
+
+[[ci_covers]]
+producer = "flake-audit"
+workflow = "ci.yml"
+jobs = [
+  "static analysis + core suites",
+  "sandbox suites (user namespaces, shard 1/2)",
+  "sandbox suites (user namespaces, shard 2/2)",
+]
