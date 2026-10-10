@@ -20,3 +20,8 @@ jobs = [
   "sandbox suites (user namespaces, shard 1/2)",
   "sandbox suites (user namespaces, shard 2/2)",
 ]
+
+[[ci_covers]]
+producer = "determinism"
+workflow = "ci.yml"
+jobs = ["determinism (two cold release builds, identical artifact sha256)"]
