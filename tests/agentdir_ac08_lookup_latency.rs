@@ -10,7 +10,6 @@
 //! the printed p95 (PRD-mcphost-test-suite-consolidation: this file is
 //! `#[path]`-included into a `tests/suite_core_NN.rs` binary).
 
-use std::io::Read;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -89,20 +88,17 @@ async fn two_hundred_sequential_lookups_stay_under_50ms_p95() {
         .spawn()
         .expect("spawn mcphost serve");
     let stderr = child.stderr.take();
-    let _child = ChildGuard(child);
+    let mut guard = ChildGuard(child);
 
     let base_url = format!("http://127.0.0.1:{port}");
     let http = reqwest::Client::new();
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + crate::common::serve_ready_timeout();
     loop {
         if reqwest::get(format!("{base_url}/healthz")).await.is_ok() {
             break;
         }
         if Instant::now() > deadline {
-            let mut buf = String::new();
-            if let Some(mut s) = stderr {
-                let _ = s.read_to_string(&mut buf);
-            }
+            let buf = crate::common::kill_then_read_stderr(&mut guard.0, stderr);
             panic!("mcphost serve did not become healthy in time; stderr:\n{buf}");
         }
         tokio::time::sleep(Duration::from_millis(20)).await;

@@ -9,7 +9,6 @@
 //! suite_core_NN msg_ac12:: -- --ignored --nocapture` and read the
 //! printed p95.
 
-use std::io::Read;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -100,20 +99,17 @@ async fn two_hundred_sequential_sends_stay_under_100ms_p95_warm() {
         .spawn()
         .expect("spawn mcphost serve");
     let stderr = child.stderr.take();
-    let _child = ChildGuard(child);
+    let mut guard = ChildGuard(child);
 
     let base_url = format!("http://127.0.0.1:{port}");
     let http = reqwest::Client::new();
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + crate::common::serve_ready_timeout();
     loop {
         if reqwest::get(format!("{base_url}/healthz")).await.is_ok() {
             break;
         }
         if Instant::now() > deadline {
-            let mut buf = String::new();
-            if let Some(mut s) = stderr {
-                let _ = s.read_to_string(&mut buf);
-            }
+            let buf = crate::common::kill_then_read_stderr(&mut guard.0, stderr);
             panic!("mcphost serve did not become healthy in time; stderr:\n{buf}");
         }
         tokio::time::sleep(Duration::from_millis(20)).await;
