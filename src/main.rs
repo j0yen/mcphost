@@ -651,18 +651,30 @@ async fn main() -> anyhow::Result<()> {
                 if check {
                     let existing = std::fs::read(&path).unwrap_or_default();
                     if existing == bytes {
-                        println!("contract dump --check: {} is up to date", path.display());
+                        println!(
+                            "contract dump --check: {} is up to date (contract_version {} contract_sha {})",
+                            path.display(),
+                            mcphost::api_contract::contract_version_string(&kinds),
+                            mcphost::api_contract::contract_sha(&kinds)
+                        );
                         Ok(())
                     } else {
                         eprintln!(
-                            "contract dump --check: {} is stale (run `mcphost contract dump`)",
-                            path.display()
+                            "contract dump --check: {} is stale (run `mcphost contract dump`): \
+                             on disk sha {}, built sha {}",
+                            path.display(),
+                            mcphost::api_contract::sha_hex(&existing),
+                            mcphost::api_contract::contract_sha(&kinds)
                         );
                         std::process::exit(1);
                     }
                 } else {
                     std::fs::write(&path, &bytes)?;
-                    println!("contract dump: wrote {}", path.display());
+                    println!(
+                        "contract dump: wrote {} (contract_version {})",
+                        path.display(),
+                        mcphost::api_contract::contract_version_string(&kinds)
+                    );
                     Ok(())
                 }
             }
@@ -875,9 +887,11 @@ async fn main() -> anyhow::Result<()> {
                 mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings);
             let tenant_key_arg_memory =
                 mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings);
+            let contract = Arc::new(mcphost::api_contract::ContractSnapshot::builtin());
             let state = Arc::new(AppState {
                 db,
                 kinds,
+                contract,
                 secrets: SecretBox::from_passphrase(&secret_key),
                 admin_key,
                 public_url,

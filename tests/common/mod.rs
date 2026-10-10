@@ -285,6 +285,7 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
     let state = AppState {
         db,
         kinds: KindRegistry::with_builtin(),
+        contract: std::sync::Arc::new(mcphost::api_contract::ContractSnapshot::builtin()),
         secrets: SecretBox::from_passphrase("test-secret-key"),
         admin_key: Some("test-admin-key".to_string()),
         public_url: "http://127.0.0.1:0".to_string(),
@@ -860,6 +861,7 @@ impl TestServer {
         let state = Arc::new(AppState {
             db,
             kinds,
+            contract: Arc::new(mcphost::api_contract::ContractSnapshot::builtin()),
             secrets: SecretBox::from_passphrase("test-secret-key"),
             admin_key,
             public_url: base_url.clone(),
@@ -1592,6 +1594,7 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
     AppState {
         db,
         kinds: mcphost::kinds::KindRegistry::with_builtin(),
+        contract: Arc::new(mcphost::api_contract::ContractSnapshot::builtin()),
         secrets: SecretBox::from_passphrase("test-secret-key"),
         admin_key: Some(ADMIN_KEY.to_string()),
         public_url: "http://127.0.0.1:0".to_string(),

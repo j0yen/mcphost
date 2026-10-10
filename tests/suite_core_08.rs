@@ -20,6 +20,22 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "suite_ac1_ten_binaries_and_names_preserved.rs"]
+mod suite_ac1_ten_binaries_and_names_preserved;
+#[path = "suite_ac2_check_catches_unregistered_file.rs"]
+mod suite_ac2_check_catches_unregistered_file;
+#[path = "suite_ac3_mod_common_declared_once.rs"]
+mod suite_ac3_mod_common_declared_once;
+#[path = "suite_ac4_archived_prd_pointers_resolve.rs"]
+mod suite_ac4_archived_prd_pointers_resolve;
+#[path = "suite_ac5_disk_size_budget.rs"]
+mod suite_ac5_disk_size_budget;
+#[path = "suite_ac6_wall_time_budget.rs"]
+mod suite_ac6_wall_time_budget;
+#[path = "suite_ac7_junit_per_test_timing.rs"]
+mod suite_ac7_junit_per_test_timing;
+#[path = "suite_ac9_selftest_named_and_green.rs"]
+mod suite_ac9_selftest_named_and_green;
 #[path = "support_ac01_bearer_invalid_help_url.rs"]
 mod support_ac01_bearer_invalid_help_url;
 #[path = "support_ac02_internal_error_generic_and_logged.rs"]

@@ -13,7 +13,7 @@ use axum::body::{Body, Bytes};
 use axum::extract::{ConnectInfo, Path, Query, State};
 use axum::http::{
     HeaderMap, HeaderValue, Method, Request, StatusCode,
-    header::{CACHE_CONTROL, LOCATION, STRICT_TRANSPORT_SECURITY},
+    header::{CACHE_CONTROL, CONTENT_TYPE, LOCATION, STRICT_TRANSPORT_SECURITY},
 };
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -144,6 +144,8 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
     let (calls_external, calls_synthetic) =
         state.db.count_calls_by_origin().await.unwrap_or((0, 0));
     let mut body = json!({
+        "contract_version": state.contract.version,
+        "contract_sha": state.contract.sha,
         "db_ok": db_ok,
         "disk_ok": disk_ok,
         "tools_total": tools_total,
@@ -837,6 +839,36 @@ async fn support_page() -> Response {
 /// can never disagree.
 async fn plans_json_route(State(state): State<Arc<AppState>>) -> Response {
     (StatusCode::OK, Json(crate::billing::plans(&state))).into_response()
+}
+
+/// PRD-mcphost-contract-version-reported R5: `GET /contract.json`,
+/// anonymous. The body is pre-serialized at boot; `ETag` is the quoted
+/// contract sha and a matching `If-None-Match` gets an empty 304.
+async fn contract_json_route(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Response {
+    let etag = format!("\"{}\"", state.contract.sha);
+    let matches = headers
+        .get(axum::http::header::IF_NONE_MATCH)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| {
+            v.split(',')
+                .map(|t| t.trim().trim_start_matches("W/"))
+                .any(|t| t == etag || t == "*")
+        });
+    let mut response = if matches {
+        StatusCode::NOT_MODIFIED.into_response()
+    } else {
+        let mut r = Response::new(Body::from(state.contract.served.clone()));
+        r.headers_mut()
+            .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        r
+    };
+    if let Ok(value) = HeaderValue::from_str(&etag) {
+        response.headers_mut().insert(axum::http::header::ETAG, value);
+    }
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static("max-age=300"));
+    response
 }
 
 /// PRD-mcphost-status-feed requirement 3/AC1/AC10: `GET /status.json`,
@@ -1608,6 +1640,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         // side-effects contract `/healthz`'s anonymous body already has.
         .route("/reach", get(crate::reach::reach))
         .route("/status.json", get(status_json_route))
+        .route("/contract.json", get(contract_json_route))
         // mcphost-polish-p0-20260930 (audit finding 1), generalized by
         // PRD-mcphost-first-hour-support-surface: see `static_page`'s own
         // doc comment -- same compile-time-embedded `www/*.html` pattern,

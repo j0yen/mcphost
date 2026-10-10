@@ -359,6 +359,7 @@ mod tests {
         let state = crate::state::AppState {
             db,
             kinds: crate::kinds::KindRegistry::with_builtin(),
+            contract: std::sync::Arc::new(crate::api_contract::ContractSnapshot::builtin()),
             secrets,
             admin_key: None,
             public_url: "http://127.0.0.1:0".to_string(),

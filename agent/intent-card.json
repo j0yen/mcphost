@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tool-test-truth.md",
-  "intent_slug": "mcphost-tool-test-truth",
-  "root_motivation": "An agent's chain passed host.tool_test's dry run and then failed its first real call on a mapping the dry run had already flagged as unresolved, nested as data (host_tool_test reported {rows: {unresolved_path: \"$.prev.rows\"}}, then host_tool_call failed `mapping path '$.prev.rows' resolved to nothing`); a second agent's python tool failed its dry run on \"composition is unavailable\" and then succeeded on the real call. Both trace to one root cause: host.tool_test can only say \"I couldn't resolve this\", never \"this will definitely fail\" or \"I cannot check this here, call it instead\" -- an agent cannot tell a benign gap in the dry run's own knowledge apart from a spec that is actually broken, so it learns to distrust try_before_call. This PRD gives host.tool_test (and host.tool_publish's dry_run gate) a verdict (pass, will_fail, unverifiable) with the evidence needed to fix the spec before it ever calls.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-contract-version-reported.md",
+  "intent_slug": "mcphost-contract-version-reported",
+  "root_motivation": "**Who:** the coding agent that generated or installed a client from `contracts/host-tools.v1.json` and needs to know, before the first typed call, whether the host moved; the synthorg conformance leg attributing a key-truth miss to host or harness. **What:** one short string, readable without a key, that changes if and only if the served tool surface changes. **Why not today:** `CONTRACT_VERSION: u32 = 1` (`src/api_contract.rs:19`) is the only version signal; `control.rs:1254` echoes it in `host.whoami`; `tests/mcphost_host_tool_deprecation_ac07_whoami_contract_version.rs` pins it to `1`. The admin `/healthz` body carries the crate `version` (`http.rs:75-83`) but the anonymous body is `{\"ok\": true}`. `serverInfo` (`handler.rs:7797`) carries rmcp's default `Implementation`. `/status.json` (`statusfeed.rs:363`) has no version field. The contract file is 503 KB and is not served over HTTP, so a client that wants to compare must clone the repo. **Consequence:** the 10-08 conformance run...",
   "user_persona": "An agent building a chain who reads host.tool_test before calling and needs to know whether a $.prev/$.steps[i] mapping is provably wrong, provably fine, or unknowable from a dry run; an agent publishing a composing python tool, who needs to know its dry run's silence about composition is the dry run's own limitation, not a broken tool; Operator Joe, who wants will_fail verdicts per day as specs fixed before a failed real call.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,44 +14,50 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a chain whose step 2 maps rows: \"$.prev.rows\" and whose step 1 tool declares outputs result, count, When host.tool_test runs, Then verdict: will_fail with one failure {step: 2, path: \"$.prev.rows\", predecessor_keys: [\"result\", \"count\"]} and no step executed.",
-      "test": "tests/testtruth_ac01_chain_prev_will_fail.rs -- publishes an http step1 declaring outputs [\"result\",\"count\"] and an echo step2 mapping rows: \"$.prev.rows\", calls host.tool_test, and asserts verdict/failures/steps:[] exactly. kinds::chain::verdict (a new static, call-args-independent engine shared with host.tool_publish's gate) checks the FIRST segment after $.prev/$.steps[i] against the predecessor's Kind::declared_outputs names; handler::tool_test computes it before kind.call ever runs and returns immediately on will_fail, so a chain with an allowlisted host step earlier in the pipeline still executes nothing."
+      "description": "Given `KindRegistry::with_builtin()`, When `contract_sha` is computed at `AppState::new`, again after 100 `tools/list` calls, and in a second process via `mcphost contract dump --check`, Then all three shas are equal; a difference fails the test naming the first differing byte offset.",
+      "test": "tests/ctrv_ac01_sha_stable_across_boot_requests_and_process.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the same chain with step 2 mapped to $.prev.result, When host.tool_test runs, Then verdict: pass and resolved_args carries no unresolved_path.",
-      "test": "tests/testtruth_ac02_chain_prev_result_pass.rs -- same fixture, step2 remapped to \"$.prev.result\" (\"result\" is one of step1's declared names), asserts verdict: pass and that resolved_args.rows carries no unresolved_path key. dry_run_report's per-field loop now consults the same static check's per-path pass set (steps_verdict) to suppress the unresolved_path wrapper for a mapping it has confirmed resolves against the predecessor's schema, even though the dry run still has no real value to show without dispatching."
+      "description": "Given a keyed tenant, an admin bearer and an anonymous implicit-signup connection, When each calls `host.whoami`, Then `contract_version` matches `^1\\.[0-9a-f]{12}$`, `contract_sha` is 64 hex chars, and all three values are identical.",
+      "test": "tests/ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a chain whose step 1 is an http tool with no declared outputs, When step 2 maps $.prev.anything, Then verdict: unverifiable with reason naming step 1 and next pointing at host_tool_call.",
-      "test": "tests/testtruth_ac03_chain_prev_no_output_schema_unverifiable.rs -- step1 http tool declares no outputs field at all; asserts verdict: unverifiable, reason: \"no output schema for step 1\", next.tool: \"host_tool_call\". No production code change beyond AC1/AC2's engine -- this is its third branch (Kind::declared_outputs returns empty or the tool/kind can't be resolved at all)."
+      "description": "Given `GET /status.json` and `GET /healthz` with the admin bearer, When parsed, Then both carry `contract_version` and `contract_sha` equal to whoami's; Given anonymous `GET /healthz`, Then the body is exactly `{\"ok\":true}`.",
+      "test": "tests/ctrv_ac03_status_and_healthz_carry_contract_identity.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a python tool whose source calls mcphost.call(...), When host.tool_test runs, Then verdict: unverifiable, reason: \"composition is not executed in a dry run\", next.tool: \"host_tool_call\", and the error text is under detail; and host.tool_call of the same tool succeeds.",
-      "test": "tests/testtruth_ac04_python_compose_unverifiable_in_dry_run.rs -- publishes a callee and a composer (mcphost.call(\"callee\", ...)) python tool, asserts host.tool_test(composer) succeeds with verdict/reason/next/detail (detail contains \"McphostCallError\"), then asserts host.tool_call(composer) succeeds and composes normally. PythonKind::call (both the cold path and the warm-reuse path) now matches the sandboxed exception's own stable class name (McphostCallError, from compose_dispatch's `composition is unavailable in this call context`, which fires because host.tool_test's CallCtx always leaves compose_children unset) rather than its free-text message, and turns that one case into a successful verdict:unverifiable value instead of propagating the hard error."
+      "description": "Given an `initialize` response, When `serverInfo.version` is parsed by the `semver` crate, Then `build` metadata equals `contract.1.<sha12>` and `serverInfo.name` is `mcphost`.",
+      "test": "tests/ctrv_ac04_server_info_version_carries_contract_build_metadata.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given an echo tool, When host.tool_test runs, Then verdict: pass and the contract test asserts verdict is present on every kind's dry-run response.",
-      "test": "tests/testtruth_ac05_verdict_on_every_kind_dry_run.rs -- one test publishes and dry-runs a bare echo tool (verdict: pass); a second builds a registry with echo+http+chain+python, dry-runs one tool of each kind, and asserts every response carries a verdict key. handler::tool_test now defaults verdict to \"pass\" (via `.entry(...).or_insert_with`) for any kind that hasn't already set its own (chain's pass/will_fail/unverifiable, or a composing python tool's unverifiable) -- a dry run that got this far ran/resolved cleanly with no composition to doubt. host.tool_test's own wire description now names verdict too (kept under the 160-char cap tests/surface_ac02_dry_run_descriptions.rs enforces); contracts/host-tools.v1.json and docs/tools.md regenerated to match."
+      "description": "Given anonymous `GET /contract.json`, When fetched, Then it is 200 with `ETag` equal to the quoted sha, `Cache-Control: max-age=300`, a body whose `tools` length equals `tools/list`'s host surface, and `contract_sha`; Given `If-None-Match` with that ETag, Then 304 with an empty body.",
+      "test": "tests/ctrv_ac05_contract_json_is_served_with_etag_and_304.rs"
     },
     {
       "id": "AC6",
-      "level": "SHOULD",
-      "description": "Given host.tool_publish dry_run=true with the failing chain of AC1, When it runs, Then the gates array carries verdict: will_fail with the same failure and the tool is not published; without dry_run, Then the tool is published and the response carries the advisory verdict.",
-      "test": "tests/testtruth_ac06_publish_gate_verdict.rs -- one test calls host.tool_publish(dry_run:true) with AC1's exact failing chain spec, asserts the gates array's verdict entry (ok: true -- advisory, never blocking) carries will_fail/failures, and that host.tool_test on the name afterward fails (nothing was stored); a second test publishes the identical spec without dry_run, asserts the publish succeeds and the response itself carries verdict/failures. control::tool_publish computes kinds::chain::verdict (the same engine AC1-3 use) right after resolve_steps, pushes a dedicated gate entry after gates_ok is computed (so it can never block a real publish), and merges verdict/failures/reason/next into the real-publish response."
+      "level": "MUST",
+      "description": "Given `contracts/host-tools.v1.json` on disk at the PR head, When the drift test hashes it, Then it equals `contract_sha(&KindRegistry::with_builtin())`; Given one description edited without `mcphost contract dump`, Then the test fails and its message contains `mcphost contract dump`.",
+      "test": "tests/ctrv_ac06_committed_contract_file_matches_served_sha.rs"
     },
     {
       "id": "AC7",
       "level": "SHOULD",
-      "description": "Given host.quickstart kind=chain, When it renders, Then the example maps $.prev.result.<field> and the blurb names the verdict field.",
-      "test": "tests/testtruth_ac07_quickstart_chain_verdict_blurb.rs -- one test calls host.quickstart(kind=\"chain\") over the real RPC surface and asserts the rendered example's second step maps some arg from a path of the form $.prev.result.<field> (not the bare $.prev.result every earlier version used); a second, Rust-level test asserts ChainKind.example().blurb (KindExample.blurb is not currently wired into quickstart's own wire response for any kind, so this is checked directly against the same struct quickstart renders its spec/call_args from) contains \"verdict\". chain.rs's example() spec/blurb updated accordingly."
+      "description": "Given `host.changelog({since: \"<contract_version string>\"})`, When called, Then it returns the same `added`/`changed` lists as `since: \"<the release that produced it>\"`, and an unknown sha returns `args_invalid` with `data.argument = \"since\"`.",
+      "test": "tests/ctrv_ac07_changelog_since_accepts_contract_version.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given prod after deploy, When fetched anonymously, Then `/status.json`'s `contract_version` equals `/contract.json`'s `1.` + first 12 chars of its `contract_sha`, and the ETag equals sha256 of the response body (Live; evidence: `curl -s https://mcphost.dev/status.json | jq -r .contract_version; curl -s https://mcphost.dev/contract.json | sha256sum`)",
+      "test": "deferred -- operator-provisioned: live curl of prod /status.json and /contract.json after deploy."
     }
   ],
   "scope": [

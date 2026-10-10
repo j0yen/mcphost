@@ -400,6 +400,8 @@ pub async fn status_json(state: &AppState) -> Result<Value, AppError> {
         .collect();
     let mut body = json!({
         "state": overall,
+        "contract_version": state.contract.version,
+        "contract_sha": state.contract.sha,
         "generated_at": now_unix(),
         "components": components,
         "incidents_open": open_incidents.iter().map(incident_json).collect::<Vec<_>>(),

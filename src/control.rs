@@ -1269,7 +1269,10 @@ pub async fn whoami(
         // committed contract's own version, so an agent already calling
         // host.whoami for its identity learns which contracts/host-tools.v<N>.json
         // it's coding against with no extra round trip.
-        "contract_version": crate::api_contract::CONTRACT_VERSION,
+        // PRD-mcphost-contract-version-reported R2: `"<n>.<sha12>"` of the
+        // dump this host serves (computed once at boot), plus the full sha.
+        "contract_version": state.contract.version,
+        "contract_sha": state.contract.sha,
         "subject": subject,
         // PRD-mcphost-hosted-authorization-server requirement 5: "key"
         // (header or tenant_key argument), "oauth" (a tenant-registered
@@ -1320,9 +1323,11 @@ pub async fn whoami(
 /// naming the one thing an operator holding the admin key needs from it:
 /// the schema version `admin.tenants`/`admin.usage` are currently pinned
 /// to (`admin::SCHEMA_VERSION`, the same constant those two listings emit).
-pub fn whoami_admin() -> Value {
+pub fn whoami_admin(state: &AppState) -> Value {
     json!({
         "admin": true,
+        "contract_version": state.contract.version,
+        "contract_sha": state.contract.sha,
         "admin_schema_version": crate::admin::SCHEMA_VERSION,
     })
 }
@@ -1338,6 +1343,38 @@ pub fn whoami_admin() -> Value {
 /// synchronous -- no DB read needed beyond what's already in `state`.
 pub fn changelog(state: &AppState, args: &Value) -> Result<Value, AppError> {
     let since = args.get("since").and_then(Value::as_str).unwrap_or("0.0.0");
+    // PRD-mcphost-contract-version-reported R7: a `contract_version` string
+    // (`<n>.<sha12>`) or a full contract sha resolves to the release that
+    // produced it. The only contract this host can resolve without git is
+    // the one it serves now, produced by this crate's own version; any
+    // other sha is unknown.
+    let since = if crate::api_contract::looks_like_contract_ref(since) {
+        if state.contract.names(since) {
+            env!("CARGO_PKG_VERSION")
+        } else {
+            let args_err = crate::kinds::ArgsError {
+                phase: "args_coercion",
+                instance_path: "/since".to_string(),
+                argument: Some("since".to_string()),
+                field: Some("since".to_string()),
+                expected_type: None,
+                actual_type: None,
+                got: format!("{since:?}"),
+                docs: "host.changelog",
+                raw: format!(
+                    "'{since}' is not a contract this host knows; expected a release like \"0.57.0\" or this host's contract_version {}",
+                    state.contract.version
+                ),
+            };
+            return Err(AppError::Structured {
+                code: "args_invalid",
+                message: args_err.message(),
+                data: args_err.data(),
+            });
+        }
+    } else {
+        since
+    };
     Ok(crate::api_contract::changelog(
         &state.kinds,
         &state.deprecations,

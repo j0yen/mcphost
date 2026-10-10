@@ -186,6 +186,9 @@ impl SignupPause {
 pub struct AppState {
     pub db: Db,
     pub kinds: KindRegistry,
+    /// PRD-mcphost-contract-version-reported R1: sha/version/bytes of the
+    /// contract dump, computed once when the state is built.
+    pub contract: std::sync::Arc<crate::api_contract::ContractSnapshot>,
     pub secrets: SecretBox,
     pub admin_key: Option<String>,
     pub public_url: String,

@@ -197,6 +197,74 @@ pub fn dump_contract_bytes(kinds: &KindRegistry) -> Vec<u8> {
     s.into_bytes()
 }
 
+/// PRD-mcphost-contract-version-reported R1: lowercase hex sha256 of
+/// [`dump_contract_bytes`].
+pub fn contract_sha(kinds: &KindRegistry) -> String {
+    sha_hex(&dump_contract_bytes(kinds))
+}
+
+pub fn sha_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// `"<CONTRACT_VERSION>.<first 12 hex of sha>"` -- the one string every
+/// surface reports as `contract_version`.
+pub fn contract_version_string(kinds: &KindRegistry) -> String {
+    format!("{CONTRACT_VERSION}.{}", &contract_sha(kinds)[..12])
+}
+
+/// The contract identity computed once at boot (R1) and shared by every
+/// surface: whoami, `/status.json`, `/healthz`, `serverInfo`, and the
+/// pre-serialized body `GET /contract.json` serves.
+#[derive(Debug, Clone)]
+pub struct ContractSnapshot {
+    pub sha: String,
+    pub version: String,
+    pub bytes: Vec<u8>,
+    /// The `GET /contract.json` body: the dump plus a top-level
+    /// `contract_sha`, serialized once at boot.
+    pub served: Vec<u8>,
+}
+
+impl ContractSnapshot {
+    /// Whether `reference` (a `contract_version` string or the full sha)
+    /// names this snapshot.
+    pub fn names(&self, reference: &str) -> bool {
+        reference == self.version || reference == self.sha
+    }
+
+    /// Always built from [`KindRegistry::with_builtin`], like the committed
+    /// contract (see [`dump_contract`]) -- a deployment's extra kinds never
+    /// change the sha.
+    pub fn builtin() -> Self {
+        let kinds = KindRegistry::with_builtin();
+        let bytes = dump_contract_bytes(&kinds);
+        let sha = sha_hex(&bytes);
+        let version = format!("{CONTRACT_VERSION}.{}", &sha[..12]);
+        // Same registry, same `dump_contract` value the bytes were
+        // serialized from -- no re-parse of our own output.
+        let mut doc: Value = dump_contract(&kinds);
+        doc["contract_sha"] = Value::String(sha.clone());
+        let served = serde_json::to_vec(&doc).expect("contract doc serializes");
+        Self { sha, version, bytes, served }
+    }
+}
+
+/// True when `since` is shaped like a `contract_version` string
+/// (`<n>.<12 hex>`) or a full 64-hex contract sha rather than a release
+/// number like `0.57.0`.
+pub fn looks_like_contract_ref(since: &str) -> bool {
+    let hex = |s: &str, n: usize| s.len() == n && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
+    match since.split_once('.') {
+        Some((major, short)) => !major.is_empty() && major.bytes().all(|b| b.is_ascii_digit()) && hex(short, 12),
+        None => hex(since, 64),
+    }
+}
+
 /// One diff finding: a tool/field removed with no (valid, sunset-passed)
 /// deprecation entry to excuse it, or a field's schema narrowed in a way
 /// that isn't excused either. `path` is `"<tool>"` for a whole-tool

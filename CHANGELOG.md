@@ -8,6 +8,14 @@ expected integer, got number (4.78); no coercion is applied — send an integer
 or change the schema`. `data` gains `field`, `got` and `docs`
 (`host.tool_test`); clients matching jsonschema's `is not of type` text break
 by design.
+The host names the exact contract it serves (PRD-mcphost-contract-version-
+reported): `contract_version` is now the string `1.<sha12>` of the
+`host.*`/`billing.*` contract dump, with the full `contract_sha`, in
+`host.whoami` (tenant, admin, anonymous), `/status.json` and the admin
+`/healthz` body; `serverInfo` is `mcphost` at `<crate>+contract.1.<sha12>`;
+anonymous `GET /contract.json` serves the dump with an `ETag` and a 304;
+`host.changelog {since}` accepts a `contract_version`. A test pins
+`contracts/host-tools.v1.json` to the served sha.
 
 ## v0.94.0 — 2026-10-06
 

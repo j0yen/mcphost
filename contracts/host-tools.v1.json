@@ -566,7 +566,7 @@
         "additionalProperties": false,
         "properties": {
           "since": {
-            "description": "Only list changes after this version, e.g. \"0.57.0\". Omit to list every tracked change.",
+            "description": "Only list changes after this version, e.g. \"0.57.0\", or a contract_version string from host.whoami. Omit to list every tracked change.",
             "type": "string"
           },
           "tenant_key": {
@@ -5619,7 +5619,7 @@
         "additionalProperties": false,
         "properties": {
           "since": {
-            "description": "Only list changes after this version, e.g. \"0.57.0\". Omit to list every tracked change.",
+            "description": "Only list changes after this version, e.g. \"0.57.0\", or a contract_version string from host.whoami. Omit to list every tracked change.",
             "type": "string"
           },
           "tenant_key": {
