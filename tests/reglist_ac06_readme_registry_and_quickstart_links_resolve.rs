@@ -115,17 +115,26 @@ fn readme_names_registry_and_quickstart_links() {
         "the registry link's anchor text should be the published entry name"
     );
     // The link has to actually look up *this* server, not just land on the
-    // registry: its query must carry the published name's own server part.
+    // registry: either a `?search=` query carrying the published name's own
+    // server part, or (PRD-mcphost-docs-external-links-resolve: the search
+    // endpoint is cold-cache slow and tripped the link checker) the direct
+    // `/servers/<percent-encoded published name>/...` lookup.
+    let server_part = name.rsplit('/').next().unwrap_or(name);
+    let direct = format!("/servers/{}", name.replace('/', "%2F"));
     let searched = registry_link
         .split_once("search=")
-        .map(|(_, q)| q.split('&').next().unwrap_or(q).to_string())
-        .unwrap_or_else(|| panic!("registry link should query the registry: {registry_link}"));
-    let server_part = name.rsplit('/').next().unwrap_or(name);
-    assert!(
-        searched.contains(server_part),
-        "registry link should search for the published entry ({server_part}), \
-         not {searched:?}: {registry_link}"
-    );
+        .map(|(_, q)| q.split('&').next().unwrap_or(q).to_string());
+    match searched {
+        Some(q) => assert!(
+            q.contains(server_part),
+            "registry link should search for the published entry ({server_part}), \
+             not {q:?}: {registry_link}"
+        ),
+        None => assert!(
+            registry_link.contains(&direct),
+            "registry link should query the registry by search or look up {direct}: {registry_link}"
+        ),
+    }
     assert_eq!(
         quickstart_link, website,
         "second link should be the one-URL quickstart, i.e. the published entry's websiteUrl"
