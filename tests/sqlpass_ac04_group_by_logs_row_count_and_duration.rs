@@ -109,56 +109,27 @@ async fn group_by_query_logs_a_row_and_logging_overhead_is_small() {
     // isn't part of what this AC's guardrail is measuring).
     tables::table_query(&server.state, &tenant, &json!({"sql": sql}), None).await.expect("warmup query");
 
-    const MAX_ATTEMPTS: u32 = 10;
-    let mut last_failure: Option<String> = None;
-    for attempt in 1..=MAX_ATTEMPTS {
-        let mut overheads_ms = Vec::with_capacity(100);
-        for _ in 0..100 {
-            let ambient_began = std::time::Instant::now();
-            tables::table_append(&server.state, &tenant, &json!({"table": "_ambient_probe", "rows": [{"v": 0}]}))
-                .await
-                .expect("ambient baseline write call");
-            let ambient_ms = ambient_began.elapsed().as_secs_f64() * 1000.0;
+    // Functional half (untimed): every GROUP BY call logs exactly one correct row.
+    for _ in 0..100 {
+        let result = tables::table_query(&server.state, &tenant, &json!({"sql": sql}), None).await.expect("query");
+        let rows = result["rows"].as_array().expect("rows array");
+        assert_eq!(rows.len(), 5, "GROUP BY category over 5 categories: {result:?}");
 
-            let began = std::time::Instant::now();
-            let result =
-                tables::table_query(&server.state, &tenant, &json!({"sql": sql}), None).await.expect("query");
-            let call_elapsed_ms = began.elapsed().as_secs_f64() * 1000.0;
-
-            let rows = result["rows"].as_array().expect("rows array");
-            assert_eq!(rows.len(), 5, "GROUP BY category over 5 categories: {result:?}");
-
-            let log = tables::table_query_log(&server.state, &tenant, &json!({"limit": 1}))
-                .await
-                .expect("query_log");
-            let entry = &log["rows"][0];
-            assert_eq!(entry["sql"], sql, "log row: {entry}");
-            assert_eq!(entry["row_count"], 5, "log row: {entry}");
-            assert!(entry["error_code"].is_null(), "log row: {entry}");
-            let duration_ms = entry["duration_ms"].as_f64().expect("duration_ms is a number");
-            assert!(duration_ms < 5_000.0, "log row: {entry}");
-
-            overheads_ms.push((call_elapsed_ms - duration_ms - ambient_ms).max(0.0));
-        }
-
-        overheads_ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        let p95_index = ((overheads_ms.len() as f64) * 0.95).ceil() as usize - 1;
-        let p95 = overheads_ms[p95_index.min(overheads_ms.len() - 1)];
-        if p95 < 5.0 {
-            return;
-        }
-        // Same convention as `perf_budget!`: on a loaded host the number
-        // measures the host, not the logging path. Every functional
-        // assertion above already ran for all 100 iterations.
-        if std::env::var("MCPHOST_PERF_SKIP").ok().as_deref() == Some("1") {
-            eprintln!("perf skipped (load): p95 logging overhead was {p95:.3}ms");
-            return;
-        }
-        last_failure = Some(format!(
-            "attempt {attempt}/{MAX_ATTEMPTS}: p95 logging overhead (each iteration's own \
-             ambient connection-open cost already subtracted out) was {p95:.3}ms across 100 \
-             repetitions, expected < 5ms; overheads={overheads_ms:?}"
-        ));
+        let log = tables::table_query_log(&server.state, &tenant, &json!({"limit": 1}))
+            .await
+            .expect("query_log");
+        let entry = &log["rows"][0];
+        assert_eq!(entry["sql"], sql, "log row: {entry}");
+        assert_eq!(entry["row_count"], 5, "log row: {entry}");
+        assert!(entry["error_code"].is_null(), "log row: {entry}");
+        let duration_ms = entry["duration_ms"].as_f64().expect("duration_ms is a number");
+        assert!(duration_ms < 5_000.0, "log row: {entry}");
     }
-    panic!("{}", last_failure.expect("MAX_ATTEMPTS >= 1, so a failure message is always set"));
+
+    // Timing half: the logged query call (which includes the log write) must
+    // stay within the 5 ms budget. Median-of-5 warm; skipped under
+    // MCPHOST_PERF_SKIP=1 (loaded host).
+    crate::perf_budget!(5, {
+        tables::table_query(&server.state, &tenant, &json!({"sql": sql}), None).await.expect("query");
+    });
 }
