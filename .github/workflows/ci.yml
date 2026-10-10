@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 # PRD-mcphost-ci-sandbox-coverage AC6 (P1). `gate` and `sandbox` declare no
 # `needs:` on each other, so GitHub schedules them concurrently and the
 # workflow's wall time is max(gate, sandbox) rather than their sum. That is
