@@ -5753,6 +5753,56 @@ impl McpHostHandler {
         result
     }
 
+    /// PRD-mcphost-refused-calls-write-ledger-row requirement 3: record one
+    /// `calls` row for a call refused before dispatch, then hand `err` back
+    /// unchanged so the wire response is untouched. A failed row write is
+    /// logged, never surfaced (AC6) -- unlike the success path's AC14
+    /// contract, a refusal has nothing to under-meter.
+    #[allow(clippy::too_many_arguments)]
+    async fn refuse(
+        &self,
+        tenant: &Tenant,
+        caller: Option<&Tenant>,
+        tool: &str,
+        err: AppError,
+        started: Instant,
+        auth_method: &str,
+    ) -> AppError {
+        let duration_ms = started.elapsed().as_millis() as i64;
+        // A `quota_exceeded` refusal is recorded under the plan knob it
+        // tripped (`calls_per_day`) -- the wire code alone would make every
+        // quota family read the same; every other refusal keeps its wire code.
+        let code = match &err {
+            AppError::Structured { code: "quota_exceeded", data, .. } => data
+                .pointer("/limit/name")
+                .and_then(Value::as_str)
+                .unwrap_or("quota_exceeded")
+                .to_string(),
+            other => other.code().to_string(),
+        };
+        if let Err(e) = self
+            .state
+            .db
+            .record_refused_call(
+                tenant.id,
+                tool.to_string(),
+                code.clone(),
+                duration_ms,
+                tenant.origin.clone(),
+                tenant.origin_detail.clone(),
+                caller.map(|c| c.id),
+                auth_method.to_string(),
+            )
+            .await
+        {
+            tracing::warn!(
+                error = %e, tenant = %tenant.namespace, tool, error_code = %code,
+                "failed to record refused call"
+            );
+        }
+        err
+    }
+
     /// PRD-grand-loop-billing AC3: reject with `quota_exceeded` when
     /// `tenant` has already made `plan.calls_per_day` (or more) successful
     /// calls since the most recent UTC midnight. Shared by every path that
@@ -5887,6 +5937,7 @@ impl McpHostHandler {
         auth_method: &str,
         token_scope: Option<&str>,
     ) -> Result<Value, AppError> {
+        let started = Instant::now();
         let row: ToolRow = self
             .state
             .db
@@ -5903,11 +5954,12 @@ impl McpHostHandler {
         // unrestricted.
         if !crate::oauth::scope_satisfied(token_scope, &row.scopes) {
             let scope = crate::oauth::union_scope_challenge(&self.state, tenant.id, token_scope, &row.scopes).await;
-            return Err(AppError::Structured {
+            let err = AppError::Structured {
                 code: "insufficient_scope",
                 message: format!("'{local_name}' requires a scope this token does not carry"),
                 data: json!({"error_code": "insufficient_scope", "tool": local_name, "scope": scope}),
-            });
+            };
+            return Err(self.refuse(tenant, caller, local_name, err, started, auth_method).await);
         }
         // PRD-mcphost-tool-versions requirement 5 (AC5): a pinned call
         // dispatches against that version's own stored kind/spec instead of
@@ -5924,7 +5976,8 @@ impl McpHostHandler {
                         .tool_version_range(tenant.id, local_name.to_string())
                         .await?
                         .unwrap_or((row.current_version, row.current_version));
-                    return Err(AppError::VersionNotFound { requested: v, min, max });
+                    let err = AppError::VersionNotFound { requested: v, min, max };
+                    return Err(self.refuse(tenant, caller, local_name, err, started, auth_method).await);
                 }
             },
             None => (row.kind.clone(), row.spec.clone()),
@@ -5955,11 +6008,12 @@ impl McpHostHandler {
             // fields survive into the JSON-RPC response; the wire code stays
             // pinned to exactly `args_invalid` either way.
             let args_err = describe_args_error(&e);
-            return Err(AppError::Structured {
+            let err = AppError::Structured {
                 code: "args_invalid",
                 message: args_err.message(),
                 data: args_err.data(),
-            });
+            };
+            return Err(self.refuse(tenant, caller, local_name, err, started, auth_method).await);
         }
 
         // PRD-grand-loop-billing AC3: `calls_per_day` enforcement, checked
@@ -5970,7 +6024,14 @@ impl McpHostHandler {
         //
         // PRD-mcphost-sharing requirement 4 (AC5): a cross-tenant call
         // counts against the CALLER's quota, not the owner's.
-        self.check_calls_quota(caller.unwrap_or(tenant)).await?;
+        if let Err(err) = self.check_calls_quota(caller.unwrap_or(tenant)).await {
+            return Err(match err {
+                refusal @ AppError::Structured { .. } => {
+                    self.refuse(tenant, caller, local_name, refusal, started, auth_method).await
+                }
+                other => other,
+            });
+        }
 
         // PRD-mcphost-shared-tool-caller-usage requirement 3 (AC3): an
         // owner-set per-caller cap, checked only for a cross-tenant call
@@ -5994,13 +6055,8 @@ impl McpHostHandler {
                 .await?;
             if used >= limit {
                 let reset_at = crate::state::rfc3339_from_unix(midnight + 86_400);
-                return Err(crate::sharing::quota_caller(
-                    &caller.namespace,
-                    local_name,
-                    limit,
-                    used,
-                    reset_at,
-                ));
+                let err = crate::sharing::quota_caller(&caller.namespace, local_name, limit, used, reset_at);
+                return Err(self.refuse(tenant, Some(caller), local_name, err, started, auth_method).await);
             }
         }
 

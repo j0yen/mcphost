@@ -88,6 +88,7 @@ async fn usage_without_by_keeps_the_pre_prd_shape() {
         "jobs",
         "scheduled",
         "retention_days",
+        "refused",
         "run_results_bytes",
         "hints",
         "invites",
