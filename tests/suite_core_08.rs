@@ -9,6 +9,8 @@
 mod common;
 #[path = "support/assertion.rs"]
 mod assertion;
+#[path = "support/busyaudit.rs"]
+mod busyaudit;
 #[path = "support/oauth.rs"]
 mod oauth;
 #[path = "support/oauthclient.rs"]
@@ -18,6 +20,20 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "support_ac01_bearer_invalid_help_url.rs"]
+mod support_ac01_bearer_invalid_help_url;
+#[path = "support_ac02_internal_error_generic_and_logged.rs"]
+mod support_ac02_internal_error_generic_and_logged;
+#[path = "support_ac03_disk_floor_and_5xx_messages_generic.rs"]
+mod support_ac03_disk_floor_and_5xx_messages_generic;
+#[path = "support_ac04_plans_doc_and_json_consistent.rs"]
+mod support_ac04_plans_doc_and_json_consistent;
+#[path = "support_ac06_served_pages_from_docs_and_readme.rs"]
+mod support_ac06_served_pages_from_docs_and_readme;
+#[path = "support_ac07_whoami_links_resolve.rs"]
+mod support_ac07_whoami_links_resolve;
+#[path = "support_ac08_release_artifact_includes_www.rs"]
+mod support_ac08_release_artifact_includes_www;
 #[path = "surface_ac02_dry_run_descriptions.rs"]
 mod surface_ac02_dry_run_descriptions;
 #[path = "surface_ac03_args_invalid_unified.rs"]

@@ -2324,6 +2324,8 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
         // this from `error_class = "capacity"`; this handler just wasn't
         // forwarding it into the response envelope.
         "capacity_refusals": stats.capacity_refusals,
+        // PRD-mcphost-refused-calls-write-ledger-row requirement 6.
+        "refused": {"total": stats.refused_total, "by_code": stats.refused_by_code},
         "calls_by_others": calls_by_others,
         "calls_to_shared": calls_to_shared,
         "jobs": {

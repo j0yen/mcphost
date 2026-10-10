@@ -191,6 +191,7 @@ const MIGRATION_0079: &str = include_str!("../migrations/0079_host_tool_usage_vi
 /// `host_tool_usage.did_you_mean_outcome`.
 const MIGRATION_0081: &str =
     include_str!("../migrations/0081_host_tool_usage_did_you_mean_outcome.sql");
+const MIGRATION_0082: &str = include_str!("../migrations/0082_calls_refused.sql");
 
 /// PRD-mcphost-session-bound-tenant-key requirement 3: `kind` on
 /// `signup_events`. Renumbered to 0080 during this rebase: mcphost-tool-
@@ -876,6 +877,14 @@ pub struct UsageStats {
     /// sees this directly rather than having to infer it from raw
     /// `host.tool_logs` lines.
     pub capacity_refusals: i64,
+    /// PRD-mcphost-refused-calls-write-ledger-row requirement 6: calls
+    /// refused before dispatch in the window (`calls.error_class =
+    /// 'refused'`), and the per-`error_code` split. Excluded from `calls`,
+    /// `errors` and the percentiles above -- nothing ran.
+    #[serde(skip)]
+    pub refused_total: i64,
+    #[serde(skip)]
+    pub refused_by_code: std::collections::BTreeMap<String, i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2629,7 +2638,8 @@ impl Db {
         Self::migrate_0078_funnel_origin(&conn)?;
         Self::migrate_0079_host_tool_usage_via(&conn)?;
         Self::migrate_0080_implicit_second_signup_blocked(&conn)?;
-        Self::migrate_0081_host_tool_usage_did_you_mean_outcome(&conn)
+        Self::migrate_0081_host_tool_usage_did_you_mean_outcome(&conn)?;
+        Self::migrate_0082_calls_refused(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -3758,6 +3768,18 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0079)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-refused-calls-write-ledger-row requirement 1: same
+    /// idempotency pattern as 0002-0081, gated on `calls.error_code`.
+    fn migrate_0082_calls_refused(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('calls') WHERE name = 'error_code'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0082)?;
         }
         Ok(())
     }
@@ -7581,6 +7603,7 @@ impl Db {
                     "SELECT COALESCE(t2.namespace, '?'), DATE(calls.started_at) AS day, COUNT(*) \
                      FROM calls JOIN tenants t2 ON t2.id = calls.caller_tenant_id \
                      WHERE calls.tenant_id = ?1 AND calls.tool_name = ?2 AND calls.caller_tenant_id IS NOT NULL \
+                           AND COALESCE(calls.error_class, '') <> 'refused' \
                      GROUP BY t2.namespace, day ORDER BY day DESC",
                 )?;
                 let callers = caller_stmt
@@ -7612,7 +7635,8 @@ impl Db {
         let since = now_unix() - window_secs;
         self.with_conn(move |conn| {
             conn.query_row(
-                "SELECT COUNT(*) FROM calls WHERE caller_tenant_id = ?1 AND started_unix >= ?2",
+                "SELECT COUNT(*) FROM calls WHERE caller_tenant_id = ?1 AND started_unix >= ?2 \
+                 AND COALESCE(error_class, '') <> 'refused'",
                 params![tenant_id, since],
                 |r| r.get(0),
             )
@@ -7635,7 +7659,8 @@ impl Db {
                 "SELECT tenants.namespace, COUNT(*) FROM calls \
                  JOIN tenants ON tenants.id = calls.caller_tenant_id \
                  WHERE calls.tenant_id = ?1 AND calls.caller_tenant_id IS NOT NULL \
-                 AND calls.started_unix >= ?2 GROUP BY tenants.namespace",
+                 AND calls.started_unix >= ?2 AND COALESCE(calls.error_class, '') <> 'refused' \
+                 GROUP BY tenants.namespace",
             )?;
             let rows = stmt
                 .query_map(params![tenant_id, since], |r| {
@@ -9039,6 +9064,36 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-refused-calls-write-ledger-row requirement 2: one
+    /// `calls` row for a call refused before dispatch -- `ok = 0`,
+    /// `error_class`/`outcome` both `refused`, `error_code` the wire code.
+    /// No `runs` row (nothing ran). `ok = 0` keeps it out of every
+    /// `ok_only` quota/billing count.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn record_refused_call(
+        &self,
+        tenant_id: i64,
+        tool_name: String,
+        error_code: String,
+        duration_ms: i64,
+        origin: String,
+        origin_detail: Option<String>,
+        caller_tenant_id: Option<i64>,
+        auth_method: String,
+    ) -> Result<(), AppError> {
+        let started_at = now_rfc3339();
+        let started_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, outcome, origin, origin_detail, caller_tenant_id, auth_method, error_code) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, 0, 'refused', 'refused', ?6, ?7, ?8, ?9, ?10)",
+                params![tenant_id, tool_name, started_at, started_unix, duration_ms, origin, origin_detail, caller_tenant_id, auth_method, error_code],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
     // ---- oauth demand signal (PRD-mcphost-oauth-demand-signal) -----------
 
     /// requirement 2 (AC2): every call in the window, by `auth_method` --
@@ -10084,7 +10139,7 @@ impl Db {
         self.with_conn(move |conn| {
             conn.query_row(
                 "SELECT cpu_ms, peak_rss_kb FROM calls WHERE tenant_id = ?1 AND tool_name = ?2 \
-                 ORDER BY id DESC LIMIT 1",
+                 AND COALESCE(error_class, '') <> 'refused' ORDER BY id DESC LIMIT 1",
                 params![tenant_id, tool_name],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
@@ -10107,7 +10162,7 @@ impl Db {
         self.with_conn(move |conn| {
             conn.query_row(
                 "SELECT outcome FROM calls WHERE tenant_id = ?1 AND tool_name = ?2 \
-                 ORDER BY id DESC LIMIT 1",
+                 AND COALESCE(error_class, '') <> 'refused' ORDER BY id DESC LIMIT 1",
                 params![tenant_id, tool_name],
                 |r| r.get(0),
             )
@@ -10155,7 +10210,7 @@ impl Db {
         let since = now_unix() - window_secs;
         self.with_conn(move |conn| {
             let mut stmt = conn.prepare(
-                "SELECT duration_ms, ok, error_class FROM calls \
+                "SELECT duration_ms, ok, error_class, error_code FROM calls \
                  WHERE tenant_id = ?1 AND started_unix >= ?2",
             )?;
             let rows = stmt
@@ -10164,9 +10219,23 @@ impl Db {
                         r.get::<_, i64>(0)?,
                         r.get::<_, i64>(1)? != 0,
                         r.get::<_, Option<String>>(2)?,
+                        r.get::<_, Option<String>>(3)?,
                     ))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
+            // Refused rows (nothing ran) are reported separately, never as
+            // calls/errors/latency.
+            let (refused, rows): (Vec<_>, Vec<_>) = rows
+                .into_iter()
+                .partition(|(_, _, class, _)| class.as_deref() == Some("refused"));
+            let mut refused_by_code = std::collections::BTreeMap::new();
+            for (_, _, _, code) in &refused {
+                *refused_by_code
+                    .entry(code.clone().unwrap_or_else(|| "unknown".to_string()))
+                    .or_insert(0) += 1;
+            }
+            let rows: Vec<(i64, bool, Option<String>)> =
+                rows.into_iter().map(|(d, ok, class, _)| (d, ok, class)).collect();
             let mut durations: Vec<i64> = rows.iter().map(|(d, _, _)| *d).collect();
             durations.sort_unstable();
             let errors = rows.iter().filter(|(_, ok, _)| !ok).count() as i64;
@@ -10185,6 +10254,8 @@ impl Db {
                 p50_ms: percentile(&durations, 0.50),
                 p95_ms: percentile(&durations, 0.95),
                 capacity_refusals,
+                refused_total: refused.len() as i64,
+                refused_by_code,
             })
         })
         .await
@@ -10223,7 +10294,7 @@ impl Db {
             let mut stmt = conn.prepare(
                 "SELECT t.namespace, c.tool_name, c.duration_ms, c.ok, c.error_class \
                  FROM calls c JOIN tenants t ON t.id = c.tenant_id \
-                 WHERE c.started_unix >= ?1 \
+                 WHERE c.started_unix >= ?1 AND COALESCE(c.error_class, '') <> 'refused' \
                  ORDER BY t.namespace, c.tool_name",
             )?;
             let rows = stmt
@@ -10270,6 +10341,7 @@ impl Db {
                         p50_ms: percentile(&durations, 0.50),
                         p95_ms: percentile(&durations, 0.95),
                         capacity_refusals,
+                        ..Default::default()
                     },
                 });
             }
@@ -10372,6 +10444,7 @@ impl Db {
                             c.duration_ms, c.ok \
                      FROM calls c LEFT JOIN tenants t ON t.id = c.caller_tenant_id \
                      WHERE c.tenant_id = ?1 AND c.started_unix >= ?2 \
+                           AND COALESCE(c.error_class, '') <> 'refused' \
                            AND (?3 IS NULL OR c.tool_name = ?3)",
                 )?;
                 let rows = stmt
@@ -10599,7 +10672,7 @@ impl Db {
                  FROM calls c \
                  JOIN tenants o ON o.id = c.tenant_id \
                  LEFT JOIN tenants ct ON ct.id = c.caller_tenant_id \
-                 WHERE c.started_unix >= ?1",
+                 WHERE c.started_unix >= ?1 AND COALESCE(c.error_class, '') <> 'refused'",
             )?;
             let rows = stmt
                 .query_map(params![since], |r| {

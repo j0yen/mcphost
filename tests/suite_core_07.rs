@@ -1506,6 +1506,18 @@ mod qdiag_ac07_description_annotation_offers_candidate;
 mod qdiag_ac08_footprint_columns_est_tokens;
 #[path = "qdiag_ac11_ten_concurrent_refused_queries_all_hinted.rs"]
 mod qdiag_ac11_ten_concurrent_refused_queries_all_hinted;
+#[path = "refrow_ac01_args_invalid_writes_refused_row.rs"]
+mod refrow_ac01_args_invalid_writes_refused_row;
+#[path = "refrow_ac02_calls_per_day_refusal_writes_row_not_quota.rs"]
+mod refrow_ac02_calls_per_day_refusal_writes_row_not_quota;
+#[path = "refrow_ac03_anonymous_unrecognized_key_writes_no_row.rs"]
+mod refrow_ac03_anonymous_unrecognized_key_writes_no_row;
+#[path = "refrow_ac04_insufficient_scope_row_has_token_auth_method.rs"]
+mod refrow_ac04_insufficient_scope_row_has_token_auth_method;
+#[path = "refrow_ac05_host_usage_reports_refused.rs"]
+mod refrow_ac05_host_usage_reports_refused;
+#[path = "refrow_ac06_unwritable_db_refusal_still_returned.rs"]
+mod refrow_ac06_unwritable_db_refusal_still_returned;
 #[path = "reglist_ac01_manifest_fields_match_cargo_and_endpoint.rs"]
 mod reglist_ac01_manifest_fields_match_cargo_and_endpoint;
 #[path = "reglist_ac02_check_detects_drift.rs"]
@@ -1804,17 +1816,3 @@ mod suite_ac6_wall_time_budget;
 mod suite_ac7_junit_per_test_timing;
 #[path = "suite_ac9_selftest_named_and_green.rs"]
 mod suite_ac9_selftest_named_and_green;
-#[path = "support_ac01_bearer_invalid_help_url.rs"]
-mod support_ac01_bearer_invalid_help_url;
-#[path = "support_ac02_internal_error_generic_and_logged.rs"]
-mod support_ac02_internal_error_generic_and_logged;
-#[path = "support_ac03_disk_floor_and_5xx_messages_generic.rs"]
-mod support_ac03_disk_floor_and_5xx_messages_generic;
-#[path = "support_ac04_plans_doc_and_json_consistent.rs"]
-mod support_ac04_plans_doc_and_json_consistent;
-#[path = "support_ac06_served_pages_from_docs_and_readme.rs"]
-mod support_ac06_served_pages_from_docs_and_readme;
-#[path = "support_ac07_whoami_links_resolve.rs"]
-mod support_ac07_whoami_links_resolve;
-#[path = "support_ac08_release_artifact_includes_www.rs"]
-mod support_ac08_release_artifact_includes_www;

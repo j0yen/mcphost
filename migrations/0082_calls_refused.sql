@@ -1,0 +1,11 @@
+-- compat: previous -- one additive nullable column on a pre-existing table
+-- (`calls.error_code`); an old release never selects it and the existing
+-- `INSERT`s name their columns, so no statement's result set changes
+-- (PRD-mcphost-migration-safety requirement 4).
+-- mcphost 0082_calls_refused:
+-- PRD-mcphost-refused-calls-write-ledger-row requirement 1.
+--
+-- `error_code`: the wire `AppError::code()` of a call refused before
+-- dispatch (`args_invalid`, `calls_per_day`, `insufficient_scope`, ...).
+-- NULL on every pre-existing row and on every success row.
+ALTER TABLE calls ADD COLUMN error_code TEXT;
