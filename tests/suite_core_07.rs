@@ -18,9 +18,6 @@ mod docs_qa;
 mod fake_as;
 #[path = "support/federation.rs"]
 mod federation;
-#[path = "support/host.rs"]
-#[allow(dead_code)]
-mod host;
 #[path = "support/lanecov.rs"]
 mod lanecov;
 #[path = "support/oauth.rs"]
