@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-contract-version-reported.md (test_prefix: ctrv)",
+  "ac_test_map_prd": "PRD-mcphost-http-upstream-error-families.md (test_prefix: upfam)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,14 +28,14 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/ctrv_ac01_sha_stable_across_boot_requests_and_process.rs",
-    "AC2": "tests/ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs",
-    "AC3": "tests/ctrv_ac03_status_and_healthz_carry_contract_identity.rs",
-    "AC4": "tests/ctrv_ac04_server_info_version_carries_contract_build_metadata.rs",
-    "AC5": "tests/ctrv_ac05_contract_json_is_served_with_etag_and_304.rs",
-    "AC6": "tests/ctrv_ac06_committed_contract_file_matches_served_sha.rs",
-    "AC7": "tests/ctrv_ac07_changelog_since_accepts_contract_version.rs",
-    "AC8": "deferred -- operator-provisioned: live curl of prod /status.json and /contract.json after deploy."
+    "AC1": "tests/upfam_ac01_auth_family_401_403.rs",
+    "AC2": "tests/upfam_ac02_rate_limited_retry_after.rs",
+    "AC3": "tests/upfam_ac03_client_and_server_error_families.rs",
+    "AC4": "tests/upfam_ac04_remedy_table_total_and_single_source.rs",
+    "AC5": "tests/upfam_ac05_hints_name_real_tools.rs",
+    "AC6": "tests/upfam_ac06_host_not_allowed_names_tool_call.rs",
+    "AC7": "tests/upfam_ac07_tool_test_matches_real_call.rs",
+    "AC8": "deferred -- operator-provisioned: live prod gh_me call after deploy."
   },
   "ac_test_map_by_prefix": {
     "planlim": {
@@ -1180,6 +1180,16 @@
       "AC5": "tests/xlinks_ac05_check_names_the_edited_file.rs",
       "AC6": "tests/xlinks_ac06_default_set_resolves_and_dead_urls_replaced.rs",
       "AC7": "tests/xlinks_ac07_ci_docs_job_fails_on_a_404_and_stays_fast.rs"
+    },
+    "upfam": {
+      "AC1": "tests/upfam_ac01_auth_family_401_403.rs",
+      "AC2": "tests/upfam_ac02_rate_limited_retry_after.rs",
+      "AC3": "tests/upfam_ac03_client_and_server_error_families.rs",
+      "AC4": "tests/upfam_ac04_remedy_table_total_and_single_source.rs",
+      "AC5": "tests/upfam_ac05_hints_name_real_tools.rs",
+      "AC6": "tests/upfam_ac06_host_not_allowed_names_tool_call.rs",
+      "AC7": "tests/upfam_ac07_tool_test_matches_real_call.rs",
+      "AC8": "deferred -- operator-provisioned: live prod gh_me call after deploy."
     }
   }
 }

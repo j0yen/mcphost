@@ -2346,6 +2346,8 @@ fn is_5xx_class_error(error_class: &str) -> bool {
     matches!(
         error_class,
         "upstream_status"
+            | "upstream_rate_limited"
+            | "upstream_error"
             | "upstream_timeout"
             | "upstream_unreachable"
             | "response_too_large"
