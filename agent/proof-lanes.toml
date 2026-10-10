@@ -45,7 +45,7 @@ required_commands = [
 [[lane]]
 id = "ci"
 description = "GitHub Actions workflow changes"
-globs = [".github/workflows/**"]
+globs = [".github/workflows/**", "wm-build-ci.toml"]
 required_commands = [
   "scripts/audit.sh",
 ]
