@@ -24,6 +24,8 @@ mod lanecov;
 mod oauth;
 #[path = "support/oauthclient.rs"]
 mod oauthclient;
+#[path = "support/xlinks_cli.rs"]
+mod xlinks_cli;
 
 #[path = "ac01_extended_gates_prd_path_resolves_and_matches_card.rs"]
 mod ac01_extended_gates_prd_path_resolves_and_matches_card;
@@ -483,6 +485,8 @@ mod docurl_ac04_quickstart_description_no_signup_first;
 mod docurl_ac06_starter_set_covers_pre_bind_tools;
 #[path = "docurl_ac07_u_new_and_help_name_onboarding_url.rs"]
 mod docurl_ac07_u_new_and_help_name_onboarding_url;
+#[path = "domhint_ac06_llms_txt_line.rs"]
+mod domhint_ac06_llms_txt_line;
 #[path = "drift_ac01_table_note_change_queues_and_completes.rs"]
 mod drift_ac01_table_note_change_queues_and_completes;
 #[path = "drift_ac02_cosmetic_note_change_zero_regressions.rs"]

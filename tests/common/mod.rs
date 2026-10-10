@@ -99,6 +99,15 @@ pub fn python_kind_registry(data_dir: &Path) -> KindRegistry {
     kinds
 }
 
+/// [`python_kind_registry`] with the python kind told the host's own domain
+/// (PRD-mcphost-unknown-import-domain-hint R1) -- what `main.rs` does with
+/// `own_domain_from_url(public_url)`.
+pub fn python_kind_registry_with_domain(data_dir: &Path, own_domain: &str) -> KindRegistry {
+    let mut kinds = KindRegistry::with_builtin();
+    kinds.register(Arc::new(PythonKind::new(data_dir).with_own_domain(own_domain)));
+    kinds
+}
+
 /// `echo` (base) + a test-relaxed `http` + a `python` kind rooted at
 /// `data_dir` -- every kind `main.rs` registers in production, for tests
 /// (PRD-mcphost-publish-first-try) that need to see the full

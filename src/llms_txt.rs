@@ -13,6 +13,66 @@ use crate::kinds::KindRegistry;
 pub const TOOLS_SECTION_START: &str = "<!-- tools:start -->";
 pub const TOOLS_SECTION_END: &str = "<!-- tools:end -->";
 
+pub const DOMAIN_HINT_START: &str = "<!-- domain-hint:start -->";
+pub const DOMAIN_HINT_END: &str = "<!-- domain-hint:end -->";
+
+/// PRD-mcphost-unknown-import-domain-hint R5: the one generated line telling
+/// a reader the domain is the server's address, not a module. The domain is
+/// the configured public URL's host (the value the http and python kinds
+/// hold) and the list comes from `BRIDGE_MODULES`.
+pub fn render_domain_hint_section(public_url: &str) -> String {
+    let own_domain = crate::kinds::http::own_domain_from_url(public_url);
+    format!(
+        "{DOMAIN_HINT_START}\n{own_domain} is the server's address; the Python module is 'import mcphost' ({}).\n{DOMAIN_HINT_END}",
+        crate::kinds::python::bridge_module_list()
+    )
+}
+
+/// Replace the domain-hint block in `content`, or -- on a first run --
+/// insert it just before the first `import mcphost` example (before that
+/// example's opening code fence when it has one). Appends at the end if no
+/// example exists, so the line is never silently dropped.
+pub fn splice_domain_hint(content: &str, section: &str) -> String {
+    let section = section.trim_end();
+    if let (Some(start), Some(end_marker_pos)) =
+        (content.find(DOMAIN_HINT_START), content.find(DOMAIN_HINT_END))
+    {
+        let end = end_marker_pos + DOMAIN_HINT_END.len();
+        return format!("{}{}{}", &content[..start], section, &content[end..]);
+    }
+    let Some(example) = content.find("import mcphost") else {
+        return format!("{}\n\n{}\n", content.trim_end(), section);
+    };
+    let mut at = content[..example].rfind('\n').map_or(0, |i| i + 1);
+    // Step back over an opening code fence directly above the example line.
+    if at > 0 {
+        let prev_start = content[..at - 1].rfind('\n').map_or(0, |i| i + 1);
+        if content[prev_start..at].trim_start().starts_with("```") {
+            at = prev_start;
+        }
+    }
+    // The example is usually introduced by a numbered step ("4. Publish a
+    // tool. ... exactly:"); land the line above that step, not between the
+    // sentence and its code block.
+    let mut line_start = at;
+    for _ in 0..8 {
+        if line_start == 0 {
+            break;
+        }
+        line_start = content[..line_start - 1].rfind('\n').map_or(0, |i| i + 1);
+        let line = &content[line_start..];
+        let digits = line.chars().take_while(char::is_ascii_digit).count();
+        if digits > 0 && line[digits..].starts_with(". ") {
+            at = line_start;
+            break;
+        }
+        if line.trim().is_empty() {
+            break;
+        }
+    }
+    format!("{}{}\n{}", &content[..at], section, &content[at..])
+}
+
 /// Every tenant-visible tool name across both auth states, sorted and
 /// deduplicated: `signup` (visible only pre-auth) union `handler.rs`'s
 /// authenticated `host_tools` superset (which already includes every
