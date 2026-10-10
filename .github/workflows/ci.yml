@@ -10,7 +10,10 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # 10-10: only PR runs cancel superseded ones; main-push runs must finish so
+  # wm-build 0.75.1 can read base-sha receipts from them (a cancelled main run
+  # = base-ci-cancelled = local rerun of every CI-backed producer).
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # PRD-mcphost-ci-sandbox-coverage AC6 (P1). `gate` and `sandbox` declare no
 # `needs:` on each other, so GitHub schedules them concurrently and the

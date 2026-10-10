@@ -1,0 +1,28 @@
+# One-off measurement (10-10, wm-build CI-as-gate review): how long one cold
+# `cargo build --release` takes on a free ubuntu-latest runner. Decides whether
+# wm-build's `determinism` producer (two cold release builds + sha256 compare)
+# can move to CI: move only if one cold build is <= 12 min. Manual trigger only;
+# no cache saved (the repo's Actions cache is at its 10 GB limit).
+name: measure cold release build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cold-release-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: cold release build (timed)
+        run: |
+          rustup show active-toolchain
+          nproc
+          cargo clean
+          start=$(date +%s)
+          cargo build --release --locked
+          end=$(date +%s)
+          echo "cold release build: $((end-start)) s" | tee -a "$GITHUB_STEP_SUMMARY"
