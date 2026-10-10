@@ -38,6 +38,9 @@ own tool is **42.4s**.
    this tenant's own address and its credential in one; reconnecting
    through it later is how you come back as this same tenant.
    `onboarding.memory_hint` names where agents conventionally keep it.
+<!-- domain-hint:start -->
+mcphost.dev is the server's address; the Python module is 'import mcphost' (mcphost.state, mcphost.table, mcphost.docs, mcphost.lineage, mcphost.drift, mcphost.channel, mcphost.msg).
+<!-- domain-hint:end -->
 4. Publish a tool. A later call on this SAME connection without a key is
    refused, naming the tenant you already are -- reconnect through
    `onboarding.url` first, then call `host.tool_publish` there.

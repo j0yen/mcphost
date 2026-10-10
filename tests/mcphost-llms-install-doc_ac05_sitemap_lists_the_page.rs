@@ -73,7 +73,7 @@ fn real_vendor_www_accepts_the_new_page() {
     let script = "import sys\nfrom pathlib import Path\nfrom unittest import mock\n\
 from mcphost_deploy import www_vendor as w\n\
 with mock.patch.object(w,'_append_journal'), mock.patch.object(w,'_write_state'):\n\
-    r = w.vendor_www(from_path=Path(sys.argv[1]), sha='HEAD', dest_dir=Path(sys.argv[2]))\n\
+\x20   r = w.vendor_www(from_path=Path(sys.argv[1]), sha='HEAD', dest_dir=Path(sys.argv[2]))\n\
 print(','.join(r.written))\n";
     let out = std::process::Command::new(&python)
         .args(["-I", "-c", script, repo, dest.to_str().unwrap()])

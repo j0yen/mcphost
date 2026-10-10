@@ -972,6 +972,12 @@ pub struct HttpKind {
 }
 
 impl HttpKind {
+    /// The own domain this kind refuses as an SSRF target; the python kind
+    /// holds the same string (PRD-mcphost-unknown-import-domain-hint R1).
+    pub fn own_domain(&self) -> &str {
+        &self.own_domain
+    }
+
     /// Production constructor: DNS resolution is real (`hickory-resolver`),
     /// only `https://` to a public host is ever attempted, and the rate
     /// limit is the PRD's 600/min.

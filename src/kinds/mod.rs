@@ -2274,6 +2274,19 @@ pub struct KindRegistry {
     kinds: BTreeMap<&'static str, Arc<dyn Kind>>,
 }
 
+/// PRD-mcphost-unknown-import-domain-hint R1: the `http` and `python` kinds
+/// as `main.rs` registers them, both handed the one `own_domain` derived
+/// from `public_url` -- so the SSRF rule and the python `unknown_import`
+/// hint can never read different domains.
+pub fn network_kinds(
+    public_url: &str,
+    data_dir: &std::path::Path,
+) -> Result<(http::HttpKind, python::PythonKind), KindError> {
+    let own_domain = http::own_domain_from_url(public_url);
+    let python_kind = python::PythonKind::new(data_dir).with_own_domain(own_domain.clone());
+    Ok((http::HttpKind::new(own_domain)?, python_kind))
+}
+
 impl KindRegistry {
     pub fn new() -> Self {
         Self::default()

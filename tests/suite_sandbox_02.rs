@@ -90,6 +90,18 @@ mod docsqa_ac08_zero_passages_is_structured_not_an_error;
 mod docstore_ac09_python_mcphost_docs_get_without_tool_call;
 #[path = "docurl_ac05_quickstart_doc_truth.rs"]
 mod docurl_ac05_quickstart_doc_truth;
+#[path = "domhint_ac01_domain_import_clause.rs"]
+mod domhint_ac01_domain_import_clause;
+#[path = "domhint_ac02_spellings.rs"]
+mod domhint_ac02_spellings;
+#[path = "domhint_ac03_domain_not_literal.rs"]
+mod domhint_ac03_domain_not_literal;
+#[path = "domhint_ac04_runtime_matches_publish.rs"]
+mod domhint_ac04_runtime_matches_publish;
+#[path = "domhint_ac05_hint_sources.rs"]
+mod domhint_ac05_hint_sources;
+#[path = "domhint_ac07_quickstart_not_a_module.rs"]
+mod domhint_ac07_quickstart_not_a_module;
 #[path = "drift_ac12_python_mcphost_drift_reviews_matches_tool.rs"]
 mod drift_ac12_python_mcphost_drift_reviews_matches_tool;
 #[path = "dryrun_ac01_table_append_rolled_back.rs"]

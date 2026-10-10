@@ -5,7 +5,6 @@ use clap::{Parser, Subcommand};
 use mcphost::db::Db;
 use mcphost::kinds::KindRegistry;
 use mcphost::kinds::chain::ChainKind;
-use mcphost::kinds::http::HttpKind;
 use mcphost::kinds::python::PythonKind;
 use mcphost::secrets::SecretBox;
 use mcphost::state::AppState;
@@ -579,6 +578,10 @@ async fn main() -> anyhow::Result<()> {
             let mut files = Vec::new();
             let existing = read(&path);
             let with_tools = mcphost::llms_txt::splice_into(&existing, &section);
+            let domain_hint = mcphost::llms_txt::render_domain_hint_section(
+                &mcphost::registry_manifest::public_url_from_env(),
+            );
+            let with_tools = mcphost::llms_txt::splice_domain_hint(&with_tools, &domain_hint);
             let with_clients = mcphost::clients::render_into(&with_tools, &clients_file).unwrap_or_else(|why| {
                 eprintln!("llms-txt: {}: {why}", path.display());
                 std::process::exit(2);
@@ -847,9 +850,8 @@ async fn main() -> anyhow::Result<()> {
             // published `http` tool may never target this host's own
             // public endpoint.
             let mut kinds = KindRegistry::with_builtin();
-            let own_domain = mcphost::kinds::http::own_domain_from_url(&public_url);
-            kinds.register(std::sync::Arc::new(HttpKind::new(own_domain)?));
-            let python_kind = PythonKind::new(&data_dir());
+            let (http_kind, python_kind) = mcphost::kinds::network_kinds(&public_url, &data_dir())?;
+            kinds.register(std::sync::Arc::new(http_kind));
             let sandbox_mechanism = Some(python_kind.mechanism());
             tracing::info!(
                 mechanism = sandbox_mechanism,

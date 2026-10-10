@@ -46,6 +46,16 @@ fn resolve_kind(kinds: &KindRegistry, requested: &str) -> Result<ResolvedKind, A
     })
 }
 
+/// `sandbox_api` for quickstart (anonymous index and tenant response alike):
+/// the bridge modules plus `not_a_module`, from the configured public URL's
+/// host -- the one source the http and python kinds also read.
+fn sandbox_api_for(state: &AppState) -> Value {
+    crate::kinds::python::build_sandbox_api_for_host(
+        crate::kinds::python::BRIDGE_MODULES,
+        &crate::kinds::http::own_domain_from_url(&state.public_url),
+    )
+}
+
 /// PRD-mcphost-publish-schema-from-registry requirement 4: the `limits`
 /// object `host.quickstart` returns, factored out so the tenant-less index
 /// (no `kind`, no tenant) reports the same constants; `plan_name` is the
@@ -927,6 +937,7 @@ pub fn quickstart(
             map.insert("aliases".to_string(), json!(crate::kinds::aliases::alias_names()));
             map.insert("recipes".to_string(), json!(crate::kinds::aliases::recipe_names()));
             map.insert("limits".to_string(), quickstart_limits(state, "free"));
+            map.insert("sandbox_api".to_string(), sandbox_api_for(state));
         }
         return Ok(response);
     };
@@ -1060,7 +1071,7 @@ pub fn quickstart(
         // the same list the runner script's own `sys.modules["mcphost.*"]`
         // registration reads from (see `kinds::python::runner_script_registered_modules`'s
         // own doc comment for how a test proves the two never drift).
-        "sandbox_api": crate::kinds::python::build_sandbox_api(crate::kinds::python::BRIDGE_MODULES),
+        "sandbox_api": sandbox_api_for(state),
         // PRD-mcphost-sandbox-return-shape-contract requirement 6 (AC6): what
         // every bridge function returns, rendered from the same table the
         // runner's `help()` docstrings and `BridgeShapeError` come from.

@@ -637,7 +637,7 @@ fn validate_env_all(env: &BTreeMap<String, String>) -> Vec<KindError> {
 
 /// Requirement 3 / AC2: same fields [`validate_spec_fields`] checks, but
 /// collecting every violation instead of returning at the first with `?`.
-fn validate_spec_fields_all(parsed: &PythonSpec) -> Vec<KindError> {
+fn validate_spec_fields_all(parsed: &PythonSpec, own_domain: &str) -> Vec<KindError> {
     let mut errors = Vec::new();
     if parsed.source.is_empty() {
         errors.push(KindError::InvalidSpec("source: must not be empty".into()));
@@ -646,14 +646,14 @@ fn validate_spec_fields_all(parsed: &PythonSpec) -> Vec<KindError> {
             "source: {} bytes, over the {MAX_SOURCE_BYTES}-byte limit",
             parsed.source.len()
         )));
-    } else if let Some(bad_name) = scan_unknown_imports(&parsed.source) {
+    } else if let Some(bad_name) = scan_unknown_imports(&parsed.source, own_domain) {
         // PRD-mcphost-sandbox-bridge-discoverability requirement 3 (AC3):
         // `import host`, `import mcphost_sdk`, or an unregistered
         // `mcphost.<name>` fails both host.spec_test and host.tool_publish
         // (both funnel through `validate_all`, which calls this fn) with
         // `unknown_import` naming the real module -- before anything else
         // about the spec is even checked, and before any sandbox spins up.
-        errors.push(unknown_import_error(&bad_name));
+        errors.push(unknown_import_error(&bad_name, own_domain));
     }
     errors.extend(validate_requirements_all(&parsed.requirements));
     errors.extend(validate_env_all(&parsed.env));
@@ -694,8 +694,8 @@ fn validate_spec_fields_all(parsed: &PythonSpec) -> Vec<KindError> {
     errors
 }
 
-fn validate_spec_fields(parsed: &PythonSpec) -> Result<(), KindError> {
-    validate_spec_fields_all(parsed)
+fn validate_spec_fields(parsed: &PythonSpec, own_domain: &str) -> Result<(), KindError> {
+    validate_spec_fields_all(parsed, own_domain)
         .into_iter()
         .next()
         .map_or(Ok(()), Err)
@@ -2298,6 +2298,18 @@ pub fn build_sandbox_api(modules: &[BridgeModule]) -> Value {
     })
 }
 
+/// PRD-mcphost-unknown-import-domain-hint R6: [`build_sandbox_api`] plus
+/// `not_a_module`, the [`domain_spellings`] of the host's own domain, so a
+/// client reading quickstart learns the same fact the `unknown_import`
+/// hint states.
+pub fn build_sandbox_api_for_host(modules: &[BridgeModule], own_domain: &str) -> Value {
+    let mut api = build_sandbox_api(modules);
+    if let Value::Object(map) = &mut api {
+        map.insert("not_a_module".to_string(), json!(domain_spellings(own_domain)));
+    }
+    api
+}
+
 /// The runner script up to (not including) `def run_one(`: everything that
 /// builds and registers the `mcphost.*` modules, with nothing that reads
 /// stdin. PRD-mcphost-kind-ask-routing AC5 execs this under `python3` and
@@ -2329,19 +2341,67 @@ pub fn runner_script_registered_modules() -> Vec<String> {
 /// always lists every [`BRIDGE_MODULES`] name, so it trivially contains
 /// whichever subset a given caller is told to check for.
 pub fn unknown_import_hint() -> String {
+    format!("the sandbox API is 'import mcphost' ({})", bridge_module_list())
+}
+
+/// The `mcphost.<name>` list the `unknown_import` hint and the generated
+/// `www/llms.txt` domain line both render, from [`BRIDGE_MODULES`].
+pub fn bridge_module_list() -> String {
     let names: Vec<String> = BRIDGE_MODULES.iter().map(|m| format!("mcphost.{}", m.name)).collect();
-    format!("the sandbox API is 'import mcphost' ({})", names.join(", "))
+    names.join(", ")
+}
+
+/// PRD-mcphost-unknown-import-domain-hint R2: the spellings of the host's
+/// own domain an agent mistakes for a module name -- as written, with `.`
+/// -> `_`, and with `.` -> `-`. Empty for an empty domain.
+pub fn domain_spellings(own_domain: &str) -> Vec<String> {
+    if own_domain.is_empty() {
+        return Vec::new();
+    }
+    vec![
+        own_domain.to_string(),
+        own_domain.replace('.', "_"),
+        own_domain.replace('.', "-"),
+    ]
+}
+
+/// R2: whether `bad_name`, or its `mcphost.`-stripped tail, equals any
+/// [`domain_spellings`] of `own_domain` (case-insensitive).
+fn is_domain_spelling(bad_name: &str, own_domain: &str) -> bool {
+    let name = bad_name.to_ascii_lowercase();
+    let tail = name.strip_prefix("mcphost.").unwrap_or(&name);
+    domain_spellings(own_domain).iter().any(|s| {
+        let s = s.to_ascii_lowercase();
+        s == name || s == tail
+    })
+}
+
+/// R2/R6: the clause prepended to the hint when the unknown name is the
+/// host's own domain.
+pub fn domain_clause(own_domain: &str) -> String {
+    format!("'{own_domain}' is the server's address, not a module; ")
 }
 
 /// Requirement 3 (AC3) / requirement 4 (AC4): the one `unknown_import`
 /// [`KindError`] both the static scan and the run-time mapping build, so a
 /// caller sees the same `code`/message/hint shape from either path.
-fn unknown_import_error(bad_name: &str) -> KindError {
-    let hint = unknown_import_hint();
+/// PRD-mcphost-unknown-import-domain-hint R2/R3: when `bad_name` is a
+/// spelling of `own_domain`, the hint gains the domain clause and `data`
+/// gains `own_domain`.
+fn unknown_import_error(bad_name: &str, own_domain: &str) -> KindError {
+    let base = unknown_import_hint();
+    if is_domain_spelling(bad_name, own_domain) {
+        let hint = format!("{}{base}", domain_clause(own_domain));
+        return KindError::structured_with(
+            "unknown_import",
+            format!("unknown_import: no module '{bad_name}'; {hint}"),
+            json!({"hint": hint, "module": bad_name, "own_domain": own_domain}),
+        );
+    }
     KindError::structured_with(
         "unknown_import",
-        format!("unknown_import: no module '{bad_name}'; {hint}"),
-        json!({"hint": hint, "module": bad_name}),
+        format!("unknown_import: no module '{bad_name}'; {base}"),
+        json!({"hint": base, "module": bad_name}),
     )
 }
 
@@ -2391,10 +2451,13 @@ fn leading_ident(s: &str) -> &str {
 /// ([`runtime_unknown_import`]) instead. False positives inside a string
 /// literal or comment are accepted at P0, per the same requirement's text.
 /// Returns the first offending name found, scanning top to bottom.
-fn scan_unknown_imports(source: &str) -> Option<String> {
+fn scan_unknown_imports(source: &str, own_domain: &str) -> Option<String> {
     let known = known_mcphost_names();
     for raw_line in source.lines() {
         let line = raw_line.trim_start();
+        if let Some(spelling) = domain_spelling_in_import(line, own_domain) {
+            return Some(spelling);
+        }
         if let Some(rest) = line.strip_prefix("import ") {
             let name = leading_ident(rest.trim_start());
             if name == "host" || name == "mcphost_sdk" {
@@ -2434,6 +2497,43 @@ fn scan_unknown_imports(source: &str) -> Option<String> {
     None
 }
 
+/// PRD-mcphost-unknown-import-domain-hint R2: a [`domain_spellings`] entry
+/// written as a whole name right after an `import`/`from` keyword, anywhere
+/// on the line -- so the `mcphost-dev` spelling (not a valid identifier) is
+/// caught as `import mcphost-dev` inside a string literal, an accepted
+/// false-positive class (see [`scan_unknown_imports`]). A dynamic
+/// `importlib.import_module("mcphost.dev")` is NOT matched here (no keyword
+/// directly before the name): it escapes to the run-time mapping, which
+/// produces the identical error. A name that merely starts with a spelling
+/// (`mcphost.devtools`) is not a match.
+fn domain_spelling_in_import(line: &str, own_domain: &str) -> Option<String> {
+    let lower = line.to_ascii_lowercase();
+    let is_name_char = |c: char| c.is_alphanumeric() || matches!(c, '_' | '-' | '.');
+    for spelling in domain_spellings(own_domain) {
+        let needle = spelling.to_ascii_lowercase();
+        let mut from = 0usize;
+        while let Some(found) = lower[from..].find(&needle) {
+            let start = from + found;
+            let end = start + needle.len();
+            from = end;
+            let after = lower[end..].chars().next();
+            if after.is_some_and(|c| c.is_alphanumeric() || matches!(c, '_' | '-')) {
+                continue;
+            }
+            let head = lower[..start].trim_end();
+            let keyword_end = head.len() < lower[..start].len();
+            let preceded_by_keyword = ["import", "from"].iter().any(|kw| {
+                head.strip_suffix(kw)
+                    .is_some_and(|rest| !rest.chars().next_back().is_some_and(is_name_char))
+            });
+            if keyword_end && preceded_by_keyword {
+                return Some(line[start..end].to_string());
+            }
+        }
+    }
+    None
+}
+
 /// Requirement 4 (AC4): the two names a sandboxed run's own
 /// `ModuleNotFoundError` maps to `unknown_import` for -- `host` and
 /// `mcphost_sdk`, the same pair requirement 3's static scan names (an
@@ -2447,14 +2547,28 @@ const RUNTIME_UNKNOWN_IMPORT_NAMES: &[&str] = &["host", "mcphost_sdk"];
 /// `ModuleNotFoundError.__str__` is always exactly `"No module named
 /// '<name>'"`, so a substring match on that exact phrasing is precise, not
 /// a loose heuristic.
-fn runtime_unknown_import(exception_class: &str, message: &str) -> Option<&'static str> {
+fn runtime_unknown_import(exception_class: &str, message: &str, own_domain: &str) -> Option<String> {
     if exception_class != "ModuleNotFoundError" {
         return None;
     }
-    RUNTIME_UNKNOWN_IMPORT_NAMES
-        .iter()
-        .find(|name| message.contains(&format!("No module named '{name}'")))
-        .copied()
+    unknown_module_named(message, own_domain)
+}
+
+/// The module name in a `No module named '<name>'` line, when it is one of
+/// [`RUNTIME_UNKNOWN_IMPORT_NAMES`] or a spelling of `own_domain`.
+fn unknown_module_named(text: &str, own_domain: &str) -> Option<String> {
+    const MARKER: &str = "No module named '";
+    let mut from = 0usize;
+    while let Some(found) = text[from..].find(MARKER) {
+        let start = from + found + MARKER.len();
+        let end = text[start..].find('\'').map(|e| start + e)?;
+        let name = &text[start..end];
+        if RUNTIME_UNKNOWN_IMPORT_NAMES.contains(&name) || is_domain_spelling(name, own_domain) {
+            return Some(name.to_string());
+        }
+        from = end;
+    }
+    None
 }
 
 /// AC4's own wording ("a sandbox run whose stderr ends in
@@ -2463,11 +2577,11 @@ fn runtime_unknown_import(exception_class: &str, message: &str) -> Option<&'stat
 /// module-level (not function-body) `import host`/`mcphost_sdk` takes when
 /// the sandboxed process crashes before ever emitting a clean envelope
 /// line (see [`map_sandbox_outcome`]'s `NonZeroExit` arm).
-fn runtime_unknown_import_in_text(text: &str) -> Option<&'static str> {
-    RUNTIME_UNKNOWN_IMPORT_NAMES
-        .iter()
-        .find(|name| text.contains(&format!("ModuleNotFoundError: No module named '{name}'")))
-        .copied()
+fn runtime_unknown_import_in_text(text: &str, own_domain: &str) -> Option<String> {
+    if !text.contains("ModuleNotFoundError: ") {
+        return None;
+    }
+    unknown_module_named(text, own_domain)
 }
 
 // ---- runner protocol envelope (this kind's own convention) ---------------
@@ -3314,7 +3428,7 @@ fn extract_tool_source_line(traceback: &str) -> (Option<i64>, Option<String>) {
     found
 }
 
-fn map_envelope_error(envelope: &Value, stderr_tail: &str) -> KindError {
+fn map_envelope_error(envelope: &Value, stderr_tail: &str, own_domain: &str) -> KindError {
     let kind = envelope.get("kind").and_then(Value::as_str).unwrap_or("");
     match kind {
         "oom" => KindError::structured("tool_oom", "the call exceeded its memory limit"),
@@ -3353,8 +3467,8 @@ fn map_envelope_error(envelope: &Value, stderr_tail: &str) -> KindError {
             // rejected publish gets, with no `traceback`/`stderr_tail` in
             // `data` (unlike the generic branch below), so no raw
             // traceback reaches the caller.
-            if let Some(module) = runtime_unknown_import(error, message) {
-                return unknown_import_error(module);
+            if let Some(module) = runtime_unknown_import(error, message, own_domain) {
+                return unknown_import_error(&module, own_domain);
             }
             // Requirement 1/AC2: every exception that escapes the tool's
             // own code is `phase: tool_code`, carries the exception class
@@ -3393,7 +3507,7 @@ fn map_envelope_error(envelope: &Value, stderr_tail: &str) -> KindError {
 /// [`map_sandbox_outcome`]'s `Exited` arm and the warm-reuse path in
 /// [`PythonKind::call`], which never produces a [`SandboxOutcome`] at all
 /// (there's no process exit to classify -- the sandbox is still running).
-fn map_envelope_line(line: &[u8], allow_oversized: bool) -> Result<Value, KindError> {
+fn map_envelope_line(line: &[u8], allow_oversized: bool, own_domain: &str) -> Result<Value, KindError> {
     // Requirement 2 (AC3): checked before the JSON parse itself -- a huge
     // envelope (this includes the runner protocol's own bounded
     // `stdout_capture`/`stderr_capture` fields alongside the tool's actual
@@ -3426,7 +3540,7 @@ fn map_envelope_line(line: &[u8], allow_oversized: bool) -> Result<Value, KindEr
         Ok(envelope) if envelope.get("ok").and_then(Value::as_bool) == Some(true) => {
             Ok(envelope.get("result").cloned().unwrap_or(Value::Null))
         }
-        Ok(envelope) => Err(map_envelope_error(&envelope, "")),
+        Ok(envelope) => Err(map_envelope_error(&envelope, "", own_domain)),
         Err(_) => Err(KindError::structured(
             "tool_output_invalid",
             "tool stdout was not valid JSON",
@@ -4141,9 +4255,9 @@ fn tool_run_response(
     result_obj
 }
 
-fn map_sandbox_outcome(outcome: SandboxOutcome, allow_oversized: bool) -> Result<Value, KindError> {
+fn map_sandbox_outcome(outcome: SandboxOutcome, allow_oversized: bool, own_domain: &str) -> Result<Value, KindError> {
     match outcome {
-        SandboxOutcome::Exited { stdout, .. } => map_envelope_line(&stdout, allow_oversized),
+        SandboxOutcome::Exited { stdout, .. } => map_envelope_line(&stdout, allow_oversized, own_domain),
         SandboxOutcome::NonZeroExit {
             stdout_tail,
             stderr_tail,
@@ -4155,11 +4269,11 @@ fn map_sandbox_outcome(outcome: SandboxOutcome, allow_oversized: bool) -> Result
             // runner script before it ever emits a JSON envelope line, so
             // `stdout_tail` never parses; the raw CPython traceback on
             // `stderr_tail` is the only place this failure is visible.
-            if let Some(module) = runtime_unknown_import_in_text(&stderr_tail) {
-                return Err(unknown_import_error(module));
+            if let Some(module) = runtime_unknown_import_in_text(&stderr_tail, own_domain) {
+                return Err(unknown_import_error(&module, own_domain));
             }
             match serde_json::from_str::<Value>(&stdout_tail) {
-                Ok(envelope) => Err(map_envelope_error(&envelope, &stderr_tail)),
+                Ok(envelope) => Err(map_envelope_error(&envelope, &stderr_tail, own_domain)),
                 Err(_) => Err(KindError::structured_with(
                     "tool_exception",
                     "the tool process exited with an error and produced no readable envelope",
@@ -4458,9 +4572,25 @@ pub struct PythonKind {
     /// sandbox pool reports an N second wait" (AC2) sets this directly
     /// rather than this crate actually tracking queue depth.
     queue_wait_estimate_s: RwLock<Option<u32>>,
+    /// PRD-mcphost-unknown-import-domain-hint R1: the host's own domain
+    /// (`http::own_domain_from_url(public_url)`, the value `HttpKind` gets),
+    /// set via [`PythonKind::with_own_domain`]; empty means no domain clause.
+    own_domain: String,
 }
 
 impl PythonKind {
+    /// R1: the host's own domain, so an `unknown_import` for a spelling of
+    /// it says it is the server's address.
+    pub fn with_own_domain(mut self, own_domain: impl Into<String>) -> Self {
+        self.own_domain = own_domain.into();
+        self
+    }
+
+    /// R1: the domain this kind holds (compared against `HttpKind`'s).
+    pub fn own_domain(&self) -> &str {
+        &self.own_domain
+    }
+
     /// Production constructor: `data_dir` is `$MCPHOST_DATA_DIR`; envs live
     /// under `<data_dir>/envs`, per-call scratch dirs under
     /// `<data_dir>/scratch`. Mechanism auto-detected (bwrap preferred).
@@ -4578,6 +4708,7 @@ impl PythonKind {
             recent_durations: Arc::new(Mutex::new(VecDeque::new())),
             capacity_log_gate: Arc::new(Mutex::new(HashMap::new())),
             queue_wait_estimate_s: RwLock::new(None),
+            own_domain: String::new(),
         }
     }
 
@@ -4973,7 +5104,7 @@ impl PythonKind {
                 self.warm.record_hit();
                 ctx.resources.record(cpu_ms, peak_rss_kb);
                 self.cpu_budget.record(ctx.tenant_id, cpu_ms);
-                let result = map_envelope_line(&line, ctx.run_id.is_some());
+                let result = map_envelope_line(&line, ctx.run_id.is_some(), &self.own_domain);
                 entry.last_used = Instant::now();
                 self.warm.offer(key.clone(), entry).await;
                 Some(match result {
@@ -5231,7 +5362,7 @@ impl Kind for PythonKind {
 
     fn validate(&self, spec: &Value) -> Result<(), KindError> {
         let parsed = parse_spec(spec)?;
-        validate_spec_fields(&parsed)
+        validate_spec_fields(&parsed, &self.own_domain)
     }
 
     /// PRD-mcphost-spec-unknown-field-rejection requirement 1/4: the exact
@@ -5263,7 +5394,7 @@ impl Kind for PythonKind {
 
     fn validate_all(&self, spec: &Value) -> Vec<KindError> {
         match parse_spec(spec) {
-            Ok(parsed) => validate_spec_fields_all(&parsed),
+            Ok(parsed) => validate_spec_fields_all(&parsed, &self.own_domain),
             Err(e) => vec![e],
         }
     }
@@ -5412,7 +5543,7 @@ impl Kind for PythonKind {
 
     async fn call(&self, spec: &Value, args: Value, ctx: &CallCtx) -> Result<Value, KindError> {
         let parsed = parse_spec(spec)?;
-        validate_spec_fields(&parsed)?;
+        validate_spec_fields(&parsed, &self.own_domain)?;
 
         // PRD-mcphost-sandbox-egress-allowlist requirement 2/3 (AC3/AC6):
         // resolved once, up front -- `?` refuses before any admission-
@@ -5670,7 +5801,7 @@ impl Kind for PythonKind {
         // leaves the host" -- that includes a tool's own result (a tool may
         // legitimately be handed a secret and choose to echo it back, e.g.
         // while debugging), not just an error/traceback.
-        match map_sandbox_outcome(outcome, ctx.run_id.is_some()) {
+        match map_sandbox_outcome(outcome, ctx.run_id.is_some(), &self.own_domain) {
             Ok(value) => {
                 let redacted = redact_value(&value, &secret_values);
                 // PRD-mcphost-result-envelope-contract requirement 1/3,
@@ -5727,7 +5858,7 @@ impl Kind for PythonKind {
     /// intended throughput bound for this RPC).
     async fn tool_run(&self, spec: &Value, args: Value, ctx: &CallCtx) -> Result<Value, KindError> {
         let parsed = parse_spec(spec)?;
-        validate_spec_fields(&parsed)?;
+        validate_spec_fields(&parsed, &self.own_domain)?;
 
         // PRD-mcphost-sandbox-egress-allowlist requirement 2/3: same
         // up-front resolution as `call` above.
