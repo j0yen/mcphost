@@ -24,7 +24,6 @@
 use crate::common;
 use common::{McpClient, TestServer};
 use serde_json::json;
-use std::io::Read;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -193,19 +192,16 @@ async fn synthorg_binary_preflight_exits_zero_when_available() {
         .spawn()
         .expect("spawn mcphost serve");
     let stderr = child.stderr.take();
-    let _child = ChildGuard(child);
+    let mut guard = ChildGuard(child);
 
     let base_url = format!("http://127.0.0.1:{port}");
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + crate::common::serve_ready_timeout();
     loop {
         if reqwest::get(format!("{base_url}/healthz")).await.is_ok() {
             break;
         }
         if Instant::now() > deadline {
-            let mut buf = String::new();
-            if let Some(mut s) = stderr {
-                let _ = s.read_to_string(&mut buf);
-            }
+            let buf = crate::common::kill_then_read_stderr(&mut guard.0, stderr);
             panic!("mcphost serve did not become healthy in time; stderr:\n{buf}");
         }
         tokio::time::sleep(Duration::from_millis(20)).await;
@@ -235,4 +231,27 @@ async fn synthorg_binary_preflight_exits_zero_when_available() {
     );
 
     let _ = std::fs::remove_dir_all(&data_dir);
+}
+
+/// Regression (gate hang 2026-10-09, runs 618 + 619): the timeout path used to
+/// `read_to_string` a LIVE child's piped stderr and block forever. The shared
+/// helper must kill first, so it returns even for a child that never exits.
+#[test]
+fn kill_then_read_stderr_returns_for_a_live_child() {
+    let mut child = Command::new("sleep")
+        .arg("600")
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn sleep");
+    let stderr = child.stderr.take();
+    let mut guard = ChildGuard(child);
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let out = common::kill_then_read_stderr(&mut guard.0, stderr);
+        let _ = tx.send(out);
+    });
+    rx.recv_timeout(Duration::from_secs(15))
+        .expect("kill_then_read_stderr must return within 15 s for a live child");
 }

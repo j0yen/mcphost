@@ -16,7 +16,6 @@
 //! names that suite binary and the module-qualified filter narrows it to
 //! this file) and read the printed p95/RSS.
 
-use std::io::Read;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -98,20 +97,17 @@ async fn two_hundred_concurrent_echo_calls() {
         .expect("spawn mcphost serve");
     let pid = child.id();
     let stderr = child.stderr.take();
-    let _child = ChildGuard(child);
+    let mut guard = ChildGuard(child);
 
     let base_url = format!("http://127.0.0.1:{port}");
     let http = reqwest::Client::new();
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + crate::common::serve_ready_timeout();
     loop {
         if reqwest::get(format!("{base_url}/healthz")).await.is_ok() {
             break;
         }
         if Instant::now() > deadline {
-            let mut buf = String::new();
-            if let Some(mut s) = stderr {
-                let _ = s.read_to_string(&mut buf);
-            }
+            let buf = crate::common::kill_then_read_stderr(&mut guard.0, stderr);
             panic!("mcphost serve did not become healthy in time; stderr:\n{buf}");
         }
         tokio::time::sleep(Duration::from_millis(20)).await;

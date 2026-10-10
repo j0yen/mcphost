@@ -1863,3 +1863,32 @@ macro_rules! perf_budget {
         }
     }};
 }
+
+/// Readiness window for a spawned `mcphost serve` subprocess. 30 s normally,
+/// 90 s when `MCPHOST_PERF_SKIP=1` marks the host as loaded (the same signal
+/// `perf_budget!` honors), instead of a fixed 10 s that a loaded host misses.
+pub fn serve_ready_timeout() -> std::time::Duration {
+    if std::env::var("MCPHOST_PERF_SKIP").ok().as_deref() == Some("1") {
+        std::time::Duration::from_secs(90)
+    } else {
+        std::time::Duration::from_secs(30)
+    }
+}
+
+/// Failure-path diagnostics for a spawned child whose stderr is piped: kill
+/// and reap the child FIRST, then drain stderr (EOF is guaranteed once the
+/// child has exited). Reading a live child's stderr to EOF blocks forever
+/// (gate hang 2026-10-09, runs 618 + 619).
+pub fn kill_then_read_stderr(
+    child: &mut std::process::Child,
+    stderr: Option<std::process::ChildStderr>,
+) -> String {
+    use std::io::Read;
+    let _ = child.kill();
+    let _ = child.wait();
+    let mut buf = String::new();
+    if let Some(mut s) = stderr {
+        let _ = s.read_to_string(&mut buf);
+    }
+    buf
+}
