@@ -415,6 +415,8 @@ mod consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox;
 mod cprov_ac01_one_providers_toml_edit_reaches_every_surface;
 #[path = "cprov_ac02_provider_surfaces_cannot_drift.rs"]
 mod cprov_ac02_provider_surfaces_cannot_drift;
+#[path = "cprov_ac03_availability_comes_from_env_and_never_leaks.rs"]
+mod cprov_ac03_availability_comes_from_env_and_never_leaks;
 #[path = "cprov_ac04_validate_scopes_names_the_unknown.rs"]
 mod cprov_ac04_validate_scopes_names_the_unknown;
 #[path = "cprov_ac05_unknown_preset_lists_every_provider.rs"]

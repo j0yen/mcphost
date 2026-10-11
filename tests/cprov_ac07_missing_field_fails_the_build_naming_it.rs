@@ -1,4 +1,4 @@
-//! PRD-mcphost-connection-provider-registry AC7: a `providers.toml` row
+//! PRD-mcphost-connection-provider-registry AC7 (P0): a `providers.toml` row
 //! missing `token_url` makes `build.rs` fail naming the provider and the
 //! field. `build.rs` parses with `connect::codegen::parse_table` (it
 //! `#[path]`-includes this very file) and panics with the error string, so

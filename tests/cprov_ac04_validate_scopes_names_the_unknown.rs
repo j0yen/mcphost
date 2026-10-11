@@ -1,4 +1,4 @@
-//! PRD-mcphost-connection-provider-registry AC4: `Provider::GOOGLE`'s
+//! PRD-mcphost-connection-provider-registry AC4 (P0): `Provider::GOOGLE`'s
 //! `validate_scopes(["https://www.googleapis.com/auth/spreadsheets.readonly",
 //! "bogus"])` returns `Err(["bogus"])`; scope names are matched verbatim.
 
