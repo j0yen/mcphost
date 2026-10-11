@@ -47,6 +47,11 @@ pub const TTL_MAX_S: i64 = 7 * 24 * 3600;
 /// answer recorded by another process is still seen.
 const REREAD_EVERY: Duration = Duration::from_secs(1);
 
+/// Verbs that read an ask and so are meaningless without a tenant: a
+/// key-less call to one is `tenant_key_missing`, never an implicit signup
+/// (the 0080 block refuses a second signup; these must not make a first).
+pub const NEVER_SIGNS_UP: &[&str] = &["host.ask.wait", "host.ask.get", "host.ask.list"];
+
 /// The path a signed ask link points at.
 pub fn ask_path(id: &str) -> String {
     format!("/a/{id}")

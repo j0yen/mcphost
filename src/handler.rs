@@ -8795,6 +8795,7 @@ impl ServerHandler for McpHostHandler {
             (Auth::Anonymous, name)
                 if via_tenant_key_arg
                     && (name.starts_with("host.") || name.starts_with("billing."))
+                    && !crate::asks::NEVER_SIGNS_UP.contains(&alias_canonical.unwrap_or(name))
                     && tenant_path_namespace(parts).is_none() =>
             {
                 let dispatch_name = alias_canonical.unwrap_or(name);
