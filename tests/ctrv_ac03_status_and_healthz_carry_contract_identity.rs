@@ -54,7 +54,7 @@ async fn status_and_admin_healthz_carry_whoami_contract_identity_and_anon_health
     let anon: serde_json::Value = serde_json::from_str(&anon).expect("anon healthz json");
     let mut keys: Vec<&str> = anon.as_object().expect("object").keys().map(String::as_str).collect();
     keys.sort_unstable();
-    assert_eq!(keys, ["git_sha", "ok", "version"], "anonymous /healthz keys: {anon}");
+    assert_eq!(keys, common::anon_healthz_keys(), "anonymous /healthz keys: {anon}");
     assert_eq!(anon["ok"], true, "anonymous /healthz body: {anon}");
     assert!(anon.get("contract_version").is_none(), "contract_version leaked: {anon}");
     assert!(anon.get("contract_sha").is_none(), "contract_sha leaked: {anon}");

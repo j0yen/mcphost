@@ -2593,6 +2593,7 @@ mod tests {
             tenant_key_arg_memory: crate::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
             redeemed_peers: crate::peer_recent::PeerRecents::new(),
             reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            anon_healthz_extra_key: Default::default(),
         }
     }
 

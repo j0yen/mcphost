@@ -962,6 +962,7 @@ async fn main() -> anyhow::Result<()> {
                 reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(
                     mcphost::state::reuse_session_tenant_from_env(),
                 )),
+                anon_healthz_extra_key: Default::default(),
             });
             // PRD-mcphost-abuse-guard-ban-list requirement 6: load the ban
             // cache once before this process ever serves a request, so the

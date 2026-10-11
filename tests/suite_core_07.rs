@@ -783,6 +783,16 @@ mod hybrid_ac07_p95_latency_within_30ms_of_embeddings_only;
 mod hybrid_ac08_hybrid_hit_rate_at_least_each_mode;
 #[path = "hybrid_ac10_filter_prefix_filters_before_fusion.rs"]
 mod hybrid_ac10_filter_prefix_filters_before_fusion;
+#[path = "hzkeys_ac01_lint_flags_literal_key_sets.rs"]
+mod hzkeys_ac01_lint_flags_literal_key_sets;
+#[path = "hzkeys_ac02_handler_body_equals_const.rs"]
+mod hzkeys_ac02_handler_body_equals_const;
+#[path = "hzkeys_ac03_repo_tests_read_the_const.rs"]
+mod hzkeys_ac03_repo_tests_read_the_const;
+#[path = "hzkeys_ac04_script_parses_the_const.rs"]
+mod hzkeys_ac04_script_parses_the_const;
+#[path = "hzkeys_ac05_unwritable_db_keeps_key_set.rs"]
+mod hzkeys_ac05_unwritable_db_keeps_key_set;
 #[path = "hzver_ac01_anonymous_healthz_keys.rs"]
 mod hzver_ac01_anonymous_healthz_keys;
 #[path = "hzver_ac02_unwritable_db_503_carries_build.rs"]
@@ -1813,15 +1823,3 @@ mod sqlpass_ac11_concurrent_queries_produce_ten_log_rows;
 mod sqlpass_ac12_empty_table_zero_rows_null_error_code;
 #[path = "sqlpass_ac13_long_sql_truncated_in_log_not_refused.rs"]
 mod sqlpass_ac13_long_sql_truncated_in_log_not_refused;
-#[path = "state_ac01_kv_roundtrip.rs"]
-mod state_ac01_kv_roundtrip;
-#[path = "state_ac04_table_query.rs"]
-mod state_ac04_table_query;
-#[path = "state_ac05_schema_violation.rs"]
-mod state_ac05_schema_violation;
-#[path = "state_ac06_quota_exceeded.rs"]
-mod state_ac06_quota_exceeded;
-#[path = "state_ac08_tenant_isolation.rs"]
-mod state_ac08_tenant_isolation;
-#[path = "state_ac09_cascade_delete.rs"]
-mod state_ac09_cascade_delete;

@@ -23,7 +23,7 @@ async fn operator_healthz_carries_db_counters_anonymous_body_unchanged() {
     keys.sort_unstable();
     assert_eq!(
         keys,
-        ["git_sha", "ok", "version"],
+        common::anon_healthz_keys(),
         "anonymous healthz body carries no db counters: {anon:?}"
     );
 

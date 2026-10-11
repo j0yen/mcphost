@@ -17,7 +17,7 @@ async fn anonymous_healthz_has_exactly_ok_version_git_sha() {
 
     let mut keys: Vec<&str> = body.as_object().expect("object").keys().map(String::as_str).collect();
     keys.sort_unstable();
-    assert_eq!(keys, ["git_sha", "ok", "version"], "body: {body}");
+    assert_eq!(keys, common::anon_healthz_keys(), "body: {body}");
     assert_eq!(body["ok"], serde_json::json!(true));
     assert_eq!(body["version"], serde_json::json!(env!("CARGO_PKG_VERSION")));
     assert!(body["git_sha"].is_string() || body["git_sha"].is_null());
