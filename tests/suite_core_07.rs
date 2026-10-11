@@ -435,6 +435,8 @@ mod demo_ac03_secrets_and_sensitive_keys_redacted;
 mod demo_ac04_try_it_form_posts_number_and_surfaces_429;
 #[path = "demo_ac05_ten_rows_capped_noindex_no_store.rs"]
 mod demo_ac05_ten_rows_capped_noindex_no_store;
+#[path = "demo_ac06_share_returns_demo_url_unshare_404s.rs"]
+mod demo_ac06_share_returns_demo_url_unshare_404s;
 #[path = "docsearch_ac01_status_reports_watermark_lag_and_chunks.rs"]
 mod docsearch_ac01_status_reports_watermark_lag_and_chunks;
 #[path = "docsearch_ac02_lexical_search_returns_passage_and_offset.rs"]
