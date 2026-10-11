@@ -103,7 +103,9 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
         // host.audit.chain/verify tools join on top -- 183 + 5 = 188.
         // PRD-mcphost-tools-list-alias-truth: +168 flattened `a_b_c` forms
         // (one per dotted canonical), 188 + 168 = 356.
-        356,
+        // PRD-mcphost-uptime-probe-recipe-green: host.uptime.create, one
+        // new dotted tool plus its flattened form, 356 + 2 = 358.
+        358,
         "there must be exactly the sixteen host.* control-plane tools \
          (incl. host.quickstart, host.tool_run, host.bridge_test, host.spec_test -- \
          PRD-mcphost-tool-test, and host.redeem/host.key_rotate -- \

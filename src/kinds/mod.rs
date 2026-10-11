@@ -2307,7 +2307,15 @@ impl KindRegistry {
     }
 
     pub fn get(&self, name: &str) -> Option<Arc<dyn Kind>> {
-        self.kinds.get(name).cloned()
+        if let Some(kind) = self.kinds.get(name) {
+            return Some(kind.clone());
+        }
+        // PRD-mcphost-uptime-probe-recipe-green: the internal `uptime` kind
+        // is built on demand over this registry's own `http` kind, so every
+        // registry (production, test fixtures) resolves it without listing
+        // it in `names()`/`publish_kind_enum()`.
+        (name == crate::uptime::KIND_NAME)
+            .then(|| Arc::new(crate::uptime::UptimeKind::new(self.kinds.get("http").cloned())) as Arc<dyn Kind>)
     }
 
     /// Registered kind names, stable order, for error messages.

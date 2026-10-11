@@ -61,13 +61,25 @@ pub fn wants_egress(network: Option<&str>) -> bool {
 /// `KindError::structured_with("plan_required", ...)` (run path,
 /// `kinds::python`).
 pub fn plan_required_fields(field: &str, plan: &str) -> (String, Value) {
+    let mut data = json!({"plan": plan, "field": field});
+    // PRD-mcphost-uptime-probe-recipe-green requirement 4: the most common
+    // reason to ask for egress is watching URLs, which `host.uptime.create`
+    // does on the free plan -- name it where the refusal happens.
+    if field == "network" {
+        data["alternative"] = json!(UPTIME_ALTERNATIVE);
+        data["docs"] = json!("/llms.txt#uptime-probes-with-no-server");
+    }
     (
         format!(
             "{field}: requires the {plan} plan -- republish with {field}: \"none\", or upgrade"
         ),
-        json!({"plan": plan, "field": field}),
+        data,
     )
 }
+
+/// The free-plan path to watching URLs, named by every refused `network`
+/// request (`data.alternative`).
+pub const UPTIME_ALTERNATIVE: &str = "host.uptime.create";
 
 #[cfg(test)]
 mod tests {

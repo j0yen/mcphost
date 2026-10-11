@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-contract-version-reported.md",
-  "intent_slug": "mcphost-contract-version-reported",
-  "root_motivation": "**Who:** the coding agent that generated or installed a client from `contracts/host-tools.v1.json` and needs to know, before the first typed call, whether the host moved; the synthorg conformance leg attributing a key-truth miss to host or harness. **What:** one short string, readable without a key, that changes if and only if the served tool surface changes. **Why not today:** `CONTRACT_VERSION: u32 = 1` (`src/api_contract.rs:19`) is the only version signal; `control.rs:1254` echoes it in `host.whoami`; `tests/mcphost_host_tool_deprecation_ac07_whoami_contract_version.rs` pins it to `1`. The admin `/healthz` body carries the crate `version` (`http.rs:75-83`) but the anonymous body is `{\"ok\": true}`. `serverInfo` (`handler.rs:7797`) carries rmcp's default `Implementation`. `/status.json` (`statusfeed.rs:363`) has no version field. The contract file is 503 KB and is not served over HTTP, so a client that wants to compare must clone the repo. **Consequence:** the 10-08 conformance run...",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-uptime-probe-recipe-green.md",
+  "intent_slug": "mcphost-uptime-probe-recipe-green",
+  "root_motivation": "**Who:** an agent asked to \"watch these URLs\" by a user on the free plan; the truth-tier `workflow_orchestrator` persona. **What:** probes running on a schedule and a status table it can show now, without a server and without a plan upgrade. **Why not today:** `www/llms.txt:1285-1292` step 3 is `host.tool_publish(name=\"probe\", kind=\"python\", spec={..., \"network\": \"public\"})`; `src/control.rs:1604` answers `network: \"public\"/\"egress\" requires the pro plan` (4 truth-tier hits on 10-08). `tests/budget_ac11_five_recipe_proofs_stay_under_budget.rs` says in its own header that this recipe's proof \"needs a pro-plan tenant \u2026 that proof.sh's own public signup step can't arrange\". The free schedule floor is 300 s (`src/plans.rs:406`), so a session of 90 s can show a result only through `host.trigger.fire`, which the recipe mentions at `llms.txt:1299` as an aside. Tonight's session: turn 8 key-less publish \u2192 second tenant (806 bytes, `onboarding`), turn 10 republish, turn 11 gold call ok,...",
   "user_persona": "An agent building a chain who reads host.tool_test before calling and needs to know whether a $.prev/$.steps[i] mapping is provably wrong, provably fine, or unknowable from a dry run; an agent publishing a composing python tool, who needs to know its dry run's silence about composition is the dry run's own limitation, not a broken tool; Operator Joe, who wants will_fail verdicts per day as specs fixed before a failed real call.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,50 +14,50 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given `KindRegistry::with_builtin()`, When `contract_sha` is computed at `AppState::new`, again after 100 `tools/list` calls, and in a second process via `mcphost contract dump --check`, Then all three shas are equal; a difference fails the test naming the first differing byte offset.",
-      "test": "tests/ctrv_ac01_sha_stable_across_boot_requests_and_process.rs"
+      "description": "Given a free tenant and three fixture URLs (two answering 200, one refusing), When `host.uptime.create(name=\"status\", urls=[...])` is called once, Then the response carries `status_tool: \"status\"`, `schedule_id`, `every_s: 300`, `first_result.rows` of length 3 with `ok` true/true/false, no tenant tool has a `network` field, and `host.trigger.list` shows one schedule.",
+      "test": "tests/uprg_ac01_one_call_creates_probe_status_schedule.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a keyed tenant, an admin bearer and an anonymous implicit-signup connection, When each calls `host.whoami`, Then `contract_version` matches `^1\\.[0-9a-f]{12}$`, `contract_sha` is 64 hex chars, and all three values are identical.",
-      "test": "tests/ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs"
+      "description": "Given AC1, When `host.tool_call(name=\"status\")` runs, Then the result has `columns`, three `rows`, and a `text` \u2264 2 KB that contains each URL (so a fixture URL ending `probe-target-1` appears verbatim).",
+      "test": "tests/uprg_ac02_status_tool_returns_readable_table.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given `GET /status.json` and `GET /healthz` with the admin bearer, When parsed, Then both carry `contract_version` and `contract_sha` equal to whoami's; Given anonymous `GET /healthz`, Then the body is exactly `{\"ok\":true}`.",
-      "test": "tests/ctrv_ac03_status_and_healthz_carry_contract_identity.rs"
+      "description": "Given 21 URLs, an empty list, or a URL whose host fails `is_disallowed_literal_host`, When `host.uptime.create` is called, Then the error is `args_invalid` (naming `max 20` or `empty`) or `host_not_allowed` naming the URL, and nothing was created.",
+      "test": "tests/uprg_ac03_bad_urls_refused_nothing_created.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given an `initialize` response, When `serverInfo.version` is parsed by the `semver` crate, Then `build` metadata equals `contract.1.<sha12>` and `serverInfo.name` is `mcphost`.",
-      "test": "tests/ctrv_ac04_server_info_version_carries_contract_build_metadata.rs"
+      "description": "Given a free tenant and `every_s: 60`, When created, Then the schedule interval is 300 and the response carries `data.clamped_to: 300`; Given a pro tenant, Then 60 is kept.",
+      "test": "tests/uprg_ac04_free_interval_clamped_pro_keeps_60.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given anonymous `GET /contract.json`, When fetched, Then it is 200 with `ETag` equal to the quoted sha, `Cache-Control: max-age=300`, a body whose `tools` length equals `tools/list`'s host surface, and `contract_sha`; Given `If-None-Match` with that ETag, Then 304 with an empty body.",
-      "test": "tests/ctrv_ac05_contract_json_is_served_with_etag_and_304.rs"
+      "description": "Given `host.tool_publish(name=\"probe\", kind=\"python\", spec={network: \"public\"})` on free, When refused, Then the error keeps its text and carries `data.alternative == \"host.uptime.create\"`.",
+      "test": "tests/uprg_ac05_refused_network_public_names_alternative.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given `contracts/host-tools.v1.json` on disk at the PR head, When the drift test hashes it, Then it equals `contract_sha(&KindRegistry::with_builtin())`; Given one description edited without `mcphost contract dump`, Then the test fails and its message contains `mcphost contract dump`.",
-      "test": "tests/ctrv_ac06_committed_contract_file_matches_served_sha.rs"
+      "description": "Given `www/llms.txt` section `## Uptime probes with no server`, When `cargo test uprg_` runs, Then every plan number inside the generated spans equals `plans.rs` and a hand edit of one number fails the test naming the span; the section's first call is `host.uptime.create`.",
+      "test": "tests/uprg_ac06_llms_txt_plan_numbers_generated.rs"
     },
     {
       "id": "AC7",
       "level": "SHOULD",
-      "description": "Given `host.changelog({since: \"<contract_version string>\"})`, When called, Then it returns the same `added`/`changed` lists as `since: \"<the release that produced it>\"`, and an unknown sha returns `args_invalid` with `data.argument = \"since\"`.",
-      "test": "tests/ctrv_ac07_changelog_since_accepts_contract_version.rs"
+      "description": "Given a target that answers after 4 s, When the probe fires, Then that row is `status: \"timeout\"`, the other rows are correct, and the fire completes within 10 s.",
+      "test": "tests/uprg_ac07_slow_target_is_a_timeout_row.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod after deploy, When fetched anonymously, Then `/status.json`'s `contract_version` equals `/contract.json`'s `1.` + first 12 chars of its `contract_sha`, and the ETag equals sha256 of the response body (Live; evidence: `curl -s https://mcphost.dev/status.json | jq -r .contract_version; curl -s https://mcphost.dev/contract.json | sha256sum`)",
-      "test": "deferred -- operator-provisioned: live curl of prod /status.json and /contract.json after deploy."
+      "description": "Given the first nightly truth-tier on orch after prod carries this, When `measure.json` is written, Then `recipes.by_recipe.mcphost-uptime-probes.completion_rate` is \u2265 0.5 and its `failure_families` omit `budget` (Live; evidence: `ssh orch 'python3 -m json.tool $(ls -d ~/.local/state/synthorg/runs/truth-tier-* | tail -1)/measure.json | grep -A8 \"\\\"mcphost-uptime-probes\\\"\"'`)",
+      "test": "deferred -- operator-provisioned: first nightly truth-tier on orch after prod carries this."
     }
   ],
   "scope": [

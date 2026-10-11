@@ -586,6 +586,10 @@ async fn main() -> anyhow::Result<()> {
                 eprintln!("llms-txt: {}: {why}", path.display());
                 std::process::exit(2);
             });
+            // PRD-mcphost-uptime-probe-recipe-green requirement 3: the uptime
+            // section's plan numbers, rendered from `PlanCatalog::default_catalog()`.
+            let with_clients =
+                mcphost::uptime::render_spans_into(&with_clients, &mcphost::plans::PlanCatalog::default_catalog());
             files.push((path, existing, with_clients));
             let readme_existing = read(&readme);
             let readme_updated = mcphost::clients::render_into(&readme_existing, &clients_file).unwrap_or_else(|why| {

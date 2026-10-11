@@ -15,6 +15,8 @@ mod busyaudit;
 mod oauth;
 #[path = "support/oauthclient.rs"]
 mod oauthclient;
+#[path = "support/uprg.rs"]
+mod uprg;
 #[path = "support/xlinks.rs"]
 mod xlinks;
 #[path = "support/xlinks_cli.rs"]
@@ -282,6 +284,18 @@ mod upgrade_ac05_billing_status_receipt;
 mod upgrade_ac06_admin_funnel_upgrades_by_trigger;
 #[path = "upgrade_ac07_admin_upgrades_listing.rs"]
 mod upgrade_ac07_admin_upgrades_listing;
+#[path = "uprg_ac01_one_call_creates_probe_status_schedule.rs"]
+mod uprg_ac01_one_call_creates_probe_status_schedule;
+#[path = "uprg_ac02_status_tool_returns_readable_table.rs"]
+mod uprg_ac02_status_tool_returns_readable_table;
+#[path = "uprg_ac03_bad_urls_refused_nothing_created.rs"]
+mod uprg_ac03_bad_urls_refused_nothing_created;
+#[path = "uprg_ac04_free_interval_clamped_pro_keeps_60.rs"]
+mod uprg_ac04_free_interval_clamped_pro_keeps_60;
+#[path = "uprg_ac06_llms_txt_plan_numbers_generated.rs"]
+mod uprg_ac06_llms_txt_plan_numbers_generated;
+#[path = "uprg_ac07_slow_target_is_a_timeout_row.rs"]
+mod uprg_ac07_slow_target_is_a_timeout_row;
 #[path = "urltenant_ac01_path_secret_whoami_auth_method_url.rs"]
 mod urltenant_ac01_path_secret_whoami_auth_method_url;
 #[path = "urltenant_ac02_wrong_or_rotated_secret_404.rs"]

@@ -612,7 +612,13 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # caught by the same P0 assertion. The exact new cap is re-derived below
 # by actually running gen-test-suites.sh --check against this rebase's
 # full file set, same as every entry above.
-MAX_PER_SUITE = {"core": 900, "sandbox": 200}
+# PRD-mcphost-uptime-probe-recipe-green (2026-10-10 land, operator): the
+# rebase onto v0.107.9 put 1319 files on disk and the sandbox partition over
+# 200 per suite -> suite_sandbox_03 appeared (11 core+sandbox binaries) and
+# suite_ac1_ten_binaries_and_names_preserved blocked the land's delta gate.
+# 200 -> 220 is the smallest tested raise that keeps 2 sandbox suites
+# (8 core + 2 sandbox = 10) with --check ok.
+MAX_PER_SUITE = {"core": 900, "sandbox": 220}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"
