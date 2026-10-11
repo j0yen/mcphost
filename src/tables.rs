@@ -624,6 +624,34 @@ pub async fn table_create(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     Ok(json!({"name": name, "created": true}))
 }
 
+/// `(row count, payload bytes)` of table `name`: bytes is the summed byte
+/// length of every column value (what the rows hold, not SQLite page
+/// overhead). Only read by a dry run's `would` diff.
+fn measure_table(conn: &Connection, name: &str) -> Result<(i64, i64), AppError> {
+    let quoted = quote_ident(name);
+    let mut cols: Vec<String> = Vec::new();
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({quoted})"))?;
+    let names = stmt.query_map([], |r| r.get::<_, String>(1))?;
+    for n in names {
+        cols.push(quote_ident(&n?));
+    }
+    drop(stmt);
+    let size_expr = if cols.is_empty() {
+        "0".to_string()
+    } else {
+        cols.iter()
+            .map(|c| format!("COALESCE(LENGTH(CAST({c} AS BLOB)), 0)"))
+            .collect::<Vec<_>>()
+            .join(" + ")
+    };
+    let (rows, bytes): (i64, i64) = conn.query_row(
+        &format!("SELECT COUNT(*), COALESCE(SUM({size_expr}), 0) FROM {quoted}"),
+        [],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    Ok((rows, bytes))
+}
+
 pub async fn table_drop(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let name = arg_str(args, "name")?;
     if !is_valid_ident(&name) {
@@ -671,23 +699,44 @@ pub async fn table_drop(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
 
     let path = tenant_db_path(state, tenant.id);
     let name_for_conn = name.clone();
-    let dropped = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+    // PRD-mcphost-dry-run-on-write-verbs R3: under a dry run, measure the
+    // table (rows, payload bytes) before the drop so the `would` diff
+    // describes what was there -- a real call skips the extra reads.
+    let measure = crate::dryrun::active();
+    let measured = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
         let existing: i64 = conn.query_row(
             &format!("SELECT COUNT(*) FROM {META_TABLE} WHERE name = ?1"),
             params![name_for_conn],
             |r| r.get(0),
         )?;
         if existing == 0 {
-            return Ok(false);
+            return Ok(None);
         }
+        let size = if measure { measure_table(conn, &name_for_conn)? } else { (0, 0) };
         conn.execute(&format!("DROP TABLE {}", quote_ident(&name_for_conn)), [])?;
         conn.execute(
             &format!("DELETE FROM {META_TABLE} WHERE name = ?1"),
             params![name_for_conn],
         )?;
-        Ok(true)
+        Ok(Some(size))
     })
     .await?;
+    let dropped = measured.is_some();
+    // PRD-mcphost-dry-run-on-write-verbs AC5: a dry run of a drop that has
+    // nothing to drop says so with the same `table_not_found` an unknown
+    // name gets everywhere else, instead of the real call's idempotent
+    // `dropped: false` -- a preview that finds nothing is an answer the
+    // caller must see.
+    if !dropped && measure {
+        return Err(table_not_found(&name));
+    }
+    if let Some((rows, bytes)) = measured {
+        crate::dryrun::note_write(json!({"store": "table", "op": "drop", "table": name}));
+        crate::dryrun::note_would(
+            "tables",
+            json!({"name": name, "action": "drop", "rows": rows, "bytes": bytes}),
+        );
+    }
 
     // PRD-mcphost-table-semantic-model AC9: a dropped table's model and
     // annotations must not survive it -- `host.table.models` must never

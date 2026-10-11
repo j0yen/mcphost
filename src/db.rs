@@ -2458,7 +2458,7 @@ impl Db {
     /// state-store connection opens against this same file (never `self`'s
     /// own shared `conn`), so a long-running test call never holds the
     /// server's single connection for the length of a sandboxed tool call.
-    pub(crate) fn path(&self) -> &Path {
+    pub fn path(&self) -> &Path {
         &self.path
     }
 

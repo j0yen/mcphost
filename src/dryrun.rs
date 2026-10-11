@@ -35,6 +35,7 @@ use crate::errors::AppError;
 /// ones.
 pub struct DryRunCtx {
     writes: Mutex<Vec<Value>>,
+    would: Mutex<Vec<(&'static str, Value)>>,
     db_path: PathBuf,
     db_cfg: DbConfig,
     state_conn: Mutex<Option<Arc<Mutex<Connection>>>>,
@@ -45,6 +46,7 @@ impl DryRunCtx {
     pub fn new(db_path: PathBuf, db_cfg: DbConfig) -> Arc<Self> {
         Arc::new(Self {
             writes: Mutex::new(Vec::new()),
+            would: Mutex::new(Vec::new()),
             db_path,
             db_cfg,
             state_conn: Mutex::new(None),
@@ -64,6 +66,21 @@ impl DryRunCtx {
 
     pub fn writes(&self) -> Vec<Value> {
         self.writes.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// PRD-mcphost-dry-run-on-write-verbs R3: one entry of the `would` diff
+    /// a host verb observed while running inside this scope, filed under
+    /// its class (`rows`, `tables`, `tools`, `state`, `keys`) -- see
+    /// [`crate::write_verbs::Would`].
+    pub fn record_would(&self, class: &'static str, item: Value) {
+        self.would
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push((class, item));
+    }
+
+    pub fn would_notes(&self) -> Vec<(&'static str, Value)> {
+        self.would.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     /// `db::Db::with_conn`'s dry-run path: a connection to the SAME
@@ -134,6 +151,27 @@ tokio::task_local! {
 /// own connection.
 pub(crate) fn current() -> Option<Arc<DryRunCtx>> {
     CURRENT.try_with(|c| c.clone()).unwrap_or(None)
+}
+
+/// `true` inside a [`with_dry_run`] scope. Verbs gate any extra read they
+/// only need to describe a dry run (a `COUNT(*)` before a drop) on this, so
+/// a real call pays nothing.
+pub(crate) fn active() -> bool {
+    current().is_some()
+}
+
+/// Records a write on the enclosing scope's `writes()`; a no-op outside one.
+pub(crate) fn note_write(write: Value) {
+    if let Some(ctx) = current() {
+        ctx.record_write(write);
+    }
+}
+
+/// Records a `would` diff entry on the enclosing scope; a no-op outside one.
+pub(crate) fn note_would(class: &'static str, item: Value) {
+    if let Some(ctx) = current() {
+        ctx.record_would(class, item);
+    }
 }
 
 /// Runs `f` with `ctx` visible to every `with_conn`/`with_tenant_conn` call

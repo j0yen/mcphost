@@ -533,6 +533,8 @@ mod drift_ac10_manual_check_produces_review_without_version_change;
 mod dryrun_ac05_chain_host_table_append_step;
 #[path = "dryrun_ac06_tools_list_mentions_dry_run.rs"]
 mod dryrun_ac06_tools_list_mentions_dry_run;
+#[path = "dryv_ac01_table_drop_survives_savepoint.rs"]
+mod dryv_ac01_table_drop_survives_savepoint;
 #[path = "enduser_ac02_assertion_http_headers_and_calls_row.rs"]
 mod enduser_ac02_assertion_http_headers_and_calls_row;
 #[path = "enduser_ac03_invalid_assertion_rejected.rs"]
