@@ -271,3 +271,63 @@ pub fn render_markdown() -> String {
     ));
     out
 }
+
+/// A row whose `checked` date is more than this many days old is stale.
+pub const MAX_AGE_DAYS: i64 = 90;
+
+/// Days since 1970-01-01 for a `YYYY-MM-DD` date (proleptic Gregorian).
+pub fn days_from_date(date: &str) -> Option<i64> {
+    let mut parts = date.split('-');
+    let y: i64 = parts.next()?.parse().ok()?;
+    let m: i64 = parts.next()?.parse().ok()?;
+    let d: i64 = parts.next()?.parse().ok()?;
+    if parts.next().is_some() || !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return None;
+    }
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    Some(era * 146_097 + doe - 719_468)
+}
+
+/// Today's UTC date as `YYYY-MM-DD`.
+pub fn today() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let z = secs.div_euclid(86_400) + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// One message per row whose `checked` date is more than [`MAX_AGE_DAYS`]
+/// before `today` (or does not parse), each naming the row and its `doc_url`.
+pub fn stale_rows(today: &str) -> Vec<String> {
+    let Some(now) = days_from_date(today) else {
+        return vec![format!("today {today:?} is not a YYYY-MM-DD date")];
+    };
+    CLIENT_PROFILES
+        .iter()
+        .filter_map(|p| match days_from_date(p.checked) {
+            Some(then) if now - then <= MAX_AGE_DAYS => None,
+            Some(then) => Some(format!(
+                "client profile `{}` was last checked {} ({} days ago, limit {MAX_AGE_DAYS}); re-verify {}",
+                p.id,
+                p.checked,
+                now - then,
+                p.doc_url
+            )),
+            None => Some(format!("client profile `{}` has an unparseable checked date {:?}; re-verify {}", p.id, p.checked, p.doc_url)),
+        })
+        .collect()
+}

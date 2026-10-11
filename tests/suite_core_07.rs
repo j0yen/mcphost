@@ -421,6 +421,8 @@ mod cprf_ac03_profile_for_resolves;
 mod cprf_ac04_whoami_reports_client_profile;
 #[path = "cprf_ac05_committed_copy_drift.rs"]
 mod cprf_ac05_committed_copy_drift;
+#[path = "cprf_ac06_staleness.rs"]
+mod cprf_ac06_staleness;
 #[path = "ctrv_ac01_sha_stable_across_boot_requests_and_process.rs"]
 mod ctrv_ac01_sha_stable_across_boot_requests_and_process;
 #[path = "ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs"]
