@@ -203,24 +203,42 @@ pub fn render_args_table() -> String {
     out
 }
 
-/// The llms.txt recipe region: the three loading calls of the
-/// database-in-a-minute recipe collapse to one `from_blob` call, with the
-/// argument table generated from [`ARG_SPECS`].
+/// One line per argument group for the llms.txt recipe (`name:type=default`),
+/// generated from [`ARG_SPECS`] so the recipe cannot name an argument the
+/// verb does not take.
+pub fn render_args_line() -> String {
+    ARG_SPECS
+        .iter()
+        .map(|a| {
+            if a.required {
+                format!("`{}` ({}, required)", a.name, a.json_type)
+            } else if a.default == "-" {
+                format!("`{}` ({})", a.name, a.json_type)
+            } else {
+                format!("`{}` ({}, default {})", a.name, a.json_type, a.default)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The llms.txt recipe region (3-space indented, it sits inside a numbered
+/// step): the CSV-in-a-document path collapses declare + append into one
+/// `from_blob` call, with the argument list generated from [`ARG_SPECS`].
 pub fn render_recipe_section() -> String {
     let mut out = String::new();
-    out.push_str(
-        "Have the CSV as a document or blob already (`host.docs.put` with `text/csv`)? One call \
-         replaces declaring the table and appending rows:\n\n",
-    );
-    out.push_str("```\nhost.table.from_blob(doc=\"expenses.csv\", name=\"expenses\")\n```\n\n");
-    out.push_str(
-        "It infers a type per column over the first 1,000 rows, loads every row that parses, and \
-         returns `rows_loaded`, `rows_skipped`, `columns` (`name`, `type`, `nulls`, `distinct`, \
-         `samples`), a 5-row `preview`, `skipped` (`row`, `column`, `reason`, at most 100) and a \
-         `sample_query` to run next. Refusals: `csv_empty`, `csv_no_rows`, `quota_table_rows` \
-         (`limit`, `used`, `found`), `args_invalid`.\n\n",
-    );
-    out.push_str(&render_args_table());
+    out.push_str("   CSV already stored as a document (`host.docs.put`, mime `text/csv`)? One call replaces\n");
+    out.push_str("   the declare and append steps below -- it infers a type per column and loads every row:\n");
+    out.push_str("   ```\n");
+    out.push_str("   host.table.from_blob(doc=\"expenses.csv\", name=\"expenses\")\n");
+    out.push_str("   ```\n");
+    out.push_str("   Returns `rows_loaded`, `rows_skipped`, `columns` (`name`, `type`, `nulls`, `distinct`,\n");
+    out.push_str("   `samples`), a 5-row `preview`, `skipped` (`row`, `column`, `reason`; at most 100) and a\n");
+    out.push_str("   `sample_query`. A bad cell is skipped and named, or `on_error=abort` loads nothing.\n");
+    out.push_str("   Refusals: `csv_empty`, `csv_no_rows`, `quota_table_rows` (`limit`, `used`, `found`),\n");
+    out.push_str("   `args_invalid`. Arguments: ");
+    out.push_str(&render_args_line());
+    out.push_str(".\n");
     out
 }
 
@@ -231,7 +249,7 @@ pub const RECIPE_END: &str = "<!-- csvtab:end -->";
 /// `content` with [`render_recipe_section`]; a doc without markers is
 /// returned unchanged. Same shape as `install_links::splice_install_links_section`.
 pub fn splice_recipe_section(content: &str) -> String {
-    let section = format!("{RECIPE_START}\n{}\n{RECIPE_END}", render_recipe_section());
+    let section = format!("{RECIPE_START}\n{}\n{RECIPE_END}", render_recipe_section().trim_end());
     let mut out = String::new();
     let mut rest = content;
     while let (Some(start), Some(end_pos)) = (rest.find(RECIPE_START), rest.find(RECIPE_END)) {
@@ -286,7 +304,7 @@ pub fn decode_text(bytes: &[u8]) -> (String, &'static str) {
         return (String::from_utf8_lossy(rest).into_owned(), "utf-8-bom");
     }
     let utf16 = |data: &[u8], le: bool| -> String {
-        let units = data.chunks_exact(2).map(|c| {
+        let units = data.as_chunks::<2>().0.iter().map(|c| {
             if le {
                 u16::from_le_bytes([c[0], c[1]])
             } else {

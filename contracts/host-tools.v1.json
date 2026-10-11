@@ -3488,6 +3488,64 @@
       "since": "0.58.0"
     },
     {
+      "description": "Load a CSV or TSV already stored on the host (blob or doc) into a new typed table in one call: infers integer|real|text|date|bool per column over the first 1,000 rows, loads every row that parses, and returns {table, rows_loaded, rows_skipped, columns, preview, skipped, sample_query}. A bad cell is skipped and named by row and column (or aborts the load with on_error=abort). Checked against the plan's table quotas before any row is written.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "blob": {
+            "description": "Id or name of a stored CSV/TSV to load. Exactly one of blob or doc.",
+            "type": "string"
+          },
+          "delimiter": {
+            "description": "One character: , ; tab | -- auto-detected from the first 20 lines when omitted.",
+            "type": "string"
+          },
+          "doc": {
+            "description": "Id or name of a host.docs.put text/csv document to load. Exactly one of blob or doc.",
+            "type": "string"
+          },
+          "dry_run": {
+            "description": "Return the type report and preview without creating or writing anything.",
+            "type": "boolean"
+          },
+          "header": {
+            "description": "The first line holds column names. false names the columns col1, col2, ...",
+            "type": "boolean"
+          },
+          "infer_rows": {
+            "description": "Data rows sampled for type inference, 1 to 50000.",
+            "type": "integer"
+          },
+          "mode": {
+            "description": "create (refuse an existing table) | replace (drop and recreate) | append (load into an existing table; columns match by name, never altered).",
+            "type": "string"
+          },
+          "name": {
+            "description": "Name of the table to create.",
+            "type": "string"
+          },
+          "on_error": {
+            "description": "skip leaves a bad row out and reports it; abort refuses the whole load and creates nothing.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "types": {
+            "description": "Per-column override, {column: integer|real|text|date|bool}; only those columns skip inference.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host.table.from_blob",
+      "since": "0.58.0"
+    },
+    {
       "description": "Return this tenant's table concept graph: nodes are tables and columns, edges are column_of/foreign_key/same_name with evidence. Omit table for the whole graph, or give one to get the k_hop_neighbors subgraph around it (hops 1-3, default 1). stale is true between a write and the next tick's rebuild.",
       "input_schema": {
         "additionalProperties": false,
@@ -8494,6 +8552,64 @@
         "type": "object"
       },
       "name": "host_table_drop",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Load a CSV or TSV already stored on the host (blob or doc) into a new typed table in one call: infers integer|real|text|date|bool per column over the first 1,000 rows, loads every row that parses, and returns {table, rows_loaded, rows_skipped, columns, preview, skipped, sample_query}. A bad cell is skipped and named by row and column (or aborts the load with on_error=abort). Checked against the plan's table quotas before any row is written.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "blob": {
+            "description": "Id or name of a stored CSV/TSV to load. Exactly one of blob or doc.",
+            "type": "string"
+          },
+          "delimiter": {
+            "description": "One character: , ; tab | -- auto-detected from the first 20 lines when omitted.",
+            "type": "string"
+          },
+          "doc": {
+            "description": "Id or name of a host.docs.put text/csv document to load. Exactly one of blob or doc.",
+            "type": "string"
+          },
+          "dry_run": {
+            "description": "Return the type report and preview without creating or writing anything.",
+            "type": "boolean"
+          },
+          "header": {
+            "description": "The first line holds column names. false names the columns col1, col2, ...",
+            "type": "boolean"
+          },
+          "infer_rows": {
+            "description": "Data rows sampled for type inference, 1 to 50000.",
+            "type": "integer"
+          },
+          "mode": {
+            "description": "create (refuse an existing table) | replace (drop and recreate) | append (load into an existing table; columns match by name, never altered).",
+            "type": "string"
+          },
+          "name": {
+            "description": "Name of the table to create.",
+            "type": "string"
+          },
+          "on_error": {
+            "description": "skip leaves a bad row out and reports it; abort refuses the whole load and creates nothing.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "types": {
+            "description": "Per-column override, {column: integer|real|text|date|bool}; only those columns skip inference.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host_table_from_blob",
       "since": "0.58.0"
     },
     {

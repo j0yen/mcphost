@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-chain-dry-run.md (test_prefix: cfix)",
+  "ac_test_map_prd": "PRD-mcphost-csv-to-table-one-call.md (test_prefix: csvtab)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,27 +28,16 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/cfix_ac01_fixture_replaces_unreachable_step.rs",
-    "AC2": "tests/cfix_ac02_fully_fixtured_dry_run_makes_no_upstream_call.rs",
-    "AC3": "tests/cfix_ac03_fixture_shape_mismatch_is_refused.rs",
-    "AC4": "tests/cfix_ac04_run_exports_as_fixtures.rs",
-    "AC5": "tests/cfix_ac05_fixture_limits_and_applicability.rs",
-    "AC6": "tests/cfix_ac06_unrunnable_unfixtured_step_is_skipped_and_named.rs",
-    "AC7": "tests/cfix_ac07_quickstart_names_fixtures.rs",
-    "AC8": "deferred -- operator-provisioned: live prod MCP call after deploy (jq prints fixture)"
+    "AC1": "tests/csvtab_ac01_recipe_turn_census.rs",
+    "AC2": "tests/csvtab_ac02_fixture_csvs_load_with_inferred_types.rs",
+    "AC3": "tests/csvtab_ac03_bad_cell_is_named_by_row_and_column.rs",
+    "AC4": "tests/csvtab_ac04_types_override_keeps_zip_as_text.rs",
+    "AC5": "tests/csvtab_ac05_row_quota_refuses_before_any_write.rs",
+    "AC6": "tests/csvtab_ac06_empty_header_only_and_missing_source_refusals.rs",
+    "AC7": "tests/csvtab_ac07_gendocs_check_names_the_drifted_region.rs",
+    "AC8": "deferred -- operator-provisioned: examples/database-in-a-minute/proof.sh against prod after deploy."
   },
   "ac_test_map_by_prefix": {
-    "whin": {
-      "_prd": "PRD-mcphost-webhook-inbox-one-call.md (test_prefix: whin)",
-      "AC1": "tests/whin_ac01_create_returns_url_secret_wait.rs",
-      "AC2": "tests/whin_ac02_signed_post_readable_by_tool_call_and_msg_wait.rs",
-      "AC3": "tests/whin_ac03_unsigned_or_wrong_signature_stores_nothing.rs",
-      "AC4": "tests/whin_ac04_keyless_call_after_redeem_is_refused_and_named.rs",
-      "AC5": "tests/whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule.rs",
-      "AC6": "tests/whin_ac06_llms_txt_section_and_proof_sh.rs",
-      "AC7": "tests/whin_ac07_plan_limit_creates_nothing_and_repeat_is_idempotent.rs",
-      "AC8": "deferred -- operator-provisioned: first nightly truth-tier on orch after prod carries this."
-    },
     "planlim": {
       "_prd": "PRD-mcphost-plan-limits-generated.md (test_prefix: planlim) -- superseded by mcphost-chain-prev-contract at HEAD; real test_prefix is planlim",
       "AC1": "tests/planlim_ac01_quickstart_limits_plan_every_ceiling.rs",
@@ -1232,6 +1221,17 @@
       "AC6": "tests/pgtr_ac06_cursor_is_bound_to_its_tenant.rs",
       "AC7": "tests/pgtr_ac07_limit_clamped_and_zero_refused.rs",
       "AC8": "deferred -- operator-provisioned: live prod curl of the contract and docs.list walk after deploy."
+    },
+    "whin": {
+      "_prd": "PRD-mcphost-webhook-inbox-one-call.md (test_prefix: whin)",
+      "AC1": "tests/whin_ac01_create_returns_url_secret_wait.rs",
+      "AC2": "tests/whin_ac02_signed_post_readable_by_tool_call_and_msg_wait.rs",
+      "AC3": "tests/whin_ac03_unsigned_or_wrong_signature_stores_nothing.rs",
+      "AC4": "tests/whin_ac04_keyless_call_after_redeem_is_refused_and_named.rs",
+      "AC5": "tests/whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule.rs",
+      "AC6": "tests/whin_ac06_llms_txt_section_and_proof_sh.rs",
+      "AC7": "tests/whin_ac07_plan_limit_creates_nothing_and_repeat_is_idempotent.rs",
+      "AC8": "deferred -- operator-provisioned: first nightly truth-tier on orch after prod carries this."
     }
   }
 }

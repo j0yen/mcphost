@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-chain-dry-run.md",
-  "intent_slug": "mcphost-chain-dry-run",
-  "root_motivation": "**Who:** the agent fixing a chain after a failed run, with no shell and a few turns. **What:** `host.tool_test` runs a chain against recorded per-step fixtures and returns every intermediate payload without one upstream call. **Why not today:** a predecessor that cannot be dry-run (upstream unreachable) leaves every later step unchecked (`unverifiable`), and the host offers no way to feed a recorded result back.",
-  "user_persona": "An agent that calls host.runs.get(run_id, as_fixtures=true) on a failed chain run, passes the fixtures to host.tool_test with its fixed spec, and reads each later step's resolved_args before republishing; Operator Joe reading the digest.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-csv-to-table-one-call.md",
+  "intent_slug": "mcphost-csv-to-table-one-call",
+  "root_motivation": "**Who:** the agent whose user hands it a CSV and asks a question a pivot could answer. **What:** the CSV as a table it can `host.table.query` in SQL without writing a column spec by hand. **Why not today:** `host.table.create` wants a column list and `host.table.append` wants JSON rows; the recipe has the agent read the CSV in its own context, invent types and append in batches; no type inference exists in the crate.",
+  "user_persona": "An agent (customer) that calls host.table.from_blob once on a stored CSV and asks the user's GROUP BY in the next call; truth-tier spreadsheet_owner / data_pipeline_builder personas; Operator Joe reading the digest.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,61 +14,59 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a 3-step chain whose step 1 is an http tool at an unreachable host and whose steps 2-3 are echo tools reading `$.prev.result.items`, When `host.tool_test` runs with `fixtures: {\"1\": {\"items\": [1, 2]}}`, Then the verdict is `pass`, `steps[0].source` is `fixture`, `steps[1]` and `steps[2]` carry `resolved_args` and `result`, and the http step made no connection attempt.",
-      "test": "tests/cfix_ac01_fixture_replaces_unreachable_step.rs"
+      "description": "Given the last three truth-tier run directories, When a test sums turns between the recipe persona's first `host.table.*` call and its first `host.table.query`, Then the number is printed; if the median is <= 1 turn the builder records the falsifier as confirmed and ships only R5/R6.",
+      "test": "tests/csvtab_ac01_recipe_turn_census.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given fixtures for all 3 steps and a fixture upstream counting requests, When `host.tool_test` runs, Then `executed` is 0, `fixtured` is 3, all three `result` payloads are returned, and the upstream counter is 0.",
-      "test": "tests/cfix_ac02_fully_fixtured_dry_run_makes_no_upstream_call.rs"
+      "description": "Given the 20 fixture CSVs in `tests/fixtures/csvtab/`, When each is loaded with defaults, Then >= 18 report `rows_skipped: 0` and every inferred `type` matches the fixture's `expected.json`.",
+      "test": "tests/csvtab_ac02_fixture_csvs_load_with_inferred_types.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given step 2's tool declares `outputs: [items]` and a fixture `{\"rows\": []}` for step 2, When `host.tool_test` runs, Then it is refused with `fixture_shape_mismatch`, `data.expected` `[\"items\"]`, `data.given` `[\"rows\"]`.",
-      "test": "tests/cfix_ac03_fixture_shape_mismatch_is_refused.rs"
+      "description": "Given a CSV with `\"n/a\"` at line 412 of column `amount`, When loaded with defaults, Then `rows_loaded` is total minus 1 and `skipped[0]` is `{row: 412, column: \"amount\", reason: \"not a real: 'n/a'\"}`; with `on_error: abort` no table exists afterwards.",
+      "test": "tests/csvtab_ac03_bad_cell_is_named_by_row_and_column.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a completed chain run with 3 child rows, When `host.runs.get(run_id, as_fixtures=true)` is called and its `fixtures` passed to `host.tool_test` of the same chain, Then the dry run is `pass` with `fixtured: 3`.",
-      "test": "tests/cfix_ac04_run_exports_as_fixtures.rs"
+      "description": "Given `types: {zip: \"text\"}` on a column that would infer `integer`, When loaded, Then `columns[zip].type` is `text` and `00123` is stored verbatim.",
+      "test": "tests/csvtab_ac04_types_override_keeps_zip_as_text.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given fixtures totalling 300 KiB, When `host.tool_test` runs, Then `fixtures_too_large` with `data.limit_bytes` 262144; Given a python tool with `fixtures`, Then `fixtures_not_applicable`.",
-      "test": "tests/cfix_ac05_fixture_limits_and_applicability.rs"
+      "description": "Given a free tenant and a 300,000-row CSV, When loaded, Then the refusal is `quota_table_rows {limit, used, found: 300000}`, no table is created, and `host.quickstart.limits.plan.table_rows_max` shows the same limit.",
+      "test": "tests/csvtab_ac05_row_quota_refuses_before_any_write.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a chain whose step 2 cannot be dry-run and no fixture for it, When `host.tool_test` runs with a fixture for step 1 only, Then `steps[1].source` is `skipped` with a `reason` and the verdict is `unverifiable` naming step 2.",
-      "test": "tests/cfix_ac06_unrunnable_unfixtured_step_is_skipped_and_named.rs"
+      "description": "Given an empty file, a header-only file, and a file with no `blob` or `doc` argument, When loaded, Then the refusals are `csv_empty`, `csv_no_rows` (table still created with 0 rows) and `args_invalid` naming the two arguments.",
+      "test": "tests/csvtab_ac06_empty_header_only_and_missing_source_refusals.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given `host.quickstart kind=chain`, When rendered, Then the text names `fixtures` and the schema test finds every printed argument name in `host.tool_test`'s input schema.",
-      "test": "tests/cfix_ac07_quickstart_names_fixtures.rs"
+      "level": "MUST",
+      "description": "Given `gendocs run --check`, When the llms.txt recipe section or the verb's schema is edited by hand, Then the check fails naming the drifted region.",
+      "test": "tests/csvtab_ac07_gendocs_check_names_the_drifted_region.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given a keyed prod tenant after deploy with a 2-step echo chain, When `host.tool_test` runs with `fixtures: {\"1\": {\"x\": 1}}` over MCP, Then `steps[0].source` is `fixture` and `steps[1].result` is returned (Live; evidence: the Technical MCP call with `-d @tool-test-fixtures.json` piped to `jq -r '.result.structuredContent.steps[0].source'` prints fixture)",
-      "test": "deferred -- operator-provisioned: first nightly truth-tier on orch after prod carries this."
+      "description": "Given prod after deploy, When `examples/database-in-a-minute/proof.sh https://mcphost.dev` signs up a fresh tenant, puts the 1,000-row fixture CSV as a blob, loads it with `host.table.from_blob` and runs the recipe's `GROUP BY`, Then it prints `rows_loaded=1000 skipped=0 query=ok`.",
+      "test": "deferred -- operator-provisioned: examples/database-in-a-minute/proof.sh against prod after deploy."
     }
   ],
   "scope": [
-    "src/kinds/chain.rs: fixtures task-local, step-key resolution, per-step source/executed/fixtured/skipped, shape validation against declared outputs.",
-    "src/handler.rs: host.tool_test fixtures argument (chain only, 256 KiB cap), host.runs.get as_fixtures schema.",
-    "src/runs.rs: as_fixtures export of child results.",
-    "src/control.rs: host.quickstart kind=chain prints the fixtures calls.",
-    "src/errors.rs: a structured error's non-string data.expected is kept."
+    "src/csvtab.rs (new): host.table.from_blob -- encoding sniff, delimiter detect, RFC 4180 parse with file-line numbers, per-column inference, quota checks, one-transaction create+load; TableFromBlobArgs/ARG_SPECS as the single source of the args schema and the llms.txt recipe region.",
+    "src/handler.rs: tool registration + dispatch; src/errors.rs: csv_*/quota_table_* codes; src/tables.rs: visibility only; src/gendocs.rs: csvtab region + schemas/table-from-blob.args.json under --check.",
+    "www/llms.txt recipe region, docs/tools.md, contracts/host-tools.v1.json, tests/fixtures/csvtab/ (20 CSVs + expected.json)."
   ],
   "non_goals": [
-    "Fixtures for non-chain tools (refused); persisting fixtures server-side; recording fixtures automatically; observed-shape validation (needs PRD-mcphost-chain-publish-time-path-check)."
+    "xlsx; joins or transforms on load; schema migration of an existing table; files over the document size cap; the blob module (src/blobs.rs is not in this tree, so blob resolves through the document store)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -76,20 +74,40 @@
     "deny_unsafe": false,
     "max_deps": null,
     "msrv": null,
-    "additional": {}
+    "additional": {
+      "signup_is_not_remembered": "R3 says signup or host.redeem, but tests/sessbind_* pin signup followed by key-less behavior; only host.redeem is recorded (AC4's own scenario)."
+    }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why was a chain dry run with an unreachable step 1 read as unchecked?",
-      "a": "The dry run has no input other than the chain's own args, so a predecessor that cannot run leaves every later mapping unverifiable."
+      "q": "Why did panel_data_pipeline_builder_01 finish at 58.6 s of a 60 s budget?",
+      "a": "The recipe makes the agent create a table, then append JSON batches of its own CSV reading."
+    },
+    {
+      "why": 2,
+      "q": "Why does the agent read the CSV itself?",
+      "a": "Nothing in the crate turns stored CSV text into rows, and no type inference exists."
+    },
+    {
+      "why": 3,
+      "q": "Why no loader?",
+      "a": "host.docs.put extracts text/csv as text for search only; tables.rs only writes CSV."
     }
   ],
   "created_at": "2026-10-11T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Does a fixtured dry run count as a host.tool_test call for metering?",
-      "resolution": "Yes, one call, no upstream bytes (the PRD default)."
+      "question": "Leading zero vetoes integer?",
+      "resolution": "Yes (PRD default): 00123 is text under inference and refused by name in an integer column."
+    },
+    {
+      "question": "Inference sample size?",
+      "resolution": "1,000 rows, infer_rows override up to 50,000; a column tolerates up to 1% strays (>=100 sampled cells) so one n/a does not demote it (AC3)."
+    },
+    {
+      "question": "No blob module in the tree?",
+      "resolution": "blob and doc both resolve through the tenant's document store (text/csv)."
     }
   ]
 }

@@ -348,6 +348,11 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
                 crate::install_links::CANONICAL_PUBLIC_URL,
             );
         }
+        // PRD-mcphost-csv-to-table-one-call R6: the database-in-a-minute
+        // recipe region is rendered from `csvtab::ARG_SPECS`.
+        if *path == "www/llms.txt" {
+            *spliced = crate::csvtab::splice_recipe_section(spliced.as_str());
+        }
     }
     let mut stale = false;
 
@@ -363,6 +368,7 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
             Path::new(INSTALL_DOC_WWW_PATH),
             crate::install_links::render_install_doc(crate::install_links::CANONICAL_PUBLIC_URL),
         ),
+        (Path::new(crate::csvtab::SCHEMA_FILE), crate::csvtab::render_schema_file()),
     ] {
         if check {
             let current = std::fs::read_to_string(path).unwrap_or_default();
@@ -376,6 +382,12 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
     }
 
     if check {
+        // Name the csvtab region (R6 / AC7) in addition to the whole-file line.
+        let llms = std::fs::read_to_string("www/llms.txt").unwrap_or_default();
+        let schema = std::fs::read_to_string(crate::csvtab::SCHEMA_FILE).unwrap_or_default();
+        for region in crate::csvtab::drifted_regions(&llms, &schema) {
+            eprintln!("gen-docs --check: drifted region: {region} (run `mcphost gen-docs`)");
+        }
         for (path, current, spliced) in &support_docs {
             if current != spliced {
                 eprintln!("gen-docs --check: {path} is stale (run `mcphost gen-docs`)");

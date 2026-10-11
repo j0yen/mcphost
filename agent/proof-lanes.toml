@@ -27,8 +27,8 @@ required_commands = [
 
 [[lane]]
 id = "rust-tests"
-description = "Test-only changes (only allowed via intent-card amendment). .config/nextest.toml folded in 2026-09-12 (PRD-mcphost-test-suite-consolidation): it only configures how the existing test suite runs (JUnit output location/timing), same proof as a tests/**/*.rs edit -- same gap class as every other 'no lane matched a new config-adjacent path' fix already documented in this file."
-globs = ["tests/**/*.rs", ".config/nextest.toml"]
+description = "Test-only changes (only allowed via intent-card amendment). tests/fixtures/csvtab/** folded in 2026-10-11 (PRD-mcphost-csv-to-table-one-call AC2: the 20 CSV fixtures csvtab_ac02 loads; a new lane would break tests/lanecov_ac04_existing_lanes_unchanged.rs). .config/nextest.toml folded in 2026-09-12 (PRD-mcphost-test-suite-consolidation): it only configures how the existing test suite runs (JUnit output location/timing), same proof as a tests/**/*.rs edit -- same gap class as every other 'no lane matched a new config-adjacent path' fix already documented in this file."
+globs = ["tests/**/*.rs", ".config/nextest.toml", "tests/fixtures/csvtab/**"]
 required_commands = [
   "cargo test --workspace",
 ]
