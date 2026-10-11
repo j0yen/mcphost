@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-webhook-inbox-one-call.md",
-  "intent_slug": "mcphost-webhook-inbox-one-call",
-  "root_motivation": "**Who:** an agent that just received a mcphost URL and must show its user a webhook arriving inside one session; the truth-tier integration_specialist persona that scores it. **What:** one call that yields a public hook URL plus a way to read the next event. **Why not today:** the webhook-inbox recipe was three host steps plus a signed POST (eight calls to show one event); a key-less call after a successful host.redeem minted a second tenant because /mcp is stateless; kind=inbox routed to the agent-inbox recipe; llms.txt had no webhook section. **Consequence:** satisfaction 0.0 / completion 0.0 for this recipe on 10-09 and 10-06.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-declared-ordering-per-verb.md",
+  "intent_slug": "mcphost-declared-ordering-per-verb",
+  "root_motivation": "**Premise (agent viewpoint):** I want \"newest first\" or \"by name\" and I want page 2 to be what page 1 was not, even while the table changes. **Falsifier:** today's implicit orderings already hold under concurrent inserts (AC 1). **Who:** the agent polling `host.runs.list` for the newest run while runs are being created; the agent reading `host.msg.inbox` while messages arrive; the SDK generator rendering an `Order` literal. **What:** a declared ordering per verb, selectable, with a stated default and a stable tiebreak. **Why not today:** `ORDER BY` clauses live in `db.rs` and cursors in the handler files; `runs.rs:399-420` post-filters a wider window and re-caps, so a `verdict` filter can return fewer rows than `limit` while more exist, with no `next_cursor` to reach them; `host.tool.logs` orders \"most recent first\" by description only; `host.docs.list` offers no newest-first at all although `seq` exists (`documents_list_since`). No schema carries `order`. **Consequence:** consumers...",
   "user_persona": "An agent (customer) that calls host.webhook_inbox.create once, pastes the url into a sender and shows its user the push event in the same session; the truth-tier integration_specialist persona whose gold is reachable in 4 calls; Operator Joe reading the digest.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,50 +14,50 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a free tenant, When `host.webhook_inbox.create(name=\"inbox\")` is called once, Then the response carries `url` matching `^https://[^/]+/hook/[A-Za-z0-9]{10,}$`, `secret`, `tool: \"inbox\"`, `trigger_id`, and `wait.tool == \"host.msg.wait\"`, and `host.trigger.list` shows exactly one webhook trigger bound to `inbox`.",
-      "test": "tests/whin_ac01_create_returns_url_secret_wait.rs"
+      "description": "Given a local daemon and a writer inserting 200 documents and 200 messages during a `limit: 25` walk, When `vord_ac01_falsifier` runs 20 trials of `host.docs.list` and `host.msg.inbox` on HEAD before this PRD's code, Then it records duplicates and skips to `target/vord-census.json` and fails with `premise_false` only if both are 0 in all 20 trials AND `host.runs.list(verdict=\u2026)` never under-fills a page.",
+      "test": "tests/vord_ac01_falsifier.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the inbox from AC1, When a POST signed with `secret` carrying `{\"id\":\"evt-fixture-1\"}` reaches `url`, Then within 5 s `host.tool_call(name=\"inbox\")` returns a row with id `evt-fixture-1` and `host.msg.wait` with `wait.args` returns a message whose `data.event_id` is `evt-fixture-1`.",
-      "test": "tests/whin_ac02_signed_post_readable_by_tool_call_and_msg_wait.rs"
+      "description": "Given `host.docs.list`, When the contract is dumped, Then its `order` property enumerates exactly the `DocsOrder` variants and the description ends with `default created_desc.`",
+      "test": "tests/vord_ac02_contract_order_enum.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given an unsigned or wrongly signed POST, When it reaches `url`, Then the response is 401, no row is stored, no run fires and no inbox message is sent.",
-      "test": "tests/whin_ac03_unsigned_or_wrong_signature_stores_nothing.rs"
+      "description": "Given a cursor minted under `created_desc`, When passed with `order: \"name_asc\"`, Then `cursor_invalid {reason: \"order\"}`.",
+      "test": "tests/vord_ac03_cursor_bound_to_order.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a peer that completed `host.redeem` 5 s earlier, When it sends `host.tool_publish` without `tenant_key` on `/mcp`, Then the error is `tenant_key_missing` with `data.tenant` equal to that namespace, the `tenants` row count is unchanged, and a peer with no redeem in 10 minutes still gets implicit signup.",
-      "test": "tests/whin_ac04_keyless_call_after_redeem_is_refused_and_named.rs"
+      "description": "Given `src/db.rs`, When `vord_ac04_order_by_from_enum` scans the list functions behind `PAGED_VERBS`, Then every `ORDER BY` is produced by `sql_order` and a hand-typed clause fails the test naming the function.",
+      "test": "tests/vord_ac04_order_by_from_enum.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a keyed `host.quickstart(kind=\"inbox\")`, When it returns, Then `recipe.name == \"webhook-inbox\"`, `recipe.steps` has one entry calling `host.webhook_inbox.create`, `recipes_nearby` contains `agent-inbox`, and the anonymous quickstart note contains \"tenant_key on every call\" and not \"connection is bound\".",
-      "test": "tests/whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule.rs"
+      "description": "Given 60 runs of which 7 have `verdict: \"fail\"`, When `host.runs.list(verdict=\"fail\", limit=5)` is paged, Then page 1 has 5, page 2 has 2 with no `next_cursor`, and no row is read outside the filter.",
+      "test": "tests/vord_ac05_runs_list_filters_in_sql.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given `www/llms.txt`, When `scripts/www-check.sh` and `handler::llms_txt_tool_names` run, Then a section `## Webhook inbox in one call` names `host.webhook_inbox.create`, and `examples/webhook-inbox/proof.sh` against a local `TestServer` exits 0 in under 30 s.",
-      "test": "tests/whin_ac06_llms_txt_section_and_proof_sh.rs"
+      "description": "Given every `Paged` verb with a fixture, When `vord_ac05` walks it under concurrent inserts under each declared order for 20 trials, Then zero duplicate ids and zero skipped pre-existing ids.",
+      "test": "tests/vord_ac06_concurrent_inserts_every_paged_verb.rs"
     },
     {
       "id": "AC7",
       "level": "SHOULD",
-      "description": "Given a tenant at `event_triggers_max`, When `host.webhook_inbox.create` is called, Then the error is `plan_limit` with `data.limit == 3` and no tool, trigger or event row was created; Given a second create with the same name, Then the same `url` returns and `secret` is absent.",
-      "test": "tests/whin_ac07_plan_limit_creates_nothing_and_repeat_is_idempotent.rs"
+      "description": "Given a PR that removes `NameAsc` from `DocsOrder`, When `mcphost contract dump --check` runs, Then it fails as a breaking change unless `deprecations.json` announces it.",
+      "test": "tests/vord_ac07_removed_order_variant_is_breaking.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given the first nightly truth-tier on orch after prod carries this, When `measure.json` is written, Then `recipes.by_recipe.mcphost-webhook-inbox.completion_rate` is \u2265 0.5 and its `failure_families` omit `budget` (Live; evidence: `ssh orch 'python3 -m json.tool $(ls -d ~/.local/state/synthorg/runs/truth-tier-* | tail -1)/measure.json | grep -A8 \"\\\"mcphost-webhook-inbox\\\"\"'`)",
-      "test": "deferred -- operator-provisioned: first nightly truth-tier on orch after prod carries this."
+      "description": "Given prod after landing, When `host.docs.list(order=\"name_asc\", limit=5)` runs on joe-test, Then the five names are ascending and the contract entry shows the enum (Live; evidence: the Technical MCP call for `host.docs.list {\"order\":\"name_asc\",\"limit\":5}` piped to `jq -r '.result.structuredContent.documents[].name' | sort -c && echo sorted` prints `sorted`, and the Technical contract check prints \u2265 2)",
+      "test": "deferred -- operator-provisioned: live prod curl of host.docs.list order=name_asc and the contract enum count after deploy."
     }
   ],
   "scope": [
