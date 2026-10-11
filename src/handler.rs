@@ -5316,6 +5316,16 @@ impl McpHostHandler {
             "host.spec.test" => self.spec_test(tenant, args).await,
             "host.tool.run" => self.tool_run(tenant, args).await,
             "host.tool.call" => self.host_tool_call(tenant, args, calls_auth_method, end_user).await,
+            // PRD-mcphost-call-cost-estimate requirement 3: `host.estimate` IS
+            // `host.tool_call` with `dry_run` forced true -- same handler, same
+            // argument names, so its verdict cannot differ from the flag's.
+            "host.estimate" => {
+                let mut args = args;
+                if let Some(obj) = args.as_object_mut() {
+                    obj.insert("dry_run".to_string(), json!(true));
+                }
+                self.host_tool_call(tenant, args, calls_auth_method, end_user).await
+            }
             "host.uptime.create" => self.uptime_create(tenant, args, calls_auth_method, end_user).await,
             "host.webhook_inbox.create" => crate::webhook_inbox::create(&self.state, tenant, &args).await,
             "host.tool.history" => control::tool_history(&self.state, tenant, &args).await,
