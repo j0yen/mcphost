@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-ask-user-decision.md (test_prefix: askd)",
+  "ac_test_map_prd": "PRD-mcphost-msrv-locked-required-check.md (test_prefix: msrvlock)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,27 +28,14 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/askd_ac01_composed_path_costs_more_host_calls_than_verbs.rs",
-    "AC2": "tests/askd_ac02_keyless_answer_unblocks_wait_second_post_409.rs",
-    "AC3": "tests/askd_ac03_wait_ceiling_single_source.rs",
-    "AC4": "tests/askd_ac04_expired_ask_errors_and_page_is_404.rs",
-    "AC5": "tests/askd_ac05_keyless_wait_is_tenant_key_missing_and_signs_nobody_up.rs",
-    "AC6": "tests/askd_ac06_free_tenant_sixth_pending_ask_is_asks_limit.rs",
-    "AC7": "tests/askd_ac07_concurrent_posts_record_exactly_one_answer.rs",
-    "AC8": "deferred -- operator-provisioned: needs prod after deploy."
+    "AC1": "tests/msrvlock_ac01_stale_lock_fails.rs",
+    "AC2": "tests/msrvlock_ac02_cargo_steps_are_locked.rs",
+    "AC3": "tests/msrvlock_ac03_generate_lists_nine_contexts.rs",
+    "AC4": "tests/msrvlock_ac04_check_compares_live_protection.rs",
+    "AC5": "tests/msrvlock_ac05_toml_equals_generate.rs",
+    "AC6": "deferred -- operator-provisioned: Joe/operator runs scripts/required-checks.sh --apply after landing (needs repo admin); evidence is the live protection read-back."
   },
   "ac_test_map_by_prefix": {
-    "cfix": {
-      "_prd": "PRD-mcphost-chain-dry-run.md (test_prefix: cfix)",
-      "AC1": "tests/cfix_ac01_fixture_replaces_unreachable_step.rs",
-      "AC2": "tests/cfix_ac02_fully_fixtured_dry_run_makes_no_upstream_call.rs",
-      "AC3": "tests/cfix_ac03_fixture_shape_mismatch_is_refused.rs",
-      "AC4": "tests/cfix_ac04_run_exports_as_fixtures.rs",
-      "AC5": "tests/cfix_ac05_fixture_limits_and_applicability.rs",
-      "AC6": "tests/cfix_ac06_unrunnable_unfixtured_step_is_skipped_and_named.rs",
-      "AC7": "tests/cfix_ac07_quickstart_names_fixtures.rs",
-      "AC8": "deferred -- operator-provisioned: live prod MCP call after deploy (jq prints fixture)"
-    },
     "whin": {
       "_prd": "PRD-mcphost-webhook-inbox-one-call.md (test_prefix: whin)",
       "AC1": "tests/whin_ac01_create_returns_url_secret_wait.rs",
@@ -1275,6 +1262,28 @@
       "AC5": "tests/cproc_ac05_ready_deadline_is_the_host_aware_timeout.rs",
       "AC6": "tests/cproc_ac06_real_tree_has_no_raw_spawns_or_guards.rs",
       "AC7": "tests/cproc_ac07_flake_lint_job_runs_child_proc_lint.rs"
+    },
+    "askd": {
+      "_prd": "PRD-mcphost-ask-user-decision.md (test_prefix: askd)",
+      "AC1": "tests/askd_ac01_composed_path_costs_more_host_calls_than_verbs.rs",
+      "AC2": "tests/askd_ac02_keyless_answer_unblocks_wait_second_post_409.rs",
+      "AC3": "tests/askd_ac03_wait_ceiling_single_source.rs",
+      "AC4": "tests/askd_ac04_expired_ask_errors_and_page_is_404.rs",
+      "AC5": "tests/askd_ac05_keyless_wait_is_tenant_key_missing_and_signs_nobody_up.rs",
+      "AC6": "tests/askd_ac06_free_tenant_sixth_pending_ask_is_asks_limit.rs",
+      "AC7": "tests/askd_ac07_concurrent_posts_record_exactly_one_answer.rs",
+      "AC8": "deferred -- operator-provisioned: needs prod after deploy."
+    },
+    "dxn": {
+      "_prd": "PRD-mcphost-docs-examples-executed-nightly.md (test_prefix: dxn)",
+      "AC1": "tests/dxn_ac01_classify_fences.rs",
+      "AC2": "tests/dxn_ac02_extract_corpus_and_drift_check.rs",
+      "AC3": "tests/dxn_ac03_run_corpus_against_fixture_host.rs",
+      "AC4": "tests/dxn_ac04_anonymous_and_skip_attributes.rs",
+      "AC5": "tests/dxn_ac05_cross_page_dependency_fails_extract.rs",
+      "AC6": "tests/dxn_ac06_gen_llms_full_gates_on_corpus_and_annotates.rs",
+      "AC7": "tests/dxn_ac07_unreachable_host_exits_two_after_one_retry.rs",
+      "AC8": "deferred -- operator-provisioned: first nightly run of the orch timer against prod after deploy."
     }
   }
 }
