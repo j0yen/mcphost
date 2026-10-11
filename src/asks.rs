@@ -287,6 +287,7 @@ pub async fn create(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
             // Counted and inserted on the one connection, so two concurrent
             // creates cannot both slip under the ceiling.
             expire_due(conn, now)?;
+            prune_old(conn, now)?;
             let open: i64 = conn.query_row(
                 "SELECT COUNT(*) FROM asks WHERE tenant_id = ?1 AND status = 'pending'",
                 params![tenant_id],
@@ -429,6 +430,109 @@ fn ask_expired(row: &AskRow) -> AppError {
             "next_call": "host.ask.create",
         }),
     }
+}
+
+// ---- host.ask.get / host.ask.list / retention ---------------------------------------
+
+/// Days an ask row (and its events) survives past its expiry.
+pub const RETENTION_DAYS: i64 = 30;
+
+/// `host.ask.list` default and maximum page size.
+pub const LIST_DEFAULT: i64 = 50;
+pub const LIST_MAX: i64 = 100;
+
+/// The audit row of one ask: `{ask_id, question, options, status, choice,
+/// created_unix, answered_unix, expires_unix, waited_total_ms}`.
+fn audit_row(row: &AskRow) -> Value {
+    json!({
+        "ask_id": row.id,
+        "question": row.question,
+        "options": row.options,
+        "status": row.status,
+        "choice": row.choice,
+        "created_unix": row.created_unix,
+        "answered_unix": row.answered_unix,
+        "expires_unix": row.expires_unix,
+        "waited_total_ms": row.waited_total_ms,
+    })
+}
+
+/// Deletes asks (and their events) that expired more than
+/// [`RETENTION_DAYS`] ago.
+pub(crate) fn prune_old(conn: &Connection, now: i64) -> Result<(), AppError> {
+    let cutoff = now - RETENTION_DAYS * 86_400;
+    conn.execute("DELETE FROM ask_events WHERE ask_id IN (SELECT id FROM asks WHERE expires_unix < ?1)", params![cutoff])?;
+    conn.execute("DELETE FROM asks WHERE expires_unix < ?1", params![cutoff])?;
+    Ok(())
+}
+
+/// `host.ask.get {ask_id}`: the audit row plus its `events`
+/// (`created`, then one `answered` or `expired`).
+pub async fn get(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    if let Some(known) = crate::handler::known_control_plane_args("host.ask.get", &state.kinds) {
+        crate::errors::check_unknown_argument(args, "host.ask.get", &known)?;
+    }
+    let ask_id = args
+        .get("ask_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid("missing required argument 'ask_id'".into()))?
+        .to_string();
+    let row = find_for_tenant(state, tenant, &ask_id).await?;
+    let id = ask_id.clone();
+    let events: Vec<Value> = state
+        .db
+        .with_conn(move |conn| {
+            let mut stmt = conn.prepare("SELECT kind, at_unix, detail FROM ask_events WHERE ask_id = ?1 ORDER BY id")?;
+            let rows = stmt
+                .query_map(params![id], |r| {
+                    let (kind, at_unix, detail): (String, i64, Option<String>) = (r.get(0)?, r.get(1)?, r.get(2)?);
+                    // An `answered` event's detail is the choice; `created` and
+                    // `expired` carry none.
+                    Ok(match detail {
+                        Some(d) => json!({"kind": kind, "at_unix": at_unix, "choice": d}),
+                        None => json!({"kind": kind, "at_unix": at_unix}),
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await?;
+    let mut out = audit_row(&row);
+    out["events"] = json!(events);
+    Ok(out)
+}
+
+/// `host.ask.list {status?, limit?}`: this tenant's asks, newest first.
+pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    if let Some(known) = crate::handler::known_control_plane_args("host.ask.list", &state.kinds) {
+        crate::errors::check_unknown_argument(args, "host.ask.list", &known)?;
+    }
+    let status = match args.get("status") {
+        None | Some(Value::Null) => None,
+        Some(v) => match v.as_str() {
+            Some(s @ ("pending" | "answered" | "expired")) => Some(s.to_string()),
+            _ => return Err(invalid("status: one of pending, answered, expired".into())),
+        },
+    };
+    let limit = args.get("limit").and_then(Value::as_i64).unwrap_or(LIST_DEFAULT).clamp(1, LIST_MAX);
+    let tenant_id = tenant.id;
+    let rows = state
+        .db
+        .with_conn(move |conn| {
+            let now = now_unix();
+            expire_due(conn, now)?;
+            prune_old(conn, now)?;
+            let mut stmt = conn.prepare(&format!(
+                "SELECT {ROW_COLUMNS} FROM asks WHERE tenant_id = ?1 AND (?2 IS NULL OR status = ?2) \
+                 ORDER BY created_unix DESC, id DESC LIMIT ?3"
+            ))?;
+            let rows = stmt
+                .query_map(params![tenant_id, status, limit], row_from)?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await?;
+    Ok(json!({"asks": rows.iter().map(audit_row).collect::<Vec<_>>()}))
 }
 
 // ---- the answer page: GET/POST /a/{id} ------------------------------------------

@@ -3093,6 +3093,28 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &["ask_id"],
             ),
         ),
+        Tool::new(
+            "host.ask.get",
+            "Read one ask's audit row: {ask_id, question, options, status, choice, created_unix, \
+             answered_unix, expires_unix, waited_total_ms, events}. events is the ordered trail: \
+             created, then exactly one answered or expired. Rows persist 30 days after expiry.",
+            host_schema(
+                json!({"ask_id": {"type": "string", "description": "The ask_id host.ask.create returned."}}),
+                &["ask_id"],
+            ),
+        ),
+        Tool::new(
+            "host.ask.list",
+            "List this tenant's asks, newest first, as {asks: [audit rows]} -- who answered what \
+             and how long the agent waited. Rows persist 30 days after expiry.",
+            host_schema(
+                json!({
+                    "status": {"type": "string", "enum": ["pending", "answered", "expired"], "description": "Only asks in this state."},
+                    "limit": {"type": "integer", "description": "At most this many rows; default 50, at most 100."},
+                }),
+                &[],
+            ),
+        ),
         // PRD-mcphost-agent-consent: contacts and mutes layered on top of
         // agent-directory contact_policy -- a contacts-mode recipient now
         // distinguishes "no relationship yet" from "mutual, accepted"
@@ -5522,6 +5544,8 @@ impl McpHostHandler {
             // PRD-mcphost-ask-user-decision.
             "host.ask.create" => crate::asks::create(&self.state, tenant, &args).await,
             "host.ask.wait" => crate::asks::wait(&self.state, tenant, &args).await,
+            "host.ask.get" => crate::asks::get(&self.state, tenant, &args).await,
+            "host.ask.list" => crate::asks::list(&self.state, tenant, &args).await,
             "host.msg.block" => messaging::block(&self.state, tenant, &args).await,
             "host.msg.unblock" => messaging::unblock(&self.state, tenant, &args).await,
             // PRD-mcphost-agent-consent requirements 2, 3, 5, 10.
