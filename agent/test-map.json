@@ -1221,6 +1221,11 @@
       "AC6": "tests/pgtr_ac06_cursor_is_bound_to_its_tenant.rs",
       "AC7": "tests/pgtr_ac07_limit_clamped_and_zero_refused.rs",
       "AC8": "deferred -- operator-provisioned: live prod curl of the contract and docs.list walk after deploy."
+    },
+    "blobput": {
+      "_prd": "PRD-mcphost-blob-put-get-signed-url.md (test_prefix: blobput)",
+      "AC1": "tests/blobput_ac01_corpus_has_binary_fixture_task.rs",
+      "AC8": "deferred -- operator-provisioned: live prod proof.sh after deploy."
     }
   }
 }
