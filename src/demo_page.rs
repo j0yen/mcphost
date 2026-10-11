@@ -158,7 +158,38 @@ async fn run_row(state: &AppState, tenant_id: i64, run: &RunRow, secrets: &[Stri
     })
 }
 
-fn render_page(namespace: &str, tool: &str, rows: &[Value]) -> String {
+/// R3: one input per top-level property of the tool's input schema. The
+/// `data-type` attribute drives the client-side coercion in the page script
+/// (integer/number/boolean/json); everything else submits as a string.
+fn render_form(action: &str, schema: &Value) -> String {
+    let required: Vec<&str> = schema
+        .get("required")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    let mut fields = String::new();
+    if let Some(props) = schema.get("properties").and_then(Value::as_object) {
+        for (name, prop) in props {
+            let ty = match prop.get("type").and_then(Value::as_str) {
+                Some(t @ ("integer" | "number" | "boolean")) => t,
+                Some("string") => "string",
+                _ => "json",
+            };
+            let input_type = if ty == "boolean" { "checkbox" } else { "text" };
+            let name = crate::claim::html_escape(name);
+            fields.push_str(&format!(
+                "<label>{name} <small>({ty}{})</small> <input type=\"{input_type}\" name=\"{name}\" data-type=\"{ty}\"></label>",
+                if required.contains(&name.as_str()) { ", required" } else { "" },
+            ));
+        }
+    }
+    format!(
+        "<form id=\"try\" action=\"{}\" method=\"post\">{fields}<button type=\"submit\">Run</button></form><pre id=\"out\"></pre>",
+        crate::claim::html_escape(action)
+    )
+}
+
+fn render_page(namespace: &str, tool: &str, description: &str, form: &str, rows: &[Value]) -> String {
     let mut body = String::new();
     for r in rows {
         body.push_str(&format!(
@@ -172,6 +203,8 @@ fn render_page(namespace: &str, tool: &str, rows: &[Value]) -> String {
     }
     include_str!("demo_page.html")
         .replace("__TITLE__", &crate::claim::html_escape(&format!("{namespace}.{tool}")))
+        .replace("__DESC__", &crate::claim::html_escape(&description.chars().take(300).collect::<String>()))
+        .replace("__FORM__", form)
         .replace("__ROWS__", &body)
 }
 
@@ -208,7 +241,21 @@ pub async fn demo_get(
     for run in &runs {
         rows.push(run_row(&state, tenant.id, run, &secrets).await);
     }
+    // R3: the share token (public by design of `/x/`) goes in the form
+    // action only.
+    let token = match state.db.find_url_share(tenant.id, tool.clone()).await {
+        Ok(Some((_, enc, nonce))) => state.secrets.decrypt(&enc, &nonce).ok(),
+        _ => None,
+    };
+    let schema = state
+        .kinds
+        .get(&tool_row.kind)
+        .map(|k| k.describe(&tool_row.spec).input_schema)
+        .unwrap_or(Value::Null);
+    let form = token
+        .map(|t| render_form(&format!("/x/{t}/{tool}"), &schema))
+        .unwrap_or_default();
     let line = json!({"event": "demo_view", "tool": tool, "ua_class": ua_class(&headers)}).to_string();
     let _ = state.db.append_log(tenant.id, tool.clone(), line).await;
-    crate::claim::html_response(StatusCode::OK, render_page(&namespace, &tool, &rows))
+    crate::claim::html_response(StatusCode::OK, render_page(&namespace, &tool, tool_row.share_description.as_deref().unwrap_or(""), &form, &rows))
 }

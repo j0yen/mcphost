@@ -431,6 +431,8 @@ mod demo_ac01_page_lists_three_runs_newest_first;
 mod demo_ac02_unshared_unknown_tool_unknown_ns_identical_404;
 #[path = "demo_ac03_secrets_and_sensitive_keys_redacted.rs"]
 mod demo_ac03_secrets_and_sensitive_keys_redacted;
+#[path = "demo_ac04_try_it_form_posts_number_and_surfaces_429.rs"]
+mod demo_ac04_try_it_form_posts_number_and_surfaces_429;
 #[path = "docsearch_ac01_status_reports_watermark_lag_and_chunks.rs"]
 mod docsearch_ac01_status_reports_watermark_lag_and_chunks;
 #[path = "docsearch_ac02_lexical_search_returns_passage_and_offset.rs"]
