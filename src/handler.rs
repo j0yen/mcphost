@@ -2126,12 +2126,14 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              name and magic bytes (pdf, png, jpeg, gif, webp, zip, gzip, xlsx, docx, csv, json, \
              txt, md), else application/octet-stream. The same name stores a new version of the \
              same id; identical bytes are a no-op. Rotating the tenant key invalidates \
-             outstanding urls. Ceilings: blob_max_bytes per file, blob_bytes_max in total, \
+             outstanding urls. Give exactly one of content_base64 or url (the host fetches it, \
+             so the bytes never pass through your context). Ceilings: blob_max_bytes per file, blob_bytes_max in total, \
              blobs_max files -- see host.quickstart limits.plan.",
             host_schema(
                 json!({
                     "name": {"type": "string", "description": "File name; the same name on a later put creates a new version of the same id."},
-                    "content_base64": {"type": "string", "description": "The file's bytes, base64-encoded."},
+                    "content_base64": {"type": "string", "description": "The file's bytes, base64-encoded; use url instead to have the host fetch them."},
+                    "url": {"type": "string", "description": "http(s) URL the host fetches (10 s, at most blob_max_bytes, no redirects); refused for private, loopback, link-local and internal hosts. Use content_base64 instead for bytes you hold."},
                     "mime": {"type": "string", "description": "Content type; sniffed from name and content when omitted."},
                 }),
                 &["name"],

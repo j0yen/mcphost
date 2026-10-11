@@ -151,7 +151,7 @@ fn quota_error(code: &'static str, ceiling: &str, limit: i64, used: i64) -> AppE
 }
 
 /// R1: `content_base64`, decoded.
-fn resolve_content(args: &Value) -> Result<Vec<u8>, AppError> {
+fn decode_content(args: &Value) -> Result<Vec<u8>, AppError> {
     let Some(b64) = args.get("content_base64").and_then(Value::as_str) else {
         return Err(AppError::InvalidArgs(
             "missing required argument 'content_base64' (or 'url')".to_string(),
@@ -183,8 +183,138 @@ fn validate_name(name: &str) -> Result<(), AppError> {
 pub async fn blob_put(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let name = arg_str(args, "name")?;
     validate_name(&name)?;
-    let content = resolve_content(args)?;
-    store(state, tenant, &name, args.get("mime").and_then(Value::as_str), content).await
+    let explicit_mime = args.get("mime").and_then(Value::as_str);
+    let has_url = args.get("url").is_some_and(|v| !v.is_null());
+    if has_url && args.get("content_base64").is_some_and(|v| !v.is_null()) {
+        return Err(AppError::InvalidArgs(
+            "pass exactly one of 'content_base64' or 'url'".to_string(),
+        ));
+    }
+    if !has_url {
+        let content = decode_content(args)?;
+        return store(state, tenant, &name, explicit_mime, content).await;
+    }
+    let url = arg_str(args, "url")?;
+    let plan = plan_of(state, &tenant.plan)?;
+    let fetched = fetch_remote(state, plan.blob_max_bytes, &url).await?;
+    // A remote file whose name and bytes say nothing is typed by what the
+    // server called it.
+    let mime = match explicit_mime {
+        Some(m) => Some(m.to_string()),
+        None if resolve_mime(None, &name, &fetched.bytes) == "application/octet-stream" => fetched.content_type,
+        None => None,
+    };
+    store(state, tenant, &name, mime.as_deref(), fetched.bytes).await
+}
+
+/// Seconds the host-side `url` fetch may take, DNS included.
+const FETCH_TIMEOUT_SECS: u64 = 10;
+
+struct Fetched {
+    bytes: Vec<u8>,
+    content_type: Option<String>,
+}
+
+fn host_not_allowed(host: &str) -> AppError {
+    AppError::Structured {
+        code: "host_not_allowed",
+        message: format!("host '{host}' is not an allowed fetch target (private, loopback, link-local, internal or this host's own domain)"),
+        data: json!({"field": "url", "host": host}),
+    }
+}
+
+fn upstream(code: &'static str, message: String) -> AppError {
+    AppError::Structured { code, message, data: json!({"field": "url"}) }
+}
+
+/// R1: the host-side `url` fetch -- 10 s, at most `limit` bytes, refused
+/// for the same hosts the `http` kind refuses. Redirects are not followed
+/// (a redirect could name a refused host), and a name's addresses are
+/// vetted once and pinned for the connect so a DNS answer cannot change
+/// between the check and the connection.
+async fn fetch_remote(state: &AppState, limit: i64, url: &str) -> Result<Fetched, AppError> {
+    use crate::kinds::http::{HickoryLookup, NameLookup, is_disallowed_ip, is_disallowed_literal_host, own_domain_from_url};
+
+    let parsed = reqwest::Url::parse(url)
+        .map_err(|e| AppError::InvalidArgs(format!("url: not a valid URL: {e}")))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(AppError::InvalidArgs("url: only http and https are fetched".to_string()));
+    }
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| AppError::InvalidArgs("url: has no host".to_string()))?
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .to_string();
+    // Test builds fetch from a loopback stub, exactly as `authz`'s CIMD
+    // fetch does; production keeps loopback refused.
+    let allow_loopback = cfg!(feature = "test-support");
+    if is_disallowed_literal_host(&host, &own_domain_from_url(&state.public_url), allow_loopback) {
+        return Err(host_not_allowed(&host));
+    }
+    let port = parsed.port_or_known_default().unwrap_or(80);
+
+    let fetch = async {
+        let mut builder = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none());
+        if host.parse::<std::net::IpAddr>().is_err() {
+            let lookup = HickoryLookup::new().map_err(|e| upstream("upstream_unreachable", format!("dns: {e}")))?;
+            let ips = lookup
+                .lookup(host.clone())
+                .await
+                .map_err(|e| upstream("upstream_unreachable", format!("dns lookup of '{host}' failed: {e}")))?;
+            if ips.is_empty() || ips.iter().any(|ip| is_disallowed_ip(*ip, allow_loopback)) {
+                return Err(host_not_allowed(&host));
+            }
+            let addrs: Vec<std::net::SocketAddr> =
+                ips.into_iter().map(|ip| std::net::SocketAddr::new(ip, port)).collect();
+            builder = builder.resolve_to_addrs(&host, &addrs);
+        }
+        let client = builder
+            .build()
+            .map_err(|e| AppError::Internal(format!("blob fetch client: {e}")))?;
+        let mut resp = client
+            .get(parsed.clone())
+            .send()
+            .await
+            .map_err(|e| upstream("upstream_unreachable", format!("fetch failed: {e}")))?;
+        let status = resp.status();
+        if !status.is_success() {
+            let code = if status.is_client_error() { "upstream_client_error" } else { "upstream_error" };
+            return Err(upstream(code, format!("the url answered HTTP {status}")));
+        }
+        if let Some(len) = resp.content_length()
+            && len as i64 > limit
+        {
+            return Err(quota_error("blob_too_large", "blob_max_bytes", limit, len as i64));
+        }
+        let content_type = resp
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.split(';').next())
+            .map(|v| v.trim().to_ascii_lowercase())
+            .filter(|v| !v.is_empty() && v != "application/octet-stream");
+        let mut bytes: Vec<u8> = Vec::new();
+        while let Some(chunk) = resp
+            .chunk()
+            .await
+            .map_err(|e| upstream("upstream_unreachable", format!("fetch interrupted: {e}")))?
+        {
+            if (bytes.len() + chunk.len()) as i64 > limit {
+                return Err(quota_error(
+                    "blob_too_large",
+                    "blob_max_bytes",
+                    limit,
+                    (bytes.len() + chunk.len()) as i64,
+                ));
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        Ok(Fetched { bytes, content_type })
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(FETCH_TIMEOUT_SECS), fetch)
+        .await
+        .map_err(|_| upstream("upstream_timeout", format!("the url did not finish within {FETCH_TIMEOUT_SECS}s")))?
 }
 
 /// The write path shared by `host.blob.put` and the python bridge.

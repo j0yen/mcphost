@@ -462,12 +462,12 @@
       "since": "0.58.0"
     },
     {
-      "description": "Store a file of any type under this tenant and get back {id, name, bytes, mime, sha256, url, expires, version}; url is a signed link (valid 24h) that serves the bytes with the stored Content-Type. mime is the explicit one, else sniffed from the name and magic bytes (pdf, png, jpeg, gif, webp, zip, gzip, xlsx, docx, csv, json, txt, md), else application/octet-stream. The same name stores a new version of the same id; identical bytes are a no-op. Rotating the tenant key invalidates outstanding urls. Ceilings: blob_max_bytes per file, blob_bytes_max in total, blobs_max files -- see host.quickstart limits.plan.",
+      "description": "Store a file of any type under this tenant and get back {id, name, bytes, mime, sha256, url, expires, version}; url is a signed link (valid 24h) that serves the bytes with the stored Content-Type. mime is the explicit one, else sniffed from the name and magic bytes (pdf, png, jpeg, gif, webp, zip, gzip, xlsx, docx, csv, json, txt, md), else application/octet-stream. The same name stores a new version of the same id; identical bytes are a no-op. Rotating the tenant key invalidates outstanding urls. Give exactly one of content_base64 or url (the host fetches it, so the bytes never pass through your context). Ceilings: blob_max_bytes per file, blob_bytes_max in total, blobs_max files -- see host.quickstart limits.plan.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
           "content_base64": {
-            "description": "The file's bytes, base64-encoded.",
+            "description": "The file's bytes, base64-encoded; use url instead to have the host fetch them.",
             "type": "string"
           },
           "mime": {
@@ -480,6 +480,10 @@
           },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "url": {
+            "description": "http(s) URL the host fetches (10 s, at most blob_max_bytes, no redirects); refused for private, loopback, link-local and internal hosts. Use content_base64 instead for bytes you hold.",
             "type": "string"
           }
         },
@@ -5701,12 +5705,12 @@
       "since": "0.58.0"
     },
     {
-      "description": "Store a file of any type under this tenant and get back {id, name, bytes, mime, sha256, url, expires, version}; url is a signed link (valid 24h) that serves the bytes with the stored Content-Type. mime is the explicit one, else sniffed from the name and magic bytes (pdf, png, jpeg, gif, webp, zip, gzip, xlsx, docx, csv, json, txt, md), else application/octet-stream. The same name stores a new version of the same id; identical bytes are a no-op. Rotating the tenant key invalidates outstanding urls. Ceilings: blob_max_bytes per file, blob_bytes_max in total, blobs_max files -- see host.quickstart limits.plan.",
+      "description": "Store a file of any type under this tenant and get back {id, name, bytes, mime, sha256, url, expires, version}; url is a signed link (valid 24h) that serves the bytes with the stored Content-Type. mime is the explicit one, else sniffed from the name and magic bytes (pdf, png, jpeg, gif, webp, zip, gzip, xlsx, docx, csv, json, txt, md), else application/octet-stream. The same name stores a new version of the same id; identical bytes are a no-op. Rotating the tenant key invalidates outstanding urls. Give exactly one of content_base64 or url (the host fetches it, so the bytes never pass through your context). Ceilings: blob_max_bytes per file, blob_bytes_max in total, blobs_max files -- see host.quickstart limits.plan.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
           "content_base64": {
-            "description": "The file's bytes, base64-encoded.",
+            "description": "The file's bytes, base64-encoded; use url instead to have the host fetch them.",
             "type": "string"
           },
           "mime": {
@@ -5719,6 +5723,10 @@
           },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "url": {
+            "description": "http(s) URL the host fetches (10 s, at most blob_max_bytes, no redirects); refused for private, loopback, link-local and internal hosts. Use content_base64 instead for bytes you hold.",
             "type": "string"
           }
         },

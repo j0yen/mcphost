@@ -1228,6 +1228,7 @@
       "AC2": "tests/blobput_ac02_pdf_put_sniffs_mime_and_serves_bytes.rs",
       "AC3": "tests/blobput_ac03_signed_routes_share_403_and_410.rs",
       "AC4": "tests/blobput_ac04_quota_refusals_and_plan_ceilings.rs",
+      "AC5": "tests/blobput_ac05_url_fetch_refusals_write_nothing.rs",
       "AC8": "deferred -- operator-provisioned: live prod proof.sh after deploy."
     }
   }
