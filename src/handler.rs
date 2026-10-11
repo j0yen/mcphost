@@ -2140,6 +2140,53 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             ),
         ),
         Tool::new(
+            "host.blob.get",
+            "Read a stored file by id or name. as: \"url\" (default) returns the metadata and a \
+             fresh signed url, costing no read; as: \"base64\" also returns content_base64, \
+             refused with blob_too_large_inline (use host.blob.url) for a file over 1 MiB.",
+            host_schema(
+                json!({
+                    "id": {"type": "string", "description": "Blob id; use name instead if you don't have it."},
+                    "name": {"type": "string", "description": "Blob name; use id instead if you have it."},
+                    "as": {"type": "string", "enum": ["url", "base64"], "description": "\"url\" (default) or \"base64\" (files up to 1 MiB)."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.blob.list",
+            "List this tenant's stored files by name: {blobs: [{id, name, bytes, mime, sha256, \
+             version, ...}], count, total_bytes} -- total_bytes is the usage line against \
+             blob_bytes_max.",
+            host_schema(
+                json!({
+                    "prefix": {"type": "string", "description": "Only files whose name starts with this."},
+                    "limit": {"type": "integer", "description": "Max files to return, 1-1000; default 100."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.blob.delete",
+            "Delete a stored file by id: its bytes and row go, and outstanding urls stop working.",
+            host_schema(
+                json!({"id": {"type": "string", "description": "Blob id to delete."}}),
+                &["id"],
+            ),
+        ),
+        Tool::new(
+            "host.blob.url",
+            "Mint a fresh signed download url for a stored file; ttl_s defaults to 24 h and is at \
+             most 7 days (604800).",
+            host_schema(
+                json!({
+                    "id": {"type": "string", "description": "Blob id."},
+                    "ttl_s": {"type": "integer", "description": "Seconds the url stays valid, 1-604800; default 86400."},
+                }),
+                &["id"],
+            ),
+        ),
+        Tool::new(
             "host.docs.get",
             "Read a document by id or name -- version defaults to the current one; text: true \
              also returns the extracted plain text this document's mime produced at put time.",
@@ -5447,6 +5494,10 @@ impl McpHostHandler {
             "host.table.handle_export" => crate::export::handle_export(&self.state, tenant, &args).await,
             "host.docs.put" => docs::doc_put(&self.state, tenant, &args).await,
             "host.blob.put" => crate::blobs::blob_put(&self.state, tenant, &args).await,
+            "host.blob.get" => crate::blobs::blob_get(&self.state, tenant, &args).await,
+            "host.blob.list" => crate::blobs::blob_list(&self.state, tenant, &args).await,
+            "host.blob.delete" => crate::blobs::blob_delete(&self.state, tenant, &args).await,
+            "host.blob.url" => crate::blobs::blob_url(&self.state, tenant, &args).await,
             "host.docs.get" => docs::doc_get(&self.state, tenant, &args).await,
             "host.docs.list" => docs::doc_list(&self.state, tenant, &args).await,
             "host.docs.delete" => docs::doc_delete(&self.state, tenant, &args).await,

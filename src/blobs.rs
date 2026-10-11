@@ -467,6 +467,96 @@ pub async fn bridge(state: &AppState, tenant: &Tenant, op: &str, args: &Value) -
     }
 }
 
+// ---- host.blob.get / list / delete / url (R3, R8) ------------------------
+
+/// `get` with `as: "base64"` refuses past this many bytes: a megabyte of
+/// base64 in a tool result is the agent's context, not a download.
+pub const INLINE_MAX_BYTES: i64 = 1024 * 1024;
+
+/// R3: the longest `host.blob.url` ttl.
+pub const URL_TTL_MAX_SECS: i64 = 7 * 24 * 60 * 60;
+
+fn id_or_name(args: &Value) -> (Option<String>, Option<String>) {
+    let get = |k: &str| args.get(k).and_then(Value::as_str).map(str::to_string);
+    (get("id"), get("name"))
+}
+
+/// R3: `host.blob.get {id | name, as: "base64" | "url" (default)}`.
+pub async fn blob_get(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let (id, name) = id_or_name(args);
+    let row = lookup(state, tenant, id, name).await?;
+    let mut out = blob_json(state, tenant, &row);
+    match args.get("as").and_then(Value::as_str).unwrap_or("url") {
+        "url" => Ok(out),
+        "base64" => {
+            if row.bytes > INLINE_MAX_BYTES {
+                return Err(AppError::Structured {
+                    code: "blob_too_large_inline",
+                    message: format!(
+                        "blob is {} bytes, over the {INLINE_MAX_BYTES} byte inline limit; use host.blob.url and fetch the link",
+                        row.bytes
+                    ),
+                    data: json!({"limit": INLINE_MAX_BYTES, "used": row.bytes, "use": "host.blob.url"}),
+                });
+            }
+            let bytes = read_bytes(state, &row).await?;
+            use base64::Engine as _;
+            out["content_base64"] = json!(base64::engine::general_purpose::STANDARD.encode(bytes));
+            Ok(out)
+        }
+        other => Err(AppError::InvalidArgs(format!("'as' must be \"base64\" or \"url\", got '{other}'"))),
+    }
+}
+
+/// R3/R8: `host.blob.list {prefix?, limit?}` -> this tenant's blobs by name,
+/// plus `total_bytes` across all of them.
+pub async fn blob_list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let limit = args.get("limit").and_then(Value::as_i64).unwrap_or(100).clamp(1, 1000);
+    let prefix = args.get("prefix").and_then(Value::as_str).map(str::to_string);
+    let rows = state.db.blob_list(tenant.id, prefix, limit).await?;
+    let (count, total_bytes) = state.db.blobs_usage(tenant.id).await?;
+    let blobs: Vec<Value> = rows
+        .iter()
+        .map(|r| {
+            json!({
+                "id": r.id,
+                "name": r.name,
+                "bytes": r.bytes,
+                "mime": r.mime,
+                "sha256": r.sha256,
+                "version": r.version,
+                "created_at": r.created_at,
+                "updated_at": r.updated_at,
+            })
+        })
+        .collect();
+    Ok(json!({"blobs": blobs, "count": count, "total_bytes": total_bytes}))
+}
+
+/// R3: `host.blob.delete {id}`: the row and its bytes. Outstanding urls
+/// answer 404 from then on.
+pub async fn blob_delete(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let id = arg_str(args, "id")?;
+    let row = lookup(state, tenant, Some(id), None).await?;
+    state.db.blob_delete(tenant.id, row.id.clone()).await?;
+    let _ = tokio::fs::remove_file(file_path(state, tenant.id, &row.id)).await;
+    Ok(json!({"deleted": true, "id": row.id, "name": row.name, "bytes": row.bytes}))
+}
+
+/// R3: `host.blob.url {id, ttl_s ≤ 7 d}`: a fresh signed link.
+pub async fn blob_url(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let id = arg_str(args, "id")?;
+    let ttl = args.get("ttl_s").and_then(Value::as_i64).unwrap_or(crate::signed_url::DEFAULT_TTL_SECS);
+    if !(1..=URL_TTL_MAX_SECS).contains(&ttl) {
+        return Err(AppError::InvalidArgs(format!(
+            "'ttl_s' must be between 1 and {URL_TTL_MAX_SECS} seconds (7 days)"
+        )));
+    }
+    let row = lookup(state, tenant, Some(id), None).await?;
+    let expires = crate::state::now_unix() + ttl;
+    Ok(json!({"id": row.id, "name": row.name, "url": url_for(state, tenant, &row.id, expires), "expires": expires}))
+}
+
 // ---- GET /blobs/{id} -----------------------------------------------------
 
 /// Header-safe rendering of a blob name for `Content-Disposition`.

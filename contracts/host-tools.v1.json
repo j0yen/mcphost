@@ -462,6 +462,85 @@
       "since": "0.58.0"
     },
     {
+      "description": "Delete a stored file by id: its bytes and row go, and outstanding urls stop working.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Blob id to delete.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "host.blob.delete",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Read a stored file by id or name. as: \"url\" (default) returns the metadata and a fresh signed url, costing no read; as: \"base64\" also returns content_base64, refused with blob_too_large_inline (use host.blob.url) for a file over 1 MiB.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "as": {
+            "description": "\"url\" (default) or \"base64\" (files up to 1 MiB).",
+            "enum": [
+              "url",
+              "base64"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "description": "Blob id; use name instead if you don't have it.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Blob name; use id instead if you have it.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.blob.get",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List this tenant's stored files by name: {blobs: [{id, name, bytes, mime, sha256, version, ...}], count, total_bytes} -- total_bytes is the usage line against blob_bytes_max.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "Max files to return, 1-1000; default 100.",
+            "type": "integer"
+          },
+          "prefix": {
+            "description": "Only files whose name starts with this.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.blob.list",
+      "since": "0.58.0",
+      "unpaged_reason": "limit-only name-ordered window with a prefix filter; no keyset cursor is offered yet"
+    },
+    {
       "description": "Store a file of any type under this tenant and get back {id, name, bytes, mime, sha256, url, expires, version}; url is a signed link (valid 24h) that serves the bytes with the stored Content-Type. mime is the explicit one, else sniffed from the name and magic bytes (pdf, png, jpeg, gif, webp, zip, gzip, xlsx, docx, csv, json, txt, md), else application/octet-stream. The same name stores a new version of the same id; identical bytes are a no-op. Rotating the tenant key invalidates outstanding urls. Give exactly one of content_base64 or url (the host fetches it, so the bytes never pass through your context). Ceilings: blob_max_bytes per file, blob_bytes_max in total, blobs_max files -- see host.quickstart limits.plan.",
       "input_schema": {
         "additionalProperties": false,
@@ -493,6 +572,32 @@
         "type": "object"
       },
       "name": "host.blob.put",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Mint a fresh signed download url for a stored file; ttl_s defaults to 24 h and is at most 7 days (604800).",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Blob id.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "ttl_s": {
+            "description": "Seconds the url stays valid, 1-604800; default 86400.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "host.blob.url",
       "since": "0.58.0"
     },
     {
@@ -5705,6 +5810,84 @@
       "since": "0.58.0"
     },
     {
+      "description": "Delete a stored file by id: its bytes and row go, and outstanding urls stop working.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Blob id to delete.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "host_blob_delete",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Read a stored file by id or name. as: \"url\" (default) returns the metadata and a fresh signed url, costing no read; as: \"base64\" also returns content_base64, refused with blob_too_large_inline (use host.blob.url) for a file over 1 MiB.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "as": {
+            "description": "\"url\" (default) or \"base64\" (files up to 1 MiB).",
+            "enum": [
+              "url",
+              "base64"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "description": "Blob id; use name instead if you don't have it.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Blob name; use id instead if you have it.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host_blob_get",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List this tenant's stored files by name: {blobs: [{id, name, bytes, mime, sha256, version, ...}], count, total_bytes} -- total_bytes is the usage line against blob_bytes_max.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "Max files to return, 1-1000; default 100.",
+            "type": "integer"
+          },
+          "prefix": {
+            "description": "Only files whose name starts with this.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host_blob_list",
+      "since": "0.58.0"
+    },
+    {
       "description": "Store a file of any type under this tenant and get back {id, name, bytes, mime, sha256, url, expires, version}; url is a signed link (valid 24h) that serves the bytes with the stored Content-Type. mime is the explicit one, else sniffed from the name and magic bytes (pdf, png, jpeg, gif, webp, zip, gzip, xlsx, docx, csv, json, txt, md), else application/octet-stream. The same name stores a new version of the same id; identical bytes are a no-op. Rotating the tenant key invalidates outstanding urls. Give exactly one of content_base64 or url (the host fetches it, so the bytes never pass through your context). Ceilings: blob_max_bytes per file, blob_bytes_max in total, blobs_max files -- see host.quickstart limits.plan.",
       "input_schema": {
         "additionalProperties": false,
@@ -5736,6 +5919,32 @@
         "type": "object"
       },
       "name": "host_blob_put",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Mint a fresh signed download url for a stored file; ttl_s defaults to 24 h and is at most 7 days (604800).",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Blob id.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "ttl_s": {
+            "description": "Seconds the url stays valid, 1-604800; default 86400.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "host_blob_url",
       "since": "0.58.0"
     },
     {

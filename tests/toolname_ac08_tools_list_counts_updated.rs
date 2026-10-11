@@ -55,9 +55,10 @@ const UPTIME_TOOLS_ADDED: usize = 1;
 /// `flattened_count`).
 const WEBHOOK_INBOX_TOOLS_ADDED: usize = 1;
 
-/// PRD-mcphost-blob-put-get-signed-url: host.blob.put, one more genuinely
-/// new non-alias tool (its flattened form is counted by `flattened_count`).
-const BLOB_TOOLS_ADDED: usize = 1;
+/// PRD-mcphost-blob-put-get-signed-url: host.blob.put/get/list/delete/url,
+/// five more genuinely new non-alias tools (their flattened forms are
+/// counted by `flattened_count`).
+const BLOB_TOOLS_ADDED: usize = 5;
 
 /// PRD-mcphost-tools-list-alias-truth: one flattened `a_b_c` clone per
 /// dotted canonical, read off the registry rather than a literal.
@@ -88,5 +89,5 @@ fn full_registry_grew_by_exactly_the_alias_count_with_nothing_removed() {
          or later-landing PRD's own documented growth, including row-policy's own later five \
          tools), with nothing removed"
     );
-    assert_eq!(total, 362, "pin the exact new total (188 + 168 flattened forms, PRD-mcphost-tools-list-alias-truth); PRD-mcphost-invite-links, PRD-mcphost-result-handles, and this PRD's own growth grew it to");
+    assert_eq!(total, 370, "pin the exact new total (188 + 168 flattened forms, PRD-mcphost-tools-list-alias-truth); PRD-mcphost-invite-links, PRD-mcphost-result-handles, and this PRD's own growth grew it to");
 }
