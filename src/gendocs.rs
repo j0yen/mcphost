@@ -321,6 +321,63 @@ pub fn render_tools_markdown(kinds: &KindRegistry) -> String {
             .replace('\n', " ");
         out.push_str(&format!("| `{}` | {family} | {aliases} | {description} |\n", t.name));
     }
+    // PRD-mcphost-contract-output-schemas R7: one `Returns` block per tool,
+    // rendered from the same `output_schema` the contract and `tools/list`
+    // carry.
+    out.push_str("\n## Returns\n\n");
+    out.push_str(
+        "Top-level fields of each tool's `structuredContent`, from its `output_schema` \
+         (`contracts/host-output-schemas.v1.json`). \"always\" marks a field every captured \
+         response carried.\n",
+    );
+    for t in &tools {
+        let Some(schema) = &t.output_schema else { continue };
+        out.push_str(&format!("\n### `{}`\n\n**Returns**\n\n", t.name));
+        out.push_str(&render_returns_block(schema));
+    }
+    out
+}
+
+/// The bullet list of an `output_schema`'s top-level properties, sorted by
+/// name: `` - `field`: type (always) ``.
+fn render_returns_block(schema: &serde_json::Map<String, serde_json::Value>) -> String {
+    fn type_label(schema: &serde_json::Value) -> String {
+        let one = |t: &str| -> String {
+            match (t, schema.get("items").and_then(|i| i.get("type"))) {
+                ("array", Some(item)) => format!("array<{}>", type_label_of(item)),
+                _ => t.to_string(),
+            }
+        };
+        match schema.get("type") {
+            Some(serde_json::Value::String(t)) => one(t),
+            Some(serde_json::Value::Array(ts)) => {
+                ts.iter().filter_map(|t| t.as_str()).map(one).collect::<Vec<_>>().join(" | ")
+            }
+            _ => "any".to_string(),
+        }
+    }
+    fn type_label_of(t: &serde_json::Value) -> String {
+        match t {
+            serde_json::Value::String(s) => s.clone(),
+            serde_json::Value::Array(ts) => ts.iter().filter_map(|t| t.as_str()).collect::<Vec<_>>().join(" | "),
+            _ => "any".to_string(),
+        }
+    }
+    let required: HashSet<&str> = schema
+        .get("required")
+        .and_then(|r| r.as_array())
+        .map(|r| r.iter().filter_map(|v| v.as_str()).collect())
+        .unwrap_or_default();
+    let mut out = String::new();
+    if let Some(props) = schema.get("properties").and_then(|p| p.as_object()) {
+        for (name, prop) in props {
+            let always = if required.contains(name.as_str()) { " (always)" } else { "" };
+            out.push_str(&format!("- `{name}`: {}{always}\n", type_label(prop)));
+        }
+    }
+    if out.is_empty() {
+        out.push_str("- (no fields declared)\n");
+    }
     out
 }
 

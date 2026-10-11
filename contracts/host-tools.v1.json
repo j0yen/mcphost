@@ -12371,6 +12371,10 @@
       "name": "host.tool.publish",
       "output_schema": {
         "properties": {
+          "call_line": {
+            "description": "A ready-to-paste call for the published tool. Optional: declared so a typed client reserves the field; absent from responses that do not carry one.",
+            "type": "string"
+          },
           "deprecations": {
             "items": {
               "properties": {
@@ -12586,6 +12590,7 @@
             "type": "string"
           },
           "version": {
+            "description": "The tool's version after this publish (1 for a first publish).",
             "type": "integer"
           },
           "welcome_back": {
