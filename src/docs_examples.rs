@@ -338,16 +338,29 @@ fn valid_expect(e: &str) -> bool {
         || e.strip_prefix("contains:").is_some_and(|c| !c.is_empty())
 }
 
-/// Entries of one page, plus tag-grammar errors.
-pub fn extract_page(path: &str, text: &str, errors: &mut Vec<String>) -> Vec<Entry> {
+/// The tagged fences of one page with their ids (`<path>#<heading>-<n>`,
+/// `n` counting tagged fences under the same heading).
+fn tagged_fences(path: &str, text: &str) -> Vec<(Fence, Info, String)> {
     let mut counters: BTreeMap<String, usize> = BTreeMap::new();
     let mut out = Vec::new();
     for f in parse_fences(text) {
         let info = Info::parse(&f.info);
-        let Some(tag) = info.tag.clone() else { continue };
+        if info.tag.is_none() {
+            continue;
+        }
         let n = counters.entry(f.heading.clone()).or_insert(0);
         *n += 1;
         let id = format!("{path}#{}-{n}", f.heading);
+        out.push((f, info, id));
+    }
+    out
+}
+
+/// Entries of one page, plus tag-grammar errors.
+pub fn extract_page(path: &str, text: &str, errors: &mut Vec<String>) -> Vec<Entry> {
+    let mut out = Vec::new();
+    for (f, info, id) in tagged_fences(path, text) {
+        let tag = info.tag.clone().unwrap_or_default();
         let mut bad = |msg: String| errors.push(format!("{id}: {msg}"));
         if let Some(e) = info.attrs.get("expect")
             && !valid_expect(e)
@@ -366,13 +379,56 @@ pub fn extract_page(path: &str, text: &str, errors: &mut Vec<String>) -> Vec<Ent
         if tag == TAG_TOOL && !info.attrs.contains_key("kind") {
             bad("mcphost-tool requires kind=<kind>".to_string());
         }
-        out.push(Entry {
-            id,
-            tag,
-            expect: info.attrs.get("expect").cloned(),
-            attrs: info.attrs,
-            body: f.body,
-        });
+        out.push(Entry { id, tag, expect: info.attrs.get("expect").cloned(), attrs: info.attrs, body: f.body });
+    }
+    out
+}
+
+/// Re-render `text` (the page at `path`, or a document built from it) with
+/// an `<!-- executed: <id> <status> <date> -->` comment after every tagged
+/// fence that `report` has a result for. A fence is matched by its id under
+/// `path` first; failing that (llms-full.txt quotes the quickstart inside
+/// README.md) by identical tag, attributes and body.
+pub fn annotate(path: &str, text: &str, corpus: &[Entry], report: &Report) -> String {
+    let result_of: BTreeMap<&str, &ExampleResult> = report.results.iter().map(|r| (r.id.as_str(), r)).collect();
+    let mut used: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut after: BTreeMap<usize, String> = BTreeMap::new();
+    for (f, info, id) in tagged_fences(path, text) {
+        let Some(close) = f.close_line else { continue };
+        let tag = info.tag.clone().unwrap_or_default();
+        let chosen = if result_of.contains_key(id.as_str())
+            && corpus.iter().any(|e| e.id == id && e.tag == tag && e.body == f.body)
+        {
+            Some(id.clone())
+        } else {
+            corpus
+                .iter()
+                .find(|e| {
+                    e.tag == tag
+                        && e.body == f.body
+                        && e.attrs == info.attrs
+                        && result_of.contains_key(e.id.as_str())
+                        && !used.contains(&e.id)
+                })
+                .map(|e| e.id.clone())
+        };
+        let Some(chosen) = chosen else { continue };
+        used.insert(chosen.clone());
+        let status = &result_of[chosen.as_str()].status;
+        let indent = " ".repeat(text.lines().nth(f.line - 1).map_or(0, |l| l.len() - l.trim_start().len()));
+        after.insert(close, format!("{indent}<!-- executed: {chosen} {status} {} -->", report.date));
+    }
+    let mut out = String::with_capacity(text.len());
+    for (i, line) in text.lines().enumerate() {
+        out.push_str(line);
+        out.push('\n');
+        if let Some(comment) = after.get(&(i + 1)) {
+            out.push_str(comment);
+            out.push('\n');
+        }
+    }
+    if !text.ends_with('\n') && out.ends_with('\n') && !text.is_empty() {
+        out.pop();
     }
     out
 }

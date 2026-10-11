@@ -282,6 +282,21 @@ enum DocsExamplesCommand {
         #[arg(long)]
         artifact_dir: Option<PathBuf>,
     },
+    /// Print a markdown file with an `<!-- executed: <id> <status> <date> -->`
+    /// comment after each tagged fence the artifact has a result for
+    /// (`scripts/gen-llms-full.sh` pipes every source page through this).
+    Annotate {
+        /// The page to annotate; also the path its fence ids are built from.
+        #[arg(long)]
+        path: PathBuf,
+        /// A `run` artifact (`target/docs-examples/<date>.json`).
+        #[arg(long)]
+        artifact: PathBuf,
+        #[arg(long)]
+        root: Option<PathBuf>,
+        #[arg(long)]
+        corpus: Option<PathBuf>,
+    },
     /// Write `docs/examples.corpus.json` from the tagged fences of
     /// `docs/**/*.md`; with `--check`, write nothing and exit 1 naming the
     /// drifted ids when the committed corpus differs.
@@ -793,6 +808,27 @@ async fn main() -> anyhow::Result<()> {
                 if report.examples_failed > 0 {
                     std::process::exit(1);
                 }
+                Ok(())
+            }
+            DocsExamplesCommand::Annotate { path, artifact, root, corpus } => {
+                let root = root.unwrap_or_else(|| PathBuf::from("."));
+                let corpus = corpus.unwrap_or_else(|| root.join(mcphost::docs_examples::CORPUS_PATH));
+                let entries = mcphost::docs_examples::load_corpus(&corpus).unwrap_or_default();
+                let report: mcphost::docs_examples::Report = match std::fs::read_to_string(&artifact)
+                    .map_err(|e| e.to_string())
+                    .and_then(|t| serde_json::from_str(&t).map_err(|e| e.to_string()))
+                {
+                    Ok(r) => r,
+                    Err(e) => {
+                        eprintln!("docs-examples annotate: artifact {}: {e}", artifact.display());
+                        std::process::exit(2);
+                    }
+                };
+                let text = std::fs::read_to_string(root.join(&path))?;
+                print!(
+                    "{}",
+                    mcphost::docs_examples::annotate(&path.display().to_string(), &text, &entries, &report)
+                );
                 Ok(())
             }
             DocsExamplesCommand::Extract { check, root, corpus } => {

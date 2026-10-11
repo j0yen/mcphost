@@ -12,6 +12,18 @@
 #   docs/benchmarks/*.md  every measured proof point cited from README/llms.txt
 #   docs/receipts/*.md    supporting measurement receipts cited elsewhere
 #
+# PRD-mcphost-docs-examples-executed-nightly requirement 5: before anything
+# is rendered (or checked), `mcphost docs-examples extract --check` must pass
+# -- a stale docs/examples.corpus.json means a tagged fence changed without
+# the corpus following, so the script exits 1 BEFORE writing. When a
+# `docs-examples run` artifact exists (DOCS_EXAMPLES_ARTIFACT, else the
+# newest target/docs-examples/*.json) every tagged fence is followed by an
+# `<!-- executed: <id> <status> <date> -->` comment. --check never reads an
+# artifact, so a nightly run cannot make the committed file look stale.
+#
+# The mcphost binary comes from $MCPHOST_BIN, else target/release|debug/mcphost,
+# else `cargo run`.
+#
 # Usage:
 #   scripts/gen-llms-full.sh          regenerate www/llms-full.txt
 #   scripts/gen-llms-full.sh --check  exit 1 if www/llms-full.txt is stale
@@ -21,6 +33,40 @@ cd "$(dirname "$0")/.."
 
 OUT="www/llms-full.txt"
 MODE="${1:-write}"
+
+mcphost_bin() {
+  if [ -n "${MCPHOST_BIN:-}" ]; then
+    "$MCPHOST_BIN" "$@"
+  elif [ -x target/release/mcphost ]; then
+    target/release/mcphost "$@"
+  elif [ -x target/debug/mcphost ]; then
+    target/debug/mcphost "$@"
+  else
+    cargo run -q --bin mcphost -- "$@"
+  fi
+}
+
+if ! mcphost_bin docs-examples extract --check >&2; then
+  echo "gen-llms-full.sh: docs/examples.corpus.json is stale (run: mcphost docs-examples extract); nothing written" >&2
+  exit 1
+fi
+
+ARTIFACT=""
+if [ "$MODE" != "--check" ]; then
+  ARTIFACT="${DOCS_EXAMPLES_ARTIFACT:-}"
+  if [ -z "$ARTIFACT" ] && ls target/docs-examples/*.json > /dev/null 2>&1; then
+    ARTIFACT="$(ls target/docs-examples/*.json | sort | tail -n 1)"
+  fi
+fi
+
+# emit <file>: the file, with executed comments when an artifact is present.
+emit() {
+  if [ -n "$ARTIFACT" ]; then
+    mcphost_bin docs-examples annotate --path "$1" --artifact "$ARTIFACT"
+  else
+    cat "$1"
+  fi
+}
 
 render() {
   echo "# mcphost — full documentation"
@@ -32,19 +78,19 @@ render() {
 
   echo "## README"
   echo
-  cat README.md
+  emit README.md
   echo
 
   echo "## Plans"
   echo
-  cat docs/plans.md
+  emit docs/plans.md
   echo
 
   for f in docs/kinds/*.md; do
     [ -f "$f" ] || continue
     echo "## Kind: $(basename "$f" .md)"
     echo
-    cat "$f"
+    emit "$f"
     echo
   done
 
@@ -52,7 +98,7 @@ render() {
     [ -f "$f" ] || continue
     echo "## Benchmark: $(basename "$f")"
     echo
-    cat "$f"
+    emit "$f"
     echo
   done
 
@@ -60,7 +106,7 @@ render() {
     [ -f "$f" ] || continue
     echo "## Receipt: $(basename "$f")"
     echo
-    cat "$f"
+    emit "$f"
     echo
   done
 }
