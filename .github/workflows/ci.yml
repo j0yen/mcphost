@@ -265,6 +265,13 @@ jobs:
       - name: scripts/healthz-keys-lint.py tests
         run: python3 scripts/healthz-keys-lint.py tests
 
+      # PRD-mcphost-child-process-test-harness R6 (AC7). Stdlib python3 on
+      # the runner image; fails naming file:line for any raw `serve` spawn,
+      # live-pipe read or hand-rolled child guard in tests/, before any
+      # job that installs a Rust toolchain has a chance to start.
+      - name: scripts/child-proc-lint.py tests
+        run: python3 scripts/child-proc-lint.py tests
+
   # PRD-mcphost-docs-external-links-resolve R5 (AC7). Every external link in
   # README.md, docs/**, www/llms.txt and plugin/** must resolve; a PR that
   # adds a 404 fails here and the log carries `FAIL <status> <url>

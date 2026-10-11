@@ -12,6 +12,8 @@ mod ci_sandbox_support;
 mod busyaudit;
 #[path = "support/chart_fixture.rs"]
 mod chart_fixture;
+#[path = "support/child_proc_lint.rs"]
+mod child_proc_lint;
 #[path = "support/docs_qa.rs"]
 mod docs_qa;
 #[path = "support/fake_as.rs"]
@@ -24,6 +26,8 @@ mod lanecov;
 mod oauth;
 #[path = "support/oauthclient.rs"]
 mod oauthclient;
+#[path = "support/serve.rs"]
+mod serve;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
@@ -423,6 +427,16 @@ mod compose_ac8_tool_test_dry_run;
 mod consent_ac01_ac02_ac03_ac04_contact_lifecycle;
 #[path = "consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox.rs"]
 mod consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox;
+#[path = "cproc_ac01_raw_serve_spawn_and_pipe_read_fail.rs"]
+mod cproc_ac01_raw_serve_spawn_and_pipe_read_fail;
+#[path = "cproc_ac02_guard_struct_fails_waited_child_passes.rs"]
+mod cproc_ac02_guard_struct_fails_waited_child_passes;
+#[path = "cproc_ac03_allow_set_derived_from_serve_rs.rs"]
+mod cproc_ac03_allow_set_derived_from_serve_rs;
+#[path = "cproc_ac06_real_tree_has_no_raw_spawns_or_guards.rs"]
+mod cproc_ac06_real_tree_has_no_raw_spawns_or_guards;
+#[path = "cproc_ac07_flake_lint_job_runs_child_proc_lint.rs"]
+mod cproc_ac07_flake_lint_job_runs_child_proc_lint;
 #[path = "ctrv_ac01_sha_stable_across_boot_requests_and_process.rs"]
 mod ctrv_ac01_sha_stable_across_boot_requests_and_process;
 #[path = "ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs"]
