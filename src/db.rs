@@ -1152,6 +1152,30 @@ fn run_row_from_row(r: &Row) -> rusqlite::Result<RunRow> {
     })
 }
 
+/// PRD-mcphost-declared-ordering-per-verb: the filters `host.runs.list`
+/// applies in SQL (`verdict` included), so a page is cut from the filtered
+/// set and never from a wider window.
+#[derive(Debug, Clone, Default)]
+pub struct RunsPageQuery {
+    pub tool_name: Option<String>,
+    pub status: Option<String>,
+    pub trigger: Option<String>,
+    pub end_user_subject: Option<String>,
+    pub parent_run_id: Option<String>,
+    pub include_children: bool,
+    /// `progress_json.budget.verdict`; a run with no budget block never
+    /// matches.
+    pub verdict: Option<String>,
+}
+
+/// One `host.runs.list` row with its keyset position (`runs` is a rowid
+/// table; `id` is a ulid that is not insertion-ordered within a millisecond).
+#[derive(Debug, Clone)]
+pub struct RunPageRow {
+    pub rowid: i64,
+    pub run: RunRow,
+}
+
 /// PRD-mcphost-runs-and-jobs requirement 7: `host.usage`'s `jobs` block --
 /// counts and total wall-clock seconds for this tenant's `trigger='job'`
 /// runs finalized within the window, grouped by terminal status.
@@ -9933,6 +9957,63 @@ impl Db {
             let mut stmt = conn.prepare(&sql)?;
             let rows = stmt
                 .query_map(refs.as_slice(), run_row_from_row)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// `host.runs.list`'s page query: every filter -- `verdict` included -- is
+    /// part of the `WHERE`, the keyset predicate and `ORDER BY` come from
+    /// [`crate::paged::RunsOrder`], and `limit` is applied in SQL, so no row
+    /// outside the filter is ever read.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn list_runs_page(
+        &self,
+        tenant_id: i64,
+        query: RunsPageQuery,
+        after: Option<crate::paged::Cursor>,
+        order: crate::paged::RunsOrder,
+        limit: i64,
+    ) -> Result<Vec<RunPageRow>, AppError> {
+        use crate::paged::{RunsList, keyset_clause};
+        self.with_conn(move |conn| {
+            let mut sql = format!("SELECT {RUN_COLUMNS}, rowid FROM runs WHERE tenant_id = ?1");
+            let mut binds: Vec<rusqlite::types::Value> = vec![tenant_id.into()];
+            let is_composition = query.trigger.as_deref() == Some("composition");
+            let mut push = |sql: &mut String, column: &str, value: Option<String>| {
+                if let Some(v) = value {
+                    binds.push(v.into());
+                    sql.push_str(&format!(" AND {column} = ?{}", binds.len()));
+                }
+            };
+            push(&mut sql, "tool_name", query.tool_name);
+            push(&mut sql, "status", query.status);
+            push(&mut sql, "trigger", query.trigger);
+            push(&mut sql, "end_user_subject", query.end_user_subject);
+            push(
+                &mut sql,
+                "CASE WHEN json_valid(progress_json) THEN json_extract(progress_json, '$.budget.verdict') END",
+                query.verdict,
+            );
+            if let Some(pr) = query.parent_run_id {
+                binds.push(pr.into());
+                sql.push_str(&format!(" AND parent_run_id = ?{}", binds.len()));
+            } else if !query.include_children && !is_composition {
+                sql.push_str(" AND parent_run_id IS NULL");
+            }
+            if let Some(c) = &after {
+                let (clause, values) = keyset_clause(order, c, binds.len() + 1);
+                sql.push_str(&format!(" AND {clause}"));
+                binds.extend(values);
+            }
+            sql.push_str(&format!(" {} LIMIT ?{}", RunsList::sql_order(order), binds.len() + 1));
+            binds.push(limit.into());
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(rusqlite::params_from_iter(binds.iter()), |r| {
+                    Ok(RunPageRow { run: run_row_from_row(r)?, rowid: r.get(28)? })
+                })?
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(rows)
         })

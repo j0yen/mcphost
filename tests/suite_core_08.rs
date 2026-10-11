@@ -404,6 +404,8 @@ mod vord_ac02_contract_order_enum;
 mod vord_ac03_cursor_bound_to_order;
 #[path = "vord_ac04_order_by_from_enum.rs"]
 mod vord_ac04_order_by_from_enum;
+#[path = "vord_ac05_runs_list_filters_in_sql.rs"]
+mod vord_ac05_runs_list_filters_in_sql;
 #[path = "wake_ac1_message_trigger_fires_run.rs"]
 mod wake_ac1_message_trigger_fires_run;
 #[path = "wake_ac2_from_filter.rs"]

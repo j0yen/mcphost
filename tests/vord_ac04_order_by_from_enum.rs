@@ -15,6 +15,7 @@ const VERB_DB_FNS: &[(&str, &[&str])] = &[
     ("host.msg.inbox", &["msg_inbox"]),
     ("host.msg.thread", &["msg_thread"]),
     ("host.docs.list", &["documents_list_live", "documents_list_since"]),
+    ("host.runs.list", &["list_runs_page"]),
 ];
 
 /// The text of `fn <name>` in `source`, from its signature to the matching

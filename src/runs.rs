@@ -16,7 +16,8 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Map, Value, json};
 
-use crate::db::{RunRow, Tenant};
+use crate::db::{RunRow, RunsPageQuery, Tenant};
+use crate::paged::{Cursor, OrderEnum as _, Paged as _, RunsList, RunsOrder};
 use crate::errors::AppError;
 use crate::handler::{
     BufferedLog, CellResourceSink, CountingStateBackend, TenantChannelBridge, TenantDocsBridge,
@@ -401,32 +402,30 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     // `args_invalid` -- never a silent clamp to 1.
     let resolved = crate::paged::resolve_limit(args, 20, max_limit)?;
     let limit = resolved.limit;
-    // requirement 7: `verdict` isn't a stored column -- fetched over a
-    // wider window (still bounded) and filtered/truncated in process, same
-    // "post-filter, then re-cap to the caller's own limit" shape a
-    // verdict-less call never pays for.
-    let fetch_limit = if verdict.is_some() { (limit * 10).min(2_000) } else { limit };
-    let rows = state
-        .db
-        .list_runs(
-            tenant.id,
-            tool,
-            status,
-            trigger,
-            end_user_subject,
-            parent_run_id,
-            include_children,
-            fetch_limit,
-        )
-        .await?;
-    let rows: Vec<_> = match &verdict {
-        Some(want) => rows
-            .into_iter()
-            .filter(|r| run_budget_verdict(r).as_deref() == Some(want.as_str()))
-            .take(limit as usize)
-            .collect(),
-        None => rows,
+    let order = crate::paged::resolve_order::<RunsOrder>(args)?;
+    let after = match args.get("cursor") {
+        Some(Value::String(raw)) => {
+            let c = Cursor::decode(raw, &state.session_bindings, tenant.id)?;
+            c.require_order(order.name())?;
+            Some(c)
+        }
+        _ => None,
     };
+    // PRD-mcphost-declared-ordering-per-verb requirement 4: `verdict` is part
+    // of the SQL `WHERE`, so the keyset and `limit` apply to the filtered set
+    // and `next_cursor` is minted only from filtered rows.
+    let query = RunsPageQuery {
+        tool_name: tool,
+        status,
+        trigger,
+        end_user_subject,
+        parent_run_id,
+        include_children,
+        verdict,
+    };
+    let mut page = state.db.list_runs_page(tenant.id, query, after, order, limit + 1).await?;
+    let next = crate::paged::split_page(&mut page, limit, |r| RunsList::cursor_at(r, order));
+    let rows: Vec<RunRow> = page.into_iter().map(|r| r.run).collect();
     // One query for the whole page's children, not one per row.
     let parent_ids: Vec<String> = rows.iter().map(|r| r.id.clone()).collect();
     let children = state.db.list_run_children_for_parents(tenant.id, parent_ids).await?;
@@ -450,21 +449,12 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         };
         runs.push(value);
     }
-    let mut out = json!({"runs": runs});
+    let mut page_out = serde_json::Map::new();
+    page_out.insert(RunsList::KEY.to_string(), Value::Array(runs));
+    crate::paged::finish_page(&mut page_out, next.as_ref(), &state.session_bindings, tenant.id);
+    let mut out = Value::Object(page_out);
     crate::paged::note_clamp(&mut out, &resolved);
     Ok(out)
-}
-
-/// AC9: this run's `progress_json.budget.verdict`, `None` for a run with no
-/// budget block (pre-PRD, or a purged run whose `progress_json` never held
-/// one).
-fn run_budget_verdict(run: &RunRow) -> Option<String> {
-    let progress: Value = run.progress_json.as_deref().and_then(|s| serde_json::from_str(s).ok())?;
-    progress
-        .get("budget")?
-        .get("verdict")?
-        .as_str()
-        .map(str::to_string)
 }
 
 /// `host.runs.cancel(run_id)` (AC4). Marks the run `cancelled` in the

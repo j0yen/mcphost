@@ -342,6 +342,14 @@ order_enum! {
 order_enum! { InboxOrder { default: CreatedAsc; CreatedAsc => ("created_asc", "m.created_unix_ms", "m.id", Asc, Tuple) } }
 order_enum! { ThreadOrder { default: SeqAsc; SeqAsc => ("seq_asc", "m.seq", "m.id", Asc, UniqueInt) } }
 order_enum! { ChannelOrder { default: SeqAsc; SeqAsc => ("seq_asc", "seq", "id", Asc, UniqueInt) } }
+order_enum! {
+    RunsOrder {
+        default: CreatedDesc;
+        CreatedDesc => ("created_desc", "rowid", "id", Desc, Tuple),
+        CreatedAsc => ("created_asc", "rowid", "id", Asc, Tuple),
+    }
+}
+
 /// Resolve a call's `order`: absent/null -> the enum's default; an unknown
 /// name -> `args_invalid` listing the declared ones.
 pub fn resolve_order<O: OrderEnum>(args: &Value) -> Result<O, AppError> {
@@ -478,6 +486,9 @@ paged_verbs! {
     MsgThread { verb: "host.msg.thread", key: "messages", default: 50, max: 100,
         row: crate::db::MessageRow, order: ThreadOrder,
         cursor_of: |m: &crate::db::MessageRow, _o: ThreadOrder| Cursor::new(m.seq, m.id.clone()) }
+    RunsList { verb: "host.runs.list", key: "runs", default: 20, max: 200,
+        row: crate::db::RunPageRow, order: RunsOrder,
+        cursor_of: |r: &crate::db::RunPageRow, _o: RunsOrder| Cursor::new(r.rowid, r.run.id.clone()) }
     DocsList { verb: "host.docs.list", key: "documents", default: 100, max: 1000,
         row: crate::db::DocumentRow, order: DocsOrder,
         cursor_of: |d: &crate::db::DocumentRow, o: DocsOrder| match o {
@@ -536,7 +547,6 @@ pub const UNPAGED_VERBS: &[(&str, &str)] = &[
     ("host.oauth.scopes", UNPAGED_BOUNDED),
     ("host.oauth.trusted_issuers", UNPAGED_BOUNDED),
     ("host.policy.list", UNPAGED_BOUNDED),
-    ("host.runs.list", UNPAGED_WINDOW),
     ("host.secret.list", UNPAGED_BOUNDED),
     ("host.state.list", UNPAGED_WINDOW),
     ("host.state.query", UNPAGED_WINDOW),

@@ -79,7 +79,9 @@ async fn census_counts_list_verbs_cursors_and_end_of_list_conventions() {
     )
     .expect("write census");
 
-    assert_eq!(cursored.len(), 10, "cursored verbs drifted from the PRD baseline: {cursored:?}");
+    // 10 at the PRD baseline; PRD-mcphost-declared-ordering-per-verb made
+    // `host.runs.list` the 11th (it pages over the filtered set now).
+    assert_eq!(cursored.len(), 11, "cursored verbs drifted from the expected set: {cursored:?}");
     assert!(
         cursored.len() < list_shaped.len(),
         "cursored share is already 100% ({} of {}): the PRD has nothing left to do",
