@@ -91,33 +91,51 @@ fn fence_marker(line: &str) -> Option<(usize, char, usize, &str)> {
     Some((indent, c, n, &trimmed[n..]))
 }
 
+/// A fence whose closing marker has not been seen yet.
+struct OpenFence {
+    start: usize,
+    indent: usize,
+    marker: char,
+    marker_len: usize,
+    info: String,
+    heading: String,
+    body: Vec<String>,
+}
+
+impl OpenFence {
+    fn finish(self, close_line: Option<usize>) -> Fence {
+        Fence { line: self.start, heading: self.heading, info: self.info, body: self.body.join("\n"), close_line }
+    }
+}
+
 /// Every fenced block of `text`, in page order.
 pub fn parse_fences(text: &str) -> Vec<Fence> {
     let mut out = Vec::new();
     let mut heading = "page".to_string();
-    let mut open: Option<(usize, usize, char, usize, String, String, Vec<String>)> = None;
+    let mut open: Option<OpenFence> = None;
     for (i, raw) in text.lines().enumerate() {
         let lineno = i + 1;
-        if let Some((start, indent, c, n, info, hd, body)) = open.as_mut() {
+        if let Some(fence) = open.as_mut() {
             let closes = fence_marker(raw)
-                .is_some_and(|(_, c2, n2, rest)| c2 == *c && n2 >= *n && rest.trim().is_empty());
+                .is_some_and(|(_, c, n, rest)| c == fence.marker && n >= fence.marker_len && rest.trim().is_empty());
             if closes {
-                out.push(Fence {
-                    line: *start,
-                    heading: hd.clone(),
-                    info: info.clone(),
-                    body: body.join("\n"),
-                    close_line: Some(lineno),
-                });
-                open = None;
+                out.extend(open.take().map(|f| f.finish(Some(lineno))));
             } else {
                 let strip = raw.len() - raw.trim_start_matches(' ').len();
-                body.push(raw[strip.min(*indent)..].to_string());
+                fence.body.push(raw[strip.min(fence.indent)..].to_string());
             }
             continue;
         }
-        if let Some((indent, c, n, rest)) = fence_marker(raw) {
-            open = Some((lineno, indent, c, n, rest.trim().to_string(), heading.clone(), Vec::new()));
+        if let Some((indent, marker, marker_len, rest)) = fence_marker(raw) {
+            open = Some(OpenFence {
+                start: lineno,
+                indent,
+                marker,
+                marker_len,
+                info: rest.trim().to_string(),
+                heading: heading.clone(),
+                body: Vec::new(),
+            });
             continue;
         }
         let t = raw.trim_start();
@@ -128,9 +146,7 @@ pub fn parse_fences(text: &str) -> Vec<Fence> {
             }
         }
     }
-    if let Some((start, _, _, _, info, hd, body)) = open {
-        out.push(Fence { line: start, heading: hd, info, body: body.join("\n"), close_line: None });
-    }
+    out.extend(open.map(|f| f.finish(None)));
     out
 }
 
