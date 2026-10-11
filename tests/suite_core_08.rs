@@ -22,6 +22,24 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "sharedcall_ac01_host_tool_call_public_cross_tenant.rs"]
+mod sharedcall_ac01_host_tool_call_public_cross_tenant;
+#[path = "sharedcall_ac02_group_share_non_member_gets_hint.rs"]
+mod sharedcall_ac02_group_share_non_member_gets_hint;
+#[path = "sharedcall_ac03_not_found_reasons_indistinguishable.rs"]
+mod sharedcall_ac03_not_found_reasons_indistinguishable;
+#[path = "sharedcall_ac04_async_qualified_call_scoped_to_caller.rs"]
+mod sharedcall_ac04_async_qualified_call_scoped_to_caller;
+#[path = "sharedcall_ac05_gen_docs_sharing_check.rs"]
+mod sharedcall_ac05_gen_docs_sharing_check;
+#[path = "sharedcall_ac06_proof_script_qualified_host_tool_call.rs"]
+mod sharedcall_ac06_proof_script_qualified_host_tool_call;
+#[path = "sharedcall_ac07_own_unqualified_call_unchanged.rs"]
+mod sharedcall_ac07_own_unqualified_call_unchanged;
+#[path = "sharedcall_ac08_get_info_lists_shared_tools_with_via.rs"]
+mod sharedcall_ac08_get_info_lists_shared_tools_with_via;
+#[path = "sharedcall_ac09_quota_exhausted_qualified_call_refused.rs"]
+mod sharedcall_ac09_quota_exhausted_qualified_call_refused;
 #[path = "sharedrunscope_ac01_caller_sees_sync_shared_run.rs"]
 mod sharedrunscope_ac01_caller_sees_sync_shared_run;
 #[path = "sharedrunscope_ac02_owner_cannot_see_callers_run.rs"]

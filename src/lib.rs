@@ -29,6 +29,7 @@ pub mod deps;
 pub mod difftext;
 pub mod blobs;
 pub mod docs;
+pub mod docs_examples;
 pub mod docs_index;
 pub mod drift;
 pub mod dryrun;

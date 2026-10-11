@@ -563,6 +563,20 @@ mod drift_ac10_manual_check_produces_review_without_version_change;
 mod dryrun_ac05_chain_host_table_append_step;
 #[path = "dryrun_ac06_tools_list_mentions_dry_run.rs"]
 mod dryrun_ac06_tools_list_mentions_dry_run;
+#[path = "dxn_ac01_classify_fences.rs"]
+mod dxn_ac01_classify_fences;
+#[path = "dxn_ac02_extract_corpus_and_drift_check.rs"]
+mod dxn_ac02_extract_corpus_and_drift_check;
+#[path = "dxn_ac03_run_corpus_against_fixture_host.rs"]
+mod dxn_ac03_run_corpus_against_fixture_host;
+#[path = "dxn_ac04_anonymous_and_skip_attributes.rs"]
+mod dxn_ac04_anonymous_and_skip_attributes;
+#[path = "dxn_ac05_cross_page_dependency_fails_extract.rs"]
+mod dxn_ac05_cross_page_dependency_fails_extract;
+#[path = "dxn_ac06_gen_llms_full_gates_on_corpus_and_annotates.rs"]
+mod dxn_ac06_gen_llms_full_gates_on_corpus_and_annotates;
+#[path = "dxn_ac07_unreachable_host_exits_two_after_one_retry.rs"]
+mod dxn_ac07_unreachable_host_exits_two_after_one_retry;
 #[path = "enduser_ac02_assertion_http_headers_and_calls_row.rs"]
 mod enduser_ac02_assertion_http_headers_and_calls_row;
 #[path = "enduser_ac03_invalid_assertion_rejected.rs"]
@@ -1799,21 +1813,3 @@ mod share_ac07_catalog_search_and_well_known;
 mod share_ac08_unshare_revokes_access;
 #[path = "share_ac09_admin_tool_unshare.rs"]
 mod share_ac09_admin_tool_unshare;
-#[path = "sharedcall_ac01_host_tool_call_public_cross_tenant.rs"]
-mod sharedcall_ac01_host_tool_call_public_cross_tenant;
-#[path = "sharedcall_ac02_group_share_non_member_gets_hint.rs"]
-mod sharedcall_ac02_group_share_non_member_gets_hint;
-#[path = "sharedcall_ac03_not_found_reasons_indistinguishable.rs"]
-mod sharedcall_ac03_not_found_reasons_indistinguishable;
-#[path = "sharedcall_ac04_async_qualified_call_scoped_to_caller.rs"]
-mod sharedcall_ac04_async_qualified_call_scoped_to_caller;
-#[path = "sharedcall_ac05_gen_docs_sharing_check.rs"]
-mod sharedcall_ac05_gen_docs_sharing_check;
-#[path = "sharedcall_ac06_proof_script_qualified_host_tool_call.rs"]
-mod sharedcall_ac06_proof_script_qualified_host_tool_call;
-#[path = "sharedcall_ac07_own_unqualified_call_unchanged.rs"]
-mod sharedcall_ac07_own_unqualified_call_unchanged;
-#[path = "sharedcall_ac08_get_info_lists_shared_tools_with_via.rs"]
-mod sharedcall_ac08_get_info_lists_shared_tools_with_via;
-#[path = "sharedcall_ac09_quota_exhausted_qualified_call_refused.rs"]
-mod sharedcall_ac09_quota_exhausted_qualified_call_refused;
