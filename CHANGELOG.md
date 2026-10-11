@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.107.17 — 2026-10-11
+
+Every canonical `host.*`/`billing.*` tool now declares what it returns
+(PRD-mcphost-contract-output-schemas): `tools/list` carries `outputSchema` for each, and
+`mcphost contract dump` emits `output_schema` on canonicals and `alias_of` on every alias
+and flattened name. `docs/tools.md` gains a `Returns` block per tool, and `api_contract::diff`
+reports a removed or narrowed output field (`host.runs.get.output.started_at`) unless
+`deprecations.json` excuses it. Response bodies are unchanged.
+
 ## v0.107.13 — 2026-10-10
 
 `host.webhook_inbox.create(name, verify?, rotate?)` makes a webhook inbox one call

@@ -1,0 +1,2 @@
+{"email": null, "issuer": "https://issuer.example.com", "method": "oauth", "name": null, "subject": "u1", "verified_at": 1791720928}
+{"email": "u1@acme.test", "issuer": "http://127.0.0.1:46779", "method": "federated", "name": "U One", "subject": "http://127.0.0.1:46779#u1", "verified_at": 1791721285}

@@ -1,0 +1,3 @@
+{"address": "t_188e32b1", "contact_policy": "open", "description": null, "display_name": "Agent A", "handle": "indexer", "last_seen": 1791720840, "source_class": "loopback", "synthetic": true, "tags": []}
+{"address": "t_1ae271bd", "contact_policy": "open", "description": null, "display_name": "Harness Agent", "handle": null, "invited_by": null, "invitees_count": 0, "last_seen": null, "source_class": "loopback", "synthetic": true, "tags": []}
+{"address": "t_b366f528", "contact_policy": "open", "description": null, "display_name": "invitee-of-t_a884e81b", "handle": null, "invited_by": "t_a884e81b", "invitees_count": 1, "last_seen": 1791720960, "source_class": null, "synthetic": false, "tags": []}

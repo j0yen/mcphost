@@ -1,0 +1,3 @@
+{"messages": []}
+{"messages": [{"body": "m2", "created_at": "unix:1791721064.410616300", "data": null, "from_address": "t_e770847f", "in_reply_to": null, "message_id": "01M4NEBHZ024CFQ55ZYFNJE9S5", "read_at": null, "seq": 1, "source_class": "loopback", "synthetic": "harness:unstamped", "thread_id": "01M4NEBHYTFQ346P3DDHGR1FPE", "urgent": false}]}
+{"messages": [{"body": "{\"hello\": 1}", "created_at": "unix:1791721275.078891646", "data": {"hello": 1}, "from_address": "t_e2c0467f", "in_reply_to": null, "message_id": "01M4NEHZP751CAA57B625STP2Z", "read_at": null, "seq": 1, "source_class": "loopback", "synthetic": "harness:unstamped", "thread_id": "01M4NEHZP6D9KF8PFDRW6JR65E", "urgent": false}]}

@@ -42,6 +42,79 @@ pub fn assert_anon_healthz(body: &Value, ok: bool) {
     assert_eq!(body["git_sha"], json!(mcphost::build_info::BUILD.git_sha), "anonymous /healthz git_sha: {body}");
 }
 
+/// PRD-mcphost-contract-output-schemas R4: every successful host-tool
+/// `structuredContent` this harness sees is appended to
+/// `target/outsch/<canonical tool>.jsonl`, one row per line. A wire name that
+/// is an alias or a flattened form is recorded under its canonical. Tenant
+/// tools, error results and results without `structuredContent` are skipped.
+/// Best effort: a failed write never fails the calling test.
+pub fn outsch_capture(wire_name: &str, result: &Value) {
+    use std::io::Write;
+    use std::sync::OnceLock;
+    static CANONICALS: OnceLock<HashMap<String, String>> = OnceLock::new();
+    let map = CANONICALS.get_or_init(|| {
+        let kinds = KindRegistry::with_builtin();
+        let mut m = HashMap::new();
+        for c in mcphost::handler::canonical_control_plane_names(&kinds) {
+            m.insert(c.clone(), c.clone());
+            if let Some(f) = mcphost::tool_aliases::flattened_form(&c) {
+                m.insert(f, c.clone());
+            }
+            for a in mcphost::tool_aliases::aliases_of(&c) {
+                m.insert(a.to_string(), c.clone());
+            }
+        }
+        m
+    });
+    let Some(canonical) = map.get(wire_name) else { return };
+    if result.get("isError").and_then(Value::as_bool).unwrap_or(false) {
+        return;
+    }
+    let Some(structured) = result.get("structuredContent").filter(|v| v.is_object()) else {
+        return;
+    };
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/outsch");
+    if std::fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+    let Ok(mut line) = serde_json::to_string(structured) else { return };
+    line.push('\n');
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dir.join(format!("{canonical}.jsonl")))
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
+/// Rows per tool: the committed corpus (`tests/fixtures/outsch/`, captured
+/// from this suite) plus whatever this run's harness already recorded under
+/// `target/outsch/`.
+pub fn outsch_rows() -> std::collections::BTreeMap<String, Vec<Value>> {
+    let mut out: std::collections::BTreeMap<String, Vec<Value>> = std::collections::BTreeMap::new();
+    for dir in ["tests/fixtures/outsch", "target/outsch"] {
+        let Ok(entries) = std::fs::read_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join(dir)) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Some(tool) = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .and_then(|n| n.strip_suffix(".jsonl"))
+            else {
+                continue;
+            };
+            let text = std::fs::read_to_string(&path).expect("read rows");
+            for line in text.lines().filter(|l| !l.trim().is_empty()) {
+                out.entry(tool.to_string())
+                    .or_default()
+                    .push(serde_json::from_str(line).unwrap_or_else(|e| panic!("{}: {e}", path.display())));
+            }
+        }
+    }
+    out
+}
+
 pub const ADMIN_KEY: &str = "test-admin-key-not-for-production";
 
 /// A [`NameLookup`] with a fixed set of hostname -> address answers, so a
@@ -1385,7 +1458,13 @@ impl McpClient {
                 data: error.get("data").cloned().unwrap_or(Value::Null),
             });
         }
-        Ok(body.get("result").cloned().unwrap_or(Value::Null))
+        let result = body.get("result").cloned().unwrap_or(Value::Null);
+        if method == "tools/call"
+            && let Some(name) = params.get("name").and_then(Value::as_str)
+        {
+            outsch_capture(name, &result);
+        }
+        Ok(result)
     }
 
     pub async fn tools_list(&self) -> Result<Value, RpcError> {

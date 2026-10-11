@@ -1,0 +1,3 @@
+{"access_ttl_s": 300, "allowlist": [], "clients": "any", "max_grant_age_s": 7200, "reconsent_after_s": null, "refresh_ttl_s": 3600}
+{"access_ttl_s": 3600, "allowlist": [], "clients": "any", "max_grant_age_s": null, "reconsent_after_s": 60, "refresh_ttl_s": 2592000}
+{"access_ttl_s": 3600, "allowlist": [], "clients": "any", "max_grant_age_s": null, "reconsent_after_s": null, "refresh_ttl_s": 2592000}

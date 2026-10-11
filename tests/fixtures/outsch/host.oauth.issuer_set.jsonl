@@ -1,0 +1,1 @@
+{"audience": "aud", "issuer": "https://issuer.example.com", "jwks_url": "http://127.0.0.1:1/jwks"}

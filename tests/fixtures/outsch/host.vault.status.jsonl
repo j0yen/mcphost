@@ -1,0 +1,3 @@
+{"providers": [{"connected": false, "connected_at": null, "expires_at": null, "last_refreshed_at": null, "name": "slack", "revoked_at": null, "revoked_reason": null, "scopes": null}]}
+{"providers": [{"connected": true, "connected_at": 1791721221, "expires_at": 1791724821, "last_refreshed_at": null, "name": "slack", "revoked_at": null, "revoked_reason": null, "scopes": "read"}]}
+{"providers": [{"connected": false, "connected_at": 1791721221, "expires_at": 1791721281, "last_refreshed_at": null, "name": "slack", "revoked_at": 1791721221, "revoked_reason": "refresh_http_401", "scopes": "read"}]}

@@ -1,0 +1,2 @@
+{"empty": 0, "est_result_tokens_total": 4, "ok": 1, "p50_ms": 0, "p95_ms": 0, "queries": 1, "refused": {}, "result_rows_total": 1, "top_hints": []}
+{"empty": 5, "est_result_tokens_total": 357, "ok": 32, "p50_ms": 0, "p95_ms": 1, "queries": 40, "refused": {"row_cap": 3}, "result_rows_total": 160, "top_hints": []}

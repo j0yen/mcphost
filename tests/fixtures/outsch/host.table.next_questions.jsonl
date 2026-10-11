@@ -1,0 +1,2 @@
+{"questions": [], "table": "orders"}
+{"questions": [{"connected_via": null, "question": "order total in USD over time by day", "sql": "SELECT \"day\" AS period, SUM(\"amount\") AS total FROM \"orders\" GROUP BY \"day\" ORDER BY \"day\""}, {"connected_via": null, "question": "Top 10 id by order total in USD", "sql": "SELECT \"id\", \"amount\" FROM \"orders\" ORDER BY \"amount\" DESC LIMIT 10"}], "table": "orders"}

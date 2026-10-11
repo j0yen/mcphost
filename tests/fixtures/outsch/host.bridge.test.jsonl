@@ -1,0 +1,1 @@
+{"request": {"body": null, "headers": {}, "method": "GET", "query": {}, "url": "http://127.0.0.1:34797/v1/thing"}, "response": {"body": {"bridge_status": "ok"}, "headers": {"content-type": "application/json"}, "payload": {"bridge_status": "ok"}, "status": 200}, "schema": {"type": "object"}}

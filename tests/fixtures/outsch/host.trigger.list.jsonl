@@ -1,0 +1,3 @@
+{"triggers": []}
+{"triggers": [{"args": {}, "created_unix": 1791721202, "enabled": true, "id": "01M4NEFRWJYSCGZNH73ZFR79EY", "kind": "schedule", "last_fired_unix": null, "last_run_id": null, "last_status": null, "name": "daily", "next_unix": 1791770400, "schedule": "0 2 * * *", "tool": "pinger", "tz": null}]}
+{"triggers": [{"created_unix": 1791721202, "enabled": true, "id": "01M4NEFRVPX0SC9QHG1F3NEDYB", "kind": "webhook", "last_fired_unix": null, "last_run_id": null, "last_status": null, "name": "x", "tool": "on_payment", "url": "http://127.0.0.1:36815/hook/01M4NEFRVP86H8HCDFSEKYPMRB", "verify": "hmac"}]}

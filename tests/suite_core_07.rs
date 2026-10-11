@@ -1409,6 +1409,8 @@ mod oauthsig_ac04_admin_oauth_stats_funnel;
 mod oauthsig_ac05_healthz_cache_and_p95;
 #[path = "oauthsig_ac06_conformance_script_writes_receipt.rs"]
 mod oauthsig_ac06_conformance_script_writes_receipt;
+#[path = "outsch_ac01_oneof_budget_falsifier.rs"]
+mod outsch_ac01_oneof_budget_falsifier;
 #[path = "owncopy_ac01_email_subject_and_body_match_draft.rs"]
 mod owncopy_ac01_email_subject_and_body_match_draft;
 #[path = "owncopy_ac02_from_and_reply_to_passed_verbatim.rs"]

@@ -1,0 +1,3 @@
+{"args_schema": {"type": "object"}, "invocations": [], "kind": {"requested": "echo", "resolved": "echo"}, "requirements": []}
+{"args_schema": {"type": "object"}, "invocations": [{"duration_ms": 0, "ok": true, "output": {"a": 1}}, {"duration_ms": 0, "ok": true, "output": {"a": 2}}], "kind": {"requested": "echo", "resolved": "echo"}, "requirements": []}
+{"args_schema": {"properties": {"msg": {"type": "string"}}, "required": ["msg"], "type": "object"}, "invocations": [{"duration_ms": 0, "ok": true, "output": {"msg": "hi"}}], "kind": {"requested": "echo", "resolved": "echo"}, "requirements": []}

@@ -58,6 +58,7 @@ pub mod oauth;
 pub mod oauth_policy;
 pub mod oauth_stats;
 pub mod oauthclient;
+pub mod output_schemas;
 pub mod plans;
 pub mod public_tool;
 pub mod query_diag;

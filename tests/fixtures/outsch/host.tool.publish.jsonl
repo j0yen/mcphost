@@ -1,0 +1,3 @@
+{"kind": "echo", "name": "acme.lookup", "version": 1}
+{"kind": "http", "name": "t_4f1a971d.on_event", "resolved_from": "event", "version": 1}
+{"hint": "database-in-a-minute", "kind": "http", "name": "t_26202c86.dbq", "version": 1}

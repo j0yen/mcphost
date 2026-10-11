@@ -1,0 +1,3 @@
+{"rows": [], "table": "alerts"}
+{"rows": [{"id": "r1", "v": 1}], "table": "ac2_table"}
+{"rows": [{"last_value": 0.9, "metric": "cpu"}], "table": "alerts"}
