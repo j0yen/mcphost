@@ -104,6 +104,8 @@ mod domhint_ac04_runtime_matches_publish;
 mod domhint_ac05_hint_sources;
 #[path = "domhint_ac07_quickstart_not_a_module.rs"]
 mod domhint_ac07_quickstart_not_a_module;
+#[path = "dquota_ac07_python_mcphost_quota_equals_host_usage.rs"]
+mod dquota_ac07_python_mcphost_quota_equals_host_usage;
 #[path = "drift_ac12_python_mcphost_drift_reviews_matches_tool.rs"]
 mod drift_ac12_python_mcphost_drift_reviews_matches_tool;
 #[path = "dryrun_ac01_table_append_rolled_back.rs"]

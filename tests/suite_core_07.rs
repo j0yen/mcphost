@@ -487,6 +487,16 @@ mod docurl_ac06_starter_set_covers_pre_bind_tools;
 mod docurl_ac07_u_new_and_help_name_onboarding_url;
 #[path = "domhint_ac06_llms_txt_line.rs"]
 mod domhint_ac06_llms_txt_line;
+#[path = "dquota_ac02_table_append_carries_data_quota.rs"]
+mod dquota_ac02_table_append_carries_data_quota;
+#[path = "dquota_ac03_quickstart_and_usage_match_every_verb.rs"]
+mod dquota_ac03_quickstart_and_usage_match_every_verb;
+#[path = "dquota_ac04_three_surfaces_one_renderer.rs"]
+mod dquota_ac04_three_surfaces_one_renderer;
+#[path = "dquota_ac05_refusal_carries_quota_and_missing_plan_omits_it.rs"]
+mod dquota_ac05_refusal_carries_quota_and_missing_plan_omits_it;
+#[path = "dquota_ac06_data_usage_is_fast_and_consistent_under_concurrent_appends.rs"]
+mod dquota_ac06_data_usage_is_fast_and_consistent_under_concurrent_appends;
 #[path = "drift_ac01_table_note_change_queues_and_completes.rs"]
 mod drift_ac01_table_note_change_queues_and_completes;
 #[path = "drift_ac02_cosmetic_note_change_zero_regressions.rs"]

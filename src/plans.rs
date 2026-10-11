@@ -251,6 +251,76 @@ pub struct Plan {
 /// Numeric [`Plan`] fields that are not ceilings an agent can hit.
 pub const NON_CEILING_FIELDS: &[&str] = &["price_usd_month"];
 
+/// PRD-mcphost-data-quota-in-every-response R1: a ceiling is a *data*
+/// ceiling when its [`Plan::ceilings_flat`] key starts with one of these.
+/// The set of names is derived from the plan struct, never typed out.
+pub const DATA_CEILING_PREFIXES: &[&str] = &["state_", "table_", "docs_", "export_", "ts_"];
+
+/// R2: which ceiling-name prefix a data verb touches. A verb outside this
+/// table carries no `data.quota`.
+const TOUCHED_PREFIX_BY_VERB: &[(&str, &str)] = &[
+    ("host.state.", "state_"),
+    ("host.table.", "table_"),
+    ("host.docs.", "docs_"),
+    ("host.export", "export_"),
+];
+
+/// The data ceilings among `flat` (a [`Plan::ceilings_flat`] result): names
+/// matching [`DATA_CEILING_PREFIXES`], un-nested, in `flat`'s order.
+pub fn data_ceilings_of(flat: &[(String, i64)]) -> Vec<(String, i64)> {
+    flat.iter()
+        .filter(|(k, _)| !k.contains('.') && DATA_CEILING_PREFIXES.iter().any(|p| k.starts_with(p)))
+        .cloned()
+        .collect()
+}
+
+/// R2 `touched_ceilings()`: the subset of `ceilings` the verb `tool` reads
+/// or writes, a filter over the generated set rather than a second list.
+pub fn touched_ceilings(tool: &str, ceilings: Vec<(String, i64)>) -> Vec<(String, i64)> {
+    let Some((_, prefix)) = TOUCHED_PREFIX_BY_VERB.iter().find(|(verb, _)| tool.starts_with(verb)) else {
+        return Vec::new();
+    };
+    ceilings.into_iter().filter(|(k, _)| k.starts_with(prefix)).collect()
+}
+
+/// R1: what a tenant has used, keyed by ceiling name, read by
+/// `Db::data_usage`. A ceiling with no entry renders `used: null` -- never a
+/// guessed number (PRD open question).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct DataUsage {
+    pub used: std::collections::BTreeMap<String, i64>,
+}
+
+/// R1: the one renderer behind `data.quota`, `host.quickstart`
+/// `limits.quota` and `host.usage` `quota`.
+pub struct DataQuota;
+
+impl DataQuota {
+    /// `{<ceiling>: {used, limit, remaining}}` for every data ceiling of
+    /// `plan`.
+    pub fn render(plan: &Plan, usage: &DataUsage) -> serde_json::Value {
+        Self::render_of(data_ceilings_of(&plan.ceilings_flat()), usage)
+    }
+
+    /// The same shape for an explicit ceiling list (a verb's
+    /// [`touched_ceilings`]).
+    pub fn render_of(ceilings: Vec<(String, i64)>, usage: &DataUsage) -> serde_json::Value {
+        let mut out = serde_json::Map::new();
+        for (name, limit) in ceilings {
+            let used = usage.used.get(&name).copied();
+            out.insert(
+                name,
+                serde_json::json!({
+                    "used": used,
+                    "limit": limit,
+                    "remaining": used.map(|u| (limit - u).max(0)),
+                }),
+            );
+        }
+        serde_json::Value::Object(out)
+    }
+}
+
 /// Prefix of the [`Plan`] fields that render under `limits.plan.budget`.
 pub const BUDGET_FIELD_PREFIX: &str = "budget_";
 
