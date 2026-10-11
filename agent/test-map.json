@@ -1226,6 +1226,7 @@
       "_prd": "PRD-mcphost-blob-put-get-signed-url.md (test_prefix: blobput)",
       "AC1": "tests/blobput_ac01_corpus_has_binary_fixture_task.rs",
       "AC2": "tests/blobput_ac02_pdf_put_sniffs_mime_and_serves_bytes.rs",
+      "AC3": "tests/blobput_ac03_signed_routes_share_403_and_410.rs",
       "AC8": "deferred -- operator-provisioned: live prod proof.sh after deploy."
     }
   }
