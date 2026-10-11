@@ -267,6 +267,8 @@ mod callerusage_ac09_admin_usage_top_audited;
 mod cest_ac01_dry_run_verdict_matches_real_call;
 #[path = "cest_ac02_handler_runs_only_preflight_rows.rs"]
 mod cest_ac02_handler_runs_only_preflight_rows;
+#[path = "cest_ac03_dry_run_remaining_calls_per_day.rs"]
+mod cest_ac03_dry_run_remaining_calls_per_day;
 #[path = "chainhost_ac01_host_table_append_step.rs"]
 mod chainhost_ac01_host_table_append_step;
 #[path = "chainhost_ac02_step_tool_not_found.rs"]
