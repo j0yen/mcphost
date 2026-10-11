@@ -389,7 +389,48 @@ pub fn extract(root: &std::path::Path) -> Result<Vec<Entry>, Vec<String>> {
         let text = std::fs::read_to_string(root.join(page)).map_err(|e| vec![format!("read {page}: {e}")])?;
         entries.extend(extract_page(page, &text, &mut errors));
     }
+    errors.extend(cross_page_dependencies(&entries));
     if errors.is_empty() { Ok(entries) } else { Err(errors) }
+}
+
+/// The user tool a `mcphost-call` body calls: the call's own `name`, or --
+/// for a `host.*`/`billing.*` verb such as `host.tool_test` -- its
+/// `arguments.name`. A `<namespace>.<tool>` call names the tool after the
+/// last dot.
+fn called_tool(body: &str) -> Option<String> {
+    let (method, params) = parse_call(body).ok()?;
+    if method != "tools/call" {
+        return None;
+    }
+    let name = params.get("name")?.as_str()?;
+    let target = if name.starts_with("host.") || name.starts_with("billing.") {
+        params.get("arguments")?.get("name")?.as_str()?
+    } else {
+        name
+    };
+    Some(target.rsplit('.').next().unwrap_or(target).to_string())
+}
+
+/// Order matters inside one page only: a call whose tool is published by a
+/// fence on a DIFFERENT page (and not on its own page) cannot run from its
+/// page alone, so it is an extraction error.
+fn cross_page_dependencies(entries: &[Entry]) -> Vec<String> {
+    let mut published: BTreeMap<&str, Vec<&Entry>> = BTreeMap::new();
+    for e in entries.iter().filter(|e| e.tag == TAG_TOOL) {
+        if let Some(name) = e.attrs.get("name") {
+            published.entry(name.as_str()).or_default().push(e);
+        }
+    }
+    let mut errors = Vec::new();
+    for call in entries.iter().filter(|e| e.tag == TAG_CALL) {
+        let Some(tool) = called_tool(&call.body) else { continue };
+        let Some(owners) = published.get(tool.as_str()) else { continue };
+        if owners.iter().any(|o| page_of(&o.id) == page_of(&call.id)) {
+            continue;
+        }
+        errors.push(format!("cross-page dependency {} -> {}", call.id, owners[0].id));
+    }
+    errors
 }
 
 /// The page-path half of an id.

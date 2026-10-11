@@ -531,6 +531,8 @@ mod dxn_ac02_extract_corpus_and_drift_check;
 mod dxn_ac03_run_corpus_against_fixture_host;
 #[path = "dxn_ac04_anonymous_and_skip_attributes.rs"]
 mod dxn_ac04_anonymous_and_skip_attributes;
+#[path = "dxn_ac05_cross_page_dependency_fails_extract.rs"]
+mod dxn_ac05_cross_page_dependency_fails_extract;
 #[path = "enduser_ac02_assertion_http_headers_and_calls_row.rs"]
 mod enduser_ac02_assertion_http_headers_and_calls_row;
 #[path = "enduser_ac03_invalid_assertion_rejected.rs"]
