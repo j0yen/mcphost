@@ -363,6 +363,14 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
             Path::new(INSTALL_DOC_WWW_PATH),
             crate::install_links::render_install_doc(crate::install_links::CANONICAL_PUBLIC_URL),
         ),
+        (Path::new(crate::client_profiles::DOC_PATH), crate::client_profiles::render_markdown()),
+        (
+            Path::new(crate::client_profiles::JSON_PATH),
+            // `--check` keeps the committed copy's own `generated_from`
+            // (a release bumps the crate version after the file lands);
+            // a write stamps the current version.
+            client_profiles_json(check),
+        ),
     ] {
         if check {
             let current = std::fs::read_to_string(path).unwrap_or_default();
@@ -388,6 +396,22 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
         }
     }
     Ok(stale)
+}
+
+/// The `www/client-profiles.json` render: current crate version on write,
+/// the committed file's recorded version on `--check` (see
+/// [`crate::client_profiles::render_json`]).
+fn client_profiles_json(check: bool) -> String {
+    let version = if check {
+        std::fs::read_to_string(crate::client_profiles::JSON_PATH)
+            .ok()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+            .and_then(|v| v["generated_from"].as_str().map(str::to_string))
+            .unwrap_or_default()
+    } else {
+        env!("CARGO_PKG_VERSION").to_string()
+    };
+    crate::client_profiles::render_json(&version)
 }
 
 #[cfg(test)]

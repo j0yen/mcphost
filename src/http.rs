@@ -906,6 +906,20 @@ async fn status_json_route(
     response
 }
 
+/// PRD-mcphost-client-profile-registry R3: `GET /client-profiles.json`,
+/// anonymous, same cache lifetime as `/status.json`.
+async fn client_profiles_json_route() -> Response {
+    (
+        StatusCode::OK,
+        [
+            ("content-type", "application/json".to_string()),
+            ("cache-control", format!("max-age={}", crate::statusfeed::CACHE_MAX_AGE_SECS)),
+        ],
+        crate::client_profiles::render_json(env!("CARGO_PKG_VERSION")),
+    )
+        .into_response()
+}
+
 /// Ensures every response carries `MCP-Protocol-Version` (AC1), and emits
 /// one structured request-line log entry. This layer is attached to the
 /// whole router (see `build_router` below), not just `/mcp` -- `/healthz`
@@ -1640,6 +1654,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         // side-effects contract `/healthz`'s anonymous body already has.
         .route("/reach", get(crate::reach::reach))
         .route("/status.json", get(status_json_route))
+        .route(crate::client_profiles::JSON_ROUTE, get(client_profiles_json_route))
         .route("/contract.json", get(contract_json_route))
         // mcphost-polish-p0-20260930 (audit finding 1), generalized by
         // PRD-mcphost-first-hour-support-surface: see `static_page`'s own

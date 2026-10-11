@@ -1,0 +1,199 @@
+{
+  "checked": "2026-10-09",
+  "generated_from": "0.107.16",
+  "profiles": [
+    {
+      "checked": "2026-10-09",
+      "clientinfo_prefixes": [
+        "claude-code"
+      ],
+      "doc_url": "https://code.claude.com/docs/en/mcp",
+      "id": "claude_code",
+      "nested_depth_max": 8,
+      "oauth": "none",
+      "result_bytes_max": 1000000,
+      "structured_content": true,
+      "tool_name_max": 64,
+      "user_agent_prefixes": [
+        "claude-code"
+      ]
+    },
+    {
+      "checked": "2026-10-09",
+      "clientinfo_prefixes": [
+        "cursor"
+      ],
+      "doc_url": "https://docs.cursor.com/en/tools/mcp",
+      "id": "cursor",
+      "nested_depth_max": 3,
+      "oauth": "optional",
+      "result_bytes_max": 100000,
+      "structured_content": false,
+      "tool_name_max": 60,
+      "user_agent_prefixes": [
+        "cursor"
+      ]
+    },
+    {
+      "checked": "2026-10-09",
+      "clientinfo_prefixes": [
+        "visual studio code",
+        "vscode"
+      ],
+      "doc_url": "https://code.visualstudio.com/api/extension-guides/ai/mcp",
+      "id": "vscode",
+      "nested_depth_max": 8,
+      "oauth": "optional",
+      "result_bytes_max": 1000000,
+      "structured_content": true,
+      "tool_name_max": 64,
+      "user_agent_prefixes": [
+        "vscode"
+      ]
+    },
+    {
+      "checked": "2026-10-09",
+      "clientinfo_prefixes": [
+        "claude-ai"
+      ],
+      "doc_url": "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp",
+      "id": "claude_ai",
+      "nested_depth_max": 4,
+      "oauth": "required",
+      "result_bytes_max": 1000000,
+      "structured_content": true,
+      "tool_name_max": 64,
+      "user_agent_prefixes": []
+    },
+    {
+      "checked": "2026-10-09",
+      "clientinfo_prefixes": [],
+      "doc_url": "https://platform.openai.com/docs/mcp",
+      "id": "chatgpt",
+      "nested_depth_max": 2,
+      "oauth": "required",
+      "result_bytes_max": 100000,
+      "structured_content": true,
+      "tool_name_max": 64,
+      "user_agent_prefixes": []
+    },
+    {
+      "checked": "2026-10-09",
+      "clientinfo_prefixes": [
+        "codex"
+      ],
+      "doc_url": "https://developers.openai.com/codex/mcp",
+      "id": "codex_cli",
+      "nested_depth_max": 8,
+      "oauth": "none",
+      "result_bytes_max": 1000000,
+      "structured_content": false,
+      "tool_name_max": 64,
+      "user_agent_prefixes": [
+        "codex"
+      ]
+    },
+    {
+      "checked": "2026-10-09",
+      "clientinfo_prefixes": [
+        "gemini-cli"
+      ],
+      "doc_url": "https://geminicli.com/docs/tools/mcp-server/",
+      "id": "gemini_cli",
+      "nested_depth_max": 4,
+      "oauth": "none",
+      "result_bytes_max": 1000000,
+      "structured_content": false,
+      "tool_name_max": 63,
+      "user_agent_prefixes": [
+        "gemini-cli"
+      ]
+    },
+    {
+      "checked": "2026-10-09",
+      "clientinfo_prefixes": [
+        "opencode"
+      ],
+      "doc_url": "https://opencode.ai/docs/mcp-servers/",
+      "id": "opencode",
+      "nested_depth_max": 8,
+      "oauth": "none",
+      "result_bytes_max": 1000000,
+      "structured_content": false,
+      "tool_name_max": 64,
+      "user_agent_prefixes": []
+    },
+    {
+      "checked": "2026-10-09",
+      "clientinfo_prefixes": [
+        "amp"
+      ],
+      "doc_url": "https://ampcode.com/manual#mcp",
+      "id": "amp",
+      "nested_depth_max": 8,
+      "oauth": "none",
+      "result_bytes_max": 1000000,
+      "structured_content": false,
+      "tool_name_max": 64,
+      "user_agent_prefixes": []
+    },
+    {
+      "checked": "2026-10-09",
+      "clientinfo_prefixes": [
+        "goose"
+      ],
+      "doc_url": "https://goose-docs.ai/docs/getting-started/using-extensions/",
+      "id": "goose",
+      "nested_depth_max": 8,
+      "oauth": "none",
+      "result_bytes_max": 1000000,
+      "structured_content": false,
+      "tool_name_max": 64,
+      "user_agent_prefixes": []
+    },
+    {
+      "checked": "2026-10-09",
+      "clientinfo_prefixes": [
+        "warp"
+      ],
+      "doc_url": "https://docs.warp.dev/agents/capabilities/mcp/",
+      "id": "warp",
+      "nested_depth_max": 8,
+      "oauth": "none",
+      "result_bytes_max": 1000000,
+      "structured_content": false,
+      "tool_name_max": 64,
+      "user_agent_prefixes": []
+    },
+    {
+      "checked": "2026-10-09",
+      "clientinfo_prefixes": [
+        "windsurf"
+      ],
+      "doc_url": "https://docs.windsurf.com/windsurf/cascade/mcp",
+      "id": "windsurf",
+      "nested_depth_max": 8,
+      "oauth": "none",
+      "result_bytes_max": 1000000,
+      "structured_content": false,
+      "tool_name_max": 64,
+      "user_agent_prefixes": []
+    },
+    {
+      "checked": "2026-10-09",
+      "clientinfo_prefixes": [
+        "cline",
+        "roo",
+        "kilo"
+      ],
+      "doc_url": "https://docs.cline.bot/mcp/configuring-mcp-servers",
+      "id": "cline",
+      "nested_depth_max": 8,
+      "oauth": "none",
+      "result_bytes_max": 1000000,
+      "structured_content": false,
+      "tool_name_max": 64,
+      "user_agent_prefixes": []
+    }
+  ]
+}
