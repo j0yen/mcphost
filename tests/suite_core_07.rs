@@ -421,6 +421,8 @@ mod cprov_ac04_validate_scopes_names_the_unknown;
 mod cprov_ac05_unknown_preset_lists_every_provider;
 #[path = "cprov_ac06_quickstart_partitions_providers.rs"]
 mod cprov_ac06_quickstart_partitions_providers;
+#[path = "cprov_ac07_missing_field_fails_the_build_naming_it.rs"]
+mod cprov_ac07_missing_field_fails_the_build_naming_it;
 #[path = "ctrv_ac01_sha_stable_across_boot_requests_and_process.rs"]
 mod ctrv_ac01_sha_stable_across_boot_requests_and_process;
 #[path = "ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs"]
