@@ -17,6 +17,7 @@ Every numeric ceiling in the plan table, as `host.quickstart` `limits.plan` repo
 
 | ceiling | free | pro |
 |---|---|---|
+| `asks_open_max` | 5 | 100 |
 | `budget.max_child_calls` | 20 | 50 |
 | `budget.max_est_tokens` | 200000 | 2000000 |
 | `budget.max_tool_latency_ms` | 30000 | 120000 |

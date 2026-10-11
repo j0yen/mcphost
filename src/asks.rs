@@ -275,10 +275,26 @@ pub async fn create(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
     let expires_unix = now + parsed.ttl_s;
     let options_json = serde_json::to_string(&parsed.options).map_err(|e| AppError::Internal(e.to_string()))?;
 
+    let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
+        AppError::Internal(format!("tenant's plan '{}' is not in the loaded plan catalog", tenant.plan))
+    })?;
+    let open_max = plan.asks_open_max;
+
     let (tenant_id, row_id) = (tenant.id, id.clone());
     state
         .db
         .with_conn(move |conn| {
+            // Counted and inserted on the one connection, so two concurrent
+            // creates cannot both slip under the ceiling.
+            expire_due(conn, now)?;
+            let open: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM asks WHERE tenant_id = ?1 AND status = 'pending'",
+                params![tenant_id],
+                |r| r.get(0),
+            )?;
+            if open >= open_max {
+                return Err(asks_limit(open_max, open));
+            }
             conn.execute(
                 "INSERT INTO asks (id, tenant_id, question, options_json, context, status, \
                                    created_unix, expires_unix) \
@@ -387,6 +403,20 @@ fn wait_result(row: &AskRow, waited_ms: i64) -> Value {
         "answered_unix": row.answered_unix,
         "waited_ms": waited_ms,
     })
+}
+
+fn asks_limit(limit: i64, used: i64) -> AppError {
+    AppError::Structured {
+        code: "asks_limit",
+        message: format!("{used} asks are already pending; this plan allows {limit} (asks_open_max)"),
+        data: json!({
+            "limit": limit,
+            "used": used,
+            "asks_open_max": limit,
+            "next_call": "host.ask.list",
+            "next_args": {"status": "pending"},
+        }),
+    }
 }
 
 fn ask_expired(row: &AskRow) -> AppError {

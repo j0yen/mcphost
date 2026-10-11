@@ -137,6 +137,8 @@ mod askd_ac03_wait_ceiling_single_source;
 mod askd_ac04_expired_ask_errors_and_page_is_404;
 #[path = "askd_ac05_keyless_wait_is_tenant_key_missing_and_signs_nobody_up.rs"]
 mod askd_ac05_keyless_wait_is_tenant_key_missing_and_signs_nobody_up;
+#[path = "askd_ac06_free_tenant_sixth_pending_ask_is_asks_limit.rs"]
+mod askd_ac06_free_tenant_sixth_pending_ask_is_asks_limit;
 #[path = "attrib_ac1_loopback_signup_unstamped.rs"]
 mod attrib_ac1_loopback_signup_unstamped;
 #[path = "attrib_ac2_clientinfo_captured.rs"]

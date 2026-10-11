@@ -38,6 +38,7 @@ pub const HELP_CODES: &[&str] = &[
     "ask_expired",
     "ask_answered",
     "choice_invalid",
+    "asks_limit",
 ];
 
 /// One `/help/<code>` page's content: meaning, likely cause, fix, and which
@@ -190,6 +191,13 @@ pub const HELP_ENTRIES: &[HelpEntry] = &[
         cause: "A hand-built request or a stale page whose options differ from the ask's; the buttons on the page always send a valid choice.",
         fix: "POST one of the options listed in the response's error.options (the same labels host.ask.create was given).",
         doc_link: "docs/tools.md",
+    },
+    HelpEntry {
+        code: "asks_limit",
+        meaning: "host.ask.create was refused because this tenant already has its plan's asks_open_max asks pending (unanswered and unexpired).",
+        cause: "Asks were created faster than the user answered them, or old asks were never answered and have not yet expired.",
+        fix: "Call host.ask.list {status: \"pending\"} to see the open asks and wait on or reuse one; a pending ask frees its slot when answered or expired. host.quickstart limits.plan.asks_open_max names the ceiling.",
+        doc_link: "docs/plans.md",
     },
 ];
 
