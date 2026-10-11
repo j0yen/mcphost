@@ -791,6 +791,8 @@ mod hzkeys_ac02_handler_body_equals_const;
 mod hzkeys_ac03_repo_tests_read_the_const;
 #[path = "hzkeys_ac04_script_parses_the_const.rs"]
 mod hzkeys_ac04_script_parses_the_const;
+#[path = "hzkeys_ac05_unwritable_db_keeps_key_set.rs"]
+mod hzkeys_ac05_unwritable_db_keeps_key_set;
 #[path = "hzver_ac01_anonymous_healthz_keys.rs"]
 mod hzver_ac01_anonymous_healthz_keys;
 #[path = "hzver_ac02_unwritable_db_503_carries_build.rs"]
