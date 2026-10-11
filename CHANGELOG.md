@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+`GET /client-profiles.json` serves one row per install surface (PRD-mcphost-client-profile-registry):
+`id`, the `clientInfo`/`User-Agent` prefixes that resolve to it, `tool_name_max`, `nested_depth_max`,
+`structured_content`, `oauth` (`none`/`optional`/`required`), `result_bytes_max`, `doc_url` and the
+`checked` date; `docs/client-profiles.md` lists the same rows beside their docs links. `host.whoami`
+gains `client_profile` (`id`, `from` = `clientInfo` or `userAgent` or `null`, and the five limit fields),
+and `host.quickstart.limits` gains `client_profiles_url`.
+
 ## v0.107.13 — 2026-10-10
 
 `host.webhook_inbox.create(name, verify?, rotate?)` makes a webhook inbox one call

@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-webhook-inbox-one-call.md",
-  "intent_slug": "mcphost-webhook-inbox-one-call",
-  "root_motivation": "**Who:** an agent that just received a mcphost URL and must show its user a webhook arriving inside one session; the truth-tier integration_specialist persona that scores it. **What:** one call that yields a public hook URL plus a way to read the next event. **Why not today:** the webhook-inbox recipe was three host steps plus a signed POST (eight calls to show one event); a key-less call after a successful host.redeem minted a second tenant because /mcp is stateless; kind=inbox routed to the agent-inbox recipe; llms.txt had no webhook section. **Consequence:** satisfaction 0.0 / completion 0.0 for this recipe on 10-09 and 10-06.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-client-profile-registry.md",
+  "intent_slug": "mcphost-client-profile-registry",
+  "root_motivation": "**Who:** the agent in any of the 13 clients; the four sibling PRDs (response shape, name policy, search/fetch facade, quirk telemetry) that need one key to adapt on; the harness that must announce a client the host recognises. **What:** a single, generated, cited answer to \"which client is this, and what can it not do\". **Why not today:** `peer_client_info` (`handler.rs:562`) yields the raw name; `set_tenant_client_info` stores it (`db.rs:4229`); `whoami` echoes it (`control.rs:1226`). No code path turns a name into a surface at request time, and no file states what a surface's limits are \u2014 the only per-client facts live in `llms-install.md` prose and `/connect` HTML. The truth tier's 10-08 split (chatgpt 0.71, claude_ai 0.99, claude_code 0.79) cannot be explained by anything the host records. **Premise (agent viewpoint):** my client's name on the wire is enough for the host to know my constraints. **Falsifier:** the constraints do not differ (AC 1).",
   "user_persona": "An agent (customer) that calls host.webhook_inbox.create once, pastes the url into a sender and shows its user the push event in the same session; the truth-tier integration_specialist persona whose gold is reachable in 4 calls; Operator Joe reading the digest.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,50 +14,50 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a free tenant, When `host.webhook_inbox.create(name=\"inbox\")` is called once, Then the response carries `url` matching `^https://[^/]+/hook/[A-Za-z0-9]{10,}$`, `secret`, `tool: \"inbox\"`, `trigger_id`, and `wait.tool == \"host.msg.wait\"`, and `host.trigger.list` shows exactly one webhook trigger bound to `inbox`.",
-      "test": "tests/whin_ac01_create_returns_url_secret_wait.rs"
+      "description": "Given the committed `CLIENT_PROFILES`, When the falsifier test runs, Then at least two constraint columns hold \u2265 3 distinct values and every non-unknown row's `doc_url` returns HTTP 200 in `scripts/www-check.sh --client-docs`; otherwise the test fails and the PRD stops.",
+      "test": "tests/cprf_ac01_falsifier_constraints_differ.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the inbox from AC1, When a POST signed with `secret` carrying `{\"id\":\"evt-fixture-1\"}` reaches `url`, Then within 5 s `host.tool_call(name=\"inbox\")` returns a row with id `evt-fixture-1` and `host.msg.wait` with `wait.args` returns a message whose `data.event_id` is `evt-fixture-1`.",
-      "test": "tests/whin_ac02_signed_post_readable_by_tool_call_and_msg_wait.rs"
+      "description": "Given `SURFACE_IDS` and `CLIENT_INFO_NAMES`, When the drift test runs, Then profile ids equal `SURFACE_IDS` in order and every `CLIENT_INFO_NAMES` id appears in exactly one row's `clientinfo_prefixes`.",
+      "test": "tests/cprf_ac02_profiles_match_surface_ids.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given an unsigned or wrongly signed POST, When it reaches `url`, Then the response is 401, no row is stored, no run fires and no inbox message is sent.",
-      "test": "tests/whin_ac03_unsigned_or_wrong_signature_stores_nothing.rs"
+      "description": "Given `clientInfo.name = \"Cursor\"` and no `User-Agent`, When `profile_for` runs, Then it returns the `cursor` row with `From::ClientInfo`; Given neither signal, Then `UNKNOWN` and `None`; Given a name `\"Visual Studio Code\"` and a `User-Agent` `cursor/1.2`, Then `vscode` (clientInfo wins).",
+      "test": "tests/cprf_ac03_profile_for_resolves.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a peer that completed `host.redeem` 5 s earlier, When it sends `host.tool_publish` without `tenant_key` on `/mcp`, Then the error is `tenant_key_missing` with `data.tenant` equal to that namespace, the `tenants` row count is unchanged, and a peer with no redeem in 10 minutes still gets implicit signup.",
-      "test": "tests/whin_ac04_keyless_call_after_redeem_is_refused_and_named.rs"
+      "description": "Given a keyed tenant whose session announced `claude-code`, When it calls `host.whoami`, Then `client_profile.id == \"claude_code\"`, `from == \"clientInfo\"`, and the seven limit fields equal the table row.",
+      "test": "tests/cprf_ac04_whoami_reports_client_profile.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a keyed `host.quickstart(kind=\"inbox\")`, When it returns, Then `recipe.name == \"webhook-inbox\"`, `recipe.steps` has one entry calling `host.webhook_inbox.create`, `recipes_nearby` contains `agent-inbox`, and the anonymous quickstart note contains \"tenant_key on every call\" and not \"connection is bound\".",
-      "test": "tests/whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule.rs"
+      "description": "Given `www/client-profiles.json` and `docs/client-profiles.md` on disk, When the committed-copy test runs, Then both equal the generator's output byte for byte, and `GET /client-profiles.json` equals the file.",
+      "test": "tests/cprf_ac05_committed_copy_drift.rs"
     },
     {
       "id": "AC6",
-      "level": "MUST",
-      "description": "Given `www/llms.txt`, When `scripts/www-check.sh` and `handler::llms_txt_tool_names` run, Then a section `## Webhook inbox in one call` names `host.webhook_inbox.create`, and `examples/webhook-inbox/proof.sh` against a local `TestServer` exits 0 in under 30 s.",
-      "test": "tests/whin_ac06_llms_txt_section_and_proof_sh.rs"
+      "level": "SHOULD",
+      "description": "Given a row whose `checked` date is older than 90 days, When `cargo test` runs, Then the staleness test fails naming the row and its `doc_url`.",
+      "test": "tests/cprf_ac06_staleness.rs"
     },
     {
       "id": "AC7",
       "level": "SHOULD",
-      "description": "Given a tenant at `event_triggers_max`, When `host.webhook_inbox.create` is called, Then the error is `plan_limit` with `data.limit == 3` and no tool, trigger or event row was created; Given a second create with the same name, Then the same `url` returns and `secret` is absent.",
-      "test": "tests/whin_ac07_plan_limit_creates_nothing_and_repeat_is_idempotent.rs"
+      "description": "Given an anonymous `host.quickstart`, When it answers, Then `limits.client_profiles_url` is the absolute `/client-profiles.json` URL and `limits.name_pattern` is unchanged.",
+      "test": "tests/cprf_ac07_quickstart_limits_profiles_url.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given the first nightly truth-tier on orch after prod carries this, When `measure.json` is written, Then `recipes.by_recipe.mcphost-webhook-inbox.completion_rate` is \u2265 0.5 and its `failure_families` omit `budget` (Live; evidence: `ssh orch 'python3 -m json.tool $(ls -d ~/.local/state/synthorg/runs/truth-tier-* | tail -1)/measure.json | grep -A8 \"\\\"mcphost-webhook-inbox\\\"\"'`)",
-      "test": "deferred -- operator-provisioned: first nightly truth-tier on orch after prod carries this."
+      "description": "Given prod after this lands, When the public JSON is fetched, Then it has 13 profiles and a `generated_from` equal to the running version (Live; evidence: `curl -s https://mcphost.dev/client-profiles.json | jq '[.profiles | length, .generated_from]'` prints `[13, \"<prod version>\"]`)",
+      "test": "deferred -- operator-provisioned: needs prod after landing (live curl of the public JSON)"
     }
   ],
   "scope": [
