@@ -114,12 +114,22 @@ fn recipe_persona_turns_between_first_table_call_and_first_query_are_printed() {
                 if falsifier_confirmed(&turns) == Some(true) { "CONFIRMED" } else { "not confirmed" }
             );
         }
-        None => println!(
+        None => {
+            // A census that found runs but no number is a broken reader or a
+            // wrong path scheme, not "no data": fail it. An explicit
+            // MCPHOST_TRUTH_RUNS that yields nothing fails too.
+            assert!(
+                dirs.is_empty() && std::env::var_os("MCPHOST_TRUTH_RUNS").is_none(),
+                "truth-tier dirs {dirs:?} under {} produced no turn count",
+                root.display()
+            );
+            println!(
             "csvtab AC1: no recipe session with both a host.table.* call and a host.table.query under {} \
              ({} truth-tier dirs) -- no number on this host; the census runs where the runs live",
             root.display(),
             dirs.len()
-        ),
+            );
+        }
     }
 }
 
@@ -150,4 +160,41 @@ fn no_directories_means_no_number_not_a_verdict() {
     assert_eq!(falsifier_confirmed(&[1, 0, 1]), Some(true));
     assert_eq!(falsifier_confirmed(&[4, 6, 2]), Some(false));
     std::fs::remove_dir_all(&empty).ok();
+}
+
+#[test]
+fn census_over_on_disk_truth_tier_dirs_computes_and_prints_the_median() {
+    // Whole path on disk: runs/truth-tier-*/ledger.jsonl -> transcript_path
+    // -> turns. Four dirs prove only the last three are read.
+    let base = std::env::temp_dir().join(format!("csvtab-ac01-tree-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    let runs = base.join("runs");
+    let tr = |first: i64, query: i64| {
+        format!(
+            "{}\n{}\n{}",
+            r#"{"turn": 1, "tool": "signup"}"#,
+            format_args!(r#"{{"turn": {first}, "tool": "host_table_create"}}"#),
+            format_args!(r#"{{"turn": {query}, "tool": "host_table_query"}}"#)
+        )
+    };
+    // (dir, gap): oldest dir has gap 40 and must be ignored.
+    for (dir, gap) in [("20260901", 40), ("20260902", 1), ("20260903", 3), ("20260904", 7)] {
+        let d = runs.join(format!("truth-tier-{dir}"));
+        std::fs::create_dir_all(d.join("t")).expect("dir");
+        std::fs::write(d.join("t/a.jsonl"), tr(2, 2 + gap)).expect("transcript");
+        std::fs::write(d.join("t/other.jsonl"), tr(2, 2)).expect("transcript");
+        let ledger = format!(
+            "{}\n{}\n",
+            r#"{"task_id":"spreadsheet-owner-database-in-a-minute","persona_id":"p","transcript_path":"t/a.jsonl"}"#,
+            r#"{"task_id":"unrelated","persona_id":"x","transcript_path":"t/other.jsonl"}"#
+        );
+        std::fs::write(d.join("ledger.jsonl"), ledger).expect("ledger");
+    }
+    let (dirs, turns) = census(&runs);
+    assert_eq!(dirs.len(), 3, "only the last three truth-tier dirs");
+    assert_eq!(turns, vec![1, 3, 7], "non-recipe rows excluded");
+    assert_eq!(median(turns.clone()), Some(3.0));
+    assert_eq!(falsifier_confirmed(&turns), Some(false));
+    println!("csvtab AC1: fixture-tree median = {:?} (mechanism check, not a measurement)", median(turns));
+    std::fs::remove_dir_all(&base).ok();
 }
