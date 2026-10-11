@@ -427,6 +427,8 @@ mod ctrv_ac06_committed_contract_file_matches_served_sha;
 mod ctrv_ac07_changelog_since_accepts_contract_version;
 #[path = "demo_ac01_page_lists_three_runs_newest_first.rs"]
 mod demo_ac01_page_lists_three_runs_newest_first;
+#[path = "demo_ac02_unshared_unknown_tool_unknown_ns_identical_404.rs"]
+mod demo_ac02_unshared_unknown_tool_unknown_ns_identical_404;
 #[path = "docsearch_ac01_status_reports_watermark_lag_and_chunks.rs"]
 mod docsearch_ac01_status_reports_watermark_lag_and_chunks;
 #[path = "docsearch_ac02_lexical_search_returns_passage_and_offset.rs"]
