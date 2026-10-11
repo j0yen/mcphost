@@ -8,6 +8,8 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 mod ci_sandbox_support;
+#[path = "support/blobguard.rs"]
+mod blobguard;
 #[path = "support/busyaudit.rs"]
 mod busyaudit;
 #[path = "support/chart_fixture.rs"]
@@ -203,6 +205,20 @@ mod billing_ac10_webhook_mode_mismatch;
 mod billing_ac11_healthz_paying_tenants;
 #[path = "billing_ac13_checkout_reuse.rs"]
 mod billing_ac13_checkout_reuse;
+#[path = "blobguard_ac01_benign_corpus_not_refused.rs"]
+mod blobguard_ac01_benign_corpus_not_refused;
+#[path = "blobguard_ac02_type_and_magic_refused_415.rs"]
+mod blobguard_ac02_type_and_magic_refused_415;
+#[path = "blobguard_ac03_archive_refusals_422.rs"]
+mod blobguard_ac03_archive_refusals_422;
+#[path = "blobguard_ac04_clamd_found_and_unavailable.rs"]
+mod blobguard_ac04_clamd_found_and_unavailable;
+#[path = "blobguard_ac05_allowlist_mode_png_fast.rs"]
+mod blobguard_ac05_allowlist_mode_png_fast;
+#[path = "blobguard_ac06_one_table_one_set.rs"]
+mod blobguard_ac06_one_table_one_set;
+#[path = "blobguard_ac07_active_content_svg.rs"]
+mod blobguard_ac07_active_content_svg;
 #[path = "bridgedisc_ac07_sandbox_api_doc_check.rs"]
 mod bridgedisc_ac07_sandbox_api_doc_check;
 #[path = "budget_ac01_ported_ledger_seven_tests.rs"]

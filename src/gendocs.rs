@@ -324,6 +324,18 @@ pub fn render_tools_markdown(kinds: &KindRegistry) -> String {
     out
 }
 
+/// PRD-mcphost-blob-virus-and-type-guard R8: the accepted-types table,
+/// rendered from [`crate::blobs::BLOB_TYPES`] so it cannot name a type the
+/// host refuses.
+pub fn render_blob_types_table() -> String {
+    let mut out = String::from("| mime | extensions | active content |\n|---|---|---|\n");
+    for t in crate::blobs::BLOB_TYPES {
+        let exts = t.extensions.iter().map(|e| format!(".{e}")).collect::<Vec<_>>().join(" ");
+        out.push_str(&format!("| `{}` | {exts} | {} |\n", t.mime, if t.active_content { "yes" } else { "no" }));
+    }
+    out
+}
+
 /// Writes (or, under `check`, diffs without writing) `docs/plans.md`,
 /// `www/plans.html`, `docs/tools.md`, and -- AC5's build-time half -- the
 /// `<!-- support: start/end -->` sections of [`SUPPORT_SPLICED_DOCS`],

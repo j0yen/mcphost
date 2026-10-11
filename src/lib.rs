@@ -27,6 +27,7 @@ pub mod cron;
 pub mod db;
 pub mod deps;
 pub mod difftext;
+pub mod blobs;
 pub mod docs;
 pub mod docs_index;
 pub mod drift;
