@@ -230,6 +230,8 @@ mod tlint_ac03_allow_set_comes_from_the_harness_file;
 mod tlint_ac05_landed_tree_has_zero_offenders;
 #[path = "tlint_ac06_converted_files_keep_their_budget_numbers.rs"]
 mod tlint_ac06_converted_files_keep_their_budget_numbers;
+#[path = "tlint_ac07_json_field_names_are_not_wall_clock_tokens.rs"]
+mod tlint_ac07_json_field_names_are_not_wall_clock_tokens;
 #[path = "toolname_ac01_lint_reports_violations.rs"]
 mod toolname_ac01_lint_reports_violations;
 #[path = "toolname_ac02_alias_dispatch_hint_and_log.rs"]
