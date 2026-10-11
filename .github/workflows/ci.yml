@@ -94,6 +94,11 @@ jobs:
           install -Dm755 target/debug/mcphost "$HOME/.local/bin/mcphost"
 
       - name: cargo test (core suites)
+        # CI runners are shared 2-4 vCPU hosts: timing budgets are the gate's
+        # truth (RedBaron, quiet box, var unset), not CI's. Same switch the gate
+        # flips under load; perf_budget!/perf_skipped() print the skip.
+        env:
+          MCPHOST_PERF_SKIP: "1"
         run: |
           set -o pipefail
           start=$(date +%s)
@@ -175,6 +180,11 @@ jobs:
         run: ./scripts/ci-test-partition.sh check
 
       - name: cargo test (sandbox suites, shard ${{ matrix.shard }}/2)
+        # CI runners are shared 2-4 vCPU hosts: timing budgets are the gate's
+        # truth (RedBaron, quiet box, var unset), not CI's. Same switch the gate
+        # flips under load; perf_budget!/perf_skipped() print the skip.
+        env:
+          MCPHOST_PERF_SKIP: "1"
         run: |
           set -o pipefail
           start=$(date +%s)
