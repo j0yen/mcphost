@@ -6,10 +6,13 @@
 //!
 //! The census reads `synthorg consume --tier truth` run directories
 //! (`runs/truth-tier-*/ledger.jsonl`, one JSON row per scored session, each
-//! naming its `transcript_path`; a transcript is one JSON line per tool call
-//! with `turn` and `tool`). Those directories live in `~/repos/synthorg` on
-//! the operator hosts, not in this repository, so the directory root is
-//! `MCPHOST_TRUTH_RUNS` (default `~/repos/synthorg/runs`). When the build
+//! naming its absolute `transcript_path`; a transcript is one JSON line per
+//! tool call, written by synthorg's `_TranscriptWriter.record_call` as
+//! `{turn, ts, role, tool, args, ms, response|error}` with mcphost's dotted
+//! tool names). Those directories live in synthorg's state dir on the
+//! operator hosts (`paths.runs_dir()`: `$SYNTHORG_STATE_DIR`, else
+//! `$XDG_STATE_HOME/synthorg`, else `~/.local/state/synthorg`, then `/runs`),
+//! not in this repository; `MCPHOST_TRUTH_RUNS` overrides it. When the build
 //! host has no truth-tier directory the test prints that fact, and
 //! `no_directories_means_no_number_not_a_verdict` pins that an absent census
 //! never produces a falsifier verdict. The reader itself is exercised on an
@@ -61,10 +64,21 @@ fn falsifier_confirmed(turns: &[i64]) -> Option<bool> {
     median(turns.to_vec()).map(|m| m <= 1.0)
 }
 
+/// Mirrors synthorg `paths._resolve_runs_dir()`; `MCPHOST_TRUTH_RUNS` wins.
+fn runs_root_from(get: impl Fn(&str) -> Option<String>) -> PathBuf {
+    if let Some(r) = get("MCPHOST_TRUTH_RUNS") {
+        return PathBuf::from(r);
+    }
+    let state = get("SYNTHORG_STATE_DIR").map(PathBuf::from).unwrap_or_else(|| {
+        get("XDG_STATE_HOME")
+            .map(|x| PathBuf::from(x).join("synthorg"))
+            .unwrap_or_else(|| PathBuf::from(get("HOME").unwrap_or_default()).join(".local/state/synthorg"))
+    });
+    state.join("runs")
+}
+
 fn runs_root() -> PathBuf {
-    std::env::var_os("MCPHOST_TRUTH_RUNS")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join("repos/synthorg/runs"))
+    runs_root_from(|k| std::env::var(k).ok().filter(|v| !v.is_empty()))
 }
 
 fn last_three_truth_dirs(root: &Path) -> Vec<PathBuf> {
@@ -169,13 +183,14 @@ fn census_over_on_disk_truth_tier_dirs_computes_and_prints_the_median() {
     let base = std::env::temp_dir().join(format!("csvtab-ac01-tree-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&base);
     let runs = base.join("runs");
-    let tr = |first: i64, query: i64| {
+    // One line per `_TranscriptWriter.record_call`, mcphost's dotted names.
+    let line = |turn: i64, tool: &str| {
         format!(
-            "{}\n{}\n{}",
-            r#"{"turn": 1, "tool": "signup"}"#,
-            format_args!(r#"{{"turn": {first}, "tool": "host_table_create"}}"#),
-            format_args!(r#"{{"turn": {query}, "tool": "host_table_query"}}"#)
+            r#"{{"turn": {turn}, "ts": "2026-10-11T00:00:00+00:00", "role": "tool", "tool": "{tool}", "args": {{}}, "ms": 12.5, "response": {{}}}}"#
         )
+    };
+    let tr = |first: i64, query: i64| {
+        [line(1, "signup"), line(first, "host.table.create"), line(query, "host.table.query")].join("\n")
     };
     // (dir, gap): oldest dir has gap 40 and must be ignored.
     for (dir, gap) in [("20260901", 40), ("20260902", 1), ("20260903", 3), ("20260904", 7)] {
@@ -183,10 +198,13 @@ fn census_over_on_disk_truth_tier_dirs_computes_and_prints_the_median() {
         std::fs::create_dir_all(d.join("t")).expect("dir");
         std::fs::write(d.join("t/a.jsonl"), tr(2, 2 + gap)).expect("transcript");
         std::fs::write(d.join("t/other.jsonl"), tr(2, 2)).expect("transcript");
+        // synthorg stamps `transcript_path: str(path)` -- absolute.
         let ledger = format!(
             "{}\n{}\n",
-            r#"{"task_id":"spreadsheet-owner-database-in-a-minute","persona_id":"p","transcript_path":"t/a.jsonl"}"#,
-            r#"{"task_id":"unrelated","persona_id":"x","transcript_path":"t/other.jsonl"}"#
+            serde_json::json!({"task_id": "spreadsheet-owner-database-in-a-minute", "persona_id": "p",
+                "transcript_path": d.join("t/a.jsonl")}),
+            serde_json::json!({"task_id": "unrelated", "persona_id": "x",
+                "transcript_path": d.join("t/other.jsonl")})
         );
         std::fs::write(d.join("ledger.jsonl"), ledger).expect("ledger");
     }
@@ -197,4 +215,24 @@ fn census_over_on_disk_truth_tier_dirs_computes_and_prints_the_median() {
     assert_eq!(falsifier_confirmed(&turns), Some(false));
     println!("csvtab AC1: fixture-tree median = {:?} (mechanism check, not a measurement)", median(turns));
     std::fs::remove_dir_all(&base).ok();
+}
+
+#[test]
+fn default_runs_root_is_synthorgs_state_runs_dir() {
+    let env = |pairs: &'static [(&'static str, &'static str)]| {
+        move |k: &str| pairs.iter().find(|(n, _)| *n == k).map(|(_, v)| v.to_string())
+    };
+    assert_eq!(runs_root_from(env(&[("HOME", "/h")])), PathBuf::from("/h/.local/state/synthorg/runs"));
+    assert_eq!(
+        runs_root_from(env(&[("HOME", "/h"), ("XDG_STATE_HOME", "/x")])),
+        PathBuf::from("/x/synthorg/runs")
+    );
+    assert_eq!(
+        runs_root_from(env(&[("HOME", "/h"), ("XDG_STATE_HOME", "/x"), ("SYNTHORG_STATE_DIR", "/s")])),
+        PathBuf::from("/s/runs")
+    );
+    assert_eq!(
+        runs_root_from(env(&[("SYNTHORG_STATE_DIR", "/s"), ("MCPHOST_TRUTH_RUNS", "/m")])),
+        PathBuf::from("/m")
+    );
 }
