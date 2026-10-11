@@ -506,8 +506,9 @@ parts contract, and progress counters are all documented there together.
 An end user's Slack/GitHub/Google token lives in the host, never in the
 model. Register an upstream OAuth application once with
 `host.vault.provider_set(name, preset?, auth_url?, token_url?, client_id,
-client_secret, scopes)` -- `preset: "slack" | "github" | "google"` fills
-`auth_url`/`token_url` from a built-in table; an explicit `auth_url:`/
+client_secret, scopes)` -- `preset: <a provider name from
+host.connect.providers, e.g. "slack", "github", "google">` fills
+`auth_url`/`token_url` from the providers.toml table; an explicit `auth_url:`/
 `token_url:` always overrides the matching preset value. Mint a one-time
 handoff link for an end user with `host.vault.connect_link(provider,
 end_user: "self")`; their browser completes it. `host.vault.status

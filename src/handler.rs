@@ -3668,9 +3668,10 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                     },
                     "preset": {
                         "type": "string",
-                        "description": "One of slack, github, google -- prefills \
-                            auth_url/token_url. An explicit auth_url/token_url below always \
-                            overrides the matching preset value, field by field.",
+                        "description": format!("One of {} (host.connect.providers lists them) -- \
+                            prefills auth_url/token_url. An explicit auth_url/token_url below \
+                            always overrides the matching preset value, field by field.",
+                            crate::connect::provider_names_csv()),
                     },
                     "auth_url": {
                         "type": "string",

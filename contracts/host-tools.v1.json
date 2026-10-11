@@ -5236,7 +5236,7 @@
             "type": "string"
           },
           "preset": {
-            "description": "One of slack, github, google -- prefills auth_url/token_url. An explicit auth_url/token_url below always overrides the matching preset value, field by field.",
+            "description": "One of github, google, notion, slack (host.connect.providers lists them) -- prefills auth_url/token_url. An explicit auth_url/token_url below always overrides the matching preset value, field by field.",
             "type": "string"
           },
           "scopes": {
@@ -9745,7 +9745,7 @@
             "type": "string"
           },
           "preset": {
-            "description": "One of slack, github, google -- prefills auth_url/token_url. An explicit auth_url/token_url below always overrides the matching preset value, field by field.",
+            "description": "One of github, google, notion, slack (host.connect.providers lists them) -- prefills auth_url/token_url. An explicit auth_url/token_url below always overrides the matching preset value, field by field.",
             "type": "string"
           },
           "scopes": {

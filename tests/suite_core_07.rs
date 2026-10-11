@@ -417,6 +417,8 @@ mod cprov_ac01_one_providers_toml_edit_reaches_every_surface;
 mod cprov_ac02_provider_surfaces_cannot_drift;
 #[path = "cprov_ac04_validate_scopes_names_the_unknown.rs"]
 mod cprov_ac04_validate_scopes_names_the_unknown;
+#[path = "cprov_ac05_unknown_preset_lists_every_provider.rs"]
+mod cprov_ac05_unknown_preset_lists_every_provider;
 #[path = "ctrv_ac01_sha_stable_across_boot_requests_and_process.rs"]
 mod ctrv_ac01_sha_stable_across_boot_requests_and_process;
 #[path = "ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs"]
