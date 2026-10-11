@@ -640,6 +640,12 @@ fn check_retry_families(steps: &[ParsedStep]) -> Result<(), KindError> {
     Ok(())
 }
 
+impl RetryPolicy {
+    fn to_json(&self) -> Value {
+        json!({"max": self.max, "backoff_ms": self.backoff_ms, "on": self.on})
+    }
+}
+
 const RETRY_MAX_RANGE: std::ops::RangeInclusive<u64> = 1..=5;
 const RETRY_BACKOFF_MS_MAX: u64 = 30_000;
 
@@ -1259,6 +1265,14 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
         report.push(entry);
         step_results.push(Value::Null);
         prev = None;
+    }
+    // PRD-mcphost-chain-step-retry-policy requirement 5: the resolved policy
+    // rides each step's report entry; the dry run itself never retries (a
+    // step is dispatched at most once) and so reports no `attempts`.
+    for (entry, step) in report.iter_mut().zip(steps) {
+        if let (Value::Object(map), Some(policy)) = (entry, step.retry.as_ref()) {
+            map.insert("retry".to_string(), policy.to_json());
+        }
     }
     let count = |source: &str| report.iter().filter(|e| e["source"] == json!(source)).count();
     let (executed, fixtured, skipped) = (count("dry_run"), count("fixture"), count("skipped"));

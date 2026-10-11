@@ -435,6 +435,8 @@ mod cretr_ac04_wait_past_deadline_is_refused;
 mod cretr_ac05_retry_families_generated_and_publish_refuses_unknown;
 #[path = "cretr_ac06_never_retried_codes_stay_single_attempt.rs"]
 mod cretr_ac06_never_retried_codes_stay_single_attempt;
+#[path = "cretr_ac07_tool_test_reports_policy_without_retrying.rs"]
+mod cretr_ac07_tool_test_reports_policy_without_retrying;
 #[path = "ctrv_ac01_sha_stable_across_boot_requests_and_process.rs"]
 mod ctrv_ac01_sha_stable_across_boot_requests_and_process;
 #[path = "ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs"]
