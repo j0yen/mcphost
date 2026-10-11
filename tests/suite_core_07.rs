@@ -563,6 +563,20 @@ mod drift_ac10_manual_check_produces_review_without_version_change;
 mod dryrun_ac05_chain_host_table_append_step;
 #[path = "dryrun_ac06_tools_list_mentions_dry_run.rs"]
 mod dryrun_ac06_tools_list_mentions_dry_run;
+#[path = "dxn_ac01_classify_fences.rs"]
+mod dxn_ac01_classify_fences;
+#[path = "dxn_ac02_extract_corpus_and_drift_check.rs"]
+mod dxn_ac02_extract_corpus_and_drift_check;
+#[path = "dxn_ac03_run_corpus_against_fixture_host.rs"]
+mod dxn_ac03_run_corpus_against_fixture_host;
+#[path = "dxn_ac04_anonymous_and_skip_attributes.rs"]
+mod dxn_ac04_anonymous_and_skip_attributes;
+#[path = "dxn_ac05_cross_page_dependency_fails_extract.rs"]
+mod dxn_ac05_cross_page_dependency_fails_extract;
+#[path = "dxn_ac06_gen_llms_full_gates_on_corpus_and_annotates.rs"]
+mod dxn_ac06_gen_llms_full_gates_on_corpus_and_annotates;
+#[path = "dxn_ac07_unreachable_host_exits_two_after_one_retry.rs"]
+mod dxn_ac07_unreachable_host_exits_two_after_one_retry;
 #[path = "enduser_ac02_assertion_http_headers_and_calls_row.rs"]
 mod enduser_ac02_assertion_http_headers_and_calls_row;
 #[path = "enduser_ac03_invalid_assertion_rejected.rs"]

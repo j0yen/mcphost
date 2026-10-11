@@ -232,6 +232,12 @@ enum Command {
         #[arg(long)]
         path: Option<PathBuf>,
     },
+    /// PRD-mcphost-docs-examples-executed-nightly: the docs' tagged fences
+    /// as an executable corpus (`classify`, `extract`, `run`).
+    DocsExamples {
+        #[command(subcommand)]
+        action: DocsExamplesCommand,
+    },
     /// PRD-mcphost-chatgpt-submission-pack: writes everything the ChatGPT
     /// Apps submission form asks for (`metadata.json`, `icon-64.png`,
     /// reviewer notes, screenshot list) into `<dir>` from the same
@@ -245,6 +251,64 @@ enum Command {
         /// Compare `<dir>` against a fresh render instead of writing.
         #[arg(long)]
         check: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum DocsExamplesCommand {
+    /// Print one `<path>:<line> runnable|fragment|prose` line per fenced
+    /// block of the file (default `www/llms-full.txt`).
+    Classify {
+        #[arg(long)]
+        path: Option<PathBuf>,
+    },
+    /// Execute every corpus example against a host, print `<id> pass|fail|skip`
+    /// per example and a summary line, and write `<artifact-dir>/<date>.json`.
+    /// Exit 1 on any failure, 2 when the host is unreachable.
+    Run {
+        /// The host's base URL or `/mcp` endpoint.
+        #[arg(long, alias = "live")]
+        url: String,
+        /// Print the report as JSON instead of text lines.
+        #[arg(long)]
+        json: bool,
+        /// Corpus file; defaults to `<root>/docs/examples.corpus.json`.
+        #[arg(long)]
+        corpus: Option<PathBuf>,
+        #[arg(long)]
+        root: Option<PathBuf>,
+        /// Where the `<date>.json` artifact goes; defaults to
+        /// `target/docs-examples`.
+        #[arg(long)]
+        artifact_dir: Option<PathBuf>,
+    },
+    /// Print a markdown file with an `<!-- executed: <id> <status> <date> -->`
+    /// comment after each tagged fence the artifact has a result for
+    /// (`scripts/gen-llms-full.sh` pipes every source page through this).
+    Annotate {
+        /// The page to annotate; also the path its fence ids are built from.
+        #[arg(long)]
+        path: PathBuf,
+        /// A `run` artifact (`target/docs-examples/<date>.json`).
+        #[arg(long)]
+        artifact: PathBuf,
+        #[arg(long)]
+        root: Option<PathBuf>,
+        #[arg(long)]
+        corpus: Option<PathBuf>,
+    },
+    /// Write `docs/examples.corpus.json` from the tagged fences of
+    /// `docs/**/*.md`; with `--check`, write nothing and exit 1 naming the
+    /// drifted ids when the committed corpus differs.
+    Extract {
+        #[arg(long)]
+        check: bool,
+        /// Repo root holding `docs/`. Defaults to the current directory.
+        #[arg(long)]
+        root: Option<PathBuf>,
+        /// Corpus file; defaults to `<root>/docs/examples.corpus.json`.
+        #[arg(long)]
+        corpus: Option<PathBuf>,
     },
 }
 
@@ -682,6 +746,125 @@ async fn main() -> anyhow::Result<()> {
                         path.display(),
                         mcphost::api_contract::contract_version_string(&kinds)
                     );
+                    Ok(())
+                }
+            }
+        },
+        Command::DocsExamples { action } => match action {
+            DocsExamplesCommand::Classify { path } => {
+                let path = path.unwrap_or_else(|| PathBuf::from("www/llms-full.txt"));
+                let text = match std::fs::read_to_string(&path) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        eprintln!("docs-examples classify: read {}: {e}", path.display());
+                        std::process::exit(2);
+                    }
+                };
+                let report = mcphost::docs_examples::classify_text(&path.display().to_string(), &text);
+                for line in &report.lines {
+                    println!("{line}");
+                }
+                eprintln!(
+                    "fences={} runnable={} fragment={} prose={}",
+                    report.total(),
+                    report.runnable,
+                    report.fragment,
+                    report.prose
+                );
+                Ok(())
+            }
+            DocsExamplesCommand::Run { url, json, corpus, root, artifact_dir } => {
+                let root = root.unwrap_or_else(|| PathBuf::from("."));
+                let corpus = corpus.unwrap_or_else(|| root.join(mcphost::docs_examples::CORPUS_PATH));
+                let entries = match mcphost::docs_examples::load_corpus(&corpus) {
+                    Ok(e) => e,
+                    Err(e) => {
+                        eprintln!("docs-examples run: {e}");
+                        std::process::exit(2);
+                    }
+                };
+                let opts = mcphost::docs_examples::RunOpts {
+                    url,
+                    tenant_key: std::env::var("MCPHOST_TENANT_KEY").ok().filter(|k| !k.is_empty()),
+                    retry_delay: std::time::Duration::from_millis(500),
+                };
+                let report = match mcphost::docs_examples::run(&opts, &entries).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        eprintln!("docs-examples run: {e}");
+                        std::process::exit(2);
+                    }
+                };
+                let dir = artifact_dir.unwrap_or_else(|| PathBuf::from("target/docs-examples"));
+                let artifact = mcphost::docs_examples::write_artifact(&dir, &report)?;
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&report)?);
+                } else {
+                    for line in report.render_lines() {
+                        println!("{line}");
+                    }
+                }
+                eprintln!("docs-examples run: wrote {}", artifact.display());
+                if report.examples_failed > 0 {
+                    std::process::exit(1);
+                }
+                Ok(())
+            }
+            DocsExamplesCommand::Annotate { path, artifact, root, corpus } => {
+                let root = root.unwrap_or_else(|| PathBuf::from("."));
+                let corpus = corpus.unwrap_or_else(|| root.join(mcphost::docs_examples::CORPUS_PATH));
+                let entries = mcphost::docs_examples::load_corpus(&corpus).unwrap_or_default();
+                let report: mcphost::docs_examples::Report = match std::fs::read_to_string(&artifact)
+                    .map_err(|e| e.to_string())
+                    .and_then(|t| serde_json::from_str(&t).map_err(|e| e.to_string()))
+                {
+                    Ok(r) => r,
+                    Err(e) => {
+                        eprintln!("docs-examples annotate: artifact {}: {e}", artifact.display());
+                        std::process::exit(2);
+                    }
+                };
+                let text = std::fs::read_to_string(root.join(&path))?;
+                print!(
+                    "{}",
+                    mcphost::docs_examples::annotate(&path.display().to_string(), &text, &entries, &report)
+                );
+                Ok(())
+            }
+            DocsExamplesCommand::Extract { check, root, corpus } => {
+                let root = root.unwrap_or_else(|| PathBuf::from("."));
+                let corpus = corpus.unwrap_or_else(|| root.join(mcphost::docs_examples::CORPUS_PATH));
+                let fresh = match mcphost::docs_examples::extract(&root) {
+                    Ok(e) => e,
+                    Err(errors) => {
+                        for e in errors {
+                            eprintln!("docs-examples extract: {e}");
+                        }
+                        std::process::exit(1);
+                    }
+                };
+                if check {
+                    let committed = match mcphost::docs_examples::load_corpus(&corpus) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            eprintln!("docs-examples extract --check: {} is stale: {e}", corpus.display());
+                            std::process::exit(1);
+                        }
+                    };
+                    let drift = mcphost::docs_examples::corpus_drift(&committed, &fresh);
+                    let on_disk = std::fs::read_to_string(&corpus).unwrap_or_default();
+                    if !drift.is_empty() || on_disk != mcphost::docs_examples::render_corpus(&fresh) {
+                        eprintln!(
+                            "docs-examples extract --check: {} is stale (run `mcphost docs-examples extract`); drifted: {}",
+                            corpus.display(),
+                            if drift.is_empty() { "formatting".to_string() } else { drift.join(", ") }
+                        );
+                        std::process::exit(1);
+                    }
+                    Ok(())
+                } else {
+                    std::fs::write(&corpus, mcphost::docs_examples::render_corpus(&fresh))?;
+                    println!("docs-examples extract: wrote {} ({} examples)", corpus.display(), fresh.len());
                     Ok(())
                 }
             }
