@@ -393,7 +393,7 @@ impl Scan {
 /// The guard. `clamd` is the clamd socket path when one is configured.
 pub fn check(name: &str, bytes: &[u8], policy: &Policy, clamd: Option<&Path>) -> Result<Scan, Rejection> {
     let sniffed = sniff(bytes);
-    let accept = policy.accept.clone().unwrap_or_else(|| default_accept(policy.allow_active));
+    let accept = effective_accept(policy);
     let sniffed_label = match &sniffed {
         Sniffed::Known(m) => m.to_string(),
         Sniffed::Text => "text".to_string(),
@@ -533,6 +533,65 @@ pub fn scan_clamd(socket: &Path, bytes: &[u8]) -> Result<(), Rejection> {
     Err(down(format!("unexpected reply '{text}'")))
 }
 
+/// R5: the clamd socket this deployment configured via
+/// [`CLAMD_SOCKET_ENV`]; unset or empty = allowlist mode.
+pub fn clamd_socket_from_env() -> Option<PathBuf> {
+    std::env::var_os(CLAMD_SOCKET_ENV).filter(|v| !v.is_empty()).map(PathBuf::from)
+}
+
+/// R2: a `host.blob.upload_link` call's policy arguments (`accept`,
+/// `allow_active`, `zip_entries_accept`, `blob_max_bytes`) as the link's
+/// [`Policy`]. Every `accept` entry is checked by [`validate_accept`], so
+/// an unknown mime is `args_invalid` listing the table.
+pub fn link_policy_from_args(args: &Value) -> Result<Policy, AppError> {
+    let mimes = |field: &str| -> Result<Option<Vec<String>>, AppError> {
+        match args.get(field) {
+            None | Some(Value::Null) => Ok(None),
+            Some(Value::Array(items)) => items
+                .iter()
+                .map(|v| v.as_str().map(str::to_string).ok_or_else(|| AppError::InvalidArgs(format!("{field}: every entry must be a mime string"))))
+                .collect::<Result<Vec<_>, _>>()
+                .map(Some),
+            Some(_) => Err(AppError::InvalidArgs(format!("{field}: must be an array of mime strings"))),
+        }
+    };
+    let accept = mimes("accept")?;
+    let zip_entries_accept = mimes("zip_entries_accept")?;
+    for list in [&accept, &zip_entries_accept].into_iter().flatten() {
+        validate_accept(list)?;
+    }
+    let allow_active = match args.get("allow_active") {
+        None | Some(Value::Null) => false,
+        Some(v) => v.as_bool().ok_or_else(|| AppError::InvalidArgs("allow_active: must be a boolean".into()))?,
+    };
+    let blob_max_bytes = match args.get("blob_max_bytes") {
+        None | Some(Value::Null) => DEFAULT_BLOB_MAX_BYTES,
+        Some(v) => v.as_u64().ok_or_else(|| AppError::InvalidArgs("blob_max_bytes: must be a non-negative integer".into()))?,
+    };
+    Ok(Policy { accept, allow_active, zip_entries_accept, blob_max_bytes })
+}
+
+/// The accept list a link enforces: its own, or the default for links that
+/// set none (including links minted before this feature).
+pub fn effective_accept(policy: &Policy) -> Vec<String> {
+    policy.accept.clone().unwrap_or_else(|| default_accept(policy.allow_active))
+}
+
+/// R2: the upload page's file input, its `accept=` rendered from the same
+/// list the guard enforces.
+pub fn upload_page_html(policy: &Policy) -> String {
+    format!(
+        "<form method=\"post\" enctype=\"multipart/form-data\">\n<input type=\"file\" name=\"file\" accept=\"{}\">\n<button type=\"submit\">Upload</button>\n</form>\n",
+        accept_attr(&effective_accept(policy))
+    )
+}
+
+/// The `accept=` attribute value inside an [`upload_page_html`] page.
+pub fn accept_attr_in_page(html: &str) -> Option<&str> {
+    let rest = html.split_once("accept=\"")?.1;
+    rest.split_once('"').map(|(v, _)| v)
+}
+
 /// Where `blob.rejected` lands. Production wiring is the tenant inbox; tests
 /// use [`MemorySink`].
 pub trait RejectionSink {
@@ -593,6 +652,12 @@ pub fn upload(
             Err(e) => UploadResponse { status: 500, body: json!({"error": "storage_error", "message": e.to_string()}) },
         },
     }
+}
+
+/// The `/up/{token}` POST entry point: [`upload`] with the scanner the
+/// environment configures ([`clamd_socket_from_env`]).
+pub fn upload_configured(blobs_dir: &Path, req: &UploadRequest<'_>, policy: &Policy, sink: &dyn RejectionSink) -> UploadResponse {
+    upload(blobs_dir, req, policy, clamd_socket_from_env().as_deref(), sink)
 }
 
 fn plain_reason(rej: &Rejection) -> String {

@@ -98,3 +98,25 @@ pub fn fake_clamd(dir: &std::path::Path) -> PathBuf {
     });
     sock
 }
+
+/// Env var that tells a re-executed child test where its parent's scratch
+/// dir is; the child is a no-op without it.
+pub const CHILD_DIR_ENV: &str = "BLOBGUARD_CHILD_DIR";
+
+/// Re-runs this test binary on exactly `test` with `envs` set (`None` =
+/// removed), so a test can exercise a real process environment without
+/// mutating the shared one. Asserts the child ran its one test and passed.
+pub fn run_child(test: &str, envs: &[(&str, Option<&std::ffi::OsStr>)]) -> String {
+    let mut cmd = std::process::Command::new(std::env::current_exe().unwrap());
+    cmd.args(["--exact", test, "--nocapture", "--test-threads=1"]);
+    for (k, v) in envs {
+        match v {
+            Some(v) => cmd.env(k, v),
+            None => cmd.env_remove(k),
+        };
+    }
+    let out = cmd.output().unwrap();
+    let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+    assert!(out.status.success() && text.contains("1 passed"), "child {test} failed:\n{text}");
+    text
+}
