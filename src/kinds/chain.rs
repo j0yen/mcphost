@@ -764,7 +764,10 @@ async fn run_step(
             Ok(v) => return finish(Ok(v), attempts, child_run_id).await,
             Err(pair) => pair,
         };
-        if !policy.on.iter().any(|f| f == code) {
+        // Requirement 4: a code outside `retry_families()` (`args_invalid`,
+        // `tool_exception`, `compose_*`) is never transient, even when a
+        // forced publish put it in `on`.
+        if !policy.on.iter().any(|f| f == code) || !retry_families().contains(&code) {
             return finish(Err(e), attempts, child_run_id).await;
         }
         if attempt > policy.max {
