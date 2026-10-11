@@ -154,6 +154,10 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // reason the sharing-docs/launch-docs/spec-fields-doc-check lanes
     // above give) -- a sixteenth, intended addition since the baseline,
     // not drift.
+    // PRD-mcphost-status-host-pressure added its own "host-pressure-doc-check"
+    // lane (routes scripts/host-pressure-doc-check.sh to its own --check, kept
+    // separate from the docs lane for the same required_commands-immutability
+    // reason as the lanes above) -- an intended addition, not drift.
     //
     // Rebasing mcphost-event-trigger-self-test onto
     // mcphost-tool-naming-convention-and-aliases (this rebase): that PRD
@@ -182,6 +186,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "event-trigger-self-test-fixtures",
             "examples",
             "flake-lint",
+            "host-pressure-doc-check",
             "launch-docs",
             "loop-config",
             "oauthconf-data",
@@ -195,8 +200,8 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "wasm-fixtures"
         ],
         "only admin-schemas, checkcompat-race-soak, contracts, docs-links, docsearch-fixtures, \
-         event-trigger-self-test-fixtures, examples, flake-lint, launch-docs, loop-config, \
-         oauthconf-data, plugin, registry-manifest, sandbox-api-docs, sharing-docs, \
+         event-trigger-self-test-fixtures, examples, flake-lint, host-pressure-doc-check, launch-docs, \
+         loop-config, oauthconf-data, plugin, registry-manifest, sandbox-api-docs, sharing-docs, \
          spec-fields-doc-check, tool-naming, vendor, and wasm-fixtures may have been added since \
          {BASELINE_REV}"
     );

@@ -715,6 +715,20 @@ mod hostedas_ac10_key_and_issuer_jwt_flows_unchanged;
 mod hostedas_ac11_docs_and_llms_txt;
 #[path = "hostedas_offline_access_scope.rs"]
 mod hostedas_offline_access_scope;
+#[path = "hpress_ac01_sample_cx33_fixture.rs"]
+mod hpress_ac01_sample_cx33_fixture;
+#[path = "hpress_ac02_missing_psi_is_null.rs"]
+mod hpress_ac02_missing_psi_is_null;
+#[path = "hpress_ac03_garbage_stat_and_meminfo_are_null.rs"]
+mod hpress_ac03_garbage_stat_and_meminfo_are_null;
+#[path = "hpress_ac04_status_json_carries_host.rs"]
+mod hpress_ac04_status_json_carries_host;
+#[path = "hpress_ac05_daily_rows_have_no_host.rs"]
+mod hpress_ac05_daily_rows_have_no_host;
+#[path = "hpress_ac06_status_html_host_line.rs"]
+mod hpress_ac06_status_html_host_line;
+#[path = "hpress_ac07_metrics_doc_matches_struct.rs"]
+mod hpress_ac07_metrics_doc_matches_struct;
 #[path = "http_ac01_secret_redaction.rs"]
 mod http_ac01_secret_redaction;
 #[path = "http_ac02_publish_ssrf_literal.rs"]
@@ -1797,21 +1811,3 @@ mod state_ac06_quota_exceeded;
 mod state_ac08_tenant_isolation;
 #[path = "state_ac09_cascade_delete.rs"]
 mod state_ac09_cascade_delete;
-#[path = "statusfeed_ac02_exec_disabled_degrades.rs"]
-mod statusfeed_ac02_exec_disabled_degrades;
-#[path = "statusfeed_ac03_major_incident_outage.rs"]
-mod statusfeed_ac03_major_incident_outage;
-#[path = "statusfeed_ac04_incident_timeline_and_close.rs"]
-mod statusfeed_ac04_incident_timeline_and_close;
-#[path = "statusfeed_ac05_daily_rollup_uptime.rs"]
-mod statusfeed_ac05_daily_rollup_uptime;
-#[path = "statusfeed_ac06_external_sample_source_preserved.rs"]
-mod statusfeed_ac06_external_sample_source_preserved;
-#[path = "statusfeed_ac07_prune_keeps_rollup.rs"]
-mod statusfeed_ac07_prune_keeps_rollup;
-#[path = "statusfeed_ac08_status_html_renders.rs"]
-mod statusfeed_ac08_status_html_renders;
-#[path = "statusfeed_ac10_component_days_query.rs"]
-mod statusfeed_ac10_component_days_query;
-#[path = "statusfeed_ac11_deferral_is_justified.rs"]
-mod statusfeed_ac11_deferral_is_justified;
