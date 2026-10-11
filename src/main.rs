@@ -232,6 +232,12 @@ enum Command {
         #[arg(long)]
         path: Option<PathBuf>,
     },
+    /// PRD-mcphost-docs-examples-executed-nightly: the docs' tagged fences
+    /// as an executable corpus (`classify`, `extract`, `run`).
+    DocsExamples {
+        #[command(subcommand)]
+        action: DocsExamplesCommand,
+    },
     /// PRD-mcphost-chatgpt-submission-pack: writes everything the ChatGPT
     /// Apps submission form asks for (`metadata.json`, `icon-64.png`,
     /// reviewer notes, screenshot list) into `<dir>` from the same
@@ -245,6 +251,16 @@ enum Command {
         /// Compare `<dir>` against a fresh render instead of writing.
         #[arg(long)]
         check: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum DocsExamplesCommand {
+    /// Print one `<path>:<line> runnable|fragment|prose` line per fenced
+    /// block of the file (default `www/llms-full.txt`).
+    Classify {
+        #[arg(long)]
+        path: Option<PathBuf>,
     },
 }
 
@@ -684,6 +700,30 @@ async fn main() -> anyhow::Result<()> {
                     );
                     Ok(())
                 }
+            }
+        },
+        Command::DocsExamples { action } => match action {
+            DocsExamplesCommand::Classify { path } => {
+                let path = path.unwrap_or_else(|| PathBuf::from("www/llms-full.txt"));
+                let text = match std::fs::read_to_string(&path) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        eprintln!("docs-examples classify: read {}: {e}", path.display());
+                        std::process::exit(2);
+                    }
+                };
+                let report = mcphost::docs_examples::classify_text(&path.display().to_string(), &text);
+                for line in &report.lines {
+                    println!("{line}");
+                }
+                eprintln!(
+                    "fences={} runnable={} fragment={} prose={}",
+                    report.total(),
+                    report.runnable,
+                    report.fragment,
+                    report.prose
+                );
+                Ok(())
             }
         },
         Command::OauthProbe { url, scenario, client, consent_key_env, json, receipt } => {
