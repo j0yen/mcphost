@@ -541,6 +541,8 @@ mod dryv_ac02_write_verb_registry_drift;
 mod dryv_ac03_table_drop_dry_run_would;
 #[path = "dryv_ac04_state_delete_rows_dry_run_would.rs"]
 mod dryv_ac04_state_delete_rows_dry_run_would;
+#[path = "dryv_ac05_real_errors_pass_through.rs"]
+mod dryv_ac05_real_errors_pass_through;
 #[path = "enduser_ac02_assertion_http_headers_and_calls_row.rs"]
 mod enduser_ac02_assertion_http_headers_and_calls_row;
 #[path = "enduser_ac03_invalid_assertion_rejected.rs"]
