@@ -768,25 +768,41 @@ pub async fn state_delete_rows(
     let table = arg_str(args, "table")?;
     load_table(state, tenant.id, &table).await?;
     let (end_user_norm, impersonated) = crate::enduser::resolve_end_user(args, call_end_user)?;
-    let clauses = match arg_str_opt(args, "where") {
-        Some(w) => parse_filter(&w)?,
-        None => Vec::new(),
+    let clauses = match args.get("where") {
+        Some(Value::String(w)) => parse_filter(w)?,
+        // PRD-mcphost-dry-run-on-write-verbs AC4: an object `where` is a
+        // conjunction of equalities (`{status: "done"}`); it used to be
+        // ignored, which silently matched every row.
+        Some(Value::Object(fields)) => fields
+            .iter()
+            .map(|(field, value)| FilterClause { field: field.clone(), op: FilterOp::Eq, value: value.clone() })
+            .collect(),
+        _ => Vec::new(),
     };
     let rows = state.db.state_rows_for_end_user(tenant.id, table.clone(), end_user_norm).await?;
     let mut freed_bytes = 0i64;
+    let dry_run = crate::dryrun::active();
+    let mut sample: Vec<Value> = Vec::new();
     let ids: Vec<i64> = rows
         .into_iter()
         .filter_map(|(id, row_json)| {
             let row: Value = serde_json::from_str(&row_json).ok()?;
             if row_matches(&row, &clauses) {
                 freed_bytes += row_json.len() as i64;
+                if dry_run && sample.len() < 3 {
+                    sample.push(row);
+                }
                 Some(id)
             } else {
                 None
             }
         })
         .collect();
+    let matched = ids.len();
     let deleted = state.db.state_rows_delete_by_ids(tenant.id, table.clone(), ids).await?;
+    if dry_run {
+        crate::dryrun::note_would("rows", json!({"table": table, "delete": matched, "sample": sample}));
+    }
     // requirement 5 / AC7.
     Ok(with_impersonated(
         json!({"table": table, "deleted": deleted, "bytes_delta": -freed_bytes}),
