@@ -15,9 +15,5 @@
   "license": "MIT OR Apache-2.0",
   "name": "mcphost",
   "repository": "https://github.com/j0yen/mcphost",
-<<<<<<< HEAD
   "version": "0.107.18"
-=======
-  "version": "0.107.17"
->>>>>>> 4adae21 (cprov_ac01: providers.toml generates Provider table, host.connect.providers and four derived surfaces)
 }
