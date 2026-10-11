@@ -429,6 +429,8 @@ mod csvtab_ac01_recipe_turn_census;
 mod csvtab_ac02_fixture_csvs_load_with_inferred_types;
 #[path = "csvtab_ac03_bad_cell_is_named_by_row_and_column.rs"]
 mod csvtab_ac03_bad_cell_is_named_by_row_and_column;
+#[path = "csvtab_ac04_types_override_keeps_zip_as_text.rs"]
+mod csvtab_ac04_types_override_keeps_zip_as_text;
 #[path = "ctrv_ac01_sha_stable_across_boot_requests_and_process.rs"]
 mod ctrv_ac01_sha_stable_across_boot_requests_and_process;
 #[path = "ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs"]
