@@ -34,6 +34,8 @@ mod ac17_kind_conformance;
 mod aliastruth_ac02_flattened_call_runs_canonical;
 #[path = "aliastruth_ac05_contract_next_hints_are_advertised.rs"]
 mod aliastruth_ac05_contract_next_hints_are_advertised;
+#[path = "blobput_ac06_python_bridge_reads_exact_bytes.rs"]
+mod blobput_ac06_python_bridge_reads_exact_bytes;
 #[path = "bridgedisc_ac01_sandbox_api_source_of_truth.rs"]
 mod bridgedisc_ac01_sandbox_api_source_of_truth;
 #[path = "bridgedisc_ac02_starter_tool_bridge_table.rs"]

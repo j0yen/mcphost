@@ -4805,6 +4805,10 @@ impl DocsBackend for TenantDocsBridge {
             "search" => {
                 docs::doc_search(&self.state, &self.tenant, &args, self.end_user.as_ref()).await
             }
+            // PRD-mcphost-blob-put-get-signed-url R6: `mcphost.blob` rides
+            // this same channel (no second socket for a `network: none`
+            // sandbox), so its two ops are routed here.
+            "blob_get" | "blob_put" => crate::blobs::bridge(&self.state, &self.tenant, op, &args).await,
             other => Err(AppError::InvalidArgs(format!("unknown docs op '{other}'"))),
         };
         result.map_err(app_error_to_kind_error)

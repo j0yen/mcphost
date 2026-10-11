@@ -397,6 +397,76 @@ pub async fn store(
     Ok(blob_json(state, tenant, &row))
 }
 
+// ---- lookup and the python bridge ---------------------------------------
+
+fn blob_not_found(what: &str) -> AppError {
+    AppError::Structured {
+        code: "blob_not_found",
+        message: format!("no blob found for {what}"),
+        data: json!({}),
+    }
+}
+
+/// A blob of THIS tenant by `id`, or else by `name`. Another tenant's id is
+/// indistinguishable from an id that does not exist.
+async fn lookup(state: &AppState, tenant: &Tenant, id: Option<String>, name: Option<String>) -> Result<BlobRow, AppError> {
+    if let Some(id) = id {
+        return state
+            .db
+            .blob_find_by_id(tenant.id, id.clone())
+            .await?
+            .ok_or_else(|| blob_not_found(&format!("id '{id}'")));
+    }
+    if let Some(name) = name {
+        return state
+            .db
+            .blob_find_by_name(tenant.id, name.clone())
+            .await?
+            .ok_or_else(|| blob_not_found(&format!("name '{name}'")));
+    }
+    Err(AppError::InvalidArgs("missing required argument 'id' or 'name'".to_string()))
+}
+
+async fn read_bytes(state: &AppState, row: &BlobRow) -> Result<Vec<u8>, AppError> {
+    tokio::fs::read(file_path(state, row.tenant_id, &row.id))
+        .await
+        .map_err(|e| AppError::Storage(format!("read blob: {e}")))
+}
+
+/// `mcphost.blob.get/put` (R6): `blob_get {ref}` returns the exact bytes
+/// base64-framed; `blob_put {name, data_base64, mime?}` is `host.blob.put`.
+pub async fn bridge(state: &AppState, tenant: &Tenant, op: &str, args: &Value) -> Result<Value, AppError> {
+    match op {
+        "blob_get" => {
+            let reference = arg_str(args, "ref")?;
+            let row = match state.db.blob_find_by_id(tenant.id, reference.clone()).await? {
+                Some(row) => row,
+                None => lookup(state, tenant, None, Some(reference)).await?,
+            };
+            let bytes = read_bytes(state, &row).await?;
+            use base64::Engine as _;
+            Ok(json!({
+                "id": row.id,
+                "name": row.name,
+                "mime": row.mime,
+                "bytes": row.bytes,
+                "sha256": row.sha256,
+                "data_base64": base64::engine::general_purpose::STANDARD.encode(bytes),
+            }))
+        }
+        "blob_put" => {
+            let name = arg_str(args, "name")?;
+            validate_name(&name)?;
+            use base64::Engine as _;
+            let data = base64::engine::general_purpose::STANDARD
+                .decode(arg_str(args, "data_base64")?)
+                .map_err(|e| AppError::InvalidArgs(format!("data_base64: not valid base64: {e}")))?;
+            store(state, tenant, &name, args.get("mime").and_then(Value::as_str), data).await
+        }
+        other => Err(AppError::InvalidArgs(format!("unknown blob op '{other}'"))),
+    }
+}
+
 // ---- GET /blobs/{id} -----------------------------------------------------
 
 /// Header-safe rendering of a blob name for `Content-Disposition`.

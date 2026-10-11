@@ -1997,6 +1997,14 @@ pub const BRIDGE_MODULES: &[BridgeModule] = &[
         ],
     },
     BridgeModule {
+        name: "blob",
+        purpose: "read or store files of any type under this tenant (same store host.blob.* uses)",
+        signatures: &[
+            "mcphost.blob.get(id_or_name) -- read a stored file's exact bytes",
+            "mcphost.blob.put(name, data, mime=None) -- store bytes as a file and get its signed url",
+        ],
+    },
+    BridgeModule {
         name: "lineage",
         purpose: "trace an artifact's lineage or estimate a change's blast radius (same report host.lineage.* uses)",
         signatures: &[
@@ -2140,6 +2148,20 @@ pub const BRIDGE_RETURNS: &[BridgeReturn] = &[
     BridgeReturn {
         function: "mcphost.docs.search",
         shape: Envelope(&[("results", "list"), ("index", "dict")]),
+    },
+    BridgeReturn { function: "mcphost.blob.get", shape: Plain("bytes (the file's exact content)") },
+    BridgeReturn {
+        function: "mcphost.blob.put",
+        shape: Envelope(&[
+            ("id", "str"),
+            ("name", "str"),
+            ("bytes", "int"),
+            ("mime", "str"),
+            ("sha256", "str"),
+            ("url", "str"),
+            ("expires", "int"),
+            ("version", "int"),
+        ]),
     },
     BridgeReturn {
         function: "mcphost.lineage.trace",
@@ -2636,6 +2658,7 @@ def emit(obj):
 # final response line is ever sent -- from the tool's code this is
 # indistinguishable from a local function call.
 import types as _mcphost_types
+import base64 as _base64
 import functools as _functools
 import inspect as _inspect
 
@@ -2950,6 +2973,40 @@ _mcphost_docs_mod.get = _docs_get
 _mcphost_docs_mod.search = _docs_search
 _mcphost_docs_mod.DocsError = McphostDocsError
 
+# ---- mcphost.blob (PRD-mcphost-blob-put-get-signed-url R6) -----------------
+#
+# Rides the docs channel above (`__mcphost_docs__`, ops `blob_get`/`blob_put`):
+# the same `network: none` stdin/stdout round trip, no new socket. Bytes
+# cross as base64 text and come back as real `bytes`.
+def _blob_get(id_or_name):
+    """Read a stored file's exact bytes by id or name.
+
+    writes: mcphost.blob.put or host.blob.put.
+    """
+    r = _docs_call("blob_get", ref=id_or_name)
+    return _base64.b64decode(r["data_base64"])
+
+def _blob_put(name, data, mime=None):
+    """Store bytes as a file; returns {id, name, bytes, mime, sha256, url, expires, version}.
+
+    reads: mcphost.blob.get or host.blob.get.
+    """
+    if isinstance(data, str):
+        data = data.encode("utf-8")
+    kwargs = {"name": name, "data_base64": _base64.b64encode(bytes(data)).decode("ascii")}
+    if mime is not None:
+        kwargs["mime"] = mime
+    return _docs_call("blob_put", **kwargs)
+
+_mcphost_blob_mod = _mcphost_types.ModuleType(
+    "mcphost.blob",
+    "Read or store files of any type (get, put).\n\n"
+    "reads/writes: host.blob.* (control plane).",
+)
+_mcphost_blob_mod.get = _blob_get
+_mcphost_blob_mod.put = _blob_put
+_mcphost_blob_mod.BlobError = McphostDocsError
+
 # ---- mcphost.lineage (PRD-mcphost-lineage-blast-radius P1 requirement 10) -
 #
 # Same synchronous request-line-out/response-line-in round trip as
@@ -3151,6 +3208,7 @@ _mcphost_mod = _mcphost_types.ModuleType("mcphost")
 _mcphost_mod.state = _mcphost_state_mod
 _mcphost_mod.table = _mcphost_table_mod
 _mcphost_mod.docs = _mcphost_docs_mod
+_mcphost_mod.blob = _mcphost_blob_mod
 _mcphost_mod.lineage = _mcphost_lineage_mod
 _mcphost_mod.drift = _mcphost_drift_mod
 _mcphost_mod.channel = _mcphost_channel_mod
@@ -3187,6 +3245,7 @@ sys.modules["mcphost"] = _mcphost_mod
 sys.modules["mcphost.state"] = _mcphost_state_mod
 sys.modules["mcphost.table"] = _mcphost_table_mod
 sys.modules["mcphost.docs"] = _mcphost_docs_mod
+sys.modules["mcphost.blob"] = _mcphost_blob_mod
 sys.modules["mcphost.lineage"] = _mcphost_lineage_mod
 sys.modules["mcphost.drift"] = _mcphost_drift_mod
 sys.modules["mcphost.channel"] = _mcphost_channel_mod
