@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.107.13 — 2026-10-10
+
+`host.webhook_inbox.create(name, verify?, rotate?)` makes a webhook inbox one call
+(PRD-mcphost-webhook-inbox-one-call): it returns `url`, a one-time `secret`, `tool`,
+`trigger_id` and `wait` (the `host.msg.wait` arguments); a signed POST is readable with
+`host.tool_call(name=<name>)` and arrives as an `@host` message with `data.event_id`. A repeat
+with the same name returns the same `url` and no secret (`rotate: true` mints one); at the plan's
+trigger ceiling it fails `plan_limit` with `data.limit`. `verify` also accepts `github`.
+A key-less `host.*` call from a peer (client IP + User-Agent) that completed `host.redeem` in the
+last 10 minutes now fails `tenant_key_missing` naming its tenant instead of minting a second one.
+`host.quickstart(kind="inbox"|"webhook")` returns a one-step recipe (`recipes_nearby:
+["agent-inbox"]` for `inbox`); `recipe.steps` for `webhook` shrinks from three entries to one.
+
 ## v0.107.4 — 2026-10-09
 
 `GET /status.json` gains a `host` object (PRD-mcphost-status-host-pressure):

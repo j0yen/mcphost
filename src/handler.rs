@@ -342,6 +342,13 @@ async fn bind_session_to_created_tenant(
     Ok(value)
 }
 
+/// PRD-mcphost-webhook-inbox-one-call R3: this request's peer (client IP +
+/// User-Agent, hashed) -- the only identity a stateless `/mcp` call has that
+/// survives from a `signup`/`host.redeem` to the next key-less call.
+fn request_peer_key(parts: &http::request::Parts) -> String {
+    crate::peer_recent::peer_key(&source_ip(parts), user_agent_header(parts).as_deref())
+}
+
 /// PRD-mcphost-session-bound-tenant-key requirement 1/3: the implicit-signup
 /// counterpart of [`bind_session_to_created_tenant`] above, for the ONE call
 /// site that creates a tenant with no explicit `signup`/`host.redeem` at all
@@ -2398,6 +2405,25 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                     "every_s": {"type": "integer", "description": "Probe interval in seconds; default 300, raised to the plan's floor (pro: 60)."},
                 }),
                 &["name", "urls"],
+            ),
+        ),
+        // PRD-mcphost-webhook-inbox-one-call R1: a webhook inbox in one call.
+        Tool::new(
+            "host.webhook_inbox.create",
+            "Create a webhook inbox in one call: publishes the reader tool `name`, sets one \
+             webhook trigger bound to it and returns {url, secret, tool, trigger_id, wait: \
+             {tool: \"host.msg.wait\", args}, next}. POST a signed body to url; within seconds \
+             host.tool_call(name=<name>) lists the last 50 events and host.msg.wait(**wait.args) \
+             returns a message whose data.event_id names the event. Idempotent by name: a repeat \
+             returns the same url and no secret unless rotate is true. Refused with plan_limit \
+             (data.limit) at the plan's event_triggers_max.",
+            host_schema(
+                json!({
+                    "name": {"type": "string", "description": "Inbox name; also the reader tool's name (^[a-z][a-z0-9_]{1,40}$)."},
+                    "verify": {"type": "string", "enum": ["hmac", "github", "stripe"], "description": "How a POST is signed; default hmac (X-Mcphost-Signature: sha256=<hex hmac of the body>)."},
+                    "rotate": {"type": "boolean", "description": "On an existing inbox, mint and return a new secret; the url never changes."},
+                }),
+                &["name"],
             ),
         ),
         // PRD-mcphost-table-concept-graph requirement 5: up to five
@@ -5291,6 +5317,7 @@ impl McpHostHandler {
             "host.tool.run" => self.tool_run(tenant, args).await,
             "host.tool.call" => self.host_tool_call(tenant, args, calls_auth_method, end_user).await,
             "host.uptime.create" => self.uptime_create(tenant, args, calls_auth_method, end_user).await,
+            "host.webhook_inbox.create" => crate::webhook_inbox::create(&self.state, tenant, &args).await,
             "host.tool.history" => control::tool_history(&self.state, tenant, &args).await,
             "host.tool.rollback" => control::tool_rollback(&self.state, tenant, &args).await,
             "host.tool.diff" => control::tool_diff(&self.state, tenant, &args).await,
@@ -8284,6 +8311,40 @@ impl ServerHandler for McpHostHandler {
                 }
             }
         }
+        // PRD-mcphost-webhook-inbox-one-call R3: no session memory above
+        // caught this call, but this PEER completed `host.redeem`
+        // within the last 10 minutes -- `/mcp` is stateless, so the redeem
+        // left no session to remember. Refuse and name that tenant rather
+        // than implicit-signup a second one. The pre-auth names stay served
+        // (quickstart is the page that explains the rule).
+        if via_tenant_key_arg
+            && matches!(auth, Auth::Anonymous)
+            && (body_name.starts_with("host.") || body_name.starts_with("billing."))
+            && !matches!(body_name.as_str(), "host.quickstart" | "host.redeem" | "billing.plans")
+            && tenant_path_namespace(parts).is_none()
+            && crate::invites::invite_path_code(parts).is_none()
+        {
+            let peer = request_peer_key(parts);
+            if let Some(namespace) = self.state.redeemed_peers.lookup(&peer, now_unix()) {
+                match self.state.db.find_tenant_by_namespace(namespace.clone()).await {
+                    Ok(Some(t)) if !t.disabled => {
+                        tracing::warn!(
+                            tenant = %t.namespace,
+                            tool = %body_name,
+                            "host.* call refused: peer just redeemed, tenant_key missing"
+                        );
+                        return Err(AppError::TenantKeyMissing(Some(t.namespace))
+                            .into_error_data_at(Some(&self.state.public_url)));
+                    }
+                    Ok(Some(_)) => {
+                        self.state.redeemed_peers.forget(&peer);
+                        return Err(AppError::TenantDisabled.into_error_data_at(Some(&self.state.public_url)));
+                    }
+                    Ok(None) => self.state.redeemed_peers.forget(&peer),
+                    Err(e) => return Err(e.into_error_data_at(Some(&self.state.public_url))),
+                }
+            }
+        }
         // PRD-mcphost-invite-links requirement 2 (AC2), requirement 6: a
         // genuinely fresh session on `/i/{code}/mcp` -- no header, no
         // `tenant_key` argument, and (just checked above) no existing
@@ -8640,6 +8701,16 @@ impl ServerHandler for McpHostHandler {
                 // `tenant_key` to the caller -- the handoff redeem path
                 // included".
                 let redeemed = control::redeem(&self.state, &raw_args).await;
+                if let Ok(value) = &redeemed
+                    && let Some(key) = value.get("key").and_then(Value::as_str)
+                    && let Ok(Some(redeemed_tenant)) = self.state.db.find_tenant_by_key_hash(hash_key(key)).await
+                {
+                    self.state.redeemed_peers.record_at(
+                        &request_peer_key(parts),
+                        &redeemed_tenant.namespace,
+                        now_unix(),
+                    );
+                }
                 bind_session_to_created_tenant(&self.state, session_id.as_deref(), &ctx.peer, redeemed).await
             }
             // PRD-mcphost-implicit-signup requirement 1 (AC1): a bare

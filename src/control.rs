@@ -908,13 +908,13 @@ pub fn quickstart(
                     above) and call host.redeem once with the returned handoff_token to get \
                     the key, so the signup/redeem transcript carries a dead credential; \
                     omitting handoff returns the raw key directly instead, unchanged from \
-                    before. On the very connection that ran signup (or host.redeem) the \
-                    tenant_key argument is optional -- that connection is bound to the \
-                    tenant it just created, so later host.* calls on it need no key. On any \
-                    OTHER connection, omitting tenant_key no longer fails tenant_key_missing \
-                    -- it implicitly signs that connection up as its own new tenant instead; \
-                    a tenant_key that doesn't match any tenant still fails \
-                    tenant_key_invalid.",
+                    before. /mcp keeps no state between requests, so pass tenant_key on \
+                    every call, or reconnect over your /u/ URL (from host.key_rotate or \
+                    the onboarding note) and pass nothing. A key-less call from a peer \
+                    that completed host.redeem in the last 10 minutes fails \
+                    tenant_key_missing naming its tenant; from any other peer it \
+                    implicitly signs up a new tenant, which is never the one you meant. A \
+                    tenant_key that doesn't match any tenant fails tenant_key_invalid.",
             }],
         });
         // PRD-mcphost-publish-schema-from-registry requirement 4 (AC4): no
@@ -1136,6 +1136,10 @@ pub fn quickstart(
                 "docs": "host.quickstart",
             }),
         );
+        let nearby = crate::kinds::aliases::recipes_nearby(alias);
+        if !nearby.is_empty() {
+            map.insert("recipes_nearby".to_string(), json!(nearby));
+        }
         // PRD-mcphost-event-trigger-self-test P0 requirement 5 / AC8: the
         // `hint` the AC demands for `kind="event"`. The AC was drafted when
         // a trigger word made `quickstart` fail `unknown_kind` and the hint
@@ -1171,16 +1175,25 @@ fn trigger_set_hint(alias: &crate::kinds::aliases::KindAlias, requested: &str) -
     const TRIGGER_KINDS: [&str; 4] = ["schedule", "event", "message", "webhook"];
     let lower = requested.to_ascii_lowercase();
     let trigger_kind = if TRIGGER_KINDS.contains(&lower.as_str()) {
-        lower
+        lower.clone()
     } else if alias.recipe == "schedules" {
         "schedule".to_string()
+    } else if lower == "inbox" {
+        "webhook".to_string()
     } else {
         "event".to_string()
+    };
+    // PRD-mcphost-webhook-inbox-one-call R4: an inbox is one host call.
+    let one_call = if lower == "inbox" {
+        " For a webhook inbox in one call use host.webhook_inbox.create (recipe.steps shows it); \
+        agent-to-agent messages are the recipes_nearby entry."
+    } else {
+        ""
     };
     format!(
         "Triggers are not a tool kind: '{requested}' resolved to the {} kind here. \
         Set the trigger itself with host.trigger.set(kind=\"{trigger_kind}\") (tool name: \
-        host_trigger_set) on a published tool -- the recipe.steps above show it filled in.",
+        host_trigger_set) on a published tool -- the recipe.steps above show it filled in.{one_call}",
         alias.kind,
     )
 }

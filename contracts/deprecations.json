@@ -79,5 +79,12 @@
     "sunset": "2026-12-08",
     "replacement": "PRD-mcphost-paged-trait-on-every-list-verb: limit now carries the verb's schema maximum (clamped and reported in _meta.mcphost.limit_clamped, never refused; 0 or less is args_invalid); next_cursor is now a signed opaque cursor (a bare integer is read for 60 days), and the key is absent on the last page instead of echoing the last seq; ack with no posts leaves the stored cursor unchanged",
     "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.kind",
+    "since": "2026-10-10",
+    "sunset": "2026-12-09",
+    "replacement": "PRD-mcphost-webhook-inbox-one-call: kind=webhook|inbox now returns recipe.steps of length 1 (host.webhook_inbox.create) instead of publish -> trigger.set -> trigger.test; the three calls themselves still work",
+    "narrowing_only": true
   }
 ]

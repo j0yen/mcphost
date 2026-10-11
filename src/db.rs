@@ -11436,6 +11436,21 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-webhook-inbox-one-call R6: how many `kind = 'webhook'`
+    /// triggers this tenant holds, counted against `event_triggers_max` by
+    /// `host.webhook_inbox.create`.
+    pub async fn count_webhook_triggers_for_tenant(&self, tenant_id: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM triggers WHERE tenant_id = ?1 AND kind = 'webhook'",
+                params![tenant_id],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
     /// PRD-mcphost-inbound-events P0 requirement 4's quota check: how many
     /// `kind = 'event'` (and, since PRD-mcphost-agent-wake P0 requirement
     /// 1, `kind = 'message'`) triggers this tenant holds right now, paused
@@ -16061,6 +16076,55 @@ impl Db {
                       dedupe_key, synthetic, source_class, created_at, created_unix_ms, refused_json, urgent) \
                  VALUES (?1, ?2, ?3, NULL, 'system', ?4, ?5, NULL, NULL, NULL, 'host', ?6, ?7, NULL, 0)",
                 params![message_id, thread_id, seq, body, data_json, now, now_ms],
+            )?;
+            conn.execute(
+                "INSERT INTO message_receipts (message_id, tenant_id, read_at) VALUES (?1, ?2, NULL)",
+                params![message_id, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-webhook-inbox-one-call R2: a host-authored message
+    /// (`from_tenant_id` NULL, like [`Self::insert_alert_notice`]) appended
+    /// to one per-inbox synthetic thread so `Db::msg_inbox` surfaces it.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_host_notice(
+        &self,
+        tenant_id: i64,
+        thread_id: String,
+        from_address: String,
+        body: String,
+        data_json: String,
+    ) -> Result<(), AppError> {
+        let now = now_rfc3339();
+        let now_ms = crate::state::now_unix_ms();
+        self.with_conn(move |conn| {
+            let thread_exists: bool =
+                conn.prepare("SELECT 1 FROM threads WHERE id = ?1")?.exists(params![thread_id])?;
+            if !thread_exists {
+                conn.execute(
+                    "INSERT INTO threads (id, created_by, created_at, created_unix_ms) VALUES (?1, NULL, ?2, ?3)",
+                    params![thread_id, now, now_ms],
+                )?;
+            }
+            conn.execute(
+                "INSERT OR IGNORE INTO thread_participants (thread_id, tenant_id, joined_at) VALUES (?1, ?2, ?3)",
+                params![thread_id, tenant_id, now],
+            )?;
+            let seq: i64 = conn.query_row(
+                "SELECT COALESCE(MAX(seq), 0) + 1 FROM messages WHERE thread_id = ?1",
+                params![thread_id],
+                |r| r.get(0),
+            )?;
+            let message_id = crate::state::new_ulid();
+            conn.execute(
+                "INSERT INTO messages \
+                     (id, thread_id, seq, from_tenant_id, from_address, body, data_json, in_reply_to, \
+                      dedupe_key, synthetic, source_class, created_at, created_unix_ms, refused_json, urgent) \
+                 VALUES (?1, ?2, ?3, NULL, ?4, ?5, ?6, NULL, NULL, NULL, 'host', ?7, ?8, NULL, 0)",
+                params![message_id, thread_id, seq, from_address, body, data_json, now, now_ms],
             )?;
             conn.execute(
                 "INSERT INTO message_receipts (message_id, tenant_id, read_at) VALUES (?1, ?2, NULL)",

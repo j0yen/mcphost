@@ -349,6 +349,7 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
         url_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
         implicit_signup_memory: mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
         tenant_key_arg_memory: mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
+        redeemed_peers: mcphost::peer_recent::PeerRecents::new(),
         reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         session_bindings,
     };
@@ -689,6 +690,34 @@ impl TestServer {
         .await
     }
 
+    /// A python-capable server that advertises `https://` public URLs
+    /// (PRD-mcphost-webhook-inbox-one-call AC1/AC2).
+    pub async fn start_with_kinds_https_public(kinds: KindRegistry) -> Self {
+        Self::start_full_with_email_scheme(
+            Some(ADMIN_KEY.to_string()),
+            kinds,
+            mcphost::state::CALL_TIMEOUT,
+            None,
+            mcphost::state::SIGNUP_RATE_LIMIT_PER_HOUR,
+            mcphost::billing::BillingConfig::default(),
+            Arc::new(mcphost::billing::FakeBillingClient::new(
+                mcphost::state::now_unix(),
+            )),
+            Vec::new(),
+            mcphost::email::EmailConfig::default(),
+            Arc::new(mcphost::email::FakeEmailClient::new()),
+            mcphost::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,
+            mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
+            mcphost::db::DbConfig::from_env(),
+            mcphost::alerts::AlertConfig::default(),
+            mcphost::state::FleetIps::empty(),
+            mcphost::state::VerifiedClientIds::empty(),
+            Vec::new(),
+            "https",
+        )
+        .await
+    }
+
     /// PRD-mcphost-reachability-alt-host: a server with
     /// `alt_public_urls` set directly on `AppState` and no other override
     /// -- for AC2/AC3/AC5 tests that don't need an inspectable email
@@ -844,6 +873,54 @@ impl TestServer {
         verified_client_ids: mcphost::state::VerifiedClientIds,
         alt_public_urls: Vec<String>,
     ) -> Self {
+        Self::start_full_with_email_scheme(
+            admin_key,
+            kinds,
+            call_timeout,
+            registry,
+            signup_rate_limit_per_hour,
+            billing_config,
+            billing_client,
+            deprecations,
+            email_config,
+            email_client,
+            claim_token_ttl_secs,
+            claim_rate_limit_per_hour,
+            db_cfg,
+            alert_config,
+            fleet_ips,
+            verified_client_ids,
+            alt_public_urls,
+            "http",
+        )
+        .await
+    }
+
+    /// [`Self::start_full_with_email`] with the scheme `AppState::public_url`
+    /// advertises (PRD-mcphost-webhook-inbox-one-call AC1: production URLs
+    /// are `https://`). The listener itself is always plain HTTP, so a test
+    /// that POSTs to an advertised URL swaps the scheme back first.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn start_full_with_email_scheme(
+        admin_key: Option<String>,
+        kinds: KindRegistry,
+        call_timeout: std::time::Duration,
+        registry: Option<RegistryConfig>,
+        signup_rate_limit_per_hour: i64,
+        billing_config: mcphost::billing::BillingConfig,
+        billing_client: Arc<dyn mcphost::billing::BillingClient>,
+        deprecations: Vec<mcphost::api_contract::Deprecation>,
+        email_config: mcphost::email::EmailConfig,
+        email_client: Arc<dyn mcphost::email::EmailClient>,
+        claim_token_ttl_secs: i64,
+        claim_rate_limit_per_hour: i64,
+        db_cfg: mcphost::db::DbConfig,
+        alert_config: mcphost::alerts::AlertConfig,
+        fleet_ips: mcphost::state::FleetIps,
+        verified_client_ids: mcphost::state::VerifiedClientIds,
+        alt_public_urls: Vec<String>,
+        public_scheme: &str,
+    ) -> Self {
         let data_dir = TempDataDir::new();
         let db = Db::open_with_cfg(&data_dir.0, db_cfg).expect("open db");
         db.migrate().await.expect("migrate");
@@ -858,6 +935,7 @@ impl TestServer {
             .expect("bind ephemeral port");
         let addr = listener.local_addr().expect("local addr");
         let base_url = format!("http://{addr}");
+        let public_url = format!("{public_scheme}://{addr}");
 
         // PRD-mcphost-wasm-kind AC9: mirrors production's "registered ==
         // available" rule for this field -- accurate for whichever registry
@@ -873,7 +951,7 @@ impl TestServer {
             contract: Arc::new(mcphost::api_contract::ContractSnapshot::builtin()),
             secrets: SecretBox::from_passphrase("test-secret-key"),
             admin_key,
-            public_url: base_url.clone(),
+            public_url,
             alt_public_urls,
             call_timeout,
             registry,
@@ -929,6 +1007,7 @@ impl TestServer {
             url_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
             implicit_signup_memory: mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
             tenant_key_arg_memory: mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
+            redeemed_peers: mcphost::peer_recent::PeerRecents::new(),
             reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             session_bindings,
         });
@@ -1659,6 +1738,7 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
         url_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
         implicit_signup_memory: mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
         tenant_key_arg_memory: mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
+        redeemed_peers: mcphost::peer_recent::PeerRecents::new(),
         reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         session_bindings,
     }

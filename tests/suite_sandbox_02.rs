@@ -25,6 +25,8 @@ mod lanecov;
 mod oauth;
 #[path = "support/uptime_probes.rs"]
 mod uptime_probes;
+#[path = "support/whin.rs"]
+mod whin;
 
 #[path = "ac17_kind_conformance.rs"]
 mod ac17_kind_conformance;
@@ -426,5 +428,15 @@ mod uprg_ac05_refused_network_public_names_alternative;
 mod warmpool_ac06_ac07_tool_run;
 #[path = "wasmkind_ac04_independent_of_sandbox_mechanism.rs"]
 mod wasmkind_ac04_independent_of_sandbox_mechanism;
+#[path = "whin_ac01_create_returns_url_secret_wait.rs"]
+mod whin_ac01_create_returns_url_secret_wait;
+#[path = "whin_ac02_signed_post_readable_by_tool_call_and_msg_wait.rs"]
+mod whin_ac02_signed_post_readable_by_tool_call_and_msg_wait;
+#[path = "whin_ac03_unsigned_or_wrong_signature_stores_nothing.rs"]
+mod whin_ac03_unsigned_or_wrong_signature_stores_nothing;
+#[path = "whin_ac06_llms_txt_section_and_proof_sh.rs"]
+mod whin_ac06_llms_txt_section_and_proof_sh;
+#[path = "whin_ac07_plan_limit_creates_nothing_and_repeat_is_idempotent.rs"]
+mod whin_ac07_plan_limit_creates_nothing_and_repeat_is_idempotent;
 #[path = "xaa_ac02_python_env_and_grants_method_xaa.rs"]
 mod xaa_ac02_python_env_and_grants_method_xaa;

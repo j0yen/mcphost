@@ -23,8 +23,10 @@ async fn webhook_inbox_recipes_set_step_shows_name_and_states_idempotence() {
     let steps = structured["recipe"]["steps"].as_array().expect("recipe.steps array");
     let set_step = steps
         .iter()
-        .find(|s| s["tool"] == json!("host.trigger.set"))
-        .expect("recipe has a host.trigger.set step");
+        // PRD-mcphost-webhook-inbox-one-call R4: the set step is now the
+        // one `host.webhook_inbox.create` step (idempotent by name).
+        .find(|s| s["tool"] == json!("host.webhook_inbox.create"))
+        .expect("recipe has a host.webhook_inbox.create step");
 
     assert!(
         set_step["args_example"].get("name").and_then(|v| v.as_str()).is_some(),

@@ -4019,6 +4019,7 @@
               "webhooks",
               "inbound",
               "trigger",
+              "inbox",
               "cron",
               "schedule",
               "scheduled",
@@ -4028,7 +4029,6 @@
               "documents",
               "message",
               "messages",
-              "inbox",
               "msg",
               "database",
               "db",
@@ -4491,6 +4491,7 @@
               "webhooks",
               "inbound",
               "trigger",
+              "inbox",
               "cron",
               "schedule",
               "scheduled",
@@ -4500,7 +4501,6 @@
               "documents",
               "message",
               "messages",
-              "inbox",
               "msg",
               "database",
               "db",
@@ -5276,6 +5276,41 @@
         "type": "object"
       },
       "name": "host.vault.status",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Create a webhook inbox in one call: publishes the reader tool `name`, sets one webhook trigger bound to it and returns {url, secret, tool, trigger_id, wait: {tool: \"host.msg.wait\", args}, next}. POST a signed body to url; within seconds host.tool_call(name=<name>) lists the last 50 events and host.msg.wait(**wait.args) returns a message whose data.event_id names the event. Idempotent by name: a repeat returns the same url and no secret unless rotate is true. Refused with plan_limit (data.limit) at the plan's event_triggers_max.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "Inbox name; also the reader tool's name (^[a-z][a-z0-9_]{1,40}$).",
+            "type": "string"
+          },
+          "rotate": {
+            "description": "On an existing inbox, mint and return a new secret; the url never changes.",
+            "type": "boolean"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "verify": {
+            "description": "How a POST is signed; default hmac (X-Mcphost-Signature: sha256=<hex hmac of the body>).",
+            "enum": [
+              "hmac",
+              "github",
+              "stripe"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host.webhook_inbox.create",
       "since": "0.58.0"
     },
     {
@@ -8972,6 +9007,7 @@
               "webhooks",
               "inbound",
               "trigger",
+              "inbox",
               "cron",
               "schedule",
               "scheduled",
@@ -8981,7 +9017,6 @@
               "documents",
               "message",
               "messages",
-              "inbox",
               "msg",
               "database",
               "db",
@@ -9723,6 +9758,41 @@
         "type": "object"
       },
       "name": "host_vault_status",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Create a webhook inbox in one call: publishes the reader tool `name`, sets one webhook trigger bound to it and returns {url, secret, tool, trigger_id, wait: {tool: \"host.msg.wait\", args}, next}. POST a signed body to url; within seconds host.tool_call(name=<name>) lists the last 50 events and host.msg.wait(**wait.args) returns a message whose data.event_id names the event. Idempotent by name: a repeat returns the same url and no secret unless rotate is true. Refused with plan_limit (data.limit) at the plan's event_triggers_max.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "Inbox name; also the reader tool's name (^[a-z][a-z0-9_]{1,40}$).",
+            "type": "string"
+          },
+          "rotate": {
+            "description": "On an existing inbox, mint and return a new secret; the url never changes.",
+            "type": "boolean"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "verify": {
+            "description": "How a POST is signed; default hmac (X-Mcphost-Signature: sha256=<hex hmac of the body>).",
+            "enum": [
+              "hmac",
+              "github",
+              "stripe"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host_webhook_inbox_create",
       "since": "0.58.0"
     },
     {

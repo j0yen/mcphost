@@ -58,6 +58,7 @@ const ALLOWED_HEADERS: &[&str] = &[
     "x-mcphost-signature",
     "x-mcphost-delivery-id",
     "stripe-signature",
+    "x-hub-signature-256",
 ];
 
 fn to_hex(bytes: &[u8]) -> String {
@@ -123,37 +124,47 @@ fn webhook_over_quota() -> AppError {
 
 // ---- config -----------------------------------------------------------
 
-struct WebhookConfig {
-    name: String,
-    verify: String,
+pub(crate) struct WebhookConfig {
+    pub(crate) name: String,
+    pub(crate) verify: String,
     secret_enc: Vec<u8>,
     secret_nonce: Vec<u8>,
+    /// PRD-mcphost-webhook-inbox-one-call: set only by
+    /// `host.webhook_inbox.create`; an accepted delivery to such a trigger
+    /// also posts one `@host` message to the tenant inbox.
+    pub(crate) inbox: bool,
 }
 
-fn parse_webhook_config(config_json: &str) -> Option<WebhookConfig> {
+pub(crate) fn parse_webhook_config(config_json: &str) -> Option<WebhookConfig> {
     let config: Value = serde_json::from_str(config_json).ok()?;
     let name = config.get("name")?.as_str()?.to_string();
     let verify = config.get("verify").and_then(Value::as_str).unwrap_or("hmac").to_string();
     let secret_enc = from_hex(config.get("secret_enc")?.as_str()?)?;
     let secret_nonce = from_hex(config.get("secret_nonce")?.as_str()?)?;
+    let inbox = config.get("inbox").and_then(Value::as_bool).unwrap_or(false);
     Some(WebhookConfig {
         name,
         verify,
         secret_enc,
         secret_nonce,
+        inbox,
     })
 }
 
-fn build_webhook_config(name: &str, verify: &str, secret_enc: &[u8], secret_nonce: &[u8]) -> Value {
-    json!({
+fn build_webhook_config(name: &str, verify: &str, secret_enc: &[u8], secret_nonce: &[u8], inbox: bool) -> Value {
+    let mut config = json!({
         "name": name,
         "verify": verify,
         "secret_enc": to_hex(secret_enc),
         "secret_nonce": to_hex(secret_nonce),
-    })
+    });
+    if inbox && let Some(obj) = config.as_object_mut() {
+        obj.insert("inbox".to_string(), json!(true));
+    }
+    config
 }
 
-fn inbox_table_name(name: &str) -> String {
+pub(crate) fn inbox_table_name(name: &str) -> String {
     format!("inbox_{name}")
 }
 
@@ -180,12 +191,15 @@ pub async fn set_webhook_trigger(
     existing: Option<TriggerRow>,
 ) -> Result<Value, AppError> {
     let verify = args.get("verify").and_then(Value::as_str).unwrap_or("hmac").to_string();
-    if !matches!(verify.as_str(), "hmac" | "none" | "stripe") {
+    if !matches!(verify.as_str(), "hmac" | "none" | "stripe" | "github") {
         return Err(trigger_invalid(
             "verify",
-            format!("verify: '{verify}' must be one of hmac, none, stripe"),
+            format!("verify: '{verify}' must be one of hmac, none, stripe, github"),
         ));
     }
+    // PRD-mcphost-webhook-inbox-one-call: only `host.webhook_inbox.create`
+    // passes this (`host.trigger.set` rejects the unknown argument first).
+    let inbox_flag = args.get("inbox").and_then(Value::as_bool).unwrap_or(false);
 
     // P0 requirement 2 / AC1-AC2: re-`set`ting the same name updates in
     // place instead of minting a second trigger (and a second webhook
@@ -208,10 +222,11 @@ pub async fn set_webhook_trigger(
             let value = trigger_to_json_webhook(state, tenant, &existing).await;
             return Ok(crate::triggers::annotate_set_result(value, false, &changed));
         }
+        let old_inbox = old_config.as_ref().is_some_and(|c| c.inbox);
         let (secret_enc, secret_nonce) = old_config
             .map(|c| (c.secret_enc, c.secret_nonce))
             .unwrap_or_default();
-        let config = build_webhook_config(name, &verify, &secret_enc, &secret_nonce);
+        let config = build_webhook_config(name, &verify, &secret_enc, &secret_nonce, old_inbox);
         let config_json = serde_json::to_string(&config)
             .map_err(|e| AppError::Internal(format!("trigger config serialize: {e}")))?;
         let hash = crate::triggers::config_hash(&config_json);
@@ -252,7 +267,7 @@ pub async fn set_webhook_trigger(
     let (secret_enc, secret_nonce) = state.secrets.encrypt(&secret_plain)?;
     let hook_id = new_ulid();
 
-    let config = build_webhook_config(name, &verify, &secret_enc, &secret_nonce);
+    let config = build_webhook_config(name, &verify, &secret_enc, &secret_nonce, inbox_flag);
     let config_json = serde_json::to_string(&config)
         .map_err(|e| AppError::Internal(format!("trigger config serialize: {e}")))?;
     let hash = crate::triggers::config_hash(&config_json);
@@ -303,6 +318,25 @@ pub async fn set_webhook_trigger(
         obj.insert("secret".to_string(), json!(secret_plain));
     }
     Ok(crate::triggers::annotate_set_result(out, true, &[]))
+}
+
+/// `host.webhook_inbox.create(rotate: true)`: a fresh secret for an existing
+/// webhook trigger, in place -- the id and URL never change. Returns the new
+/// plaintext secret (the only time it is in a response).
+pub(crate) async fn rotate_secret(state: &AppState, row: &TriggerRow) -> Result<String, AppError> {
+    let config = parse_webhook_config(&row.config_json)
+        .ok_or_else(|| AppError::Internal("webhook trigger config is corrupt".to_string()))?;
+    let secret_plain = format!("whsec_{}", crate::auth::generate_key());
+    let (secret_enc, secret_nonce) = state.secrets.encrypt(&secret_plain)?;
+    let new_config = build_webhook_config(&config.name, &config.verify, &secret_enc, &secret_nonce, config.inbox);
+    let config_json = serde_json::to_string(&new_config)
+        .map_err(|e| AppError::Internal(format!("trigger config serialize: {e}")))?;
+    let hash = crate::triggers::config_hash(&config_json);
+    state
+        .db
+        .update_trigger(row.id.clone(), row.tool_name.clone(), config_json, hash, None)
+        .await?;
+    Ok(secret_plain)
 }
 
 /// The webhook-kind shape of `host.trigger.list`/`get`'s per-trigger JSON
@@ -364,6 +398,21 @@ fn verify_delivery(scheme: &str, secret: &str, body: &[u8], headers: &HeaderMap)
         "hmac" => {
             let got = headers
                 .get("X-Mcphost-Signature")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+            let sig = got.strip_prefix("sha256=").unwrap_or(got);
+            let expected = to_hex(&crate::billing::hmac_sha256(secret.as_bytes(), body));
+            if !sig.is_empty() && constant_time_eq(sig.as_bytes(), expected.as_bytes()) {
+                Ok(())
+            } else {
+                Err(webhook_signature_invalid())
+            }
+        }
+        // PRD-mcphost-webhook-inbox-one-call R1: GitHub's own scheme --
+        // `X-Hub-Signature-256: sha256=<hex hmac of the body>`.
+        "github" => {
+            let got = headers
+                .get("X-Hub-Signature-256")
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("");
             let sig = got.strip_prefix("sha256=").unwrap_or(got);
@@ -496,6 +545,20 @@ async fn accept_delivery(
     } else {
         None
     };
+
+    if config.inbox && !is_test {
+        let parsed = parse_body_value(body);
+        crate::webhook_inbox::notify_event(
+            state,
+            tenant,
+            &config.name,
+            &trigger.tool_name,
+            row_id,
+            &parsed,
+            delivery_id.as_deref(),
+        )
+        .await;
+    }
 
     let _ = state
         .db

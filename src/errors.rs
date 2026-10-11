@@ -591,7 +591,9 @@ impl AppError {
                 // same INVALID_PARAMS bucket as the `state_*` group above;
                 // `trigger_not_found` mirrors `tool_not_found`/
                 // `tenant_not_found`'s own RESOURCE_NOT_FOUND.
-                "trigger_invalid" | "trigger_quota_exceeded" | "trigger_interval_too_short" => {
+                // PRD-mcphost-webhook-inbox-one-call R6: `plan_limit` is the
+                // same caller-input refusal for `host.webhook_inbox.create`.
+                "trigger_invalid" | "trigger_quota_exceeded" | "trigger_interval_too_short" | "plan_limit" => {
                     ErrorCode::INVALID_PARAMS
                 }
                 "trigger_not_found" => ErrorCode::RESOURCE_NOT_FOUND,

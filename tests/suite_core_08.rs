@@ -418,6 +418,10 @@ mod wasmkind_ac08_cache_reuses_compiled_artifact;
 mod wasmkind_ac09_healthz_reports_wasm_runtime;
 #[path = "wasmkind_ac10_declared_output_promotion_matches_python.rs"]
 mod wasmkind_ac10_declared_output_promotion_matches_python;
+#[path = "whin_ac04_keyless_call_after_redeem_is_refused_and_named.rs"]
+mod whin_ac04_keyless_call_after_redeem_is_refused_and_named;
+#[path = "whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule.rs"]
+mod whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule;
 #[path = "xaa_ac01_valid_assertion_no_consent.rs"]
 mod xaa_ac01_valid_assertion_no_consent;
 #[path = "xaa_ac03_invalid_grant_reasons_are_distinct_and_audited.rs"]
