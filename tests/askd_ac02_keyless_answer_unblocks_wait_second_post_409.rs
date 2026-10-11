@@ -8,7 +8,7 @@ use crate::common;
 
 use common::{McpClient, TestServer, extract_structured, signup};
 use serde_json::{Value, json};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// The ask URL as served by this test host's plain-HTTP listener.
 fn local_url(server: &TestServer, advertised: &str) -> String {
@@ -35,12 +35,11 @@ async fn keyless_post_unblocks_the_wait_and_a_second_post_is_409() {
     let waiter = {
         let (agent, ask_id) = (McpClient::with_bearer(&server.base_url, &key), ask_id.clone());
         tokio::spawn(async move {
-            let started = Instant::now();
             let r = agent
                 .tools_call("host.ask.wait", json!({"ask_id": ask_id, "timeout_s": 20}))
                 .await
                 .expect("ask.wait");
-            (extract_structured(&r), started)
+            extract_structured(&r)
         })
     };
     tokio::time::sleep(Duration::from_millis(300)).await;
@@ -53,12 +52,15 @@ async fn keyless_post_unblocks_the_wait_and_a_second_post_is_409() {
     assert!(html.contains("Deploy to prod?"), "{html}");
     assert!(html.contains("value=\"yes\"") && html.contains("value=\"no\""), "{html}");
 
-    let posted_at = Instant::now();
     let first = http.post(&url).form(&[("choice", "yes")]).send().await.expect("first post");
     assert_eq!(first.status(), 200, "{}", first.text().await.unwrap_or_default());
 
-    let (answer, _started) = waiter.await.expect("waiter joined");
-    assert!(posted_at.elapsed() < Duration::from_secs(2), "wait must return within 2 s of the answer");
+    // "Within 2 s" is enforced by the timeout itself, not by a measured
+    // elapsed time (single-shot timing assertions are flaky).
+    let answer = tokio::time::timeout(Duration::from_secs(2), waiter)
+        .await
+        .expect("the blocked wait must return within 2 s of the answer")
+        .expect("waiter joined");
     assert_eq!(answer["status"], json!("answered"), "{answer}");
     assert_eq!(answer["choice"], json!("yes"), "{answer}");
     assert!(answer["answered_unix"].is_i64(), "{answer}");
