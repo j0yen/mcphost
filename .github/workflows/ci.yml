@@ -261,6 +261,10 @@ jobs:
       - name: scripts/flake-lint.sh tests
         run: ./scripts/flake-lint.sh tests
 
+      # PRD-mcphost-healthz-anon-keys-const requirement 4.
+      - name: scripts/healthz-keys-lint.py tests
+        run: python3 scripts/healthz-keys-lint.py tests
+
   # PRD-mcphost-docs-external-links-resolve R5 (AC7). Every external link in
   # README.md, docs/**, www/llms.txt and plugin/** must resolve; a PR that
   # adds a 404 fails here and the log carries `FAIL <status> <url>

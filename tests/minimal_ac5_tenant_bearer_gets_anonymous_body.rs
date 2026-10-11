@@ -4,8 +4,6 @@
 
 use crate::common;
 use common::{TestServer, signup};
-use mcphost::build_info::BUILD;
-use serde_json::json;
 
 #[tokio::test]
 async fn tenant_bearer_does_not_unlock_admin_diagnostics() {
@@ -21,9 +19,5 @@ async fn tenant_bearer_does_not_unlock_admin_diagnostics() {
     assert_eq!(resp.status(), reqwest::StatusCode::OK);
 
     let body: serde_json::Value = resp.json().await.expect("parse /healthz");
-    assert_eq!(
-        body,
-        json!({"ok": true, "version": BUILD.version, "git_sha": BUILD.git_sha}),
-        "a valid tenant key must still get the anonymous body, not the admin document: {body:?}"
-    );
+    common::assert_anon_healthz(&body, true); // a valid tenant key must still get the anonymous body, not the admin document: {body:?}
 }

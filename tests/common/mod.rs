@@ -25,6 +25,23 @@ use mcphost::secrets::SecretBox;
 use mcphost::state::AppState;
 use serde_json::{Value, json};
 
+/// The anonymous `/healthz` key set, read from the crate const so no test
+/// restates it (`scripts/healthz-keys-lint.py` fails a literal).
+pub fn anon_healthz_keys() -> &'static [&'static str] {
+    mcphost::ANON_HEALTHZ_KEYS
+}
+
+/// Asserts an anonymous `/healthz` body has exactly the keys of
+/// `anon_healthz_keys()` and the expected `ok` / build-identity values.
+pub fn assert_anon_healthz(body: &Value, ok: bool) {
+    let mut keys: Vec<&str> = body.as_object().expect("anonymous /healthz body is an object").keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(keys, anon_healthz_keys(), "anonymous /healthz keys: {body}");
+    assert_eq!(body["ok"], json!(ok), "anonymous /healthz ok: {body}");
+    assert_eq!(body["version"], json!(mcphost::build_info::BUILD.version), "anonymous /healthz version: {body}");
+    assert_eq!(body["git_sha"], json!(mcphost::build_info::BUILD.git_sha), "anonymous /healthz git_sha: {body}");
+}
+
 pub const ADMIN_KEY: &str = "test-admin-key-not-for-production";
 
 /// A [`NameLookup`] with a fixed set of hostname -> address answers, so a
@@ -351,6 +368,7 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
         tenant_key_arg_memory: mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
         redeemed_peers: mcphost::peer_recent::PeerRecents::new(),
         reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        anon_healthz_extra_key: Default::default(),
         session_bindings,
     };
     (state, data_dir)
@@ -1009,6 +1027,7 @@ impl TestServer {
             tenant_key_arg_memory: mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
             redeemed_peers: mcphost::peer_recent::PeerRecents::new(),
             reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            anon_healthz_extra_key: Default::default(),
             session_bindings,
         });
 
@@ -1740,6 +1759,7 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
         tenant_key_arg_memory: mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
         redeemed_peers: mcphost::peer_recent::PeerRecents::new(),
         reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        anon_healthz_extra_key: Default::default(),
         session_bindings,
     }
 }

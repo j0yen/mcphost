@@ -6,8 +6,6 @@
 
 use crate::common;
 use common::TestServer;
-use mcphost::build_info::BUILD;
-use serde_json::json;
 
 #[tokio::test]
 async fn anonymous_healthz_is_exactly_ok_true() {
@@ -19,9 +17,5 @@ async fn anonymous_healthz_is_exactly_ok_true() {
     assert_eq!(resp.status(), reqwest::StatusCode::OK);
 
     let body: serde_json::Value = resp.json().await.expect("parse /healthz");
-    assert_eq!(
-        body,
-        json!({"ok": true, "version": BUILD.version, "git_sha": BUILD.git_sha}),
-        "anonymous healthz must be exactly ok/version/git_sha, no other fields: {body:?}"
-    );
+    common::assert_anon_healthz(&body, true); // anonymous healthz must be exactly ok/version/git_sha, no other fields: {body:?}
 }

@@ -96,6 +96,48 @@ async fn healthz(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl
     response
 }
 
+/// PRD-mcphost-healthz-anon-keys-const requirement 2: the one builder of the
+/// anonymous `/healthz` body. Its keys must equal
+/// [`ANON_HEALTHZ_KEYS`](crate::build_info::ANON_HEALTHZ_KEYS); a debug build
+/// panics on disagreement, and [`check_anon_healthz_keys`] is the same check
+/// for release builds and for `hzkeys_ac02`.
+pub fn anon_healthz_body(ok: bool, build: &crate::build_info::BuildInfo) -> serde_json::Map<String, serde_json::Value> {
+    let body = anon_healthz_body_with(ok, build, |_| {});
+    debug_assert_eq!(check_anon_healthz_keys(&body), Ok(()));
+    body
+}
+
+/// The builder's body construction with a hook that runs on the finished map
+/// and is unchecked. Production passes a no-op through
+/// [`anon_healthz_body`]; the handler passes an insert when
+/// `AppState::anon_healthz_extra_key` is armed (the AC2 fixture).
+pub fn anon_healthz_body_with(
+    ok: bool,
+    build: &crate::build_info::BuildInfo,
+    tweak: impl FnOnce(&mut serde_json::Map<String, serde_json::Value>),
+) -> serde_json::Map<String, serde_json::Value> {
+    let mut body = serde_json::Map::new();
+    body.insert("ok".into(), json!(ok));
+    body.extend(build.json());
+    tweak(&mut body);
+    body
+}
+
+/// `Ok` when `body`'s keys equal `ANON_HEALTHZ_KEYS`; otherwise an error
+/// message naming the const so the one test that fails says what to change.
+pub fn check_anon_healthz_keys(body: &serde_json::Map<String, serde_json::Value>) -> Result<(), String> {
+    let mut keys: Vec<&str> = body.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    if keys == crate::build_info::ANON_HEALTHZ_KEYS {
+        Ok(())
+    } else {
+        Err(format!(
+            "anonymous /healthz keys {keys:?} differ from ANON_HEALTHZ_KEYS {:?}; change the const and the handler together",
+            crate::build_info::ANON_HEALTHZ_KEYS
+        ))
+    }
+}
+
 async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Response {
     let db_ok = state.db.is_writable().await;
     // PRD-mcphost-data-retention requirement 4 (AC6): the disk-floor guard
@@ -108,9 +150,14 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
         // PRD-mcphost-healthz-version-field requirement 2: `ok` plus the
         // two build-identity keys from the single `BuildInfo` renderer.
         let ok = db_ok && disk_ok;
-        let mut body = serde_json::Map::new();
-        body.insert("ok".into(), json!(ok));
-        body.extend(state.build.json());
+        let body = match state.anon_healthz_extra_key.get() {
+            None => anon_healthz_body(ok, state.build),
+            // PRD-mcphost-healthz-anon-keys-const AC2 fixture: a sibling's
+            // extra key, unchecked so `hzkeys_ac02` is what reports it.
+            Some(&extra) => anon_healthz_body_with(ok, state.build, |m| {
+                m.insert(extra.into(), json!(true));
+            }),
+        };
         let status = if ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE };
         return (status, Json(serde_json::Value::Object(body))).into_response();
     }
@@ -1880,4 +1927,29 @@ pub async fn serve_configured(bind: SocketAddr, state: Arc<AppState>) -> anyhow:
     }
     tracing::info!(%bind, "mcphost: binding by address");
     serve(bind, state).await
+}
+
+#[cfg(test)]
+mod anon_healthz_tests {
+    use super::*;
+    use crate::build_info::BUILD;
+
+    /// Runs in release builds too (no `debug_assert`): the body the handler
+    /// serves for either liveness verdict has exactly `ANON_HEALTHZ_KEYS`.
+    #[test]
+    fn anon_body_keys_equal_the_const() {
+        for ok in [true, false] {
+            let body = anon_healthz_body(ok, &BUILD);
+            assert_eq!(check_anon_healthz_keys(&body), Ok(()));
+            assert_eq!(body["ok"], json!(ok));
+        }
+    }
+
+    #[test]
+    fn an_extra_key_is_reported_naming_the_const() {
+        let mut body = anon_healthz_body(true, &BUILD);
+        body.insert("extra".into(), json!(1));
+        let err = check_anon_healthz_keys(&body).unwrap_err();
+        assert!(err.contains("ANON_HEALTHZ_KEYS"), "{err}");
+    }
 }
