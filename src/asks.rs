@@ -15,6 +15,14 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::{Value, json};
 use tokio::sync::Notify;
 
+use axum::extract::{ConnectInfo, Path, Query, State};
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
+use axum::body::Bytes;
+use std::net::SocketAddr;
+
+use crate::auth::{constant_time_eq, hash_key};
+use crate::claim::{html_escape, html_response};
 use crate::db::Tenant;
 use crate::errors::AppError;
 use crate::state::{AppState, new_ulid, now_unix};
@@ -385,5 +393,238 @@ fn ask_expired(row: &AskRow) -> AppError {
             "expires_unix": row.expires_unix,
             "next_call": "host.ask.create",
         }),
+    }
+}
+
+// ---- the answer page: GET/POST /a/{id} ------------------------------------------
+
+/// Outcome of one answer attempt, decided inside a single database call.
+enum Answered {
+    /// This request's choice is now the recorded answer.
+    Recorded { answered_unix: i64 },
+    /// An earlier request already answered; its choice stands.
+    Already { choice: String, answered_unix: i64 },
+    /// Expired or unknown between the signature check and the write.
+    Gone,
+}
+
+/// Records `choice` iff the ask is still pending and unexpired. The guarded
+/// `UPDATE ... WHERE status = 'pending'` is the whole first-answer-wins
+/// rule: the database serialises concurrent attempts and exactly one sees
+/// `changed == 1`.
+fn record_answer(conn: &Connection, id: &str, choice: &str, ip_hash: &str, now: i64) -> Result<Answered, AppError> {
+    expire_due(conn, now)?;
+    let changed = conn.execute(
+        "UPDATE asks SET status = 'answered', choice = ?2, answered_unix = ?3, ip_hash = ?4 \
+         WHERE id = ?1 AND status = 'pending' AND expires_unix > ?3",
+        params![id, choice, now, ip_hash],
+    )?;
+    if changed == 1 {
+        conn.execute(
+            "INSERT INTO ask_events (ask_id, kind, at_unix, detail) VALUES (?1, 'answered', ?2, ?3)",
+            params![id, now, choice],
+        )?;
+        return Ok(Answered::Recorded { answered_unix: now });
+    }
+    let row: Option<(String, Option<String>, Option<i64>)> = conn
+        .query_row("SELECT status, choice, answered_unix FROM asks WHERE id = ?1", params![id], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })
+        .optional()?;
+    Ok(match row {
+        Some((status, Some(choice), Some(answered_unix))) if status == "answered" => {
+            Answered::Already { choice, answered_unix }
+        }
+        _ => Answered::Gone,
+    })
+}
+
+/// The one response every unsigned, mis-signed, expired or unknown link gets:
+/// byte-identical to the router's own no-route 404, leaking nothing about
+/// which of those it was.
+fn not_found() -> Response {
+    StatusCode::NOT_FOUND.into_response()
+}
+
+/// The ask behind a link iff the link is genuine and still live.
+async fn resolve_link(state: &AppState, id: &str, params: &std::collections::HashMap<String, String>) -> Option<AskRow> {
+    let row = find(state, id).await.ok()??;
+    let tenant = state.db.find_tenant_by_id(row.tenant_id).await.ok()??;
+    let exp: i64 = params.get("exp")?.parse().ok()?;
+    let sig = params.get("sig")?;
+    if !constant_time_eq(sig.as_bytes(), sign(&tenant.key_hash, id, exp).as_bytes()) {
+        return None;
+    }
+    // The signed expiry is the ask's own; a link for an older/other expiry
+    // or a lapsed ask is the same 404.
+    (exp == row.expires_unix && now_unix() < exp && row.status != "expired").then_some(row)
+}
+
+fn source_ip_hash(headers: &HeaderMap, peer: SocketAddr) -> String {
+    hash_key(&crate::claim::source_ip(headers, peer))
+}
+
+fn page(title: &str, body: &str) -> String {
+    format!(
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
+         <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
+         <title>{}</title></head><body style=\"font-family:system-ui,sans-serif;max-width:32rem;margin:2rem auto;padding:0 1rem\">{body}</body></html>",
+        html_escape(title)
+    )
+}
+
+/// `context` is markdown with raw HTML escaped: escaping first and then
+/// only splitting paragraphs/lines can never reintroduce a tag.
+fn render_context(context: &str) -> String {
+    context
+        .split("\n\n")
+        .filter(|p| !p.trim().is_empty())
+        .map(|p| format!("<p>{}</p>", html_escape(p.trim()).replace('\n', "<br>")))
+        .collect()
+}
+
+fn expires_in(expires_unix: i64, now: i64) -> String {
+    let mins = ((expires_unix - now).max(0) + 59) / 60;
+    format!("expires in {mins} min")
+}
+
+fn recorded_at(answered_unix: i64) -> String {
+    let secs = answered_unix.rem_euclid(86_400);
+    format!("recorded at {:02}:{:02} UTC", secs / 3600, (secs % 3600) / 60)
+}
+
+fn render_question(row: &AskRow, query: &str, now: i64) -> String {
+    let mut body = format!("<h1>{}</h1>", html_escape(&row.question));
+    if let Some(context) = &row.context {
+        body.push_str(&render_context(context));
+    }
+    if row.status == "answered" {
+        body.push_str(&format!(
+            "<p>Recorded: <strong>{}</strong> ({}).</p>",
+            html_escape(row.choice.as_deref().unwrap_or_default()),
+            recorded_at(row.answered_unix.unwrap_or_default())
+        ));
+        return page("Answered", &body);
+    }
+    body.push_str(&format!("<p>{}</p>", html_escape(&expires_in(row.expires_unix, now))));
+    body.push_str(&format!("<form method=\"post\" action=\"{}?{}\">", ask_path(&row.id), html_escape(query)));
+    for option in &row.options {
+        let label = html_escape(option);
+        body.push_str(&format!(
+            "<p><button type=\"submit\" name=\"choice\" value=\"{label}\" style=\"font-size:1.1rem;padding:.6rem 1.2rem\">{label}</button></p>"
+        ));
+    }
+    body.push_str("</form>");
+    page("Question", &body)
+}
+
+/// `GET /a/{id}?exp&sig`: the question and one button per option. No key.
+pub async fn get_page(
+    State(state): State<std::sync::Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Response {
+    let Some(row) = resolve_link(&state, &id, &params).await else {
+        return not_found();
+    };
+    let query = format!("exp={}&sig={}", params["exp"], params["sig"]);
+    html_response(StatusCode::OK, render_question(&row, &query, now_unix()))
+}
+
+/// The submitted `choice`, from a form body or a JSON object.
+fn submitted_choice(body: &Bytes) -> Option<String> {
+    if let Ok(Value::Object(o)) = serde_json::from_slice::<Value>(body) {
+        return o.get("choice").and_then(Value::as_str).map(str::to_string);
+    }
+    let uri: axum::http::Uri = format!("/?{}", String::from_utf8_lossy(body)).parse().ok()?;
+    let Query(map) = Query::<std::collections::HashMap<String, String>>::try_from_uri(&uri).ok()?;
+    map.get("choice").cloned()
+}
+
+fn wants_html(headers: &HeaderMap) -> bool {
+    headers
+        .get("accept")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|a| a.contains("text/html"))
+}
+
+fn error_response(status: StatusCode, code: &str, extra: Value, headers: &HeaderMap, html: String) -> Response {
+    if wants_html(headers) {
+        return html_response(status, html);
+    }
+    let mut error = json!({"code": code});
+    if let (Some(e), Some(x)) = (error.as_object_mut(), extra.as_object()) {
+        e.extend(x.clone());
+    }
+    (status, axum::Json(json!({"ok": false, "error": error}))).into_response()
+}
+
+/// `POST /a/{id}?exp&sig` with `choice`: the first answer wins (200); a
+/// later one is `409 ask_answered` naming the recorded choice; a `choice`
+/// outside the options is `400 choice_invalid`. Never reads a tenant key.
+#[allow(clippy::too_many_arguments)] // axum extractors, one each
+pub async fn post_answer(
+    State(state): State<std::sync::Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let ip_hash = source_ip_hash(&headers, peer);
+    if !state.url_rate_limiter.allow(&format!("ask:{ip_hash}"), crate::state::PUBLIC_URL_RATE_LIMIT_PER_MINUTE) {
+        let mut response = (
+            StatusCode::TOO_MANY_REQUESTS,
+            axum::Json(json!({"ok": false, "error": {"code": "rate_limited"}})),
+        )
+            .into_response();
+        response.headers_mut().insert("Retry-After", axum::http::HeaderValue::from_static("60"));
+        return response;
+    }
+    let Some(row) = resolve_link(&state, &id, &params).await else {
+        return not_found();
+    };
+    let Some(choice) = submitted_choice(&body).filter(|c| row.options.contains(c)) else {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "choice_invalid",
+            json!({"options": row.options}),
+            &headers,
+            page("Pick one", "<h1>Pick one of the offered options</h1>"),
+        );
+    };
+    let (ask_id, picked, hash) = (id.clone(), choice.clone(), ip_hash);
+    let outcome = state.db.with_conn(move |conn| record_answer(conn, &ask_id, &picked, &hash, now_unix())).await;
+    match outcome {
+        Ok(Answered::Recorded { answered_unix }) => {
+            wake(&id);
+            html_response(
+                StatusCode::OK,
+                page(
+                    "Recorded",
+                    &format!(
+                        "<h1>Recorded: {}</h1><p>{}.</p>",
+                        html_escape(&choice),
+                        html_escape(&recorded_at(answered_unix))
+                    ),
+                ),
+            )
+        }
+        Ok(Answered::Already { choice: first, answered_unix }) => error_response(
+            StatusCode::CONFLICT,
+            "ask_answered",
+            json!({"choice": first, "answered_unix": answered_unix}),
+            &headers,
+            page(
+                "Already answered",
+                &format!(
+                    "<h1>ask_answered</h1><p>Already answered: <strong>{}</strong> ({}).</p>",
+                    html_escape(&first),
+                    html_escape(&recorded_at(answered_unix))
+                ),
+            ),
+        ),
+        Ok(Answered::Gone) => not_found(),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "storage error").into_response(),
     }
 }
