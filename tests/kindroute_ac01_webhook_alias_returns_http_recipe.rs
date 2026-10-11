@@ -32,7 +32,8 @@ async fn quickstart_webhook_alias_resolves_to_http_recipe() {
     let tools: Vec<&str> = steps.iter().filter_map(|s| s["tool"].as_str()).collect();
     assert_eq!(
         tools,
-        vec!["host.tool_publish", "host.trigger.set", "host.trigger.test"],
+        // PRD-mcphost-webhook-inbox-one-call R4: the three-step walk is one call.
+        vec!["host.webhook_inbox.create"],
         "recipe.steps out of order: {tools:?}"
     );
     for step in steps {

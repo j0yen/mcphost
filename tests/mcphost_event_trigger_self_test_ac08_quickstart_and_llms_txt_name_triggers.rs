@@ -57,9 +57,12 @@ async fn quickstart_kind_event_hints_host_trigger_set() {
         .as_array()
         .expect("recipe.steps array");
     let tools: Vec<&str> = steps.iter().filter_map(|s| s["tool"].as_str()).collect();
+    // PRD-mcphost-webhook-inbox-one-call R4: the shared webhook-inbox recipe
+    // is one `host.webhook_inbox.create` step now; the hint above still
+    // names the exact `host.trigger.set(kind=...)` call.
     assert!(
-        tools.contains(&"host.trigger.set"),
-        "recipe.steps must name host.trigger.set: {tools:?}"
+        tools.contains(&"host.webhook_inbox.create"),
+        "recipe.steps must name host.webhook_inbox.create: {tools:?}"
     );
 
     // A trigger word the alias table knows but host.trigger.set does not

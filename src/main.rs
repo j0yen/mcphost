@@ -958,6 +958,7 @@ async fn main() -> anyhow::Result<()> {
                 url_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
                 implicit_signup_memory,
                 tenant_key_arg_memory,
+                redeemed_peers: mcphost::peer_recent::PeerRecents::new(),
                 reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(
                     mcphost::state::reuse_session_tenant_from_env(),
                 )),

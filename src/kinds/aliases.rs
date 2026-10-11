@@ -36,6 +36,11 @@ pub const KIND_ALIASES: &[KindAlias] = &[
     KindAlias { alias: "webhooks", kind: "http", recipe: "webhook-inbox" },
     KindAlias { alias: "inbound", kind: "http", recipe: "webhook-inbox" },
     KindAlias { alias: "trigger", kind: "http", recipe: "webhook-inbox" },
+    // PRD-mcphost-webhook-inbox-one-call R4: "inbox" is also an outcome word
+    // for the agent-to-agent message inbox (`outcomes.rs`); an agent that
+    // asks for an inbox next to a webhook means this one, so the alias wins
+    // and `recipes_nearby` names the other.
+    KindAlias { alias: "inbox", kind: "http", recipe: "webhook-inbox" },
     KindAlias { alias: "cron", kind: "http", recipe: "schedules" },
     KindAlias { alias: "schedule", kind: "http", recipe: "schedules" },
     KindAlias { alias: "scheduled", kind: "http", recipe: "schedules" },
@@ -66,6 +71,18 @@ pub fn recipe_names() -> Vec<&'static str> {
     names
 }
 
+/// Recipes that answer the same word differently (PRD-mcphost-webhook-inbox-one-call
+/// R4): for an alias that is also an outcome word, the outcome's recipe when
+/// it is not the alias's own -- generated from both tables, never a third
+/// list. `inbox` -> `["agent-inbox"]`.
+pub fn recipes_nearby(alias: &KindAlias) -> Vec<&'static str> {
+    crate::kinds::outcomes::find(alias.alias)
+        .map(|o| o.recipe)
+        .filter(|recipe| *recipe != alias.recipe)
+        .into_iter()
+        .collect()
+}
+
 /// The ordered `host.*` calls that build `recipe`, each carrying a
 /// filled-in `args_example` an agent can copy and edit (requirement 2:
 /// `{name, steps: [{tool, args_example}], docs}`). `tool_name` and `spec`
@@ -77,26 +94,16 @@ pub fn recipe_names() -> Vec<&'static str> {
 /// (`errors.rs`).
 pub fn recipe_steps(recipe: &str, tool_name: &str, spec: &Value) -> Vec<Value> {
     match recipe {
-        "webhook-inbox" => vec![
-            json!({
-                "tool": "host.tool_publish",
-                "args_example": {"name": tool_name, "kind": "http", "spec": spec},
-            }),
-            json!({
-                "tool": "host.trigger.set",
-                "args_example": {"tool": tool_name, "kind": "webhook", "name": tool_name},
-                "note": "name is this trigger's identity -- repeating this exact call is safe: \
-                    the second (and every later) call updates the same trigger in place \
-                    (created: false) instead of minting a duplicate webhook.",
-            }),
-            json!({
-                "tool": "host.trigger.test",
-                "args_example": {
-                    "id": "<id from host.trigger.set's response>",
-                    "body": {"example": true},
-                },
-            }),
-        ],
+        // PRD-mcphost-webhook-inbox-one-call R4: one host call replaces the
+        // publish -> trigger.set -> trigger.test walk.
+        "webhook-inbox" => vec![json!({
+            "tool": "host.webhook_inbox.create",
+            "args_example": {"name": "inbox"},
+            "note": "returns url, secret and wait (the host.msg.wait arguments) in one call -- \
+                repeating this exact call is safe: the same url comes back and the secret is \
+                omitted unless rotate is true. POST a body signed with the secret to url, then \
+                read it with host.tool_call(name=<name>) or host.msg.wait(**wait.args).",
+        })],
         "schedules" => vec![
             json!({
                 "tool": "host.tool_publish",

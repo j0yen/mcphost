@@ -83,4 +83,6 @@ pub mod triggers;
 pub mod uptime;
 pub mod vault;
 pub mod verbforward;
+pub mod peer_recent;
+pub mod webhook_inbox;
 pub mod webhooks;

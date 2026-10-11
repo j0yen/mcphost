@@ -443,6 +443,12 @@ pub struct AppState {
     /// place that writes here). Consulted the same way as
     /// [`AppState::implicit_signup_memory`] above.
     pub tenant_key_arg_memory: crate::session_bind::SessionBindings,
+    /// PRD-mcphost-webhook-inbox-one-call R3: peers (client IP + User-Agent
+    /// hash) that completed `host.redeem` in the last 10
+    /// minutes, so a key-less call from one is refused and named instead of
+    /// minting a second tenant (`/mcp` is stateless; no session id carries
+    /// across those calls).
+    pub redeemed_peers: crate::peer_recent::PeerRecents,
     /// requirement 2: `implicit_signup.reuse_session_tenant` -- default
     /// `false` ("refuse-and-name": a key-less call on a connection [`AppState::implicit_signup_memory`]/
     /// [`AppState::tenant_key_arg_memory`] already remembers a tenant for is
