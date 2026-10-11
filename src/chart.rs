@@ -365,7 +365,13 @@ fn chart_path(id: &str) -> String {
 /// the sharing tenant's own `key_hash` (technical considerations: "the same
 /// HMAC scheme and 24-hour expiry `src/export.rs` uses").
 fn sign(key_hash: &str, id: &str, expires_unix: i64) -> String {
-    let message = format!("{}:{expires_unix}", chart_path(id));
+    sign_path(key_hash, &chart_path(id), expires_unix)
+}
+
+/// The HMAC-over-`"{path}:{expires}"` scheme itself, shared with
+/// `asks.rs` (PRD-mcphost-ask-user-decision: "signed like `/charts/`").
+pub(crate) fn sign_path(key_hash: &str, path: &str, expires_unix: i64) -> String {
+    let message = format!("{path}:{expires_unix}");
     hex_encode(&crate::billing::hmac_sha256(key_hash.as_bytes(), message.as_bytes()))
 }
 

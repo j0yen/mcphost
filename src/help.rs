@@ -35,6 +35,7 @@ pub const HELP_CODES: &[&str] = &[
     "spec_not_exposed",
     "service_unavailable",
     "internal",
+    "ask_expired",
 ];
 
 /// One `/help/<code>` page's content: meaning, likely cause, fix, and which
@@ -166,6 +167,13 @@ pub const HELP_ENTRIES: &[HelpEntry] = &[
         cause: "Could be almost anything server-side; the real detail is logged under this response's request_id and deliberately not sent to you.",
         fix: "Retry; if it keeps happening, report the request_id (from the payload) to the support channel below so an operator can look it up.",
         doc_link: "www/status.html",
+    },
+    HelpEntry {
+        code: "ask_expired",
+        meaning: "The ask's link lapsed (its ttl_s ran out) before the user answered, so host.ask.wait will never return an answer for it.",
+        cause: "The user did not open the link in time, or ttl_s was shorter than the user's reply time.",
+        fix: "Do not act on a missing answer. Call host.ask.create again with a longer ttl_s, hand the user the new url, and host.ask.wait on the new ask_id.",
+        doc_link: "docs/tools.md",
     },
 ];
 

@@ -3041,6 +3041,52 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &[],
             ),
         ),
+        // PRD-mcphost-ask-user-decision: a question for the user, answered
+        // from a signed link, blocking the agent until it is.
+        Tool::new(
+            "host.ask.create",
+            "Ask the user a question and hand them a link: returns {ask_id, url, expires_unix, \
+             next_call, next_args}. The url (no login) shows the question and one button per \
+             option; the first answer wins and a later one is refused 409 ask_answered. Then call \
+             host.ask.wait until it returns answered or fails ask_expired -- never act on a \
+             missing answer. Refused with asks_limit at the plan's asks_open_max.",
+            host_schema(
+                json!({
+                    "question": {"type": "string", "description": "What to ask, at most 500 characters."},
+                    "options": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 2,
+                        "maxItems": 6,
+                        "description": "2 to 6 distinct button labels, each at most 40 characters.",
+                    },
+                    "ttl_s": {"type": "integer", "description": "Seconds the link stays answerable; default 3600, at most 604800."},
+                    "context": {"type": "string", "description": "Markdown shown under the question, at most 2 KB; raw HTML is escaped."},
+                    "notify": {"type": "boolean", "description": "Also push the link to the user's channel once host.notify.send is live; until then accepted and reported notified: false."},
+                }),
+                &["question", "options"],
+            ),
+        ),
+        Tool::new(
+            "host.ask.wait",
+            format!(
+                "Block until the user answers an ask, it expires, or timeout_s elapses (max {}s): \
+                 returns {{status: answered|pending, choice, answered_unix, waited_ms, next_call}}. \
+                 pending means call host.ask.wait again; an expired ask fails ask_expired with \
+                 next_call host.ask.create. Needs a tenant_key: it never signs a tenant up.",
+                crate::asks::WAIT_MAX_S
+            ),
+            host_schema(
+                json!({
+                    "ask_id": {"type": "string", "description": "The ask_id host.ask.create returned."},
+                    "timeout_s": {
+                        "type": "integer",
+                        "description": format!("Max seconds to wait, capped at {}; default {}.", crate::asks::WAIT_MAX_S, crate::asks::WAIT_DEFAULT_S),
+                    },
+                }),
+                &["ask_id"],
+            ),
+        ),
         // PRD-mcphost-agent-consent: contacts and mutes layered on top of
         // agent-directory contact_policy -- a contacts-mode recipient now
         // distinguishes "no relationship yet" from "mutual, accepted"
@@ -5467,6 +5513,9 @@ impl McpHostHandler {
             "host.msg.wait" => messaging::wait(&self.state, tenant, &args).await,
             "host.msg.thread" => messaging::thread(&self.state, tenant, &args).await,
             "host.msg.ack" => messaging::ack(&self.state, tenant, &args).await,
+            // PRD-mcphost-ask-user-decision.
+            "host.ask.create" => crate::asks::create(&self.state, tenant, &args).await,
+            "host.ask.wait" => crate::asks::wait(&self.state, tenant, &args).await,
             "host.msg.block" => messaging::block(&self.state, tenant, &args).await,
             "host.msg.unblock" => messaging::unblock(&self.state, tenant, &args).await,
             // PRD-mcphost-agent-consent requirements 2, 3, 5, 10.
