@@ -411,6 +411,20 @@ mod compose_ac8_tool_test_dry_run;
 mod consent_ac01_ac02_ac03_ac04_contact_lifecycle;
 #[path = "consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox.rs"]
 mod consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox;
+#[path = "cpath_ac01_unresolved_path_refused_at_publish.rs"]
+mod cpath_ac01_unresolved_path_refused_at_publish;
+#[path = "cpath_ac02_observed_union_across_runs.rs"]
+mod cpath_ac02_observed_union_across_runs;
+#[path = "cpath_ac03_no_history_is_unverifiable_and_publishes.rs"]
+mod cpath_ac03_no_history_is_unverifiable_and_publishes;
+#[path = "cpath_ac04_declared_wins_and_drift_is_reported.rs"]
+mod cpath_ac04_declared_wins_and_drift_is_reported;
+#[path = "cpath_ac05_steps_index_checked_and_forward_reference.rs"]
+mod cpath_ac05_steps_index_checked_and_forward_reference;
+#[path = "cpath_ac06_force_publishes_and_records_it.rs"]
+mod cpath_ac06_force_publishes_and_records_it;
+#[path = "cpath_ac07_context_keys_table_parity.rs"]
+mod cpath_ac07_context_keys_table_parity;
 #[path = "ctrv_ac01_sha_stable_across_boot_requests_and_process.rs"]
 mod ctrv_ac01_sha_stable_across_boot_requests_and_process;
 #[path = "ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs"]

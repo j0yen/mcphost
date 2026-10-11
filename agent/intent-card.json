@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-webhook-inbox-one-call.md",
-  "intent_slug": "mcphost-webhook-inbox-one-call",
-  "root_motivation": "**Who:** an agent that just received a mcphost URL and must show its user a webhook arriving inside one session; the truth-tier integration_specialist persona that scores it. **What:** one call that yields a public hook URL plus a way to read the next event. **Why not today:** the webhook-inbox recipe was three host steps plus a signed POST (eight calls to show one event); a key-less call after a successful host.redeem minted a second tenant because /mcp is stateless; kind=inbox routed to the agent-inbox recipe; llms.txt had no webhook section. **Consequence:** satisfaction 0.0 / completion 0.0 for this recipe on 10-09 and 10-06.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-chain-publish-time-path-check.md",
+  "intent_slug": "mcphost-chain-publish-time-path-check",
+  "root_motivation": "**Who:** the autonomous coding agent (data_pipeline_builder, workflow_orchestrator personas) publishing a multi-step chain in one session. **What:** publish that tells it a path is wrong before any call. Today `check_step_ref` (`chain.rs:326`) reads `declared_output_names` (`:284-302`); when the predecessor declares nothing the verdict is `unverifiable` and `host.tool_publish` without `dry_run=true` publishes anyway with an advisory verdict (PRD-mcphost-tool-test-truth AC6). The host has seen the predecessor's real result on every run (`RunRow.result_ref`, `runs.rs:171`) and keeps none of its shape. **Why not today:** the output contract of a tool exists only when the agent writes `outputs` by hand; explore 10-07 recorded 35 `resolved to nothing` rows and 10-08 (pre-0.105) 3, every one discoverable from a result the host had already stored.",
   "user_persona": "An agent (customer) that calls host.webhook_inbox.create once, pastes the url into a sender and shows its user the push event in the same session; the truth-tier integration_specialist persona whose gold is reachable in 4 calls; Operator Joe reading the digest.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,50 +14,50 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a free tenant, When `host.webhook_inbox.create(name=\"inbox\")` is called once, Then the response carries `url` matching `^https://[^/]+/hook/[A-Za-z0-9]{10,}$`, `secret`, `tool: \"inbox\"`, `trigger_id`, and `wait.tool == \"host.msg.wait\"`, and `host.trigger.list` shows exactly one webhook trigger bound to `inbox`.",
-      "test": "tests/whin_ac01_create_returns_url_secret_wait.rs"
+      "description": "Given a python tool that has completed 3 runs each returning `{\"items\": [...], \"count\": n}`, When a chain mapping `\"rows\": \"$.prev.result.rows\"` after it is published without `dry_run`, Then the publish is refused with `compose_mapping_unresolved`, `data.available` is `[\"count\", \"items\"]`, `data.did_you_mean` is `$.prev.result.items`, and no tool row exists.",
+      "test": "tests/cpath_ac01_unresolved_path_refused_at_publish.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the inbox from AC1, When a POST signed with `secret` carrying `{\"id\":\"evt-fixture-1\"}` reaches `url`, Then within 5 s `host.tool_call(name=\"inbox\")` returns a row with id `evt-fixture-1` and `host.msg.wait` with `wait.args` returns a message whose `data.event_id` is `evt-fixture-1`.",
-      "test": "tests/whin_ac02_signed_post_readable_by_tool_call_and_msg_wait.rs"
+      "description": "Given a tool whose runs returned `{a, b}` then `{a, c}`, When a chain mapping `$.prev.result.c` is published, Then it succeeds and the response carries `prev_fields_source: \"observed\"`, `runs_sampled: 2`, and `prev_fields: [\"a\", \"b\", \"c\"]`.",
+      "test": "tests/cpath_ac02_observed_union_across_runs.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given an unsigned or wrongly signed POST, When it reaches `url`, Then the response is 401, no row is stored, no run fires and no inbox message is sent.",
-      "test": "tests/whin_ac03_unsigned_or_wrong_signature_stores_nothing.rs"
+      "description": "Given a predecessor with no declared `outputs` and no completed run, When the chain is published, Then the verdict is `unverifiable`, the tool is published, and `next` names `host.tool_test`.",
+      "test": "tests/cpath_ac03_no_history_is_unverifiable_and_publishes.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a peer that completed `host.redeem` 5 s earlier, When it sends `host.tool_publish` without `tenant_key` on `/mcp`, Then the error is `tenant_key_missing` with `data.tenant` equal to that namespace, the `tenants` row count is unchanged, and a peer with no redeem in 10 minutes still gets implicit signup.",
-      "test": "tests/whin_ac04_keyless_call_after_redeem_is_refused_and_named.rs"
+      "description": "Given a predecessor declaring `outputs: [rows]` whose 2 runs returned `{items}`, When a chain maps `$.prev.result.rows`, Then publish succeeds, `prev_fields_source` is `declared`, and `observed_drift` is `[\"rows\"]`.",
+      "test": "tests/cpath_ac04_declared_wins_and_drift_is_reported.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a keyed `host.quickstart(kind=\"inbox\")`, When it returns, Then `recipe.name == \"webhook-inbox\"`, `recipe.steps` has one entry calling `host.webhook_inbox.create`, `recipes_nearby` contains `agent-inbox`, and the anonymous quickstart note contains \"tenant_key on every call\" and not \"connection is bound\".",
-      "test": "tests/whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule.rs"
+      "description": "Given a 3-step chain whose step 3 maps `$.steps[0].result.count` and step 1 has observed keys `{items, count}`, When published, Then it passes; and Given step 2 maps `$.steps[2].result.x`, Then `will_fail` with `reason: \"forward reference\"`.",
+      "test": "tests/cpath_ac05_steps_index_checked_and_forward_reference.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given `www/llms.txt`, When `scripts/www-check.sh` and `handler::llms_txt_tool_names` run, Then a section `## Webhook inbox in one call` names `host.webhook_inbox.create`, and `examples/webhook-inbox/proof.sh` against a local `TestServer` exits 0 in under 30 s.",
-      "test": "tests/whin_ac06_llms_txt_section_and_proof_sh.rs"
+      "description": "Given the failing chain of AC1, When published with `force: true`, Then the tool exists and the response `gates` entry reads `verdict: will_fail, forced: true`.",
+      "test": "tests/cpath_ac06_force_publishes_and_records_it.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given a tenant at `event_triggers_max`, When `host.webhook_inbox.create` is called, Then the error is `plan_limit` with `data.limit == 3` and no tool, trigger or event row was created; Given a second create with the same name, Then the same `url` returns and `secret` is absent.",
-      "test": "tests/whin_ac07_plan_limit_creates_nothing_and_repeat_is_idempotent.rs"
+      "level": "MUST",
+      "description": "Given `CONTEXT_KEYS`, When the parity test builds a context and reads the checker's accepted keys, Then both equal the table and a scan of `src/kinds/chain.rs` finds no string literal `\"prev\"`, `\"steps\"`, or `\"result\"` outside the table and its tests.",
+      "test": "tests/cpath_ac07_context_keys_table_parity.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given the first nightly truth-tier on orch after prod carries this, When `measure.json` is written, Then `recipes.by_recipe.mcphost-webhook-inbox.completion_rate` is \u2265 0.5 and its `failure_families` omit `budget` (Live; evidence: `ssh orch 'python3 -m json.tool $(ls -d ~/.local/state/synthorg/runs/truth-tier-* | tail -1)/measure.json | grep -A8 \"\\\"mcphost-webhook-inbox\\\"\"'`)",
-      "test": "deferred -- operator-provisioned: first nightly truth-tier on orch after prod carries this."
+      "description": "Given a keyed prod tenant whose `echo` tool has run once with `{\"x\": 1}`, When a chain mapping `$.prev.result.nope` after it is published via MCP, Then the response carries `compose_mapping_unresolved` with `available: [\"x\"]` (Live; evidence: the AC 8 curl in \u00a7 Technical considerations ending `-d @publish-bad-path.json | grep -c compose_mapping_unresolved` prints 1)",
+      "test": "deferred -- operator-provisioned: the live probe runs against prod mcphost.dev with a keyed tenant after this PRD deploys."
     }
   ],
   "scope": [

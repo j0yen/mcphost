@@ -1433,6 +1433,33 @@ fn attach_gates(err: AppError, gates: &[Value]) -> AppError {
     AppError::Structured { code, message, data }
 }
 
+/// PRD-mcphost-chain-publish-time-path-check requirement 3: the
+/// `compose_mapping_unresolved` refusal for a `will_fail` chain verdict --
+/// the first failing mapping's evidence (`step`, `path`, `available`,
+/// `did_you_mean`, `prev_fields_source`, `runs_sampled`, or `reason`) at the
+/// top level of `data`, every failure under `failures`.
+fn chain_mapping_unresolved(verdict: &Value) -> AppError {
+    let failures = verdict["failures"].as_array().cloned().unwrap_or_default();
+    let mut data = failures.first().and_then(Value::as_object).cloned().unwrap_or_default();
+    data.insert("failures".to_string(), json!(failures));
+    data.insert(
+        "fix".to_string(),
+        json!("map one of `available`, or publish with force: true to accept the mapping as written"),
+    );
+    let first = failures.first().cloned().unwrap_or(Value::Null);
+    let message = match first["reason"].as_str() {
+        Some(reason) => format!("step {} reads {}: {reason}", first["step"], first["path"]),
+        None => {
+            let available = match first["available"].as_array() {
+                Some(a) if !a.is_empty() => format!("; available: {}", first["available"]),
+                _ => String::new(),
+            };
+            format!("step {} reads {}, which its predecessor has not returned{available}", first["step"], first["path"])
+        }
+    };
+    AppError::Structured { code: "compose_mapping_unresolved", message, data: Value::Object(data) }
+}
+
 pub async fn tool_publish(
     state: &AppState,
     tenant: &Tenant,
@@ -1594,6 +1621,24 @@ pub async fn tool_publish(
     } else {
         None
     };
+
+    // PRD-mcphost-chain-publish-time-path-check requirement 3: a chain with
+    // a mapping that can never resolve is refused here, before any row is
+    // written, with the predecessor's real keys in `data`; `force: true`
+    // publishes it anyway (recorded as `forced: true` on the response's
+    // `gates` entry). `dry_run` only reports (its `verdict` gate below).
+    let forced_will_fail = chain_verdict
+        .as_ref()
+        .is_some_and(|v| v["verdict"] == json!("will_fail"))
+        && !dry_run
+        && arg_bool(args, "force");
+    if !dry_run
+        && !forced_will_fail
+        && let Some(v) = &chain_verdict
+        && v["verdict"] == json!("will_fail")
+    {
+        return Err(chain_mapping_unresolved(v));
+    }
 
     // PRD-mcphost-first-publish-real-kind requirement 4 (AC3/AC4): from here
     // on, every remaining pre-check is "collectible" -- it's recorded as its
@@ -1953,6 +1998,20 @@ pub async fn tool_publish(
     // PRD-mcphost-chain-prev-contract P1 requirement 6 (AC7): what each
     // step after the first may read from its predecessor.
     if let (Some(fields), Value::Object(map)) = (chain_prev_fields, &mut response) {
+        // The first step entry that knows its predecessor's fields is also
+        // hoisted to the top level, so a two-step chain reads
+        // `prev_fields` / `prev_fields_source` / `runs_sampled` /
+        // `observed_drift` straight off the response.
+        if let Some(entry) = fields
+            .as_array()
+            .and_then(|a| a.iter().find(|e| e.get("prev_fields_source").is_some()))
+        {
+            for key in ["prev_fields", "prev_fields_source", "runs_sampled", "observed_drift"] {
+                if let Some(v) = entry.get(key) {
+                    map.insert(key.to_string(), v.clone());
+                }
+            }
+        }
         map.insert("steps".to_string(), fields);
     }
     if let (Some(v), Value::Object(map)) = (&chain_verdict, &mut response) {
@@ -1966,6 +2025,18 @@ pub async fn tool_publish(
         }
         if let Some(next) = v.get("next") {
             map.insert("next".to_string(), next.clone());
+        }
+        if forced_will_fail {
+            map.insert(
+                "gates".to_string(),
+                json!([{
+                    "gate": "verdict",
+                    "ok": true,
+                    "verdict": "will_fail",
+                    "forced": true,
+                    "failures": v["failures"].clone(),
+                }]),
+            );
         }
     }
     Ok(response)

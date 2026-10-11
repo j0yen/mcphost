@@ -1284,6 +1284,10 @@ async fn run_one_job(state: AppState, run: RunRow) {
     let finished_unix = crate::state::now_unix();
     let duration_ms = start.elapsed().as_millis() as i64;
 
+    // PRD-mcphost-chain-publish-time-path-check requirement 1: the shape of
+    // a single-part JSON-object result, folded into the tool's
+    // `observed_outputs_json` once the run is finalized `done`.
+    let mut observed: Option<std::collections::BTreeMap<String, String>> = None;
     let (status, result_ref, error_class, error_data) = match outcome {
         JobOutcome::Done { result_value } => {
             // PRD-mcphost-run-result-overflow-to-state requirement 1: the
@@ -1296,6 +1300,12 @@ async fn run_one_job(state: AppState, run: RunRow) {
             // into RUN_PART_BYTES parts").
             let value_json = serde_json::to_string(&result_value).unwrap_or_else(|_| "null".to_string());
             let bytes = value_json.len() as i64;
+            if value_json.len() <= crate::state::MAX_TOOL_OUTPUT_BYTES {
+                let shape = crate::kinds::chain::observed_shape(&result_value);
+                if !shape.is_empty() {
+                    observed = Some(shape.into_iter().map(|(k, t)| (k, t.to_string())).collect());
+                }
+            }
             let part_values: Vec<Value> = if value_json.len() > crate::state::MAX_TOOL_OUTPUT_BYTES {
                 chunk_string(&value_json, RUN_PART_BYTES)
                     .into_iter()
@@ -1352,6 +1362,15 @@ async fn run_one_job(state: AppState, run: RunRow) {
         JobOutcome::Timeout => ("timeout".to_string(), None, None, None),
     };
 
+    let ended_done = status == "done";
+    // Recorded BEFORE the row turns `done`, so a caller that polls the run to
+    // `done` and publishes next always sees this run's keys.
+    if ended_done
+        && let Some(shape) = observed
+        && let Err(e) = state.db.merge_observed_outputs(tenant_id, run.tool_name.clone(), shape).await
+    {
+        tracing::warn!(error = %e, run_id = %run_id, tool = %run.tool_name, "failed to record observed outputs for finished run");
+    }
     let finalized = state
         .db
         .finalize_run(run_id.clone(), tenant_id, status, result_ref, error_class, error_data, finished_unix, duration_ms)

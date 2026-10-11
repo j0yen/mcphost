@@ -5,7 +5,7 @@
 //! "$.prev.result.action"}` and no `success: true`.
 
 use crate::common;
-use common::{McpClient, TestServer, chain_kind_registry, publish, signup};
+use common::{McpClient, TestServer, chain_kind_registry, publish, publish_forced, signup};
 use serde_json::{Value, json};
 
 fn chain_spec() -> Value {
@@ -42,7 +42,7 @@ async fn setup(label: &str) -> (TestServer, McpClient) {
 #[tokio::test]
 async fn dry_run_names_the_missing_result_hop() {
     let (_server, client) = setup("Chainprev AC2 Dry Run Tenant").await;
-    publish(&client, "pipeline", "chain", chain_spec()).await;
+    publish_forced(&client, "pipeline", "chain", chain_spec()).await;
     let result = client
         .tools_call("host.tool_test", json!({"name": "pipeline", "args": {}}))
         .await
@@ -56,7 +56,7 @@ async fn publish_response_names_the_missing_result_hop() {
     let result = client
         .tools_call(
             "host.tool_publish",
-            json!({"name": "pipeline", "kind": "chain", "spec": chain_spec()}),
+            json!({"name": "pipeline", "kind": "chain", "spec": chain_spec(), "force": true}),
         )
         .await
         .expect("host.tool_publish must succeed -- the verdict is advisory");
