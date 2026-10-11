@@ -464,19 +464,24 @@ pub fn spawn_channel_retention(state: AppState) -> tokio::task::JoinHandle<()> {
 /// (`channels.rs`'s own module doc), so every query below runs unchanged
 /// once `channel_id` is the resolved row's own id, whichever kind it is.
 pub async fn read(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    use crate::paged::{self, ChannelRead, Cursor, Paged};
+    use crate::paged::{self, ChannelRead, Cursor, OrderEnum as _, Paged};
     let key = arg_str(args, "channel_id")?;
     let rl = paged::resolve_limit(args, ChannelRead::DEFAULT_LIMIT.into(), ChannelRead::MAX_LIMIT.into())?;
+    // Single-variant order: validated so the schema's `order` enum is honest.
+    paged::resolve_order::<paged::ChannelOrder>(args)?;
     let ack = arg_bool(args, "ack");
     // The one signed cursor; the pre-PRD bare integer `seq` is still read
     // for the migration window and logged once per tenant as `cursor_legacy`.
     let cursor_arg = match args.get("cursor") {
-        Some(Value::String(raw)) => Some(
-            paged::decode_or_legacy(raw, &state.session_bindings, tenant.id, ChannelRead::VERB, |raw| {
-                raw.parse::<i64>().ok().map(|seq| Cursor::new(seq, ""))
-            })?
-            .seq,
-        ),
+        Some(Value::String(raw)) => {
+            let c = paged::decode_or_legacy(raw, &state.session_bindings, tenant.id, ChannelRead::VERB, |raw| {
+                raw.parse::<i64>()
+                    .ok()
+                    .map(|seq| Cursor::new(seq, "").with_order(paged::ChannelOrder::DEFAULT.name()))
+            })?;
+            c.require_order(paged::ChannelOrder::DEFAULT.name())?;
+            Some(c.seq)
+        }
         Some(Value::Number(n)) => n.as_i64(),
         _ => None,
     };
@@ -510,7 +515,7 @@ pub async fn read(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         .db
         .channel_posts_after(channel_id.clone(), effective_cursor, rl.limit + 1)
         .await?;
-    let next = paged::split_page(&mut rows, rl.limit, ChannelRead::cursor_of);
+    let next = paged::split_page(&mut rows, rl.limit, |p| ChannelRead::cursor_at(p, paged::ChannelOrder::DEFAULT));
     // `ack` stores the last row actually returned, whether or not a
     // `next_cursor` was emitted; an empty read leaves the stored cursor
     // exactly as it was.

@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-call-cost-estimate.md",
-  "intent_slug": "mcphost-call-cost-estimate",
-  "root_motivation": "**Who:** the autonomous coding agent about to call a tool on a plan it did not choose. **What:** learn, before spending a call and a turn, whether the call is admissible and what it consumes. **Why not today:** admission is five checks spread along the call path (args schema, budget ceilings, calls_per_day, shared-tool caller cap, capacity) and each is reachable only by dispatching; on 10-08, 26 explore calls were refused on a budget ceiling and 10 on an argument type, each costing the persona a turn.",
-  "user_persona": "A coding agent that calls host.estimate (or host.tool_call with dry_run) before an expensive call and reads fits, units, remaining and the exact refusal the real call would give.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-declared-ordering-per-verb.md",
+  "intent_slug": "mcphost-declared-ordering-per-verb",
+  "root_motivation": "**Premise (agent viewpoint):** I want \"newest first\" or \"by name\" and I want page 2 to be what page 1 was not, even while the table changes. **Falsifier:** today's implicit orderings already hold under concurrent inserts (AC 1). **Who:** the agent polling `host.runs.list` for the newest run while runs are being created; the agent reading `host.msg.inbox` while messages arrive; the SDK generator rendering an `Order` literal. **What:** a declared ordering per verb, selectable, with a stated default and a stable tiebreak. **Why not today:** `ORDER BY` clauses live in `db.rs` and cursors in the handler files; `runs.rs:399-420` post-filters a wider window and re-caps, so a `verdict` filter can return fewer rows than `limit` while more exist, with no `next_cursor` to reach them; `host.tool.logs` orders \"most recent first\" by description only; `host.docs.list` offers no newest-first at all although `seq` exists (`documents_list_since`). No schema carries `order`. **Consequence:** consumers...",
+  "user_persona": "An agent (customer) that calls host.webhook_inbox.create once, pastes the url into a sender and shows its user the push event in the same session; the truth-tier integration_specialist persona whose gold is reachable in 4 calls; Operator Joe reading the digest.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,61 +14,61 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given 200 fixtures of (tenant plan, used calls, tool, args, budget) spanning every `PREFLIGHT_CHECKS` row, When each is run as `dry_run: true` and then as a real call, Then `fits` equals the real call's admission (ok vs refused) in 200/200 and every non-null `refusal` equals the real error's `code`, `message` and `data` byte for byte.",
-      "test": "tests/cest_ac01_dry_run_verdict_matches_real_call.rs"
+      "description": "Given a local daemon and a writer inserting 200 documents and 200 messages during a `limit: 25` walk, When `vord_ac01_falsifier` runs 20 trials of `host.docs.list` and `host.msg.inbox` on HEAD before this PRD's code, Then it records duplicates and skips to `target/vord-census.json` and fails with `premise_false` only if both are 0 in all 20 trials AND `host.runs.list(verdict=\u2026)` never under-fills a page.",
+      "test": "tests/vord_ac01_falsifier.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given `src/handler.rs`, When the drift test scans it, Then every admission check reached by `call_published_tool` is a `PREFLIGHT_CHECKS` row and no direct call to `check_calls_quota` or `resolve_and_validate` exists outside `src/preflight.rs`.",
-      "test": "tests/cest_ac02_handler_runs_only_preflight_rows.rs"
+      "description": "Given `host.docs.list`, When the contract is dumped, Then its `order` property enumerates exactly the `DocsOrder` variants and the description ends with `default created_desc.`",
+      "test": "tests/vord_ac02_contract_order_enum.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a free tenant at 499 of 500 calls, When it dry-runs a call, Then `fits: true`, `remaining.calls_per_day.remaining` is 1 and `resets_at` equals the next UTC midnight; Given 500 of 500, Then `fits: false` and `refusal.code` is `quota_exceeded` with `next.tool` `billing.checkout`.",
-      "test": "tests/cest_ac03_dry_run_remaining_calls_per_day.rs"
+      "description": "Given a cursor minted under `created_desc`, When passed with `order: \"name_asc\"`, Then `cursor_invalid {reason: \"order\"}`.",
+      "test": "tests/vord_ac03_cursor_bound_to_order.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given 50 concurrent dry runs from one free tenant (`concurrent_calls_per_tenant` 4), When they run, Then all 50 return and no `capacity` refusal is produced, and a real call issued during them succeeds.",
-      "test": "tests/cest_ac04_fifty_concurrent_dry_runs_hold_no_slot.rs"
+      "description": "Given `src/db.rs`, When `vord_ac04_order_by_from_enum` scans the list functions behind `PAGED_VERBS`, Then every `ORDER BY` is produced by `sql_order` and a hand-typed clause fails the test naming the function.",
+      "test": "tests/vord_ac04_order_by_from_enum.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a dry run, When `host.usage(window: \"1m\")` is read, Then `calls` is unchanged, `estimates` is 1, and `SELECT count(*) FROM calls` is unchanged.",
-      "test": "tests/cest_ac05_dry_run_counts_as_estimate_not_call.rs"
+      "description": "Given 60 runs of which 7 have `verdict: \"fail\"`, When `host.runs.list(verdict=\"fail\", limit=5)` is paged, Then page 1 has 5, page 2 has 2 with no `next_cursor`, and no row is read outside the filter.",
+      "test": "tests/vord_ac05_runs_list_filters_in_sql.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given an anonymous caller, When it calls `host.estimate`, Then the response is the same `auth_required` error the real call returns (no `fits` field for unauthenticated callers).",
-      "test": "tests/cest_ac06_anonymous_estimate_is_the_real_auth_error.rs"
+      "description": "Given every `Paged` verb with a fixture, When `vord_ac05` walks it under concurrent inserts under each declared order for 20 trials, Then zero duplicate ids and zero skipped pre-existing ids.",
+      "test": "tests/vord_ac06_concurrent_inserts_every_paged_verb.rs"
     },
     {
       "id": "AC7",
-      "level": "MUST",
-      "description": "Given `host.quickstart` on a keyed tenant, When `try_before_call` is read, Then it contains a `host.estimate` row and tools/list contains `host.estimate` with `_meta.alias_of: host.tool_call`.",
-      "test": "tests/cest_ac07_estimate_listed_and_in_quickstart.rs"
+      "level": "SHOULD",
+      "description": "Given a PR that removes `NameAsc` from `DocsOrder`, When `mcphost contract dump --check` runs, Then it fails as a breaking change unless `deprecations.json` announces it.",
+      "test": "tests/vord_ac07_removed_order_variant_is_breaking.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod after deploy, When the live test publishes a tool under the fleet tenant and dry-runs it with `budget.max_tool_latency_ms: 180000`, Then `fits: false` with `refusal.data.ceiling` equal to `host.quickstart.limits.plan.budget.max_tool_latency_ms` and `host.usage.calls` unchanged (Live; evidence: `MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test cest_ac08_live_prod_dry_run_matches_ceiling`)",
-      "test": "deferred -- operator-provisioned: live prod dry run under the fleet tenant after deploy."
+      "description": "Given prod after landing, When `host.docs.list(order=\"name_asc\", limit=5)` runs on joe-test, Then the five names are ascending and the contract entry shows the enum (Live; evidence: the Technical MCP call for `host.docs.list {\"order\":\"name_asc\",\"limit\":5}` piped to `jq -r '.result.structuredContent.documents[].name' | sort -c && echo sorted` prints `sorted`, and the Technical contract check prints \u2265 2)",
+      "test": "deferred -- operator-provisioned: live prod curl of host.docs.list order=name_asc and the contract enum count after deploy."
     }
   ],
   "scope": [
-    "src/preflight.rs (new): PREFLIGHT_CHECKS (budget_ceiling, args_schema, calls_per_day, caller_limit, capacity), resolve, run_stage, EstimateCounter",
-    "src/handler.rs: call_published_tool and host_tool_call run the list; dry_run_call + host.estimate dispatch; host.estimate tools/list entry (_meta.alias_of host.tool_call)",
-    "src/kinds/mod.rs + src/kinds/python.rs: Kind::admission_capacity, a read of the capacity the real call acquires",
-    "src/control.rs: host.usage estimates, host.quickstart try_before_call host.estimate row",
-    "contracts/deprecations.json, contracts/host-tools.v1.json, docs/tools.md, www/llms.txt: regenerated for the new tool"
+    "src/kinds/chain.rs: fixtures task-local, step-key resolution, per-step source/executed/fixtured/skipped, shape validation against declared outputs.",
+    "src/handler.rs: host.tool_test fixtures argument (chain only, 256 KiB cap), host.runs.get as_fixtures schema.",
+    "src/runs.rs: as_fixtures export of child results.",
+    "src/control.rs: host.quickstart kind=chain prints the fixtures calls.",
+    "src/errors.rs: a structured error's non-string data.expected is kept."
   ],
   "non_goals": [
-    "Predicting a tool's runtime or output size; estimating Stripe dollars; changing any ceiling; kind-specific validation inside Kind::call (reported as not_checked: [\"kind_call\"])."
+    "Fixtures for non-chain tools (refused); persisting fixtures server-side; recording fixtures automatically; observed-shape validation (needs PRD-mcphost-chain-publish-time-path-check)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -76,26 +76,20 @@
     "deny_unsafe": false,
     "max_deps": null,
     "msrv": null,
-    "additional": {
-      "request_id": "A refusal's data.request_id is minted fresh per error response, so AC1 compares code, message and data with request_id removed."
-    }
+    "additional": {}
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why did explore personas lose turns to plan_limit refusals?",
-      "a": "A call's cost was known only when the host refused it; admission was reachable only by dispatching."
+      "q": "Why was a chain dry run with an unreachable step 1 read as unchecked?",
+      "a": "The dry run has no input other than the chain's own args, so a predecessor that cannot run leaves every later mapping unverifiable."
     }
   ],
-  "created_at": "2026-10-11T16:14:04Z",
+  "created_at": "2026-10-11T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Does a dry run write a tool_events row?",
-      "resolution": "No; dry runs are counted in memory for host.usage estimates only."
-    },
-    {
-      "question": "Where does the capacity check live?",
-      "resolution": "Real path acquires inside Kind::call; the list row reads Kind::admission_capacity for a dry run only."
+      "question": "Does a fixtured dry run count as a host.tool_test call for metering?",
+      "resolution": "Yes, one call, no upstream bytes (the PRD default)."
     }
   ]
 }

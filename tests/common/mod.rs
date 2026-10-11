@@ -2179,3 +2179,76 @@ pub async fn pgtr_record_responses() -> Vec<(String, Value)> {
     }
     recorded
 }
+
+// ---- PRD-mcphost-declared-ordering-per-verb helpers -------------------------
+
+/// Walk one paged verb to its end, following `next_cursor`, and return every
+/// row's `id_key` value in the order the pages delivered them. `pace` is
+/// slept between pages so a concurrent writer task gets scheduled in between.
+#[allow(clippy::too_many_arguments)]
+pub async fn vord_walk(
+    client: &McpClient,
+    verb: &str,
+    array_key: &str,
+    id_key: &str,
+    base_args: Value,
+    limit: u64,
+    pace: std::time::Duration,
+) -> Vec<String> {
+    let mut ids = Vec::new();
+    let mut cursor: Option<String> = None;
+    for _ in 0..1000 {
+        let mut args = base_args.clone();
+        args["limit"] = json!(limit);
+        if let Some(c) = &cursor {
+            args["cursor"] = json!(c);
+        }
+        let page = extract_structured(
+            &client
+                .tools_call(verb, args)
+                .await
+                .unwrap_or_else(|e| panic!("{verb}: {} {}", e.code, e.message)),
+        );
+        for row in page[array_key].as_array().unwrap_or_else(|| panic!("{verb}: no {array_key}: {page}")) {
+            ids.push(row[id_key].as_str().unwrap_or_else(|| panic!("{verb}: no {id_key}: {row}")).to_string());
+        }
+        match page.get("next_cursor").and_then(Value::as_str) {
+            Some(c) => cursor = Some(c.to_string()),
+            None => return ids,
+        }
+        tokio::time::sleep(pace).await;
+    }
+    panic!("{verb}: walk did not terminate");
+}
+
+/// `(duplicate ids, pre-existing ids the walk never delivered)`.
+pub fn vord_dups_and_skips(walked: &[String], pre_existing: &[String]) -> (usize, usize) {
+    let mut seen = std::collections::HashSet::new();
+    let dups = walked.iter().filter(|id| !seen.insert(id.as_str())).count();
+    let skips = pre_existing.iter().filter(|id| !seen.contains(id.as_str())).count();
+    (dups, skips)
+}
+
+/// Insert `total` finished runs for `tenant_id`, oldest first; the first
+/// `fails` carry `progress.budget.verdict == "fail"`, the rest `"ok"`. Returns
+/// the ids of the failing runs.
+pub async fn vord_seed_runs(server: &TestServer, tenant_id: i64, total: usize, fails: usize) -> Vec<String> {
+    let mut failing = Vec::new();
+    for i in 0..total {
+        let verdict = if i < fails { "fail" } else { "ok" };
+        let id = server
+            .state
+            .db
+            .insert_done_run_with_progress_for_test(
+                tenant_id,
+                "vord_echo".to_string(),
+                json!({"budget": {"verdict": verdict}}).to_string(),
+            )
+            .await
+            .expect("seed run");
+        if i < fails {
+            failing.push(id);
+        }
+    }
+    failing
+}

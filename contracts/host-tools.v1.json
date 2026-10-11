@@ -710,6 +710,14 @@
             "minimum": 1,
             "type": "integer"
           },
+          "order": {
+            "default": "seq_asc",
+            "description": "Row order; default seq_asc.",
+            "enum": [
+              "seq_asc"
+            ],
+            "type": "string"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
@@ -855,6 +863,16 @@
             "maximum": 1000,
             "minimum": 1,
             "type": "integer"
+          },
+          "order": {
+            "default": "created_desc",
+            "description": "Row order; default created_desc.",
+            "enum": [
+              "created_desc",
+              "created_asc",
+              "name_asc"
+            ],
+            "type": "string"
           },
           "prefix": {
             "description": "Only list documents whose name starts with this prefix.",
@@ -1766,6 +1784,14 @@
             "minimum": 1,
             "type": "integer"
           },
+          "order": {
+            "default": "created_asc",
+            "description": "Row order; default created_asc.",
+            "enum": [
+              "created_asc"
+            ],
+            "type": "string"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
@@ -1882,6 +1908,14 @@
             "maximum": 100,
             "minimum": 1,
             "type": "integer"
+          },
+          "order": {
+            "default": "seq_asc",
+            "description": "Row order; default seq_asc.",
+            "enum": [
+              "seq_asc"
+            ],
+            "type": "string"
           },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
@@ -2714,6 +2748,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "cursor": {
+            "description": "Opaque keyset cursor: pass the previous page's next_cursor verbatim; omit for the first page.",
+            "type": "string"
+          },
           "end_user_subject": {
             "description": "Only runs that ran as this end user's subject.",
             "type": "string"
@@ -2727,8 +2765,20 @@
             "type": "boolean"
           },
           "limit": {
-            "description": "Max runs to return; default 20, clamped to 50 when include_result is true (200 otherwise).",
+            "default": 20,
+            "description": "Page size, 1..=max for this verb (a larger value is clamped and reported in _meta.mcphost.limit_clamped).",
+            "maximum": 200,
+            "minimum": 1,
             "type": "integer"
+          },
+          "order": {
+            "default": "created_desc",
+            "description": "Row order; default created_desc.",
+            "enum": [
+              "created_desc",
+              "created_asc"
+            ],
+            "type": "string"
           },
           "parent_run_id": {
             "description": "Only the composed child runs of this parent run id.",
@@ -2759,8 +2809,8 @@
         "type": "object"
       },
       "name": "host.runs.list",
-      "since": "0.58.0",
-      "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
+      "paged": true,
+      "since": "0.58.0"
     },
     {
       "description": "Read part n of a run's result (host.runs.get/wait inline only part 0). A run whose whole result fit inline reads back parts: 1, n: 0 with the full result. n past the last part fails with not_found.",
@@ -5966,6 +6016,14 @@
             "minimum": 1,
             "type": "integer"
           },
+          "order": {
+            "default": "seq_asc",
+            "description": "Row order; default seq_asc.",
+            "enum": [
+              "seq_asc"
+            ],
+            "type": "string"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
@@ -6110,6 +6168,16 @@
             "maximum": 1000,
             "minimum": 1,
             "type": "integer"
+          },
+          "order": {
+            "default": "created_desc",
+            "description": "Row order; default created_desc.",
+            "enum": [
+              "created_desc",
+              "created_asc",
+              "name_asc"
+            ],
+            "type": "string"
           },
           "prefix": {
             "description": "Only list documents whose name starts with this prefix.",
@@ -6993,6 +7061,14 @@
             "minimum": 1,
             "type": "integer"
           },
+          "order": {
+            "default": "created_asc",
+            "description": "Row order; default created_asc.",
+            "enum": [
+              "created_asc"
+            ],
+            "type": "string"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
@@ -7108,6 +7184,14 @@
             "maximum": 100,
             "minimum": 1,
             "type": "integer"
+          },
+          "order": {
+            "default": "seq_asc",
+            "description": "Row order; default seq_asc.",
+            "enum": [
+              "seq_asc"
+            ],
+            "type": "string"
           },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
@@ -7908,6 +7992,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "cursor": {
+            "description": "Opaque keyset cursor: pass the previous page's next_cursor verbatim; omit for the first page.",
+            "type": "string"
+          },
           "end_user_subject": {
             "description": "Only runs that ran as this end user's subject.",
             "type": "string"
@@ -7921,8 +8009,20 @@
             "type": "boolean"
           },
           "limit": {
-            "description": "Max runs to return; default 20, clamped to 50 when include_result is true (200 otherwise).",
+            "default": 20,
+            "description": "Page size, 1..=max for this verb (a larger value is clamped and reported in _meta.mcphost.limit_clamped).",
+            "maximum": 200,
+            "minimum": 1,
             "type": "integer"
+          },
+          "order": {
+            "default": "created_desc",
+            "description": "Row order; default created_desc.",
+            "enum": [
+              "created_desc",
+              "created_asc"
+            ],
+            "type": "string"
           },
           "parent_run_id": {
             "description": "Only the composed child runs of this parent run id.",

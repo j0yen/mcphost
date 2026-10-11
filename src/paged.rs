@@ -10,12 +10,18 @@
 //! list, so the set a handler is paged under and the set the contract
 //! advertises cannot separate.
 //!
-//! **The cursor.** `base64url("v1:<seq>:<id>:<hmac8>")`, the tag being the
+//! **The cursor.** `base64url("v1:<order>:<seq>:<id>:<hmac8>")`, the tag being the
 //! first 8 bytes of an HMAC-SHA256 under the per-process secret
 //! `session_bind.rs` already holds, with the tenant id in the HMAC input. A
 //! cursor minted before a restart, by another tenant, or typed by hand is
 //! refused as `cursor_invalid` with `data.reason` one of `encoding`,
-//! `version`, `signature`.
+//! `version`, `signature`; one minted under a different `order` than the
+//! call passes is refused with reason `order`.
+//!
+//! **Declared orderings (PRD-mcphost-declared-ordering-per-verb).** Each
+//! `Paged` verb names an [`OrderEnum`] ([`order_enum!`]); the schema's
+//! `order` property, the SQL `ORDER BY` ([`Paged::sql_order`]) and the keyset
+//! predicate ([`keyset_clause`]) are all generated from that one declaration.
 
 use base64::Engine as _;
 use serde_json::{Map, Value, json};
@@ -43,16 +49,31 @@ pub const NEXT_CURSOR_DESCRIPTION: &str =
     "Opaque cursor for the next page; absent (key omitted) on the last page.";
 pub const TRUNCATED_DESCRIPTION: &str = "true when more rows exist past this page.";
 
-/// The keyset position of one row: `(seq, id)`.
+/// The keyset position of one row: `(seq, id)`, minted under one `order`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cursor {
     pub seq: i64,
     pub id: String,
+    /// The wire name of the [`OrderEnum`] variant the cursor was minted
+    /// under (empty until [`Cursor::with_order`] stamps it).
+    pub order: String,
 }
 
 impl Cursor {
     pub fn new(seq: i64, id: impl Into<String>) -> Self {
-        Cursor { seq, id: id.into() }
+        Cursor { seq, id: id.into(), order: String::new() }
+    }
+
+    /// Stamp the order this cursor is minted under.
+    pub fn with_order(mut self, order: impl Into<String>) -> Self {
+        self.order = order.into();
+        self
+    }
+
+    /// Requirement 3: a cursor minted under one order passed with another is
+    /// `cursor_invalid {reason: "order"}`.
+    pub fn require_order(&self, want: &str) -> Result<(), AppError> {
+        if self.order == want { Ok(()) } else { Err(cursor_invalid("order")) }
     }
 
     fn tag(secret: &SessionBindings, tenant_id: i64, body: &str) -> String {
@@ -62,7 +83,7 @@ impl Cursor {
 
     /// Mint the opaque string for `tenant_id`.
     pub fn encode(&self, secret: &SessionBindings, tenant_id: i64) -> String {
-        let body = format!("v1:{}:{}", self.seq, self.id);
+        let body = format!("v1:{}:{}:{}", self.order, self.seq, self.id);
         let tag = Self::tag(secret, tenant_id, &body);
         base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(format!("{body}:{tag}"))
     }
@@ -82,13 +103,14 @@ impl Cursor {
             return Err(cursor_invalid("version"));
         }
         let (body_rest, tag) = rest.rsplit_once(':').ok_or_else(|| cursor_invalid("encoding"))?;
-        let (seq, id) = body_rest.split_once(':').ok_or_else(|| cursor_invalid("encoding"))?;
+        let (order, rest) = body_rest.split_once(':').ok_or_else(|| cursor_invalid("encoding"))?;
+        let (seq, id) = rest.split_once(':').ok_or_else(|| cursor_invalid("encoding"))?;
         let seq: i64 = seq.parse().map_err(|_| cursor_invalid("encoding"))?;
-        let body = format!("v1:{seq}:{id}");
+        let body = format!("v1:{order}:{seq}:{id}");
         if Self::tag(secret, tenant_id, &body) != tag {
             return Err(cursor_invalid("signature"));
         }
-        Ok(Cursor { seq, id: id.to_string() })
+        Ok(Cursor { seq, id: id.to_string(), order: order.to_string() })
     }
 }
 
@@ -200,6 +222,165 @@ pub fn finish_page(
     }
 }
 
+/// Sort direction of one declared order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dir {
+    Asc,
+    Desc,
+}
+
+impl Dir {
+    fn sql(self) -> &'static str {
+        match self {
+            Dir::Asc => "ASC",
+            Dir::Desc => "DESC",
+        }
+    }
+
+    fn cmp(self) -> &'static str {
+        match self {
+            Dir::Asc => ">",
+            Dir::Desc => "<",
+        }
+    }
+}
+
+/// How the keyset predicate for an order is built.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyKind {
+    /// `(col, id_col) <cmp> (cursor.seq, cursor.id)`: `col` may repeat, the
+    /// id column breaks the tie.
+    Tuple,
+    /// `col <cmp> cursor.seq`: `col` is an integer that is unique in the
+    /// verb's row set, so it is its own tiebreak.
+    UniqueInt,
+    /// `col <cmp> cursor.id`: `col` is text that is unique in the verb's row
+    /// set (the cursor's `id` carries it).
+    UniqueText,
+}
+
+/// One declared ordering: its wire name, the sort column, the id tiebreak
+/// column and the direction.
+#[derive(Debug, Clone, Copy)]
+pub struct OrderSpec {
+    pub name: &'static str,
+    pub col: &'static str,
+    pub id_col: &'static str,
+    pub dir: Dir,
+    pub key: KeyKind,
+}
+
+/// The orderings a verb offers, generated by [`order_enum!`].
+pub trait OrderEnum: Copy + PartialEq + std::fmt::Debug + 'static {
+    const ALL: &'static [Self];
+    const DEFAULT: Self;
+    fn spec(self) -> OrderSpec;
+
+    fn name(self) -> &'static str {
+        self.spec().name
+    }
+
+    /// `(sort column, direction)`.
+    fn order_by(self) -> (&'static str, Dir) {
+        let s = self.spec();
+        (s.col, s.dir)
+    }
+
+    fn parse(raw: &str) -> Option<Self> {
+        Self::ALL.iter().copied().find(|o| o.name() == raw)
+    }
+
+    fn names() -> Vec<&'static str> {
+        Self::ALL.iter().map(|o| o.name()).collect()
+    }
+
+    /// `ORDER BY <col> <dir>, <id> <dir>`.
+    fn sql_order(self) -> String {
+        let s = self.spec();
+        format!("ORDER BY {} {}, {} {}", s.col, s.dir.sql(), s.id_col, s.dir.sql())
+    }
+
+    /// The input-schema `order` property.
+    fn schema_property() -> Value {
+        json!({
+            "type": "string",
+            "enum": Self::names(),
+            "default": Self::DEFAULT.name(),
+            "description": format!("Row order; default {}.", Self::DEFAULT.name()),
+        })
+    }
+}
+
+/// Define a verb's ordering enum. The variant list is the only place a
+/// column, direction or wire name is written.
+macro_rules! order_enum {
+    ($name:ident { default: $def:ident; $( $var:ident => ($lit:literal, $col:literal, $idc:literal, $dir:ident, $key:ident) ),+ $(,)? }) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum $name { $( $var ),+ }
+        impl OrderEnum for $name {
+            const ALL: &'static [Self] = &[ $( Self::$var ),+ ];
+            const DEFAULT: Self = Self::$def;
+            fn spec(self) -> OrderSpec {
+                match self {
+                    $( Self::$var => OrderSpec {
+                        name: $lit, col: $col, id_col: $idc, dir: Dir::$dir, key: KeyKind::$key,
+                    } ),+
+                }
+            }
+        }
+    };
+}
+
+order_enum! {
+    DocsOrder {
+        default: CreatedDesc;
+        CreatedDesc => ("created_desc", "seq", "id", Desc, Tuple),
+        CreatedAsc => ("created_asc", "seq", "id", Asc, Tuple),
+        NameAsc => ("name_asc", "name", "id", Asc, UniqueText),
+    }
+}
+order_enum! { InboxOrder { default: CreatedAsc; CreatedAsc => ("created_asc", "m.created_unix_ms", "m.id", Asc, Tuple) } }
+order_enum! { ThreadOrder { default: SeqAsc; SeqAsc => ("seq_asc", "m.seq", "m.id", Asc, UniqueInt) } }
+order_enum! { ChannelOrder { default: SeqAsc; SeqAsc => ("seq_asc", "seq", "id", Asc, UniqueInt) } }
+order_enum! {
+    RunsOrder {
+        default: CreatedDesc;
+        CreatedDesc => ("created_desc", "rowid", "id", Desc, Tuple),
+        CreatedAsc => ("created_asc", "rowid", "id", Asc, Tuple),
+    }
+}
+
+/// Resolve a call's `order`: absent/null -> the enum's default; an unknown
+/// name -> `args_invalid` listing the declared ones.
+pub fn resolve_order<O: OrderEnum>(args: &Value) -> Result<O, AppError> {
+    let Some(raw) = args.get("order").filter(|v| !v.is_null()) else {
+        return Ok(O::DEFAULT);
+    };
+    raw.as_str().and_then(O::parse).ok_or_else(|| {
+        AppError::InvalidArgs(format!("order: must be one of {}", O::names().join(", ")))
+    })
+}
+
+/// The keyset predicate for resuming after `cursor` under `order`, with its
+/// bind values; placeholders are numbered from `first_idx`.
+pub fn keyset_clause<O: OrderEnum>(
+    order: O,
+    cursor: &Cursor,
+    first_idx: usize,
+) -> (String, Vec<rusqlite::types::Value>) {
+    use rusqlite::types::Value as Sql;
+    let s = order.spec();
+    let cmp = s.dir.cmp();
+    match s.key {
+        KeyKind::Tuple => (
+            format!("({}, {}) {cmp} (?{first_idx}, ?{})", s.col, s.id_col, first_idx + 1),
+            vec![Sql::Integer(cursor.seq), Sql::Text(cursor.id.clone())],
+        ),
+        KeyKind::UniqueInt => (format!("{} {cmp} ?{first_idx}", s.col), vec![Sql::Integer(cursor.seq)]),
+        KeyKind::UniqueText => (format!("{} {cmp} ?{first_idx}", s.col), vec![Sql::Text(cursor.id.clone())]),
+    }
+}
+
 /// A verb that pages. Implemented only through [`paged_verbs!`].
 pub trait Paged {
     const VERB: &'static str;
@@ -207,7 +388,27 @@ pub trait Paged {
     const DEFAULT_LIMIT: u32;
     const MAX_LIMIT: u32;
     type Row;
-    fn cursor_of(row: &Self::Row) -> Cursor;
+    type Order: OrderEnum;
+    /// The keyset position of `row` under `order` (unstamped).
+    fn cursor_of(row: &Self::Row, order: Self::Order) -> Cursor;
+
+    /// [`Paged::cursor_of`], stamped with `order` so a cursor cannot be
+    /// replayed under another one.
+    fn cursor_at(row: &Self::Row, order: Self::Order) -> Cursor {
+        Self::cursor_of(row, order).with_order(order.name())
+    }
+
+    /// `(sort column, "id")`: the keyset columns for `order`.
+    fn keyset(order: Self::Order) -> (&'static str, &'static str) {
+        let s = order.spec();
+        (s.col, s.id_col)
+    }
+
+    /// `ORDER BY <col> <dir>, id <dir>` -- the only place a list query's
+    /// ordering is written.
+    fn sql_order(order: Self::Order) -> String {
+        order.sql_order()
+    }
 
     /// Input properties this verb's schema gets.
     fn input_properties() -> Map<String, Value> {
@@ -220,6 +421,7 @@ pub trait Paged {
             }),
         );
         m.insert("cursor".into(), json!({"type": "string", "description": CURSOR_DESCRIPTION}));
+        m.insert("order".into(), <Self::Order as OrderEnum>::schema_property());
         m
     }
 
@@ -241,12 +443,15 @@ pub struct PagedSpec {
     pub key: &'static str,
     pub default_limit: u32,
     pub max_limit: u32,
+    /// Declared order names, in declaration order, and the default.
+    pub orders: fn() -> Vec<&'static str>,
+    pub default_order: fn() -> &'static str,
     input_properties: fn() -> Map<String, Value>,
 }
 
 macro_rules! paged_verbs {
     ($( $name:ident { verb: $verb:literal, key: $key:literal, default: $def:literal, max: $max:literal,
-                      row: $row:ty, cursor_of: $cur:expr } )+) => {
+                      row: $row:ty, order: $ord:ty, cursor_of: $cur:expr } )+) => {
         $(
             pub struct $name;
             impl Paged for $name {
@@ -255,7 +460,8 @@ macro_rules! paged_verbs {
                 const DEFAULT_LIMIT: u32 = $def;
                 const MAX_LIMIT: u32 = $max;
                 type Row = $row;
-                fn cursor_of(row: &Self::Row) -> Cursor { ($cur)(row) }
+                type Order = $ord;
+                fn cursor_of(row: &Self::Row, order: Self::Order) -> Cursor { ($cur)(row, order) }
             }
         )+
         /// Every canonical verb that derives [`Paged`], generated from the
@@ -263,6 +469,8 @@ macro_rules! paged_verbs {
         pub const PAGED_VERBS: &[&str] = &[$( $verb ),+];
         const PAGED_SPECS: &[PagedSpec] = &[$(
             PagedSpec { verb: $verb, key: $key, default_limit: $def, max_limit: $max,
+                        orders: <$ord as OrderEnum>::names,
+                        default_order: || <$ord as OrderEnum>::DEFAULT.name(),
                         input_properties: <$name as Paged>::input_properties }
         ),+];
     };
@@ -270,13 +478,23 @@ macro_rules! paged_verbs {
 
 paged_verbs! {
     ChannelRead { verb: "host.channel.read", key: "posts", default: 50, max: 100,
-        row: crate::db::ChannelPostRow, cursor_of: |p: &crate::db::ChannelPostRow| Cursor::new(p.seq, "") }
+        row: crate::db::ChannelPostRow, order: ChannelOrder,
+        cursor_of: |p: &crate::db::ChannelPostRow, _o: ChannelOrder| Cursor::new(p.seq, p.id.clone()) }
     MsgInbox { verb: "host.msg.inbox", key: "messages", default: 50, max: 100,
-        row: crate::db::MessageRow, cursor_of: |m: &crate::db::MessageRow| Cursor::new(m.created_unix_ms, m.id.clone()) }
+        row: crate::db::MessageRow, order: InboxOrder,
+        cursor_of: |m: &crate::db::MessageRow, _o: InboxOrder| Cursor::new(m.created_unix_ms, m.id.clone()) }
     MsgThread { verb: "host.msg.thread", key: "messages", default: 50, max: 100,
-        row: crate::db::MessageRow, cursor_of: |m: &crate::db::MessageRow| Cursor::new(m.seq, "") }
+        row: crate::db::MessageRow, order: ThreadOrder,
+        cursor_of: |m: &crate::db::MessageRow, _o: ThreadOrder| Cursor::new(m.seq, m.id.clone()) }
+    RunsList { verb: "host.runs.list", key: "runs", default: 20, max: 200,
+        row: crate::db::RunPageRow, order: RunsOrder,
+        cursor_of: |r: &crate::db::RunPageRow, _o: RunsOrder| Cursor::new(r.rowid, r.run.id.clone()) }
     DocsList { verb: "host.docs.list", key: "documents", default: 100, max: 1000,
-        row: crate::db::DocumentRow, cursor_of: |d: &crate::db::DocumentRow| Cursor::new(d.seq, d.name.clone()) }
+        row: crate::db::DocumentRow, order: DocsOrder,
+        cursor_of: |d: &crate::db::DocumentRow, o: DocsOrder| match o {
+            DocsOrder::NameAsc => Cursor::new(0, d.name.clone()),
+            DocsOrder::CreatedDesc | DocsOrder::CreatedAsc => Cursor::new(d.seq, d.id.clone()),
+        } }
 }
 
 /// The [`PagedSpec`] for a canonical verb, `None` if it does not page.
@@ -329,7 +547,6 @@ pub const UNPAGED_VERBS: &[(&str, &str)] = &[
     ("host.oauth.scopes", UNPAGED_BOUNDED),
     ("host.oauth.trusted_issuers", UNPAGED_BOUNDED),
     ("host.policy.list", UNPAGED_BOUNDED),
-    ("host.runs.list", UNPAGED_WINDOW),
     ("host.secret.list", UNPAGED_BOUNDED),
     ("host.state.list", UNPAGED_WINDOW),
     ("host.state.query", UNPAGED_WINDOW),

@@ -106,7 +106,27 @@ pub fn render_tools_section(kinds: &KindRegistry) -> String {
     for name in tenant_tool_names(kinds) {
         out.push_str(&format!("- `{name}`\n"));
     }
+    out.push_str(&render_paging_section());
     out.push_str(TOOLS_SECTION_END);
+    out
+}
+
+/// PRD-mcphost-declared-ordering-per-verb requirement 7: the `## Paging`
+/// section, one line per `Paged` verb, its orders and default generated from
+/// the same [`crate::paged`] declarations the input schemas are.
+pub fn render_paging_section() -> String {
+    let mut out = String::from("\n## Paging\n\n");
+    out.push_str(
+        "These verbs take `limit` and `cursor` and offer an `order` (pass `next_cursor` back with the \
+         same `order`; a cursor minted under another order is `cursor_invalid`):\n\n",
+    );
+    for verb in crate::paged::PAGED_VERBS {
+        if let Some(spec) = crate::paged::paged_spec(verb) {
+            let orders = (spec.orders)().iter().map(|o| format!("`{o}`")).collect::<Vec<_>>().join(", ");
+            // Not a "- `name`" line: the tools parity test reads those as tool names.
+            out.push_str(&format!("- {verb}: orders {orders}; default `{}`.\n", (spec.default_order)()));
+        }
+    }
     out
 }
 

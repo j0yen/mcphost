@@ -721,6 +721,27 @@ async fn main() -> anyhow::Result<()> {
                 let bytes = mcphost::api_contract::dump_contract_bytes(&kinds);
                 if check {
                     let existing = std::fs::read(&path).unwrap_or_default();
+                    // PRD-mcphost-declared-ordering-per-verb requirement 6 /
+                    // AC7: a removed field or `order` variant, or a changed
+                    // default order, is a breaking change unless
+                    // `deprecations.json` (beside the contract) announces it
+                    // with a valid lead time. Checked before the byte compare
+                    // so a breaking change is named as one, not as "stale".
+                    if let Ok(committed) = serde_json::from_slice::<serde_json::Value>(&existing) {
+                        let ledger = mcphost::api_contract::load_deprecations(&path.with_file_name("deprecations.json"))?;
+                        let live = mcphost::api_contract::dump_contract(&kinds);
+                        let breaking = mcphost::api_contract::diff(&committed, &live, &ledger, mcphost::state::now_unix());
+                        if !breaking.is_empty() {
+                            eprintln!(
+                                "contract dump --check: {} would be a breaking change unless contracts/deprecations.json announces it:",
+                                path.display()
+                            );
+                            for v in &breaking {
+                                eprintln!("  - {}", v.message());
+                            }
+                            std::process::exit(1);
+                        }
+                    }
                     if existing == bytes {
                         println!(
                             "contract dump --check: {} is up to date (contract_version {} contract_sha {})",

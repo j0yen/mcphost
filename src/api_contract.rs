@@ -436,6 +436,20 @@ fn narrowing_reason(old: &Value, new: &Value, was_required: bool, is_required: b
     None
 }
 
+/// PRD-mcphost-declared-ordering-per-verb requirement 6: the `order` property
+/// of a `Paged` verb declares its default; a changed default silently reorders
+/// every caller that omits `order`, so it is breaking exactly as a removed
+/// variant is (the enum-shrink case is already caught by [`narrowing_reason`]).
+fn order_default_changed(field: &str, old: &Value, new: &Value) -> Option<String> {
+    if field != "order" {
+        return None;
+    }
+    match (old.get("default"), new.get("default")) {
+        (Some(a), Some(b)) if a != b => Some(format!("default order changed from {a} to {b}")),
+        _ => None,
+    }
+}
+
 /// Walks `old_schema.properties`/`required` against `new_schema`'s own,
 /// one level deep (every real `host.*` argument schema this crate builds
 /// is flat -- see [`narrowing_reason`]'s doc), pushing a [`Violation`] for
@@ -469,12 +483,14 @@ fn diff_properties(
         match new_props.and_then(|p| p.get(field)) {
             None => check_removed(&path, deprecations, today_unix, violations),
             Some(new_field_schema) => {
-                if let Some(detail) = narrowing_reason(
+                let reason = narrowing_reason(
                     old_field_schema,
                     new_field_schema,
                     old_required.contains(&field.as_str()),
                     new_required.contains(&field.as_str()),
-                ) {
+                )
+                .or_else(|| order_default_changed(field, old_field_schema, new_field_schema));
+                if let Some(detail) = reason {
                     check_narrowed(&path, detail, deprecations, violations);
                 }
             }
