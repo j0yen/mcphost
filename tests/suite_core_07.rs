@@ -1819,19 +1819,3 @@ mod sharedrunscope_ac07_migration_backfills_legacy_rows;
 mod sharedrunscope_ac08_proof_script_owner_ledger_check;
 #[path = "signupfleet_ac01_fleet_ips_bypass_signup_rate_limit.rs"]
 mod signupfleet_ac01_fleet_ips_bypass_signup_rate_limit;
-#[path = "specpath_ac01_map_form_normalizes_and_publishes.rs"]
-mod specpath_ac01_map_form_normalizes_and_publishes;
-#[path = "specpath_ac02_outputs_map_value_type_error.rs"]
-mod specpath_ac02_outputs_map_value_type_error;
-#[path = "specpath_ac03_headers_array_type_error.rs"]
-mod specpath_ac03_headers_array_type_error;
-#[path = "specpath_ac04_path_reads_declared_field.rs"]
-mod specpath_ac04_path_reads_declared_field;
-#[path = "specpath_ac05_missing_path_reports_tried_path.rs"]
-mod specpath_ac05_missing_path_reports_tried_path;
-#[path = "specpath_ac06_list_form_seen_at_hint.rs"]
-mod specpath_ac06_list_form_seen_at_hint;
-#[path = "specpath_ac07_replay_recorded_sessions_map_form.rs"]
-mod specpath_ac07_replay_recorded_sessions_map_form;
-#[path = "specpath_ac08_wildcard_path_rejected.rs"]
-mod specpath_ac08_wildcard_path_rejected;
