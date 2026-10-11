@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.107.17 — 2026-10-11
+
+`host.tool_test(name, args, fixtures)` dry-runs a chain against recorded step results
+(PRD-mcphost-chain-dry-run): `fixtures` maps a step number or tool name to the result that step
+returned; a fixtured step executes nothing and later mappings resolve against it. Each step in the
+report carries `source` (`fixture` | `dry_run` | `skipped`, with a `reason` when skipped), and the
+report counts `executed`, `fixtured` and `skipped`. A fixture carrying none of a step's declared
+`outputs` fails `fixture_shape_mismatch` (`data.expected`, `data.given`); fixtures on a non-chain
+tool fail `fixtures_not_applicable`; over 256 KiB fail `fixtures_too_large` (`data.limit_bytes`).
+`host.runs.get(run_id, as_fixtures=true)` returns a chain run's child results as `fixtures`.
+`host.quickstart(kind="chain")` prints both calls.
+
 ## v0.107.13 — 2026-10-10
 
 `host.webhook_inbox.create(name, verify?, rotate?)` makes a webhook inbox one call

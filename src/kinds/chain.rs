@@ -776,7 +776,67 @@ fn actual_result_evidence(r: &StepRef, base: &Value) -> Map<String, Value> {
     out
 }
 
-async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) -> Value {
+tokio::task_local! {
+    /// PRD-mcphost-chain-dry-run: the `fixtures` argument of the enclosing
+    /// `host.tool_test`, keyed by the caller's raw step key (1-based number
+    /// or step tool name). Task-local (not a `CallCtx` field) because it is
+    /// per-request and read only by [`dry_run_report`].
+    static DRY_RUN_FIXTURES: Map<String, Value>;
+}
+
+/// Runs `fut` with `fixtures` visible to the chain dry run inside it.
+pub async fn with_fixtures<F: std::future::Future>(fixtures: Map<String, Value>, fut: F) -> F::Output {
+    DRY_RUN_FIXTURES.scope(fixtures, fut).await
+}
+
+/// Resolves the caller's fixture keys (1-based step number, or the tool name
+/// of the first step using it) to step numbers.
+fn resolve_fixture_steps(
+    steps: &[ParsedStep],
+    raw: &Map<String, Value>,
+) -> Result<std::collections::BTreeMap<usize, Value>, KindError> {
+    let mut out = std::collections::BTreeMap::new();
+    for (key, value) in raw {
+        let step_no = if let Ok(n) = key.parse::<usize>() {
+            if n == 0 || n > steps.len() {
+                return Err(KindError::structured_with(
+                    "fixture_step_unknown",
+                    format!("fixture key '{key}': the chain has {} steps", steps.len()),
+                    json!({"key": key, "steps": steps.len()}),
+                ));
+            }
+            n
+        } else {
+            let matches: Vec<usize> = steps
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| s.tool == *key)
+                .map(|(i, _)| i + 1)
+                .collect();
+            match matches.as_slice() {
+                [] => {
+                    return Err(KindError::structured_with(
+                        "fixture_step_unknown",
+                        format!("fixture key '{key}': no step uses a tool with that name"),
+                        json!({"key": key, "steps": steps.len()}),
+                    ));
+                }
+                [n] => *n,
+                _ => {
+                    return Err(KindError::structured_with(
+                        "fixture_step_ambiguous",
+                        format!("fixture key '{key}': steps {matches:?} all use that tool; use the step number"),
+                        json!({"key": key, "steps": matches}),
+                    ));
+                }
+            }
+        };
+        out.insert(step_no, value.clone());
+    }
+    Ok(out)
+}
+
+async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) -> Result<Value, KindError> {
     let inputs_required: Vec<String> = collect_input_refs(steps).into_iter().map(|r| r.name).collect();
     let sv = steps_verdict(
         ctx.compose_db.as_ref(),
@@ -785,15 +845,40 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
         steps,
     )
     .await;
+    let fixtures = match DRY_RUN_FIXTURES.try_with(|f| f.clone()) {
+        Ok(raw) => resolve_fixture_steps(steps, &raw)?,
+        Err(_) => Default::default(),
+    };
+    // R4: a fixture for a step whose tool declares `outputs` must carry at
+    // least one of them -- refused with both key sets, before anything runs.
+    if let (Some(db), Some(kinds)) = (ctx.compose_db.as_ref(), ctx.compose_kinds.as_ref()) {
+        for (step_no, fixture) in &fixtures {
+            let tool = &steps[step_no - 1].tool;
+            let expected = declared_output_names(db, kinds, ctx.tenant_id, tool).await.unwrap_or_default();
+            if expected.is_empty() {
+                continue;
+            }
+            let given: Vec<String> = fixture.as_object().map(|m| m.keys().cloned().collect()).unwrap_or_default();
+            if !expected.iter().any(|k| given.contains(k)) {
+                return Err(KindError::structured_with(
+                    "fixture_shape_mismatch",
+                    format!(
+                        "fixture for step {step_no} ('{tool}') carries none of the declared outputs {expected:?} (given keys {given:?})"
+                    ),
+                    json!({"step": step_no, "expected": expected, "given": given}),
+                ));
+            }
+        }
+    }
     if sv.overall["verdict"] == json!("will_fail") {
-        return json!({
+        return Ok(json!({
             "chain_dry_run": true,
             "steps": [],
             "inputs_required": inputs_required,
             "verdict": "will_fail",
             "failures": sv.overall["failures"].clone(),
             "evidence": sv.overall["failures"].clone(),
-        });
+        }));
     }
 
     // Steps whose actual dry-run result some later mapping reads and the
@@ -818,6 +903,9 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
     // step_no -> (tool, why it could not be dry-run)
     let mut not_runnable: std::collections::BTreeMap<usize, (String, String)> = std::collections::BTreeMap::new();
     let mut any_unresolved: Option<(usize, String)> = None;
+    // With fixtures in play every tenant step is dry-run (not just those a
+    // later mapping reads), so each carries its `result`.
+    let run_all = !fixtures.is_empty();
     for (i, step) in steps.iter().enumerate() {
         let step_no = i + 1;
         let context = step_context(call_args, prev.as_ref(), &step_results);
@@ -859,6 +947,23 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
             prev_fields = Some(m.keys().cloned().collect::<Vec<_>>());
         }
         let is_host = HOST_STEPS_ALLOWED.contains(&step.tool.as_str());
+        // PRD-mcphost-chain-dry-run R2: a fixtured step executes nothing --
+        // the recorded value stands in for its result.
+        if let Some(fixture) = fixtures.get(&step_no) {
+            let mut entry = json!({
+                "step": step_no,
+                "tool": step.tool,
+                "source": "fixture",
+                "resolved_args": resolved,
+                "resolved": if is_host { "host" } else { "tenant" },
+                "result": fixture,
+            });
+            insert_prev_fields(&mut entry, &prev_fields);
+            report.push(entry);
+            step_results.push(fixture.clone());
+            prev = Some(fixture.clone());
+            continue;
+        }
         if is_host
             && !unresolved
             && let Some(host) = ctx.host_dispatch.as_ref()
@@ -869,6 +974,7 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
                         "step": step_no,
                         "tool": step.tool,
                         "resolved_args": resolved,
+                        "source": "dry_run",
                         "resolved": "host",
                         "side_effects": true,
                         "dispatched": true,
@@ -885,6 +991,7 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
                         "step": step_no,
                         "tool": step.tool,
                         "resolved_args": resolved,
+                        "source": "dry_run",
                         "resolved": "host",
                         "side_effects": true,
                         "dispatched": true,
@@ -914,7 +1021,8 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
         // PRD-mcphost-chain-prev-contract P0 requirement 3: a tenant step a
         // later mapping reads is dry-run once so that mapping can be
         // resolved against its actual result.
-        if !is_host && needed.contains(&step_no) {
+        let mut skip_reason = "no later step reads its result".to_string();
+        if !is_host && (run_all || needed.contains(&step_no)) {
             let outcome = if unresolved {
                 Err("its own arguments did not resolve".to_string())
             } else {
@@ -923,6 +1031,7 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
             match outcome {
                 Ok(result) => {
                     if let Value::Object(map) = &mut entry {
+                        map.insert("source".to_string(), json!("dry_run"));
                         map.insert("dispatched".to_string(), json!(true));
                         map.insert("result".to_string(), result.clone());
                     }
@@ -935,15 +1044,31 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
                     if let Value::Object(map) = &mut entry {
                         map.insert("error".to_string(), json!(why));
                     }
+                    skip_reason = why.clone();
                     not_runnable.insert(step_no, (step.tool.clone(), why));
                 }
             }
+        } else if is_host {
+            skip_reason = "a host step is dispatched only when its arguments resolve".to_string();
+        }
+        if let Value::Object(map) = &mut entry {
+            map.insert("source".to_string(), json!("skipped"));
+            map.insert("reason".to_string(), json!(skip_reason));
         }
         report.push(entry);
         step_results.push(Value::Null);
         prev = None;
     }
-    let mut out = json!({"chain_dry_run": true, "steps": report, "inputs_required": inputs_required});
+    let count = |source: &str| report.iter().filter(|e| e["source"] == json!(source)).count();
+    let (executed, fixtured, skipped) = (count("dry_run"), count("fixture"), count("skipped"));
+    let mut out = json!({
+        "chain_dry_run": true,
+        "steps": report,
+        "inputs_required": inputs_required,
+        "executed": executed,
+        "fixtured": fixtured,
+        "skipped": skipped,
+    });
     // Verdict: a proven mismatch against an actual result is `will_fail`;
     // `unverifiable` only when a predecessor a mapping reads could not be
     // dry-run (or a path is still unresolved for another reason -- a
@@ -977,7 +1102,7 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
             map.insert("next".to_string(), json!({"tool": "host_tool_call"}));
         }
     }
-    out
+    Ok(out)
 }
 
 fn insert_prev_fields(entry: &mut Value, prev_fields: &Option<Vec<String>>) {
@@ -1048,7 +1173,7 @@ impl Kind for ChainKind {
         // no ordinary tenant-tool step (AC5: an allowlisted host step is the
         // one exception -- see `dry_run_report`'s own doc comment).
         if ctx.test_mode {
-            return Ok(dry_run_report(&steps, &args, ctx).await);
+            return dry_run_report(&steps, &args, ctx).await;
         }
 
         // PRD-mcphost-chain-run-lineage requirement 3 (AC3): refuse before
@@ -1338,7 +1463,7 @@ mod tests {
     async fn dry_run_resolves_input_paths_and_flags_prev_as_unresolved() {
         let steps = parse_steps(&spec_two_steps()).expect("parse"); // allowlist: test-only expect inside #[cfg(test)]
         let ctx = CallCtx::for_test(1, "t_deadbeef");
-        let report = dry_run_report(&steps, &json!({"x": 42}), &ctx).await;
+        let report = dry_run_report(&steps, &json!({"x": 42}), &ctx).await.expect("report");
         let steps_out = report["steps"].as_array().expect("steps array"); // allowlist: test-only expect inside #[cfg(test)]
         assert_eq!(steps_out[0]["resolved_args"]["x"], json!(42));
         assert!(steps_out[1]["resolved_args"]["y"]["unresolved_path"].is_string());
