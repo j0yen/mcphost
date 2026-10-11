@@ -8823,17 +8823,34 @@ impl ServerHandler for McpHostHandler {
                 // `alias_canonical` is `Some` iff `name` is a registered
                 // alias of it.
                 let dispatch_name = alias_canonical.unwrap_or(name);
-                self.dispatch_tenant_tool(
-                    tenant,
-                    subject,
-                    auth_method,
-                    calls_method,
-                    end_user.as_ref(),
-                    session_id.as_deref(),
-                    dispatch_name,
-                    args,
-                )
-                .await
+                let mut dispatched = self
+                    .dispatch_tenant_tool(
+                        tenant,
+                        subject,
+                        auth_method,
+                        calls_method,
+                        end_user.as_ref(),
+                        session_id.as_deref(),
+                        dispatch_name,
+                        args,
+                    )
+                    .await;
+                // PRD-mcphost-client-profile-registry R4: `host.whoami` also
+                // reports which client profile this request resolved to --
+                // this session's `clientInfo` first, else the one persisted
+                // on the tenant, then the `User-Agent` header.
+                if dispatch_name == "host.whoami"
+                    && let Ok(Value::Object(obj)) = &mut dispatched
+                {
+                    let announced = peer_client_info(&ctx)
+                        .or_else(|| tenant.client_name.clone().zip(tenant.client_version.clone()));
+                    let (profile, from) = crate::client_profiles::profile_for(
+                        announced.as_ref().map(|(n, v)| (n.as_str(), v.as_str())),
+                        user_agent_header(parts).as_deref(),
+                    );
+                    obj.insert("client_profile".to_string(), crate::client_profiles::whoami_json(profile, from));
+                }
+                dispatched
             }
             (Auth::Tenant(tenant, oauth_caller), name) => match name.split_once('.') {
                 Some((ns, local)) if ns == tenant.namespace => {

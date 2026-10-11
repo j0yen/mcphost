@@ -190,3 +190,17 @@ pub fn profile_for(
     }
     (&UNKNOWN, None)
 }
+
+/// The `client_profile` object `host.whoami` reports: the resolved row's
+/// seven constraint fields plus which signal named it (`null` for `unknown`).
+pub fn whoami_json(profile: &ClientProfile, from: Option<From>) -> serde_json::Value {
+    serde_json::json!({
+        "id": profile.id,
+        "from": from.map(From::as_str),
+        "tool_name_max": profile.tool_name_max,
+        "nested_depth_max": profile.nested_depth_max,
+        "structured_content": profile.structured_content,
+        "oauth": profile.oauth,
+        "result_bytes_max": profile.result_bytes_max,
+    })
+}
