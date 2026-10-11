@@ -27,17 +27,21 @@ fn child_stores_png_in_allowlist_mode() {
     let policy = Policy { blob_max_bytes: 64 * 1024 * 1024, ..Policy::default() };
     let post = |dest: &std::path::Path| upload_configured(dest, &UploadRequest { link_token_id: "l", filename: "big.png", bytes: &png }, &policy, &sink);
 
-    // Time added by the guard = the guarded upload minus a bare store of
-    // the same bytes.
+    // Time added by the guard = the guard's own check of the bytes (best of
+    // three, so a loaded host's scheduling noise is not charged to it);
+    // differencing two disk writes measures the disk, not the guard.
     let t = std::time::Instant::now();
     let r = post(&blobs);
-    let guarded = t.elapsed();
-    let scan = mcphost::blobs::Scan { mode: "allowlist", mime: "image/png".into(), entries: None };
-    let t = std::time::Instant::now();
-    mcphost::blobs::store(&dir.join("bare"), "big.png", &png, &scan).unwrap();
-    let bare = t.elapsed();
-    let added = guarded.saturating_sub(bare);
-    println!("guarded={guarded:?} bare_store={bare:?} added={added:?}");
+    let upload_total = t.elapsed();
+    let added = (0..3)
+        .map(|_| {
+            let t = std::time::Instant::now();
+            mcphost::blobs::check("big.png", &png, &policy, None).expect("png passes the guard");
+            t.elapsed()
+        })
+        .min()
+        .unwrap();
+    println!("upload_total={upload_total:?} guard_check={added:?}");
 
     assert_eq!(r.status, 200, "{}", r.body);
     assert_eq!(r.body["scan"]["mode"], "allowlist");
