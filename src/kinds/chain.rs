@@ -618,6 +618,14 @@ pub fn retry_families() -> Vec<&'static str> {
         .collect()
 }
 
+/// Requirement 6: the one sentence naming the accepted `retry.on` families,
+/// rendered from [`retry_families`] -- used verbatim by `docs/kinds/chain.md`
+/// and checked by a test, same pattern as [`grammar_sentence`].
+pub fn retry_sentence() -> String {
+    let names: Vec<String> = retry_families().iter().map(|f| format!("`{f}`")).collect();
+    format!("A step's `retry.on` accepts only these error families: {}.", names.join(", "))
+}
+
 /// Publish-time half of requirement 1: every `retry.on` member must be a
 /// [`retry_families`] code, else `retry_on_unknown` with the offenders
 /// (`given`) and the whole accepted set in `data`.
@@ -1630,6 +1638,13 @@ mod tests {
             .validate(&json!({"steps": [{"tool": "a", "on_error": "retry"}]}))
             .unwrap_err();
         assert!(matches!(err, KindError::InvalidSpec(_)));
+    }
+
+    #[test]
+    fn chain_doc_states_the_derived_retry_sentence() {
+        let doc = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/kinds/chain.md"))
+            .expect("docs/kinds/chain.md"); // allowlist: test-only expect inside #[cfg(test)]
+        assert!(doc.contains(&retry_sentence()), "chain.md must state: {}", retry_sentence());
     }
 
     #[test]
