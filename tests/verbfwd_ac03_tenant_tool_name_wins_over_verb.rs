@@ -25,7 +25,7 @@ async fn a_tenant_tool_named_trigger_set_shadows_the_verb() {
         .tools_call("host.tool_call", json!({"name": "trigger_set", "args": {"msg": "hi"}}))
         .await
         .unwrap_or_else(|e| panic!("calling the tenant's own trigger_set must succeed: {} {}", e.code, e.message));
-    let structured = extract_structured(&call);
+    let structured = crate::common::without_call_id(extract_structured(&call));
 
     assert_eq!(
         structured,

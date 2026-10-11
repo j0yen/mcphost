@@ -987,6 +987,9 @@ async fn main() -> anyhow::Result<()> {
             // PRD-mcphost-schedules P0 requirement 3: the scheduler tick,
             // started once here alongside the runs executor above.
             mcphost::triggers::spawn_scheduler((*state).clone());
+            // PRD-mcphost-call-trace-replay: `MCPHOST_CALL_TRACE=0` switches
+            // call tracing off for the whole process.
+            mcphost::calltrace::init_from_env();
             // PRD-mcphost-data-retention requirement 2: the nightly prune,
             // started once here alongside the other two background tasks.
             mcphost::retention::spawn_prune_scheduler((*state).clone());

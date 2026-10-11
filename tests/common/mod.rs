@@ -1815,6 +1815,15 @@ pub async fn parse_response_body(resp: reqwest::Response) -> Value {
 
 /// `CallToolResult::structured` puts the value in `structuredContent`;
 /// fall back to parsing the first text content block for safety.
+/// PRD-mcphost-call-trace-replay: a `host.tool_call` result now carries
+/// `call_id`; a test pinning the tool's own output drops it first.
+pub fn without_call_id(mut value: Value) -> Value {
+    if let Value::Object(map) = &mut value {
+        map.remove("call_id");
+    }
+    value
+}
+
 pub fn extract_structured(call_result: &Value) -> Value {
     if let Some(sc) = call_result.get("structuredContent") {
         return sc.clone();

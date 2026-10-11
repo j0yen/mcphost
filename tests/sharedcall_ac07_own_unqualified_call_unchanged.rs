@@ -36,13 +36,13 @@ async fn own_unqualified_host_tool_call_response_is_unchanged() {
         .tools_call("host.tool_call", json!({"name": "lookup", "args": {"msg": "hi"}}))
         .await
         .expect("O calls its own unqualified tool");
-    let result1 = extract_structured(&call1);
+    let result1 = crate::common::without_call_id(extract_structured(&call1));
     assert_eq!(result1, expected, "own unqualified host.tool_call response shape must be unchanged");
 
     let call2 = client_o
         .tools_call("host.tool_call", json!({"name": "lookup", "args": {"msg": "hi"}}))
         .await
         .expect("O calls its own unqualified tool again");
-    let result2 = extract_structured(&call2);
+    let result2 = crate::common::without_call_id(extract_structured(&call2));
     assert_eq!(result1, result2, "repeat calls of the unqualified path must stay byte-identical to each other");
 }

@@ -597,6 +597,11 @@ impl AppError {
                     ErrorCode::INVALID_PARAMS
                 }
                 "trigger_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
+                // PRD-mcphost-call-trace-replay: an unknown/expired trace
+                // mirrors `tool_not_found`; a replay left holding a masked
+                // value is a caller-input problem.
+                "trace_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
+                "replay_needs_secret" => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-inbound-events: `host.trigger.test`'s own
                 // caller-input problems -- a bad signature/payload, a rate
                 // ceiling, an oversized body -- same INVALID_PARAMS/

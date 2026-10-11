@@ -2612,7 +2612,7 @@ fn runtime_unknown_import_in_text(text: &str, own_domain: &str) -> Option<String
 // other half) reads those two fields for its "full stdout and stderr"
 // response; an ordinary call simply ignores them.
 const PY_RUNNER_SCRIPT_TEMPLATE: &str = r#"
-import sys, json, importlib.util, traceback, io, errno, os
+import sys, json, importlib.util, traceback, io, errno, os, time
 
 _real_stdout = sys.stdout
 
@@ -3293,11 +3293,16 @@ _END_USER_ENV_KEYS = (
     "MCPHOST_END_USER_NAME",
 )
 
-def run_one(payload):
+def run_one(payload, t_start):
     site_packages = payload.get("site_packages")
     if site_packages and site_packages not in sys.path:
         sys.path.insert(0, site_packages)
     args = payload.get("args", {})
+    # PRD-mcphost-call-trace-replay requirement 4: t_args is stamped once the
+    # payload is parsed; t_main/t_done/t_ser bracket the tool's own code and
+    # the result's serialization.
+    t_args = time.monotonic()
+    t_main = t_done = t_ser = None
 
     # PRD-mcphost-end-user-identity requirement 3: MCPHOST_END_USER_* is
     # set fresh from THIS call's own payload (never spawn-time env -- see
@@ -3332,7 +3337,9 @@ def run_one(payload):
                        "message": "tool module has no main(args)", "traceback": ""}
             else:
                 try:
+                    t_main = time.monotonic()
                     result = module.main(args)
+                    t_done = time.monotonic()
                 except MemoryError:
                     obj = {"ok": False, "kind": "oom"}
                 except OSError as e:
@@ -3353,6 +3360,7 @@ def run_one(payload):
                 else:
                     try:
                         json.dumps(result)
+                        t_ser = time.monotonic()
                     except (TypeError, ValueError) as e:
                         obj = {"ok": False, "kind": "output_invalid", "message": str(e)}
                     else:
@@ -3368,9 +3376,23 @@ def run_one(payload):
                 os.environ[k] = v
     obj["stdout_capture"] = out_buf.getvalue()[-200000:]
     obj["stderr_capture"] = err_buf.getvalue()[-200000:]
+    t_end = time.monotonic()
+    # A phase the call never reached ends where the call did.
+    if t_main is None:
+        t_main = t_end
+    if t_done is None:
+        t_done = t_end
+    if t_ser is None:
+        t_ser = t_end
+    obj["timings"] = {
+        "args_ms": (t_args - t_start) * 1000.0,
+        "tool_code_ms": (t_done - t_main) * 1000.0,
+        "serialize_ms": (t_ser - t_done) * 1000.0,
+    }
     return obj
 
 for line in sys.stdin:
+    t_start = time.monotonic()
     line = line.strip()
     if not line:
         continue
@@ -3380,7 +3402,7 @@ for line in sys.stdin:
         emit({"ok": False, "kind": "exception", "error": "PayloadError", "message": str(e),
               "stdout_capture": "", "stderr_capture": ""})
         continue
-    emit(run_one(payload))
+    emit(run_one(payload, t_start))
 "#;
 
 /// PRD-mcphost-python-kind-runtime, requirement 1/AC2: pulls the single
@@ -3540,10 +3562,16 @@ fn map_envelope_line(line: &[u8], allow_oversized: bool, own_domain: &str) -> Re
         ));
     }
     match serde_json::from_slice::<Value>(line) {
-        Ok(envelope) if envelope.get("ok").and_then(Value::as_bool) == Some(true) => {
-            Ok(envelope.get("result").cloned().unwrap_or(Value::Null))
+        Ok(envelope) => {
+            // PRD-mcphost-call-trace-replay: the output tails and phase
+            // stamps ride the envelope, for success and failure alike.
+            crate::calltrace::note_envelope(&envelope);
+            if envelope.get("ok").and_then(Value::as_bool) == Some(true) {
+                Ok(envelope.get("result").cloned().unwrap_or(Value::Null))
+            } else {
+                Err(map_envelope_error(&envelope, "", own_domain))
+            }
         }
-        Ok(envelope) => Err(map_envelope_error(&envelope, "", own_domain)),
         Err(_) => Err(KindError::structured(
             "tool_output_invalid",
             "tool stdout was not valid JSON",
@@ -4275,6 +4303,7 @@ fn map_sandbox_outcome(outcome: SandboxOutcome, allow_oversized: bool, own_domai
             if let Some(module) = runtime_unknown_import_in_text(&stderr_tail, own_domain) {
                 return Err(unknown_import_error(&module, own_domain));
             }
+            crate::calltrace::note_process_tails(&stdout_tail, &stderr_tail);
             match serde_json::from_str::<Value>(&stdout_tail) {
                 Ok(envelope) => Err(map_envelope_error(&envelope, &stderr_tail, own_domain)),
                 Err(_) => Err(KindError::structured_with(
@@ -4289,11 +4318,14 @@ fn map_sandbox_outcome(outcome: SandboxOutcome, allow_oversized: bool, own_domai
             stdout_tail,
             stderr_tail,
             ..
-        } => Err(KindError::structured_with(
-            "tool_exception",
-            format!("the tool process was killed by signal {signal}"),
-            json!({"stdout_tail": stdout_tail, "stderr_tail": stderr_tail}),
-        )),
+        } => {
+            crate::calltrace::note_process_tails(&stdout_tail, &stderr_tail);
+            Err(KindError::structured_with(
+                "tool_exception",
+                format!("the tool process was killed by signal {signal}"),
+                json!({"stdout_tail": stdout_tail, "stderr_tail": stderr_tail}),
+            ))
+        }
         SandboxOutcome::TimedOut { .. } => Err(KindError::structured(
             "tool_timeout",
             "the call exceeded its timeout",
@@ -5090,6 +5122,7 @@ impl PythonKind {
             let mut slot = ctx.cancel_pid.lock().unwrap_or_else(|e| e.into_inner());
             *slot = Some(entry.sandbox.pid());
         }
+        crate::calltrace::mark_dispatch();
         let outcome = entry.sandbox.call(&payload, timeout, &bridge).await;
         {
             let mut slot = ctx.cancel_pid.lock().unwrap_or_else(|e| e.into_inner());
@@ -5265,6 +5298,7 @@ async fn run_cold_interactive(
         let mut slot = cancel_pid.lock().unwrap_or_else(|e| e.into_inner());
         *slot = Some(sandbox.pid());
     }
+    crate::calltrace::mark_dispatch();
     let call_outcome = sandbox.call(payload, wall_clock_timeout, bridge).await?;
     {
         let mut slot = cancel_pid.lock().unwrap_or_else(|e| e.into_inner());

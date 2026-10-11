@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-webhook-inbox-one-call.md",
-  "intent_slug": "mcphost-webhook-inbox-one-call",
-  "root_motivation": "**Who:** an agent that just received a mcphost URL and must show its user a webhook arriving inside one session; the truth-tier integration_specialist persona that scores it. **What:** one call that yields a public hook URL plus a way to read the next event. **Why not today:** the webhook-inbox recipe was three host steps plus a signed POST (eight calls to show one event); a key-less call after a successful host.redeem minted a second tenant because /mcp is stateless; kind=inbox routed to the agent-inbox recipe; llms.txt had no webhook section. **Consequence:** satisfaction 0.0 / completion 0.0 for this recipe on 10-09 and 10-06.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-call-trace-replay.md",
+  "intent_slug": "mcphost-call-trace-replay",
+  "root_motivation": "**Who:** the autonomous coding agent debugging its own tool; Joe reading a real tenant's stuck call; `host.doctor` (PRD-mcphost-host-doctor-tool), which wants a link from a group to one concrete call. **What:** \"show me call N exactly as the host saw it, and let me try it again with one change\". **Why not today:** `calls` stores `tool_name, started_at, duration_ms, ok, error_class, outcome, run_id, step_tool` and nothing of the request or output (`0001_init.sql:33-42` + 12 additive columns); the python envelope's `stdout` and `stderr_tail` (`python.rs:3797, 3830`) are returned once and dropped; `duration_ms` is one number with no phases; the result object has no id. `host.tool.logs` holds only what the tool logged itself. The 10-08 explore errors `TypeError \u2026 tool.py:16` \u00d714 each cost a full re-read of a traceback the host had already parsed into `line` and `source_line`. **Premise (creative):** a trace plus a one-step replay turns a failed call into one more call. **Falsifier:**...",
   "user_persona": "An agent (customer) that calls host.webhook_inbox.create once, pastes the url into a sender and shows its user the push event in the same session; the truth-tier integration_specialist persona whose gold is reachable in 4 calls; Operator Joe reading the digest.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,50 +14,50 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a free tenant, When `host.webhook_inbox.create(name=\"inbox\")` is called once, Then the response carries `url` matching `^https://[^/]+/hook/[A-Za-z0-9]{10,}$`, `secret`, `tool: \"inbox\"`, `trigger_id`, and `wait.tool == \"host.msg.wait\"`, and `host.trigger.list` shows exactly one webhook trigger bound to `inbox`.",
-      "test": "tests/whin_ac01_create_returns_url_secret_wait.rs"
+      "description": "Given a warm python tool on the gate box, When 500 calls run with tracing and 500 without, Then the p95 difference is \u2264 2 ms and the two numbers are printed (the falsifier).",
+      "test": "tests/ctrace_ac01_trace_cost_p95_within_2ms.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the inbox from AC1, When a POST signed with `secret` carrying `{\"id\":\"evt-fixture-1\"}` reaches `url`, Then within 5 s `host.tool_call(name=\"inbox\")` returns a row with id `evt-fixture-1` and `host.msg.wait` with `wait.args` returns a message whose `data.event_id` is `evt-fixture-1`.",
-      "test": "tests/whin_ac02_signed_post_readable_by_tool_call_and_msg_wait.rs"
+      "description": "Given any `host.tool_call`, `host.tool.call`, `host.tool.run` or `host.tool.test` result, When read, Then it carries `call_id` as a string equal to the `calls.id` of the row written for it.",
+      "test": "tests/ctrace_ac02_every_call_result_carries_call_id.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given an unsigned or wrongly signed POST, When it reaches `url`, Then the response is 401, no row is stored, no run fires and no inbox message is sent.",
-      "test": "tests/whin_ac03_unsigned_or_wrong_signature_stores_nothing.rs"
+      "description": "Given a tool called with `{\"api_key\": \"sk-live-1\", \"q\": \"<the value of secret S>\", \"n\": 3}`, When its trace is stored, Then `request.args` is `{\"api_key\": \"***\", \"q\": \"{{ secret.S }}\", \"n\": 3}` and neither raw value appears anywhere in `call_traces`.",
+      "test": "tests/ctrace_ac03_secrets_never_reach_a_stored_trace.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a peer that completed `host.redeem` 5 s earlier, When it sends `host.tool_publish` without `tenant_key` on `/mcp`, Then the error is `tenant_key_missing` with `data.tenant` equal to that namespace, the `tenants` row count is unchanged, and a peer with no redeem in 10 minutes still gets implicit signup.",
-      "test": "tests/whin_ac04_keyless_call_after_redeem_is_refused_and_named.rs"
+      "description": "Given a python tool that prints 10 KiB and raises at `tool.py:16`, When `host.call_trace` reads it, Then `stdout_tail` and `stderr_tail` are each \u2264 4 KiB ending with the last bytes written, `line` is 16, `source_line` is set, and `timings` has the four runner phases plus `queue_ms` whose sum is within 10 ms of `duration_ms`.",
+      "test": "tests/ctrace_ac04_trace_has_tails_line_and_phase_timings.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a keyed `host.quickstart(kind=\"inbox\")`, When it returns, Then `recipe.name == \"webhook-inbox\"`, `recipe.steps` has one entry calling `host.webhook_inbox.create`, `recipes_nearby` contains `agent-inbox`, and the anonymous quickstart note contains \"tenant_key on every call\" and not \"connection is bound\".",
-      "test": "tests/whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule.rs"
+      "description": "Given tenant A's `call_id`, When tenant B calls `host.call_trace`, Then `forbidden`; Given an unknown or expired id, Then `trace_not_found`; Given the admin bearer, Then A's trace.",
+      "test": "tests/ctrace_ac05_trace_access_is_tenant_scoped.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given `www/llms.txt`, When `scripts/www-check.sh` and `handler::llms_txt_tool_names` run, Then a section `## Webhook inbox in one call` names `host.webhook_inbox.create`, and `examples/webhook-inbox/proof.sh` against a local `TestServer` exits 0 in under 30 s.",
-      "test": "tests/whin_ac06_llms_txt_section_and_proof_sh.rs"
+      "description": "Given 250 traced calls by one tenant and one trace older than 24 h, When the housekeeping sweep runs, Then exactly the newest 200 within 24 h remain and `calls` rows are untouched.",
+      "test": "tests/ctrace_ac06_sweep_keeps_newest_200_within_24h.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given a tenant at `event_triggers_max`, When `host.webhook_inbox.create` is called, Then the error is `plan_limit` with `data.limit == 3` and no tool, trigger or event row was created; Given a second create with the same name, Then the same `url` returns and `secret` is absent.",
-      "test": "tests/whin_ac07_plan_limit_creates_nothing_and_repeat_is_idempotent.rs"
+      "level": "MUST",
+      "description": "Given a failed trace, When replayed with `replay: {\"args\": {\"table\": \"users\"}}`, Then the response carries `replay.result`, `replay.verdict`, `replay.diff.ok: [false, true]`, `delivered: false`, and the original trace unchanged; Given a replay that leaves a `***` value in place, Then `replay_needs_secret` names the key and nothing runs.",
+      "test": "tests/ctrace_ac07_replay_dry_runs_with_edited_args.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given the first nightly truth-tier on orch after prod carries this, When `measure.json` is written, Then `recipes.by_recipe.mcphost-webhook-inbox.completion_rate` is \u2265 0.5 and its `failure_families` omit `budget` (Live; evidence: `ssh orch 'python3 -m json.tool $(ls -d ~/.local/state/synthorg/runs/truth-tier-* | tail -1)/measure.json | grep -A8 \"\\\"mcphost-webhook-inbox\\\"\"'`)",
-      "test": "deferred -- operator-provisioned: first nightly truth-tier on orch after prod carries this."
+      "description": "Given prod after deploy, When the live test signs up, publishes a python tool that raises on `n < 0`, calls it with `n: -1`, reads `host.call_trace` by the returned `call_id`, and replays with `n: 1`, Then the trace shows `line` and `stderr_tail` and the replay diff is `ok: [false, true]` (Live; evidence: `MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test ctrace_ac08_live_prod_trace_and_replay`)",
+      "test": "deferred -- operator-provisioned: live prod test after deploy (MCPHOST_LIVE=1 cargo test --test ctrace_ac08_live_prod_trace_and_replay)."
     }
   ],
   "scope": [

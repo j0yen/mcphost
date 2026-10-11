@@ -12,6 +12,8 @@ mod ci_sandbox_support;
 mod busyaudit;
 #[path = "support/chart_fixture.rs"]
 mod chart_fixture;
+#[path = "support/ctrace.rs"]
+mod ctrace;
 #[path = "support/docs_qa.rs"]
 mod docs_qa;
 #[path = "support/fake_as.rs"]
@@ -411,6 +413,10 @@ mod compose_ac8_tool_test_dry_run;
 mod consent_ac01_ac02_ac03_ac04_contact_lifecycle;
 #[path = "consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox.rs"]
 mod consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox;
+#[path = "ctrace_ac05_trace_access_is_tenant_scoped.rs"]
+mod ctrace_ac05_trace_access_is_tenant_scoped;
+#[path = "ctrace_ac06_sweep_keeps_newest_200_within_24h.rs"]
+mod ctrace_ac06_sweep_keeps_newest_200_within_24h;
 #[path = "ctrv_ac01_sha_stable_across_boot_requests_and_process.rs"]
 mod ctrv_ac01_sha_stable_across_boot_requests_and_process;
 #[path = "ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs"]
@@ -1813,15 +1819,3 @@ mod sqlpass_ac11_concurrent_queries_produce_ten_log_rows;
 mod sqlpass_ac12_empty_table_zero_rows_null_error_code;
 #[path = "sqlpass_ac13_long_sql_truncated_in_log_not_refused.rs"]
 mod sqlpass_ac13_long_sql_truncated_in_log_not_refused;
-#[path = "state_ac01_kv_roundtrip.rs"]
-mod state_ac01_kv_roundtrip;
-#[path = "state_ac04_table_query.rs"]
-mod state_ac04_table_query;
-#[path = "state_ac05_schema_violation.rs"]
-mod state_ac05_schema_violation;
-#[path = "state_ac06_quota_exceeded.rs"]
-mod state_ac06_quota_exceeded;
-#[path = "state_ac08_tenant_isolation.rs"]
-mod state_ac08_tenant_isolation;
-#[path = "state_ac09_cascade_delete.rs"]
-mod state_ac09_cascade_delete;

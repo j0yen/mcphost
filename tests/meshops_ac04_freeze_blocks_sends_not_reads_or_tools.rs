@@ -106,7 +106,7 @@ async fn ac4_freeze_blocks_outbound_mesh_calls_but_not_tools_reads_or_inbound() 
         .tools_call("host.tool_call", json!({"name": "echo_tool", "args": {"msg": "hi"}}))
         .await
         .expect("frozen tenant can still call its own tool");
-    assert_eq!(extract_structured(&own_call_raw), json!({"msg": "hi"}));
+    assert_eq!(crate::common::without_call_id(extract_structured(&own_call_raw)), json!({"msg": "hi"}));
 
     // Another tenant can still call A's shared tool while A is frozen.
     let qualified = format!("{ns_a}.echo_tool");
