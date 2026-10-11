@@ -280,7 +280,58 @@ pub async fn get(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Valu
             json!(children.iter().map(run_to_json).collect::<Vec<_>>()),
         );
     }
-    attach_result(state, tenant.id, &run, value).await
+    // PRD-mcphost-chain-dry-run R5: `as_fixtures: true` also exports the
+    // children's results as the `fixtures` argument of `host.tool_test`.
+    let fixtures = if args.get("as_fixtures").and_then(Value::as_bool) == Some(true) {
+        Some(child_fixtures(state, tenant.id, &children).await?)
+    } else {
+        None
+    };
+    let mut value = attach_result(state, tenant.id, &run, value).await?;
+    if let (Some((fixtures, truncated)), Some(obj)) = (fixtures, value.as_object_mut()) {
+        obj.insert("fixtures".to_string(), Value::Object(fixtures));
+        obj.insert("truncated".to_string(), json!(truncated));
+    }
+    Ok(value)
+}
+
+/// `{"<step_no>": <child result>}` in step order for every finished child
+/// with a stored result, plus the step numbers omitted because their result
+/// exceeds one part ([`RUN_PART_BYTES`]) or is no longer stored.
+async fn child_fixtures(
+    state: &AppState,
+    tenant_id: i64,
+    children: &[RunRow],
+) -> Result<(Map<String, Value>, Vec<i64>), AppError> {
+    let mut ordered: Vec<(&RunRow, i64)> = children.iter().filter_map(|c| c.step_no.map(|n| (c, n))).collect();
+    ordered.sort_by_key(|(_, n)| *n);
+    let mut fixtures = Map::new();
+    let mut truncated = Vec::new();
+    for (child, step_no) in ordered {
+        let Some(result_ref) = child
+            .result_ref
+            .as_deref()
+            .and_then(|r| serde_json::from_str::<Value>(r).ok())
+        else {
+            continue; // a failed step has no result to replay.
+        };
+        let single_part = result_ref.get("parts").and_then(Value::as_i64) == Some(1);
+        let fits = result_ref.get("bytes").and_then(Value::as_u64).unwrap_or(0) as usize <= RUN_PART_BYTES;
+        if !(single_part && fits) {
+            truncated.push(step_no);
+            continue;
+        }
+        match state.db.state_kv_get(tenant_id, part_key(&child.id, 0), String::new()).await? {
+            Some((value_json, _)) => {
+                fixtures.insert(
+                    step_no.to_string(),
+                    serde_json::from_str(&value_json).unwrap_or(Value::Null),
+                );
+            }
+            None => truncated.push(step_no), // purged.
+        }
+    }
+    Ok((fixtures, truncated))
 }
 
 /// P0 requirement 4/AC4 (`host.runs.part`): reads part `n` of a run's

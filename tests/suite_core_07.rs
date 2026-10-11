@@ -261,6 +261,18 @@ mod callerusage_ac07_rollup_speed_at_scale;
 mod callerusage_ac08_end_user_key_includes_caller;
 #[path = "callerusage_ac09_admin_usage_top_audited.rs"]
 mod callerusage_ac09_admin_usage_top_audited;
+#[path = "cfix_ac01_fixture_replaces_unreachable_step.rs"]
+mod cfix_ac01_fixture_replaces_unreachable_step;
+#[path = "cfix_ac02_fully_fixtured_dry_run_makes_no_upstream_call.rs"]
+mod cfix_ac02_fully_fixtured_dry_run_makes_no_upstream_call;
+#[path = "cfix_ac03_fixture_shape_mismatch_is_refused.rs"]
+mod cfix_ac03_fixture_shape_mismatch_is_refused;
+#[path = "cfix_ac04_run_exports_as_fixtures.rs"]
+mod cfix_ac04_run_exports_as_fixtures;
+#[path = "cfix_ac06_unrunnable_unfixtured_step_is_skipped_and_named.rs"]
+mod cfix_ac06_unrunnable_unfixtured_step_is_skipped_and_named;
+#[path = "cfix_ac07_quickstart_names_fixtures.rs"]
+mod cfix_ac07_quickstart_names_fixtures;
 #[path = "chainhost_ac01_host_table_append_step.rs"]
 mod chainhost_ac01_host_table_append_step;
 #[path = "chainhost_ac02_step_tool_not_found.rs"]

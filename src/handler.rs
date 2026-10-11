@@ -1166,6 +1166,12 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                         "type": "object",
                         "description": "Arguments to pass, same shape as a real call.",
                     },
+                    "fixtures": {
+                        "type": "object",
+                        "description": "Chain tools only: {\"<step number or tool name>\": <recorded result>}. A \
+                            fixtured step executes nothing (no upstream call); later mappings resolve \
+                            against it. host.runs.get(run_id, as_fixtures=true) exports a real run in this shape.",
+                    },
                 }),
                 &["name", "args"],
             ),
@@ -2453,6 +2459,12 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             host_schema(
                 json!({
                     "run_id": {"type": "string", "description": "The run id to read."},
+                    "as_fixtures": {
+                        "type": "boolean",
+                        "description": "Also return `fixtures` ({\"<step>\": <child result>}) built from a chain \
+                            run's child rows, ready to pass to host.tool_test's `fixtures`; steps whose result \
+                            exceeds one part are listed under `truncated`.",
+                    },
                 }),
                 &["run_id"],
             ),
@@ -6539,6 +6551,40 @@ impl McpHostHandler {
             ))
         })?;
 
+        // PRD-mcphost-chain-dry-run R1: `fixtures` is a chain-only argument.
+        let fixtures: Option<serde_json::Map<String, Value>> = match args.get("fixtures") {
+            None | Some(Value::Null) => None,
+            Some(Value::Object(m)) => Some(m.clone()),
+            Some(_) => {
+                return Err(AppError::InvalidArgs(
+                    "'fixtures' must be an object mapping a step number or tool name to its recorded result".into(),
+                ));
+            }
+        };
+        if let Some(f) = &fixtures {
+            if kind.name() != "chain" {
+                return Err(AppError::Structured {
+                    code: "fixtures_not_applicable",
+                    message: format!(
+                        "'{local_name}' is a {} tool; fixtures apply to chain tools only",
+                        kind.name()
+                    ),
+                    data: json!({"kind": kind.name(), "applies_to": ["chain"]}),
+                });
+            }
+            let total: usize = f.iter().map(|(k, v)| k.len() + v.to_string().len()).sum();
+            if total > crate::runs::RUN_PART_BYTES {
+                return Err(AppError::Structured {
+                    code: "fixtures_too_large",
+                    message: format!(
+                        "fixtures total {total} bytes; the limit is {} bytes",
+                        crate::runs::RUN_PART_BYTES
+                    ),
+                    data: json!({"limit_bytes": crate::runs::RUN_PART_BYTES, "given_bytes": total}),
+                });
+            }
+        }
+
         // PRD-mcphost-sandbox-ready requirement 3 (AC3): same first-try
         // rejection as `host.tool_publish`, before this tool's kind is ever
         // dispatched to.
@@ -6703,11 +6749,17 @@ impl McpHostHandler {
             budget: None,
         };
 
-        let outcome = crate::dryrun::with_dry_run(
-            dry_run.clone(),
-            tokio::time::timeout(resolved_timeout, kind.call(&row.spec, call_args, &ctx)),
-        )
-        .await;
+        let call_fut = tokio::time::timeout(resolved_timeout, kind.call(&row.spec, call_args, &ctx));
+        let outcome = match fixtures {
+            Some(fixtures) => {
+                crate::dryrun::with_dry_run(
+                    dry_run.clone(),
+                    crate::kinds::chain::with_fixtures(fixtures, call_fut),
+                )
+                .await
+            }
+            None => crate::dryrun::with_dry_run(dry_run.clone(), call_fut).await,
+        };
         // Requirement 2: rolled back regardless of outcome (success, a
         // tool-level error, or a timeout) -- a dry run leaves the tenant's
         // data byte-identical either way.
