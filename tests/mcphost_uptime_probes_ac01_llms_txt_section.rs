@@ -1,7 +1,7 @@
 //! PRD-mcphost-uptime-probes
-//! AC1 — Given llms.txt, When the section is read, Then it lists the two
-//! tables, two tools, and the schedule call, under 70 lines, with the
-//! calls/day arithmetic.
+//! AC1 — Given llms.txt, When the section is read, Then it shows the create
+//! call and the status call, under 70 lines, with the calls/day arithmetic
+//! (rewritten by PRD-mcphost-uptime-probe-recipe-green).
 
 const LLMS_TXT: &str = include_str!("../www/llms.txt");
 
@@ -30,39 +30,27 @@ fn section_is_under_70_lines() {
 }
 
 #[test]
-fn section_lists_the_two_tables_two_tools_and_schedule_call() {
+fn section_lists_the_one_create_call_and_the_status_call() {
+    // PRD-mcphost-uptime-probe-recipe-green rewrote this section: one
+    // `host.uptime.create` replaces the two tables, two tools and schedule.
     let section = section_lines().join("\n");
 
-    // The two tables.
-    let table_create_count = section.matches("host.state.table_create").count();
     assert_eq!(
-        table_create_count, 2,
-        "section must create exactly two tables (targets, checks), found {table_create_count}"
+        section.matches("host.uptime.create(").count(),
+        1,
+        "section must make exactly one create call: {section}"
     );
     assert!(
-        section.contains("\"targets\"") && section.contains("\"checks\""),
-        "section must name both the `targets` and `checks` tables: {section}"
-    );
-
-    // The two tools.
-    let publish_count = section.matches("host.tool_publish").count();
-    assert_eq!(
-        publish_count, 2,
-        "section must publish exactly two tools (probe, status), found {publish_count}"
+        section.contains("host.tool_call(name=\"status\")"),
+        "section must show the status call: {section}"
     );
     assert!(
-        section.contains("\"probe\"") && section.contains("\"status\""),
-        "section must name both `probe` and `status`: {section}"
-    );
-
-    // The schedule call.
-    assert!(
-        section.contains("host.trigger.set") && section.contains("kind=\"schedule\""),
-        "section must show the schedule call: {section}"
+        !section.contains("host.tool_publish(name=") && !section.contains("host.state.table_create"),
+        "section must not walk through tables or tool publishes any more: {section}"
     );
     assert!(
-        section.contains("300") || section.contains("*/5"),
-        "section must show the 300s / 5-minute free-plan floor: {section}"
+        section.contains("300"),
+        "section must show the 300s free-plan floor: {section}"
     );
 }
 
@@ -70,7 +58,7 @@ fn section_lists_the_two_tables_two_tools_and_schedule_call() {
 fn section_states_the_calls_per_day_arithmetic() {
     let section = section_lines().join("\n");
     assert!(
-        section.contains("288") && section.contains("500"),
-        "section must state the calls/day arithmetic (288 of 500): {section}"
+        section.contains("288"),
+        "section must state the calls/day at the free floor (288): {section}"
     );
 }

@@ -2378,6 +2378,28 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &["from", "to"],
             ),
         ),
+        // PRD-mcphost-uptime-probe-recipe-green requirement 1: host-side
+        // uptime probes -- the free-plan path the python `probe` recipe's
+        // `network: "public"` gate closes.
+        Tool::new(
+            "host.uptime.create",
+            "Watch 1-20 URLs with no server and no plan upgrade: creates a table of targets, a \
+             host-side probe (3 s per target, same host rules as the http kind -- no sandbox \
+             egress), a status tool named `name` and one schedule at max(every_s, the plan's \
+             schedule_min_interval_s), then runs the probe once and returns {status_tool, \
+             schedule_id, every_s, next_fire_unix, first_result: {columns, rows, text}}. Call \
+             the status tool (host.tool_call name=<name>) for the latest table; `text` is an \
+             aligned table to show a human. An every_s below the plan floor is raised to it \
+             and the response carries data.clamped_to.",
+            host_schema(
+                json!({
+                    "name": {"type": "string", "description": "Name of the status tool to create; also names the <name>_targets table and the <name>_probe tool."},
+                    "urls": {"type": "array", "items": {"type": "string"}, "description": "1-20 URLs to probe with GET; a 2xx/3xx answer is up."},
+                    "every_s": {"type": "integer", "description": "Probe interval in seconds; default 300, raised to the plan's floor (pro: 60)."},
+                }),
+                &["name", "urls"],
+            ),
+        ),
         // PRD-mcphost-table-concept-graph requirement 5: up to five
         // template-generated, parse-checked questions over one table, each
         // runnable unchanged under host.table.query.
@@ -5254,6 +5276,7 @@ impl McpHostHandler {
             "host.spec.test" => self.spec_test(tenant, args).await,
             "host.tool.run" => self.tool_run(tenant, args).await,
             "host.tool.call" => self.host_tool_call(tenant, args, calls_auth_method, end_user).await,
+            "host.uptime.create" => self.uptime_create(tenant, args, calls_auth_method, end_user).await,
             "host.tool.history" => control::tool_history(&self.state, tenant, &args).await,
             "host.tool.rollback" => control::tool_rollback(&self.state, tenant, &args).await,
             "host.tool.diff" => control::tool_diff(&self.state, tenant, &args).await,
@@ -7392,6 +7415,51 @@ impl McpHostHandler {
     /// `async: true` never touches `call_published_tool`, `calls`, or the
     /// 30s deadline at all; it inserts a `queued` run
     /// (`runs::enqueue`) and returns immediately.
+    /// PRD-mcphost-uptime-probe-recipe-green requirement 1:
+    /// `host.uptime.create`. Validation is pure ([`crate::uptime::parse_create`]);
+    /// the first probe runs through [`Self::host_tool_call`] so it is metered
+    /// and logged exactly like a scheduled fire.
+    async fn uptime_create(
+        &self,
+        tenant: &Tenant,
+        args: Value,
+        auth_method: &str,
+        end_user: Option<&crate::enduser::EndUser>,
+    ) -> Result<Value, AppError> {
+        if let Some(known) = known_control_plane_args("host.uptime.create", &self.state.kinds) {
+            crate::errors::check_unknown_argument(&args, "host.uptime.create", &known)?;
+        }
+        let plan = self.state.plans.get(&tenant.plan).ok_or_else(|| {
+            AppError::Internal(format!(
+                "tenant's plan '{}' is not in the loaded plan catalog",
+                tenant.plan
+            ))
+        })?;
+        let create = crate::uptime::parse_create(&self.state.kinds, plan, &args)?;
+        let trigger = crate::uptime::create_assets(&self.state, tenant, &create).await?;
+        let probe = crate::uptime::probe_tool_name(&create.name);
+        let first = self
+            .host_tool_call(tenant, json!({"name": probe}), auth_method, end_user)
+            .await;
+        let first_result = match first {
+            Ok(v) => crate::uptime::first_result_of(&v),
+            Err(e) => json!({"error": e.to_string(), "rows": []}),
+        };
+        let mut out = json!({
+            "status_tool": create.name,
+            "probe_tool": probe,
+            "schedule_id": trigger.get("id").cloned().unwrap_or(Value::Null),
+            "every_s": create.every_s,
+            "next_fire_unix": trigger.get("next_unix").cloned().unwrap_or(Value::Null),
+            "first_result": first_result,
+        });
+        if let (Some(obj), Some(clamped)) = (out.as_object_mut(), create.clamped_to) {
+            obj.insert("clamped_to".to_string(), json!(clamped));
+            obj.insert("data".to_string(), json!({"clamped_to": clamped}));
+        }
+        Ok(out)
+    }
+
     async fn host_tool_call(
         &self,
         tenant: &Tenant,

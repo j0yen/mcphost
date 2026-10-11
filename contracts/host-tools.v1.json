@@ -4983,6 +4983,40 @@
       "since": "0.58.0"
     },
     {
+      "description": "Watch 1-20 URLs with no server and no plan upgrade: creates a table of targets, a host-side probe (3 s per target, same host rules as the http kind -- no sandbox egress), a status tool named `name` and one schedule at max(every_s, the plan's schedule_min_interval_s), then runs the probe once and returns {status_tool, schedule_id, every_s, next_fire_unix, first_result: {columns, rows, text}}. Call the status tool (host.tool_call name=<name>) for the latest table; `text` is an aligned table to show a human. An every_s below the plan floor is raised to it and the response carries data.clamped_to.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "every_s": {
+            "description": "Probe interval in seconds; default 300, raised to the plan's floor (pro: 60).",
+            "type": "integer"
+          },
+          "name": {
+            "description": "Name of the status tool to create; also names the <name>_targets table and the <name>_probe tool.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "urls": {
+            "description": "1-20 URLs to probe with GET; a 2xx/3xx answer is up.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "urls"
+        ],
+        "type": "object"
+      },
+      "name": "host.uptime.create",
+      "since": "0.58.0"
+    },
+    {
       "description": "Calls, errors and duration percentiles for this tenant over a window. Pass `by` (\"tool\", \"caller\", or \"end_user\") for a breakdown instead of the plain per-tenant summary: \"caller\" (only valid for a tool this tenant has shared) shows which tenant called in and how much; \"end_user\" shows which identified end user called, with the caller tenant folded into the key when the call crossed tenants. Breakdown rows cap at 1000 per page; pass the returned `cursor` back to page further.",
       "input_schema": {
         "additionalProperties": false,
@@ -9379,6 +9413,40 @@
         "type": "object"
       },
       "name": "host_trigger_test",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Watch 1-20 URLs with no server and no plan upgrade: creates a table of targets, a host-side probe (3 s per target, same host rules as the http kind -- no sandbox egress), a status tool named `name` and one schedule at max(every_s, the plan's schedule_min_interval_s), then runs the probe once and returns {status_tool, schedule_id, every_s, next_fire_unix, first_result: {columns, rows, text}}. Call the status tool (host.tool_call name=<name>) for the latest table; `text` is an aligned table to show a human. An every_s below the plan floor is raised to it and the response carries data.clamped_to.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "every_s": {
+            "description": "Probe interval in seconds; default 300, raised to the plan's floor (pro: 60).",
+            "type": "integer"
+          },
+          "name": {
+            "description": "Name of the status tool to create; also names the <name>_targets table and the <name>_probe tool.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "urls": {
+            "description": "1-20 URLs to probe with GET; a 2xx/3xx answer is up.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "urls"
+        ],
+        "type": "object"
+      },
+      "name": "host_uptime_create",
       "since": "0.58.0"
     },
     {

@@ -420,6 +420,8 @@ mod unkfield_ac02_misplaced_field_valid_for;
 mod unkfield_ac03_near_miss_did_you_mean;
 #[path = "unkfield_ac06_doc_examples_never_rejected.rs"]
 mod unkfield_ac06_doc_examples_never_rejected;
+#[path = "uprg_ac05_refused_network_public_names_alternative.rs"]
+mod uprg_ac05_refused_network_public_names_alternative;
 #[path = "warmpool_ac06_ac07_tool_run.rs"]
 mod warmpool_ac06_ac07_tool_run;
 #[path = "wasmkind_ac04_independent_of_sandbox_mechanism.rs"]

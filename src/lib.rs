@@ -78,6 +78,7 @@ pub mod tables_model;
 pub mod tenant_state;
 pub mod tool_aliases;
 pub mod triggers;
+pub mod uptime;
 pub mod vault;
 pub mod verbforward;
 pub mod webhooks;
