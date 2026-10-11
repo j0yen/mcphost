@@ -423,6 +423,20 @@ mod compose_ac8_tool_test_dry_run;
 mod consent_ac01_ac02_ac03_ac04_contact_lifecycle;
 #[path = "consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox.rs"]
 mod consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox;
+#[path = "cretr_ac01_retry_on_rate_limited_succeeds.rs"]
+mod cretr_ac01_retry_on_rate_limited_succeeds;
+#[path = "cretr_ac02_family_not_listed_is_not_retried.rs"]
+mod cretr_ac02_family_not_listed_is_not_retried;
+#[path = "cretr_ac03_exhausted_carries_attempts.rs"]
+mod cretr_ac03_exhausted_carries_attempts;
+#[path = "cretr_ac04_wait_past_deadline_is_refused.rs"]
+mod cretr_ac04_wait_past_deadline_is_refused;
+#[path = "cretr_ac05_retry_families_generated_and_publish_refuses_unknown.rs"]
+mod cretr_ac05_retry_families_generated_and_publish_refuses_unknown;
+#[path = "cretr_ac06_never_retried_codes_stay_single_attempt.rs"]
+mod cretr_ac06_never_retried_codes_stay_single_attempt;
+#[path = "cretr_ac07_tool_test_reports_policy_without_retrying.rs"]
+mod cretr_ac07_tool_test_reports_policy_without_retrying;
 #[path = "ctrv_ac01_sha_stable_across_boot_requests_and_process.rs"]
 mod ctrv_ac01_sha_stable_across_boot_requests_and_process;
 #[path = "ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs"]

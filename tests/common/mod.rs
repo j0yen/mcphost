@@ -2176,3 +2176,46 @@ pub async fn pgtr_record_responses() -> Vec<(String, Value)> {
     }
     recorded
 }
+
+/// PRD-mcphost-chain-step-retry-policy (`cretr_*`): a started server with
+/// `echo` + `chain` + a loopback-relaxed `http` kind, a signed-up tenant,
+/// and an `http` tool `flaky` aimed at `upstream_url`. Returns
+/// `(server, client, namespace)`.
+pub async fn cretr_server(upstream_url: &str, call_timeout: std::time::Duration) -> (TestServer, McpClient, String) {
+    let mut kinds = KindRegistry::with_builtin();
+    kinds.register(Arc::new(mcphost::kinds::chain::ChainKind));
+    let lookup: Arc<dyn NameLookup> = Arc::new(FixedLookup(HashMap::new()));
+    kinds.register(Arc::new(HttpKind::for_test("127.0.0.1", lookup)));
+    let server = TestServer::start_full(Some(ADMIN_KEY.to_string()), kinds, call_timeout, None).await;
+    let (ns, key) = signup(&server.base_url, "Cretr Tenant").await;
+    let client = McpClient::with_bearer(&server.base_url, &key);
+    publish(&client, "seed", "echo", json!({"schema": {"type": "object"}})).await;
+    publish(
+        &client,
+        "flaky",
+        "http",
+        json!({"method": "GET", "url": format!("{upstream_url}/v1/thing"), "args_schema": {"type": "object"}}),
+    )
+    .await;
+    (server, client, ns)
+}
+
+/// The two-step chain every `cretr_*` test calls: `seed`, then `flaky`
+/// with `retry` (when given) on step 2.
+pub fn cretr_chain_spec(retry: Option<Value>) -> Value {
+    let mut step2 = json!({"tool": "flaky", "args": {}});
+    if let Some(r) = retry {
+        step2["retry"] = r;
+    }
+    json!({"steps": [{"tool": "seed", "args": {}}, step2]})
+}
+
+/// `host.runs.get` children of the most recent parent run.
+pub async fn cretr_children(client: &McpClient) -> Vec<Value> {
+    let runs = extract_structured(&client.tools_call("host.runs.list", json!({})).await.expect("runs.list"));
+    let parent_id = runs["runs"][0]["run_id"].as_str().expect("parent run id").to_string();
+    let got = extract_structured(
+        &client.tools_call("host.runs.get", json!({"run_id": parent_id})).await.expect("runs.get"),
+    );
+    got["children"].as_array().expect("children").clone()
+}

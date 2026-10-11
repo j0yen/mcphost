@@ -43,8 +43,10 @@
 use serde_json::{Map, Value, json};
 
 use super::{
-    CallCtx, HOST_STEPS_ALLOWED, Kind, KindError, KindExample, KindRegistry, Path, ToolDescriptor, compose_call,
+    CallCtx, ChildRecord, HOST_STEPS_ALLOWED, Kind, KindError, KindExample, KindRegistry, Path, ToolDescriptor,
+    compose_call, compose_dispatch, record_composed_child,
 };
+use super::http::UPSTREAM_REMEDIES;
 use crate::errors::AppError;
 
 pub struct ChainKind;
@@ -585,6 +587,217 @@ struct ParsedStep {
     tool: String,
     args: Map<String, Value>,
     continue_on_error: bool,
+    /// PRD-mcphost-chain-step-retry-policy requirement 1: `retry`, if declared.
+    retry: Option<RetryPolicy>,
+}
+
+/// PRD-mcphost-chain-step-retry-policy requirement 1: a step's parsed
+/// `retry: {max, backoff_ms, on}`. `max` is the number of RETRIES after the
+/// first attempt (so a step makes at most `max + 1` attempts).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RetryPolicy {
+    max: u32,
+    backoff_ms: u64,
+    on: Vec<String>,
+}
+
+/// The error code a python/wasm tool's timeout reports; the one retryable
+/// family that is not a row of the http error-family table.
+const TOOL_TIMEOUT: &str = "tool_timeout";
+
+/// PRD-mcphost-chain-step-retry-policy requirement 1: the error families a
+/// step's `retry.on` may name -- GENERATED from the http kind's
+/// [`UPSTREAM_REMEDIES`] table plus [`TOOL_TIMEOUT`], never listed by hand,
+/// so a code the table renames or adds changes this set (and the publish
+/// error's `accepted`) with it.
+pub fn retry_families() -> Vec<&'static str> {
+    UPSTREAM_REMEDIES
+        .iter()
+        .map(|r| r.code)
+        .chain(std::iter::once(TOOL_TIMEOUT))
+        .collect()
+}
+
+/// Requirement 6: the one sentence naming the accepted `retry.on` families,
+/// rendered from [`retry_families`] -- used verbatim by `docs/kinds/chain.md`
+/// and checked by a test, same pattern as [`grammar_sentence`].
+pub fn retry_sentence() -> String {
+    let names: Vec<String> = retry_families().iter().map(|f| format!("`{f}`")).collect();
+    format!("A step's `retry.on` accepts only these error families: {}.", names.join(", "))
+}
+
+/// Publish-time half of requirement 1: every `retry.on` member must be a
+/// [`retry_families`] code, else `retry_on_unknown` with the offenders
+/// (`given`) and the whole accepted set in `data`.
+fn check_retry_families(steps: &[ParsedStep]) -> Result<(), KindError> {
+    let accepted = retry_families();
+    for (i, step) in steps.iter().enumerate() {
+        let Some(policy) = step.retry.as_ref() else { continue };
+        if policy.on.iter().all(|f| accepted.contains(&f.as_str())) {
+            continue;
+        }
+        return Err(KindError::structured_with(
+            "retry_on_unknown",
+            format!(
+                "spec.steps[{i}].retry.on: unknown error family; accepted: {}",
+                accepted.join(", ")
+            ),
+            json!({"given": policy.on, "accepted": accepted, "step": i + 1}),
+        ));
+    }
+    Ok(())
+}
+
+impl RetryPolicy {
+    fn to_json(&self) -> Value {
+        json!({"max": self.max, "backoff_ms": self.backoff_ms, "on": self.on})
+    }
+}
+
+const RETRY_MAX_RANGE: std::ops::RangeInclusive<u64> = 1..=5;
+const RETRY_BACKOFF_MS_MAX: u64 = 30_000;
+
+/// Parses one step's `retry` value (shape only -- family membership is
+/// [`check_retry_families`]'s publish-time job, so a forced publish listing
+/// a never-retried code still parses and is refused at call time instead).
+fn parse_retry(i: usize, raw: &Value) -> Result<RetryPolicy, KindError> {
+    let obj = raw
+        .as_object()
+        .ok_or_else(|| invalid_spec(format!("spec.steps[{i}].retry: must be a JSON object")))?;
+    if let Some(k) = obj.keys().find(|k| !["max", "backoff_ms", "on"].contains(&k.as_str())) {
+        return Err(invalid_spec(format!(
+            "spec.steps[{i}].retry.{k}: unknown field (accepted: max, backoff_ms, on)"
+        )));
+    }
+    let max = obj
+        .get("max")
+        .and_then(Value::as_u64)
+        .filter(|m| RETRY_MAX_RANGE.contains(m))
+        .ok_or_else(|| invalid_spec(format!("spec.steps[{i}].retry.max: is required, an integer 1..=5")))?;
+    let backoff_ms = match obj.get("backoff_ms") {
+        None => 0,
+        Some(v) => v.as_u64().filter(|b| *b <= RETRY_BACKOFF_MS_MAX).ok_or_else(|| {
+            invalid_spec(format!("spec.steps[{i}].retry.backoff_ms: must be an integer 0..=30000"))
+        })?,
+    };
+    let on = obj
+        .get("on")
+        .and_then(Value::as_array)
+        .filter(|a| !a.is_empty())
+        .and_then(|a| a.iter().map(|v| v.as_str().map(str::to_string)).collect::<Option<Vec<_>>>())
+        .ok_or_else(|| {
+            invalid_spec(format!("spec.steps[{i}].retry.on: is required, a non-empty array of error codes"))
+        })?;
+    Ok(RetryPolicy { max: max as u32, backoff_ms, on })
+}
+
+/// Adds a step's `attempts` array to its trace entry (only a step that
+/// declared a `retry` policy has one -- requirement 3).
+fn with_attempts(mut entry: Value, attempts: Option<Vec<Value>>) -> Value {
+    if let (Value::Object(map), Some(a)) = (&mut entry, attempts) {
+        map.insert("attempts".to_string(), json!(a));
+    }
+    entry
+}
+
+/// Merges `extra` (a JSON object) into a step error's `data`, keeping its
+/// code and message; an error that carried no object `data` gets `extra` as
+/// its `data`. Variants with no `data` slot are returned unchanged.
+fn annotate(e: KindError, extra: Value) -> KindError {
+    let KindError::Structured { code, message, mut data } = e else {
+        return e;
+    };
+    match (data.as_object_mut(), extra) {
+        (Some(obj), Value::Object(add)) => obj.extend(add),
+        (_, extra) => data = extra,
+    }
+    KindError::Structured { code, message, data }
+}
+
+/// Requirement 2: the wait before the next attempt -- `backoff_ms ×
+/// 2^(attempt-1)` with ±10 % jitter, or the error's `data.retry_after_s`
+/// (seconds) when that is larger.
+fn retry_wait_ms(policy: &RetryPolicy, attempt: u32, e: &KindError) -> u64 {
+    let base = policy.backoff_ms.saturating_mul(1u64 << (attempt - 1)) as f64;
+    let jittered = (base * rand::Rng::gen_range(&mut rand::thread_rng(), 0.9..=1.1)) as u64;
+    let retry_after_ms = match e {
+        KindError::Structured { data, .. } => {
+            data.get("retry_after_s").and_then(Value::as_u64).map_or(0, |s| s.saturating_mul(1000))
+        }
+        _ => 0,
+    };
+    jittered.max(retry_after_ms)
+}
+
+/// Requirements 2-4: dispatches one step, retrying per its `retry` policy.
+/// Returns the final outcome and (for a step with a policy) the per-attempt
+/// trace. The step's single child run row is written once, with `attempt`
+/// set to the total attempts made.
+async fn run_step(
+    ctx: &CallCtx,
+    step: &ParsedStep,
+    args: Value,
+    step_no: usize,
+) -> (Result<Value, KindError>, Option<Vec<Value>>) {
+    let Some(policy) = step.retry.as_ref() else {
+        let r = compose_call(ctx, ctx.tenant_id, &step.tool, args, None, Some(step_no as i64)).await;
+        return (r, None);
+    };
+    let started_unix = crate::state::now_unix();
+    let start = std::time::Instant::now();
+    let mut attempts: Vec<Value> = Vec::new();
+    let mut waited_ms: u64 = 0;
+    let mut attempt: u32 = 1;
+    loop {
+        let child_run_id = crate::state::new_ulid();
+        let result =
+            compose_dispatch(ctx, ctx.tenant_id, &step.tool, args.clone(), None, &child_run_id).await;
+        let mut entry = json!({"attempt": attempt, "waited_ms": waited_ms});
+        let outcome = match result {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                let code = AppError::from(e.clone()).code();
+                entry["error_code"] = json!(code);
+                Err((code, e))
+            }
+        };
+        attempts.push(entry);
+        let finish = |result: Result<Value, KindError>, attempts: Vec<Value>, child_run_id: String| async move {
+            record_composed_child(
+                ctx,
+                ctx.tenant_id,
+                &step.tool,
+                Some(step_no as i64),
+                ChildRecord { child_run_id, started_unix, start, attempt: attempt as i64 },
+                &result,
+            )
+            .await;
+            (result, Some(attempts))
+        };
+        let (code, e) = match outcome {
+            Ok(v) => return finish(Ok(v), attempts, child_run_id).await,
+            Err(pair) => pair,
+        };
+        // Requirement 4: a code outside `retry_families()` (`args_invalid`,
+        // `tool_exception`, `compose_*`) is never transient, even when a
+        // forced publish put it in `on`.
+        if !policy.on.iter().any(|f| f == code) || !retry_families().contains(&code) {
+            return finish(Err(e), attempts, child_run_id).await;
+        }
+        if attempt > policy.max {
+            let e = annotate(e, json!({"attempts": attempt, "retry_exhausted": true}));
+            return finish(Err(e), attempts, child_run_id).await;
+        }
+        let wait_ms = retry_wait_ms(policy, attempt, &e);
+        let remaining = ctx.deadline.saturating_duration_since(std::time::Instant::now());
+        if std::time::Duration::from_millis(wait_ms) >= remaining {
+            let e = annotate(e, json!({"attempts": attempt, "retry_deadline_exceeded": true}));
+            return finish(Err(e), attempts, child_run_id).await;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(wait_ms)).await;
+        waited_ms = wait_ms;
+        attempt += 1;
+    }
 }
 
 fn invalid_spec(message: impl Into<String>) -> KindError {
@@ -638,10 +851,12 @@ fn parse_steps(spec: &Value) -> Result<Vec<ParsedStep>, KindError> {
                 )));
             }
         };
+        let retry = step_obj.get("retry").map(|r| parse_retry(i, r)).transpose()?;
         steps.push(ParsedStep {
             tool,
             args,
             continue_on_error,
+            retry,
         });
     }
     Ok(steps)
@@ -1059,6 +1274,14 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
         step_results.push(Value::Null);
         prev = None;
     }
+    // PRD-mcphost-chain-step-retry-policy requirement 5: the resolved policy
+    // rides each step's report entry; the dry run itself never retries (a
+    // step is dispatched at most once) and so reports no `attempts`.
+    for (entry, step) in report.iter_mut().zip(steps) {
+        if let (Value::Object(map), Some(policy)) = (entry, step.retry.as_ref()) {
+            map.insert("retry".to_string(), policy.to_json());
+        }
+    }
     let count = |source: &str| report.iter().filter(|e| e["source"] == json!(source)).count();
     let (executed, fixtured, skipped) = (count("dry_run"), count("fixture"), count("skipped"));
     let mut out = json!({
@@ -1118,7 +1341,7 @@ impl Kind for ChainKind {
     }
 
     fn validate(&self, spec: &Value) -> Result<(), KindError> {
-        parse_steps(spec).map(|_| ())
+        check_retry_families(&parse_steps(spec)?)
     }
 
     /// PRD-mcphost-spec-unknown-field-rejection requirement 1/4: `steps` is
@@ -1269,21 +1492,10 @@ impl Kind for ChainKind {
                 }
             };
 
-            match compose_call(
-                ctx,
-                ctx.tenant_id,
-                &step.tool,
-                resolved_args.clone(),
-                None,
-                // PRD-mcphost-chain-run-lineage requirement 8 (AC11): this
-                // step's own 1-based position, so a composed child run row
-                // (if lineage is active) carries `step_no`.
-                Some(failed_step_no as i64),
-            )
-            .await
-            {
+            let (outcome, attempts) = run_step(ctx, step, resolved_args.clone(), failed_step_no).await;
+            match outcome {
                 Ok(result) => {
-                    steps_trace.push(json!({
+                    steps_trace.push(with_attempts(json!({
                         "step": failed_step_no,
                         "tool": step.tool,
                         "status": "done",
@@ -1296,7 +1508,7 @@ impl Kind for ChainKind {
                         // step to map through) can read any step's result,
                         // not only the last one.
                         "result": result.clone(),
-                    }));
+                    }), attempts));
                     step_results.push(result.clone());
                     prev = Some(result.clone());
                     last_ok_result = Some(result);
@@ -1320,12 +1532,12 @@ impl Kind for ChainKind {
 
                     if step.continue_on_error {
                         failed_steps.push(failed_step_no);
-                        steps_trace.push(json!({
+                        steps_trace.push(with_attempts(json!({
                             "step": failed_step_no,
                             "tool": step.tool,
                             "status": "error",
                             "error_class": code,
-                        }));
+                        }), attempts));
                         step_results.push(Value::Null);
                         prev = None;
                         continue;
@@ -1426,6 +1638,13 @@ mod tests {
             .validate(&json!({"steps": [{"tool": "a", "on_error": "retry"}]}))
             .unwrap_err();
         assert!(matches!(err, KindError::InvalidSpec(_)));
+    }
+
+    #[test]
+    fn chain_doc_states_the_derived_retry_sentence() {
+        let doc = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/kinds/chain.md"))
+            .expect("docs/kinds/chain.md"); // allowlist: test-only expect inside #[cfg(test)]
+        assert!(doc.contains(&retry_sentence()), "chain.md must state: {}", retry_sentence());
     }
 
     #[test]
