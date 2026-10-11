@@ -133,6 +133,8 @@ mod argmsg_ac07_tool_test_equals_tools_call;
 mod askd_ac02_keyless_answer_unblocks_wait_second_post_409;
 #[path = "askd_ac03_wait_ceiling_single_source.rs"]
 mod askd_ac03_wait_ceiling_single_source;
+#[path = "askd_ac04_expired_ask_errors_and_page_is_404.rs"]
+mod askd_ac04_expired_ask_errors_and_page_is_404;
 #[path = "attrib_ac1_loopback_signup_unstamped.rs"]
 mod attrib_ac1_loopback_signup_unstamped;
 #[path = "attrib_ac2_clientinfo_captured.rs"]
