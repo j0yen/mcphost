@@ -102,10 +102,24 @@ async fn healthz(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl
 /// panics on disagreement, and [`check_anon_healthz_keys`] is the same check
 /// for release builds and for `hzkeys_ac02`.
 pub fn anon_healthz_body(ok: bool, build: &crate::build_info::BuildInfo) -> serde_json::Map<String, serde_json::Value> {
+    let body = anon_healthz_body_with(ok, build, |_| {});
+    debug_assert_eq!(check_anon_healthz_keys(&body), Ok(()));
+    body
+}
+
+/// The builder's body construction with a hook that runs on the finished map
+/// and is unchecked: `hzkeys_ac02` uses it to be "a handler that inserts an
+/// extra key" without a fixture copy of the builder. Production passes a
+/// no-op through [`anon_healthz_body`].
+pub fn anon_healthz_body_with(
+    ok: bool,
+    build: &crate::build_info::BuildInfo,
+    tweak: impl FnOnce(&mut serde_json::Map<String, serde_json::Value>),
+) -> serde_json::Map<String, serde_json::Value> {
     let mut body = serde_json::Map::new();
     body.insert("ok".into(), json!(ok));
     body.extend(build.json());
-    debug_assert_eq!(check_anon_healthz_keys(&body), Ok(()));
+    tweak(&mut body);
     body
 }
 
