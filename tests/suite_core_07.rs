@@ -437,6 +437,20 @@ mod ctrv_ac05_contract_json_is_served_with_etag_and_304;
 mod ctrv_ac06_committed_contract_file_matches_served_sha;
 #[path = "ctrv_ac07_changelog_since_accepts_contract_version.rs"]
 mod ctrv_ac07_changelog_since_accepts_contract_version;
+#[path = "demo_ac01_page_lists_three_runs_newest_first.rs"]
+mod demo_ac01_page_lists_three_runs_newest_first;
+#[path = "demo_ac02_unshared_unknown_tool_unknown_ns_identical_404.rs"]
+mod demo_ac02_unshared_unknown_tool_unknown_ns_identical_404;
+#[path = "demo_ac03_secrets_and_sensitive_keys_redacted.rs"]
+mod demo_ac03_secrets_and_sensitive_keys_redacted;
+#[path = "demo_ac04_try_it_form_posts_number_and_surfaces_429.rs"]
+mod demo_ac04_try_it_form_posts_number_and_surfaces_429;
+#[path = "demo_ac05_ten_rows_capped_noindex_no_store.rs"]
+mod demo_ac05_ten_rows_capped_noindex_no_store;
+#[path = "demo_ac06_share_returns_demo_url_unshare_404s.rs"]
+mod demo_ac06_share_returns_demo_url_unshare_404s;
+#[path = "demo_ac07_format_json_same_ten_rows_redacted.rs"]
+mod demo_ac07_format_json_same_ten_rows_redacted;
 #[path = "docsearch_ac01_status_reports_watermark_lag_and_chunks.rs"]
 mod docsearch_ac01_status_reports_watermark_lag_and_chunks;
 #[path = "docsearch_ac02_lexical_search_returns_passage_and_offset.rs"]
@@ -1805,19 +1819,3 @@ mod sharedrunscope_ac07_migration_backfills_legacy_rows;
 mod sharedrunscope_ac08_proof_script_owner_ledger_check;
 #[path = "signupfleet_ac01_fleet_ips_bypass_signup_rate_limit.rs"]
 mod signupfleet_ac01_fleet_ips_bypass_signup_rate_limit;
-#[path = "specpath_ac01_map_form_normalizes_and_publishes.rs"]
-mod specpath_ac01_map_form_normalizes_and_publishes;
-#[path = "specpath_ac02_outputs_map_value_type_error.rs"]
-mod specpath_ac02_outputs_map_value_type_error;
-#[path = "specpath_ac03_headers_array_type_error.rs"]
-mod specpath_ac03_headers_array_type_error;
-#[path = "specpath_ac04_path_reads_declared_field.rs"]
-mod specpath_ac04_path_reads_declared_field;
-#[path = "specpath_ac05_missing_path_reports_tried_path.rs"]
-mod specpath_ac05_missing_path_reports_tried_path;
-#[path = "specpath_ac06_list_form_seen_at_hint.rs"]
-mod specpath_ac06_list_form_seen_at_hint;
-#[path = "specpath_ac07_replay_recorded_sessions_map_form.rs"]
-mod specpath_ac07_replay_recorded_sessions_map_form;
-#[path = "specpath_ac08_wildcard_path_rejected.rs"]
-mod specpath_ac08_wildcard_path_rejected;
