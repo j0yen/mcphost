@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.107.17 — 2026-10-11
+
+`host.ask.create(question, options, ttl_s?, context?)` hands the user a signed link
+(PRD-mcphost-ask-user-decision) and `host.ask.wait(ask_id, timeout_s?)` blocks the agent until
+the user answers, the ask expires, or the wait ceiling says call again: it returns
+`{status: answered|pending, choice, answered_unix, waited_ms, next_call}`; a lapsed ask fails
+`ask_expired` with `next_call: host.ask.create`. The link (`GET /a/<id>?exp&sig`, no login)
+shows the question and one button per option; the first POST wins and a later one is
+`409 ask_answered` naming the recorded choice. `host.ask.get` and `host.ask.list` return the
+audit rows and event trail (kept 30 days after expiry). `host.ask.wait/get/list` never sign a
+key-less caller up (`tenant_key_missing`). The wait ceiling is one constant: `host.msg.wait`,
+`host.runs.wait`, `host.ask.wait` and `host.quickstart.limits.wait_max_s` (25) all read it.
+New plan limit `asks_open_max` (free 5, pro 100); past it `host.ask.create` fails `asks_limit`.
+
 ## v0.107.13 — 2026-10-10
 
 `host.webhook_inbox.create(name, verify?, rotate?)` makes a webhook inbox one call
