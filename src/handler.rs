@@ -7563,6 +7563,7 @@ impl McpHostHandler {
                 })
             }
         };
+        self.state.estimates.record(tenant.id);
         let daily = crate::preflight::daily_calls(&self.state, tenant).await?;
         Ok(json!({
             "dry_run": true,

@@ -369,6 +369,9 @@ pub struct AppState {
     /// requirement 2 / AC3: the in-memory sliding-window counter behind
     /// `quota.trip` -- see [`crate::alerts::QuotaTripTracker`].
     pub alert_quota_trips: crate::alerts::QuotaTripTracker,
+    /// PRD-mcphost-call-cost-estimate requirement 6: recent dry runs per
+    /// tenant, for `host.usage`'s `estimates` (never in `calls`).
+    pub estimates: crate::preflight::EstimateCounter,
     /// PRD-mcphost-status-feed: per-component test overrides for the
     /// minute self-sampler -- see [`crate::statusfeed::ProbeOverrides`].
     /// Empty (every probe runs for real) in every real `mcphost serve`
