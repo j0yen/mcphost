@@ -141,3 +141,52 @@ pub static UNKNOWN: ClientProfile = ClientProfile {
 pub fn doc_urls() -> Vec<&'static str> {
     CLIENT_PROFILES.iter().map(|p| p.doc_url).collect()
 }
+
+/// Which request signal named the client.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum From {
+    #[serde(rename = "clientInfo")]
+    ClientInfo,
+    #[serde(rename = "userAgent")]
+    UserAgent,
+}
+
+impl From {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            From::ClientInfo => "clientInfo",
+            From::UserAgent => "userAgent",
+        }
+    }
+}
+
+fn first_match(
+    haystack: &str,
+    prefixes: impl Fn(&'static ClientProfile) -> &'static [&'static str],
+) -> Option<&'static ClientProfile> {
+    let haystack = haystack.to_ascii_lowercase();
+    CLIENT_PROFILES
+        .iter()
+        .find(|p| prefixes(p).iter().any(|prefix| haystack.starts_with(prefix)))
+}
+
+/// Resolve a request to one profile. `client_info` is the `(name, version)`
+/// the client announced in `initialize`; lower-cased prefix match on
+/// `clientinfo_prefixes` wins, then `user_agent_prefixes`, else [`UNKNOWN`]
+/// with no `From` (the host guesses nothing).
+pub fn profile_for(
+    client_info: Option<(&str, &str)>,
+    user_agent: Option<&str>,
+) -> (&'static ClientProfile, Option<From>) {
+    if let Some((name, _version)) = client_info
+        && let Some(p) = first_match(name, |p| p.clientinfo_prefixes)
+    {
+        return (p, Some(From::ClientInfo));
+    }
+    if let Some(ua) = user_agent
+        && let Some(p) = first_match(ua, |p| p.user_agent_prefixes)
+    {
+        return (p, Some(From::UserAgent));
+    }
+    (&UNKNOWN, None)
+}

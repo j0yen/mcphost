@@ -415,6 +415,8 @@ mod consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox;
 mod cprf_ac01_falsifier_constraints_differ;
 #[path = "cprf_ac02_profiles_match_surface_ids.rs"]
 mod cprf_ac02_profiles_match_surface_ids;
+#[path = "cprf_ac03_profile_for_resolves.rs"]
+mod cprf_ac03_profile_for_resolves;
 #[path = "ctrv_ac01_sha_stable_across_boot_requests_and_process.rs"]
 mod ctrv_ac01_sha_stable_across_boot_requests_and_process;
 #[path = "ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs"]
