@@ -1,0 +1,10 @@
+# synthorg-consumer-tasks.yaml = synthorg corpora/mcphost/consumer-tasks.yaml
+# at this commit, byte-for-byte, for its first upstream_bytes bytes; the
+# rest is recipe_file_share (R7), the block examples/file-share/
+# synthorg-task.yaml carries. Re-check upstream with:
+#   git -C synthorg show <commit>:corpora/mcphost/consumer-tasks.yaml | sha256sum
+repo = synthorg
+path = corpora/mcphost/consumer-tasks.yaml
+commit = 70ea1a2
+upstream_bytes = 76546
+upstream_sha256 = 8ee1536a71a7a7050aa08163019fcffc39f349e60779d059191a8105fed5d126
