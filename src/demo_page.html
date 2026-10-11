@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__ — demo</title>
+<style>body{font:14px system-ui,sans-serif;margin:2rem auto;max-width:60rem;padding:0 1rem}
+table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #ddd;padding:.3rem .5rem;text-align:left;vertical-align:top}
+code{word-break:break-all}label{display:block;margin:.3rem 0}pre{background:#f4f4f4;padding:.5rem;white-space:pre-wrap}</style></head>
+<body><h1>__TITLE__</h1>
+<p>__DESC__</p>
+<h2>Try it</h2>
+__FORM__
+<h2>Recent runs</h2>
+<table><thead><tr><th>status</th><th>duration</th><th>started (UTC)</th><th>args</th><th>result</th></tr></thead>
+<tbody>__ROWS__</tbody></table>
+<script>
+var f=document.getElementById('try');
+if(f){f.addEventListener('submit',async function(e){
+e.preventDefault();var out=document.getElementById('out');var args={},errs=[];
+f.querySelectorAll('[data-type]').forEach(function(el){
+var t=el.dataset.type,n=el.name;
+if(t==='boolean'){args[n]=el.checked;return}
+var v=el.value.trim();if(v==='')return;
+if(t==='integer'){if(!/^-?\d+$/.test(v)){errs.push(n+' must be an integer')}else{args[n]=parseInt(v,10)}}
+else if(t==='number'){var x=Number(v);if(Number.isNaN(x)){errs.push(n+' must be a number')}else{args[n]=x}}
+else if(t==='json'){try{args[n]=JSON.parse(v)}catch(_){errs.push(n+' must be valid JSON')}}
+else{args[n]=v}});
+if(errs.length){out.textContent=errs.join('\n');return}
+try{var r=await fetch(f.action,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(args)});
+out.textContent=r.status+' '+await r.text()}catch(err){out.textContent='request failed: '+err}
+})}
+</script>
+</body></html>

@@ -137,6 +137,12 @@ pub async fn tool_share(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
         && let Some(obj) = result.as_object_mut()
     {
         obj.insert("url".to_string(), json!(url));
+        // PRD-mcphost-demo-url-per-tool R4: the read-only demo page, next to
+        // the callable `url`.
+        obj.insert(
+            "demo_url".to_string(),
+            json!(crate::demo_page::demo_url(state, &tenant.namespace, &name)),
+        );
     }
     Ok(result)
 }

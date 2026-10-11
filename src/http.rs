@@ -1680,6 +1680,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         .route_layer(middleware::from_fn(crate::public_tool::add_cors_header));
 
     Router::new()
+        .route("/d/{namespace}/{tool}", get(crate::demo_page::demo_get))
         .route("/healthz", get(healthz))
         // PRD-mcphost-reachability-alt-host requirement 3 / AC3: a human
         // or an agent (or an ISP's own classifier) can probe any public
