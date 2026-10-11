@@ -381,6 +381,27 @@ pub struct TestServer {
 }
 
 impl TestServer {
+    /// PRD-mcphost-data-quota-in-every-response: a server over
+    /// [`bare_app_state`] whose plan catalog `mutate` edits first -- the
+    /// only way to serve a plan with a chosen ceiling (`table_rows_max =
+    /// 10000`) over real HTTP.
+    pub async fn start_with_plans(mutate: impl FnOnce(&mut mcphost::plans::PlanCatalog)) -> Self {
+        let (mut state, data_dir) = bare_app_state().await;
+        mutate(&mut state.plans);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind ephemeral port");
+        let addr = listener.local_addr().expect("local addr");
+        state.public_url = format!("http://{addr}");
+        let state = Arc::new(state);
+        let serve_state = state.clone();
+        tokio::spawn(async move {
+            let _ = mcphost::http::serve_on_listener(listener, serve_state).await;
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        Self { base_url: format!("http://{addr}"), data_dir, state }
+    }
+
     /// Start a server with the standard test admin key.
     pub async fn start() -> Self {
         Self::start_with(Some(ADMIN_KEY.to_string())).await

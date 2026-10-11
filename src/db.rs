@@ -8427,6 +8427,65 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-data-quota-in-every-response R1: what a tenant has used
+    /// against every data ceiling, one query per store. Each figure is the
+    /// one its enforcement path compares against the ceiling (per-table
+    /// maxima for the `*_rows_max` ceilings, the table file size for
+    /// `table_bytes_max`). Per-call caps (`state_ops_per_call_max`,
+    /// `export_bytes_max`) have no stored usage and are left out, so they
+    /// render `used: null`.
+    pub async fn data_usage(&self, tenant_id: i64) -> Result<crate::plans::DataUsage, AppError> {
+        let mut usage = crate::plans::DataUsage::default();
+        let state_bytes = self.state_bytes_used(tenant_id).await?;
+        let state_rows = self
+            .with_conn(move |conn| {
+                conn.query_row(
+                    "SELECT COALESCE(MAX(c), 0) FROM (SELECT COUNT(*) AS c FROM tenant_state_rows \
+                     WHERE tenant_id = ?1 GROUP BY table_name)",
+                    params![tenant_id],
+                    |r| r.get::<_, i64>(0),
+                )
+                .map_err(AppError::from)
+            })
+            .await?;
+        let (documents, doc_bytes, _) = self.documents_usage(tenant_id).await?;
+        let chunks = self.doc_chunks_count(tenant_id).await?;
+        usage.used.insert("state_bytes_max".into(), state_bytes);
+        usage.used.insert("state_rows_max".into(), state_rows);
+        usage.used.insert("docs_max".into(), documents);
+        usage.used.insert("docs_bytes_max".into(), doc_bytes);
+        usage.used.insert("docs_chunks_max".into(), chunks);
+
+        let path = self.data_dir().join("tables").join(format!("{tenant_id}.db"));
+        let file_bytes = std::fs::metadata(&path).map(|m| m.len() as i64).unwrap_or(0);
+        let (tables, max_rows, handle_bytes) = if path.exists() {
+            crate::tables::with_tenant_conn(path, self.cfg(), self.counters_handle(), move |conn| {
+                let names = crate::tables::list_table_names_sync(conn)?;
+                let mut max_rows = 0i64;
+                for name in &names {
+                    max_rows = max_rows.max(crate::tables::row_count_sync(conn, name)?);
+                }
+                let handle_bytes: i64 = conn.query_row(
+                    &format!(
+                        "SELECT COALESCE(SUM(bytes), 0) FROM {}",
+                        crate::tables::HANDLES_META_TABLE
+                    ),
+                    [],
+                    |r| r.get(0),
+                )?;
+                Ok((names.len() as i64, max_rows, handle_bytes))
+            })
+            .await?
+        } else {
+            (0, 0, 0)
+        };
+        usage.used.insert("table_tables_max".into(), tables);
+        usage.used.insert("table_rows_max".into(), max_rows);
+        usage.used.insert("table_bytes_max".into(), file_bytes);
+        usage.used.insert("table_handle_bytes_max".into(), handle_bytes);
+        Ok(usage)
+    }
+
     /// PRD-mcphost-run-result-overflow-to-state requirement 5 / AC6:
     /// `host.usage`'s `run_results_bytes` -- the slice of
     /// [`Self::state_bytes_used`]'s own total that's run-result parts

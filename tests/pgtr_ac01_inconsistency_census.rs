@@ -34,7 +34,7 @@ fn is_pure_list(response: &Value) -> bool {
     let Some(obj) = response.as_object() else {
         return false;
     };
-    let payload = obj.iter().filter(|(k, _)| !matches!(k.as_str(), "cursor" | "next_cursor"));
+    let payload = obj.iter().filter(|(k, _)| !matches!(k.as_str(), "cursor" | "next_cursor" | "data"));
     let (arrays, others): (Vec<_>, Vec<_>) = payload.partition(|(_, v)| v.is_array());
     arrays.len() == 1 && others.is_empty()
 }

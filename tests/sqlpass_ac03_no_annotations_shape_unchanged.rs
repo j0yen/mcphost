@@ -40,7 +40,9 @@ async fn schema_with_no_annotations_matches_pre_change_shape() {
     let obj = schema.as_object().expect("schema is an object");
     assert_eq!(
         obj.keys().cloned().collect::<std::collections::BTreeSet<_>>(),
-        ["table", "columns", "rows", "bytes_used"].into_iter().map(str::to_string).collect(),
+        // `data` is PRD-mcphost-data-quota-in-every-response's additive
+        // `data.quota` envelope; no annotation key appears.
+        ["table", "columns", "rows", "bytes_used", "data"].into_iter().map(str::to_string).collect(),
         "no annotations: the response must have exactly the pre-change top-level keys: {schema}"
     );
     assert_eq!(schema["table"], "expenses");
