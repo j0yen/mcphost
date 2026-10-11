@@ -14,6 +14,25 @@ cd "$(dirname "$0")/.."
 
 status=0
 
+# --client-docs (PRD-mcphost-client-profile-registry R5): every row of
+# src/client_profiles.rs must have a doc_url that answers HTTP 200. `--list`
+# prints the URLs without fetching (offline; used by tests/cprf_ac01_*).
+if [ "${1:-}" = "--client-docs" ]; then
+  urls=$(grep -oE 'row!\("[a-z_]+".*"https?://[^"]+"\)' src/client_profiles.rs | grep -oE '"https?://[^"]+"' | tr -d '"')
+  if [ "${2:-}" = "--list" ]; then
+    printf '%s\n' "$urls"
+    exit 0
+  fi
+  for u in $urls; do
+    code=$(curl -s -o /dev/null -L --max-time 20 -w '%{http_code}' -A 'mcphost-www-check' "$u" || true)
+    if [ "$code" != "200" ]; then
+      echo "client-docs: $u returned HTTP $code" >&2
+      status=1
+    fi
+  done
+  exit "$status"
+fi
+
 for f in www/*.html; do
   python3 - "$f" <<'PY' || status=1
 import sys
