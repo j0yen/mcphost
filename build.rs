@@ -11,7 +11,10 @@ mod git_sha;
 fn generate_providers() {
     println!("cargo:rerun-if-changed=providers.toml");
     println!("cargo:rerun-if-changed=src/connect/codegen.rs");
-    let text = std::fs::read_to_string("providers.toml").expect("read providers.toml");
+    println!("cargo:rerun-if-changed=providers_test_support.toml");
+    let committed = std::fs::read_to_string("providers.toml").expect("read providers.toml");
+    let test_only = std::fs::read_to_string("providers_test_support.toml").expect("read providers_test_support.toml");
+    let text = codegen::effective_table(&committed, &test_only, std::env::var_os("CARGO_FEATURE_TEST_SUPPORT").is_some());
     let rows = match codegen::parse_table(&text) {
         Ok(rows) => rows,
         Err(e) => panic!("{e}"),

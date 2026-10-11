@@ -32,6 +32,12 @@ const REQUIRED_STRING_FIELDS: [&str; 6] = [
 
 pub const REFRESH_KINDS: [&str; 3] = ["rotating", "offline_access", "none"];
 
+/// The text `build.rs` compiles: the committed table, plus the test-only rows
+/// when the `test-support` feature is on (so prod never lists them).
+pub fn effective_table(committed: &str, test_only: &str, test_support: bool) -> String {
+    if test_support { format!("{committed}\n{test_only}") } else { committed.to_string() }
+}
+
 /// Parse and validate `providers.toml` text. Every failure names the
 /// provider and the field (AC7), so `build.rs` can fail the build with it.
 pub fn parse_table(text: &str) -> Result<Vec<Row>, String> {

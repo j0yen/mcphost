@@ -348,7 +348,7 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
         if *path == "www/llms.txt" {
             *spliced = crate::connect::splice_llms_section(
                 spliced.as_str(),
-                &crate::connect::render_llms_section(crate::connect::all_specs()),
+                &crate::connect::render_llms_section(&crate::connect::committed_specs()),
             );
         }
     }
@@ -368,7 +368,7 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
         (Path::new(TOOLS_DOC_PATH), render_tools_markdown(kinds)),
         (
             Path::new(CONNECTIONS_DOC_PATH),
-            crate::connect::render_connections_doc(crate::connect::all_specs()),
+            crate::connect::render_connections_doc(&crate::connect::committed_specs()),
         ),
         (
             Path::new(INSTALL_DOC_PATH),

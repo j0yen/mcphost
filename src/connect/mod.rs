@@ -60,6 +60,29 @@ include!(concat!(env!("OUT_DIR"), "/providers_gen.rs"));
 /// The committed `providers.toml`, for tests that re-run the generator.
 pub const PROVIDERS_TOML: &str = include_str!("../../providers.toml");
 
+/// The test-only rows `build.rs` adds under `test-support` (`testprov`).
+pub const PROVIDERS_TEST_SUPPORT_TOML: &str = include_str!("../../providers_test_support.toml");
+
+/// What `build.rs` compiled into this build's table.
+pub fn effective_providers_toml() -> String {
+    codegen::effective_table(PROVIDERS_TOML, PROVIDERS_TEST_SUPPORT_TOML, cfg!(feature = "test-support"))
+}
+
+/// Names of the rows only `test-support` builds compile in (`testprov`).
+pub fn test_only_provider_names() -> Vec<String> {
+    codegen::parse_table(PROVIDERS_TEST_SUPPORT_TOML)
+        .expect("providers_test_support.toml parses")
+        .into_iter()
+        .map(|r| r.name)
+        .collect()
+}
+
+/// Specs for the committed `providers.toml` alone (docs and llms.txt render
+/// from this, so a `test-support` build cannot leak `testprov` into them).
+pub fn committed_specs() -> Vec<ProviderSpec> {
+    specs_from_toml(PROVIDERS_TOML).expect("committed providers.toml parses")
+}
+
 impl Provider {
     pub fn name(self) -> &'static str {
         self.spec().name
@@ -81,6 +104,18 @@ impl Provider {
 /// `"github, google, notion, slack"` -- the error text for an unknown preset.
 pub fn provider_names_csv() -> String {
     Provider::ALL.iter().map(|p| p.name()).collect::<Vec<_>>().join(", ")
+}
+
+/// [`provider_names_csv`] without the `test-support`-only rows: schema prose
+/// lands in the committed contract, which is the prod one.
+pub fn public_provider_names_csv() -> String {
+    let hidden = test_only_provider_names();
+    Provider::ALL
+        .iter()
+        .map(|p| p.name())
+        .filter(|n| !hidden.iter().any(|h| h == n))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 impl codegen::Row {

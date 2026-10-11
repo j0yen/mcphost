@@ -65,7 +65,13 @@ type HandEdit = Box<dyn Fn(&mut Surfaces)>;
 
 /// One message per divergence, each naming the surface and the name.
 fn drift_report(s: &Surfaces) -> Vec<String> {
-    let expected: BTreeSet<String> = Provider::ALL.iter().map(|p| p.name().to_string()).collect();
+    // The committed docs never list the test-support-only `testprov` row, so
+    // it is excluded from both sides of the comparison.
+    let expected: BTreeSet<String> = Provider::ALL
+        .iter()
+        .map(|p| p.name().to_string())
+        .filter(|n| n != "testprov")
+        .collect();
     let surfaces: [(&str, BTreeSet<String>); 5] = [
         ("host.connect.providers", names_of(&s.tool_rows, Some("name"))),
         ("provider enum", names_of(&s.schema_enum, None)),
@@ -74,7 +80,8 @@ fn drift_report(s: &Surfaces) -> Vec<String> {
         ("callback route table", route_provider_names(&s.routes)),
     ];
     let mut report = Vec::new();
-    for (surface, names) in surfaces {
+    for (surface, mut names) in surfaces {
+        names.remove("testprov");
         for extra in names.difference(&expected) {
             report.push(format!("surface '{surface}' names '{extra}', which is not in Provider::ALL"));
         }

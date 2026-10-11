@@ -192,11 +192,28 @@ pub fn dump_contract(kinds: &KindRegistry) -> Value {
             entry
         })
         .collect();
-    sort_keys(&json!({
+    let mut contract = json!({
         "contract_version": CONTRACT_VERSION,
         "output_envelope_fields": OUTPUT_ENVELOPE_FIELDS,
         "tools": entries,
-    }))
+    });
+    // A `test-support` build compiles the test-only `testprov` provider into
+    // the `provider` enum; the committed contract is the prod one.
+    strip_test_only_providers(&mut contract, &crate::connect::test_only_provider_names());
+    sort_keys(&contract)
+}
+
+fn strip_test_only_providers(v: &mut Value, names: &[String]) {
+    match v {
+        Value::Object(map) => {
+            if let Some(Value::Array(items)) = map.get_mut("enum") {
+                items.retain(|i| !i.as_str().is_some_and(|s| names.iter().any(|n| n == s)));
+            }
+            map.values_mut().for_each(|c| strip_test_only_providers(c, names));
+        }
+        Value::Array(items) => items.iter_mut().for_each(|c| strip_test_only_providers(c, names)),
+        _ => {}
+    }
 }
 
 /// [`dump_contract`], pretty-printed with a trailing newline -- the exact

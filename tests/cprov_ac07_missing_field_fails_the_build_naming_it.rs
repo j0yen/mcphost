@@ -5,7 +5,7 @@
 //! the failing build's message IS `parse_table`'s `Err`; these tests pin that
 //! message for every required field and pin the wiring in `build.rs`.
 
-use mcphost::connect::{PROVIDERS_TOML, codegen};
+use mcphost::connect::{PROVIDERS_TOML, codegen, effective_providers_toml};
 
 fn block_without(field: &str) -> String {
     let all = [
@@ -56,7 +56,7 @@ fn build_rs_fails_the_build_with_the_parse_error() {
 /// stand in for it.
 #[test]
 fn compiled_table_equals_a_fresh_generator_run() {
-    let fresh = codegen::render_rust(&codegen::parse_table(PROVIDERS_TOML).unwrap());
+    let fresh = codegen::render_rust(&codegen::parse_table(&effective_providers_toml()).unwrap());
     let on_disk = std::fs::read_to_string(concat!(env!("OUT_DIR"), "/providers_gen.rs")).expect("OUT_DIR file");
     assert_eq!(on_disk, fresh);
 }
