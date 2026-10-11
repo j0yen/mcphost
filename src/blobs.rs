@@ -17,6 +17,7 @@ use serde_json::{Value, json};
 
 use crate::db::{BlobRow, BlobWrite, Tenant};
 use crate::errors::AppError;
+use crate::plans::Plan;
 use crate::state::AppState;
 
 const BLOB_DIR: &str = "blobs";
@@ -134,6 +135,21 @@ fn blob_json(state: &AppState, tenant: &Tenant, row: &BlobRow) -> Value {
     })
 }
 
+fn plan_of<'a>(state: &'a AppState, plan_name: &str) -> Result<&'a Plan, AppError> {
+    state.plans.get(plan_name).ok_or_else(|| {
+        AppError::Internal(format!("tenant's plan '{plan_name}' is not in the loaded plan catalog"))
+    })
+}
+
+/// R4: the three refusals, each carrying `{limit, used}`.
+fn quota_error(code: &'static str, ceiling: &str, limit: i64, used: i64) -> AppError {
+    AppError::Structured {
+        code,
+        message: format!("{ceiling} exceeded (limit {limit}, at {used})"),
+        data: json!({"limit": limit, "used": used}),
+    }
+}
+
 /// R1: `content_base64`, decoded.
 fn resolve_content(args: &Value) -> Result<Vec<u8>, AppError> {
     let Some(b64) = args.get("content_base64").and_then(Value::as_str) else {
@@ -186,6 +202,23 @@ pub async fn store(
     let existing = state.db.blob_find_by_name(tenant.id, name.to_string()).await?;
     if let Some(row) = existing.as_ref().filter(|r| r.sha256 == sha256 && r.mime == mime) {
         return Ok(blob_json(state, tenant, row));
+    }
+
+    // R4: per-file, count and total-bytes ceilings, checked before any
+    // write. `used` is the figure the ceiling is compared against: this
+    // file's size for `blob_too_large`, the tenant's current holdings for
+    // the other two.
+    let plan = plan_of(state, &tenant.plan)?;
+    if bytes > plan.blob_max_bytes {
+        return Err(quota_error("blob_too_large", "blob_max_bytes", plan.blob_max_bytes, bytes));
+    }
+    let (used_blobs, used_bytes) = state.db.blobs_usage(tenant.id).await?;
+    if existing.is_none() && used_blobs >= plan.blobs_max {
+        return Err(quota_error("quota_blobs", "blobs_max", plan.blobs_max, used_blobs));
+    }
+    let replaced_bytes = existing.as_ref().map(|r| r.bytes).unwrap_or(0);
+    if used_bytes - replaced_bytes + bytes > plan.blob_bytes_max {
+        return Err(quota_error("quota_blob_bytes", "blob_bytes_max", plan.blob_bytes_max, used_bytes));
     }
 
     // The disk-floor guard wraps the write, like every other write path.

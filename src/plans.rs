@@ -204,6 +204,18 @@ pub struct Plan {
     /// (10 000) when a hand-edited `plans.toml` predates this key, same
     /// tolerant-parse convention as every other field above.
     pub docs_chunks_max: i64,
+    /// PRD-mcphost-blob-put-get-signed-url R4: how many blobs
+    /// (`host.blob.put`) this plan's tenants may hold at once -- a put of a
+    /// new name past this refuses with `quota_blobs`. Defaults to the `free`
+    /// plan's own default (100) when a hand-edited `plans.toml` predates
+    /// this key, same tolerant-parse convention as every field above.
+    pub blobs_max: i64,
+    /// R4: total bytes across the tenant's blobs; a put that would pass it
+    /// refuses with `quota_blob_bytes`. Free default 50 MiB.
+    pub blob_bytes_max: i64,
+    /// R4: the largest single blob; a bigger put refuses with
+    /// `blob_too_large`. Free default 20 MiB.
+    pub blob_max_bytes: i64,
     /// PRD-mcphost-end-user-identity P1 requirement 6 (AC9): distinct
     /// end-user subjects that wrote this plan's tenants' state in the
     /// trailing 30 days -- a write from the next, over-the-limit subject
@@ -440,6 +452,11 @@ impl PlanCatalog {
                     // PRD-mcphost-docs-semantic-search P0 requirement 5:
                     // "docs_chunks_max (free 10 000, pro 50 000)".
                     docs_chunks_max: 10_000,
+                    // PRD-mcphost-blob-put-get-signed-url R4: "free 100 /
+                    // 50 MiB / 20 MiB".
+                    blobs_max: 100,
+                    blob_bytes_max: 50 * 1024 * 1024,
+                    blob_max_bytes: 20 * 1024 * 1024,
                     // PRD-mcphost-end-user-identity P1 requirement 6:
                     // "free 100" distinct end users.
                     end_users_max: 100,
@@ -536,6 +553,10 @@ impl PlanCatalog {
                     // PRD-mcphost-docs-semantic-search P0 requirement 5:
                     // "docs_chunks_max (free 10 000, pro 50 000)".
                     docs_chunks_max: 50_000,
+                    // R4: "pro 10 000 / 2 GiB / 200 MiB".
+                    blobs_max: 10_000,
+                    blob_bytes_max: 2 * 1024 * 1024 * 1024,
+                    blob_max_bytes: 200 * 1024 * 1024,
                     // PRD-mcphost-end-user-identity P1 requirement 6:
                     // "pro 10,000" distinct end users.
                     end_users_max: 10_000,
@@ -672,6 +693,9 @@ impl PlanCatalog {
             out.push_str(&format!("docs_max = {}\n", p.docs_max));
             out.push_str(&format!("docs_bytes_max = {}\n", p.docs_bytes_max));
             out.push_str(&format!("docs_chunks_max = {}\n", p.docs_chunks_max));
+            out.push_str(&format!("blobs_max = {}\n", p.blobs_max));
+            out.push_str(&format!("blob_bytes_max = {}\n", p.blob_bytes_max));
+            out.push_str(&format!("blob_max_bytes = {}\n", p.blob_max_bytes));
             out.push_str(&format!("end_users_max = {}\n", p.end_users_max));
             out.push_str(&format!(
                 "vault_providers_max = {}\n",
@@ -775,6 +799,9 @@ impl PlanCatalog {
                 "docs_max" => builder.docs_max = Some(int_value()),
                 "docs_bytes_max" => builder.docs_bytes_max = Some(int_value()),
                 "docs_chunks_max" => builder.docs_chunks_max = Some(int_value()),
+                "blobs_max" => builder.blobs_max = Some(int_value()),
+                "blob_bytes_max" => builder.blob_bytes_max = Some(int_value()),
+                "blob_max_bytes" => builder.blob_max_bytes = Some(int_value()),
                 "end_users_max" => builder.end_users_max = Some(int_value()),
                 "vault_providers_max" => builder.vault_providers_max = Some(int_value()),
                 "invites_max" => builder.invites_max = Some(int_value()),
@@ -858,6 +885,9 @@ struct PlanBuilder {
     docs_max: Option<i64>,
     docs_bytes_max: Option<i64>,
     docs_chunks_max: Option<i64>,
+    blobs_max: Option<i64>,
+    blob_bytes_max: Option<i64>,
+    blob_max_bytes: Option<i64>,
     end_users_max: Option<i64>,
     vault_providers_max: Option<i64>,
     invites_max: Option<i64>,
@@ -926,6 +956,9 @@ impl PlanBuilder {
             docs_max: quota!(docs_max),
             docs_bytes_max: quota!(docs_bytes_max),
             docs_chunks_max: quota!(docs_chunks_max),
+            blobs_max: quota!(blobs_max),
+            blob_bytes_max: quota!(blob_bytes_max),
+            blob_max_bytes: quota!(blob_max_bytes),
             end_users_max: quota!(end_users_max),
             vault_providers_max: quota!(vault_providers_max),
             invites_max: quota!(invites_max),

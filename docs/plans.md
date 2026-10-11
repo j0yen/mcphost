@@ -17,6 +17,9 @@ Every numeric ceiling in the plan table, as `host.quickstart` `limits.plan` repo
 
 | ceiling | free | pro |
 |---|---|---|
+| `blob_bytes_max` | 52428800 | 2147483648 |
+| `blob_max_bytes` | 20971520 | 209715200 |
+| `blobs_max` | 100 | 10000 |
 | `budget.max_child_calls` | 20 | 50 |
 | `budget.max_est_tokens` | 200000 | 2000000 |
 | `budget.max_tool_latency_ms` | 30000 | 120000 |

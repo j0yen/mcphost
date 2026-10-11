@@ -209,6 +209,8 @@ mod blobput_ac01_corpus_has_binary_fixture_task;
 mod blobput_ac02_pdf_put_sniffs_mime_and_serves_bytes;
 #[path = "blobput_ac03_signed_routes_share_403_and_410.rs"]
 mod blobput_ac03_signed_routes_share_403_and_410;
+#[path = "blobput_ac04_quota_refusals_and_plan_ceilings.rs"]
+mod blobput_ac04_quota_refusals_and_plan_ceilings;
 #[path = "bridgedisc_ac07_sandbox_api_doc_check.rs"]
 mod bridgedisc_ac07_sandbox_api_doc_check;
 #[path = "budget_ac01_ported_ledger_seven_tests.rs"]
