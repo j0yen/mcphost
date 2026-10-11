@@ -544,7 +544,9 @@ impl AppError {
                 }
                 // PRD-mcphost-invite-links requirement 1 (AC7): the same
                 // caller-input-quota class as `state_quota_exceeded` above.
-                "invites_quota_exceeded" => ErrorCode::INVALID_PARAMS,
+                // PRD-mcphost-paged-trait-on-every-list-verb requirement 2: a
+                // cursor this process did not mint is a bad parameter.
+                "invites_quota_exceeded" | "cursor_invalid" => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-spec-output-paths requirement 1: a structured
                 // `invalid_spec` (kinds::http/python's own `parse_spec` and
                 // `normalize_outputs`) is exactly the same caller-input

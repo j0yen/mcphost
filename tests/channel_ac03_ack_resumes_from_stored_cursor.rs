@@ -48,7 +48,7 @@ async fn ack_true_stores_cursor_so_the_next_read_resumes_after_it() {
             .expect("B's first read"),
     );
     assert_eq!(first_read["posts"].as_array().expect("posts").len(), 10, "{first_read:?}");
-    assert_eq!(first_read["next_cursor"], json!(10), "{first_read:?}");
+    assert!(first_read.get("next_cursor").is_none(), "10 posts fit one page: {first_read:?}");
 
     for n in 11..=12 {
         let posted = extract_structured(
@@ -70,5 +70,5 @@ async fn ack_true_stores_cursor_so_the_next_read_resumes_after_it() {
     assert_eq!(posts.len(), 2, "{second_read:?}");
     assert_eq!(posts[0]["seq"], json!(11), "{second_read:?}");
     assert_eq!(posts[1]["seq"], json!(12), "{second_read:?}");
-    assert_eq!(second_read["next_cursor"], json!(12), "{second_read:?}");
+    assert!(second_read.get("next_cursor").is_none(), "{second_read:?}");
 }

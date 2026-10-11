@@ -1,7 +1,8 @@
 //! PRD-mcphost-channel-read-name-parity
 //! AC1 (P0) -- Given `host.channel.open(name: "t")` returning id X, When
 //! `host.channel.post(X, body)` then `host.channel.read(X)` run, Then read
-//! returns the post with `seq` 1 and a `next_cursor`. This is the exact
+//! returns the post with `seq` 1 (and, since PRD-mcphost-paged-trait-on-every-list-verb,
+//! no `next_cursor` on the last page). This is the exact
 //! fleet-board dogfood sequence the PRD's grounding section reproduced:
 //! `open(name) -> post(id) -> read(id)` used to fail `channel_not_found`
 //! because `read` only ever ran the group-channel lookup.
@@ -39,6 +40,5 @@ async fn named_channel_post_then_read_by_id_returns_the_post() {
     assert_eq!(posts.len(), 1, "{read:?}");
     assert_eq!(posts[0]["seq"], json!(1), "{read:?}");
     assert_eq!(posts[0]["body"], json!("fleet alert"), "{read:?}");
-    assert!(read.get("next_cursor").is_some(), "{read:?}");
-    assert_eq!(read["next_cursor"], json!(1), "{read:?}");
+    assert!(read.get("next_cursor").is_none(), "one post fits the page, so no next_cursor: {read:?}");
 }

@@ -172,12 +172,24 @@ pub fn dump_contract(kinds: &KindRegistry) -> Value {
     let entries: Vec<Value> = tools
         .iter()
         .map(|t| {
-            json!({
+            let mut entry = json!({
                 "name": t.name,
                 "description": t.description.clone().unwrap_or_default(),
                 "since": since_for_tool(&t.name),
                 "input_schema": Value::Object((*t.input_schema).clone()),
-            })
+            });
+            // PRD-mcphost-paged-trait-on-every-list-verb requirement 4: the
+            // paging verdict is generated from `paged::PAGED_VERBS` /
+            // `paged::UNPAGED_VERBS`, never typed into the schema literals.
+            // An alias forwards to its canonical, so it carries the
+            // canonical's verdict.
+            let canonical: &str = crate::tool_aliases::resolve(&t.name).unwrap_or(t.name.as_ref());
+            if crate::paged::PAGED_VERBS.contains(&canonical) {
+                entry["paged"] = json!(true);
+            } else if let Some(reason) = crate::paged::unpaged_reason(canonical) {
+                entry["unpaged_reason"] = json!(reason);
+            }
+            entry
         })
         .collect();
     sort_keys(&json!({

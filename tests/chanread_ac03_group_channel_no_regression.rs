@@ -53,7 +53,7 @@ async fn group_channel_read_post_freeze_close_are_unchanged_by_resolve_channel()
     assert_eq!(posts[0]["seq"], json!(1), "{read:?}");
     assert_eq!(posts[0]["from_address"], json!(ns_a), "{read:?}");
     assert_eq!(posts[0]["body"], json!("hello group"), "{read:?}");
-    assert_eq!(read["next_cursor"], json!(1), "{read:?}");
+    assert!(read.get("next_cursor").is_none(), "{read:?}");
 
     // Freeze: further posts refused channel_frozen; reads keep working.
     let frozen = extract_structured(

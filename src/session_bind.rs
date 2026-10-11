@@ -177,6 +177,13 @@ impl SessionBindings {
         }
     }
 
+    /// HMAC-SHA256 of `data` under this process's secret -- the same
+    /// per-process key that signs session ids, reused by `paged::Cursor` so a
+    /// cursor, like a session id, dies with the process that minted it.
+    pub fn mac(&self, data: &[u8]) -> Vec<u8> {
+        crate::billing::hmac_sha256(self.secret.as_slice(), data).to_vec()
+    }
+
     fn tag(&self, nonce_hex: &str) -> String {
         let mac = crate::billing::hmac_sha256(self.secret.as_slice(), nonce_hex.as_bytes());
         to_hex(&mac[..TAG_BYTES])

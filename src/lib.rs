@@ -50,6 +50,7 @@ pub mod lineage;
 pub mod clients;
 pub mod llms_txt;
 pub mod messaging;
+pub mod paged;
 pub mod metering;
 pub mod network_policy;
 pub mod oauth;

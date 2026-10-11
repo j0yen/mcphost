@@ -10,14 +10,11 @@
 //! validation, the four whole-call quota checks (requirement 7), and
 //! turning `db::SendOutcome`/`db::MessageRow` into wire JSON.
 //!
-//! Cursor shape: `db.rs`'s technical considerations describe a base64
-//! `(created_unix_ms, id)` pair; this crate carries no base64 dependency
-//! (`agents::search`'s own cursor is a plain decimal offset string, not
-//! base64 either), so both cursors here are plain, undelimited-by-dots
-//! strings a caller must treat as opaque without actually needing a new
-//! dependency to produce one: `host.msg.inbox`'s is `"<unix_ms>.<id>"`
-//! (a ULID `id` never contains `.`); `host.msg.thread`'s is just the
-//! decimal `seq` to resume after.
+//! Cursor shape (PRD-mcphost-paged-trait-on-every-list-verb): inbox, wait and
+//! thread all use `paged::Cursor` -- a signed opaque keyset cursor, refused as
+//! `cursor_invalid` when it is malformed, of another version, or not minted by
+//! this process for this tenant. The inbox/wait keyset is
+//! `(created_unix_ms, id)`; the thread's is its `seq`.
 
 use std::time::{Duration, Instant};
 
@@ -392,18 +389,16 @@ async fn fire_message_triggers(state: &AppState, outcome: &SendOutcome, ctx: &Me
     }
 }
 
-fn encode_inbox_cursor(row: &MessageRow) -> String {
-    format!("{}.{}", row.created_unix_ms, row.id)
+/// The inbox's keyset position, as the one signed cursor `paged::Cursor`
+/// defines (`(created_unix_ms, id)`), minted for `tenant`.
+fn encode_inbox_cursor(state: &AppState, tenant: &Tenant, row: &MessageRow) -> String {
+    use crate::paged::{MsgInbox, Paged};
+    MsgInbox::cursor_of(row).encode(&state.session_bindings, tenant.id)
 }
 
-fn decode_inbox_cursor(cursor: &str) -> Result<(i64, String), AppError> {
-    let (ms, id) = cursor
-        .split_once('.')
-        .ok_or_else(|| AppError::InvalidArgs("cursor: malformed".to_string()))?;
-    let ms: i64 = ms
-        .parse()
-        .map_err(|_| AppError::InvalidArgs("cursor: malformed".to_string()))?;
-    Ok((ms, id.to_string()))
+fn decode_inbox_cursor(state: &AppState, tenant: &Tenant, cursor: &str) -> Result<(i64, String), AppError> {
+    let c = crate::paged::Cursor::decode(cursor, &state.session_bindings, tenant.id)?;
+    Ok((c.seq, c.id))
 }
 
 fn message_row_json(row: &MessageRow) -> Value {
@@ -426,23 +421,23 @@ fn message_row_json(row: &MessageRow) -> Value {
 /// `host.msg.inbox(cursor?, limit≤100, unread_only?)` (requirement 4, 5 /
 /// AC6, AC13).
 pub async fn inbox(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    let limit = arg_i64_opt(args, "limit").unwrap_or(50).clamp(1, 100);
+    use crate::paged::{self, MsgInbox, Paged};
+    let rl = paged::resolve_limit(args, MsgInbox::DEFAULT_LIMIT.into(), MsgInbox::MAX_LIMIT.into())?;
     let unread_only = arg_bool(args, "unread_only");
     let after = match arg_str_opt(args, "cursor") {
-        Some(c) => Some(decode_inbox_cursor(&c)?),
+        Some(c) => Some(decode_inbox_cursor(state, tenant, &c)?),
         None => None,
     };
 
-    let rows = state.db.msg_inbox(tenant.id, after, limit, unread_only).await?;
-    let next_cursor = if rows.len() as i64 == limit {
-        rows.last().map(encode_inbox_cursor)
-    } else {
-        None
-    };
-    Ok(json!({
-        "messages": rows.iter().map(message_row_json).collect::<Vec<_>>(),
-        "next_cursor": next_cursor,
-    }))
+    // One row past the page says whether it was the last (requirement 3).
+    let mut rows = state.db.msg_inbox(tenant.id, after, rl.limit + 1, unread_only).await?;
+    let next = paged::split_page(&mut rows, rl.limit, MsgInbox::cursor_of);
+    let mut out = serde_json::Map::new();
+    out.insert(MsgInbox::KEY.to_string(), json!(rows.iter().map(message_row_json).collect::<Vec<_>>()));
+    paged::finish_page(&mut out, next.as_ref(), &state.session_bindings, tenant.id);
+    let mut value = Value::Object(out);
+    paged::note_clamp(&mut value, &rl);
+    Ok(value)
 }
 
 /// PRD-mcphost-agent-wake P0 requirement 6: `host.msg.wait(cursor?,
@@ -462,21 +457,26 @@ pub async fn wait(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     let unread_only = arg_bool(args, "unread_only");
     let cursor_arg = arg_str_opt(args, "cursor");
     let after = match &cursor_arg {
-        Some(c) => Some(decode_inbox_cursor(c)?),
+        Some(c) => Some(decode_inbox_cursor(state, tenant, c)?),
         None => None,
     };
     let deadline = Instant::now() + Duration::from_secs(timeout_s as u64);
     loop {
         let rows = state.db.msg_inbox(tenant.id, after.clone(), 50, unread_only).await?;
         if !rows.is_empty() {
-            let next_cursor = rows.last().map(encode_inbox_cursor);
+            let next_cursor = rows.last().map(|r| encode_inbox_cursor(state, tenant, r));
             return Ok(json!({
                 "messages": rows.iter().map(message_row_json).collect::<Vec<_>>(),
                 "next_cursor": next_cursor,
             }));
         }
         if Instant::now() >= deadline {
-            return Ok(json!({"messages": [], "next_cursor": cursor_arg}));
+            // Unchanged cursor on timeout; the key is omitted when the
+            // caller sent none (paged.rs: absent, never null).
+            return Ok(match cursor_arg {
+                Some(c) => json!({"messages": [], "next_cursor": c}),
+                None => json!({"messages": []}),
+            });
         }
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
@@ -485,30 +485,26 @@ pub async fn wait(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
 /// `host.msg.thread(thread_id, cursor?, limit≤100)` (requirement 4 /
 /// AC2, AC3, AC14).
 pub async fn thread(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    use crate::paged::{self, Cursor, MsgThread, Paged};
     let thread_id = arg_str(args, "thread_id")?;
-    let limit = arg_i64_opt(args, "limit").unwrap_or(50).clamp(1, 100);
+    let rl = paged::resolve_limit(args, MsgThread::DEFAULT_LIMIT.into(), MsgThread::MAX_LIMIT.into())?;
     let after_seq = match arg_str_opt(args, "cursor") {
-        Some(c) => Some(
-            c.parse::<i64>()
-                .map_err(|_| AppError::InvalidArgs("cursor: malformed".to_string()))?,
-        ),
+        Some(c) => Some(Cursor::decode(&c, &state.session_bindings, tenant.id)?.seq),
         None => None,
     };
 
-    let rows = state
+    let mut rows = state
         .db
-        .msg_thread(tenant.id, thread_id, after_seq, limit)
+        .msg_thread(tenant.id, thread_id, after_seq, rl.limit + 1)
         .await?
         .ok_or_else(AppError::thread_not_found)?;
-    let next_cursor = if rows.len() as i64 == limit {
-        rows.last().map(|r| r.seq.to_string())
-    } else {
-        None
-    };
-    Ok(json!({
-        "messages": rows.iter().map(message_row_json).collect::<Vec<_>>(),
-        "next_cursor": next_cursor,
-    }))
+    let next = paged::split_page(&mut rows, rl.limit, MsgThread::cursor_of);
+    let mut out = serde_json::Map::new();
+    out.insert(MsgThread::KEY.to_string(), json!(rows.iter().map(message_row_json).collect::<Vec<_>>()));
+    paged::finish_page(&mut out, next.as_ref(), &state.session_bindings, tenant.id);
+    let mut value = Value::Object(out);
+    paged::note_clamp(&mut value, &rl);
+    Ok(value)
 }
 
 /// `host.msg.ack(message_ids)` (requirement 5).

@@ -42,7 +42,8 @@
         "type": "object"
       },
       "name": "billing.plans",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "not a list verb: the array is a field of a single-record or mutation response"
     },
     {
       "description": "This tenant's plan, usage against each quota, and when the daily call quota resets.",
@@ -210,7 +211,8 @@
         "type": "object"
       },
       "name": "host.agent.contacts",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
       "description": "Request contact with up to 50 addresses at once (e.g. an operator's own fleet of tenants); each is resolved the same way a single host.agent.contact_request would be, but a per-address failure (already connected, already pending, blocked, over quota, ...) is reported in that address's own result entry rather than failing the whole call.",
@@ -329,7 +331,8 @@
         "type": "object"
       },
       "name": "host.agent.profile_set",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "not a list verb: the array is a field of a single-record or mutation response"
     },
     {
       "description": "Find agents by exact tag or a case-insensitive substring of handle, display name, or description. Disabled tenants are excluded. Ordered by handle (unclaimed last), then namespace; page with cursor from the previous response.",
@@ -361,7 +364,8 @@
         "type": "object"
       },
       "name": "host.agent.search",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "keeps its own pre-Paged cursor encoding; converges onto paged::Cursor in a follow-up migration"
     },
     {
       "description": "Remove a mute: the address's messages resume appearing in host.msg.inbox(unread_only=true).",
@@ -427,7 +431,8 @@
         "type": "object"
       },
       "name": "host.audit.chain",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
     },
     {
       "description": "Recompute the hash-chained audit log over [from_id, to_id] and report whether it's intact, naming the first broken id if not.",
@@ -558,7 +563,8 @@
         "type": "object"
       },
       "name": "host.catalog.search",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
     },
     {
       "description": "List what changed in the host.*/billing.* tool surface -- additions, deprecations, and removals -- since an optional version. Read-only.",
@@ -578,7 +584,8 @@
         "type": "object"
       },
       "name": "host.changelog",
-      "since": "0.58.1"
+      "since": "0.58.1",
+      "unpaged_reason": "export or arbitrary-query semantics: the caller bounds the result, so no page cursor applies"
     },
     {
       "description": "Owner-only: close a channel (group or named). Further host.channel.post calls get channel_closed; host.channel.read keeps working.",
@@ -680,12 +687,12 @@
       "since": "0.58.0"
     },
     {
-      "description": "Read a channel's posts (group or named -- by id, or a named channel's own name) in seq order since a cursor (default: your own last read position, or 0 for a first read). ack: true stores next_cursor as your new read position. A group channel's non-member, or anyone but a named channel's own owner, gets channel_not_found.",
+      "description": "Read a channel's posts (group or named -- by id, or a named channel's own name) in seq order since a cursor (default: your own last read position, or 0 for a first read). ack: true stores the last returned post as your new read position (an empty read leaves it unchanged); next_cursor is absent on the last page. A group channel's non-member, or anyone but a named channel's own owner, gets channel_not_found.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
           "ack": {
-            "description": "Store next_cursor as your new read position.",
+            "description": "Store the last returned post's seq as your new read position.",
             "type": "boolean"
           },
           "channel_id": {
@@ -693,11 +700,14 @@
             "type": "string"
           },
           "cursor": {
-            "description": "Read posts with seq greater than this; omit to resume from your own stored cursor.",
-            "type": "integer"
+            "description": "Opaque keyset cursor: pass the previous page's next_cursor verbatim; omit for the first page.",
+            "type": "string"
           },
           "limit": {
-            "description": "Max posts to return; default 50, max 100.",
+            "default": 50,
+            "description": "Page size, 1..=max for this verb (a larger value is clamped and reported in _meta.mcphost.limit_clamped).",
+            "maximum": 100,
+            "minimum": 1,
             "type": "integer"
           },
           "tenant_key": {
@@ -711,6 +721,7 @@
         "type": "object"
       },
       "name": "host.channel.read",
+      "paged": true,
       "since": "0.58.0"
     },
     {
@@ -835,10 +846,14 @@
         "additionalProperties": false,
         "properties": {
           "cursor": {
-            "description": "Opaque pagination cursor from a previous list call's next_cursor."
+            "description": "Opaque keyset cursor: pass the previous page's next_cursor verbatim; omit for the first page.",
+            "type": "string"
           },
           "limit": {
-            "description": "Max documents to return; default 100.",
+            "default": 100,
+            "description": "Page size, 1..=max for this verb (a larger value is clamped and reported in _meta.mcphost.limit_clamped).",
+            "maximum": 1000,
+            "minimum": 1,
             "type": "integer"
           },
           "prefix": {
@@ -858,6 +873,7 @@
         "type": "object"
       },
       "name": "host.docs.list",
+      "paged": true,
       "since": "0.58.0"
     },
     {
@@ -989,7 +1005,8 @@
         "type": "object"
       },
       "name": "host.docs.search",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "relevance-ranked top-k result, not a keyset-ordered list, so there is no stable cursor"
     },
     {
       "description": "This tenant's document store counters: documents, bytes, text_bytes, the current change watermark, this plan's document/byte quotas, and an index block (mode, indexed_watermark, lag_seconds, pending_documents, chunks, rebuilding, quota_chunks_reached) describing the search index's own freshness.",
@@ -1100,7 +1117,8 @@
         "type": "object"
       },
       "name": "host.drift.reviews",
-      "since": "0.79.0"
+      "since": "0.79.0",
+      "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
     },
     {
       "description": "Generate and store a new per-tenant secret for signing end_user_assertion (HS256 compact JWS, claims sub/iat/exp with exp <= iat + 3600). Returns the secret once; it is never shown again and never appears in host.secret_list. Assertions signed with any prior secret stop verifying immediately -- no overlap window.",
@@ -1150,7 +1168,8 @@
         "type": "object"
       },
       "name": "host.enduser.audit",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "keeps its own pre-Paged cursor encoding; converges onto paged::Cursor in a follow-up migration"
     },
     {
       "description": "Export one end user's state rows and call history as a bundle at /exports/<run_id>, the same envelope host.export returns (download_url, size_bytes, expires_unix).",
@@ -1226,7 +1245,8 @@
         "type": "object"
       },
       "name": "host.enduser.list",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "keeps its own pre-Paged cursor encoding; converges onto paged::Cursor in a follow-up migration"
     },
     {
       "description": "Delete a revoked end user's scoped state and vault-token rows, de-identify its calls rows (kept, never deleted), and set purged_at. Requires the end user to be revoked first (revoke_required otherwise). Returns {state_rows, vault_tokens} counts.",
@@ -1399,7 +1419,8 @@
         "type": "object"
       },
       "name": "host.group.list",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
       "description": "Remove a tenant (by namespace) from a group this tenant owns.",
@@ -1461,7 +1482,8 @@
         "type": "object"
       },
       "name": "host.invite.create",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "not a list verb: the array is a field of a single-record or mutation response"
     },
     {
       "description": "List every invite you own (standard and your own standing invite), with uses, limits, and the namespaces of everyone who joined through each.",
@@ -1477,7 +1499,8 @@
         "type": "object"
       },
       "name": "host.invite.list",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
       "description": "Revoke an invite by its code. A standard invite simply stops working (existing invitees keep their tenants and shares). Your standing invite is rotated instead: a fresh invite_url is returned and the old one starts answering invite_invalid.",
@@ -1673,11 +1696,14 @@
         "additionalProperties": false,
         "properties": {
           "cursor": {
-            "description": "Opaque; omit for the first page.",
+            "description": "Opaque keyset cursor: pass the previous page's next_cursor verbatim; omit for the first page.",
             "type": "string"
           },
           "limit": {
-            "description": "Up to 100; default 50.",
+            "default": 50,
+            "description": "Page size, 1..=max for this verb (a larger value is clamped and reported in _meta.mcphost.limit_clamped).",
+            "maximum": 100,
+            "minimum": 1,
             "type": "integer"
           },
           "tenant_key": {
@@ -1693,6 +1719,7 @@
         "type": "object"
       },
       "name": "host.msg.inbox",
+      "paged": true,
       "since": "0.58.0"
     },
     {
@@ -1786,11 +1813,14 @@
         "additionalProperties": false,
         "properties": {
           "cursor": {
-            "description": "The seq to resume after; omit for the start.",
+            "description": "Opaque keyset cursor: pass the previous page's next_cursor verbatim; omit for the first page.",
             "type": "string"
           },
           "limit": {
-            "description": "Up to 100; default 50.",
+            "default": 50,
+            "description": "Page size, 1..=max for this verb (a larger value is clamped and reported in _meta.mcphost.limit_clamped).",
+            "maximum": 100,
+            "minimum": 1,
             "type": "integer"
           },
           "tenant_key": {
@@ -1808,6 +1838,7 @@
         "type": "object"
       },
       "name": "host.msg.thread",
+      "paged": true,
       "since": "0.58.0"
     },
     {
@@ -1858,7 +1889,8 @@
         "type": "object"
       },
       "name": "host.msg.wait",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "long-poll batch of at most 50 rows that advances the shared cursor; wait semantics, not page-through"
     },
     {
       "description": "Page this tenant's OAuth auth audit log (authorize/consent/token/refresh/revoke/ policy_change/approved/denied/refused events), newest additions last. Optional since/until (unix seconds) and event filters; limit defaults to 50, max 500; cursor resumes from a previous page's cursor field.",
@@ -1889,7 +1921,8 @@
         "type": "object"
       },
       "name": "host.oauth.audit",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "keeps its own pre-Paged cursor encoding; converges onto paged::Cursor in a follow-up migration"
     },
     {
       "description": "Export this tenant's OAuth auth audit log for since..until as JSON lines (one object per line, same fields host.oauth.audit pages). Refuses export_too_large (with a suggested narrower window) past 50 MiB.",
@@ -1916,7 +1949,8 @@
         "type": "object"
       },
       "name": "host.oauth.audit_export",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "export or arbitrary-query semantics: the caller bounds the result, so no page cursor applies"
     },
     {
       "description": "Approve a pending client (from host.oauth.pending): its next /oauth/authorize reaches consent directly.",
@@ -2014,7 +2048,8 @@
         "type": "object"
       },
       "name": "host.oauth.grants",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
       "description": "Remove one of this tenant's registered OAuth issuers; bearer JWTs from it stop authenticating immediately.",
@@ -2084,7 +2119,8 @@
         "type": "object"
       },
       "name": "host.oauth.issuers",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
       "description": "List clients awaiting approval under this tenant's clients: approve policy.",
@@ -2100,7 +2136,8 @@
         "type": "object"
       },
       "name": "host.oauth.pending",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
       "description": "This tenant's current hosted-authorization-server client and session policy (host.oauth.policy_set's own field shape); the documented defaults for a tenant that has never called host.oauth.policy_set.",
@@ -2116,7 +2153,8 @@
         "type": "object"
       },
       "name": "host.oauth.policy",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
       "description": "Set this tenant's hosted-authorization-server client and session policy. Every field is optional and, when omitted, keeps its current (or default) value: clients (any|allowlist|approve, default any), allowlist (client_id or CIMD-host strings, for allowlist mode), access_ttl_s (300..3600, default 3600), refresh_ttl_s (3600..2592000, default 2592000), max_grant_age_s (a refresh past this many seconds since consent fails invalid_grant/grant_expired; null clears it), reconsent_after_s (a refresh past this many seconds since consent fails invalid_grant/reconsent_required and the next authorize shows consent again; null clears it).",
@@ -2158,7 +2196,8 @@
         "type": "object"
       },
       "name": "host.oauth.policy_set",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "not a list verb: the array is a field of a single-record or mutation response"
     },
     {
       "description": "This tenant's registered OIDC identity provider (issuer, client_id, endpoints, scopes, flags) -- null if none is set. Never carries the client secret.",
@@ -2300,7 +2339,8 @@
         "type": "object"
       },
       "name": "host.oauth.scopes",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
       "description": "Remove one of this tenant's trusted identity-assertion issuers; its assertions stop authenticating immediately.",
@@ -2374,7 +2414,8 @@
         "type": "object"
       },
       "name": "host.oauth.trusted_issuers",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
       "description": "Set (merge) attributes on an end-user subject -- the values a policy's Attr(name) rule compiles against for that subject.",
@@ -2416,7 +2457,8 @@
         "type": "object"
       },
       "name": "host.policy.list",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
       "description": "Set (or replace) the row/docs policy for one target: a declared table (target: {\"table\": name}) or a docs prefix (target: {\"doc_prefix\": prefix}). `rule` is a list of {column_or_attr, op: \"eq\"|\"in\", value: {\"literal\": <json>} | {\"attr\": \"<end_user_attr>\"}}. Refused as policy_widening if it would widen an existing literal-valued rule on the same column without replace: true.",
@@ -2653,7 +2695,8 @@
         "type": "object"
       },
       "name": "host.runs.list",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
     },
     {
       "description": "Read part n of a run's result (host.runs.get/wait inline only part 0). A run whose whole result fit inline reads back parts: 1, n: 0 with the full result. n past the last part fails with not_found.",
@@ -2747,7 +2790,8 @@
         "type": "object"
       },
       "name": "host.secret.list",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
       "description": "Store an encrypted secret value under this tenant's namespace.",
@@ -2794,7 +2838,8 @@
         }
       },
       "name": "host.secret_list",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
       "description": "Store an encrypted secret value under this tenant's namespace.",
@@ -3151,7 +3196,8 @@
         "type": "object"
       },
       "name": "host.state.list",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
     },
     {
       "description": "Read rows from a declared table, optionally filtered (where: \"field op value\", ops = != < <= > >=, clauses joined by ' and '), ordered (order_by: \"field\" or \"field desc\") and capped (limit).",
@@ -3192,7 +3238,8 @@
         "type": "object"
       },
       "name": "host.state.query",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
     },
     {
       "description": "Write one key in this tenant's key-value state namespace; value may be any JSON value. Overrun of the plan's state_bytes_max quota fails with state_quota_exceeded and writes nothing.",
@@ -3354,7 +3401,8 @@
         "type": "object"
       },
       "name": "host.table.charts",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
       "description": "Declare a table in this tenant's SQL table store -- a different store from host.state.*'s key-value namespace and its own tables: use host.state.* for a handful of small values, host.table.* when you want real SQL (joins, aggregates, read-only queries) over rows. columns is {\"column\": \"text\"|\"integer\"|\"real\"| \"timestamp\"|\"boolean\"|\"json\"}; primary_key, if given, must name one of columns's own entries.",
@@ -3457,7 +3505,8 @@
         "type": "object"
       },
       "name": "host.table.graph",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
       "description": "Drop one query-result handle (and its table) before its TTL expires.",
@@ -3517,7 +3566,8 @@
         "type": "object"
       },
       "name": "host.table.handles",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
       "description": "Return up to three shortest join paths between two declared tables, each with its own steps, a ready sql_join clause and a confidence (1.0 for an all-foreign-key path). Returns no_path: true with each table's key/id candidate columns when nothing connects them.",
@@ -3560,7 +3610,8 @@
         "type": "object"
       },
       "name": "host.table.list",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
       "description": "Annotate a declared table or one of its columns -- the next describe merges this back in (an annotation's role wins over the inferred one; unit/description are added; hidden marks a column to omit from a summary). key must be one of role, unit, description, hidden.",
@@ -3611,7 +3662,8 @@
         "type": "object"
       },
       "name": "host.table.models",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
       "description": "Return up to five suggested next questions over a declared table as {question, sql, connected_via}: total of a measure by a category, a measure over a date column, top 10 ids by a measure, a measure by a category on a joined table, and count of rows by category -- whichever templates this table's roles support. Every sql runs unchanged under host.table.query.",
@@ -3637,7 +3689,8 @@
         "type": "object"
       },
       "name": "host.table.next_questions",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "export or arbitrary-query semantics: the caller bounds the result, so no page cursor applies"
     },
     {
       "description": "Run a single read-only SQL SELECT (CTEs allowed) against this tenant's own tables. Structurally rejected (not by string matching): anything but exactly one SELECT statement, a result over 1,000 rows, or a query running past 5 seconds -- each refusal names the rule or bound it hit. handle: true materialises the result as a table instead (no row cap), returning a dataset-summary.v1 (row_count, a 20-row sample, per-column stats over every row) naming a hdl_<id> you can later reference in FROM or a CTE through this same tool.",
@@ -3667,7 +3720,8 @@
         "type": "object"
       },
       "name": "host.table.query",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "export or arbitrary-query semantics: the caller bounds the result, so no page cursor applies"
     },
     {
       "description": "Return the stored identifier-coverage diagnosis and hint for one host.table.query log row (by log_id from host.table.query_log), recomputed against the current schema if that row predates this feature. Scoped to this tenant's own rows; a log_id belonging to another tenant (or no such row) returns not_found.",
@@ -3713,7 +3767,8 @@
         "type": "object"
       },
       "name": "host.table.query_log",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
     },
     {
       "description": "Summarize this tenant's own host.table.query calls over a trailing window: queries, ok, empty, refused (by error_code), p50_ms, p95_ms, result_rows_total, est_result_tokens_total, and the top 5 most common hints. window_s defaults to 86,400 (24h) and is capped at 604,800 (7d).",
@@ -3733,7 +3788,8 @@
         "type": "object"
       },
       "name": "host.table.query_stats",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
       "description": "Return one table's columns, types, row count and byte count, without running a query -- how an agent discovers its own table shape. A table-level or per-column description set via host.table.model_set is included under description wherever one exists.",
@@ -3890,7 +3946,8 @@
         "type": "object"
       },
       "name": "host.tool.list",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
       "description": "Return the most recent log lines for one of this tenant's tools.",
@@ -4357,7 +4414,8 @@
         }
       },
       "name": "host.tool_list",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
       "description": "Return the most recent log lines for one of this tenant's tools.",
@@ -4777,7 +4835,8 @@
         "type": "object"
       },
       "name": "host.trigger.list",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
       "description": "Stop a trigger from firing until resumed; still counts toward schedules_max.",
@@ -5194,7 +5253,8 @@
         "type": "object"
       },
       "name": "host.vault.providers",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
       "description": "Show which upstream providers an end user has connected, with connected, expires_at, and scopes per provider -- never the token itself.",
@@ -5232,7 +5292,8 @@
         "type": "object"
       },
       "name": "host.whoami",
-      "since": "0.58.0"
+      "since": "0.58.0",
+      "unpaged_reason": "not a list verb: the array is a field of a single-record or mutation response"
     },
     {
       "description": "Accept a pending contact request addressed to you: both you and the requester become accepted contacts, visible from either side via host.agent.contacts().",
@@ -5767,12 +5828,12 @@
       "since": "0.58.0"
     },
     {
-      "description": "Read a channel's posts (group or named -- by id, or a named channel's own name) in seq order since a cursor (default: your own last read position, or 0 for a first read). ack: true stores next_cursor as your new read position. A group channel's non-member, or anyone but a named channel's own owner, gets channel_not_found.",
+      "description": "Read a channel's posts (group or named -- by id, or a named channel's own name) in seq order since a cursor (default: your own last read position, or 0 for a first read). ack: true stores the last returned post as your new read position (an empty read leaves it unchanged); next_cursor is absent on the last page. A group channel's non-member, or anyone but a named channel's own owner, gets channel_not_found.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
           "ack": {
-            "description": "Store next_cursor as your new read position.",
+            "description": "Store the last returned post's seq as your new read position.",
             "type": "boolean"
           },
           "channel_id": {
@@ -5780,11 +5841,14 @@
             "type": "string"
           },
           "cursor": {
-            "description": "Read posts with seq greater than this; omit to resume from your own stored cursor.",
-            "type": "integer"
+            "description": "Opaque keyset cursor: pass the previous page's next_cursor verbatim; omit for the first page.",
+            "type": "string"
           },
           "limit": {
-            "description": "Max posts to return; default 50, max 100.",
+            "default": 50,
+            "description": "Page size, 1..=max for this verb (a larger value is clamped and reported in _meta.mcphost.limit_clamped).",
+            "maximum": 100,
+            "minimum": 1,
             "type": "integer"
           },
           "tenant_key": {
@@ -5922,10 +5986,14 @@
         "additionalProperties": false,
         "properties": {
           "cursor": {
-            "description": "Opaque pagination cursor from a previous list call's next_cursor."
+            "description": "Opaque keyset cursor: pass the previous page's next_cursor verbatim; omit for the first page.",
+            "type": "string"
           },
           "limit": {
-            "description": "Max documents to return; default 100.",
+            "default": 100,
+            "description": "Page size, 1..=max for this verb (a larger value is clamped and reported in _meta.mcphost.limit_clamped).",
+            "maximum": 1000,
+            "minimum": 1,
             "type": "integer"
           },
           "prefix": {
@@ -6740,11 +6808,14 @@
         "additionalProperties": false,
         "properties": {
           "cursor": {
-            "description": "Opaque; omit for the first page.",
+            "description": "Opaque keyset cursor: pass the previous page's next_cursor verbatim; omit for the first page.",
             "type": "string"
           },
           "limit": {
-            "description": "Up to 100; default 50.",
+            "default": 50,
+            "description": "Page size, 1..=max for this verb (a larger value is clamped and reported in _meta.mcphost.limit_clamped).",
+            "maximum": 100,
+            "minimum": 1,
             "type": "integer"
           },
           "tenant_key": {
@@ -6853,11 +6924,14 @@
         "additionalProperties": false,
         "properties": {
           "cursor": {
-            "description": "The seq to resume after; omit for the start.",
+            "description": "Opaque keyset cursor: pass the previous page's next_cursor verbatim; omit for the first page.",
             "type": "string"
           },
           "limit": {
-            "description": "Up to 100; default 50.",
+            "default": 50,
+            "description": "Page size, 1..=max for this verb (a larger value is clamped and reported in _meta.mcphost.limit_clamped).",
+            "maximum": 100,
+            "minimum": 1,
             "type": "integer"
           },
           "tenant_key": {

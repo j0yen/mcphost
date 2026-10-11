@@ -115,10 +115,6 @@ fn arg_str_opt(args: &Value, name: &str) -> Option<String> {
     args.get(name).and_then(Value::as_str).map(str::to_string)
 }
 
-fn arg_i64_opt(args: &Value, name: &str) -> Option<i64> {
-    args.get(name).and_then(Value::as_i64)
-}
-
 fn arg_bool(args: &Value, name: &str) -> bool {
     args.get(name).and_then(Value::as_bool).unwrap_or(false)
 }
@@ -461,15 +457,29 @@ pub fn spawn_channel_retention(state: AppState) -> tokio::task::JoinHandle<()> {
 /// retained seq" falls out of that for free, since a retention-purged
 /// post's `seq` simply no longer exists to match `seq > cursor` against,
 /// whichever of the two `cursor` was), in `seq` order, plus `next_cursor`.
-/// `ack: true` stores `next_cursor` as this member's new stored cursor.
+/// `ack: true` stores the last returned post's `seq` as this member's new
+/// stored cursor (unchanged when nothing was returned); `next_cursor` is
+/// absent on the last page.
 /// `channel_cursors`/`channel_posts` are shared, kind-agnostic tables
 /// (`channels.rs`'s own module doc), so every query below runs unchanged
 /// once `channel_id` is the resolved row's own id, whichever kind it is.
 pub async fn read(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    use crate::paged::{self, ChannelRead, Cursor, Paged};
     let key = arg_str(args, "channel_id")?;
-    let limit = arg_i64_opt(args, "limit").unwrap_or(50).clamp(1, 100);
+    let rl = paged::resolve_limit(args, ChannelRead::DEFAULT_LIMIT.into(), ChannelRead::MAX_LIMIT.into())?;
     let ack = arg_bool(args, "ack");
-    let cursor_arg = arg_i64_opt(args, "cursor");
+    // The one signed cursor; the pre-PRD bare integer `seq` is still read
+    // for the migration window and logged once per tenant as `cursor_legacy`.
+    let cursor_arg = match args.get("cursor") {
+        Some(Value::String(raw)) => Some(
+            paged::decode_or_legacy(raw, &state.session_bindings, tenant.id, ChannelRead::VERB, |raw| {
+                raw.parse::<i64>().ok().map(|seq| Cursor::new(seq, ""))
+            })?
+            .seq,
+        ),
+        Some(Value::Number(n)) => n.as_i64(),
+        _ => None,
+    };
 
     let resolved = resolve_channel(state, tenant, &key)
         .await?
@@ -495,15 +505,24 @@ pub async fn read(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
             .await?
             .unwrap_or(0),
     };
-    let rows = state.db.channel_posts_after(channel_id.clone(), effective_cursor, limit).await?;
-    let next_cursor = rows.last().map(|r| r.seq).unwrap_or(effective_cursor);
-    if ack {
-        state.db.channel_cursor_ack(channel_id, tenant.id, next_cursor).await?;
+    // One row past the page says whether it was the last (requirement 3).
+    let mut rows = state
+        .db
+        .channel_posts_after(channel_id.clone(), effective_cursor, rl.limit + 1)
+        .await?;
+    let next = paged::split_page(&mut rows, rl.limit, ChannelRead::cursor_of);
+    // `ack` stores the last row actually returned, whether or not a
+    // `next_cursor` was emitted; an empty read leaves the stored cursor
+    // exactly as it was.
+    if ack && let Some(last) = rows.last() {
+        state.db.channel_cursor_ack(channel_id, tenant.id, last.seq).await?;
     }
-    Ok(json!({
-        "posts": rows.iter().map(post_row_json).collect::<Vec<_>>(),
-        "next_cursor": next_cursor,
-    }))
+    let mut out = serde_json::Map::new();
+    out.insert(ChannelRead::KEY.to_string(), json!(rows.iter().map(post_row_json).collect::<Vec<_>>()));
+    paged::finish_page(&mut out, next.as_ref(), &state.session_bindings, tenant.id);
+    let mut value = Value::Object(out);
+    paged::note_clamp(&mut value, &rl);
+    Ok(value)
 }
 
 fn post_row_json(row: &crate::db::ChannelPostRow) -> Value {
