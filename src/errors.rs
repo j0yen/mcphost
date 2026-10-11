@@ -941,8 +941,10 @@ impl AppError {
         if let Some(field) = field {
             obj.insert("field".to_string(), json!(field));
         }
+        // `entry`, not `insert`: a structured error whose own `data.expected`
+        // is not a string (`fixture_shape_mismatch`'s key list) keeps it.
         if let Some(expected) = expected {
-            obj.insert("expected".to_string(), json!(expected));
+            obj.entry("expected".to_string()).or_insert(json!(expected));
         }
         if let Some(example) = example {
             obj.insert("example".to_string(), example);

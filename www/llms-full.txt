@@ -898,6 +898,8 @@ The chain's own result is its last step's result, unless that step itself failed
 
 A chain step goes through the same composition primitive `mcphost.call` uses (`kinds::compose_call`): a chain naming itself as one of its own steps is refused with `error_code: compose_self_call`; nesting chains (or python tools calling chains, or chains calling python tools that call further tools) more than 4 levels deep is refused with `error_code: compose_depth_exceeded`; a single top-level call's whole tree is capped at 50 child calls total (`error_code: compose_children_exceeded`).
 
+`host.tool_test` takes `fixtures: {"<step number or tool name>": <recorded result>}` for a chain: a fixtured step executes nothing (no upstream call, no `calls_per_day`), its report entry is `{step, tool, source: "fixture", resolved_args, result}`, and later mappings resolve against it. Every other step reports `source: "dry_run"` (with its `result`) or `source: "skipped"` with a `reason`; the report's `executed`, `fixtured` and `skipped` count them. A fixture that carries none of a step's declared `outputs` is refused with `fixture_shape_mismatch` (`data.expected`, `data.given`); fixtures on a non-chain tool fail `fixtures_not_applicable`, more than 256 KiB in total fail `fixtures_too_large` (`data.limit_bytes`), and a tool name used by two steps needs the step number (`fixture_step_ambiguous`). `host.runs.get(run_id, as_fixtures=true)` exports a finished chain run's child results in exactly that shape (`fixtures`; steps too large for one part are listed under `truncated`).
+
 ## Kind: echo
 
 spec.schema is any JSON Schema; a call echoes back the arguments it was given, validated against it.

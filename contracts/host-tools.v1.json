@@ -2628,6 +2628,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "as_fixtures": {
+            "description": "Also return `fixtures` ({\"<step>\": <child result>}) built from a chain run's child rows, ready to pass to host.tool_test's `fixtures`; steps whose result exceeds one part are listed under `truncated`.",
+            "type": "boolean"
+          },
           "run_id": {
             "description": "The run id to read.",
             "type": "string"
@@ -4225,6 +4229,10 @@
             "description": "Arguments to pass, same shape as a real call.",
             "type": "object"
           },
+          "fixtures": {
+            "description": "Chain tools only: {\"<step number or tool name>\": <recorded result>}. A fixtured step executes nothing (no upstream call); later mappings resolve against it. host.runs.get(run_id, as_fixtures=true) exports a real run in this shape.",
+            "type": "object"
+          },
           "name": {
             "description": "Local name of the already-published tool to dry-run.",
             "type": "string"
@@ -4719,6 +4727,10 @@
         "properties": {
           "args": {
             "description": "Arguments to pass, same shape as a real call.",
+            "type": "object"
+          },
+          "fixtures": {
+            "description": "Chain tools only: {\"<step number or tool name>\": <recorded result>}. A fixtured step executes nothing (no upstream call); later mappings resolve against it. host.runs.get(run_id, as_fixtures=true) exports a real run in this shape.",
             "type": "object"
           },
           "name": {
@@ -7742,6 +7754,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "as_fixtures": {
+            "description": "Also return `fixtures` ({\"<step>\": <child result>}) built from a chain run's child rows, ready to pass to host.tool_test's `fixtures`; steps whose result exceeds one part are listed under `truncated`.",
+            "type": "boolean"
+          },
           "run_id": {
             "description": "The run id to read.",
             "type": "string"
@@ -9211,6 +9227,10 @@
         "properties": {
           "args": {
             "description": "Arguments to pass, same shape as a real call.",
+            "type": "object"
+          },
+          "fixtures": {
+            "description": "Chain tools only: {\"<step number or tool name>\": <recorded result>}. A fixtured step executes nothing (no upstream call); later mappings resolve against it. host.runs.get(run_id, as_fixtures=true) exports a real run in this shape.",
             "type": "object"
           },
           "name": {

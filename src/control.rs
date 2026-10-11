@@ -1122,6 +1122,31 @@ pub fn quickstart(
             "host_steps_allowed".to_string(),
             json!(crate::kinds::HOST_STEPS_ALLOWED),
         );
+        // PRD-mcphost-chain-dry-run R7: replay recorded step results instead
+        // of calling any upstream. Every argument name printed here is a
+        // property of the named verb's input schema (asserted by
+        // `cfix_ac07`).
+        map.insert(
+            "fixtures".to_string(),
+            json!({
+                "note": "Dry-run a chain against recorded step results: a fixtured step executes \
+                    nothing (no upstream call) and later mappings resolve against it. Export a \
+                    real run's results with host.runs.get(as_fixtures=true), then pass them as \
+                    host.tool_test's fixtures.",
+                "export_call": {
+                    "call": "host.runs.get",
+                    "arguments": {"run_id": "<run_id of a finished chain run>", "as_fixtures": true},
+                },
+                "test_call": {
+                    "call": "host.tool_test",
+                    "arguments": {
+                        "name": tool_name,
+                        "args": example.call_args,
+                        "fixtures": {"1": {"items": [1, 2]}},
+                    },
+                },
+            }),
+        );
     }
     // Requirement 2/3 (AC1-3): only present when `kind_name_requested`
     // resolved through the alias table -- a direct kind request (`kind:
