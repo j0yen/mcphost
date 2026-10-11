@@ -1415,6 +1415,8 @@ mod outsch_ac01_oneof_budget_falsifier;
 mod outsch_ac02_every_canonical_declares_an_object_output_schema;
 #[path = "outsch_ac03_contract_dump_marks_aliases_and_outputs.rs"]
 mod outsch_ac03_contract_dump_marks_aliases_and_outputs;
+#[path = "outsch_ac04_tools_list_carries_output_schema.rs"]
+mod outsch_ac04_tools_list_carries_output_schema;
 #[path = "owncopy_ac01_email_subject_and_body_match_draft.rs"]
 mod owncopy_ac01_email_subject_and_body_match_draft;
 #[path = "owncopy_ac02_from_and_reply_to_passed_verbatim.rs"]

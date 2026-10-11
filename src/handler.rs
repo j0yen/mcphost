@@ -3877,6 +3877,21 @@ fn apply_tool_aliases(tools: &mut Vec<Tool>) {
     }
 }
 
+/// The `outputSchema` of a tenant tool whose spec declared `outputs`: an
+/// object whose `payload` carries each declared field (any JSON value --
+/// the spec author owns the field's type). `None` when nothing was declared.
+fn declared_outputs_schema(declared: &[crate::kinds::OutputDecl]) -> Option<Arc<Map<String, Value>>> {
+    if declared.is_empty() {
+        return None;
+    }
+    let fields: Map<String, Value> = declared.iter().map(|d| (d.name.clone(), json!({}))).collect();
+    let schema = json!({
+        "type": "object",
+        "properties": {"payload": {"type": "object", "properties": fields}},
+    });
+    Some(Arc::new(value_to_json_object(schema)))
+}
+
 /// PRD-mcphost-tools-list-alias-truth requirement 6: an alias (dotted or
 /// flattened) entry carries `_meta.alias_of: <canonical>` so clients can
 /// collapse the extra names; canonical entries never carry it.
@@ -8113,14 +8128,19 @@ impl ServerHandler for McpHostHandler {
                         if row.kind == "echo" {
                             meta.0.insert("stub".to_string(), json!(true));
                         }
-                        tools.push(
-                            Tool::new(
-                                format!("{}.{}", tenant.namespace, row.name),
-                                descriptor.description,
-                                value_to_json_object(descriptor.input_schema),
-                            )
-                            .with_meta(meta),
-                        );
+                        let mut published = Tool::new(
+                            format!("{}.{}", tenant.namespace, row.name),
+                            descriptor.description,
+                            value_to_json_object(descriptor.input_schema),
+                        )
+                        .with_meta(meta);
+                        // PRD-mcphost-contract-output-schemas R3: a tenant
+                        // tool carries `outputSchema` only when its spec
+                        // declared `outputs` -- the fields it promises at
+                        // `result.payload.<field>`.
+                        published.output_schema =
+                            declared_outputs_schema(&kind.declared_outputs(&row.spec));
+                        tools.push(published);
                     }
                 }
                 // AC18 / PRD requirement 14: ttlMs must go to 0 for the 60s
