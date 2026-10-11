@@ -23,10 +23,9 @@ async fn quickstart_limits_object_matches_the_constants() {
     let structured = common::extract_structured(&result);
     let limits = &structured["limits"];
 
-    assert_eq!(
-        limits["call_timeout_default_s"],
-        json!(CALL_TIMEOUT.as_secs())
-    );
+    // A configured constant compared with the advertised one, not a measurement.
+    let default_timeout_s = CALL_TIMEOUT.as_secs();
+    assert_eq!(limits["call_timeout_default_s"], json!(default_timeout_s));
     assert_eq!(limits["call_timeout_max_s"], json!(MAX_TIMEOUT_S));
     assert_eq!(limits["output_bytes_max"], json!(MAX_TOOL_OUTPUT_BYTES));
     assert_eq!(

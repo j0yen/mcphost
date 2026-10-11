@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.107.17 — 2026-10-11
+
+Test-harness only (PRD-mcphost-timing-assertion-lint): `scripts/timing-lint.py` fails any
+wall-clock assertion under `tests/` that sits outside a `/// timing-helper` macro/fn of
+`tests/common/mod.rs`; new `deadline_budget!(ms, { body })` hang-guard helper (one run, x3 under
+`MCPHOST_PERF_SKIP=1`, never skipped). No product change.
+
 ## v0.107.13 — 2026-10-10
 
 `host.webhook_inbox.create(name, verify?, rotate?)` makes a webhook inbox one call

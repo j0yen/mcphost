@@ -31,15 +31,13 @@ fn a_host_that_never_answers_fails_with_timeout() {
     let url = format!("http://127.0.0.1:{port}/hang");
     std::fs::write(&file, format!("[x]({url})\n")).unwrap();
 
-    let started = std::time::Instant::now();
-    let out = xlinks::run_checker(&[&file]);
-    let elapsed = started.elapsed();
+    // 1 s timeout x (first attempt + one retry): HEAD times out, so the
+    // attempt ends there each time -- at least two timeouts elapsed (a retry
+    // happened), and the whole run stays well bounded.
+    let out = crate::deadline_budget!(10_000, at_least = 1900, { xlinks::run_checker(&[&file]) });
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert_eq!(out.status.code(), Some(1), "stdout: {stdout}");
     assert!(stdout.contains(&format!("FAIL timeout {url} {}:1", file.display())), "{stdout}");
-    // 1 s timeout x (first attempt + one retry): HEAD times out, so the
-    // attempt ends there each time -- at least two timeouts elapsed.
-    assert!(elapsed.as_millis() >= 1900, "expected a retry (>= 2 timeouts), took {elapsed:?}");
 }
 
 #[test]

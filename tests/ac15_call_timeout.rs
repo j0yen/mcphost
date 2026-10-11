@@ -84,16 +84,14 @@ async fn hung_call_times_out_and_drops_its_future() {
         .expect("publish the hang kind");
     let qualified = format!("{tenant_ns}.stall");
 
-    let started = std::time::Instant::now();
-    let err = client
-        .tools_call(&qualified, json!({}))
-        .await
-        .expect_err("a call that never completes must time out");
+    // Hang guard: the call must return at the configured deadline, not hang.
+    let err = crate::deadline_budget!(5000, {
+        client
+            .tools_call(&qualified, json!({}))
+            .await
+            .expect_err("a call that never completes must time out")
+    });
     assert_eq!(err.error_code.as_deref(), Some("call_timeout"));
-    assert!(
-        started.elapsed() < Duration::from_secs(5),
-        "the call must return at the configured deadline, not hang forever"
-    );
 
     // Give the dropped future's Drop guard a moment to run, then confirm
     // no in-flight call was leaked.

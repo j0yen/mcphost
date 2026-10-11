@@ -99,13 +99,9 @@ async fn long_run_returns_202_then_poll_resolves_once_done() {
     let url = shared["url"].as_str().expect("url field").to_string();
 
     let http = reqwest::Client::new();
-    let started = Instant::now();
-    let resp = http.post(&url).body("{}").send().await.expect("POST");
-    let elapsed = started.elapsed();
-    assert!(
-        elapsed < Duration::from_secs(26),
-        "202 must be returned within 26s, took {elapsed:?}"
-    );
+    let resp = crate::deadline_budget!(26_000, {
+        http.post(&url).body("{}").send().await.expect("POST")
+    });
     assert_eq!(resp.status(), 202, "a run that outlasts the sync deadline must answer 202");
     let body: Value = resp.json().await.expect("json body");
     assert_eq!(body["ok"], json!(true));

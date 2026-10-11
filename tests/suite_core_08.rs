@@ -226,6 +226,8 @@ mod tlint_ac01_hand_skip_then_bare_assert_fails;
 mod tlint_ac02_bare_assert_after_budget_block_is_named;
 #[path = "tlint_ac03_allow_set_comes_from_the_harness_file.rs"]
 mod tlint_ac03_allow_set_comes_from_the_harness_file;
+#[path = "tlint_ac05_landed_tree_has_zero_offenders.rs"]
+mod tlint_ac05_landed_tree_has_zero_offenders;
 #[path = "toolname_ac01_lint_reports_violations.rs"]
 mod toolname_ac01_lint_reports_violations;
 #[path = "toolname_ac02_alias_dispatch_hint_and_log.rs"]

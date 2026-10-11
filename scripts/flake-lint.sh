@@ -24,11 +24,10 @@
 #                      A test that goes through `common::EnvGuard::set(...)`
 #                      instead never spells `set_var`/`remove_var` in its own
 #                      source, so it naturally reports nothing.
-#   single-shot-perf   an `assert!` on the same line as both `.elapsed()` and
-#                      a `Duration::from_*` literal -- a `perf_budget!(...)`
-#                      call site never spells `elapsed()`/`Duration::from_`
-#                      itself (the macro owns timing), so it naturally
-#                      reports nothing either.
+#   (timing)          wall-clock assertions outside a sanctioned timing
+#                      helper, reported by scripts/timing-lint.py (called
+#                      below; it replaced the old same-line
+#                      `single-shot-perf` rule).
 #   receipt-read       a string literal containing `autobuilder/receipts`,
 #                      `gate-receipts`, or `.wm-build`.
 #
@@ -117,18 +116,6 @@ lint_file() {
       'set_var/remove_var outside EnvGuard — wrap in EnvGuard::set("VAR", value) (see tests/common::EnvGuard)'
   done < <(grep -nE '\benv::(set_var|remove_var)\(' "$file" 2>/dev/null)
 
-  while IFS=: read -r lineno content; do
-    [ -z "${lineno:-}" ] && continue
-    case "$content" in
-      *assert!*) ;;
-      *) continue ;;
-    esac
-    if [[ "$content" == *"elapsed()"* ]] && [[ "$content" == *"Duration::from_"* ]]; then
-      report "$file" "$lineno" "single-shot-perf" \
-        'single measurement of elapsed() against a Duration literal in assert! — wrap in perf_budget!(budget_ms, { ... }) (median of >=5 warm runs)'
-    fi
-  done < <(grep -nE 'assert!' "$file" 2>/dev/null)
-
   while IFS=: read -r lineno rest; do
     [ -z "${lineno:-}" ] && continue
     report "$file" "$lineno" "receipt-read" \
@@ -141,6 +128,21 @@ for f in "${FILES[@]:-}"; do
   [ -f "$f" ] || continue
   lint_file "$f"
 done
+
+# Wall-clock assertions: one scanner, scripts/timing-lint.py, whose allow set
+# is read from tests/common/mod.rs (PRD-mcphost-timing-assertion-lint). Its
+# `file:line: token` lines are blocking, not allow-listable. Skipped when the
+# scanner is not alongside this script (isolated fixture trees copy only
+# flake-lint.sh).
+TIMING_LINT="$(dirname "${BASH_SOURCE[0]}")/timing-lint.py"
+if [ -d "$TARGET" ] && [ -f "$TIMING_LINT" ]; then
+  timing_out="$(python3 -I "$TIMING_LINT" "$TARGET")"
+  timing_rc=$?
+  printf '%s\n' "$timing_out"
+  if [ "$timing_rc" -ne 0 ]; then
+    blocking_count=$((blocking_count + $(printf '%s\n' "$timing_out" | grep -vc '^timing-lint:')))
+  fi
+fi
 
 total=$((allowed_count + blocking_count))
 echo "flake-lint: findings: $total allowed: $allowed_count blocking: $blocking_count"

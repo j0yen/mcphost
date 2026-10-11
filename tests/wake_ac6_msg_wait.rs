@@ -15,7 +15,7 @@
 use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[tokio::test]
 async fn wait_returns_promptly_when_a_message_arrives() {
@@ -54,16 +54,16 @@ async fn wait_returns_promptly_when_a_message_arrives() {
     });
 
     tokio::time::sleep(Duration::from_millis(300)).await;
-    let send_at = Instant::now();
-    client_s
-        .tools_call("host.msg.send", json!({"to": [ns_r], "body": "wake up now"}))
-        .await
-        .expect("S sends");
+    // wait must return within 3s of the send
+    let waited = crate::deadline_budget!(3000, {
+        client_s
+            .tools_call("host.msg.send", json!({"to": [ns_r], "body": "wake up now"}))
+            .await
+            .expect("S sends");
 
-    let waited_raw = waiter.await.expect("waiter task");
-    let waited = extract_structured(&waited_raw);
-    let elapsed = send_at.elapsed();
-    assert!(elapsed < Duration::from_secs(3), "wait must return within 3s of the send: {elapsed:?}");
+        let waited_raw = waiter.await.expect("waiter task");
+        extract_structured(&waited_raw)
+    });
     let messages = waited["messages"].as_array().expect("messages array");
     assert!(
         messages.iter().any(|m| m["body"] == json!("wake up now")),
@@ -92,18 +92,15 @@ async fn wait_times_out_with_an_empty_list_and_the_unchanged_cursor() {
     );
     let cursor = primed["next_cursor"].as_str().expect("advanced cursor").to_string();
 
-    let start = Instant::now();
-    let waited = extract_structured(
-        &client_r
-            .tools_call("host.msg.wait", json!({"timeout_s": 2, "cursor": cursor}))
-            .await
-            .expect("msg.wait"),
-    );
-    let elapsed = start.elapsed();
-    assert!(
-        elapsed >= Duration::from_millis(1900) && elapsed <= Duration::from_secs(4),
-        "wait must return at ~timeout_s when nothing arrives: {elapsed:?}"
-    );
+    // wait must return at ~timeout_s when nothing arrives
+    let waited = crate::deadline_budget!(4000, at_least = 1900, {
+        extract_structured(
+            &client_r
+                .tools_call("host.msg.wait", json!({"timeout_s": 2, "cursor": cursor}))
+                .await
+                .expect("msg.wait"),
+        )
+    });
     assert_eq!(waited["messages"], json!([]), "{waited:?}");
     assert_eq!(waited["next_cursor"], json!(cursor), "cursor must stay unchanged on timeout: {waited:?}");
 }

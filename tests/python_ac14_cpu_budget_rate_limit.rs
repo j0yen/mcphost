@@ -14,7 +14,7 @@ use crate::common;
 use common::{TestServer, poll_until_ready, python_kind_registry_with_cpu_budget_ms, signup};
 use mcphost::sandbox;
 use serde_json::json;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[tokio::test]
 async fn a_tenant_over_budget_is_rate_limited_without_starting_a_process() {
@@ -53,21 +53,18 @@ async fn a_tenant_over_budget_is_rate_limited_without_starting_a_process() {
     let qualified = format!("{ns}.budgeted");
     let _ = poll_until_ready(&client, &qualified, json!({}), Duration::from_secs(10)).await;
 
-    let started = Instant::now();
-    let err = client
-        .tools_call(&qualified, json!({}))
-        .await
-        .expect_err("a call over budget must be refused");
-    let elapsed = started.elapsed();
+    // A budget-refused call must return immediately, without starting the
+    // (2s-sleeping) sandboxed process.
+    let err = crate::deadline_budget!(500, {
+        client
+            .tools_call(&qualified, json!({}))
+            .await
+            .expect_err("a call over budget must be refused")
+    });
     assert_eq!(err.error_code.as_deref(), Some("rate_limited"));
     assert!(
         err.data["retry_after_s"].as_u64().is_some_and(|s| s > 0),
         "rate_limited must carry a positive retry_after_s, got: {:?}",
         err.data
-    );
-    assert!(
-        elapsed < Duration::from_millis(500),
-        "a budget-refused call must return immediately, without starting the (2s-sleeping) \
-         sandboxed process; took {elapsed:?}"
     );
 }

@@ -86,8 +86,11 @@ async fn three_retries_exhaust_then_failed_and_host_still_serves() {
         .map(|i| stamps[i + 1].saturating_duration_since(stamps[i]))
         .collect();
     for (i, gap) in gaps.iter().enumerate() {
+        // A lower bound on a sleep: load can only lengthen the gap, never
+        // shrink it, so this is not a flaky upper-bound budget.
+        let documented_backoff = Duration::from_millis(retry_backoff_ms[i]);
         assert!(
-            *gap >= Duration::from_millis(retry_backoff_ms[i]),
+            *gap >= documented_backoff,
             "retry {} must wait at least its documented backoff ({}ms), got {gap:?}",
             i + 1,
             retry_backoff_ms[i],

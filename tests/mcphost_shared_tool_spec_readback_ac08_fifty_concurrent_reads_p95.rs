@@ -108,6 +108,9 @@ async fn fifty_concurrent_reads_of_a_64kib_spec_stay_under_100ms_p95_and_agree()
     }
 
     let qualified = format!("{ns_o}.big_spec");
+    // Hang guard around the concurrent reads; the p95 assertion inside keeps
+    // its own number and honors MCPHOST_PERF_SKIP.
+    crate::deadline_budget!(120_000, {
     let handles: Vec<_> = sharee_keys
         .iter()
         .map(|key| {
@@ -138,4 +141,5 @@ async fn fifty_concurrent_reads_of_a_64kib_spec_stay_under_100ms_p95_and_agree()
         common::perf_skipped() || p95 < Duration::from_millis(100),
         "p95 over {SHAREES} concurrent reads of a 64 KiB spec was {p95:?}, expected < 100ms"
     );
+    });
 }

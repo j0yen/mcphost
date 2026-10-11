@@ -17,7 +17,6 @@ use crate::common;
 use common::TempDataDir;
 use mcphost::db::Db;
 use rusqlite::params;
-use std::time::Instant;
 
 #[tokio::test]
 async fn migration_0048_completes_under_1s_at_100k_rows_and_adds_its_index() {
@@ -58,21 +57,12 @@ async fn migration_0048_completes_under_1s_at_100k_rows_and_adds_its_index() {
         tx.commit().expect("commit seed tx");
     }
 
-    let started = Instant::now();
-    db.migrate().await.expect("re-migrate applies 0048 against 100k rows");
-    let elapsed = started.elapsed();
     // Not wrappable in `perf_budget!` (a migration applies once; re-runs
-    // would be no-ops and make the median meaningless), so honor its
-    // MCPHOST_PERF_SKIP=1 convention by hand. The functional assertions
-    // below still run either way.
-    if std::env::var("MCPHOST_PERF_SKIP").ok().as_deref() == Some("1") {
-        eprintln!("perf skipped (load): migration took {elapsed:?}");
-    } else {
-        assert!(
-            elapsed.as_secs_f64() < 1.0,
-            "migration 0048 must complete under 1s at 100k rows, took {elapsed:?}"
-        );
-    }
+    // would be no-ops and make the median meaningless), so it is a one-shot
+    // deadline (x3 under MCPHOST_PERF_SKIP=1).
+    crate::deadline_budget!(1000, {
+        db.migrate().await.expect("re-migrate applies 0048 against 100k rows");
+    });
 
     let conn = rusqlite::Connection::open(&db_path).expect("open raw db");
     let mut stmt = conn.prepare("PRAGMA index_list(runs)").expect("prepare index_list");
