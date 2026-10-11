@@ -710,6 +710,14 @@
             "minimum": 1,
             "type": "integer"
           },
+          "order": {
+            "default": "seq_asc",
+            "description": "Row order; default seq_asc.",
+            "enum": [
+              "seq_asc"
+            ],
+            "type": "string"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
@@ -855,6 +863,16 @@
             "maximum": 1000,
             "minimum": 1,
             "type": "integer"
+          },
+          "order": {
+            "default": "created_desc",
+            "description": "Row order; default created_desc.",
+            "enum": [
+              "created_desc",
+              "created_asc",
+              "name_asc"
+            ],
+            "type": "string"
           },
           "prefix": {
             "description": "Only list documents whose name starts with this prefix.",
@@ -1706,6 +1724,14 @@
             "minimum": 1,
             "type": "integer"
           },
+          "order": {
+            "default": "created_asc",
+            "description": "Row order; default created_asc.",
+            "enum": [
+              "created_asc"
+            ],
+            "type": "string"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
@@ -1822,6 +1848,14 @@
             "maximum": 100,
             "minimum": 1,
             "type": "integer"
+          },
+          "order": {
+            "default": "seq_asc",
+            "description": "Row order; default seq_asc.",
+            "enum": [
+              "seq_asc"
+            ],
+            "type": "string"
           },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
@@ -5886,6 +5920,14 @@
             "minimum": 1,
             "type": "integer"
           },
+          "order": {
+            "default": "seq_asc",
+            "description": "Row order; default seq_asc.",
+            "enum": [
+              "seq_asc"
+            ],
+            "type": "string"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
@@ -6030,6 +6072,16 @@
             "maximum": 1000,
             "minimum": 1,
             "type": "integer"
+          },
+          "order": {
+            "default": "created_desc",
+            "description": "Row order; default created_desc.",
+            "enum": [
+              "created_desc",
+              "created_asc",
+              "name_asc"
+            ],
+            "type": "string"
           },
           "prefix": {
             "description": "Only list documents whose name starts with this prefix.",
@@ -6853,6 +6905,14 @@
             "minimum": 1,
             "type": "integer"
           },
+          "order": {
+            "default": "created_asc",
+            "description": "Row order; default created_asc.",
+            "enum": [
+              "created_asc"
+            ],
+            "type": "string"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
@@ -6968,6 +7028,14 @@
             "maximum": 100,
             "minimum": 1,
             "type": "integer"
+          },
+          "order": {
+            "default": "seq_asc",
+            "description": "Row order; default seq_asc.",
+            "enum": [
+              "seq_asc"
+            ],
+            "type": "string"
           },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",

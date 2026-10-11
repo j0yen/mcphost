@@ -398,6 +398,8 @@ mod verbfwd_ac06_hint_parity_underscore_form_resolves;
 mod verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota;
 #[path = "vord_ac01_falsifier.rs"]
 mod vord_ac01_falsifier;
+#[path = "vord_ac02_contract_order_enum.rs"]
+mod vord_ac02_contract_order_enum;
 #[path = "wake_ac1_message_trigger_fires_run.rs"]
 mod wake_ac1_message_trigger_fires_run;
 #[path = "wake_ac2_from_filter.rs"]

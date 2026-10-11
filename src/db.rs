@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::errors::AppError;
+use crate::paged::{OrderEnum as _, Paged as _};
 
 fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
@@ -12168,13 +12169,14 @@ impl Db {
             );
             let mut sql_params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(tenant_id)];
             if let Some((created_unix_ms, id)) = &after {
-                sql.push_str(&format!(
-                    " AND (m.created_unix_ms, m.id) > (?{}, ?{})",
+                let cursor = crate::paged::Cursor::new(*created_unix_ms, id.clone());
+                let (clause, values) = crate::paged::keyset_clause(
+                    crate::paged::InboxOrder::DEFAULT,
+                    &cursor,
                     sql_params.len() + 1,
-                    sql_params.len() + 2
-                ));
-                sql_params.push(Box::new(*created_unix_ms));
-                sql_params.push(Box::new(id.clone()));
+                );
+                sql.push_str(&format!(" AND {clause}"));
+                sql_params.extend(values.into_iter().map(|v| Box::new(v) as Box<dyn rusqlite::ToSql>));
             }
             if unread_only {
                 // requirement 5 / 6 (AC5): a muted sender's message is
@@ -12186,7 +12188,11 @@ impl Db {
                 // LEFT JOIN found no matching mute row).
                 sql.push_str(" AND r.read_at IS NULL AND (mu.tenant_id IS NULL OR m.urgent = 1)");
             }
-            sql.push_str(&format!(" ORDER BY m.created_unix_ms, m.id LIMIT ?{}", sql_params.len() + 1));
+            sql.push_str(&format!(
+                " {} LIMIT ?{}",
+                crate::paged::MsgInbox::sql_order(crate::paged::InboxOrder::DEFAULT),
+                sql_params.len() + 1
+            ));
             sql_params.push(Box::new(limit));
 
             let mut stmt = conn.prepare(&sql)?;
@@ -12226,10 +12232,19 @@ impl Db {
             );
             let mut sql_params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(tenant_id), Box::new(thread_id.clone())];
             if let Some(seq) = after_seq {
-                sql.push_str(&format!(" AND m.seq > ?{}", sql_params.len() + 1));
-                sql_params.push(Box::new(seq));
+                let (clause, values) = crate::paged::keyset_clause(
+                    crate::paged::ThreadOrder::DEFAULT,
+                    &crate::paged::Cursor::new(seq, ""),
+                    sql_params.len() + 1,
+                );
+                sql.push_str(&format!(" AND {clause}"));
+                sql_params.extend(values.into_iter().map(|v| Box::new(v) as Box<dyn rusqlite::ToSql>));
             }
-            sql.push_str(&format!(" ORDER BY m.seq LIMIT ?{}", sql_params.len() + 1));
+            sql.push_str(&format!(
+                " {} LIMIT ?{}",
+                crate::paged::MsgThread::sql_order(crate::paged::ThreadOrder::DEFAULT),
+                sql_params.len() + 1
+            ));
             sql_params.push(Box::new(limit));
 
             let mut stmt = conn.prepare(&sql)?;
@@ -13207,10 +13222,19 @@ impl Db {
             );
             let mut sql_params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(thread_id.clone())];
             if let Some(seq) = after_seq {
-                sql.push_str(&format!(" AND m.seq > ?{}", sql_params.len() + 1));
-                sql_params.push(Box::new(seq));
+                let (clause, values) = crate::paged::keyset_clause(
+                    crate::paged::ThreadOrder::DEFAULT,
+                    &crate::paged::Cursor::new(seq, ""),
+                    sql_params.len() + 1,
+                );
+                sql.push_str(&format!(" AND {clause}"));
+                sql_params.extend(values.into_iter().map(|v| Box::new(v) as Box<dyn rusqlite::ToSql>));
             }
-            sql.push_str(&format!(" ORDER BY m.seq LIMIT ?{}", sql_params.len() + 1));
+            sql.push_str(&format!(
+                " {} LIMIT ?{}",
+                crate::paged::MsgThread::sql_order(crate::paged::ThreadOrder::DEFAULT),
+                sql_params.len() + 1
+            ));
             sql_params.push(Box::new(limit));
             let mut stmt = conn.prepare(&sql)?;
             let param_refs: Vec<&dyn rusqlite::ToSql> = sql_params.iter().map(|b| b.as_ref()).collect();
@@ -13508,12 +13532,19 @@ impl Db {
         limit: i64,
     ) -> Result<Vec<ChannelPostRow>, AppError> {
         self.with_conn(move |conn| {
-            let mut stmt = conn.prepare(
+            use crate::paged::{ChannelOrder, ChannelRead, Cursor, keyset_clause};
+            let (clause, values) = keyset_clause(ChannelOrder::DEFAULT, &Cursor::new(after_seq, ""), 2);
+            let mut binds: Vec<rusqlite::types::Value> = vec![channel_id.into()];
+            binds.extend(values);
+            let mut stmt = conn.prepare(&format!(
                 "SELECT id, channel_id, seq, from_address, body, data_json, synthetic, \
                         source_class, created_at, created_unix_ms \
-                 FROM channel_posts WHERE channel_id = ?1 AND seq > ?2 ORDER BY seq LIMIT ?3",
-            )?;
-            stmt.query_map(params![channel_id, after_seq, limit], channel_post_row_from_row)?
+                 FROM channel_posts WHERE channel_id = ?1 AND {clause} {} LIMIT ?{}",
+                ChannelRead::sql_order(ChannelOrder::DEFAULT),
+                binds.len() + 1
+            ))?;
+            binds.push(limit.into());
+            stmt.query_map(rusqlite::params_from_iter(binds.iter()), channel_post_row_from_row)?
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(AppError::from)
         })
@@ -14887,31 +14918,40 @@ impl Db {
         .await
     }
 
-    /// requirement 4: live documents only, ordered by name, optionally
-    /// `name`-prefix filtered and paginated by a last-seen-name cursor.
+    /// requirement 4: live documents only, in the caller's declared
+    /// [`crate::paged::DocsOrder`], optionally `name`-prefix filtered and
+    /// resumed after a keyset `cursor` minted under that same order.
+    #[allow(clippy::too_many_arguments)]
     pub async fn documents_list_live(
         &self,
         tenant_id: i64,
         prefix: Option<String>,
-        cursor: Option<String>,
+        cursor: Option<crate::paged::Cursor>,
+        order: crate::paged::DocsOrder,
         limit: i64,
     ) -> Result<Vec<DocumentRow>, AppError> {
+        use crate::paged::{DocsList, keyset_clause};
         self.with_conn(move |conn| {
             let pattern = prefix
                 .as_deref()
                 .map(|p| format!("{}%", p.replace('%', "\\%").replace('_', "\\_")));
-            let mut stmt = conn.prepare(&format!(
+            let mut binds: Vec<rusqlite::types::Value> = vec![tenant_id.into(), pattern.into()];
+            let mut sql = format!(
                 "SELECT {} FROM documents \
                  WHERE tenant_id = ?1 AND deleted_at IS NULL \
-                   AND (?2 IS NULL OR name LIKE ?2 ESCAPE '\\') \
-                   AND (?3 IS NULL OR name > ?3) \
-                 ORDER BY name LIMIT ?4",
+                   AND (?2 IS NULL OR name LIKE ?2 ESCAPE '\\')",
                 Self::DOCUMENT_COLUMNS
-            ))?;
+            );
+            if let Some(c) = &cursor {
+                let (clause, values) = keyset_clause(order, c, binds.len() + 1);
+                sql.push_str(&format!(" AND {clause}"));
+                binds.extend(values);
+            }
+            sql.push_str(&format!(" {} LIMIT ?{}", DocsList::sql_order(order), binds.len() + 1));
+            binds.push(limit.into());
+            let mut stmt = conn.prepare(&sql)?;
             let rows = stmt
-                .query_map(params![tenant_id, pattern, cursor, limit], |r| {
-                    Self::document_from_row(r)
-                })?
+                .query_map(rusqlite::params_from_iter(binds.iter()), Self::document_from_row)?
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(rows)
         })
@@ -14939,8 +14979,9 @@ impl Db {
                 "SELECT {} FROM documents \
                  WHERE tenant_id = ?1 AND seq > ?2 \
                    AND (?3 IS NULL OR name LIKE ?3 ESCAPE '\\') \
-                 ORDER BY seq LIMIT ?4",
-                Self::DOCUMENT_COLUMNS
+                 {} LIMIT ?4",
+                Self::DOCUMENT_COLUMNS,
+                crate::paged::DocsList::sql_order(crate::paged::DocsOrder::CreatedAsc)
             ))?;
             let rows = stmt
                 .query_map(params![tenant_id, floor, pattern, limit], |r| {

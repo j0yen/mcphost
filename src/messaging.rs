@@ -392,12 +392,14 @@ async fn fire_message_triggers(state: &AppState, outcome: &SendOutcome, ctx: &Me
 /// The inbox's keyset position, as the one signed cursor `paged::Cursor`
 /// defines (`(created_unix_ms, id)`), minted for `tenant`.
 fn encode_inbox_cursor(state: &AppState, tenant: &Tenant, row: &MessageRow) -> String {
-    use crate::paged::{MsgInbox, Paged};
-    MsgInbox::cursor_of(row).encode(&state.session_bindings, tenant.id)
+    use crate::paged::{MsgInbox, OrderEnum as _, Paged};
+    MsgInbox::cursor_at(row, crate::paged::InboxOrder::DEFAULT).encode(&state.session_bindings, tenant.id)
 }
 
 fn decode_inbox_cursor(state: &AppState, tenant: &Tenant, cursor: &str) -> Result<(i64, String), AppError> {
+    use crate::paged::OrderEnum as _;
     let c = crate::paged::Cursor::decode(cursor, &state.session_bindings, tenant.id)?;
+    c.require_order(crate::paged::InboxOrder::DEFAULT.name())?;
     Ok((c.seq, c.id))
 }
 
@@ -421,8 +423,10 @@ fn message_row_json(row: &MessageRow) -> Value {
 /// `host.msg.inbox(cursor?, limit≤100, unread_only?)` (requirement 4, 5 /
 /// AC6, AC13).
 pub async fn inbox(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    use crate::paged::{self, MsgInbox, Paged};
+    use crate::paged::{self, MsgInbox, OrderEnum as _, Paged};
     let rl = paged::resolve_limit(args, MsgInbox::DEFAULT_LIMIT.into(), MsgInbox::MAX_LIMIT.into())?;
+    // Single-variant order: validated so the schema's `order` enum is honest.
+    paged::resolve_order::<paged::InboxOrder>(args)?;
     let unread_only = arg_bool(args, "unread_only");
     let after = match arg_str_opt(args, "cursor") {
         Some(c) => Some(decode_inbox_cursor(state, tenant, &c)?),
@@ -431,7 +435,7 @@ pub async fn inbox(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
 
     // One row past the page says whether it was the last (requirement 3).
     let mut rows = state.db.msg_inbox(tenant.id, after, rl.limit + 1, unread_only).await?;
-    let next = paged::split_page(&mut rows, rl.limit, MsgInbox::cursor_of);
+    let next = paged::split_page(&mut rows, rl.limit, |m| MsgInbox::cursor_at(m, paged::InboxOrder::DEFAULT));
     let mut out = serde_json::Map::new();
     out.insert(MsgInbox::KEY.to_string(), json!(rows.iter().map(message_row_json).collect::<Vec<_>>()));
     paged::finish_page(&mut out, next.as_ref(), &state.session_bindings, tenant.id);
@@ -485,11 +489,17 @@ pub async fn wait(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
 /// `host.msg.thread(thread_id, cursor?, limit≤100)` (requirement 4 /
 /// AC2, AC3, AC14).
 pub async fn thread(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    use crate::paged::{self, Cursor, MsgThread, Paged};
+    use crate::paged::{self, Cursor, MsgThread, OrderEnum as _, Paged};
     let thread_id = arg_str(args, "thread_id")?;
     let rl = paged::resolve_limit(args, MsgThread::DEFAULT_LIMIT.into(), MsgThread::MAX_LIMIT.into())?;
+    // Single-variant order: validated so the schema's `order` enum is honest.
+    paged::resolve_order::<paged::ThreadOrder>(args)?;
     let after_seq = match arg_str_opt(args, "cursor") {
-        Some(c) => Some(Cursor::decode(&c, &state.session_bindings, tenant.id)?.seq),
+        Some(c) => {
+            let c = Cursor::decode(&c, &state.session_bindings, tenant.id)?;
+            c.require_order(paged::ThreadOrder::DEFAULT.name())?;
+            Some(c.seq)
+        }
         None => None,
     };
 
@@ -498,7 +508,7 @@ pub async fn thread(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
         .msg_thread(tenant.id, thread_id, after_seq, rl.limit + 1)
         .await?
         .ok_or_else(AppError::thread_not_found)?;
-    let next = paged::split_page(&mut rows, rl.limit, MsgThread::cursor_of);
+    let next = paged::split_page(&mut rows, rl.limit, |m| MsgThread::cursor_at(m, paged::ThreadOrder::DEFAULT));
     let mut out = serde_json::Map::new();
     out.insert(MsgThread::KEY.to_string(), json!(rows.iter().map(message_row_json).collect::<Vec<_>>()));
     paged::finish_page(&mut out, next.as_ref(), &state.session_bindings, tenant.id);

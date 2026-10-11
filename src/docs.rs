@@ -460,27 +460,48 @@ pub async fn doc_get(state: &AppState, tenant: &Tenant, args: &Value) -> Result<
 /// `deleted` rows); with `since` (including `0`), every document whose own
 /// `seq` is past it, live or deleted (deleted ones carry `deleted: true`).
 pub async fn doc_list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    use crate::paged::{self, Cursor, DocsList, Paged};
+    use crate::paged::{self, Cursor, DocsList, DocsOrder, OrderEnum, Paged};
     let prefix = arg_str_opt(args, "prefix");
     let rl = paged::resolve_limit(args, DocsList::DEFAULT_LIMIT.into(), DocsList::MAX_LIMIT.into())?;
+    let since = arg_i64_opt(args, "since");
+    // PRD-mcphost-declared-ordering-per-verb: `order` selects the live
+    // snapshot's ordering. A `since` changefeed is always `seq` ascending (it
+    // resumes from a `seq`), so it ignores `order` after validating it.
+    let asked = paged::resolve_order::<DocsOrder>(args)?;
+    let mut order = if since.is_some() { DocsOrder::CreatedAsc } else { asked };
     // requirement 2/3: one signed cursor. A pre-PRD cursor (a bare document
     // name, or the integer `seq` a `since` walk used) is still read for the
     // migration window and logged once per tenant as `cursor_legacy`.
+    let legacy = std::cell::Cell::new(false);
     let cursor = match args.get("cursor") {
         Some(Value::String(raw)) => Some(paged::decode_or_legacy(
             raw,
             &state.session_bindings,
             tenant.id,
             DocsList::VERB,
-            |raw| Some(Cursor::new(raw.parse().unwrap_or(0), raw)),
+            |raw| {
+                legacy.set(true);
+                let legacy_order = if since.is_some() { DocsOrder::CreatedAsc } else { DocsOrder::NameAsc };
+                Some(Cursor::new(raw.parse().unwrap_or(0), raw).with_order(legacy_order.name()))
+            },
         )?),
-        Some(Value::Number(n)) => n.as_i64().map(|seq| Cursor::new(seq, seq.to_string())),
+        Some(Value::Number(n)) => n
+            .as_i64()
+            .map(|seq| Cursor::new(seq, seq.to_string()).with_order(DocsOrder::CreatedAsc.name())),
         _ => None,
     };
+    // A pre-PRD live cursor walked by name: keep walking by name unless the
+    // caller picked an order explicitly (then the mismatch is refused).
+    if legacy.get() && since.is_none() && args.get("order").is_none_or(Value::is_null) {
+        order = DocsOrder::NameAsc;
+    }
+    if let Some(c) = &cursor {
+        c.require_order(order.name())?;
+    }
 
     // One row past the page tells us whether it was the last (requirement 3).
     let fetch = rl.limit + 1;
-    let mut rows = match arg_i64_opt(args, "since") {
+    let mut rows = match since {
         Some(since) => {
             let after = cursor.as_ref().map(|c| c.seq);
             state
@@ -488,13 +509,10 @@ pub async fn doc_list(state: &AppState, tenant: &Tenant, args: &Value) -> Result
                 .documents_list_since(tenant.id, since, prefix, after, fetch)
                 .await?
         }
-        None => {
-            let after = cursor.map(|c| c.id);
-            state.db.documents_list_live(tenant.id, prefix, after, fetch).await?
-        }
+        None => state.db.documents_list_live(tenant.id, prefix, cursor, order, fetch).await?,
     };
 
-    let next = paged::split_page(&mut rows, rl.limit, DocsList::cursor_of);
+    let next = paged::split_page(&mut rows, rl.limit, |d| DocsList::cursor_at(d, order));
     let documents: Vec<Value> = rows.iter().map(|d| document_to_json(d, true)).collect();
     let mut out = serde_json::Map::new();
     out.insert(DocsList::KEY.to_string(), json!(documents));

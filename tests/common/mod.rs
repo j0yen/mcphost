@@ -2161,6 +2161,7 @@ pub async fn pgtr_record_responses() -> Vec<(String, Value)> {
 /// Walk one paged verb to its end, following `next_cursor`, and return every
 /// row's `id_key` value in the order the pages delivered them. `pace` is
 /// slept between pages so a concurrent writer task gets scheduled in between.
+#[allow(clippy::too_many_arguments)]
 pub async fn vord_walk(
     client: &McpClient,
     verb: &str,
