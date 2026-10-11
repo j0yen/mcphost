@@ -2221,6 +2221,16 @@ pub trait Kind: Send + Sync {
         None
     }
 
+    /// PRD-mcphost-call-cost-estimate: the `capacity` refusal a real call to
+    /// this kind would get right now for `tenant_id`, read WITHOUT taking a
+    /// slot -- what a dry run (`host.estimate`) asks. The real call keeps
+    /// its own acquire inside [`Kind::call`] (it has to hold the slot);
+    /// this and that build the same error. `None` (the default) for every
+    /// kind with no admission cap.
+    fn admission_capacity(&self, _tenant_id: i64, _concurrent_calls_per_tenant: usize) -> Option<KindError> {
+        None
+    }
+
     /// PRD-mcphost-result-envelope-contract requirement 1 (extended by
     /// PRD-mcphost-spec-output-paths requirement 2/3 to carry each entry's
     /// optional [`Path`]): the output fields this `spec` declares (its own

@@ -86,5 +86,12 @@
     "sunset": "2026-12-09",
     "replacement": "PRD-mcphost-webhook-inbox-one-call: kind=webhook|inbox now returns recipe.steps of length 1 (host.webhook_inbox.create) instead of publish -> trigger.set -> trigger.test; the three calls themselves still work",
     "narrowing_only": true
+  },
+  {
+    "path": "host.estimate",
+    "since": "2026-10-11",
+    "sunset": "2026-12-10",
+    "replacement": "PRD-mcphost-call-cost-estimate: host.estimate is host.tool_call with dry_run forced true (same arguments, same checks, no call row); the real host.tool_call is unchanged and dry_run defaults false",
+    "narrowing_only": true
   }
 ]
