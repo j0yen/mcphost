@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.107.4 — 2026-10-09
+
+`GET /status.json` gains a `host` object (PRD-mcphost-status-host-pressure):
+`load1`, `load5`, `psi_cpu_some_avg60` (percent), `cpu_steal_pct_since_boot`
+(percent), `mem_available_mb` (MiB), `nproc` and `sampled_at` (unix seconds),
+sampled from `/proc` per request; an unreadable source is `null`, never an
+error. `status.html` prints one `host  load …` line under the components.
+The `?component=&days=` rollup is unchanged; `MCPHOST_STATUS_HOST=0` omits the
+object. Field table: `docs/metrics.md` (generated, `scripts/host-pressure-doc-check.sh`).
+
 ## v0.107.1 — 2026-10-09
 
 `args_invalid` messages are rendered from the same `ArgsError` value the wire

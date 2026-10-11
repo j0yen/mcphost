@@ -41,6 +41,7 @@ pub mod gendocs;
 pub mod handler;
 pub mod help;
 pub mod hooks;
+pub mod hostpressure;
 pub mod http;
 pub mod install_links;
 pub mod invites;

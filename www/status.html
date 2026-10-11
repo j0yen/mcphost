@@ -99,6 +99,26 @@ rss      37.3 MiB</code></pre>
     return s;
   }
 
+  function num(v, digits) {
+    if (v === null || v === undefined) { return "n/a"; }
+    return digits === undefined ? String(v) : Number(v).toFixed(digits);
+  }
+
+  function pctOrNa(v) {
+    return v === null || v === undefined ? "n/a" : num(v, 1) + "%";
+  }
+
+  // PRD-mcphost-status-host-pressure requirement 4: one line, "n/a" for any
+  // null, nothing at all when the server predates the `host` key.
+  function hostLine(host) {
+    if (!host || typeof host !== "object") { return ""; }
+    return "host  load " + num(host.load1, 2) + "/" + num(host.load5, 2) +
+      "  psi60 " + pctOrNa(host.psi_cpu_some_avg60) +
+      "  steal " + pctOrNa(host.cpu_steal_pct_since_boot) +
+      "  mem " + num(host.mem_available_mb) + " MB" +
+      "  " + num(host.nproc) + " cpu";
+  }
+
   function renderIncidents(data) {
     var open = data.incidents_open || [];
     var recent = data.incidents_recent_30d || [];
@@ -130,6 +150,8 @@ rss      37.3 MiB</code></pre>
           "90d " + bar(c.uptime_90d) + " " + pct(c.uptime_90d);
       });
       componentsEl.textContent = "";
+      var hl = hostLine(data.host);
+      if (hl) { rows.push('<span class="dim">' + hl + '</span>'); }
       componentsEl.innerHTML = rows.join("\n");
 
       renderIncidents(data);

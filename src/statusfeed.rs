@@ -412,6 +412,14 @@ pub async fn status_json(state: &AppState) -> Result<Value, AppError> {
     // per-component rollup (`daily_rows`) stays unchanged.
     if let Some(obj) = body.as_object_mut() {
         obj.extend(crate::build_info::BUILD.json());
+        // PRD-mcphost-status-host-pressure requirements 2 and 7: whole-feed
+        // only, sampled per request; `MCPHOST_STATUS_HOST=0` omits it.
+        if std::env::var("MCPHOST_STATUS_HOST").as_deref() != Ok("0") {
+            obj.insert(
+                "host".to_string(),
+                json!(crate::hostpressure::sample(std::path::Path::new("/proc"))),
+            );
+        }
     }
     Ok(body)
 }

@@ -133,6 +133,14 @@ required_commands = [
 ]
 
 [[lane]]
+id = "host-pressure-doc-check"
+description = "PRD-mcphost-status-host-pressure requirement 6 (AC7): scripts/host-pressure-doc-check.sh generates docs/metrics.md's host-field table from HostPressure's field list in src/hostpressure.rs and fails on drift. Given its own lane rather than folded into the pre-existing docs lane, since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane's required_commands as an immutable baseline (same reasoning as the spec-fields-doc-check lane above)."
+globs = ["scripts/host-pressure-doc-check.sh"]
+required_commands = [
+  "scripts/host-pressure-doc-check.sh",
+]
+
+[[lane]]
 id = "harness-readonly"
 description = "Harness files; should never change after scaffold"
 globs = [

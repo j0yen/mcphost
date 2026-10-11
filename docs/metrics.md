@@ -87,3 +87,32 @@ Read it with the same curl `oauth_tenants_7d` above uses:
 
     curl -s -H "Authorization: Bearer $(cat ~/.config/mcphost/admin-key)" \
       https://<host>/healthz | jq '.tool_alias_calls'
+
+## `host` (in `GET /status.json`)
+
+PRD-mcphost-status-host-pressure: the host's own pressure numbers, read
+from `/proc` on every request (about 50 µs; the existing `max-age=60`
+cache applies, and `sampled_at` shows the age). A file that is absent or
+unparsable (macOS, containers without PSI) yields `null` for its fields,
+never an error. `MCPHOST_STATUS_HOST=0` omits the object. The
+`?component=&days=` rollup response never carries it.
+
+The table is generated from `HostPressure`'s field list in
+`src/hostpressure.rs` by `scripts/host-pressure-doc-check.sh --write`;
+`--check` fails if a field is renamed or added without regenerating.
+
+<!-- mcphost-host-pressure:start -->
+| field | type | meaning; unit |
+|---|---|---|
+| `load1` | `Option<f64>` | 1-minute load average (`/proc/loadavg` field 1); unitless |
+| `load5` | `Option<f64>` | 5-minute load average (`/proc/loadavg` field 2); unitless |
+| `psi_cpu_some_avg60` | `Option<f64>` | percent of the last 60 s at least one task stalled on CPU (`/proc/pressure/cpu`, `some` line, `avg60=`); percent |
+| `cpu_steal_pct_since_boot` | `Option<f64>` | hypervisor steal since boot: `/proc/stat` first `cpu` line, field 8 / sum of fields x 100; percent |
+| `mem_available_mb` | `Option<u64>` | `MemAvailable:` from `/proc/meminfo`, kB / 1024; MiB |
+| `nproc` | `Option<u32>` | `std::thread::available_parallelism` (honours cgroup limits); CPUs |
+| `sampled_at` | `u64` | unix time the sample was read, so its age is visible through the 60 s cache; seconds |
+<!-- mcphost-host-pressure:end -->
+
+`cpu_steal_pct_since_boot` is a ratio of cumulative jiffies; a per-run
+steal percentage is the difference of two samples taken at run start and
+end.
