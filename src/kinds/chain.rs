@@ -43,7 +43,8 @@
 use serde_json::{Map, Value, json};
 
 use super::{
-    CallCtx, HOST_STEPS_ALLOWED, Kind, KindError, KindExample, KindRegistry, Path, ToolDescriptor, compose_call,
+    CallCtx, ChildRecord, HOST_STEPS_ALLOWED, Kind, KindError, KindExample, KindRegistry, Path, ToolDescriptor,
+    compose_call, compose_dispatch, record_composed_child,
 };
 use crate::errors::AppError;
 
@@ -585,6 +586,123 @@ struct ParsedStep {
     tool: String,
     args: Map<String, Value>,
     continue_on_error: bool,
+    /// PRD-mcphost-chain-step-retry-policy requirement 1: `retry`, if declared.
+    retry: Option<RetryPolicy>,
+}
+
+/// PRD-mcphost-chain-step-retry-policy requirement 1: a step's parsed
+/// `retry: {max, backoff_ms, on}`. `max` is the number of RETRIES after the
+/// first attempt (so a step makes at most `max + 1` attempts).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RetryPolicy {
+    max: u32,
+    backoff_ms: u64,
+    on: Vec<String>,
+}
+
+const RETRY_MAX_RANGE: std::ops::RangeInclusive<u64> = 1..=5;
+const RETRY_BACKOFF_MS_MAX: u64 = 30_000;
+
+/// Parses one step's `retry` value (shape only -- family membership is
+/// [`check_retry_families`]'s publish-time job, so a forced publish listing
+/// a never-retried code still parses and is refused at call time instead).
+fn parse_retry(i: usize, raw: &Value) -> Result<RetryPolicy, KindError> {
+    let obj = raw
+        .as_object()
+        .ok_or_else(|| invalid_spec(format!("spec.steps[{i}].retry: must be a JSON object")))?;
+    if let Some(k) = obj.keys().find(|k| !["max", "backoff_ms", "on"].contains(&k.as_str())) {
+        return Err(invalid_spec(format!(
+            "spec.steps[{i}].retry.{k}: unknown field (accepted: max, backoff_ms, on)"
+        )));
+    }
+    let max = obj
+        .get("max")
+        .and_then(Value::as_u64)
+        .filter(|m| RETRY_MAX_RANGE.contains(m))
+        .ok_or_else(|| invalid_spec(format!("spec.steps[{i}].retry.max: is required, an integer 1..=5")))?;
+    let backoff_ms = match obj.get("backoff_ms") {
+        None => 0,
+        Some(v) => v.as_u64().filter(|b| *b <= RETRY_BACKOFF_MS_MAX).ok_or_else(|| {
+            invalid_spec(format!("spec.steps[{i}].retry.backoff_ms: must be an integer 0..=30000"))
+        })?,
+    };
+    let on = obj
+        .get("on")
+        .and_then(Value::as_array)
+        .filter(|a| !a.is_empty())
+        .and_then(|a| a.iter().map(|v| v.as_str().map(str::to_string)).collect::<Option<Vec<_>>>())
+        .ok_or_else(|| {
+            invalid_spec(format!("spec.steps[{i}].retry.on: is required, a non-empty array of error codes"))
+        })?;
+    Ok(RetryPolicy { max: max as u32, backoff_ms, on })
+}
+
+/// Adds a step's `attempts` array to its trace entry (only a step that
+/// declared a `retry` policy has one -- requirement 3).
+fn with_attempts(mut entry: Value, attempts: Option<Vec<Value>>) -> Value {
+    if let (Value::Object(map), Some(a)) = (&mut entry, attempts) {
+        map.insert("attempts".to_string(), json!(a));
+    }
+    entry
+}
+
+/// Requirements 2-4: dispatches one step, retrying per its `retry` policy.
+/// Returns the final outcome and (for a step with a policy) the per-attempt
+/// trace. The step's single child run row is written once, with `attempt`
+/// set to the total attempts made.
+async fn run_step(
+    ctx: &CallCtx,
+    step: &ParsedStep,
+    args: Value,
+    step_no: usize,
+) -> (Result<Value, KindError>, Option<Vec<Value>>) {
+    let Some(policy) = step.retry.as_ref() else {
+        let r = compose_call(ctx, ctx.tenant_id, &step.tool, args, None, Some(step_no as i64)).await;
+        return (r, None);
+    };
+    let started_unix = crate::state::now_unix();
+    let start = std::time::Instant::now();
+    let mut attempts: Vec<Value> = Vec::new();
+    let mut waited_ms: u64 = 0;
+    let mut attempt: u32 = 1;
+    loop {
+        let child_run_id = crate::state::new_ulid();
+        let result =
+            compose_dispatch(ctx, ctx.tenant_id, &step.tool, args.clone(), None, &child_run_id).await;
+        let mut entry = json!({"attempt": attempt, "waited_ms": waited_ms});
+        let outcome = match result {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                let code = AppError::from(e.clone()).code();
+                entry["error_code"] = json!(code);
+                Err((code, e))
+            }
+        };
+        attempts.push(entry);
+        let finish = |result: Result<Value, KindError>, attempts: Vec<Value>, child_run_id: String| async move {
+            record_composed_child(
+                ctx,
+                ctx.tenant_id,
+                &step.tool,
+                Some(step_no as i64),
+                ChildRecord { child_run_id, started_unix, start, attempt: attempt as i64 },
+                &result,
+            )
+            .await;
+            (result, Some(attempts))
+        };
+        let (code, e) = match outcome {
+            Ok(v) => return finish(Ok(v), attempts, child_run_id).await,
+            Err(pair) => pair,
+        };
+        if attempt > policy.max || !policy.on.iter().any(|f| f == code) {
+            return finish(Err(e), attempts, child_run_id).await;
+        }
+        let wait_ms = policy.backoff_ms.saturating_mul(1u64 << (attempt - 1));
+        tokio::time::sleep(std::time::Duration::from_millis(wait_ms)).await;
+        waited_ms = wait_ms;
+        attempt += 1;
+    }
 }
 
 fn invalid_spec(message: impl Into<String>) -> KindError {
@@ -638,10 +756,12 @@ fn parse_steps(spec: &Value) -> Result<Vec<ParsedStep>, KindError> {
                 )));
             }
         };
+        let retry = step_obj.get("retry").map(|r| parse_retry(i, r)).transpose()?;
         steps.push(ParsedStep {
             tool,
             args,
             continue_on_error,
+            retry,
         });
     }
     Ok(steps)
@@ -1269,21 +1389,10 @@ impl Kind for ChainKind {
                 }
             };
 
-            match compose_call(
-                ctx,
-                ctx.tenant_id,
-                &step.tool,
-                resolved_args.clone(),
-                None,
-                // PRD-mcphost-chain-run-lineage requirement 8 (AC11): this
-                // step's own 1-based position, so a composed child run row
-                // (if lineage is active) carries `step_no`.
-                Some(failed_step_no as i64),
-            )
-            .await
-            {
+            let (outcome, attempts) = run_step(ctx, step, resolved_args.clone(), failed_step_no).await;
+            match outcome {
                 Ok(result) => {
-                    steps_trace.push(json!({
+                    steps_trace.push(with_attempts(json!({
                         "step": failed_step_no,
                         "tool": step.tool,
                         "status": "done",
@@ -1296,7 +1405,7 @@ impl Kind for ChainKind {
                         // step to map through) can read any step's result,
                         // not only the last one.
                         "result": result.clone(),
-                    }));
+                    }), attempts));
                     step_results.push(result.clone());
                     prev = Some(result.clone());
                     last_ok_result = Some(result);
@@ -1320,12 +1429,12 @@ impl Kind for ChainKind {
 
                     if step.continue_on_error {
                         failed_steps.push(failed_step_no);
-                        steps_trace.push(json!({
+                        steps_trace.push(with_attempts(json!({
                             "step": failed_step_no,
                             "tool": step.tool,
                             "status": "error",
                             "error_class": code,
-                        }));
+                        }), attempts));
                         step_results.push(Value::Null);
                         prev = None;
                         continue;

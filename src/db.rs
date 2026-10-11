@@ -1928,6 +1928,8 @@ pub struct ComposedRun {
     pub end_user_subject: Option<String>,
     pub end_user_issuer: Option<String>,
     pub end_user_method: Option<String>,
+    /// Total dispatches this row stands for (1 unless a chain step retried).
+    pub attempt: i64,
 }
 
 /// PRD-mcphost-shared-tool-caller-usage requirement 6 (AC7): the window
@@ -9551,17 +9553,18 @@ impl Db {
             end_user_subject,
             end_user_issuer,
             end_user_method,
+            attempt,
         } = run;
         self.with_conn(move |conn| {
             conn.execute(
                 "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, parent_run_id, \
                  step_no, parent_tool, status, error_class, result_ref, started_unix, finished_unix, \
                  duration_ms, attempt, end_user_subject, end_user_issuer, end_user_method) \
-                 VALUES (?1, ?2, ?3, 'composition', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 1, ?14, ?15, ?16)",
+                 VALUES (?1, ?2, ?3, 'composition', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?17, ?14, ?15, ?16)",
                 params![
                     run_id, tenant_id, tool_name, parent_run_id.clone(), parent_run_id, step_no,
                     parent_tool, status, error_class, result_ref, started_unix, finished_unix,
-                    duration_ms, end_user_subject, end_user_issuer, end_user_method
+                    duration_ms, end_user_subject, end_user_issuer, end_user_method, attempt
                 ],
             )?;
             Ok(())

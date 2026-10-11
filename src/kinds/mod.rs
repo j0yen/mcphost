@@ -1894,11 +1894,46 @@ pub async fn compose_call(
     let started_unix = crate::state::now_unix();
     let start = Instant::now();
     let result = compose_dispatch(ctx, tenant_id, target_name, args, timeout_s, &child_run_id).await;
+    record_composed_child(
+        ctx,
+        tenant_id,
+        target_name,
+        step_no,
+        ChildRecord { child_run_id, started_unix, start, attempt: 1 },
+        &result,
+    )
+    .await;
+    result
+}
 
+/// One composed child's identity and timing, handed to
+/// [`record_composed_child`]. `attempt` is the total number of dispatches
+/// the row stands for (1 for a plain [`compose_call`]; a `chain` step with a
+/// `retry` policy writes ONE row carrying its total attempts --
+/// PRD-mcphost-chain-step-retry-policy requirement 3).
+struct ChildRecord {
+    child_run_id: String,
+    started_unix: i64,
+    start: Instant,
+    attempt: i64,
+}
+
+/// The child run row [`compose_call`] writes for one dispatch (see its doc
+/// comment); a no-op when `ctx.parent_run_id` is `None`.
+#[allow(clippy::too_many_arguments)]
+async fn record_composed_child(
+    ctx: &CallCtx,
+    tenant_id: i64,
+    target_name: &str,
+    step_no: Option<i64>,
+    rec: ChildRecord,
+    result: &Result<Value, KindError>,
+) {
+    let ChildRecord { child_run_id, started_unix, start, attempt } = rec;
     if let (Some(parent_run_id), Some(db)) = (ctx.parent_run_id.clone(), ctx.compose_db.as_ref()) {
         let duration_ms = start.elapsed().as_millis() as i64;
         let finished_unix = crate::state::now_unix();
-        let (status, error_class, result_value): (&str, Option<String>, Option<&Value>) = match &result {
+        let (status, error_class, result_value): (&str, Option<String>, Option<&Value>) = match result {
             Ok(value) => ("done", None, Some(value)),
             Err(e) => (
                 "failed",
@@ -1944,11 +1979,11 @@ pub async fn compose_call(
                 end_user_subject,
                 end_user_issuer,
                 end_user_method,
+                attempt,
             })
             .await;
     }
 
-    result
 }
 
 /// A tool execution kind. Implementors are registered in a [`KindRegistry`]
