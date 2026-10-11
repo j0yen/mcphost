@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+`host.tool_call` accepts `dry_run: true`, and `host.estimate {name, args?, budget?}` is the same call with
+`dry_run` forced (PRD-mcphost-call-cost-estimate). The host runs every admission check the real call runs
+(args schema, budget ceiling, `calls_per_day`, the shared-tool caller cap, capacity), stops before dispatch,
+writes no `calls` row and holds no capacity slot, and returns `{dry_run, fits, units: {calls: 1},
+remaining: {calls_per_day: {used, limit, remaining, resets_at}}, refusal, not_checked: ["kind_call"],
+see}`. `refusal` is the error the real call would return (`code`, `message`, `data`), or `null` when the
+call fits. `host.usage` gains `estimates` (dry runs in the window, never counted in `calls`);
+`host.quickstart`'s `try_before_call` gains a `host.estimate` row. One `PREFLIGHT_CHECKS` list in
+`src/preflight.rs` drives both paths.
+
 ## v0.107.13 — 2026-10-10
 
 `host.webhook_inbox.create(name, verify?, rotate?)` makes a webhook inbox one call
