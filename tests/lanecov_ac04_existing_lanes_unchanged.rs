@@ -175,6 +175,10 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // PRD -- for the same required_commands-immutability reason the
     // sharing-docs/launch-docs/tool-naming lanes above give) -- an
     // eighteenth, intended addition since the baseline, not drift.
+    // PRD-mcphost-contract-output-schemas added its own "output-schemas"
+    // lane (routes contracts/host-output-schemas.v1.json and the captured
+    // response corpus tests/fixtures/outsch/** to the outsch_ac proof
+    // tests) -- a nineteenth, intended addition since the baseline.
     assert_eq!(
         added,
         vec![
@@ -190,6 +194,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "launch-docs",
             "loop-config",
             "oauthconf-data",
+            "output-schemas",
             "plugin",
             "registry-manifest",
             "sandbox-api-docs",
@@ -201,7 +206,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
         ],
         "only admin-schemas, checkcompat-race-soak, contracts, docs-links, docsearch-fixtures, \
          event-trigger-self-test-fixtures, examples, flake-lint, host-pressure-doc-check, launch-docs, \
-         loop-config, oauthconf-data, plugin, registry-manifest, sandbox-api-docs, sharing-docs, \
+         loop-config, oauthconf-data, output-schemas, plugin, registry-manifest, sandbox-api-docs, sharing-docs, \
          spec-fields-doc-check, tool-naming, vendor, and wasm-fixtures may have been added since \
          {BASELINE_REV}"
     );

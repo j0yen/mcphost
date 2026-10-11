@@ -169,6 +169,18 @@ fn sort_keys(value: &Value) -> Value {
 pub fn dump_contract(kinds: &KindRegistry) -> Value {
     let mut tools = crate::handler::host_tool_descriptors(kinds);
     tools.sort_by(|a, b| a.name.cmp(&b.name));
+    // PRD-mcphost-contract-output-schemas R2: a canonical carries its
+    // `output_schema`; an alias (dotted or flattened) names its canonical in
+    // `alias_of` and carries no schema of its own.
+    let canonicals: std::collections::BTreeSet<&str> = tools
+        .iter()
+        .map(|t| t.name.as_ref())
+        .filter(|n| crate::tool_aliases::resolve(n).is_none() && n.contains('.'))
+        .collect();
+    let flattened: std::collections::BTreeMap<String, &str> = canonicals
+        .iter()
+        .filter_map(|c| crate::tool_aliases::flattened_form(c).map(|f| (f, *c)))
+        .collect();
     let entries: Vec<Value> = tools
         .iter()
         .map(|t| {
@@ -178,6 +190,16 @@ pub fn dump_contract(kinds: &KindRegistry) -> Value {
                 "since": since_for_tool(&t.name),
                 "input_schema": Value::Object((*t.input_schema).clone()),
             });
+            let alias_of = crate::tool_aliases::resolve(&t.name)
+                .or_else(|| flattened.get(t.name.as_ref()).copied());
+            match alias_of {
+                Some(canonical) => entry["alias_of"] = json!(canonical),
+                None => {
+                    if let Some(schema) = &t.output_schema {
+                        entry["output_schema"] = Value::Object((**schema).clone());
+                    }
+                }
+            }
             // PRD-mcphost-paged-trait-on-every-list-verb requirement 4: the
             // paging verdict is generated from `paged::PAGED_VERBS` /
             // `paged::UNPAGED_VERBS`, never typed into the schema literals.
