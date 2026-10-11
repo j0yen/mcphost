@@ -93,6 +93,8 @@ async fn usage_without_by_keeps_the_pre_prd_shape() {
         "hints",
         "invites",
         "first_contact",
+        // PRD-mcphost-data-quota-in-every-response AC3: additive.
+        "quota",
     ]
     .into_iter()
     .collect();

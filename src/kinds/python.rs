@@ -2035,6 +2035,7 @@ pub const BRIDGE_MODULES: &[BridgeModule] = &[
 pub const BRIDGE_ATTRS: &[&str] = &[
     "mcphost.call(name, args=None, timeout_s=None) -- call a sibling tool",
     "mcphost.progress(pct=None, msg=None) -- report progress from inside a job",
+    "mcphost.quota() -- this tenant's data ceilings as {name: {used, limit, remaining}} (same object as host.usage quota)",
 ];
 
 // ---- bridge return shapes (PRD-mcphost-sandbox-return-shape-contract) -------
@@ -2192,6 +2193,10 @@ pub const BRIDGE_RETURNS: &[BridgeReturn] = &[
     },
     BridgeReturn { function: "mcphost.call", shape: Plain("any (the called tool's result)") },
     BridgeReturn { function: "mcphost.progress", shape: Plain("bool or None") },
+    BridgeReturn {
+        function: "mcphost.quota",
+        shape: Plain("dict {<ceiling>: {used, limit, remaining}} (host.usage quota)"),
+    },
 ];
 
 /// One [`ReturnShape`] as the text a `Returns:` docstring line, the
@@ -2421,8 +2426,13 @@ fn unknown_import_error(bad_name: &str, own_domain: &str) -> KindError {
 fn known_mcphost_names() -> std::collections::BTreeSet<&'static str> {
     let mut names: std::collections::BTreeSet<&'static str> =
         BRIDGE_MODULES.iter().map(|m| m.name).collect();
-    names.insert("call");
-    names.insert("progress");
+    // Top-level attributes come from `BRIDGE_ATTRS`, so a new one needs no
+    // second edit here.
+    for attr in BRIDGE_ATTRS {
+        if let Some(name) = signature_function(attr).strip_prefix("mcphost.") {
+            names.insert(name);
+        }
+    }
     names.insert("CallError");
     names.insert("BridgeError");
     names.insert("BridgeShapeError");
@@ -2941,6 +2951,13 @@ def _docs_search(query, k=None, filter=None):
         kwargs["filter"] = filter
     return _docs_call("search", **kwargs)
 
+# PRD-mcphost-data-quota-in-every-response R6: `mcphost.quota()` rides the
+# docs channel (same loopback round trip, no tool call, no extra port) and
+# returns the object `host.usage` shows under `quota`.
+def _mcphost_quota():
+    """This tenant's data ceilings: {name: {used, limit, remaining}}."""
+    return _docs_call("quota")
+
 _mcphost_docs_mod = _mcphost_types.ModuleType(
     "mcphost.docs",
     "Read or search this tenant's stored documents (get, search).\n\n"
@@ -3156,6 +3173,7 @@ _mcphost_mod.drift = _mcphost_drift_mod
 _mcphost_mod.channel = _mcphost_channel_mod
 _mcphost_mod.msg = _mcphost_msg_mod
 _mcphost_mod.call = _mcphost_call
+_mcphost_mod.quota = _mcphost_quota
 _mcphost_mod.CallError = McphostCallError
 _mcphost_mod.BridgeError = McphostBridgeError
 

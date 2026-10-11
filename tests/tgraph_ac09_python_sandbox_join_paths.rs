@@ -63,12 +63,15 @@ async fn mcphost_table_join_paths_from_sandboxed_tool_matches_the_host_tool() {
     client.tools_call("host.table.describe", json!({"table": "customers"})).await.expect("describe customers");
     client.tools_call("host.table.describe", json!({"table": "orders"})).await.expect("describe orders");
 
-    let direct = extract_structured(
+    let mut direct = extract_structured(
         &client
             .tools_call("host.table.join_paths", json!({"from": "orders", "to": "customers"}))
             .await
             .expect("host.table.join_paths"),
     );
+    // `data` is the host-added response envelope (`data.quota`,
+    // PRD-mcphost-data-quota-in-every-response), not the verb's payload.
+    direct.as_object_mut().expect("object").remove("data");
 
     let source = r#"import mcphost
 def main(args):

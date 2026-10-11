@@ -56,6 +56,16 @@ fn sandbox_api_for(state: &AppState) -> Value {
     )
 }
 
+/// PRD-mcphost-data-quota-in-every-response R1/R2: the full `data.quota`
+/// object for `tenant` -- `None` when the plan is missing from the catalog.
+pub async fn data_quota_for(state: &AppState, tenant: &Tenant) -> Result<Option<Value>, AppError> {
+    let Some(plan) = state.plans.get(&tenant.plan) else {
+        return Ok(None);
+    };
+    let usage = state.db.data_usage(tenant.id).await?;
+    Ok(Some(crate::plans::DataQuota::render(plan, &usage)))
+}
+
 /// PRD-mcphost-publish-schema-from-registry requirement 4: the `limits`
 /// object `host.quickstart` returns, factored out so the tenant-less index
 /// (no `kind`, no tenant) reports the same constants; `plan_name` is the
@@ -2398,8 +2408,10 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
     } else {
         0.0
     };
+    let quota = data_quota_for(state, tenant).await?;
     Ok(json!({
         "window": window,
+        "quota": quota,
         "calls": stats.calls,
         "errors": stats.errors,
         "p50_ms": stats.p50_ms,

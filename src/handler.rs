@@ -4794,6 +4794,9 @@ impl DocsBackend for TenantDocsBridge {
             "search" => {
                 docs::doc_search(&self.state, &self.tenant, &args, self.end_user.as_ref()).await
             }
+            "quota" => control::data_quota_for(&self.state, &self.tenant)
+                .await
+                .map(|q| q.unwrap_or(Value::Null)),
             other => Err(AppError::InvalidArgs(format!("unknown docs op '{other}'"))),
         };
         result.map_err(app_error_to_kind_error)
@@ -5289,8 +5292,110 @@ impl McpHostHandler {
         self.state.db.find_tenant_by_id(tenant_id).await.ok()?.map(|t| t.namespace)
     }
 
+    /// PRD-mcphost-data-quota-in-every-response R2/R3: the one attach point
+    /// for `data.quota` -- every data verb reaches here after dispatch, so
+    /// no verb edits its own response.
     #[allow(clippy::too_many_arguments)]
     async fn dispatch_tenant_tool(
+        &self,
+        tenant: &Tenant,
+        subject: Option<&str>,
+        auth_method: &str,
+        calls_auth_method: &str,
+        end_user: Option<&crate::enduser::EndUser>,
+        session_id: Option<&str>,
+        name: &str,
+        args: Value,
+    ) -> Result<Value, AppError> {
+        let result = self
+            .dispatch_tenant_tool_inner(
+                tenant,
+                subject,
+                auth_method,
+                calls_auth_method,
+                end_user,
+                session_id,
+                name,
+                args,
+            )
+            .await;
+        self.attach_data_quota(tenant, name, result).await
+    }
+
+    /// Adds `data.quota` (the ceilings `name` touches) to a data verb's
+    /// success, and to its `*quota_exceeded` refusal (AC5: the refused
+    /// ceiling reads `remaining: 0` under `data.quota.<ceiling>`). Where a
+    /// store's refusal named its ceiling as a string `data.quota`, that
+    /// name moves to `data.ceiling` so `data.quota` is the one object
+    /// shape on every response. A plan missing from the catalog omits it
+    /// and the call is otherwise untouched.
+    async fn attach_data_quota(
+        &self,
+        tenant: &Tenant,
+        name: &str,
+        result: Result<Value, AppError>,
+    ) -> Result<Value, AppError> {
+        use crate::plans::{DataQuota, data_ceilings_of, touched_ceilings};
+        let Some(plan) = self.state.plans.get(&tenant.plan) else {
+            return result;
+        };
+        let touched = touched_ceilings(name, data_ceilings_of(&plan.ceilings_flat()));
+        if touched.is_empty() {
+            return result;
+        }
+        let wanted = match &result {
+            Ok(v) => v.is_object(),
+            Err(AppError::Structured { code, .. }) => code.contains("quota_exceeded"),
+            Err(_) => false,
+        };
+        if !wanted {
+            return result;
+        }
+        let usage = match self.state.db.data_usage(tenant.id).await {
+            Ok(u) => u,
+            Err(e) => {
+                tracing::warn!(tenant = %tenant.namespace, error = %e, "data_usage failed; data.quota omitted");
+                return result;
+            }
+        };
+        let mut quota = DataQuota::render_of(touched, &usage);
+        match result {
+            Ok(mut value) => {
+                if let Some(obj) = value.as_object_mut() {
+                    let slot = obj.entry("data").or_insert_with(|| json!({}));
+                    if let Some(data) = slot.as_object_mut() {
+                        data.entry("quota").or_insert(quota);
+                    }
+                }
+                Ok(value)
+            }
+            Err(AppError::Structured { code, message, mut data }) => {
+                // The ceiling that refused has no room left, whatever the
+                // size of the write that tripped it.
+                let hit = data
+                    .get("quota")
+                    .and_then(Value::as_str)
+                    .or_else(|| data.pointer("/limit/name").and_then(Value::as_str))
+                    .map(str::to_string);
+                if let Some(hit) = hit
+                    && let Some(entry) = quota.get_mut(&hit).and_then(Value::as_object_mut)
+                {
+                    entry.insert("remaining".to_string(), json!(0));
+                }
+                if let Some(obj) = data.as_object_mut() {
+                    if let Some(name) = obj.remove("quota").filter(|q| !q.is_object()) {
+                        obj.insert("ceiling".to_string(), name);
+                    }
+                    obj.insert("quota".to_string(), quota);
+                }
+                Err(AppError::Structured { code, message, data })
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn dispatch_tenant_tool_inner(
         &self,
         tenant: &Tenant,
         subject: Option<&str>,
@@ -8729,6 +8834,14 @@ impl ServerHandler for McpHostHandler {
                                     ],
                                 });
                             }
+                        }
+                        // PRD-mcphost-data-quota-in-every-response R2: the
+                        // keyed tenant's full data-quota object, from the
+                        // renderer every data verb's response uses.
+                        if let Ok(Some(quota)) = control::data_quota_for(&self.state, tenant).await
+                            && let Some(limits) = result.get_mut("limits").and_then(Value::as_object_mut)
+                        {
+                            limits.insert("quota".to_string(), quota);
                         }
                         Ok(result)
                     }
