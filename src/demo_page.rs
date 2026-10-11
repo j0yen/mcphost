@@ -45,6 +45,72 @@ fn ua_class(headers: &HeaderMap) -> &'static str {
     }
 }
 
+const MASK: &str = "•••";
+const SENSITIVE_KEYS: &[&str] = &["secret", "token", "key", "password", "authorization"];
+
+/// R2: key names matching `(?i)(secret|token|key|password|authorization)`.
+fn is_sensitive_key(key: &str) -> bool {
+    let k = key.to_ascii_lowercase();
+    SENSITIVE_KEYS.iter().any(|s| k.contains(s))
+}
+
+/// R2: masks every `{{ secret.<name> }}` interpolation (an unterminated one
+/// swallows the rest of the string) and every literal value of one of the
+/// tenant's own `host.secret` entries.
+fn scrub_text(text: &str, secrets: &[String]) -> String {
+    let mut out = text.to_string();
+    for s in secrets.iter().filter(|s| !s.is_empty()) {
+        out = out.replace(s.as_str(), MASK);
+    }
+    let mut result = String::with_capacity(out.len());
+    let mut rest = out.as_str();
+    while let Some(start) = rest.find("{{") {
+        let after = rest[start + 2..].trim_start();
+        if after.starts_with("secret.") {
+            result.push_str(&rest[..start]);
+            result.push_str(MASK);
+            match rest[start..].find("}}") {
+                Some(end) => rest = &rest[start + end + 2..],
+                None => rest = "",
+            }
+        } else {
+            result.push_str(&rest[..start + 2]);
+            rest = &rest[start + 2..];
+        }
+    }
+    result.push_str(rest);
+    result
+}
+
+fn redact(value: &Value, secrets: &[String]) -> Value {
+    match value {
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .map(|(k, v)| {
+                    let v = if is_sensitive_key(k) { json!(MASK) } else { redact(v, secrets) };
+                    (scrub_text(k, secrets), v)
+                })
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.iter().map(|v| redact(v, secrets)).collect()),
+        Value::String(s) => Value::String(scrub_text(s, secrets)),
+        other => other.clone(),
+    }
+}
+
+/// The tenant's decrypted `host.secret` values, for [`scrub_text`].
+async fn tenant_secret_values(state: &AppState, tenant_id: i64) -> Vec<String> {
+    let mut values = Vec::new();
+    for name in state.db.list_secret_names(tenant_id).await.unwrap_or_default() {
+        if let Ok(Some((enc, nonce))) = state.db.get_secret(tenant_id, name).await
+            && let Ok(v) = state.secrets.decrypt(&enc, &nonce)
+        {
+            values.push(v);
+        }
+    }
+    values
+}
+
 /// Truncates to [`EXCERPT_CHARS`] characters (never mid-codepoint).
 fn excerpt(text: &str) -> String {
     text.chars().take(EXCERPT_CHARS).collect()
@@ -68,7 +134,7 @@ fn utc_stamp(secs: i64) -> String {
 }
 
 /// One run as a JSON row (shared by the HTML and `?format=json` views).
-async fn run_row(state: &AppState, tenant_id: i64, run: &RunRow) -> Value {
+async fn run_row(state: &AppState, tenant_id: i64, run: &RunRow, secrets: &[String]) -> Value {
     let args: Value = run
         .args_json
         .as_deref()
@@ -87,8 +153,8 @@ async fn run_row(state: &AppState, tenant_id: i64, run: &RunRow) -> Value {
         "status": run.status,
         "duration_ms": run.duration_ms,
         "started_unix": run.started_unix,
-        "args": excerpt(&args.to_string()),
-        "result": excerpt(&result.to_string()),
+        "args": excerpt(&redact(&args, secrets).to_string()),
+        "result": excerpt(&redact(&result, secrets).to_string()),
     })
 }
 
@@ -137,9 +203,10 @@ pub async fn demo_get(
     else {
         return not_found();
     };
+    let secrets = tenant_secret_values(&state, tenant.id).await;
     let mut rows = Vec::with_capacity(runs.len());
     for run in &runs {
-        rows.push(run_row(&state, tenant.id, run).await);
+        rows.push(run_row(&state, tenant.id, run, &secrets).await);
     }
     let line = json!({"event": "demo_view", "tool": tool, "ua_class": ua_class(&headers)}).to_string();
     let _ = state.db.append_log(tenant.id, tool.clone(), line).await;
