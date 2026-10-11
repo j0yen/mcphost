@@ -222,6 +222,8 @@ mod tkparam_ac09_schema_tenant_key_not_required_and_discoverable;
 mod tkparam_ac11_full_suite_green_at_landing;
 #[path = "tlint_ac01_hand_skip_then_bare_assert_fails.rs"]
 mod tlint_ac01_hand_skip_then_bare_assert_fails;
+#[path = "tlint_ac02_bare_assert_after_budget_block_is_named.rs"]
+mod tlint_ac02_bare_assert_after_budget_block_is_named;
 #[path = "toolname_ac01_lint_reports_violations.rs"]
 mod toolname_ac01_lint_reports_violations;
 #[path = "toolname_ac02_alias_dispatch_hint_and_log.rs"]
