@@ -3818,6 +3818,19 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             crate::paged::splice_input_schema(&name, props);
         }
     }
+    // PRD-mcphost-dry-run-on-write-verbs R4: `dry_run` in every `Supported`
+    // write verb's schema, generated from the registry (before the alias
+    // clones are made, so they carry it too).
+    for tool in tools.iter_mut() {
+        let name = tool.name.to_string();
+        if crate::write_verbs::lookup(&name).is_some()
+            && let Some(props) = Arc::make_mut(&mut tool.input_schema)
+                .get_mut("properties")
+                .and_then(Value::as_object_mut)
+        {
+            crate::write_verbs::splice_dry_run_property(&name, props);
+        }
+    }
     apply_tool_aliases(&mut tools);
     tools
 }
@@ -5392,6 +5405,83 @@ impl McpHostHandler {
             }
             Err(e) => Err(e),
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn dispatch_tenant_tool_inner(
+        &self,
+        tenant: &Tenant,
+        subject: Option<&str>,
+        auth_method: &str,
+        // PRD-mcphost-oauth-demand-signal requirement 1 (AC1): the same
+        // credential kind as `auth_method` above, but in `calls.auth_method`'s
+        // own `{key, issuer_jwt, hosted_token}` domain rather than
+        // `host.whoami`'s pre-existing `{key, oauth, hosted_token}` one --
+        // kept as a second parameter rather than reusing `auth_method` so
+        // neither call site has to remember which domain the other reads.
+        calls_auth_method: &str,
+        end_user: Option<&crate::enduser::EndUser>,
+        // PRD-mcphost-session-bound-tenant-key P1 requirement 4 (AC6):
+        // this connection's own server-issued session id, when the dispatch
+        // has one at all (the chain-host-step bridge call site has none --
+        // there is no HTTP request here) -- only `host.whoami` reads it,
+        // to report `session_tenant`.
+        session_id: Option<&str>,
+        name: &str,
+        args: Value,
+    ) -> Result<Value, AppError> {
+        // PRD-mcphost-dry-run-on-write-verbs R3/R5: `dry_run: true` on a
+        // registered write verb. `Supported` runs the verb inside the same
+        // savepoint scope `host.tool_test` uses, rolls it back whatever the
+        // outcome, and answers the `would` diff; a real error (quota,
+        // not_found, args_invalid) is returned unchanged. `NoDryRun` refuses
+        // with its reason. A `publish` verb keeps its own gate-report
+        // `dry_run` (control::tool_publish) and passes straight through.
+        if let Some(verb) = crate::write_verbs::lookup(name)
+            && crate::write_verbs::dry_run_requested(&args)
+        {
+            match verb.dry_run {
+                crate::write_verbs::DryRun::NoDryRun(reason) => {
+                    return Err(crate::write_verbs::no_dry_run_error(verb, reason));
+                }
+                crate::write_verbs::DryRun::Supported if verb.kind != crate::write_verbs::Kind::Publish => {
+                    let mut inner_args = args.clone();
+                    if let Some(obj) = inner_args.as_object_mut() {
+                        obj.remove("dry_run");
+                    }
+                    let ctx = crate::dryrun::DryRunCtx::new(self.state.db.path().to_path_buf(), self.state.db.cfg());
+                    let outcome = crate::dryrun::with_dry_run(
+                        ctx.clone(),
+                        Box::pin(self.dispatch_tenant_tool_inner(
+                            tenant,
+                            subject,
+                            auth_method,
+                            calls_auth_method,
+                            end_user,
+                            session_id,
+                            name,
+                            inner_args,
+                        )),
+                    )
+                    .await;
+                    crate::dryrun::finish(ctx.clone()).await;
+                    outcome?;
+                    return Ok(crate::write_verbs::build_would(verb, &args, &ctx.would_notes()));
+                }
+                crate::write_verbs::DryRun::Supported => {}
+            }
+        }
+        self.dispatch_tenant_tool_inner(
+            tenant,
+            subject,
+            auth_method,
+            calls_auth_method,
+            end_user,
+            session_id,
+            name,
+            args,
+        )
+        .await
     }
 
     #[allow(clippy::too_many_arguments)]

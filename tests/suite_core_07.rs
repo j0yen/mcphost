@@ -535,6 +535,8 @@ mod dryrun_ac05_chain_host_table_append_step;
 mod dryrun_ac06_tools_list_mentions_dry_run;
 #[path = "dryv_ac01_table_drop_survives_savepoint.rs"]
 mod dryv_ac01_table_drop_survives_savepoint;
+#[path = "dryv_ac02_write_verb_registry_drift.rs"]
+mod dryv_ac02_write_verb_registry_drift;
 #[path = "enduser_ac02_assertion_http_headers_and_calls_row.rs"]
 mod enduser_ac02_assertion_http_headers_and_calls_row;
 #[path = "enduser_ac03_invalid_assertion_rejected.rs"]

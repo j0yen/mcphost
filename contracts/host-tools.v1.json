@@ -304,6 +304,10 @@
               "null"
             ]
           },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "handle": {
             "description": "Unique handle to claim, e.g. \"indexer\" (without the @); null clears it.",
             "type": [
@@ -751,6 +755,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "id": {
             "description": "Document id to delete; use name instead if you don't have it.",
             "type": "string"
@@ -881,6 +889,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "id": {
             "description": "Document id to purge old versions of; use name instead if you don't have it.",
             "type": "string"
@@ -918,6 +930,10 @@
           "content_base64": {
             "description": "Document content, base64-encoded; use content instead for plain text.",
             "type": "string"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
           },
           "metadata": {
             "description": "Arbitrary caller metadata stored alongside the document; any JSON value."
@@ -1253,6 +1269,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "subject": {
             "description": "The end user's subject.",
             "type": "string"
@@ -1275,6 +1295,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "reason": {
             "type": "string"
           },
@@ -1300,6 +1324,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "subject": {
             "description": "The end user's subject.",
             "type": "string"
@@ -1388,6 +1416,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "name": {
             "description": "Group name.",
             "type": "string"
@@ -1427,6 +1459,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "name": {
             "description": "Group name.",
             "type": "string"
@@ -1457,6 +1493,10 @@
           "caller_limit_per_day": {
             "description": "Optional calls_per_day cap applied to every invitee for each shared tool (host.share.caller_limit). Default: no cap.",
             "type": "integer"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
           },
           "expires_in_days": {
             "description": "Days until this invite stops working. Default 30, maximum 365.",
@@ -1510,6 +1550,10 @@
           "code": {
             "description": "The invite's own code, from host.invite.create or the invite_url field on host.whoami.",
             "type": "string"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
           },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
@@ -2017,6 +2061,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "id": {
             "description": "The grant id.",
             "type": "integer"
@@ -2056,6 +2104,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "issuer": {
             "description": "The issuer to remove.",
             "type": "string"
@@ -2081,6 +2133,10 @@
           "audience": {
             "description": "The JWT `aud` claim value to require.",
             "type": "string"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
           },
           "issuer": {
             "description": "The JWT `iss` claim value to match, e.g. https://issuer.example.com.",
@@ -2177,6 +2233,10 @@
               "approve"
             ],
             "type": "string"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
           },
           "max_grant_age_s": {
             "type": "integer"
@@ -2287,6 +2347,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
@@ -2306,6 +2370,10 @@
           "description": {
             "description": "Human-readable text shown on the OAuth consent page.",
             "type": "string"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
           },
           "name": {
             "description": "^[a-z][a-z0-9_:.-]{0,40}$",
@@ -2347,6 +2415,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "issuer": {
             "description": "The issuer to remove.",
             "type": "string"
@@ -2376,6 +2448,10 @@
           "client_id": {
             "description": "The pre-registered enterprise client id allowed to use this issuer's grant.",
             "type": "string"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
           },
           "issuer": {
             "description": "The identity assertion's `iss` claim value to match.",
@@ -2425,6 +2501,10 @@
           "attrs": {
             "description": "An object of attribute name -> value to merge in."
           },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "subject": {
             "description": "The end-user subject to set attributes on.",
             "type": "string"
@@ -2465,6 +2545,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "replace": {
             "description": "Confirms a rule change that would otherwise be refused as widening.",
             "type": "boolean"
@@ -2737,6 +2821,10 @@
             "description": "Purge results of runs finished at or before this unix timestamp.",
             "type": "integer"
           },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
@@ -2802,6 +2890,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "name": {
             "description": "Secret name, referenced from a spec as secret.<name>.",
             "type": "string"
@@ -2850,6 +2942,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "name": {
             "description": "Secret name, referenced from a spec as secret.<name>.",
             "type": "string"
@@ -2953,6 +3049,10 @@
             "description": "The caller's namespace whose limit to remove.",
             "type": "string"
           },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
@@ -3052,6 +3152,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "end_user": {
             "description": "\"self\" for the caller's own verified end-user identity, an explicit subject (only when this call carries no end-user identity of its own), or omit/null for the tenant-wide value.",
             "type": [
@@ -3081,6 +3185,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "end_user": {
             "description": "\"self\" for the caller's own verified end-user identity, an explicit subject (only when this call carries no end-user identity of its own), or omit/null for the tenant-wide value.",
             "type": [
@@ -3143,6 +3251,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "end_user": {
             "description": "\"self\" for the caller's own verified end-user identity, an explicit subject (only when this call carries no end-user identity of its own), or omit/null for the tenant-wide value.",
             "type": [
@@ -3250,6 +3362,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "end_user": {
             "description": "\"self\" for the caller's own verified end-user identity, an explicit subject (only when this call carries no end-user identity of its own), or omit/null for the tenant-wide value.",
             "type": [
@@ -3283,6 +3399,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "name": {
             "description": "Table name to declare, or replace the schema of.",
             "type": "string"
@@ -3314,6 +3434,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "name": {
             "description": "Name of the declared table to drop, with every row it holds.",
             "type": "string"
@@ -3336,6 +3460,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "rows": {
             "description": "One row (an object) or several (an array of objects), each validated against the table's schema."
           },
@@ -3417,6 +3545,10 @@
             "description": "Column name to type map, each type one of text|integer|real|timestamp|boolean|json, e.g. {\"id\": \"integer\"}.",
             "type": "object"
           },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "name": {
             "description": "Table name to declare.",
             "type": "string"
@@ -3470,6 +3602,10 @@
             "description": "PRD-mcphost-lineage-blast-radius requirement 7: drop anyway even though a breaking consumer exists. Ignored when nothing breaking depends on this table.",
             "type": "boolean"
           },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "name": {
             "description": "Name of the declared table to drop, with every row it holds.",
             "type": "string"
@@ -3517,6 +3653,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "handle": {
             "description": "The hdl_<id> handle to drop.",
             "type": "string"
@@ -3625,6 +3765,10 @@
           "column": {
             "description": "Column name to annotate; omit for a table-level annotation.",
             "type": "string"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
           },
           "key": {
             "description": "One of role, unit, description, hidden.",
@@ -4013,6 +4157,10 @@
           }
         ],
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "kind": {
             "description": "Which registered kind to publish under: one of this field's `enum` (host.quickstart with no kind lists every kind, alias and recipe). A job-word alias in the enum also resolves here -- webhook-style words for an inbound webhook, cron-style words for a timed run -- both resolve to kind http and the descriptor comes back with resolved_from naming the alias you asked for.",
             "enum": [
@@ -4084,6 +4232,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "name": {
             "description": "Local name of the tool to remove.",
             "type": "string"
@@ -4489,6 +4641,10 @@
           }
         ],
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "kind": {
             "description": "Which registered kind to publish under: one of this field's `enum` (host.quickstart with no kind lists every kind, alias and recipe). A job-word alias in the enum also resolves here -- webhook-style words for an inbound webhook, cron-style words for a timed run -- both resolve to kind http and the descriptor comes back with resolved_from naming the alias you asked for.",
             "enum": [
@@ -4564,6 +4720,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "name": {
             "description": "Local name of the tool to remove.",
             "type": "string"
@@ -4855,6 +5015,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "id": {
             "description": "The trigger id.",
             "type": "string"
@@ -4879,6 +5043,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "id": {
             "description": "The trigger id.",
             "type": "string"
@@ -4935,6 +5103,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "id": {
             "description": "The trigger id.",
             "type": "string"
@@ -4970,6 +5142,10 @@
           "dedupe_header": {
             "description": "kind=\"event\": a header (e.g. X-GitHub-Delivery) whose repeated value within 24h answers 202 with the original run id instead of running again. Defaults to X-GitHub-Delivery for the \"github\" verify preset.",
             "type": "string"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
           },
           "from": {
             "description": "kind=\"message\": only fire for messages from this address (@handle or t_... namespace); omit to fire for any sender.",
@@ -5528,6 +5704,10 @@
               "null"
             ]
           },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "handle": {
             "description": "Unique handle to claim, e.g. \"indexer\" (without the @); null clears it.",
             "type": [
@@ -5938,6 +6118,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "id": {
             "description": "Document id to delete; use name instead if you don't have it.",
             "type": "string"
@@ -6067,6 +6251,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "id": {
             "description": "Document id to purge old versions of; use name instead if you don't have it.",
             "type": "string"
@@ -6104,6 +6292,10 @@
           "content_base64": {
             "description": "Document content, base64-encoded; use content instead for plain text.",
             "type": "string"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
           },
           "metadata": {
             "description": "Arbitrary caller metadata stored alongside the document; any JSON value."
@@ -6435,6 +6627,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "subject": {
             "description": "The end user's subject.",
             "type": "string"
@@ -6457,6 +6653,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "reason": {
             "type": "string"
           },
@@ -6482,6 +6682,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "subject": {
             "description": "The end user's subject.",
             "type": "string"
@@ -6570,6 +6774,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "name": {
             "description": "Group name.",
             "type": "string"
@@ -6608,6 +6816,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "name": {
             "description": "Group name.",
             "type": "string"
@@ -6638,6 +6850,10 @@
           "caller_limit_per_day": {
             "description": "Optional calls_per_day cap applied to every invitee for each shared tool (host.share.caller_limit). Default: no cap.",
             "type": "integer"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
           },
           "expires_in_days": {
             "description": "Days until this invite stops working. Default 30, maximum 365.",
@@ -6689,6 +6905,10 @@
           "code": {
             "description": "The invite's own code, from host.invite.create or the invite_url field on host.whoami.",
             "type": "string"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
           },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
@@ -7171,6 +7391,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "id": {
             "description": "The grant id.",
             "type": "integer"
@@ -7209,6 +7433,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "issuer": {
             "description": "The issuer to remove.",
             "type": "string"
@@ -7234,6 +7462,10 @@
           "audience": {
             "description": "The JWT `aud` claim value to require.",
             "type": "string"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
           },
           "issuer": {
             "description": "The JWT `iss` claim value to match, e.g. https://issuer.example.com.",
@@ -7327,6 +7559,10 @@
               "approve"
             ],
             "type": "string"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
           },
           "max_grant_age_s": {
             "type": "integer"
@@ -7436,6 +7672,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
@@ -7455,6 +7695,10 @@
           "description": {
             "description": "Human-readable text shown on the OAuth consent page.",
             "type": "string"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
           },
           "name": {
             "description": "^[a-z][a-z0-9_:.-]{0,40}$",
@@ -7495,6 +7739,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "issuer": {
             "description": "The issuer to remove.",
             "type": "string"
@@ -7524,6 +7772,10 @@
           "client_id": {
             "description": "The pre-registered enterprise client id allowed to use this issuer's grant.",
             "type": "string"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
           },
           "issuer": {
             "description": "The identity assertion's `iss` claim value to match.",
@@ -7572,6 +7824,10 @@
           "attrs": {
             "description": "An object of attribute name -> value to merge in."
           },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "subject": {
             "description": "The end-user subject to set attributes on.",
             "type": "string"
@@ -7611,6 +7867,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "replace": {
             "description": "Confirms a rule change that would otherwise be refused as widening.",
             "type": "boolean"
@@ -7862,6 +8122,10 @@
             "description": "Purge results of runs finished at or before this unix timestamp.",
             "type": "integer"
           },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
@@ -7926,6 +8190,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "name": {
             "description": "Secret name, referenced from a spec as secret.<name>.",
             "type": "string"
@@ -8005,6 +8273,10 @@
             "description": "The caller's namespace whose limit to remove.",
             "type": "string"
           },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
@@ -8064,6 +8336,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "end_user": {
             "description": "\"self\" for the caller's own verified end-user identity, an explicit subject (only when this call carries no end-user identity of its own), or omit/null for the tenant-wide value.",
             "type": [
@@ -8093,6 +8369,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "end_user": {
             "description": "\"self\" for the caller's own verified end-user identity, an explicit subject (only when this call carries no end-user identity of its own), or omit/null for the tenant-wide value.",
             "type": [
@@ -8155,6 +8435,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "end_user": {
             "description": "\"self\" for the caller's own verified end-user identity, an explicit subject (only when this call carries no end-user identity of its own), or omit/null for the tenant-wide value.",
             "type": [
@@ -8260,6 +8544,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "end_user": {
             "description": "\"self\" for the caller's own verified end-user identity, an explicit subject (only when this call carries no end-user identity of its own), or omit/null for the tenant-wide value.",
             "type": [
@@ -8293,6 +8581,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "name": {
             "description": "Table name to declare, or replace the schema of.",
             "type": "string"
@@ -8324,6 +8616,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "name": {
             "description": "Name of the declared table to drop, with every row it holds.",
             "type": "string"
@@ -8346,6 +8642,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "rows": {
             "description": "One row (an object) or several (an array of objects), each validated against the table's schema."
           },
@@ -8426,6 +8726,10 @@
             "description": "Column name to type map, each type one of text|integer|real|timestamp|boolean|json, e.g. {\"id\": \"integer\"}.",
             "type": "object"
           },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "name": {
             "description": "Table name to declare.",
             "type": "string"
@@ -8479,6 +8783,10 @@
             "description": "PRD-mcphost-lineage-blast-radius requirement 7: drop anyway even though a breaking consumer exists. Ignored when nothing breaking depends on this table.",
             "type": "boolean"
           },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "name": {
             "description": "Name of the declared table to drop, with every row it holds.",
             "type": "string"
@@ -8525,6 +8833,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "handle": {
             "description": "The hdl_<id> handle to drop.",
             "type": "string"
@@ -8631,6 +8943,10 @@
           "column": {
             "description": "Column name to annotate; omit for a table-level annotation.",
             "type": "string"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
           },
           "key": {
             "description": "One of role, unit, description, hidden.",
@@ -9013,6 +9329,10 @@
           }
         ],
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "kind": {
             "description": "Which registered kind to publish under: one of this field's `enum` (host.quickstart with no kind lists every kind, alias and recipe). A job-word alias in the enum also resolves here -- webhook-style words for an inbound webhook, cron-style words for a timed run -- both resolve to kind http and the descriptor comes back with resolved_from naming the alias you asked for.",
             "enum": [
@@ -9084,6 +9404,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "name": {
             "description": "Local name of the tool to remove.",
             "type": "string"
@@ -9346,6 +9670,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "id": {
             "description": "The trigger id.",
             "type": "string"
@@ -9370,6 +9698,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "id": {
             "description": "The trigger id.",
             "type": "string"
@@ -9426,6 +9758,10 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
           "id": {
             "description": "The trigger id.",
             "type": "string"
@@ -9461,6 +9797,10 @@
           "dedupe_header": {
             "description": "kind=\"event\": a header (e.g. X-GitHub-Delivery) whose repeated value within 24h answers 202 with the original run id instead of running again. Defaults to X-GitHub-Delivery for the \"github\" verify preset.",
             "type": "string"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
           },
           "from": {
             "description": "kind=\"message\": only fire for messages from this address (@handle or t_... namespace); omit to fire for any sender.",

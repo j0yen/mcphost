@@ -31,6 +31,7 @@ pub mod docs;
 pub mod docs_index;
 pub mod drift;
 pub mod dryrun;
+pub mod write_verbs;
 pub mod email;
 pub mod enduser;
 pub mod enduserctl;
