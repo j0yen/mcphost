@@ -46,6 +46,7 @@ use super::{
     CallCtx, ChildRecord, HOST_STEPS_ALLOWED, Kind, KindError, KindExample, KindRegistry, Path, ToolDescriptor,
     compose_call, compose_dispatch, record_composed_child,
 };
+use super::http::UPSTREAM_REMEDIES;
 use crate::errors::AppError;
 
 pub struct ChainKind;
@@ -598,6 +599,45 @@ struct RetryPolicy {
     max: u32,
     backoff_ms: u64,
     on: Vec<String>,
+}
+
+/// The error code a python/wasm tool's timeout reports; the one retryable
+/// family that is not a row of the http error-family table.
+const TOOL_TIMEOUT: &str = "tool_timeout";
+
+/// PRD-mcphost-chain-step-retry-policy requirement 1: the error families a
+/// step's `retry.on` may name -- GENERATED from the http kind's
+/// [`UPSTREAM_REMEDIES`] table plus [`TOOL_TIMEOUT`], never listed by hand,
+/// so a code the table renames or adds changes this set (and the publish
+/// error's `accepted`) with it.
+pub fn retry_families() -> Vec<&'static str> {
+    UPSTREAM_REMEDIES
+        .iter()
+        .map(|r| r.code)
+        .chain(std::iter::once(TOOL_TIMEOUT))
+        .collect()
+}
+
+/// Publish-time half of requirement 1: every `retry.on` member must be a
+/// [`retry_families`] code, else `retry_on_unknown` with the offenders
+/// (`given`) and the whole accepted set in `data`.
+fn check_retry_families(steps: &[ParsedStep]) -> Result<(), KindError> {
+    let accepted = retry_families();
+    for (i, step) in steps.iter().enumerate() {
+        let Some(policy) = step.retry.as_ref() else { continue };
+        if policy.on.iter().all(|f| accepted.contains(&f.as_str())) {
+            continue;
+        }
+        return Err(KindError::structured_with(
+            "retry_on_unknown",
+            format!(
+                "spec.steps[{i}].retry.on: unknown error family; accepted: {}",
+                accepted.join(", ")
+            ),
+            json!({"given": policy.on, "accepted": accepted, "step": i + 1}),
+        ));
+    }
+    Ok(())
 }
 
 const RETRY_MAX_RANGE: std::ops::RangeInclusive<u64> = 1..=5;
@@ -1276,7 +1316,7 @@ impl Kind for ChainKind {
     }
 
     fn validate(&self, spec: &Value) -> Result<(), KindError> {
-        parse_steps(spec).map(|_| ())
+        check_retry_families(&parse_steps(spec)?)
     }
 
     /// PRD-mcphost-spec-unknown-field-rejection requirement 1/4: `steps` is
