@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.107.17 — 2026-10-11
+
+CI: the required `gate` job now runs every cargo step with `--locked`, `msrvlock_ac01` fails on a stale `Cargo.lock`, and `scripts/required-checks.sh` derives the required status-check set from the workflow files into `.github/required-checks.toml` (`--check` compares it to live branch protection, `--apply` sets it). No runtime change.
+
 ## v0.107.13 — 2026-10-10
 
 `host.webhook_inbox.create(name, verify?, rotate?)` makes a webhook inbox one call

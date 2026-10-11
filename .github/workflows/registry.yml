@@ -1,5 +1,8 @@
 name: registry
 
+# Required contexts are generated from the workflow files into
+# .github/required-checks.toml (scripts/required-checks.sh --generate).
+
 # PRD-mcphost-registry-listing P1 requirement 4 (AC4): plain `on: push`,
 # no `branches:`/`tags:` filter, so this runs on a push to ANY branch (the
 # AC's own wording) as well as on a `v*` tag push -- the `publish` job

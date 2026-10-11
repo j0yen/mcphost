@@ -175,6 +175,12 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // PRD -- for the same required_commands-immutability reason the
     // sharing-docs/launch-docs/tool-naming lanes above give) -- an
     // eighteenth, intended addition since the baseline, not drift.
+    // PRD-mcphost-msrv-locked-required-check added its own "required-checks"
+    // lane (routes scripts/required-checks.sh and the generated
+    // .github/required-checks.toml to its --print and the msrvlock proof
+    // tests, kept separate from the ci lane for the same
+    // required_commands-immutability reason as the lanes above) -- an
+    // intended addition, not drift.
     assert_eq!(
         added,
         vec![
@@ -192,6 +198,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "oauthconf-data",
             "plugin",
             "registry-manifest",
+            "required-checks",
             "sandbox-api-docs",
             "sharing-docs",
             "spec-fields-doc-check",
@@ -201,7 +208,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
         ],
         "only admin-schemas, checkcompat-race-soak, contracts, docs-links, docsearch-fixtures, \
          event-trigger-self-test-fixtures, examples, flake-lint, host-pressure-doc-check, launch-docs, \
-         loop-config, oauthconf-data, plugin, registry-manifest, sandbox-api-docs, sharing-docs, \
+         loop-config, oauthconf-data, plugin, registry-manifest, required-checks, sandbox-api-docs, sharing-docs, \
          spec-fields-doc-check, tool-naming, vendor, and wasm-fixtures may have been added since \
          {BASELINE_REV}"
     );

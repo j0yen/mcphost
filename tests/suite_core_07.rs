@@ -20,6 +20,8 @@ mod fake_as;
 mod federation;
 #[path = "support/lanecov.rs"]
 mod lanecov;
+#[path = "support/msrvlock.rs"]
+mod msrvlock;
 #[path = "support/oauth.rs"]
 mod oauth;
 #[path = "support/oauthclient.rs"]
@@ -1305,6 +1307,16 @@ mod msg_ac13_unread_only;
 mod msg_ac14_thread_continuation;
 #[path = "msg_regr01_dedupe_hit_preserves_refused.rs"]
 mod msg_regr01_dedupe_hit_preserves_refused;
+#[path = "msrvlock_ac01_stale_lock_fails.rs"]
+mod msrvlock_ac01_stale_lock_fails;
+#[path = "msrvlock_ac02_cargo_steps_are_locked.rs"]
+mod msrvlock_ac02_cargo_steps_are_locked;
+#[path = "msrvlock_ac03_generate_lists_nine_contexts.rs"]
+mod msrvlock_ac03_generate_lists_nine_contexts;
+#[path = "msrvlock_ac04_check_compares_live_protection.rs"]
+mod msrvlock_ac04_check_compares_live_protection;
+#[path = "msrvlock_ac05_toml_equals_generate.rs"]
+mod msrvlock_ac05_toml_equals_generate;
 #[path = "nexttool_ac01_anonymous_starter_set.rs"]
 mod nexttool_ac01_anonymous_starter_set;
 #[path = "nexttool_ac02_authenticated_listing_unchanged.rs"]
@@ -1813,15 +1825,3 @@ mod sqlpass_ac11_concurrent_queries_produce_ten_log_rows;
 mod sqlpass_ac12_empty_table_zero_rows_null_error_code;
 #[path = "sqlpass_ac13_long_sql_truncated_in_log_not_refused.rs"]
 mod sqlpass_ac13_long_sql_truncated_in_log_not_refused;
-#[path = "state_ac01_kv_roundtrip.rs"]
-mod state_ac01_kv_roundtrip;
-#[path = "state_ac04_table_query.rs"]
-mod state_ac04_table_query;
-#[path = "state_ac05_schema_violation.rs"]
-mod state_ac05_schema_violation;
-#[path = "state_ac06_quota_exceeded.rs"]
-mod state_ac06_quota_exceeded;
-#[path = "state_ac08_tenant_isolation.rs"]
-mod state_ac08_tenant_isolation;
-#[path = "state_ac09_cascade_delete.rs"]
-mod state_ac09_cascade_delete;

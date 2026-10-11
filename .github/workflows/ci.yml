@@ -1,5 +1,9 @@
 name: ci
 
+# The contexts a PR must pass are GENERATED from this file into
+# .github/required-checks.toml by scripts/required-checks.sh --generate
+# (a job, rename or matrix change here needs the regenerated toml committed).
+
 on:
   push:
     # 10-10: wm-build pushes each gate's tree to wm-build/gate/<slug> before
@@ -63,10 +67,10 @@ jobs:
           tool: cargo-deny@0.20.2
 
       - name: cargo check
-        run: cargo check --workspace
+        run: cargo check --locked --workspace
 
       - name: cargo clippy
-        run: cargo clippy --workspace -- -D warnings
+        run: cargo clippy --locked --workspace -- -D warnings
 
       # Kept identical to the sandbox job's environment except for the userns
       # grant: the only intended difference between the two jobs is the
@@ -92,7 +96,7 @@ jobs:
       # mcphost-1 install does before enabling the timer.
       - name: build mcphost binary for deploy-unit verification
         run: |
-          cargo build --bin mcphost
+          cargo build --locked --bin mcphost
           install -Dm755 target/debug/mcphost "$HOME/.local/bin/mcphost"
 
       - name: cargo test (core suites)
@@ -104,7 +108,7 @@ jobs:
         run: |
           set -o pipefail
           start=$(date +%s)
-          cargo test $(./scripts/ci-test-partition.sh core) -- --nocapture 2>&1 | tee /tmp/cargo-test.log
+          cargo test --locked $(./scripts/ci-test-partition.sh core) -- --nocapture 2>&1 | tee /tmp/cargo-test.log
           status=$?
           echo "core suites wall time: $(( $(date +%s) - start ))s" | tee -a "$GITHUB_STEP_SUMMARY"
           exit "$status"
@@ -112,7 +116,7 @@ jobs:
       # `--doc` cannot be combined with any other target selector, so doctests
       # are their own invocation rather than part of either partition.
       - name: cargo test --doc
-        run: cargo test --doc
+        run: cargo test --locked --doc
 
       # PRD-mcphost-ci-sandbox-coverage P0#3, core half. This job deliberately
       # does NOT grant unprivileged user namespaces, so any capability-skip
@@ -133,10 +137,25 @@ jobs:
           fi
 
       - name: cargo deny check
-        run: cargo deny check
+        run: cargo deny --locked check
 
       - name: bad-rust audit
         run: ./scripts/audit.sh
+
+      # Informational: live branch protection vs .github/required-checks.toml.
+      # The default GITHUB_TOKEN usually cannot read protection (needs admin);
+      # a permission error prints a skip line and never fails the job.
+      - name: required checks match branch protection
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rc=0
+          ./scripts/required-checks.sh --check || rc=$?
+          case "$rc" in
+            0) ;;
+            2) echo "required-checks: skipped (no permission)" ;;
+            *) echo "::warning::branch protection differs from .github/required-checks.toml (see above); an admin runs scripts/required-checks.sh --apply" ;;
+          esac
 
   sandbox:
     name: sandbox suites (user namespaces, shard ${{ matrix.shard }}/2)
@@ -342,6 +361,8 @@ jobs:
   # Mirrors autobuilder extended-gates producers/determinism.rs: two cold
   # `cargo build --release` runs, identical artifact sha256. No cache on purpose.
   determinism:
+    # required-checks: exclude -- 50 min of two cold release builds; the gate reads
+    # its receipt by sha, it is not a merge-blocking context.
     name: determinism (two cold release builds, identical artifact sha256)
     runs-on: ubuntu-latest
     timeout-minutes: 50

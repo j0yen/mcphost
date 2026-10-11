@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-webhook-inbox-one-call.md",
-  "intent_slug": "mcphost-webhook-inbox-one-call",
-  "root_motivation": "**Who:** an agent that just received a mcphost URL and must show its user a webhook arriving inside one session; the truth-tier integration_specialist persona that scores it. **What:** one call that yields a public hook URL plus a way to read the next event. **Why not today:** the webhook-inbox recipe was three host steps plus a signed POST (eight calls to show one event); a key-less call after a successful host.redeem minted a second tenant because /mcp is stateless; kind=inbox routed to the agent-inbox recipe; llms.txt had no webhook section. **Consequence:** satisfaction 0.0 / completion 0.0 for this recipe on 10-09 and 10-06.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-msrv-locked-required-check.md",
+  "intent_slug": "mcphost-msrv-locked-required-check",
+  "root_motivation": "The operator discovers a broken main only when the next run's gate fails `cargo \u2026 --locked` (612's redrive, leg 20 \"every `--locked` build rejects\"), and the repair is a hand PR at 3 am. Leg 20 five whys, level 5: \"Cargo.lock is a GENERATED artefact handled as a merged text file; and the gate validates the worktree, not the commit it pushes\" \u2014 the land-side half is wm-build hand hotfixes (seed items 6, 7); this PRD is the repo-side half: the tree refuses a stale lock in a REQUIRED check. Evidence: `gh pr checks 178` shows `msrv check \u2026 fail 25s` beside `static analysis + core suites pass`; protection lists 2 of 10 job names.",
   "user_persona": "An agent (customer) that calls host.webhook_inbox.create once, pastes the url into a sender and shows its user the push event in the same session; the truth-tier integration_specialist persona whose gold is reachable in 4 calls; Operator Joe reading the digest.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,50 +14,38 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a free tenant, When `host.webhook_inbox.create(name=\"inbox\")` is called once, Then the response carries `url` matching `^https://[^/]+/hook/[A-Za-z0-9]{10,}$`, `secret`, `tool: \"inbox\"`, `trigger_id`, and `wait.tool == \"host.msg.wait\"`, and `host.trigger.list` shows exactly one webhook trigger bound to `inbox`.",
-      "test": "tests/whin_ac01_create_returns_url_secret_wait.rs"
+      "description": "Given a scratch copy of the workspace with the `semver` entry removed from `Cargo.lock` (the #178 squash shape), When `msrvlock_ac01` runs there, Then it fails quoting `cannot update the lock file`; Given the repo's own tree at the landing commit, Then it passes.",
+      "test": "tests/msrvlock_ac01_stale_lock_fails.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the inbox from AC1, When a POST signed with `secret` carrying `{\"id\":\"evt-fixture-1\"}` reaches `url`, Then within 5 s `host.tool_call(name=\"inbox\")` returns a row with id `evt-fixture-1` and `host.msg.wait` with `wait.args` returns a message whose `data.event_id` is `evt-fixture-1`.",
-      "test": "tests/whin_ac02_signed_post_readable_by_tool_call_and_msg_wait.rs"
+      "description": "Given `ci.yml` at the landing commit, When the `--locked` parser test runs, Then every `cargo` `run:` line in jobs `gate` and `msrv` carries `--locked`; Given a fixture `ci.yml` with one `cargo test` lacking it, Then the test fails naming that line.",
+      "test": "tests/msrvlock_ac02_cargo_steps_are_locked.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given an unsigned or wrongly signed POST, When it reaches `url`, Then the response is 401, no row is stored, no run fires and no inbox message is sent.",
-      "test": "tests/whin_ac03_unsigned_or_wrong_signature_stores_nothing.rs"
+      "description": "Given the workflow files at the landing commit, When `scripts/required-checks.sh --generate` runs, Then `.github/required-checks.toml` lists exactly 9 contexts \u2014 the 7 `ci.yml` jobs with `sandbox` expanded to `shard 1/2` and `shard 2/2`, plus `registry-manifest --check + schema validation` \u2014 and omits `publish to the MCP registry` (tag-only `if:`); no job name appears in the script.",
+      "test": "tests/msrvlock_ac03_generate_lists_nine_contexts.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a peer that completed `host.redeem` 5 s earlier, When it sends `host.tool_publish` without `tenant_key` on `/mcp`, Then the error is `tenant_key_missing` with `data.tenant` equal to that namespace, the `tenants` row count is unchanged, and a peer with no redeem in 10 minutes still gets implicit signup.",
-      "test": "tests/whin_ac04_keyless_call_after_redeem_is_refused_and_named.rs"
+      "description": "Given a fixture protection JSON with `contexts` = the two current entries, When `--check` runs against it (`REQUIRED_CHECKS_JSON=<file>`), Then exit 1 naming the 7 missing contexts (incl. `msrv check \u2026`); Given all 9, Then exit 0; Given 9 plus a stale extra, Then exit 1 naming the extra.",
+      "test": "tests/msrvlock_ac04_check_compares_live_protection.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a keyed `host.quickstart(kind=\"inbox\")`, When it returns, Then `recipe.name == \"webhook-inbox\"`, `recipe.steps` has one entry calling `host.webhook_inbox.create`, `recipes_nearby` contains `agent-inbox`, and the anonymous quickstart note contains \"tenant_key on every call\" and not \"connection is bound\".",
-      "test": "tests/whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule.rs"
+      "description": "Given a fixture workflow dir where one job is renamed or a matrix gains a shard, When the toml-equals-generate test runs against the committed toml, Then it fails naming the differing context; Given the toml regenerated, Then it passes.",
+      "test": "tests/msrvlock_ac05_toml_equals_generate.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given `www/llms.txt`, When `scripts/www-check.sh` and `handler::llms_txt_tool_names` run, Then a section `## Webhook inbox in one call` names `host.webhook_inbox.create`, and `examples/webhook-inbox/proof.sh` against a local `TestServer` exits 0 in under 30 s.",
-      "test": "tests/whin_ac06_llms_txt_section_and_proof_sh.rs"
-    },
-    {
-      "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given a tenant at `event_triggers_max`, When `host.webhook_inbox.create` is called, Then the error is `plan_limit` with `data.limit == 3` and no tool, trigger or event row was created; Given a second create with the same name, Then the same `url` returns and `secret` is absent.",
-      "test": "tests/whin_ac07_plan_limit_creates_nothing_and_repeat_is_idempotent.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Given the first nightly truth-tier on orch after prod carries this, When `measure.json` is written, Then `recipes.by_recipe.mcphost-webhook-inbox.completion_rate` is \u2265 0.5 and its `failure_families` omit `budget` (Live; evidence: `ssh orch 'python3 -m json.tool $(ls -d ~/.local/state/synthorg/runs/truth-tier-* | tail -1)/measure.json | grep -A8 \"\\\"mcphost-webhook-inbox\\\"\"'`)",
-      "test": "deferred -- operator-provisioned: first nightly truth-tier on orch after prod carries this."
+      "description": "Given Joe or the operator runs `scripts/required-checks.sh --apply` after landing, When protection is read back, Then it lists all 9 contexts and `--check` exits 0 (Live; evidence: `gh api repos/j0yen/mcphost/branches/main/protection --jq '.required_status_checks.contexts | length'` prints `9`)",
+      "test": "deferred -- operator-provisioned: Joe/operator runs scripts/required-checks.sh --apply after landing (needs repo admin); evidence is the live protection read-back."
     }
   ],
   "scope": [
