@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-webhook-inbox-one-call.md",
-  "intent_slug": "mcphost-webhook-inbox-one-call",
-  "root_motivation": "**Who:** an agent that just received a mcphost URL and must show its user a webhook arriving inside one session; the truth-tier integration_specialist persona that scores it. **What:** one call that yields a public hook URL plus a way to read the next event. **Why not today:** the webhook-inbox recipe was three host steps plus a signed POST (eight calls to show one event); a key-less call after a successful host.redeem minted a second tenant because /mcp is stateless; kind=inbox routed to the agent-inbox recipe; llms.txt had no webhook section. **Consequence:** satisfaction 0.0 / completion 0.0 for this recipe on 10-09 and 10-06.",
-  "user_persona": "An agent (customer) that calls host.webhook_inbox.create once, pastes the url into a sender and shows its user the push event in the same session; the truth-tier integration_specialist persona whose gold is reachable in 4 calls; Operator Joe reading the digest.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-call-cli-from-contract.md",
+  "intent_slug": "mcphost-call-cli-from-contract",
+  "root_motivation": "**Who:** a coding agent in a terminal (Claude Code, Codex), a CI job calling host.spec.test, Joe probing prod. **What:** one command per host tool with typed flags and machine output, no JSON by hand. **Why not today:** the mcphost binary has server-side subcommands only; every shell interaction with the host is a hand-typed tool name and argument object. The command table is generated from the embedded contract, so the shell cannot name a tool or argument the host does not serve.",
+  "user_persona": "A coding agent in a shell that publishes, tests and calls host tools with typed flags and exit codes; a CI job gating on exit status; Operator Joe warned of contract skew against prod.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,64 +14,60 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a free tenant, When `host.webhook_inbox.create(name=\"inbox\")` is called once, Then the response carries `url` matching `^https://[^/]+/hook/[A-Za-z0-9]{10,}$`, `secret`, `tool: \"inbox\"`, `trigger_id`, and `wait.tool == \"host.msg.wait\"`, and `host.trigger.list` shows exactly one webhook trigger bound to `inbox`.",
-      "test": "tests/whin_ac01_create_returns_url_secret_wait.rs"
+      "description": "Given the embedded contract, When the clap tree is built, Then Command::debug_assert passes and fewer than 5 canonical tools needed any override; the test prints the override list and fails the premise at 5.",
+      "test": "tests/ccli_ac01_tree_builds_from_contract.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the inbox from AC1, When a POST signed with `secret` carrying `{\"id\":\"evt-fixture-1\"}` reaches `url`, Then within 5 s `host.tool_call(name=\"inbox\")` returns a row with id `evt-fixture-1` and `host.msg.wait` with `wait.args` returns a message whose `data.event_id` is `evt-fixture-1`.",
-      "test": "tests/whin_ac02_signed_post_readable_by_tool_call_and_msg_wait.rs"
+      "description": "Given `mcphost call host.tool.publish --name x --kind nope --spec-json '{}'`, When parsed, Then clap exits 2 before any network with the schema's kind enum in the message.",
+      "test": "tests/ccli_ac02_bad_enum_refused_before_network.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given an unsigned or wrongly signed POST, When it reaches `url`, Then the response is 401, no row is stored, no run fires and no inbox message is sent.",
-      "test": "tests/whin_ac03_unsigned_or_wrong_signature_stores_nothing.rs"
+      "description": "Given a running test host and MCPHOST_KEY set, When `mcphost call host.tool.publish --name hello --kind python --spec-json @fixture.json --json` runs, Then stdout is one JSON line equal to the host's structuredContent and the key never appears in argv, stdout or stderr.",
+      "test": "tests/ccli_ac03_publish_round_trip_key_stays_secret.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a peer that completed `host.redeem` 5 s earlier, When it sends `host.tool_publish` without `tenant_key` on `/mcp`, Then the error is `tenant_key_missing` with `data.tenant` equal to that namespace, the `tenants` row count is unchanged, and a peer with no redeem in 10 minutes still gets implicit signup.",
-      "test": "tests/whin_ac04_keyless_call_after_redeem_is_refused_and_named.rs"
+      "description": "Given a host returning args_invalid, bearer_invalid, tool_exception and a 503, When each is received, Then the exit codes are 2, 4, 3, 5 and stderr carries error_code and data; the mapping test covers every AppError::code() arm.",
+      "test": "tests/ccli_ac04_error_classes_map_to_exit_codes.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a keyed `host.quickstart(kind=\"inbox\")`, When it returns, Then `recipe.name == \"webhook-inbox\"`, `recipe.steps` has one entry calling `host.webhook_inbox.create`, `recipes_nearby` contains `agent-inbox`, and the anonymous quickstart note contains \"tenant_key on every call\" and not \"connection is bound\".",
-      "test": "tests/whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule.rs"
+      "description": "Given a test host whose /contract.json ETag differs from the embedded sha, When any call runs, Then stderr's first line is `contract skew: binary 1.<12> host 1.<12>` and the call still proceeds; with --no-skew-check no HEAD is sent.",
+      "test": "tests/ccli_ac05_contract_skew_warning.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given `www/llms.txt`, When `scripts/www-check.sh` and `handler::llms_txt_tool_names` run, Then a section `## Webhook inbox in one call` names `host.webhook_inbox.create`, and `examples/webhook-inbox/proof.sh` against a local `TestServer` exits 0 in under 30 s.",
-      "test": "tests/whin_ac06_llms_txt_section_and_proof_sh.rs"
+      "description": "Given the contract and the CLI tree, When the drift test compares subcommand names, flag names and help text, Then all three sets are equal; one tool removed from the embedded contract fails the test naming it.",
+      "test": "tests/ccli_ac06_cli_tree_equals_contract.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given a tenant at `event_triggers_max`, When `host.webhook_inbox.create` is called, Then the error is `plan_limit` with `data.limit == 3` and no tool, trigger or event row was created; Given a second create with the same name, Then the same `url` returns and `secret` is absent.",
-      "test": "tests/whin_ac07_plan_limit_creates_nothing_and_repeat_is_idempotent.rs"
+      "level": "MUST",
+      "description": "Given `mcphost call --completions zsh`, When sourced in zsh, Then `mcphost call host.r<TAB>` lists host.redeem, host.registry.publish, host.runs.*.",
+      "test": "tests/ccli_ac07_completions_rendered_from_the_table.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given the first nightly truth-tier on orch after prod carries this, When `measure.json` is written, Then `recipes.by_recipe.mcphost-webhook-inbox.completion_rate` is \u2265 0.5 and its `failure_families` omit `budget` (Live; evidence: `ssh orch 'python3 -m json.tool $(ls -d ~/.local/state/synthorg/runs/truth-tier-* | tail -1)/measure.json | grep -A8 \"\\\"mcphost-webhook-inbox\\\"\"'`)",
-      "test": "deferred -- operator-provisioned: first nightly truth-tier on orch after prod carries this."
+      "description": "Given prod, When the CLI calls an anonymous tool with no key, Then it prints the plan ceilings and exits 0 (Live; evidence: `mcphost call host.quickstart --url https://mcphost.dev --json | jq -e '.limits.plan.budget != null'`)",
+      "test": "deferred -- operator-provisioned: live `mcphost call host.quickstart --url https://mcphost.dev --json` against prod after deploy."
     }
   ],
   "scope": [
-    "src/webhook_inbox.rs (new): host.webhook_inbox.create -- reader tool constant, idempotent-by-name create, plan_limit before anything exists, rotate, event_id_of, notify_event (one @host message per accepted delivery).",
-    "src/webhooks.rs: WebhookConfig.inbox flag, github verify scheme (X-Hub-Signature-256), rotate_secret, accept_delivery posts the inbox notice for inbox triggers only.",
-    "src/peer_recent.rs (new) + AppState.redeemed_peers + src/handler.rs: 10-minute in-memory peer (IP+UA hash) map written by host.redeem; a key-less host.* call from such a peer is tenant_key_missing naming its tenant.",
-    "src/kinds/aliases.rs, src/control.rs: inbox alias, one-step webhook-inbox recipe, recipes_nearby generated from the outcome table, anonymous quickstart note states the stateless rule.",
-    "src/db.rs: count_webhook_triggers_for_tenant, insert_host_notice. src/errors.rs: plan_limit -> INVALID_PARAMS.",
-    "www/llms.txt (+ generated llms-full.txt), examples/webhook-inbox/proof.sh, contracts/host-tools.v1.json, contracts/deprecations.json, docs/tools.md regenerated.",
-    "tests/whin_ac0[1-7]_*.rs, tests/support/whin.rs, tests/common/mod.rs (TestServer https public scheme); kindroute_ac01, trigidem_ac07, toolname_ac08, compat_ac04_ac05 updated for the new tool/recipe shape.",
-    "Cargo.toml/Cargo.lock/plugin/.claude-plugin/plugin.json/plugin/.mcp.json: patch version bump 0.107.12 -> 0.107.13."
+    "src/call_cli.rs (new): the contract-built clap tree, alias rewrite, argument JSON, run, --list and --completions rendering.",
+    "src/client.rs (new): the streamable-HTTP client extracted from compat_check.rs, plus the error-code -> exit-code table.",
+    "src/main.rs: `mcphost call` dispatched before the derive parser; Command::Call for --help.",
+    "Cargo.toml: clap gains the string and env features."
   ],
   "non_goals": [
-    "The HMAC scheme or /hook/{id} semantics beyond the github scheme addition; event-kind triggers; a stateful transport; host.webhook_inbox.remove (P2, no AC)."
+    "Tenant-published tools as subcommands; interactive prompts; storing keys; replacing the dev-loop verbs; nested typed flags for object arguments."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -80,35 +76,30 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "signup_is_not_remembered": "R3 says signup or host.redeem, but tests/sessbind_* pin signup followed by key-less behavior; only host.redeem is recorded (AC4's own scenario)."
+      "key_never_a_flag": "tenant_key is the Authorization bearer from MCPHOST_KEY or --key-file, never a flag value."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why did the 10-09 webhook-inbox session make seven calls and never publish?",
-      "a": "The recipe was three host steps with the hook URL only in step 2, and key-less quickstart answers repeated after a successful redeem."
+      "q": "Why can a shell not call a host tool today?",
+      "a": "The binary has only server-side subcommands, so an agent hand-types JSON-RPC."
     },
     {
       "why": 2,
-      "q": "Why did a key-less call after redeem not work?",
-      "a": "/mcp is stateless, so no session carries the redeem; the next key-less call implicit-signed-up a second tenant."
-    },
-    {
-      "why": 3,
-      "q": "Why does the fix key on the peer?",
-      "a": "IP + User-Agent hash is the only identity the stateless handler has across those calls; a 10-minute memory turns the second tenant into a named refusal."
+      "q": "Why not a hand-written client table?",
+      "a": "A second copy of the contract drifts; the table is generated from the embedded contract and a drift test pins it."
     }
   ],
-  "created_at": "2026-10-10T00:00:00Z",
+  "created_at": "2026-10-11T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Peer hash = IP+UA or IP only?",
-      "resolution": "IP+UA (the PRD default), hashed; recorded in the PR."
+      "question": "188 canonical tools?",
+      "resolution": "The embedded contract has 170 canonical dotted tools; the underscore wire names and registered aliases are accepted on input and rewritten."
     },
     {
-      "question": "Which quota gates create: event_triggers_max or schedules_max?",
-      "resolution": "Both are checked before anything is created; event_triggers_max counts event + message + webhook triggers, so the free plan's 3 trips plan_limit first (data.limit 3)."
+      "question": "AC3 kind python?",
+      "resolution": "The real-host test publishes kind echo (python needs the userns sandbox); the stub-host test pins the python request shape."
     }
   ]
 }

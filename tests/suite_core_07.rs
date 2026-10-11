@@ -261,6 +261,20 @@ mod callerusage_ac07_rollup_speed_at_scale;
 mod callerusage_ac08_end_user_key_includes_caller;
 #[path = "callerusage_ac09_admin_usage_top_audited.rs"]
 mod callerusage_ac09_admin_usage_top_audited;
+#[path = "ccli_ac01_tree_builds_from_contract.rs"]
+mod ccli_ac01_tree_builds_from_contract;
+#[path = "ccli_ac02_bad_enum_refused_before_network.rs"]
+mod ccli_ac02_bad_enum_refused_before_network;
+#[path = "ccli_ac03_publish_round_trip_key_stays_secret.rs"]
+mod ccli_ac03_publish_round_trip_key_stays_secret;
+#[path = "ccli_ac04_error_classes_map_to_exit_codes.rs"]
+mod ccli_ac04_error_classes_map_to_exit_codes;
+#[path = "ccli_ac05_contract_skew_warning.rs"]
+mod ccli_ac05_contract_skew_warning;
+#[path = "ccli_ac06_cli_tree_equals_contract.rs"]
+mod ccli_ac06_cli_tree_equals_contract;
+#[path = "ccli_ac07_completions_rendered_from_the_table.rs"]
+mod ccli_ac07_completions_rendered_from_the_table;
 #[path = "chainhost_ac01_host_table_append_step.rs"]
 mod chainhost_ac01_host_table_append_step;
 #[path = "chainhost_ac02_step_tool_not_found.rs"]

@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+`mcphost call <tool> --<arg> <value> [--url <host>] [--json]` calls a host tool from the shell
+(PRD-mcphost-call-cli-from-contract). The subcommands, flags, value types, enums and help text are
+built at startup from the embedded `contracts/host-tools.v1.json`, so a wrong tool, flag or enum
+value is a clap usage error (exit 2) before any network. The key comes from `$MCPHOST_KEY` or
+`--key-file`, never a flag value. Output is the result's `structuredContent` (one line with
+`--json`); failures print `{"error_code","message","data"}` on stderr and exit 2 (bad arguments),
+3 (tool failure), 4 (auth), 5 (host 5xx or unreachable), 1 otherwise. A HEAD of `/contract.json`
+(2 s, skipped by `--no-skew-check`) prints `contract skew: binary 1.<12> host 1.<12>` on stderr
+when the host runs a different contract. `--list` groups tools by family; `--completions
+bash|zsh|fish` renders completions from the same table. Object and untyped arguments take
+`--<arg>-json` (`@file` or `-` for stdin).
+
 ## v0.107.13 — 2026-10-10
 
 `host.webhook_inbox.create(name, verify?, rotate?)` makes a webhook inbox one call
