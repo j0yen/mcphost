@@ -130,27 +130,6 @@ fn resolve_content(args: &Value) -> Result<Vec<u8>, AppError> {
     ))
 }
 
-/// requirement 2: a handful of common binary magic numbers -- AC8's
-/// "unsupported mime (`image/png`) by content sniff" is refused here even
-/// when no `mime` argument was given and the name's own extension didn't
-/// already give it away.
-fn sniff_binary_mime(content: &[u8]) -> Option<&'static str> {
-    const SIGNATURES: &[(&[u8], &str)] = &[
-        (b"\x89PNG\r\n\x1a\n", "image/png"),
-        (b"\xFF\xD8\xFF", "image/jpeg"),
-        (b"GIF87a", "image/gif"),
-        (b"GIF89a", "image/gif"),
-        (b"%PDF-", "application/pdf"),
-        (b"PK\x03\x04", "application/zip"),
-    ];
-    for (sig, mime) in SIGNATURES {
-        if content.starts_with(sig) {
-            return Some(mime);
-        }
-    }
-    None
-}
-
 fn infer_mime_from_name(name: &str) -> &'static str {
     let lower = name.to_ascii_lowercase();
     if lower.ends_with(".md") || lower.ends_with(".markdown") {
@@ -174,8 +153,8 @@ fn resolve_mime(args: &Value, name: &str, content: &[u8]) -> Result<String, AppE
         }
         return Ok(explicit.to_string());
     }
-    if let Some(sniffed) = sniff_binary_mime(content) {
-        return Err(mime_unsupported(sniffed));
+    if let Some(sniffed) = crate::blobs::sniff_magic(content) {
+        return Err(mime_unsupported(sniffed.mime));
     }
     Ok(infer_mime_from_name(name).to_string())
 }
@@ -1126,9 +1105,18 @@ mod tests {
     }
 
     #[test]
-    fn sniff_binary_mime_detects_png() {
+    fn sniff_magic_detects_png() {
         let png_header = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR";
-        assert_eq!(sniff_binary_mime(png_header), Some("image/png"));
-        assert_eq!(sniff_binary_mime(b"just text"), None);
+        assert_eq!(crate::blobs::sniff_magic(png_header).map(|t| t.mime), Some("image/png"));
+        assert!(crate::blobs::sniff_magic(b"just text").is_none());
+    }
+
+    /// PRD-mcphost-blob-virus-and-type-guard R1: docs.rs defines no type of
+    /// its own; every allowed mime is a `BLOB_TYPES` mime.
+    #[test]
+    fn allowed_mimes_are_all_blob_types() {
+        for m in ALLOWED_MIMES {
+            assert!(crate::blobs::lookup(m).is_some(), "{m} is not in BLOB_TYPES");
+        }
     }
 }
