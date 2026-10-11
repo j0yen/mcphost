@@ -408,6 +408,8 @@ mod vord_ac04_order_by_from_enum;
 mod vord_ac05_runs_list_filters_in_sql;
 #[path = "vord_ac06_concurrent_inserts_every_paged_verb.rs"]
 mod vord_ac06_concurrent_inserts_every_paged_verb;
+#[path = "vord_ac07_removed_order_variant_is_breaking.rs"]
+mod vord_ac07_removed_order_variant_is_breaking;
 #[path = "wake_ac1_message_trigger_fires_run.rs"]
 mod wake_ac1_message_trigger_fires_run;
 #[path = "wake_ac2_from_filter.rs"]
