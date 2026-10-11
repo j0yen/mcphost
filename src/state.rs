@@ -463,6 +463,15 @@ pub struct AppState {
     /// rationale this crate's test harness already documents for its other
     /// `start_with_*` overrides.
     pub reuse_session_tenant: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// PRD-mcphost-healthz-anon-keys-const AC2 fixture: when set, the
+    /// anonymous `/healthz` branch inserts this one extra key, i.e. "the
+    /// handler after a sibling added a key without touching
+    /// `ANON_HEALTHZ_KEYS`". Production never sets it (empty). `Arc`-shared
+    /// and set-once so `hzkeys_ac02` can arm it on its own server after
+    /// `TestServer::start()`, same rationale as
+    /// [`AppState::reuse_session_tenant`]: a field, not a process-wide env
+    /// var, since the core suites run in parallel in one binary.
+    pub anon_healthz_extra_key: std::sync::Arc<std::sync::OnceLock<&'static str>>,
 }
 
 /// requirement 6's own default: 60 calls per client IP per minute.

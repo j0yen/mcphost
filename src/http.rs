@@ -108,9 +108,9 @@ pub fn anon_healthz_body(ok: bool, build: &crate::build_info::BuildInfo) -> serd
 }
 
 /// The builder's body construction with a hook that runs on the finished map
-/// and is unchecked: `hzkeys_ac02` uses it to be "a handler that inserts an
-/// extra key" without a fixture copy of the builder. Production passes a
-/// no-op through [`anon_healthz_body`].
+/// and is unchecked. Production passes a no-op through
+/// [`anon_healthz_body`]; the handler passes an insert when
+/// `AppState::anon_healthz_extra_key` is armed (the AC2 fixture).
 pub fn anon_healthz_body_with(
     ok: bool,
     build: &crate::build_info::BuildInfo,
@@ -150,7 +150,14 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
         // PRD-mcphost-healthz-version-field requirement 2: `ok` plus the
         // two build-identity keys from the single `BuildInfo` renderer.
         let ok = db_ok && disk_ok;
-        let body = anon_healthz_body(ok, state.build);
+        let body = match state.anon_healthz_extra_key.get() {
+            None => anon_healthz_body(ok, state.build),
+            // PRD-mcphost-healthz-anon-keys-const AC2 fixture: a sibling's
+            // extra key, unchecked so `hzkeys_ac02` is what reports it.
+            Some(&extra) => anon_healthz_body_with(ok, state.build, |m| {
+                m.insert(extra.into(), json!(true));
+            }),
+        };
         let status = if ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE };
         return (status, Json(serde_json::Value::Object(body))).into_response();
     }
