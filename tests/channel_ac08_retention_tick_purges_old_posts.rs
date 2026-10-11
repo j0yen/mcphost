@@ -48,7 +48,7 @@ async fn housekeeping_tick_purges_posts_past_retention_and_reads_stay_error_free
             .await
             .expect("B acks up through seq 2"),
     );
-    assert_eq!(ack_read["next_cursor"], json!(2), "{ack_read:?}");
+    assert!(ack_read.get("next_cursor").is_none(), "{ack_read:?}");
 
     // Seq 3, 4, 5: posted after the ack, so B's cursor stays at 2.
     let post3 = post(&client_b, &channel_id, "m3").await;

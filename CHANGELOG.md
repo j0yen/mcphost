@@ -9,6 +9,21 @@ sampled from `/proc` per request; an unreadable source is `null`, never an
 error. `status.html` prints one `host  load …` line under the components.
 The `?component=&days=` rollup is unchanged; `MCPHOST_STATUS_HOST=0` omits the
 object. Field table: `docs/metrics.md` (generated, `scripts/host-pressure-doc-check.sh`).
+## v0.107.8 — 2026-10-10
+
+One paging contract for the list verbs (PRD-mcphost-paged-trait-on-every-list-verb).
+`src/paged.rs` holds the `Paged` trait, one signed opaque keyset cursor
+(refused as `cursor_invalid {reason: encoding|version|signature}` with the
+remedy `omit cursor to restart from the first page`), and `PAGED_VERBS`, from
+which each contract entry gets `paged: true` or an `unpaged_reason`.
+`host.docs.list`, `host.msg.inbox`, `host.msg.thread` and `host.channel.read`
+now omit `next_cursor` on the last page (it was the last name, null, or the
+last seq); `limit` above the verb's maximum is clamped and reported in
+`_meta.mcphost.limit_clamped`, `limit` below 1 is `args_invalid`. A bare
+integer (`channel.read`) or document name (`docs.list`) cursor is read for 60
+days and logged once per tenant as `cursor_legacy`. Clients that looped until
+`next_cursor` was null, or relied on it being present, must loop until it is
+absent.
 
 ## v0.107.1 — 2026-10-09
 

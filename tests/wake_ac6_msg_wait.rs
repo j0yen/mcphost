@@ -75,14 +75,22 @@ async fn wait_returns_promptly_when_a_message_arrives() {
 #[tokio::test]
 async fn wait_times_out_with_an_empty_list_and_the_unchanged_cursor() {
     let server = TestServer::start().await;
-    let (_ns_r, key_r) = signup(&server.base_url, "Wake AC6b Recipient").await;
+    let (ns_r, key_r) = signup(&server.base_url, "Wake AC6b Recipient").await;
     let client_r = McpClient::with_bearer(&server.base_url, &key_r);
 
-    // A cursor pointing at "nothing pending yet" for a tenant with an empty
-    // inbox, with nothing ever sent: host.msg.wait/inbox both treat a
-    // cursor as opaque `"<unix_ms>.<id>"`, so any well-formed value works
-    // to prove "returned unchanged".
-    let cursor = "1.01ARBITRARYIDXXXXXXXXXX";
+    // A real, signed cursor (host.msg.wait's `next_cursor` since
+    // PRD-mcphost-paged-trait-on-every-list-verb): prime it with one message,
+    // then wait past it with nothing new arriving.
+    let (_ns_s, key_s) = signup(&server.base_url, "Wake AC6b Sender").await;
+    let client_s = McpClient::with_bearer(&server.base_url, &key_s);
+    client_s
+        .tools_call("host.msg.send", json!({"to": [ns_r], "body": "priming"}))
+        .await
+        .expect("priming send");
+    let primed = extract_structured(
+        &client_r.tools_call("host.msg.wait", json!({"timeout_s": 1})).await.expect("priming wait"),
+    );
+    let cursor = primed["next_cursor"].as_str().expect("advanced cursor").to_string();
 
     let start = Instant::now();
     let waited = extract_structured(

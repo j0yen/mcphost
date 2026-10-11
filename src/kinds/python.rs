@@ -2171,7 +2171,10 @@ pub const BRIDGE_RETURNS: &[BridgeReturn] = &[
     },
     BridgeReturn {
         function: "mcphost.channel.read",
-        shape: Envelope(&[("posts", "list"), ("next_cursor", "any")]),
+        // `next_cursor` rides along only on a non-last page (PRD-mcphost-
+        // paged-trait-on-every-list-verb): this table lists the keys every
+        // response has.
+        shape: Envelope(&[("posts", "list")]),
     },
     BridgeReturn {
         function: "mcphost.msg.send",
@@ -2185,7 +2188,7 @@ pub const BRIDGE_RETURNS: &[BridgeReturn] = &[
     },
     BridgeReturn {
         function: "mcphost.msg.inbox",
-        shape: Envelope(&[("messages", "list"), ("next_cursor", "any")]),
+        shape: Envelope(&[("messages", "list")]),
     },
     BridgeReturn { function: "mcphost.call", shape: Plain("any (the called tool's result)") },
     BridgeReturn { function: "mcphost.progress", shape: Plain("bool or None") },

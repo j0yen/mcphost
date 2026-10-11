@@ -1949,3 +1949,109 @@ pub fn kill_then_read_stderr(
     }
     buf
 }
+
+// ---- PRD-mcphost-paged-trait-on-every-list-verb: recorded responses -------
+
+/// Canonical contract verbs the recorder never calls: with no required
+/// argument they would act on the recording tenant itself (offboard it,
+/// rotate its key) or reach a payment provider.
+const PGTR_NEVER_CALL: &[&str] = &[
+    "host.self.offboard",
+    "host.key.rotate",
+    "host.oauth.revoke_all",
+    "host.enduser.assertion_secret_rotate",
+    "host.registry.publish",
+    "billing.checkout",
+    "host.export",
+];
+
+/// Minimal arguments for the list-shaped verbs that have a required
+/// argument. `{channel}`/`{thread}` are filled from the seeded fixtures.
+fn pgtr_seed_args(verb: &str, channel: &str, thread: &str) -> Value {
+    match verb {
+        "host.channel.read" => json!({"channel_id": channel}),
+        "host.msg.thread" => json!({"thread_id": thread}),
+        "host.docs.search" => json!({"query": "pgtr"}),
+        "host.enduser.audit" => json!({"subject": "pgtr-subject"}),
+        "host.state.query" => json!({"table": "pgtr_state"}),
+        "host.table.query" => json!({"sql": "SELECT kind FROM pgtr_events"}),
+        "host.table.next_questions" => json!({"table": "pgtr_events"}),
+        "host.tool.logs" | "host.tool.history" => json!({"name": "pgtr_echo"}),
+        "host.oauth.audit_export" => json!({"since": 0, "until": 4_102_444_800_i64}),
+        _ => json!({}),
+    }
+}
+
+/// Every canonical (non-alias) verb in the committed contract.
+pub fn pgtr_canonical_contract_tools() -> Vec<Value> {
+    let kinds = mcphost::kinds::KindRegistry::with_builtin();
+    let contract = mcphost::api_contract::dump_contract(&kinds);
+    contract["tools"]
+        .as_array()
+        .expect("contract tools")
+        .iter()
+        .filter(|t| {
+            let n = t["name"].as_str().unwrap_or("");
+            n.contains('.') && mcphost::tool_aliases::resolve(n).is_none()
+        })
+        .cloned()
+        .collect()
+}
+
+/// Records the suite's responses: boots a server, seeds one tenant (a
+/// document, a named channel with one post, a message thread from a second
+/// tenant, a state table, a data table, a published tool), then calls every
+/// canonical contract verb once and keeps the `structuredContent` of each
+/// call that succeeded. Returns `(verb, response)` pairs in contract order.
+pub async fn pgtr_record_responses() -> Vec<(String, Value)> {
+    let server = TestServer::start_with_signup_rate_limit(50).await;
+    let (_ns, key) = signup(&server.base_url, "Pgtr Recorder").await;
+    let (ns_b, key_b) = signup(&server.base_url, "Pgtr Sender").await;
+    let client = McpClient::with_bearer(&server.base_url, &key);
+    let client_b = McpClient::with_bearer(&server.base_url, &key_b);
+    let me = {
+        let who = extract_structured(&client.tools_call("host.whoami", json!({})).await.expect("whoami"));
+        who["namespace"].as_str().unwrap_or_default().to_string()
+    };
+    let _ = ns_b;
+
+    let _ = client.tools_call("host.docs.put", json!({"name": "pgtr-doc", "content": "pgtr"})).await;
+    let opened = extract_structured(
+        &client.tools_call("host.channel.open", json!({"name": "pgtr"})).await.expect("channel.open"),
+    );
+    let channel = opened["channel_id"].as_str().unwrap_or_default().to_string();
+    let _ = client.tools_call("host.channel.post", json!({"channel": channel, "body": "hi"})).await;
+    let sent = client_b.tools_call("host.msg.send", json!({"to": [me], "body": "hi"})).await;
+    let thread = sent
+        .map(|v| extract_structured(&v)["thread_id"].as_str().unwrap_or_default().to_string())
+        .unwrap_or_default();
+    let _ = client
+        .tools_call("host.state.table_create", json!({"name": "pgtr_state", "schema": {"id": "integer"}}))
+        .await;
+    let _ = client
+        .tools_call("host.table.create", json!({"name": "pgtr_events", "columns": {"kind": "text"}}))
+        .await;
+    let _ = client.tools_call("host.table.append", json!({"table": "pgtr_events", "rows": [{"kind": "a"}]})).await;
+    let _ = client
+        .tools_call(
+            "host.tool.publish",
+            json!({"name": "pgtr_echo", "kind": "echo", "spec": {}}),
+        )
+        .await;
+
+    let mut recorded = Vec::new();
+    for tool in pgtr_canonical_contract_tools() {
+        let verb = tool["name"].as_str().unwrap_or_default().to_string();
+        if PGTR_NEVER_CALL.contains(&verb.as_str()) {
+            continue;
+        }
+        let args = pgtr_seed_args(&verb, &channel, &thread);
+        if let Ok(result) = client.tools_call(&verb, args).await {
+            let structured = extract_structured(&result);
+            if !structured.is_null() {
+                recorded.push((verb, structured));
+            }
+        }
+    }
+    recorded
+}

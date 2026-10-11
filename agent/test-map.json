@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-status-host-pressure.md (test_prefix: hpress)",
+  "ac_test_map_prd": "PRD-mcphost-paged-trait-on-every-list-verb.md (test_prefix: pgtr)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,14 +28,14 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/hpress_ac01_sample_cx33_fixture.rs",
-    "AC2": "tests/hpress_ac02_missing_psi_is_null.rs",
-    "AC3": "tests/hpress_ac03_garbage_stat_and_meminfo_are_null.rs",
-    "AC4": "tests/hpress_ac04_status_json_carries_host.rs",
-    "AC5": "tests/hpress_ac05_daily_rows_have_no_host.rs",
-    "AC6": "tests/hpress_ac06_status_html_host_line.rs",
-    "AC7": "tests/hpress_ac07_metrics_doc_matches_struct.rs",
-    "AC8": "deferred -- operator-provisioned: live curl of prod /status.json after deploy"
+    "AC1": "tests/pgtr_ac01_inconsistency_census.rs",
+    "AC2": "tests/pgtr_ac02_docs_list_walk_ends_exactly_once.rs",
+    "AC3": "tests/pgtr_ac03_cursor_invalid_after_restart.rs",
+    "AC4": "tests/pgtr_ac04_every_array_verb_is_paged_or_excused.rs",
+    "AC5": "tests/pgtr_ac05_channel_read_empty_page_and_ack.rs",
+    "AC6": "tests/pgtr_ac06_cursor_is_bound_to_its_tenant.rs",
+    "AC7": "tests/pgtr_ac07_limit_clamped_and_zero_refused.rs",
+    "AC8": "deferred -- operator-provisioned: live prod curl of the contract and docs.list walk after deploy."
   },
   "ac_test_map_by_prefix": {
     "planlim": {
@@ -1161,7 +1161,7 @@
       "AC14": "tests/chart_ac14_ten_concurrent_calls_p95_under_250ms.rs"
     },
     "chainprev": {
-      "_prd": "PRD-mcphost-chain-prev-contract.md (test_prefix: chainprev) -- superseded by mcphost-contract-version-reported at HEAD",
+      "_prd": "PRD-mcphost-chain-prev-contract.md -- superseded by mcphost-healthz-version-field at HEAD (test_prefix: chainprev)",
       "AC1": "tests/chainprev_ac01_context_key_parity.rs",
       "AC2": "tests/chainprev_ac02_missing_hop_will_fail.rs",
       "AC3": "tests/chainprev_ac03_actual_result_resolution.rs",
@@ -1211,7 +1211,17 @@
       "AC6": "tests/hpress_ac06_status_html_host_line.rs",
       "AC7": "tests/hpress_ac07_metrics_doc_matches_struct.rs",
       "AC8": "deferred -- operator-provisioned: live curl of prod /status.json after deploy"
+    },
+    "pgtr": {
+      "_prd": "PRD-mcphost-paged-trait-on-every-list-verb.md (test_prefix: pgtr)",
+      "AC1": "tests/pgtr_ac01_inconsistency_census.rs",
+      "AC2": "tests/pgtr_ac02_docs_list_walk_ends_exactly_once.rs",
+      "AC3": "tests/pgtr_ac03_cursor_invalid_after_restart.rs",
+      "AC4": "tests/pgtr_ac04_every_array_verb_is_paged_or_excused.rs",
+      "AC5": "tests/pgtr_ac05_channel_read_empty_page_and_ack.rs",
+      "AC6": "tests/pgtr_ac06_cursor_is_bound_to_its_tenant.rs",
+      "AC7": "tests/pgtr_ac07_limit_clamped_and_zero_refused.rs",
+      "AC8": "deferred -- operator-provisioned: live prod curl of the contract and docs.list walk after deploy."
     }
-    }
+  }
 }
-

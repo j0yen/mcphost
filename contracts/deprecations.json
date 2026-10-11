@@ -23,5 +23,61 @@
     "sunset": "2026-12-07",
     "replacement": "PRD-mcphost-publish-schema-from-registry: kind now carries an enum rendered from the kind registry (names, aliases, outcome words); the server always enforced this set, the schema just did not say so",
     "narrowing_only": true
+  },
+  {
+    "path": "host.docs.list.limit",
+    "since": "2026-10-09",
+    "sunset": "2026-12-08",
+    "replacement": "PRD-mcphost-paged-trait-on-every-list-verb: limit now carries the verb's schema maximum (clamped and reported in _meta.mcphost.limit_clamped, never refused); next_cursor is now a signed opaque keyset cursor and is absent (not the last name) on the last page",
+    "narrowing_only": true
+  },
+  {
+    "path": "host_docs_list.limit",
+    "since": "2026-10-09",
+    "sunset": "2026-12-08",
+    "replacement": "PRD-mcphost-paged-trait-on-every-list-verb: limit now carries the verb's schema maximum (clamped and reported in _meta.mcphost.limit_clamped, never refused); next_cursor is now a signed opaque keyset cursor and is absent (not the last name) on the last page",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.msg.inbox.limit",
+    "since": "2026-10-09",
+    "sunset": "2026-12-08",
+    "replacement": "PRD-mcphost-paged-trait-on-every-list-verb: limit now carries the verb's schema maximum (clamped and reported in _meta.mcphost.limit_clamped, never refused; 0 or less is args_invalid); next_cursor is now a signed opaque cursor, a stale or foreign one is cursor_invalid, and the key is absent (not null) on the last page",
+    "narrowing_only": true
+  },
+  {
+    "path": "host_msg_inbox.limit",
+    "since": "2026-10-09",
+    "sunset": "2026-12-08",
+    "replacement": "PRD-mcphost-paged-trait-on-every-list-verb: limit now carries the verb's schema maximum (clamped and reported in _meta.mcphost.limit_clamped, never refused; 0 or less is args_invalid); next_cursor is now a signed opaque cursor, a stale or foreign one is cursor_invalid, and the key is absent (not null) on the last page",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.msg.thread.limit",
+    "since": "2026-10-09",
+    "sunset": "2026-12-08",
+    "replacement": "PRD-mcphost-paged-trait-on-every-list-verb: limit now carries the verb's schema maximum (clamped and reported in _meta.mcphost.limit_clamped, never refused; 0 or less is args_invalid); next_cursor is now a signed opaque cursor, a stale or foreign one is cursor_invalid, and the key is absent (not null) on the last page",
+    "narrowing_only": true
+  },
+  {
+    "path": "host_msg_thread.limit",
+    "since": "2026-10-09",
+    "sunset": "2026-12-08",
+    "replacement": "PRD-mcphost-paged-trait-on-every-list-verb: limit now carries the verb's schema maximum (clamped and reported in _meta.mcphost.limit_clamped, never refused; 0 or less is args_invalid); next_cursor is now a signed opaque cursor, a stale or foreign one is cursor_invalid, and the key is absent (not null) on the last page",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.channel.read.limit",
+    "since": "2026-10-09",
+    "sunset": "2026-12-08",
+    "replacement": "PRD-mcphost-paged-trait-on-every-list-verb: limit now carries the verb's schema maximum (clamped and reported in _meta.mcphost.limit_clamped, never refused; 0 or less is args_invalid); next_cursor is now a signed opaque cursor (a bare integer is read for 60 days), and the key is absent on the last page instead of echoing the last seq; ack with no posts leaves the stored cursor unchanged",
+    "narrowing_only": true
+  },
+  {
+    "path": "host_channel_read.limit",
+    "since": "2026-10-09",
+    "sunset": "2026-12-08",
+    "replacement": "PRD-mcphost-paged-trait-on-every-list-verb: limit now carries the verb's schema maximum (clamped and reported in _meta.mcphost.limit_clamped, never refused; 0 or less is args_invalid); next_cursor is now a signed opaque cursor (a bare integer is read for 60 days), and the key is absent on the last page instead of echoing the last seq; ack with no posts leaves the stored cursor unchanged",
+    "narrowing_only": true
   }
 ]

@@ -396,7 +396,11 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     let verdict = arg_str_opt(args, "verdict");
     let include_result = args.get("include_result").and_then(Value::as_bool).unwrap_or(false);
     let max_limit = if include_result { 50 } else { 200 };
-    let limit = arg_i64_opt(args, "limit").unwrap_or(20).clamp(1, max_limit);
+    // PRD-mcphost-paged-trait-on-every-list-verb requirement 7: above the
+    // max is clamped and reported (`_meta.mcphost.limit_clamped`), below 1 is
+    // `args_invalid` -- never a silent clamp to 1.
+    let resolved = crate::paged::resolve_limit(args, 20, max_limit)?;
+    let limit = resolved.limit;
     // requirement 7: `verdict` isn't a stored column -- fetched over a
     // wider window (still bounded) and filtered/truncated in process, same
     // "post-filter, then re-cap to the caller's own limit" shape a
@@ -446,7 +450,9 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         };
         runs.push(value);
     }
-    Ok(json!({"runs": runs}))
+    let mut out = json!({"runs": runs});
+    crate::paged::note_clamp(&mut out, &resolved);
+    Ok(out)
 }
 
 /// AC9: this run's `progress_json.budget.verdict`, `None` for a run with no

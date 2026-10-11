@@ -3148,7 +3148,8 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             "host.channel.read",
             "Read a channel's posts (group or named -- by id, or a named channel's own name) \
              in seq order since a cursor (default: your own last read position, or 0 for a \
-             first read). ack: true stores next_cursor as your new read position. A group \
+             first read). ack: true stores the last returned post as your new read position \
+             (an empty read leaves it unchanged); next_cursor is absent on the last page. A group \
              channel's non-member, or anyone but a named channel's own owner, gets \
              channel_not_found.",
             host_schema(
@@ -3156,7 +3157,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                     "channel_id": {"type": "string", "description": "The channel's id (or, for a named channel, its name), from host.channel.open."},
                     "cursor": {"type": "integer", "description": "Read posts with seq greater than this; omit to resume from your own stored cursor."},
                     "limit": {"type": "integer", "description": "Max posts to return; default 50, max 100."},
-                    "ack": {"type": "boolean", "description": "Store next_cursor as your new read position."},
+                    "ack": {"type": "boolean", "description": "Store the last returned post's seq as your new read position."},
                 }),
                 &["channel_id"],
             ),
@@ -3765,6 +3766,19 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &["kind", "spec", "invocations"],
             ),
         ));
+    }
+    // PRD-mcphost-paged-trait-on-every-list-verb requirement 6: a paged
+    // verb's `limit`/`cursor` properties come from `paged::Paged`, spliced
+    // over whatever the literal above typed, so the description exists once.
+    for tool in tools.iter_mut() {
+        let name = tool.name.to_string();
+        if crate::paged::paged_spec(&name).is_some()
+            && let Some(props) = Arc::make_mut(&mut tool.input_schema)
+                .get_mut("properties")
+                .and_then(Value::as_object_mut)
+        {
+            crate::paged::splice_input_schema(&name, props);
+        }
     }
     apply_tool_aliases(&mut tools);
     tools
@@ -8945,6 +8959,9 @@ impl ServerHandler for McpHostHandler {
                     }
                 }
                 crate::tool_aliases::record_call(&body_name);
+                // PRD-mcphost-paged-trait-on-every-list-verb requirement 7:
+                // a clamped `limit` rides out as `_meta.mcphost.limit_clamped`.
+                let limit_clamped = crate::paged::take_clamp(&mut value);
                 let result = CallToolResult::structured(value);
                 // requirement 2: an alias call's response carries the
                 // deprecation hint in `_meta.deprecated` (the MCP field
@@ -9002,6 +9019,9 @@ impl ServerHandler for McpHostHandler {
                 }
                 if let Some(nudge) = claim_nudge {
                     meta.0.insert("next".to_string(), nudge);
+                }
+                if let Some(clamped) = limit_clamped {
+                    meta.0.insert("mcphost".to_string(), json!({"limit_clamped": clamped}));
                 }
                 let result = if meta.0.is_empty() { result } else { result.with_meta(Some(meta)) };
                 Ok(CallToolResponse::from(result))

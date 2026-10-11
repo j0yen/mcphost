@@ -56,7 +56,7 @@ async fn mcphost_channel_read_ack_resumes_from_the_first_reads_cursor() {
     let first_posts = first_read["posts"].as_array().expect("posts array");
     assert_eq!(first_posts.len(), 1, "{first_read:?}");
     assert_eq!(first_posts[0]["body"], json!("first"), "{first_read:?}");
-    let first_cursor = first_read["next_cursor"].clone();
+    assert!(first_read.get("next_cursor").is_none(), "{first_read:?}");
 
     client
         .tools_call("host.channel.post", json!({"channel": channel_id, "body": "second"}))
@@ -72,5 +72,5 @@ async fn mcphost_channel_read_ack_resumes_from_the_first_reads_cursor() {
     let second_posts = second_read["posts"].as_array().expect("posts array");
     assert_eq!(second_posts.len(), 1, "{second_read:?}");
     assert_eq!(second_posts[0]["body"], json!("second"), "{second_read:?}");
-    assert_ne!(second_read["next_cursor"], first_cursor, "{second_read:?}");
+    assert!(second_read.get("next_cursor").is_none(), "{second_read:?}");
 }

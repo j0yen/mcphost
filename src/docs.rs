@@ -460,26 +460,48 @@ pub async fn doc_get(state: &AppState, tenant: &Tenant, args: &Value) -> Result<
 /// `deleted` rows); with `since` (including `0`), every document whose own
 /// `seq` is past it, live or deleted (deleted ones carry `deleted: true`).
 pub async fn doc_list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    use crate::paged::{self, Cursor, DocsList, Paged};
     let prefix = arg_str_opt(args, "prefix");
-    let limit = arg_i64_opt(args, "limit").unwrap_or(100).clamp(1, 1000);
+    let rl = paged::resolve_limit(args, DocsList::DEFAULT_LIMIT.into(), DocsList::MAX_LIMIT.into())?;
+    // requirement 2/3: one signed cursor. A pre-PRD cursor (a bare document
+    // name, or the integer `seq` a `since` walk used) is still read for the
+    // migration window and logged once per tenant as `cursor_legacy`.
+    let cursor = match args.get("cursor") {
+        Some(Value::String(raw)) => Some(paged::decode_or_legacy(
+            raw,
+            &state.session_bindings,
+            tenant.id,
+            DocsList::VERB,
+            |raw| Some(Cursor::new(raw.parse().unwrap_or(0), raw)),
+        )?),
+        Some(Value::Number(n)) => n.as_i64().map(|seq| Cursor::new(seq, seq.to_string())),
+        _ => None,
+    };
 
-    let rows = match arg_i64_opt(args, "since") {
+    // One row past the page tells us whether it was the last (requirement 3).
+    let fetch = rl.limit + 1;
+    let mut rows = match arg_i64_opt(args, "since") {
         Some(since) => {
-            let cursor = arg_i64_opt(args, "cursor");
+            let after = cursor.as_ref().map(|c| c.seq);
             state
                 .db
-                .documents_list_since(tenant.id, since, prefix, cursor, limit)
+                .documents_list_since(tenant.id, since, prefix, after, fetch)
                 .await?
         }
         None => {
-            let cursor = arg_str_opt(args, "cursor");
-            state.db.documents_list_live(tenant.id, prefix, cursor, limit).await?
+            let after = cursor.map(|c| c.id);
+            state.db.documents_list_live(tenant.id, prefix, after, fetch).await?
         }
     };
 
-    let next_cursor = rows.last().map(|d| json!(d.name));
+    let next = paged::split_page(&mut rows, rl.limit, DocsList::cursor_of);
     let documents: Vec<Value> = rows.iter().map(|d| document_to_json(d, true)).collect();
-    Ok(json!({"documents": documents, "next_cursor": next_cursor}))
+    let mut out = serde_json::Map::new();
+    out.insert(DocsList::KEY.to_string(), json!(documents));
+    paged::finish_page(&mut out, next.as_ref(), &state.session_bindings, tenant.id);
+    let mut value = Value::Object(out);
+    paged::note_clamp(&mut value, &rl);
+    Ok(value)
 }
 
 // ---- host.docs.delete -----------------------------------------------------
