@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.107.17 — 2026-10-11
+
+`providers.toml` is the single source for upstream OAuth providers
+(PRD-mcphost-connection-provider-registry): `build.rs` generates the `connect::Provider`
+table, and the new `host.connect.providers` tool, its `provider` schema enum,
+`docs/connections.md`, the `## Upstream connections` section of `www/llms.txt` and the callback
+route table all derive from it. Initial rows: github, google, slack, notion.
+
 ## v0.107.13 — 2026-10-10
 
 `host.webhook_inbox.create(name, verify?, rotate?)` makes a webhook inbox one call

@@ -21,6 +21,7 @@ pub mod chart;
 pub mod claim;
 pub mod cli;
 pub mod compat_check;
+pub mod connect;
 pub mod consent;
 pub mod control;
 pub mod cron;

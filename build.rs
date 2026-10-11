@@ -1,28 +1,26 @@
-//! Stamps `MCPHOST_GIT_SHA` (12-char short sha) into the build when a `.git`
-//! is present; leaves it unset otherwise so `build_info::BUILD.git_sha` is
-//! `None`. Never fails the build when `git` is absent.
-use std::process::Command;
+//! Build script: (1) generates the `connect::Provider` table from
+//! `providers.toml` (PRD-mcphost-connection-provider-registry) -- a malformed
+//! row fails the build naming the provider and the field; (2) stamps the git
+//! sha (see `build_support/git_sha.rs`).
+
+#[path = "src/connect/codegen.rs"]
+mod codegen;
+#[path = "build_support/git_sha.rs"]
+mod git_sha;
+
+fn generate_providers() {
+    println!("cargo:rerun-if-changed=providers.toml");
+    println!("cargo:rerun-if-changed=src/connect/codegen.rs");
+    let text = std::fs::read_to_string("providers.toml").expect("read providers.toml");
+    let rows = match codegen::parse_table(&text) {
+        Ok(rows) => rows,
+        Err(e) => panic!("{e}"),
+    };
+    let out = std::path::Path::new(&std::env::var("OUT_DIR").expect("OUT_DIR")).join("providers_gen.rs");
+    std::fs::write(out, codegen::render_rust(&rows)).expect("write providers_gen.rs");
+}
 
 fn main() {
-    println!("cargo:rerun-if-changed=.git/HEAD");
-    println!("cargo:rerun-if-env-changed=MCPHOST_GIT_SHA");
-    if std::env::var_os("MCPHOST_GIT_SHA").is_some() {
-        return;
-    }
-    if !std::path::Path::new(".git").exists() {
-        return;
-    }
-    let Ok(out) = Command::new("git")
-        .args(["rev-parse", "--short=12", "HEAD"])
-        .output()
-    else {
-        return;
-    };
-    if !out.status.success() {
-        return;
-    }
-    let sha = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if !sha.is_empty() {
-        println!("cargo:rustc-env=MCPHOST_GIT_SHA={sha}");
-    }
+    generate_providers();
+    git_sha::main();
 }

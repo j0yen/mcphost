@@ -298,6 +298,8 @@ const UNPAGED_BOUNDED: &str =
     "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows";
 const UNPAGED_RANKED: &str =
     "relevance-ranked top-k result, not a keyset-ordered list, so there is no stable cursor";
+const UNPAGED_REGISTRY: &str =
+    "fixed set read whole from providers.toml at build time, a handful of rows; no cursor applies";
 const UNPAGED_ECHO: &str =
     "not a list verb: the array is a field of a single-record or mutation response";
 const UNPAGED_WAIT: &str =
@@ -311,6 +313,7 @@ pub const UNPAGED_VERBS: &[(&str, &str)] = &[
     ("host.audit.chain", UNPAGED_WINDOW),
     ("host.catalog.search", UNPAGED_WINDOW),
     ("host.changelog", UNPAGED_EXPORT),
+    ("host.connect.providers", UNPAGED_REGISTRY),
     ("host.docs.search", UNPAGED_RANKED),
     ("host.drift.reviews", UNPAGED_WINDOW),
     ("host.enduser.audit", UNPAGED_LEGACY),

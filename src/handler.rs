@@ -3632,6 +3632,26 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &["subject"],
             ),
         ),
+        // PRD-mcphost-connection-provider-registry R3/R4: the `provider` enum is
+        // `providers.toml`'s own name set (as `kind` above is the registry's),
+        // never a literal list.
+        Tool::new(
+            "host.connect.providers",
+            "List the upstream OAuth providers this host can connect (from providers.toml): \
+             name, exact scope names, refresh semantics, docs_url, and available true|false \
+             with a reason (client_id_not_configured | client_secret_not_configured) when the \
+             host has no credentials for it yet. Never returns a client id or secret.",
+            host_schema(
+                json!({
+                    "provider": {
+                        "type": "string",
+                        "enum": crate::connect::provider_enum(),
+                        "description": "Only this provider's row; omit to list every provider.",
+                    },
+                }),
+                &[],
+            ),
+        ),
         // PRD-mcphost-upstream-token-vault requirement 2 (AC9, AC11): never
         // returns client_secret; re-setting an existing name is free
         // against vault_providers_max (see vault::provider_set).
@@ -5378,6 +5398,7 @@ impl McpHostHandler {
             "host.enduser.assertion_secret_rotate" => {
                 crate::enduser::assertion_secret_rotate(&self.state, tenant, &args).await
             }
+            "host.connect.providers" => crate::connect::providers_tool(&self.state, &args),
             "host.vault.provider_set" => crate::vault::provider_set(&self.state, tenant, &args).await,
             "host.vault.providers" => crate::vault::providers(&self.state, tenant).await,
             "host.vault.connect_link" => {

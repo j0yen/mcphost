@@ -22,7 +22,7 @@ fn build_rs_in_gitless_tree_emits_no_sha() {
     let status = Command::new(rustc)
         .args(["--edition", "2024", "-o"])
         .arg(&exe)
-        .arg(format!("{manifest}/build.rs"))
+        .arg(format!("{manifest}/build_support/git_sha.rs"))
         .status()
         .expect("compile build.rs");
     assert!(status.success());

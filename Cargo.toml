@@ -168,6 +168,10 @@ mqo-chart-caption = { path = "vendor/mqo-chart-caption", version = "0.1.0" }
 # in by `default` (the existing supply-chain audit denies that).
 test-support = []
 
+[build-dependencies]
+# PRD-mcphost-connection-provider-registry: build.rs parses providers.toml.
+toml = "0.8"
+
 [dev-dependencies]
 semver = "1"
 tokio = { version = "1", features = ["full", "test-util"] }
