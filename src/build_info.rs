@@ -17,6 +17,13 @@ pub const BUILD: BuildInfo = BuildInfo {
     git_sha: option_env!("MCPHOST_GIT_SHA"),
 };
 
+/// The only source of the anonymous `/healthz` key set (sorted, the order
+/// `serde_json::Map` yields). The handler's anonymous branch is asserted
+/// equal to it, every test compares against it through
+/// `common::anon_healthz_keys()`, and `scripts/healthz-keys-lint.py` parses
+/// this line to find literal restatements of it.
+pub const ANON_HEALTHZ_KEYS: &[&str] = &["git_sha", "ok", "version"];
+
 impl BuildInfo {
     /// The only renderer: `{"version": "<v>", "git_sha": "<sha>"|null}`.
     pub fn json(&self) -> Map<String, Value> {

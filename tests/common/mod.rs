@@ -25,6 +25,12 @@ use mcphost::secrets::SecretBox;
 use mcphost::state::AppState;
 use serde_json::{Value, json};
 
+/// The anonymous `/healthz` key set, read from the crate const so no test
+/// restates it (`scripts/healthz-keys-lint.py` fails a literal).
+pub fn anon_healthz_keys() -> &'static [&'static str] {
+    mcphost::ANON_HEALTHZ_KEYS
+}
+
 pub const ADMIN_KEY: &str = "test-admin-key-not-for-production";
 
 /// A [`NameLookup`] with a fixed set of hostname -> address answers, so a

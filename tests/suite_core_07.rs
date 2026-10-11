@@ -783,6 +783,8 @@ mod hybrid_ac07_p95_latency_within_30ms_of_embeddings_only;
 mod hybrid_ac08_hybrid_hit_rate_at_least_each_mode;
 #[path = "hybrid_ac10_filter_prefix_filters_before_fusion.rs"]
 mod hybrid_ac10_filter_prefix_filters_before_fusion;
+#[path = "hzkeys_ac01_lint_flags_literal_key_sets.rs"]
+mod hzkeys_ac01_lint_flags_literal_key_sets;
 #[path = "hzver_ac01_anonymous_healthz_keys.rs"]
 mod hzver_ac01_anonymous_healthz_keys;
 #[path = "hzver_ac02_unwritable_db_503_carries_build.rs"]
