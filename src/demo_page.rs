@@ -3,9 +3,10 @@
 //! most recent runs. Like `/x/{token}/{tool}` (see [`crate::public_tool`])
 //! it is public by construction; unlike it, it never runs anything.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde_json::{Value, json};
@@ -229,6 +230,7 @@ fn demo_headers(mut response: Response) -> Response {
 pub async fn demo_get(
     State(state): State<Arc<AppState>>,
     Path((namespace, tool)): Path<(String, String)>,
+    Query(params): Query<HashMap<String, String>>,
     headers: HeaderMap,
 ) -> Response {
     let not_found = || StatusCode::NOT_FOUND.into_response();
@@ -256,6 +258,12 @@ pub async fn demo_get(
     for run in &runs {
         rows.push(run_row(&state, tenant.id, run, &secrets).await);
     }
+    let line = json!({"event": "demo_view", "tool": tool, "ua_class": ua_class(&headers)}).to_string();
+    let _ = state.db.append_log(tenant.id, tool.clone(), line).await;
+    // R6: the same rows (same redaction) as a JSON array.
+    if params.get("format").map(String::as_str) == Some("json") {
+        return demo_headers((StatusCode::OK, axum::Json(Value::Array(rows))).into_response());
+    }
     // R3: the share token (public by design of `/x/`) goes in the form
     // action only.
     let token = match state.db.find_url_share(tenant.id, tool.clone()).await {
@@ -270,7 +278,5 @@ pub async fn demo_get(
     let form = token
         .map(|t| render_form(&format!("/x/{t}/{tool}"), &schema))
         .unwrap_or_default();
-    let line = json!({"event": "demo_view", "tool": tool, "ua_class": ua_class(&headers)}).to_string();
-    let _ = state.db.append_log(tenant.id, tool.clone(), line).await;
     demo_headers(crate::claim::html_response(StatusCode::OK, render_page(&namespace, &tool, tool_row.share_description.as_deref().unwrap_or(""), &form, &rows)))
 }
