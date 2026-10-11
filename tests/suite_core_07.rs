@@ -419,6 +419,8 @@ mod cprov_ac02_provider_surfaces_cannot_drift;
 mod cprov_ac04_validate_scopes_names_the_unknown;
 #[path = "cprov_ac05_unknown_preset_lists_every_provider.rs"]
 mod cprov_ac05_unknown_preset_lists_every_provider;
+#[path = "cprov_ac06_quickstart_partitions_providers.rs"]
+mod cprov_ac06_quickstart_partitions_providers;
 #[path = "ctrv_ac01_sha_stable_across_boot_requests_and_process.rs"]
 mod ctrv_ac01_sha_stable_across_boot_requests_and_process;
 #[path = "ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs"]

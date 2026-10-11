@@ -202,6 +202,20 @@ pub fn providers_tool(state: &crate::state::AppState, args: &Value) -> Result<Va
     Ok(json!({"providers": rows, "count": count}))
 }
 
+/// `host.quickstart`'s `connections` block (R7): the providers this host can
+/// connect right now, and the rest with their reason. Together they partition
+/// [`Provider::ALL`].
+pub fn quickstart_connections(status: &ConnectProviders) -> Value {
+    json!({
+        "providers_available": status.available(),
+        "providers_unavailable": status
+            .unavailable()
+            .into_iter()
+            .map(|(name, reason)| json!({"name": name, "reason": reason}))
+            .collect::<Vec<_>>(),
+    })
+}
+
 // ---- surfaces ----------------------------------------------------------
 
 /// Surface 1: one row per spec. Never carries a client id or secret.
