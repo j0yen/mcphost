@@ -265,6 +265,8 @@ mod callerusage_ac08_end_user_key_includes_caller;
 mod callerusage_ac09_admin_usage_top_audited;
 #[path = "cest_ac01_dry_run_verdict_matches_real_call.rs"]
 mod cest_ac01_dry_run_verdict_matches_real_call;
+#[path = "cest_ac02_handler_runs_only_preflight_rows.rs"]
+mod cest_ac02_handler_runs_only_preflight_rows;
 #[path = "chainhost_ac01_host_table_append_step.rs"]
 mod chainhost_ac01_host_table_append_step;
 #[path = "chainhost_ac02_step_tool_not_found.rs"]
