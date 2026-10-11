@@ -2534,15 +2534,18 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         ),
         Tool::new(
             "host.runs.wait",
-            "Long-poll one run until it finalizes, until: {counter, gte} is reached, or \
-             timeout_s elapses (max 25s), returning its current status either way -- for a \
-             client with no polling loop of its own.",
+            format!(
+                "Long-poll one run until it finalizes, until: {{counter, gte}} is reached, or \
+                 timeout_s elapses (max {}s), returning its current status either way -- for a \
+                 client with no polling loop of its own.",
+                crate::asks::WAIT_MAX_S
+            ),
             host_schema(
                 json!({
                     "run_id": {"type": "string", "description": "The run id to wait on."},
                     "timeout_s": {
                         "type": "integer",
-                        "description": "Max seconds to wait, capped at 25; default 20.",
+                        "description": format!("Max seconds to wait, capped at {}; default {}.", crate::asks::WAIT_MAX_S, crate::asks::WAIT_DEFAULT_S),
                     },
                     "until": {
                         "type": "object",
@@ -3026,15 +3029,18 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         // polling loop of its own, alongside host.runs.wait above.
         Tool::new(
             "host.msg.wait",
-            "Long-poll for a new message until one past cursor arrives or timeout_s elapses (max \
-             25s), returning the same shape as host.msg.inbox either way -- for a client with no \
-             polling loop of its own. On timeout, messages is empty and next_cursor is unchanged.",
+            format!(
+                "Long-poll for a new message until one past cursor arrives or timeout_s elapses (max \
+                 {}s), returning the same shape as host.msg.inbox either way -- for a client with no \
+                 polling loop of its own. On timeout, messages is empty and next_cursor is unchanged.",
+                crate::asks::WAIT_MAX_S
+            ),
             host_schema(
                 json!({
                     "cursor": {"type": "string", "description": "Opaque; omit to wait for the next message from now."},
                     "timeout_s": {
                         "type": "integer",
-                        "description": "Max seconds to wait, capped at 25; default 20.",
+                        "description": format!("Max seconds to wait, capped at {}; default {}.", crate::asks::WAIT_MAX_S, crate::asks::WAIT_DEFAULT_S),
                     },
                     "unread_only": {"type": "boolean", "description": "Filter to messages not yet acked."},
                 }),

@@ -131,6 +131,8 @@ mod argmsg_ac06_sites_render_from_one_args_error;
 mod argmsg_ac07_tool_test_equals_tools_call;
 #[path = "askd_ac02_keyless_answer_unblocks_wait_second_post_409.rs"]
 mod askd_ac02_keyless_answer_unblocks_wait_second_post_409;
+#[path = "askd_ac03_wait_ceiling_single_source.rs"]
+mod askd_ac03_wait_ceiling_single_source;
 #[path = "attrib_ac1_loopback_signup_unstamped.rs"]
 mod attrib_ac1_loopback_signup_unstamped;
 #[path = "attrib_ac2_clientinfo_captured.rs"]
