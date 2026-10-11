@@ -95,6 +95,13 @@ fn quickstart_limits(state: &AppState, plan_name: &str) -> Value {
         "max_spec_bytes": MAX_SPEC_BYTES,
         "max_tools_per_tenant": MAX_TOOLS_PER_TENANT,
         "name_pattern": "^[a-z][a-z0-9_]{1,40}$",
+        // PRD-mcphost-client-profile-registry R4: where the per-client
+        // constraint table lives.
+        "client_profiles_url": format!(
+            "{}{}",
+            state.public_url.trim_end_matches('/'),
+            crate::client_profiles::JSON_ROUTE
+        ),
         "plan": plan_limits,
         // Requirement 5 / AC6: named here, and in README/llms.txt, from
         // the exact same constants the enforcement path in

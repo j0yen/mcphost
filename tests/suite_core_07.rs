@@ -423,6 +423,8 @@ mod cprf_ac04_whoami_reports_client_profile;
 mod cprf_ac05_committed_copy_drift;
 #[path = "cprf_ac06_staleness.rs"]
 mod cprf_ac06_staleness;
+#[path = "cprf_ac07_quickstart_limits_profiles_url.rs"]
+mod cprf_ac07_quickstart_limits_profiles_url;
 #[path = "ctrv_ac01_sha_stable_across_boot_requests_and_process.rs"]
 mod ctrv_ac01_sha_stable_across_boot_requests_and_process;
 #[path = "ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs"]
