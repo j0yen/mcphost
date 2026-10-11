@@ -660,6 +660,21 @@ fn annotate(e: KindError, extra: Value) -> KindError {
     KindError::Structured { code, message, data }
 }
 
+/// Requirement 2: the wait before the next attempt -- `backoff_ms ×
+/// 2^(attempt-1)` with ±10 % jitter, or the error's `data.retry_after_s`
+/// (seconds) when that is larger.
+fn retry_wait_ms(policy: &RetryPolicy, attempt: u32, e: &KindError) -> u64 {
+    let base = policy.backoff_ms.saturating_mul(1u64 << (attempt - 1)) as f64;
+    let jittered = (base * rand::Rng::gen_range(&mut rand::thread_rng(), 0.9..=1.1)) as u64;
+    let retry_after_ms = match e {
+        KindError::Structured { data, .. } => {
+            data.get("retry_after_s").and_then(Value::as_u64).map_or(0, |s| s.saturating_mul(1000))
+        }
+        _ => 0,
+    };
+    jittered.max(retry_after_ms)
+}
+
 /// Requirements 2-4: dispatches one step, retrying per its `retry` policy.
 /// Returns the final outcome and (for a step with a policy) the per-attempt
 /// trace. The step's single child run row is written once, with `attempt`
@@ -716,7 +731,12 @@ async fn run_step(
             let e = annotate(e, json!({"attempts": attempt, "retry_exhausted": true}));
             return finish(Err(e), attempts, child_run_id).await;
         }
-        let wait_ms = policy.backoff_ms.saturating_mul(1u64 << (attempt - 1));
+        let wait_ms = retry_wait_ms(policy, attempt, &e);
+        let remaining = ctx.deadline.saturating_duration_since(std::time::Instant::now());
+        if std::time::Duration::from_millis(wait_ms) >= remaining {
+            let e = annotate(e, json!({"attempts": attempt, "retry_deadline_exceeded": true}));
+            return finish(Err(e), attempts, child_run_id).await;
+        }
         tokio::time::sleep(std::time::Duration::from_millis(wait_ms)).await;
         waited_ms = wait_ms;
         attempt += 1;
