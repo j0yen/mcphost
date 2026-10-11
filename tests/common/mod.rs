@@ -31,6 +31,17 @@ pub fn anon_healthz_keys() -> &'static [&'static str] {
     mcphost::ANON_HEALTHZ_KEYS
 }
 
+/// Asserts an anonymous `/healthz` body has exactly the keys of
+/// `anon_healthz_keys()` and the expected `ok` / build-identity values.
+pub fn assert_anon_healthz(body: &Value, ok: bool) {
+    let mut keys: Vec<&str> = body.as_object().expect("anonymous /healthz body is an object").keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(keys, anon_healthz_keys(), "anonymous /healthz keys: {body}");
+    assert_eq!(body["ok"], json!(ok), "anonymous /healthz ok: {body}");
+    assert_eq!(body["version"], json!(mcphost::build_info::BUILD.version), "anonymous /healthz version: {body}");
+    assert_eq!(body["git_sha"], json!(mcphost::build_info::BUILD.git_sha), "anonymous /healthz git_sha: {body}");
+}
+
 pub const ADMIN_KEY: &str = "test-admin-key-not-for-production";
 
 /// A [`NameLookup`] with a fixed set of hostname -> address answers, so a

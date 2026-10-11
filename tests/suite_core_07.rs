@@ -787,6 +787,8 @@ mod hybrid_ac10_filter_prefix_filters_before_fusion;
 mod hzkeys_ac01_lint_flags_literal_key_sets;
 #[path = "hzkeys_ac02_handler_body_equals_const.rs"]
 mod hzkeys_ac02_handler_body_equals_const;
+#[path = "hzkeys_ac03_repo_tests_read_the_const.rs"]
+mod hzkeys_ac03_repo_tests_read_the_const;
 #[path = "hzver_ac01_anonymous_healthz_keys.rs"]
 mod hzver_ac01_anonymous_healthz_keys;
 #[path = "hzver_ac02_unwritable_db_503_carries_build.rs"]
