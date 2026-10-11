@@ -347,6 +347,11 @@ jobs:
   # `cargo build --release` runs, identical artifact sha256. No cache on purpose.
   determinism:
     name: determinism (two cold release builds, identical artifact sha256)
+    # 2026-10-11: main-only. Two cold release builds take 20-40 min on a hosted
+    # runner; the job is not a required check, yet every land waited for it
+    # before tagging (wm-build red leg 60). The gate runs determinism in its
+    # nightly tier; CI keeps it on main pushes so drift still surfaces daily.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
