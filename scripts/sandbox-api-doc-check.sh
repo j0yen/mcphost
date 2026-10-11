@@ -105,6 +105,9 @@ if [ "$MODE" = "write" ]; then
     apply_to_file "$f" "$RENDERED" || exit $?
   done
   echo "sandbox-api-doc-check.sh: wrote modules=${MODULE_COUNT} to ${#TARGETS[@]} files"
+  # PRD-mcphost-dry-run-on-write-verbs R5: docs/host-tools.md, generated
+  # from src/write_verbs.rs, rides along in both modes.
+  "$(dirname "$0")/host-tools-doc-check.sh" --write || exit $?
   exit 0
 fi
 
@@ -142,6 +145,11 @@ PY
     fi
   done < <(printf '%s\n' "$RENDERED" | grep -o '`mcphost\.[a-z_]*`' | sed -e 's/`mcphost\.//' -e 's/`//')
 done
+
+if ! "$(dirname "$0")/host-tools-doc-check.sh" >/dev/null; then
+  "$(dirname "$0")/host-tools-doc-check.sh" >&2
+  FAILURES=$((FAILURES + 1))
+fi
 
 if [ "$FAILURES" -gt 0 ]; then
   echo "sandbox-api-doc-check.sh: FAILED (${FAILURES} issue(s))" >&2

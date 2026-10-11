@@ -18,6 +18,11 @@ fn repo_root() -> &'static Path {
 
 const TOUCHED: &[&str] = &[
     "scripts/sandbox-api-doc-check.sh",
+    // PRD-mcphost-dry-run-on-write-verbs: the script also checks the
+    // generated write-verb table.
+    "scripts/host-tools-doc-check.sh",
+    "src/write_verbs.rs",
+    "docs/host-tools.md",
     "src/kinds/python.rs",
     "docs/kinds/python.md",
     "www/llms.txt",
