@@ -25,3 +25,18 @@ jobs = [
 producer = "determinism"
 workflow = "ci.yml"
 jobs = ["determinism (two cold release builds, identical artifact sha256)"]
+
+# Host-side gate checks (wm-build `[[check]]`, read by gate/repo_ci.rs): the two CI
+# steps that blocked gates 692/693/711 on 2026-10-11 ONLY after a 40-min CI round
+# trip (flake-audit ci-job-failure). Run them in the gate in seconds instead.
+[[check]]
+name = "test-partition"
+cmd = "./scripts/ci-test-partition.sh check"
+where = "host"
+wall_minutes = 10
+
+[[check]]
+name = "bad-rust-audit"
+cmd = "./scripts/audit.sh"
+where = "host"
+wall_minutes = 10
