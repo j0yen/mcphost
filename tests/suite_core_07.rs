@@ -1419,6 +1419,8 @@ mod outsch_ac03_contract_dump_marks_aliases_and_outputs;
 mod outsch_ac04_tools_list_carries_output_schema;
 #[path = "outsch_ac05_whoami_one_schema_for_every_connection.rs"]
 mod outsch_ac05_whoami_one_schema_for_every_connection;
+#[path = "outsch_ac06_diff_flags_a_removed_output_field.rs"]
+mod outsch_ac06_diff_flags_a_removed_output_field;
 #[path = "owncopy_ac01_email_subject_and_body_match_draft.rs"]
 mod owncopy_ac01_email_subject_and_body_match_draft;
 #[path = "owncopy_ac02_from_and_reply_to_passed_verbatim.rs"]
