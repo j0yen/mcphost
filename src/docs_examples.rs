@@ -302,3 +302,128 @@ pub struct Entry {
     pub body: String,
     pub expect: Option<String>,
 }
+
+/// Default corpus location, relative to the repo root.
+pub const CORPUS_PATH: &str = "docs/examples.corpus.json";
+
+fn collect_md(dir: &std::path::Path, rel: &str, out: &mut Vec<String>) -> std::io::Result<()> {
+    let Ok(rd) = std::fs::read_dir(dir) else { return Ok(()) };
+    let mut names: Vec<_> = rd.filter_map(Result::ok).collect();
+    names.sort_by_key(|e| e.file_name());
+    for e in names {
+        let name = e.file_name().to_string_lossy().to_string();
+        let rel_path = format!("{rel}/{name}");
+        if e.file_type()?.is_dir() {
+            collect_md(&e.path(), &rel_path, out)?;
+        } else if name.ends_with(".md") {
+            out.push(rel_path);
+        }
+    }
+    Ok(())
+}
+
+/// Every markdown page the extractor scans: `docs/**/*.md` under `root`,
+/// sorted by path. (`README.md` is excluded on purpose: its quickstart
+/// block is a generated copy of `docs/agent-quickstart.md`.)
+pub fn corpus_pages(root: &std::path::Path) -> std::io::Result<Vec<String>> {
+    let mut pages = Vec::new();
+    collect_md(&root.join("docs"), "docs", &mut pages)?;
+    pages.sort();
+    Ok(pages)
+}
+
+fn valid_expect(e: &str) -> bool {
+    e == "ok"
+        || e.strip_prefix("error:").is_some_and(|c| !c.is_empty())
+        || e.strip_prefix("contains:").is_some_and(|c| !c.is_empty())
+}
+
+/// Entries of one page, plus tag-grammar errors.
+pub fn extract_page(path: &str, text: &str, errors: &mut Vec<String>) -> Vec<Entry> {
+    let mut counters: BTreeMap<String, usize> = BTreeMap::new();
+    let mut out = Vec::new();
+    for f in parse_fences(text) {
+        let info = Info::parse(&f.info);
+        let Some(tag) = info.tag.clone() else { continue };
+        let n = counters.entry(f.heading.clone()).or_insert(0);
+        *n += 1;
+        let id = format!("{path}#{}-{n}", f.heading);
+        let mut bad = |msg: String| errors.push(format!("{id}: {msg}"));
+        if let Some(e) = info.attrs.get("expect")
+            && !valid_expect(e)
+        {
+            bad(format!("expect={e} is not ok|error:<code>|contains:<text>"));
+        }
+        if let Some(v) = info.attrs.get("needs")
+            && v != "tenant"
+            && v != "anonymous"
+        {
+            bad(format!("needs={v} is not tenant|anonymous"));
+        }
+        if tag == TAG_TOOL && !info.attrs.contains_key("name") {
+            bad("mcphost-tool requires name=<tool name>".to_string());
+        }
+        if tag == TAG_TOOL && !info.attrs.contains_key("kind") {
+            bad("mcphost-tool requires kind=<kind>".to_string());
+        }
+        out.push(Entry {
+            id,
+            tag,
+            expect: info.attrs.get("expect").cloned(),
+            attrs: info.attrs,
+            body: f.body,
+        });
+    }
+    out
+}
+
+/// Extract the whole corpus under `root`: `Ok(entries)` or the list of
+/// errors that make the corpus invalid.
+pub fn extract(root: &std::path::Path) -> Result<Vec<Entry>, Vec<String>> {
+    let pages = corpus_pages(root).map_err(|e| vec![format!("scan docs/: {e}")])?;
+    let mut errors = Vec::new();
+    let mut entries = Vec::new();
+    // `pages` is sorted and each page is extracted in fence order, so the
+    // corpus is already sorted by path then order.
+    for page in &pages {
+        let text = std::fs::read_to_string(root.join(page)).map_err(|e| vec![format!("read {page}: {e}")])?;
+        entries.extend(extract_page(page, &text, &mut errors));
+    }
+    if errors.is_empty() { Ok(entries) } else { Err(errors) }
+}
+
+/// The page-path half of an id.
+pub fn page_of(id: &str) -> &str {
+    id.split_once('#').map_or(id, |(p, _)| p)
+}
+
+/// The canonical on-disk form of a corpus.
+pub fn render_corpus(entries: &[Entry]) -> String {
+    let mut s = serde_json::to_string_pretty(entries).expect("corpus serializes");
+    s.push('\n');
+    s
+}
+
+/// Ids whose entry differs between `committed` and `fresh` (added, removed
+/// or changed), in a stable order.
+pub fn corpus_drift(committed: &[Entry], fresh: &[Entry]) -> Vec<String> {
+    let old: BTreeMap<&str, &Entry> = committed.iter().map(|e| (e.id.as_str(), e)).collect();
+    let new: BTreeMap<&str, &Entry> = fresh.iter().map(|e| (e.id.as_str(), e)).collect();
+    let mut ids: Vec<String> = Vec::new();
+    for (id, e) in &new {
+        if old.get(id) != Some(e) {
+            ids.push((*id).to_string());
+        }
+    }
+    for id in old.keys() {
+        if !new.contains_key(id) {
+            ids.push((*id).to_string());
+        }
+    }
+    ids
+}
+
+pub fn load_corpus(path: &std::path::Path) -> Result<Vec<Entry>, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    serde_json::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))
+}

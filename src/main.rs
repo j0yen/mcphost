@@ -262,6 +262,19 @@ enum DocsExamplesCommand {
         #[arg(long)]
         path: Option<PathBuf>,
     },
+    /// Write `docs/examples.corpus.json` from the tagged fences of
+    /// `docs/**/*.md`; with `--check`, write nothing and exit 1 naming the
+    /// drifted ids when the committed corpus differs.
+    Extract {
+        #[arg(long)]
+        check: bool,
+        /// Repo root holding `docs/`. Defaults to the current directory.
+        #[arg(long)]
+        root: Option<PathBuf>,
+        /// Corpus file; defaults to `<root>/docs/examples.corpus.json`.
+        #[arg(long)]
+        corpus: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -724,6 +737,43 @@ async fn main() -> anyhow::Result<()> {
                     report.prose
                 );
                 Ok(())
+            }
+            DocsExamplesCommand::Extract { check, root, corpus } => {
+                let root = root.unwrap_or_else(|| PathBuf::from("."));
+                let corpus = corpus.unwrap_or_else(|| root.join(mcphost::docs_examples::CORPUS_PATH));
+                let fresh = match mcphost::docs_examples::extract(&root) {
+                    Ok(e) => e,
+                    Err(errors) => {
+                        for e in errors {
+                            eprintln!("docs-examples extract: {e}");
+                        }
+                        std::process::exit(1);
+                    }
+                };
+                if check {
+                    let committed = match mcphost::docs_examples::load_corpus(&corpus) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            eprintln!("docs-examples extract --check: {} is stale: {e}", corpus.display());
+                            std::process::exit(1);
+                        }
+                    };
+                    let drift = mcphost::docs_examples::corpus_drift(&committed, &fresh);
+                    let on_disk = std::fs::read_to_string(&corpus).unwrap_or_default();
+                    if !drift.is_empty() || on_disk != mcphost::docs_examples::render_corpus(&fresh) {
+                        eprintln!(
+                            "docs-examples extract --check: {} is stale (run `mcphost docs-examples extract`); drifted: {}",
+                            corpus.display(),
+                            if drift.is_empty() { "formatting".to_string() } else { drift.join(", ") }
+                        );
+                        std::process::exit(1);
+                    }
+                    Ok(())
+                } else {
+                    std::fs::write(&corpus, mcphost::docs_examples::render_corpus(&fresh))?;
+                    println!("docs-examples extract: wrote {} ({} examples)", corpus.display(), fresh.len());
+                    Ok(())
+                }
             }
         },
         Command::OauthProbe { url, scenario, client, consent_key_env, json, receipt } => {
