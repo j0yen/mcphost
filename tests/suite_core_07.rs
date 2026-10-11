@@ -545,6 +545,8 @@ mod dryv_ac04_state_delete_rows_dry_run_would;
 mod dryv_ac05_real_errors_pass_through;
 #[path = "dryv_ac06_key_rotate_refuses_dry_run.rs"]
 mod dryv_ac06_key_rotate_refuses_dry_run;
+#[path = "dryv_ac07_tools_list_dry_run_schema.rs"]
+mod dryv_ac07_tools_list_dry_run_schema;
 #[path = "enduser_ac02_assertion_http_headers_and_calls_row.rs"]
 mod enduser_ac02_assertion_http_headers_and_calls_row;
 #[path = "enduser_ac03_invalid_assertion_rejected.rs"]

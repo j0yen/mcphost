@@ -188,10 +188,14 @@ pub fn dry_run_requested(args: &Value) -> bool {
     args.get("dry_run").and_then(Value::as_bool).unwrap_or(false)
 }
 
+/// The wire code of R5's refusal -- the same `args_invalid` every bad
+/// argument gets, not a schema-validation site (no jsonschema error behind it).
+const REFUSAL_CODE: &str = "args_invalid";
+
 /// R5: the refusal a `NoDryRun` verb gives `dry_run: true`.
 pub fn no_dry_run_error(verb: &WriteVerb, reason: &'static str) -> AppError {
     AppError::Structured {
-        code: "args_invalid",
+        code: REFUSAL_CODE,
         message: format!("{} does not support dry_run ({reason})", verb.name),
         data: json!({"no_dry_run_reason": reason, "verb": verb.name}),
     }
