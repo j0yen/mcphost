@@ -433,6 +433,8 @@ mod csvtab_ac03_bad_cell_is_named_by_row_and_column;
 mod csvtab_ac04_types_override_keeps_zip_as_text;
 #[path = "csvtab_ac05_row_quota_refuses_before_any_write.rs"]
 mod csvtab_ac05_row_quota_refuses_before_any_write;
+#[path = "csvtab_ac06_empty_header_only_and_missing_source_refusals.rs"]
+mod csvtab_ac06_empty_header_only_and_missing_source_refusals;
 #[path = "ctrv_ac01_sha_stable_across_boot_requests_and_process.rs"]
 mod ctrv_ac01_sha_stable_across_boot_requests_and_process;
 #[path = "ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs"]
