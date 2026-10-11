@@ -527,6 +527,8 @@ mod dryrun_ac06_tools_list_mentions_dry_run;
 mod dxn_ac01_classify_fences;
 #[path = "dxn_ac02_extract_corpus_and_drift_check.rs"]
 mod dxn_ac02_extract_corpus_and_drift_check;
+#[path = "dxn_ac03_run_corpus_against_fixture_host.rs"]
+mod dxn_ac03_run_corpus_against_fixture_host;
 #[path = "enduser_ac02_assertion_http_headers_and_calls_row.rs"]
 mod enduser_ac02_assertion_http_headers_and_calls_row;
 #[path = "enduser_ac03_invalid_assertion_rejected.rs"]

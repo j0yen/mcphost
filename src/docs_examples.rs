@@ -427,3 +427,449 @@ pub fn load_corpus(path: &std::path::Path) -> Result<Vec<Entry>, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     serde_json::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))
 }
+
+// ---------------------------------------------------------------- run ----
+
+/// Split `"name(k=v, ...)"` into the callee and the raw argument text.
+fn split_call(body: &str) -> Option<(&str, &str)> {
+    let t = body.trim();
+    let open = t.find('(')?;
+    let inner = t.strip_suffix(')')?;
+    Some((t[..open].trim(), &inner[open + 1..]))
+}
+
+/// Parse `k=<json>, k2=<json>` (python-style keyword arguments whose values
+/// are JSON literals, the form every `host.*(...)` example in the docs
+/// uses) into an object.
+fn parse_kwargs(args: &str) -> Result<serde_json::Map<String, Value>, String> {
+    let mut map = serde_json::Map::new();
+    let mut rest = args.trim();
+    while !rest.is_empty() {
+        let eq = rest.find('=').ok_or_else(|| format!("expected key=value in `{rest}`"))?;
+        let key = rest[..eq].trim();
+        if key.is_empty() || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            return Err(format!("bad argument name `{key}`"));
+        }
+        let mut stream = serde_json::Deserializer::from_str(&rest[eq + 1..]).into_iter::<Value>();
+        let value = stream
+            .next()
+            .ok_or_else(|| format!("no value for `{key}`"))?
+            .map_err(|e| format!("value of `{key}` is not JSON: {e}"))?;
+        let consumed = stream.byte_offset();
+        map.insert(key.to_string(), value);
+        rest = rest[eq + 1 + consumed..].trim_start();
+        rest = rest.strip_prefix(',').unwrap_or(rest).trim_start();
+    }
+    Ok(map)
+}
+
+/// A `mcphost-call` body as `(method, params)`: a `{name, arguments}`
+/// object (the `tools/call` params), a full JSON-RPC request object, or the
+/// docs' `tool_name(key=value, ...)` shorthand.
+pub fn parse_call(body: &str) -> Result<(String, Value), String> {
+    let t = body.trim();
+    if t.starts_with('{') {
+        let v: Value = serde_json::from_str(t).map_err(|e| format!("call body is not JSON: {e}"))?;
+        if let Some(method) = v.get("method").and_then(Value::as_str) {
+            return Ok((method.to_string(), v.get("params").cloned().unwrap_or_else(|| serde_json::json!({}))));
+        }
+        let name = v.get("name").and_then(Value::as_str).ok_or("call body has no `name`")?;
+        let arguments = v.get("arguments").cloned().unwrap_or_else(|| serde_json::json!({}));
+        return Ok(("tools/call".to_string(), serde_json::json!({"name": name, "arguments": arguments})));
+    }
+    let (callee, raw) = split_call(t).ok_or("call body is neither JSON nor `tool(args)`")?;
+    let arguments = parse_kwargs(raw)?;
+    Ok(("tools/call".to_string(), serde_json::json!({"name": callee, "arguments": Value::Object(arguments)})))
+}
+
+/// A `mcphost-tool` body as the publish `spec`: a JSON object as written, or
+/// (for `kind=python`) bare python source.
+pub fn tool_spec(kind: &str, body: &str) -> Result<Value, String> {
+    let t = body.trim();
+    if t.starts_with('{')
+        && let Ok(v @ Value::Object(_)) = serde_json::from_str::<Value>(t)
+    {
+        return Ok(v);
+    }
+    if kind == "python" {
+        return Ok(serde_json::json!({"source": body}));
+    }
+    Err(format!("kind={kind} spec body must be a JSON object"))
+}
+
+/// What one call came back with, reduced to what `expect=` can test.
+#[derive(Debug, Clone)]
+pub struct Outcome {
+    pub ok: bool,
+    /// The error code when `ok` is false.
+    pub code: Option<String>,
+    /// `result.content[0].text` (the `contains:` target); the whole result
+    /// as JSON when there is no text content.
+    pub text: String,
+}
+
+impl Outcome {
+    pub fn actual(&self) -> String {
+        if self.ok { "ok".to_string() } else { format!("error:{}", self.code.as_deref().unwrap_or("unknown")) }
+    }
+}
+
+/// `Ok(())` when `outcome` satisfies `expect` (default `ok`), else the
+/// actual result in `expect` vocabulary.
+pub fn evaluate(expect: Option<&str>, outcome: &Outcome) -> Result<(), String> {
+    let expect = expect.unwrap_or("ok");
+    let pass = if expect == "ok" {
+        outcome.ok
+    } else if let Some(code) = expect.strip_prefix("error:") {
+        !outcome.ok && outcome.code.as_deref() == Some(code)
+    } else if let Some(text) = expect.strip_prefix("contains:") {
+        outcome.ok && outcome.text.contains(text)
+    } else {
+        false
+    };
+    if pass { Ok(()) } else { Err(format!("expected={expect} actual={}", outcome.actual())) }
+}
+
+/// A tool result's structured payload: `structuredContent`, else the JSON
+/// in `content[0].text`, else null.
+fn structured_of(result: &Value) -> Value {
+    if let Some(sc) = result.get("structuredContent") {
+        return sc.clone();
+    }
+    result
+        .get("content")
+        .and_then(|c| c.get(0))
+        .and_then(|c| c.get("text"))
+        .and_then(Value::as_str)
+        .and_then(|t| serde_json::from_str(t).ok())
+        .unwrap_or(Value::Null)
+}
+
+fn outcome_of(result: Result<Value, CallError>) -> Result<Outcome, String> {
+    match result {
+        Err(CallError::Transport(e)) => Err(e),
+        Err(CallError::Rpc { code }) => Ok(Outcome { ok: false, code: Some(code), text: String::new() }),
+        Ok(result) => {
+            let text = result
+                .get("content")
+                .and_then(Value::as_array)
+                .and_then(|c| c.first())
+                .and_then(|c| c.get("text"))
+                .and_then(Value::as_str)
+                .map_or_else(|| result.to_string(), str::to_string);
+            if result.get("isError").and_then(Value::as_bool) == Some(true) {
+                let structured = structured_of(&result);
+                let code = structured
+                    .get("error_code")
+                    .or_else(|| structured.get("code"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("tool_error")
+                    .to_string();
+                return Ok(Outcome { ok: false, code: Some(code), text });
+            }
+            Ok(Outcome { ok: true, code: None, text })
+        }
+    }
+}
+
+#[derive(Debug)]
+enum CallError {
+    /// The request never got an HTTP answer.
+    Transport(String),
+    /// A JSON-RPC error; `code` is `data.error_code` when present.
+    Rpc { code: String },
+}
+
+struct Rpc {
+    http: reqwest::Client,
+    endpoint: String,
+    next_id: u64,
+}
+
+impl Rpc {
+    async fn call(&mut self, bearer: Option<&str>, method: &str, mut params: Value) -> Result<Value, CallError> {
+        self.next_id += 1;
+        if let Some(obj) = params.as_object_mut() {
+            obj.insert(
+                "_meta".to_string(),
+                serde_json::json!({
+                    "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                    "io.modelcontextprotocol/clientCapabilities": {},
+                    "io.modelcontextprotocol/clientInfo": {"name": "mcphost-docs-examples", "version": env!("CARGO_PKG_VERSION")},
+                }),
+            );
+        }
+        let body = serde_json::json!({"jsonrpc": "2.0", "id": self.next_id, "method": method, "params": params});
+        let mut req = self
+            .http
+            .post(&self.endpoint)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json, text/event-stream")
+            .header("MCP-Protocol-Version", "2026-07-28")
+            .header("Mcp-Method", method);
+        if method == "tools/call"
+            && let Some(name) = params.get("name").and_then(Value::as_str)
+        {
+            req = req.header("Mcp-Name", name);
+        }
+        if let Some(key) = bearer {
+            req = req.header("Authorization", format!("Bearer {key}"));
+        }
+        let resp = req.json(&body).send().await.map_err(|e| CallError::Transport(e.to_string()))?;
+        let is_sse = resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|c| c.starts_with("text/event-stream"));
+        let status = resp.status();
+        let text = resp.text().await.map_err(|e| CallError::Transport(e.to_string()))?;
+        let message: Value = if is_sse {
+            text.lines()
+                .filter_map(|l| l.strip_prefix("data:"))
+                .filter_map(|d| serde_json::from_str::<Value>(d.trim()).ok())
+                .next_back()
+                .ok_or_else(|| CallError::Transport(format!("empty event stream ({status})")))?
+        } else {
+            serde_json::from_str(&text).map_err(|e| CallError::Transport(format!("HTTP {status}, body is not JSON: {e}")))?
+        };
+        if let Some(error) = message.get("error") {
+            let code = error
+                .get("data")
+                .and_then(|d| d.get("error_code"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("rpc_{}", error.get("code").and_then(Value::as_i64).unwrap_or(0)));
+            return Err(CallError::Rpc { code });
+        }
+        Ok(message.get("result").cloned().unwrap_or(Value::Null))
+    }
+}
+
+/// One executed example.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExampleResult {
+    pub id: String,
+    /// `pass`, `fail` or `skip`.
+    pub status: String,
+    pub ms: u64,
+    pub detail: String,
+}
+
+/// The outcome of `docs-examples run`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Report {
+    pub date: String,
+    pub url: String,
+    pub examples_total: usize,
+    pub examples_failed: usize,
+    pub skipped: usize,
+    pub results: Vec<ExampleResult>,
+}
+
+impl Report {
+    /// `<id> pass <ms>` per example, then the summary line.
+    pub fn render_lines(&self) -> Vec<String> {
+        let mut lines: Vec<String> = self
+            .results
+            .iter()
+            .map(|r| match r.status.as_str() {
+                "pass" => format!("{} pass {}", r.id, r.ms),
+                "skip" => format!("{} skip {}", r.id, r.detail),
+                _ => format!("{} fail {} {}", r.id, r.ms, r.detail),
+            })
+            .collect();
+        lines.push(format!(
+            "examples_total={} examples_failed={} skipped={}",
+            self.examples_total, self.examples_failed, self.skipped
+        ));
+        lines
+    }
+}
+
+/// `run` could not execute the corpus.
+#[derive(Debug)]
+pub enum RunError {
+    /// Nothing answered at the URL, even after one retry.
+    Unreachable(String),
+    /// The throwaway tenant could not be created.
+    Signup(String),
+}
+
+impl std::fmt::Display for RunError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RunError::Unreachable(e) => write!(f, "host unreachable: {e}"),
+            RunError::Signup(e) => write!(f, "signup failed: {e}"),
+        }
+    }
+}
+
+pub struct RunOpts {
+    /// The host's base URL, or its `/mcp` endpoint.
+    pub url: String,
+    /// Run as this tenant instead of signing up a throwaway one
+    /// (`MCPHOST_TENANT_KEY`).
+    pub tenant_key: Option<String>,
+    pub retry_delay: std::time::Duration,
+}
+
+fn endpoint_of(url: &str) -> String {
+    let u = url.trim_end_matches('/');
+    if u.ends_with("/mcp") { u.to_string() } else { format!("{u}/mcp") }
+}
+
+/// `YYYY-MM-DD` (UTC) for a unix time.
+pub fn civil_date(unix_secs: u64) -> String {
+    let z = (unix_secs / 86_400) as i64 + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+fn today() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    civil_date(secs)
+}
+
+async fn run_entry(rpc: &mut Rpc, bearer: Option<&str>, entry: &Entry) -> Result<(), String> {
+    let transport = |e: String| format!("transport error: {e}");
+    if entry.tag == TAG_TOOL {
+        let kind = entry.attrs.get("kind").cloned().unwrap_or_default();
+        let name = entry.attrs.get("name").cloned().unwrap_or_default();
+        let spec = tool_spec(&kind, &entry.body)?;
+        let publish = outcome_of(
+            rpc.call(
+                bearer,
+                "tools/call",
+                serde_json::json!({"name": "host.tool_publish", "arguments": {"name": name, "kind": kind, "spec": spec}}),
+            )
+            .await,
+        )
+        .map_err(transport)?;
+        // `expect` applies to the publish unless the fence asks for a
+        // specific outcome of the test call.
+        let test_args: Value = entry
+            .attrs
+            .get("args")
+            .and_then(|a| serde_json::from_str(a).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+        let verdict = if entry.expect.is_some() && publish.ok {
+            let test = outcome_of(
+                rpc.call(
+                    bearer,
+                    "tools/call",
+                    serde_json::json!({"name": "host.tool_test", "arguments": {"name": name, "args": test_args}}),
+                )
+                .await,
+            )
+            .map_err(transport)?;
+            evaluate(entry.expect.as_deref(), &test)
+        } else {
+            let verdict = evaluate(entry.expect.as_deref(), &publish);
+            if publish.ok {
+                // The PRD's "publish then one host.tool_test": the smoke
+                // call is made, its result is not part of the verdict.
+                let _ = rpc
+                    .call(
+                        bearer,
+                        "tools/call",
+                        serde_json::json!({"name": "host.tool_test", "arguments": {"name": name, "args": test_args}}),
+                    )
+                    .await;
+            }
+            verdict
+        };
+        return verdict;
+    }
+    let (method, params) = parse_call(&entry.body)?;
+    let outcome = outcome_of(rpc.call(bearer, &method, params).await).map_err(transport)?;
+    evaluate(entry.expect.as_deref(), &outcome)
+}
+
+/// Execute `entries` in order against the host at `opts.url`.
+pub async fn run(opts: &RunOpts, entries: &[Entry]) -> Result<Report, RunError> {
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| RunError::Unreachable(e.to_string()))?;
+    let mut rpc = Rpc { http, endpoint: endpoint_of(&opts.url), next_id: 0 };
+
+    // Preflight: one anonymous `tools/list`, retried once. Only a transport
+    // failure (nothing answered) means "host unreachable".
+    let mut preflight = rpc.call(None, "tools/list", serde_json::json!({})).await;
+    if matches!(preflight, Err(CallError::Transport(_))) {
+        tokio::time::sleep(opts.retry_delay).await;
+        preflight = rpc.call(None, "tools/list", serde_json::json!({})).await;
+    }
+    if let Err(CallError::Transport(e)) = preflight {
+        return Err(RunError::Unreachable(e));
+    }
+
+    let (key, throwaway) = match &opts.tenant_key {
+        Some(k) => (k.clone(), false),
+        None => {
+            let name = format!("docs-examples-{}", today());
+            let result = rpc
+                .call(None, "tools/call", serde_json::json!({"name": "signup", "arguments": {"name": name}}))
+                .await
+                .map_err(|e| RunError::Signup(format!("{e:?}")))?;
+            let key = structured_of(&result)
+                .get("key")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .ok_or_else(|| RunError::Signup("signup returned no key".to_string()))?;
+            (key, true)
+        }
+    };
+
+    let mut results = Vec::with_capacity(entries.len());
+    for entry in entries {
+        if let Some(reason) = entry.attrs.get("skip") {
+            results.push(ExampleResult { id: entry.id.clone(), status: "skip".into(), ms: 0, detail: reason.clone() });
+            continue;
+        }
+        let bearer = if entry.attrs.get("needs").is_some_and(|n| n == "anonymous") { None } else { Some(key.as_str()) };
+        let started = std::time::Instant::now();
+        let verdict = run_entry(&mut rpc, bearer, entry).await;
+        let ms = started.elapsed().as_millis() as u64;
+        results.push(match verdict {
+            Ok(()) => ExampleResult { id: entry.id.clone(), status: "pass".into(), ms, detail: String::new() },
+            Err(detail) => ExampleResult { id: entry.id.clone(), status: "fail".into(), ms, detail },
+        });
+    }
+
+    if throwaway {
+        let _ = rpc
+            .call(Some(&key), "tools/call", serde_json::json!({"name": "host.self_offboard", "arguments": {}}))
+            .await;
+    }
+
+    let failed = results.iter().filter(|r| r.status == "fail").count();
+    let skipped = results.iter().filter(|r| r.status == "skip").count();
+    Ok(Report {
+        date: today(),
+        url: opts.url.clone(),
+        examples_total: results.len(),
+        examples_failed: failed,
+        skipped,
+        results,
+    })
+}
+
+/// Write `<dir>/<date>.json`; returns the path.
+pub fn write_artifact(dir: &std::path::Path, report: &Report) -> std::io::Result<std::path::PathBuf> {
+    std::fs::create_dir_all(dir)?;
+    let path = dir.join(format!("{}.json", report.date));
+    let mut text = serde_json::to_string_pretty(report).expect("report serializes");
+    text.push('\n');
+    std::fs::write(&path, text)?;
+    Ok(path)
+}
