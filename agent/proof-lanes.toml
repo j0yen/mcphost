@@ -286,3 +286,11 @@ globs = ["scripts/docs-link-check.sh", "scripts/docs-link-allow.txt", "docs/clie
 required_commands = [
   "cargo test --workspace xlinks_ac",
 ]
+
+[[lane]]
+id = "output-schemas"
+description = "PRD-mcphost-contract-output-schemas: the per-tool output schemas (contracts/host-output-schemas.v1.json, read by src/output_schemas.rs) and the response corpus they were drafted from and are validated against (tests/fixtures/outsch/*.jsonl, captured from the integration suite by tests/common's outsch_capture). Added project-locally: the contracts lane's glob also matches the schema file but its name-filtered proof (mcphost_host_tool_deprecation_ac) never validates a row against it, and tests/fixtures/outsch had no lane. Proof is the outsch_ac0N tests."
+globs = ["contracts/host-output-schemas.v1.json", "tests/fixtures/outsch/**"]
+required_commands = [
+  "cargo test --workspace outsch_ac",
+]

@@ -3806,6 +3806,12 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             crate::paged::splice_input_schema(&name, props);
         }
     }
+    // PRD-mcphost-contract-output-schemas R1/R3: `outputSchema` comes from
+    // the one registry, before `apply_tool_aliases` clones each canonical
+    // under its alias and flattened names (they carry the canonical's).
+    for tool in tools.iter_mut() {
+        tool.output_schema = crate::output_schemas::output_schema_for(tool.name.as_ref());
+    }
     apply_tool_aliases(&mut tools);
     tools
 }
