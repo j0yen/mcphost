@@ -13776,6 +13776,35 @@ impl Db {
         Ok(run_id)
     }
 
+    /// PRD-mcphost-declared-ordering-per-verb test scaffolding: inserts a
+    /// finished `done` run whose `progress_json` is exactly `progress_json`
+    /// (the only way a fixture can carry an arbitrary `budget.verdict`
+    /// without driving a real budgeted tool call). Returns the new run id.
+    pub async fn insert_done_run_with_progress_for_test(
+        &self,
+        tenant_id: i64,
+        tool_name: String,
+        progress_json: String,
+    ) -> Result<String, AppError> {
+        let run_id = crate::state::new_ulid();
+        let started_unix = now_unix();
+        self.with_conn({
+            let run_id = run_id.clone();
+            move |conn| {
+                conn.execute(
+                    "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, \
+                     caller_tenant_id, status, progress_json, started_unix, finished_unix, \
+                     duration_ms, attempt) \
+                     VALUES (?1, ?2, ?3, 'call', NULL, NULL, 'done', ?4, ?5, ?5, 0, 1)",
+                    params![run_id, tenant_id, tool_name, progress_json, started_unix],
+                )?;
+                Ok(())
+            }
+        })
+        .await?;
+        Ok(run_id)
+    }
+
     /// PRD-mcphost-trigger-set-idempotent AC6 test scaffolding: inserts a
     /// `triggers` row in the PRE-MIGRATION-0064 shape (`name` left `NULL`)
     /// -- the exact shape `backfill_trigger_names_sync` repairs. Same
