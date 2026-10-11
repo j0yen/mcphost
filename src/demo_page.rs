@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde_json::{Value, json};
 
@@ -208,6 +208,21 @@ fn render_page(namespace: &str, tool: &str, description: &str, form: &str, rows:
         .replace("__ROWS__", &body)
 }
 
+/// R1: never indexed, never cached; the CSP allows only the page's own
+/// inline style/script and same-origin fetches (the try-it form).
+fn demo_headers(mut response: Response) -> Response {
+    let h = response.headers_mut();
+    h.insert("x-robots-tag", HeaderValue::from_static("noindex"));
+    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    h.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(
+            "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'",
+        ),
+    );
+    response
+}
+
 /// `GET /d/{namespace}/{tool}` (R1, R5). Every miss -- unknown namespace,
 /// unknown tool, tool not url-shared, disabled tenant -- is the same empty
 /// 404, so the route leaks no existence information.
@@ -257,5 +272,5 @@ pub async fn demo_get(
         .unwrap_or_default();
     let line = json!({"event": "demo_view", "tool": tool, "ua_class": ua_class(&headers)}).to_string();
     let _ = state.db.append_log(tenant.id, tool.clone(), line).await;
-    crate::claim::html_response(StatusCode::OK, render_page(&namespace, &tool, tool_row.share_description.as_deref().unwrap_or(""), &form, &rows))
+    demo_headers(crate::claim::html_response(StatusCode::OK, render_page(&namespace, &tool, tool_row.share_description.as_deref().unwrap_or(""), &form, &rows)))
 }
