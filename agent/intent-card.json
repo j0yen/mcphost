@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-chain-dry-run.md",
-  "intent_slug": "mcphost-chain-dry-run",
-  "root_motivation": "**Who:** the agent fixing a chain after a failed run, with no shell and a few turns. **What:** `host.tool_test` runs a chain against recorded per-step fixtures and returns every intermediate payload without one upstream call. **Why not today:** a predecessor that cannot be dry-run (upstream unreachable) leaves every later step unchecked (`unverifiable`), and the host offers no way to feed a recorded result back.",
-  "user_persona": "An agent that calls host.runs.get(run_id, as_fixtures=true) on a failed chain run, passes the fixtures to host.tool_test with its fixed spec, and reads each later step's resolved_args before republishing; Operator Joe reading the digest.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-docs-examples-executed-nightly.md",
+  "intent_slug": "mcphost-docs-examples-executed-nightly",
+  "root_motivation": "**Who:** an agent copying from llms.txt / host.help.search, and Joe reading the promise row of the digest. **What:** every tagged example in the docs runs, and the result it shows is the result the host returns. **Why not today:** scripts/gen-llms-full.sh only concatenates markdown; no test runs a docs fence, and only 6 recipes have proof scripts. **Consequence:** on 10-08 builders copied the mcphost.dev domain into an import from prose nothing had executed.",
+  "user_persona": "A builder agent that copies a fenced call or tool spec from the docs and expects it to have been executed recently; a docs author who tags a fence and has CI refuse a failing example; Operator Joe reading the docs-examples count in the digest.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,61 +14,60 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a 3-step chain whose step 1 is an http tool at an unreachable host and whose steps 2-3 are echo tools reading `$.prev.result.items`, When `host.tool_test` runs with `fixtures: {\"1\": {\"items\": [1, 2]}}`, Then the verdict is `pass`, `steps[0].source` is `fixture`, `steps[1]` and `steps[2]` carry `resolved_args` and `result`, and the http step made no connection attempt.",
-      "test": "tests/cfix_ac01_fixture_replaces_unreachable_step.rs"
+      "description": "Given the 109 fences of `www/llms-full.txt` at 4e07dfd, When `docs-examples classify` runs, Then it prints one line per fence with `runnable|fragment|prose` and \u2265 40 are `runnable`; a lower count fails the test and prints the fragment list.",
+      "test": "tests/dxn_ac01_classify_fences.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given fixtures for all 3 steps and a fixture upstream counting requests, When `host.tool_test` runs, Then `executed` is 0, `fixtured` is 3, all three `result` payloads are returned, and the upstream counter is 0.",
-      "test": "tests/cfix_ac02_fully_fixtured_dry_run_makes_no_upstream_call.rs"
+      "description": "Given a page with a `mcphost-tool kind=python name=t1` fence followed by a `mcphost-call expect=contains:hello` fence, When `extract` runs, Then the corpus has two entries in that order with ids `<path>#<heading>-1` and `-2`, and `--check` exits 0; after editing the fence body, `--check` exits 1 naming the id.",
+      "test": "tests/dxn_ac02_extract_corpus_and_drift_check.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given step 2's tool declares `outputs: [items]` and a fixture `{\"rows\": []}` for step 2, When `host.tool_test` runs, Then it is refused with `fixture_shape_mismatch`, `data.expected` `[\"items\"]`, `data.given` `[\"rows\"]`.",
-      "test": "tests/cfix_ac03_fixture_shape_mismatch_is_refused.rs"
+      "description": "Given the corpus and the fixture host, When `run` executes, Then every entry prints `<id> pass <ms>` and the summary shows `examples_failed=0`; Given one fence changed to `expect=error:unknown_kind` on a passing call, Then that id prints `fail` with the actual code and the exit status is 1.",
+      "test": "tests/dxn_ac03_run_corpus_against_fixture_host.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a completed chain run with 3 child rows, When `host.runs.get(run_id, as_fixtures=true)` is called and its `fixtures` passed to `host.tool_test` of the same chain, Then the dry run is `pass` with `fixtured: 3`.",
-      "test": "tests/cfix_ac04_run_exports_as_fixtures.rs"
+      "description": "Given an example tagged `needs=anonymous`, When run, Then it is sent without a key; Given `skip=needs-secret`, Then it prints `skip` and is counted in `skipped`, not in `examples_failed`.",
+      "test": "tests/dxn_ac04_anonymous_and_skip_attributes.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given fixtures totalling 300 KiB, When `host.tool_test` runs, Then `fixtures_too_large` with `data.limit_bytes` 262144; Given a python tool with `fixtures`, Then `fixtures_not_applicable`.",
-      "test": "tests/cfix_ac05_fixture_limits_and_applicability.rs"
+      "description": "Given a `mcphost-call` whose tool was published by a fence on a different page, When `extract` runs, Then it exits 1 with `cross-page dependency <id> -> <id>`.",
+      "test": "tests/dxn_ac05_cross_page_dependency_fails_extract.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a chain whose step 2 cannot be dry-run and no fixture for it, When `host.tool_test` runs with a fixture for step 1 only, Then `steps[1].source` is `skipped` with a `reason` and the verdict is `unverifiable` naming step 2.",
-      "test": "tests/cfix_ac06_unrunnable_unfixtured_step_is_skipped_and_named.rs"
+      "description": "Given a stale corpus, When `scripts/gen-llms-full.sh` runs, Then it exits 1 before writing and names `docs/examples.corpus.json`; Given a fresh corpus and a `run --json` artifact, Then each tagged fence in `www/llms-full.txt` is followed by its `<!-- executed: \u2026 -->` comment.",
+      "test": "tests/dxn_ac06_gen_llms_full_gates_on_corpus_and_annotates.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given `host.quickstart kind=chain`, When rendered, Then the text names `fixtures` and the schema test finds every printed argument name in `host.tool_test`'s input schema.",
-      "test": "tests/cfix_ac07_quickstart_names_fixtures.rs"
+      "level": "MUST",
+      "description": "Given the fixture host unreachable, When `run --url` is pointed at a closed port, Then it exits 2 with `host unreachable` after one retry and writes no artifact.",
+      "test": "tests/dxn_ac07_unreachable_host_exits_two_after_one_retry.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given a keyed prod tenant after deploy with a 2-step echo chain, When `host.tool_test` runs with `fixtures: {\"1\": {\"x\": 1}}` over MCP, Then `steps[0].source` is `fixture` and `steps[1].result` is returned (Live; evidence: the Technical MCP call with `-d @tool-test-fixtures.json` piped to `jq -r '.result.structuredContent.steps[0].source'` prints fixture)",
-      "test": "deferred -- operator-provisioned: first nightly truth-tier on orch after prod carries this."
+      "description": "Given prod after deploy and the orch timer, When the first nightly run completes, Then `target/docs-examples/<date>.json` on orch shows `examples_failed: 0` and `examples_total` \u2265 40 (Live; evidence: `ssh orch 'ls -t ~/wintermute/mcphost/target/docs-examples/*.json | head -1 | xargs python3 -c \"import json,sys; d=json.load(open(sys.argv[1])); print(d[\\\"examples_total\\\"], d[\\\"examples_failed\\\"])\"'`)",
+      "test": "deferred -- operator-provisioned: first nightly run of the orch timer against prod after deploy."
     }
   ],
   "scope": [
-    "src/kinds/chain.rs: fixtures task-local, step-key resolution, per-step source/executed/fixtured/skipped, shape validation against declared outputs.",
-    "src/handler.rs: host.tool_test fixtures argument (chain only, 256 KiB cap), host.runs.get as_fixtures schema.",
-    "src/runs.rs: as_fixtures export of child results.",
-    "src/control.rs: host.quickstart kind=chain prints the fixtures calls.",
-    "src/errors.rs: a structured error's non-string data.expected is kept."
+    "src/docs_examples.rs (new): fence parser, classify, tag grammar, extract/corpus drift, cross-page check, run engine, artifact, annotate.",
+    "src/main.rs: `mcphost docs-examples classify|extract|run|annotate`.",
+    "scripts/gen-llms-full.sh: corpus staleness gate + executed comments.",
+    "docs/examples.corpus.json (new, committed)."
   ],
   "non_goals": [
-    "Fixtures for non-chain tools (refused); persisting fixtures server-side; recording fixtures automatically; observed-shape validation (needs PRD-mcphost-chain-publish-time-path-check)."
+    "Recipe sections (recipes/*.toml); generating examples from schemas; rewriting prose; the orch systemd timer (operator-provisioned)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -76,20 +75,36 @@
     "deny_unsafe": false,
     "max_deps": null,
     "msrv": null,
-    "additional": {}
+    "additional": {
+      "signup_is_not_remembered": "R3 says signup or host.redeem, but tests/sessbind_* pin signup followed by key-less behavior; only host.redeem is recorded (AC4's own scenario)."
+    }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why was a chain dry run with an unreachable step 1 read as unchecked?",
-      "a": "The dry run has no input other than the chain's own args, so a predecessor that cannot run leaves every later mapping unverifiable."
+      "q": "Why did builders copy a wrong domain into an import?",
+      "a": "The docs example was prose that nothing had executed."
+    },
+    {
+      "why": 2,
+      "q": "Why did nothing execute it?",
+      "a": "gen-llms-full.sh concatenates markdown and the promise link checks names by string."
+    },
+    {
+      "why": 3,
+      "q": "Why is there no executable form?",
+      "a": "Fences carry no tag or expected response, so no tool can tell a call from a fragment."
     }
   ],
-  "created_at": "2026-10-11T00:00:00Z",
+  "created_at": "2026-10-11T16:14:04Z",
   "ambiguities_resolved": [
     {
-      "question": "Does a fixtured dry run count as a host.tool_test call for metering?",
-      "resolution": "Yes, one call, no upstream bytes (the PRD default)."
+      "question": "Should expect=contains: match the full JSON or result.content[0].text only?",
+      "resolution": "The text (content[0].text), falling back to the whole result when there is no text content."
+    },
+    {
+      "question": "The PRD says 109 fences; the file has 54.",
+      "resolution": "109 counts fence delimiter lines (108 at 4e07dfd); classify counts blocks and reaches 41 runnable."
     }
   ]
 }
