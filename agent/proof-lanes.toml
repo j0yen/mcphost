@@ -286,3 +286,12 @@ globs = ["scripts/docs-link-check.sh", "scripts/docs-link-allow.txt", "docs/clie
 required_commands = [
   "cargo test --workspace xlinks_ac",
 ]
+
+[[lane]]
+id = "blobguard-fixtures"
+description = "PRD-mcphost-blob-virus-and-type-guard: the benign-upload corpus under tests/fixtures/blobguard/** (AC1's 30 files the guard must not refuse) and the generated accepted-types doc docs/blob-types.md (rendered from blobs::BLOB_TYPES by `mcphost gen-docs`). Added project-locally: same gap class as the docsearch-fixtures/wasm-fixtures lanes above -- the shipped scaffold's proof-lanes.toml has no lane for these paths. Proof is a name-filtered cargo test run over the blobguard_ac0N tests that load them plus gendocs's own drift test for the doc."
+globs = ["tests/fixtures/blobguard/**", "docs/blob-types.md"]
+required_commands = [
+  "cargo test --workspace blobguard_",
+  "cargo test --workspace committed_blob_types_doc_matches_a_fresh_render",
+]

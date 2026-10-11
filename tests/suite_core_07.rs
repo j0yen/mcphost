@@ -8,6 +8,8 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 mod ci_sandbox_support;
+#[path = "support/blobguard.rs"]
+mod blobguard;
 #[path = "support/busyaudit.rs"]
 mod busyaudit;
 #[path = "support/chart_fixture.rs"]
@@ -203,6 +205,20 @@ mod billing_ac10_webhook_mode_mismatch;
 mod billing_ac11_healthz_paying_tenants;
 #[path = "billing_ac13_checkout_reuse.rs"]
 mod billing_ac13_checkout_reuse;
+#[path = "blobguard_ac01_benign_corpus_not_refused.rs"]
+mod blobguard_ac01_benign_corpus_not_refused;
+#[path = "blobguard_ac02_type_and_magic_refused_415.rs"]
+mod blobguard_ac02_type_and_magic_refused_415;
+#[path = "blobguard_ac03_archive_refusals_422.rs"]
+mod blobguard_ac03_archive_refusals_422;
+#[path = "blobguard_ac04_clamd_found_and_unavailable.rs"]
+mod blobguard_ac04_clamd_found_and_unavailable;
+#[path = "blobguard_ac05_allowlist_mode_png_fast.rs"]
+mod blobguard_ac05_allowlist_mode_png_fast;
+#[path = "blobguard_ac06_one_table_one_set.rs"]
+mod blobguard_ac06_one_table_one_set;
+#[path = "blobguard_ac07_active_content_svg.rs"]
+mod blobguard_ac07_active_content_svg;
 #[path = "bridgedisc_ac07_sandbox_api_doc_check.rs"]
 mod bridgedisc_ac07_sandbox_api_doc_check;
 #[path = "budget_ac01_ported_ledger_seven_tests.rs"]
@@ -1801,21 +1817,3 @@ mod sharedcall_ac07_own_unqualified_call_unchanged;
 mod sharedcall_ac08_get_info_lists_shared_tools_with_via;
 #[path = "sharedcall_ac09_quota_exhausted_qualified_call_refused.rs"]
 mod sharedcall_ac09_quota_exhausted_qualified_call_refused;
-#[path = "sharedrunscope_ac01_caller_sees_sync_shared_run.rs"]
-mod sharedrunscope_ac01_caller_sees_sync_shared_run;
-#[path = "sharedrunscope_ac02_owner_cannot_see_callers_run.rs"]
-mod sharedrunscope_ac02_owner_cannot_see_callers_run;
-#[path = "sharedrunscope_ac03_owner_meter_and_usage_unchanged.rs"]
-mod sharedrunscope_ac03_owner_meter_and_usage_unchanged;
-#[path = "sharedrunscope_ac04_own_call_run_row_unchanged.rs"]
-mod sharedrunscope_ac04_own_call_run_row_unchanged;
-#[path = "sharedrunscope_ac05_async_and_sync_share_scoping.rs"]
-mod sharedrunscope_ac05_async_and_sync_share_scoping;
-#[path = "sharedrunscope_ac06_raw_tools_call_shares_the_path.rs"]
-mod sharedrunscope_ac06_raw_tools_call_shares_the_path;
-#[path = "sharedrunscope_ac07_migration_backfills_legacy_rows.rs"]
-mod sharedrunscope_ac07_migration_backfills_legacy_rows;
-#[path = "sharedrunscope_ac08_proof_script_owner_ledger_check.rs"]
-mod sharedrunscope_ac08_proof_script_owner_ledger_check;
-#[path = "signupfleet_ac01_fleet_ips_bypass_signup_rate_limit.rs"]
-mod signupfleet_ac01_fleet_ips_bypass_signup_rate_limit;

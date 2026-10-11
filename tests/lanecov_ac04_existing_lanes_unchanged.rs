@@ -175,10 +175,15 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // PRD -- for the same required_commands-immutability reason the
     // sharing-docs/launch-docs/tool-naming lanes above give) -- an
     // eighteenth, intended addition since the baseline, not drift.
+    // PRD-mcphost-blob-virus-and-type-guard added its own
+    // "blobguard-fixtures" lane (routes tests/fixtures/blobguard/** and the
+    // generated docs/blob-types.md to the blobguard_ac0N proof tests and
+    // gendocs's drift test) -- an intended addition, not drift.
     assert_eq!(
         added,
         vec![
             "admin-schemas",
+            "blobguard-fixtures",
             "checkcompat-race-soak",
             "contracts",
             "docs-links",
@@ -199,7 +204,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "vendor",
             "wasm-fixtures"
         ],
-        "only admin-schemas, checkcompat-race-soak, contracts, docs-links, docsearch-fixtures, \
+        "only admin-schemas, blobguard-fixtures, checkcompat-race-soak, contracts, docs-links, docsearch-fixtures, \
          event-trigger-self-test-fixtures, examples, flake-lint, host-pressure-doc-check, launch-docs, \
          loop-config, oauthconf-data, plugin, registry-manifest, sandbox-api-docs, sharing-docs, \
          spec-fields-doc-check, tool-naming, vendor, and wasm-fixtures may have been added since \

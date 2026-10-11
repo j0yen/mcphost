@@ -22,6 +22,24 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "sharedrunscope_ac01_caller_sees_sync_shared_run.rs"]
+mod sharedrunscope_ac01_caller_sees_sync_shared_run;
+#[path = "sharedrunscope_ac02_owner_cannot_see_callers_run.rs"]
+mod sharedrunscope_ac02_owner_cannot_see_callers_run;
+#[path = "sharedrunscope_ac03_owner_meter_and_usage_unchanged.rs"]
+mod sharedrunscope_ac03_owner_meter_and_usage_unchanged;
+#[path = "sharedrunscope_ac04_own_call_run_row_unchanged.rs"]
+mod sharedrunscope_ac04_own_call_run_row_unchanged;
+#[path = "sharedrunscope_ac05_async_and_sync_share_scoping.rs"]
+mod sharedrunscope_ac05_async_and_sync_share_scoping;
+#[path = "sharedrunscope_ac06_raw_tools_call_shares_the_path.rs"]
+mod sharedrunscope_ac06_raw_tools_call_shares_the_path;
+#[path = "sharedrunscope_ac07_migration_backfills_legacy_rows.rs"]
+mod sharedrunscope_ac07_migration_backfills_legacy_rows;
+#[path = "sharedrunscope_ac08_proof_script_owner_ledger_check.rs"]
+mod sharedrunscope_ac08_proof_script_owner_ledger_check;
+#[path = "signupfleet_ac01_fleet_ips_bypass_signup_rate_limit.rs"]
+mod signupfleet_ac01_fleet_ips_bypass_signup_rate_limit;
 #[path = "specpath_ac01_map_form_normalizes_and_publishes.rs"]
 mod specpath_ac01_map_form_normalizes_and_publishes;
 #[path = "specpath_ac02_outputs_map_value_type_error.rs"]
