@@ -646,6 +646,20 @@ fn with_attempts(mut entry: Value, attempts: Option<Vec<Value>>) -> Value {
     entry
 }
 
+/// Merges `extra` (a JSON object) into a step error's `data`, keeping its
+/// code and message; an error that carried no object `data` gets `extra` as
+/// its `data`. Variants with no `data` slot are returned unchanged.
+fn annotate(e: KindError, extra: Value) -> KindError {
+    let KindError::Structured { code, message, mut data } = e else {
+        return e;
+    };
+    match (data.as_object_mut(), extra) {
+        (Some(obj), Value::Object(add)) => obj.extend(add),
+        (_, extra) => data = extra,
+    }
+    KindError::Structured { code, message, data }
+}
+
 /// Requirements 2-4: dispatches one step, retrying per its `retry` policy.
 /// Returns the final outcome and (for a step with a policy) the per-attempt
 /// trace. The step's single child run row is written once, with `attempt`
@@ -695,7 +709,11 @@ async fn run_step(
             Ok(v) => return finish(Ok(v), attempts, child_run_id).await,
             Err(pair) => pair,
         };
-        if attempt > policy.max || !policy.on.iter().any(|f| f == code) {
+        if !policy.on.iter().any(|f| f == code) {
+            return finish(Err(e), attempts, child_run_id).await;
+        }
+        if attempt > policy.max {
+            let e = annotate(e, json!({"attempts": attempt, "retry_exhausted": true}));
             return finish(Err(e), attempts, child_run_id).await;
         }
         let wait_ms = policy.backoff_ms.saturating_mul(1u64 << (attempt - 1));
