@@ -427,6 +427,8 @@ mod consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox;
 mod csvtab_ac01_recipe_turn_census;
 #[path = "csvtab_ac02_fixture_csvs_load_with_inferred_types.rs"]
 mod csvtab_ac02_fixture_csvs_load_with_inferred_types;
+#[path = "csvtab_ac03_bad_cell_is_named_by_row_and_column.rs"]
+mod csvtab_ac03_bad_cell_is_named_by_row_and_column;
 #[path = "ctrv_ac01_sha_stable_across_boot_requests_and_process.rs"]
 mod ctrv_ac01_sha_stable_across_boot_requests_and_process;
 #[path = "ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs"]

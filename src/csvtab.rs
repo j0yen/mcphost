@@ -596,6 +596,10 @@ struct Votes {
     date: usize,
 }
 
+/// A column with `seen / TOLERANCE_DIVISOR` or fewer stray cells still takes the
+/// type of the rest (AC3: one `n/a` at line 412 of a 1,000-row file).
+pub const TOLERANCE_DIVISOR: usize = 100;
+
 /// R2: all-integer -> `integer`; all-real -> `real`; all-bool (with at
 /// least one true/false/yes/no word, so a plain 0/1 column stays `integer`)
 /// -> `bool`; all-date -> `date`; anything else, and a column with no
@@ -625,14 +629,36 @@ pub fn infer_column(cells: &[&str]) -> CsvType {
         }
     }
     if v.seen == 0 {
-        CsvType::Text
-    } else if v.boolean == v.seen && v.bool_word > 0 {
-        CsvType::Bool
-    } else if v.integer == v.seen {
+        return CsvType::Text;
+    }
+    // Strict pass: every sampled cell parses.
+    if v.boolean == v.seen && v.bool_word > 0 {
+        return CsvType::Bool;
+    }
+    if v.integer == v.seen {
+        return CsvType::Integer;
+    }
+    if v.real == v.seen {
+        return CsvType::Real;
+    }
+    if v.date == v.seen {
+        return CsvType::Date;
+    }
+    // Tolerant pass: with at least 100 sampled cells, up to 1% may be strays
+    // (a stray `n/a` in a numeric column is skipped and named per row, R3,
+    // instead of demoting the whole column to text).
+    let slack = v.seen / TOLERANCE_DIVISOR;
+    if slack == 0 {
+        return CsvType::Text;
+    }
+    let within = |n: usize| n + slack >= v.seen;
+    if v.integer > 0 && v.integer == v.real && within(v.integer) {
         CsvType::Integer
-    } else if v.real == v.seen {
+    } else if v.real > 0 && within(v.real) {
         CsvType::Real
-    } else if v.date == v.seen {
+    } else if v.bool_word > 0 && within(v.boolean) {
+        CsvType::Bool
+    } else if v.date > 0 && within(v.date) {
         CsvType::Date
     } else {
         CsvType::Text
@@ -648,10 +674,11 @@ pub fn convert_cell(ty: CsvType, raw: &str) -> Result<Value, String> {
     let c = raw.trim();
     match ty {
         CsvType::Text => Ok(Value::String(raw.to_string())),
-        CsvType::Integer => c
-            .parse::<i64>()
+        // A leading zero (`00123`) is an identifier, not a number: refused
+        // loudly rather than stored as 123 (override with `types: {col: text}`).
+        CsvType::Integer => parse_integer(c)
             .map(|i| json!(i))
-            .map_err(|_| format!("not an integer: '{c}'")),
+            .ok_or_else(|| format!("not an integer: '{c}'")),
         CsvType::Real => c
             .parse::<f64>()
             .ok()
@@ -1236,6 +1263,14 @@ mod tests {
         assert_eq!(infer_column(&["", ""]), CsvType::Text);
         assert_eq!(infer_column(&["1", "n/a"]), CsvType::Text);
         assert_eq!(infer_column(&["nan", "inf"]), CsvType::Text);
+        let mut many: Vec<String> = (0..300).map(|i| format!("{i}.5")).collect();
+        many[7] = "n/a".to_string();
+        let refs: Vec<&str> = many.iter().map(String::as_str).collect();
+        assert_eq!(infer_column(&refs), CsvType::Real, "one stray in 300 keeps the column real");
+        let mut few: Vec<String> = (0..50).map(|i| format!("{i}.5")).collect();
+        few[7] = "n/a".to_string();
+        let refs: Vec<&str> = few.iter().map(String::as_str).collect();
+        assert_eq!(infer_column(&refs), CsvType::Text, "no tolerance below 100 cells");
     }
 
     #[test]
