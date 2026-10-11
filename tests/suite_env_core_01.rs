@@ -8,6 +8,8 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 
+#[path = "cprov_ac03_availability_comes_from_env_and_never_leaks.rs"]
+mod cprov_ac03_availability_comes_from_env_and_never_leaks;
 #[path = "firstpub_ac08_quickstart_http_starter.rs"]
 mod firstpub_ac08_quickstart_http_starter;
 #[path = "flakelint_ac01_env_mutation.rs"]
