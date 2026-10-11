@@ -79,6 +79,7 @@ async fn usage_without_by_keeps_the_pre_prd_shape() {
         "window",
         "calls",
         "errors",
+        "estimates",
         "p50_ms",
         "p95_ms",
         "state_bytes",

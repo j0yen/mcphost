@@ -141,6 +141,14 @@ fn quickstart_try_before_call(
         "call": "host.tool_test",
         "arguments": {"name": tool_name, "args": example.call_args},
     })];
+    // PRD-mcphost-call-cost-estimate requirement 7: the free question to ask
+    // before the first call that carries a budget or a large argument.
+    try_before_call.push(json!({
+        "case": "a published tool, will this call be admitted and what does it use",
+        "call": "host.estimate",
+        "arguments": {"name": tool_name, "args": example.call_args},
+        "note": "free; same verdict as the real call",
+    }));
     if let Some(http) = state.kinds.get("http") {
         let http_example = http.example();
         try_before_call.push(json!({

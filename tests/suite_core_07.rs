@@ -275,6 +275,8 @@ mod cest_ac04_fifty_concurrent_dry_runs_hold_no_slot;
 mod cest_ac05_dry_run_counts_as_estimate_not_call;
 #[path = "cest_ac06_anonymous_estimate_is_the_real_auth_error.rs"]
 mod cest_ac06_anonymous_estimate_is_the_real_auth_error;
+#[path = "cest_ac07_estimate_listed_and_in_quickstart.rs"]
+mod cest_ac07_estimate_listed_and_in_quickstart;
 #[path = "chainhost_ac01_host_table_append_step.rs"]
 mod chainhost_ac01_host_table_append_step;
 #[path = "chainhost_ac02_step_tool_not_found.rs"]

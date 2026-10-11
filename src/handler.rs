@@ -1248,6 +1248,12 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                             &crate::plans::PlanCatalog::default_catalog(),
                         ),
                     },
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": "Ask instead of call: runs every admission check the real \
+                            call runs, dispatches nothing, writes no call row, and returns \
+                            {fits, units, remaining, refusal}; same as host.estimate. Default false.",
+                    },
                 }),
                 &["name", "args"],
             ),
@@ -3806,8 +3812,51 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             crate::paged::splice_input_schema(&name, props);
         }
     }
+    // PRD-mcphost-call-cost-estimate requirement 3: `host.estimate` is
+    // `host.tool_call` with `dry_run` forced, listed for a keyed tenant only
+    // and marked `_meta.alias_of: host.tool_call` like every other alias.
+    // Pushed before the alias pass so its flattened form (`host_estimate`)
+    // is registered like any other name.
+    if authenticated {
+        tools.push(estimate_tool());
+    }
     apply_tool_aliases(&mut tools);
     tools
+}
+
+/// `host.estimate`'s descriptor: the dry-run half of `host.tool.call`'s
+/// arguments (no `async`, no `dry_run` -- it is always one).
+fn estimate_tool() -> Tool {
+    let mut tool = Tool::new(
+        "host.estimate",
+        "Ask whether a call to one of your tools fits your plan and what it uses, without \
+         making it: the same checks as host.tool_call, no call row, no slot held.",
+        host_schema(
+            json!({
+                "name": {"type": "string", "description": "Local name of the tool to estimate."},
+                "args": {
+                    "type": "object",
+                    "description": "Arguments the call would carry, checked against the tool's own args_schema.",
+                },
+                "version": {
+                    "type": "integer",
+                    "description": "Estimate against this version instead of whichever is current.",
+                },
+                "budget": {
+                    "type": "object",
+                    "description": "The budget the call would carry: any subset of max_child_calls, \
+                        max_est_tokens, max_tool_latency_ms, max_wall_ms. A value above the plan's \
+                        ceiling comes back as the refusal.",
+                    "properties": crate::plans::Plan::budget_schema_properties(
+                        &crate::plans::PlanCatalog::default_catalog(),
+                    ),
+                },
+            }),
+            &["name"],
+        ),
+    );
+    set_alias_of(&mut tool, "host.tool_call");
+    tool
 }
 
 /// PRD-mcphost-tool-naming-convention-and-aliases requirement 2/3: for

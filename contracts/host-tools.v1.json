@@ -1334,6 +1334,66 @@
       "since": "0.58.0"
     },
     {
+      "description": "Ask whether a call to one of your tools fits your plan and what it uses, without making it: the same checks as host.tool_call, no call row, no slot held.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "args": {
+            "description": "Arguments the call would carry, checked against the tool's own args_schema.",
+            "type": "object"
+          },
+          "budget": {
+            "description": "The budget the call would carry: any subset of max_child_calls, max_est_tokens, max_tool_latency_ms, max_wall_ms. A value above the plan's ceiling comes back as the refusal.",
+            "properties": {
+              "max_child_calls": {
+                "description": "Free-plan ceiling 20; pro ceiling 50. Maximum shown is the free floor -- see host.quickstart limits.plan.budget for your plan.",
+                "maximum": 20,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "max_est_tokens": {
+                "description": "Free-plan ceiling 200000; pro ceiling 2000000. Maximum shown is the free floor -- see host.quickstart limits.plan.budget for your plan.",
+                "maximum": 200000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "max_tool_latency_ms": {
+                "description": "Free-plan ceiling 30000; pro ceiling 120000. Maximum shown is the free floor -- see host.quickstart limits.plan.budget for your plan.",
+                "maximum": 30000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "max_wall_ms": {
+                "description": "Free-plan ceiling 60000; pro ceiling 600000. Maximum shown is the free floor -- see host.quickstart limits.plan.budget for your plan.",
+                "maximum": 60000,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "name": {
+            "description": "Local name of the tool to estimate.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "version": {
+            "description": "Estimate against this version instead of whichever is current.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host.estimate",
+      "since": "0.58.0"
+    },
+    {
       "description": "Build a downloadable .tar.gz of everything this tenant owns: tool sources, state, secret NAMES (never values), run/thread history and usage, plus a manifest.json re-publishable via host.tool_publish. Runs as a background job (poll host.runs.get with the returned run_id) -- calling this again while one is already running returns that same run_id rather than starting a second one. The finished run's result carries a download_url valid 24 hours.",
       "input_schema": {
         "additionalProperties": false,
@@ -3856,6 +3916,10 @@
             },
             "type": "object"
           },
+          "dry_run": {
+            "description": "Ask instead of call: runs every admission check the real call runs, dispatches nothing, writes no call row, and returns {fits, units, remaining, refusal}; same as host.estimate. Default false.",
+            "type": "boolean"
+          },
           "name": {
             "description": "Local name of the tool to invoke.",
             "type": "string"
@@ -4307,6 +4371,10 @@
               }
             },
             "type": "object"
+          },
+          "dry_run": {
+            "description": "Ask instead of call: runs every admission check the real call runs, dispatches nothing, writes no call row, and returns {fits, units, remaining, refusal}; same as host.estimate. Default false.",
+            "type": "boolean"
           },
           "name": {
             "description": "Local name of the tool to invoke.",
@@ -6501,6 +6569,66 @@
         "type": "object"
       },
       "name": "host_enduser_whoami",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Ask whether a call to one of your tools fits your plan and what it uses, without making it: the same checks as host.tool_call, no call row, no slot held.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "args": {
+            "description": "Arguments the call would carry, checked against the tool's own args_schema.",
+            "type": "object"
+          },
+          "budget": {
+            "description": "The budget the call would carry: any subset of max_child_calls, max_est_tokens, max_tool_latency_ms, max_wall_ms. A value above the plan's ceiling comes back as the refusal.",
+            "properties": {
+              "max_child_calls": {
+                "description": "Free-plan ceiling 20; pro ceiling 50. Maximum shown is the free floor -- see host.quickstart limits.plan.budget for your plan.",
+                "maximum": 20,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "max_est_tokens": {
+                "description": "Free-plan ceiling 200000; pro ceiling 2000000. Maximum shown is the free floor -- see host.quickstart limits.plan.budget for your plan.",
+                "maximum": 200000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "max_tool_latency_ms": {
+                "description": "Free-plan ceiling 30000; pro ceiling 120000. Maximum shown is the free floor -- see host.quickstart limits.plan.budget for your plan.",
+                "maximum": 30000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "max_wall_ms": {
+                "description": "Free-plan ceiling 60000; pro ceiling 600000. Maximum shown is the free floor -- see host.quickstart limits.plan.budget for your plan.",
+                "maximum": 60000,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "name": {
+            "description": "Local name of the tool to estimate.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "version": {
+            "description": "Estimate against this version instead of whichever is current.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host_estimate",
       "since": "0.58.0"
     },
     {
@@ -8844,6 +8972,10 @@
               }
             },
             "type": "object"
+          },
+          "dry_run": {
+            "description": "Ask instead of call: runs every admission check the real call runs, dispatches nothing, writes no call row, and returns {fits, units, remaining, refusal}; same as host.estimate. Default false.",
+            "type": "boolean"
           },
           "name": {
             "description": "Local name of the tool to invoke.",
