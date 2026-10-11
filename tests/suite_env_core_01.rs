@@ -18,3 +18,5 @@ mod flakelint_ac05_env_guard_race;
 mod flakelint_ac07_full_lint_pass_and_env_suites;
 #[path = "support_ac05_support_url_rendered_or_not_configured.rs"]
 mod support_ac05_support_url_rendered_or_not_configured;
+#[path = "tlint_ac04_deadline_budget_fires_and_scales.rs"]
+mod tlint_ac04_deadline_budget_fires_and_scales;
