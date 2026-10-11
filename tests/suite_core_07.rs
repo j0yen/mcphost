@@ -535,6 +535,8 @@ mod dxn_ac04_anonymous_and_skip_attributes;
 mod dxn_ac05_cross_page_dependency_fails_extract;
 #[path = "dxn_ac06_gen_llms_full_gates_on_corpus_and_annotates.rs"]
 mod dxn_ac06_gen_llms_full_gates_on_corpus_and_annotates;
+#[path = "dxn_ac07_unreachable_host_exits_two_after_one_retry.rs"]
+mod dxn_ac07_unreachable_host_exits_two_after_one_retry;
 #[path = "enduser_ac02_assertion_http_headers_and_calls_row.rs"]
 mod enduser_ac02_assertion_http_headers_and_calls_row;
 #[path = "enduser_ac03_invalid_assertion_rejected.rs"]
