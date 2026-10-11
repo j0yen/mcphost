@@ -1,0 +1,5 @@
+id,note,score
+1,"line one
+line two",4.5
+2,"a ""quoted"" word",5
+3,plain,6.25

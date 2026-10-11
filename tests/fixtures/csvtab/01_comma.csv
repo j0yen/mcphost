@@ -1,0 +1,4 @@
+id,name,amount,joined,active
+1,Ann,10.5,2024-01-02,yes
+2,Bob,20,2024-02-03,no
+3,Cy,30.25,2024-03-04,true

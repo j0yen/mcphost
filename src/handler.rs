@@ -1841,6 +1841,13 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &["table", "rows"],
             ),
         ),
+        // PRD-mcphost-csv-to-table-one-call: args schema rendered from
+        // `csvtab::ARG_SPECS` (one source, also feeds the llms.txt recipe).
+        Tool::new(
+            crate::csvtab::VERB,
+            crate::csvtab::VERB_DESCRIPTION,
+            host_schema(crate::csvtab::schema_properties(), &crate::csvtab::required_args()),
+        ),
         Tool::new(
             "host.table.query",
             "Run a single read-only SQL SELECT (CTEs allowed) against this tenant's own \
@@ -5413,6 +5420,7 @@ impl McpHostHandler {
             "host.enduser.export" => crate::export::enduser_export(&self.state, tenant, &args).await,
             "host.table.create" => tables::table_create(&self.state, tenant, &args).await,
             "host.table.append" => tables::table_append(&self.state, tenant, &args).await,
+            "host.table.from_blob" => crate::csvtab::table_from_blob(&self.state, tenant, &args).await,
             "host.table.query" => tables::table_query(&self.state, tenant, &args, end_user).await,
             "host.table.query_diagnose" => tables::table_query_diagnose(&self.state, tenant, &args).await,
             "host.table.query_stats" => tables::table_query_stats(&self.state, tenant, &args).await,

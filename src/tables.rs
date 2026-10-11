@@ -197,7 +197,7 @@ impl ColumnType {
     /// rows land in genuine typed columns so `host.table.query`'s SQL runs
     /// against real SQLite semantics (comparisons, `ORDER BY`, aggregates)
     /// rather than this crate's own hand-rolled filter grammar.
-    fn sql_type(self) -> &'static str {
+    pub(crate) fn sql_type(self) -> &'static str {
         match self {
             ColumnType::Text | ColumnType::Timestamp | ColumnType::Json => "TEXT",
             ColumnType::Integer | ColumnType::Boolean => "INTEGER",
@@ -231,7 +231,7 @@ fn plan_of<'a>(state: &'a AppState, plan_name: &str) -> Result<&'a Plan, AppErro
 /// `^[a-z][a-z0-9_]{1,40}$` convention uses, widened to allow an
 /// underscore-leading or upper-case identifier (schema column names are
 /// caller-chosen, not this host's own tool-naming surface).
-fn is_valid_ident(s: &str) -> bool {
+pub(crate) fn is_valid_ident(s: &str) -> bool {
     let mut chars = s.chars();
     let Some(first) = chars.next() else {
         return false;
@@ -786,7 +786,7 @@ fn validate_rows(schema: &LoadedSchema, rows: &[Map<String, Value>]) -> Result<(
     Ok(())
 }
 
-fn insert_rows_sync(
+pub(crate) fn insert_rows_sync(
     conn: &Connection,
     table: &str,
     schema: &LoadedSchema,

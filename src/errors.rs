@@ -626,7 +626,9 @@ impl AppError {
                 // caller-input problems, same INVALID_PARAMS bucket as the
                 // `table_*`/`state_*` groups above; `docs_not_found` mirrors
                 // `table_not_found`'s own RESOURCE_NOT_FOUND.
-                "docs_too_large" | "docs_mime_unsupported" | "quota_docs" | "quota_docs_bytes" => {
+                "docs_too_large" | "docs_mime_unsupported" | "quota_docs" | "quota_docs_bytes" | "quota_table_rows" | "quota_table_tables"
+                | "quota_table_bytes" | "csv_empty" | "csv_no_rows" | "csv_row_invalid"
+                | "csv_columns_mismatch" => {
                     ErrorCode::INVALID_PARAMS
                 }
                 "docs_not_found" => ErrorCode::RESOURCE_NOT_FOUND,

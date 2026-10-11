@@ -24,6 +24,7 @@ pub mod compat_check;
 pub mod consent;
 pub mod control;
 pub mod cron;
+pub mod csvtab;
 pub mod db;
 pub mod deps;
 pub mod difftext;

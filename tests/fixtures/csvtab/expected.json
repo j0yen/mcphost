@@ -1,0 +1,218 @@
+{
+ "01_comma.csv": {
+  "delimiter": ",",
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "active": "bool",
+   "amount": "real",
+   "id": "integer",
+   "joined": "date",
+   "name": "text"
+  }
+ },
+ "02_semicolon.csv": {
+  "delimiter": ";",
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "active": "bool",
+   "amount": "real",
+   "id": "integer",
+   "joined": "date",
+   "name": "text"
+  }
+ },
+ "03_tab.tsv": {
+  "delimiter": "\t",
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "active": "bool",
+   "amount": "real",
+   "id": "integer",
+   "joined": "date",
+   "name": "text"
+  }
+ },
+ "04_pipe.csv": {
+  "delimiter": "|",
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "active": "bool",
+   "amount": "real",
+   "id": "integer",
+   "joined": "date",
+   "name": "text"
+  }
+ },
+ "05_utf8_bom.csv": {
+  "delimiter": ",",
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "active": "bool",
+   "amount": "real",
+   "id": "integer",
+   "joined": "date",
+   "name": "text"
+  }
+ },
+ "06_utf16le_bom.csv": {
+  "delimiter": ",",
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "active": "bool",
+   "amount": "real",
+   "id": "integer",
+   "joined": "date",
+   "name": "text"
+  }
+ },
+ "07_utf16be_bom.csv": {
+  "delimiter": ",",
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "active": "bool",
+   "amount": "real",
+   "id": "integer",
+   "joined": "date",
+   "name": "text"
+  }
+ },
+ "08_quoted_newlines.csv": {
+  "delimiter": ",",
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "id": "integer",
+   "note": "text",
+   "score": "real"
+  }
+ },
+ "09_empty_trailing_lines.csv": {
+  "delimiter": ",",
+  "rows": 2,
+  "rows_skipped": 0,
+  "types": {
+   "a": "integer",
+   "b": "text"
+  }
+ },
+ "10_crlf.csv": {
+  "delimiter": ",",
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "active": "bool",
+   "amount": "real",
+   "id": "integer",
+   "joined": "date",
+   "name": "text"
+  }
+ },
+ "11_latin1.csv": {
+  "delimiter": ",",
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "city": "text",
+   "id": "integer"
+  }
+ },
+ "12_real_export_1000.csv": {
+  "delimiter": ",",
+  "rows": 1000,
+  "rows_skipped": 0,
+  "types": {
+   "amount": "real",
+   "category": "text",
+   "day": "integer",
+   "id": "integer"
+  }
+ },
+ "13_quoted_delimiters.csv": {
+  "delimiter": ",",
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "addr": "text",
+   "id": "integer"
+  }
+ },
+ "14_dates_and_datetimes.csv": {
+  "delimiter": ",",
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "d": "date",
+   "ts": "date"
+  }
+ },
+ "15_bool_words.csv": {
+  "delimiter": ",",
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "flag": "bool",
+   "ok": "bool"
+  }
+ },
+ "16_leading_zero_text.csv": {
+  "delimiter": ",",
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "qty": "integer",
+   "zip": "text"
+  }
+ },
+ "17_all_empty_column.csv": {
+  "delimiter": ",",
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "a": "integer",
+   "b": "text",
+   "c": "text"
+  }
+ },
+ "18_header_sanitising.csv": {
+  "delimiter": ",",
+  "rows": 2,
+  "rows_skipped": 0,
+  "source_names": {
+   "Order_Date": "Order Date",
+   "Order_Date_2": "Order Date",
+   "Unit_Price": "Unit Price ($)",
+   "c_1st": "1st"
+  },
+  "types": {
+   "Order_Date": "date",
+   "Order_Date_2": "text",
+   "Unit_Price": "real",
+   "c_1st": "text"
+  }
+ },
+ "19_mixed_column_is_text.csv": {
+  "delimiter": ",",
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "code": "text",
+   "id": "integer"
+  }
+ },
+ "20_ragged_row.csv": {
+  "delimiter": ",",
+  "rows": 2,
+  "rows_skipped": 1,
+  "types": {
+   "a": "integer",
+   "b": "text"
+  }
+ }
+}
