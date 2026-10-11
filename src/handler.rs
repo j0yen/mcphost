@@ -5311,11 +5311,12 @@ impl McpHostHandler {
     }
 
     /// Adds `data.quota` (the ceilings `name` touches) to a data verb's
-    /// success, and to its `*quota_exceeded` refusal -- where the legacy
-    /// `data.quota` is already the ceiling's name, the object rides as
-    /// `data.quota_room` instead so no existing reader breaks. A plan
-    /// missing from the catalog omits it and the call is otherwise
-    /// untouched.
+    /// success, and to its `*quota_exceeded` refusal (AC5: the refused
+    /// ceiling reads `remaining: 0` under `data.quota.<ceiling>`). Where a
+    /// store's refusal named its ceiling as a string `data.quota`, that
+    /// name moves to `data.ceiling` so `data.quota` is the one object
+    /// shape on every response. A plan missing from the catalog omits it
+    /// and the call is otherwise untouched.
     async fn attach_data_quota(
         &self,
         tenant: &Tenant,
@@ -5370,12 +5371,10 @@ impl McpHostHandler {
                     entry.insert("remaining".to_string(), json!(0));
                 }
                 if let Some(obj) = data.as_object_mut() {
-                    let key = if obj.get("quota").is_some_and(|q| !q.is_object()) {
-                        "quota_room"
-                    } else {
-                        "quota"
-                    };
-                    obj.insert(key.to_string(), quota);
+                    if let Some(name) = obj.remove("quota").filter(|q| !q.is_object()) {
+                        obj.insert("ceiling".to_string(), name);
+                    }
+                    obj.insert("quota".to_string(), quota);
                 }
                 Err(AppError::Structured { code, message, data })
             }

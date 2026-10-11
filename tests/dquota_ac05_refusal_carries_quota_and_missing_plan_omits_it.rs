@@ -5,8 +5,8 @@
 //! plan name is missing from the catalog, Then `data.quota` is omitted and
 //! the call still succeeds.
 //!
-//! The legacy refusal field `data.quota` is the ceiling's NAME (pinned by
-//! `state_ac06`), so on that refusal the object rides as `data.quota_room`.
+//! The refusal's ceiling name rides as `data.ceiling`; `data.quota` is the
+//! room object, the same shape every successful data call carries.
 
 use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
@@ -35,16 +35,30 @@ async fn state_refusal_carries_the_room_left_on_every_state_ceiling() {
         .await
         .expect_err("past the ceiling must refuse");
     assert_eq!(err.error_code.as_deref(), Some("state_quota_exceeded"));
-    assert_eq!(err.data["quota"], json!("state_bytes_max"), "legacy field unchanged");
-    let room = &err.data["quota_room"];
-    assert_eq!(room["state_bytes_max"], json!({"used": 1000, "limit": 1000, "remaining": 0}), "{:?}", err.data);
+    assert_eq!(err.data["ceiling"], json!("state_bytes_max"), "{:?}", err.data);
+    let quota = err.data["quota"].as_object().unwrap_or_else(|| panic!("data.quota is the room object: {:?}", err.data));
+    assert_eq!(quota["state_bytes_max"], json!({"used": 1000, "limit": 1000, "remaining": 0}), "{:?}", err.data);
     let free = server.state.plans.get("free").expect("free");
     assert_eq!(
-        room["state_rows_max"],
+        quota["state_rows_max"],
         json!({"used": 0, "limit": free.state_rows_max, "remaining": free.state_rows_max}),
         "the other state ceilings report their real room: {:?}",
         err.data
     );
+    let others: Vec<_> = quota.keys().filter(|k| *k != "state_bytes_max").collect();
+    assert!(!others.is_empty(), "the other state ceilings ride too: {quota:?}");
+    for k in others {
+        let e = &quota[k];
+        // A per-call cap (`state_ops_per_call_max`) has no stored usage:
+        // `used` and `remaining` are both null, never a guessed number.
+        let Some(used) = e["used"].as_i64() else {
+            assert_eq!(e["remaining"], json!(null), "{k}: {quota:?}");
+            continue;
+        };
+        let limit = e["limit"].as_i64().unwrap();
+        assert_eq!(e["remaining"], json!((limit - used).max(0)), "{k}: real remaining: {quota:?}");
+        assert!(e["remaining"].as_i64().unwrap() > 0, "{k}: only the refused ceiling is at 0: {quota:?}");
+    }
 }
 
 #[tokio::test]

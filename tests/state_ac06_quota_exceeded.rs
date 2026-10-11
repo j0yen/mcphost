@@ -75,7 +75,10 @@ async fn writing_past_state_bytes_max_fails_with_state_quota_exceeded() {
         .await
         .expect_err("writing past an already-full quota must fail");
     assert_eq!(err.error_code.as_deref(), Some("state_quota_exceeded"));
-    assert_eq!(err.data["quota"], json!("state_bytes_max"));
+    // PRD-mcphost-data-quota-in-every-response AC5: the ceiling's name
+    // rides as `data.ceiling`; `data.quota` is the room object.
+    assert_eq!(err.data["ceiling"], json!("state_bytes_max"));
+    assert_eq!(err.data["quota"]["state_bytes_max"]["remaining"], json!(0));
     assert_eq!(err.data["limit"], json!(quota));
 
     // The quota check runs before the write -- the rejected key must not
