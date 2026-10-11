@@ -2116,6 +2116,27 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &["name"],
             ),
         ),
+        // PRD-mcphost-blob-put-get-signed-url R1: any file, stored in one
+        // call and shared by a signed URL.
+        Tool::new(
+            "host.blob.put",
+            "Store a file of any type under this tenant and get back {id, name, bytes, mime, \
+             sha256, url, expires, version}; url is a signed link (valid 24h) that serves the \
+             bytes with the stored Content-Type. mime is the explicit one, else sniffed from the \
+             name and magic bytes (pdf, png, jpeg, gif, webp, zip, gzip, xlsx, docx, csv, json, \
+             txt, md), else application/octet-stream. The same name stores a new version of the \
+             same id; identical bytes are a no-op. Rotating the tenant key invalidates \
+             outstanding urls. Ceilings: blob_max_bytes per file, blob_bytes_max in total, \
+             blobs_max files -- see host.quickstart limits.plan.",
+            host_schema(
+                json!({
+                    "name": {"type": "string", "description": "File name; the same name on a later put creates a new version of the same id."},
+                    "content_base64": {"type": "string", "description": "The file's bytes, base64-encoded."},
+                    "mime": {"type": "string", "description": "Content type; sniffed from name and content when omitted."},
+                }),
+                &["name"],
+            ),
+        ),
         Tool::new(
             "host.docs.get",
             "Read a document by id or name -- version defaults to the current one; text: true \
@@ -5419,6 +5440,7 @@ impl McpHostHandler {
             "host.table.handle_drop" => tables::table_handle_drop(&self.state, tenant, &args).await,
             "host.table.handle_export" => crate::export::handle_export(&self.state, tenant, &args).await,
             "host.docs.put" => docs::doc_put(&self.state, tenant, &args).await,
+            "host.blob.put" => crate::blobs::blob_put(&self.state, tenant, &args).await,
             "host.docs.get" => docs::doc_get(&self.state, tenant, &args).await,
             "host.docs.list" => docs::doc_list(&self.state, tenant, &args).await,
             "host.docs.delete" => docs::doc_delete(&self.state, tenant, &args).await,

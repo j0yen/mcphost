@@ -192,6 +192,8 @@ const MIGRATION_0079: &str = include_str!("../migrations/0079_host_tool_usage_vi
 const MIGRATION_0081: &str =
     include_str!("../migrations/0081_host_tool_usage_did_you_mean_outcome.sql");
 const MIGRATION_0082: &str = include_str!("../migrations/0082_calls_refused.sql");
+/// PRD-mcphost-blob-put-get-signed-url R1: the `blobs` metadata table.
+const MIGRATION_0083: &str = include_str!("../migrations/0083_blobs.sql");
 
 /// PRD-mcphost-session-bound-tenant-key requirement 3: `kind` on
 /// `signup_events`. Renumbered to 0080 during this rebase: mcphost-tool-
@@ -2641,7 +2643,20 @@ impl Db {
         Self::migrate_0079_host_tool_usage_via(&conn)?;
         Self::migrate_0080_implicit_second_signup_blocked(&conn)?;
         Self::migrate_0081_host_tool_usage_did_you_mean_outcome(&conn)?;
-        Self::migrate_0082_calls_refused(&conn)
+        Self::migrate_0082_calls_refused(&conn)?;
+        Self::migrate_0083_blobs(&conn)
+    }
+
+    /// PRD-mcphost-blob-put-get-signed-url R1: same idempotency pattern as
+    /// 0037, gated on the `blobs` table.
+    fn migrate_0083_blobs(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'blobs'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0083)?;
+        }
+        Ok(())
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -14659,6 +14674,149 @@ impl Db {
         .await
     }
 
+    // ---- blobs (PRD-mcphost-blob-put-get-signed-url R1) -------------------
+
+    pub async fn blob_find_by_name(&self, tenant_id: i64, name: String) -> Result<Option<BlobRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                &format!("SELECT {BLOB_COLS} FROM blobs WHERE tenant_id = ?1 AND name = ?2"),
+                params![tenant_id, name],
+                blob_row_from,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    pub async fn blob_find_by_id(&self, tenant_id: i64, id: String) -> Result<Option<BlobRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                &format!("SELECT {BLOB_COLS} FROM blobs WHERE tenant_id = ?1 AND id = ?2"),
+                params![tenant_id, id],
+                blob_row_from,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// The unauthenticated `/blobs/{id}` route's lookup: ids are globally
+    /// unique ULIDs, and the signature (keyed by the owning tenant) is the
+    /// whole auth story.
+    pub async fn blob_find_any_tenant(&self, id: String) -> Result<Option<BlobRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                &format!("SELECT {BLOB_COLS} FROM blobs WHERE id = ?1"),
+                params![id],
+                blob_row_from,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `(blobs, bytes)` across this tenant's blobs -- the quota-check input.
+    pub async fn blobs_usage(&self, tenant_id: i64) -> Result<(i64, i64), AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*), COALESCE(SUM(bytes), 0) FROM blobs WHERE tenant_id = ?1",
+                params![tenant_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Insert a brand-new blob row, or bump `version` on the row already
+    /// holding `name`. Returns the resulting row.
+    pub async fn blob_upsert(
+        &self,
+        tenant_id: i64,
+        new_id: String,
+        write: BlobWrite,
+        now: i64,
+    ) -> Result<BlobRow, AppError> {
+        let BlobWrite { name, mime, bytes, sha256 } = write;
+        self.with_conn(move |conn| {
+            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
+            let out: Result<BlobRow, AppError> = (|| {
+                let existing: Option<String> = conn
+                    .query_row(
+                        "SELECT id FROM blobs WHERE tenant_id = ?1 AND name = ?2",
+                        params![tenant_id, name],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                let id = match existing {
+                    Some(id) => {
+                        conn.execute(
+                            "UPDATE blobs SET version = version + 1, mime = ?1, bytes = ?2, \
+                                 sha256 = ?3, updated_at = ?4 WHERE tenant_id = ?5 AND id = ?6",
+                            params![mime, bytes, sha256, now, tenant_id, id],
+                        )?;
+                        id
+                    }
+                    None => {
+                        conn.execute(
+                            "INSERT INTO blobs (id, tenant_id, name, version, mime, bytes, sha256, \
+                                 created_at, updated_at) VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?7)",
+                            params![new_id, tenant_id, name, mime, bytes, sha256, now],
+                        )?;
+                        new_id
+                    }
+                };
+                conn.query_row(
+                    &format!("SELECT {BLOB_COLS} FROM blobs WHERE tenant_id = ?1 AND id = ?2"),
+                    params![tenant_id, id],
+                    blob_row_from,
+                )
+                .map_err(AppError::from)
+            })();
+            match out {
+                Ok(row) => {
+                    conn.execute("COMMIT", []).map_err(AppError::from)?;
+                    Ok(row)
+                }
+                Err(e) => {
+                    let _ = conn.execute("ROLLBACK", []);
+                    Err(e)
+                }
+            }
+        })
+        .await
+    }
+
+    pub async fn blob_list(
+        &self,
+        tenant_id: i64,
+        prefix: Option<String>,
+        limit: i64,
+    ) -> Result<Vec<BlobRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(&format!(
+                "SELECT {BLOB_COLS} FROM blobs WHERE tenant_id = ?1 \
+                 AND (?2 IS NULL OR substr(name, 1, length(?2)) = ?2) ORDER BY name LIMIT ?3"
+            ))?;
+            let rows = stmt
+                .query_map(params![tenant_id, prefix, limit], blob_row_from)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    pub async fn blob_delete(&self, tenant_id: i64, id: String) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute("DELETE FROM blobs WHERE tenant_id = ?1 AND id = ?2", params![tenant_id, id])?;
+            Ok(n > 0)
+        })
+        .await
+    }
+
     /// requirement 1: the tenant's current change watermark -- the highest
     /// `seq` across every document (live or deleted), `0` for a tenant with
     /// none yet.
@@ -18734,6 +18892,45 @@ pub struct DocumentRow {
     pub updated_at: i64,
     pub deleted_at: Option<i64>,
     pub seq: i64,
+}
+
+const BLOB_COLS: &str = "id, tenant_id, name, version, mime, bytes, sha256, created_at, updated_at";
+
+fn blob_row_from(r: &rusqlite::Row<'_>) -> rusqlite::Result<BlobRow> {
+    Ok(BlobRow {
+        id: r.get(0)?,
+        tenant_id: r.get(1)?,
+        name: r.get(2)?,
+        version: r.get(3)?,
+        mime: r.get(4)?,
+        bytes: r.get(5)?,
+        sha256: r.get(6)?,
+        created_at: r.get(7)?,
+        updated_at: r.get(8)?,
+    })
+}
+
+/// The content-derived fields of a [`Db::blob_upsert`] write.
+#[derive(Debug, Clone)]
+pub struct BlobWrite {
+    pub name: String,
+    pub mime: String,
+    pub bytes: i64,
+    pub sha256: String,
+}
+
+/// PRD-mcphost-blob-put-get-signed-url: one `blobs` row.
+#[derive(Debug, Clone)]
+pub struct BlobRow {
+    pub id: String,
+    pub tenant_id: i64,
+    pub name: String,
+    pub version: i64,
+    pub mime: String,
+    pub bytes: i64,
+    pub sha256: String,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 /// [`Db::documents_put`]'s return shape.

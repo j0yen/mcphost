@@ -1809,6 +1809,9 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         // link a `host.table.chart {share: true}` call's result carries --
         // see `chart::download`.
         .route("/charts/{id}", get(crate::chart::download))
+        // PRD-mcphost-blob-put-get-signed-url R1: the signed link a
+        // `host.blob.put` result carries -- see `blobs::download`.
+        .route("/blobs/{id}", get(crate::blobs::download))
         // PRD-mcphost-human-claim-magic-link requirements 2-3: the claim
         // flow's own three plain-HTML routes -- `/claim/verify/{code}` is
         // registered alongside `/claim/{token}` without ambiguity since

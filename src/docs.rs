@@ -89,7 +89,7 @@ fn mime_unsupported(mime: &str) -> AppError {
         message: format!(
             "mime '{mime}' is not supported; allowed mimes are {ALLOWED_MIMES:?}"
         ),
-        data: json!({"mime": mime, "allowed": ALLOWED_MIMES}),
+        data: json!({"mime": mime, "allowed": ALLOWED_MIMES, "hint": "binary files go to host.blob.put"}),
     }
 }
 
@@ -130,25 +130,12 @@ fn resolve_content(args: &Value) -> Result<Vec<u8>, AppError> {
     ))
 }
 
-/// requirement 2: a handful of common binary magic numbers -- AC8's
-/// "unsupported mime (`image/png`) by content sniff" is refused here even
-/// when no `mime` argument was given and the name's own extension didn't
-/// already give it away.
+/// requirement 2: the common binary signatures -- AC8's "unsupported mime
+/// (`image/png`) by content sniff" is refused here even when no `mime`
+/// argument was given. PRD-mcphost-blob-put-get-signed-url R2: one set of
+/// signatures, read from `blobs::BLOB_TYPES`.
 fn sniff_binary_mime(content: &[u8]) -> Option<&'static str> {
-    const SIGNATURES: &[(&[u8], &str)] = &[
-        (b"\x89PNG\r\n\x1a\n", "image/png"),
-        (b"\xFF\xD8\xFF", "image/jpeg"),
-        (b"GIF87a", "image/gif"),
-        (b"GIF89a", "image/gif"),
-        (b"%PDF-", "application/pdf"),
-        (b"PK\x03\x04", "application/zip"),
-    ];
-    for (sig, mime) in SIGNATURES {
-        if content.starts_with(sig) {
-            return Some(mime);
-        }
-    }
-    None
+    crate::blobs::sniff_content(content)
 }
 
 fn infer_mime_from_name(name: &str) -> &'static str {

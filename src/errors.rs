@@ -629,7 +629,13 @@ impl AppError {
                 "docs_too_large" | "docs_mime_unsupported" | "quota_docs" | "quota_docs_bytes" => {
                     ErrorCode::INVALID_PARAMS
                 }
-                "docs_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
+                "docs_not_found" | "blob_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
+                // PRD-mcphost-blob-put-get-signed-url R3/R4: the blob quota
+                // and size refusals are the same caller-input class as the
+                // `quota_docs` group above.
+                "quota_blobs" | "quota_blob_bytes" | "blob_too_large" | "blob_too_large_inline" => {
+                    ErrorCode::INVALID_PARAMS
+                }
                 // PRD-mcphost-agent-directory requirement 3 (AC3/AC9): a
                 // handle collision or a claim against the reserved list is
                 // the same caller-input problem as the `table_*`/`state_*`

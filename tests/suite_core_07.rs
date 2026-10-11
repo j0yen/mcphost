@@ -205,6 +205,8 @@ mod billing_ac11_healthz_paying_tenants;
 mod billing_ac13_checkout_reuse;
 #[path = "blobput_ac01_corpus_has_binary_fixture_task.rs"]
 mod blobput_ac01_corpus_has_binary_fixture_task;
+#[path = "blobput_ac02_pdf_put_sniffs_mime_and_serves_bytes.rs"]
+mod blobput_ac02_pdf_put_sniffs_mime_and_serves_bytes;
 #[path = "bridgedisc_ac07_sandbox_api_doc_check.rs"]
 mod bridgedisc_ac07_sandbox_api_doc_check;
 #[path = "budget_ac01_ported_ledger_seven_tests.rs"]
