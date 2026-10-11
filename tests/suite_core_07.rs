@@ -413,6 +413,8 @@ mod consent_ac01_ac02_ac03_ac04_contact_lifecycle;
 mod consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox;
 #[path = "cprov_ac01_one_providers_toml_edit_reaches_every_surface.rs"]
 mod cprov_ac01_one_providers_toml_edit_reaches_every_surface;
+#[path = "cprov_ac02_provider_surfaces_cannot_drift.rs"]
+mod cprov_ac02_provider_surfaces_cannot_drift;
 #[path = "ctrv_ac01_sha_stable_across_boot_requests_and_process.rs"]
 mod ctrv_ac01_sha_stable_across_boot_requests_and_process;
 #[path = "ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs"]
