@@ -1723,6 +1723,12 @@ mod outsch_ac05_whoami_one_schema_for_every_connection;
 mod outsch_ac06_diff_flags_a_removed_output_field;
 #[path = "outsch_ac07_tools_doc_has_a_returns_block.rs"]
 mod outsch_ac07_tools_doc_has_a_returns_block;
+#[path = "outschb_ac01_whoami_one_schema_for_every_connection.rs"]
+mod outschb_ac01_whoami_one_schema_for_every_connection;
+#[path = "outschb_ac02_diff_flags_a_removed_output_field.rs"]
+mod outschb_ac02_diff_flags_a_removed_output_field;
+#[path = "outschb_ac03_tools_doc_has_a_returns_block.rs"]
+mod outschb_ac03_tools_doc_has_a_returns_block;
 #[path = "owncopy_ac01_email_subject_and_body_match_draft.rs"]
 mod owncopy_ac01_email_subject_and_body_match_draft;
 #[path = "owncopy_ac02_from_and_reply_to_passed_verbatim.rs"]
@@ -1823,17 +1829,3 @@ mod publishfirsttry_ac01_tool_publish_description;
 mod publishfirsttry_ac02_structured_error_fields;
 #[path = "publishfirsttry_ac07_signup_next.rs"]
 mod publishfirsttry_ac07_signup_next;
-#[path = "pubschema_ac01_kind_enum_from_registry.rs"]
-mod pubschema_ac01_kind_enum_from_registry;
-#[path = "pubschema_ac02_spec_branch_per_kind.rs"]
-mod pubschema_ac02_spec_branch_per_kind;
-#[path = "pubschema_ac03_unknown_field_list_equals_branch.rs"]
-mod pubschema_ac03_unknown_field_list_equals_branch;
-#[path = "pubschema_ac04_quickstart_no_kind_index_without_tenant.rs"]
-mod pubschema_ac04_quickstart_no_kind_index_without_tenant;
-#[path = "pubschema_ac05_generated_artifacts_match_and_drift_excused.rs"]
-mod pubschema_ac05_generated_artifacts_match_and_drift_excused;
-#[path = "pubschema_ac06_no_literal_kind_list_in_descriptors.rs"]
-mod pubschema_ac06_no_literal_kind_list_in_descriptors;
-#[path = "pubschema_ac07_quickstart_example_validates_against_branch.rs"]
-mod pubschema_ac07_quickstart_example_validates_against_branch;
