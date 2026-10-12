@@ -107,5 +107,17 @@
     "sunset": "2026-12-10",
     "replacement": "PRD-mcphost-declared-ordering-per-verb: limit now carries the verb's schema maximum (clamped and reported in _meta.mcphost.limit_clamped, never refused; 0 or less is args_invalid); host.runs.list now pages (next_cursor, order) and a verdict filter pages over the filtered set instead of a post-filtered window",
     "narrowing_only": true
+  },
+  {
+    "path": "host.runs.list.include_result",
+    "since": "2026-10-11",
+    "sunset": "2026-12-10",
+    "replacement": "PRD-mcphost-fields-projection-on-list-verbs: include_result is now sugar for naming `result` in `fields`; the response carries _meta.deprecated naming include_result"
+  },
+  {
+    "path": "host_runs_list.include_result",
+    "since": "2026-10-11",
+    "sunset": "2026-12-10",
+    "replacement": "PRD-mcphost-fields-projection-on-list-verbs: include_result is now sugar for naming `result` in `fields`; the response carries _meta.deprecated naming include_result"
   }
 ]

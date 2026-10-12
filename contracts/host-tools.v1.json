@@ -850,6 +850,15 @@
     },
     {
       "description": "Read a channel's posts (group or named -- by id, or a named channel's own name) in seq order since a cursor (default: your own last read position, or 0 for a first read). ack: true stores the last returned post as your new read position (an empty read leaves it unchanged); next_cursor is absent on the last page. A group channel's non-member, or anyone but a named channel's own owner, gets channel_not_found.",
+      "fields_enum": [
+        "post_id",
+        "channel_id",
+        "seq",
+        "from_address",
+        "body",
+        "data",
+        "created_at"
+      ],
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -864,6 +873,24 @@
           "cursor": {
             "description": "Opaque keyset cursor: pass the previous page's next_cursor verbatim; omit for the first page.",
             "type": "string"
+          },
+          "fields": {
+            "description": "Return only these row fields; default all.",
+            "items": {
+              "enum": [
+                "post_id",
+                "channel_id",
+                "seq",
+                "from_address",
+                "body",
+                "data",
+                "created_at"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
           },
           "limit": {
             "default": 50,
@@ -1016,12 +1043,47 @@
     },
     {
       "description": "List documents in this tenant's document store. Without since, returns the current live snapshot; with since (a watermark from host.docs.status, 0 for everything), returns every document changed since, including deleted ones (deleted: true).",
+      "fields_enum": [
+        "id",
+        "name",
+        "version",
+        "mime",
+        "bytes",
+        "text_bytes",
+        "metadata",
+        "seq",
+        "created_at",
+        "updated_at",
+        "deleted"
+      ],
       "input_schema": {
         "additionalProperties": false,
         "properties": {
           "cursor": {
             "description": "Opaque keyset cursor: pass the previous page's next_cursor verbatim; omit for the first page.",
             "type": "string"
+          },
+          "fields": {
+            "description": "Return only these row fields; default all.",
+            "items": {
+              "enum": [
+                "id",
+                "name",
+                "version",
+                "mime",
+                "bytes",
+                "text_bytes",
+                "metadata",
+                "seq",
+                "created_at",
+                "updated_at",
+                "deleted"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
           },
           "limit": {
             "default": 100,
@@ -2031,12 +2093,49 @@
     },
     {
       "description": "Every unread-or-read message across every thread you participate in, excluding your own sends, ordered oldest first; page with cursor from the previous response's next_cursor.",
+      "fields_enum": [
+        "message_id",
+        "thread_id",
+        "seq",
+        "from_address",
+        "body",
+        "data",
+        "in_reply_to",
+        "synthetic",
+        "source_class",
+        "created_at",
+        "read_at",
+        "urgent"
+      ],
       "input_schema": {
         "additionalProperties": false,
         "properties": {
           "cursor": {
             "description": "Opaque keyset cursor: pass the previous page's next_cursor verbatim; omit for the first page.",
             "type": "string"
+          },
+          "fields": {
+            "description": "Return only these row fields; default all.",
+            "items": {
+              "enum": [
+                "message_id",
+                "thread_id",
+                "seq",
+                "from_address",
+                "body",
+                "data",
+                "in_reply_to",
+                "synthetic",
+                "source_class",
+                "created_at",
+                "read_at",
+                "urgent"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
           },
           "limit": {
             "default": 50,
@@ -2156,12 +2255,49 @@
     },
     {
       "description": "Every message in one thread you participate in, ordered by seq; thread_not_found if you are not (or no longer) a participant.",
+      "fields_enum": [
+        "message_id",
+        "thread_id",
+        "seq",
+        "from_address",
+        "body",
+        "data",
+        "in_reply_to",
+        "synthetic",
+        "source_class",
+        "created_at",
+        "read_at",
+        "urgent"
+      ],
       "input_schema": {
         "additionalProperties": false,
         "properties": {
           "cursor": {
             "description": "Opaque keyset cursor: pass the previous page's next_cursor verbatim; omit for the first page.",
             "type": "string"
+          },
+          "fields": {
+            "description": "Return only these row fields; default all.",
+            "items": {
+              "enum": [
+                "message_id",
+                "thread_id",
+                "seq",
+                "from_address",
+                "body",
+                "data",
+                "in_reply_to",
+                "synthetic",
+                "source_class",
+                "created_at",
+                "read_at",
+                "urgent"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
           },
           "limit": {
             "default": 50,
@@ -3046,6 +3182,32 @@
     },
     {
       "description": "List this tenant's recent runs, newest first, optionally filtered by tool, status (queued|running|done|error|timeout|cancelled), trigger (call|job|schedule|event|composition|...), end_user_subject (the end user, if any, the run ran as), or verdict (alert|exceeded, the run's own budget.verdict). A chain's own composed step runs (trigger: \"composition\") are excluded by default -- pass parent_run_id, trigger: \"composition\", or include_children: true to see them. include_result: true inlines each terminal row's result when it fits one part, so a poller reading trigger=\"event\" runs doesn't need a second host.runs.get per row.",
+      "fields_enum": [
+        "run_id",
+        "tool",
+        "trigger",
+        "trigger_ref",
+        "status",
+        "progress",
+        "counters",
+        "result",
+        "result_ref",
+        "purged",
+        "error_class",
+        "error",
+        "started_unix",
+        "finished_unix",
+        "duration_ms",
+        "deadline_s",
+        "attempt",
+        "manual",
+        "test",
+        "end_user",
+        "parent_run_id",
+        "step_no",
+        "parent_tool",
+        "children"
+      ],
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -3056,6 +3218,41 @@
           "end_user_subject": {
             "description": "Only runs that ran as this end user's subject.",
             "type": "string"
+          },
+          "fields": {
+            "description": "Return only these row fields; default all.",
+            "items": {
+              "enum": [
+                "run_id",
+                "tool",
+                "trigger",
+                "trigger_ref",
+                "status",
+                "progress",
+                "counters",
+                "result",
+                "result_ref",
+                "purged",
+                "error_class",
+                "error",
+                "started_unix",
+                "finished_unix",
+                "duration_ms",
+                "deadline_s",
+                "attempt",
+                "manual",
+                "test",
+                "end_user",
+                "parent_run_id",
+                "step_no",
+                "parent_tool",
+                "children"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
           },
           "include_children": {
             "description": "Include composed child runs (trigger: \"composition\") alongside top-level ones; default false.",
@@ -4412,10 +4609,55 @@
       "since": "0.58.0"
     },
     {
-      "description": "List this tenant's published tools.",
+      "description": "List this tenant's published tools. fields projects each row to the named keys; limit returns only the first N tools (truncated: true when more exist).",
+      "fields_enum": [
+        "name",
+        "kind",
+        "created_at",
+        "visibility",
+        "share_description",
+        "unshared_by",
+        "env",
+        "advisories",
+        "expose_spec",
+        "exposed_at",
+        "spec_reads",
+        "scopes",
+        "stub"
+      ],
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "fields": {
+            "description": "Return only these row fields; default all.",
+            "items": {
+              "enum": [
+                "name",
+                "kind",
+                "created_at",
+                "visibility",
+                "share_description",
+                "unshared_by",
+                "env",
+                "advisories",
+                "expose_spec",
+                "exposed_at",
+                "spec_reads",
+                "scopes",
+                "stub"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "limit": {
+            "description": "Return only the first N tools; default all.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
@@ -4892,10 +5134,55 @@
       "since": "0.58.0"
     },
     {
-      "description": "List this tenant's published tools.",
+      "description": "List this tenant's published tools. fields projects each row to the named keys; limit returns only the first N tools (truncated: true when more exist).",
+      "fields_enum": [
+        "name",
+        "kind",
+        "created_at",
+        "visibility",
+        "share_description",
+        "unshared_by",
+        "env",
+        "advisories",
+        "expose_spec",
+        "exposed_at",
+        "spec_reads",
+        "scopes",
+        "stub"
+      ],
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "fields": {
+            "description": "Return only these row fields; default all.",
+            "items": {
+              "enum": [
+                "name",
+                "kind",
+                "created_at",
+                "visibility",
+                "share_description",
+                "unshared_by",
+                "env",
+                "advisories",
+                "expose_spec",
+                "exposed_at",
+                "spec_reads",
+                "scopes",
+                "stub"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "limit": {
+            "description": "Return only the first N tools; default all.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
@@ -6598,6 +6885,24 @@
             "description": "Opaque keyset cursor: pass the previous page's next_cursor verbatim; omit for the first page.",
             "type": "string"
           },
+          "fields": {
+            "description": "Return only these row fields; default all.",
+            "items": {
+              "enum": [
+                "post_id",
+                "channel_id",
+                "seq",
+                "from_address",
+                "body",
+                "data",
+                "created_at"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
           "limit": {
             "default": 50,
             "description": "Page size, 1..=max for this verb (a larger value is clamped and reported in _meta.mcphost.limit_clamped).",
@@ -6754,6 +7059,28 @@
           "cursor": {
             "description": "Opaque keyset cursor: pass the previous page's next_cursor verbatim; omit for the first page.",
             "type": "string"
+          },
+          "fields": {
+            "description": "Return only these row fields; default all.",
+            "items": {
+              "enum": [
+                "id",
+                "name",
+                "version",
+                "mime",
+                "bytes",
+                "text_bytes",
+                "metadata",
+                "seq",
+                "created_at",
+                "updated_at",
+                "deleted"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
           },
           "limit": {
             "default": 100,
@@ -7741,6 +8068,29 @@
             "description": "Opaque keyset cursor: pass the previous page's next_cursor verbatim; omit for the first page.",
             "type": "string"
           },
+          "fields": {
+            "description": "Return only these row fields; default all.",
+            "items": {
+              "enum": [
+                "message_id",
+                "thread_id",
+                "seq",
+                "from_address",
+                "body",
+                "data",
+                "in_reply_to",
+                "synthetic",
+                "source_class",
+                "created_at",
+                "read_at",
+                "urgent"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
           "limit": {
             "default": 50,
             "description": "Page size, 1..=max for this verb (a larger value is clamped and reported in _meta.mcphost.limit_clamped).",
@@ -7864,6 +8214,29 @@
           "cursor": {
             "description": "Opaque keyset cursor: pass the previous page's next_cursor verbatim; omit for the first page.",
             "type": "string"
+          },
+          "fields": {
+            "description": "Return only these row fields; default all.",
+            "items": {
+              "enum": [
+                "message_id",
+                "thread_id",
+                "seq",
+                "from_address",
+                "body",
+                "data",
+                "in_reply_to",
+                "synthetic",
+                "source_class",
+                "created_at",
+                "read_at",
+                "urgent"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
           },
           "limit": {
             "default": 50,
@@ -8726,6 +9099,41 @@
           "end_user_subject": {
             "description": "Only runs that ran as this end user's subject.",
             "type": "string"
+          },
+          "fields": {
+            "description": "Return only these row fields; default all.",
+            "items": {
+              "enum": [
+                "run_id",
+                "tool",
+                "trigger",
+                "trigger_ref",
+                "status",
+                "progress",
+                "counters",
+                "result",
+                "result_ref",
+                "purged",
+                "error_class",
+                "error",
+                "started_unix",
+                "finished_unix",
+                "duration_ms",
+                "deadline_s",
+                "attempt",
+                "manual",
+                "test",
+                "end_user",
+                "parent_run_id",
+                "step_no",
+                "parent_tool",
+                "children"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
           },
           "include_children": {
             "description": "Include composed child runs (trigger: \"composition\") alongside top-level ones; default false.",
@@ -9953,10 +10361,40 @@
       "since": "0.58.0"
     },
     {
-      "description": "List this tenant's published tools.",
+      "description": "List this tenant's published tools. fields projects each row to the named keys; limit returns only the first N tools (truncated: true when more exist).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "fields": {
+            "description": "Return only these row fields; default all.",
+            "items": {
+              "enum": [
+                "name",
+                "kind",
+                "created_at",
+                "visibility",
+                "share_description",
+                "unshared_by",
+                "env",
+                "advisories",
+                "expose_spec",
+                "exposed_at",
+                "spec_reads",
+                "scopes",
+                "stub"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "limit": {
+            "description": "Return only the first N tools; default all.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"

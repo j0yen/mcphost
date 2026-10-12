@@ -2184,7 +2184,13 @@ pub async fn tool_diff(state: &AppState, tenant: &Tenant, args: &Value) -> Resul
     }))
 }
 
-pub async fn tool_list(state: &AppState, tenant: &Tenant) -> Result<Value, AppError> {
+pub async fn tool_list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    // PRD-mcphost-fields-projection-on-list-verbs R4: validated before any read.
+    let fields = crate::paged::parse_fields("host.tool.list", args)?;
+    let limit = match args.get("limit").filter(|v| !v.is_null()) {
+        Some(_) => Some(crate::paged::resolve_limit(args, 1000, 1000)?),
+        None => None,
+    };
     let rows = state.db.list_tools(tenant.id).await?;
     // PRD-mcphost-python-dependency-policy requirement 6 (AC8): read fresh
     // from `tool_lock`, not the tool's immutable stored `spec` -- a daily
@@ -2250,7 +2256,25 @@ pub async fn tool_list(state: &AppState, tenant: &Tenant) -> Result<Value, AppEr
             entry
         })
         .collect();
-    Ok(json!({ "tools": tools }))
+    let mut tools = tools;
+    let mut truncated = false;
+    if let Some(rl) = &limit
+        && tools.len() as i64 > rl.limit
+    {
+        tools.truncate(rl.limit as usize);
+        truncated = true;
+    }
+    let mut out = json!({ "tools": tools });
+    if truncated {
+        out["truncated"] = json!(true);
+    }
+    if let Some(fields) = &fields {
+        crate::paged::project_page(&mut out, "tools", fields);
+    }
+    if let Some(rl) = &limit {
+        crate::paged::note_clamp(&mut out, rl);
+    }
+    Ok(out)
 }
 
 pub async fn tool_remove(

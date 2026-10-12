@@ -22,6 +22,18 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "runs_ac05_sync_call_writes_run_row.rs"]
+mod runs_ac05_sync_call_writes_run_row;
+#[path = "runs_ac07_purge_clears_result.rs"]
+mod runs_ac07_purge_clears_result;
+#[path = "runs_ac08_tenant_delete_cascades_runs.rs"]
+mod runs_ac08_tenant_delete_cascades_runs;
+#[path = "runs_ac09_quickstart_and_llms_txt_name_job_limits.rs"]
+mod runs_ac09_quickstart_and_llms_txt_name_job_limits;
+#[path = "runs_ac10_wait_long_polls.rs"]
+mod runs_ac10_wait_long_polls;
+#[path = "runs_ac11_admin_runs_reap.rs"]
+mod runs_ac11_admin_runs_reap;
 #[path = "runsubject_ac01_async_assertion_end_user_on_run.rs"]
 mod runsubject_ac01_async_assertion_end_user_on_run;
 #[path = "runsubject_ac02_list_filters_by_end_user_subject.rs"]

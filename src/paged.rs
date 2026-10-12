@@ -39,6 +39,11 @@ pub const CURSOR_REMEDY: &str = "omit cursor to restart from the first page";
 /// `_meta.mcphost.limit_clamped {asked, max}`.
 pub const LIMIT_CLAMPED_KEY: &str = "__limit_clamped";
 
+/// Reserved key a handler leaves on its result when the caller used a
+/// deprecated argument; `handler::call_tool` removes it and reports it as
+/// `_meta.deprecated`.
+pub const DEPRECATED_ARG_KEY: &str = "__deprecated_arg";
+
 /// One description per paging property, defined once and spliced into every
 /// paged verb's schema.
 pub const LIMIT_DESCRIPTION: &str =
@@ -48,6 +53,7 @@ pub const CURSOR_DESCRIPTION: &str =
 pub const NEXT_CURSOR_DESCRIPTION: &str =
     "Opaque cursor for the next page; absent (key omitted) on the last page.";
 pub const TRUNCATED_DESCRIPTION: &str = "true when more rows exist past this page.";
+pub const FIELDS_DESCRIPTION: &str = "Return only these row fields; default all.";
 
 /// The keyset position of one row: `(seq, id)`, minted under one `order`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -190,6 +196,22 @@ pub fn note_clamp(value: &mut Value, limit: &ResolvedLimit) {
     if let (Some((asked, max)), Some(obj)) = (limit.clamped, value.as_object_mut()) {
         obj.insert(LIMIT_CLAMPED_KEY.to_string(), json!({"asked": asked, "max": max}));
     }
+}
+
+/// Leave a deprecated-argument report for `handler::call_tool` to move into
+/// `_meta.deprecated {argument, replaced_by, sunset}`.
+pub fn note_deprecated_arg(value: &mut Value, argument: &str, replaced_by: &str, sunset: &str) {
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert(
+            DEPRECATED_ARG_KEY.to_string(),
+            json!({"argument": argument, "replaced_by": replaced_by, "sunset": sunset}),
+        );
+    }
+}
+
+/// Remove and return the report [`note_deprecated_arg`] left.
+pub fn take_deprecated_arg(value: &mut Value) -> Option<Value> {
+    value.as_object_mut()?.remove(DEPRECATED_ARG_KEY)
 }
 
 /// Remove and return the clamp report [`note_clamp`] left.
@@ -389,6 +411,10 @@ pub trait Paged {
     const MAX_LIMIT: u32;
     type Row;
     type Order: OrderEnum;
+    /// PRD-mcphost-fields-projection-on-list-verbs R1: the row keys a caller
+    /// may project to. Listed once, in [`paged_verbs!`]; `fldp_ac04` asserts
+    /// it equals the key set the handler really serializes.
+    const FIELDS: &'static [&'static str];
     /// The keyset position of `row` under `order` (unstamped).
     fn cursor_of(row: &Self::Row, order: Self::Order) -> Cursor;
 
@@ -422,6 +448,7 @@ pub trait Paged {
         );
         m.insert("cursor".into(), json!({"type": "string", "description": CURSOR_DESCRIPTION}));
         m.insert("order".into(), <Self::Order as OrderEnum>::schema_property());
+        m.insert("fields".into(), fields_property(Self::FIELDS));
         m
     }
 
@@ -446,12 +473,13 @@ pub struct PagedSpec {
     /// Declared order names, in declaration order, and the default.
     pub orders: fn() -> Vec<&'static str>,
     pub default_order: fn() -> &'static str,
+    pub fields: &'static [&'static str],
     input_properties: fn() -> Map<String, Value>,
 }
 
 macro_rules! paged_verbs {
     ($( $name:ident { verb: $verb:literal, key: $key:literal, default: $def:literal, max: $max:literal,
-                      row: $row:ty, order: $ord:ty, cursor_of: $cur:expr } )+) => {
+                      row: $row:ty, order: $ord:ty, fields: [$($field:literal),+ $(,)?], cursor_of: $cur:expr } )+) => {
         $(
             pub struct $name;
             impl Paged for $name {
@@ -461,6 +489,7 @@ macro_rules! paged_verbs {
                 const MAX_LIMIT: u32 = $max;
                 type Row = $row;
                 type Order = $ord;
+                const FIELDS: &'static [&'static str] = &[$( $field ),+];
                 fn cursor_of(row: &Self::Row, order: Self::Order) -> Cursor { ($cur)(row, order) }
             }
         )+
@@ -471,6 +500,7 @@ macro_rules! paged_verbs {
             PagedSpec { verb: $verb, key: $key, default_limit: $def, max_limit: $max,
                         orders: <$ord as OrderEnum>::names,
                         default_order: || <$ord as OrderEnum>::DEFAULT.name(),
+                        fields: <$name as Paged>::FIELDS,
                         input_properties: <$name as Paged>::input_properties }
         ),+];
     };
@@ -479,18 +509,23 @@ macro_rules! paged_verbs {
 paged_verbs! {
     ChannelRead { verb: "host.channel.read", key: "posts", default: 50, max: 100,
         row: crate::db::ChannelPostRow, order: ChannelOrder,
+        fields: ["post_id", "channel_id", "seq", "from_address", "body", "data", "created_at"],
         cursor_of: |p: &crate::db::ChannelPostRow, _o: ChannelOrder| Cursor::new(p.seq, p.id.clone()) }
     MsgInbox { verb: "host.msg.inbox", key: "messages", default: 50, max: 100,
         row: crate::db::MessageRow, order: InboxOrder,
+        fields: ["message_id", "thread_id", "seq", "from_address", "body", "data", "in_reply_to", "synthetic", "source_class", "created_at", "read_at", "urgent"],
         cursor_of: |m: &crate::db::MessageRow, _o: InboxOrder| Cursor::new(m.created_unix_ms, m.id.clone()) }
     MsgThread { verb: "host.msg.thread", key: "messages", default: 50, max: 100,
         row: crate::db::MessageRow, order: ThreadOrder,
+        fields: ["message_id", "thread_id", "seq", "from_address", "body", "data", "in_reply_to", "synthetic", "source_class", "created_at", "read_at", "urgent"],
         cursor_of: |m: &crate::db::MessageRow, _o: ThreadOrder| Cursor::new(m.seq, m.id.clone()) }
     RunsList { verb: "host.runs.list", key: "runs", default: 20, max: 200,
         row: crate::db::RunPageRow, order: RunsOrder,
+        fields: ["run_id", "tool", "trigger", "trigger_ref", "status", "progress", "counters", "result", "result_ref", "purged", "error_class", "error", "started_unix", "finished_unix", "duration_ms", "deadline_s", "attempt", "manual", "test", "end_user", "parent_run_id", "step_no", "parent_tool", "children"],
         cursor_of: |r: &crate::db::RunPageRow, _o: RunsOrder| Cursor::new(r.rowid, r.run.id.clone()) }
     DocsList { verb: "host.docs.list", key: "documents", default: 100, max: 1000,
         row: crate::db::DocumentRow, order: DocsOrder,
+        fields: ["id", "name", "version", "mime", "bytes", "text_bytes", "metadata", "seq", "created_at", "updated_at", "deleted"],
         cursor_of: |d: &crate::db::DocumentRow, o: DocsOrder| match o {
             DocsOrder::NameAsc => Cursor::new(0, d.name.clone()),
             DocsOrder::CreatedDesc | DocsOrder::CreatedAsc => Cursor::new(d.seq, d.id.clone()),
@@ -577,11 +612,136 @@ pub fn unpaged_reason(verb: &str) -> Option<&'static str> {
 /// Splice the generated paging properties into a verb's input schema
 /// (`properties` object), replacing any hand-typed `limit`/`cursor`.
 pub fn splice_input_schema(verb: &str, properties: &mut Map<String, Value>) {
+    splice_fields_property(verb, properties);
     let Some(spec) = paged_spec(verb) else { return };
     let props = (spec.input_properties)();
     for (k, v) in props {
         properties.insert(k, v);
     }
+}
+
+// ---- fields projection ----------------------------------------------------
+// PRD-mcphost-fields-projection-on-list-verbs.
+
+/// Row keys of `host.tool.list` (`control::tool_list`). `stub` is present
+/// only on an echo-kind tool, the rest always.
+pub const TOOL_LIST_FIELDS: &[&str] = &[
+    "name", "kind", "created_at", "visibility", "share_description", "unshared_by", "env",
+    "advisories", "expose_spec", "exposed_at", "spec_reads", "scopes", "stub",
+];
+
+/// List verbs that are not [`Paged`] (no keyset cursor yet) but still accept
+/// `fields`: `(verb, array key, row fields)`. They keep their
+/// `unpaged_reason`; the only difference from the other excused verbs is that
+/// they were asked for a projection explicitly.
+pub const PROJECTED_WINDOWS: &[(&str, &str, &[&str])] = &[
+    ("host.tool.list", "tools", TOOL_LIST_FIELDS),
+];
+
+/// The set of row fields `verb` accepts in `fields`, `None` for a verb that
+/// does not project. Generated into the contract as `fields_enum`.
+pub fn fields_for(verb: &str) -> Option<&'static [&'static str]> {
+    paged_spec(verb)
+        .map(|s| s.fields)
+        .or_else(|| PROJECTED_WINDOWS.iter().find(|(v, _, _)| *v == verb).map(|(_, _, f)| *f))
+}
+
+/// Every verb that accepts `fields`.
+pub fn projected_verbs() -> impl Iterator<Item = &'static str> {
+    PAGED_VERBS.iter().copied().chain(PROJECTED_WINDOWS.iter().map(|(v, _, _)| *v))
+}
+
+/// The `fields` input property, its `items.enum` being the verb's field set.
+pub fn fields_property(fields: &[&str]) -> Value {
+    json!({
+        "type": "array", "minItems": 1, "uniqueItems": true,
+        "items": {"type": "string", "enum": fields},
+        "description": FIELDS_DESCRIPTION,
+    })
+}
+
+/// Add the generated `fields` property to a projecting verb's schema.
+pub fn splice_fields_property(verb: &str, properties: &mut Map<String, Value>) {
+    if let Some(fields) = fields_for(verb) {
+        properties.insert("fields".to_string(), fields_property(fields));
+    }
+}
+
+/// The closest entry of `valid` to `field` (Levenshtein <= 3, first wins a tie).
+pub fn nearest_field(field: &str, valid: &[&str]) -> Option<String> {
+    let lower = field.to_ascii_lowercase();
+    valid
+        .iter()
+        .map(|c| (crate::errors::levenshtein(&lower, c), *c))
+        .filter(|(d, _)| *d <= 3)
+        .min_by_key(|(d, _)| *d)
+        .map(|(_, c)| c.to_string())
+}
+
+/// `field_unknown {field, nearest, valid}`.
+pub fn field_unknown(verb: &str, field: &str, valid: &[&str]) -> AppError {
+    AppError::Structured {
+        code: "field_unknown",
+        message: format!("unknown field '{field}' for {verb}"),
+        data: json!({"field": field, "nearest": nearest_field(field, valid), "valid": valid}),
+    }
+}
+
+/// Read and validate `fields` before any row is fetched: absent/null ->
+/// `None` (all fields); empty or malformed -> `args_invalid`; a name outside
+/// the verb's set -> `field_unknown`. Duplicates collapse, order is kept.
+pub fn parse_fields(verb: &str, args: &Value) -> Result<Option<Vec<String>>, AppError> {
+    let Some(raw) = args.get("fields").filter(|v| !v.is_null()) else {
+        return Ok(None);
+    };
+    let valid = fields_for(verb).unwrap_or(&[]);
+    let list = raw
+        .as_array()
+        .ok_or_else(|| AppError::InvalidArgs("fields: must be an array of field names".to_string()))?;
+    if list.is_empty() {
+        return Err(AppError::InvalidArgs(
+            "fields: must name at least one field (omit it to get every field)".to_string(),
+        ));
+    }
+    let mut out: Vec<String> = Vec::new();
+    for item in list {
+        let name = item
+            .as_str()
+            .ok_or_else(|| AppError::InvalidArgs("fields: every entry must be a string".to_string()))?;
+        if !valid.contains(&name) {
+            return Err(field_unknown(verb, name, valid));
+        }
+        if !out.iter().any(|f| f == name) {
+            out.push(name.to_string());
+        }
+    }
+    Ok(Some(out))
+}
+
+/// Keep only `fields` on every row of `page[key]` (after the fetch, so the
+/// keyset cursor is minted from the full row).
+pub fn project_page(page: &mut Value, key: &str, fields: &[String]) {
+    if let Some(rows) = page.get_mut(key).and_then(Value::as_array_mut) {
+        for row in rows {
+            if let Some(obj) = row.as_object_mut() {
+                obj.retain(|k, _| fields.iter().any(|f| f == k));
+            }
+        }
+    }
+}
+
+/// `fields` on a verb that has `unpaged_reason` and no projection is
+/// `args_invalid` naming the argument, not silently ignored.
+pub fn refuse_fields_on_unprojected(verb: &str, args: &Value) -> Result<(), AppError> {
+    if args.get("fields").is_some_and(|v| !v.is_null())
+        && fields_for(verb).is_none()
+        && unpaged_reason(verb).is_some()
+    {
+        return Err(AppError::InvalidArgs(format!(
+            "fields: {verb} returns unpaged rows and does not project; omit fields"
+        )));
+    }
+    Ok(())
 }
 
 /// The drift check: every contract entry whose recorded response has a

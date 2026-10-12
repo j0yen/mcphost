@@ -189,6 +189,12 @@ pub fn dump_contract(kinds: &KindRegistry) -> Value {
             } else if let Some(reason) = crate::paged::unpaged_reason(canonical) {
                 entry["unpaged_reason"] = json!(reason);
             }
+            // PRD-mcphost-fields-projection-on-list-verbs R2: the projection
+            // set is generated from the same table the handler validates
+            // against.
+            if let Some(fields) = crate::paged::fields_for(canonical) {
+                entry["fields_enum"] = json!(fields);
+            }
             entry
         })
         .collect();

@@ -1131,8 +1131,17 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         ),
         Tool::new(
             "host.tool.list",
-            "List this tenant's published tools.",
-            host_schema(json!({}), &[]),
+            "List this tenant's published tools. fields projects each row to the named keys; \
+             limit returns only the first N tools (truncated: true when more exist).",
+            host_schema(
+                json!({
+                    "limit": {
+                        "type": "integer", "minimum": 1, "maximum": 1000,
+                        "description": "Return only the first N tools; default all.",
+                    },
+                }),
+                &[],
+            ),
         ),
         Tool::new(
             "host.tool.remove",
@@ -3977,7 +3986,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
     // over whatever the literal above typed, so the description exists once.
     for tool in tools.iter_mut() {
         let name = tool.name.to_string();
-        if crate::paged::paged_spec(&name).is_some()
+        if (crate::paged::paged_spec(&name).is_some() || crate::paged::fields_for(&name).is_some())
             && let Some(props) = Arc::make_mut(&mut tool.input_schema)
                 .get_mut("properties")
                 .and_then(Value::as_object_mut)
@@ -5727,6 +5736,9 @@ impl McpHostHandler {
         name: &str,
         args: Value,
     ) -> Result<Value, AppError> {
+        // PRD-mcphost-fields-projection-on-list-verbs R4: `fields` on an
+        // excused (`unpaged_reason`) verb is refused, never silently ignored.
+        crate::paged::refuse_fields_on_unprojected(name, &args)?;
         match name {
             "host.whoami" => {
                 let session_tenant = self.session_tenant_namespace(session_id).await;
@@ -5735,7 +5747,7 @@ impl McpHostHandler {
             "host.key.rotate" => control::key_rotate(&self.state, tenant).await,
             "host.self.offboard" => control::self_offboard(&self.state, tenant).await,
             "host.tool.publish" => control::tool_publish(&self.state, tenant, &args).await,
-            "host.tool.list" => control::tool_list(&self.state, tenant).await,
+            "host.tool.list" => control::tool_list(&self.state, tenant, &args).await,
             "host.tool.remove" => control::tool_remove(&self.state, tenant, &args).await,
             "host.tool.logs" => control::tool_logs(&self.state, tenant, &args).await,
             "host.tool.test" => self.tool_test(tenant, args).await,
@@ -9804,6 +9816,7 @@ impl ServerHandler for McpHostHandler {
                 // PRD-mcphost-paged-trait-on-every-list-verb requirement 7:
                 // a clamped `limit` rides out as `_meta.mcphost.limit_clamped`.
                 let limit_clamped = crate::paged::take_clamp(&mut value);
+                let deprecated_arg = crate::paged::take_deprecated_arg(&mut value);
                 let result = CallToolResult::structured(value);
                 // requirement 2: an alias call's response carries the
                 // deprecation hint in `_meta.deprecated` (the MCP field
@@ -9855,6 +9868,20 @@ impl ServerHandler for McpHostHandler {
                             "sunset": crate::tool_aliases::SUNSET_DATE,
                         }),
                     );
+                }
+                // PRD-mcphost-fields-projection-on-list-verbs R6: a deprecated
+                // argument (`host.runs.list include_result`) rides in
+                // `_meta.deprecated`, merged into an alias notice if there is one.
+                if let Some(dep) = deprecated_arg {
+                    match meta.0.get_mut("deprecated").and_then(Value::as_object_mut) {
+                        Some(existing) => {
+                            existing.insert("argument".to_string(), dep["argument"].clone());
+                            existing.insert("argument_replaced_by".to_string(), dep["replaced_by"].clone());
+                        }
+                        None => {
+                            meta.0.insert("deprecated".to_string(), dep);
+                        }
+                    }
                 }
                 if let Some(url) = invite_hint_url {
                     meta.0.insert("invite_url".to_string(), json!(url));

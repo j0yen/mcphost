@@ -439,6 +439,8 @@ async fn attach_result_if_single_part(
 /// byte-identical (`result: null`); `limit` clamps to 50 rather than 200
 /// when set, since 200 rows x one 256 KiB part each would be 51 MB.
 pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    // PRD-mcphost-fields-projection-on-list-verbs R4: refused before any read.
+    let fields = crate::paged::parse_fields("host.runs.list", args)?;
     let tool = arg_str_opt(args, "tool");
     let status = arg_str_opt(args, "status");
     let trigger = arg_str_opt(args, "trigger");
@@ -446,7 +448,11 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     let parent_run_id = arg_str_opt(args, "parent_run_id");
     let include_children = args.get("include_children").and_then(Value::as_bool).unwrap_or(false);
     let verdict = arg_str_opt(args, "verdict");
-    let include_result = args.get("include_result").and_then(Value::as_bool).unwrap_or(false);
+    // R6: `include_result: true` is sugar for naming `result` in `fields`.
+    let include_result_arg = args.get("include_result").and_then(Value::as_bool).unwrap_or(false);
+    let wants_result = fields.as_ref().is_some_and(|f| f.iter().any(|n| n == "result"));
+    let include_result = include_result_arg || wants_result;
+    let wants_children = fields.as_ref().is_none_or(|f| f.iter().any(|n| n == "children"));
     let max_limit = if include_result { 50 } else { 200 };
     // PRD-mcphost-paged-trait-on-every-list-verb requirement 7: above the
     // max is clamped and reported (`_meta.mcphost.limit_clamped`), below 1 is
@@ -479,7 +485,11 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     let rows: Vec<RunRow> = page.into_iter().map(|r| r.run).collect();
     // One query for the whole page's children, not one per row.
     let parent_ids: Vec<String> = rows.iter().map(|r| r.id.clone()).collect();
-    let children = state.db.list_run_children_for_parents(tenant.id, parent_ids).await?;
+    let children = if wants_children {
+        state.db.list_run_children_for_parents(tenant.id, parent_ids).await?
+    } else {
+        Vec::new()
+    };
     let mut by_parent: HashMap<&str, Vec<Value>> = HashMap::new();
     for child in &children {
         if let Some(parent) = child.parent_run_id.as_deref() {
@@ -504,6 +514,17 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     page_out.insert(RunsList::KEY.to_string(), Value::Array(runs));
     crate::paged::finish_page(&mut page_out, next.as_ref(), &state.session_bindings, tenant.id);
     let mut out = Value::Object(page_out);
+    if let Some(fields) = &fields {
+        crate::paged::project_page(&mut out, "runs", fields);
+    }
+    if include_result_arg {
+        crate::paged::note_deprecated_arg(
+            &mut out,
+            "include_result",
+            "fields: [..., \"result\"]",
+            "2026-12-10",
+        );
+    }
     crate::paged::note_clamp(&mut out, &resolved);
     Ok(out)
 }

@@ -424,6 +424,7 @@ fn message_row_json(row: &MessageRow) -> Value {
 /// AC6, AC13).
 pub async fn inbox(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     use crate::paged::{self, MsgInbox, OrderEnum as _, Paged};
+    let fields = paged::parse_fields(MsgInbox::VERB, args)?;
     let rl = paged::resolve_limit(args, MsgInbox::DEFAULT_LIMIT.into(), MsgInbox::MAX_LIMIT.into())?;
     // Single-variant order: validated so the schema's `order` enum is honest.
     paged::resolve_order::<paged::InboxOrder>(args)?;
@@ -440,6 +441,9 @@ pub async fn inbox(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
     out.insert(MsgInbox::KEY.to_string(), json!(rows.iter().map(message_row_json).collect::<Vec<_>>()));
     paged::finish_page(&mut out, next.as_ref(), &state.session_bindings, tenant.id);
     let mut value = Value::Object(out);
+    if let Some(fields) = &fields {
+        paged::project_page(&mut value, MsgInbox::KEY, fields);
+    }
     paged::note_clamp(&mut value, &rl);
     Ok(value)
 }
@@ -490,6 +494,7 @@ pub async fn wait(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
 /// AC2, AC3, AC14).
 pub async fn thread(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     use crate::paged::{self, Cursor, MsgThread, OrderEnum as _, Paged};
+    let fields = paged::parse_fields(MsgThread::VERB, args)?;
     let thread_id = arg_str(args, "thread_id")?;
     let rl = paged::resolve_limit(args, MsgThread::DEFAULT_LIMIT.into(), MsgThread::MAX_LIMIT.into())?;
     // Single-variant order: validated so the schema's `order` enum is honest.
@@ -513,6 +518,9 @@ pub async fn thread(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
     out.insert(MsgThread::KEY.to_string(), json!(rows.iter().map(message_row_json).collect::<Vec<_>>()));
     paged::finish_page(&mut out, next.as_ref(), &state.session_bindings, tenant.id);
     let mut value = Value::Object(out);
+    if let Some(fields) = &fields {
+        paged::project_page(&mut value, MsgThread::KEY, fields);
+    }
     paged::note_clamp(&mut value, &rl);
     Ok(value)
 }
