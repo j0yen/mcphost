@@ -12,6 +12,8 @@ mod ci_sandbox_support;
 mod assertion;
 #[path = "support/chart_fixture.rs"]
 mod chart_fixture;
+#[path = "support/ctrace.rs"]
+mod ctrace;
 #[path = "support/docs_qa.rs"]
 mod docs_qa;
 #[path = "support/federation.rs"]
@@ -78,6 +80,16 @@ mod ci_sandbox_ac07_docs_state_the_capability_requirement;
 mod compose_ac1_python_call_child_result;
 #[path = "compose_ac2_child_exception_propagates.rs"]
 mod compose_ac2_child_exception_propagates;
+#[path = "ctrace_ac01_trace_cost_p95_within_2ms.rs"]
+mod ctrace_ac01_trace_cost_p95_within_2ms;
+#[path = "ctrace_ac02_every_call_result_carries_call_id.rs"]
+mod ctrace_ac02_every_call_result_carries_call_id;
+#[path = "ctrace_ac03_secrets_never_reach_a_stored_trace.rs"]
+mod ctrace_ac03_secrets_never_reach_a_stored_trace;
+#[path = "ctrace_ac04_trace_has_tails_line_and_phase_timings.rs"]
+mod ctrace_ac04_trace_has_tails_line_and_phase_timings;
+#[path = "ctrace_ac07_replay_dry_runs_with_edited_args.rs"]
+mod ctrace_ac07_replay_dry_runs_with_edited_args;
 #[path = "docsqa_ac01_recipe_end_to_end.rs"]
 mod docsqa_ac01_recipe_end_to_end;
 #[path = "docsqa_ac02_quota_inside_free_plan_knobs.rs"]

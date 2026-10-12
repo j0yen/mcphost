@@ -1250,6 +1250,9 @@ impl Kind for HttpKind {
     }
 
     async fn call(&self, spec: &Value, args: Value, ctx: &CallCtx) -> Result<Value, KindError> {
+        // PRD-mcphost-call-trace-replay requirement 4: args_ms / upstream_ms /
+        // serialize_ms for the call trace.
+        let t_call = Instant::now();
         let parsed = parse_spec(spec)?;
         let method_str = parsed.method.to_ascii_uppercase();
         let method = reqwest::Method::from_bytes(method_str.as_bytes())
@@ -1459,6 +1462,7 @@ impl Kind for HttpKind {
         };
 
         let start = Instant::now();
+        let args_ms = start.duration_since(t_call).as_millis() as u64;
         let response = match builder.send().await {
             Ok(r) => r,
             Err(e) => return Err(classify_reqwest_error(e)),
@@ -1493,6 +1497,10 @@ impl Kind for HttpKind {
         }
         drop(stream);
         let duration_ms = start.elapsed().as_millis();
+        let t_upstream_done = Instant::now();
+        crate::calltrace::note_phases(
+            json!({"args_ms": args_ms, "upstream_ms": duration_ms as u64, "serialize_ms": 0}),
+        );
 
         if too_large {
             ctx.log.log(&format!(
@@ -1610,6 +1618,11 @@ impl Kind for HttpKind {
             }
         }
 
+        crate::calltrace::note_phases(json!({
+            "args_ms": args_ms,
+            "upstream_ms": duration_ms as u64,
+            "serialize_ms": t_upstream_done.elapsed().as_millis() as u64,
+        }));
         if ctx.test_mode {
             // Requirement 10 / AC15: `host.tool_test` shows the schema the
             // host inferred (or the author's own, unchanged) alongside the

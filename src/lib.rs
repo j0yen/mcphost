@@ -17,6 +17,7 @@ pub mod billing;
 pub mod budget;
 pub mod build_info;
 pub use build_info::ANON_HEALTHZ_KEYS;
+pub mod calltrace;
 pub mod channels;
 pub mod chart;
 pub mod claim;

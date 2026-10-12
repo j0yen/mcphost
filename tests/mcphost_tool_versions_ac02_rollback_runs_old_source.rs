@@ -53,7 +53,7 @@ async fn rollback_makes_next_call_run_old_source() {
         .tools_call("host.tool_call", json!({"name": "echoer", "args": {"v1": "hi"}}))
         .await
         .expect("v1-shaped args must be accepted after rollback");
-    assert_eq!(extract_structured(&call), json!({"v1": "hi"}));
+    assert_eq!(crate::common::without_call_id(extract_structured(&call)), json!({"v1": "hi"}));
 
     let history = client
         .tools_call("host.tool_history", json!({"name": "echoer"}))

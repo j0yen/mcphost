@@ -428,6 +428,16 @@ pub async fn tick_once(state: &AppState) -> Result<(), AppError> {
         let cutoff_ms = now_ms - plan.channel_retention_days.saturating_mul(86_400_000);
         state.db.delete_channel_posts_older_than(channel_id, cutoff_ms).await?;
     }
+    // PRD-mcphost-call-trace-replay R2: the same tick sweeps call traces down
+    // to the newest 200 per tenant within 24 h (`calls` rows are untouched).
+    state
+        .db
+        .sweep_call_traces(
+            crate::state::now_unix(),
+            crate::calltrace::RETAIN_SECS,
+            crate::calltrace::RETAIN_PER_TENANT,
+        )
+        .await?;
     Ok(())
 }
 

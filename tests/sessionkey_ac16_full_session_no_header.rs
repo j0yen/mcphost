@@ -65,7 +65,7 @@ async fn signup_publish_and_call_complete_on_one_connection_with_no_header() {
         )
         .await
         .expect("host.tool_call over tenant_key");
-    let result = extract_structured(&call);
+    let result = crate::common::without_call_id(extract_structured(&call));
     // PRD-mcphost-one-next-tool requirement 3/5 (AC4): this tenant's second
     // distinct host.* call (after host.tool_publish) on a tenant_key
     // session still has under 5 distinct tools used, so it carries its own

@@ -16,6 +16,8 @@ mod busyaudit;
 mod chart_fixture;
 #[path = "support/child_proc_lint.rs"]
 mod child_proc_lint;
+#[path = "support/ctrace.rs"]
+mod ctrace;
 #[path = "support/docs_qa.rs"]
 mod docs_qa;
 #[path = "support/fake_as.rs"]
@@ -483,6 +485,10 @@ mod cproc_ac03_allow_set_derived_from_serve_rs;
 mod cproc_ac06_real_tree_has_no_raw_spawns_or_guards;
 #[path = "cproc_ac07_flake_lint_job_runs_child_proc_lint.rs"]
 mod cproc_ac07_flake_lint_job_runs_child_proc_lint;
+#[path = "ctrace_ac05_trace_access_is_tenant_scoped.rs"]
+mod ctrace_ac05_trace_access_is_tenant_scoped;
+#[path = "ctrace_ac06_sweep_keeps_newest_200_within_24h.rs"]
+mod ctrace_ac06_sweep_keeps_newest_200_within_24h;
 #[path = "ctrv_ac01_sha_stable_across_boot_requests_and_process.rs"]
 mod ctrv_ac01_sha_stable_across_boot_requests_and_process;
 #[path = "ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs"]
