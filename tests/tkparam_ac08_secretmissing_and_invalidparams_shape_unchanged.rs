@@ -33,8 +33,8 @@ fn secret_missing_data_keys_are_unchanged() {
     // ("no field/expected/example drift") with that one key folded in.
     assert_eq!(
         keys(&data),
-        BTreeSet::from(["error_code", "field", "expected", "docs", "request_id"].map(String::from)),
-        "secret_missing data keys must be exactly error_code/field/expected/docs/request_id, no example: {data:?}"
+        BTreeSet::from(["error_code", "field", "expected", "docs", "request_id", "feedback_hint"].map(String::from)),
+        "secret_missing data keys must be exactly error_code/field/expected/docs/request_id/feedback_hint, no example: {data:?}"
     );
 }
 
@@ -48,7 +48,7 @@ fn invalid_params_data_keys_are_unchanged() {
     // comment on the sibling assertion above -- same additive `request_id`.
     assert_eq!(
         keys(&data),
-        BTreeSet::from(["error_code", "docs", "request_id"].map(String::from)),
-        "invalid_params data keys must be exactly error_code/docs/request_id, no field/expected/example: {data:?}"
+        BTreeSet::from(["error_code", "docs", "request_id", "feedback_hint"].map(String::from)),
+        "invalid_params data keys must be exactly error_code/docs/request_id/feedback_hint, no field/expected/example: {data:?}"
     );
 }

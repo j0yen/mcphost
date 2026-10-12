@@ -84,6 +84,148 @@ impl FeedbackKind {
     }
 }
 
+/// Codes raised through [`crate::errors::AppError::Structured`] by a kind or
+/// the handler rather than by a dedicated `AppError` variant, but which the
+/// hint table must still cover (PRD-mcphost-error-responses-invite-feedback
+/// R1). The drift test builds one `Structured` per entry.
+pub const KIND_LEVEL_CODES: &[&str] = &[
+    "tool_exception",
+    "upstream_status",
+    "host_not_allowed",
+    "unknown_argument",
+    "end_user_required",
+    "end_user_explicit_forbidden",
+];
+
+/// Every error code the host knows the verb for: the default
+/// [`FeedbackKind`] a stuck agent should file under. Adding an `AppError`
+/// variant (or a [`KIND_LEVEL_CODES`] entry) without a row here fails
+/// `fbeh_every_code_has_a_kind`. A `Structured` code with no row (one-off
+/// handler codes) falls back to [`FALLBACK_KIND`].
+pub const CODE_TO_KIND: &[(&str, FeedbackKind)] = &[
+    ("bearer_invalid", FeedbackKind::DocsGap),
+    ("tenant_key_missing", FeedbackKind::DocsGap),
+    ("tenant_key_invalid", FeedbackKind::DocsGap),
+    ("forbidden", FeedbackKind::WrongError),
+    ("tenant_disabled", FeedbackKind::WrongError),
+    ("rate_limited", FeedbackKind::WrongError),
+    ("tool_not_found", FeedbackKind::MissingTool),
+    ("tenant_not_found", FeedbackKind::WrongError),
+    ("invalid_params", FeedbackKind::WrongError),
+    ("unknown_kind", FeedbackKind::MissingTool),
+    ("invalid_tool_name", FeedbackKind::WrongError),
+    ("spec_too_large", FeedbackKind::WrongError),
+    ("too_many_tools", FeedbackKind::WrongError),
+    ("invalid_spec", FeedbackKind::WrongError),
+    ("args_invalid", FeedbackKind::WrongError),
+    ("secret_missing", FeedbackKind::DocsGap),
+    ("call_timeout", FeedbackKind::Bug),
+    ("storage", FeedbackKind::Bug),
+    ("internal", FeedbackKind::Bug),
+    ("registry_disabled", FeedbackKind::WrongError),
+    ("namespace_unverified", FeedbackKind::WrongError),
+    ("registry_rejected", FeedbackKind::WrongError),
+    ("share_quota_exceeded", FeedbackKind::WrongError),
+    ("group_not_found", FeedbackKind::WrongError),
+    ("handoff_token_invalid", FeedbackKind::WrongError),
+    ("handoff_token_redeemed", FeedbackKind::WrongError),
+    ("handoff_token_expired", FeedbackKind::WrongError),
+    ("issuer_already_registered", FeedbackKind::WrongError),
+    ("issuer_quota_exceeded", FeedbackKind::WrongError),
+    ("issuer_not_found", FeedbackKind::WrongError),
+    ("invalid_token", FeedbackKind::WrongError),
+    ("conflicting_credentials", FeedbackKind::WrongError),
+    ("wrong_tenant", FeedbackKind::WrongError),
+    ("insufficient_scope", FeedbackKind::WrongError),
+    ("auth_conflict", FeedbackKind::WrongError),
+    ("quota_trusted_issuers", FeedbackKind::WrongError),
+    ("tool_exception", FeedbackKind::Bug),
+    ("upstream_status", FeedbackKind::Bug),
+    ("host_not_allowed", FeedbackKind::WrongError),
+    ("unknown_argument", FeedbackKind::WrongError),
+    ("end_user_required", FeedbackKind::WrongError),
+    ("end_user_explicit_forbidden", FeedbackKind::WrongError),
+];
+
+/// The kind for a code with no [`CODE_TO_KIND`] row (an ad-hoc
+/// `Structured` code): an unexplained error is a candidate bug.
+pub const FALLBACK_KIND: FeedbackKind = FeedbackKind::Bug;
+
+/// The hint's hard size ceiling in bytes.
+pub const FEEDBACK_HINT_MAX_BYTES: usize = 200;
+
+/// The kind `code` files under, in `table`.
+pub fn kind_in(table: &[(&str, FeedbackKind)], code: &str) -> Option<FeedbackKind> {
+    table.iter().find(|(c, _)| *c == code).map(|(_, k)| *k)
+}
+
+/// The kind `code` files under in [`CODE_TO_KIND`], else [`FALLBACK_KIND`].
+pub fn kind_for_code(code: &str) -> FeedbackKind {
+    kind_in(CODE_TO_KIND, code).unwrap_or(FALLBACK_KIND)
+}
+
+/// The drift check behind `fbeh_every_code_has_a_kind`: `Err` names the
+/// first code with no row in `table`, or the first row no code produces.
+pub fn check_every_code_has_a_kind(
+    table: &[(&str, FeedbackKind)],
+    codes: &[&str],
+) -> Result<(), String> {
+    for code in codes {
+        if kind_in(table, code).is_none() {
+            return Err(format!("feedback kind mapping missing for {code}"));
+        }
+    }
+    for (key, _) in table {
+        if !codes.contains(key) {
+            return Err(format!("feedback kind mapping for {key} matches no error code"));
+        }
+    }
+    Ok(())
+}
+
+/// A tool name made safe for the one-line hint: printable, no quote or
+/// backslash, at most `max` bytes.
+fn hint_safe(s: &str, max: usize) -> String {
+    let mut out = String::new();
+    for c in s.chars() {
+        if c.is_control() || c == '"' || c == '\\' {
+            continue;
+        }
+        if out.len() + c.len_utf8() > max {
+            break;
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// The one-line `data.feedback_hint` for an error `code`, generated from
+/// [`CODE_TO_KIND`]. `tool` joins `context` when the error knows it;
+/// `request_id` rides in the `text` placeholder so a `bug` report carries
+/// the log correlation id. Always <= [`FEEDBACK_HINT_MAX_BYTES`], no newline.
+pub fn feedback_hint(code: &str, tool: Option<&str>, request_id: Option<&str>) -> String {
+    let kind = kind_for_code(code);
+    let text = match request_id {
+        Some(id) => format!("<what happened; request_id={}>", hint_safe(id, 32)),
+        None => "<what you expected>".to_string(),
+    };
+    let tool_part = match tool.map(|t| hint_safe(t, 60)) {
+        Some(t) if !t.is_empty() => format!(", tool:\"{t}\""),
+        _ => String::new(),
+    };
+    let render = |tool_part: &str| {
+        format!(
+            "host.feedback.send {{kind:\"{}\", text:\"{}\", context:{{error_code:\"{}\"{}}}}}",
+            kind.as_str(),
+            text,
+            hint_safe(code, 40),
+            tool_part
+        )
+    };
+    let hint = render(&tool_part);
+    if hint.len() > FEEDBACK_HINT_MAX_BYTES { render("") } else { hint }
+}
+
 /// A bounded, in-memory map of connection key -> its most recent call ids.
 /// `Arc`-shared across `AppState` clones; never persisted.
 #[derive(Clone, Default)]

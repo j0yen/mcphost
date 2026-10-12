@@ -6979,7 +6979,7 @@ impl McpHostHandler {
                     tenant = %tenant.namespace, method = "tools/call", tool = %local_name,
                     duration_ms, status = "error", error_class = app_err.code(), mcp_name_mismatch,
                 );
-                Err(app_err)
+                Err(app_err.with_tool(local_name))
             }
             Err(_elapsed) => {
                 if let Ok(call_id) = self
