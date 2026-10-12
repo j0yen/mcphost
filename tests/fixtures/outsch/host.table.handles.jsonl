@@ -1,0 +1,2 @@
+{"handles": []}
+{"handles": [{"bytes": 4096, "created_unix": 1791720945, "derived_from": "SELECT * FROM orders", "expires_unix": 1791724545, "handle": "hdl_vfuibkfgy4oj", "last_used_unix": 1791720945, "row_count": 300}]}

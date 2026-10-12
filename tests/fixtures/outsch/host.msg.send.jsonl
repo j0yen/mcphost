@@ -1,0 +1,3 @@
+{"delivered_to": ["t_257bf9bc"], "message_id": "01M4NE6YZAWMQG7Y1F11Q27BWZ", "refused": [], "seq": 1, "thread_id": "01M4NE6YZ9GJ5QVEN6855PZ6FD"}
+{"delivered_to": [], "message_id": "01M4NE6YGJM9V6Q13FPDV38VKK", "refused": [{"address": "t_93e2ee26", "code": "contact_pending"}], "seq": 1, "thread_id": "01M4NE6YGEV51DBKRTA9BHS1H0"}
+{"delivered_to": ["t_d898b4ab"], "message_id": "01M4NEBJV74JDS8ARQFG33WK63", "refused": [{"address": "t_doesnotexist00000000", "code": "agent_not_found"}], "seq": 1, "thread_id": "01M4NEBJTWQ6R537NESFNBXHRK"}

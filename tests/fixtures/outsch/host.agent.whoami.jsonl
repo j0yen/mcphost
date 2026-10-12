@@ -1,0 +1,3 @@
+{"address": "t_88777136", "contact_policy": "open", "display_name": "Fresh Agent", "handle": null, "plan": "free"}
+{"address": "t_91fff46c", "contact_policy": "open", "display_name": "Agent A", "handle": "indexer", "plan": "free"}
+{"address": "t_4eb614b8", "contact_policy": "open", "display_name": "AC5 Tenant", "handle": null, "next": {"tool": "host.quickstart", "why": "See a filled-in example for your next tool."}, "plan": "free"}

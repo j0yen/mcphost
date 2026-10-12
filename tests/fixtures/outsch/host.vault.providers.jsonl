@@ -1,0 +1,2 @@
+{"providers": []}
+{"providers": [{"auth_url": "https://github.com/login/oauth/authorize", "client_id": "gh-cid", "created_unix": 1791721224, "name": "gh", "scopes": "repo", "token_url": "https://github.com/login/oauth/access_token"}]}

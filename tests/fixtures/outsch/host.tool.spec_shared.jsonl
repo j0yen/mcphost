@@ -1,0 +1,2 @@
+{"exposed_at": "2026-10-11T12:21:38Z", "kind": "python", "spec": {"args_schema": {"type": "object"}, "source": "def main(args):\n    return {\"ok\": True}\n"}, "tool": "t_42a44bd7.counted"}
+{"exposed_at": "2026-10-11T12:21:38Z", "kind": "python", "spec": {"args_schema": {"type": "object"}, "network": "none", "requirements": [], "source": "def main(args):\n    return {\"ok\": True}\n", "timeout_s": 12}, "tool": "t_933eb73b.priced_call"}

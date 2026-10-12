@@ -98,6 +98,12 @@ A python tool reads and writes files with `mcphost.blob.get(id_or_name)` and
 `mcphost.blob.put(name, data)` under `network: none`. `/exports/{id}`, `/charts/{id}` and
 `/blobs/{id}` now share one `signed_url` module (403 bad signature, 410 expired). Migration
 `0083_blobs` adds the `blobs` table.
+Every canonical `host.*`/`billing.*` tool now declares what it returns
+(PRD-mcphost-contract-output-schemas): `tools/list` carries `outputSchema` for each, and
+`mcphost contract dump` emits `output_schema` on canonicals and `alias_of` on every alias
+and flattened name. `docs/tools.md` gains a `Returns` block per tool, and `api_contract::diff`
+reports a removed or narrowed output field (`host.runs.get.output.started_at`) unless
+`deprecations.json` excuses it. Response bodies are unchanged.
 
 ## v0.107.13 — 2026-10-10
 

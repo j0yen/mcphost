@@ -1,0 +1,1 @@
+{"rule": [{"column_or_attr": "region", "op": "eq", "value": {"attr": "region"}}], "target": {"table": "orders"}, "version": 1}

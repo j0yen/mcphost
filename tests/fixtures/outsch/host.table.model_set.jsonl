@@ -1,0 +1,2 @@
+{"set": true, "table": "orders"}
+{"lineage_notes": [{"action": "verify the chart still renders with the new type", "id": "chart:revenue_chart", "kind": "chart", "label": "Revenue Chart", "severity": "degrading"}], "set": true, "table": "orders"}

@@ -1,0 +1,3 @@
+{"cursor": null, "events": []}
+{"cursor": null, "events": [{"client_id": "dcr_417348a2379f493f049ac7988fb71b30187318e8b8d36d430e861e23d3ec5c9f", "end_user_subject": null, "event": "revoke", "id": 7, "ip_hash": null, "method": null, "reason": null, "scopes": "mcp", "ts": 1791721075}]}
+{"cursor": null, "events": [{"client_id": "dcr_b5c2403ed2208dd87c13b65035e429635ddb37c7c2d706490a6fc0f7b596c617", "end_user_subject": null, "event": "consent", "id": 1, "ip_hash": "fe55725b537244f13360cddbaed6ff2cc186f44c923b40f70db5f688d0efdbab", "method": "dcr", "reason": "unverified_client_at_approval", "scopes": "mcp", "ts": 1791721033}]}

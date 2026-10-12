@@ -1,0 +1,1 @@
+{"audience": null, "client_id": "claude-enterprise", "issuer": "https://idp.acme-test.example.com", "jwks_url": "http://127.0.0.1:46495/jwks"}
