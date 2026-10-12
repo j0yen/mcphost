@@ -167,7 +167,7 @@ impl ColumnType {
         }
     }
 
-    fn parse(s: &str) -> Option<Self> {
+    pub(crate) fn parse(s: &str) -> Option<Self> {
         match s {
             "text" => Some(ColumnType::Text),
             "integer" => Some(ColumnType::Integer),
@@ -182,13 +182,40 @@ impl ColumnType {
     /// `true` if `value`'s JSON shape matches this declared type -- same
     /// permissive-numeric convention as `tenant_state::ColumnType::matches`
     /// (a bare integer literal is a valid `real`).
-    fn matches(self, value: &Value) -> bool {
+    pub fn matches(self, value: &Value) -> bool {
         match self {
             ColumnType::Text | ColumnType::Timestamp => value.is_string(),
             ColumnType::Integer => value.is_i64() || value.is_u64(),
             ColumnType::Real => value.is_number(),
             ColumnType::Boolean => value.is_boolean(),
             ColumnType::Json => true,
+        }
+    }
+
+    /// PRD-mcphost-table-schema-violation-names-the-remedy requirement 1:
+    /// the value shapes this type accepts, in words -- generated beside
+    /// `matches` so a new variant without a description fails the drift
+    /// test, not a live session.
+    pub fn accepts(self) -> &'static [&'static str] {
+        match self {
+            ColumnType::Text => &["a string"],
+            ColumnType::Integer => &["an integer (no fractional part)"],
+            ColumnType::Real => &["a number"],
+            ColumnType::Timestamp => &["an RFC 3339 string"],
+            ColumnType::Boolean => &["true or false"],
+            ColumnType::Json => &["any JSON value"],
+        }
+    }
+
+    /// One value that `matches` this type (the drift test checks it).
+    pub fn example(self) -> Value {
+        match self {
+            ColumnType::Text => json!("hello"),
+            ColumnType::Integer => json!(3),
+            ColumnType::Real => json!(3.5),
+            ColumnType::Timestamp => json!("2026-10-12T00:00:00Z"),
+            ColumnType::Boolean => json!(true),
+            ColumnType::Json => json!({"k": "v"}),
         }
     }
 
@@ -257,12 +284,91 @@ pub(crate) fn table_not_found(table: &str) -> AppError {
     }
 }
 
-fn schema_violation(field: &str, expected: &str) -> AppError {
-    AppError::Structured {
-        code: "table_schema_violation",
-        message: format!("column '{field}' must be of type '{expected}'"),
-        data: json!({"field": field, "expected": expected}),
+/// The JSON kind name of `value`, for `data.got`.
+fn json_kind(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
     }
+}
+
+/// PRD-mcphost-table-schema-violation-names-the-remedy requirements 1-3:
+/// the one schema-violation constructor `validate_rows` (here, code
+/// `table_schema_violation`) and `tenant_state::validate_row` (code
+/// `state_schema_violation`) both build their error through. `declared` is
+/// `(name, type)` for every column; `mismatch` is the declared type and the
+/// offending value, or `None` when the column is undeclared.
+/// Everything beyond the code is built only on this error path.
+pub(crate) fn schema_violation_error(
+    code: &'static str,
+    table: &str,
+    field: &str,
+    mismatch: Option<(ColumnType, &Value)>,
+    declared: &[(&str, &str)],
+) -> AppError {
+    let declared_json: Vec<Value> =
+        declared.iter().map(|(n, t)| json!({"name": n, "type": t})).collect();
+    let declared_text =
+        declared.iter().map(|(n, t)| format!("{n} {t}")).collect::<Vec<_>>().join(", ");
+    match mismatch {
+        Some((ty, value)) => {
+            let accepts = ty.accepts();
+            let got = json_kind(value);
+            AppError::Structured {
+                code,
+                message: format!(
+                    "column '{field}' must be of type '{}' (accepts {}); got {got}",
+                    ty.as_str(),
+                    accepts.join(" or ")
+                ),
+                data: json!({
+                    "field": field,
+                    "kind": "type_mismatch",
+                    "table": table,
+                    "declared": declared_json,
+                    "nearest": Value::Null,
+                    "expected": {"type": ty.as_str(), "accepts": accepts},
+                    "got": got,
+                }),
+            }
+        }
+        None => {
+            let candidates: Vec<(String, String)> =
+                declared.iter().map(|(n, _)| (n.to_string(), n.to_string())).collect();
+            let diag = crate::query_diag::score_identifier(field, "column", &candidates);
+            let nearest = match diag.band {
+                crate::query_diag::Band::Absent => None,
+                _ => diag.matched_to,
+            };
+            let nearest_clause =
+                nearest.as_ref().map(|n| format!("; nearest: '{n}'")).unwrap_or_default();
+            AppError::Structured {
+                code,
+                message: format!(
+                    "column '{field}' is not declared on table '{table}' \
+                     (declared: {declared_text}{nearest_clause})"
+                ),
+                data: json!({
+                    "field": field,
+                    "kind": "unknown_column",
+                    "table": table,
+                    "declared": declared_json,
+                    "nearest": nearest,
+                    "expected": Value::Null,
+                    "got": Value::Null,
+                }),
+            }
+        }
+    }
+}
+
+/// Validates against the stored schema; builds the error's `declared` list.
+pub(crate) fn declared_pairs(columns: &BTreeMap<String, ColumnType>) -> Vec<(&str, &'static str)> {
+    columns.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect()
 }
 
 fn already_exists(name: &str) -> AppError {
@@ -821,14 +927,27 @@ fn sql_param_for(ty: ColumnType, value: &Value) -> Box<dyn rusqlite::ToSql> {
 /// schema before anything is written -- a type mismatch or unknown column
 /// fails the whole call with `table_schema_violation` and writes nothing
 /// (the transaction below is never opened on a validation failure).
-fn validate_rows(schema: &LoadedSchema, rows: &[Map<String, Value>]) -> Result<(), AppError> {
+fn validate_rows(
+    table: &str,
+    schema: &LoadedSchema,
+    rows: &[Map<String, Value>],
+) -> Result<(), AppError> {
+    let violation = |field: &str, mismatch: Option<(ColumnType, &Value)>| {
+        schema_violation_error(
+            "table_schema_violation",
+            table,
+            field,
+            mismatch,
+            &declared_pairs(&schema.columns),
+        )
+    };
     for row in rows {
         for (field, value) in row {
             let Some(ty) = schema.columns.get(field) else {
-                return Err(schema_violation(field, "a declared column"));
+                return Err(violation(field, None));
             };
             if !ty.matches(value) {
-                return Err(schema_violation(field, ty.as_str()));
+                return Err(violation(field, Some((*ty, value))));
             }
         }
     }
@@ -932,7 +1051,7 @@ pub async fn table_append(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     let table_for_conn = table.clone();
     let ids = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
         let schema = load_schema_sync(conn, &table_for_conn)?;
-        validate_rows(&schema, &rows)?;
+        validate_rows(&table_for_conn, &schema, &rows)?;
 
         let existing_rows = row_count_sync(conn, &table_for_conn)?;
         if existing_rows + rows.len() as i64 > rows_max {

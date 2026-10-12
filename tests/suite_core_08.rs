@@ -640,6 +640,10 @@ mod trigidem_ac05_verbs_accept_name;
 mod trigidem_ac06_migration_backfills_duplicate_names;
 #[path = "trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent.rs"]
 mod trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent;
+#[path = "tsvr_ac01_unknown_column_names_declared.rs"]
+mod tsvr_ac01_unknown_column_names_declared;
+#[path = "tsvr_ac02_type_mismatch_names_accepted_shape.rs"]
+mod tsvr_ac02_type_mismatch_names_accepted_shape;
 #[path = "unkfield_ac04_trigger_set_unknown_argument.rs"]
 mod unkfield_ac04_trigger_set_unknown_argument;
 #[path = "unkfield_ac05_tools_list_additional_properties_false.rs"]

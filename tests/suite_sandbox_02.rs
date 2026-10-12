@@ -436,6 +436,8 @@ mod tooltest_ac13_publish_error_parity;
 mod tooltest_ac1_python_two_invocations;
 #[path = "tooltest_ac2_python_exception_other_still_runs.rs"]
 mod tooltest_ac2_python_exception_other_still_runs;
+#[path = "tsvr_ac03_python_bridge_carries_payload.rs"]
+mod tsvr_ac03_python_bridge_carries_payload;
 #[path = "unkfield_ac01_write_table_rejected.rs"]
 mod unkfield_ac01_write_table_rejected;
 #[path = "unkfield_ac02_misplaced_field_valid_for.rs"]

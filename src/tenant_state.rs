@@ -110,20 +110,6 @@ fn quota_exceeded(quota: &'static str, limit: i64, used: i64) -> AppError {
     }
 }
 
-/// requirement 1/AC5: `state_schema_violation`, naming the failing column
-/// and the type it was declared as. `data` uses the shared `field`/
-/// `expected` key names every other structured error in this crate does
-/// (see `errors::AppError::field_and_expected`'s `Structured` arm) so
-/// `into_error_data` surfaces them at the top level unclobbered, instead of
-/// falling back to `split_field`'s whole-message guess.
-fn schema_violation(field: &str, expected: &str) -> AppError {
-    AppError::Structured {
-        code: "state_schema_violation",
-        message: format!("column '{field}' must be of type '{expected}'"),
-        data: json!({"field": field, "expected": expected}),
-    }
-}
-
 fn table_not_found(table: &str) -> AppError {
     AppError::Structured {
         code: "state_table_not_found",
@@ -436,13 +422,28 @@ async fn load_table(
 /// requirement 1/AC5: every field the row provides must both be a
 /// declared column and match its declared type; nothing is written on the
 /// first violation.
-fn validate_row(schema: &TableSchema, row: &Map<String, Value>) -> Result<(), AppError> {
+///
+/// PRD-mcphost-table-schema-violation-names-the-remedy requirement 2: the
+/// error is built by `tables::schema_violation_error`, the same payload
+/// `host.table.append` gives, under code `state_schema_violation`.
+fn validate_row(table: &str, schema: &TableSchema, row: &Map<String, Value>) -> Result<(), AppError> {
+    let declared: Vec<(&str, &str)> =
+        schema.columns.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
+    let violation = |field: &str, mismatch: Option<(ColumnType, &Value)>| {
+        crate::tables::schema_violation_error(
+            "state_schema_violation",
+            table,
+            field,
+            mismatch.and_then(|(t, v)| Some((crate::tables::ColumnType::parse(t.as_str())?, v))),
+            &declared,
+        )
+    };
     for (field, value) in row {
         let Some(ty) = schema.columns.get(field) else {
-            return Err(schema_violation(field, "a declared column"));
+            return Err(violation(field, None));
         };
         if !ty.matches(value) {
-            return Err(schema_violation(field, ty.as_str()));
+            return Err(violation(field, Some((*ty, value))));
         }
     }
     Ok(())
@@ -481,7 +482,7 @@ pub async fn state_insert(
         _ => return Err(AppError::InvalidArgs("'rows' must be an object or array of objects".to_string())),
     };
     for row in &rows {
-        validate_row(&schema, row)?;
+        validate_row(&table, &schema, row)?;
     }
 
     let plan = plan_of(state, &tenant.plan)?;
@@ -838,11 +839,11 @@ mod tests {
         let mut row = Map::new();
         row.insert("metric".to_string(), json!("cpu"));
         row.insert("last_value".to_string(), json!("high"));
-        let err = validate_row(&schema, &row).unwrap_err();
+        let err = validate_row("alerts", &schema, &row).unwrap_err();
         assert_eq!(err.code(), "state_schema_violation");
         let data = err.into_error_data().data.expect("data");
         assert_eq!(data["field"], "last_value");
-        assert_eq!(data["expected"], "real");
+        assert_eq!(data["expected"]["type"], "real");
     }
 
     #[test]
@@ -852,7 +853,7 @@ mod tests {
         let schema = TableSchema { columns, primary_key: None };
         let mut row = Map::new();
         row.insert("nope".to_string(), json!(1));
-        assert!(validate_row(&schema, &row).is_err());
+        assert!(validate_row("alerts", &schema, &row).is_err());
     }
 
     /// AC4's exact scenario: `last_value > 0.5`, `order_by "last_value
