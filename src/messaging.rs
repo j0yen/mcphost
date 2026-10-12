@@ -457,7 +457,7 @@ pub async fn inbox(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
 /// empty list with `cursor` unchanged (AC6). Never errors past argument
 /// validation -- a bad `cursor` still fails fast, same as `inbox` itself.
 pub async fn wait(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    let timeout_s = arg_i64_opt(args, "timeout_s").unwrap_or(20).clamp(1, 25);
+    let timeout_s = arg_i64_opt(args, "timeout_s").unwrap_or(crate::asks::WAIT_DEFAULT_S).clamp(1, crate::asks::WAIT_MAX_S);
     let unread_only = arg_bool(args, "unread_only");
     let cursor_arg = arg_str_opt(args, "cursor");
     let after = match &cursor_arg {

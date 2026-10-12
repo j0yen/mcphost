@@ -35,6 +35,10 @@ pub const HELP_CODES: &[&str] = &[
     "spec_not_exposed",
     "service_unavailable",
     "internal",
+    "ask_expired",
+    "ask_answered",
+    "choice_invalid",
+    "asks_limit",
 ];
 
 /// One `/help/<code>` page's content: meaning, likely cause, fix, and which
@@ -166,6 +170,34 @@ pub const HELP_ENTRIES: &[HelpEntry] = &[
         cause: "Could be almost anything server-side; the real detail is logged under this response's request_id and deliberately not sent to you.",
         fix: "Retry; if it keeps happening, report the request_id (from the payload) to the support channel below so an operator can look it up.",
         doc_link: "www/status.html",
+    },
+    HelpEntry {
+        code: "ask_expired",
+        meaning: "The ask's link lapsed (its ttl_s ran out) before the user answered, so host.ask.wait will never return an answer for it.",
+        cause: "The user did not open the link in time, or ttl_s was shorter than the user's reply time.",
+        fix: "Do not act on a missing answer. Call host.ask.create again with a longer ttl_s, hand the user the new url, and host.ask.wait on the new ask_id.",
+        doc_link: "docs/tools.md",
+    },
+    HelpEntry {
+        code: "ask_answered",
+        meaning: "A POST to an ask link was refused 409 because the ask already has a recorded answer; the first answer wins and the body names it.",
+        cause: "The user (or a second device or a double tap) answered once already, or two answers raced and this one lost.",
+        fix: "Nothing to retry: read the choice in the 409 body, or host.ask.get / host.ask.wait for the agent side. To ask again, call host.ask.create.",
+        doc_link: "docs/tools.md",
+    },
+    HelpEntry {
+        code: "choice_invalid",
+        meaning: "A POST to an ask link was refused 400 because its choice is not one of the ask's options.",
+        cause: "A hand-built request or a stale page whose options differ from the ask's; the buttons on the page always send a valid choice.",
+        fix: "POST one of the options listed in the response's error.options (the same labels host.ask.create was given).",
+        doc_link: "docs/tools.md",
+    },
+    HelpEntry {
+        code: "asks_limit",
+        meaning: "host.ask.create was refused because this tenant already has its plan's asks_open_max asks pending (unanswered and unexpired).",
+        cause: "Asks were created faster than the user answered them, or old asks were never answered and have not yet expired.",
+        fix: "Call host.ask.list {status: \"pending\"} to see the open asks and wait on or reuse one; a pending ask frees its slot when answered or expired. host.quickstart limits.plan.asks_open_max names the ceiling.",
+        doc_link: "docs/plans.md",
     },
 ];
 

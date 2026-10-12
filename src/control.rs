@@ -110,6 +110,10 @@ fn quickstart_limits(state: &AppState, plan_name: &str) -> Value {
         // the exact same constants the enforcement path in
         // `handler.rs`/`kinds::python` reads -- see
         // `tests/limits_ac06_quickstart_docs_match_constants.rs`.
+        // PRD-mcphost-ask-user-decision: the longest one host.msg.wait /
+        // host.runs.wait / host.ask.wait call blocks -- the same constant
+        // their clamps and descriptors read.
+        "wait_max_s": crate::asks::WAIT_MAX_S,
         "call_timeout_default_s": CALL_TIMEOUT.as_secs(),
         "call_timeout_max_s": crate::kinds::python::MAX_TIMEOUT_S,
         "output_bytes_max": MAX_TOOL_OUTPUT_BYTES,

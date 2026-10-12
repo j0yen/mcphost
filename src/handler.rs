@@ -2552,15 +2552,18 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         ),
         Tool::new(
             "host.runs.wait",
-            "Long-poll one run until it finalizes, until: {counter, gte} is reached, or \
-             timeout_s elapses (max 25s), returning its current status either way -- for a \
-             client with no polling loop of its own.",
+            format!(
+                "Long-poll one run until it finalizes, until: {{counter, gte}} is reached, or \
+                 timeout_s elapses (max {}s), returning its current status either way -- for a \
+                 client with no polling loop of its own.",
+                crate::asks::WAIT_MAX_S
+            ),
             host_schema(
                 json!({
                     "run_id": {"type": "string", "description": "The run id to wait on."},
                     "timeout_s": {
                         "type": "integer",
-                        "description": "Max seconds to wait, capped at 25; default 20.",
+                        "description": format!("Max seconds to wait, capped at {}; default {}.", crate::asks::WAIT_MAX_S, crate::asks::WAIT_DEFAULT_S),
                     },
                     "until": {
                         "type": "object",
@@ -3044,17 +3047,88 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         // polling loop of its own, alongside host.runs.wait above.
         Tool::new(
             "host.msg.wait",
-            "Long-poll for a new message until one past cursor arrives or timeout_s elapses (max \
-             25s), returning the same shape as host.msg.inbox either way -- for a client with no \
-             polling loop of its own. On timeout, messages is empty and next_cursor is unchanged.",
+            format!(
+                "Long-poll for a new message until one past cursor arrives or timeout_s elapses (max \
+                 {}s), returning the same shape as host.msg.inbox either way -- for a client with no \
+                 polling loop of its own. On timeout, messages is empty and next_cursor is unchanged.",
+                crate::asks::WAIT_MAX_S
+            ),
             host_schema(
                 json!({
                     "cursor": {"type": "string", "description": "Opaque; omit to wait for the next message from now."},
                     "timeout_s": {
                         "type": "integer",
-                        "description": "Max seconds to wait, capped at 25; default 20.",
+                        "description": format!("Max seconds to wait, capped at {}; default {}.", crate::asks::WAIT_MAX_S, crate::asks::WAIT_DEFAULT_S),
                     },
                     "unread_only": {"type": "boolean", "description": "Filter to messages not yet acked."},
+                }),
+                &[],
+            ),
+        ),
+        // PRD-mcphost-ask-user-decision: a question for the user, answered
+        // from a signed link, blocking the agent until it is.
+        Tool::new(
+            "host.ask.create",
+            "Ask the user a question and hand them a link: returns {ask_id, url, expires_unix, \
+             next_call, next_args}. The url (no login) shows the question and one button per \
+             option; the first answer wins and a later one is refused 409 ask_answered. Then call \
+             host.ask.wait until it returns answered or fails ask_expired -- never act on a \
+             missing answer. Refused with asks_limit at the plan's asks_open_max.",
+            host_schema(
+                json!({
+                    "question": {"type": "string", "description": "What to ask, at most 500 characters."},
+                    "options": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 2,
+                        "maxItems": 6,
+                        "description": "2 to 6 distinct button labels, each at most 40 characters.",
+                    },
+                    "ttl_s": {"type": "integer", "description": "Seconds the link stays answerable; default 3600, at most 604800."},
+                    "context": {"type": "string", "description": "Markdown shown under the question, at most 2 KB; raw HTML is escaped."},
+                    "notify": {"type": "boolean", "description": "Also push the link to the user's channel once host.notify.send is live; until then accepted and reported notified: false."},
+                }),
+                &["question", "options"],
+            ),
+        ),
+        Tool::new(
+            "host.ask.wait",
+            format!(
+                "Block until the user answers an ask, it expires, or timeout_s elapses (max {}s): \
+                 returns {{status: answered|pending, choice, answered_unix, waited_ms, next_call}}. \
+                 pending means call host.ask.wait again; an expired ask fails ask_expired with \
+                 next_call host.ask.create. Needs a tenant_key: it never signs a tenant up.",
+                crate::asks::WAIT_MAX_S
+            ),
+            host_schema(
+                json!({
+                    "ask_id": {"type": "string", "description": "The ask_id host.ask.create returned."},
+                    "timeout_s": {
+                        "type": "integer",
+                        "description": format!("Max seconds to wait, capped at {}; default {}.", crate::asks::WAIT_MAX_S, crate::asks::WAIT_DEFAULT_S),
+                    },
+                }),
+                &["ask_id"],
+            ),
+        ),
+        Tool::new(
+            "host.ask.get",
+            "Read one ask's audit row: {ask_id, question, options, status, choice, created_unix, \
+             answered_unix, expires_unix, waited_total_ms, events}. events is the ordered trail: \
+             created, then exactly one answered or expired. Rows persist 30 days after expiry.",
+            host_schema(
+                json!({"ask_id": {"type": "string", "description": "The ask_id host.ask.create returned."}}),
+                &["ask_id"],
+            ),
+        ),
+        Tool::new(
+            "host.ask.list",
+            "List this tenant's asks, newest first, as {asks: [audit rows]} -- who answered what \
+             and how long the agent waited. Rows persist 30 days after expiry.",
+            host_schema(
+                json!({
+                    "status": {"type": "string", "enum": ["pending", "answered", "expired"], "description": "Only asks in this state."},
+                    "limit": {"type": "integer", "description": "At most this many rows; default 50, at most 100."},
                 }),
                 &[],
             ),
@@ -5643,6 +5717,11 @@ impl McpHostHandler {
             "host.msg.wait" => messaging::wait(&self.state, tenant, &args).await,
             "host.msg.thread" => messaging::thread(&self.state, tenant, &args).await,
             "host.msg.ack" => messaging::ack(&self.state, tenant, &args).await,
+            // PRD-mcphost-ask-user-decision.
+            "host.ask.create" => crate::asks::create(&self.state, tenant, &args).await,
+            "host.ask.wait" => crate::asks::wait(&self.state, tenant, &args).await,
+            "host.ask.get" => crate::asks::get(&self.state, tenant, &args).await,
+            "host.ask.list" => crate::asks::list(&self.state, tenant, &args).await,
             "host.msg.block" => messaging::block(&self.state, tenant, &args).await,
             "host.msg.unblock" => messaging::unblock(&self.state, tenant, &args).await,
             // PRD-mcphost-agent-consent requirements 2, 3, 5, 10.
@@ -8934,6 +9013,7 @@ impl ServerHandler for McpHostHandler {
             (Auth::Anonymous, name)
                 if via_tenant_key_arg
                     && (name.starts_with("host.") || name.starts_with("billing."))
+                    && !crate::asks::NEVER_SIGNS_UP.contains(&alias_canonical.unwrap_or(name))
                     && tenant_path_namespace(parts).is_none() =>
             {
                 let dispatch_name = alias_canonical.unwrap_or(name);
