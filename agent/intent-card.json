@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-chain-publish-time-path-check.md",
-  "intent_slug": "mcphost-chain-publish-time-path-check",
-  "root_motivation": "**Who:** the autonomous coding agent (data_pipeline_builder, workflow_orchestrator personas) publishing a multi-step chain in one session. **What:** publish that tells it a path is wrong before any call. Today `check_step_ref` (`chain.rs:326`) reads `declared_output_names` (`:284-302`); when the predecessor declares nothing the verdict is `unverifiable` and `host.tool_publish` without `dry_run=true` publishes anyway with an advisory verdict (PRD-mcphost-tool-test-truth AC6). The host has seen the predecessor's real result on every run (`RunRow.result_ref`, `runs.rs:171`) and keeps none of its shape. **Why not today:** the output contract of a tool exists only when the agent writes `outputs` by hand; explore 10-07 recorded 35 `resolved to nothing` rows and 10-08 (pre-0.105) 3, every one discoverable from a result the host had already stored.",
-  "user_persona": "An agent (customer) that calls host.webhook_inbox.create once, pastes the url into a sender and shows its user the push event in the same session; the truth-tier integration_specialist persona whose gold is reachable in 4 calls; Operator Joe reading the digest.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-call-cli-from-contract.md",
+  "intent_slug": "mcphost-call-cli-from-contract",
+  "root_motivation": "**Who:** a coding agent in a terminal (Claude Code, Codex), a CI job calling host.spec.test, Joe probing prod. **What:** one command per host tool with typed flags and machine output, no JSON by hand. **Why not today:** the mcphost binary has server-side subcommands only; every shell interaction with the host is a hand-typed tool name and argument object. The command table is generated from the embedded contract, so the shell cannot name a tool or argument the host does not serve.",
+  "user_persona": "A coding agent in a shell that publishes, tests and calls host tools with typed flags and exit codes; a CI job gating on exit status; Operator Joe warned of contract skew against prod.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,61 +14,60 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a python tool that has completed 3 runs each returning `{\"items\": [...], \"count\": n}`, When a chain mapping `\"rows\": \"$.prev.result.rows\"` after it is published without `dry_run`, Then the publish is refused with `compose_mapping_unresolved`, `data.available` is `[\"count\", \"items\"]`, `data.did_you_mean` is `$.prev.result.items`, and no tool row exists.",
-      "test": "tests/cpath_ac01_unresolved_path_refused_at_publish.rs"
+      "description": "Given the embedded contract, When the clap tree is built, Then Command::debug_assert passes and fewer than 5 canonical tools needed any override; the test prints the override list and fails the premise at 5.",
+      "test": "tests/ccli_ac01_tree_builds_from_contract.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a tool whose runs returned `{a, b}` then `{a, c}`, When a chain mapping `$.prev.result.c` is published, Then it succeeds and the response carries `prev_fields_source: \"observed\"`, `runs_sampled: 2`, and `prev_fields: [\"a\", \"b\", \"c\"]`.",
-      "test": "tests/cpath_ac02_observed_union_across_runs.rs"
+      "description": "Given `mcphost call host.tool.publish --name x --kind nope --spec-json '{}'`, When parsed, Then clap exits 2 before any network with the schema's kind enum in the message.",
+      "test": "tests/ccli_ac02_bad_enum_refused_before_network.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a predecessor with no declared `outputs` and no completed run, When the chain is published, Then the verdict is `unverifiable`, the tool is published, and `next` names `host.tool_test`.",
-      "test": "tests/cpath_ac03_no_history_is_unverifiable_and_publishes.rs"
+      "description": "Given a running test host and MCPHOST_KEY set, When `mcphost call host.tool.publish --name hello --kind python --spec-json @fixture.json --json` runs, Then stdout is one JSON line equal to the host's structuredContent and the key never appears in argv, stdout or stderr.",
+      "test": "tests/ccli_ac03_publish_round_trip_key_stays_secret.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a predecessor declaring `outputs: [rows]` whose 2 runs returned `{items}`, When a chain maps `$.prev.result.rows`, Then publish succeeds, `prev_fields_source` is `declared`, and `observed_drift` is `[\"rows\"]`.",
-      "test": "tests/cpath_ac04_declared_wins_and_drift_is_reported.rs"
+      "description": "Given a host returning args_invalid, bearer_invalid, tool_exception and a 503, When each is received, Then the exit codes are 2, 4, 3, 5 and stderr carries error_code and data; the mapping test covers every AppError::code() arm.",
+      "test": "tests/ccli_ac04_error_classes_map_to_exit_codes.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a 3-step chain whose step 3 maps `$.steps[0].result.count` and step 1 has observed keys `{items, count}`, When published, Then it passes; and Given step 2 maps `$.steps[2].result.x`, Then `will_fail` with `reason: \"forward reference\"`.",
-      "test": "tests/cpath_ac05_steps_index_checked_and_forward_reference.rs"
+      "description": "Given a test host whose /contract.json ETag differs from the embedded sha, When any call runs, Then stderr's first line is `contract skew: binary 1.<12> host 1.<12>` and the call still proceeds; with --no-skew-check no HEAD is sent.",
+      "test": "tests/ccli_ac05_contract_skew_warning.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given the failing chain of AC1, When published with `force: true`, Then the tool exists and the response `gates` entry reads `verdict: will_fail, forced: true`.",
-      "test": "tests/cpath_ac06_force_publishes_and_records_it.rs"
+      "description": "Given the contract and the CLI tree, When the drift test compares subcommand names, flag names and help text, Then all three sets are equal; one tool removed from the embedded contract fails the test naming it.",
+      "test": "tests/ccli_ac06_cli_tree_equals_contract.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given `CONTEXT_KEYS`, When the parity test builds a context and reads the checker's accepted keys, Then both equal the table and a scan of `src/kinds/chain.rs` finds no string literal `\"prev\"`, `\"steps\"`, or `\"result\"` outside the table and its tests.",
-      "test": "tests/cpath_ac07_context_keys_table_parity.rs"
+      "description": "Given `mcphost call --completions zsh`, When sourced in zsh, Then `mcphost call host.r<TAB>` lists host.redeem, host.registry.publish, host.runs.*.",
+      "test": "tests/ccli_ac07_completions_rendered_from_the_table.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given a keyed prod tenant whose `echo` tool has run once with `{\"x\": 1}`, When a chain mapping `$.prev.result.nope` after it is published via MCP, Then the response carries `compose_mapping_unresolved` with `available: [\"x\"]` (Live; evidence: the AC 8 curl in \u00a7 Technical considerations ending `-d @publish-bad-path.json | grep -c compose_mapping_unresolved` prints 1)",
-      "test": "deferred -- operator-provisioned: the live probe runs against prod mcphost.dev with a keyed tenant after this PRD deploys."
+      "description": "Given prod, When the CLI calls an anonymous tool with no key, Then it prints the plan ceilings and exits 0 (Live; evidence: `mcphost call host.quickstart --url https://mcphost.dev --json | jq -e '.limits.plan.budget != null'`)",
+      "test": "deferred -- operator-provisioned: live `mcphost call host.quickstart --url https://mcphost.dev --json` against prod after deploy."
     }
   ],
   "scope": [
-    "src/kinds/chain.rs: fixtures task-local, step-key resolution, per-step source/executed/fixtured/skipped, shape validation against declared outputs.",
-    "src/handler.rs: host.tool_test fixtures argument (chain only, 256 KiB cap), host.runs.get as_fixtures schema.",
-    "src/runs.rs: as_fixtures export of child results.",
-    "src/control.rs: host.quickstart kind=chain prints the fixtures calls.",
-    "src/errors.rs: a structured error's non-string data.expected is kept."
+    "src/call_cli.rs (new): the contract-built clap tree, alias rewrite, argument JSON, run, --list and --completions rendering.",
+    "src/client.rs (new): the streamable-HTTP client extracted from compat_check.rs, plus the error-code -> exit-code table.",
+    "src/main.rs: `mcphost call` dispatched before the derive parser; Command::Call for --help.",
+    "Cargo.toml: clap gains the string and env features."
   ],
   "non_goals": [
-    "Fixtures for non-chain tools (refused); persisting fixtures server-side; recording fixtures automatically; observed-shape validation (needs PRD-mcphost-chain-publish-time-path-check)."
+    "Tenant-published tools as subcommands; interactive prompts; storing keys; replacing the dev-loop verbs; nested typed flags for object arguments."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -76,20 +75,31 @@
     "deny_unsafe": false,
     "max_deps": null,
     "msrv": null,
-    "additional": {}
+    "additional": {
+      "key_never_a_flag": "tenant_key is the Authorization bearer from MCPHOST_KEY or --key-file, never a flag value."
+    }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why was a chain dry run with an unreachable step 1 read as unchecked?",
-      "a": "The dry run has no input other than the chain's own args, so a predecessor that cannot run leaves every later mapping unverifiable."
+      "q": "Why can a shell not call a host tool today?",
+      "a": "The binary has only server-side subcommands, so an agent hand-types JSON-RPC."
+    },
+    {
+      "why": 2,
+      "q": "Why not a hand-written client table?",
+      "a": "A second copy of the contract drifts; the table is generated from the embedded contract and a drift test pins it."
     }
   ],
   "created_at": "2026-10-11T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Does a fixtured dry run count as a host.tool_test call for metering?",
-      "resolution": "Yes, one call, no upstream bytes (the PRD default)."
+      "question": "188 canonical tools?",
+      "resolution": "The embedded contract has 170 canonical dotted tools; the underscore wire names and registered aliases are accepted on input and rewritten."
+    },
+    {
+      "question": "AC3 kind python?",
+      "resolution": "The real-host test publishes kind echo (python needs the userns sandbox); the stub-host test pins the python request shape."
     }
   ]
 }

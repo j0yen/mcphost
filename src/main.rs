@@ -127,6 +127,13 @@ enum Command {
         #[arg(long)]
         check: bool,
     },
+    /// PRD-mcphost-call-cli-from-contract: call a host tool from the shell.
+    /// The subcommands and flags come from the embedded contract
+    /// (`mcphost call --list`); handled before this parser runs.
+    Call {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
     /// PRD-mcphost-host-tool-deprecation requirement 1 (P0, AC1): the
     /// `host.*`/`billing.*` tool surface as a versioned contract.
     Contract {
@@ -376,6 +383,13 @@ fn init_tracing() {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // `mcphost call` builds its own clap tree from the embedded contract
+    // (src/call_cli.rs), so it is dispatched before the derive parser sees
+    // the argv.
+    let argv: Vec<String> = std::env::args().collect();
+    if argv.get(1).map(String::as_str) == Some("call") {
+        std::process::exit(mcphost::call_cli::run(&argv[2..]).await);
+    }
     let cli = Cli::parse();
 
     match cli.command {
@@ -383,6 +397,8 @@ async fn main() -> anyhow::Result<()> {
             println!("mcphost {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
+        // Dispatched to `call_cli::run` above, before this parser.
+        Command::Call { .. } => Ok(()),
         Command::SandboxCheck => {
             // Deliberately no `init_tracing()`: this subcommand's contract
             // (AC10) is "prints the same detail line /healthz would show"
