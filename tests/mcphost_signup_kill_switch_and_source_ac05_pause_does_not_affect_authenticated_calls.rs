@@ -35,7 +35,7 @@ async fn pause_file_does_not_affect_authenticated_calls() {
         .tools_call("host.tool_call", json!({"name": "pinger", "args": {}}))
         .await
         .expect("host.tool_call must succeed while paused");
-    assert_eq!(extract_structured(&call_result), json!({}), "{call_result:?}");
+    assert_eq!(crate::common::without_call_id(extract_structured(&call_result)), json!({}), "{call_result:?}");
 
     let fired = client
         .tools_call("host.trigger.fire", json!({"id": trigger_id}))

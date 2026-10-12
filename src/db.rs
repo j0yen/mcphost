@@ -195,6 +195,8 @@ const MIGRATION_0081: &str =
 const MIGRATION_0082: &str = include_str!("../migrations/0082_calls_refused.sql");
 /// PRD-mcphost-ask-user-decision: `asks` and `ask_events`.
 const MIGRATION_0083: &str = include_str!("../migrations/0083_asks.sql");
+/// PRD-mcphost-call-trace-replay requirement 2: the `call_traces` table.
+const MIGRATION_0084: &str = include_str!("../migrations/0084_call_traces.sql");
 
 /// PRD-mcphost-session-bound-tenant-key requirement 3: `kind` on
 /// `signup_events`. Renumbered to 0080 during this rebase: mcphost-tool-
@@ -866,6 +868,57 @@ pub enum RollbackOutcome {
     NotFound,
     OutOfRange { min: i64, max: i64 },
     Ok { kind: String },
+}
+
+/// PRD-mcphost-call-trace-replay requirement 2: the bounded, already-
+/// sanitized trace one call writes beside its `calls` row.
+#[derive(Debug, Clone)]
+pub struct NewCallTrace {
+    pub request_json: String,
+    pub stdout_tail: String,
+    pub stderr_tail: String,
+    pub timings_json: String,
+    pub error_json: Option<String>,
+}
+
+/// A stored `call_traces` row joined to its `calls` row.
+#[derive(Debug, Clone)]
+pub struct CallTraceRow {
+    pub call_id: i64,
+    pub tenant_id: i64,
+    pub tool_name: String,
+    pub started_at: String,
+    pub outcome: String,
+    pub error_class: Option<String>,
+    pub request_json: String,
+    pub stdout_tail: String,
+    pub stderr_tail: String,
+    pub timings_json: String,
+    pub error_json: Option<String>,
+}
+
+fn insert_call_trace(
+    conn: &Connection,
+    call_id: i64,
+    tenant_id: i64,
+    trace: &NewCallTrace,
+    created_unix: i64,
+) -> Result<(), AppError> {
+    conn.execute(
+        "INSERT INTO call_traces (call_id, tenant_id, request_json, stdout_tail, stderr_tail, timings_json, error_json, created_unix) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![
+            call_id,
+            tenant_id,
+            trace.request_json,
+            trace.stdout_tail,
+            trace.stderr_tail,
+            trace.timings_json,
+            trace.error_json,
+            created_unix
+        ],
+    )?;
+    Ok(())
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -2669,7 +2722,8 @@ impl Db {
         Self::migrate_0080_implicit_second_signup_blocked(&conn)?;
         Self::migrate_0081_host_tool_usage_did_you_mean_outcome(&conn)?;
         Self::migrate_0082_calls_refused(&conn)?;
-        Self::migrate_0083_asks(&conn)
+        Self::migrate_0083_asks(&conn)?;
+        Self::migrate_0084_call_traces(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -3811,6 +3865,13 @@ impl Db {
         if !has_table {
             conn.execute_batch(MIGRATION_0083)?;
         }
+        Ok(())
+    }
+
+    /// PRD-mcphost-call-trace-replay requirement 2: `CREATE ... IF NOT
+    /// EXISTS`, so running it twice is a no-op.
+    fn migrate_0084_call_traces(conn: &Connection) -> Result<(), AppError> {
+        conn.execute_batch(MIGRATION_0084)?;
         Ok(())
     }
 
@@ -9101,12 +9162,65 @@ impl Db {
         end_user_method: Option<String>,
         shared_owner_namespace: Option<String>,
         auth_method: String,
+        run_id: Option<String>,
+        step_tool: Option<String>,
+    ) -> Result<(), AppError> {
+        self.record_call_traced(
+            tenant_id,
+            tool_name,
+            duration_ms,
+            ok,
+            error_class,
+            cpu_ms,
+            peak_rss_kb,
+            outcome,
+            origin,
+            origin_detail,
+            caller_tenant_id,
+            end_user_subject,
+            end_user_issuer,
+            end_user_method,
+            shared_owner_namespace,
+            auth_method,
+            run_id,
+            step_tool,
+            None,
+        )
+        .await
+        .map(|_| ())
+    }
+
+    /// PRD-mcphost-call-trace-replay requirement 1/2: the one writer behind
+    /// every `record_call*` wrapper above. Returns the new `calls.id` (the
+    /// `call_id` a tool-call result carries) and, when `trace` is `Some`,
+    /// writes its `call_traces` row in the SAME transaction as the `calls`
+    /// and `runs` rows.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn record_call_traced(
+        &self,
+        tenant_id: i64,
+        tool_name: String,
+        duration_ms: i64,
+        ok: bool,
+        error_class: Option<String>,
+        cpu_ms: Option<i64>,
+        peak_rss_kb: Option<i64>,
+        outcome: &str,
+        origin: String,
+        origin_detail: Option<String>,
+        caller_tenant_id: Option<i64>,
+        end_user_subject: Option<String>,
+        end_user_issuer: Option<String>,
+        end_user_method: Option<String>,
+        shared_owner_namespace: Option<String>,
+        auth_method: String,
         // PRD-mcphost-chain-run-lineage requirement 4: see
         // [`Self::record_call_attributed_with_end_user`]'s own doc comment
         // on this same parameter.
         run_id: Option<String>,
         step_tool: Option<String>,
-    ) -> Result<(), AppError> {
+        trace: Option<NewCallTrace>,
+    ) -> Result<i64, AppError> {
         let started_at = now_rfc3339();
         let started_unix = now_unix();
         let outcome = outcome.to_string();
@@ -9129,6 +9243,9 @@ impl Db {
         // `caller_tenant_id` column stays NULL in both branches, matching
         // `enqueue_shared` (which never sets it either); the `calls` row
         // above is the only place `caller_tenant_id` is still recorded.
+        // PRD-mcphost-call-trace-replay: a cross-tenant call's trace belongs
+        // to the CALLER (whose arguments it holds and who received the id).
+        let trace_tenant_id = caller_tenant_id.unwrap_or(tenant_id);
         let (run_tenant_id, run_tool_name) = match (caller_tenant_id, shared_owner_namespace) {
             (Some(caller_id), Some(owner_ns)) => (caller_id, format!("{owner_ns}.{tool_name}")),
             _ => (tenant_id, tool_name.clone()),
@@ -9140,6 +9257,7 @@ impl Db {
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
                 params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone(), auth_method, step_tool],
             )?;
+            let call_id = tx.last_insert_rowid();
             tx.execute(
                 "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, \
                  status, progress_json, result_ref, error_class, started_unix, finished_unix, \
@@ -9159,8 +9277,186 @@ impl Db {
                     end_user_method,
                 ],
             )?;
+            if let Some(trace) = &trace {
+                insert_call_trace(&tx, call_id, trace_tenant_id, trace, started_unix)?;
+            }
             tx.commit()?;
+            Ok(call_id)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-call-trace-replay requirement 1: a `host.tool.test` /
+    /// `host.tool.run` row. A lean `calls` insert (no `runs` row, nothing
+    /// ran for real) with `outcome = 'test'`, which `usage`, the quota
+    /// counts and the health error rate all skip -- so it is addressable by
+    /// `call_id` without changing what is metered.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn record_test_call(
+        &self,
+        tenant_id: i64,
+        tool_name: String,
+        duration_ms: i64,
+        ok: bool,
+        error_code: Option<String>,
+        origin: String,
+        origin_detail: Option<String>,
+        trace: Option<NewCallTrace>,
+    ) -> Result<i64, AppError> {
+        let started_at = now_rfc3339();
+        let started_unix = now_unix();
+        self.with_conn(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            tx.execute(
+                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, outcome, origin, origin_detail, error_code) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'test', ?8, ?9, ?7)",
+                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_code, origin, origin_detail],
+            )?;
+            let call_id = tx.last_insert_rowid();
+            if let Some(trace) = &trace {
+                insert_call_trace(&tx, call_id, tenant_id, trace, started_unix)?;
+            }
+            tx.commit()?;
+            Ok(call_id)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-call-trace-replay requirement 5: the trace for `call_id`
+    /// (joined to its `calls` row), whoever owns it -- the caller decides
+    /// whether the reader may see it. `None` when no trace row exists.
+    pub async fn get_call_trace(&self, call_id: i64) -> Result<Option<CallTraceRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT t.call_id, t.tenant_id, c.tool_name, c.started_at, c.outcome, c.error_class, \
+                        t.request_json, t.stdout_tail, t.stderr_tail, t.timings_json, t.error_json \
+                 FROM call_traces t JOIN calls c ON c.id = t.call_id WHERE t.call_id = ?1",
+                params![call_id],
+                |r| {
+                    Ok(CallTraceRow {
+                        call_id: r.get(0)?,
+                        tenant_id: r.get(1)?,
+                        tool_name: r.get(2)?,
+                        started_at: r.get(3)?,
+                        outcome: r.get(4)?,
+                        error_class: r.get(5)?,
+                        request_json: r.get(6)?,
+                        stdout_tail: r.get(7)?,
+                        stderr_tail: r.get(8)?,
+                        timings_json: r.get(9)?,
+                        error_json: r.get(10)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-call-trace-replay requirement 2 (AC6): the retention
+    /// sweep -- drop traces older than `max_age_secs`, then keep only the
+    /// newest `max_per_tenant` per tenant. `calls` rows are never touched.
+    /// Returns how many trace rows were removed.
+    pub async fn sweep_call_traces(
+        &self,
+        now_unix: i64,
+        max_age_secs: i64,
+        max_per_tenant: i64,
+    ) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            let aged = conn.execute(
+                "DELETE FROM call_traces WHERE created_unix < ?1",
+                params![now_unix - max_age_secs],
+            )?;
+            let over = conn.execute(
+                "DELETE FROM call_traces WHERE call_id IN ( \
+                   SELECT call_id FROM ( \
+                     SELECT call_id, ROW_NUMBER() OVER ( \
+                       PARTITION BY tenant_id ORDER BY created_unix DESC, call_id DESC) AS rn \
+                     FROM call_traces) \
+                   WHERE rn > ?1)",
+                params![max_per_tenant],
+            )?;
+            Ok((aged + over) as i64)
+        })
+        .await
+    }
+
+    /// Test-only (AC6): the `call_traces` call ids a tenant currently has.
+    pub async fn call_trace_ids_for_test(&self, tenant_id: i64) -> Result<Vec<i64>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt =
+                conn.prepare("SELECT call_id FROM call_traces WHERE tenant_id = ?1 ORDER BY call_id")?;
+            stmt.query_map(params![tenant_id], |r| r.get(0))?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Test-only (AC3): every stored text column of every trace row,
+    /// concatenated -- what "anywhere in `call_traces`" means.
+    pub async fn call_traces_dump_for_test(&self) -> Result<String, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT request_json || stdout_tail || stderr_tail || timings_json || COALESCE(error_json, '') FROM call_traces",
+            )?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows.join("\n"))
+        })
+        .await
+    }
+
+    /// Test-only (AC6): back-date one trace so the sweep's age rule can be
+    /// exercised without waiting a day.
+    pub async fn age_call_trace_for_test(&self, call_id: i64, created_unix: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE call_traces SET created_unix = ?2 WHERE call_id = ?1",
+                params![call_id, created_unix],
+            )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// Test-only (AC2): the newest `calls.id` a tenant has.
+    pub async fn latest_call_id_for_test(&self, tenant_id: i64) -> Result<Option<i64>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row("SELECT MAX(id) FROM calls WHERE tenant_id = ?1", params![tenant_id], |r| r.get(0))
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Test-only (AC4): the `calls.duration_ms` of one row.
+    pub async fn call_duration_ms_for_test(&self, call_id: i64) -> Result<Option<i64>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row("SELECT duration_ms FROM calls WHERE id = ?1", params![call_id], |r| r.get(0))
+                .optional()
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Test-only (AC2): the `calls.tool_name` of one row.
+    pub async fn call_tool_name_for_test(&self, call_id: i64) -> Result<Option<String>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row("SELECT tool_name FROM calls WHERE id = ?1", params![call_id], |r| r.get(0))
+                .optional()
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Test-only (AC6): total `calls` rows for a tenant.
+    pub async fn calls_row_count_for_test(&self, tenant_id: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row("SELECT COUNT(*) FROM calls WHERE tenant_id = ?1", params![tenant_id], |r| r.get(0))
+                .map_err(AppError::from)
         })
         .await
     }
@@ -10352,10 +10648,10 @@ impl Db {
     ) -> Result<i64, AppError> {
         self.with_conn(move |conn| {
             let sql = if ok_only {
-                "SELECT COUNT(*) FROM calls WHERE started_unix >= ?2 AND ok = 1 \
+                "SELECT COUNT(*) FROM calls WHERE started_unix >= ?2 AND ok = 1 AND outcome IS NOT 'test' \
                  AND ((caller_tenant_id IS NULL AND tenant_id = ?1) OR caller_tenant_id = ?1)"
             } else {
-                "SELECT COUNT(*) FROM calls WHERE started_unix >= ?2 \
+                "SELECT COUNT(*) FROM calls WHERE started_unix >= ?2 AND outcome IS NOT 'test' \
                  AND ((caller_tenant_id IS NULL AND tenant_id = ?1) OR caller_tenant_id = ?1)"
             };
             conn.query_row(sql, params![tenant_id, since_unix], |r| r.get(0))
@@ -10369,7 +10665,7 @@ impl Db {
         self.with_conn(move |conn| {
             let mut stmt = conn.prepare(
                 "SELECT duration_ms, ok, error_class, error_code FROM calls \
-                 WHERE tenant_id = ?1 AND started_unix >= ?2",
+                 WHERE tenant_id = ?1 AND started_unix >= ?2 AND outcome IS NOT 'test'",
             )?;
             let rows = stmt
                 .query_map(params![tenant_id, since], |r| {

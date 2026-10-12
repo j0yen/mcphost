@@ -34,6 +34,19 @@ key-less caller up (`tenant_key_missing`). The wait ceiling is one constant: `ho
 `host.runs.wait`, `host.ask.wait` and `host.quickstart.limits.wait_max_s` (25) all read it.
 New plan limit `asks_open_max` (free 5, pro 100); past it `host.ask.create` fails `asks_limit`.
 CI: the required `gate` job now runs every cargo step with `--locked`, `msrvlock_ac01` fails on a stale `Cargo.lock`, and `scripts/required-checks.sh` derives the required status-check set from the workflow files into `.github/required-checks.toml` (`--check` compares it to live branch protection, `--apply` sets it). No runtime change.
+Every `host.tool_call` / `host.tool.test` / `host.tool.run` result now carries `call_id` (the string
+`calls.id` of its row; a failed call carries it in the error `data`), and the new `host.call_trace`
+reads that call back as the host saw it (PRD-mcphost-call-trace-replay): the request with secrets
+masked (`***` for `key|token|secret|password|authorization` arguments, `{{ secret.NAME }}` for a
+tenant secret's value), the last 4 KiB of stdout and stderr, `line`/`source_line` for a python
+exception, and `timings` (`queue_ms`, `runner_start_ms`, `args_ms`, `tool_code_ms`, `serialize_ms`;
+`args_ms`, `upstream_ms`, `serialize_ms` for http). `replay: {args}` merges edits over the recorded
+arguments and dry-runs the tool (`delivered: false`) with `replay.verdict` and `replay.diff`; a
+value still masked is refused with `replay_needs_secret`. Traces are the newest 200 per tenant for
+24 hours (`trace_not_found` after); another tenant's id is `forbidden`; the admin bearer reads any.
+A `host.tool.test` / `host.tool.run` now writes a `calls` row (`outcome = test`) that `host.usage` and
+the `calls_per_day` quota do not count. `MCPHOST_CALL_TRACE=0` turns tracing off (the result still
+carries `call_id`). New migration `0084_call_traces`.
 
 ## v0.107.13 — 2026-10-10
 

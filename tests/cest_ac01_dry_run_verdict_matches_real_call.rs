@@ -29,6 +29,8 @@ struct Fixture<'a> {
 fn strip_request_id(mut data: Value) -> Value {
     if let Some(obj) = data.as_object_mut() {
         obj.remove("request_id");
+        // call_id is per-call by contract (mcphost-call-trace-replay); it can never match across two calls
+        obj.remove("call_id");
     }
     data
 }

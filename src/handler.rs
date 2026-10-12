@@ -2438,6 +2438,34 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &["name"],
             ),
         ),
+        // PRD-mcphost-call-trace-replay R5/R6: what the host saw for one call.
+        Tool::new(
+            "host.call_trace",
+            "Read one tool call exactly as the host saw it, by the call_id a host.tool_call / \
+             host.tool_test / host.tool_run result carries: {call_id, tool, started_at, outcome, \
+             error_code?, line?, source_line?, request: {tool, args} (secret values masked), \
+             stdout_tail, stderr_tail (last 4 KiB each), timings: {queue_ms, runner_start_ms, \
+             args_ms, tool_code_ms, serialize_ms}}. Pass replay: {args: {...}} to merge those \
+             arguments over the recorded ones and dry-run the same tool (host.tool_test \
+             semantics, delivered: false); the response then also carries replay: {result, \
+             verdict, diff: {ok: [before, after], error_code: [before, after]}}. A recorded \
+             argument still masked as *** is refused with replay_needs_secret naming the key. \
+             Traces keep the newest 200 calls per tenant for 24 hours; an unknown or expired id \
+             is trace_not_found, another tenant's id is forbidden.",
+            host_schema(
+                json!({
+                    "call_id": {"type": "string", "description": "The call_id a tool-call result returned."},
+                    "replay": {
+                        "type": "object",
+                        "description": "Dry-run the recorded call again with these argument edits.",
+                        "properties": {
+                            "args": {"type": "object", "description": "Arguments merged over the recorded request.args."},
+                        },
+                    },
+                }),
+                &["call_id"],
+            ),
+        ),
         // PRD-mcphost-table-concept-graph requirement 5: up to five
         // template-generated, parse-checked questions over one table, each
         // runnable unchanged under host.table.query.
@@ -4658,6 +4686,16 @@ pub(crate) async fn build_secret_resolver(
     state: &AppState,
     tenant_id: i64,
 ) -> Result<Arc<dyn SecretResolver>, AppError> {
+    Ok(Arc::new(MapSecretResolver(build_secret_map(state, tenant_id).await?)))
+}
+
+/// The tenant's secrets, name -> decrypted value: what
+/// [`build_secret_resolver`] resolves from, and what the call-trace
+/// redactor (PRD-mcphost-call-trace-replay requirement 3) scrubs by.
+pub(crate) async fn build_secret_map(
+    state: &AppState,
+    tenant_id: i64,
+) -> Result<HashMap<String, String>, AppError> {
     let names = state.db.list_secret_names(tenant_id).await?;
     let mut map = HashMap::with_capacity(names.len());
     for name in names {
@@ -4666,7 +4704,7 @@ pub(crate) async fn build_secret_resolver(
             map.insert(name, plain);
         }
     }
-    Ok(Arc::new(MapSecretResolver(map)))
+    Ok(map)
 }
 
 pub(crate) struct BufferedLog(pub(crate) std::sync::Mutex<Vec<String>>);
@@ -5567,6 +5605,7 @@ impl McpHostHandler {
                 self.host_tool_call(tenant, args, calls_auth_method, end_user).await
             }
             "host.uptime.create" => self.uptime_create(tenant, args, calls_auth_method, end_user).await,
+            "host.call_trace" => self.call_trace(Some(tenant), args).await,
             "host.webhook_inbox.create" => crate::webhook_inbox::create(&self.state, tenant, &args).await,
             "host.tool.history" => control::tool_history(&self.state, tenant, &args).await,
             "host.tool.rollback" => control::tool_rollback(&self.state, tenant, &args).await,
@@ -6241,7 +6280,8 @@ impl McpHostHandler {
             None => None,
         };
 
-        let secrets = build_secret_resolver(&self.state, tenant.id).await?;
+        let secret_map = build_secret_map(&self.state, tenant.id).await?;
+        let secrets: Arc<dyn SecretResolver> = Arc::new(MapSecretResolver(secret_map.clone()));
         let log = Arc::new(BufferedLog(std::sync::Mutex::new(Vec::new())));
         let resources = Arc::new(CellResourceSink(std::sync::Mutex::new(None)));
         // PRD-mcphost-chain-host-steps P1 requirement 6 (AC6): see
@@ -6370,8 +6410,27 @@ impl McpHostHandler {
         if mcp_name_mismatch {
             tracing::warn!(tenant = %tenant.namespace, tool = %local_name, "Mcp-Name header does not match call body's tool name");
         }
-        let outcome = tokio::time::timeout(resolved_timeout, kind.call(&spec, args, &ctx)).await;
+        // PRD-mcphost-call-trace-replay: the request as received (cloned
+        // before the call consumes it) and the capture the kind fills in.
+        let trace_on = crate::calltrace::enabled();
+        let capture = trace_on.then(crate::calltrace::new_capture);
+        let trace_args = trace_on.then(|| args.clone());
+        let call = tokio::time::timeout(resolved_timeout, kind.call(&spec, args, &ctx));
+        let outcome = match &capture {
+            Some(cap) => crate::calltrace::scope(cap.clone(), call).await,
+            None => call.await,
+        };
         let duration_ms = start.elapsed().as_millis() as i64;
+        // Built once, moved into whichever branch below writes the `calls`
+        // row, so the trace commits in that row's own transaction.
+        let trace = trace_args.map(|trace_args| {
+            let error = match &outcome {
+                Ok(Err(kind_err)) => Some(crate::calltrace::kind_error_info(kind_err)),
+                Err(_) => Some(json!({"code": "call_timeout"})),
+                Ok(Ok(_)) => None,
+            };
+            crate::calltrace::build_trace(&secret_map, local_name, &trace_args, capture.as_ref(), error)
+        });
         let (cpu_ms, peak_rss_kb) = resources.0.lock().map(|g| *g).unwrap_or_default().unzip();
         // requirement 6 (AC6): whichever host step (if any) this call's own
         // `TenantHostStepBridge` dispatched, read back after `kind.call`
@@ -6428,10 +6487,10 @@ impl McpHostHandler {
                 // call must not silently succeed with unmetered usage —
                 // report the storage failure even though the `Kind::call`
                 // itself completed.
-                if let Err(storage_err) = self
+                match self
                     .state
                     .db
-                    .record_call_attributed_with_end_user_and_step_tool(
+                    .record_call_traced(
                         tenant.id,
                         local_name.to_string(),
                         duration_ms,
@@ -6450,14 +6509,18 @@ impl McpHostHandler {
                         auth_method.to_string(),
                         Some(run_id.clone()),
                         step_tool.clone(),
+                        trace,
                     )
                     .await
                 {
-                    tracing::error!(
-                        tenant = %tenant.namespace, method = "tools/call", tool = %local_name,
-                        duration_ms, status = "error", error_class = "storage", mcp_name_mismatch,
-                    );
-                    return Err(storage_err);
+                    Ok(call_id) => crate::calltrace::publish_call_id(call_id),
+                    Err(storage_err) => {
+                        tracing::error!(
+                            tenant = %tenant.namespace, method = "tools/call", tool = %local_name,
+                            duration_ms, status = "error", error_class = "storage", mcp_name_mismatch,
+                        );
+                        return Err(storage_err);
+                    }
                 }
                 // PRD-mcphost-end-user-audit-and-revoke requirement 1: this
                 // identified call's activity, buffered for the next 10s
@@ -6529,10 +6592,10 @@ impl McpHostHandler {
                     }
                     _ => {}
                 }
-                let _ = self
+                if let Ok(call_id) = self
                     .state
                     .db
-                    .record_call_attributed_with_end_user_and_step_tool(
+                    .record_call_traced(
                         tenant.id,
                         local_name.to_string(),
                         duration_ms,
@@ -6551,8 +6614,12 @@ impl McpHostHandler {
                         auth_method.to_string(),
                         Some(run_id.clone()),
                         step_tool.clone(),
+                        trace,
                     )
-                    .await;
+                    .await
+                {
+                    crate::calltrace::publish_call_id(call_id);
+                }
                 if let Some(subject) = &end_user_subject {
                     self.state.end_user_activity.record(tenant.id, subject, end_user_issuer.clone());
                 }
@@ -6563,10 +6630,10 @@ impl McpHostHandler {
                 Err(app_err)
             }
             Err(_elapsed) => {
-                let _ = self
+                if let Ok(call_id) = self
                     .state
                     .db
-                    .record_call_attributed_with_end_user_and_step_tool(
+                    .record_call_traced(
                         tenant.id,
                         local_name.to_string(),
                         duration_ms,
@@ -6585,8 +6652,12 @@ impl McpHostHandler {
                         auth_method.to_string(),
                         Some(run_id.clone()),
                         step_tool.clone(),
+                        trace,
                     )
-                    .await;
+                    .await
+                {
+                    crate::calltrace::publish_call_id(call_id);
+                }
                 if let Some(subject) = &end_user_subject {
                     self.state.end_user_activity.record(tenant.id, subject, end_user_issuer.clone());
                 }
@@ -6715,7 +6786,8 @@ impl McpHostHandler {
             });
         }
 
-        let secrets = build_secret_resolver(&self.state, tenant.id).await?;
+        let secret_map = build_secret_map(&self.state, tenant.id).await?;
+        let secrets: Arc<dyn SecretResolver> = Arc::new(MapSecretResolver(secret_map.clone()));
         // PRD-mcphost-dry-run-side-effects requirement 2/3: every bridge
         // write this call makes routes through this one `DryRunCtx` (shared
         // via `TenantStateBridge`/`TenantTableBridge`), rolled back once
@@ -6843,23 +6915,41 @@ impl McpHostHandler {
             budget: None,
         };
 
+        // PRD-mcphost-call-trace-replay requirement 1: a dry run writes a
+        // `calls` row too (outcome `test`, never metered) so its result can
+        // carry a `call_id` and be traced like any other call.
+        let trace_args = call_args.clone();
+        let capture = crate::calltrace::enabled().then(crate::calltrace::new_capture);
+        let started = Instant::now();
         let call_fut = tokio::time::timeout(resolved_timeout, kind.call(&row.spec, call_args, &ctx));
-        let outcome = match fixtures {
-            Some(fixtures) => {
-                crate::dryrun::with_dry_run(
-                    dry_run.clone(),
-                    crate::kinds::chain::with_fixtures(fixtures, call_fut),
-                )
-                .await
+        let call = async {
+            match fixtures {
+                Some(fixtures) => {
+                    crate::dryrun::with_dry_run(
+                        dry_run.clone(),
+                        crate::kinds::chain::with_fixtures(fixtures, call_fut),
+                    )
+                    .await
+                }
+                None => crate::dryrun::with_dry_run(dry_run.clone(), call_fut).await,
             }
-            None => crate::dryrun::with_dry_run(dry_run.clone(), call_fut).await,
+        };
+        let outcome = match &capture {
+            Some(cap) => crate::calltrace::scope(cap.clone(), call).await,
+            None => call.await,
+        };
+        let duration_ms = started.elapsed().as_millis() as i64;
+        let error_info = match &outcome {
+            Ok(Err(kind_err)) => Some(crate::calltrace::kind_error_info(kind_err)),
+            Err(_) => Some(json!({"code": "call_timeout"})),
+            Ok(Ok(_)) => None,
         };
         // Requirement 2: rolled back regardless of outcome (success, a
         // tool-level error, or a timeout) -- a dry run leaves the tenant's
         // data byte-identical either way.
         crate::dryrun::finish(dry_run.clone()).await;
 
-        match outcome {
+        let result = match outcome {
             // AC19: `tenant_key` may appear anywhere inside the echoed
             // request `call_tool` already redacted from `args` by key name
             // before it reached here -- this final pass catches the same
@@ -6946,7 +7036,188 @@ impl McpHostHandler {
             }
             Ok(Err(kind_err)) => Err(AppError::from(kind_err)),
             Err(_elapsed) => Err(AppError::CallTimeout(resolved_timeout.as_secs())),
+        };
+        self.finish_test_call(tenant, &local_name, &trace_args, &secret_map, capture.as_ref(), duration_ms, error_info, result)
+            .await
+    }
+
+    /// PRD-mcphost-call-trace-replay requirement 1/2: writes the `calls` row
+    /// (and trace) of a `host.tool.test` / `host.tool.run` and puts its id on
+    /// the result as `call_id`. A failure to write never changes the result.
+    #[allow(clippy::too_many_arguments)]
+    async fn finish_test_call(
+        &self,
+        tenant: &Tenant,
+        tool: &str,
+        args: &Value,
+        secret_map: &HashMap<String, String>,
+        capture: Option<&crate::calltrace::SharedCapture>,
+        duration_ms: i64,
+        error_info: Option<Value>,
+        result: Result<Value, AppError>,
+    ) -> Result<Value, AppError> {
+        let (ok, code) = match &result {
+            Err(e) => (false, Some(e.code().to_string())),
+            Ok(v) if v.get("verdict").and_then(Value::as_str) == Some("will_fail") => (
+                false,
+                Some(
+                    error_info
+                        .as_ref()
+                        .and_then(|i| i.get("code"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("will_fail")
+                        .to_string(),
+                ),
+            ),
+            Ok(_) => (true, None),
+        };
+        let trace = crate::calltrace::enabled()
+            .then(|| crate::calltrace::build_trace(secret_map, tool, args, capture, error_info));
+        match self
+            .state
+            .db
+            .record_test_call(
+                tenant.id,
+                format!("__tool_test__.{tool}"),
+                duration_ms,
+                ok,
+                code,
+                tenant.origin.clone(),
+                tenant.origin_detail.clone(),
+                trace,
+            )
+            .await
+        {
+            Ok(call_id) => crate::calltrace::attach_call_id(result, call_id),
+            Err(e) => {
+                tracing::warn!(error = %e, tenant = %tenant.namespace, tool, "failed to record a test call row");
+                result
+            }
         }
+    }
+    /// PRD-mcphost-call-trace-replay R5/R6: `host.call_trace`. `tenant` is
+    /// `None` for the admin bearer, which may read any tenant's trace but
+    /// never replays one (a replay runs as the call's owner).
+    async fn call_trace(&self, tenant: Option<&Tenant>, args: Value) -> Result<Value, AppError> {
+        if let Some(known) = known_control_plane_args("host.call_trace", &self.state.kinds) {
+            crate::errors::check_unknown_argument(&args, "host.call_trace", &known)?;
+        }
+        let call_id: i64 = match args.get("call_id") {
+            Some(Value::String(s)) => s.trim().parse().ok(),
+            Some(Value::Number(n)) => n.as_i64(),
+            _ => None,
+        }
+        .ok_or_else(|| {
+            AppError::InvalidArgs("call_id must be the string call_id a tool-call result returned".into())
+        })?;
+        let row = self.state.db.get_call_trace(call_id).await?.ok_or_else(|| AppError::Structured {
+            code: "trace_not_found",
+            message: format!("no trace for call_id {call_id}: unknown, expired, or made before traces existed"),
+            data: json!({"call_id": call_id.to_string(), "reason": "unknown_or_expired"}),
+        })?;
+        if let Some(tenant) = tenant
+            && row.tenant_id != tenant.id
+        {
+            return Err(AppError::Forbidden);
+        }
+        let request: Value = serde_json::from_str(&row.request_json).unwrap_or(Value::Null);
+        let timings: Value = serde_json::from_str(&row.timings_json).unwrap_or(Value::Null);
+        let error: Option<Value> = row.error_json.as_deref().and_then(|e| serde_json::from_str(e).ok());
+        let outcome = match row.outcome.as_str() {
+            "test" if error.is_some() => "error".to_string(),
+            "test" => "ok".to_string(),
+            other => other.to_string(),
+        };
+        let error_code = error
+            .as_ref()
+            .and_then(|e| e.get("code"))
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .or_else(|| row.error_class.clone());
+        let tool = request.get("tool").and_then(Value::as_str).unwrap_or(&row.tool_name).to_string();
+        let mut out = json!({
+            "call_id": row.call_id.to_string(),
+            "tool": tool,
+            "started_at": row.started_at,
+            "outcome": outcome,
+            "request": request,
+            "stdout_tail": row.stdout_tail,
+            "stderr_tail": row.stderr_tail,
+            "timings": timings,
+        });
+        if let Some(code) = &error_code {
+            out["error_code"] = json!(code);
+        }
+        for key in ["line", "source_line", "message"] {
+            if let Some(v) = error.as_ref().and_then(|e| e.get(key)) {
+                out[key] = v.clone();
+            }
+        }
+        let Some(replay) = args.get("replay").filter(|r| !r.is_null()) else {
+            return Ok(out);
+        };
+        let Some(tenant) = tenant else {
+            return Err(AppError::Forbidden);
+        };
+        let edits = match replay.get("args") {
+            None | Some(Value::Null) => Map::new(),
+            Some(Value::Object(m)) => m.clone(),
+            Some(_) => return Err(AppError::InvalidArgs("replay.args must be an object".into())),
+        };
+        let mut merged = match out["request"].get("args") {
+            Some(Value::Object(m)) => m.clone(),
+            _ => Map::new(),
+        };
+        if merged.get("_truncated") == Some(&json!(true)) {
+            return Err(AppError::Structured {
+                code: "replay_needs_secret",
+                message: "the recorded request was too large to keep, so it cannot be replayed; pass the full replay.args".into(),
+                data: json!({"key": "_truncated"}),
+            });
+        }
+        for (k, v) in edits {
+            merged.insert(k, v);
+        }
+        let secret_map = build_secret_map(&self.state, tenant.id).await?;
+        let mut merged = Value::Object(merged);
+        if let Some(key) = crate::calltrace::unresolved_secret_key(&mut merged, &secret_map) {
+            return Err(AppError::Structured {
+                code: "replay_needs_secret",
+                message: format!(
+                    "'{key}' is still masked in the recorded request; pass its value in replay.args"
+                ),
+                data: json!({"key": key}),
+            });
+        }
+        let before_ok = outcome == "ok";
+        let tested = self.tool_test(tenant, json!({"name": tool, "args": merged})).await;
+        let (result, verdict, after_ok, after_code) = match tested {
+            Ok(v) => {
+                let verdict = v.get("verdict").and_then(Value::as_str).unwrap_or("pass").to_string();
+                let ok = verdict != "will_fail";
+                let code = (!ok).then(|| "tool_exception".to_string());
+                (v, verdict, ok, code)
+            }
+            Err(e) => {
+                let code = e.code().to_string();
+                let mut body = json!({"error_code": code, "message": e.to_string()});
+                if let AppError::Structured { data: Value::Object(d), .. } = &e {
+                    for (k, v) in d {
+                        body[k] = v.clone();
+                    }
+                }
+                (body, "fail".to_string(), false, Some(code))
+            }
+        };
+        let replay_call_id = result.get("call_id").cloned().unwrap_or(Value::Null);
+        out["replay"] = json!({
+            "call_id": replay_call_id,
+            "result": result,
+            "verdict": verdict,
+            "diff": {"ok": [before_ok, after_ok], "error_code": [error_code, after_code]},
+        });
+        out["delivered"] = json!(false);
+        Ok(out)
     }
 
     /// PRD-mcphost-plan-limits-generated requirement 5 (AC6): the warning
@@ -7445,7 +7716,8 @@ impl McpHostHandler {
             });
         }
 
-        let secrets = build_secret_resolver(&self.state, tenant.id).await?;
+        let secret_map = build_secret_map(&self.state, tenant.id).await?;
+        let secrets: Arc<dyn SecretResolver> = Arc::new(MapSecretResolver(secret_map.clone()));
         // PRD-mcphost-dry-run-side-effects requirement 1 / AC4: `test: true`
         // is this method's own opt-in (unlike `host.tool_test`, `test:
         // false`/absent is still a real, metered-by-nothing-extra debug run
@@ -7549,17 +7821,22 @@ impl McpHostHandler {
         };
 
         let start = Instant::now();
+        // PRD-mcphost-call-trace-replay requirement 1: see `tool_test`.
+        let trace_args = call_args.clone();
+        let capture = crate::calltrace::enabled().then(crate::calltrace::new_capture);
+        let call = tokio::time::timeout(resolved_timeout, kind.tool_run(&row.spec, call_args, &ctx));
         let outcome = match &dry_run {
             Some(dry_run) => {
-                crate::dryrun::with_dry_run(
-                    dry_run.clone(),
-                    tokio::time::timeout(resolved_timeout, kind.tool_run(&row.spec, call_args, &ctx)),
-                )
-                .await
+                let call = crate::dryrun::with_dry_run(dry_run.clone(), call);
+                match &capture {
+                    Some(cap) => crate::calltrace::scope(cap.clone(), call).await,
+                    None => call.await,
+                }
             }
-            None => {
-                tokio::time::timeout(resolved_timeout, kind.tool_run(&row.spec, call_args, &ctx)).await
-            }
+            None => match &capture {
+                Some(cap) => crate::calltrace::scope(cap.clone(), call).await,
+                None => call.await,
+            },
         };
         // Requirement 2: rolled back regardless of outcome, same as
         // `host.tool_test` above.
@@ -7567,8 +7844,13 @@ impl McpHostHandler {
             crate::dryrun::finish(dry_run.clone()).await;
         }
         let duration_ms = start.elapsed().as_millis() as i64;
+        let error_info = match &outcome {
+            Ok(Err(kind_err)) => Some(crate::calltrace::kind_error_info(kind_err)),
+            Err(_) => Some(json!({"code": "call_timeout"})),
+            Ok(Ok(_)) => None,
+        };
 
-        match outcome {
+        let result = match outcome {
             Ok(Ok(mut value)) => {
                 if let Some(obj) = value.as_object_mut() {
                     obj.insert("duration_ms".to_string(), json!(duration_ms));
@@ -7580,11 +7862,19 @@ impl McpHostHandler {
                         );
                     }
                 }
+                if let Some(cap) = &capture {
+                    // `tool_run` answers with the full raw output; the trace
+                    // keeps the same bytes, tail-bounded.
+                    let text = |key: &str| value.get(key).and_then(Value::as_str).unwrap_or("").to_string();
+                    cap.lock().unwrap_or_else(|e| e.into_inner()).set_output(&text("stdout"), &text("stderr"));
+                }
                 Ok(value)
             }
             Ok(Err(kind_err)) => Err(AppError::from(kind_err)),
             Err(_elapsed) => Err(AppError::CallTimeout(resolved_timeout.as_secs())),
-        }
+        };
+        self.finish_test_call(tenant, &local_name, &trace_args, &secret_map, capture.as_ref(), duration_ms, error_info, result)
+            .await
     }
 
     /// `host.tool_call` (PRD-mcphost-session-key requirements 11-15,
@@ -7741,7 +8031,10 @@ impl McpHostHandler {
         // `shared_tool_not_found` carry that code) falls through to
         // verb-forwarding below.
         let dispatch_args = call_args.clone();
-        let result: Result<Value, AppError> = match name.split_once('.') {
+        // PRD-mcphost-call-trace-replay requirement 1: the `calls.id` the
+        // dispatch below writes comes back through this slot.
+        let (result, call_id): (Result<Value, AppError>, Option<i64>) =
+            crate::calltrace::with_call_id_slot(async { match name.split_once('.') {
             Some((ns, local)) if ns == tenant.namespace => {
                 if is_async {
                     crate::runs::enqueue(&self.state, tenant, local, dispatch_args, end_user, budget_arg).await
@@ -7766,6 +8059,10 @@ impl McpHostHandler {
                         .await
                 }
             }
+        } }).await;
+        let result = match call_id {
+            Some(id) => crate::calltrace::attach_call_id(result, id),
+            None => result,
         };
 
         match result {
@@ -9067,6 +9364,9 @@ impl ServerHandler for McpHostHandler {
             // the admin key can learn the admin schema version with no
             // extra tenant signup.
             (Auth::Admin, "host.whoami") => Ok(control::whoami_admin(&self.state)),
+            // PRD-mcphost-call-trace-replay R5: the admin bearer may read any
+            // tenant's trace.
+            (Auth::Admin, "host.call_trace") => self.call_trace(None, args).await,
             (Auth::Admin, _) => Err(AppError::Forbidden),
             (Auth::Tenant(_, _), name) if name.starts_with("admin.") => {
                 let _ = name;

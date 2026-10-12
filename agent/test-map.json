@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-msrv-locked-required-check.md (test_prefix: msrvlock)",
+  "ac_test_map_prd": "PRD-mcphost-call-trace-replay.md (test_prefix: ctrace)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,12 +28,14 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/msrvlock_ac01_stale_lock_fails.rs",
-    "AC2": "tests/msrvlock_ac02_cargo_steps_are_locked.rs",
-    "AC3": "tests/msrvlock_ac03_generate_lists_nine_contexts.rs",
-    "AC4": "tests/msrvlock_ac04_check_compares_live_protection.rs",
-    "AC5": "tests/msrvlock_ac05_toml_equals_generate.rs",
-    "AC6": "deferred -- operator-provisioned: Joe/operator runs scripts/required-checks.sh --apply after landing (needs repo admin); evidence is the live protection read-back."
+    "AC1": "tests/ctrace_ac01_trace_cost_p95_within_2ms.rs",
+    "AC2": "tests/ctrace_ac02_every_call_result_carries_call_id.rs",
+    "AC3": "tests/ctrace_ac03_secrets_never_reach_a_stored_trace.rs",
+    "AC4": "tests/ctrace_ac04_trace_has_tails_line_and_phase_timings.rs",
+    "AC5": "tests/ctrace_ac05_trace_access_is_tenant_scoped.rs",
+    "AC6": "tests/ctrace_ac06_sweep_keeps_newest_200_within_24h.rs",
+    "AC7": "tests/ctrace_ac07_replay_dry_runs_with_edited_args.rs",
+    "AC8": "deferred -- operator-provisioned: live prod test after deploy (MCPHOST_LIVE=1 cargo test --test ctrace_ac08_live_prod_trace_and_replay)."
   },
   "ac_test_map_by_prefix": {
     "whin": {
@@ -1284,6 +1286,26 @@
       "AC6": "tests/dxn_ac06_gen_llms_full_gates_on_corpus_and_annotates.rs",
       "AC7": "tests/dxn_ac07_unreachable_host_exits_two_after_one_retry.rs",
       "AC8": "deferred -- operator-provisioned: first nightly run of the orch timer against prod after deploy."
+    },
+    "msrvlock": {
+      "_prd": "PRD-mcphost-msrv-locked-required-check.md (test_prefix: msrvlock)",
+      "AC1": "tests/msrvlock_ac01_stale_lock_fails.rs",
+      "AC2": "tests/msrvlock_ac02_cargo_steps_are_locked.rs",
+      "AC3": "tests/msrvlock_ac03_generate_lists_nine_contexts.rs",
+      "AC4": "tests/msrvlock_ac04_check_compares_live_protection.rs",
+      "AC5": "tests/msrvlock_ac05_toml_equals_generate.rs",
+      "AC6": "deferred -- operator-provisioned: Joe/operator runs scripts/required-checks.sh --apply after landing (needs repo admin); evidence is the live protection read-back."
+    },
+    "cest": {
+      "_prd": "PRD-mcphost-call-cost-estimate.md (test_prefix: cest)",
+      "AC1": "tests/cest_ac01_dry_run_verdict_matches_real_call.rs",
+      "AC2": "tests/cest_ac02_handler_runs_only_preflight_rows.rs",
+      "AC3": "tests/cest_ac03_dry_run_remaining_calls_per_day.rs",
+      "AC4": "tests/cest_ac04_fifty_concurrent_dry_runs_hold_no_slot.rs",
+      "AC5": "tests/cest_ac05_dry_run_counts_as_estimate_not_call.rs",
+      "AC6": "tests/cest_ac06_anonymous_estimate_is_the_real_auth_error.rs",
+      "AC7": "tests/cest_ac07_estimate_listed_and_in_quickstart.rs",
+      "AC8": "deferred -- operator-provisioned: live prod dry run under the fleet tenant after deploy."
     }
   }
 }
