@@ -207,6 +207,22 @@ fn trigger_kind_mismatch(name: &str, existing_kind: &str, requested_kind: &str) 
 /// enough that it's built in `hooks.rs`, which owns everything else
 /// event-specific too.
 async fn trigger_to_json(state: &AppState, tenant: &Tenant, row: TriggerRow) -> Value {
+    let (kind, id) = (row.kind.clone(), row.id.clone());
+    let mut value = trigger_to_json_inner(state, tenant, row).await;
+    // PRD-mcphost-event-trigger-from-webhook R7: the dead-letter tally of an
+    // event or webhook trigger.
+    if matches!(kind.as_str(), "event" | "webhook")
+        && let Some(obj) = value.as_object_mut()
+    {
+        obj.insert(
+            "dead_letters".to_string(),
+            crate::deadletters::stats_json(state, tenant.id, &id).await,
+        );
+    }
+    value
+}
+
+async fn trigger_to_json_inner(state: &AppState, tenant: &Tenant, row: TriggerRow) -> Value {
     if row.kind == "event" {
         return crate::hooks::trigger_to_json_event(state, tenant, &row).await;
     }

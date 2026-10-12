@@ -669,6 +669,20 @@ mod dxn_ac05_cross_page_dependency_fails_extract;
 mod dxn_ac06_gen_llms_full_gates_on_corpus_and_annotates;
 #[path = "dxn_ac07_unreachable_host_exits_two_after_one_retry.rs"]
 mod dxn_ac07_unreachable_host_exits_two_after_one_retry;
+#[path = "edead_ac01_rate_limit_dead_letter.rs"]
+mod edead_ac01_rate_limit_dead_letter;
+#[path = "edead_ac02_signature_mismatch_dead_letter.rs"]
+mod edead_ac02_signature_mismatch_dead_letter;
+#[path = "edead_ac03_run_error_dead_letter.rs"]
+mod edead_ac03_run_error_dead_letter;
+#[path = "edead_ac04_replay_dead_letter.rs"]
+mod edead_ac04_replay_dead_letter;
+#[path = "edead_ac05_ring_and_plan_ceiling.rs"]
+mod edead_ac05_ring_and_plan_ceiling;
+#[path = "edead_ac06_event_in_chain_context.rs"]
+mod edead_ac06_event_in_chain_context;
+#[path = "edead_ac07_reason_table_cannot_drift.rs"]
+mod edead_ac07_reason_table_cannot_drift;
 #[path = "enduser_ac02_assertion_http_headers_and_calls_row.rs"]
 mod enduser_ac02_assertion_http_headers_and_calls_row;
 #[path = "enduser_ac03_invalid_assertion_rejected.rs"]

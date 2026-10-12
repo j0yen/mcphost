@@ -809,7 +809,7 @@ fn allowed_headers(verify: &Value, dedupe_header: Option<&str>) -> Vec<String> {
     allow
 }
 
-fn redacted_headers_json(headers: &HeaderMap, allow: &[String]) -> Value {
+pub(crate) fn redacted_headers_json(headers: &HeaderMap, allow: &[String]) -> Value {
     let mut obj = serde_json::Map::new();
     for (name, value) in headers.iter() {
         let lname = name.as_str().to_ascii_lowercase();
@@ -853,6 +853,7 @@ fn build_run_args(call_args: &Value, body: &[u8], headers: &HeaderMap, allow: &[
 
 struct HookAccepted {
     run_id: String,
+    dead_letter_id: Option<String>,
 }
 
 fn status_for_hook_error(code: &str) -> StatusCode {
@@ -866,29 +867,86 @@ fn status_for_hook_error(code: &str) -> StatusCode {
     }
 }
 
-fn hook_error_response(err: AppError) -> Response {
+fn hook_error_response(refusal: HookRefusal) -> Response {
+    let HookRefusal { err, dead_letter_id } = refusal;
     let code = err.code();
     let status = status_for_hook_error(code);
     let mut body = match &err {
         AppError::Structured { data, .. } if data.is_object() => data.clone(),
         _ => json!({}),
     };
+    // PRD-mcphost-event-trigger-from-webhook R5: `error` is an object naming
+    // the letter; `error_code` stays top level for existing senders.
     if let Some(obj) = body.as_object_mut() {
         obj.insert("error_code".to_string(), json!(code));
-        obj.insert("error".to_string(), json!(err.to_string()));
+        obj.insert(
+            "error".to_string(),
+            json!({"code": code, "message": err.to_string(), "dead_letter_id": dead_letter_id}),
+        );
     }
     (status, Json(body)).into_response()
 }
 
+/// A refused delivery: the error the sender is answered with plus the id of
+/// the dead letter written for it (`None` when no trigger resolved).
+struct HookRefusal {
+    err: AppError,
+    dead_letter_id: Option<String>,
+}
+
+impl From<AppError> for HookRefusal {
+    fn from(err: AppError) -> Self {
+        HookRefusal { err, dead_letter_id: None }
+    }
+}
+
+/// What a refusal needs to store its dead letter.
+struct LetterCtx<'a> {
+    state: &'a AppState,
+    tenant_id: i64,
+    plan: &'a crate::plans::Plan,
+    trigger: &'a TriggerRow,
+    headers: Value,
+    body: &'a [u8],
+}
+
+impl LetterCtx<'_> {
+    /// Writes the letter for `err` (best effort: a failed write still
+    /// answers the sender the original refusal) and returns the refusal.
+    async fn refuse(&self, err: AppError) -> HookRefusal {
+        let Some(reason) = crate::deadletters::reason_for_error(err.code()) else {
+            return err.into();
+        };
+        let dead_letter_id = crate::deadletters::write(
+            self.state,
+            self.tenant_id,
+            self.plan,
+            self.trigger,
+            crate::deadletters::LetterSource {
+                reason_code: reason.code,
+                headers: self.headers.clone(),
+                body: self.body,
+                run_id: None,
+                error_class: None,
+            },
+        )
+        .await
+        .ok();
+        HookRefusal { err, dead_letter_id }
+    }
+}
+
 /// Requirement 1's whole route: resolve tenant/tool/trigger, enforce the
 /// body-size and rate ceilings, verify the signature, dedupe, enqueue.
+/// Every refusal after the trigger resolves also writes a dead letter
+/// (PRD-mcphost-event-trigger-from-webhook R1).
 async fn handle_hook(
     state: &AppState,
     namespace: &str,
     tool: &str,
     headers: &HeaderMap,
     body: &[u8],
-) -> Result<HookAccepted, AppError> {
+) -> Result<HookAccepted, HookRefusal> {
     let tenant = state
         .db
         .find_tenant_by_namespace(namespace.to_string())
@@ -898,11 +956,6 @@ async fn handle_hook(
     // PRD-mcphost-abuse-guard-ban-list requirement 2: `/hooks/*` enforces
     // the key of the owning tenant, same as any other authenticated call.
     crate::bans::enforce(state, "key", &tenant.key_hash).await?;
-    state
-        .db
-        .get_tool(tenant.id, tool.to_string())
-        .await?
-        .ok_or_else(hook_not_found)?;
     let triggers = state.db.list_triggers(tenant.id, Some(tool.to_string())).await?;
     let trigger = triggers
         .into_iter()
@@ -916,33 +969,55 @@ async fn handle_hook(
         ))
     })?;
 
+    let config: Value = serde_json::from_str(&trigger.config_json).unwrap_or_else(|_| json!({}));
+    let verify = config.get("verify").cloned().unwrap_or_else(|| json!({"scheme": "none"}));
+    let dedupe_header = config.get("dedupe_header").and_then(Value::as_str).map(str::to_string);
+    let allow = allowed_headers(&verify, dedupe_header.as_deref());
+    let letter = LetterCtx {
+        state,
+        tenant_id: tenant.id,
+        plan,
+        trigger: &trigger,
+        headers: redacted_headers_json(headers, &allow),
+        body,
+    };
+
+    if state.db.get_tool(tenant.id, tool.to_string()).await?.is_none() {
+        return Err(letter.refuse(hook_not_found()).await);
+    }
+
     if body.len() > plan.event_body_bytes_max as usize {
-        return Err(AppError::Structured {
-            code: "event_body_too_large",
-            message: format!(
-                "body is {} bytes, over the plan's {} byte limit",
-                body.len(),
-                plan.event_body_bytes_max
-            ),
-            data: json!({"limit_bytes": plan.event_body_bytes_max, "actual_bytes": body.len()}),
-        });
+        return Err(letter
+            .refuse(AppError::Structured {
+                code: "event_body_too_large",
+                message: format!(
+                    "body is {} bytes, over the plan's {} byte limit",
+                    body.len(),
+                    plan.event_body_bytes_max
+                ),
+                data: json!({"limit_bytes": plan.event_body_bytes_max, "actual_bytes": body.len()}),
+            })
+            .await);
     }
 
     if !state.event_rate_limiter.allow(&trigger.id, plan.events_per_minute) {
-        return Err(AppError::Structured {
-            code: "events_rate_limited",
-            message: "too many events for this trigger in the last minute".to_string(),
-            data: json!({"events_per_minute": plan.events_per_minute}),
-        });
+        return Err(letter
+            .refuse(AppError::Structured {
+                code: "events_rate_limited",
+                message: "too many events for this trigger in the last minute".to_string(),
+                data: json!({"events_per_minute": plan.events_per_minute}),
+            })
+            .await);
     }
 
-    let config: Value = serde_json::from_str(&trigger.config_json).unwrap_or_else(|_| json!({}));
-    let verify = config.get("verify").cloned().unwrap_or_else(|| json!({"scheme": "none"}));
-    let secret = resolve_secret(state, tenant.id, &verify).await?;
-    verify_event(&verify, secret.as_deref(), body, headers)?;
+    let secret = match resolve_secret(state, tenant.id, &verify).await {
+        Ok(secret) => secret,
+        Err(err) => return Err(letter.refuse(err).await),
+    };
+    if let Err(err) = verify_event(&verify, secret.as_deref(), body, headers) {
+        return Err(letter.refuse(err).await);
+    }
 
-    let dedupe_header = config.get("dedupe_header").and_then(Value::as_str).map(str::to_string);
-    let allow = allowed_headers(&verify, dedupe_header.as_deref());
     let call_args = config.get("args").cloned().unwrap_or_else(|| json!({}));
     let run_args = build_run_args(&call_args, body, headers, &allow);
     let args_json = serde_json::to_string(&run_args)
@@ -956,7 +1031,7 @@ async fn handle_hook(
         Some(header_name) => headers.get(header_name).and_then(|v| v.to_str().ok()).map(str::to_string),
         None => None,
     };
-    let run_id = enqueue_with_dedupe(
+    let (run_id, rejected) = enqueue_inner(
         state,
         &tenant,
         &trigger,
@@ -969,7 +1044,27 @@ async fn handle_hook(
         },
     )
     .await?;
-    Ok(HookAccepted { run_id })
+    let mut dead_letter_id = None;
+    if rejected {
+        // The run row says `rejected`/`jobs_concurrent_exceeded`; the sender
+        // still gets its 202, plus the letter to replay it from.
+        dead_letter_id = crate::deadletters::write(
+            state,
+            tenant.id,
+            plan,
+            &trigger,
+            crate::deadletters::LetterSource {
+                reason_code: "jobs_concurrent",
+                headers: letter.headers.clone(),
+                body,
+                run_id: Some(&run_id),
+                error_class: Some("jobs_concurrent_exceeded"),
+            },
+        )
+        .await
+        .ok();
+    }
+    Ok(HookAccepted { run_id, dead_letter_id })
 }
 
 /// Params for [`enqueue_with_dedupe`], bundled (rather than four positional
@@ -1015,6 +1110,17 @@ pub(crate) async fn enqueue_with_dedupe(
     trigger: &TriggerRow,
     spec: EnqueueSpec<'_>,
 ) -> Result<String, AppError> {
+    enqueue_inner(state, tenant, trigger, spec).await.map(|(run_id, _)| run_id)
+}
+
+/// [`enqueue_with_dedupe`]'s body; the flag is `true` when the run was
+/// `rejected` at the `jobs_concurrent` ceiling instead of queued.
+async fn enqueue_inner(
+    state: &AppState,
+    tenant: &Tenant,
+    trigger: &TriggerRow,
+    spec: EnqueueSpec<'_>,
+) -> Result<(String, bool), AppError> {
     let EnqueueSpec {
         trigger_kind,
         dedupe_key,
@@ -1029,7 +1135,7 @@ pub(crate) async fn enqueue_with_dedupe(
             .claim_event_dedupe(trigger.id.clone(), key.to_string(), run_id.clone())
             .await?
     {
-        return Ok(existing_run_id);
+        return Ok((existing_run_id, false));
     }
 
     let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
@@ -1062,7 +1168,7 @@ pub(crate) async fn enqueue_with_dedupe(
             .db
             .update_trigger_after_fire(trigger.id.clone(), None, Some(run_id.clone()), now_unix())
             .await;
-        return Ok(run_id);
+        return Ok((run_id, true));
     }
 
     state
@@ -1088,7 +1194,7 @@ pub(crate) async fn enqueue_with_dedupe(
         .db
         .update_trigger_after_fire(trigger.id.clone(), None, Some(run_id.clone()), now_unix())
         .await;
-    Ok(run_id)
+    Ok((run_id, false))
 }
 
 /// `POST /hooks/{namespace}/{tool}` -- `http.rs` mounts this route.
@@ -1100,10 +1206,18 @@ pub async fn hook_receive(
 ) -> impl IntoResponse {
     state.event_counters.record_received();
     match handle_hook(&state, &namespace, &tool, &headers, &body).await {
-        Ok(accepted) => (StatusCode::ACCEPTED, Json(json!({"run_id": accepted.run_id}))).into_response(),
-        Err(err) => {
+        Ok(accepted) => {
+            let mut body = json!({"run_id": accepted.run_id});
+            if let Some(id) = accepted.dead_letter_id
+                && let Some(obj) = body.as_object_mut()
+            {
+                obj.insert("dead_letter_id".to_string(), json!(id));
+            }
+            (StatusCode::ACCEPTED, Json(body)).into_response()
+        }
+        Err(refusal) => {
             state.event_counters.record_rejected();
-            hook_error_response(err)
+            hook_error_response(refusal)
         }
     }
 }
@@ -1363,6 +1477,19 @@ pub async fn replay(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
         }
         return crate::webhooks::replay_webhook_row(state, tenant, &row, row_id).await;
     }
+    // PRD-mcphost-event-trigger-from-webhook: a dead letter is replayed by
+    // its `dl_` id, as `dead_letter_id` or in `run_id`'s place.
+    let letter_arg = args
+        .get("dead_letter_id")
+        .and_then(Value::as_str)
+        .or_else(|| {
+            args.get("run_id")
+                .and_then(Value::as_str)
+                .filter(|id| id.starts_with(crate::deadletters::ID_PREFIX))
+        });
+    if let Some(letter_id) = letter_arg {
+        return replay_dead_letter(state, tenant, letter_id).await;
+    }
     let run_id = arg_str(args, "run_id")?;
     let original = state
         .db
@@ -1403,6 +1530,73 @@ pub async fn replay(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
         )
         .await?;
     Ok(json!({"run_id": new_run_id, "status": "queued", "replay_of": run_id}))
+}
+
+/// `host.trigger.replay(dead_letter_id)`: re-runs `handle_hook`'s enqueue with
+/// the letter's stored body and headers, bypassing the rate limiter and the
+/// signature check (the sender is the tenant itself). No dedupe: every
+/// replay is a fresh run. The new run's `trigger_ref` is the trigger id, so a
+/// replay that fails again is a dead letter of its own.
+async fn replay_dead_letter(
+    state: &AppState,
+    tenant: &Tenant,
+    letter_id: &str,
+) -> Result<Value, AppError> {
+    let letter = state
+        .db
+        .get_dead_letter(tenant.id, letter_id.to_string())
+        .await?
+        .ok_or_else(|| AppError::Structured {
+            code: "dead_letter_not_found",
+            message: format!("no dead letter '{letter_id}' for this tenant"),
+            data: json!({"dead_letter_id": letter_id}),
+        })?;
+    if letter.truncated {
+        return Err(trigger_invalid(
+            "dead_letter_id",
+            "this letter's body was cut to the plan's event_body_bytes_max; replaying it would \
+             deliver a different payload"
+                .to_string(),
+        ));
+    }
+    let trigger = state
+        .db
+        .get_trigger(tenant.id, letter.trigger_id.clone())
+        .await?
+        .ok_or_else(|| crate::triggers::trigger_not_found(&letter.trigger_id))?;
+    let config: Value = serde_json::from_str(&trigger.config_json).unwrap_or_else(|_| json!({}));
+    let verify = config.get("verify").cloned().unwrap_or_else(|| json!({"scheme": "none"}));
+    let dedupe_header = config.get("dedupe_header").and_then(Value::as_str);
+    let allow = allowed_headers(&verify, dedupe_header);
+    let stored_headers: Value = serde_json::from_str(&letter.headers_json).unwrap_or_else(|_| json!({}));
+    let call_args = config.get("args").cloned().unwrap_or_else(|| json!({}));
+    let run_args = build_run_args(
+        &call_args,
+        letter.body.as_bytes(),
+        &header_map_from_value(&stored_headers),
+        &allow,
+    );
+    let args_json = serde_json::to_string(&run_args)
+        .map_err(|e| AppError::Internal(format!("event args serialize: {e}")))?;
+    let (run_id, rejected) = enqueue_inner(
+        state,
+        tenant,
+        &trigger,
+        EnqueueSpec {
+            trigger_kind: "event",
+            dedupe_key: None,
+            message_id: None,
+            args_json,
+            test: false,
+        },
+    )
+    .await?;
+    state
+        .db
+        .set_dead_letter_replayed(letter.id.clone(), run_id.clone())
+        .await?;
+    let status = if rejected { "rejected" } else { "queued" };
+    Ok(json!({"run_id": run_id, "status": status, "replay_of": letter.id, "dead_letter_id": letter.id}))
 }
 
 #[cfg(test)]

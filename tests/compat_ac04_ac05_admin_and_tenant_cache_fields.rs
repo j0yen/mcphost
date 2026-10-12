@@ -114,8 +114,10 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
         // PRD-mcphost-call-trace-replay: host.call_trace, one new dotted tool
         // plus its flattened form, 370 + 2 = 372.
         // PRD-mcphost-feedback-tool-and-ledger: host.feedback.send/list, two
-        // new dotted tools plus their flattened forms, 372 + 4 = 376.
-        376,
+        // new dotted tools plus their flattened forms, 372 + 4 = 376;
+        // PRD-mcphost-event-trigger-from-webhook: host.trigger.dead_letters,
+        // one more dotted tool plus its flattened form, 376 + 2 = 378.
+        378,
         "there must be exactly the sixteen host.* control-plane tools \
          (incl. host.quickstart, host.tool_run, host.bridge_test, host.spec_test -- \
          PRD-mcphost-tool-test, and host.redeem/host.key_rotate -- \

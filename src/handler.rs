@@ -2833,13 +2833,29 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              re-verification -- the original delivery already passed it). The new run's \
              trigger_ref names the original run id. For a webhook trigger, pass id (the trigger) \
              and row_id (an inbox_<name> row id, e.g. from POST /hook/...'s own response or \
-             host.state.query) instead of run_id -- a paused delivery has no run to replay from.",
+             host.state.query) instead of run_id -- a paused delivery has no run to replay from. \
+             Pass dead_letter_id (from host.trigger.dead_letters) to re-deliver a refused or \
+             failed event with its stored body and headers, skipping the rate limit and the \
+             signature check; every replay is a new run, never deduped.",
             host_schema(
                 json!({
                     "run_id": {"type": "string", "description": "The event- or message-triggered run id to replay."},
+                    "dead_letter_id": {"type": "string", "description": "A dl_ id from host.trigger.dead_letters: re-run that letter's stored event."},
                     "id": {"type": "string", "description": "kind=\"webhook\" only: the trigger id (paired with row_id)."},
                     "name": {"type": "string", "description": "kind=\"webhook\" only: the trigger's name, instead of id (paired with row_id)."},
                     "row_id": {"type": "integer", "description": "kind=\"webhook\" only: the inbox_<name> row id to replay (paired with id)."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.trigger.dead_letters",
+            crate::deadletters::tool_description(),
+            host_schema(
+                json!({
+                    "trigger": {"type": "string", "description": "Only this trigger's letters (id or name)."},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": crate::deadletters::LIST_LIMIT_MAX, "description": "Letters to return, newest first; default 50."},
+                    "since": {"type": "integer", "description": "Only letters received at or after this unix time."},
                 }),
                 &[],
             ),
@@ -5875,6 +5891,7 @@ impl McpHostHandler {
             "host.trigger.fire" => crate::triggers::fire(&self.state, tenant, &args).await,
             "host.trigger.test" => crate::hooks::test(&self.state, tenant, &args).await,
             "host.trigger.replay" => crate::hooks::replay(&self.state, tenant, &args).await,
+            "host.trigger.dead_letters" => crate::deadletters::list(&self.state, tenant, &args).await,
             "billing.status" => crate::billing::status(&self.state, tenant).await,
             "billing.checkout" => crate::billing::checkout(&self.state, tenant, &args).await,
             // PRD-mcphost-agent-directory requirements 2-5.

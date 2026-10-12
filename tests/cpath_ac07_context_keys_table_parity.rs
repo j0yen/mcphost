@@ -18,7 +18,7 @@ fn constructor_and_checker_both_read_the_table() {
     let ctx = step_context(&json!({}), Some(&sample), &[sample.clone(), sample.clone()]);
 
     let top: BTreeSet<String> =
-        [CONTEXT_KEYS.input, CONTEXT_KEYS.prev, CONTEXT_KEYS.steps].map(String::from).into();
+        [CONTEXT_KEYS.input, CONTEXT_KEYS.prev, CONTEXT_KEYS.steps, CONTEXT_KEYS.event].map(String::from).into();
     assert_eq!(keys(&ctx), top, "constructor's top-level keys must be the table's");
 
     let under: BTreeSet<String> = [CONTEXT_KEYS.result.to_string()].into();

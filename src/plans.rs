@@ -113,6 +113,12 @@ pub struct Plan {
     /// PRD's one named number, same for every plan) when a hand-edited
     /// `plans.toml` predates this key.
     pub event_body_bytes_max: i64,
+    /// PRD-mcphost-event-trigger-from-webhook R4: how many dead letters
+    /// (refused deliveries and failed event runs) a tenant keeps; the oldest
+    /// is evicted past this and counted in `dropped_count`. Defaults to the
+    /// `free` plan's own default (100) when a hand-edited `plans.toml`
+    /// predates this key.
+    pub dead_letters_max: i64,
     /// PRD-mcphost-agent-inbox requirement 7: how many `host.msg.send`/
     /// `reply` calls this plan's tenants may make in a sliding hour
     /// (`quota_exceeded` naming `msgs_per_hour`). Defaults to the `free`
@@ -483,6 +489,7 @@ impl PlanCatalog {
                     event_triggers_max: 3,
                     events_per_minute: 30,
                     event_body_bytes_max: 256 * 1024,
+                    dead_letters_max: 100,
                     // PRD-mcphost-agent-inbox requirement 7: "free plan's
                     // msgs_per_hour is 60"; "free 2 000" inbox rows; "5"
                     // recipients per message.
@@ -572,6 +579,7 @@ impl PlanCatalog {
                     event_triggers_max: 25,
                     events_per_minute: 300,
                     event_body_bytes_max: 256 * 1024,
+                    dead_letters_max: 1_000,
                     // PRD-mcphost-agent-inbox: pro gets a higher hourly
                     // send rate, inbox capacity and recipient cap than
                     // free, same free/pro scaling shape as every other
@@ -722,6 +730,7 @@ impl PlanCatalog {
                 "event_body_bytes_max = {}\n",
                 p.event_body_bytes_max
             ));
+            out.push_str(&format!("dead_letters_max = {}\n", p.dead_letters_max));
             out.push_str(&format!("msgs_per_hour = {}\n", p.msgs_per_hour));
             out.push_str(&format!("msg_body_bytes_max = {}\n", p.msg_body_bytes_max));
             out.push_str(&format!("inbox_rows_max = {}\n", p.inbox_rows_max));
@@ -838,6 +847,7 @@ impl PlanCatalog {
                 "event_triggers_max" => builder.event_triggers_max = Some(int_value()),
                 "events_per_minute" => builder.events_per_minute = Some(int_value()),
                 "event_body_bytes_max" => builder.event_body_bytes_max = Some(int_value()),
+                "dead_letters_max" => builder.dead_letters_max = Some(int_value()),
                 "msgs_per_hour" => builder.msgs_per_hour = Some(int_value()),
                 "msg_body_bytes_max" => builder.msg_body_bytes_max = Some(int_value()),
                 "inbox_rows_max" => builder.inbox_rows_max = Some(int_value()),
@@ -922,6 +932,7 @@ struct PlanBuilder {
     event_triggers_max: Option<i64>,
     events_per_minute: Option<i64>,
     event_body_bytes_max: Option<i64>,
+    dead_letters_max: Option<i64>,
     msgs_per_hour: Option<i64>,
     msg_body_bytes_max: Option<i64>,
     inbox_rows_max: Option<i64>,
@@ -991,6 +1002,7 @@ impl PlanBuilder {
             event_triggers_max: quota!(event_triggers_max),
             events_per_minute: quota!(events_per_minute),
             event_body_bytes_max: quota!(event_body_bytes_max),
+            dead_letters_max: quota!(dead_letters_max),
             msgs_per_hour: quota!(msgs_per_hour),
             msg_body_bytes_max: quota!(msg_body_bytes_max),
             inbox_rows_max: quota!(inbox_rows_max),

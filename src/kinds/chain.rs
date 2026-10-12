@@ -62,12 +62,14 @@ pub struct ContextKeys {
     pub prev: &'static str,
     /// Top level: `[{result}, ...]` of every earlier step.
     pub steps: &'static str,
+    /// Top level: the delivery when an event trigger fired the run, else null.
+    pub event: &'static str,
     /// The one key under `prev` / `steps[i]`.
     pub result: &'static str,
 }
 
 pub const CONTEXT_KEYS: ContextKeys =
-    ContextKeys { input: "input", prev: "prev", steps: "steps", result: "result" };
+    ContextKeys { input: "input", prev: "prev", steps: "steps", event: "event", result: "result" };
 // CONTEXT_KEYS-END
 
 /// Requirement 4 ("up to three nearest sibling names"): the closest
@@ -132,18 +134,51 @@ pub async fn resolve_steps(db: &crate::db::Db, tenant_id: i64, spec: &Value) -> 
     Ok(())
 }
 
+/// PRD-mcphost-event-trigger-from-webhook R6: the first-level roots a step
+/// mapping may read (`$.input`, `$.prev`, `$.steps[i]`, `$.event`) with what
+/// each holds -- the one table [`step_context`]'s keys are asserted against,
+/// so a root cannot be added to the context without being named here.
+pub const CONTEXT_ROOTS: &[(&str, &str)] = &[
+    (CONTEXT_KEYS.input, "this call's own args"),
+    (CONTEXT_KEYS.prev, "the previous step's result, as {result}, or null on step 1"),
+    (CONTEXT_KEYS.steps, "every earlier step's result, as [{result}, ...]"),
+    (
+        CONTEXT_KEYS.event,
+        "the delivery (headers, body, received_unix) when an event trigger fired this run, else null",
+    ),
+];
+
+tokio::task_local! {
+    /// Set by the run executor for a run an event or webhook trigger fired,
+    /// so [`step_context`] can tell a delivery from a manual call whose args
+    /// merely contain an `event` key.
+    static EVENT_FIRED: bool;
+}
+
+/// Runs `fut` with `$.event` live (`fired`) or null.
+pub async fn with_event_fired<F: std::future::Future>(fired: bool, fut: F) -> F::Output {
+    EVENT_FIRED.scope(fired, fut).await
+}
+
 /// PRD-mcphost-chain-prev-contract P0 requirement 1: the ONE constructor of
 /// the context a step's mappings resolve against -- `{"input": <chain args>,
 /// "prev": {"result": <predecessor result>} | null, "steps": [{"result":
-/// ...}, ...]}`. [`ChainKind::call`] and [`dry_run_report`] both build their
-/// context here, and [`accepted_prev_keys`]/[`accepted_step_keys`] read the
-/// checker's accepted first-level keys back out of a context this function
-/// built, so the two cannot drift apart.
+/// ...}, ...], "event": <delivery> | null}`. [`ChainKind::call`] and
+/// [`dry_run_report`] both build their context here, and
+/// [`accepted_prev_keys`]/[`accepted_step_keys`] read the checker's accepted
+/// first-level keys back out of a context this function built, so the two
+/// cannot drift apart.
 pub fn step_context(input: &Value, prev: Option<&Value>, steps: &[Value]) -> Value {
+    let event = if EVENT_FIRED.try_with(|fired| *fired).unwrap_or(false) {
+        input.get(CONTEXT_KEYS.event).cloned().unwrap_or(Value::Null)
+    } else {
+        Value::Null
+    };
     json!({
         (CONTEXT_KEYS.input): input,
         (CONTEXT_KEYS.prev): prev.map(|r| json!({ (CONTEXT_KEYS.result): r })),
         (CONTEXT_KEYS.steps): steps.iter().map(|r| json!({ (CONTEXT_KEYS.result): r })).collect::<Vec<_>>(),
+        (CONTEXT_KEYS.event): event,
     })
 }
 
@@ -539,6 +574,12 @@ struct StepsVerdict {
     passes: std::collections::HashSet<(usize, String)>,
 }
 
+/// `$.event` or a path under it.
+fn is_event_ref(raw: &str) -> bool {
+    raw.strip_prefix("$.event")
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with(['.', '[']))
+}
+
 async fn steps_verdict(
     db: Option<&crate::db::Db>,
     kinds: Option<&KindRegistry>,
@@ -548,11 +589,15 @@ async fn steps_verdict(
 ) -> StepsVerdict {
     let mut failures: Vec<Value> = Vec::new();
     let mut unverifiable_step: Option<usize> = None;
+    let mut event_ref: Option<(usize, String)> = None;
     let mut passes = std::collections::HashSet::new();
     for (i, step) in steps.iter().enumerate() {
         let step_no = i + 1;
         for v in step.args.values() {
             let Value::String(raw) = v else { continue };
+            if is_event_ref(raw) && event_ref.is_none() {
+                event_ref = Some((step_no, raw.clone()));
+            }
             let Some(r) = StepRef::parse(raw, step_no) else {
                 continue;
             };
@@ -597,6 +642,18 @@ async fn steps_verdict(
 
     let overall = if !failures.is_empty() {
         json!({"verdict": "will_fail", "failures": failures, "evidence": failures})
+    } else if let Some((step_no, path)) = event_ref {
+        // R6: `$.event.*` exists only while a delivery fires the chain, so
+        // publish cannot settle it.
+        json!({
+            "verdict": "unverifiable",
+            "reason": format!(
+                "step {step_no}: '{path}' resolves only when an event or webhook trigger fires \
+                 this chain (trigger kind: event, delivery shape {{headers, body, received_unix}}); \
+                 a manual call has $.event = null"
+            ),
+            "next": {"tool": "host_trigger_set", "kind": "event"},
+        })
     } else if let Some(predecessor_no) = unverifiable_step {
         json!({
             "verdict": "unverifiable",
