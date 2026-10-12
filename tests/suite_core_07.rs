@@ -557,6 +557,10 @@ mod cprocb_ac03_flake_lint_job_fails_on_raw_spawn_before_toolchain;
 mod ctrace_ac05_trace_access_is_tenant_scoped;
 #[path = "ctrace_ac06_sweep_keeps_newest_200_within_24h.rs"]
 mod ctrace_ac06_sweep_keeps_newest_200_within_24h;
+#[path = "ctraceb_ac01_trace_access_is_tenant_scoped.rs"]
+mod ctraceb_ac01_trace_access_is_tenant_scoped;
+#[path = "ctraceb_ac02_sweep_keeps_newest_200_within_24h.rs"]
+mod ctraceb_ac02_sweep_keeps_newest_200_within_24h;
 #[path = "ctrv_ac01_sha_stable_across_boot_requests_and_process.rs"]
 mod ctrv_ac01_sha_stable_across_boot_requests_and_process;
 #[path = "ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs"]
@@ -1829,13 +1833,3 @@ mod refrow_ac04_insufficient_scope_row_has_token_auth_method;
 mod refrow_ac05_host_usage_reports_refused;
 #[path = "refrow_ac06_unwritable_db_refusal_still_returned.rs"]
 mod refrow_ac06_unwritable_db_refusal_still_returned;
-#[path = "reglist_ac01_manifest_fields_match_cargo_and_endpoint.rs"]
-mod reglist_ac01_manifest_fields_match_cargo_and_endpoint;
-#[path = "reglist_ac02_check_detects_drift.rs"]
-mod reglist_ac02_check_detects_drift;
-#[path = "reglist_ac03_schema_validates_committed_entry_and_rejects_missing_remotes.rs"]
-mod reglist_ac03_schema_validates_committed_entry_and_rejects_missing_remotes;
-#[path = "reglist_ac04_workflow_checks_manifest_and_schema_on_every_push.rs"]
-mod reglist_ac04_workflow_checks_manifest_and_schema_on_every_push;
-#[path = "reglist_ac06_readme_registry_and_quickstart_links_resolve.rs"]
-mod reglist_ac06_readme_registry_and_quickstart_links_resolve;

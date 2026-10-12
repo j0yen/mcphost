@@ -92,6 +92,8 @@ mod ctrace_ac03_secrets_never_reach_a_stored_trace;
 mod ctrace_ac04_trace_has_tails_line_and_phase_timings;
 #[path = "ctrace_ac07_replay_dry_runs_with_edited_args.rs"]
 mod ctrace_ac07_replay_dry_runs_with_edited_args;
+#[path = "ctraceb_ac03_replay_dry_runs_with_edited_args.rs"]
+mod ctraceb_ac03_replay_dry_runs_with_edited_args;
 #[path = "docsqa_ac01_recipe_end_to_end.rs"]
 mod docsqa_ac01_recipe_end_to_end;
 #[path = "docsqa_ac02_quota_inside_free_plan_knobs.rs"]

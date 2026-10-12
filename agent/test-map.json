@@ -1380,6 +1380,13 @@
       "AC7": "tests/ctrace_ac07_replay_dry_runs_with_edited_args.rs",
       "AC8": "deferred -- operator-provisioned: live prod test after deploy (MCPHOST_LIVE=1 cargo test --test ctrace_ac08_live_prod_trace_and_replay)."
     },
+    "ctraceb": {
+      "_prd": "PRD-mcphost-call-trace-replay-b.md (test_prefix: ctraceb)",
+      "AC1": "tests/ctraceb_ac01_trace_access_is_tenant_scoped.rs",
+      "AC2": "tests/ctraceb_ac02_sweep_keeps_newest_200_within_24h.rs",
+      "AC3": "tests/ctraceb_ac03_replay_dry_runs_with_edited_args.rs",
+      "AC4": "deferred -- operator-provisioned: live prod test after deploy (MCPHOST_LIVE=1 cargo test --test ctrace_ac08_live_prod_trace_and_replay)."
+    },
     "blobput": {
       "_prd": "PRD-mcphost-blob-put-get-signed-url.md (test_prefix: blobput)",
       "AC1": "tests/blobput_ac01_corpus_has_binary_fixture_task.rs",
