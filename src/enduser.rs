@@ -409,6 +409,7 @@ mod tests {
             verified_client_ids: crate::state::VerifiedClientIds::empty(),
             session_bindings: session_bindings.clone(),
             invite_hints: crate::invites::InviteHintTracker::new(),
+            feedback_calls: Default::default(),
             lineage_cache: crate::lineage::new_cache(),
             lineage_trace_pages: crate::lineage::new_trace_page_cache(),
             public_url_sync_deadline: crate::state::PUBLIC_URL_SYNC_DEADLINE,

@@ -584,7 +584,7 @@ impl AppError {
                 // PRD-mcphost-first-call-gift requirement 1 (AC2): an
                 // over-long `remember` argument is the same caller-input
                 // problem as the `state_*` group above.
-                "remember_too_long" => ErrorCode::INVALID_PARAMS,
+                "remember_too_long" | "invalid_params" => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-schedules requirements 2/4: a bad cron
                 // expression, an over-quota schedules_max, or a too-short
                 // schedule_min_interval_s are all caller-input problems,

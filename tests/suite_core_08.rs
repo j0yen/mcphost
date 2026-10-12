@@ -22,6 +22,16 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "self_offboard_ac1_disables_tenant_and_returns_success.rs"]
+mod self_offboard_ac1_disables_tenant_and_returns_success;
+#[path = "self_offboard_ac2_idempotent_second_call.rs"]
+mod self_offboard_ac2_idempotent_second_call;
+#[path = "self_offboard_ac3_offboarded_key_same_shape_as_unissued.rs"]
+mod self_offboard_ac3_offboarded_key_same_shape_as_unissued;
+#[path = "self_offboard_ac4_pro_tenant_cancels_stripe_subscription.rs"]
+mod self_offboard_ac4_pro_tenant_cancels_stripe_subscription;
+#[path = "self_offboard_ac5_admin_tenants_distinguishes_reason.rs"]
+mod self_offboard_ac5_admin_tenants_distinguishes_reason;
 #[path = "sessbind_ac01_keyless_call_after_signup_runs_as_the_bound_tenant.rs"]
 mod sessbind_ac01_keyless_call_after_signup_runs_as_the_bound_tenant;
 #[path = "sessbind_ac02_five_tools_run_as_the_bound_tenant.rs"]

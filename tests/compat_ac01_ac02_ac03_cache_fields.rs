@@ -44,7 +44,7 @@ async fn ac1_anonymous_tools_list_has_cache_fields() {
     assert!(names.contains(&"signup"), "{names:?}");
     assert_eq!(
         names.len(),
-        12,
+        14,
         "PRD-mcphost-one-next-tool requirement 1 (AC1): an anonymous tools/list now returns \
          the twelve-tool starter set (signup plus eleven host.*/billing.* tools), not the \
          full control plane -- host.policy.*/host.audit.* (PRD-mcphost-row-policy) are \
@@ -128,7 +128,7 @@ async fn ac3_invalid_bearer_tools_list_has_cache_fields() {
     assert!(names.contains(&"signup"), "{names:?}");
     assert_eq!(
         names.len(),
-        12,
+        14,
         "PRD-mcphost-one-next-tool requirement 1 (AC1): an invalid-bearer tools/list is \
          anonymous-shaped, so it gets the same twelve-tool starter set (host.policy.*/ \
          host.audit.* from PRD-mcphost-row-policy are tenant-key-only and not in it): \

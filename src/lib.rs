@@ -43,6 +43,7 @@ pub mod enduser;
 pub mod enduserctl;
 pub mod errors;
 pub mod export;
+pub mod feedback;
 pub mod federation;
 pub mod funnel;
 pub mod gendocs;

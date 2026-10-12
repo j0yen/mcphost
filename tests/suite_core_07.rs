@@ -711,6 +711,18 @@ mod enduserctl_ac10_list_100k_pages_under_50ms_stable_cursor;
 mod envelope_ac1_http_declared_output_promoted;
 #[path = "envelope_ac4_tool_test_reports_missing_declared_output.rs"]
 mod envelope_ac4_tool_test_reports_missing_declared_output;
+#[path = "fbtl_ac02_anonymous_send_stores_row.rs"]
+mod fbtl_ac02_anonymous_send_stores_row;
+#[path = "fbtl_ac03_text_limits_and_control_chars.rs"]
+mod fbtl_ac03_text_limits_and_control_chars;
+#[path = "fbtl_ac04_anonymous_send_cap.rs"]
+mod fbtl_ac04_anonymous_send_cap;
+#[path = "fbtl_ac05_keyed_call_ids_and_list.rs"]
+mod fbtl_ac05_keyed_call_ids_and_list;
+#[path = "fbtl_ac06_kinds_cannot_drift.rs"]
+mod fbtl_ac06_kinds_cannot_drift;
+#[path = "fbtl_ac07_cli_list.rs"]
+mod fbtl_ac07_cli_list;
 #[path = "fcgift_ac01_remember_persists_and_memory_line.rs"]
 mod fcgift_ac01_remember_persists_and_memory_line;
 #[path = "fcgift_ac02_remember_too_long_creates_nothing.rs"]
@@ -1827,13 +1839,3 @@ mod sched_ac7_tool_remove_disables_triggers;
 mod sched_ac8_healthz_scheduler_fields;
 #[path = "sched_quickstart_and_usage_report_schedules.rs"]
 mod sched_quickstart_and_usage_report_schedules;
-#[path = "self_offboard_ac1_disables_tenant_and_returns_success.rs"]
-mod self_offboard_ac1_disables_tenant_and_returns_success;
-#[path = "self_offboard_ac2_idempotent_second_call.rs"]
-mod self_offboard_ac2_idempotent_second_call;
-#[path = "self_offboard_ac3_offboarded_key_same_shape_as_unissued.rs"]
-mod self_offboard_ac3_offboarded_key_same_shape_as_unissued;
-#[path = "self_offboard_ac4_pro_tenant_cancels_stripe_subscription.rs"]
-mod self_offboard_ac4_pro_tenant_cancels_stripe_subscription;
-#[path = "self_offboard_ac5_admin_tenants_distinguishes_reason.rs"]
-mod self_offboard_ac5_admin_tenants_distinguishes_reason;

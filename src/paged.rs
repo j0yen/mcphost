@@ -534,6 +534,7 @@ pub const UNPAGED_VERBS: &[(&str, &str)] = &[
     ("host.drift.reviews", UNPAGED_WINDOW),
     ("host.enduser.audit", UNPAGED_LEGACY),
     ("host.enduser.list", UNPAGED_LEGACY),
+    ("host.feedback.list", UNPAGED_BOUNDED),
     ("host.group.list", UNPAGED_BOUNDED),
     ("host.invite.create", UNPAGED_ECHO),
     ("host.invite.list", UNPAGED_BOUNDED),
