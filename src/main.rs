@@ -1285,6 +1285,7 @@ async fn main() -> anyhow::Result<()> {
                 )),
                 anon_healthz_extra_key: Default::default(),
                 blob_clock_offset_secs: Default::default(),
+                confirm_clock_offset_secs: Default::default(),
             });
             // PRD-mcphost-abuse-guard-ban-list requirement 6: load the ban
             // cache once before this process ever serves a request, so the

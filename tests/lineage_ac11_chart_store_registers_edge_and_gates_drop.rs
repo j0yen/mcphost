@@ -75,9 +75,19 @@ async fn chart_store_registers_edge_and_gates_the_source_table_drop() {
         "blocked: {blocked:?}"
     );
 
-    // AC11 part 3: `confirm: true` succeeds despite the breaking chart.
+    // AC11 part 3: `confirm: true` succeeds despite the breaking chart. The
+    // seeded table is over the plan's `confirm_rows_min`
+    // (PRD-mcphost-destructive-verb-confirmation-token), so the drop also
+    // needs the `confirm` token its dry run mints.
+    let minted = extract_structured(
+        &client
+            .tools_call("host.table.drop", json!({"name": "expenses", "confirm": true, "dry_run": true}))
+            .await
+            .expect("dry run of the confirmed drop"),
+    );
+    let token = minted["confirm"].as_str().expect("dry run mints a confirm token").to_string();
     let confirmed = client
-        .tools_call("host.table.drop", json!({"name": "expenses", "confirm": true}))
+        .tools_call("host.table.drop", json!({"name": "expenses", "confirm": token}))
         .await
         .expect("confirmed drop must succeed despite the breaking chart");
     assert_eq!(extract_structured(&confirmed)["dropped"], json!(true));

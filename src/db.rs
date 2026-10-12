@@ -256,6 +256,7 @@ const MIGRATION_0089: &str = include_str!("../migrations/0089_blobs.sql");
 const MIGRATION_0090: &str = include_str!("../migrations/0090_blob_expiry.sql");
 /// PRD-mcphost-blob-retention-and-quota R2/R6: `blob_policy`, `blob_versions`.
 const MIGRATION_0091: &str = include_str!("../migrations/0091_blob_policy_versions.sql");
+const MIGRATION_0092: &str = include_str!("../migrations/0092_confirm_tokens.sql");
 
 /// PRD-mcphost-session-bound-tenant-key requirement 3: `kind` on
 /// `signup_events`. Renumbered to 0080 during this rebase: mcphost-tool-
@@ -618,6 +619,16 @@ pub struct ContactDecision {
     pub request_id: String,
     pub other_address: String,
     pub decided_at: String,
+}
+
+/// One `confirm_tokens` row (PRD-mcphost-destructive-verb-confirmation-token).
+#[derive(Debug, Clone)]
+pub struct ConfirmTokenRow {
+    pub verb: String,
+    pub args_hash: String,
+    pub diff_hash: String,
+    pub expires_unix: i64,
+    pub used_unix: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2851,7 +2862,20 @@ impl Db {
         Self::migrate_0088_dead_letter_drops(&conn)?;
         Self::migrate_0089_blobs(&conn)?;
         Self::migrate_0090_blob_expiry(&conn)?;
-        Self::migrate_0091_blob_policy_versions(&conn)
+        Self::migrate_0091_blob_policy_versions(&conn)?;
+        Self::migrate_0092_confirm_tokens(&conn)
+    }
+
+    /// PRD-mcphost-destructive-verb-confirmation-token R2/R5: gated on the
+    /// `tenants.scratch_of` column (the batch ends with its `ALTER`).
+    fn migrate_0092_confirm_tokens(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'scratch_of'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0092)?;
+        }
+        Ok(())
     }
 
     /// PRD-mcphost-blob-retention-and-quota R2: `CREATE TABLE IF NOT EXISTS`
@@ -9203,6 +9227,99 @@ impl Db {
                 )? as i64;
             }
             Ok(deleted)
+        })
+        .await
+    }
+
+    // ---- confirm tokens (PRD-mcphost-destructive-verb-confirmation-token) ----
+
+    /// R2: stores a minted token by hash.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn confirm_token_mint(
+        &self,
+        tenant_id: i64,
+        token_hash: String,
+        verb: String,
+        args_hash: String,
+        diff_hash: String,
+        expires_unix: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO confirm_tokens (token_hash, tenant_id, verb, args_hash, diff_hash, expires_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![token_hash, tenant_id, verb, args_hash, diff_hash, expires_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// R2/R3: the stored token for this tenant, if any.
+    pub async fn confirm_token_get(
+        &self,
+        tenant_id: i64,
+        token_hash: String,
+    ) -> Result<Option<ConfirmTokenRow>, AppError> {
+        self.with_conn(move |conn| {
+            Ok(conn
+                .query_row(
+                    "SELECT verb, args_hash, diff_hash, expires_unix, used_unix FROM confirm_tokens \
+                     WHERE token_hash = ?1 AND tenant_id = ?2",
+                    params![token_hash, tenant_id],
+                    |r| {
+                        Ok(ConfirmTokenRow {
+                            verb: r.get(0)?,
+                            args_hash: r.get(1)?,
+                            diff_hash: r.get(2)?,
+                            expires_unix: r.get(3)?,
+                            used_unix: r.get(4)?,
+                        })
+                    },
+                )
+                .optional()?)
+        })
+        .await
+    }
+
+    /// R2: marks the token used; `false` when it already was (single use).
+    pub async fn confirm_token_consume(&self, token_hash: String, now: i64) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            Ok(conn.execute(
+                "UPDATE confirm_tokens SET used_unix = ?2 WHERE token_hash = ?1 AND used_unix IS NULL",
+                params![token_hash, now],
+            )? == 1)
+        })
+        .await
+    }
+
+    /// Gives a consumed token back when the write it authorised failed.
+    pub async fn confirm_token_release(&self, token_hash: String) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute("UPDATE confirm_tokens SET used_unix = NULL WHERE token_hash = ?1", params![token_hash])?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Retention: drops tokens expired before `cutoff_unix`.
+    pub async fn confirm_tokens_prune(&self, cutoff_unix: i64) -> Result<usize, AppError> {
+        self.with_conn(move |conn| {
+            Ok(conn.execute("DELETE FROM confirm_tokens WHERE expires_unix < ?1", params![cutoff_unix])?)
+        })
+        .await
+    }
+
+    /// R5: whether the tenant is a scratch tenant (`scratch_of` set).
+    pub async fn tenant_is_scratch(&self, tenant_id: i64) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            Ok(conn
+                .query_row("SELECT scratch_of IS NOT NULL FROM tenants WHERE id = ?1", params![tenant_id], |r| {
+                    r.get::<_, i64>(0)
+                })
+                .optional()?
+                .unwrap_or(0)
+                != 0)
         })
         .await
     }

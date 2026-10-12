@@ -484,6 +484,10 @@ pub struct AppState {
     /// sleeping. A field, not a process-wide static, since the core suites
     /// run in parallel in one binary.
     pub blob_clock_offset_secs: std::sync::Arc<std::sync::atomic::AtomicI64>,
+    /// PRD-mcphost-destructive-verb-confirmation-token: seconds added to the
+    /// wall clock when a `confirm` token is minted or checked. Always 0 in
+    /// production; a test advances it to expire a token without sleeping.
+    pub confirm_clock_offset_secs: std::sync::Arc<std::sync::atomic::AtomicI64>,
 }
 
 /// requirement 6's own default: 60 calls per client IP per minute.

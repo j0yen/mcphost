@@ -31,6 +31,7 @@ Every numeric ceiling in the plan table, as `host.quickstart` `limits.plan` repo
 | `channel_retention_days` | 14 | 90 |
 | `channels_max` | 3 | 25 |
 | `concurrent_calls_per_tenant` | 4 | 10 |
+| `confirm_rows_min` | 100 | 1000 |
 | `contact_requests_per_day` | 20 | 500 |
 | `dead_letters_max` | 100 | 1000 |
 | `docs_bytes_max` | 52428800 | 5368709120 |

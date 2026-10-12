@@ -1,73 +1,74 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-export-tables-and-import-restore.md",
-  "intent_slug": "mcphost-export-tables-and-import-restore",
-  "root_motivation": "**Who:** the agent whose user says \"give me my data\" or \"move this to my other account\"; the agent restoring a tenant after `self_offboard`. **What:** a download that is the whole tenant, and a way to put it back. **Why not today:** `src/export.rs:458-572` adds entries for `state_kv`, `state_rows`, `state`, and `tools/<name>/v1`; no code path reads `tables/<tenant_id>.db` or the docs store. AC 1 of the shipped export PRD lists \"both tool sources, three state files, secrets.txt, manifest.json\" and nothing else. There is no `host.import`; `manifest.json` entries validate against `host.tool_publish` (shipped AC 5), so tools can be re-published by hand, but tables, docs, and notes would have to be re-created call by call. **Premise (creative):** an archive that is the whole tenant, restorable in one call, is what makes \"no lock-in\" true for an agent and makes a tenant portable between the free and pro plans and between two owners. **Falsifier:** see frontmatter; AC 1 inspects a real arc...",
-  "user_persona": "An agent that calls host.runs.get(run_id, as_fixtures=true) on a failed chain run, passes the fixtures to host.tool_test with its fixed spec, and reads each later step's resolved_args before republishing; Operator Joe reading the digest.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-destructive-verb-confirmation-token.md",
+  "intent_slug": "mcphost-destructive-verb-confirmation-token",
+  "root_motivation": "**Who:** the autonomous coding agent on a user's live key, asked to \"delete the old rows\" with a filter it wrote 30 s ago. **What:** a gate that costs one extra call when the blast radius is large and nothing when it is small, and whose error teaches the dry-run path. **Why not today:** dry_run exists but is optional; no tool descriptor carries destructiveHint, so clients show no warning for host.table.drop.",
+  "user_persona": "An agent that calls host.state.delete_rows with an empty filter on a 5 000-row table, reads confirm_required.dry_run_first, runs the dry run, notices the empty filter and fixes it; a Claude Code user who sees a destructive marker on host.table.drop.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 7
+    "target": 6
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a local host with a tenant holding one `host.table.*` table of 3 rows and one doc, When `host.export` completes and the archive is listed, Then the test asserts no entry path starts with `tables/` or `docs/` on the pre-change code and prints the entry list; if the table rows are already present the builder stops and records the falsifier as confirmed.",
-      "test": "tests/timp_ac01_export_lacks_tables_and_docs_baseline.rs"
+      "description": "Given this PRD has landed, When the operator runs the premise check recorded under \"## Premise check (operator)\" below, Then its result is written into this PRD and a failed premise parks the PRD (Live; evidence: operator premise check, see \"## Premise check (operator)\")",
+      "test": "deferred -- operator-provisioned: Live premise check over prod/orch truth-tier transcripts, recorded by the operator after land."
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the same tenant after R1, When `host.export` completes, Then the archive holds `tables/t/schema.json`, `tables/t/rows.jsonl` with 3 lines, `models/t.json`, `docs/a.md`, and `manifest.json` version 2 with a `sha256` per entry.",
-      "test": "tests/timp_ac02_export_carries_tables_models_docs_manifest_v2.rs"
+      "description": "Given a 5 000-row table and `confirm_rows_min` 100, When `host.state.delete_rows {table, where: {}}` is called without `confirm`, Then `confirm_required` is returned with `dry_run_first.args.dry_run == true`, `would.rows[0].delete == 5000`, and the table still has 5 000 rows; Given a `where` matching 12 rows, Then the delete runs with no token.",
+      "test": "tests/cnfm_ac02_confirm_required_over_threshold.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given an empty tenant B and A's completed export, When `host.import(run_id=\u2026)` completes, Then `host.table.list`, `host.table.describe`, `host.state.list`, `host.docs.list` and `host.catalog` on B match A, and `secrets_to_set` names A's secret.",
-      "test": "tests/timp_ac03_import_restores_an_empty_tenant.rs"
+      "description": "Given the dry run returned `confirm: c_\u2026`, When the real call is made with the same args and `confirm` within 10 min, Then the rows are deleted and `confirm_tokens.used_unix` is set; When the same token is sent again, Then `confirm_invalid {reason: \"used\"}` and nothing changes.",
+      "test": "tests/cnfm_ac03_token_deletes_once.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given tenant B holds one tool, When `host.import` runs, Then `tenant_not_empty` lists `tools: [\"x\"]` and nothing is written; Given a run id of another tenant, Then `not_found`.",
-      "test": "tests/timp_ac04_import_refuses_non_empty_and_foreign_runs.rs"
+      "description": "Given a token minted for `{table: \"jobs\", where: {status: \"done\"}}`, When the real call changes `where` to `{}`, Then `confirm_invalid {reason: \"args_changed\"}`; When 100 new rows are appended between dry run and real call, Then `confirm_invalid {reason: \"state_changed\"}` with a fresh `would`; When 601 s pass, Then `reason: \"expired\"`.",
+      "test": "tests/cnfm_ac04_token_bound_to_args_state_and_time.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given A \u2192 B \u2192 export, When both manifests are compared, Then every entry's sha256 is equal except `manifest.json` and fields named `created_unix`.",
-      "test": "tests/timp_ac05_round_trip_sha256_equal.rs"
+      "description": "Given `tools/list` for a keyed tenant, When read, Then every registry verb of a gated kind carries `annotations.destructiveHint == true` and a description ending in the confirm sentence, every non-gated verb carries neither, and `docs/host-tools.md` contains the sentence once per gated verb.",
+      "test": "tests/cnfm_ac05_tools_list_marks_destructive_verbs.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a free-plan tenant and an archive whose manifest totals 60 MB, When `host.import` runs, Then `quota_exceeded {export_bytes_max}` is returned before any row exists; Given a 1,000-row table and 10 docs within quota, Then import completes in \u2264 30 s and `host.runs.get` reported `entries_done` rising.",
-      "test": "tests/timp_ac06_import_enforces_export_bytes_max_and_reports_progress.rs"
+      "description": "Given a scratch tenant key, When `host.table.drop {name}` on a 5 000-row table is called without `confirm`, Then it succeeds and the response has `_meta.scratch == true` and no `confirm` field.",
+      "test": "tests/cnfm_ac06_scratch_tenant_is_never_gated.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given the `ArchiveEntry` enum, When the test renders the exporter's paths, the importer's accepted paths, and `docs/tools.md`'s layout table, Then the three sets are identical.",
-      "test": "tests/timp_ac07_archive_layout_one_enum.rs"
+      "description": "Given plan `free` with `confirm_rows_min: 100` and a plan override setting it to 0, When a 5 000-row delete is called on the overridden tenant, Then it runs without a token and `host.quickstart.limits.plan.confirm_rows_min == 0`.",
+      "test": "tests/cnfm_ac07_plan_override_disables_the_gate.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod after deploy, When the joe-test tenant runs `host.export`, downloads the archive and `tar -tzf` it, Then the listing contains `tables/` and `docs/` prefixes and `manifest.json` reads `\"version\": 2` (Live; evidence: `tar -tzf <downloaded archive> | sort | head -20` pasted in the PR trailer)",
-      "test": "deferred -- operator-provisioned: live prod export + tar -tzf of the joe-test tenant after deploy."
+      "description": "Given landed prod and joe-test throwaway table `cnfm_live` (150 rows), When `host.state.delete_rows {table: \"cnfm_live\", where: {}}` is called, Then reply 1 is `confirm_required`, dry run returns a `confirm`, the confirmed call deletes 150 rows and `host.tool_logs` shows `minted` then `used` (Live; evidence: `curl -s https://mcphost.dev/status.json | jq .version` = landed tag plus the three MCP responses, key/token redacted)",
+      "test": "deferred -- operator-provisioned: live prod delete of joe-test table cnfm_live after deploy."
     }
   ],
   "scope": [
-    "src/call_cli.rs (new): the contract-built clap tree, alias rewrite, argument JSON, run, --list and --completions rendering.",
-    "src/client.rs (new): the streamable-HTTP client extracted from compat_check.rs, plus the error-code -> exit-code table.",
-    "src/main.rs: `mcphost call` dispatched before the derive parser; Command::Call for --help.",
-    "Cargo.toml: clap gains the string and env features."
+    "src/confirm.rs (new): the gated set derived from WRITE_VERBS, token mint/hash, canonical args hash, confirm_required/confirm_invalid errors.",
+    "src/handler.rs: dispatch gate (dry-run measure, token check, scratch bypass), destructiveHint annotations and description suffix in host_tools.",
+    "src/db.rs + migrations/0092_confirm_tokens.sql: confirm_tokens table, tenants.scratch_of.",
+    "src/plans.rs: Plan.confirm_rows_min (free 100, paid 1000, 0 disables).",
+    "docs/host-tools.md, docs/plans.md, www/llms-full.txt: generated."
   ],
   "non_goals": [
-    "Tenant-published tools as subcommands; interactive prompts; storing keys; replacing the dev-loop verbs; nested typed flags for object arguments."
+    "Human approval; gating scratch tenants; gating host.key.rotate and host.self.offboard; changing what any verb does once confirmed."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -76,30 +77,35 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "key_never_a_flag": "tenant_key is the Authorization bearer from MCPHOST_KEY or --key-file, never a flag value."
+      "token_never_stored": "only sha256(token) is stored; the token is shown once by the dry run."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can a shell not call a host tool today?",
-      "a": "The binary has only server-side subcommands, so an agent hand-types JSON-RPC."
+      "q": "Why can an agent delete 5 000 rows by accident?",
+      "a": "dry_run is optional and nobody is required to read it."
     },
     {
       "why": 2,
-      "q": "Why not a hand-written client table?",
-      "a": "A second copy of the contract drifts; the table is generated from the embedded contract and a drift test pins it."
-    }
-  ],
-  "created_at": "2026-10-11T00:00:00Z",
-  "ambiguities_resolved": [
-    {
-      "question": "188 canonical tools?",
-      "resolution": "The embedded contract has 170 canonical dotted tools; the underscore wire names and registered aliases are accepted on input and rewritten."
+      "q": "Why not a prose warning?",
+      "a": "Prose at a boundary is skipped; a refusal carrying the exact dry-run call cannot be."
     },
     {
-      "question": "AC3 kind python?",
-      "resolution": "The real-host test publishes kind echo (python needs the userns sandbox); the stub-host test pins the python request shape."
+      "why": 3,
+      "q": "Why bind the token to args and diff?",
+      "a": "A token for another filter or another state would authorise a different delete."
+    }
+  ],
+  "created_at": "2026-10-12T00:00:00Z",
+  "ambiguities_resolved": [
+    {
+      "question": "Which diffs are gated?",
+      "resolution": "A dry-run diff with a measurable row count (rows[].delete, tables[].rows) at or above plan confirm_rows_min; verbs that report no count are not gated yet."
+    },
+    {
+      "question": "Token bound to key or session?",
+      "resolution": "Tenant (key hash), per the PRD default."
     }
   ]
 }

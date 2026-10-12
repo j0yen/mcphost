@@ -2770,6 +2770,7 @@ mod tests {
             reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             anon_healthz_extra_key: Default::default(),
             blob_clock_offset_secs: Default::default(),
+            confirm_clock_offset_secs: Default::default(),
         }
     }
 

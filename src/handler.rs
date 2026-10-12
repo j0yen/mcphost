@@ -1033,6 +1033,32 @@ fn annotate_deprecated_tools(tools: &mut [Tool], deprecations: &[crate::api_cont
     }
 }
 
+/// `args` without a string `confirm` token (a gated verb's own handler never
+/// sees it); a boolean `confirm: true` is `host.table.drop`'s lineage-gate
+/// flag and passes through.
+fn confirm_stripped(args: &Value) -> Value {
+    let mut args = args.clone();
+    if let Some(obj) = args.as_object_mut()
+        && obj.get("confirm").is_some_and(Value::is_string)
+    {
+        obj.remove("confirm");
+    }
+    args
+}
+
+/// R5: marks a scratch tenant's response `_meta.scratch: true`.
+fn mark_scratch(value: &mut Value) {
+    if let Some(obj) = value.as_object_mut() {
+        let meta = obj.entry("_meta").or_insert_with(|| json!({}));
+        if let Some(meta) = meta.as_object_mut() {
+            meta.insert("scratch".to_string(), json!(true));
+            // The registered output schema requires `_meta.dry_run`; a real
+            // (non-dry) scratch response says so rather than omitting it.
+            meta.entry("dry_run").or_insert_with(|| json!(false));
+        }
+    }
+}
+
 /// PRD-mcphost-tool-test AC9: `host.spec_test`, unlike every other `host.*`
 /// descriptor, must be absent from `tools/list` for an anonymous/invalid
 /// caller (present, and callable, only once authenticated) -- `authenticated`
@@ -4164,6 +4190,20 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
     for tool in tools.iter_mut() {
         tool.output_schema = crate::output_schemas::output_schema_for(tool.name.as_ref());
     }
+    // PRD-mcphost-destructive-verb-confirmation-token R4: every confirm-gated
+    // verb is marked `destructiveHint` and its description ends with the
+    // confirm rule -- both read off the registry (`confirm::gated`), so a
+    // verb added to `WRITE_VERBS` is annotated with no further code.
+    for tool in tools.iter_mut() {
+        if crate::confirm::gated_name(&tool.name) {
+            let mut annotations = rmcp::model::ToolAnnotations::default();
+            annotations.destructive_hint = Some(true);
+            annotations.idempotent_hint = Some(false);
+            tool.annotations = Some(annotations);
+            let existing = tool.description.clone().unwrap_or_default();
+            tool.description = Some(Cow::Owned(format!("{existing} {}", crate::confirm::CONFIRM_SENTENCE)));
+        }
+    }
     apply_tool_aliases(&mut tools);
     tools
 }
@@ -5838,39 +5878,91 @@ impl McpHostHandler {
         // not_found, args_invalid) is returned unchanged. `NoDryRun` refuses
         // with its reason. A `publish` verb keeps its own gate-report
         // `dry_run` (control::tool_publish) and passes straight through.
-        if let Some(verb) = crate::write_verbs::lookup(name)
-            && crate::write_verbs::dry_run_requested(&args)
+        let verb = crate::write_verbs::lookup(name);
+        let dry_requested = crate::write_verbs::dry_run_requested(&args);
+        if let Some(verb) = verb
+            && dry_requested
         {
             match verb.dry_run {
                 crate::write_verbs::DryRun::NoDryRun(reason) => {
                     return Err(crate::write_verbs::no_dry_run_error(verb, reason));
                 }
                 crate::write_verbs::DryRun::Supported if verb.kind != crate::write_verbs::Kind::Publish => {
-                    let mut inner_args = args.clone();
-                    if let Some(obj) = inner_args.as_object_mut() {
-                        obj.remove("dry_run");
+                    let notes = self
+                        .dry_run_notes(tenant, subject, auth_method, calls_auth_method, end_user, session_id, name, &args)
+                        .await?;
+                    let mut would = crate::write_verbs::build_would(verb, &args, &notes);
+                    if crate::confirm::gated(verb) {
+                        self.confirm_decorate_dry_run(tenant, verb, &args, &notes, &mut would).await?;
                     }
-                    let ctx = crate::dryrun::DryRunCtx::new(self.state.db.path().to_path_buf(), self.state.db.cfg());
-                    let outcome = crate::dryrun::with_dry_run(
-                        ctx.clone(),
-                        Box::pin(self.dispatch_tenant_tool_inner(
-                            tenant,
-                            subject,
-                            auth_method,
-                            calls_auth_method,
-                            end_user,
-                            session_id,
-                            name,
-                            inner_args,
-                        )),
-                    )
-                    .await;
-                    crate::dryrun::finish(ctx.clone()).await;
-                    outcome?;
-                    return Ok(crate::write_verbs::build_would(verb, &args, &ctx.would_notes()));
+                    return Ok(would);
                 }
                 crate::write_verbs::DryRun::Supported => {}
             }
+        }
+        // PRD-mcphost-destructive-verb-confirmation-token R1/R5: a real call
+        // of a confirm-gated verb.
+        if let Some(verb) = verb
+            && !dry_requested
+            && crate::confirm::gated(verb)
+        {
+            if self.state.db.tenant_is_scratch(tenant.id).await? {
+                let mut result = self
+                    .dispatch_tenant_tool_inner(
+                        tenant,
+                        subject,
+                        auth_method,
+                        calls_auth_method,
+                        end_user,
+                        session_id,
+                        name,
+                        confirm_stripped(&args),
+                    )
+                    .await?;
+                mark_scratch(&mut result);
+                return Ok(result);
+            }
+            let min = self.state.plans.get(&tenant.plan).map_or(0, |p| p.confirm_rows_min);
+            let mut consumed = None;
+            if min > 0 {
+                // A dry run that errors (nothing to drop, bad args) measures
+                // nothing: the real call below gives the real answer.
+                if let Ok(notes) = self
+                    .dry_run_notes(tenant, subject, auth_method, calls_auth_method, end_user, session_id, name, &args)
+                    .await
+                    && crate::confirm::needs_confirm(&notes, min)
+                {
+                    consumed = Some(self.confirm_check(tenant, verb, name, &args, &notes, min).await?);
+                }
+            }
+            // A consumed token is the caller's explicit confirmation of the
+            // diff, so a lineage gate on the same verb (`confirm: true`) is
+            // satisfied by it -- one `confirm` key cannot carry both.
+            let mut inner_args = confirm_stripped(&args);
+            if consumed.is_some()
+                && let Some(obj) = inner_args.as_object_mut()
+            {
+                obj.insert("confirm".to_string(), json!(true));
+            }
+            let result = self
+                .dispatch_tenant_tool_inner(
+                    tenant,
+                    subject,
+                    auth_method,
+                    calls_auth_method,
+                    end_user,
+                    session_id,
+                    name,
+                    inner_args,
+                )
+                .await;
+            if result.is_err()
+                && let Some(hash) = consumed
+            {
+                // The write the token authorised did not happen.
+                let _ = self.state.db.confirm_token_release(hash).await;
+            }
+            return result;
         }
         self.dispatch_tenant_tool_inner(
             tenant,
@@ -5883,6 +5975,133 @@ impl McpHostHandler {
             args,
         )
         .await
+    }
+
+    /// Runs `name` with `args` (minus `dry_run`/`confirm`) inside a
+    /// rolled-back dry-run scope and returns the `would` notes it collected.
+    #[allow(clippy::too_many_arguments)]
+    async fn dry_run_notes(
+        &self,
+        tenant: &Tenant,
+        subject: Option<&str>,
+        auth_method: &str,
+        calls_auth_method: &str,
+        end_user: Option<&crate::enduser::EndUser>,
+        session_id: Option<&str>,
+        name: &str,
+        args: &Value,
+    ) -> Result<Vec<(&'static str, Value)>, AppError> {
+        let mut inner_args = confirm_stripped(args);
+        if let Some(obj) = inner_args.as_object_mut() {
+            obj.remove("dry_run");
+            if crate::confirm::confirm_arg(args).is_some() {
+                // Measuring a call that carries a token: the token vouches
+                // for the lineage gate too (see the real-call path).
+                obj.insert("confirm".to_string(), json!(true));
+            }
+        }
+        let ctx = crate::dryrun::DryRunCtx::new(self.state.db.path().to_path_buf(), self.state.db.cfg());
+        let outcome = crate::dryrun::with_dry_run(
+            ctx.clone(),
+            Box::pin(self.dispatch_tenant_tool_inner(
+                tenant,
+                subject,
+                auth_method,
+                calls_auth_method,
+                end_user,
+                session_id,
+                name,
+                inner_args,
+            )),
+        )
+        .await;
+        crate::dryrun::finish(ctx.clone()).await;
+        outcome?;
+        Ok(ctx.would_notes())
+    }
+
+    fn confirm_now(&self) -> i64 {
+        crate::state::now_unix() + self.state.confirm_clock_offset_secs.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// R2/R5: a dry run of a gated verb mints `confirm` beside `would` when
+    /// the diff needs one; on a scratch tenant it says `_meta.scratch` and
+    /// never mints.
+    #[allow(clippy::too_many_arguments)]
+    async fn confirm_decorate_dry_run(
+        &self,
+        tenant: &Tenant,
+        verb: &crate::write_verbs::WriteVerb,
+        args: &Value,
+        notes: &[(&'static str, Value)],
+        would: &mut Value,
+    ) -> Result<(), AppError> {
+        if self.state.db.tenant_is_scratch(tenant.id).await? {
+            mark_scratch(would);
+            return Ok(());
+        }
+        let min = self.state.plans.get(&tenant.plan).map_or(0, |p| p.confirm_rows_min);
+        if !crate::confirm::needs_confirm(notes, min) {
+            return Ok(());
+        }
+        let token = crate::confirm::new_token();
+        self.state
+            .db
+            .confirm_token_mint(
+                tenant.id,
+                crate::confirm::token_hash(&token),
+                verb.name.to_string(),
+                crate::confirm::args_hash(args),
+                crate::confirm::diff_hash(notes),
+                self.confirm_now() + crate::confirm::TOKEN_TTL_S,
+            )
+            .await?;
+        if let Some(obj) = would.as_object_mut() {
+            obj.insert("confirm".to_string(), json!(token));
+        }
+        Ok(())
+    }
+
+    /// R1-R3: validates the `confirm` argument of a large destructive real
+    /// call and consumes the token; returns the consumed token's hash.
+    #[allow(clippy::too_many_arguments)]
+    async fn confirm_check(
+        &self,
+        tenant: &Tenant,
+        verb: &crate::write_verbs::WriteVerb,
+        name: &str,
+        args: &Value,
+        notes: &[(&'static str, Value)],
+        min: i64,
+    ) -> Result<String, AppError> {
+        let would = || crate::write_verbs::build_would(verb, args, notes)["would"].clone();
+        let Some(token) = crate::confirm::confirm_arg(args) else {
+            return Err(crate::confirm::required_error(name, args, would(), min));
+        };
+        let hash = crate::confirm::token_hash(token);
+        let Some(row) = self.state.db.confirm_token_get(tenant.id, hash.clone()).await? else {
+            return Err(crate::confirm::invalid_error("unknown", None));
+        };
+        let reason = if row.verb != verb.name {
+            Some(("unknown", None))
+        } else if row.used_unix.is_some() {
+            Some(("used", None))
+        } else if row.expires_unix <= self.confirm_now() {
+            Some(("expired", None))
+        } else if row.args_hash != crate::confirm::args_hash(args) {
+            Some(("args_changed", None))
+        } else if row.diff_hash != crate::confirm::diff_hash(notes) {
+            Some(("state_changed", Some(would())))
+        } else {
+            None
+        };
+        if let Some((reason, would)) = reason {
+            return Err(crate::confirm::invalid_error(reason, would));
+        }
+        if !self.state.db.confirm_token_consume(hash.clone(), self.confirm_now()).await? {
+            return Err(crate::confirm::invalid_error("used", None));
+        }
+        Ok(hash)
     }
 
     #[allow(clippy::too_many_arguments)]
