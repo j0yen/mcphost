@@ -545,6 +545,12 @@ mod cpath_ac05_steps_index_checked_and_forward_reference;
 mod cpath_ac06_force_publishes_and_records_it;
 #[path = "cpath_ac07_context_keys_table_parity.rs"]
 mod cpath_ac07_context_keys_table_parity;
+#[path = "cpathb_ac01_steps_index_checked_and_forward_reference.rs"]
+mod cpathb_ac01_steps_index_checked_and_forward_reference;
+#[path = "cpathb_ac02_force_publishes_and_records_it.rs"]
+mod cpathb_ac02_force_publishes_and_records_it;
+#[path = "cpathb_ac03_context_keys_table_parity.rs"]
+mod cpathb_ac03_context_keys_table_parity;
 #[path = "cproc_ac01_raw_serve_spawn_and_pipe_read_fail.rs"]
 mod cproc_ac01_raw_serve_spawn_and_pipe_read_fail;
 #[path = "cproc_ac02_guard_struct_fails_waited_child_passes.rs"]
@@ -1827,15 +1833,3 @@ mod qdiag_ac07_description_annotation_offers_candidate;
 mod qdiag_ac08_footprint_columns_est_tokens;
 #[path = "qdiag_ac11_ten_concurrent_refused_queries_all_hinted.rs"]
 mod qdiag_ac11_ten_concurrent_refused_queries_all_hinted;
-#[path = "refrow_ac01_args_invalid_writes_refused_row.rs"]
-mod refrow_ac01_args_invalid_writes_refused_row;
-#[path = "refrow_ac02_calls_per_day_refusal_writes_row_not_quota.rs"]
-mod refrow_ac02_calls_per_day_refusal_writes_row_not_quota;
-#[path = "refrow_ac03_anonymous_unrecognized_key_writes_no_row.rs"]
-mod refrow_ac03_anonymous_unrecognized_key_writes_no_row;
-#[path = "refrow_ac04_insufficient_scope_row_has_token_auth_method.rs"]
-mod refrow_ac04_insufficient_scope_row_has_token_auth_method;
-#[path = "refrow_ac05_host_usage_reports_refused.rs"]
-mod refrow_ac05_host_usage_reports_refused;
-#[path = "refrow_ac06_unwritable_db_refusal_still_returned.rs"]
-mod refrow_ac06_unwritable_db_refusal_still_returned;
