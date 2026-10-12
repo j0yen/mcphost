@@ -63,6 +63,7 @@ use serde_json::{Value, json};
 use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
 
+use crate::client::{self, RpcRequest, extract_structured};
 use crate::db::Db;
 
 /// Shared, growable byte buffer for a child's captured stderr tail --
@@ -816,131 +817,16 @@ pub mod test_support {
     }
 }
 
-/// The stateless SEP-2575 `_meta` block every non-`initialize` request
-/// needs, matching `tests/common/mod.rs`'s client.
-fn with_client_meta(mut params: Value) -> Value {
-    if let Some(obj) = params.as_object_mut() {
-        obj.insert(
-            "_meta".to_string(),
-            json!({
-                "io.modelcontextprotocol/protocolVersion": "2026-07-28",
-                "io.modelcontextprotocol/clientCapabilities": {},
-            }),
-        );
-    }
-    params
-}
-
-/// One JSON-RPC-over-streamable-HTTP request, bundled so [`rpc_call`] stays
-/// under this repo's `too-many-arguments-threshold = 5`.
-struct RpcRequest<'a> {
-    method: &'a str,
-    params: Value,
-    id: u64,
-    bearer: Option<&'a str>,
-}
-
+/// [`client::rpc_call`] with its failure flattened to the one-line detail
+/// string every `check-compat` step reports.
 async fn rpc_call(
     client: &reqwest::Client,
     base_url: &str,
     req: RpcRequest<'_>,
 ) -> Result<Value, String> {
-    let RpcRequest {
-        method,
-        params,
-        id,
-        bearer,
-    } = req;
-    let body_params = if method == "initialize" {
-        params
-    } else {
-        with_client_meta(params)
-    };
-    let body = json!({"jsonrpc": "2.0", "id": id, "method": method, "params": body_params});
-
-    let mut http_req = client
-        .post(format!("{base_url}/mcp"))
-        .header("Content-Type", "application/json")
-        .header("Accept", "application/json, text/event-stream")
-        .header("MCP-Protocol-Version", "2026-07-28")
-        .json(&body);
-    if method != "initialize" {
-        http_req = http_req.header("Mcp-Method", method);
-        if method == "tools/call"
-            && let Some(name) = tool_call_name(&body)
-        {
-            http_req = http_req.header("Mcp-Name", name);
-        }
-    }
-    if let Some(key) = bearer {
-        http_req = http_req.header("Authorization", format!("Bearer {key}"));
-    }
-
-    let resp = http_req
-        .send()
+    client::rpc_call(client, base_url, req)
         .await
-        .map_err(|e| format!("{method} request failed: {e}"))?;
-    let status = resp.status();
-    // PRD-mcphost-one-next-tool requirement 3: a call that binds this
-    // connection (`signup`) now emits notifications/tools/list_changed
-    // before its own result, which upgrades that one response from
-    // `application/json` to `text/event-stream` (`rmcp`'s own
-    // `StreamableHttpServerConfig::json_response` fallback) -- the real
-    // JSON-RPC message is always the last one on the wire.
-    let content_type = resp
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or_default()
-        .to_string();
-    let parsed: Value = if content_type.starts_with("text/event-stream") {
-        let text = resp
-            .text()
-            .await
-            .map_err(|e| format!("{method} response ({status}) did not read as text: {e}"))?;
-        text.split("\n\n")
-            .filter_map(|block| {
-                block.lines().find_map(|line| {
-                    line.strip_prefix("data: ").or_else(|| line.strip_prefix("data:"))
-                })
-            })
-            .filter(|data| !data.is_empty())
-            .filter_map(|data| serde_json::from_str::<Value>(data).ok())
-            .collect::<Vec<Value>>()
-            .pop()
-            .ok_or_else(|| format!("{method} SSE response ({status}) carried no JSON-RPC message"))?
-    } else {
-        resp.json()
-            .await
-            .map_err(|e| format!("{method} response ({status}) did not parse as JSON: {e}"))?
-    };
-    if let Some(error) = parsed.get("error") {
-        return Err(format!("{method} returned a JSON-RPC error: {error}"));
-    }
-    Ok(parsed.get("result").cloned().unwrap_or(Value::Null))
-}
-
-fn tool_call_name(body: &Value) -> Option<String> {
-    body.get("params")
-        .and_then(|p| p.get("name"))
-        .and_then(Value::as_str)
-        .map(str::to_string)
-}
-
-/// `CallToolResult::structured` puts the value in `structuredContent`;
-/// fall back to the first text content block, matching the test harness's
-/// `extract_structured`.
-fn extract_structured(call_result: &Value) -> Value {
-    if let Some(sc) = call_result.get("structuredContent") {
-        return sc.clone();
-    }
-    if let Some(content) = call_result.get("content").and_then(Value::as_array)
-        && let Some(first) = content.first()
-        && let Some(text) = first.get("text").and_then(Value::as_str)
-    {
-        return serde_json::from_str(text).unwrap_or(Value::Null);
-    }
-    Value::Null
+        .map_err(|failure| failure.to_string())
 }
 
 async fn probe_previous(
