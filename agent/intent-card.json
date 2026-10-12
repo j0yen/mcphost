@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-declared-ordering-per-verb.md",
-  "intent_slug": "mcphost-declared-ordering-per-verb",
-  "root_motivation": "**Premise (agent viewpoint):** I want \"newest first\" or \"by name\" and I want page 2 to be what page 1 was not, even while the table changes. **Falsifier:** today's implicit orderings already hold under concurrent inserts (AC 1). **Who:** the agent polling `host.runs.list` for the newest run while runs are being created; the agent reading `host.msg.inbox` while messages arrive; the SDK generator rendering an `Order` literal. **What:** a declared ordering per verb, selectable, with a stated default and a stable tiebreak. **Why not today:** `ORDER BY` clauses live in `db.rs` and cursors in the handler files; `runs.rs:399-420` post-filters a wider window and re-caps, so a `verdict` filter can return fewer rows than `limit` while more exist, with no `next_cursor` to reach them; `host.tool.logs` orders \"most recent first\" by description only; `host.docs.list` offers no newest-first at all although `seq` exists (`documents_list_since`). No schema carries `order`. **Consequence:** consumers...",
-  "user_persona": "An agent (customer) that calls host.webhook_inbox.create once, pastes the url into a sender and shows its user the push event in the same session; the truth-tier integration_specialist persona whose gold is reachable in 4 calls; Operator Joe reading the digest.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-ask-user-decision.md",
+  "intent_slug": "mcphost-ask-user-decision",
+  "root_motivation": "**Who:** an autonomous agent about to deploy, send, spend or delete something its user should approve while the user is away from the chat. **What:** ask once, hand over a link, block, act on the answer; never hang and never guess. **Why not today:** the only long-poll is host.msg.wait on an inbox a human cannot write to; the wait ceiling is prose in a descriptor and two clamp literals; composing a blocking question from a url-shared tool costs three host calls. **Consequence:** approvals are skipped or guessed.",
+  "user_persona": "An agent that calls host.ask.create, sends its user the url, and loops host.ask.wait until answered or expired; the user who taps a button on a phone with no login; Operator Joe reading host.ask.list.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,61 +14,60 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a local daemon and a writer inserting 200 documents and 200 messages during a `limit: 25` walk, When `vord_ac01_falsifier` runs 20 trials of `host.docs.list` and `host.msg.inbox` on HEAD before this PRD's code, Then it records duplicates and skips to `target/vord-census.json` and fails with `premise_false` only if both are 0 in all 20 trials AND `host.runs.list(verdict=\u2026)` never under-fills a page.",
-      "test": "tests/vord_ac01_falsifier.rs"
+      "description": "Given a 0.106.0-shaped test host, When a test composes the blocking question from `host.tool_share(visibility=\"url\")` on an `answer` tool plus `host.msg.wait`, and then runs `host.ask.create` + `host.ask.wait`, Then it records both call counts and end-to-end latencies in the test output, and the verb path uses strictly fewer host calls (the PRD is parked if not).",
+      "test": "tests/askd_ac01_composed_path_costs_more_host_calls_than_verbs.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given `host.docs.list`, When the contract is dumped, Then its `order` property enumerates exactly the `DocsOrder` variants and the description ends with `default created_desc.`",
-      "test": "tests/vord_ac02_contract_order_enum.rs"
+      "description": "Given `host.ask.create` with 2 options, When the URL is fetched with no key and one option is POSTed, Then the agent's blocked `host.ask.wait` returns `status: answered` with that choice within 2 s, and a second POST returns 409 `ask_answered` naming the first choice.",
+      "test": "tests/askd_ac02_keyless_answer_unblocks_wait_second_post_409.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a cursor minted under `created_desc`, When passed with `order: \"name_asc\"`, Then `cursor_invalid {reason: \"order\"}`.",
-      "test": "tests/vord_ac03_cursor_bound_to_order.rs"
+      "description": "Given `WAIT_MAX_S`, When the `host.msg.wait` descriptor, the `host.ask.wait` descriptor and `host.quickstart.limits.wait_max_s` are rendered, Then all three carry the constant's value and `rg 'clamp\\(1, 25\\)' src` returns no lines.",
+      "test": "tests/askd_ac03_wait_ceiling_single_source.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given `src/db.rs`, When `vord_ac04_order_by_from_enum` scans the list functions behind `PAGED_VERBS`, Then every `ORDER BY` is produced by `sql_order` and a hand-typed clause fails the test naming the function.",
-      "test": "tests/vord_ac04_order_by_from_enum.rs"
+      "description": "Given an ask with `ttl_s: 2`, When `host.ask.wait` is called 3 s later, Then it returns error `ask_expired` with `next_call: host.ask.create`, and the page returns the 404 bytes.",
+      "test": "tests/askd_ac04_expired_ask_errors_and_page_is_404.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given 60 runs of which 7 have `verdict: \"fail\"`, When `host.runs.list(verdict=\"fail\", limit=5)` is paged, Then page 1 has 5, page 2 has 2 with no `next_cursor`, and no row is read outside the filter.",
-      "test": "tests/vord_ac05_runs_list_filters_in_sql.rs"
+      "description": "Given a key-less `host.ask.wait` on bare `/mcp`, When it is called, Then it returns `tenant_key_missing` in under 1 s and no tenant row is created.",
+      "test": "tests/askd_ac05_keyless_wait_is_tenant_key_missing_and_signs_nobody_up.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given every `Paged` verb with a fixture, When `vord_ac05` walks it under concurrent inserts under each declared order for 20 trials, Then zero duplicate ids and zero skipped pre-existing ids.",
-      "test": "tests/vord_ac06_concurrent_inserts_every_paged_verb.rs"
+      "description": "Given a free tenant with 5 pending asks, When `host.ask.create` runs, Then it fails `asks_limit`, and `host.quickstart.limits.plan.asks_open_max` reads 5 from `plans.rs`.",
+      "test": "tests/askd_ac06_free_tenant_sixth_pending_ask_is_asks_limit.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given a PR that removes `NameAsc` from `DocsOrder`, When `mcphost contract dump --check` runs, Then it fails as a breaking change unless `deprecations.json` announces it.",
-      "test": "tests/vord_ac07_removed_order_variant_is_breaking.rs"
+      "level": "MUST",
+      "description": "Given two concurrent POSTs of different choices to one ask, When both complete, Then exactly one is recorded, the other is 409, and `host.ask.get` shows one `answered` event.",
+      "test": "tests/askd_ac07_concurrent_posts_record_exactly_one_answer.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod after landing, When `host.docs.list(order=\"name_asc\", limit=5)` runs on joe-test, Then the five names are ascending and the contract entry shows the enum (Live; evidence: the Technical MCP call for `host.docs.list {\"order\":\"name_asc\",\"limit\":5}` piped to `jq -r '.result.structuredContent.documents[].name' | sort -c && echo sorted` prints `sorted`, and the Technical contract check prints \u2265 2)",
-      "test": "deferred -- operator-provisioned: live prod curl of host.docs.list order=name_asc and the contract enum count after deploy."
+      "description": "Given prod after deploy, When the help page and the plan page are fetched, Then both reflect the new registry entries (Live; evidence: `curl -s -o /dev/null -w '%{http_code}' https://mcphost.dev/help/ask_expired` prints 200 and `curl -s https://mcphost.dev/plans.json | grep -c asks_open_max` prints 1 or more)",
+      "test": "deferred -- operator-provisioned: needs prod after deploy (help page and plans.json fetched from https://mcphost.dev)."
     }
   ],
   "scope": [
-    "src/kinds/chain.rs: fixtures task-local, step-key resolution, per-step source/executed/fixtured/skipped, shape validation against declared outputs.",
-    "src/handler.rs: host.tool_test fixtures argument (chain only, 256 KiB cap), host.runs.get as_fixtures schema.",
-    "src/runs.rs: as_fixtures export of child results.",
-    "src/control.rs: host.quickstart kind=chain prints the fixtures calls.",
-    "src/errors.rs: a structured error's non-string data.expected is kept."
+    "src/asks.rs (new): host.ask.create/wait/get/list, WAIT_MAX_S, signed /a/{id} page (GET render, POST first-answer-wins), per-ask Notify with a 1 s re-read, 30-day retention prune.",
+    "migrations/0083_asks.sql + src/db.rs: asks and ask_events tables; Db::with_conn is pub(crate).",
+    "src/handler.rs, src/messaging.rs, src/runs.rs, src/control.rs: ask tool descriptors and dispatch, the two wait clamps and three descriptors rendered from WAIT_MAX_S, limits.wait_max_s, NEVER_SIGNS_UP arm guard.",
+    "src/plans.rs: asks_open_max (free 5, pro 100). src/errors.rs, src/help.rs: ask_expired, ask_answered, choice_invalid, asks_limit. src/chart.rs: shared sign_path. src/http.rs: /a/{id} route. src/paged.rs: host.ask.list unpaged reason."
   ],
   "non_goals": [
-    "Fixtures for non-chain tools (refused); persisting fixtures server-side; recording fixtures automatically; observed-shape validation (needs PRD-mcphost-chain-publish-time-path-check)."
+    "Free-text answers; delivering the link to a channel (host.notify.send); multi-user votes; rendering agent threads; an inbox message on answer (open question, not built)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -76,20 +75,36 @@
     "deny_unsafe": false,
     "max_deps": null,
     "msrv": null,
-    "additional": {}
+    "additional": {
+      "notify_registry": "The per-ask Notify registry is process-wide (a OnceLock map keyed by ask id), not an AppState field, so no AppState literal in the crate or its tests changes."
+    }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why was a chain dry run with an unreachable step 1 read as unchecked?",
-      "a": "The dry run has no input other than the chain's own args, so a predecessor that cannot run leaves every later mapping unverifiable."
+      "q": "Why can an agent not ask its user a blocking question in one verb pair?",
+      "a": "host.msg.wait reads an inbox only keyed agents can write to, so a human has no way to answer."
+    },
+    {
+      "why": 2,
+      "q": "Why not compose it from a url-shared tool?",
+      "a": "That costs publish + share + wait (3 host calls) against create + wait (2), measured by AC1."
+    },
+    {
+      "why": 3,
+      "q": "Why one WAIT_MAX_S?",
+      "a": "The 25 s ceiling was two clamp literals and prose; a derived constant cannot drift from the descriptors or quickstart limits."
     }
   ],
   "created_at": "2026-10-11T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Does a fixtured dry run count as a host.tool_test call for metering?",
-      "resolution": "Yes, one call, no upstream bytes (the PRD default)."
+      "question": "next_call shape?",
+      "resolution": "A tool-name string (next_call) plus an args object (next_args), so the literal AC text next_call == host.ask.create holds and the call stays executable."
+    },
+    {
+      "question": "Where does the wait wake-up registry live?",
+      "resolution": "Process-wide OnceLock map in asks.rs; the PRD's AppState placement would have touched every AppState literal."
     }
   ]
 }

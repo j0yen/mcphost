@@ -22,6 +22,26 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "sessionkey_ac02_ac03_discovery_shape.rs"]
+mod sessionkey_ac02_ac03_discovery_shape;
+#[path = "sessionkey_ac04_signup_usage_field.rs"]
+mod sessionkey_ac04_signup_usage_field;
+#[path = "sessionkey_ac05_ac07_ac08_ac09_tenant_key_auth.rs"]
+mod sessionkey_ac05_ac07_ac08_ac09_tenant_key_auth;
+#[path = "sessionkey_ac06_publish_via_tenant_key.rs"]
+mod sessionkey_ac06_publish_via_tenant_key;
+#[path = "sessionkey_ac10_tenant_key_to_admin_forbidden.rs"]
+mod sessionkey_ac10_tenant_key_to_admin_forbidden;
+#[path = "sessionkey_ac11_ac12_ac13_ac14_ac15_tool_call.rs"]
+mod sessionkey_ac11_ac12_ac13_ac14_ac15_tool_call;
+#[path = "sessionkey_ac16_full_session_no_header.rs"]
+mod sessionkey_ac16_full_session_no_header;
+#[path = "sessionkey_ac18_tool_logs_no_key.rs"]
+mod sessionkey_ac18_tool_logs_no_key;
+#[path = "sessionkey_ac19_nested_tenant_key_redacted.rs"]
+mod sessionkey_ac19_nested_tenant_key_redacted;
+#[path = "sessionkey_ac20_error_message_no_key.rs"]
+mod sessionkey_ac20_error_message_no_key;
 #[path = "share_ac01_public_tool_cross_tenant_call.rs"]
 mod share_ac01_public_tool_cross_tenant_call;
 #[path = "share_ac02_private_tool_still_not_found.rs"]

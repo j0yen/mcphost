@@ -526,6 +526,7 @@ pub const UNPAGED_VERBS: &[(&str, &str)] = &[
     ("host.agent.contacts", UNPAGED_BOUNDED),
     ("host.agent.profile_set", UNPAGED_ECHO),
     ("host.agent.search", UNPAGED_LEGACY),
+    ("host.ask.list", UNPAGED_WINDOW),
     ("host.audit.chain", UNPAGED_WINDOW),
     ("host.catalog.search", UNPAGED_WINDOW),
     ("host.changelog", UNPAGED_EXPORT),

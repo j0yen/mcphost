@@ -60,6 +60,11 @@ const WEBHOOK_INBOX_TOOLS_ADDED: usize = 1;
 /// `flattened_count`).
 const ESTIMATE_TOOLS_ADDED: usize = 1;
 
+/// PRD-mcphost-ask-user-decision: host.ask.create, wait, get and list, four
+/// more genuinely new non-alias tools (flattened forms counted by
+/// `flattened_count`).
+const ASK_TOOLS_ADDED: usize = 4;
+
 /// PRD-mcphost-tools-list-alias-truth: one flattened `a_b_c` clone per
 /// dotted canonical, read off the registry rather than a literal.
 fn flattened_count(kinds: &KindRegistry) -> usize {
@@ -83,11 +88,12 @@ fn full_registry_grew_by_exactly_the_alias_count_with_nothing_removed() {
             + UPTIME_TOOLS_ADDED
             + WEBHOOK_INBOX_TOOLS_ADDED
             + ESTIMATE_TOOLS_ADDED
+            + ASK_TOOLS_ADDED
             + flattened_count(&kinds),
         "the full host.*/billing.* registry must have grown by exactly the number of aliases \
          this PRD added (plus any later-landing PRD's own non-alias tools, and any earlier- \
          or later-landing PRD's own documented growth, including row-policy's own later five \
          tools), with nothing removed"
     );
-    assert_eq!(total, 362, "pin the exact new total (188 + 168 flattened forms, PRD-mcphost-tools-list-alias-truth); PRD-mcphost-invite-links, PRD-mcphost-result-handles, PRD-mcphost-call-cost-estimate, and this PRD's own growth grew it to");
+    assert_eq!(total, 370, "pin the exact new total (188 + 168 flattened forms, PRD-mcphost-tools-list-alias-truth); PRD-mcphost-invite-links, PRD-mcphost-result-handles, PRD-mcphost-call-cost-estimate, and PRD-mcphost-ask-user-decision's own growth grew it to");
 }

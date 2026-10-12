@@ -193,6 +193,8 @@ const MIGRATION_0079: &str = include_str!("../migrations/0079_host_tool_usage_vi
 const MIGRATION_0081: &str =
     include_str!("../migrations/0081_host_tool_usage_did_you_mean_outcome.sql");
 const MIGRATION_0082: &str = include_str!("../migrations/0082_calls_refused.sql");
+/// PRD-mcphost-ask-user-decision: `asks` and `ask_events`.
+const MIGRATION_0083: &str = include_str!("../migrations/0083_asks.sql");
 
 /// PRD-mcphost-session-bound-tenant-key requirement 3: `kind` on
 /// `signup_events`. Renumbered to 0080 during this rebase: mcphost-tool-
@@ -2666,7 +2668,8 @@ impl Db {
         Self::migrate_0079_host_tool_usage_via(&conn)?;
         Self::migrate_0080_implicit_second_signup_blocked(&conn)?;
         Self::migrate_0081_host_tool_usage_did_you_mean_outcome(&conn)?;
-        Self::migrate_0082_calls_refused(&conn)
+        Self::migrate_0082_calls_refused(&conn)?;
+        Self::migrate_0083_asks(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -3799,6 +3802,18 @@ impl Db {
         Ok(())
     }
 
+    /// PRD-mcphost-ask-user-decision: `asks` + `ask_events`, same
+    /// idempotency pattern as 0070 (gated on the `asks` table).
+    fn migrate_0083_asks(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'asks'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0083)?;
+        }
+        Ok(())
+    }
+
     /// PRD-mcphost-refused-calls-write-ledger-row requirement 1: same
     /// idempotency pattern as 0002-0081, gated on `calls.error_code`.
     fn migrate_0082_calls_refused(conn: &Connection) -> Result<(), AppError> {
@@ -3855,7 +3870,7 @@ impl Db {
     /// instead of `self.conn` -- never the server's single shared
     /// connection, so a long-running test call never blocks every other
     /// tenant's real traffic for its duration.
-    async fn with_conn<F, T>(&self, f: F) -> Result<T, AppError>
+    pub(crate) async fn with_conn<F, T>(&self, f: F) -> Result<T, AppError>
     where
         F: FnOnce(&Connection) -> Result<T, AppError> + Send + 'static,
         T: Send + 'static,

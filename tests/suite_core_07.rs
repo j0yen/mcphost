@@ -137,6 +137,18 @@ mod argmsg_ac05_message_data_drift;
 mod argmsg_ac06_sites_render_from_one_args_error;
 #[path = "argmsg_ac07_tool_test_equals_tools_call.rs"]
 mod argmsg_ac07_tool_test_equals_tools_call;
+#[path = "askd_ac02_keyless_answer_unblocks_wait_second_post_409.rs"]
+mod askd_ac02_keyless_answer_unblocks_wait_second_post_409;
+#[path = "askd_ac03_wait_ceiling_single_source.rs"]
+mod askd_ac03_wait_ceiling_single_source;
+#[path = "askd_ac04_expired_ask_errors_and_page_is_404.rs"]
+mod askd_ac04_expired_ask_errors_and_page_is_404;
+#[path = "askd_ac05_keyless_wait_is_tenant_key_missing_and_signs_nobody_up.rs"]
+mod askd_ac05_keyless_wait_is_tenant_key_missing_and_signs_nobody_up;
+#[path = "askd_ac06_free_tenant_sixth_pending_ask_is_asks_limit.rs"]
+mod askd_ac06_free_tenant_sixth_pending_ask_is_asks_limit;
+#[path = "askd_ac07_concurrent_posts_record_exactly_one_answer.rs"]
+mod askd_ac07_concurrent_posts_record_exactly_one_answer;
 #[path = "attrib_ac1_loopback_signup_unstamped.rs"]
 mod attrib_ac1_loopback_signup_unstamped;
 #[path = "attrib_ac2_clientinfo_captured.rs"]
@@ -1805,23 +1817,3 @@ mod sessbind_ac18_reconnect_without_key_is_a_fresh_client;
 mod sessbind_ac19_funnel_blocked_count_and_whoami_session_tenant;
 #[path = "sessbind_ac20_docs_and_help_name_the_reconnect_rule.rs"]
 mod sessbind_ac20_docs_and_help_name_the_reconnect_rule;
-#[path = "sessionkey_ac02_ac03_discovery_shape.rs"]
-mod sessionkey_ac02_ac03_discovery_shape;
-#[path = "sessionkey_ac04_signup_usage_field.rs"]
-mod sessionkey_ac04_signup_usage_field;
-#[path = "sessionkey_ac05_ac07_ac08_ac09_tenant_key_auth.rs"]
-mod sessionkey_ac05_ac07_ac08_ac09_tenant_key_auth;
-#[path = "sessionkey_ac06_publish_via_tenant_key.rs"]
-mod sessionkey_ac06_publish_via_tenant_key;
-#[path = "sessionkey_ac10_tenant_key_to_admin_forbidden.rs"]
-mod sessionkey_ac10_tenant_key_to_admin_forbidden;
-#[path = "sessionkey_ac11_ac12_ac13_ac14_ac15_tool_call.rs"]
-mod sessionkey_ac11_ac12_ac13_ac14_ac15_tool_call;
-#[path = "sessionkey_ac16_full_session_no_header.rs"]
-mod sessionkey_ac16_full_session_no_header;
-#[path = "sessionkey_ac18_tool_logs_no_key.rs"]
-mod sessionkey_ac18_tool_logs_no_key;
-#[path = "sessionkey_ac19_nested_tenant_key_redacted.rs"]
-mod sessionkey_ac19_nested_tenant_key_redacted;
-#[path = "sessionkey_ac20_error_message_no_key.rs"]
-mod sessionkey_ac20_error_message_no_key;

@@ -596,6 +596,10 @@ impl AppError {
                 "trigger_invalid" | "trigger_quota_exceeded" | "trigger_interval_too_short" | "plan_limit" => {
                     ErrorCode::INVALID_PARAMS
                 }
+                // PRD-mcphost-ask-user-decision: a lapsed ask is a caller-state
+                // problem (create a new one); an unknown ask id is a not-found.
+                "ask_expired" | "asks_limit" => ErrorCode::INVALID_PARAMS,
+                "ask_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
                 "trigger_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
                 // PRD-mcphost-inbound-events: `host.trigger.test`'s own
                 // caller-input problems -- a bad signature/payload, a rate

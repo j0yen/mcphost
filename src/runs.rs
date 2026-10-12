@@ -673,7 +673,7 @@ fn check_monotonic(existing: &Map<String, Value>, key: &str, value: &Value, pref
 /// returning the current status either way (AC10).
 pub async fn wait(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let run_id = arg_str(args, "run_id")?;
-    let timeout_s = arg_i64_opt(args, "timeout_s").unwrap_or(20).clamp(1, 25);
+    let timeout_s = arg_i64_opt(args, "timeout_s").unwrap_or(crate::asks::WAIT_DEFAULT_S).clamp(1, crate::asks::WAIT_MAX_S);
     let deadline = Instant::now() + Duration::from_secs(timeout_s as u64);
     // P1 requirement 7 / AC8: `until: {counter, gte}` -- returns as soon as
     // that counter reaches `gte` OR the run finishes, whichever comes

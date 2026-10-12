@@ -406,6 +406,128 @@
       "since": "0.58.0"
     },
     {
+      "description": "Ask the user a question and hand them a link: returns {ask_id, url, expires_unix, next_call, next_args}. The url (no login) shows the question and one button per option; the first answer wins and a later one is refused 409 ask_answered. Then call host.ask.wait until it returns answered or fails ask_expired -- never act on a missing answer. Refused with asks_limit at the plan's asks_open_max.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "context": {
+            "description": "Markdown shown under the question, at most 2 KB; raw HTML is escaped.",
+            "type": "string"
+          },
+          "notify": {
+            "description": "Also push the link to the user's channel once host.notify.send is live; until then accepted and reported notified: false.",
+            "type": "boolean"
+          },
+          "options": {
+            "description": "2 to 6 distinct button labels, each at most 40 characters.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 6,
+            "minItems": 2,
+            "type": "array"
+          },
+          "question": {
+            "description": "What to ask, at most 500 characters.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "ttl_s": {
+            "description": "Seconds the link stays answerable; default 3600, at most 604800.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "question",
+          "options"
+        ],
+        "type": "object"
+      },
+      "name": "host.ask.create",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Read one ask's audit row: {ask_id, question, options, status, choice, created_unix, answered_unix, expires_unix, waited_total_ms, events}. events is the ordered trail: created, then exactly one answered or expired. Rows persist 30 days after expiry.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "ask_id": {
+            "description": "The ask_id host.ask.create returned.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ask_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.ask.get",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List this tenant's asks, newest first, as {asks: [audit rows]} -- who answered what and how long the agent waited. Rows persist 30 days after expiry.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "At most this many rows; default 50, at most 100.",
+            "type": "integer"
+          },
+          "status": {
+            "description": "Only asks in this state.",
+            "enum": [
+              "pending",
+              "answered",
+              "expired"
+            ],
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.ask.list",
+      "since": "0.58.0",
+      "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
+    },
+    {
+      "description": "Block until the user answers an ask, it expires, or timeout_s elapses (max 25s): returns {status: answered|pending, choice, answered_unix, waited_ms, next_call}. pending means call host.ask.wait again; an expired ask fails ask_expired with next_call host.ask.create. Needs a tenant_key: it never signs a tenant up.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "ask_id": {
+            "description": "The ask_id host.ask.create returned.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "timeout_s": {
+            "description": "Max seconds to wait, capped at 25; default 20.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ask_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.ask.wait",
+      "since": "0.58.0"
+    },
+    {
       "description": "Newest-first page of the hash-chained audit log, optionally scoped to one subject. Returns {records, returned_count, withheld_count} where withheld_count is how many more matching records exist beyond this page. Tenant-key only.",
       "input_schema": {
         "additionalProperties": false,
@@ -5743,6 +5865,127 @@
         "type": "object"
       },
       "name": "host_agent_whoami",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Ask the user a question and hand them a link: returns {ask_id, url, expires_unix, next_call, next_args}. The url (no login) shows the question and one button per option; the first answer wins and a later one is refused 409 ask_answered. Then call host.ask.wait until it returns answered or fails ask_expired -- never act on a missing answer. Refused with asks_limit at the plan's asks_open_max.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "context": {
+            "description": "Markdown shown under the question, at most 2 KB; raw HTML is escaped.",
+            "type": "string"
+          },
+          "notify": {
+            "description": "Also push the link to the user's channel once host.notify.send is live; until then accepted and reported notified: false.",
+            "type": "boolean"
+          },
+          "options": {
+            "description": "2 to 6 distinct button labels, each at most 40 characters.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 6,
+            "minItems": 2,
+            "type": "array"
+          },
+          "question": {
+            "description": "What to ask, at most 500 characters.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "ttl_s": {
+            "description": "Seconds the link stays answerable; default 3600, at most 604800.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "question",
+          "options"
+        ],
+        "type": "object"
+      },
+      "name": "host_ask_create",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Read one ask's audit row: {ask_id, question, options, status, choice, created_unix, answered_unix, expires_unix, waited_total_ms, events}. events is the ordered trail: created, then exactly one answered or expired. Rows persist 30 days after expiry.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "ask_id": {
+            "description": "The ask_id host.ask.create returned.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ask_id"
+        ],
+        "type": "object"
+      },
+      "name": "host_ask_get",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List this tenant's asks, newest first, as {asks: [audit rows]} -- who answered what and how long the agent waited. Rows persist 30 days after expiry.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "At most this many rows; default 50, at most 100.",
+            "type": "integer"
+          },
+          "status": {
+            "description": "Only asks in this state.",
+            "enum": [
+              "pending",
+              "answered",
+              "expired"
+            ],
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host_ask_list",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Block until the user answers an ask, it expires, or timeout_s elapses (max 25s): returns {status: answered|pending, choice, answered_unix, waited_ms, next_call}. pending means call host.ask.wait again; an expired ask fails ask_expired with next_call host.ask.create. Needs a tenant_key: it never signs a tenant up.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "ask_id": {
+            "description": "The ask_id host.ask.create returned.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "timeout_s": {
+            "description": "Max seconds to wait, capped at 25; default 20.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ask_id"
+        ],
+        "type": "object"
+      },
+      "name": "host_ask_wait",
       "since": "0.58.0"
     },
     {
