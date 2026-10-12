@@ -1266,6 +1266,13 @@
       "AC7": "tests/vord_ac07_removed_order_variant_is_breaking.rs",
       "AC8": "deferred -- operator-provisioned: live prod curl of host.docs.list order=name_asc and the contract enum count after deploy."
     },
+    "vordb": {
+      "_prd": "PRD-mcphost-declared-ordering-per-verb-b.md (test_prefix: vordb)",
+      "AC1": "tests/vordb_ac01_runs_verdict_filter_pages_in_sql.rs",
+      "AC2": "tests/vordb_ac02_every_paged_verb_walks_clean.rs",
+      "AC3": "tests/vordb_ac03_removed_order_variant_breaks_contract_check.rs",
+      "AC4": "deferred -- operator-provisioned: live prod curl of host.docs.list order=name_asc after deploy."
+    },
     "cproc": {
       "_prd": "PRD-mcphost-child-process-test-harness.md (test_prefix: cproc)",
       "AC1": "tests/cproc_ac01_raw_serve_spawn_and_pipe_read_fail.rs",
