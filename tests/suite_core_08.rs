@@ -22,6 +22,26 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "sched_ac10_trigger_fire_manual.rs"]
+mod sched_ac10_trigger_fire_manual;
+#[path = "sched_ac1_two_firings_visible_in_ledger.rs"]
+mod sched_ac1_two_firings_visible_in_ledger;
+#[path = "sched_ac2_invalid_cron_names_minute.rs"]
+mod sched_ac2_invalid_cron_names_minute;
+#[path = "sched_ac3_free_plan_quota_exceeded.rs"]
+mod sched_ac3_free_plan_quota_exceeded;
+#[path = "sched_ac4_free_plan_interval_too_short.rs"]
+mod sched_ac4_free_plan_interval_too_short;
+#[path = "sched_ac5_overlap_skips_and_records.rs"]
+mod sched_ac5_overlap_skips_and_records;
+#[path = "sched_ac6_pause_blocks_resume_allows.rs"]
+mod sched_ac6_pause_blocks_resume_allows;
+#[path = "sched_ac7_tool_remove_disables_triggers.rs"]
+mod sched_ac7_tool_remove_disables_triggers;
+#[path = "sched_ac8_healthz_scheduler_fields.rs"]
+mod sched_ac8_healthz_scheduler_fields;
+#[path = "sched_quickstart_and_usage_report_schedules.rs"]
+mod sched_quickstart_and_usage_report_schedules;
 #[path = "self_offboard_ac1_disables_tenant_and_returns_success.rs"]
 mod self_offboard_ac1_disables_tenant_and_returns_success;
 #[path = "self_offboard_ac2_idempotent_second_call.rs"]
