@@ -1419,6 +1419,13 @@
       "AC6": "tests/timp_ac06_import_enforces_export_bytes_max_and_reports_progress.rs",
       "AC7": "tests/timp_ac07_archive_layout_one_enum.rs",
       "AC8": "deferred -- operator-provisioned: live prod export + tar -tzf of the joe-test tenant after deploy."
+    },
+    "cclib": {
+      "_prd": "PRD-mcphost-call-cli-from-contract-b.md (test_prefix: cclib)",
+      "AC1": "tests/cclib_ac01_contract_skew_warning.rs",
+      "AC2": "tests/cclib_ac02_cli_tree_equals_contract.rs",
+      "AC3": "tests/cclib_ac03_completions_rendered_from_the_table.rs",
+      "AC4": "deferred -- operator-provisioned: live `mcphost call host.quickstart --url https://mcphost.dev --json` against prod after deploy."
     }
   }
 }
