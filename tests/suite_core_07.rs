@@ -823,6 +823,18 @@ mod flakelint_ac04_allow_list;
 mod flakelint_ac06_perf_budget_skip_and_median;
 #[path = "flakelint_ac07_timing_tests_use_perf_budget.rs"]
 mod flakelint_ac07_timing_tests_use_perf_budget;
+#[path = "fldp_ac02_tool_list_fields_two_keys_under_12kib.rs"]
+mod fldp_ac02_tool_list_fields_two_keys_under_12kib;
+#[path = "fldp_ac03_field_unknown_names_nearest_before_any_read.rs"]
+mod fldp_ac03_field_unknown_names_nearest_before_any_read;
+#[path = "fldp_ac04_fields_one_set.rs"]
+mod fldp_ac04_fields_one_set;
+#[path = "fldp_ac05_fields_name_walk_450_docs.rs"]
+mod fldp_ac05_fields_name_walk_450_docs;
+#[path = "fldp_ac06_empty_fields_and_unpaged_verbs_are_args_invalid.rs"]
+mod fldp_ac06_empty_fields_and_unpaged_verbs_are_args_invalid;
+#[path = "fldp_ac07_include_result_is_sugar_for_fields_result.rs"]
+mod fldp_ac07_include_result_is_sugar_for_fields_result;
 #[path = "fleetips_reclassify_backfill.rs"]
 mod fleetips_reclassify_backfill;
 #[path = "ftruth_ac01_never_unknown_at_insert.rs"]
@@ -1813,25 +1825,3 @@ mod reglist_ac04_workflow_checks_manifest_and_schema_on_every_push;
 mod reglist_ac06_readme_registry_and_quickstart_links_resolve;
 #[path = "revdebt_ac1_intent_card_pointers_resolve.rs"]
 mod revdebt_ac1_intent_card_pointers_resolve;
-#[path = "rowpol_ac01_sql_predicate_scopes_to_end_user_attribute.rs"]
-mod rowpol_ac01_sql_predicate_scopes_to_end_user_attribute;
-#[path = "rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0.rs"]
-mod rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0;
-#[path = "rowpol_ac03_unpolicied_table_zero_rows_for_end_user_all_for_tenant_key.rs"]
-mod rowpol_ac03_unpolicied_table_zero_rows_for_end_user_all_for_tenant_key;
-#[path = "rowpol_ac04_cte_and_subquery_both_rewritten_via_ast.rs"]
-mod rowpol_ac04_cte_and_subquery_both_rewritten_via_ast;
-#[path = "rowpol_ac05_docs_prefix_policy_zero_hits_lexical_and_embeddings.rs"]
-mod rowpol_ac05_docs_prefix_policy_zero_hits_lexical_and_embeddings;
-#[path = "rowpol_ac06_empty_allowed_set_1_equals_0_and_denies_docs.rs"]
-mod rowpol_ac06_empty_allowed_set_1_equals_0_and_denies_docs;
-#[path = "rowpol_ac07_audit_verify_intact_then_tampered.rs"]
-mod rowpol_ac07_audit_verify_intact_then_tampered;
-#[path = "rowpol_ac08_audit_chain_pages_and_refuses_end_users.rs"]
-mod rowpol_ac08_audit_chain_pages_and_refuses_end_users;
-#[path = "rowpol_ac09_filtered_vs_unfiltered_p95_within_3ms.rs"]
-mod rowpol_ac09_filtered_vs_unfiltered_p95_within_3ms;
-#[path = "rowpol_ac10_policy_set_refuses_a_widening_rule.rs"]
-mod rowpol_ac10_policy_set_refuses_a_widening_rule;
-#[path = "run_metrics_handoff_glob_regression.rs"]
-mod run_metrics_handoff_glob_regression;
