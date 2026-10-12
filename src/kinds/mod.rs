@@ -1916,6 +1916,14 @@ pub async fn compose_call(
         // dispatch (and the whole chain call it's part of) returns.
         let mut result_ref = None;
         if let Some(value) = result_value {
+            // PRD-mcphost-chain-publish-time-path-check requirement 1: a
+            // chain step's finished child run teaches the publish gate the
+            // step tool's real result keys, same as an async run does.
+            let shape = chain::observed_shape(value);
+            if !shape.is_empty() {
+                let shape = shape.into_iter().map(|(k, t)| (k, t.to_string())).collect();
+                let _ = db.merge_observed_outputs(tenant_id, target_name.to_string(), shape).await;
+            }
             let value_json = serde_json::to_string(value).unwrap_or_else(|_| "null".to_string());
             let bytes = value_json.len() as i64;
             let _ = db

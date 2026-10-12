@@ -475,6 +475,20 @@ mod compose_ac8_tool_test_dry_run;
 mod consent_ac01_ac02_ac03_ac04_contact_lifecycle;
 #[path = "consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox.rs"]
 mod consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox;
+#[path = "cpath_ac01_unresolved_path_refused_at_publish.rs"]
+mod cpath_ac01_unresolved_path_refused_at_publish;
+#[path = "cpath_ac02_observed_union_across_runs.rs"]
+mod cpath_ac02_observed_union_across_runs;
+#[path = "cpath_ac03_no_history_is_unverifiable_and_publishes.rs"]
+mod cpath_ac03_no_history_is_unverifiable_and_publishes;
+#[path = "cpath_ac04_declared_wins_and_drift_is_reported.rs"]
+mod cpath_ac04_declared_wins_and_drift_is_reported;
+#[path = "cpath_ac05_steps_index_checked_and_forward_reference.rs"]
+mod cpath_ac05_steps_index_checked_and_forward_reference;
+#[path = "cpath_ac06_force_publishes_and_records_it.rs"]
+mod cpath_ac06_force_publishes_and_records_it;
+#[path = "cpath_ac07_context_keys_table_parity.rs"]
+mod cpath_ac07_context_keys_table_parity;
 #[path = "cproc_ac01_raw_serve_spawn_and_pipe_read_fail.rs"]
 mod cproc_ac01_raw_serve_spawn_and_pipe_read_fail;
 #[path = "cproc_ac02_guard_struct_fails_waited_child_passes.rs"]
@@ -1795,43 +1809,3 @@ mod self_offboard_ac3_offboarded_key_same_shape_as_unissued;
 mod self_offboard_ac4_pro_tenant_cancels_stripe_subscription;
 #[path = "self_offboard_ac5_admin_tenants_distinguishes_reason.rs"]
 mod self_offboard_ac5_admin_tenants_distinguishes_reason;
-#[path = "sessbind_ac01_keyless_call_after_signup_runs_as_the_bound_tenant.rs"]
-mod sessbind_ac01_keyless_call_after_signup_runs_as_the_bound_tenant;
-#[path = "sessbind_ac02_five_tools_run_as_the_bound_tenant.rs"]
-mod sessbind_ac02_five_tools_run_as_the_bound_tenant;
-#[path = "sessbind_ac03_anonymous_session_unchanged.rs"]
-mod sessbind_ac03_anonymous_session_unchanged;
-#[path = "sessbind_ac04_explicit_key_wins_over_the_binding.rs"]
-mod sessbind_ac04_explicit_key_wins_over_the_binding;
-#[path = "sessbind_ac05_bearer_wins_and_the_binding_survives.rs"]
-mod sessbind_ac05_bearer_wins_and_the_binding_survives;
-#[path = "sessbind_ac06_second_signup_rebinds_and_reports_session_bound.rs"]
-mod sessbind_ac06_second_signup_rebinds_and_reports_session_bound;
-#[path = "sessbind_ac07_concurrent_sessions_no_cross_session_leak.rs"]
-mod sessbind_ac07_concurrent_sessions_no_cross_session_leak;
-#[path = "sessbind_ac08_binding_map_is_bounded_under_a_session_flood.rs"]
-mod sessbind_ac08_binding_map_is_bounded_under_a_session_flood;
-#[path = "sessbind_ac09_disabled_bound_tenant_drops_the_binding.rs"]
-mod sessbind_ac09_disabled_bound_tenant_drops_the_binding;
-#[path = "sessbind_ac10_request_log_records_the_upgraded_status.rs"]
-mod sessbind_ac10_request_log_records_the_upgraded_status;
-#[path = "sessbind_ac11_session_bound_calls_are_metered_and_counted.rs"]
-mod sessbind_ac11_session_bound_calls_are_metered_and_counted;
-#[path = "sessbind_ac12_tenant_key_description_states_signup_optionality.rs"]
-mod sessbind_ac12_tenant_key_description_states_signup_optionality;
-#[path = "sessbind_ac13_regression_gate.rs"]
-mod sessbind_ac13_regression_gate;
-#[path = "sessbind_ac14_fresh_connection_implicit_signup_unchanged.rs"]
-mod sessbind_ac14_fresh_connection_implicit_signup_unchanged;
-#[path = "sessbind_ac15_second_bare_call_is_refused_and_named.rs"]
-mod sessbind_ac15_second_bare_call_is_refused_and_named;
-#[path = "sessbind_ac16_tenant_key_arg_then_omit_refused_or_reused.rs"]
-mod sessbind_ac16_tenant_key_arg_then_omit_refused_or_reused;
-#[path = "sessbind_ac17_concurrent_connections_isolated_memory.rs"]
-mod sessbind_ac17_concurrent_connections_isolated_memory;
-#[path = "sessbind_ac18_reconnect_without_key_is_a_fresh_client.rs"]
-mod sessbind_ac18_reconnect_without_key_is_a_fresh_client;
-#[path = "sessbind_ac19_funnel_blocked_count_and_whoami_session_tenant.rs"]
-mod sessbind_ac19_funnel_blocked_count_and_whoami_session_tenant;
-#[path = "sessbind_ac20_docs_and_help_name_the_reconnect_rule.rs"]
-mod sessbind_ac20_docs_and_help_name_the_reconnect_rule;

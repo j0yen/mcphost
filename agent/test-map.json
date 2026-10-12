@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-timing-assertion-lint.md (test_prefix: tlint)",
+  "ac_test_map_prd": "PRD-mcphost-chain-publish-time-path-check.md (test_prefix: cpath)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,14 +28,14 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/tlint_ac01_hand_skip_then_bare_assert_fails.rs",
-    "AC2": "tests/tlint_ac02_bare_assert_after_budget_block_is_named.rs",
-    "AC3": "tests/tlint_ac03_allow_set_comes_from_the_harness_file.rs",
-    "AC4": "tests/tlint_ac04_deadline_budget_fires_and_scales.rs",
-    "AC5": "tests/tlint_ac05_landed_tree_has_zero_offenders.rs",
-    "AC6": "tests/tlint_ac06_converted_files_keep_their_budget_numbers.rs",
-    "AC7": "tests/tlint_ac07_json_field_names_are_not_wall_clock_tokens.rs",
-    "AC8": "deferred -- operator-provisioned: first daemon gate on the landed tree carries `timing-lint: 0 offenders` in its flake-audit log."
+    "AC1": "tests/cpath_ac01_unresolved_path_refused_at_publish.rs",
+    "AC2": "tests/cpath_ac02_observed_union_across_runs.rs",
+    "AC3": "tests/cpath_ac03_no_history_is_unverifiable_and_publishes.rs",
+    "AC4": "tests/cpath_ac04_declared_wins_and_drift_is_reported.rs",
+    "AC5": "tests/cpath_ac05_steps_index_checked_and_forward_reference.rs",
+    "AC6": "tests/cpath_ac06_force_publishes_and_records_it.rs",
+    "AC7": "tests/cpath_ac07_context_keys_table_parity.rs",
+    "AC8": "deferred -- operator-provisioned: the live probe runs against prod mcphost.dev with a keyed tenant after this PRD deploys."
   },
   "ac_test_map_by_prefix": {
     "whin": {
@@ -1306,6 +1306,17 @@
       "AC6": "tests/cest_ac06_anonymous_estimate_is_the_real_auth_error.rs",
       "AC7": "tests/cest_ac07_estimate_listed_and_in_quickstart.rs",
       "AC8": "deferred -- operator-provisioned: live prod dry run under the fleet tenant after deploy."
+    },
+    "tlint": {
+      "_prd": "PRD-mcphost-timing-assertion-lint.md (test_prefix: tlint)",
+      "AC1": "tests/tlint_ac01_hand_skip_then_bare_assert_fails.rs",
+      "AC2": "tests/tlint_ac02_bare_assert_after_budget_block_is_named.rs",
+      "AC3": "tests/tlint_ac03_allow_set_comes_from_the_harness_file.rs",
+      "AC4": "tests/tlint_ac04_deadline_budget_fires_and_scales.rs",
+      "AC5": "tests/tlint_ac05_landed_tree_has_zero_offenders.rs",
+      "AC6": "tests/tlint_ac06_converted_files_keep_their_budget_numbers.rs",
+      "AC7": "tests/tlint_ac07_json_field_names_are_not_wall_clock_tokens.rs",
+      "AC8": "deferred -- operator-provisioned: first daemon gate on the landed tree carries `timing-lint: 0 offenders` in its flake-audit log."
     }
   }
 }

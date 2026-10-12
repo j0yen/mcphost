@@ -96,10 +96,12 @@ async fn real_publish_lands_and_carries_the_advisory_verdict() {
     let result = client
         .tools_call(
             "host.tool_publish",
-            json!({"name": "pipeline", "kind": "chain", "spec": failing_chain_spec()}),
+            // PRD-mcphost-chain-publish-time-path-check R3: a will_fail chain
+            // is refused unless `force: true`; the verdict rides along.
+            json!({"name": "pipeline", "kind": "chain", "spec": failing_chain_spec(), "force": true}),
         )
         .await
-        .expect("a will_fail chain must still publish -- advisory only");
+        .expect("a forced will_fail chain must publish");
     let structured = common::extract_structured(&result);
 
     assert_eq!(structured["name"], json!(format!("{ns}.pipeline")), "{structured}");

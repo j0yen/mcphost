@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-timing-assertion-lint.md",
-  "intent_slug": "mcphost-timing-assertion-lint",
-  "root_motivation": "The operator (Joe / the Opus operator seat) cannot trust \"gate green\" to mean \"main CI green\": a timing test written with a literal budget passes on RedBaron at load 2 and fails on a GitHub runner, and nothing in the repo refuses the literal form. Leg 18 five whys, level 5: \"timing assertions are written per test with literal budgets instead of one harness-owned budget that every wall-clock assertion must use \u2014 and nothing enforces 'must use'\". Evidence: 23 assertions outside the macros at b8d4732 (`git grep -nE 'assert!\\(.*(elapsed|Duration|p95|_ms|millis|as_millis)' origin/main -- tests/ | grep -v perf_budget`), 16 files already using the macros, `flakelint_ac07` `ALLOW` naming 4 files \"still to be wrapped\".",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-chain-publish-time-path-check.md",
+  "intent_slug": "mcphost-chain-publish-time-path-check",
+  "root_motivation": "**Who:** the autonomous coding agent (data_pipeline_builder, workflow_orchestrator personas) publishing a multi-step chain in one session. **What:** publish that tells it a path is wrong before any call. Today `check_step_ref` (`chain.rs:326`) reads `declared_output_names` (`:284-302`); when the predecessor declares nothing the verdict is `unverifiable` and `host.tool_publish` without `dry_run=true` publishes anyway with an advisory verdict (PRD-mcphost-tool-test-truth AC6). The host has seen the predecessor's real result on every run (`RunRow.result_ref`, `runs.rs:171`) and keeps none of its shape. **Why not today:** the output contract of a tool exists only when the agent writes `outputs` by hand; explore 10-07 recorded 35 `resolved to nothing` rows and 10-08 (pre-0.105) 3, every one discoverable from a result the host had already stored.",
   "user_persona": "An agent (customer) that calls host.webhook_inbox.create once, pastes the url into a sender and shows its user the push event in the same session; the truth-tier integration_specialist persona whose gold is reachable in 4 calls; Operator Joe reading the digest.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,64 +14,61 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a scratch tests tree with a file that prints `perf skipped (load)` by hand and asserts `p95 < Duration::from_millis(50)` on a later line (the pre-#176 `docsearch_ac11:53-58` shape), When `scripts/timing-lint.py` runs, Then exit 1 naming that file:line and token; Given the same assertion wrapped in `perf_budget!`, Then exit 0.",
-      "test": "tests/tlint_ac01_hand_skip_then_bare_assert_fails.rs"
+      "description": "Given a python tool that has completed 3 runs each returning `{\"items\": [...], \"count\": n}`, When a chain mapping `\"rows\": \"$.prev.result.rows\"` after it is published without `dry_run`, Then the publish is refused with `compose_mapping_unresolved`, `data.available` is `[\"count\", \"items\"]`, `data.did_you_mean` is `$.prev.result.items`, and no tool row exists.",
+      "test": "tests/cpath_ac01_unresolved_path_refused_at_publish.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a scratch file whose `perf_budget!` block is followed by a separate bare `assert!(t.elapsed() < Duration::from_millis(5))`, When the script runs, Then it names the bare line (the file-level `src.contains(\"perf_budget!\")` check in `flakelint_ac07` passes this file today).",
-      "test": "tests/tlint_ac02_bare_assert_after_budget_block_is_named.rs"
+      "description": "Given a tool whose runs returned `{a, b}` then `{a, c}`, When a chain mapping `$.prev.result.c` is published, Then it succeeds and the response carries `prev_fields_source: \"observed\"`, `runs_sampled: 2`, and `prev_fields: [\"a\", \"b\", \"c\"]`.",
+      "test": "tests/cpath_ac02_observed_union_across_runs.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a scratch `tests/common/mod.rs` exporting `macro_rules! my_budget` under a `/// timing-helper` doc line, When a test asserts elapsed inside `my_budget!{\u2026}`, Then exit 0; Given the doc line removed, Then exit 1 \u2014 the allow set comes from the harness file, and the script contains no helper name.",
-      "test": "tests/tlint_ac03_allow_set_comes_from_the_harness_file.rs"
+      "description": "Given a predecessor with no declared `outputs` and no completed run, When the chain is published, Then the verdict is `unverifiable`, the tool is published, and `next` names `host.tool_test`.",
+      "test": "tests/cpath_ac03_no_history_is_unverifiable_and_publishes.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a `deadline_budget!(100, { body })` whose body sleeps 150 ms, When run with `MCPHOST_PERF_SKIP` unset, Then it panics with `deadline_budget: elapsed=\u2026 budget=100ms`; Given `MCPHOST_PERF_SKIP=1`, Then it passes (budget \u00d73) and never prints `perf skipped`.",
-      "test": "tests/tlint_ac04_deadline_budget_fires_and_scales.rs"
+      "description": "Given a predecessor declaring `outputs: [rows]` whose 2 runs returned `{items}`, When a chain maps `$.prev.result.rows`, Then publish succeeds, `prev_fields_source` is `declared`, and `observed_drift` is `[\"rows\"]`.",
+      "test": "tests/cpath_ac04_declared_wins_and_drift_is_reported.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given mcphost at this PRD's landing commit, When `scripts/timing-lint.py tests` runs, Then exit 0 with `0 offenders`, and `grep -c 'const ALLOW\\|const PATTERNS' tests/flakelint_ac07_timing_tests_use_perf_budget.rs` is 0 and `tests/flake-lint-allow.txt` has no `single-shot-perf` entry.",
-      "test": "tests/tlint_ac05_landed_tree_has_zero_offenders.rs"
+      "description": "Given a 3-step chain whose step 3 maps `$.steps[0].result.count` and step 1 has observed keys `{items, count}`, When published, Then it passes; and Given step 2 maps `$.steps[2].result.x`, Then `will_fail` with `reason: \"forward reference\"`.",
+      "test": "tests/cpath_ac05_steps_index_checked_and_forward_reference.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given the 4 former `ALLOW` files and the 9 budget sites named in Technical considerations, When `cargo test` runs each converted file with and without `MCPHOST_PERF_SKIP=1`, Then every test passes and no budget number changed (`git diff` shows the same millisecond literals).",
-      "test": "tests/tlint_ac06_converted_files_keep_their_budget_numbers.rs"
+      "description": "Given the failing chain of AC1, When published with `force: true`, Then the tool exists and the response `gates` entry reads `verdict: will_fail, forced: true`.",
+      "test": "tests/cpath_ac06_force_publishes_and_records_it.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given a scratch file asserting `body[\"p95_ms\"].is_number()`, When the script runs, Then exit 0 (a JSON field name is not a wall-clock token).",
-      "test": "tests/tlint_ac07_json_field_names_are_not_wall_clock_tokens.rs"
+      "description": "Given `CONTEXT_KEYS`, When the parity test builds a context and reads the checker's accepted keys, Then both equal the table and a scan of `src/kinds/chain.rs` finds no string literal `\"prev\"`, `\"steps\"`, or `\"result\"` outside the table and its tests.",
+      "test": "tests/cpath_ac07_context_keys_table_parity.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given the first daemon gate on the landed tree, When its `flake-audit` producer runs, Then the gate log carries `timing-lint: 0 offenders` and the run reaches land (Live; evidence: `grep -l 'timing-lint: 0 offenders' /mnt/data/wm-build/runs/*/gate-receipts/flake-audit-attempt*.log | head -1`)",
-      "test": "deferred -- operator-provisioned: first daemon gate on the landed tree carries `timing-lint: 0 offenders` in its flake-audit log."
+      "description": "Given a keyed prod tenant whose `echo` tool has run once with `{\"x\": 1}`, When a chain mapping `$.prev.result.nope` after it is published via MCP, Then the response carries `compose_mapping_unresolved` with `available: [\"x\"]` (Live; evidence: the AC 8 curl in \u00a7 Technical considerations ending `-d @publish-bad-path.json | grep -c compose_mapping_unresolved` prints 1)",
+      "test": "deferred -- operator-provisioned: the live probe runs against prod mcphost.dev with a keyed tenant after this PRD deploys."
     }
   ],
   "scope": [
-    "src/webhook_inbox.rs (new): host.webhook_inbox.create -- reader tool constant, idempotent-by-name create, plan_limit before anything exists, rotate, event_id_of, notify_event (one @host message per accepted delivery).",
-    "src/webhooks.rs: WebhookConfig.inbox flag, github verify scheme (X-Hub-Signature-256), rotate_secret, accept_delivery posts the inbox notice for inbox triggers only.",
-    "src/peer_recent.rs (new) + AppState.redeemed_peers + src/handler.rs: 10-minute in-memory peer (IP+UA hash) map written by host.redeem; a key-less host.* call from such a peer is tenant_key_missing naming its tenant.",
-    "src/kinds/aliases.rs, src/control.rs: inbox alias, one-step webhook-inbox recipe, recipes_nearby generated from the outcome table, anonymous quickstart note states the stateless rule.",
-    "src/db.rs: count_webhook_triggers_for_tenant, insert_host_notice. src/errors.rs: plan_limit -> INVALID_PARAMS.",
-    "www/llms.txt (+ generated llms-full.txt), examples/webhook-inbox/proof.sh, contracts/host-tools.v1.json, contracts/deprecations.json, docs/tools.md regenerated.",
-    "tests/whin_ac0[1-7]_*.rs, tests/support/whin.rs, tests/common/mod.rs (TestServer https public scheme); kindroute_ac01, trigidem_ac07, toolname_ac08, compat_ac04_ac05 updated for the new tool/recipe shape.",
-    "Cargo.toml/Cargo.lock/plugin/.claude-plugin/plugin.json/plugin/.mcp.json: patch version bump 0.107.12 -> 0.107.13."
+    "src/kinds/chain.rs: fixtures task-local, step-key resolution, per-step source/executed/fixtured/skipped, shape validation against declared outputs.",
+    "src/handler.rs: host.tool_test fixtures argument (chain only, 256 KiB cap), host.runs.get as_fixtures schema.",
+    "src/runs.rs: as_fixtures export of child results.",
+    "src/control.rs: host.quickstart kind=chain prints the fixtures calls.",
+    "src/errors.rs: a structured error's non-string data.expected is kept."
   ],
   "non_goals": [
-    "The HMAC scheme or /hook/{id} semantics beyond the github scheme addition; event-kind triggers; a stateful transport; host.webhook_inbox.remove (P2, no AC)."
+    "Fixtures for non-chain tools (refused); persisting fixtures server-side; recording fixtures automatically; observed-shape validation (needs PRD-mcphost-chain-publish-time-path-check)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -79,36 +76,20 @@
     "deny_unsafe": false,
     "max_deps": null,
     "msrv": null,
-    "additional": {
-      "signup_is_not_remembered": "R3 says signup or host.redeem, but tests/sessbind_* pin signup followed by key-less behavior; only host.redeem is recorded (AC4's own scenario)."
-    }
+    "additional": {}
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why did the 10-09 webhook-inbox session make seven calls and never publish?",
-      "a": "The recipe was three host steps with the hook URL only in step 2, and key-less quickstart answers repeated after a successful redeem."
-    },
-    {
-      "why": 2,
-      "q": "Why did a key-less call after redeem not work?",
-      "a": "/mcp is stateless, so no session carries the redeem; the next key-less call implicit-signed-up a second tenant."
-    },
-    {
-      "why": 3,
-      "q": "Why does the fix key on the peer?",
-      "a": "IP + User-Agent hash is the only identity the stateless handler has across those calls; a 10-minute memory turns the second tenant into a named refusal."
+      "q": "Why was a chain dry run with an unreachable step 1 read as unchecked?",
+      "a": "The dry run has no input other than the chain's own args, so a predecessor that cannot run leaves every later mapping unverifiable."
     }
   ],
-  "created_at": "2026-10-10T00:00:00Z",
+  "created_at": "2026-10-11T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Peer hash = IP+UA or IP only?",
-      "resolution": "IP+UA (the PRD default), hashed; recorded in the PR."
-    },
-    {
-      "question": "Which quota gates create: event_triggers_max or schedules_max?",
-      "resolution": "Both are checked before anything is created; event_triggers_max counts event + message + webhook triggers, so the free plan's 3 trips plan_limit first (data.limit 3)."
+      "question": "Does a fixtured dry run count as a host.tool_test call for metering?",
+      "resolution": "Yes, one call, no upstream bytes (the PRD default)."
     }
   ]
 }
