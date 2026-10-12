@@ -1,0 +1,1 @@
+{"impacted": [{"action": "remove or rewrite the tool's query", "cross_domain": false, "depth": 1, "effect": "removed", "id": "tool:a_reader", "kind": "tool", "label": "a_reader", "severity": "breaking", "uses": 0}], "truncated": false}

@@ -1,0 +1,1 @@
+{"bytes": 4, "documents": 1, "index": {"chunks": 0, "indexed_watermark": 0, "lag_seconds": 0, "mode": "lexical", "pending_documents": 1, "quota_chunks_reached": false, "rebuilding": true}, "quota": {"bytes_max": 52428800, "documents_max": 200}, "text_bytes": 4, "watermark": 1}

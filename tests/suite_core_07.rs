@@ -1697,6 +1697,20 @@ mod oauthsig_ac04_admin_oauth_stats_funnel;
 mod oauthsig_ac05_healthz_cache_and_p95;
 #[path = "oauthsig_ac06_conformance_script_writes_receipt.rs"]
 mod oauthsig_ac06_conformance_script_writes_receipt;
+#[path = "outsch_ac01_oneof_budget_falsifier.rs"]
+mod outsch_ac01_oneof_budget_falsifier;
+#[path = "outsch_ac02_every_canonical_declares_an_object_output_schema.rs"]
+mod outsch_ac02_every_canonical_declares_an_object_output_schema;
+#[path = "outsch_ac03_contract_dump_marks_aliases_and_outputs.rs"]
+mod outsch_ac03_contract_dump_marks_aliases_and_outputs;
+#[path = "outsch_ac04_tools_list_carries_output_schema.rs"]
+mod outsch_ac04_tools_list_carries_output_schema;
+#[path = "outsch_ac05_whoami_one_schema_for_every_connection.rs"]
+mod outsch_ac05_whoami_one_schema_for_every_connection;
+#[path = "outsch_ac06_diff_flags_a_removed_output_field.rs"]
+mod outsch_ac06_diff_flags_a_removed_output_field;
+#[path = "outsch_ac07_tools_doc_has_a_returns_block.rs"]
+mod outsch_ac07_tools_doc_has_a_returns_block;
 #[path = "owncopy_ac01_email_subject_and_body_match_draft.rs"]
 mod owncopy_ac01_email_subject_and_body_match_draft;
 #[path = "owncopy_ac02_from_and_reply_to_passed_verbatim.rs"]
@@ -1811,21 +1825,3 @@ mod pubschema_ac05_generated_artifacts_match_and_drift_excused;
 mod pubschema_ac06_no_literal_kind_list_in_descriptors;
 #[path = "pubschema_ac07_quickstart_example_validates_against_branch.rs"]
 mod pubschema_ac07_quickstart_example_validates_against_branch;
-#[path = "pubtool_ac01_tool_share_mints_stable_url.rs"]
-mod pubtool_ac01_tool_share_mints_stable_url;
-#[path = "pubtool_ac02_post_json_runs_tool.rs"]
-mod pubtool_ac02_post_json_runs_tool;
-#[path = "pubtool_ac03_get_query_runs_tool.rs"]
-mod pubtool_ac03_get_query_runs_tool;
-#[path = "pubtool_ac04_revoked_token_404_constant_time.rs"]
-mod pubtool_ac04_revoked_token_404_constant_time;
-#[path = "pubtool_ac05_rate_limit_429.rs"]
-mod pubtool_ac05_rate_limit_429;
-#[path = "pubtool_ac06_long_run_returns_202_then_polls_to_done.rs"]
-mod pubtool_ac06_long_run_returns_202_then_polls_to_done;
-#[path = "pubtool_ac07_admin_disabled_tenant_503.rs"]
-mod pubtool_ac07_admin_disabled_tenant_503;
-#[path = "pubtool_ac08_put_delete_405.rs"]
-mod pubtool_ac08_put_delete_405;
-#[path = "pubtool_ac10_cors_header_and_preflight.rs"]
-mod pubtool_ac10_cors_header_and_preflight;

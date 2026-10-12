@@ -1,0 +1,3 @@
+{"dry_run": {"delivered": false, "rolled_back": true, "writes": []}, "state": {"keys": [], "reads": 0, "tables": [], "writes": 0}, "verdict": "pass"}
+{"dry_run": {"delivered": false, "rolled_back": true, "writes": []}, "ok": true, "state": {"keys": [], "reads": 0, "tables": [], "writes": 0}, "verdict": "pass"}
+{"dry_run": {"delivered": false, "rolled_back": true, "writes": []}, "outer": {"tenant_key": "***"}, "state": {"keys": [], "reads": 0, "tables": [], "writes": 0}, "verdict": "pass"}

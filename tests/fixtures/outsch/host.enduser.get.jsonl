@@ -1,0 +1,2 @@
+{"calls_total": 2, "first_seen": 1791720929, "issuer": null, "last_seen": 1791720929, "purged_at": null, "revoked_at": null, "revoked_by": null, "runs_30d": 2, "state_rows": 3, "subject": "u1", "vault_connections": 1}
+{"calls_total": 0, "first_seen": 1791720929, "issuer": null, "last_seen": 1791720929, "purged_at": 1791720929, "revoked_at": 1791720929, "revoked_by": "tenant", "runs_30d": 0, "state_rows": 0, "subject": "u1", "vault_connections": 0}

@@ -1,0 +1,1 @@
+{"authorization_endpoint": "http://127.0.0.1:43265/authorize", "claims_map": {}, "client_id": "acme-client", "created_at": 1791720934, "issuer": "http://127.0.0.1:43265", "jwks_uri": "http://127.0.0.1:43265/jwks", "owner_login": false, "require_verified_email": true, "scopes": "openid email profile", "token_endpoint": "http://127.0.0.1:43265/token"}

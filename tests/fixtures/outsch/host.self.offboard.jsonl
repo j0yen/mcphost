@@ -1,0 +1,3 @@
+{"billing_canceled": [], "disabled": true, "disabled_reason": "self_offboard", "tenant": "t_6b0ecf3b"}
+{"billing_canceled": ["sub_ac4_live"], "disabled": true, "disabled_reason": "self_offboard", "tenant": "t_319c8cd1"}
+{"billing_canceled": [], "disabled": true, "disabled_reason": "self_offboard", "next": {"tool": "host.quickstart", "why": "See a filled-in example for your next tool."}, "tenant": "t_2da30646"}

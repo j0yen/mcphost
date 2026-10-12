@@ -1,0 +1,1 @@
+{"diagnosis": {"band": "fuzzy_covered", "identifiers": [{"kind": "column", "matched_to": "amount", "status": "fuzzy_covered", "term": "amout", "top_candidates": [{"name": "amount", "similarity": 0.9667}]}]}, "hint": "column `amout` not found in `expenses`; closest: `amount` (0.97)", "log_id": 1}

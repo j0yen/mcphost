@@ -1,0 +1,3 @@
+{"plan": "free", "plan_since": null, "usage": {"calls_per_day": {"limit": 500, "resets_at": "2026-10-12T00:00:00Z", "used": 0}, "secrets_max": {"limit": 2, "used": 0}, "tools_max": {"limit": 50, "used": 0}}}
+{"metered_usage": {"emitted_this_month": 0}, "plan": "pro", "plan_since": "2026-10-11T12:17:17Z", "usage": {"calls_per_day": {"limit": 100000, "resets_at": "2026-10-12T00:00:00Z", "used": 1}, "secrets_max": {"limit": 20, "used": 0}, "tools_max": {"limit": 50, "used": 1}}}
+{"metered_usage": {"emitted_this_month": 0, "stripe_reported": 123}, "plan": "pro", "plan_since": "2026-10-11T12:17:37Z", "usage": {"calls_per_day": {"limit": 100000, "resets_at": "2026-10-12T00:00:00Z", "used": 4}, "secrets_max": {"limit": 20, "used": 0}, "tools_max": {"limit": 50, "used": 0}}}

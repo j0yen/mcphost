@@ -1,0 +1,3 @@
+{"call_id":"1","outcome":"ok","request":{"args":{"q":"hello"},"tool":"ping"},"started_at":"unix:1791809447.090524142","stderr_tail":"","stdout_tail":"","timings":{"queue_ms":0},"tool":"ping"}
+{"call_id":"2","error_code":"build_failed","message":"the tool's environment failed to build","outcome":"error","request":{"args":{},"tool":"noisy"},"started_at":"unix:1791810324.920905971","stderr_tail":"","stdout_tail":"","timings":{"queue_ms":0},"tool":"noisy"}
+{"call_id":"2","error_code":"build_failed","message":"the tool's environment failed to build","outcome":"error","request":{"args":{"table":"orders"},"tool":"dump"},"started_at":"unix:1791810328.447933842","stderr_tail":"","stdout_tail":"","timings":{"queue_ms":0},"tool":"dump"}

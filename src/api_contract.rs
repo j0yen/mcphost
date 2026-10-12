@@ -169,6 +169,18 @@ fn sort_keys(value: &Value) -> Value {
 pub fn dump_contract(kinds: &KindRegistry) -> Value {
     let mut tools = crate::handler::host_tool_descriptors(kinds);
     tools.sort_by(|a, b| a.name.cmp(&b.name));
+    // PRD-mcphost-contract-output-schemas R2: a canonical carries its
+    // `output_schema`; an alias (dotted or flattened) names its canonical in
+    // `alias_of` and carries no schema of its own.
+    let canonicals: std::collections::BTreeSet<&str> = tools
+        .iter()
+        .map(|t| t.name.as_ref())
+        .filter(|n| crate::tool_aliases::resolve(n).is_none() && n.contains('.'))
+        .collect();
+    let flattened: std::collections::BTreeMap<String, &str> = canonicals
+        .iter()
+        .filter_map(|c| crate::tool_aliases::flattened_form(c).map(|f| (f, *c)))
+        .collect();
     let entries: Vec<Value> = tools
         .iter()
         .map(|t| {
@@ -178,6 +190,16 @@ pub fn dump_contract(kinds: &KindRegistry) -> Value {
                 "since": since_for_tool(&t.name),
                 "input_schema": Value::Object((*t.input_schema).clone()),
             });
+            let alias_of = crate::tool_aliases::resolve(&t.name)
+                .or_else(|| flattened.get(t.name.as_ref()).copied());
+            match alias_of {
+                Some(canonical) => entry["alias_of"] = json!(canonical),
+                None => {
+                    if let Some(schema) = &t.output_schema {
+                        entry["output_schema"] = Value::Object((**schema).clone());
+                    }
+                }
+            }
             // PRD-mcphost-paged-trait-on-every-list-verb requirement 4: the
             // paging verdict is generated from `paged::PAGED_VERBS` /
             // `paged::UNPAGED_VERBS`, never typed into the schema literals.
@@ -504,6 +526,54 @@ fn diff_properties(
     }
 }
 
+/// PRD-mcphost-contract-output-schemas R5: the output-side twin of
+/// [`diff_properties`]. `old_schema`/`new_schema` are a tool's
+/// `output_schema`s; findings are pathed `<tool>.output.<field>`. A property
+/// that vanished is a removal, a changed `type` is a narrowing (a typed
+/// client built on the old type breaks), and a property that was `required`
+/// and no longer is breaks the "always present" promise. A property that
+/// became required is a stronger promise, never a violation.
+#[allow(clippy::too_many_arguments)]
+fn diff_output_properties(
+    tool_name: &str,
+    old_schema: &Value,
+    new_schema: &Value,
+    deprecations: &[Deprecation],
+    today_unix: i64,
+    violations: &mut Vec<Violation>,
+) {
+    let Some(old_props) = old_schema.get("properties").and_then(Value::as_object) else {
+        return;
+    };
+    let new_props = new_schema.get("properties").and_then(Value::as_object);
+    let required = |schema: &Value, field: &str| {
+        schema
+            .get("required")
+            .and_then(Value::as_array)
+            .is_some_and(|r| r.iter().any(|v| v.as_str() == Some(field)))
+    };
+    for (field, old_field) in old_props {
+        let path = format!("{tool_name}.output.{field}");
+        match new_props.and_then(|p| p.get(field)) {
+            None => check_removed(&path, deprecations, today_unix, violations),
+            Some(new_field) => {
+                if let (Some(old_type), Some(new_type)) = (schema_type(old_field), schema_type(new_field))
+                    && old_type != new_type
+                {
+                    check_narrowed(
+                        &path,
+                        format!("type changed from {old_type} to {new_type}"),
+                        deprecations,
+                        violations,
+                    );
+                } else if required(old_schema, field) && !required(new_schema, field) {
+                    check_narrowed(&path, "no longer always present".to_string(), deprecations, violations);
+                }
+            }
+        }
+    }
+}
+
 fn tools_by_name(contract: &Value) -> std::collections::BTreeMap<String, &Value> {
     contract["tools"]
         .as_array()
@@ -544,6 +614,18 @@ pub fn diff(
                     today_unix,
                     &mut violations,
                 );
+                // An old contract without `output_schema` (or an alias
+                // entry, which never carries one) has nothing to compare.
+                if let Some(old_output) = old_tool.get("output_schema") {
+                    diff_output_properties(
+                        name,
+                        old_output,
+                        new_tool.get("output_schema").unwrap_or(&Value::Null),
+                        deprecations,
+                        today_unix,
+                        &mut violations,
+                    );
+                }
             }
         }
     }

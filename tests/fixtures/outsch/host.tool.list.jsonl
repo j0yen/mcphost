@@ -1,0 +1,3 @@
+{"tools": []}
+{"next": {"tool": "host.quickstart", "why": "See a filled-in example for your next tool."}, "tools": []}
+{"tools": [{"advisories": 0, "created_at": "unix:1791721256.624981163", "env": {}, "expose_spec": false, "exposed_at": null, "kind": "python", "name": "t_eca762f4.reaudited", "scopes": [], "share_description": null, "spec_reads": 0, "unshared_by": null, "visibility": "private"}]}

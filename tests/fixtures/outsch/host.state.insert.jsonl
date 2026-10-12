@@ -1,0 +1,2 @@
+{"bytes_delta": 0, "ids": [1], "inserted": 1, "table": "alerts"}
+{"bytes_delta": 17, "ids": [1], "inserted": 1, "next": {"tool": "host.quickstart", "why": "See a filled-in example for your next tool."}, "table": "ac2_table"}

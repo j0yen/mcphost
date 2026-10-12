@@ -1,0 +1,3 @@
+{"tools": []}
+{"next": {"tool": "host.quickstart", "why": "See a filled-in example for your next tool."}, "tools": []}
+{"tools": [{"description": "geo lookup tool", "group": null, "kind": "echo", "name": "t_573226ed.geo_lookup", "owner": "t_573226ed", "visibility": "public"}]}

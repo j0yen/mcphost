@@ -1,0 +1,3 @@
+{"bytes_used": 40960, "columns": {"id": "integer"}, "rows": 0, "table": "orders"}
+{"bytes_used": 40960, "columns": {"amount": "real", "category": "text"}, "rows": 1, "table": "expenses"}
+{"bytes_used": 40960, "columns": {"amount": {"description": "US dollars.", "type": "real"}, "category": "text"}, "rows": 0, "table": "expenses"}
