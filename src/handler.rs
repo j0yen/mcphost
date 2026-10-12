@@ -1391,8 +1391,10 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         Tool::new(
             "host.export",
             "Build a downloadable .tar.gz of everything this tenant owns: tool sources, \
-             state, secret NAMES (never values), run/thread history and usage, plus a \
-             manifest.json re-publishable via host.tool_publish. Runs as a background job \
+             state, host.table.* tables (schema + rows), table notes, documents (original \
+             bytes), secret NAMES (never values), run/thread history and usage, plus a \
+             version-2 manifest.json (sha256 and bytes per entry; its tools list is \
+             re-publishable via host.tool_publish). Runs as a background job \
              (poll host.runs.get with the returned run_id) -- calling this again while one is \
              already running returns that same run_id rather than starting a second one. The \
              finished run's result carries a download_url valid 24 hours.",
@@ -1402,6 +1404,37 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                         "type": "array",
                         "items": {"type": "string"},
                         "description": "Local names of the tools to include; every tool when omitted.",
+                    },
+                }),
+                &[],
+            ),
+        ),
+        // PRD-mcphost-export-tables-and-import-restore R2: the read half of
+        // host.export -- see `import.rs`.
+        Tool::new(
+            "host.import",
+            "Restore a completed host.export of this tenant into an EMPTY tenant: tools (through \
+             the host.tool_publish validators), state, host.table.* tables and rows, table notes \
+             and documents. Pass run_id (a finished host.export run) or url (its signed download \
+             URL). A tenant that already holds a tool, state key, table or document is refused \
+             as tenant_not_empty naming what exists; an archive larger than this plan's \
+             export_bytes_max is refused as quota_exceeded before anything is written. Secret \
+             values are never exported: the result's secrets_to_set names the ones to set again. \
+             Runs as a background job (poll host.runs.get: entries_done / entries_total); \
+             dry_run: true validates and returns the entry counts and bytes without writing.",
+            host_schema(
+                json!({
+                    "run_id": {
+                        "type": "string",
+                        "description": "Run id of a completed host.export of this tenant.",
+                    },
+                    "url": {
+                        "type": "string",
+                        "description": "The signed download_url a host.export result carried.",
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": "Validate and report entry counts and bytes; write nothing.",
                     },
                 }),
                 &[],
@@ -5892,6 +5925,7 @@ impl McpHostHandler {
             "host.usage" => control::usage(&self.state, tenant, &args).await,
             "host.changelog" => control::changelog(&self.state, &args),
             "host.export" => crate::export::export(&self.state, tenant, &args).await,
+            "host.import" => crate::import::import(&self.state, tenant, &args).await,
             "host.tool.share" => crate::sharing::tool_share(&self.state, tenant, &args).await,
             "host.tool.spec_shared" => self.tool_spec_shared(tenant, args).await,
             "host.tool.unshare" => crate::sharing::tool_unshare(&self.state, tenant, &args).await,

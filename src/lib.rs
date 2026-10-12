@@ -46,6 +46,7 @@ pub mod errors;
 pub mod examples;
 pub mod export;
 pub mod feedback;
+pub mod import;
 pub mod federation;
 pub mod funnel;
 pub mod gendocs;

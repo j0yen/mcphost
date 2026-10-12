@@ -2567,6 +2567,130 @@ pub async fn table_schema(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     Ok(Value::Object(out))
 }
 
+// ---- export / import of declared tables ---------------------------------
+
+/// PRD-mcphost-export-tables-and-import-restore R1: one declared table as
+/// the archive carries it -- `schema` is the `tables/<name>/schema.json`
+/// object and `rows` the `tables/<name>/rows.jsonl` lines, primary-key order.
+pub(crate) struct TableDump {
+    pub(crate) name: String,
+    pub(crate) schema: Value,
+    pub(crate) rows: Vec<Value>,
+}
+
+/// A stored cell back to the wire shape `host.table.append` validates:
+/// `boolean` columns are stored `0`/`1`, `json` columns as serialized text.
+fn wire_cell(ty: ColumnType, cell: Value) -> Value {
+    match (ty, cell) {
+        (ColumnType::Boolean, Value::Number(n)) => json!(n.as_i64().unwrap_or(0) != 0),
+        (ColumnType::Json, Value::String(s)) => serde_json::from_str(&s).unwrap_or(Value::String(s)),
+        (_, other) => other,
+    }
+}
+
+/// Every declared table of `tenant`, name order. Export is a background job,
+/// not a call, so the public [`ROW_CAP`] does not apply here.
+pub(crate) async fn dump_tables(state: &AppState, tenant: &Tenant) -> Result<Vec<TableDump>, AppError> {
+    let path = tenant_db_path(state, tenant.id);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+        let mut names = list_table_names_sync(conn)?;
+        names.sort();
+        let mut out = Vec::with_capacity(names.len());
+        for name in names {
+            let schema = load_schema_sync(conn, &name)?;
+            let created_unix: i64 = conn.query_row(
+                &format!("SELECT created_unix FROM {META_TABLE} WHERE name = ?1"),
+                params![name],
+                |r| r.get(0),
+            )?;
+            let order = match &schema.primary_key {
+                Some(pk) => quote_ident(pk),
+                None => "rowid".to_string(),
+            };
+            let raw = select_all_sync(conn, &format!("SELECT * FROM {} ORDER BY {order}", quote_ident(&name)))?;
+            let rows = raw
+                .into_iter()
+                .map(|row| {
+                    let Value::Object(obj) = row else { return row };
+                    Value::Object(
+                        obj.into_iter()
+                            .map(|(k, v)| {
+                                let v = match schema.columns.get(&k) {
+                                    Some(ty) => wire_cell(*ty, v),
+                                    None => v,
+                                };
+                                (k, v)
+                            })
+                            .collect(),
+                    )
+                })
+                .collect();
+            let schema_json = json!({
+                "columns": schema.columns.iter().map(|(c, t)| (c.clone(), json!(t.as_str()))).collect::<Map<String, Value>>(),
+                "primary_key": schema.primary_key,
+                "created_unix": created_unix,
+            });
+            out.push(TableDump { name, schema: schema_json, rows });
+        }
+        Ok(out)
+    })
+    .await
+}
+
+/// Import half of R3: `table_create` (so `table_tables_max` and every name
+/// check run), then the archive's `created_unix` back onto the meta row.
+pub(crate) async fn restore_table_schema(
+    state: &AppState,
+    tenant: &Tenant,
+    name: &str,
+    schema: &Value,
+) -> Result<(), AppError> {
+    let mut args = json!({"name": name, "columns": schema["columns"]});
+    if let Some(pk) = schema.get("primary_key").and_then(Value::as_str) {
+        args["primary_key"] = json!(pk);
+    }
+    table_create(state, tenant, &args).await?;
+    if let Some(created) = schema.get("created_unix").and_then(Value::as_i64) {
+        let name = name.to_string();
+        with_tenant_conn(tenant_db_path(state, tenant.id), state.db.cfg(), state.db.counters_handle(), move |conn| {
+            conn.execute(
+                &format!("UPDATE {META_TABLE} SET created_unix = ?1 WHERE name = ?2"),
+                params![created, name],
+            )?;
+            Ok(())
+        })
+        .await?;
+    }
+    Ok(())
+}
+
+/// Import half of R3: rows in batches of 200 through `table_append`, so the
+/// row and byte quotas of the destination plan apply. `null` cells are left
+/// out (an absent column is stored NULL, and `append` types reject `null`).
+pub(crate) async fn restore_table_rows(
+    state: &AppState,
+    tenant: &Tenant,
+    name: &str,
+    rows: &[Value],
+) -> Result<(), AppError> {
+    for batch in rows.chunks(200) {
+        let cleaned: Vec<Value> = batch
+            .iter()
+            .map(|row| match row {
+                Value::Object(obj) => {
+                    Value::Object(obj.iter().filter(|(_, v)| !v.is_null()).map(|(k, v)| (k.clone(), v.clone())).collect())
+                }
+                other => other.clone(),
+            })
+            .collect();
+        table_append(state, tenant, &json!({"table": name, "rows": cleaned})).await?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-fields-projection-on-list-verbs.md (test_prefix: fldp)",
+  "ac_test_map_prd": "PRD-mcphost-export-tables-and-import-restore.md (test_prefix: timp)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,14 +28,14 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "deferred -- operator-provisioned: live premise check on prod",
-    "AC2": "tests/fldp_ac02_tool_list_fields_two_keys_under_12kib.rs",
-    "AC3": "tests/fldp_ac03_field_unknown_names_nearest_before_any_read.rs",
-    "AC4": "tests/fldp_ac04_fields_one_set.rs",
-    "AC5": "tests/fldp_ac05_fields_name_walk_450_docs.rs",
-    "AC6": "tests/fldp_ac06_empty_fields_and_unpaged_verbs_are_args_invalid.rs",
-    "AC7": "tests/fldp_ac07_include_result_is_sugar_for_fields_result.rs",
-    "AC8": "deferred -- operator-provisioned: live prod MCP call after deploy"
+    "AC1": "tests/timp_ac01_export_lacks_tables_and_docs_baseline.rs",
+    "AC2": "tests/timp_ac02_export_carries_tables_models_docs_manifest_v2.rs",
+    "AC3": "tests/timp_ac03_import_restores_an_empty_tenant.rs",
+    "AC4": "tests/timp_ac04_import_refuses_non_empty_and_foreign_runs.rs",
+    "AC5": "tests/timp_ac05_round_trip_sha256_equal.rs",
+    "AC6": "tests/timp_ac06_import_enforces_export_bytes_max_and_reports_progress.rs",
+    "AC7": "tests/timp_ac07_archive_layout_one_enum.rs",
+    "AC8": "deferred -- operator-provisioned: live prod export + tar -tzf of the joe-test tenant after deploy."
   },
   "ac_test_map_by_prefix": {
     "ccli": {
@@ -1394,6 +1394,17 @@
       "AC6": "tests/blobgc_ac06_disk_floor_refuses_put.rs",
       "AC7": "tests/blobgc_ac07_expiring_notice_once.rs",
       "AC8": "deferred -- operator-provisioned: live prod retention-proof.sh after deploy."
+    },
+    "timp": {
+      "_prd": "PRD-mcphost-export-tables-and-import-restore.md (test_prefix: timp)",
+      "AC1": "tests/timp_ac01_export_lacks_tables_and_docs_baseline.rs",
+      "AC2": "tests/timp_ac02_export_carries_tables_models_docs_manifest_v2.rs",
+      "AC3": "tests/timp_ac03_import_restores_an_empty_tenant.rs",
+      "AC4": "tests/timp_ac04_import_refuses_non_empty_and_foreign_runs.rs",
+      "AC5": "tests/timp_ac05_round_trip_sha256_equal.rs",
+      "AC6": "tests/timp_ac06_import_enforces_export_bytes_max_and_reports_progress.rs",
+      "AC7": "tests/timp_ac07_archive_layout_one_enum.rs",
+      "AC8": "deferred -- operator-provisioned: live prod export + tar -tzf of the joe-test tenant after deploy."
     }
   }
 }
