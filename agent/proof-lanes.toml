@@ -328,4 +328,5 @@ description = "PRD-mcphost-contract-output-schemas: the per-tool output schemas 
 globs = ["contracts/host-output-schemas.v1.json", "tests/fixtures/outsch/**"]
 required_commands = [
   "cargo test --workspace outsch_ac",
+  "cargo test --workspace outschb_ac",
 ]
