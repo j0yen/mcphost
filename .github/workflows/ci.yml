@@ -32,10 +32,11 @@ concurrency:
 #
 # That first split was not enough on its own: even isolated as its own job,
 # the sandbox partition's `cargo test` step alone measured 313s -- over budget
-# by itself. So `sandbox` is a matrix (`strategy.matrix.shard`, 2-way since
-# PRD-mcphost-test-suite-consolidation dropped SANDBOX_SHARDS 3->2 -- see
-# scripts/ci-test-partition.sh), each
-# shard running `scripts/ci-test-partition.sh sandbox-shard <n> 2`, and
+# by itself. So `sandbox` is a matrix (`strategy.matrix.shard`) whose width
+# is NOT written here: the `plan` job runs `scripts/ci-test-partition.sh
+# shards` (its one SANDBOX_SHARDS definition, PRD-mcphost-ci-sandbox-shards-
+# balanced) and emits the matrix and the job-name total; each shard runs
+# `scripts/ci-test-partition.sh sandbox-shard <n> <total>`, and
 # `sandbox-required` gates on every shard succeeding so a shard failure still
 # fails the workflow instead of being silently ignored (GitHub does not fail
 # a run just because one matrix job failed unless something depends on it).
@@ -48,6 +49,28 @@ concurrency:
 # Only `sandbox` grants the userns capability; a userns-dependent target left
 # in `gate` therefore skips, and `gate`'s own assertion fails the job.
 jobs:
+  # The sandbox shard count lives in scripts/ci-test-partition.sh only; this
+  # job turns it into the matrix `sandbox` expands (a literal count in this
+  # file fails tests/cishard_ac02_*). Only `sandbox` needs it, so `gate` and
+  # the shards still start together once this seconds-long job is done.
+  plan:
+    name: sandbox shard plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      shards: ${{ steps.plan.outputs.shards }}
+    steps:
+      - name: checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: derive the sandbox shard matrix
+        id: plan
+        run: |
+          shards=$(./scripts/ci-test-partition.sh shards)
+          echo "shards=$shards" >> "$GITHUB_OUTPUT"
+          echo "matrix={\"shard\":$(seq 1 "$shards" | jq -sc .)}" >> "$GITHUB_OUTPUT"
+
   gate:
     name: static analysis + core suites
     runs-on: ubuntu-latest
@@ -158,13 +181,13 @@ jobs:
           esac
 
   sandbox:
-    name: sandbox suites (user namespaces, shard ${{ matrix.shard }}/2)
+    name: sandbox suites (user namespaces, shard ${{ matrix.shard }}/${{ needs.plan.outputs.shards }})
+    needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      matrix:
-        shard: [1, 2]
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
     steps:
       - name: checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -200,7 +223,7 @@ jobs:
       - name: verify test partition is total and disjoint
         run: ./scripts/ci-test-partition.sh check
 
-      - name: cargo test (sandbox suites, shard ${{ matrix.shard }}/2)
+      - name: cargo test (sandbox suites, shard ${{ matrix.shard }}/${{ needs.plan.outputs.shards }})
         # CI runners are shared 2-4 vCPU hosts: timing budgets are the gate's
         # truth (RedBaron, quiet box, var unset), not CI's. Same switch the gate
         # flips under load; perf_budget!/perf_skipped() print the skip.
@@ -208,16 +231,19 @@ jobs:
           MCPHOST_PERF_SKIP: "1"
         run: |
           set -o pipefail
+          shard=${{ matrix.shard }}
+          total=${{ needs.plan.outputs.shards }}
+          flags=$(./scripts/ci-test-partition.sh sandbox-shard "$shard" "$total")
+          # Build and run are timed apart: only the run is budgeted (AC3),
+          # compile time is reported (scripts/ci-shard-report.sh).
           start=$(date +%s)
-          cargo test $(./scripts/ci-test-partition.sh sandbox-shard ${{ matrix.shard }} 2) -- --nocapture 2>&1 | tee /tmp/cargo-test.log
+          cargo test --no-run $flags
+          build_s=$(( $(date +%s) - start ))
+          start=$(date +%s)
+          cargo test $flags -- --nocapture 2>&1 | tee /tmp/cargo-test.log
           status=$?
-          elapsed=$(( $(date +%s) - start ))
-          echo "sandbox shard ${{ matrix.shard }}/2 wall time: ${elapsed}s" | tee -a "$GITHUB_STEP_SUMMARY"
-          if [ "$elapsed" -gt 300 ]; then
-            echo "::error::sandbox shard ${{ matrix.shard }}/2 took ${elapsed}s (>5min budget) even after the 2-way matrix split (SANDBOX_SHARDS in scripts/ci-test-partition.sh, PRD-mcphost-test-suite-consolidation). See PRD-mcphost-ci-sandbox-coverage AC6 -- widen SANDBOX_SHARDS in scripts/ci-test-partition.sh and the matrix here."
-            exit 1
-          fi
-          exit "$status"
+          run_s=$(( $(date +%s) - start ))
+          ./scripts/ci-shard-report.sh "$shard" "$total" "$build_s" "$run_s" /tmp/cargo-test.log "$status"
 
       # PRD-mcphost-ci-sandbox-coverage P0#3. `require_user_namespaces_or_ci_skip`
       # skips cleanly (does not fail the test binary) whenever CI lacks the

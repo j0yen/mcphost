@@ -747,6 +747,21 @@ not file→binary), and `check` proves the split is total and disjoint at both
 levels. Both jobs then fail on any capability-skip in their log, so a file
 filed into the wrong half turns CI red rather than passing vacuously.
 
+The sandbox job is a matrix of shards balanced by COST, not position
+(PRD-mcphost-ci-sandbox-shards-balanced): `scripts/ci-suite-weights.json`
+records seconds per sandbox suite binary and for `--lib`, taken from the
+`finished in` lines of the latest green CI run, and `ci-test-partition.sh`
+places suites heaviest first into the lightest shard. The shard count is
+defined once (`SANDBOX_SHARDS`, printed by `ci-test-partition.sh shards`); the
+workflow's `plan` job builds its matrix and job names from that. To refresh
+the weights, copy each suite's `finished in` seconds from the shard step's
+`suite=<name> measured=<s>s recorded=<s>s` lines (printed whenever a shard's
+run wall reaches 240 s). `ci-test-partition.sh check` guards the file: a
+sandbox suite with no weight, or a predicted heaviest shard above 240 s, fails
+it naming the suite and the file. Each shard reports `build wall` and `run
+wall` in the step summary; only the run wall is budgeted (warn at 240 s, fail
+above 300 s).
+
 ### Adding a test
 
 `tests/*.rs` stopped being cargo's unit of test-binary discovery

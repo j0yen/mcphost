@@ -41,13 +41,24 @@ fn the_sandbox_suites_run_as_their_own_job_in_parallel_with_the_rest() {
 
     // `needs:` on either job would serialise them and put the workflow's wall
     // time back at the sum this AC exists to avoid.
-    for (name, body) in [gate, sandbox] {
-        assert!(
-            !support::declares_needs(body),
-            "job `{name}` declares `needs:`; the two jobs must run concurrently \
-             for AC6's parallel-job branch to hold"
-        );
-    }
+    // The only `needs:` allowed is the seconds-long `plan` job that derives
+    // the sandbox matrix from ci-test-partition.sh (one shard-count source,
+    // PRD-mcphost-ci-sandbox-shards-balanced); `gate` depends on nothing.
+    assert!(
+        !support::declares_needs(&gate.1),
+        "job `gate` declares `needs:`; the two jobs must run concurrently \
+         for AC6's parallel-job branch to hold"
+    );
+    let needs_lines: Vec<&str> = sandbox
+        .1
+        .lines()
+        .filter(|l| l.trim_start().starts_with("needs:"))
+        .collect();
+    assert_eq!(
+        needs_lines.iter().map(|l| l.trim()).collect::<Vec<_>>(),
+        vec!["needs: plan"],
+        "`sandbox` may depend on the `plan` job only"
+    );
 
     assert!(
         sandbox.1.contains("ci-test-partition.sh sandbox"),
