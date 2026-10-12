@@ -44,6 +44,8 @@ pub mod email;
 pub mod enduser;
 pub mod enduserctl;
 pub mod errors;
+pub mod example_propose;
+pub mod example_pull;
 pub mod examples;
 pub mod export;
 pub mod feedback;

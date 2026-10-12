@@ -941,6 +941,17 @@ pub fn admin_audit_entry(
         // and `admin.alerts.raise` are mutations like every other admin.*
         // write above -- `admin.alerts.list` (read-only) is absent, same
         // convention `admin.ban.list`/`admin.tenants` already follow.
+        // PRD-mcphost-example-from-published-tool R4: a decision is a
+        // mutation; `list` (read-only) is absent, same convention as above.
+        "admin.example_proposals"
+            if matches!(args.get("action").and_then(Value::as_str), Some("approve" | "reject" | "merge")) =>
+        {
+            Some((
+                format!("example_proposal_{}", args.get("action").and_then(Value::as_str).unwrap_or_default()),
+                args.get("id").and_then(Value::as_i64).map(|n| n.to_string()),
+                args.get("reason").or_else(|| args.get("pr_url")).and_then(Value::as_str).map(String::from),
+            ))
+        }
         "admin.alerts.ack" => Some((
             "alerts_ack".into(),
             args.get("id").and_then(Value::as_i64).map(|n| n.to_string()),
@@ -1380,6 +1391,96 @@ pub async fn alerts_list(state: &AppState, args: &Value) -> Result<Value, AppErr
     let unacked_only = args.get("unacked_only").and_then(Value::as_bool).unwrap_or(false);
     let rows = state.db.list_alerts(limit, since, unacked_only).await?;
     Ok(json!({ "alerts": rows.iter().map(alert_json).collect::<Vec<_>>() }))
+}
+
+/// `admin.example_proposals {action: list|approve|reject|merge, id?, reason?, status?, pr_url?}`
+/// (PRD-mcphost-example-from-published-tool R4/R7). `list` returns the
+/// proposals (one status with `status`, one proposal with its rendered
+/// files when `id` is given); `approve`/`reject` move a pending proposal,
+/// record who decided, and tell the proposer through their inbox.
+pub async fn example_proposals(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let action = arg_str(args, "action")?;
+    match action.as_str() {
+        "list" => {
+            if let Some(id) = args.get("id").and_then(Value::as_i64) {
+                let row = state
+                    .db
+                    .get_example_proposal(id)
+                    .await?
+                    .ok_or_else(|| AppError::ToolNotFound(format!("example proposal {id}")))?;
+                let tar = state.db.example_proposal_tar(id).await?.unwrap_or_default();
+                let files = crate::example_propose::unpack_tar(&tar)?;
+                let contents: serde_json::Map<String, Value> = files
+                    .iter()
+                    .map(|(path, bytes, _)| (path.clone(), json!(String::from_utf8_lossy(bytes))))
+                    .collect();
+                return Ok(json!({
+                    "proposals": [crate::example_propose::row_json(&row)],
+                    "count": 1,
+                    "rendered": {"files": files.iter().map(|f| f.0.clone()).collect::<Vec<_>>(), "contents": contents},
+                }));
+            }
+            let rows = state.db.list_example_proposals(arg_str_opt(args, "status")).await?;
+            let proposals: Vec<Value> = rows.iter().map(crate::example_propose::row_json).collect();
+            Ok(json!({"count": proposals.len(), "proposals": proposals}))
+        }
+        "merge" => {
+            let id = arg_i64(args, "id")?;
+            let pr_url = arg_str(args, "pr_url")?;
+            if !state.db.mark_example_proposal_merged(id, pr_url).await? {
+                return Err(AppError::InvalidArgs(format!("proposal {id} is not approved")));
+            }
+            let row = state
+                .db
+                .get_example_proposal(id)
+                .await?
+                .ok_or_else(|| AppError::ToolNotFound(format!("example proposal {id}")))?;
+            Ok(crate::example_propose::row_json(&row))
+        }
+        "approve" | "reject" => {
+            let id = arg_i64(args, "id")?;
+            let reason = arg_str_opt(args, "reason");
+            let row = state
+                .db
+                .get_example_proposal(id)
+                .await?
+                .ok_or_else(|| AppError::ToolNotFound(format!("example proposal {id}")))?;
+            let status = if action == "approve" { "approved" } else { "rejected" };
+            let decided_by = operator_identity(state);
+            let moved = state
+                .db
+                .decide_example_proposal(id, status.to_string(), decided_by, reason.clone(), crate::state::now_unix())
+                .await?;
+            if !moved {
+                return Err(AppError::InvalidArgs(format!("proposal {id} is {}, not pending", row.status)));
+            }
+            let body = match &reason {
+                Some(r) => format!("Your example proposal {id} ({}) was {status}: {r}", row.name),
+                None => format!("Your example proposal {id} ({}) was {status}.", row.name),
+            };
+            // Best-effort: the decision stands even when the notice cannot be written.
+            if let Err(e) = state
+                .db
+                .insert_host_notice(
+                    row.tenant_id,
+                    format!("example-proposals-{}", row.tenant_id),
+                    "admin".to_string(),
+                    body,
+                    json!({"kind": "example_proposal", "proposal_id": id, "status": status, "reason": reason}).to_string(),
+                )
+                .await
+            {
+                tracing::warn!(error = %e, proposal = id, "example proposal notice not delivered");
+            }
+            let updated = state
+                .db
+                .get_example_proposal(id)
+                .await?
+                .ok_or_else(|| AppError::ToolNotFound(format!("example proposal {id}")))?;
+            Ok(crate::example_propose::row_json(&updated))
+        }
+        other => Err(AppError::InvalidArgs(format!("action must be list, approve, reject or merge; got `{other}`"))),
+    }
 }
 
 /// `admin.alerts.ack {id}` (requirement 5 / AC7): `false` (from

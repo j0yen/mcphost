@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+`host.example.propose {tool, proof_call: {args, expect}, title, summary?, use_case, clients?}`
+(PRD-mcphost-example-from-published-tool) snapshots a tenant's tool at its current version, runs the
+proof call now, and renders `example.toml` (with `[provenance]`), `tools/` and a generated
+`proof.sh`, validated by the `mcphost examples check` code, into a pending proposal. Refusals:
+`secret_leak {line}` (a stored secret's literal value; never echoed), `not_portable {reference}`
+(state, tables, groups, another tenant's tool), `proof_failed {actual}`, `example_exists`,
+`too_many_proposals` (3 open), `too_large` (256 KB). `host.example.proposal_status {id}` reads the
+outcome; `admin.example_proposals {action: list|approve|reject|merge}` decides it and tells the
+proposer by inbox. `MCPHOST_ADMIN_KEY=… mcphost examples proposals pull --repo <clone>` writes each
+approved proposal into the clone, commits it on its own branch, opens a PR with `gh`, and marks it
+merged once the PR URL is recorded.
+
 A chain step may declare `for_each: "$.prev.result.items"` (PRD-mcphost-chain-fanout-and-join): the
 step runs once per element with `$.item` and `$.index` in its mappings, at most
 `min(step.concurrency, plan.concurrent_calls_per_tenant)` at a time, and its result is

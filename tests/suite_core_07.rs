@@ -20,6 +20,8 @@ mod child_proc_lint;
 mod ctrace;
 #[path = "support/docs_qa.rs"]
 mod docs_qa;
+#[path = "support/exprp.rs"]
+mod exprp;
 #[path = "support/fake_as.rs"]
 mod fake_as;
 #[path = "support/federation.rs"]
@@ -831,6 +833,16 @@ mod exmf_ac04_stale_index_fails_the_build;
 mod exmf_ac05_schema_matches_committed_file;
 #[path = "exmf_ac06_zero_manifests_exits_two.rs"]
 mod exmf_ac06_zero_manifests_exits_two;
+#[path = "exprp_ac02_literal_secret_value_is_refused.rs"]
+mod exprp_ac02_literal_secret_value_is_refused;
+#[path = "exprp_ac03_non_portable_and_failing_proof_are_refused.rs"]
+mod exprp_ac03_non_portable_and_failing_proof_are_refused;
+#[path = "exprp_ac04_admin_decides_and_the_proposer_sees_it.rs"]
+mod exprp_ac04_admin_decides_and_the_proposer_sees_it;
+#[path = "exprp_ac05_pull_writes_the_clone_commits_and_merges.rs"]
+mod exprp_ac05_pull_writes_the_clone_commits_and_merges;
+#[path = "exprp_ac06_name_collision_and_open_proposal_cap.rs"]
+mod exprp_ac06_name_collision_and_open_proposal_cap;
 #[path = "fbeh_ac02_hint_on_every_variant.rs"]
 mod fbeh_ac02_hint_on_every_variant;
 #[path = "fbeh_ac03_missing_mapping_is_named.rs"]
@@ -1821,17 +1833,3 @@ mod planlim_ac06_tool_test_warns_timeout_above_latency_ceiling;
 mod planlim_ac07_contract_drift_with_deprecation_entry;
 #[path = "proptest_invariants.rs"]
 mod proptest_invariants;
-#[path = "provaudit_ac01_synthetic_signup_stamped.rs"]
-mod provaudit_ac01_synthetic_signup_stamped;
-#[path = "provaudit_ac02_external_signup_stamped.rs"]
-mod provaudit_ac02_external_signup_stamped;
-#[path = "provaudit_ac03_migration_backfill_counts.rs"]
-mod provaudit_ac03_migration_backfill_counts;
-#[path = "provaudit_ac04_healthz_split_shape.rs"]
-mod provaudit_ac04_healthz_split_shape;
-#[path = "provaudit_ac05_admin_audit_log.rs"]
-mod provaudit_ac05_admin_audit_log;
-#[path = "provaudit_ac06_null_origin_rejected.rs"]
-mod provaudit_ac06_null_origin_rejected;
-#[path = "provaudit_ac07_ip_class_triage.rs"]
-mod provaudit_ac07_ip_class_triage;

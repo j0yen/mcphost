@@ -3251,6 +3251,114 @@
     ],
     "type": "object"
   },
+  "host.example.proposal_status": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "integer"
+      },
+      "tenant": {
+        "type": "string"
+      },
+      "tool": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "version": {
+        "type": "integer"
+      },
+      "status": {
+        "type": "string"
+      },
+      "created_at": {
+        "type": "integer"
+      },
+      "decided_at": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "decided_by": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "reason": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "pr_url": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "required": [
+      "id",
+      "tenant",
+      "tool",
+      "name",
+      "version",
+      "status",
+      "created_at"
+    ]
+  },
+  "host.example.propose": {
+    "type": "object",
+    "properties": {
+      "proposal_id": {
+        "type": "integer"
+      },
+      "status": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "secrets_needed": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "rendered": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "example_toml": {
+            "type": "string"
+          },
+          "contents": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "files",
+          "example_toml",
+          "contents"
+        ]
+      }
+    },
+    "required": [
+      "proposal_id",
+      "status",
+      "name",
+      "secrets_needed",
+      "rendered"
+    ]
+  },
   "host.export": {
     "properties": {
       "onboarding": {

@@ -213,6 +213,43 @@ pub enum FeedbackCap {
 const FEEDBACK_COLS: &str = "feedback_id, tenant_id, kind, text, context_json, client_name, \
      client_version, last_call_ids, created_unix";
 
+/// One `example_proposals` row without its `rendered_tar` blob.
+#[derive(Debug, Clone)]
+pub struct ExampleProposalRow {
+    pub id: i64,
+    pub tenant_id: i64,
+    pub tenant: String,
+    pub tool: String,
+    pub name: String,
+    pub version: i64,
+    pub status: String,
+    pub created_at: i64,
+    pub decided_at: Option<i64>,
+    pub decided_by: Option<String>,
+    pub reason: Option<String>,
+    pub pr_url: Option<String>,
+}
+
+const EXAMPLE_PROPOSAL_COLS: &str = "p.id, p.tenant_id, t.namespace, p.tool, p.name, p.version, p.status, \
+     p.created_at, p.decided_at, p.decided_by, p.reason, p.pr_url";
+
+fn example_proposal_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<ExampleProposalRow> {
+    Ok(ExampleProposalRow {
+        id: r.get(0)?,
+        tenant_id: r.get(1)?,
+        tenant: r.get(2)?,
+        tool: r.get(3)?,
+        name: r.get(4)?,
+        version: r.get(5)?,
+        status: r.get(6)?,
+        created_at: r.get(7)?,
+        decided_at: r.get(8)?,
+        decided_by: r.get(9)?,
+        reason: r.get(10)?,
+        pr_url: r.get(11)?,
+    })
+}
+
 /// One `feedback` row as any reader sees it (the `ip_hash` column is never
 /// part of it).
 #[derive(Debug, Clone)]
@@ -259,6 +296,8 @@ const MIGRATION_0091: &str = include_str!("../migrations/0091_blob_policy_versio
 const MIGRATION_0092: &str = include_str!("../migrations/0092_confirm_tokens.sql");
 /// PRD-mcphost-chain-fanout-children-excludes-composition-child R1: `runs.item_index`.
 const MIGRATION_0093: &str = include_str!("../migrations/0093_runs_item_index.sql");
+/// PRD-mcphost-example-from-published-tool R4: the `example_proposals` table.
+const MIGRATION_0094: &str = include_str!("../migrations/0094_example_proposals.sql");
 
 /// PRD-mcphost-session-bound-tenant-key requirement 3: `kind` on
 /// `signup_events`. Renumbered to 0080 during this rebase: mcphost-tool-
@@ -2874,7 +2913,10 @@ impl Db {
         Self::migrate_0090_blob_expiry(&conn)?;
         Self::migrate_0091_blob_policy_versions(&conn)?;
         Self::migrate_0092_confirm_tokens(&conn)?;
-        Self::migrate_0093_runs_item_index(&conn)
+        Self::migrate_0093_runs_item_index(&conn)?;
+        // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
+        conn.execute_batch(MIGRATION_0094)?;
+        Ok(())
     }
 
     /// PRD-mcphost-destructive-verb-confirmation-token R2/R5: gated on the
@@ -5244,6 +5286,149 @@ impl Db {
                 params![tenant_id, format!("did_you_mean:{tool_name}:{outcome}"), now_unix, outcome],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-example-from-published-tool R4/R6: one `pending`
+    /// proposal, admitted against the tenant's open-proposal cap in the same
+    /// connection closure. `Ok(Err(open))` is a refusal: `open` proposals
+    /// (pending or approved) already stand.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_example_proposal(
+        &self,
+        tenant_id: i64,
+        tool: String,
+        name: String,
+        version: i64,
+        rendered_tar: Vec<u8>,
+        created_at: i64,
+        max_open: i64,
+    ) -> Result<Result<i64, i64>, AppError> {
+        self.with_conn(move |conn| {
+            let open: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM example_proposals WHERE tenant_id = ?1 AND status IN ('pending', 'approved')",
+                params![tenant_id],
+                |r| r.get(0),
+            )?;
+            if open >= max_open {
+                return Ok(Err(open));
+            }
+            conn.execute(
+                "INSERT INTO example_proposals (tenant_id, tool, name, version, status, rendered_tar, created_at) \
+                 VALUES (?1, ?2, ?3, ?4, 'pending', ?5, ?6)",
+                params![tenant_id, tool, name, version, rendered_tar, created_at],
+            )?;
+            Ok(Ok(conn.last_insert_rowid()))
+        })
+        .await
+    }
+
+    /// Stores the final rendered tar once the row id is known.
+    pub async fn set_example_proposal_tar(&self, id: i64, tar: Vec<u8>) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute("UPDATE example_proposals SET rendered_tar = ?2 WHERE id = ?1", params![id, tar])?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Removes a proposal row (a rendering that failed after the id was reserved).
+    pub async fn delete_example_proposal(&self, id: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute("DELETE FROM example_proposals WHERE id = ?1", params![id])?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// The tenant's open (pending or approved) proposal count.
+    pub async fn count_open_example_proposals(&self, tenant_id: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM example_proposals WHERE tenant_id = ?1 AND status IN ('pending', 'approved')",
+                params![tenant_id],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// One proposal row (no tar) by id.
+    pub async fn get_example_proposal(&self, id: i64) -> Result<Option<ExampleProposalRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                &format!(
+                    "SELECT {EXAMPLE_PROPOSAL_COLS} FROM example_proposals p \
+                     JOIN tenants t ON t.id = p.tenant_id WHERE p.id = ?1"
+                ),
+                params![id],
+                example_proposal_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// The rendered tar of one proposal.
+    pub async fn example_proposal_tar(&self, id: i64) -> Result<Option<Vec<u8>>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row("SELECT rendered_tar FROM example_proposals WHERE id = ?1", params![id], |r| r.get(0))
+                .optional()
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Proposals newest first, optionally one status only.
+    pub async fn list_example_proposals(&self, status: Option<String>) -> Result<Vec<ExampleProposalRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(&format!(
+                "SELECT {EXAMPLE_PROPOSAL_COLS} FROM example_proposals p \
+                 JOIN tenants t ON t.id = p.tenant_id \
+                 WHERE (?1 IS NULL OR p.status = ?1) ORDER BY p.id DESC"
+            ))?;
+            let rows = stmt
+                .query_map(params![status], example_proposal_from_row)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// Moves a `pending` proposal to `approved` or `rejected`; `false` when
+    /// the row is not pending.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn decide_example_proposal(
+        &self,
+        id: i64,
+        status: String,
+        decided_by: String,
+        reason: Option<String>,
+        decided_at: i64,
+    ) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "UPDATE example_proposals SET status = ?2, decided_by = ?3, reason = ?4, decided_at = ?5 \
+                 WHERE id = ?1 AND status = 'pending'",
+                params![id, status, decided_by, reason, decided_at],
+            )?;
+            Ok(n > 0)
+        })
+        .await
+    }
+
+    /// Moves an `approved` proposal to `merged`, recording the PR URL in the
+    /// same statement; `false` when the row is not approved.
+    pub async fn mark_example_proposal_merged(&self, id: i64, pr_url: String) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "UPDATE example_proposals SET status = 'merged', pr_url = ?2 WHERE id = ?1 AND status = 'approved'",
+                params![id, pr_url],
+            )?;
+            Ok(n > 0)
         })
         .await
     }

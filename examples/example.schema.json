@@ -102,6 +102,35 @@
       ],
       "type": "object"
     },
+    "provenance": {
+      "additionalProperties": false,
+      "description": "present only on an example a tenant proposed (host.example.propose)",
+      "properties": {
+        "license": {
+          "type": "string"
+        },
+        "proposal_id": {
+          "type": "integer"
+        },
+        "proposed_at": {
+          "type": "string"
+        },
+        "tenant": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "tool_version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tenant",
+        "tool_version",
+        "proposal_id",
+        "proposed_at"
+      ],
+      "type": "object"
+    },
     "tools": {
       "items": {
         "additionalProperties": false,
