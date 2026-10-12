@@ -6502,6 +6502,14 @@ impl McpHostHandler {
     /// (no per-tenant limiting) if the tenant's plan has somehow fallen out
     /// of the loaded catalog (should never happen; the same degrade
     /// `control::quickstart`'s own plan lookup already uses).
+    fn chain_fanout_cap(&self, tenant: &Tenant) -> usize {
+        self.state
+            .plans
+            .get(&tenant.plan)
+            .map(|plan| plan.chain_fanout_max.max(0) as usize)
+            .unwrap_or(usize::MAX)
+    }
+
     fn concurrent_calls_cap(&self, tenant: &Tenant) -> usize {
         self.state
             .plans
@@ -6684,6 +6692,7 @@ impl McpHostHandler {
             compose_db: Some(self.state.db.clone()),
             compose_kinds: Some(self.state.kinds.clone()),
             concurrent_calls_per_tenant: self.concurrent_calls_cap(tenant),
+            chain_fanout_max: self.chain_fanout_cap(tenant),
             // PRD-mcphost-sandbox-egress-allowlist requirement 1/2/3: resolved
             // from the tenant's plan here, once, same convention as
             // `concurrent_calls_per_tenant` just above.
@@ -7200,6 +7209,7 @@ impl McpHostHandler {
             compose_db: Some(self.state.db.clone()),
             compose_kinds: Some(self.state.kinds.clone()),
             concurrent_calls_per_tenant: self.concurrent_calls_cap(tenant),
+            chain_fanout_max: self.chain_fanout_cap(tenant),
             // PRD-mcphost-sandbox-egress-allowlist requirement 1/2/3: resolved
             // from the tenant's plan here, once, same convention as
             // `concurrent_calls_per_tenant` just above.
@@ -7635,6 +7645,7 @@ impl McpHostHandler {
             compose_db: None,
             compose_kinds: None,
             concurrent_calls_per_tenant: self.concurrent_calls_cap(tenant),
+            chain_fanout_max: self.chain_fanout_cap(tenant),
             // PRD-mcphost-sandbox-egress-allowlist requirement 1/2/3: resolved
             // from the tenant's plan here, once, same convention as
             // `concurrent_calls_per_tenant` just above.
@@ -7860,6 +7871,7 @@ impl McpHostHandler {
             compose_db: None,
             compose_kinds: None,
             concurrent_calls_per_tenant,
+            chain_fanout_max: usize::MAX,
             run_id: None,
             progress: Arc::new(crate::kinds::NullProgress),
             cancel_pid: Arc::new(std::sync::Mutex::new(None)),
@@ -8115,6 +8127,7 @@ impl McpHostHandler {
             compose_db: None,
             compose_kinds: None,
             concurrent_calls_per_tenant: self.concurrent_calls_cap(tenant),
+            chain_fanout_max: self.chain_fanout_cap(tenant),
             // PRD-mcphost-sandbox-egress-allowlist requirement 1/2/3: resolved
             // from the tenant's plan here, once, same convention as
             // `concurrent_calls_per_tenant` just above.

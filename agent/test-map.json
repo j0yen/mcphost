@@ -1367,6 +1367,17 @@
       "AC3": "tests/cpathb_ac03_context_keys_table_parity.rs",
       "AC4": "deferred -- operator-provisioned: the live probe runs against prod mcphost.dev with a keyed tenant after this PRD deploys."
     },
+    "cfan": {
+      "_prd": "PRD-mcphost-chain-fanout-and-join.md (test_prefix: cfan)",
+      "AC1": "tests/cfan_ac01_for_each_joins_items_in_input_order.rs",
+      "AC2": "tests/cfan_ac02_item_failure_continue_or_stop.rs",
+      "AC3": "tests/cfan_ac03_concurrency_capped_at_plan.rs",
+      "AC4": "tests/cfan_ac04_over_ceiling_refused_before_any_item.rs",
+      "AC5": "tests/cfan_ac05_publish_checks_for_each_and_item_scope.rs",
+      "AC6": "tests/cfan_ac06_ceiling_rendered_and_quickstart_example.rs",
+      "AC7": "tests/cfan_ac07_empty_array_runs_the_next_step.rs",
+      "AC8": "deferred -- operator-provisioned: live prod probe with a keyed echo chain after deploy."
+    },
     "fldp": {
       "_prd": "PRD-mcphost-fields-projection-on-list-verbs.md (test_prefix: fldp)",
       "AC2": "tests/fldp_ac02_tool_list_fields_two_keys_under_12kib.rs",

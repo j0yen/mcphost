@@ -246,6 +246,10 @@ pub struct Plan {
     /// tenant may have pending (unanswered, unexpired) at once -- a further
     /// create refuses with `asks_limit`. "free 5, pro 100".
     pub asks_open_max: i64,
+    /// PRD-mcphost-chain-fanout-and-join R3: the most items one `for_each`
+    /// chain step may fan out over; more is refused `compose_fanout_exceeded`
+    /// before any item runs. "free 20, pro 50".
+    pub chain_fanout_max: i64,
     /// PRD-mcphost-result-handles P0 requirement 4 / AC5: total bytes across
     /// a tenant's live `host.table.query {handle: true}` handles, distinct
     /// from [`Self::table_bytes_max`] (declared `host.table.*` tables) --
@@ -552,6 +556,7 @@ impl PlanCatalog {
                     // allows 3 live".
                     invites_max: 3,
                     asks_open_max: 5,
+                    chain_fanout_max: 20,
                     // PRD-mcphost-result-handles Open Questions: "free 64
                     // MiB" of live query-result handles.
                     table_handle_bytes_max: 64 * 1024 * 1024,
@@ -655,6 +660,7 @@ impl PlanCatalog {
                     // the ~8x free/pro ratio `channels_max` already uses.
                     invites_max: 25,
                     asks_open_max: 100,
+                    chain_fanout_max: 50,
                     // PRD-mcphost-result-handles: no published pro number
                     // -- sized against the same ~8x free/pro ratio
                     // `table_bytes_max` uses (10 MiB -> 500 MiB is 50x, but
@@ -792,6 +798,7 @@ impl PlanCatalog {
             ));
             out.push_str(&format!("invites_max = {}\n", p.invites_max));
             out.push_str(&format!("asks_open_max = {}\n", p.asks_open_max));
+            out.push_str(&format!("chain_fanout_max = {}\n", p.chain_fanout_max));
             out.push_str(&format!(
                 "table_handle_bytes_max = {}\n",
                 p.table_handle_bytes_max
@@ -897,6 +904,7 @@ impl PlanCatalog {
                 "vault_providers_max" => builder.vault_providers_max = Some(int_value()),
                 "invites_max" => builder.invites_max = Some(int_value()),
                 "asks_open_max" => builder.asks_open_max = Some(int_value()),
+                "chain_fanout_max" => builder.chain_fanout_max = Some(int_value()),
                 "table_handle_bytes_max" => builder.table_handle_bytes_max = Some(int_value()),
                 "budget_max_child_calls" => builder.budget_max_child_calls = Some(int_value()),
                 "budget_max_est_tokens" => builder.budget_max_est_tokens = Some(int_value()),
@@ -985,6 +993,7 @@ struct PlanBuilder {
     vault_providers_max: Option<i64>,
     invites_max: Option<i64>,
     asks_open_max: Option<i64>,
+    chain_fanout_max: Option<i64>,
     table_handle_bytes_max: Option<i64>,
     budget_max_child_calls: Option<i64>,
     budget_max_est_tokens: Option<i64>,
@@ -1058,6 +1067,7 @@ impl PlanBuilder {
             vault_providers_max: quota!(vault_providers_max),
             invites_max: quota!(invites_max),
             asks_open_max: quota!(asks_open_max),
+            chain_fanout_max: quota!(chain_fanout_max),
             table_handle_bytes_max: quota!(table_handle_bytes_max),
             budget_max_child_calls: quota!(budget_max_child_calls),
             budget_max_est_tokens: quota!(budget_max_est_tokens),

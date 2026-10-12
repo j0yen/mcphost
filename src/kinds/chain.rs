@@ -44,6 +44,7 @@ use serde_json::{Map, Value, json};
 
 use super::{
     CallCtx, HOST_STEPS_ALLOWED, Kind, KindError, KindExample, KindRegistry, Path, ToolDescriptor, compose_call,
+    compose_call_ref,
 };
 use crate::errors::AppError;
 
@@ -66,10 +67,15 @@ pub struct ContextKeys {
     pub event: &'static str,
     /// The one key under `prev` / `steps[i]`.
     pub result: &'static str,
+    /// PRD-mcphost-chain-fanout-and-join R1: inside a `for_each` step only,
+    /// the current element of the fanned-out array.
+    pub item: &'static str,
+    /// Inside a `for_each` step only, the element's 0-based position.
+    pub index: &'static str,
 }
 
 pub const CONTEXT_KEYS: ContextKeys =
-    ContextKeys { input: "input", prev: "prev", steps: "steps", event: "event", result: "result" };
+    ContextKeys { input: "input", prev: "prev", steps: "steps", event: "event", result: "result", item: "item", index: "index" };
 // CONTEXT_KEYS-END
 
 /// Requirement 4 ("up to three nearest sibling names"): the closest
@@ -179,6 +185,26 @@ pub fn step_context(input: &Value, prev: Option<&Value>, steps: &[Value]) -> Val
         (CONTEXT_KEYS.prev): prev.map(|r| json!({ (CONTEXT_KEYS.result): r })),
         (CONTEXT_KEYS.steps): steps.iter().map(|r| json!({ (CONTEXT_KEYS.result): r })).collect::<Vec<_>>(),
         (CONTEXT_KEYS.event): event,
+    })
+}
+
+/// PRD-mcphost-chain-fanout-and-join R1: `base` (a [`step_context`] result)
+/// plus the `for_each` step's `$.item` and `$.index`.
+fn item_context(base: &Value, item: &Value, index: usize) -> Value {
+    let mut ctx = base.clone();
+    if let Value::Object(map) = &mut ctx {
+        map.insert(CONTEXT_KEYS.item.to_string(), item.clone());
+        map.insert(CONTEXT_KEYS.index.to_string(), json!(index));
+    }
+    ctx
+}
+
+/// `raw` is a mapping into `$.item` or `$.index` (the root or a path under it).
+fn is_item_ref(raw: &str) -> bool {
+    [CONTEXT_KEYS.item, CONTEXT_KEYS.index].iter().any(|key| {
+        raw.strip_prefix("$.")
+            .and_then(|rest| rest.strip_prefix(key))
+            .is_some_and(|tail| tail.is_empty() || tail.starts_with(['.', '[']))
     })
 }
 
@@ -427,6 +453,8 @@ struct PathBasis {
     /// `did_you_mean` fallback when no name is a near typo).
     array_names: Vec<String>,
     source: &'static str,
+    /// Observed JSON type of each top-level key (empty without run history).
+    types: std::collections::BTreeMap<String, String>,
     /// `Some` whenever the tool has at least one recorded run.
     runs_sampled: Option<i64>,
     /// Declared names no run ever returned (empty unless `declared` and
@@ -452,13 +480,17 @@ async fn path_basis(
         .map(|o| o.keys.keys().filter(|k| !k.contains('.')).cloned().collect())
         .unwrap_or_default();
     let runs_sampled = observed.as_ref().map(|o| o.runs_sampled);
+    let types: std::collections::BTreeMap<String, String> = observed
+        .as_ref()
+        .map(|o| o.keys.iter().filter(|(k, _)| !k.contains('.')).map(|(k, t)| (k.clone(), t.clone())).collect())
+        .unwrap_or_default();
     if !declared.is_empty() {
         let drift = if observed.is_some() {
             declared.iter().filter(|d| !observed_top.contains(d)).cloned().collect()
         } else {
             Vec::new()
         };
-        return Some(PathBasis { names: declared, array_names: Vec::new(), source: "declared", runs_sampled, drift });
+        return Some(PathBasis { names: declared, array_names: Vec::new(), source: "declared", types, runs_sampled, drift });
     }
     let o = observed?;
     if observed_top.is_empty() {
@@ -469,7 +501,7 @@ async fn path_basis(
         .filter(|k| o.keys.get(*k).is_some_and(|t| t == "array"))
         .cloned()
         .collect();
-    Some(PathBasis { names: observed_top, array_names, source: "observed", runs_sampled, drift: Vec::new() })
+    Some(PathBasis { names: observed_top, array_names, source: "observed", types, runs_sampled, drift: Vec::new() })
 }
 
 impl PathBasis {
@@ -489,6 +521,25 @@ impl PathBasis {
             _ => None,
         }
     }
+}
+
+/// The observed JSON type of the one field `r` names directly under the
+/// predecessor's result (`$.prev.result.<field>`); `None` for a deeper or
+/// whole-result path, or when no run ever returned the field.
+#[allow(clippy::too_many_arguments)]
+async fn observed_field_type(
+    db: &crate::db::Db,
+    kinds: &KindRegistry,
+    tenant_id: i64,
+    predecessor_tool: &str,
+    r: &StepRef,
+    use_observed: bool,
+) -> Option<String> {
+    if r.tokens.len() != 2 || !r.accepted_keys().contains(r.name(0)?) {
+        return None;
+    }
+    let basis = path_basis(db, kinds, tenant_id, predecessor_tool, use_observed).await?;
+    basis.types.get(r.name(1)?).cloned()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -593,8 +644,15 @@ async fn steps_verdict(
     let mut passes = std::collections::HashSet::new();
     for (i, step) in steps.iter().enumerate() {
         let step_no = i + 1;
-        for v in step.args.values() {
-            let Value::String(raw) = v else { continue };
+        // R5: a `for_each` path is a mapping too, and must read an array.
+        let mappings = step
+            .args
+            .values()
+            .filter_map(Value::as_str)
+            .map(|raw| (raw.to_string(), false))
+            .chain(step.for_each.clone().map(|raw| (raw, true)));
+        for (raw, wants_array) in mappings {
+            let raw = &raw;
             if is_event_ref(raw) && event_ref.is_none() {
                 event_ref = Some((step_no, raw.clone()));
             }
@@ -620,7 +678,23 @@ async fn steps_verdict(
             let Some(predecessor) = steps.get(predecessor_no - 1) else {
                 continue; // out of range -- not this check's concern.
             };
-            match check_step_ref(db, kinds, tenant_id, &predecessor.tool, &r, use_observed).await {
+            let mut checked = check_step_ref(db, kinds, tenant_id, &predecessor.tool, &r, use_observed).await;
+            if wants_array
+                && !matches!(checked, RefCheck::WillFail(_))
+                && let (Some(db), Some(kinds)) = (db, kinds)
+                && let Some(actual) = observed_field_type(db, kinds, tenant_id, &predecessor.tool, &r, use_observed).await
+                && actual != "array"
+            {
+                let mut evidence = Map::new();
+                evidence.insert("expected".to_string(), json!("array"));
+                evidence.insert("actual".to_string(), json!(actual));
+                evidence.insert(
+                    "reason".to_string(),
+                    json!(format!("for_each needs an array but {raw} is {actual}")),
+                );
+                checked = RefCheck::WillFail(evidence);
+            }
+            match checked {
                 RefCheck::Pass => {
                     passes.insert((step_no, raw.clone()));
                 }
@@ -765,9 +839,8 @@ fn collect_input_refs(steps: &[ParsedStep]) -> Vec<InputRef> {
     let mut seen = std::collections::HashSet::new();
     let mut refs = Vec::new();
     for (i, step) in steps.iter().enumerate() {
-        for v in step.args.values() {
-            if let Value::String(s) = v
-                && let Some(name) = input_arg_name(s)
+        for s in step.args.values().filter_map(Value::as_str).chain(step.for_each.as_deref()) {
+            if let Some(name) = input_arg_name(s)
                 && seen.insert(name.clone())
             {
                 refs.push(InputRef {
@@ -809,6 +882,11 @@ struct ParsedStep {
     tool: String,
     args: Map<String, Value>,
     continue_on_error: bool,
+    /// PRD-mcphost-chain-fanout-and-join R1: the `$.<path>` of the array this
+    /// step runs once per element of.
+    for_each: Option<String>,
+    /// R1: this step's own in-flight cap (clamped to the plan's at call time).
+    concurrency: Option<usize>,
 }
 
 fn invalid_spec(message: impl Into<String>) -> KindError {
@@ -862,10 +940,44 @@ fn parse_steps(spec: &Value) -> Result<Vec<ParsedStep>, KindError> {
                 )));
             }
         };
+        let for_each = match step_obj.get("for_each") {
+            None => None,
+            Some(Value::String(s)) if Path::parse(s).is_ok() => Some(s.clone()),
+            Some(_) => {
+                return Err(invalid_spec(format!(
+                    "spec.steps[{i}].for_each: must be a mapping path string such as \"$.prev.result.items\""
+                )));
+            }
+        };
+        let concurrency = match step_obj.get("concurrency") {
+            None => None,
+            Some(v) if for_each.is_some() => match v.as_u64() {
+                Some(n) if n >= 1 => Some(n as usize),
+                _ => {
+                    return Err(invalid_spec(format!(
+                        "spec.steps[{i}].concurrency: must be an integer of at least 1"
+                    )));
+                }
+            },
+            Some(_) => {
+                return Err(invalid_spec(format!("spec.steps[{i}].concurrency: only a for_each step may set it")));
+            }
+        };
+        if for_each.is_none()
+            && let Some(raw) = args.values().find_map(|v| v.as_str().filter(|s| is_item_ref(s)))
+        {
+            return Err(KindError::structured_with(
+                "compose_item_outside_for_each",
+                format!("spec.steps[{i}]: '{raw}' is only available inside a step that declares for_each"),
+                json!({"step": i + 1, "path": raw}),
+            ));
+        }
         steps.push(ParsedStep {
             tool,
             args,
             continue_on_error,
+            for_each,
+            concurrency,
         });
     }
     Ok(steps)
@@ -892,6 +1004,167 @@ fn resolve_args(raw: &Map<String, Value>, context: &Value) -> Result<Value, Stri
         out.insert(k.clone(), resolved);
     }
     Ok(Value::Object(out))
+}
+
+/// A [`KindError`] as `(code, message, data)`.
+fn kind_error_parts(e: &KindError) -> (&'static str, String, Value) {
+    match e {
+        KindError::Structured { code, message, data } => (*code, message.clone(), data.clone()),
+        KindError::InvalidSpec(m) => ("invalid_spec", m.clone(), Value::Null),
+        KindError::InvalidArgs(m) => ("args_invalid", m.clone(), Value::Null),
+        KindError::Exec(m) => ("exec", m.clone(), Value::Null),
+    }
+}
+
+/// What one `for_each` step produced: the joined result and the lowest-index
+/// item failure, if any.
+struct FanoutOutcome {
+    join: Value,
+    first_failure: Option<(usize, String, String)>,
+    concurrency: usize,
+}
+
+/// One item's end state. `Skipped` is an item never started because an
+/// earlier item failed under `on_error: stop`.
+enum ItemEnd {
+    Done(Value),
+    Failed(String, String),
+    Skipped,
+}
+
+/// PRD-mcphost-chain-fanout-and-join R2/R3/R4/R5/R6: resolves `path` to an
+/// array, refuses past the plan ceiling before anything runs, then runs
+/// `step` once per element through [`compose_call_ref`] under a semaphore of
+/// `min(step.concurrency, plan.concurrent_calls_per_tenant)` and joins the
+/// results in input order.
+async fn run_fanout(
+    ctx: &CallCtx,
+    step: &ParsedStep,
+    step_no: usize,
+    context: &Value,
+    path: &str,
+) -> Result<FanoutOutcome, KindError> {
+    let base_data = |extra: Value| {
+        let mut data = Map::new();
+        data.insert("path".to_string(), json!(path));
+        data.insert("failed_step".to_string(), json!(step_no));
+        data.insert("step_tool".to_string(), json!(step.tool));
+        if let Value::Object(m) = extra {
+            data.extend(m);
+        }
+        Value::Object(data)
+    };
+    let items = match Path::parse(path).ok().and_then(|p| p.resolve(context).cloned()) {
+        Some(Value::Array(items)) => items,
+        Some(other) => {
+            return Err(KindError::structured_with(
+                "compose_mapping_type",
+                format!(
+                    "step {step_no} ('{}'): for_each path '{path}' is {}, expected an array",
+                    step.tool,
+                    json_type(&other)
+                ),
+                base_data(json!({"expected": "array", "actual": json_type(&other)})),
+            ));
+        }
+        None => {
+            return Err(KindError::structured_with(
+                "compose_mapping_missing",
+                format!("step {step_no} ('{}'): for_each path '{path}' resolved to nothing", step.tool),
+                base_data(json!({})),
+            ));
+        }
+    };
+    if items.len() > ctx.chain_fanout_max {
+        return Err(KindError::structured_with(
+            "compose_fanout_exceeded",
+            format!(
+                "step {step_no} ('{}'): {} items exceed this plan's chain_fanout_max of {}",
+                step.tool,
+                items.len(),
+                ctx.chain_fanout_max
+            ),
+            json!({"limit": ctx.chain_fanout_max, "actual": items.len()}),
+        ));
+    }
+
+    let width = step
+        .concurrency
+        .unwrap_or(usize::MAX)
+        .min(ctx.concurrent_calls_per_tenant)
+        .clamp(1, tokio::sync::Semaphore::MAX_PERMITS);
+    let permits = tokio::sync::Semaphore::new(width);
+    let stop = std::sync::atomic::AtomicBool::new(false);
+    let ends = futures_util::future::join_all(items.iter().enumerate().map(|(index, item)| {
+        let (permits, stop) = (&permits, &stop);
+        async move {
+            let Ok(_permit) = permits.acquire().await else {
+                return ItemEnd::Skipped;
+            };
+            if stop.load(std::sync::atomic::Ordering::SeqCst) {
+                return ItemEnd::Skipped;
+            }
+            // Items share the chain's deadline: one that cannot start in
+            // time is failed, not dropped.
+            if std::time::Instant::now() >= ctx.deadline {
+                return ItemEnd::Failed("deadline_exceeded".to_string(), "the chain's deadline passed before this item could start".to_string());
+            }
+            let args = match resolve_args(&step.args, &item_context(context, item, index)) {
+                Ok(args) => args,
+                Err(bad) => {
+                    return ItemEnd::Failed(
+                        "compose_mapping_missing".to_string(),
+                        format!("mapping path '{bad}' resolved to nothing"),
+                    );
+                }
+            };
+            match compose_call_ref(
+                ctx,
+                ctx.tenant_id,
+                &step.tool,
+                args,
+                None,
+                Some(step_no as i64),
+                Some(format!("{step_no}:{index}")),
+            )
+            .await
+            {
+                Ok(result) => ItemEnd::Done(result),
+                Err(e) => {
+                    if !step.continue_on_error {
+                        stop.store(true, std::sync::atomic::Ordering::SeqCst);
+                    }
+                    let (code, message, _) = kind_error_parts(&e);
+                    ItemEnd::Failed(code.to_string(), message)
+                }
+            }
+        }
+    }))
+    .await;
+
+    let mut joined = Vec::with_capacity(ends.len());
+    let mut failed = Vec::new();
+    let mut first_failure = None;
+    let mut ok = 0usize;
+    for (index, end) in ends.into_iter().enumerate() {
+        match end {
+            ItemEnd::Done(result) => {
+                ok += 1;
+                joined.push(result);
+            }
+            ItemEnd::Failed(code, message) => {
+                first_failure.get_or_insert((index, code.clone(), message.clone()));
+                failed.push(json!({"index": index, "error_code": code, "message": message}));
+                joined.push(Value::Null);
+            }
+            ItemEnd::Skipped => joined.push(Value::Null),
+        }
+    }
+    Ok(FanoutOutcome {
+        join: json!({"items": joined, "failed": failed, "ok": ok, "failed_count": failed.len()}),
+        first_failure,
+        concurrency: width,
+    })
 }
 
 /// Requirement 3 / AC8: `host.tool_test`'s dry-run report for a chain --
@@ -1110,11 +1383,10 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
     // static check could not already settle from declared `outputs`.
     let mut needed: std::collections::HashSet<usize> = std::collections::HashSet::new();
     for (i, step) in steps.iter().enumerate() {
-        for v in step.args.values() {
-            if let Value::String(raw) = v
-                && let Some(r) = StepRef::parse(raw, i + 1)
+        for raw in step.args.values().filter_map(Value::as_str).chain(step.for_each.as_deref()) {
+            if let Some(r) = StepRef::parse(raw, i + 1)
                 && !r.tokens.is_empty()
-                && !sv.passes.contains(&(i + 1, raw.clone()))
+                && !sv.passes.contains(&(i + 1, raw.to_string()))
             {
                 needed.insert(r.predecessor_no);
             }
@@ -1136,6 +1408,26 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
         let context = step_context(call_args, prev.as_ref(), &step_results);
         let mut resolved = Map::with_capacity(step.args.len());
         let mut unresolved = false;
+        // PRD-mcphost-chain-fanout-and-join R7: a `for_each` step is reported
+        // once, its args resolved for the first item only; no item executes.
+        let mut fanout: Option<Value> = None;
+        let context = match step.for_each.as_deref() {
+            Some(path) => {
+                let found = Path::parse(path).ok().and_then(|p| p.resolve(&context).cloned());
+                if !matches!(found, Some(Value::Array(_))) && !sv.passes.contains(&(step_no, path.to_string())) {
+                    unresolved = true;
+                    any_unresolved.get_or_insert((step_no, path.to_string()));
+                }
+                let first = found.as_ref().and_then(Value::as_array).and_then(|a| a.first()).cloned();
+                fanout = Some(json!({
+                    "path": path,
+                    "concurrency": step.concurrency.unwrap_or(usize::MAX).min(ctx.concurrent_calls_per_tenant),
+                    "limit": ctx.chain_fanout_max,
+                }));
+                item_context(&context, &first.unwrap_or(Value::Null), 0)
+            }
+            None => context,
+        };
         for (k, v) in &step.args {
             let value = match v {
                 Value::String(s) if s.starts_with("$.") => {
@@ -1187,6 +1479,22 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
             report.push(entry);
             step_results.push(fixture.clone());
             prev = Some(fixture.clone());
+            continue;
+        }
+        if let Some(fanout) = fanout {
+            let mut entry = json!({
+                "step": step_no,
+                "tool": step.tool,
+                "resolved_args": resolved,
+                "resolved": if is_host { "host" } else { "tenant" },
+                "fanout": fanout,
+                "source": "skipped",
+                "reason": "a for_each step executes no item in a dry run",
+            });
+            insert_prev_fields(&mut entry, &prev_fields);
+            report.push(entry);
+            step_results.push(Value::Null);
+            prev = None;
             continue;
         }
         if is_host
@@ -1445,6 +1753,71 @@ impl Kind for ChainKind {
             let failed_step_no = i + 1;
             let context = step_context(&args, prev.as_ref(), &step_results);
 
+            if let Some(path) = step.for_each.as_deref() {
+                match run_fanout(ctx, step, failed_step_no, &context, path).await {
+                    Ok(out) => {
+                        let join = out.join;
+                        let failed_count = join["failed_count"].as_u64().unwrap_or(0);
+                        if let Some((index, code, message)) = out.first_failure
+                            && !step.continue_on_error
+                        {
+                            return Err(KindError::structured_with(
+                                "compose_fanout_item_failed",
+                                format!(
+                                    "step {failed_step_no} ('{}'): item {index} failed with {code}: {message}",
+                                    step.tool
+                                ),
+                                json!({
+                                    "step": failed_step_no,
+                                    "index": index,
+                                    // The wire envelope owns `data.error_code`
+                                    // (it is always the call's own code), so
+                                    // the item's code travels under its own key.
+                                    "item_error_code": code,
+                                    "message": message,
+                                    "failed_step": failed_step_no,
+                                    "step_tool": step.tool,
+                                }),
+                            ));
+                        }
+                        let mut entry = json!({
+                            "step": failed_step_no,
+                            "tool": step.tool,
+                            "status": if failed_count == 0 { "done" } else { "error" },
+                            (CONTEXT_KEYS.result): join.clone(),
+                            "fanout": {"path": path, "concurrency": out.concurrency},
+                        });
+                        if failed_count > 0 {
+                            failed_steps.push(failed_step_no);
+                            entry["error_class"] = json!("compose_fanout_item_failed");
+                        }
+                        steps_trace.push(entry);
+                        step_results.push(join.clone());
+                        prev = Some(join.clone());
+                        last_ok_result = Some(join);
+                    }
+                    Err(e) => {
+                        let (code, _, _) = kind_error_parts(&e);
+                        // The plan ceiling is a refusal of the whole call,
+                        // never something `on_error: continue` swallows.
+                        if step.continue_on_error && code != "compose_fanout_exceeded" {
+                            failed_steps.push(failed_step_no);
+                            steps_trace.push(json!({
+                                "step": failed_step_no,
+                                "tool": step.tool,
+                                "status": "error",
+                                "error_class": code,
+                            }));
+                            step_results.push(Value::Null);
+                            prev = None;
+                            continue;
+                        }
+                        return Err(e);
+                    }
+                }
+                continue;
+            }
+
             let resolved_args = match resolve_args(&step.args, &context) {
                 Ok(v) => v,
                 Err(path) => {
@@ -1593,10 +1966,14 @@ impl Kind for ChainKind {
             spec: json!({
                 (CONTEXT_KEYS.steps): [
                     {"tool": crate::control::STARTER_TOOL_NAME, "args": {"text": "$.input.text"}},
-                    {"tool": "host.table.append", "args": {"table": "runs", "rows": "$.prev.result.appended"}}
+                    {"tool": "host.table.append", "args": {"table": "runs", "rows": "$.prev.result.appended"}},
+                    // PRD-mcphost-chain-fanout-and-join R3: one step per
+                    // element of a list the caller passes, `$.item` being
+                    // the element; capped by `limits.plan.chain_fanout_max`.
+                    {"tool": crate::control::STARTER_TOOL_NAME, "args": {"note": "$.item"}, "for_each": "$.input.notes"}
                 ]
             }),
-            call_args: json!({"text": "hello"}),
+            call_args: json!({"text": "hello", "notes": ["first", "second"]}),
             // PRD-mcphost-tool-test-truth P1 requirement 2 (AC7): the
             // mapping above is now `$.prev.result.<field>` (not the bare
             // `$.prev.result` every earlier version of this example used),
@@ -1604,7 +1981,7 @@ impl Kind for ChainKind {
             // dry run now reports for every `$.prev`/`$.steps[i]` mapping
             // (`pass`, `will_fail` naming the predecessor's actual declared
             // outputs, or `unverifiable` naming the next call).
-            blurb: format!("steps run in order; each step's args may pull from $.input (this call's own args), $.prev (the previous step's result, e.g. $.prev.result.<field>), or $.steps[i] (any earlier step's result by 0-based index). A step may also name an allowlisted host.* verb (host.quickstart's own host_steps_allowed) -- it runs under this chain's own tenant, metered as one step. host.tool_test's dry run reports a verdict (pass, will_fail, or unverifiable) for every $.prev/$.steps mapping. {}", grammar_sentence()),
+            blurb: format!("steps run in order; each step's args may pull from $.input (this call's own args), $.prev (the previous step's result, e.g. $.prev.result.<field>), or $.steps[i] (any earlier step's result by 0-based index). A step may also name an allowlisted host.* verb (host.quickstart's own host_steps_allowed) -- it runs under this chain's own tenant, metered as one step. host.tool_test's dry run reports a verdict (pass, will_fail, or unverifiable) for every $.prev/$.steps mapping. A step with for_each (a mapping path to an array) runs once per element with $.item and $.index in its args, at most limits.plan.chain_fanout_max items, and returns {{items, failed, ok, failed_count}}. {}", grammar_sentence()),
         }
     }
 }
