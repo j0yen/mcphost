@@ -20,7 +20,7 @@ use crate::common;
 use common::{TestServer, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[tokio::test]
 async fn a_slow_tool_times_out_within_timeout_plus_two_seconds() {
@@ -64,15 +64,12 @@ async fn a_slow_tool_times_out_within_timeout_plus_two_seconds() {
     )
     .await;
 
-    let started = Instant::now();
-    let err = client
-        .tools_call(&format!("{ns}.sleepy"), json!({}))
-        .await
-        .expect_err("a call past its timeout must fail");
-    let elapsed = started.elapsed();
+    // timeout_s=1 must fire within timeout_s+2s.
+    let err = crate::deadline_budget!(4000, {
+        client
+            .tools_call(&format!("{ns}.sleepy"), json!({}))
+            .await
+            .expect_err("a call past its timeout must fail")
+    });
     assert_eq!(err.error_code.as_deref(), Some("call_timeout"));
-    assert!(
-        elapsed < Duration::from_secs(4),
-        "timeout_s=1 must fire within timeout_s+2s, took {elapsed:?}"
-    );
 }

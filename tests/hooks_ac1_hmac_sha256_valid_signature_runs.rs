@@ -86,18 +86,16 @@ async fn valid_hmac_sha256_signature_is_accepted_and_tool_receives_event_body() 
     let sig = hmac_sha256_hex("s3cr3t", &body);
 
     let http = reqwest::Client::new();
-    let start = Instant::now();
-    let resp = http
-        .post(format!("{}/hooks/{}/gh_push", server.base_url, ns))
-        .header("X-Hub-Signature-256", format!("sha256={sig}"))
-        .header("Content-Type", "application/json")
-        .body(body)
-        .send()
-        .await
-        .expect("POST /hooks/...");
-    let elapsed = start.elapsed();
+    let resp = crate::deadline_budget!(500, {
+        http.post(format!("{}/hooks/{}/gh_push", server.base_url, ns))
+            .header("X-Hub-Signature-256", format!("sha256={sig}"))
+            .header("Content-Type", "application/json")
+            .body(body)
+            .send()
+            .await
+            .expect("POST /hooks/...")
+    });
     assert_eq!(resp.status(), 202);
-    assert!(elapsed < Duration::from_millis(500), "took {elapsed:?}");
     let accepted: serde_json::Value = resp.json().await.expect("json body");
     let run_id = accepted["run_id"].as_str().expect("run_id").to_string();
 

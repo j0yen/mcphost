@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-call-trace-replay.md",
-  "intent_slug": "mcphost-call-trace-replay",
-  "root_motivation": "**Who:** the autonomous coding agent debugging its own tool; Joe reading a real tenant's stuck call; `host.doctor` (PRD-mcphost-host-doctor-tool), which wants a link from a group to one concrete call. **What:** \"show me call N exactly as the host saw it, and let me try it again with one change\". **Why not today:** `calls` stores `tool_name, started_at, duration_ms, ok, error_class, outcome, run_id, step_tool` and nothing of the request or output (`0001_init.sql:33-42` + 12 additive columns); the python envelope's `stdout` and `stderr_tail` (`python.rs:3797, 3830`) are returned once and dropped; `duration_ms` is one number with no phases; the result object has no id. `host.tool.logs` holds only what the tool logged itself. The 10-08 explore errors `TypeError \u2026 tool.py:16` \u00d714 each cost a full re-read of a traceback the host had already parsed into `line` and `source_line`. **Premise (creative):** a trace plus a one-step replay turns a failed call into one more call. **Falsifier:**...",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-timing-assertion-lint.md",
+  "intent_slug": "mcphost-timing-assertion-lint",
+  "root_motivation": "The operator (Joe / the Opus operator seat) cannot trust \"gate green\" to mean \"main CI green\": a timing test written with a literal budget passes on RedBaron at load 2 and fails on a GitHub runner, and nothing in the repo refuses the literal form. Leg 18 five whys, level 5: \"timing assertions are written per test with literal budgets instead of one harness-owned budget that every wall-clock assertion must use \u2014 and nothing enforces 'must use'\". Evidence: 23 assertions outside the macros at b8d4732 (`git grep -nE 'assert!\\(.*(elapsed|Duration|p95|_ms|millis|as_millis)' origin/main -- tests/ | grep -v perf_budget`), 16 files already using the macros, `flakelint_ac07` `ALLOW` naming 4 files \"still to be wrapped\".",
   "user_persona": "An agent (customer) that calls host.webhook_inbox.create once, pastes the url into a sender and shows its user the push event in the same session; the truth-tier integration_specialist persona whose gold is reachable in 4 calls; Operator Joe reading the digest.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,50 +14,50 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a warm python tool on the gate box, When 500 calls run with tracing and 500 without, Then the p95 difference is \u2264 2 ms and the two numbers are printed (the falsifier).",
-      "test": "tests/ctrace_ac01_trace_cost_p95_within_2ms.rs"
+      "description": "Given a scratch tests tree with a file that prints `perf skipped (load)` by hand and asserts `p95 < Duration::from_millis(50)` on a later line (the pre-#176 `docsearch_ac11:53-58` shape), When `scripts/timing-lint.py` runs, Then exit 1 naming that file:line and token; Given the same assertion wrapped in `perf_budget!`, Then exit 0.",
+      "test": "tests/tlint_ac01_hand_skip_then_bare_assert_fails.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given any `host.tool_call`, `host.tool.call`, `host.tool.run` or `host.tool.test` result, When read, Then it carries `call_id` as a string equal to the `calls.id` of the row written for it.",
-      "test": "tests/ctrace_ac02_every_call_result_carries_call_id.rs"
+      "description": "Given a scratch file whose `perf_budget!` block is followed by a separate bare `assert!(t.elapsed() < Duration::from_millis(5))`, When the script runs, Then it names the bare line (the file-level `src.contains(\"perf_budget!\")` check in `flakelint_ac07` passes this file today).",
+      "test": "tests/tlint_ac02_bare_assert_after_budget_block_is_named.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a tool called with `{\"api_key\": \"sk-live-1\", \"q\": \"<the value of secret S>\", \"n\": 3}`, When its trace is stored, Then `request.args` is `{\"api_key\": \"***\", \"q\": \"{{ secret.S }}\", \"n\": 3}` and neither raw value appears anywhere in `call_traces`.",
-      "test": "tests/ctrace_ac03_secrets_never_reach_a_stored_trace.rs"
+      "description": "Given a scratch `tests/common/mod.rs` exporting `macro_rules! my_budget` under a `/// timing-helper` doc line, When a test asserts elapsed inside `my_budget!{\u2026}`, Then exit 0; Given the doc line removed, Then exit 1 \u2014 the allow set comes from the harness file, and the script contains no helper name.",
+      "test": "tests/tlint_ac03_allow_set_comes_from_the_harness_file.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a python tool that prints 10 KiB and raises at `tool.py:16`, When `host.call_trace` reads it, Then `stdout_tail` and `stderr_tail` are each \u2264 4 KiB ending with the last bytes written, `line` is 16, `source_line` is set, and `timings` has the four runner phases plus `queue_ms` whose sum is within 10 ms of `duration_ms`.",
-      "test": "tests/ctrace_ac04_trace_has_tails_line_and_phase_timings.rs"
+      "description": "Given a `deadline_budget!(100, { body })` whose body sleeps 150 ms, When run with `MCPHOST_PERF_SKIP` unset, Then it panics with `deadline_budget: elapsed=\u2026 budget=100ms`; Given `MCPHOST_PERF_SKIP=1`, Then it passes (budget \u00d73) and never prints `perf skipped`.",
+      "test": "tests/tlint_ac04_deadline_budget_fires_and_scales.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given tenant A's `call_id`, When tenant B calls `host.call_trace`, Then `forbidden`; Given an unknown or expired id, Then `trace_not_found`; Given the admin bearer, Then A's trace.",
-      "test": "tests/ctrace_ac05_trace_access_is_tenant_scoped.rs"
+      "description": "Given mcphost at this PRD's landing commit, When `scripts/timing-lint.py tests` runs, Then exit 0 with `0 offenders`, and `grep -c 'const ALLOW\\|const PATTERNS' tests/flakelint_ac07_timing_tests_use_perf_budget.rs` is 0 and `tests/flake-lint-allow.txt` has no `single-shot-perf` entry.",
+      "test": "tests/tlint_ac05_landed_tree_has_zero_offenders.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given 250 traced calls by one tenant and one trace older than 24 h, When the housekeeping sweep runs, Then exactly the newest 200 within 24 h remain and `calls` rows are untouched.",
-      "test": "tests/ctrace_ac06_sweep_keeps_newest_200_within_24h.rs"
+      "description": "Given the 4 former `ALLOW` files and the 9 budget sites named in Technical considerations, When `cargo test` runs each converted file with and without `MCPHOST_PERF_SKIP=1`, Then every test passes and no budget number changed (`git diff` shows the same millisecond literals).",
+      "test": "tests/tlint_ac06_converted_files_keep_their_budget_numbers.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given a failed trace, When replayed with `replay: {\"args\": {\"table\": \"users\"}}`, Then the response carries `replay.result`, `replay.verdict`, `replay.diff.ok: [false, true]`, `delivered: false`, and the original trace unchanged; Given a replay that leaves a `***` value in place, Then `replay_needs_secret` names the key and nothing runs.",
-      "test": "tests/ctrace_ac07_replay_dry_runs_with_edited_args.rs"
+      "description": "Given a scratch file asserting `body[\"p95_ms\"].is_number()`, When the script runs, Then exit 0 (a JSON field name is not a wall-clock token).",
+      "test": "tests/tlint_ac07_json_field_names_are_not_wall_clock_tokens.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod after deploy, When the live test signs up, publishes a python tool that raises on `n < 0`, calls it with `n: -1`, reads `host.call_trace` by the returned `call_id`, and replays with `n: 1`, Then the trace shows `line` and `stderr_tail` and the replay diff is `ok: [false, true]` (Live; evidence: `MCPHOST_LIVE=1 MCPHOST_URL=https://mcphost.dev cargo test --test ctrace_ac08_live_prod_trace_and_replay`)",
-      "test": "deferred -- operator-provisioned: live prod test after deploy (MCPHOST_LIVE=1 cargo test --test ctrace_ac08_live_prod_trace_and_replay)."
+      "description": "Given the first daemon gate on the landed tree, When its `flake-audit` producer runs, Then the gate log carries `timing-lint: 0 offenders` and the run reaches land (Live; evidence: `grep -l 'timing-lint: 0 offenders' /mnt/data/wm-build/runs/*/gate-receipts/flake-audit-attempt*.log | head -1`)",
+      "test": "deferred -- operator-provisioned: first daemon gate on the landed tree carries `timing-lint: 0 offenders` in its flake-audit log."
     }
   ],
   "scope": [

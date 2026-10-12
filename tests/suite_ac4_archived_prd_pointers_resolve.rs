@@ -30,7 +30,9 @@ fn suite_files(tests_dir: &Path) -> Vec<PathBuf> {
         .map(|e| e.path())
         .filter(|p| {
             let name = p.file_name().unwrap().to_string_lossy();
-            name.starts_with("suite_core_") || name.starts_with("suite_sandbox_")
+            name.starts_with("suite_core_")
+                || name.starts_with("suite_sandbox_")
+                || name.starts_with("suite_env_")
         })
         .collect()
 }

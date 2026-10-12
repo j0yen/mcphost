@@ -17,7 +17,6 @@ use common::{FixedLookup, McpClient, TestServer, http_kind_registry_strict, sign
 use serde_json::json;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
-use std::time::{Duration, Instant};
 
 #[tokio::test]
 async fn hostname_rebinding_to_a_private_address_is_refused_at_call_time() {
@@ -46,19 +45,15 @@ async fn hostname_rebinding_to_a_private_address_is_refused_at_call_time() {
         .await
         .expect("a hostname that isn't obviously private must publish fine");
 
-    let start = Instant::now();
-    let err = client
-        .tools_call(&format!("{ns}.rebind"), json!({}))
-        .await
-        .expect_err("a hostname resolving to a private address must be refused at call time");
-    let elapsed = start.elapsed();
-
-    assert_eq!(err.error_code.as_deref(), Some("host_not_allowed"));
     // 10.1.2.3 is unreachable in this sandbox; if the code had actually
     // attempted a connection instead of refusing at resolve time, this
     // would time out (30s) or fail slowly, not return promptly.
-    assert!(
-        elapsed < Duration::from_secs(5),
-        "the block must happen before any connection attempt, took {elapsed:?}"
-    );
+    let err = crate::deadline_budget!(5000, {
+        client
+            .tools_call(&format!("{ns}.rebind"), json!({}))
+            .await
+            .expect_err("a hostname resolving to a private address must be refused at call time")
+    });
+
+    assert_eq!(err.error_code.as_deref(), Some("host_not_allowed"));
 }

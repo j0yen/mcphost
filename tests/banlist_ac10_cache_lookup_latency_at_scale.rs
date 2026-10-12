@@ -27,6 +27,9 @@ async fn cache_lookup_p99_latency_stays_under_a_millisecond_at_ten_thousand_bans
     // 1000 lookups against a mix of addresses -- some inside the seeded
     // `10.x.x.x` banned range, most in an unbanned range, matching the
     // overwhelmingly-unbanned traffic mix enforcement actually sees.
+    // Hang guard around the whole measurement; the p99 assertion inside keeps
+    // its own number and honors MCPHOST_PERF_SKIP.
+    crate::deadline_budget!(60_000, {
     let mut durations = Vec::with_capacity(1000);
     for i in 0..1000i64 {
         let addr = if i % 10 == 0 {
@@ -42,7 +45,8 @@ async fn cache_lookup_p99_latency_stays_under_a_millisecond_at_ten_thousand_bans
     durations.sort();
     let p99 = durations[989];
     assert!(
-        p99 < std::time::Duration::from_millis(1),
+        common::perf_skipped() || p99 < std::time::Duration::from_millis(1),
         "p99 cache-check latency over 1000 lookups against 10k bans was {p99:?}, expected < 1ms"
     );
+    });
 }

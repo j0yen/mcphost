@@ -23,7 +23,9 @@ async fn perf_skip_widens_the_ready_deadline_to_90s() {
     });
     assert_eq!(server.ready_budget(), None);
     server.wait_ready().await;
-    assert_eq!(server.ready_budget(), Some(Duration::from_millis(90_000)));
+    // A configured deadline compared with the advertised one, not a measurement.
+    let widened_deadline = Duration::from_millis(90_000);
+    assert_eq!(server.ready_budget(), Some(widened_deadline));
     drop(server);
     let _ = std::fs::remove_dir_all(&data_dir);
 }

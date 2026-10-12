@@ -52,21 +52,18 @@ def main(args):\n    \
     )
     .await;
 
-    let started = Instant::now();
-    let enqueue = extract_structured(
-        &client
-            .tools_call(
-                "host.tool_call",
-                json!({"name": "slow_job", "args": {}, "async": true}),
-            )
-            .await
-            .expect("enqueue ok"),
-    );
-    let enqueue_elapsed = started.elapsed();
-    assert!(
-        enqueue_elapsed < Duration::from_millis(500),
-        "async=true must return fast (allowing test/CI slack over the PRD's 50ms), took {enqueue_elapsed:?}"
-    );
+    // async=true must return fast (allowing test/CI slack over the PRD's 50ms).
+    let enqueue = crate::deadline_budget!(500, {
+        extract_structured(
+            &client
+                .tools_call(
+                    "host.tool_call",
+                    json!({"name": "slow_job", "args": {}, "async": true}),
+                )
+                .await
+                .expect("enqueue ok"),
+        )
+    });
     assert_eq!(enqueue["status"], json!("queued"));
     let run_id = enqueue["run_id"].as_str().expect("run_id").to_string();
 

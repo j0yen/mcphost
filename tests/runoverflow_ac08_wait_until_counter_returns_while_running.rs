@@ -8,7 +8,7 @@ use crate::common;
 use common::{TestServer, extract_structured, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[tokio::test]
 async fn wait_until_counter_returns_early_while_the_run_is_still_running() {
@@ -63,27 +63,24 @@ async fn wait_until_counter_returns_early_while_the_run_is_still_running() {
             .expect("progress report ok");
     });
 
-    let started = Instant::now();
-    let waited = extract_structured(
-        &client
-            .tools_call(
-                "host.runs.wait",
-                json!({
-                    "run_id": run_id,
-                    "timeout_s": 25,
-                    "until": {"counter": "items_processed", "gte": 1000},
-                }),
-            )
-            .await
-            .expect("wait ok"),
-    );
-    let elapsed = started.elapsed();
+    // wait must return around the 3s report, not the full 20s run or the 25s timeout.
+    let waited = crate::deadline_budget!(10_000, at_least = 2_000, {
+        extract_structured(
+            &client
+                .tools_call(
+                    "host.runs.wait",
+                    json!({
+                        "run_id": run_id,
+                        "timeout_s": 25,
+                        "until": {"counter": "items_processed", "gte": 1000},
+                    }),
+                )
+                .await
+                .expect("wait ok"),
+        )
+    });
     reporter.await.expect("reporter task ok");
 
-    assert!(
-        elapsed >= Duration::from_secs(2) && elapsed < Duration::from_secs(10),
-        "wait must return around the 3s report, not the full 20s run or the 25s timeout: {elapsed:?}"
-    );
     assert_eq!(waited["status"], json!("running"), "run: {waited}");
     assert_eq!(waited["counters"]["items_processed"], json!(1000), "run: {waited}");
 }

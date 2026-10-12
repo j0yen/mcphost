@@ -47,6 +47,10 @@ value still masked is refused with `replay_needs_secret`. Traces are the newest 
 A `host.tool.test` / `host.tool.run` now writes a `calls` row (`outcome = test`) that `host.usage` and
 the `calls_per_day` quota do not count. `MCPHOST_CALL_TRACE=0` turns tracing off (the result still
 carries `call_id`). New migration `0084_call_traces`.
+Test-harness only (PRD-mcphost-timing-assertion-lint): `scripts/timing-lint.py` fails any
+wall-clock assertion under `tests/` that sits outside a `/// timing-helper` macro/fn of
+`tests/common/mod.rs`; new `deadline_budget!(ms, { body })` hang-guard helper (one run, x3 under
+`MCPHOST_PERF_SKIP=1`, never skipped). No product change.
 
 ## v0.107.13 — 2026-10-10
 

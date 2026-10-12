@@ -291,6 +291,11 @@ jobs:
       - name: scripts/child-proc-lint.py tests
         run: python3 scripts/child-proc-lint.py tests
 
+      # PRD-mcphost-timing-assertion-lint: the same scanner the core suites
+      # run (flakelint_ac07); stdlib python, no toolchain.
+      - name: scripts/timing-lint.py tests
+        run: python3 -I scripts/timing-lint.py tests
+
   # PRD-mcphost-docs-external-links-resolve R5 (AC7). Every external link in
   # README.md, docs/**, www/llms.txt and plugin/** must resolve; a PR that
   # adds a 404 fails here and the log carries `FAIL <status> <url>

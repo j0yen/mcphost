@@ -1,0 +1,88 @@
+{
+  "files": {
+    "ac15_call_timeout.rs": {
+      "budgets_ms": [
+        5000
+      ],
+      "evidence_lines": [
+        "started.elapsed() < Duration::from_secs(5),"
+      ]
+    },
+    "checkcompat_race_ac01_previous_up_within_1s.rs": {
+      "budgets_ms": [
+        1000
+      ],
+      "evidence_lines": [
+        "elapsed.as_secs_f64() < 1.0,"
+      ]
+    },
+    "drift_ac09_fifty_queries_rerun_under_5s_one_call.rs": {
+      "budgets_ms": [
+        5000
+      ],
+      "evidence_lines": [
+        "assert!(elapsed < Duration::from_secs(5), \"re-run took too long: {elapsed:?}\");"
+      ]
+    },
+    "hooks_ac1_hmac_sha256_valid_signature_runs.rs": {
+      "budgets_ms": [
+        500
+      ],
+      "evidence_lines": [
+        "assert!(elapsed < Duration::from_millis(500), \"took {elapsed:?}\");"
+      ]
+    },
+    "oauthconf_ac01_gate_verdict_table_matches_gold.rs": {
+      "budgets_ms": [
+        20000
+      ],
+      "evidence_lines": [
+        "assert!(common::perf_skipped() || elapsed.as_secs() < 20, \"gate run took {elapsed:?}, must finish under 20s\");"
+      ]
+    },
+    "python_ac01_no_deps_cpu_memory.rs": {
+      "budgets_ms": [
+        5000
+      ],
+      "evidence_lines": [
+        "started.elapsed() < Duration::from_secs(5),"
+      ]
+    },
+    "tablemodel_ac06_large_table_samples_10000_under_500ms.rs": {
+      "budgets_ms": [
+        500
+      ],
+      "evidence_lines": [
+        "elapsed.as_millis() < 500,"
+      ]
+    },
+    "wake_ac6_msg_wait.rs": {
+      "budgets_ms": [
+        3000,
+        4000
+      ],
+      "evidence_lines": [
+        "assert!(elapsed < Duration::from_secs(3), \"wait must return within 3s of the send: {elapsed:?}\");",
+        "elapsed >= Duration::from_millis(1900) && elapsed <= Duration::from_secs(4),"
+      ]
+    },
+    "xlinks_ac03_head_405_falls_back_and_timeout_fails.rs": {
+      "budgets_ms": [
+        10000
+      ],
+      "evidence_lines": [
+        "let out = xlinks::run_checker(&[&file]);",
+        "assert!(elapsed.as_millis() >= 1900, \"expected a retry (>= 2 timeouts), took {elapsed:?}\");"
+      ]
+    },
+    "xlinks_ac07_ci_docs_job_fails_on_a_404_and_stays_fast.rs": {
+      "budgets_ms": [
+        60000
+      ],
+      "evidence_lines": [
+        "assert!(took < std::time::Duration::from_secs(60), \"120 URLs took {took:?}, budget is 60 s\");"
+      ]
+    }
+  },
+  "source_commit": "1f7bfb4"
+}

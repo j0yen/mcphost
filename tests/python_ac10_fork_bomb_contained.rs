@@ -29,7 +29,7 @@ use crate::common;
 use common::{TestServer, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[tokio::test]
 async fn a_fork_bomb_is_contained_and_ends_promptly() {
@@ -63,15 +63,16 @@ async fn a_fork_bomb_is_contained_and_ends_promptly() {
         .await
         .expect("publish ok");
 
-    let started = Instant::now();
-    let result = poll_until_ready(
-        &client,
-        &format!("{ns}.forkbomb"),
-        json!({}),
-        Duration::from_secs(15),
-    )
-    .await;
-    let elapsed = started.elapsed();
+    // The call must end promptly (within a few seconds of its 5s timeout).
+    let result = crate::deadline_budget!(12_000, {
+        poll_until_ready(
+            &client,
+            &format!("{ns}.forkbomb"),
+            json!({}),
+            Duration::from_secs(15),
+        )
+        .await
+    });
 
     match result {
         Err(e) => {
@@ -88,8 +89,4 @@ async fn a_fork_bomb_is_contained_and_ends_promptly() {
             // test is that it doesn't hang the box, not that it must fail.
         }
     }
-    assert!(
-        elapsed < Duration::from_secs(12),
-        "the call must end promptly (within a few seconds of its 5s timeout), took {elapsed:?}"
-    );
 }
