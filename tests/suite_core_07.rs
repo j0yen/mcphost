@@ -537,6 +537,10 @@ mod cproc_ac03_allow_set_derived_from_serve_rs;
 mod cproc_ac06_real_tree_has_no_raw_spawns_or_guards;
 #[path = "cproc_ac07_flake_lint_job_runs_child_proc_lint.rs"]
 mod cproc_ac07_flake_lint_job_runs_child_proc_lint;
+#[path = "cprocb_ac02_real_tree_clean_and_six_files_use_helper.rs"]
+mod cprocb_ac02_real_tree_clean_and_six_files_use_helper;
+#[path = "cprocb_ac03_flake_lint_job_fails_on_raw_spawn_before_toolchain.rs"]
+mod cprocb_ac03_flake_lint_job_fails_on_raw_spawn_before_toolchain;
 #[path = "ctrace_ac05_trace_access_is_tenant_scoped.rs"]
 mod ctrace_ac05_trace_access_is_tenant_scoped;
 #[path = "ctrace_ac06_sweep_keeps_newest_200_within_24h.rs"]
