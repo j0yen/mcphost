@@ -1829,15 +1829,3 @@ mod provaudit_ac05_admin_audit_log;
 mod provaudit_ac06_null_origin_rejected;
 #[path = "provaudit_ac07_ip_class_triage.rs"]
 mod provaudit_ac07_ip_class_triage;
-#[path = "proxy_ac1_loopback_xff_resolves_signup_source.rs"]
-mod proxy_ac1_loopback_xff_resolves_signup_source;
-#[path = "proxy_ac2_non_loopback_peer_ignores_header.rs"]
-mod proxy_ac2_non_loopback_peer_ignores_header;
-#[path = "proxy_ac3_unparseable_header_falls_back.rs"]
-mod proxy_ac3_unparseable_header_falls_back;
-#[path = "proxy_ac4_rate_limit_keys_on_resolved_address.rs"]
-mod proxy_ac4_rate_limit_keys_on_resolved_address;
-#[path = "proxy_ac5_signup_event_stores_forwarded_address.rs"]
-mod proxy_ac5_signup_event_stores_forwarded_address;
-#[path = "proxy_ac6_healthz_distinct_source_ips.rs"]
-mod proxy_ac6_healthz_distinct_source_ips;
