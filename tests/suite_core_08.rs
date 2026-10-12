@@ -24,6 +24,8 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "revdebt_ac1_intent_card_pointers_resolve.rs"]
+mod revdebt_ac1_intent_card_pointers_resolve;
 #[path = "rowpol_ac01_sql_predicate_scopes_to_end_user_attribute.rs"]
 mod rowpol_ac01_sql_predicate_scopes_to_end_user_attribute;
 #[path = "rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0.rs"]

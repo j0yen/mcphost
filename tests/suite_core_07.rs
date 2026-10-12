@@ -357,6 +357,12 @@ mod cest_ac05_dry_run_counts_as_estimate_not_call;
 mod cest_ac06_anonymous_estimate_is_the_real_auth_error;
 #[path = "cest_ac07_estimate_listed_and_in_quickstart.rs"]
 mod cest_ac07_estimate_listed_and_in_quickstart;
+#[path = "cestb_ac01_dry_run_counts_as_estimate_not_call.rs"]
+mod cestb_ac01_dry_run_counts_as_estimate_not_call;
+#[path = "cestb_ac02_anonymous_estimate_is_the_real_auth_error.rs"]
+mod cestb_ac02_anonymous_estimate_is_the_real_auth_error;
+#[path = "cestb_ac03_estimate_listed_and_in_quickstart.rs"]
+mod cestb_ac03_estimate_listed_and_in_quickstart;
 #[path = "cfix_ac01_fixture_replaces_unreachable_step.rs"]
 mod cfix_ac01_fixture_replaces_unreachable_step;
 #[path = "cfix_ac02_fully_fixtured_dry_run_makes_no_upstream_call.rs"]
@@ -1833,5 +1839,3 @@ mod reglist_ac03_schema_validates_committed_entry_and_rejects_missing_remotes;
 mod reglist_ac04_workflow_checks_manifest_and_schema_on_every_push;
 #[path = "reglist_ac06_readme_registry_and_quickstart_links_resolve.rs"]
 mod reglist_ac06_readme_registry_and_quickstart_links_resolve;
-#[path = "revdebt_ac1_intent_card_pointers_resolve.rs"]
-mod revdebt_ac1_intent_card_pointers_resolve;
