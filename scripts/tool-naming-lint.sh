@@ -48,6 +48,7 @@ EXCEPTIONS = [
     ("host.estimate", "singleton verb: the dry-run twin of host.tool_call; no sibling under 'estimate'"),
     ("host.changelog", "singleton noun: no sibling verb under 'changelog'"),
     ("host.export", "singleton noun: no sibling verb under 'export'"),
+    ("host.import", "singleton noun: no sibling verb under 'import'"),
     ("host.progress", "singleton noun: no sibling verb under 'progress'"),
     ("host.call_trace", "singleton noun: no sibling verb under 'call_trace' (the name PRD-mcphost-call-trace-replay gives agents)"),
 ]

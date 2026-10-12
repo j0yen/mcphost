@@ -15,6 +15,8 @@ mod busyaudit;
 mod oauth;
 #[path = "support/oauthclient.rs"]
 mod oauthclient;
+#[path = "support/timp.rs"]
+mod timp;
 #[path = "support/uprg.rs"]
 mod uprg;
 #[path = "support/xlinks.rs"]
@@ -440,6 +442,20 @@ mod tgraph_ac07_tenant_isolation_identically_named_tables;
 mod tgraph_ac08_description_annotation_node_attribute_and_question_text;
 #[path = "tgraph_ac10_fifty_tables_twenty_columns_under_500ms.rs"]
 mod tgraph_ac10_fifty_tables_twenty_columns_under_500ms;
+#[path = "timp_ac01_export_lacks_tables_and_docs_baseline.rs"]
+mod timp_ac01_export_lacks_tables_and_docs_baseline;
+#[path = "timp_ac02_export_carries_tables_models_docs_manifest_v2.rs"]
+mod timp_ac02_export_carries_tables_models_docs_manifest_v2;
+#[path = "timp_ac03_import_restores_an_empty_tenant.rs"]
+mod timp_ac03_import_restores_an_empty_tenant;
+#[path = "timp_ac04_import_refuses_non_empty_and_foreign_runs.rs"]
+mod timp_ac04_import_refuses_non_empty_and_foreign_runs;
+#[path = "timp_ac05_round_trip_sha256_equal.rs"]
+mod timp_ac05_round_trip_sha256_equal;
+#[path = "timp_ac06_import_enforces_export_bytes_max_and_reports_progress.rs"]
+mod timp_ac06_import_enforces_export_bytes_max_and_reports_progress;
+#[path = "timp_ac07_archive_layout_one_enum.rs"]
+mod timp_ac07_archive_layout_one_enum;
 #[path = "tkparam_ac01_tenant_key_missing_is_invalid_params.rs"]
 mod tkparam_ac01_tenant_key_missing_is_invalid_params;
 #[path = "tkparam_ac02_non_string_tenant_key_is_invalid_params.rs"]

@@ -39,7 +39,10 @@ async fn contract_and_docs_name_exactly_what_tools_list_advertises() {
     // docs/tools.md: canonical column plus aliases column (`signup` is the
     // one anonymous-only tool a tenant's tools/list does not carry).
     let mut doc_names: BTreeSet<String> = BTreeSet::new();
-    for row in read("docs/tools.md").lines().filter(|l| l.starts_with("| `")) {
+    // Only the tool table: the "Archive layout" section after it lists paths, not tools.
+    let docs = read("docs/tools.md");
+    let tool_table = docs.split("\n## Archive layout").next().unwrap_or(&docs);
+    for row in tool_table.lines().filter(|l| l.starts_with("| `")) {
         let cells: Vec<&str> = row.split('|').map(str::trim).collect();
         doc_names.insert(cells[1].trim_matches('`').to_string());
         doc_names.extend(cells[3].split(',').map(str::trim).filter(|s| !s.is_empty()).map(String::from));

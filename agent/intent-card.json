@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-call-cli-from-contract.md",
-  "intent_slug": "mcphost-call-cli-from-contract",
-  "root_motivation": "**Who:** a coding agent in a terminal (Claude Code, Codex), a CI job calling host.spec.test, Joe probing prod. **What:** one command per host tool with typed flags and machine output, no JSON by hand. **Why not today:** the mcphost binary has server-side subcommands only; every shell interaction with the host is a hand-typed tool name and argument object. The command table is generated from the embedded contract, so the shell cannot name a tool or argument the host does not serve.",
-  "user_persona": "A coding agent in a shell that publishes, tests and calls host tools with typed flags and exit codes; a CI job gating on exit status; Operator Joe warned of contract skew against prod.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-export-tables-and-import-restore.md",
+  "intent_slug": "mcphost-export-tables-and-import-restore",
+  "root_motivation": "**Who:** the agent whose user says \"give me my data\" or \"move this to my other account\"; the agent restoring a tenant after `self_offboard`. **What:** a download that is the whole tenant, and a way to put it back. **Why not today:** `src/export.rs:458-572` adds entries for `state_kv`, `state_rows`, `state`, and `tools/<name>/v1`; no code path reads `tables/<tenant_id>.db` or the docs store. AC 1 of the shipped export PRD lists \"both tool sources, three state files, secrets.txt, manifest.json\" and nothing else. There is no `host.import`; `manifest.json` entries validate against `host.tool_publish` (shipped AC 5), so tools can be re-published by hand, but tables, docs, and notes would have to be re-created call by call. **Premise (creative):** an archive that is the whole tenant, restorable in one call, is what makes \"no lock-in\" true for an agent and makes a tenant portable between the free and pro plans and between two owners. **Falsifier:** see frontmatter; AC 1 inspects a real arc...",
+  "user_persona": "An agent that calls host.runs.get(run_id, as_fixtures=true) on a failed chain run, passes the fixtures to host.tool_test with its fixed spec, and reads each later step's resolved_args before republishing; Operator Joe reading the digest.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,50 +14,50 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the embedded contract, When the clap tree is built, Then Command::debug_assert passes and fewer than 5 canonical tools needed any override; the test prints the override list and fails the premise at 5.",
-      "test": "tests/ccli_ac01_tree_builds_from_contract.rs"
+      "description": "Given a local host with a tenant holding one `host.table.*` table of 3 rows and one doc, When `host.export` completes and the archive is listed, Then the test asserts no entry path starts with `tables/` or `docs/` on the pre-change code and prints the entry list; if the table rows are already present the builder stops and records the falsifier as confirmed.",
+      "test": "tests/timp_ac01_export_lacks_tables_and_docs_baseline.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given `mcphost call host.tool.publish --name x --kind nope --spec-json '{}'`, When parsed, Then clap exits 2 before any network with the schema's kind enum in the message.",
-      "test": "tests/ccli_ac02_bad_enum_refused_before_network.rs"
+      "description": "Given the same tenant after R1, When `host.export` completes, Then the archive holds `tables/t/schema.json`, `tables/t/rows.jsonl` with 3 lines, `models/t.json`, `docs/a.md`, and `manifest.json` version 2 with a `sha256` per entry.",
+      "test": "tests/timp_ac02_export_carries_tables_models_docs_manifest_v2.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a running test host and MCPHOST_KEY set, When `mcphost call host.tool.publish --name hello --kind python --spec-json @fixture.json --json` runs, Then stdout is one JSON line equal to the host's structuredContent and the key never appears in argv, stdout or stderr.",
-      "test": "tests/ccli_ac03_publish_round_trip_key_stays_secret.rs"
+      "description": "Given an empty tenant B and A's completed export, When `host.import(run_id=\u2026)` completes, Then `host.table.list`, `host.table.describe`, `host.state.list`, `host.docs.list` and `host.catalog` on B match A, and `secrets_to_set` names A's secret.",
+      "test": "tests/timp_ac03_import_restores_an_empty_tenant.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a host returning args_invalid, bearer_invalid, tool_exception and a 503, When each is received, Then the exit codes are 2, 4, 3, 5 and stderr carries error_code and data; the mapping test covers every AppError::code() arm.",
-      "test": "tests/ccli_ac04_error_classes_map_to_exit_codes.rs"
+      "description": "Given tenant B holds one tool, When `host.import` runs, Then `tenant_not_empty` lists `tools: [\"x\"]` and nothing is written; Given a run id of another tenant, Then `not_found`.",
+      "test": "tests/timp_ac04_import_refuses_non_empty_and_foreign_runs.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a test host whose /contract.json ETag differs from the embedded sha, When any call runs, Then stderr's first line is `contract skew: binary 1.<12> host 1.<12>` and the call still proceeds; with --no-skew-check no HEAD is sent.",
-      "test": "tests/ccli_ac05_contract_skew_warning.rs"
+      "description": "Given A \u2192 B \u2192 export, When both manifests are compared, Then every entry's sha256 is equal except `manifest.json` and fields named `created_unix`.",
+      "test": "tests/timp_ac05_round_trip_sha256_equal.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given the contract and the CLI tree, When the drift test compares subcommand names, flag names and help text, Then all three sets are equal; one tool removed from the embedded contract fails the test naming it.",
-      "test": "tests/ccli_ac06_cli_tree_equals_contract.rs"
+      "description": "Given a free-plan tenant and an archive whose manifest totals 60 MB, When `host.import` runs, Then `quota_exceeded {export_bytes_max}` is returned before any row exists; Given a 1,000-row table and 10 docs within quota, Then import completes in \u2264 30 s and `host.runs.get` reported `entries_done` rising.",
+      "test": "tests/timp_ac06_import_enforces_export_bytes_max_and_reports_progress.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given `mcphost call --completions zsh`, When sourced in zsh, Then `mcphost call host.r<TAB>` lists host.redeem, host.registry.publish, host.runs.*.",
-      "test": "tests/ccli_ac07_completions_rendered_from_the_table.rs"
+      "description": "Given the `ArchiveEntry` enum, When the test renders the exporter's paths, the importer's accepted paths, and `docs/tools.md`'s layout table, Then the three sets are identical.",
+      "test": "tests/timp_ac07_archive_layout_one_enum.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod, When the CLI calls an anonymous tool with no key, Then it prints the plan ceilings and exits 0 (Live; evidence: `mcphost call host.quickstart --url https://mcphost.dev --json | jq -e '.limits.plan.budget != null'`)",
-      "test": "deferred -- operator-provisioned: live `mcphost call host.quickstart --url https://mcphost.dev --json` against prod after deploy."
+      "description": "Given prod after deploy, When the joe-test tenant runs `host.export`, downloads the archive and `tar -tzf` it, Then the listing contains `tables/` and `docs/` prefixes and `manifest.json` reads `\"version\": 2` (Live; evidence: `tar -tzf <downloaded archive> | sort | head -20` pasted in the PR trailer)",
+      "test": "deferred -- operator-provisioned: live prod export + tar -tzf of the joe-test tenant after deploy."
     }
   ],
   "scope": [

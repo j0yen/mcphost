@@ -325,6 +325,15 @@ pub fn render_tools_markdown(kinds: &KindRegistry) -> String {
             .replace('\n', " ");
         out.push_str(&format!("| `{}` | {family} | {aliases} | {description} |\n", t.name));
     }
+    out.push_str(ARCHIVE_LAYOUT_HEADING);
+    out.push_str(
+        "\nEvery `host.export` archive is a `.tar.gz` of exactly these entries, and \
+         `host.import` accepts exactly these. Generated from `export::ArchiveEntry`.\n\n",
+    );
+    out.push_str("| path | host.import |\n|---|---|\n");
+    for (pattern, note) in crate::export::ArchiveEntry::layout() {
+        out.push_str(&format!("| `{pattern}` | {note} |\n"));
+    }
     out
 }
 
@@ -347,6 +356,9 @@ pub fn render_blob_types_doc() -> String {
         render_blob_types_table()
     )
 }
+
+/// The heading `docs/tools.md`'s archive-layout table sits under.
+pub const ARCHIVE_LAYOUT_HEADING: &str = "\n## Archive layout\n";
 
 /// Writes (or, under `check`, diffs without writing) `docs/plans.md`,
 /// `www/plans.html`, `docs/tools.md`, and -- AC5's build-time half -- the

@@ -121,8 +121,12 @@ fn arg_i64_opt(args: &Value, name: &str) -> Option<i64> {
 /// key an oversized (or inline) run result's part `n` lives under -- the
 /// one read path [`part`]/[`attach_result`] and [`crate::db::Db::purge_runs`]
 /// all funnel through, so the key shape is spelled once.
+/// Every state key the host itself writes for a run (result parts, import
+/// progress) starts with this; `host.export` leaves them out of the archive.
+pub(crate) const RUN_KEY_PREFIX: &str = "runs/";
+
 pub(crate) fn part_key(run_id: &str, n: usize) -> String {
-    format!("runs/{run_id}/part/{n}")
+    format!("{RUN_KEY_PREFIX}{run_id}/part/{n}")
 }
 
 /// requirement 1: chunks `s` into pieces at most `max_bytes` long, splitting
@@ -289,6 +293,18 @@ pub async fn get(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Valu
         None
     };
     let mut value = attach_result(state, tenant.id, &run, value).await?;
+    // PRD-mcphost-export-tables-and-import-restore R2: a `host.import` run
+    // reports its progress by entry while it runs, and keeps the final count.
+    if run.tool_name == crate::import::IMPORT_TOOL_NAME
+        && let Some((progress_json, _)) = state
+            .db
+            .state_kv_get(tenant.id, crate::import::progress_key(&run.id), String::new())
+            .await?
+        && let (Ok(Value::Object(progress)), Some(obj)) =
+            (serde_json::from_str::<Value>(&progress_json), value.as_object_mut())
+    {
+        obj.extend(progress);
+    }
     if let (Some((fixtures, truncated)), Some(obj)) = (fixtures, value.as_object_mut()) {
         obj.insert("fixtures".to_string(), Value::Object(fixtures));
         obj.insert("truncated".to_string(), json!(truncated));

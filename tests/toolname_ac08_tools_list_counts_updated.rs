@@ -85,6 +85,10 @@ const BLOB_TOOLS_ADDED: usize = 5;
 
 /// PRD-mcphost-blob-retention-and-quota: host.blob.touch/policy/gc.
 const BLOB_RETENTION_TOOLS_ADDED: usize = 3;
+/// PRD-mcphost-export-tables-and-import-restore: host.import, one more
+/// genuinely new non-alias tool (its flattened form is counted by
+/// `flattened_count`).
+const IMPORT_TOOLS_ADDED: usize = 1;
 
 /// PRD-mcphost-tools-list-alias-truth: one flattened `a_b_c` clone per
 /// dotted canonical, read off the registry rather than a literal.
@@ -115,11 +119,12 @@ fn full_registry_grew_by_exactly_the_alias_count_with_nothing_removed() {
             + DEAD_LETTERS_TOOLS_ADDED
             + BLOB_TOOLS_ADDED
             + BLOB_RETENTION_TOOLS_ADDED
+            + IMPORT_TOOLS_ADDED
             + flattened_count(&kinds),
         "the full host.*/billing.* registry must have grown by exactly the number of aliases \
          this PRD added (plus any later-landing PRD's own non-alias tools, and any earlier- \
          or later-landing PRD's own documented growth, including row-policy's own later five \
          tools), with nothing removed"
     );
-    assert_eq!(total, 394, "pin the exact new total (188 + 168 flattened forms, PRD-mcphost-tools-list-alias-truth); PRD-mcphost-invite-links, PRD-mcphost-result-handles, PRD-mcphost-call-cost-estimate, PRD-mcphost-ask-user-decision, PRD-mcphost-call-trace-replay, PRD-mcphost-feedback-tool-and-ledger, PRD-mcphost-event-trigger-from-webhook's host.trigger.dead_letters, PRD-mcphost-blob-put-get-signed-url, and this PRD's own growth grew it to");
+    assert_eq!(total, 396, "pin the exact new total (188 + 168 flattened forms, PRD-mcphost-tools-list-alias-truth); PRD-mcphost-invite-links, PRD-mcphost-result-handles, PRD-mcphost-call-cost-estimate, PRD-mcphost-ask-user-decision, PRD-mcphost-call-trace-replay, PRD-mcphost-feedback-tool-and-ledger, PRD-mcphost-event-trigger-from-webhook's host.trigger.dead_letters, PRD-mcphost-blob-put-get-signed-url, PRD-mcphost-blob-retention-and-quota, PRD-mcphost-export-tables-and-import-restore, and this PRD's own growth grew it to");
 }
