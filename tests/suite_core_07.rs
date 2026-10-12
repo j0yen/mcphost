@@ -627,6 +627,20 @@ mod drift_ac10_manual_check_produces_review_without_version_change;
 mod dryrun_ac05_chain_host_table_append_step;
 #[path = "dryrun_ac06_tools_list_mentions_dry_run.rs"]
 mod dryrun_ac06_tools_list_mentions_dry_run;
+#[path = "dryv_ac01_table_drop_survives_savepoint.rs"]
+mod dryv_ac01_table_drop_survives_savepoint;
+#[path = "dryv_ac02_write_verb_registry_drift.rs"]
+mod dryv_ac02_write_verb_registry_drift;
+#[path = "dryv_ac03_table_drop_dry_run_would.rs"]
+mod dryv_ac03_table_drop_dry_run_would;
+#[path = "dryv_ac04_state_delete_rows_dry_run_would.rs"]
+mod dryv_ac04_state_delete_rows_dry_run_would;
+#[path = "dryv_ac05_real_errors_pass_through.rs"]
+mod dryv_ac05_real_errors_pass_through;
+#[path = "dryv_ac06_key_rotate_refuses_dry_run.rs"]
+mod dryv_ac06_key_rotate_refuses_dry_run;
+#[path = "dryv_ac07_tools_list_dry_run_schema.rs"]
+mod dryv_ac07_tools_list_dry_run_schema;
 #[path = "dxn_ac01_classify_fences.rs"]
 mod dxn_ac01_classify_fences;
 #[path = "dxn_ac02_extract_corpus_and_drift_check.rs"]
