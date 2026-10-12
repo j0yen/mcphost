@@ -440,6 +440,8 @@ pub async fn doc_get(state: &AppState, tenant: &Tenant, args: &Value) -> Result<
 /// `seq` is past it, live or deleted (deleted ones carry `deleted: true`).
 pub async fn doc_list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     use crate::paged::{self, Cursor, DocsList, DocsOrder, OrderEnum, Paged};
+    // PRD-mcphost-fields-projection-on-list-verbs R4: refused before any read.
+    let fields = paged::parse_fields(DocsList::VERB, args)?;
     let prefix = arg_str_opt(args, "prefix");
     let rl = paged::resolve_limit(args, DocsList::DEFAULT_LIMIT.into(), DocsList::MAX_LIMIT.into())?;
     let since = arg_i64_opt(args, "since");
@@ -497,6 +499,9 @@ pub async fn doc_list(state: &AppState, tenant: &Tenant, args: &Value) -> Result
     out.insert(DocsList::KEY.to_string(), json!(documents));
     paged::finish_page(&mut out, next.as_ref(), &state.session_bindings, tenant.id);
     let mut value = Value::Object(out);
+    if let Some(fields) = &fields {
+        paged::project_page(&mut value, DocsList::KEY, fields);
+    }
     paged::note_clamp(&mut value, &rl);
     Ok(value)
 }

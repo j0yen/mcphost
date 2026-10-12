@@ -799,6 +799,18 @@ mod flakelint_ac04_allow_list;
 mod flakelint_ac06_perf_budget_skip_and_median;
 #[path = "flakelint_ac07_timing_tests_use_perf_budget.rs"]
 mod flakelint_ac07_timing_tests_use_perf_budget;
+#[path = "fldp_ac02_tool_list_fields_two_keys_under_12kib.rs"]
+mod fldp_ac02_tool_list_fields_two_keys_under_12kib;
+#[path = "fldp_ac03_field_unknown_names_nearest_before_any_read.rs"]
+mod fldp_ac03_field_unknown_names_nearest_before_any_read;
+#[path = "fldp_ac04_fields_one_set.rs"]
+mod fldp_ac04_fields_one_set;
+#[path = "fldp_ac05_fields_name_walk_450_docs.rs"]
+mod fldp_ac05_fields_name_walk_450_docs;
+#[path = "fldp_ac06_empty_fields_and_unpaged_verbs_are_args_invalid.rs"]
+mod fldp_ac06_empty_fields_and_unpaged_verbs_are_args_invalid;
+#[path = "fldp_ac07_include_result_is_sugar_for_fields_result.rs"]
+mod fldp_ac07_include_result_is_sugar_for_fields_result;
 #[path = "fleetips_reclassify_backfill.rs"]
 mod fleetips_reclassify_backfill;
 #[path = "ftruth_ac01_never_unknown_at_insert.rs"]
@@ -1817,15 +1829,3 @@ mod runoverflow_ac03_progress_counter_monotonic_validation;
 mod runoverflow_ac04_inline_part_zero_and_out_of_range_not_found;
 #[path = "runoverflow_ac05_http_async_2mib_overflows_to_parts.rs"]
 mod runoverflow_ac05_http_async_2mib_overflows_to_parts;
-#[path = "runs_ac05_sync_call_writes_run_row.rs"]
-mod runs_ac05_sync_call_writes_run_row;
-#[path = "runs_ac07_purge_clears_result.rs"]
-mod runs_ac07_purge_clears_result;
-#[path = "runs_ac08_tenant_delete_cascades_runs.rs"]
-mod runs_ac08_tenant_delete_cascades_runs;
-#[path = "runs_ac09_quickstart_and_llms_txt_name_job_limits.rs"]
-mod runs_ac09_quickstart_and_llms_txt_name_job_limits;
-#[path = "runs_ac10_wait_long_polls.rs"]
-mod runs_ac10_wait_long_polls;
-#[path = "runs_ac11_admin_runs_reap.rs"]
-mod runs_ac11_admin_runs_reap;

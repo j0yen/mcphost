@@ -475,6 +475,7 @@ pub fn spawn_channel_retention(state: AppState) -> tokio::task::JoinHandle<()> {
 /// once `channel_id` is the resolved row's own id, whichever kind it is.
 pub async fn read(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     use crate::paged::{self, ChannelRead, Cursor, OrderEnum as _, Paged};
+    let fields = paged::parse_fields(ChannelRead::VERB, args)?;
     let key = arg_str(args, "channel_id")?;
     let rl = paged::resolve_limit(args, ChannelRead::DEFAULT_LIMIT.into(), ChannelRead::MAX_LIMIT.into())?;
     // Single-variant order: validated so the schema's `order` enum is honest.
@@ -536,6 +537,9 @@ pub async fn read(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     out.insert(ChannelRead::KEY.to_string(), json!(rows.iter().map(post_row_json).collect::<Vec<_>>()));
     paged::finish_page(&mut out, next.as_ref(), &state.session_bindings, tenant.id);
     let mut value = Value::Object(out);
+    if let Some(fields) = &fields {
+        paged::project_page(&mut value, ChannelRead::KEY, fields);
+    }
     paged::note_clamp(&mut value, &rl);
     Ok(value)
 }
