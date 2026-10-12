@@ -24,6 +24,12 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "publishfirsttry_ac01_tool_publish_description.rs"]
+mod publishfirsttry_ac01_tool_publish_description;
+#[path = "publishfirsttry_ac02_structured_error_fields.rs"]
+mod publishfirsttry_ac02_structured_error_fields;
+#[path = "publishfirsttry_ac07_signup_next.rs"]
+mod publishfirsttry_ac07_signup_next;
 #[path = "pubschema_ac01_kind_enum_from_registry.rs"]
 mod pubschema_ac01_kind_enum_from_registry;
 #[path = "pubschema_ac02_spec_branch_per_kind.rs"]

@@ -222,6 +222,11 @@ pub struct Plan {
     /// R4: the largest single blob; a bigger put refuses with
     /// `blob_too_large`. Free default 20 MiB.
     pub blob_max_bytes: i64,
+    /// PRD-mcphost-destructive-verb-confirmation-token R6: a destructive verb
+    /// (kind delete/drop/revoke/remove) whose dry-run diff reaches this many
+    /// rows needs a `confirm` token from a dry run of the same arguments;
+    /// `0` disables the gate for the plan. Free 100, paid 1 000.
+    pub confirm_rows_min: i64,
     /// PRD-mcphost-end-user-identity P1 requirement 6 (AC9): distinct
     /// end-user subjects that wrote this plan's tenants' state in the
     /// trailing 30 days -- a write from the next, over-the-limit subject
@@ -546,6 +551,7 @@ impl PlanCatalog {
                     blobs_max: 100,
                     blob_bytes_max: 50 * 1024 * 1024,
                     blob_max_bytes: 20 * 1024 * 1024,
+                    confirm_rows_min: 100,
                     // PRD-mcphost-end-user-identity P1 requirement 6:
                     // "free 100" distinct end users.
                     end_users_max: 100,
@@ -649,6 +655,7 @@ impl PlanCatalog {
                     blobs_max: 10_000,
                     blob_bytes_max: 2 * 1024 * 1024 * 1024,
                     blob_max_bytes: 200 * 1024 * 1024,
+                    confirm_rows_min: 1_000,
                     // PRD-mcphost-end-user-identity P1 requirement 6:
                     // "pro 10,000" distinct end users.
                     end_users_max: 10_000,
@@ -791,6 +798,7 @@ impl PlanCatalog {
             out.push_str(&format!("blobs_max = {}\n", p.blobs_max));
             out.push_str(&format!("blob_bytes_max = {}\n", p.blob_bytes_max));
             out.push_str(&format!("blob_max_bytes = {}\n", p.blob_max_bytes));
+            out.push_str(&format!("confirm_rows_min = {}\n", p.confirm_rows_min));
             out.push_str(&format!("end_users_max = {}\n", p.end_users_max));
             out.push_str(&format!(
                 "vault_providers_max = {}\n",
@@ -900,6 +908,7 @@ impl PlanCatalog {
                 "blobs_max" => builder.blobs_max = Some(int_value()),
                 "blob_bytes_max" => builder.blob_bytes_max = Some(int_value()),
                 "blob_max_bytes" => builder.blob_max_bytes = Some(int_value()),
+                "confirm_rows_min" => builder.confirm_rows_min = Some(int_value()),
                 "end_users_max" => builder.end_users_max = Some(int_value()),
                 "vault_providers_max" => builder.vault_providers_max = Some(int_value()),
                 "invites_max" => builder.invites_max = Some(int_value()),
@@ -989,6 +998,7 @@ struct PlanBuilder {
     blobs_max: Option<i64>,
     blob_bytes_max: Option<i64>,
     blob_max_bytes: Option<i64>,
+    confirm_rows_min: Option<i64>,
     end_users_max: Option<i64>,
     vault_providers_max: Option<i64>,
     invites_max: Option<i64>,
@@ -1063,6 +1073,7 @@ impl PlanBuilder {
             blobs_max: quota!(blobs_max),
             blob_bytes_max: quota!(blob_bytes_max),
             blob_max_bytes: quota!(blob_max_bytes),
+            confirm_rows_min: quota!(confirm_rows_min),
             end_users_max: quota!(end_users_max),
             vault_providers_max: quota!(vault_providers_max),
             invites_max: quota!(invites_max),

@@ -517,6 +517,18 @@ mod clink_ac04_readme_install_links_drift;
 mod clink_ac05_connect_go_records_click_and_redirects;
 #[path = "clink_ac06_digest_install_link_clicks_humans_only.rs"]
 mod clink_ac06_digest_install_link_clicks_humans_only;
+#[path = "cnfm_ac02_confirm_required_over_threshold.rs"]
+mod cnfm_ac02_confirm_required_over_threshold;
+#[path = "cnfm_ac03_token_deletes_once.rs"]
+mod cnfm_ac03_token_deletes_once;
+#[path = "cnfm_ac04_token_bound_to_args_state_and_time.rs"]
+mod cnfm_ac04_token_bound_to_args_state_and_time;
+#[path = "cnfm_ac05_tools_list_marks_destructive_verbs.rs"]
+mod cnfm_ac05_tools_list_marks_destructive_verbs;
+#[path = "cnfm_ac06_scratch_tenant_is_never_gated.rs"]
+mod cnfm_ac06_scratch_tenant_is_never_gated;
+#[path = "cnfm_ac07_plan_override_disables_the_gate.rs"]
+mod cnfm_ac07_plan_override_disables_the_gate;
 #[path = "compat_ac01_ac02_ac03_cache_fields.rs"]
 mod compat_ac01_ac02_ac03_cache_fields;
 #[path = "compat_ac04_ac05_admin_and_tenant_cache_fields.rs"]
@@ -1823,9 +1835,3 @@ mod proxy_ac4_rate_limit_keys_on_resolved_address;
 mod proxy_ac5_signup_event_stores_forwarded_address;
 #[path = "proxy_ac6_healthz_distinct_source_ips.rs"]
 mod proxy_ac6_healthz_distinct_source_ips;
-#[path = "publishfirsttry_ac01_tool_publish_description.rs"]
-mod publishfirsttry_ac01_tool_publish_description;
-#[path = "publishfirsttry_ac02_structured_error_fields.rs"]
-mod publishfirsttry_ac02_structured_error_fields;
-#[path = "publishfirsttry_ac07_signup_next.rs"]
-mod publishfirsttry_ac07_signup_next;

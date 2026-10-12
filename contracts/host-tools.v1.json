@@ -3518,7 +3518,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Soft-delete a document by id or name; still visible via host.docs.list {since} with deleted: true.",
+      "description": "Soft-delete a document by id or name; still visible via host.docs.list {since} with deleted: true. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -3839,7 +3839,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Drop stored versions of a document older than older_than_versions versions back from its current one -- get {version: <a dropped version>} then reads not found.",
+      "description": "Drop stored versions of a document older than older_than_versions versions back from its current one -- get {version: <a dropped version>} then reads not found. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -4761,7 +4761,7 @@
       "unpaged_reason": "keeps its own pre-Paged cursor encoding; converges onto paged::Cursor in a follow-up migration"
     },
     {
-      "description": "Delete a revoked end user's scoped state and vault-token rows, de-identify its calls rows (kept, never deleted), and set purged_at. Requires the end user to be revoked first (revoke_required otherwise). Returns {state_rows, vault_tokens} counts.",
+      "description": "Delete a revoked end user's scoped state and vault-token rows, de-identify its calls rows (kept, never deleted), and set purged_at. Requires the end user to be revoked first (revoke_required otherwise). Returns {state_rows, vault_tokens} counts. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -4806,7 +4806,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Revoke an end user: its next identified call is refused with end_user_revoked, no tool runs, and its vault-token connections are disconnected.",
+      "description": "Revoke an end user: its next identified call is refused with end_user_revoked, no tool runs, and its vault-token connections are disconnected. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -4850,7 +4850,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Reverse a prior host.enduser.revoke; the end user's calls succeed again.",
+      "description": "Reverse a prior host.enduser.revoke; the end user's calls succeed again. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -5474,7 +5474,7 @@
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
-      "description": "Remove a tenant (by namespace) from a group this tenant owns.",
+      "description": "Remove a tenant (by namespace) from a group this tenant owns. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -5762,7 +5762,7 @@
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
-      "description": "Revoke an invite by its code. A standard invite simply stops working (existing invitees keep their tenants and shares). Your standing invite is rotated instead: a fresh invite_url is returned and the old one starts answering invite_invalid.",
+      "description": "Revoke an invite by its code. A standard invite simply stops working (existing invitees keep their tenants and shares). Your standing invite is rotated instead: a fresh invite_url is returned and the old one starts answering invite_invalid. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -7089,7 +7089,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Revoke one hosted-authorization-server grant by id (from host.oauth.grants): its access tokens fail within 60s and its refresh tokens stop rotating.",
+      "description": "Revoke one hosted-authorization-server grant by id (from host.oauth.grants): its access tokens fail within 60s and its refresh tokens stop rotating. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -7190,7 +7190,7 @@
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
-      "description": "Remove one of this tenant's registered OAuth issuers; bearer JWTs from it stop authenticating immediately.",
+      "description": "Remove one of this tenant's registered OAuth issuers; bearer JWTs from it stop authenticating immediately. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -7714,7 +7714,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Revoke every one of this tenant's live grants, refresh tokens and pending clients at once: access tokens fail within 60s.",
+      "description": "Revoke every one of this tenant's live grants, refresh tokens and pending clients at once: access tokens fail within 60s. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -7823,7 +7823,7 @@
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
-      "description": "Remove one of this tenant's trusted identity-assertion issuers; its assertions stop authenticating immediately.",
+      "description": "Remove one of this tenant's trusted identity-assertion issuers; its assertions stop authenticating immediately. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -10000,7 +10000,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Delete the stored results of every done run finished at or before before_unix; each then reads done with result: null, purged: true. Frees state_bytes_max quota the results were counted against.",
+      "description": "Delete the stored results of every done run finished at or before before_unix; each then reads done with result: null, purged: true. Frees state_bytes_max quota the results were counted against. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -10638,7 +10638,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Remove a caller_limit set by host.share.caller_limit.",
+      "description": "Remove a caller_limit set by host.share.caller_limit. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -10914,7 +10914,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Delete one key from this tenant's key-value state namespace.",
+      "description": "Delete one key from this tenant's key-value state namespace. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -10966,7 +10966,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Delete rows from a declared table matching an optional where filter (same grammar as host.state.query); omitting where deletes every row in the table.",
+      "description": "Delete rows from a declared table matching an optional where filter (same grammar as host.state.query); omitting where deletes every row in the table. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -11823,7 +11823,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Drop a declared table and every row it holds.",
+      "description": "Drop a declared table and every row it holds. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -13139,7 +13139,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Drop a declared table and every row it holds. Refused as lineage_blocked when a tool, chain, chart, or handle would break, unless confirm: true.",
+      "description": "Drop a declared table and every row it holds. Refused as lineage_blocked when a tool, chain, chart, or handle would break, unless confirm: true. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -13425,7 +13425,7 @@
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
-      "description": "Drop one query-result handle (and its table) before its TTL expires.",
+      "description": "Drop one query-result handle (and its table) before its TTL expires. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -15598,7 +15598,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Remove a published tool by its local name.",
+      "description": "Remove a published tool by its local name. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -17036,7 +17036,7 @@
     },
     {
       "alias_of": "host.tool.remove",
-      "description": "Remove a published tool by its local name.",
+      "description": "Remove a published tool by its local name. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -17730,7 +17730,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Delete a trigger outright (frees its schedules_max slot, unlike pause).",
+      "description": "Delete a trigger outright (frees its schedules_max slot, unlike pause). Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -20272,7 +20272,7 @@
     },
     {
       "alias_of": "host.docs.delete",
-      "description": "Soft-delete a document by id or name; still visible via host.docs.list {since} with deleted: true.",
+      "description": "Soft-delete a document by id or name; still visible via host.docs.list {since} with deleted: true. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -20441,7 +20441,7 @@
     },
     {
       "alias_of": "host.docs.purge",
-      "description": "Drop stored versions of a document older than older_than_versions versions back from its current one -- get {version: <a dropped version>} then reads not found.",
+      "description": "Drop stored versions of a document older than older_than_versions versions back from its current one -- get {version: <a dropped version>} then reads not found. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -20831,7 +20831,7 @@
     },
     {
       "alias_of": "host.enduser.purge",
-      "description": "Delete a revoked end user's scoped state and vault-token rows, de-identify its calls rows (kept, never deleted), and set purged_at. Requires the end user to be revoked first (revoke_required otherwise). Returns {state_rows, vault_tokens} counts.",
+      "description": "Delete a revoked end user's scoped state and vault-token rows, de-identify its calls rows (kept, never deleted), and set purged_at. Requires the end user to be revoked first (revoke_required otherwise). Returns {state_rows, vault_tokens} counts. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -20858,7 +20858,7 @@
     },
     {
       "alias_of": "host.enduser.revoke",
-      "description": "Revoke an end user: its next identified call is refused with end_user_revoked, no tool runs, and its vault-token connections are disconnected.",
+      "description": "Revoke an end user: its next identified call is refused with end_user_revoked, no tool runs, and its vault-token connections are disconnected. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -20888,7 +20888,7 @@
     },
     {
       "alias_of": "host.enduser.unrevoke",
-      "description": "Reverse a prior host.enduser.revoke; the end user's calls succeed again.",
+      "description": "Reverse a prior host.enduser.revoke; the end user's calls succeed again. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -21149,7 +21149,7 @@
     },
     {
       "alias_of": "host.group.remove",
-      "description": "Remove a tenant (by namespace) from a group this tenant owns.",
+      "description": "Remove a tenant (by namespace) from a group this tenant owns. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -21267,7 +21267,7 @@
     },
     {
       "alias_of": "host.invite.revoke",
-      "description": "Revoke an invite by its code. A standard invite simply stops working (existing invitees keep their tenants and shares). Your standing invite is rotated instead: a fresh invite_url is returned and the old one starts answering invite_invalid.",
+      "description": "Revoke an invite by its code. A standard invite simply stops working (existing invitees keep their tenants and shares). Your standing invite is rotated instead: a fresh invite_url is returned and the old one starts answering invite_invalid. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -21836,7 +21836,7 @@
     },
     {
       "alias_of": "host.oauth.grant_revoke",
-      "description": "Revoke one hosted-authorization-server grant by id (from host.oauth.grants): its access tokens fail within 60s and its refresh tokens stop rotating.",
+      "description": "Revoke one hosted-authorization-server grant by id (from host.oauth.grants): its access tokens fail within 60s and its refresh tokens stop rotating. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -21880,7 +21880,7 @@
     },
     {
       "alias_of": "host.oauth.issuer_remove",
-      "description": "Remove one of this tenant's registered OAuth issuers; bearer JWTs from it stop authenticating immediately.",
+      "description": "Remove one of this tenant's registered OAuth issuers; bearer JWTs from it stop authenticating immediately. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -22128,7 +22128,7 @@
     },
     {
       "alias_of": "host.oauth.revoke_all",
-      "description": "Revoke every one of this tenant's live grants, refresh tokens and pending clients at once: access tokens fail within 60s.",
+      "description": "Revoke every one of this tenant's live grants, refresh tokens and pending clients at once: access tokens fail within 60s. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -22198,7 +22198,7 @@
     },
     {
       "alias_of": "host.oauth.trusted_issuer_remove",
-      "description": "Remove one of this tenant's trusted identity-assertion issuers; its assertions stop authenticating immediately.",
+      "description": "Remove one of this tenant's trusted identity-assertion issuers; its assertions stop authenticating immediately. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -22642,7 +22642,7 @@
     },
     {
       "alias_of": "host.runs.purge",
-      "description": "Delete the stored results of every done run finished at or before before_unix; each then reads done with result: null, purged: true. Frees state_bytes_max quota the results were counted against.",
+      "description": "Delete the stored results of every done run finished at or before before_unix; each then reads done with result: null, purged: true. Frees state_bytes_max quota the results were counted against. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -22799,7 +22799,7 @@
     },
     {
       "alias_of": "host.share.caller_limit_remove",
-      "description": "Remove a caller_limit set by host.share.caller_limit.",
+      "description": "Remove a caller_limit set by host.share.caller_limit. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -22868,7 +22868,7 @@
     },
     {
       "alias_of": "host.state.delete",
-      "description": "Delete one key from this tenant's key-value state namespace.",
+      "description": "Delete one key from this tenant's key-value state namespace. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -22902,7 +22902,7 @@
     },
     {
       "alias_of": "host.state.delete_rows",
-      "description": "Delete rows from a declared table matching an optional where filter (same grammar as host.state.query); omitting where deletes every row in the table.",
+      "description": "Delete rows from a declared table matching an optional where filter (same grammar as host.state.query); omitting where deletes every row in the table. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -23156,7 +23156,7 @@
     },
     {
       "alias_of": "host.state.table_drop",
-      "description": "Drop a declared table and every row it holds.",
+      "description": "Drop a declared table and every row it holds. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -23325,7 +23325,7 @@
     },
     {
       "alias_of": "host.table.drop",
-      "description": "Drop a declared table and every row it holds. Refused as lineage_blocked when a tool, chain, chart, or handle would break, unless confirm: true.",
+      "description": "Drop a declared table and every row it holds. Refused as lineage_blocked when a tool, chain, chart, or handle would break, unless confirm: true. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -23381,7 +23381,7 @@
     },
     {
       "alias_of": "host.table.handle_drop",
-      "description": "Drop one query-result handle (and its table) before its TTL expires.",
+      "description": "Drop one query-result handle (and its table) before its TTL expires. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -24005,7 +24005,7 @@
     },
     {
       "alias_of": "host.tool.remove",
-      "description": "Remove a published tool by its local name.",
+      "description": "Remove a published tool by its local name. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -24341,7 +24341,7 @@
     },
     {
       "alias_of": "host.trigger.remove",
-      "description": "Delete a trigger outright (frees its schedules_max slot, unlike pause).",
+      "description": "Delete a trigger outright (frees its schedules_max slot, unlike pause). Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
         "properties": {

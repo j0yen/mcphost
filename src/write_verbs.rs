@@ -42,6 +42,12 @@ pub struct WriteVerb {
     pub dry_run: DryRun,
 }
 
+/// PRD-mcphost-destructive-verb-confirmation-token R4: the sentence every
+/// confirm-gated verb's description ends with (`confirm::gated` decides which)
+/// and `docs/host-tools.md` repeats once per gated verb, parsed from this very
+/// line by `scripts/host-tools-doc-check.sh`. Keep it one line, no `"`.
+pub const CONFIRM_SENTENCE: &str = "Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).";
+
 /// The closed set of reasons a verb may opt out (R5).
 pub const NO_DRY_RUN_REASONS: &[&str] = &["external_effect", "irreversible_by_design", "read_only_shape"];
 

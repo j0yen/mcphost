@@ -669,6 +669,10 @@ impl AppError {
                 // PRD-mcphost-paged-trait-on-every-list-verb requirement 2: a
                 // cursor this process did not mint is a bad parameter.
                 "invites_quota_exceeded" | "cursor_invalid" | "field_unknown" => ErrorCode::INVALID_PARAMS,
+                // PRD-mcphost-destructive-verb-confirmation-token R1/R3: a
+                // large destructive call without a (valid) `confirm` token
+                // is a caller-input problem the error itself explains.
+                "confirm_required" | "confirm_invalid" => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-spec-output-paths requirement 1: a structured
                 // `invalid_spec` (kinds::http/python's own `parse_spec` and
                 // `normalize_outputs`) is exactly the same caller-input

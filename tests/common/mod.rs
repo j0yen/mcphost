@@ -445,6 +445,7 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
         reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         anon_healthz_extra_key: Default::default(),
         blob_clock_offset_secs: Default::default(),
+        confirm_clock_offset_secs: Default::default(),
         session_bindings,
     };
     (state, data_dir)
@@ -1128,6 +1129,7 @@ impl TestServer {
             reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             anon_healthz_extra_key: Default::default(),
             blob_clock_offset_secs: Default::default(),
+            confirm_clock_offset_secs: Default::default(),
             session_bindings,
         });
 
@@ -1886,6 +1888,7 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
         reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         anon_healthz_extra_key: Default::default(),
         blob_clock_offset_secs: Default::default(),
+        confirm_clock_offset_secs: Default::default(),
         session_bindings,
     }
 }

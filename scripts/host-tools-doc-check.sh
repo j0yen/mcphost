@@ -46,6 +46,19 @@ for tag, name, kind, reason in rows:
         print(f"| `{name}` | {kind.lower()} | supported | |")
     else:
         print(f"| `{name}` | {kind.lower()} | refused | `{reason}` |")
+# PRD-mcphost-destructive-verb-confirmation-token R4: the confirm rule, once per
+# gated verb (a `sv` row of kind delete/drop/revoke/remove -- the same predicate
+# as confirm::gated), the sentence parsed out of this same source file.
+sentence = re.search(r'pub const CONFIRM_SENTENCE: &str = "([^"]+)";', text)
+if not sentence:
+    print("host-tools-doc-check.sh: could not find CONFIRM_SENTENCE in " + sys.argv[1], file=sys.stderr)
+    sys.exit(2)
+print()
+print("### Confirm rule")
+print()
+for tag, name, kind, reason in rows:
+    if tag == "sv" and kind in ("Delete", "Drop", "Revoke", "Remove"):
+        print(f"- `{name}`: {sentence.group(1)}")
 print("<!-- mcphost-write-verbs:end -->")
 PY
 }
