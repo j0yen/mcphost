@@ -1294,6 +1294,13 @@
       "AC7": "tests/askd_ac07_concurrent_posts_record_exactly_one_answer.rs",
       "AC8": "deferred -- operator-provisioned: needs prod after deploy."
     },
+    "askdb": {
+      "_prd": "PRD-mcphost-ask-user-decision-b.md (test_prefix: askdb)",
+      "AC1": "tests/askdb_ac01_keyless_wait_is_tenant_key_missing_and_signs_nobody_up.rs",
+      "AC2": "tests/askdb_ac02_free_tenant_sixth_pending_ask_is_asks_limit.rs",
+      "AC3": "tests/askdb_ac03_concurrent_posts_record_exactly_one_answer.rs",
+      "AC4": "deferred -- operator-provisioned: needs prod after deploy."
+    },
     "dxn": {
       "_prd": "PRD-mcphost-docs-examples-executed-nightly.md (test_prefix: dxn)",
       "AC1": "tests/dxn_ac01_classify_fences.rs",

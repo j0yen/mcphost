@@ -153,6 +153,12 @@ mod askd_ac05_keyless_wait_is_tenant_key_missing_and_signs_nobody_up;
 mod askd_ac06_free_tenant_sixth_pending_ask_is_asks_limit;
 #[path = "askd_ac07_concurrent_posts_record_exactly_one_answer.rs"]
 mod askd_ac07_concurrent_posts_record_exactly_one_answer;
+#[path = "askdb_ac01_keyless_wait_is_tenant_key_missing_and_signs_nobody_up.rs"]
+mod askdb_ac01_keyless_wait_is_tenant_key_missing_and_signs_nobody_up;
+#[path = "askdb_ac02_free_tenant_sixth_pending_ask_is_asks_limit.rs"]
+mod askdb_ac02_free_tenant_sixth_pending_ask_is_asks_limit;
+#[path = "askdb_ac03_concurrent_posts_record_exactly_one_answer.rs"]
+mod askdb_ac03_concurrent_posts_record_exactly_one_answer;
 #[path = "attrib_ac1_loopback_signup_unstamped.rs"]
 mod attrib_ac1_loopback_signup_unstamped;
 #[path = "attrib_ac2_clientinfo_captured.rs"]
