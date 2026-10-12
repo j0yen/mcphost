@@ -24,6 +24,16 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "reglist_ac01_manifest_fields_match_cargo_and_endpoint.rs"]
+mod reglist_ac01_manifest_fields_match_cargo_and_endpoint;
+#[path = "reglist_ac02_check_detects_drift.rs"]
+mod reglist_ac02_check_detects_drift;
+#[path = "reglist_ac03_schema_validates_committed_entry_and_rejects_missing_remotes.rs"]
+mod reglist_ac03_schema_validates_committed_entry_and_rejects_missing_remotes;
+#[path = "reglist_ac04_workflow_checks_manifest_and_schema_on_every_push.rs"]
+mod reglist_ac04_workflow_checks_manifest_and_schema_on_every_push;
+#[path = "reglist_ac06_readme_registry_and_quickstart_links_resolve.rs"]
+mod reglist_ac06_readme_registry_and_quickstart_links_resolve;
 #[path = "revdebt_ac1_intent_card_pointers_resolve.rs"]
 mod revdebt_ac1_intent_card_pointers_resolve;
 #[path = "rowpol_ac01_sql_predicate_scopes_to_end_user_attribute.rs"]
