@@ -14,6 +14,8 @@ mod blobguard;
 mod busyaudit;
 #[path = "support/chart_fixture.rs"]
 mod chart_fixture;
+#[path = "support/child_proc_lint.rs"]
+mod child_proc_lint;
 #[path = "support/docs_qa.rs"]
 mod docs_qa;
 #[path = "support/fake_as.rs"]
@@ -26,6 +28,8 @@ mod lanecov;
 mod oauth;
 #[path = "support/oauthclient.rs"]
 mod oauthclient;
+#[path = "support/serve.rs"]
+mod serve;
 #[path = "support/slotkind.rs"]
 mod slotkind;
 #[path = "support/xlinks_cli.rs"]
@@ -455,6 +459,16 @@ mod compose_ac8_tool_test_dry_run;
 mod consent_ac01_ac02_ac03_ac04_contact_lifecycle;
 #[path = "consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox.rs"]
 mod consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox;
+#[path = "cproc_ac01_raw_serve_spawn_and_pipe_read_fail.rs"]
+mod cproc_ac01_raw_serve_spawn_and_pipe_read_fail;
+#[path = "cproc_ac02_guard_struct_fails_waited_child_passes.rs"]
+mod cproc_ac02_guard_struct_fails_waited_child_passes;
+#[path = "cproc_ac03_allow_set_derived_from_serve_rs.rs"]
+mod cproc_ac03_allow_set_derived_from_serve_rs;
+#[path = "cproc_ac06_real_tree_has_no_raw_spawns_or_guards.rs"]
+mod cproc_ac06_real_tree_has_no_raw_spawns_or_guards;
+#[path = "cproc_ac07_flake_lint_job_runs_child_proc_lint.rs"]
+mod cproc_ac07_flake_lint_job_runs_child_proc_lint;
 #[path = "ctrv_ac01_sha_stable_across_boot_requests_and_process.rs"]
 mod ctrv_ac01_sha_stable_across_boot_requests_and_process;
 #[path = "ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs"]
@@ -1811,21 +1825,3 @@ mod sessionkey_ac18_tool_logs_no_key;
 mod sessionkey_ac19_nested_tenant_key_redacted;
 #[path = "sessionkey_ac20_error_message_no_key.rs"]
 mod sessionkey_ac20_error_message_no_key;
-#[path = "share_ac01_public_tool_cross_tenant_call.rs"]
-mod share_ac01_public_tool_cross_tenant_call;
-#[path = "share_ac02_private_tool_still_not_found.rs"]
-mod share_ac02_private_tool_still_not_found;
-#[path = "share_ac03_group_visibility_members_only.rs"]
-mod share_ac03_group_visibility_members_only;
-#[path = "share_ac04_secret_never_reaches_caller.rs"]
-mod share_ac04_secret_never_reaches_caller;
-#[path = "share_ac05_usage_and_quota_attribution.rs"]
-mod share_ac05_usage_and_quota_attribution;
-#[path = "share_ac06_share_quota_exceeded.rs"]
-mod share_ac06_share_quota_exceeded;
-#[path = "share_ac07_catalog_search_and_well_known.rs"]
-mod share_ac07_catalog_search_and_well_known;
-#[path = "share_ac08_unshare_revokes_access.rs"]
-mod share_ac08_unshare_revokes_access;
-#[path = "share_ac09_admin_tool_unshare.rs"]
-mod share_ac09_admin_tool_unshare;
