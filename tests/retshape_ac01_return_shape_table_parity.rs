@@ -45,6 +45,7 @@ def main(args):
         ("mcphost.table.schema", lambda: table.schema("orders")),
         ("mcphost.table.chart", lambda: table.chart("SELECT n FROM orders")),
         ("mcphost.docs.search", lambda: mcphost.docs.search("anything")),
+        ("mcphost.blob.put", lambda: mcphost.blob.put("rs_blob.txt", b"x")),
         ("mcphost.lineage.trace", lambda: mcphost.lineage.trace("table:orders")),
         ("mcphost.lineage.blast_radius", lambda: mcphost.lineage.blast_radius("table:orders", "drop")),
         ("mcphost.drift.reviews", lambda: mcphost.drift.reviews()),

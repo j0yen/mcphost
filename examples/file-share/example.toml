@@ -1,0 +1,14 @@
+[example]
+name = "file-share"
+title = "Share a file that expires on its own"
+summary = "Put a blob with a ttl, hand out its signed URL, and let retention expire and prune it without a cleanup job."
+use_case = ["share"]
+clients = ["any"]
+since = "0.107.45"
+secrets_needed = []
+proof = "retention-proof.sh"
+
+[first_call]
+tool = "host.blob.put"
+args = { name = "report.pdf", ttl_s = 120 }
+expect = "result.data.quota.blob_bytes_max.limit != 0"

@@ -1,0 +1,1486 @@
+# Hand-written consumer-task corpus for `synthorg consume` (PRD-mcphost-harness,
+# rewritten by PRD-mcphost-consumer-corpus onto the mcp-host brief's real
+# composition; gold checks and task prose rewritten again by
+# PRD-mcphost-harness-live-gold Requirement 2 — see that PRD's note below,
+# which supersedes this file's older "every check is a keyword from its own
+# task id" description for every task except where noted).
+#
+# Each task is what one synthetic consumer session receives verbatim as its
+# task, plus the gold signal `consume.py`'s scorer checks the session's
+# recorded events against — never the session's own claims about how it
+# went (Requirements P0 item 4).
+#
+#   id           unique task id, namespaced by segment (Requirement 12), e.g.
+#                `rapid-prototyper-cold-start-scaffold`.
+#   segments     which brief segment ids this task is written for; a
+#                session is only ever assigned a task whose `segments`
+#                includes its persona's own segment. Every id here is one of
+#                the seven ids in `runs/mcp-host-project-discover/market/
+#                panel-composition.yaml` — no task names a segment outside
+#                that composition (AC-1).
+#   task         the prose the consumer session receives as its task, in the
+#                voice of that segment's own reported pain — never a pain the
+#                evidence pack doesn't record (Requirement 3, Non-goals).
+#   gold.tool_name   the tool the consumer is expected to publish and then
+#                     call; must appear in `tools/list` after publishing.
+#   gold.call_check  a predicate on the *structured result* of one
+#                     `tools/call` to `tool_name` (see mini-grammar below).
+#   gold.kind        the shipped mcphost `Kind` this task's tool is written
+#                     against — `echo`, `http` or `python` (Requirement 4).
+#                     Optional; defaults to `echo` when omitted, which is how
+#                     `tests/fixtures/consume/consumer-tasks.yaml`'s older
+#                     four-segment tasks (no `kind` key) keep validating.
+#
+# call_check mini-grammar (nothing upstream defines one, so it's specified
+# here): "result.<dotted.path> <op> <value>", where <op> is one of
+# `==`, `!=`, `contains`. `<dotted.path>` walks the structured call result
+# (a plain JSON object) field by field; `<value>` is parsed as JSON when it
+# parses (numbers/true/false/null/quoted strings), else taken as a bare
+# string. `contains` checks substring membership for a string field, or
+# item/key membership for a list/dict field. See `consume.eval_call_check`.
+#
+# Fake mode's in-process endpoint (`consume._build_fake_server`) answers
+# every published tool with `{"status": "ok", "tool": <name>, "payload":
+# <payload>}`, where `<payload>` is exactly the calling session's own task id
+# (`_run_fake_consumer_session` calls the gold tool with `{"payload":
+# task.id}`). `==`/`!=` checks against `result.status` or `result.tool` hold
+# unconditionally under the fake handler; they stay in the grammar for a
+# live-mode task whose real handler might disagree.
+#
+# PRD-mcphost-harness-live-gold Requirement 2: every `contains` check below
+# now names the literal field a CORRECT tool's structured result must carry
+# (e.g. `latency_ms`, `cost_usd`) — the task prose asks for that field
+# explicitly, in these words, so the check is never a hidden trap (Open
+# question, this PRD: "name it" was the default chosen). This makes each
+# check satisfiable by a live http/python-kind tool that actually does what
+# the task asked (Requirement 1's `_normalize_call_result` resolves
+# `result.payload` to the tool's real body/return value) and unsatisfiable by
+# one that merely returns 200 with unrelated content — `synthorg corpus check
+# --live-shape` (Requirement 8 [P1]) proves both directions per task.
+#
+# Consequence for fake mode specifically: fake mode's handler (above) is
+# generic and kind-unaware by design (Requirement 1: "no golden change from
+# [normalisation] alone" — this PRD does not touch `_build_fake_server`), so
+# its echoed `payload` (the task id string) only happens to contain a new
+# field name where the two coincide (e.g. `error_trace_digest`'s
+# `digest`); everywhere else, a fake-mode session's own `accuracy` is now
+# 0.5 rather than the pre-this-PRD 1.0 — the check correctly stops being
+# vacuously true under the generic echo, which is the point (Requirement 8's
+# "fails when a check is unsatisfiable or vacuous"), not a regression.
+# `corpus_fingerprint` changes accordingly; the first run under this corpus
+# is a new baseline candidate (Requirement 2, Technical considerations).
+#
+# Evidence: every task cites, in a comment, the pack artifact its pain came
+# from — either an opportunity-assessment candidate (PM synthesis over panel
+# citations) or a panel persona file directly (`rag_indexer`,
+# `workflow_orchestrator`, `data_pipeline_builder`, `cost_optimizer`,
+# `admin_agent` have no opportunity-assessment candidate this cycle; their
+# tasks cite the persona file's own pain paragraph instead — Open question:
+# `workflow_orchestrator`'s population share printed `n/a` at n=2, but its
+# persona-level pain is still pack-recorded, which is what a task's prose
+# needs). Paths are relative to the repo root.
+#
+# `rag_indexer` and `data_pipeline_builder` deliberately get tasks a v0.3.0
+# host can serve today — automatic embeddings and the Iceberg semantic layer
+# stay out of scope (Non-goals); their pain is real but held back until a
+# task actually fails for want of them.
+tasks:
+  # -- rapid_prototyper (incumbent: LangChain) --------------------------------
+  - id: rapid-prototyper-cold-start-scaffold
+    segments: [rapid_prototyper]
+    # evidence: runs/mcp-host-project-discover/artifacts/2026-01-05/opportunity_assessment/opportunity-assessment-discover-candidate-0.md
+    # ("30-45 minutes on environment setup, dependency wiring, and auth
+    # config before they can validate whether their idea is even worth
+    # pursuing"; panel_rapid_prototyper_03: "30-45 minutes on boilerplate
+    # before I can test anything").
+    task: >
+      You had the idea for a new agent tool an hour ago, and you are not
+      about to lose another 30-45 minutes to environment setup and
+      dependency wiring before a single line proves anything. Sign up,
+      publish a python-kind tool named `cold_start_scaffold` that stands a
+      working tool up with no manual dependency resolution, and call it
+      once to see whether this host actually clears the setup tax LangChain
+      charges you every time — the result should include a `scaffold_status`
+      field confirming the stand-up succeeded.
+    gold:
+      tool_name: cold_start_scaffold
+      call_check: "result.payload contains scaffold_status"
+      kind: python
+
+  - id: rapid-prototyper-skip-boilerplate-glue
+    segments: [rapid_prototyper]
+    # evidence: runs/mcp-host-project-discover/artifacts/2026-01-05/opportunity_assessment/opportunity-assessment-discover-candidate-0.md
+    # (panel_rapid_prototyper_01: "spending maybe 30% of prototype time
+    # fighting dependency resolution, environment variable setup, and
+    # gluing things together").
+    task: >
+      Roughly a third of your prototyping time disappears into dependency
+      resolution, env-var setup, and gluing pieces together rather than
+      building. Sign up, publish a python-kind tool named
+      `skip_boilerplate_glue` that replaces one of those glue scripts
+      outright, and call it once to see whether it actually gives that 30%
+      back — the result should include a `boilerplate_removed` field naming
+      what it replaced.
+    gold:
+      tool_name: skip_boilerplate_glue
+      call_check: "result.payload contains boilerplate_removed"
+      kind: python
+
+  - id: rapid-prototyper-five-minute-wow
+    segments: [rapid_prototyper]
+    # PRD-mcphost-proxy-tier Requirement 1: this segment's bootstrap task —
+    # gold.kind is echo (the cheapest, most reliable check) and the id
+    # itself names the segment's own five-minute-wow pain.
+    proxy: true
+    # evidence: runs/mcp-host-project-discover/artifacts/2026-01-05/opportunity_assessment/opportunity-assessment-discover-candidate-0.md
+    # ("On 5-minute trial: 100% said keep going (n=3). The trial moment is
+    # the conversion moment.").
+    task: >
+      You give any new dev tool five minutes before deciding whether to
+      keep going or close the tab. Sign up, publish a tool named
+      `five_minute_wow` that proves this host earns its keep inside that
+      window, and call it once before the five minutes are up — a plain
+      `ok` status back is proof enough for this one.
+    gold:
+      tool_name: five_minute_wow
+      call_check: "result.status == ok"
+      kind: echo
+
+  # -- rag_indexer (incumbent: LlamaIndex) ------------------------------------
+  - id: rag-indexer-retrieval-latency-check
+    segments: [rag_indexer]
+    # PRD-mcphost-proxy-tier Requirement 1: this segment's bootstrap task —
+    # no rag_indexer task matches gold.kind==echo or an id containing
+    # five-minute/cold-start, so the first-listed task is the segment's
+    # canonical bootstrap task (a documented, deterministic tie-break, not
+    # a judgment about which pain matters most).
+    proxy: true
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_rag_indexer_01.md
+    # ("Faster retrieval latency for their compliance-heavy use case
+    # (sub-500ms response times critical)").
+    task: >
+      Your compliance-heavy retrieval workload needs sub-500ms responses,
+      and LlamaIndex has felt increasingly sluggish as the document count
+      grew. Sign up, publish a python-kind tool named
+      `retrieval_latency_check` that reports how long one retrieval took,
+      and call it once to see whether the number is one you could commit
+      an SLA to — the result should include a `latency_ms` field.
+    gold:
+      tool_name: retrieval_latency_check
+      call_check: "result.payload contains latency_ms"
+      kind: python
+
+  - id: rag-indexer-defaults-not-config-dialogs
+    segments: [rag_indexer]
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_rag_indexer_01.md
+    # ("Pain Points: Setup complexity disguised as flexibility... won't
+    # tolerate more configuration dialogs dressed as flexibility"; FIVE_MINUTE_LOSS:
+    # "requires manual embedding model selection or forces me to choose
+    # between index types before showing automatic defaults").
+    task: >
+      You are done choosing between embedding models and chunk strategies
+      before you've seen a single working default. Sign up, publish a
+      python-kind tool named `defaults_not_config_dialogs` that returns a
+      workable default configuration with no dialog to fill in first, and
+      call it once to see whether it actually skips the choosing — the
+      result should include a `default_config` field.
+    gold:
+      tool_name: defaults_not_config_dialogs
+      call_check: "result.payload contains default_config"
+      kind: python
+
+  - id: rag-indexer-ingestion-source-status
+    segments: [rag_indexer]
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_rag_indexer_01.md
+    # ("scaling document ingestion across multiple formats has become
+    # operationally messy — they've had to build custom preprocessing
+    # pipelines").
+    task: >
+      Ingesting 50K+ documents a month across PDFs, Notion and internal
+      databases has turned into custom preprocessing pipelines you'd rather
+      not maintain. Sign up, publish an http-kind tool named
+      `ingestion_source_status` that wraps
+      `{{fixture_base}}/ingestion/sources/notion-docs/status` to report one
+      source's ingestion status, and call it once to see if it is something
+      you could actually monitor without hand-rolling more pipeline — the
+      result should include an `ingestion_status` field.
+    gold:
+      tool_name: ingestion_source_status
+      call_check: "result.payload contains ingestion_status"
+      kind: http
+    # PRD-synthorg-fixture-upstreams Requirement 4/AC-2: the
+    # `synthorg.fixtures` route this task's `{{fixture_base}}` above
+    # resolves to.
+    fixture_route: /ingestion/sources/notion-docs/status
+
+  - id: docs_qa_recipe
+    segments: [rag_indexer]
+    # PRD-mcphost-docs-qa-recipe (visions/mcphost-data-layer-first-slice.md;
+    # wiki 2026-09-23-mcphost-market-test-plan: rag_indexer's own 61.8%
+    # satisfaction baseline is the number this task exists to move). Unlike
+    # this segment's other tasks above (which check that document-store
+    # primitives exist), this one proves the persona can finish the "Docs
+    # Q&A in a minute" recipe (mcphost's own examples/docs-qa/) end to end:
+    # publish a search tool, ask a real question, get the right document
+    # back — not just that a document got stored.
+    task: >
+      You do not trust a document store until it actually answers a
+      question correctly. Sign up, publish an http-kind tool named
+      `ask_docs` that wraps `{{fixture_base}}/docs/search/question-3` to
+      search a small seeded corpus, and call it with the corpus's own third
+      gold question ("What port does the VPN client connect on?") — the
+      result's top 5 hits should include the document that actually answers
+      it, `vpn-setup.md`.
+    gold:
+      tool_name: ask_docs
+      call_check: "result.payload contains vpn-setup.md"
+      kind: http
+    # PRD-synthorg-fixture-upstreams Requirement 4/AC-2: the
+    # `synthorg.fixtures` route this task's `{{fixture_base}}` above
+    # resolves to.
+    fixture_route: /docs/search/question-3
+    # PRD-synthorg-recipe-tasks-panel-scored Requirement 2: this recipe's
+    # own reference row in `measure.json`'s new `recipes.by_recipe`.
+    recipe: mcphost-docs-qa-recipe
+
+  # PRD-synthorg-docs-rag-tasks: five tasks whose gold checks a HOST-native
+  # tool directly (`host.docs.*`/`host.table.describe`), never a tool the
+  # persona publishes — unlike every rag_indexer task above, which checks a
+  # persona-published wrapper. All five put/search/describe against the
+  # shared eight-file fixture corpus at
+  # `tests/fixtures/consume/docs/handbook/` (8 markdown files + `orders.csv`
+  # + `gold.json`'s six questions) — the fake path's own scripted session
+  # (`consume._run_docs_capability_script`) reads that folder straight off
+  # disk and puts its content through the real `host.docs.*`/`host.table.*`
+  # wire protocol, the same primitives `tests/fakedocs_ac*` already prove
+  # against directly. Grounding: wiki 2026-09-23-mcphost-market-test-plan —
+  # rag_indexer's own 61.8% satisfaction baseline is the number this set of
+  # tasks (together with `docs_qa_recipe` above) exists to move; none of
+  # the 39 tasks that predate this PRD stores or searches a document at all
+  # (Problem statement).
+  - id: docs-put-folder
+    segments: [rag_indexer]
+    capability: docs
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_rag_indexer_01.md
+    # ("scaling document ingestion... has become operationally messy").
+    task: >
+      You have a folder of eight handbook pages and want a document store
+      that can just take the whole folder. Sign up, put all eight files
+      from your handbook folder into the document store one at a time, and
+      call the store's own status check to confirm every one of them
+      landed — the status should report `documents: 8`.
+    gold:
+      tool_name: host.docs.status
+      call_check: "result.documents == 8"
+      kind: python
+
+  - id: docs-wait-fresh
+    segments: [rag_indexer]
+    capability: docs
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_rag_indexer_01.md
+    # ("Faster retrieval latency... sub-500ms response times critical" —
+    # this task is the honest flip side: a document is not searchable the
+    # instant it is stored, and a tool that claims otherwise is lying).
+    task: >
+      A document you just put into the store should not be searchable
+      before the index has actually caught up with it. Sign up, put one
+      handbook page into the document store, then poll the store's own
+      status check until it reports the index is fully caught up — the
+      status should report `index.lag_seconds: 0`, not a stale answer
+      given before the index was ready.
+    gold:
+      tool_name: host.docs.status
+      call_check: "result.index.lag_seconds == 0"
+      kind: python
+
+  - id: docs-search-cite
+    segments: [rag_indexer]
+    capability: docs
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_rag_indexer_01.md
+    # ("I have a folder of markdown; make a tool that answers questions
+    # with citations" — User stories).
+    task: >
+      A search that cannot name which document it answered from is not
+      one you can trust. Sign up, put a couple of handbook pages into the
+      document store (including `refunds.md`), wait for the index to
+      catch up, then search for "refund window" — the top hit should name
+      the document that actually answers it, `refunds.md`, not just
+      return matching text with no citation.
+    gold:
+      tool_name: host.docs.search
+      call_check: "result.results.0.name == refunds.md"
+      kind: python
+
+  - id: docs-update-stale
+    segments: [rag_indexer]
+    capability: docs
+    # evidence: wiki 2026-09-23-mcphost-market-test-plan (rag_indexer's own
+    # gap: a document store that silently serves stale answers after an
+    # update is worse than one that admits it hasn't caught up yet).
+    task: >
+      When you edit a document, a search performed before the index
+      catches up should honestly show the OLD version, never silently
+      serve the new content it hasn't indexed yet and never crash. Sign
+      up, put `refunds.md`, wait for it to be indexed, then update
+      `refunds.md`'s content (bumping its version to 2) and search again
+      right away, then poll status until the index has caught up and
+      search once more — the final search's top hit should report
+      `version: 2`.
+    gold:
+      tool_name: host.docs.search
+      call_check: "result.results.0.version == 2"
+      kind: python
+
+  - id: table-describe-csv
+    segments: [rag_indexer]
+    capability: docs
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_rag_indexer_03.md
+    # ("processes 500K+ documents monthly across multiple data sources" —
+    # tabular data is part of that same multi-format ingestion pain).
+    task: >
+      Half of what you need to answer questions about lives in a CSV, not
+      a document. Sign up, load `orders.csv` into a table named `orders`,
+      then describe the table to see whether it can tell you which column
+      is the actual identifier — the description's own `primary_key`
+      field should name it, `order_id`.
+    gold:
+      tool_name: host.table.describe
+      call_check: "result.primary_key == order_id"
+      kind: python
+
+  # -- workflow_orchestrator (incumbent: LangGraph) ---------------------------
+  - id: workflow-orchestrator-scheduling-visibility
+    segments: [workflow_orchestrator]
+    # PRD-mcphost-proxy-tier Requirement 1: this segment's bootstrap task —
+    # no workflow_orchestrator task matches gold.kind==echo or an id
+    # containing five-minute/cold-start; first-listed tie-break (see
+    # rag-indexer-retrieval-latency-check's comment above).
+    proxy: true
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_workflow_orchestrator_01.md
+    # ("frustrated by... opaque task scheduling decisions when tools compete
+    # for resources"; FIVE_MINUTE_LOSS: "cannot show her exactly which MCP
+    # tool is blocking her workflow or consuming unexpected latency").
+    task: >
+      Your production workflow chains 4-8 MCP tools under a strict p99 < 2s
+      SLA, and when something is slow you cannot tell which tool in the
+      chain is actually blocking. Sign up, publish an http-kind tool named
+      `scheduling_visibility` that wraps
+      `{{fixture_base}}/scheduling/chains/checkout-flow` to name the tool
+      currently holding up the chain, and call it once to see if you'd
+      trust it at 3am — the result should include a `blocking_tool` field
+      naming it.
+    gold:
+      tool_name: scheduling_visibility
+      call_check: "result.payload contains blocking_tool"
+      kind: http
+    fixture_route: /scheduling/chains/checkout-flow
+
+  - id: workflow-orchestrator-observability-retrofit
+    segments: [workflow_orchestrator]
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_workflow_orchestrator_01.md
+    # ("frustrated by... the difficulty of retrofitting observability into
+    # existing graphs").
+    task: >
+      Your LangGraph setup works, but bolting observability onto a graph
+      you already built has been a fight every time. Sign up, publish a
+      python-kind tool named `observability_retrofit` that attaches an
+      observability hook to a running chain without rebuilding it, and call
+      it once to see whether it actually retrofits cleanly — the result
+      should include a `hook_attached` field.
+    gold:
+      tool_name: observability_retrofit
+      call_check: "result.payload contains hook_attached"
+      kind: python
+
+  - id: workflow-orchestrator-error-trace-digest
+    segments: [workflow_orchestrator]
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_workflow_orchestrator_01.md
+    # ("frustrated by... verbose error traces when a tool fails mid-chain").
+    task: >
+      When a tool fails mid-chain, LangGraph hands you a wall of trace you
+      have to dig through before you know what actually broke. Sign up,
+      publish a python-kind tool named `error_trace_digest` that turns one
+      failed call's trace into a single actionable line, and call it once
+      to see if it's faster than reading the raw trace yourself — the
+      result should include a `digest` field.
+    gold:
+      tool_name: error_trace_digest
+      call_check: "result.payload contains digest"
+      kind: python
+
+  # -- data_pipeline_builder (incumbent: dbt+Databricks) ----------------------
+  - id: data-pipeline-builder-metric-definition-helper
+    segments: [data_pipeline_builder]
+    # PRD-mcphost-proxy-tier Requirement 1: this segment's bootstrap task —
+    # no data_pipeline_builder task matches gold.kind==echo or an id
+    # containing five-minute/cold-start; first-listed tie-break (see
+    # rag-indexer-retrieval-latency-check's comment above).
+    proxy: true
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_data_pipeline_builder_01.md
+    # ("Her core frustration is the semantic layer gap... She spends cycles
+    # writing boilerplate metric definitions instead of building pipelines").
+    task: >
+      You keep hand-writing boilerplate metric definitions because dbt is a
+      transformation tool, not a semantic engine, and nothing self-serves
+      against your Iceberg tables. Sign up, publish a python-kind tool
+      named `metric_definition_helper` that drafts one metric definition
+      from a table schema — not a whole semantic layer, just this one
+      definition — and call it once to see if it actually cuts the
+      boilerplate; the result should include a `metric_definition` field.
+    gold:
+      tool_name: metric_definition_helper
+      call_check: "result.payload contains metric_definition"
+      kind: python
+
+  - id: data-pipeline-builder-fast-onboarding-check
+    segments: [data_pipeline_builder]
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_data_pipeline_builder_01.md
+    # ("Alex runs tight sprints and doesn't have time for lengthy
+    # evaluations. If a tool requires three weeks of setup, custom Spark
+    # jobs... she's out.").
+    task: >
+      You run tight sprints and have no time for a three-week evaluation
+      with custom Spark jobs bolted on. Sign up, publish a python-kind tool
+      named `fast_onboarding_check` that proves it can be stood up in
+      minutes against your existing warehouse, and call it once to see
+      whether it actually skips the multi-week ramp — the result should
+      include an `onboarding_minutes` field.
+    gold:
+      tool_name: fast_onboarding_check
+      call_check: "result.payload contains onboarding_minutes"
+      kind: python
+
+  - id: data-pipeline-builder-warehouse-table-status
+    segments: [data_pipeline_builder]
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_data_pipeline_builder_01.md
+    # ("Databricks is where her data lives; tight integration matters...
+    # She'd consider switching only if onboarding felt painless").
+    task: >
+      Your warehouse is Databricks-on-Iceberg and it is not moving. Sign
+      up, publish an http-kind tool named `warehouse_table_status` that
+      wraps `{{fixture_base}}/warehouse/tables/main.risk.loan_applications`
+      to report that table's status and row count without requiring you to
+      migrate anything off Iceberg, and call it once to see if the
+      integration is really as tight as promised — the result should
+      include a `row_count` field.
+    gold:
+      tool_name: warehouse_table_status
+      call_check: "result.payload contains row_count"
+      kind: http
+    fixture_route: /warehouse/tables/main.risk.loan_applications
+
+  # -- integration_specialist (incumbent: n8n) --------------------------------
+  - id: integration-specialist-rest-to-tool-bridge
+    segments: [integration_specialist]
+    # PRD-mcphost-proxy-tier Requirement 1: this segment's bootstrap task —
+    # no integration_specialist task matches gold.kind==echo or an id
+    # containing five-minute/cold-start; first-listed tie-break (see
+    # rag-indexer-retrieval-latency-check's comment above).
+    proxy: true
+    # evidence: runs/mcp-host-project-discover/artifacts/2026-01-05/opportunity_assessment/opportunity-assessment-discover-candidate-3.md
+    # ("Integration Specialists / Deployment-Tax-Free Agentic Workflow
+    # Publishing").
+    task: >
+      You have 40+ production n8n workflows wired to REST APIs, and every
+      new integration pays the same deployment tax before an agent can call
+      it. Sign up, publish an http-kind tool named `rest_to_tool_bridge`
+      that wraps `{{fixture_base}}/bridge/rest/orders-api` — turning that
+      one REST endpoint into an agent-callable tool — and call it once to
+      see if the deployment tax is actually gone — the result should
+      include a `bridge_status` field.
+    gold:
+      tool_name: rest_to_tool_bridge
+      call_check: "result.payload contains bridge_status"
+      kind: http
+    fixture_route: /bridge/rest/orders-api
+
+  - id: integration-specialist-failure-diagnosis-log
+    segments: [integration_specialist]
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_integration_specialist_01.md
+    # ("Their biggest pain point isn't speed of initial setup; it's
+    # diagnosing why a workflow failed at 2am. They need honest error
+    # messages, execution logs they can actually read").
+    task: >
+      Your real pain isn't setup speed — it's diagnosing why a workflow
+      failed at 2am with an error message that tells you nothing. Sign up,
+      publish an http-kind tool named `failure_diagnosis_log` that wraps
+      `{{fixture_base}}/diagnostics/calls/call-8842` to return a readable
+      diagnosis of that failed call, and call it once to see if you could
+      actually debug from it instead of guessing — the result should
+      include a `diagnosis` field.
+    gold:
+      tool_name: failure_diagnosis_log
+      call_check: "result.payload contains diagnosis"
+      kind: http
+    fixture_route: /diagnostics/calls/call-8842
+
+  - id: integration-specialist-node-isolation-test
+    segments: [integration_specialist]
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_integration_specialist_01.md
+    # ("the ability to test nodes in isolation before deploying").
+    task: >
+      You never ship a new n8n node without testing it in isolation first.
+      Sign up, publish an http-kind tool named `node_isolation_test` that
+      wraps `{{fixture_base}}/nodes/auth-guard/isolation-test` to run that
+      node by itself, outside any larger workflow, and call it once to see
+      whether isolated testing is actually possible here before you'd
+      deploy anything for real — the result should include an
+      `isolation_result` field.
+    gold:
+      tool_name: node_isolation_test
+      call_check: "result.payload contains isolation_result"
+      kind: http
+    fixture_route: /nodes/auth-guard/isolation-test
+
+  # -- cost_optimizer (incumbent: AWS Lambda) ---------------------------------
+  - id: cost-optimizer-per-invocation-cost-breakdown
+    segments: [cost_optimizer]
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_cost_optimizer_01.md
+    # ("exhausted by the Lambda tax: regional variance, concurrency
+    # surprises mid-scale, and opaque pricing that requires spreadsheets to
+    # decode").
+    task: >
+      You process ~500M invocations a month and decode Lambda's pricing
+      with a spreadsheet because the console never shows a real breakdown.
+      Sign up, publish an http-kind tool named
+      `per_invocation_cost_breakdown` that wraps
+      `{{fixture_base}}/invocations/cost?tool=per_invocation_cost_breakdown`
+      to report a transparent per-invocation cost, and call it once to see
+      if it's a number you'd actually trust over your spreadsheet — the
+      result should include a `cost_usd` field.
+    gold:
+      tool_name: per_invocation_cost_breakdown
+      call_check: "result.payload contains cost_usd"
+      kind: http
+    fixture_route: /invocations/cost?tool=per_invocation_cost_breakdown
+
+  - id: cost-optimizer-cold-start-benchmark
+    segments: [cost_optimizer]
+    # PRD-mcphost-proxy-tier Requirement 1: this segment's bootstrap task —
+    # id contains "cold-start".
+    proxy: true
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_cost_optimizer_01.md
+    # (FIVE_MINUTE_LOSS: "cannot demonstrate cold start times under 50ms for
+    # Node.js workloads... Jordan closes the tab").
+    task: >
+      Cold starts over 50ms on a Node.js workload are a closed tab for you,
+      not a rounding error. Sign up, publish an http-kind tool named
+      `cold_start_benchmark` that wraps
+      `{{fixture_base}}/benchmarks/cold-start/nodejs20` to report a real
+      cold-start measurement, and call it once before you decide whether
+      this host clears your bar — the result should include a
+      `cold_start_ms` field.
+    gold:
+      tool_name: cold_start_benchmark
+      call_check: "result.payload contains cold_start_ms"
+      kind: http
+    fixture_route: /benchmarks/cold-start/nodejs20
+
+  - id: cost-optimizer-budget-tripwire
+    segments: [cost_optimizer]
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_cost_optimizer_01.md
+    # ("The 15% YoY infrastructure budget creep stings").
+    task: >
+      A 15% year-over-year infrastructure creep is exactly the kind of
+      surprise you're paid to catch before finance does. Sign up, publish a
+      python-kind tool named `budget_tripwire` that warns before a spend
+      threshold is crossed, and call it once to see whether it would
+      actually catch the creep early — the result should include a
+      `budget_threshold` field.
+    gold:
+      tool_name: budget_tripwire
+      call_check: "result.payload contains budget_threshold"
+      kind: python
+
+  # -- admin_agent (incumbent: Terraform+CLI) ---------------------------------
+  - id: admin-agent-terraform-state-sync
+    segments: [admin_agent]
+    # PRD-mcphost-proxy-tier Requirement 1: this segment's bootstrap task —
+    # no admin_agent task matches gold.kind==echo or an id containing
+    # five-minute/cold-start; first-listed tie-break (see
+    # rag-indexer-retrieval-latency-check's comment above).
+    proxy: true
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_admin_agent_01.md
+    # (FIVE_MINUTE_LOSS: "cannot synchronize with existing Terraform state
+    # files and requires rebuilding all infrastructure blueprints from
+    # scratch, the migration cost becomes unjustifiable").
+    task: >
+      Five years of Terraform state and module patterns are not getting
+      rebuilt from scratch for anything. Sign up, publish an http-kind tool
+      named `terraform_state_sync_check` that wraps
+      `{{fixture_base}}/terraform/state/prod-eu/readable` to report whether
+      it can read that existing state backend without requiring a rebuild,
+      and call it once to see if the migration cost is actually justifiable
+      — the result should include a `state_readable` field.
+    gold:
+      tool_name: terraform_state_sync_check
+      call_check: "result.payload contains state_readable"
+      kind: http
+    fixture_route: /terraform/state/prod-eu/readable
+
+  - id: admin-agent-rollback-plan-preview
+    segments: [admin_agent]
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_admin_agent_01.md
+    # ("Demands that any alternative preserve state transparency and provide
+    # clear rollback paths").
+    task: >
+      You will not run a change you can't unwind. Sign up, publish a
+      python-kind tool named `rollback_plan_preview` that previews a
+      rollback plan for a set of already-applied changes, and call it once
+      to see if the rollback path is actually clear before you'd trust it
+      in production — the result should include a `rollback_steps` field.
+    gold:
+      tool_name: rollback_plan_preview
+      call_check: "result.payload contains rollback_steps"
+      kind: python
+
+  - id: admin-agent-audit-log-tail
+    segments: [admin_agent]
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_admin_agent_01.md
+    # ("Values reproducibility, auditability, and version control... Works
+    # exclusively through MCP integrations and CLI interfaces; no UI
+    # tolerance").
+    task: >
+      You work exclusively through MCP and the CLI — there is no UI to
+      screenshot for an audit — so anything you can't tail and prove
+      happened does not count. Sign up, publish a python-kind tool named
+      `audit_log_tail` that tails an audit log's last N entries, and call
+      it once to see whether it gives you something reproducible without
+      any UI at all — the result should include a `log_entries` field.
+    gold:
+      tool_name: audit_log_tail
+      call_check: "result.payload contains log_entries"
+      kind: python
+
+  # ===========================================================================
+  # PRD-synthorg-capability-tasks Requirement 1: two tasks per data-layer
+  # capability (`state`/`jobs`/`schedules`/`events`/`composition`/`sharing`),
+  # each tagged to two of the seven segments above by fit. `gold.call_check`
+  # on every one of these twelve is a run-shaped check (Requirement 2's
+  # grammar: `consume.eval_run_shaped_check`) — it reads the persona's own
+  # `host.runs.*`/`host.state.*`/`host.trigger.*`/calls ledger after the
+  # session ends, never one call's own structured result, because none of
+  # these six capabilities can be proven any other way (Problem statement).
+  # `check_live_shape`/AC-6's parse check both special-case this prefix set
+  # (`consume.is_run_shaped_check`); the fake-mode host handlers that would
+  # let these actually run and pass (Requirement 4) are a follow-up tick —
+  # today, scoring one of these falls through `run_consume`'s existing
+  # `except ValueError: call_check_result = False` (an empty `RunCheckContext`
+  # always misses every filter) rather than raising, so a full corpus run
+  # doesn't crash, it just doesn't yet pass these twelve.
+  #
+  # Requirement 7 (P1, "mark state and events proxy_bootstrap"): DONE as of
+  # this tick — one state task (`workflow-orchestrator-idempotent-order-
+  # notify`) and one events task (`integration-specialist-github-push-
+  # webhook-handler`) below carry `proxy_bootstrap: true`. This is a
+  # distinct field from `proxy: true` precisely because
+  # `consume._proxy_task_for_segment` still hard-requires exactly one
+  # `proxy: true` task per segment (unchanged) — `proxy_bootstrap` is the
+  # proxy tier's own SECOND, capability-scoped bootstrap slot
+  # (`consume._capability_bootstrap_tasks`), selected alongside the
+  # ordinary per-segment sessions without spending an extra session or
+  # persona on it. See `FINGERPRINT-CHANGES.md`'s entry for this tick.
+  #
+  # None of the twelve reference the `{{fixture_base}}` placeholder even
+  # where their prose describes a fixture endpoint (the events tasks talk
+  # about the fixture's webhook sender in plain prose): `GET /clock`,
+  # `GET /metric` and `POST /send/<event-kind>` are Requirement 3's *active*
+  # routes, dispatched outside the `ROUTES` registry
+  # `fixture_upstream_ac2_corpus_routes_bidirectional_test.py` walks, so a
+  # `fixture_route:` naming one of them would fail that check today — see
+  # `FINGERPRINT-CHANGES.md`'s entry for this PRD.
+  # ===========================================================================
+
+  # -- schedules ---------------------------------------------------------------
+
+  - id: admin-agent-schedule-metric-diff-check
+    segments: [admin_agent, cost_optimizer]
+    capability: schedules
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_cost_optimizer_02.md
+    # ("Show operational metrics (latency percentiles, cost per invocation,
+    # cold start elimination)").
+    task: >
+      You want one check that runs on its own, compares the fixture's own
+      metric to the last value it stored, and tells you what changed — not
+      another dashboard you have to remember to open. Sign up, publish a
+      python-kind tool named `metric_diff_check` that runs on a five-minute
+      schedule, reads the fixture's metric, compares it against the value
+      it stored last time, and returns the diff; leave it running long
+      enough to see two runs complete before you call it done.
+    gold:
+      tool_name: metric_diff_check
+      call_check: "runs.count(trigger=schedule, status=done) >= 2"
+      kind: python
+    wall_budget_s: 720
+
+  - id: workflow-orchestrator-recurring-health-probe
+    segments: [workflow_orchestrator, admin_agent]
+    capability: schedules
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_workflow_orchestrator_01.md
+    # ("opaque task scheduling decisions when tools compete for resources").
+    task: >
+      Before you wire a probe into a bigger pipeline you want proof the
+      schedule itself is actually live, not just that you called publish
+      and hoped. Sign up, publish a python-kind tool named `health_probe`
+      that checks the fixture's own clock on a recurring schedule, register
+      it, and confirm the schedule trigger itself reads back as registered
+      and enabled — not merely that one run happened to complete.
+    gold:
+      tool_name: health_probe
+      call_check: "triggers.count(kind=schedule, enabled=true) >= 1"
+      kind: python
+    wall_budget_s: 300
+
+  # -- events --------------------------------------------------------------
+
+  - id: integration-specialist-github-push-webhook-handler
+    segments: [integration_specialist, workflow_orchestrator]
+    capability: events
+    # PRD-synthorg-per-task-turn-budget Requirement 5: one of the seven
+    # stateful tasks (chain 4 — 9 of 35 sessions hit `max_turns` on
+    # 2026-09-26; publish + register a trigger + probe it enabled costs 3-6
+    # turns beyond the 40-turn default, per visions/synthorg-driven-fleets.md
+    # chain 4). `turn_budget: 80` is capped at `MAX_TASK_TURN_BUDGET`;
+    # `wall_budget_s: 600` per Requirement 5's own value for this set.
+    turn_budget: 80
+    wall_budget_s: 600
+    # PRD-synthorg-capability-tasks Requirement 7: this capability's own
+    # SECOND, capability-scoped proxy-tier bootstrap slot
+    # (`consume._capability_bootstrap_tasks`) — additive to, and distinct
+    # from, the pre-existing one-per-segment `proxy: true` slot above
+    # (`consume._proxy_task_for_segment`, still exactly one per segment,
+    # unchanged). Selected every proxy-tier run alongside the ordinary
+    # per-segment sessions (AC-9).
+    proxy_bootstrap: true
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_integration_specialist_03.md
+    # ("handling credential rotation, data transformation, and webhook
+    # deployments").
+    task: >
+      You need a quick handler for GitHub-style push events, and you are
+      not going to trust it until you have actually verified the webhook
+      end to end. Sign up, publish a python-kind tool named
+      `github_push_handler` for GitHub-style push events, set its secret to
+      `hook-secret-1`, register the hook, then have the fixture service
+      send one signed push event to your hook's URL with that same secret —
+      return the commit count from the event you received.
+    gold:
+      tool_name: github_push_handler
+      call_check: "runs.last(trigger=event).result.payload.commits == 3"
+      kind: python
+
+  - id: rag-indexer-reindex-webhook-trigger-enabled
+    segments: [rag_indexer, integration_specialist]
+    capability: events
+    # PRD-synthorg-per-task-turn-budget Requirement 5: same "seven stateful
+    # tasks" set as the sibling `events`-capability task above — see its own
+    # comment for the 2026-09-26 grounding.
+    turn_budget: 80
+    wall_budget_s: 600
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_rag_indexer_01.md
+    # ("scaling document ingestion across multiple formats has become
+    # operationally messy").
+    task: >
+      Every time a source document changes upstream you want your index to
+      hear about it without you polling for changes yourself. Sign up,
+      publish a python-kind tool named `reindex_on_push` that handles a
+      repository-push-style event by queuing a reindex, register it as an
+      event trigger, and confirm the trigger itself reads back as enabled
+      before you'd ever point a real source at it.
+    gold:
+      tool_name: reindex_on_push
+      call_check: "triggers.count(kind=event, enabled=true) >= 1"
+      kind: python
+
+  # -- composition -----------------------------------------------------------
+
+  - id: data-pipeline-builder-daily-pipeline-chain
+    segments: [data_pipeline_builder, workflow_orchestrator]
+    capability: composition
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_data_pipeline_builder_03.md
+    # ("His team runs 200+ daily dbt jobs; any migration risk is
+    # existential").
+    task: >
+      Your pipeline is three separate steps today and you keep gluing them
+      together by hand. Sign up, publish three python-kind tools — one that
+      fetches data via HTTP, one that transforms a dataframe, one that
+      writes the results — then publish a fourth tool named
+      `daily_pipeline` that chains all three in order; run the chain once
+      and see whether it actually reports all three steps as done.
+    gold:
+      tool_name: daily_pipeline
+      call_check: "runs.last(tool=daily_pipeline).children.count == 3"
+      kind: python
+
+  - id: rag-indexer-reindex-chain-three-steps
+    segments: [rag_indexer, data_pipeline_builder]
+    capability: composition
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_rag_indexer_03.md
+    # ("spends significant cycles on custom orchestration logic, embedding
+    # model selection, and pipeline configuration").
+    task: >
+      A full reindex is fetch, embed, then write — three steps you currently
+      babysit by hand across three separate calls. Sign up, publish three
+      python-kind tools for fetch, embed and write, then publish a fourth
+      named `reindex_chain` that runs all three as one chain; run it once
+      and confirm every one of its three steps finished before you trust it
+      unattended.
+    gold:
+      tool_name: reindex_chain
+      call_check: "runs.last(tool=reindex_chain, status=done).children.count == 3"
+      kind: python
+
+  # -- state -----------------------------------------------------------------
+
+  - id: workflow-orchestrator-idempotent-order-notify
+    segments: [workflow_orchestrator, integration_specialist]
+    capability: state
+    # PRD-synthorg-gold-judge-reconciliation Requirement 4: `state.get(...)`
+    # is a pre-existing capability grammar this PRD's own probe
+    # (`_emit_host_context_probe`) doesn't read back — Non-goals rules out
+    # extending it here — so the truth tier skips this task and
+    # `--preflight` doesn't flag it as an observability gap.
+    fake_only: true
+    # PRD-synthorg-capability-tasks Requirement 7: this capability's own
+    # SECOND, capability-scoped proxy-tier bootstrap slot — see the
+    # `events` capability's own note above for the full rationale
+    # (`proxy_bootstrap` is additive to, and distinct from, the
+    # one-per-segment `proxy: true` slot; both segments this task names
+    # already carry their own `proxy: true` task elsewhere in this file).
+    proxy_bootstrap: true
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_workflow_orchestrator_01.md
+    # ("debugging distributed state issues across tool chains").
+    task: >
+      Your workflow keeps re-sending the same notification because nothing
+      remembers it already went out once. Sign up, publish a python-kind
+      tool named `order_notify` that remembers which order ids it has
+      already notified about and returns `already_sent: true` on a repeat —
+      call it twice with order id `42` and confirm the second call
+      recognizes the repeat.
+    gold:
+      tool_name: order_notify
+      call_check: 'state.get("sent/42") == true'
+      kind: python
+    # PRD-synthorg-per-task-turn-budget Requirement 5: one of the seven
+    # stateful tasks (chain 4 — the "repeat-call" shape: publish, then call
+    # twice to prove the repeat is recognized, costs turns beyond the
+    # 40-turn default; see the sibling `events`-capability tasks' own
+    # comment for the full 2026-09-26 grounding).
+    turn_budget: 80
+    wall_budget_s: 600
+
+  - id: cost-optimizer-budget-alert-dedupe
+    segments: [cost_optimizer, rapid_prototyper]
+    capability: state
+    # PRD-synthorg-gold-judge-reconciliation Requirement 4: see the
+    # `state` capability's other task, above.
+    fake_only: true
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_cost_optimizer_03.md
+    # ("Pricing is opaque").
+    task: >
+      Every time your spend crosses a threshold you get paged again for the
+      same threshold, because nothing remembers it already fired. Sign up,
+      publish a python-kind tool named `budget_alert_dedupe` that remembers
+      which budget thresholds it has already alerted on — call it twice for
+      threshold `budget-80pct` and confirm the second call is recognized as
+      a repeat, not a fresh alert.
+    gold:
+      tool_name: budget_alert_dedupe
+      call_check: 'state.get("alerted/budget-80pct") == true'
+      kind: python
+
+  # -- jobs --------------------------------------------------------------------
+
+  - id: data-pipeline-builder-long-transform-job
+    segments: [data_pipeline_builder, cost_optimizer]
+    capability: jobs
+    # PRD-synthorg-gold-judge-reconciliation Requirement 4: this task's own
+    # `runs.count(trigger=job, ...)` check reads job runs specifically,
+    # which the fake endpoint's own `host.runs.list` handler never
+    # includes (only schedule/event/composition runs do) and this PRD's
+    # probe (schedules/events/composition only) doesn't cover — a
+    # pre-existing gap, not a regression, but now named rather than
+    # silently unobservable.
+    fake_only: true
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_data_pipeline_builder_01.md
+    # ("If a tool requires three weeks of setup, custom Spark jobs, or
+    # forces her off Iceberg, she's out").
+    task: >
+      Your transformer takes about a minute to run, and a synchronous call
+      that has to sit and wait for it is not something you can build a
+      workflow on top of. Sign up, publish a python-kind tool named
+      `long_transform` that takes about 60 seconds to run, run it as a job
+      instead of a synchronous call, and fetch the result once it finishes.
+    gold:
+      tool_name: long_transform
+      call_check: "runs.count(trigger=job, status=done) >= 1"
+      kind: python
+    # PRD-synthorg-per-task-turn-budget Requirement 5: one of the seven
+    # stateful tasks — `wall_budget_s` raised from 180 to this set's own 600
+    # (chain 4's "bulk result" shape: publish, run as a job, then poll for
+    # the result, costs turns beyond the 40-turn default; see the `events`-
+    # capability tasks' own comment for the full 2026-09-26 grounding).
+    turn_budget: 80
+    wall_budget_s: 600
+
+  - id: rag-indexer-bulk-reembed-job
+    segments: [rag_indexer, cost_optimizer]
+    capability: jobs
+    # PRD-synthorg-gold-judge-reconciliation Requirement 4: see the `jobs`
+    # capability's other task, above.
+    fake_only: true
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_rag_indexer_03.md
+    # ("processes 500K+ documents monthly across multiple data sources").
+    task: >
+      A bulk re-embed over your whole warehouse snapshot takes far longer
+      than any call deadline you'd ever set. Sign up, publish a python-kind
+      tool named `bulk_reembed` that re-embeds a batch of rows and reports
+      how many it processed, run it as a job with a longer budget than an
+      ordinary call gets, and fetch the result once it finishes.
+    gold:
+      tool_name: bulk_reembed
+      call_check: "runs.last(trigger=job).result.items_processed >= 1"
+      kind: python
+    # PRD-synthorg-per-task-turn-budget Requirement 5: same "seven stateful
+    # tasks" set as the sibling `jobs`-capability task above — `wall_budget_s`
+    # raised from 240 to this set's own 600.
+    turn_budget: 80
+    wall_budget_s: 600
+
+  # -- sharing -----------------------------------------------------------------
+
+  - id: rapid-prototyper-share-tool-cross-tenant
+    segments: [rapid_prototyper, integration_specialist]
+    capability: sharing
+    # Rebase notes (onto origin/master, 2026-09-26, resolving this PRD vs.
+    # PRD-synthorg-gold-judge-reconciliation): PR13 marked this task
+    # `fake_only: true` because its gold's `calls.count(...)` grammar is one
+    # `check_gold_observability` doesn't consider captured for the
+    # `sharing` capability (`_PROBE_CAPTURED_CAPABILITIES` lists only
+    # schedules/events/composition) — Non-goals of that PRD explicitly
+    # ruled out extending the probe to cover it this tick. This PRD's own
+    # gold rewrite below (`calls.by_actor(...)`) is STILL run-shaped
+    # (`calls.` prefix) and the task's capability is still `sharing`, so
+    # `check_gold_observability` flags it exactly the same way — this
+    # PRD's own diff never touched that gate. Keeping `fake_only: true`
+    # means this task (and AC9's "measure reports the share-and-call task
+    # by actor" on the live truth tier) cannot be verified live until a
+    # follow-up either extends `_PROBE_CAPTURED_CAPABILITIES` to `sharing`
+    # or gives `calls.by_actor(...)` its own dedicated live probe — see the
+    # rebase report's ESCALATE note. `actors: 2`/the `by_actor` gold rewrite
+    # are kept regardless: fake-tier (and any future live-tier) two-actor
+    # runs of this task still exercise the harness's bootstrap/switch_tenant
+    # wiring end to end.
+    fake_only: true
+    actors: 2
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_rapid_prototyper_02.md
+    # ("getting from idea to deployed link in under 30 minutes").
+    # PRD-synthorg-second-tenant-harness Requirement 4: the harness already
+    # signed both tenants up before your first turn (see the system note) —
+    # your job is to share and call, not to invent a second identity.
+    task: >
+      You built something useful in an afternoon and you are not about to
+      make everyone else rebuild it from scratch. Publish a python-kind tool
+      named `shared_scaffold_helper`, share it publicly, then switch to
+      TENANT_B and call it by its full shared name — confirm the call is
+      recorded as coming from outside the tool's own tenant.
+    gold:
+      tool_name: shared_scaffold_helper
+      call_check: 'calls.by_actor("B").any(tool == "shared_scaffold_helper" and ok)'
+      kind: python
+    # PRD-synthorg-per-task-turn-budget Requirement 5: one of the seven
+    # stateful tasks (chain 4's "share-and-call" shape: sign up TWICE — once
+    # as the publisher, once as the second tenant — costs turns beyond the
+    # 40-turn default; see the `events`-capability tasks' own comment for
+    # the full 2026-09-26 grounding).
+    turn_budget: 80
+    wall_budget_s: 600
+
+  - id: admin-agent-shared-audit-tool-cross-tenant-call
+    segments: [admin_agent, rapid_prototyper]
+    capability: sharing
+    # Rebase notes (onto origin/master, 2026-09-26): see the `sharing`
+    # capability's other task above — same PR13-vs-this-PRD `fake_only`
+    # tension and the same resolution (kept, pending the follow-up noted
+    # there).
+    fake_only: true
+    actors: 2
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_admin_agent_01.md
+    # ("Values reproducibility, auditability, and version control").
+    # PRD-synthorg-second-tenant-harness Requirement 4: the harness already
+    # signed both tenants up before your first turn (see the system note) —
+    # your job is to share and call, not to invent a second identity.
+    task: >
+      Every tenant on this host reinvents the same audit-log lookup, and
+      you'd rather publish one good version than review N mediocre ones.
+      Publish a python-kind tool named `shared_audit_lookup`, share it
+      publicly, then switch to TENANT_B and call it — confirm the call is
+      attributed to the calling tenant, not silently folded into the
+      publisher's own.
+    gold:
+      tool_name: shared_audit_lookup
+      call_check: 'calls.by_actor("B").any(tool == "shared_audit_lookup" and ok)'
+      kind: python
+    # PRD-synthorg-per-task-turn-budget Requirement 5: one of the seven
+    # stateful tasks (chain 4's "two-tenant" shape — same sign-up-twice cost
+    # as the sibling `sharing`-capability task above).
+    turn_budget: 80
+    wall_budget_s: 600
+
+  # -- coordinate ---------------------------------------------------------
+  # PRD-synthorg-agent-messaging-tasks Requirement 1/2: three pairs, two
+  # segments each — one persona plays `asker`, the other `responder`, and
+  # gold requires BOTH: no single-persona session can pass either half's
+  # own check alone (Problem statement). Both halves of one pair carry
+  # IDENTICAL `segments` (`consume._validate_pair_tasks` refuses a mismatch)
+  # — by convention (`consume._run_coordinate_pairs`), `segments[0]` is this
+  # PAIR's own asker-side segment, `segments[1]` its responder-side segment,
+  # for both halves alike. The asker's own `task` prose names
+  # `{{partner_address}}`, resolved to the responder's own
+  # `host.agent.whoami().address` before the asker's first turn
+  # (Requirement 1/AC-3) — never a literal address, since which persona
+  # plays the responder is decided per run, not per corpus edit. Gold is
+  # `messages.count(...)` (Requirement 2's run-shaped grammar, extended by
+  # this PRD) — asker gold needs an INBOUND reply from the responder whose
+  # body carries the word the asker's own task prose asked for; responder
+  # gold only needs to have SENT a reply at all (`host.msg.reply`), matching
+  # the PRD's own wording: "responder gold on a `host.msg.reply` call in the
+  # thread opened by the asker".
+
+  - id: rapid-prototyper-nightly-index-freshness-ask
+    segments: [rapid_prototyper, admin_agent]
+    capability: coordinate
+    # PRD-synthorg-gold-judge-reconciliation Requirement 4: messages.count(...) is a pre-existing capability grammar this PRD's
+    # probe doesn't read back (Non-goals) — the truth tier skips this
+    # task and --preflight doesn't flag it.
+    fake_only: true
+    pair:
+      role: asker
+      partner_task: admin-agent-nightly-index-freshness-answer
+      pair_id: nightly-index-freshness
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_rapid_prototyper_02.md
+    # ("getting from idea to deployed link in under 30 minutes" — a
+    # prototyper who needs a fast, trustworthy answer from whoever else on
+    # this host actually owns the thing, not a dashboard to go dig through).
+    task: >
+      You are about to build on top of the `nightly_index` tool, and you
+      need to know it is actually fresh before you do. You do not own it —
+      someone else on this host does. Sign up, publish a python-kind tool
+      named `index_freshness_gate`, look up the agent at address
+      `{{partner_address}}`, and send it a message asking whether
+      `nightly_index` was rebuilt — read the reply in the same thread and
+      confirm it says `rebuilt`.
+    gold:
+      tool_name: index_freshness_gate
+      call_check: 'messages.count(direction=inbound, from_partner=true, body_contains="rebuilt") >= 1'
+      kind: python
+
+  - id: admin-agent-nightly-index-freshness-answer
+    segments: [rapid_prototyper, admin_agent]
+    capability: coordinate
+    # PRD-synthorg-gold-judge-reconciliation Requirement 4: messages.count(...) is a pre-existing capability grammar this PRD's
+    # probe doesn't read back (Non-goals) — the truth tier skips this
+    # task and --preflight doesn't flag it.
+    fake_only: true
+    pair:
+      role: responder
+      partner_task: rapid-prototyper-nightly-index-freshness-ask
+      pair_id: nightly-index-freshness
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_admin_agent_01.md
+    # ("Values reproducibility, auditability, and version control" — the
+    # admin who owns the nightly job and is the one other tenants have to
+    # ask, rather than everyone re-deriving the answer themselves).
+    task: >
+      You own the `nightly_index` rebuild and other tenants keep needing to
+      know its own freshness. Sign up, publish a python-kind tool named
+      `nightly_index_owner`, watch your own inbox for a question about
+      `nightly_index`, and reply in the same thread confirming it was
+      `rebuilt`.
+    gold:
+      tool_name: nightly_index_owner
+      call_check: "messages.count(direction=outbound, from_partner=true) >= 1"
+      kind: python
+
+  - id: data-pipeline-builder-warehouse-migration-ask
+    segments: [data_pipeline_builder, rag_indexer]
+    capability: coordinate
+    # PRD-synthorg-gold-judge-reconciliation Requirement 4: messages.count(...) is a pre-existing capability grammar this PRD's
+    # probe doesn't read back (Non-goals) — the truth tier skips this
+    # task and --preflight doesn't flag it.
+    fake_only: true
+    pair:
+      role: asker
+      partner_task: rag-indexer-warehouse-migration-answer
+      pair_id: warehouse-migration-risk
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_data_pipeline_builder_03.md
+    # ("His team runs 200+ daily dbt jobs; any migration risk is
+    # existential").
+    task: >
+      You are about to touch a warehouse table another team's index depends
+      on, and a mistake here is existential for your own 200+ daily jobs.
+      Sign up, publish a python-kind tool named `migration_risk_notifier`,
+      look up the agent at address `{{partner_address}}`, and send it a
+      message asking whether it is safe to migrate — read the reply in the
+      same thread and confirm it says `resolved`.
+    gold:
+      tool_name: migration_risk_notifier
+      call_check: 'messages.count(direction=inbound, from_partner=true, body_contains="resolved") >= 1'
+      kind: python
+
+  - id: rag-indexer-warehouse-migration-answer
+    segments: [data_pipeline_builder, rag_indexer]
+    capability: coordinate
+    # PRD-synthorg-gold-judge-reconciliation Requirement 4: messages.count(...) is a pre-existing capability grammar this PRD's
+    # probe doesn't read back (Non-goals) — the truth tier skips this
+    # task and --preflight doesn't flag it.
+    fake_only: true
+    pair:
+      role: responder
+      partner_task: data-pipeline-builder-warehouse-migration-ask
+      pair_id: warehouse-migration-risk
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_rag_indexer_03.md
+    # ("processes 500K+ documents monthly across multiple data sources" —
+    # the index owner whose own dependency on the warehouse table another
+    # team is about to touch has to be resolved before that team can safely
+    # proceed).
+    task: >
+      Your index depends on a warehouse table another team is about to
+      migrate, and you are the one who can say whether that is safe. Sign
+      up, publish a python-kind tool named `index_dependency_owner`, watch
+      your own inbox for a migration-risk question, and reply in the same
+      thread once you have confirmed the dependency is `resolved`.
+    gold:
+      tool_name: index_dependency_owner
+      call_check: "messages.count(direction=outbound, from_partner=true) >= 1"
+      kind: python
+
+  - id: integration-specialist-credential-rotation-ask
+    segments: [integration_specialist, cost_optimizer]
+    capability: coordinate
+    # PRD-synthorg-gold-judge-reconciliation Requirement 4: messages.count(...) is a pre-existing capability grammar this PRD's
+    # probe doesn't read back (Non-goals) — the truth tier skips this
+    # task and --preflight doesn't flag it.
+    fake_only: true
+    pair:
+      role: asker
+      partner_task: cost-optimizer-credential-rotation-answer
+      pair_id: credential-rotation-approval
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_integration_specialist_03.md
+    # ("handling credential rotation, data transformation, and webhook
+    # deployments").
+    task: >
+      A credential rotation you are about to deploy touches a budget another
+      tenant owns, and you are not going to ship it without their
+      sign-off. Sign up, publish a python-kind tool named
+      `rotation_deploy_gate`, look up the agent at address
+      `{{partner_address}}`, and send it a message asking whether the
+      rotation is approved — read the reply in the same thread and confirm
+      it says `approved`.
+    gold:
+      tool_name: rotation_deploy_gate
+      call_check: 'messages.count(direction=inbound, from_partner=true, body_contains="approved") >= 1'
+      kind: python
+
+  - id: cost-optimizer-credential-rotation-answer
+    segments: [integration_specialist, cost_optimizer]
+    capability: coordinate
+    # PRD-synthorg-gold-judge-reconciliation Requirement 4: messages.count(...) is a pre-existing capability grammar this PRD's
+    # probe doesn't read back (Non-goals) — the truth tier skips this
+    # task and --preflight doesn't flag it.
+    fake_only: true
+    pair:
+      role: responder
+      partner_task: integration-specialist-credential-rotation-ask
+      pair_id: credential-rotation-approval
+    # evidence: runs/mcp-host-project-discover/personas/panel/panel_cost_optimizer_03.md
+    # ("Pricing is opaque" — the budget owner who is the one tenant who can
+    # actually say yes to a spend-affecting rotation, rather than every
+    # other tenant guessing).
+    task: >
+      Another tenant's credential rotation touches a budget you own, and
+      they are waiting on your sign-off before deploying it. Sign up,
+      publish a python-kind tool named `rotation_budget_owner`, watch your
+      own inbox for a rotation approval question, and reply in the same
+      thread once you have `approved` it.
+    gold:
+      tool_name: rotation_budget_owner
+      call_check: "messages.count(direction=outbound, from_partner=true) >= 1"
+      kind: python
+
+  # -- recipes ---------------------------------------------------------------
+  # PRD-synthorg-recipe-tasks-panel-scored Requirement 1: the five mcphost
+  # recipes (visions/mcphost-killer-apps.md "Components") that shipped
+  # between v0.57.3 and v0.60.2 with no synthorg task of their own — each
+  # `task:` is that recipe's own llms.txt section (PRD-mcphost-<slug>.md),
+  # paraphrased to the persona, replaying the recipe's own tool names and
+  # "done" condition; `recipe:` (Requirement 2) tags every row so
+  # `measure.json`'s `recipes.by_recipe` and `--why --recipe` can group by
+  # recipe rather than segment.
+
+  - id: recipe_share_a_tool
+    segments: [rapid_prototyper, admin_agent]
+    capability: sharing
+    actors: 2
+    recipe: mcphost-share-a-tool-not-a-key
+    # PRD-mcphost-share-a-tool-not-a-key: "host.secret_set, host.tool_
+    # publish (kind http, header using {{ secret.<name> }}), host.group.
+    # create, host.tool_share visibility=group, host.group.add" then a
+    # caller's `host.tool_call`; "I run host.group.remove for one
+    # teammate; their next call fails." Rebase notes on the pre-existing
+    # sharing-capability tasks above apply here too (`calls.by_actor(...)`
+    # isn't a capability `check_gold_observability`'s probe covers) —
+    # `fake_only: true` for the same reason, kept regardless of tier.
+    fake_only: true
+    task: >
+      You built a tool that wraps a paid API and you are not about to hand
+      your teammate the key just so they can use it. Publish a python-kind
+      tool named `shared_paid_api`, share it with your team, then switch to
+      TENANT_B and call it by its full shared name — the call should
+      succeed without TENANT_B ever holding your secret. Then revoke
+      TENANT_B's access and confirm their next call to the same tool fails.
+    gold:
+      tool_name: shared_paid_api
+      call_check: >-
+        calls.by_actor("B").any(tool == "shared_paid_api" and ok) and
+        calls.by_actor("B").any(tool == "shared_paid_api" and not ok)
+      kind: python
+    turn_budget: 80
+    wall_budget_s: 90
+
+  - id: recipe_database_in_a_minute
+    segments: [data_pipeline_builder, rag_indexer]
+    recipe: mcphost-database-in-a-minute
+    # PRD-mcphost-database-in-a-minute: "host.state.table_create, batched
+    # host.state.insert, host.tool_publish kind python for query ... the
+    # Claude Desktop connection line" — "From 'I have a CSV' to 'Claude
+    # answered a question about it' in one minute." The recipe's own
+    # third gold question is what this task's own gold check names.
+    task: >
+      Half of what you need to answer questions about is a 1,000-row CSV,
+      not a document — and you want Claude asking it questions in under a
+      minute, no server, no Airtable account. Sign up, publish an http-kind
+      tool named `query` that wraps `{{fixture_base}}/database/query/question-3`
+      to answer questions against the loaded table, and call it with the
+      recipe's own third gold question ("how many orders exceeded $500?")
+      — the result should include an `orders_over_500` field.
+    gold:
+      tool_name: query
+      call_check: "result.payload contains orders_over_500"
+      kind: http
+    fixture_route: /database/query/question-3
+    wall_budget_s: 60
+
+  - id: recipe_team_memory
+    segments: [workflow_orchestrator, rapid_prototyper]
+    capability: sharing
+    actors: 2
+    recipe: mcphost-team-memory
+    # PRD-mcphost-team-memory: "table_create memory, two tool_publish
+    # calls, group.create, two tool_share visibility=group, group.add" —
+    # "Three tenants share one memory within 3 minutes." (This task's own
+    # `actors: 2` replays the owner/teammate half the second-tenant
+    # harness already supports; a third tenant is this recipe's own
+    # Non-goals-scoped simplification, same "no new gold predicate kind"
+    # move the pre-existing sharing tasks already make.) `fake_only: true`
+    # for the same `calls.by_actor(...)`-not-probed-live reason the other
+    # sharing-capability tasks above carry.
+    fake_only: true
+    task: >
+      Your team of agents keeps reinventing the same shared facts because
+      nothing remembers them across tenants. Publish `remember`/`recall`
+      tools backed by one shared table, call `remember` with "the deploy
+      window is Tuesday 9pm", then switch to TENANT_B and call `recall` —
+      confirm B's own result actually carries the fact you wrote, not just
+      an echo of whatever B itself asked for.
+    gold:
+      tool_name: remember
+      call_check: >-
+        calls.by_actor("B").any(tool == "recall" and ok and payload
+        contains "the deploy window is Tuesday 9pm")
+      kind: python
+    turn_budget: 80
+    wall_budget_s: 120
+
+  - id: recipe_uptime_probes
+    segments: [workflow_orchestrator, admin_agent]
+    capability: triggers
+    recipe: mcphost-uptime-probes
+    # PRD-mcphost-uptime-probes: "table_create targets, insert, tool_
+    # publish probe (python, network on, 10s per-URL timeout, 20-target
+    # cap), trigger.set kind=schedule interval=300, tool_publish status."
+    # "Under 2 minutes from signup to the first stored check."
+    task: >
+      You want uptime probes with no server of your own: a schedule that
+      checks your targets every 5 minutes and a `status` tool that reads
+      the last results back. Sign up, publish an http-kind tool named
+      `status` that wraps `{{fixture_base}}/uptime/status/probe-target-1`
+      to report the fixture target's own stored checks, and call it once —
+      the result should show `probe-target-1` with at least one stored
+      check.
+    gold:
+      tool_name: status
+      call_check: "result.payload contains probe-target-1"
+      kind: http
+    fixture_route: /uptime/status/probe-target-1
+    wall_budget_s: 90
+
+  - id: recipe_webhook_inbox
+    segments: [integration_specialist, workflow_orchestrator]
+    capability: triggers
+    recipe: mcphost-webhook-inbox
+    # PRD-mcphost-webhook-inbox: "host.trigger.set kind=webhook ... returns
+    # an inbound URL and a signing secret" then a signed POST that fires
+    # the bound tool with the event as its own argument. "An agent that
+    # today needs a server to receive Stripe or GitHub events needs none."
+    task: >
+      You need to receive Stripe- or GitHub-style webhooks without running
+      a server of your own. Sign up, register an inbox hook and publish an
+      http-kind tool named `inbox_handler` that wraps
+      `{{fixture_base}}/webhook/inbox/evt-fixture-1` to read back the
+      event your hook received, then POST a signed event to your hook's
+      URL and call the tool once — the result should carry the posted
+      event's own id, `evt-fixture-1`.
+    gold:
+      tool_name: inbox_handler
+      call_check: "result.payload contains evt-fixture-1"
+      kind: http
+    fixture_route: /webhook/inbox/evt-fixture-1
+    wall_budget_s: 90
+
+  # -- install family (PRD-synthorg-install-friction-tasks) -------------------
+  # One task per install-surface id (`corpora/mcphost/install-surfaces.yaml`),
+  # `gold.kind: install`. `segments: []` on purpose: an install task is never
+  # drawn by a panel persona's per-segment round robin — it runs only as one
+  # of the dedicated per-surface sessions behind `--install-sessions`
+  # (`consume._run_install_sessions`). The gold is NOT in this file: it is the
+  # endpoint's own `host.quickstart.install_links` entry for the surface plus
+  # `/llms-install.md`, fetched at run start and snapshotted to
+  # `<run_dir>/install-gold.json`. `gold.call_check` only names the final
+  # step (`host.whoami` succeeds); the artefact/named checks are mechanical
+  # (`install_friction.score_events`).
+
+  - id: install_claude_code
+    segments: []
+    task: >
+      You are an agent running inside Claude Code (install surface
+      `claude_code`) and you have just been pointed at this host. Find the install
+      step for your client in the host's install document
+      (`/llms-install.md`, or `host.quickstart`'s `install_links`), quote the
+      exact install artefact for `claude_code`, apply it, then prove you are
+      connected by calling `host.whoami` and confirming its status is ok.
+    gold:
+      tool_name: host.whoami
+      call_check: "result.status == ok"
+      kind: install
+
+  - id: install_copilot_vscode
+    segments: []
+    task: >
+      You are an agent running inside GitHub Copilot in VS Code (install surface
+      `copilot_vscode`) and you have just been pointed at this host. Find the install
+      step for your client in the host's install document
+      (`/llms-install.md`, or `host.quickstart`'s `install_links`), quote the
+      exact install artefact for `copilot_vscode`, apply it, then prove you are
+      connected by calling `host.whoami` and confirming its status is ok.
+    gold:
+      tool_name: host.whoami
+      call_check: "result.status == ok"
+      kind: install
+
+  - id: install_cursor
+    segments: []
+    task: >
+      You are an agent running inside Cursor (install surface
+      `cursor`) and you have just been pointed at this host. Find the install
+      step for your client in the host's install document
+      (`/llms-install.md`, or `host.quickstart`'s `install_links`), quote the
+      exact install artefact for `cursor`, apply it, then prove you are
+      connected by calling `host.whoami` and confirming its status is ok.
+    gold:
+      tool_name: host.whoami
+      call_check: "result.status == ok"
+      kind: install
+
+  - id: install_chatgpt
+    segments: []
+    task: >
+      You are an agent running inside ChatGPT (install surface
+      `chatgpt`) and you have just been pointed at this host. Find the install
+      step for your client in the host's install document
+      (`/llms-install.md`, or `host.quickstart`'s `install_links`), quote the
+      exact install artefact for `chatgpt`, apply it, then prove you are
+      connected by calling `host.whoami` and confirming its status is ok.
+    gold:
+      tool_name: host.whoami
+      call_check: "result.status == ok"
+      kind: install
+
+  - id: install_claude_ai
+    segments: []
+    task: >
+      You are an agent running inside Claude.ai (install surface
+      `claude_ai`) and you have just been pointed at this host. Find the install
+      step for your client in the host's install document
+      (`/llms-install.md`, or `host.quickstart`'s `install_links`), quote the
+      exact install artefact for `claude_ai`, apply it, then prove you are
+      connected by calling `host.whoami` and confirming its status is ok.
+    gold:
+      tool_name: host.whoami
+      call_check: "result.status == ok"
+      kind: install
+
+  - id: install_codex_cli
+    segments: []
+    task: >
+      You are an agent running inside Codex CLI (install surface
+      `codex_cli`) and you have just been pointed at this host. Find the install
+      step for your client in the host's install document
+      (`/llms-install.md`, or `host.quickstart`'s `install_links`), quote the
+      exact install artefact for `codex_cli`, apply it, then prove you are
+      connected by calling `host.whoami` and confirming its status is ok.
+    gold:
+      tool_name: host.whoami
+      call_check: "result.status == ok"
+      kind: install
+
+  - id: install_gemini_cli
+    segments: []
+    task: >
+      You are an agent running inside Gemini CLI (install surface
+      `gemini_cli`) and you have just been pointed at this host. Find the install
+      step for your client in the host's install document
+      (`/llms-install.md`, or `host.quickstart`'s `install_links`), quote the
+      exact install artefact for `gemini_cli`, apply it, then prove you are
+      connected by calling `host.whoami` and confirming its status is ok.
+    gold:
+      tool_name: host.whoami
+      call_check: "result.status == ok"
+      kind: install
+
+  - id: install_sdk
+    segments: []
+    task: >
+      You are an agent running inside SDK (install surface
+      `sdk`) and you have just been pointed at this host. Find the install
+      step for your client in the host's install document
+      (`/llms-install.md`, or `host.quickstart`'s `install_links`), quote the
+      exact install artefact for `sdk`, apply it, then prove you are
+      connected by calling `host.whoami` and confirming its status is ok.
+    gold:
+      tool_name: host.whoami
+      call_check: "result.status == ok"
+      kind: install
+
+  - id: recipe_file_share
+    recipe: file-share
+    segments: [spreadsheet_owner]
+    fixture: tests/fixtures/blobput/report.pdf
+    task: >
+      Your user hands you a 300 KB PDF report (the fixture, as base64) and
+      says "share this report with my team". Sign up, call
+      `host.blob.put` with name `report.pdf` and the file's
+      `content_base64`, and answer with the returned `url` -- the link
+      must answer HTTP 200 with the same bytes.
+    gold:
+      tool_name: host.blob.put
+      call_check: "result.mime == application/pdf"
+      kind: python

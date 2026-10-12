@@ -11,11 +11,13 @@ use mcphost::plans::{PlanCatalog, data_ceilings_of};
 use serde_json::json;
 use std::collections::BTreeSet;
 
-/// `^(state|table|docs|export|ts)_`, written out independently of the
-/// library's own prefix list.
+/// `^(state|table|docs|export|ts|blob|blobs)_`, written out independently
+/// of the library's own prefix list. PRD-mcphost-blob-retention-and-quota R4
+/// extends it with `blob`/`blobs` (`blobs_max`, `blob_bytes_max`,
+/// `blob_max_bytes`) rather than adding a second drift test.
 fn matches_prefix_regex(key: &str) -> bool {
     key.split_once('_')
-        .is_some_and(|(head, _)| ["state", "table", "docs", "export", "ts"].contains(&head))
+        .is_some_and(|(head, _)| ["state", "table", "docs", "export", "ts", "blob", "blobs"].contains(&head))
 }
 
 fn derived(flat: &[(String, i64)]) -> BTreeSet<String> {
@@ -29,7 +31,7 @@ fn keys(v: &serde_json::Value) -> BTreeSet<String> {
 /// One call of each data-verb family; the union of their `data.quota`.
 async fn union_of_verb_quotas(client: &McpClient) -> serde_json::Value {
     let mut union = serde_json::Map::new();
-    for tool in ["host.state.list", "host.table.list", "host.docs.status", "host.export"] {
+    for tool in ["host.state.list", "host.table.list", "host.docs.status", "host.blob.list", "host.export"] {
         let body = extract_structured(&client.tools_call(tool, json!({})).await.unwrap());
         for (k, v) in body["data"]["quota"].as_object().unwrap_or_else(|| panic!("{tool}: {body:?}")) {
             union.insert(k.clone(), v.clone());
@@ -54,7 +56,7 @@ async fn observed_keys_equal_the_set_derived_from_the_plan_struct() {
 
     let free_flat = server.state.plans.get("free").expect("free").ceilings_flat();
     let derived_set = derived(&free_flat);
-    assert!(derived_set.len() >= 9, "the plan struct names at least nine data ceilings: {derived_set:?}");
+    assert!(derived_set.len() >= 12, "the plan struct names at least nine data ceilings: {derived_set:?}");
     assert_eq!(observed, derived_set, "observed data.quota keys drifted from Plan::ceilings_flat");
 
     // The library's own generated set is the same derivation.

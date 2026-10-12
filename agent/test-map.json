@@ -1358,6 +1358,28 @@
       "AC6": "tests/ctrace_ac06_sweep_keeps_newest_200_within_24h.rs",
       "AC7": "tests/ctrace_ac07_replay_dry_runs_with_edited_args.rs",
       "AC8": "deferred -- operator-provisioned: live prod test after deploy (MCPHOST_LIVE=1 cargo test --test ctrace_ac08_live_prod_trace_and_replay)."
+    },
+    "blobput": {
+      "_prd": "PRD-mcphost-blob-put-get-signed-url.md (test_prefix: blobput)",
+      "AC1": "tests/blobput_ac01_corpus_has_binary_fixture_task.rs",
+      "AC2": "tests/blobput_ac02_pdf_put_sniffs_mime_and_serves_bytes.rs",
+      "AC3": "tests/blobput_ac03_signed_routes_share_403_and_410.rs",
+      "AC4": "tests/blobput_ac04_quota_refusals_and_plan_ceilings.rs",
+      "AC5": "tests/blobput_ac05_url_fetch_refusals_write_nothing.rs",
+      "AC6": "tests/blobput_ac06_python_bridge_reads_exact_bytes.rs",
+      "AC7": "tests/blobput_ac07_tenant_isolation.rs",
+      "AC8": "deferred -- operator-provisioned: live prod proof.sh after deploy."
+    },
+    "blobgc": {
+      "_prd": "PRD-mcphost-blob-retention-and-quota.md (test_prefix: blobgc)",
+      "AC1": "deferred -- operator-provisioned: live premise check on prod admin.usage.",
+      "AC2": "tests/blobgc_ac02_ttl_expiry_blob_expired_and_410.rs",
+      "AC3": "tests/blobgc_ac03_keep_latest_versions_gc_dry_run.rs",
+      "AC4": "tests/blobgc_ac04_nightly_prune_rows_files_orphans.rs",
+      "AC5": "tests/blobgc_ac05_data_quota_on_put_and_refusal.rs",
+      "AC6": "tests/blobgc_ac06_disk_floor_refuses_put.rs",
+      "AC7": "tests/blobgc_ac07_expiring_notice_once.rs",
+      "AC8": "deferred -- operator-provisioned: live prod retention-proof.sh after deploy."
     }
   }
 }

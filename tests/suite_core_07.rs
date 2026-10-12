@@ -227,6 +227,18 @@ mod billing_ac10_webhook_mode_mismatch;
 mod billing_ac11_healthz_paying_tenants;
 #[path = "billing_ac13_checkout_reuse.rs"]
 mod billing_ac13_checkout_reuse;
+#[path = "blobgc_ac02_ttl_expiry_blob_expired_and_410.rs"]
+mod blobgc_ac02_ttl_expiry_blob_expired_and_410;
+#[path = "blobgc_ac03_keep_latest_versions_gc_dry_run.rs"]
+mod blobgc_ac03_keep_latest_versions_gc_dry_run;
+#[path = "blobgc_ac04_nightly_prune_rows_files_orphans.rs"]
+mod blobgc_ac04_nightly_prune_rows_files_orphans;
+#[path = "blobgc_ac05_data_quota_on_put_and_refusal.rs"]
+mod blobgc_ac05_data_quota_on_put_and_refusal;
+#[path = "blobgc_ac06_disk_floor_refuses_put.rs"]
+mod blobgc_ac06_disk_floor_refuses_put;
+#[path = "blobgc_ac07_expiring_notice_once.rs"]
+mod blobgc_ac07_expiring_notice_once;
 #[path = "blobguard_ac01_benign_corpus_not_refused.rs"]
 mod blobguard_ac01_benign_corpus_not_refused;
 #[path = "blobguard_ac02_type_and_magic_refused_415.rs"]
@@ -241,6 +253,18 @@ mod blobguard_ac05_allowlist_mode_png_fast;
 mod blobguard_ac06_one_table_one_set;
 #[path = "blobguard_ac07_active_content_svg.rs"]
 mod blobguard_ac07_active_content_svg;
+#[path = "blobput_ac01_corpus_has_binary_fixture_task.rs"]
+mod blobput_ac01_corpus_has_binary_fixture_task;
+#[path = "blobput_ac02_pdf_put_sniffs_mime_and_serves_bytes.rs"]
+mod blobput_ac02_pdf_put_sniffs_mime_and_serves_bytes;
+#[path = "blobput_ac03_signed_routes_share_403_and_410.rs"]
+mod blobput_ac03_signed_routes_share_403_and_410;
+#[path = "blobput_ac04_quota_refusals_and_plan_ceilings.rs"]
+mod blobput_ac04_quota_refusals_and_plan_ceilings;
+#[path = "blobput_ac05_url_fetch_refusals_write_nothing.rs"]
+mod blobput_ac05_url_fetch_refusals_write_nothing;
+#[path = "blobput_ac07_tenant_isolation.rs"]
+mod blobput_ac07_tenant_isolation;
 #[path = "bridgedisc_ac07_sandbox_api_doc_check.rs"]
 mod bridgedisc_ac07_sandbox_api_doc_check;
 #[path = "budget_ac01_ported_ledger_seven_tests.rs"]
@@ -1801,31 +1825,3 @@ mod reglist_ac04_workflow_checks_manifest_and_schema_on_every_push;
 mod reglist_ac06_readme_registry_and_quickstart_links_resolve;
 #[path = "revdebt_ac1_intent_card_pointers_resolve.rs"]
 mod revdebt_ac1_intent_card_pointers_resolve;
-#[path = "rowpol_ac01_sql_predicate_scopes_to_end_user_attribute.rs"]
-mod rowpol_ac01_sql_predicate_scopes_to_end_user_attribute;
-#[path = "rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0.rs"]
-mod rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0;
-#[path = "rowpol_ac03_unpolicied_table_zero_rows_for_end_user_all_for_tenant_key.rs"]
-mod rowpol_ac03_unpolicied_table_zero_rows_for_end_user_all_for_tenant_key;
-#[path = "rowpol_ac04_cte_and_subquery_both_rewritten_via_ast.rs"]
-mod rowpol_ac04_cte_and_subquery_both_rewritten_via_ast;
-#[path = "rowpol_ac05_docs_prefix_policy_zero_hits_lexical_and_embeddings.rs"]
-mod rowpol_ac05_docs_prefix_policy_zero_hits_lexical_and_embeddings;
-#[path = "rowpol_ac06_empty_allowed_set_1_equals_0_and_denies_docs.rs"]
-mod rowpol_ac06_empty_allowed_set_1_equals_0_and_denies_docs;
-#[path = "rowpol_ac07_audit_verify_intact_then_tampered.rs"]
-mod rowpol_ac07_audit_verify_intact_then_tampered;
-#[path = "rowpol_ac08_audit_chain_pages_and_refuses_end_users.rs"]
-mod rowpol_ac08_audit_chain_pages_and_refuses_end_users;
-#[path = "rowpol_ac09_filtered_vs_unfiltered_p95_within_3ms.rs"]
-mod rowpol_ac09_filtered_vs_unfiltered_p95_within_3ms;
-#[path = "rowpol_ac10_policy_set_refuses_a_widening_rule.rs"]
-mod rowpol_ac10_policy_set_refuses_a_widening_rule;
-#[path = "run_metrics_handoff_glob_regression.rs"]
-mod run_metrics_handoff_glob_regression;
-#[path = "runoverflow_ac03_progress_counter_monotonic_validation.rs"]
-mod runoverflow_ac03_progress_counter_monotonic_validation;
-#[path = "runoverflow_ac04_inline_part_zero_and_out_of_range_not_found.rs"]
-mod runoverflow_ac04_inline_part_zero_and_out_of_range_not_found;
-#[path = "runoverflow_ac05_http_async_2mib_overflows_to_parts.rs"]
-mod runoverflow_ac05_http_async_2mib_overflows_to_parts;

@@ -11,10 +11,11 @@ use serde_json::{Map, Value, json};
 /// One call of each data-verb family; returns the union of their
 /// `data.quota` objects. `host.export` goes last: it starts a background job.
 pub async fn union_of_verb_quotas(client: &McpClient) -> Value {
-    let calls: [(&str, Value); 4] = [
+    let calls: [(&str, Value); 5] = [
         ("host.state.list", json!({})),
         ("host.table.list", json!({})),
         ("host.docs.status", json!({})),
+        ("host.blob.list", json!({})),
         ("host.export", json!({})),
     ];
     let mut union = Map::new();

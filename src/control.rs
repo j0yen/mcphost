@@ -62,7 +62,7 @@ pub async fn data_quota_for(state: &AppState, tenant: &Tenant) -> Result<Option<
     let Some(plan) = state.plans.get(&tenant.plan) else {
         return Ok(None);
     };
-    let usage = state.db.data_usage(tenant.id).await?;
+    let usage = state.db.data_usage_at(tenant.id, crate::blobs::now(state)).await?;
     Ok(Some(crate::plans::DataQuota::render(plan, &usage)))
 }
 

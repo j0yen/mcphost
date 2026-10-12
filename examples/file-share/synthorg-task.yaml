@@ -1,0 +1,25 @@
+# Consumer task for the synthorg mcphost corpus (corpora/mcphost/
+# consumer-tasks.yaml in the synthorg repo, see its own header comment for
+# the id/segments/task/gold schema and the call_check mini-grammar).
+# The "file share" recipe (R7, recipe: file-share). The synthorg corpus is
+# vendored with this block appended at tests/fixtures/blobput/
+# synthorg-consumer-tasks.yaml (upstream commit and sha256 in the .source
+# beside it); blobput_ac01 asserts the appended tail equals this block.
+#
+# Segment: spreadsheet_owner, handed a PDF report and asked to share it
+# with a team. Fixture: tests/fixtures/blobput/report.pdf (300 KB).
+tasks:
+  - id: recipe_file_share
+    recipe: file-share
+    segments: [spreadsheet_owner]
+    fixture: tests/fixtures/blobput/report.pdf
+    task: >
+      Your user hands you a 300 KB PDF report (the fixture, as base64) and
+      says "share this report with my team". Sign up, call
+      `host.blob.put` with name `report.pdf` and the file's
+      `content_base64`, and answer with the returned `url` -- the link
+      must answer HTTP 200 with the same bytes.
+    gold:
+      tool_name: host.blob.put
+      call_check: "result.mime == application/pdf"
+      kind: python

@@ -72,6 +72,19 @@ written; `force: true` publishes anyway and the response `gates` entry reads `ve
 forced: true`. A `$.steps[i]` at or past the step's own position is `will_fail` with
 `reason: "forward reference"`. The publish response lists `prev_fields_source`, `runs_sampled`
 and `observed_drift` (declared outputs no run ever returned).
+`host.blob.put(name, content_base64 | url, mime?)` stores a file of any type under the tenant and
+returns `{id, name, bytes, mime, sha256, url, expires, version}`; `url` is a signed link
+(`GET /blobs/{id}`, valid 24 h) that serves the bytes with the stored `Content-Type`
+(PRD-mcphost-blob-put-get-signed-url). `host.blob.get`, `host.blob.list` (with `total_bytes`),
+`host.blob.delete` and `host.blob.url` (`ttl_s` up to 7 days) complete the set. `mime` is
+explicit, else sniffed from one `BLOB_TYPES` table (which `host.docs.put` now reads too), else
+`application/octet-stream`. `url` makes the host fetch the file (10 s, no redirects, refused for
+private hosts). Plans gain `blobs_max`, `blob_bytes_max` and `blob_max_bytes` (free 100 / 50 MiB /
+20 MiB), refused as `quota_blobs`, `quota_blob_bytes` and `blob_too_large` with `{limit, used}`.
+A python tool reads and writes files with `mcphost.blob.get(id_or_name)` and
+`mcphost.blob.put(name, data)` under `network: none`. `/exports/{id}`, `/charts/{id}` and
+`/blobs/{id}` now share one `signed_url` module (403 bad signature, 410 expired). Migration
+`0083_blobs` adds the `blobs` table.
 
 ## v0.107.13 — 2026-10-10
 

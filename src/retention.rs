@@ -80,6 +80,15 @@ pub const POLICY_TABLES: &[PolicyTable] = &[
         env_var: "MCPHOST_RETENTION_MESSAGES_DAYS",
         default_days: 90,
     },
+    // PRD-mcphost-blob-retention-and-quota R3: not an age window like the
+    // rows above but a grace period -- a blob is removed once its own
+    // `expires_at` plus this many days has passed. Executed by
+    // [`prune_blobs`] (rows and files), not by [`EXECUTABLE_TABLES`].
+    PolicyTable {
+        name: "blobs",
+        env_var: "MCPHOST_RETENTION_BLOBS_GRACE_DAYS",
+        default_days: 1,
+    },
 ];
 
 /// Reads one policy table's window from its env var, falling back to
@@ -227,6 +236,205 @@ fn delete_batches(
     Ok(total)
 }
 
+/// What one [`purge_expired_blobs`] pass removed.
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct BlobPurge {
+    pub rows: i64,
+    pub bytes: i64,
+}
+
+fn unlink_quiet(path: &Path) {
+    // A missing file is the normal crash-between-steps case; anything else
+    // is left for the orphan sweep to retry.
+    let _ = std::fs::remove_file(path);
+}
+
+/// PRD-mcphost-blob-retention-and-quota R3/R5: removes every blob row whose
+/// `expires_at` is at or before `cutoff` (and every superseded version the
+/// tenant policy aged out), unlinking each file right after its row goes, in
+/// batches of [`PRUNE_BATCH_SIZE`]. `tenant` limits the pass to one tenant
+/// (`host.blob.gc {dry_run: false}`); `None` is the nightly prune. A blob's
+/// remaining superseded versions go with it.
+pub fn purge_expired_blobs(
+    conn: &Connection,
+    data_dir: &Path,
+    cutoff: i64,
+    tenant: Option<i64>,
+) -> rusqlite::Result<BlobPurge> {
+    let mut out = BlobPurge::default();
+    loop {
+        let batch: Vec<(i64, String, i64)> = {
+            let mut stmt = conn.prepare(
+                "SELECT tenant_id, id, bytes FROM blobs WHERE expires_at IS NOT NULL \
+                 AND expires_at <= ?1 AND (?2 IS NULL OR tenant_id = ?2) LIMIT ?3",
+            )?;
+            stmt.query_map(params![cutoff, tenant, PRUNE_BATCH_SIZE], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+                .collect::<rusqlite::Result<_>>()?
+        };
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        let step = (|| -> rusqlite::Result<()> {
+            for (tid, id, bytes) in &batch {
+                unlink_quiet(&crate::blobs::blob_file(data_dir, *tid, id));
+                let versions: Vec<(i64, i64)> = {
+                    let mut stmt = conn
+                        .prepare("SELECT version, bytes FROM blob_versions WHERE tenant_id = ?1 AND id = ?2")?;
+                    stmt.query_map(params![tid, id], |r| Ok((r.get(0)?, r.get(1)?)))?
+                        .collect::<rusqlite::Result<_>>()?
+                };
+                for (v, vbytes) in versions {
+                    unlink_quiet(&crate::blobs::version_file(data_dir, *tid, id, v));
+                    out.rows += 1;
+                    out.bytes += vbytes;
+                }
+                conn.execute("DELETE FROM blob_versions WHERE tenant_id = ?1 AND id = ?2", params![tid, id])?;
+                conn.execute("DELETE FROM blobs WHERE tenant_id = ?1 AND id = ?2", params![tid, id])?;
+                out.rows += 1;
+                out.bytes += bytes;
+            }
+            Ok(())
+        })();
+        match step {
+            Ok(()) => conn.execute_batch("COMMIT")?,
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(e);
+            }
+        }
+        if (batch.len() as i64) < PRUNE_BATCH_SIZE {
+            break;
+        }
+    }
+    loop {
+        let batch: Vec<(i64, String, i64, i64)> = {
+            let mut stmt = conn.prepare(
+                "SELECT tenant_id, id, version, bytes FROM blob_versions WHERE expires_at IS NOT NULL \
+                 AND expires_at <= ?1 AND (?2 IS NULL OR tenant_id = ?2) LIMIT ?3",
+            )?;
+            stmt.query_map(params![cutoff, tenant, PRUNE_BATCH_SIZE], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            })?
+            .collect::<rusqlite::Result<_>>()?
+        };
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        let step = (|| -> rusqlite::Result<()> {
+            for (tid, id, version, bytes) in &batch {
+                unlink_quiet(&crate::blobs::version_file(data_dir, *tid, id, *version));
+                conn.execute(
+                    "DELETE FROM blob_versions WHERE tenant_id = ?1 AND id = ?2 AND version = ?3",
+                    params![tid, id, version],
+                )?;
+                out.rows += 1;
+                out.bytes += bytes;
+            }
+            Ok(())
+        })();
+        match step {
+            Ok(()) => conn.execute_batch("COMMIT")?,
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(e);
+            }
+        }
+        if (batch.len() as i64) < PRUNE_BATCH_SIZE {
+            break;
+        }
+    }
+    Ok(out)
+}
+
+/// What one [`prune_blobs`] pass did: rows (blobs and aged-out versions)
+/// removed and their bytes, files under `blobs/` that no row owned, and rows
+/// whose file was gone.
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct BlobsPrune {
+    pub rows: i64,
+    pub bytes: i64,
+    pub orphans: i64,
+    pub missing: i64,
+}
+
+/// A file this young may belong to a put between its `rename` and its row
+/// insert (or a `.part` still being written), not an orphan: the sweep
+/// leaves it for the next night.
+const BLOB_FILE_GRACE: Duration = Duration::from_secs(3600);
+
+/// PRD-mcphost-blob-retention-and-quota R3: the nightly blob pass -- delete
+/// rows whose `expires_at` + `grace_days` has passed and unlink their files
+/// ([`purge_expired_blobs`]), then unlink files under `blobs/<tenant>/` that
+/// no row owns and are over an hour old (a crash between row delete and
+/// unlink leaves one), and mark
+/// `missing` the rows whose file is gone.
+pub(crate) fn prune_blobs(
+    conn: &Connection,
+    data_dir: &Path,
+    now_unix: i64,
+    grace_days: i64,
+) -> rusqlite::Result<BlobsPrune> {
+    use std::collections::HashSet;
+    let cutoff = now_unix - grace_days.saturating_mul(86_400);
+    let purged = purge_expired_blobs(conn, data_dir, cutoff, None)?;
+    let mut out = BlobsPrune { rows: purged.rows, bytes: purged.bytes, ..BlobsPrune::default() };
+
+    let root = data_dir.join("blobs");
+    let mut tenants: std::collections::BTreeSet<i64> = std::collections::BTreeSet::new();
+    if let Ok(entries) = std::fs::read_dir(&root) {
+        tenants.extend(entries.flatten().filter_map(|e| e.file_name().to_str()?.parse::<i64>().ok()));
+    }
+    {
+        let mut stmt = conn.prepare("SELECT DISTINCT tenant_id FROM blobs")?;
+        tenants.extend(stmt.query_map([], |r| r.get::<_, i64>(0))?.collect::<rusqlite::Result<Vec<_>>>()?);
+    }
+    for tid in tenants {
+        let dir = root.join(tid.to_string());
+        let mut owned: HashSet<String> = HashSet::new();
+        let mut current: Vec<(String, bool)> = Vec::new();
+        {
+            let mut stmt = conn.prepare("SELECT id, missing FROM blobs WHERE tenant_id = ?1")?;
+            for row in stmt.query_map(params![tid], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? != 0)))? {
+                let (id, missing) = row?;
+                owned.insert(id.clone());
+                current.push((id, missing));
+            }
+            let mut stmt = conn.prepare("SELECT id, version FROM blob_versions WHERE tenant_id = ?1")?;
+            for row in stmt.query_map(params![tid], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))? {
+                let (id, version) = row?;
+                owned.insert(format!("{id}.v{version}"));
+            }
+        }
+        let mut on_disk: HashSet<String> = HashSet::new();
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+                    continue;
+                };
+                if owned.contains(&name) {
+                    on_disk.insert(name);
+                    continue;
+                }
+                let in_flight = entry
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .and_then(|t| t.elapsed().ok())
+                    .is_some_and(|age| age < BLOB_FILE_GRACE);
+                if !in_flight && std::fs::remove_file(entry.path()).is_ok() {
+                    out.orphans += 1;
+                }
+            }
+        }
+        for (id, was_missing) in current {
+            if !was_missing && !on_disk.contains(&id) {
+                conn.execute(
+                    "UPDATE blobs SET missing = 1 WHERE tenant_id = ?1 AND id = ?2",
+                    params![tid, id],
+                )?;
+                out.missing += 1;
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// One prune cycle's outcome: per-physical-table deleted counts, and the
 /// first error encountered (if any) naming which table it happened on.
 /// `deleted` keeps every table pruned before the failure, so a partial
@@ -302,6 +510,28 @@ fn prune_sync_inner(
                     error: Some(format!("{}: {e}", table.physical_table)),
                 };
             }
+        }
+    }
+    // PRD-mcphost-blob-retention-and-quota R3: blobs are rows AND files, so
+    // they get their own pass; the result rides in the same `deleted` map
+    // (and so `prune_log.deleted_json`) as `blobs`/`blobs_bytes`/
+    // `blobs_orphans`/`blobs_missing`, beside the SQL tables' entries.
+    let grace_days = windows
+        .iter()
+        .find(|(name, _)| name == "blobs")
+        .map(|(_, days)| *days)
+        .unwrap_or(1);
+    let data_dir = db_path.parent().unwrap_or_else(|| Path::new("."));
+    match prune_blobs(&conn, data_dir, now_unix, grace_days) {
+        Ok(stats) => {
+            deleted.insert("blobs".to_string(), stats.rows);
+            deleted.insert("blobs_bytes".to_string(), stats.bytes);
+            deleted.insert("blobs_orphans".to_string(), stats.orphans);
+            deleted.insert("blobs_missing".to_string(), stats.missing);
+        }
+        Err(e) => {
+            crate::db::note_rusqlite_error(&e);
+            return PruneOutcome { deleted, error: Some(format!("blobs: {e}")) };
         }
     }
     // Requirement 2: only meaningful once migration 0026 has switched the
@@ -386,8 +616,14 @@ fn statvfs_free_bytes(path: &Path) -> Option<u64> {
 /// at once. Same "never joined, tokio::spawn loop" background-task
 /// lifetime convention as [`crate::triggers::spawn_scheduler`].
 pub fn spawn_prune_scheduler(state: crate::state::AppState) -> tokio::task::JoinHandle<()> {
+    // PRD-mcphost-blob-retention-and-quota R6: the hourly blob-expiry notice
+    // tick lives and dies with the prune scheduler, started by the same call.
+    drop(crate::blobs::spawn_expiry_notice_loop(state.clone(), BLOB_NOTICE_TICK));
     spawn_prune_loop(state, None)
 }
+
+/// R6: how often the blob-expiry notice tick runs.
+pub const BLOB_NOTICE_TICK: Duration = Duration::from_secs(3600);
 
 /// Test-only (AC7): the same unattended loop [`spawn_prune_scheduler`]
 /// runs at real `mcphost serve` startup, but firing every `interval`
