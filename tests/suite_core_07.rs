@@ -545,6 +545,12 @@ mod cpath_ac05_steps_index_checked_and_forward_reference;
 mod cpath_ac06_force_publishes_and_records_it;
 #[path = "cpath_ac07_context_keys_table_parity.rs"]
 mod cpath_ac07_context_keys_table_parity;
+#[path = "cpathb_ac01_steps_index_checked_and_forward_reference.rs"]
+mod cpathb_ac01_steps_index_checked_and_forward_reference;
+#[path = "cpathb_ac02_force_publishes_and_records_it.rs"]
+mod cpathb_ac02_force_publishes_and_records_it;
+#[path = "cpathb_ac03_context_keys_table_parity.rs"]
+mod cpathb_ac03_context_keys_table_parity;
 #[path = "cproc_ac01_raw_serve_spawn_and_pipe_read_fail.rs"]
 mod cproc_ac01_raw_serve_spawn_and_pipe_read_fail;
 #[path = "cproc_ac02_guard_struct_fails_waited_child_passes.rs"]

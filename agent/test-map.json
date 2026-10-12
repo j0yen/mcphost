@@ -1360,6 +1360,13 @@
       "AC7": "tests/cpath_ac07_context_keys_table_parity.rs",
       "AC8": "deferred -- operator-provisioned: the live probe runs against prod mcphost.dev with a keyed tenant after this PRD deploys."
     },
+    "cpathb": {
+      "_prd": "PRD-mcphost-chain-publish-time-path-check-b.md (test_prefix: cpathb)",
+      "AC1": "tests/cpathb_ac01_steps_index_checked_and_forward_reference.rs",
+      "AC2": "tests/cpathb_ac02_force_publishes_and_records_it.rs",
+      "AC3": "tests/cpathb_ac03_context_keys_table_parity.rs",
+      "AC4": "deferred -- operator-provisioned: the live probe runs against prod mcphost.dev with a keyed tenant after this PRD deploys."
+    },
     "fldp": {
       "_prd": "PRD-mcphost-fields-projection-on-list-verbs.md (test_prefix: fldp)",
       "AC2": "tests/fldp_ac02_tool_list_fields_two_keys_under_12kib.rs",
