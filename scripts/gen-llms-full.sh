@@ -34,12 +34,21 @@ cd "$(dirname "$0")/.."
 OUT="www/llms-full.txt"
 MODE="${1:-write}"
 
+# A prebuilt binary is used only when nothing under src/, Cargo.toml or
+# Cargo.lock is newer than it (10-11: a land's regen ran a pre-rebase
+# target/debug/mcphost that lacked `docs-examples`); otherwise `cargo run`
+# rebuilds from HEAD.
+prebuilt_fresh() {
+  [ -x "$1" ] || return 1
+  [ -z "$(find src Cargo.toml Cargo.lock -newer "$1" -print -quit 2>/dev/null)" ]
+}
+
 mcphost_bin() {
   if [ -n "${MCPHOST_BIN:-}" ]; then
     "$MCPHOST_BIN" "$@"
-  elif [ -x target/release/mcphost ]; then
+  elif prebuilt_fresh target/release/mcphost; then
     target/release/mcphost "$@"
-  elif [ -x target/debug/mcphost ]; then
+  elif prebuilt_fresh target/debug/mcphost; then
     target/debug/mcphost "$@"
   else
     cargo run -q --bin mcphost -- "$@"
