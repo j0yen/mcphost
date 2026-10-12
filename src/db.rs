@@ -2113,6 +2113,9 @@ pub struct ComposedRun {
     pub run_id: String,
     pub tenant_id: i64,
     pub parent_run_id: String,
+    /// The row's `trigger_ref`: the parent run id, or
+    /// `<parent>#<step>:<index>` for one item of a `for_each` step.
+    pub trigger_ref: String,
     pub tool_name: String,
     pub step_no: Option<i64>,
     pub parent_tool: String,
@@ -10452,6 +10455,7 @@ impl Db {
             run_id,
             tenant_id,
             parent_run_id,
+            trigger_ref,
             tool_name,
             step_no,
             parent_tool,
@@ -10472,7 +10476,7 @@ impl Db {
                  duration_ms, attempt, end_user_subject, end_user_issuer, end_user_method) \
                  VALUES (?1, ?2, ?3, 'composition', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 1, ?14, ?15, ?16)",
                 params![
-                    run_id, tenant_id, tool_name, parent_run_id.clone(), parent_run_id, step_no,
+                    run_id, tenant_id, tool_name, trigger_ref, parent_run_id, step_no,
                     parent_tool, status, error_class, result_ref, started_unix, finished_unix,
                     duration_ms, end_user_subject, end_user_issuer, end_user_method
                 ],

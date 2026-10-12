@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+A chain step may declare `for_each: "$.prev.result.items"` (PRD-mcphost-chain-fanout-and-join): the
+step runs once per element with `$.item` and `$.index` in its mappings, at most
+`min(step.concurrency, plan.concurrent_calls_per_tenant)` at a time, and its result is
+`{items: [...], failed: [{index, error_code, message}], ok, failed_count}` in input order (a failed
+item's slot is `null`). Each item is one `composition` child run with `trigger_ref`
+`<parent_run_id>#<step>:<index>`. Plans gain `chain_fanout_max` (free 20, pro 50); more items is
+refused `compose_fanout_exceeded` (`data.limit`, `data.actual`) before any item runs. With the
+default `on_error` an item failure fails the chain `compose_fanout_item_failed`; with `continue` the
+chain reports `failed_steps`. `$.item`/`$.index` outside a `for_each` step is refused at publish
+`compose_item_outside_for_each`.
+
 ## v0.107.17 — 2026-10-11
 
 `host.tool_test(name, args, fixtures)` dry-runs a chain against recorded step results

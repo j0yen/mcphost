@@ -1401,6 +1401,10 @@ pub struct CallCtx {
     /// own unit tests) -- unchanged behavior for every test that doesn't
     /// exercise per-tenant admission control.
     pub concurrent_calls_per_tenant: usize,
+    /// PRD-mcphost-chain-fanout-and-join R3: this call's tenant's plan
+    /// `chain_fanout_max`, resolved once by the real dispatch path like
+    /// [`Self::concurrent_calls_per_tenant`]; `usize::MAX` where no plan applies.
+    pub chain_fanout_max: usize,
     /// PRD-mcphost-runs-and-jobs requirement 4: this call's own `runs.id`,
     /// set only when this dispatch IS a job execution (the executor's own
     /// call into `Kind::call`, `runs.rs::run_one_job`). `None` for every
@@ -1552,6 +1556,7 @@ impl CallCtx {
             compose_db: None,
             compose_kinds: None,
             concurrent_calls_per_tenant: usize::MAX,
+            chain_fanout_max: usize::MAX,
             run_id: None,
             progress: Arc::new(NullProgress),
             cancel_pid: Arc::new(Mutex::new(None)),
@@ -1748,6 +1753,7 @@ async fn compose_dispatch(
         // rather than re-deriving it (this call site has no `Tenant`/plan
         // to resolve from, only the already-dispatched parent `ctx`).
         concurrent_calls_per_tenant: ctx.concurrent_calls_per_tenant,
+        chain_fanout_max: ctx.chain_fanout_max,
         // PRD-mcphost-runs-and-jobs: a composed child call is still part of
         // the same job (if any) the parent is executing -- progress and
         // cancellation both reach through to the same run, so a chained
@@ -1890,6 +1896,23 @@ pub async fn compose_call(
     timeout_s: Option<u64>,
     step_no: Option<i64>,
 ) -> Result<Value, KindError> {
+    compose_call_ref(ctx, tenant_id, target_name, args, timeout_s, step_no, None).await
+}
+
+/// [`compose_call`] with `trigger_suffix`: PRD-mcphost-chain-fanout-and-join
+/// R2 -- one item of a `for_each` step records its run row's `trigger_ref` as
+/// `<parent_run_id>#<trigger_suffix>` (`2:7` = step 2, item 7) instead of the
+/// bare parent id.
+#[allow(clippy::too_many_arguments)]
+pub async fn compose_call_ref(
+    ctx: &CallCtx,
+    tenant_id: i64,
+    target_name: &str,
+    args: Value,
+    timeout_s: Option<u64>,
+    step_no: Option<i64>,
+    trigger_suffix: Option<String>,
+) -> Result<Value, KindError> {
     let child_run_id = crate::state::new_ulid();
     let started_unix = crate::state::now_unix();
     let start = Instant::now();
@@ -1939,6 +1962,10 @@ pub async fn compose_call(
             .insert_composed_run(crate::db::ComposedRun {
                 run_id: child_run_id,
                 tenant_id,
+                trigger_ref: match &trigger_suffix {
+                    Some(suffix) => format!("{parent_run_id}#{suffix}"),
+                    None => parent_run_id.clone(),
+                },
                 parent_run_id,
                 tool_name: target_name.to_string(),
                 step_no,

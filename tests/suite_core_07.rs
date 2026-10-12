@@ -369,6 +369,20 @@ mod cestb_ac01_dry_run_counts_as_estimate_not_call;
 mod cestb_ac02_anonymous_estimate_is_the_real_auth_error;
 #[path = "cestb_ac03_estimate_listed_and_in_quickstart.rs"]
 mod cestb_ac03_estimate_listed_and_in_quickstart;
+#[path = "cfan_ac01_for_each_joins_items_in_input_order.rs"]
+mod cfan_ac01_for_each_joins_items_in_input_order;
+#[path = "cfan_ac02_item_failure_continue_or_stop.rs"]
+mod cfan_ac02_item_failure_continue_or_stop;
+#[path = "cfan_ac03_concurrency_capped_at_plan.rs"]
+mod cfan_ac03_concurrency_capped_at_plan;
+#[path = "cfan_ac04_over_ceiling_refused_before_any_item.rs"]
+mod cfan_ac04_over_ceiling_refused_before_any_item;
+#[path = "cfan_ac05_publish_checks_for_each_and_item_scope.rs"]
+mod cfan_ac05_publish_checks_for_each_and_item_scope;
+#[path = "cfan_ac06_ceiling_rendered_and_quickstart_example.rs"]
+mod cfan_ac06_ceiling_rendered_and_quickstart_example;
+#[path = "cfan_ac07_empty_array_runs_the_next_step.rs"]
+mod cfan_ac07_empty_array_runs_the_next_step;
 #[path = "cfix_ac01_fixture_replaces_unreachable_step.rs"]
 mod cfix_ac01_fixture_replaces_unreachable_step;
 #[path = "cfix_ac02_fully_fixtured_dry_run_makes_no_upstream_call.rs"]
@@ -1815,21 +1829,3 @@ mod pubtool_ac07_admin_disabled_tenant_503;
 mod pubtool_ac08_put_delete_405;
 #[path = "pubtool_ac10_cors_header_and_preflight.rs"]
 mod pubtool_ac10_cors_header_and_preflight;
-#[path = "qdiag_ac01_column_typo_fuzzy_covered_hint.rs"]
-mod qdiag_ac01_column_typo_fuzzy_covered_hint;
-#[path = "qdiag_ac02_table_typo_fuzzy_covered_hint.rs"]
-mod qdiag_ac02_table_typo_fuzzy_covered_hint;
-#[path = "qdiag_ac03_zero_row_value_absent_hint_and_latency.rs"]
-mod qdiag_ac03_zero_row_value_absent_hint_and_latency;
-#[path = "qdiag_ac04_successful_nonempty_diagnosis_and_hint_null.rs"]
-mod qdiag_ac04_successful_nonempty_diagnosis_and_hint_null;
-#[path = "qdiag_ac05_query_diagnose_tool_tenant_scoped.rs"]
-mod qdiag_ac05_query_diagnose_tool_tenant_scoped;
-#[path = "qdiag_ac06_query_stats_counts_and_percentiles.rs"]
-mod qdiag_ac06_query_stats_counts_and_percentiles;
-#[path = "qdiag_ac07_description_annotation_offers_candidate.rs"]
-mod qdiag_ac07_description_annotation_offers_candidate;
-#[path = "qdiag_ac08_footprint_columns_est_tokens.rs"]
-mod qdiag_ac08_footprint_columns_est_tokens;
-#[path = "qdiag_ac11_ten_concurrent_refused_queries_all_hinted.rs"]
-mod qdiag_ac11_ten_concurrent_refused_queries_all_hinted;

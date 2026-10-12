@@ -1229,6 +1229,11 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
         compose_db: Some(state.db.clone()),
         compose_kinds: Some(state.kinds.clone()),
         concurrent_calls_per_tenant: usize::MAX,
+        chain_fanout_max: state
+            .plans
+            .get(&tenant.plan)
+            .map(|plan| plan.chain_fanout_max.max(0) as usize)
+            .unwrap_or(usize::MAX),
         run_id: Some(run.id.clone()),
         progress,
         cancel_pid: cancel_pid.clone(),

@@ -26,6 +26,7 @@ Every numeric ceiling in the plan table, as `host.quickstart` `limits.plan` repo
 | `budget.max_tool_latency_ms` | 30000 | 120000 |
 | `budget.max_wall_ms` | 60000 | 600000 |
 | `calls_per_day` | 500 | 100000 |
+| `chain_fanout_max` | 20 | 50 |
 | `channel_posts_per_hour` | 120 | 2000 |
 | `channel_retention_days` | 14 | 90 |
 | `channels_max` | 3 | 25 |
