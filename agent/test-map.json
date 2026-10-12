@@ -1276,6 +1276,13 @@
       "AC6": "tests/cproc_ac06_real_tree_has_no_raw_spawns_or_guards.rs",
       "AC7": "tests/cproc_ac07_flake_lint_job_runs_child_proc_lint.rs"
     },
+    "cprocb": {
+      "_prd": "PRD-mcphost-child-process-test-harness-b.md (test_prefix: cprocb)",
+      "AC1": "tests/cprocb_ac01_perf_skip_ready_deadline_is_90s.rs",
+      "AC2": "tests/cprocb_ac02_real_tree_clean_and_six_files_use_helper.rs",
+      "AC3": "tests/cprocb_ac03_flake_lint_job_fails_on_raw_spawn_before_toolchain.rs",
+      "AC4": "deferred -- operator-provisioned: live evidence from the first daemon gate's flake-audit receipt (child-proc-lint: 0 offenders)."
+    },
     "askd": {
       "_prd": "PRD-mcphost-ask-user-decision.md (test_prefix: askd)",
       "AC1": "tests/askd_ac01_composed_path_costs_more_host_calls_than_verbs.rs",
