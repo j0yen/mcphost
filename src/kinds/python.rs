@@ -5596,11 +5596,7 @@ impl Kind for PythonKind {
                     "python call refused: tenant at its concurrent-call limit"
                 );
             }
-            return Err(KindError::structured_with(
-                "capacity",
-                "at this tenant's concurrent-call limit; try again shortly",
-                json!({"retry_after_ms": retry_after_ms, "scope": "tenant"}),
-            ));
+            return Err(tenant_capacity_error(retry_after_ms));
         };
 
         let Ok(_permit) = self.semaphore.clone().try_acquire_owned() else {
@@ -5613,11 +5609,7 @@ impl Kind for PythonKind {
                     "python call refused: host at the concurrent-call limit"
                 );
             }
-            return Err(KindError::structured_with(
-                "capacity",
-                "at the concurrent-call limit; try again shortly",
-                json!({"retry_after_ms": retry_after_ms, "scope": "host"}),
-            ));
+            return Err(host_capacity_error(retry_after_ms));
         };
 
         let secret_env = self.secret_env(&parsed, ctx);
@@ -6059,6 +6051,38 @@ impl Kind for PythonKind {
             .read()
             .unwrap_or_else(|e| e.into_inner())
     }
+
+    /// PRD-mcphost-call-cost-estimate: the same two refusals `call` makes
+    /// (tenant cap first, then the box-wide one), read off the semaphores'
+    /// free permits instead of acquired -- a dry run holds no slot.
+    fn admission_capacity(&self, tenant_id: i64, concurrent_calls_per_tenant: usize) -> Option<KindError> {
+        if self.tenant_semaphore(tenant_id, concurrent_calls_per_tenant).available_permits() == 0 {
+            return Some(tenant_capacity_error(self.estimate_retry_after_ms()));
+        }
+        if self.semaphore.available_permits() == 0 {
+            return Some(host_capacity_error(self.estimate_retry_after_ms()));
+        }
+        None
+    }
+}
+
+/// The `capacity` refusal for a tenant at its own concurrent-call limit --
+/// built here once for both the real acquire and the dry-run read.
+fn tenant_capacity_error(retry_after_ms: u64) -> KindError {
+    KindError::structured_with(
+        "capacity",
+        "at this tenant's concurrent-call limit; try again shortly",
+        json!({"retry_after_ms": retry_after_ms, "scope": "tenant"}),
+    )
+}
+
+/// The `capacity` refusal for the box-wide concurrent-call limit.
+fn host_capacity_error(retry_after_ms: u64) -> KindError {
+    KindError::structured_with(
+        "capacity",
+        "at the concurrent-call limit; try again shortly",
+        json!({"retry_after_ms": retry_after_ms, "scope": "host"}),
+    )
 }
 
 #[cfg(test)]

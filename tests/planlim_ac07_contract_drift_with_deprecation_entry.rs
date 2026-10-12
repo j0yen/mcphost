@@ -18,6 +18,13 @@ const COMMITTED_CONTRACT: &[u8] = include_bytes!("../contracts/host-tools.v1.jso
 /// `maximum` removed from each tool's `budget` properties.
 fn contract_before_this_prd() -> Value {
     let mut old: Value = serde_json::from_slice(COMMITTED_CONTRACT).expect("committed contract");
+    // PRD-mcphost-call-cost-estimate's `host.estimate` (and its flattened
+    // form) did not exist before this PRD, so it has no "before" to narrow
+    // from; it is a new tool whose `budget` was born with its maximums.
+    old["tools"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|t| !matches!(t["name"].as_str(), Some("host.estimate" | "host_estimate")));
     for tool in old["tools"].as_array_mut().unwrap() {
         let Some(props) = tool
             .get_mut("input_schema")

@@ -151,6 +151,14 @@ fn quickstart_try_before_call(
         "call": "host.tool_test",
         "arguments": {"name": tool_name, "args": example.call_args},
     })];
+    // PRD-mcphost-call-cost-estimate requirement 7: the free question to ask
+    // before the first call that carries a budget or a large argument.
+    try_before_call.push(json!({
+        "case": "a published tool, will this call be admitted and what does it use",
+        "call": "host.estimate",
+        "arguments": {"name": tool_name, "args": example.call_args},
+        "note": "free; same verdict as the real call",
+    }));
     if let Some(http) = state.kinds.get("http") {
         let http_example = http.example();
         try_before_call.push(json!({
@@ -2422,6 +2430,10 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
         // this from `error_class = "capacity"`; this handler just wasn't
         // forwarding it into the response envelope.
         "capacity_refusals": stats.capacity_refusals,
+        // PRD-mcphost-call-cost-estimate requirement 6: dry runs
+        // (`host.tool_call dry_run` / `host.estimate`) in this window --
+        // counted apart from `calls`, which they never touch.
+        "estimates": state.estimates.count(tenant.id, secs),
         // PRD-mcphost-refused-calls-write-ledger-row requirement 6.
         "refused": {"total": stats.refused_total, "by_code": stats.refused_by_code},
         "calls_by_others": calls_by_others,

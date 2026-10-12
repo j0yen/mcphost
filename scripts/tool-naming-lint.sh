@@ -45,6 +45,7 @@ EXCEPTIONS = [
     ("host.redeem", "singleton noun: no sibling verb under 'redeem'"),
     ("host.quickstart", "singleton noun: no sibling verb under 'quickstart'"),
     ("host.usage", "singleton noun: no sibling verb under 'usage'"),
+    ("host.estimate", "singleton verb: the dry-run twin of host.tool_call; no sibling under 'estimate'"),
     ("host.changelog", "singleton noun: no sibling verb under 'changelog'"),
     ("host.export", "singleton noun: no sibling verb under 'export'"),
     ("host.progress", "singleton noun: no sibling verb under 'progress'"),

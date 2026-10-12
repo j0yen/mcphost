@@ -2578,6 +2578,7 @@ mod tests {
             contention_tracker: crate::alerts::ContentionTracker::new(),
             alert_config: crate::alerts::AlertConfig::default(),
             alert_quota_trips: crate::alerts::QuotaTripTracker::new(),
+            estimates: crate::preflight::EstimateCounter::new(),
             status_probe_override: crate::statusfeed::ProbeOverrides::new(),
             fleet_ips: crate::state::FleetIps::empty(),
             end_user_activity: Default::default(),

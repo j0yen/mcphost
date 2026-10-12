@@ -1128,6 +1128,7 @@ async fn main() -> anyhow::Result<()> {
                 contention_tracker: mcphost::alerts::ContentionTracker::new(),
                 alert_config: mcphost::alerts::AlertConfig::from_env(),
                 alert_quota_trips: mcphost::alerts::QuotaTripTracker::new(),
+                estimates: mcphost::preflight::EstimateCounter::new(),
                 status_probe_override: mcphost::statusfeed::ProbeOverrides::new(),
                 fleet_ips,
                 end_user_activity: Default::default(),

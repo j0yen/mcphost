@@ -37,10 +37,13 @@ async fn quickstart_try_before_call_names_all_four_dry_runs_with_an_example_call
             "try_before_call must name {expected}: {rows:?}"
         );
     }
+    // PRD-mcphost-call-cost-estimate requirement 7: the four dry-run tools
+    // plus the free `host.estimate` question.
+    assert!(calls.contains(&"host.estimate"), "try_before_call must name host.estimate: {rows:?}");
     assert_eq!(
         calls.len(),
-        4,
-        "try_before_call must have exactly four rows: {rows:?}"
+        5,
+        "try_before_call must have exactly the four dry runs plus host.estimate: {rows:?}"
     );
     // Every row carries a real, callable example -- not just the bare name.
     for row in rows {

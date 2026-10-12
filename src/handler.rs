@@ -1254,6 +1254,12 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                             &crate::plans::PlanCatalog::default_catalog(),
                         ),
                     },
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": "Ask instead of call: runs every admission check the real \
+                            call runs, dispatches nothing, writes no call row, and returns \
+                            {fits, units, remaining, refusal}; same as host.estimate. Default false.",
+                    },
                 }),
                 &["name", "args"],
             ),
@@ -3818,8 +3824,51 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             crate::paged::splice_input_schema(&name, props);
         }
     }
+    // PRD-mcphost-call-cost-estimate requirement 3: `host.estimate` is
+    // `host.tool_call` with `dry_run` forced, listed for a keyed tenant only
+    // and marked `_meta.alias_of: host.tool_call` like every other alias.
+    // Pushed before the alias pass so its flattened form (`host_estimate`)
+    // is registered like any other name.
+    if authenticated {
+        tools.push(estimate_tool());
+    }
     apply_tool_aliases(&mut tools);
     tools
+}
+
+/// `host.estimate`'s descriptor: the dry-run half of `host.tool.call`'s
+/// arguments (no `async`, no `dry_run` -- it is always one).
+fn estimate_tool() -> Tool {
+    let mut tool = Tool::new(
+        "host.estimate",
+        "Ask whether a call to one of your tools fits your plan and what it uses, without \
+         making it: the same checks as host.tool_call, no call row, no slot held.",
+        host_schema(
+            json!({
+                "name": {"type": "string", "description": "Local name of the tool to estimate."},
+                "args": {
+                    "type": "object",
+                    "description": "Arguments the call would carry, checked against the tool's own args_schema.",
+                },
+                "version": {
+                    "type": "integer",
+                    "description": "Estimate against this version instead of whichever is current.",
+                },
+                "budget": {
+                    "type": "object",
+                    "description": "The budget the call would carry: any subset of max_child_calls, \
+                        max_est_tokens, max_tool_latency_ms, max_wall_ms. A value above the plan's \
+                        ceiling comes back as the refusal.",
+                    "properties": crate::plans::Plan::budget_schema_properties(
+                        &crate::plans::PlanCatalog::default_catalog(),
+                    ),
+                },
+            }),
+            &["name"],
+        ),
+    );
+    set_alias_of(&mut tool, "host.tool_call");
+    tool
 }
 
 /// PRD-mcphost-tool-naming-convention-and-aliases requirement 2/3: for
@@ -5433,6 +5482,16 @@ impl McpHostHandler {
             "host.spec.test" => self.spec_test(tenant, args).await,
             "host.tool.run" => self.tool_run(tenant, args).await,
             "host.tool.call" => self.host_tool_call(tenant, args, calls_auth_method, end_user).await,
+            // PRD-mcphost-call-cost-estimate requirement 3: `host.estimate` IS
+            // `host.tool_call` with `dry_run` forced true -- same handler, same
+            // argument names, so its verdict cannot differ from the flag's.
+            "host.estimate" => {
+                let mut args = args;
+                if let Some(obj) = args.as_object_mut() {
+                    obj.insert("dry_run".to_string(), json!(true));
+                }
+                self.host_tool_call(tenant, args, calls_auth_method, end_user).await
+            }
             "host.uptime.create" => self.uptime_create(tenant, args, calls_auth_method, end_user).await,
             "host.webhook_inbox.create" => crate::webhook_inbox::create(&self.state, tenant, &args).await,
             "host.tool.history" => control::tool_history(&self.state, tenant, &args).await,
@@ -5985,65 +6044,6 @@ impl McpHostHandler {
         err
     }
 
-    /// PRD-grand-loop-billing AC3: reject with `quota_exceeded` when
-    /// `tenant` has already made `plan.calls_per_day` (or more) successful
-    /// calls since the most recent UTC midnight. Shared by every path that
-    /// reaches [`Self::call_published_tool`] (a direct namespaced call and
-    /// `host.tool_call` both go through it); `host.tool_test`/`host.tool_run`
-    /// deliberately do not call this -- neither writes a `calls` row or
-    /// counts toward this quota (same distinction `host.usage` already
-    /// draws).
-    async fn check_calls_quota(&self, tenant: &Tenant) -> Result<(), AppError> {
-        let plan = self.state.plans.get(&tenant.plan).ok_or_else(|| {
-            AppError::Internal(format!(
-                "tenant's plan '{}' is not in the loaded plan catalog",
-                tenant.plan
-            ))
-        })?;
-        let midnight = crate::state::utc_midnight_unix(crate::state::now_unix());
-        let used = self.state.db.count_calls_since(tenant.id, midnight, true).await?;
-        if used >= plan.calls_per_day {
-            // PRD-mcphost-alerting-webhook requirement 2 / AC3: a
-            // `quota.trip` alert once the same plan knob trips
-            // `MCPHOST_ALERT_QUOTA_TRIP_THRESHOLD` (default 20) times in 5
-            // minutes for this tenant -- [`crate::alerts::raise`]'s own
-            // cooldown (default 900s) is what keeps the 21st+ trip from
-            // raising a second one, same as every other alert source.
-            let knob = "calls_per_day";
-            let trips = self.state.alert_quota_trips.record(tenant.id, knob);
-            if trips >= self.state.alert_config.quota_trip_threshold {
-                let key = format!("quota.trip:{}:{knob}", tenant.namespace);
-                if let Err(e) = crate::alerts::raise(
-                    &self.state,
-                    crate::alerts::RaiseInput {
-                        key,
-                        severity: crate::alerts::Severity::Warn,
-                        title: format!("{} tripped {knob} repeatedly", tenant.namespace),
-                        body: serde_json::json!({
-                            "tenant": tenant.namespace,
-                            "knob": knob,
-                            "trips_in_window": trips,
-                        }),
-                    },
-                )
-                .await
-                {
-                    tracing::warn!(error = %e, tenant = %tenant.namespace, knob, "failed to raise quota.trip alert");
-                }
-            }
-            let resets_at = crate::state::rfc3339_from_unix(midnight + 86_400);
-            return Err(crate::billing::quota_exceeded(
-                &self.state,
-                &tenant.plan,
-                "calls_per_day",
-                plan.calls_per_day,
-                used,
-                Some(resets_at),
-            ));
-        }
-        Ok(())
-    }
-
     /// PRD-mcphost-call-limits-honest requirement 1: the deadline this
     /// call's spec actually asks for (a kind-specific override, already
     /// bounded by that kind's own maximum -- see
@@ -6120,127 +6120,37 @@ impl McpHostHandler {
         token_scope: Option<&str>,
     ) -> Result<Value, AppError> {
         let started = Instant::now();
-        let row: ToolRow = self
-            .state
-            .db
-            .get_tool(tenant.id, local_name.to_string())
-            .await?
-            .ok_or_else(|| AppError::ToolNotFound(local_name.to_string()))?;
-        // PRD-mcphost-tool-scopes-and-consent requirement 4/5 (AC2, AC6):
-        // read fresh off `row` on every call (never cached past this
-        // point), so a scope change on republish takes effect on the very
-        // next call with no token reissue. `token_scope` is `None` for a
-        // key-based caller, a cross-tenant/`host.tool_call`-routed call
-        // (both already gated to full `mcp` upstream), or a token with no
-        // `scope` claim at all -- `scope_satisfied` treats all three as
-        // unrestricted.
-        if !crate::oauth::scope_satisfied(token_scope, &row.scopes) {
-            let scope = crate::oauth::union_scope_challenge(&self.state, tenant.id, token_scope, &row.scopes).await;
-            let err = AppError::Structured {
-                code: "insufficient_scope",
-                message: format!("'{local_name}' requires a scope this token does not carry"),
-                data: json!({"error_code": "insufficient_scope", "tool": local_name, "scope": scope}),
-            };
-            return Err(self.refuse(tenant, caller, local_name, err, started, auth_method).await);
-        }
-        // PRD-mcphost-tool-versions requirement 5 (AC5): a pinned call
-        // dispatches against that version's own stored kind/spec instead of
-        // `row`'s (which always mirrors whatever is CURRENT) -- an unpinned
-        // caller sees no change at all here, `kind_name`/`spec` just being
-        // `row`'s own fields.
-        let (kind_name, spec): (String, Value) = match version {
-            Some(v) => match self.state.db.get_tool_version(tenant.id, local_name.to_string(), v).await? {
-                Some(vrow) => (vrow.kind, vrow.spec),
-                None => {
-                    let (min, max) = self
-                        .state
-                        .db
-                        .tool_version_range(tenant.id, local_name.to_string())
-                        .await?
-                        .unwrap_or((row.current_version, row.current_version));
-                    let err = AppError::VersionNotFound { requested: v, min, max };
-                    return Err(self.refuse(tenant, caller, local_name, err, started, auth_method).await);
-                }
-            },
-            None => (row.kind.clone(), row.spec.clone()),
-        };
-        let kind: Arc<dyn Kind> = self.state.kinds.get(&kind_name).ok_or_else(|| {
-            AppError::Internal(format!(
-                "published tool names unregistered kind '{kind_name}'"
-            ))
-        })?;
-
-        let descriptor = kind.describe(&spec);
-        // PRD-mcphost-chain-run-lineage requirement 3: `chain` handles its
-        // own args-completeness check (`compose_input_missing`, naming
-        // every missing `$.input.*` field) inside `Kind::call` itself --
-        // see `Kind::validates_own_args`'s own doc comment for why the
-        // generic schema check below must not pre-empt it.
-        if !kind.validates_own_args()
-            && let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
-            && let Err(e) = validator.validate(&args)
-        {
-            // AC4: the wire code for a schema-invalid call to a *published*
-            // tool is `args_invalid`, distinct from `AppError::InvalidArgs`
-            // (used for missing control-plane arguments elsewhere).
-            // Requirement 1/AC3 (PRD-mcphost-python-kind-runtime): phase
-            // `args_coercion`, naming the argument and both types -- shared
-            // with every kind via `describe_args_error`, wired through
-            // `AppError::Structured` (not `ArgsInvalid`) so the extra `data`
-            // fields survive into the JSON-RPC response; the wire code stays
-            // pinned to exactly `args_invalid` either way.
-            let args_err = describe_args_error(&e);
-            let err = AppError::Structured {
-                code: "args_invalid",
-                message: args_err.message(),
-                data: args_err.data(),
-            };
-            return Err(self.refuse(tenant, caller, local_name, err, started, auth_method).await);
-        }
-
-        // PRD-grand-loop-billing AC3: `calls_per_day` enforcement, checked
-        // before the call ever dispatches (same "rejected before any
-        // sandboxed work happens" shape as the sandbox_unavailable check
-        // elsewhere in this file) -- a rejected call writes no `calls` row
-        // at all, a stronger guarantee than "no row with ok = 1".
-        //
-        // PRD-mcphost-sharing requirement 4 (AC5): a cross-tenant call
-        // counts against the CALLER's quota, not the owner's.
-        if let Err(err) = self.check_calls_quota(caller.unwrap_or(tenant)).await {
-            return Err(match err {
-                refusal @ AppError::Structured { .. } => {
-                    self.refuse(tenant, caller, local_name, refusal, started, auth_method).await
-                }
-                other => other,
-            });
-        }
-
-        // PRD-mcphost-shared-tool-caller-usage requirement 3 (AC3): an
-        // owner-set per-caller cap, checked only for a cross-tenant call
-        // (an owner calling its own tool has no `caller_tenant_id` to key a
-        // limit on, and the Open Questions section drafts "a caller cap
-        // also applies to the owner's own calls" as "no"). Same
-        // "rejected before any sandboxed work happens, no `calls` row at
-        // all" shape as `check_calls_quota` just above.
-        if let Some(caller) = caller
-            && let Some(limit) = self
-                .state
-                .db
-                .get_caller_limit(tenant.id, local_name.to_string(), caller.id)
-                .await?
-        {
-            let midnight = crate::state::utc_midnight_unix(crate::state::now_unix());
-            let used = self
-                .state
-                .db
-                .count_caller_calls_since(tenant.id, local_name.to_string(), caller.id, midnight)
-                .await?;
-            if used >= limit {
-                let reset_at = crate::state::rfc3339_from_unix(midnight + 86_400);
-                let err = crate::sharing::quota_caller(&caller.namespace, local_name, limit, used, reset_at);
-                return Err(self.refuse(tenant, Some(caller), local_name, err, started, auth_method).await);
+        // PRD-mcphost-call-cost-estimate: resolution (tool row, scope,
+        // pinned version, kind) then every `PREFLIGHT_CHECKS` row of the
+        // `Resolved` stage -- the same list the dry run runs, so the two
+        // cannot disagree. `host_tool_call` ran the `PreResolve` row
+        // (budget ceiling) before getting here.
+        let settle = |refusal: crate::preflight::Refusal| async move {
+            if refusal.records() {
+                self.refuse(tenant, caller, local_name, refusal.err, started, auth_method).await
+            } else {
+                refusal.err
             }
+        };
+        let target =
+            match crate::preflight::resolve(&self.state, tenant, local_name, version, token_scope).await {
+                Ok(target) => target,
+                Err(refusal) => return Err(settle(refusal).await),
+            };
+        let preflight_ctx = crate::preflight::Ctx {
+            state: &self.state,
+            mode: crate::preflight::Mode::Real,
+            owner: tenant,
+            caller,
+            tool: local_name,
+            args: &args,
+            budget: None,
+            target: Some(&target),
+        };
+        if let Err(refusal) = crate::preflight::run_stage(&preflight_ctx, crate::preflight::Stage::Resolved).await {
+            return Err(settle(refusal).await);
         }
+        let crate::preflight::Target { row, spec, kind, .. } = target;
 
         // PRD-mcphost-upstream-token-vault requirement 4 / AC6: resolved
         // (and, if it's within 120s of expiry, refreshed) BEFORE any of
@@ -7192,7 +7102,7 @@ impl McpHostHandler {
         // AC6: refused exactly as a normal call at quota, checked once
         // before any invocation executes (not per-invocation) -- the same
         // gate a real dispatched call passes through.
-        self.check_calls_quota(tenant).await?;
+        crate::preflight::check_calls_per_day(&self.state, tenant, crate::preflight::Mode::Real).await?;
 
         let descriptor = kind.describe(&spec);
         let requirements = kind.requirements(&spec);
@@ -7696,15 +7606,26 @@ impl McpHostHandler {
         // point already has a loaded plan row (`tenant.plan` is set at
         // signup and never points at an unregistered plan).
         let budget_arg = args.get("budget");
-        if budget_arg.is_some_and(|v| !v.is_null()) {
-            let plan = self.state.plans.get(&tenant.plan).ok_or_else(|| {
-                AppError::Internal(format!(
-                    "tenant's plan '{}' is not in the loaded plan catalog",
-                    tenant.plan
-                ))
-            })?;
-            crate::budget::resolve_and_validate(&self.state, plan, budget_arg)?;
+        let dry_run = args.get("dry_run").and_then(Value::as_bool) == Some(true);
+        if dry_run {
+            return self.dry_run_call(tenant, &name, call_args, &args).await;
         }
+        // PRD-mcphost-call-cost-estimate: the budget ceiling is the
+        // `PreResolve` row of `PREFLIGHT_CHECKS`; the rest run inside
+        // `call_published_tool` once the tool is resolved.
+        let preflight_ctx = crate::preflight::Ctx {
+            state: &self.state,
+            mode: crate::preflight::Mode::Real,
+            owner: tenant,
+            caller: None,
+            tool: &name,
+            args: &call_args,
+            budget: budget_arg,
+            target: None,
+        };
+        crate::preflight::run_stage(&preflight_ctx, crate::preflight::Stage::PreResolve)
+            .await
+            .map_err(|refusal| refusal.err)?;
         // AC15: `call_published_tool`'s `get_tool` lookup is already scoped
         // to `tenant.id`, so a name only some other tenant published simply
         // isn't found here -- `ToolNotFound`, with nothing in the error to
@@ -7783,6 +7704,114 @@ impl McpHostHandler {
                 }
             }
             Err(err) => Err(err),
+        }
+    }
+
+    /// PRD-mcphost-call-cost-estimate requirement 2: `host.tool_call` with
+    /// `dry_run: true` (and `host.estimate`). Walks the same path the real
+    /// call does -- `PREFLIGHT_CHECKS` `PreResolve`, tool/shared-tool
+    /// resolution, `Resolved` -- but never dispatches, writes no `calls`
+    /// row (no `refuse`), and holds no capacity slot. A refusal comes back
+    /// as data (`refusal`), built by the same `AppError -> ErrorData`
+    /// conversion the real refusal goes through.
+    async fn dry_run_call(
+        &self,
+        tenant: &Tenant,
+        name: &str,
+        call_args: Value,
+        args: &Value,
+    ) -> Result<Value, AppError> {
+        use crate::preflight::{Ctx, Mode, Stage, resolve, run_stage};
+        let version = args.get("version").and_then(Value::as_i64);
+        let budget_arg = args.get("budget");
+        let verdict: Result<(), AppError> = async {
+            let pre = Ctx {
+                state: &self.state,
+                mode: Mode::DryRun,
+                owner: tenant,
+                caller: None,
+                tool: name,
+                args: &call_args,
+                budget: budget_arg,
+                target: None,
+            };
+            run_stage(&pre, Stage::PreResolve).await.map_err(|r| r.err)?;
+            if name.starts_with("admin.") || name.starts_with("billing.") {
+                return Err(AppError::host_verb_not_forwarded(name, &call_args));
+            }
+            let (owner, caller, local): (Tenant, Option<&Tenant>, &str) = match name.split_once('.') {
+                Some((ns, local)) if ns == tenant.namespace => (tenant.clone(), None, local),
+                Some((ns, local)) => {
+                    match crate::sharing::resolve_shared_tool(&self.state, tenant, ns, local).await {
+                        Ok((owner, _row)) => (owner, Some(tenant), local),
+                        Err(err) => return self.dry_run_unresolved(name, &call_args, err),
+                    }
+                }
+                None => (tenant.clone(), None, name),
+            };
+            let target = match resolve(&self.state, &owner, local, version, None).await {
+                Ok(target) => target,
+                Err(r) => return self.dry_run_unresolved(name, &call_args, r.err),
+            };
+            let ctx = Ctx {
+                state: &self.state,
+                mode: Mode::DryRun,
+                owner: &owner,
+                caller,
+                tool: local,
+                args: &call_args,
+                budget: None,
+                target: Some(&target),
+            };
+            run_stage(&ctx, Stage::Resolved).await.map_err(|r| r.err)
+        }
+        .await;
+        let refusal = match verdict {
+            Ok(()) => Value::Null,
+            // A storage/internal failure is not an admission verdict.
+            Err(err) if matches!(err.code(), "storage" | "internal") => return Err(err),
+            Err(err) => {
+                let data = err.into_error_data_at(Some(&self.state.public_url));
+                json!({
+                    "code": data.data.as_ref().and_then(|d| d.get("error_code")).cloned().unwrap_or(Value::Null),
+                    "message": data.message,
+                    "data": data.data,
+                })
+            }
+        };
+        self.state.estimates.record(tenant.id);
+        let daily = crate::preflight::daily_calls(&self.state, tenant).await?;
+        Ok(json!({
+            "dry_run": true,
+            "fits": refusal.is_null(),
+            "units": {"calls": 1},
+            "remaining": {"calls_per_day": {
+                "used": daily.used,
+                "limit": daily.limit,
+                "remaining": daily.remaining(),
+                "resets_at": daily.resets_at(),
+            }},
+            "refusal": refusal,
+            "not_checked": ["kind_call"],
+            "see": crate::budget::BUDGET_CEILING_SEE,
+        }))
+    }
+
+    /// The dry run's twin of `host_tool_call`'s `tool_not_found` fallthrough:
+    /// a miss on tenant/shared tools is tried as a host verb. A forwardable
+    /// verb has no admission list of its own, so it fits; anything else is
+    /// the error the real call would return.
+    fn dry_run_unresolved(&self, name: &str, call_args: &Value, err: AppError) -> Result<(), AppError> {
+        if err.code() != "tool_not_found" {
+            return Err(err);
+        }
+        match crate::verbforward::resolve(name, &self.state.kinds) {
+            Some(canonical) if crate::verbforward::is_denylisted(&canonical) => {
+                Err(AppError::host_verb_not_forwarded(&canonical, call_args))
+            }
+            Some(_) => Ok(()),
+            None if name.starts_with("host.") => Err(unknown_host_tool(&self.state.kinds, name)),
+            None => Err(err),
         }
     }
 
@@ -7988,7 +8017,7 @@ impl McpHostHandler {
         // Requirement 7: no new quota -- the same per-tenant daily call
         // quota `host.tool_call`'s cross-tenant path checks, against the
         // caller (not the owner).
-        self.check_calls_quota(caller).await?;
+        crate::preflight::check_calls_per_day(&self.state, caller, crate::preflight::Mode::Real).await?;
 
         // AC5: byte-identical to `call_shared_tool`'s own not-found shape
         // (now `crate::sharing::resolve_shared_tool`'s `shared_tool_not_found`),

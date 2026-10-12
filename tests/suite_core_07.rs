@@ -26,6 +26,8 @@ mod lanecov;
 mod oauth;
 #[path = "support/oauthclient.rs"]
 mod oauthclient;
+#[path = "support/slotkind.rs"]
+mod slotkind;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
@@ -277,6 +279,20 @@ mod callerusage_ac07_rollup_speed_at_scale;
 mod callerusage_ac08_end_user_key_includes_caller;
 #[path = "callerusage_ac09_admin_usage_top_audited.rs"]
 mod callerusage_ac09_admin_usage_top_audited;
+#[path = "cest_ac01_dry_run_verdict_matches_real_call.rs"]
+mod cest_ac01_dry_run_verdict_matches_real_call;
+#[path = "cest_ac02_handler_runs_only_preflight_rows.rs"]
+mod cest_ac02_handler_runs_only_preflight_rows;
+#[path = "cest_ac03_dry_run_remaining_calls_per_day.rs"]
+mod cest_ac03_dry_run_remaining_calls_per_day;
+#[path = "cest_ac04_fifty_concurrent_dry_runs_hold_no_slot.rs"]
+mod cest_ac04_fifty_concurrent_dry_runs_hold_no_slot;
+#[path = "cest_ac05_dry_run_counts_as_estimate_not_call.rs"]
+mod cest_ac05_dry_run_counts_as_estimate_not_call;
+#[path = "cest_ac06_anonymous_estimate_is_the_real_auth_error.rs"]
+mod cest_ac06_anonymous_estimate_is_the_real_auth_error;
+#[path = "cest_ac07_estimate_listed_and_in_quickstart.rs"]
+mod cest_ac07_estimate_listed_and_in_quickstart;
 #[path = "cfix_ac01_fixture_replaces_unreachable_step.rs"]
 mod cfix_ac01_fixture_replaces_unreachable_step;
 #[path = "cfix_ac02_fully_fixtured_dry_run_makes_no_upstream_call.rs"]
