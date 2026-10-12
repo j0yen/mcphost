@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-ask-user-decision.md",
-  "intent_slug": "mcphost-ask-user-decision",
-  "root_motivation": "**Who:** an autonomous agent about to deploy, send, spend or delete something its user should approve while the user is away from the chat. **What:** ask once, hand over a link, block, act on the answer; never hang and never guess. **Why not today:** the only long-poll is host.msg.wait on an inbox a human cannot write to; the wait ceiling is prose in a descriptor and two clamp literals; composing a blocking question from a url-shared tool costs three host calls. **Consequence:** approvals are skipped or guessed.",
-  "user_persona": "An agent that calls host.ask.create, sends its user the url, and loops host.ask.wait until answered or expired; the user who taps a button on a phone with no login; Operator Joe reading host.ask.list.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-msrv-locked-required-check.md",
+  "intent_slug": "mcphost-msrv-locked-required-check",
+  "root_motivation": "The operator discovers a broken main only when the next run's gate fails `cargo \u2026 --locked` (612's redrive, leg 20 \"every `--locked` build rejects\"), and the repair is a hand PR at 3 am. Leg 20 five whys, level 5: \"Cargo.lock is a GENERATED artefact handled as a merged text file; and the gate validates the worktree, not the commit it pushes\" \u2014 the land-side half is wm-build hand hotfixes (seed items 6, 7); this PRD is the repo-side half: the tree refuses a stale lock in a REQUIRED check. Evidence: `gh pr checks 178` shows `msrv check \u2026 fail 25s` beside `static analysis + core suites pass`; protection lists 2 of 10 job names.",
+  "user_persona": "An agent (customer) that calls host.webhook_inbox.create once, pastes the url into a sender and shows its user the push event in the same session; the truth-tier integration_specialist persona whose gold is reachable in 4 calls; Operator Joe reading the digest.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,60 +14,52 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a 0.106.0-shaped test host, When a test composes the blocking question from `host.tool_share(visibility=\"url\")` on an `answer` tool plus `host.msg.wait`, and then runs `host.ask.create` + `host.ask.wait`, Then it records both call counts and end-to-end latencies in the test output, and the verb path uses strictly fewer host calls (the PRD is parked if not).",
-      "test": "tests/askd_ac01_composed_path_costs_more_host_calls_than_verbs.rs"
+      "description": "Given a scratch copy of the workspace with the `semver` entry removed from `Cargo.lock` (the #178 squash shape), When `msrvlock_ac01` runs there, Then it fails quoting `cannot update the lock file`; Given the repo's own tree at the landing commit, Then it passes.",
+      "test": "tests/msrvlock_ac01_stale_lock_fails.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given `host.ask.create` with 2 options, When the URL is fetched with no key and one option is POSTed, Then the agent's blocked `host.ask.wait` returns `status: answered` with that choice within 2 s, and a second POST returns 409 `ask_answered` naming the first choice.",
-      "test": "tests/askd_ac02_keyless_answer_unblocks_wait_second_post_409.rs"
+      "description": "Given `ci.yml` at the landing commit, When the `--locked` parser test runs, Then every `cargo` `run:` line in jobs `gate` and `msrv` carries `--locked`; Given a fixture `ci.yml` with one `cargo test` lacking it, Then the test fails naming that line.",
+      "test": "tests/msrvlock_ac02_cargo_steps_are_locked.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given `WAIT_MAX_S`, When the `host.msg.wait` descriptor, the `host.ask.wait` descriptor and `host.quickstart.limits.wait_max_s` are rendered, Then all three carry the constant's value and `rg 'clamp\\(1, 25\\)' src` returns no lines.",
-      "test": "tests/askd_ac03_wait_ceiling_single_source.rs"
+      "description": "Given the workflow files at the landing commit, When `scripts/required-checks.sh --generate` runs, Then `.github/required-checks.toml` lists exactly 9 contexts \u2014 the 7 `ci.yml` jobs with `sandbox` expanded to `shard 1/2` and `shard 2/2`, plus `registry-manifest --check + schema validation` \u2014 and omits `publish to the MCP registry` (tag-only `if:`); no job name appears in the script.",
+      "test": "tests/msrvlock_ac03_generate_lists_nine_contexts.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given an ask with `ttl_s: 2`, When `host.ask.wait` is called 3 s later, Then it returns error `ask_expired` with `next_call: host.ask.create`, and the page returns the 404 bytes.",
-      "test": "tests/askd_ac04_expired_ask_errors_and_page_is_404.rs"
+      "description": "Given a fixture protection JSON with `contexts` = the two current entries, When `--check` runs against it (`REQUIRED_CHECKS_JSON=<file>`), Then exit 1 naming the 7 missing contexts (incl. `msrv check \u2026`); Given all 9, Then exit 0; Given 9 plus a stale extra, Then exit 1 naming the extra.",
+      "test": "tests/msrvlock_ac04_check_compares_live_protection.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a key-less `host.ask.wait` on bare `/mcp`, When it is called, Then it returns `tenant_key_missing` in under 1 s and no tenant row is created.",
-      "test": "tests/askd_ac05_keyless_wait_is_tenant_key_missing_and_signs_nobody_up.rs"
+      "description": "Given a fixture workflow dir where one job is renamed or a matrix gains a shard, When the toml-equals-generate test runs against the committed toml, Then it fails naming the differing context; Given the toml regenerated, Then it passes.",
+      "test": "tests/msrvlock_ac05_toml_equals_generate.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a free tenant with 5 pending asks, When `host.ask.create` runs, Then it fails `asks_limit`, and `host.quickstart.limits.plan.asks_open_max` reads 5 from `plans.rs`.",
-      "test": "tests/askd_ac06_free_tenant_sixth_pending_ask_is_asks_limit.rs"
-    },
-    {
-      "id": "AC7",
-      "level": "MUST",
-      "description": "Given two concurrent POSTs of different choices to one ask, When both complete, Then exactly one is recorded, the other is 409, and `host.ask.get` shows one `answered` event.",
-      "test": "tests/askd_ac07_concurrent_posts_record_exactly_one_answer.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Given prod after deploy, When the help page and the plan page are fetched, Then both reflect the new registry entries (Live; evidence: `curl -s -o /dev/null -w '%{http_code}' https://mcphost.dev/help/ask_expired` prints 200 and `curl -s https://mcphost.dev/plans.json | grep -c asks_open_max` prints 1 or more)",
-      "test": "deferred -- operator-provisioned: needs prod after deploy (help page and plans.json fetched from https://mcphost.dev)."
+      "description": "Given Joe or the operator runs `scripts/required-checks.sh --apply` after landing, When protection is read back, Then it lists all 9 contexts and `--check` exits 0 (Live; evidence: `gh api repos/j0yen/mcphost/branches/main/protection --jq '.required_status_checks.contexts | length'` prints `9`)",
+      "test": "deferred -- operator-provisioned: Joe/operator runs scripts/required-checks.sh --apply after landing (needs repo admin); evidence is the live protection read-back."
     }
   ],
   "scope": [
-    "src/asks.rs (new): host.ask.create/wait/get/list, WAIT_MAX_S, signed /a/{id} page (GET render, POST first-answer-wins), per-ask Notify with a 1 s re-read, 30-day retention prune.",
-    "migrations/0083_asks.sql + src/db.rs: asks and ask_events tables; Db::with_conn is pub(crate).",
-    "src/handler.rs, src/messaging.rs, src/runs.rs, src/control.rs: ask tool descriptors and dispatch, the two wait clamps and three descriptors rendered from WAIT_MAX_S, limits.wait_max_s, NEVER_SIGNS_UP arm guard.",
-    "src/plans.rs: asks_open_max (free 5, pro 100). src/errors.rs, src/help.rs: ask_expired, ask_answered, choice_invalid, asks_limit. src/chart.rs: shared sign_path. src/http.rs: /a/{id} route. src/paged.rs: host.ask.list unpaged reason."
+    "src/webhook_inbox.rs (new): host.webhook_inbox.create -- reader tool constant, idempotent-by-name create, plan_limit before anything exists, rotate, event_id_of, notify_event (one @host message per accepted delivery).",
+    "src/webhooks.rs: WebhookConfig.inbox flag, github verify scheme (X-Hub-Signature-256), rotate_secret, accept_delivery posts the inbox notice for inbox triggers only.",
+    "src/peer_recent.rs (new) + AppState.redeemed_peers + src/handler.rs: 10-minute in-memory peer (IP+UA hash) map written by host.redeem; a key-less host.* call from such a peer is tenant_key_missing naming its tenant.",
+    "src/kinds/aliases.rs, src/control.rs: inbox alias, one-step webhook-inbox recipe, recipes_nearby generated from the outcome table, anonymous quickstart note states the stateless rule.",
+    "src/db.rs: count_webhook_triggers_for_tenant, insert_host_notice. src/errors.rs: plan_limit -> INVALID_PARAMS.",
+    "www/llms.txt (+ generated llms-full.txt), examples/webhook-inbox/proof.sh, contracts/host-tools.v1.json, contracts/deprecations.json, docs/tools.md regenerated.",
+    "tests/whin_ac0[1-7]_*.rs, tests/support/whin.rs, tests/common/mod.rs (TestServer https public scheme); kindroute_ac01, trigidem_ac07, toolname_ac08, compat_ac04_ac05 updated for the new tool/recipe shape.",
+    "Cargo.toml/Cargo.lock/plugin/.claude-plugin/plugin.json/plugin/.mcp.json: patch version bump 0.107.12 -> 0.107.13."
   ],
   "non_goals": [
-    "Free-text answers; delivering the link to a channel (host.notify.send); multi-user votes; rendering agent threads; an inbox message on answer (open question, not built)."
+    "The HMAC scheme or /hook/{id} semantics beyond the github scheme addition; event-kind triggers; a stateful transport; host.webhook_inbox.remove (P2, no AC)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -76,35 +68,35 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "notify_registry": "The per-ask Notify registry is process-wide (a OnceLock map keyed by ask id), not an AppState field, so no AppState literal in the crate or its tests changes."
+      "signup_is_not_remembered": "R3 says signup or host.redeem, but tests/sessbind_* pin signup followed by key-less behavior; only host.redeem is recorded (AC4's own scenario)."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can an agent not ask its user a blocking question in one verb pair?",
-      "a": "host.msg.wait reads an inbox only keyed agents can write to, so a human has no way to answer."
+      "q": "Why did the 10-09 webhook-inbox session make seven calls and never publish?",
+      "a": "The recipe was three host steps with the hook URL only in step 2, and key-less quickstart answers repeated after a successful redeem."
     },
     {
       "why": 2,
-      "q": "Why not compose it from a url-shared tool?",
-      "a": "That costs publish + share + wait (3 host calls) against create + wait (2), measured by AC1."
+      "q": "Why did a key-less call after redeem not work?",
+      "a": "/mcp is stateless, so no session carries the redeem; the next key-less call implicit-signed-up a second tenant."
     },
     {
       "why": 3,
-      "q": "Why one WAIT_MAX_S?",
-      "a": "The 25 s ceiling was two clamp literals and prose; a derived constant cannot drift from the descriptors or quickstart limits."
+      "q": "Why does the fix key on the peer?",
+      "a": "IP + User-Agent hash is the only identity the stateless handler has across those calls; a 10-minute memory turns the second tenant into a named refusal."
     }
   ],
-  "created_at": "2026-10-11T00:00:00Z",
+  "created_at": "2026-10-10T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "next_call shape?",
-      "resolution": "A tool-name string (next_call) plus an args object (next_args), so the literal AC text next_call == host.ask.create holds and the call stays executable."
+      "question": "Peer hash = IP+UA or IP only?",
+      "resolution": "IP+UA (the PRD default), hashed; recorded in the PR."
     },
     {
-      "question": "Where does the wait wake-up registry live?",
-      "resolution": "Process-wide OnceLock map in asks.rs; the PRD's AppState placement would have touched every AppState literal."
+      "question": "Which quota gates create: event_triggers_max or schedules_max?",
+      "resolution": "Both are checked before anything is created; event_triggers_max counts event + message + webhook triggers, so the free plan's 3 trips plan_limit first (data.limit 3)."
     }
   ]
 }

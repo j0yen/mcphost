@@ -33,6 +33,7 @@ audit rows and event trail (kept 30 days after expiry). `host.ask.wait/get/list`
 key-less caller up (`tenant_key_missing`). The wait ceiling is one constant: `host.msg.wait`,
 `host.runs.wait`, `host.ask.wait` and `host.quickstart.limits.wait_max_s` (25) all read it.
 New plan limit `asks_open_max` (free 5, pro 100); past it `host.ask.create` fails `asks_limit`.
+CI: the required `gate` job now runs every cargo step with `--locked`, `msrvlock_ac01` fails on a stale `Cargo.lock`, and `scripts/required-checks.sh` derives the required status-check set from the workflow files into `.github/required-checks.toml` (`--check` compares it to live branch protection, `--apply` sets it). No runtime change.
 
 ## v0.107.13 — 2026-10-10
 

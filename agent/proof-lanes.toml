@@ -142,6 +142,15 @@ required_commands = [
 ]
 
 [[lane]]
+id = "required-checks"
+description = "PRD-mcphost-msrv-locked-required-check: scripts/required-checks.sh derives the required-status-check set from .github/workflows/*.yml into .github/required-checks.toml (the toml is a generated file). Given its own lane rather than folded into the ci lane, since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane's required_commands as an immutable baseline. Proof is the msrvlock_ac03..ac05 tests (name-filtered cargo test across --workspace, same suite-bucketing reasoning as the intent-card lane above) plus --print, which fails on an unparsable workflow."
+globs = ["scripts/required-checks.sh", ".github/required-checks.toml"]
+required_commands = [
+  "scripts/required-checks.sh --print",
+  "cargo test --workspace msrvlock",
+]
+
+[[lane]]
 id = "host-pressure-doc-check"
 description = "PRD-mcphost-status-host-pressure requirement 6 (AC7): scripts/host-pressure-doc-check.sh generates docs/metrics.md's host-field table from HostPressure's field list in src/hostpressure.rs and fails on drift. Given its own lane rather than folded into the pre-existing docs lane, since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane's required_commands as an immutable baseline (same reasoning as the spec-fields-doc-check lane above)."
 globs = ["scripts/host-pressure-doc-check.sh"]
