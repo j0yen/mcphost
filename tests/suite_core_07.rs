@@ -343,6 +343,12 @@ mod ccli_ac05_contract_skew_warning;
 mod ccli_ac06_cli_tree_equals_contract;
 #[path = "ccli_ac07_completions_rendered_from_the_table.rs"]
 mod ccli_ac07_completions_rendered_from_the_table;
+#[path = "cclib_ac01_contract_skew_warning.rs"]
+mod cclib_ac01_contract_skew_warning;
+#[path = "cclib_ac02_cli_tree_equals_contract.rs"]
+mod cclib_ac02_cli_tree_equals_contract;
+#[path = "cclib_ac03_completions_rendered_from_the_table.rs"]
+mod cclib_ac03_completions_rendered_from_the_table;
 #[path = "cest_ac01_dry_run_verdict_matches_real_call.rs"]
 mod cest_ac01_dry_run_verdict_matches_real_call;
 #[path = "cest_ac02_handler_runs_only_preflight_rows.rs"]
