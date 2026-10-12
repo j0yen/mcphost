@@ -72,7 +72,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        12,
+        14,
         "PRD-mcphost-one-next-tool requirement 1 (AC1): signup plus the eleven-tool starter \
          set, not the full host.*/billing.* control plane: {tool_names:?}"
     );

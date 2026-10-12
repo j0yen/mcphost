@@ -410,6 +410,9 @@ pub struct AppState {
     /// tracking for the `_meta.invite_url` hint on an invitee's first
     /// shared-tool call -- see [`crate::invites::InviteHintTracker`].
     pub invite_hints: crate::invites::InviteHintTracker,
+    /// PRD-mcphost-feedback-tool-and-ledger: per-connection 5-slot call-id
+    /// ring that `host.feedback.send` stamps onto its row.
+    pub feedback_calls: crate::feedback::CallRing,
     /// PRD-mcphost-lineage-blast-radius requirement 3: per-tenant, 30s-TTL
     /// cache of the loaded `LineageGraph` -- see
     /// [`crate::lineage::LineageCache`]. Same `Arc`-shared-across-clones

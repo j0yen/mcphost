@@ -90,6 +90,12 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// PRD-mcphost-feedback-tool-and-ledger requirement 7: read the
+    /// `feedback` ledger on the host. Never prints `ip_hash`.
+    Feedback {
+        #[command(subcommand)]
+        action: FeedbackCommand,
+    },
     /// PRD-mcphost-surface-fluidity requirement 4 (AC5): regenerate
     /// `www/llms.txt`'s generated `## Tools` section from the same
     /// descriptors `tools/list` serves, so the two can never drift the way
@@ -320,6 +326,22 @@ enum DocsExamplesCommand {
 }
 
 #[derive(Subcommand)]
+enum FeedbackCommand {
+    /// Print feedback rows, newest first, as a tab-separated table.
+    List {
+        /// Only rows newer than this age: `<n>s|m|h|d`, e.g. `24h`.
+        #[arg(long)]
+        since: Option<String>,
+        /// Only rows of this kind (one of `FeedbackKind::ALL`).
+        #[arg(long)]
+        kind: Option<String>,
+        /// Most rows to print.
+        #[arg(long, default_value_t = 100)]
+        limit: i64,
+    },
+}
+
+#[derive(Subcommand)]
 enum AdminCommand {
     /// P1 requirement 5 (AC5): labels every pre-existing `tenants`/
     /// `claim_email_events` row still at migration 0078's `'unknown'`
@@ -537,6 +559,33 @@ async fn main() -> anyhow::Result<()> {
             }
             Ok(())
         }
+        Command::Feedback { action } => match action {
+            FeedbackCommand::List { since, kind, limit } => {
+                // No `init_tracing()`: stdout is the contract, as for `Funnel`.
+                let age = match since.as_deref() {
+                    Some(s) => match mcphost::feedback::parse_since(s) {
+                        Some(a) => a,
+                        None => {
+                            eprintln!("feedback list: --since '{s}' is not <n>s|m|h|d");
+                            std::process::exit(2);
+                        }
+                    },
+                    None => i64::MAX / 2,
+                };
+                if let Some(k) = kind.as_deref()
+                    && mcphost::feedback::FeedbackKind::parse(k).is_none()
+                {
+                    eprintln!("feedback list: unknown --kind '{k}'");
+                    std::process::exit(2);
+                }
+                let db = Db::open(&data_dir())?;
+                db.migrate().await?;
+                let since_unix = mcphost::state::now_unix().saturating_sub(age);
+                let rows = db.list_feedback_since(since_unix, kind, limit.clamp(1, 1000)).await?;
+                print!("{}", mcphost::feedback::render_table(&rows));
+                Ok(())
+            }
+        },
         Command::Admin { action } => match action {
             AdminCommand::BackfillOrigin => {
                 // Deliberately no `init_tracing()`: same rationale as
@@ -1173,6 +1222,7 @@ async fn main() -> anyhow::Result<()> {
                 verified_client_ids,
                 session_bindings,
                 invite_hints: mcphost::invites::InviteHintTracker::new(),
+                feedback_calls: Default::default(),
                 lineage_cache: mcphost::lineage::new_cache(),
                 lineage_trace_pages: mcphost::lineage::new_trace_page_cache(),
                 public_url_sync_deadline: mcphost::state::PUBLIC_URL_SYNC_DEADLINE,

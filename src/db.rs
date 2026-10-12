@@ -198,6 +198,54 @@ const MIGRATION_0083: &str = include_str!("../migrations/0083_asks.sql");
 /// PRD-mcphost-call-trace-replay requirement 2: the `call_traces` table.
 const MIGRATION_0084: &str = include_str!("../migrations/0084_call_traces.sql");
 const MIGRATION_0085: &str = include_str!("../migrations/0085_tools_observed_outputs.sql");
+/// Which send cap `Db::insert_feedback` enforces for a row.
+#[derive(Debug, Clone, Copy)]
+pub enum FeedbackCap {
+    /// Uncapped (a fleet IP).
+    None,
+    /// Anonymous rows sharing the row's `ip_hash`.
+    Ip { limit: i64, window_s: i64 },
+    /// Rows of the row's own tenant.
+    Tenant { limit: i64, window_s: i64 },
+}
+
+/// Columns a `feedback` read selects -- deliberately not `ip_hash`.
+const FEEDBACK_COLS: &str = "feedback_id, tenant_id, kind, text, context_json, client_name, \
+     client_version, last_call_ids, created_unix";
+
+/// One `feedback` row as any reader sees it (the `ip_hash` column is never
+/// part of it).
+#[derive(Debug, Clone)]
+pub struct FeedbackRow {
+    pub feedback_id: String,
+    pub tenant_id: Option<i64>,
+    pub kind: String,
+    pub text: String,
+    pub context_json: Option<String>,
+    pub client_name: Option<String>,
+    pub client_version: Option<String>,
+    pub last_call_ids: String,
+    pub created_unix: i64,
+}
+
+impl FeedbackRow {
+    fn from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Self> {
+        Ok(Self {
+            feedback_id: r.get(0)?,
+            tenant_id: r.get(1)?,
+            kind: r.get(2)?,
+            text: r.get(3)?,
+            context_json: r.get(4)?,
+            client_name: r.get(5)?,
+            client_version: r.get(6)?,
+            last_call_ids: r.get(7)?,
+            created_unix: r.get(8)?,
+        })
+    }
+}
+
+/// PRD-mcphost-feedback-tool-and-ledger requirement 2: the `feedback` table.
+const MIGRATION_0086: &str = include_str!("../migrations/0086_feedback.sql");
 
 /// PRD-mcphost-session-bound-tenant-key requirement 3: `kind` on
 /// `signup_events`. Renumbered to 0080 during this rebase: mcphost-tool-
@@ -2737,7 +2785,10 @@ impl Db {
         Self::migrate_0082_calls_refused(&conn)?;
         Self::migrate_0083_asks(&conn)?;
         Self::migrate_0084_call_traces(&conn)?;
-        Self::migrate_0085_tools_observed_outputs(&conn)
+        Self::migrate_0085_tools_observed_outputs(&conn)?;
+        // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
+        conn.execute_batch(MIGRATION_0086)?;
+        Ok(())
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -5023,6 +5074,120 @@ impl Db {
                 params![tenant_id, format!("did_you_mean:{tool_name}:{outcome}"), now_unix, outcome],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-feedback-tool-and-ledger requirements 2 and 4: one
+    /// `feedback` row, admitted against `cap` in the same connection
+    /// closure so a concurrent burst cannot overshoot it. `Ok(Err(n))` is a
+    /// refusal: the cap is full and a slot frees in `n` (>= 1) seconds.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_feedback(
+        &self,
+        feedback_id: String,
+        tenant_id: Option<i64>,
+        kind: String,
+        text: String,
+        context_json: Option<String>,
+        client_name: Option<String>,
+        client_version: Option<String>,
+        last_call_ids: String,
+        ip_hash: String,
+        created_unix: i64,
+        cap: FeedbackCap,
+    ) -> Result<Result<(), i64>, AppError> {
+        self.with_conn(move |conn| {
+            let window = match &cap {
+                FeedbackCap::None => None,
+                FeedbackCap::Ip { limit, window_s } => Some((
+                    "SELECT COUNT(*), MIN(created_unix) FROM feedback \
+                     WHERE tenant_id IS NULL AND ip_hash = ?1 AND created_unix > ?2",
+                    ip_hash.clone().into(),
+                    *limit,
+                    *window_s,
+                )),
+                FeedbackCap::Tenant { limit, window_s } => Some((
+                    "SELECT COUNT(*), MIN(created_unix) FROM feedback \
+                     WHERE tenant_id = ?1 AND created_unix > ?2",
+                    tenant_id.map_or(rusqlite::types::Value::Null, rusqlite::types::Value::Integer),
+                    *limit,
+                    *window_s,
+                )),
+            };
+            if let Some((sql, key, limit, window_s)) = window {
+                let since = created_unix - window_s;
+                let (count, oldest): (i64, Option<i64>) =
+                    conn.query_row(sql, params![key, since], |r| Ok((r.get(0)?, r.get(1)?)))?;
+                if count >= limit {
+                    let retry = oldest.map_or(window_s, |o| o + window_s - created_unix);
+                    return Ok(Err(retry.max(1)));
+                }
+            }
+            conn.execute(
+                "INSERT INTO feedback (feedback_id, tenant_id, kind, text, context_json, \
+                 client_name, client_version, last_call_ids, ip_hash, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![
+                    feedback_id, tenant_id, kind, text, context_json, client_name,
+                    client_version, last_call_ids, ip_hash, created_unix
+                ],
+            )?;
+            Ok(Ok(()))
+        })
+        .await
+    }
+
+    /// A tenant's own `feedback` rows, newest first. Never selects `ip_hash`.
+    pub async fn list_feedback_for_tenant(&self, tenant_id: i64, limit: i64) -> Result<Vec<FeedbackRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(&format!(
+                "SELECT {FEEDBACK_COLS} FROM feedback WHERE tenant_id = ?1 \
+                 ORDER BY created_unix DESC, id DESC LIMIT ?2"
+            ))?;
+            let rows = stmt.query_map(params![tenant_id, limit], FeedbackRow::from_row)?;
+            Ok(rows.collect::<Result<Vec<_>, _>>()?)
+        })
+        .await
+    }
+
+    /// `mcphost feedback list`: rows at or after `since_unix`, optionally one
+    /// kind, newest first, each with its tenant's namespace (`None` for an
+    /// anonymous row). Never selects `ip_hash`.
+    pub async fn list_feedback_since(
+        &self,
+        since_unix: i64,
+        kind: Option<String>,
+        limit: i64,
+    ) -> Result<Vec<(FeedbackRow, Option<String>)>, AppError> {
+        self.with_conn(move |conn| {
+            let cols = FEEDBACK_COLS
+                .split(',')
+                .map(|c| format!("f.{}", c.trim()))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let mut stmt = conn.prepare(&format!(
+                "SELECT {cols}, t.namespace FROM feedback f \
+                 LEFT JOIN tenants t ON t.id = f.tenant_id \
+                 WHERE f.created_unix >= ?1 AND (?2 IS NULL OR f.kind = ?2) \
+                 ORDER BY f.created_unix DESC, f.id DESC LIMIT ?3"
+            ))?;
+            let rows = stmt.query_map(params![since_unix, kind, limit], |r| {
+                Ok((FeedbackRow::from_row(r)?, r.get::<_, Option<String>>(9)?))
+            })?;
+            Ok(rows.collect::<Result<Vec<_>, _>>()?)
+        })
+        .await
+    }
+
+    /// One `feedback` row by its public id. Never selects `ip_hash`.
+    pub async fn get_feedback(&self, feedback_id: String) -> Result<Option<FeedbackRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(&format!(
+                "SELECT {FEEDBACK_COLS} FROM feedback WHERE feedback_id = ?1"
+            ))?;
+            let mut rows = stmt.query_map(params![feedback_id], FeedbackRow::from_row)?;
+            Ok(rows.next().transpose()?)
         })
         .await
     }

@@ -774,6 +774,12 @@ pub(crate) fn self_check_tools_list(state: &AppState) -> usize {
     starter_tools(&state.kinds).len()
 }
 
+/// PRD-mcphost-feedback-tool-and-ledger: the two verbs an anonymous caller
+/// may use without being implicitly signed up.
+fn is_feedback_tool(name: &str) -> bool {
+    matches!(name, "host.feedback.send" | "host.feedback.list")
+}
+
 /// PRD-mcphost-one-next-tool requirement 1 (AC1): the starter set an
 /// `Auth::Anonymous`/`Auth::Invalid` session's `tools/list` returns --
 /// `signup` first (AC1), then eleven `host.*`/`billing.*` tools a fresh
@@ -793,6 +799,8 @@ const STARTER_TOOL_NAMES: &[&str] = &[
     "host.state.get",
     "host.state.list",
     "host.tool_share",
+    "host.feedback.send",
+    "host.feedback.list",
 ];
 
 /// A filter over [`host_tools`]'s full descriptor set, not a second source
@@ -2945,6 +2953,41 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                         "description": "Opaque cursor from a previous host.agent.search response's \
                             cursor field; omit for the first page.",
                     },
+                }),
+                &[],
+            ),
+        ),
+        // PRD-mcphost-feedback-tool-and-ledger requirements 2, 3, 5: the one
+        // verb that carries free text to the host's humans. Reachable
+        // before signup (see the dispatch arm in `call_tool`).
+        Tool::new(
+            crate::feedback::tool_descriptors()[0].0,
+            crate::feedback::tool_descriptors()[0].1,
+            host_schema(
+                json!({
+                    "kind": {
+                        "type": "string",
+                        "enum": crate::feedback::FeedbackKind::schema_enum(),
+                        "description": "What you are telling the host.",
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "What you needed or saw; 1 to 2048 bytes after trim.",
+                    },
+                    "context": {
+                        "type": "object",
+                        "description": "Optional, at most 1 KB: tool, error_code, free.",
+                    },
+                }),
+                &["kind", "text"],
+            ),
+        ),
+        Tool::new(
+            crate::feedback::tool_descriptors()[1].0,
+            crate::feedback::tool_descriptors()[1].1,
+            host_schema(
+                json!({
+                    "limit": {"type": "integer", "description": "Max rows, up to 100; default 20."},
                 }),
                 &[],
             ),
@@ -8895,6 +8938,7 @@ impl ServerHandler for McpHostHandler {
         if via_tenant_key_arg
             && matches!(auth, Auth::Anonymous)
             && (body_name.starts_with("host.") || body_name.starts_with("billing."))
+            && !is_feedback_tool(&body_name)
             && tenant_path_namespace(parts).is_none()
             && let Some(sid) = session_id.as_deref()
         {
@@ -8973,6 +9017,7 @@ impl ServerHandler for McpHostHandler {
             && matches!(auth, Auth::Anonymous)
             && (body_name.starts_with("host.") || body_name.starts_with("billing."))
             && !matches!(body_name.as_str(), "host.quickstart" | "host.redeem" | "billing.plans")
+            && !is_feedback_tool(&body_name)
             && tenant_path_namespace(parts).is_none()
             && crate::invites::invite_path_code(parts).is_none()
         {
@@ -9257,6 +9302,16 @@ impl ServerHandler for McpHostHandler {
         // deprecation hint / log / metric.
         let alias_canonical = crate::tool_aliases::resolve(&body_name);
 
+        // PRD-mcphost-feedback-tool-and-ledger requirement 2: this
+        // connection's call-id ring. Feedback verbs read it, every other
+        // call extends it.
+        let feedback_ring_key = match &auth {
+            Auth::Tenant(t, _) => crate::feedback::ring_key_tenant(t.id),
+            _ => crate::feedback::ring_key_anonymous(session_id.as_deref(), &source),
+        };
+        if !is_feedback_tool(&body_name) {
+            self.state.feedback_calls.push(&feedback_ring_key);
+        }
         let outcome: Result<Value, AppError> = if let Some(err) = end_user_err {
             Err(err)
         } else {
@@ -9344,6 +9399,41 @@ impl ServerHandler for McpHostHandler {
                 }
             }
             (_, "host.quickstart") => control::quickstart(&self.state, None, &args, None),
+            // PRD-mcphost-feedback-tool-and-ledger requirement 3: reachable
+            // anonymously (never implicit-signs-up) or as a tenant.
+            (Auth::Anonymous | Auth::Tenant(..), "host.feedback.send" | "host.feedback.list")
+                if !(matches!(auth, Auth::Anonymous) && tenant_path_namespace(parts).is_some()) =>
+            {
+                let tenant_id = match &auth {
+                    Auth::Tenant(t, _) => Some(t.id),
+                    _ => None,
+                };
+                let (client_name, client_version) = match peer_client_info(&ctx) {
+                    Some((n, v)) => (Some(n), Some(v)),
+                    None => (None, None),
+                };
+                let sender = crate::feedback::Sender {
+                    tenant_id,
+                    source_ip: &source,
+                    client_name,
+                    client_version,
+                    ring_key: feedback_ring_key.clone(),
+                };
+                if body_name == "host.feedback.send" {
+                    // PRD-mcphost-dry-run-on-write-verbs: this pre-auth arm
+                    // runs before the generic `dry_run` intercept, so the
+                    // registry's NoDryRun refusal is applied here by hand.
+                    if let Some(verb) = crate::write_verbs::lookup("host.feedback.send")
+                        && crate::write_verbs::dry_run_requested(&args)
+                        && let crate::write_verbs::DryRun::NoDryRun(reason) = verb.dry_run
+                    {
+                        return Err(crate::write_verbs::no_dry_run_error(verb, reason).into_error_data());
+                    }
+                    crate::feedback::send(&self.state, &sender, &args).await
+                } else {
+                    crate::feedback::list(&self.state, &sender, &args).await
+                }
+            }
             // PRD-grand-loop-billing AC1: "billing.plans (anonymous and
             // tenant)" -- reachable exactly like host.quickstart, before
             // signup and regardless of auth, since it carries no
