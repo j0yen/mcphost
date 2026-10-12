@@ -28,6 +28,7 @@ Every numeric ceiling in the plan table, as `host.quickstart` `limits.plan` repo
 | `channels_max` | 3 | 25 |
 | `concurrent_calls_per_tenant` | 4 | 10 |
 | `contact_requests_per_day` | 20 | 500 |
+| `dead_letters_max` | 100 | 1000 |
 | `docs_bytes_max` | 52428800 | 5368709120 |
 | `docs_chunks_max` | 10000 | 50000 |
 | `docs_max` | 200 | 20000 |

@@ -669,6 +669,20 @@ mod dxn_ac05_cross_page_dependency_fails_extract;
 mod dxn_ac06_gen_llms_full_gates_on_corpus_and_annotates;
 #[path = "dxn_ac07_unreachable_host_exits_two_after_one_retry.rs"]
 mod dxn_ac07_unreachable_host_exits_two_after_one_retry;
+#[path = "edead_ac01_rate_limit_dead_letter.rs"]
+mod edead_ac01_rate_limit_dead_letter;
+#[path = "edead_ac02_signature_mismatch_dead_letter.rs"]
+mod edead_ac02_signature_mismatch_dead_letter;
+#[path = "edead_ac03_run_error_dead_letter.rs"]
+mod edead_ac03_run_error_dead_letter;
+#[path = "edead_ac04_replay_dead_letter.rs"]
+mod edead_ac04_replay_dead_letter;
+#[path = "edead_ac05_ring_and_plan_ceiling.rs"]
+mod edead_ac05_ring_and_plan_ceiling;
+#[path = "edead_ac06_event_in_chain_context.rs"]
+mod edead_ac06_event_in_chain_context;
+#[path = "edead_ac07_reason_table_cannot_drift.rs"]
+mod edead_ac07_reason_table_cannot_drift;
 #[path = "enduser_ac02_assertion_http_headers_and_calls_row.rs"]
 mod enduser_ac02_assertion_http_headers_and_calls_row;
 #[path = "enduser_ac03_invalid_assertion_rejected.rs"]
@@ -1819,23 +1833,3 @@ mod runsubject_ac06_migration_0048_under_1s_at_100k_rows;
 mod runsubject_ac07_llms_txt_names_end_user_and_filter;
 #[path = "sandboxready_ac7_conformance_suite.rs"]
 mod sandboxready_ac7_conformance_suite;
-#[path = "sched_ac10_trigger_fire_manual.rs"]
-mod sched_ac10_trigger_fire_manual;
-#[path = "sched_ac1_two_firings_visible_in_ledger.rs"]
-mod sched_ac1_two_firings_visible_in_ledger;
-#[path = "sched_ac2_invalid_cron_names_minute.rs"]
-mod sched_ac2_invalid_cron_names_minute;
-#[path = "sched_ac3_free_plan_quota_exceeded.rs"]
-mod sched_ac3_free_plan_quota_exceeded;
-#[path = "sched_ac4_free_plan_interval_too_short.rs"]
-mod sched_ac4_free_plan_interval_too_short;
-#[path = "sched_ac5_overlap_skips_and_records.rs"]
-mod sched_ac5_overlap_skips_and_records;
-#[path = "sched_ac6_pause_blocks_resume_allows.rs"]
-mod sched_ac6_pause_blocks_resume_allows;
-#[path = "sched_ac7_tool_remove_disables_triggers.rs"]
-mod sched_ac7_tool_remove_disables_triggers;
-#[path = "sched_ac8_healthz_scheduler_fields.rs"]
-mod sched_ac8_healthz_scheduler_fields;
-#[path = "sched_quickstart_and_usage_report_schedules.rs"]
-mod sched_quickstart_and_usage_report_schedules;

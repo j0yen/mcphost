@@ -5277,6 +5277,37 @@
       "since": "0.58.0"
     },
     {
+      "description": "List this tenant's dead letters, newest first: every event delivery the host refused and every event-fired run that ended in error, with reason_code, received_unix, body_excerpt and dead_letter_id; dropped_count is how many the ring evicted. Replay one with host.trigger.replay(dead_letter_id). reason_code is one of: events_rate_limited (more deliveries than the plan's events_per_minute in the last minute (HTTP 429)); event_body_too_large (body over the plan's event_body_bytes_max (HTTP 413); body is cut to that size); signature_mismatch (the verify config rejected the signature, token or timestamp (HTTP 401)); secret_unavailable (the verify config names a secret this tenant no longer has (HTTP 400)); tool_missing (the trigger exists but its target tool was removed (HTTP 404)); jobs_concurrent (the tenant was at its jobs_concurrent ceiling; the run was rejected (HTTP 202)); run_error (the event-fired run finalized error; the letter carries run_id and error_class); hook_not_found (no enabled event trigger resolved for the URL (HTTP 404); no letter, nothing to attach it to); banned (the owning key is banned (HTTP 403); no letter).",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "Letters to return, newest first; default 50.",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "since": {
+            "description": "Only letters received at or after this unix time.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "trigger": {
+            "description": "Only this trigger's letters (id or name).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.trigger.dead_letters",
+      "since": "0.58.0",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
+    },
+    {
       "description": "Run a schedule once right now, for testing -- recorded as trigger: \"schedule\" with manual: true, independent of next_unix or pause state.",
       "input_schema": {
         "additionalProperties": false,
@@ -5402,10 +5433,14 @@
       "since": "0.58.0"
     },
     {
-      "description": "Re-run a past event- or message-triggered run's exact stored event/envelope (no re-verification -- the original delivery already passed it). The new run's trigger_ref names the original run id. For a webhook trigger, pass id (the trigger) and row_id (an inbox_<name> row id, e.g. from POST /hook/...'s own response or host.state.query) instead of run_id -- a paused delivery has no run to replay from.",
+      "description": "Re-run a past event- or message-triggered run's exact stored event/envelope (no re-verification -- the original delivery already passed it). The new run's trigger_ref names the original run id. For a webhook trigger, pass id (the trigger) and row_id (an inbox_<name> row id, e.g. from POST /hook/...'s own response or host.state.query) instead of run_id -- a paused delivery has no run to replay from. Pass dead_letter_id (from host.trigger.dead_letters) to re-deliver a refused or failed event with its stored body and headers, skipping the rate limit and the signature check; every replay is a new run, never deduped.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dead_letter_id": {
+            "description": "A dl_ id from host.trigger.dead_letters: re-run that letter's stored event.",
+            "type": "string"
+          },
           "id": {
             "description": "kind=\"webhook\" only: the trigger id (paired with row_id).",
             "type": "string"
@@ -10262,6 +10297,36 @@
       "since": "0.58.0"
     },
     {
+      "description": "List this tenant's dead letters, newest first: every event delivery the host refused and every event-fired run that ended in error, with reason_code, received_unix, body_excerpt and dead_letter_id; dropped_count is how many the ring evicted. Replay one with host.trigger.replay(dead_letter_id). reason_code is one of: events_rate_limited (more deliveries than the plan's events_per_minute in the last minute (HTTP 429)); event_body_too_large (body over the plan's event_body_bytes_max (HTTP 413); body is cut to that size); signature_mismatch (the verify config rejected the signature, token or timestamp (HTTP 401)); secret_unavailable (the verify config names a secret this tenant no longer has (HTTP 400)); tool_missing (the trigger exists but its target tool was removed (HTTP 404)); jobs_concurrent (the tenant was at its jobs_concurrent ceiling; the run was rejected (HTTP 202)); run_error (the event-fired run finalized error; the letter carries run_id and error_class); hook_not_found (no enabled event trigger resolved for the URL (HTTP 404); no letter, nothing to attach it to); banned (the owning key is banned (HTTP 403); no letter).",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "Letters to return, newest first; default 50.",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "since": {
+            "description": "Only letters received at or after this unix time.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "trigger": {
+            "description": "Only this trigger's letters (id or name).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host_trigger_dead_letters",
+      "since": "0.58.0"
+    },
+    {
       "description": "Run a schedule once right now, for testing -- recorded as trigger: \"schedule\" with manual: true, independent of next_unix or pause state.",
       "input_schema": {
         "additionalProperties": false,
@@ -10386,10 +10451,14 @@
       "since": "0.58.0"
     },
     {
-      "description": "Re-run a past event- or message-triggered run's exact stored event/envelope (no re-verification -- the original delivery already passed it). The new run's trigger_ref names the original run id. For a webhook trigger, pass id (the trigger) and row_id (an inbox_<name> row id, e.g. from POST /hook/...'s own response or host.state.query) instead of run_id -- a paused delivery has no run to replay from.",
+      "description": "Re-run a past event- or message-triggered run's exact stored event/envelope (no re-verification -- the original delivery already passed it). The new run's trigger_ref names the original run id. For a webhook trigger, pass id (the trigger) and row_id (an inbox_<name> row id, e.g. from POST /hook/...'s own response or host.state.query) instead of run_id -- a paused delivery has no run to replay from. Pass dead_letter_id (from host.trigger.dead_letters) to re-deliver a refused or failed event with its stored body and headers, skipping the rate limit and the signature check; every replay is a new run, never deduped.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "dead_letter_id": {
+            "description": "A dl_ id from host.trigger.dead_letters: re-run that letter's stored event.",
+            "type": "string"
+          },
           "id": {
             "description": "kind=\"webhook\" only: the trigger id (paired with row_id).",
             "type": "string"

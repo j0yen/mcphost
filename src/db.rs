@@ -246,6 +246,10 @@ impl FeedbackRow {
 
 /// PRD-mcphost-feedback-tool-and-ledger requirement 2: the `feedback` table.
 const MIGRATION_0086: &str = include_str!("../migrations/0086_feedback.sql");
+/// PRD-mcphost-event-trigger-from-webhook R1: the `dead_letters` table.
+const MIGRATION_0087: &str = include_str!("../migrations/0087_dead_letters.sql");
+/// PRD-mcphost-event-trigger-from-webhook R4: the ring's eviction counter.
+const MIGRATION_0088: &str = include_str!("../migrations/0088_dead_letter_drops.sql");
 
 /// PRD-mcphost-session-bound-tenant-key requirement 3: `kind` on
 /// `signup_events`. Renumbered to 0080 during this rebase: mcphost-tool-
@@ -1342,6 +1346,52 @@ pub struct TriggerRow {
     /// `triggers::set`) -- `host.trigger.set` looks a trigger up by this,
     /// not `id`, to decide create vs. update.
     pub name: String,
+}
+
+/// PRD-mcphost-event-trigger-from-webhook R1: a dead letter to store.
+pub struct NewDeadLetter {
+    pub id: String,
+    pub tenant_id: i64,
+    pub trigger_id: String,
+    pub received_unix: i64,
+    pub reason_code: String,
+    pub headers_json: String,
+    pub body: String,
+    pub truncated: bool,
+    pub run_id: Option<String>,
+    pub error_class: Option<String>,
+}
+
+/// One stored dead letter.
+pub struct DeadLetterRow {
+    pub id: String,
+    pub trigger_id: String,
+    pub received_unix: i64,
+    pub reason_code: String,
+    pub headers_json: String,
+    pub body: String,
+    pub truncated: bool,
+    pub run_id: Option<String>,
+    pub replayed_run_id: Option<String>,
+    pub error_class: Option<String>,
+}
+
+const DEAD_LETTER_COLUMNS: &str = "id, trigger_id, received_unix, reason_code, headers_json, body, \
+    truncated, run_id, replayed_run_id, error_class";
+
+fn dead_letter_from_row(r: &Row) -> rusqlite::Result<DeadLetterRow> {
+    Ok(DeadLetterRow {
+        id: r.get(0)?,
+        trigger_id: r.get(1)?,
+        received_unix: r.get(2)?,
+        reason_code: r.get(3)?,
+        headers_json: r.get(4)?,
+        body: r.get(5)?,
+        truncated: r.get::<_, i64>(6)? != 0,
+        run_id: r.get(7)?,
+        replayed_run_id: r.get(8)?,
+        error_class: r.get(9)?,
+    })
 }
 
 const TRIGGER_COLUMNS: &str = "id, tenant_id, tool_name, kind, config_json, enabled, \
@@ -2788,7 +2838,8 @@ impl Db {
         Self::migrate_0085_tools_observed_outputs(&conn)?;
         // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0086)?;
-        Ok(())
+        Self::migrate_0087_dead_letters(&conn)?;
+        Self::migrate_0088_dead_letter_drops(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -3949,6 +4000,30 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0085)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-event-trigger-from-webhook R1: same idempotency pattern
+    /// as 0075, gated on the `dead_letters` table.
+    fn migrate_0087_dead_letters(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'dead_letters'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0087)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-event-trigger-from-webhook R4: same idempotency pattern
+    /// as 0075, gated on the `dead_letter_drops` table.
+    fn migrate_0088_dead_letter_drops(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'dead_letter_drops'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0088)?;
         }
         Ok(())
     }
@@ -10173,6 +10248,135 @@ impl Db {
                 params![run_id, tenant_id, tool_name, trigger, trigger_ref, message_id, error_class, now],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-event-trigger-from-webhook R1/R4: stores one dead letter
+    /// and, in the same transaction, evicts this tenant's oldest letters past
+    /// `max` (counting each in `dead_letter_drops`).
+    pub async fn insert_dead_letter(&self, letter: NewDeadLetter, max: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            tx.execute(
+                "INSERT INTO dead_letters (id, tenant_id, trigger_id, received_unix, reason_code, \
+                 headers_json, body, truncated, run_id, error_class) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![
+                    letter.id,
+                    letter.tenant_id,
+                    letter.trigger_id,
+                    letter.received_unix,
+                    letter.reason_code,
+                    letter.headers_json,
+                    letter.body,
+                    letter.truncated,
+                    letter.run_id,
+                    letter.error_class
+                ],
+            )?;
+            let evicted = tx.execute(
+                "DELETE FROM dead_letters WHERE tenant_id = ?1 AND rowid IN ( \
+                   SELECT rowid FROM dead_letters WHERE tenant_id = ?1 \
+                   ORDER BY received_unix DESC, rowid DESC LIMIT -1 OFFSET ?2)",
+                params![letter.tenant_id, max.max(0)],
+            )?;
+            if evicted > 0 {
+                tx.execute(
+                    "INSERT INTO dead_letter_drops (tenant_id, dropped) VALUES (?1, ?2) \
+                     ON CONFLICT(tenant_id) DO UPDATE SET dropped = dropped + ?2",
+                    params![letter.tenant_id, evicted as i64],
+                )?;
+            }
+            tx.commit()?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// How many of this tenant's dead letters the ring has evicted.
+    pub async fn dead_letters_dropped(&self, tenant_id: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            Ok(conn
+                .query_row(
+                    "SELECT dropped FROM dead_letter_drops WHERE tenant_id = ?1",
+                    params![tenant_id],
+                    |r| r.get(0),
+                )
+                .optional()?
+                .unwrap_or(0))
+        })
+        .await
+    }
+
+    /// `host.trigger.dead_letters`: newest first.
+    pub async fn list_dead_letters(
+        &self,
+        tenant_id: i64,
+        trigger_id: Option<String>,
+        since: Option<i64>,
+        limit: i64,
+    ) -> Result<Vec<DeadLetterRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(&format!(
+                "SELECT {DEAD_LETTER_COLUMNS} FROM dead_letters \
+                 WHERE tenant_id = ?1 AND (?2 IS NULL OR trigger_id = ?2) AND received_unix >= ?3 \
+                 ORDER BY received_unix DESC, rowid DESC LIMIT ?4"
+            ))?;
+            let rows = stmt
+                .query_map(
+                    params![tenant_id, trigger_id, since.unwrap_or(0), limit],
+                    dead_letter_from_row,
+                )?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    pub async fn get_dead_letter(
+        &self,
+        tenant_id: i64,
+        id: String,
+    ) -> Result<Option<DeadLetterRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                &format!("SELECT {DEAD_LETTER_COLUMNS} FROM dead_letters WHERE id = ?1 AND tenant_id = ?2"),
+                params![id, tenant_id],
+                dead_letter_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Records the run a replay enqueued; a second replay overwrites it.
+    pub async fn set_dead_letter_replayed(&self, id: String, run_id: String) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE dead_letters SET replayed_run_id = ?2 WHERE id = ?1",
+                params![id, run_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `(count, newest_unix)` of one trigger's dead letters.
+    pub async fn dead_letter_stats(
+        &self,
+        tenant_id: i64,
+        trigger_id: String,
+    ) -> Result<(i64, Option<i64>), AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*), MAX(received_unix) FROM dead_letters \
+                 WHERE tenant_id = ?1 AND trigger_id = ?2",
+                params![tenant_id, trigger_id],
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Option<i64>>(1)?)),
+            )
+            .map_err(AppError::from)
         })
         .await
     }

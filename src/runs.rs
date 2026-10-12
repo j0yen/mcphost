@@ -1235,7 +1235,13 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
         budget: Some(budget.clone()),
     };
 
-    let call_timeout = tokio::time::timeout(Duration::from_secs(deadline_s), kind.call(&row.spec, args, &ctx));
+    // PRD-mcphost-event-trigger-from-webhook R6: `$.event` is live only for a
+    // run an event or webhook trigger fired.
+    let event_fired = matches!(run.trigger.as_str(), "event" | "webhook");
+    let call_timeout = tokio::time::timeout(
+        Duration::from_secs(deadline_s),
+        crate::kinds::chain::with_event_fired(event_fired, kind.call(&row.spec, args, &ctx)),
+    );
     let outcome = match &dry_run {
         Some(dr) => crate::dryrun::with_dry_run(dr.clone(), call_timeout).await,
         None => call_timeout.await,
@@ -1412,11 +1418,19 @@ async fn run_one_job(state: AppState, run: RunRow) {
     {
         tracing::warn!(error = %e, run_id = %run_id, tool = %run.tool_name, "failed to record observed outputs for finished run");
     }
+    let errored = status == "error";
+    let dead_letter_class = error_class.clone();
     let finalized = state
         .db
         .finalize_run(run_id.clone(), tenant_id, status, result_ref, error_class, error_data, finished_unix, duration_ms)
         .await
         .unwrap_or(false);
+
+    // PRD-mcphost-event-trigger-from-webhook R1: an event-fired run that
+    // ended `error` is a dead letter the tenant can list and replay.
+    if finalized && errored {
+        crate::deadletters::record_run_error(&state, &run, dead_letter_class.as_deref()).await;
+    }
 
     // PRD-mcphost-lineage-blast-radius requirement 5 (AC3): a finished run
     // (any outcome -- "finished" means the run reached a terminal state,
