@@ -1,0 +1,15 @@
+[example]
+name = "webhook-inbox"
+title = "Webhook inbox in one call"
+summary = "One host.webhook_inbox.create call returns a signed URL; a curl to it shows up in host.tool_call and host.msg.wait."
+use_case = ["webhook"]
+clients = ["any"]
+since = "0.107.16"
+secrets_needed = []
+
+[first_call]
+tool = "host.webhook_inbox.create"
+expect = "result.url contains https://"
+
+[first_call.args]
+name = "inbox"

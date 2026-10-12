@@ -1,0 +1,16 @@
+[example]
+name = "chart-in-a-minute"
+title = "Chart in a minute"
+summary = "Load a 1,000-row CSV into a table and get a chart with a caption and a share URL from one host.table.chart call."
+use_case = ["chart"]
+clients = ["any"]
+since = "0.63.0"
+secrets_needed = []
+
+[first_call]
+tool = "host.table.chart"
+expect = "result.recommendation.mark == bar"
+
+[first_call.args]
+sql = "SELECT category, SUM(amount) AS total FROM expenses GROUP BY category"
+share = true

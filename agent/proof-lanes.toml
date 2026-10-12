@@ -313,3 +313,11 @@ required_commands = [
   "cargo test --workspace blobguard_",
   "cargo test --workspace committed_blob_types_doc_matches_a_fresh_render",
 ]
+
+[[lane]]
+id = "example-manifest"
+description = "PRD-mcphost-example-manifest-contract: the generated examples/index.json (and, from AC5, examples/example.schema.json) that `mcphost examples index|schema` write and build.rs embeds. Each example's own example.toml is already routed by the examples lane's per-directory globs. Proof is the exmf_ac* suite, which regenerates both files and compares bytes."
+globs = ["examples/index.json", "examples/example.schema.json"]
+required_commands = [
+  "cargo test --workspace exmf_ac",
+]

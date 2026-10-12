@@ -1,0 +1,242 @@
+{
+  "examples": [
+    {
+      "name": "chart-in-a-minute",
+      "title": "Chart in a minute",
+      "summary": "Load a 1,000-row CSV into a table and get a chart with a caption and a share URL from one host.table.chart call.",
+      "use_case": [
+        "chart"
+      ],
+      "clients": [
+        "any"
+      ],
+      "since": "0.63.0",
+      "proof": "proof.sh",
+      "secrets_needed": [],
+      "manifest_sha256": "a6bddb1edf43d03f7a2d2db866c307b4afa7a2037d0a4578d1789d68b51ec8af",
+      "tools": [],
+      "first_call": {
+        "tool": "host.table.chart",
+        "args": {
+          "share": true,
+          "sql": "SELECT category, SUM(amount) AS total FROM expenses GROUP BY category"
+        },
+        "expect": "result.recommendation.mark == bar"
+      }
+    },
+    {
+      "name": "database-in-a-minute",
+      "title": "A database in one minute",
+      "summary": "Create a table, load fixture.csv, and ask equality, range, count, GROUP BY and LIKE questions as plain SQL.",
+      "use_case": [
+        "database"
+      ],
+      "clients": [
+        "any"
+      ],
+      "since": "0.59.2",
+      "proof": "proof.sh",
+      "secrets_needed": [],
+      "manifest_sha256": "022e4ba9aeab83f66295ab0ce9206c40c9f3c6e8a43f5226e74fd18bbb642f05",
+      "tools": [
+        {
+          "name": "csv_import",
+          "kind": "python",
+          "file": "tools/csv_import.py",
+          "sha256": "fbdd34068702c9193386d34d149db4e8a407a094c9b7212881e7243a8429d0b9"
+        }
+      ],
+      "first_call": {
+        "tool": "host.table.query",
+        "args": {
+          "sql": "SELECT SUM(amount) AS total FROM expenses"
+        },
+        "expect": "result.rows.0.total == 57165.0"
+      }
+    },
+    {
+      "name": "docs-qa",
+      "title": "Docs Q&A in a minute",
+      "summary": "Put and index an 8-document corpus, publish ask_docs, and ask six gold questions; five of six must hit.",
+      "use_case": [
+        "docs-qa"
+      ],
+      "clients": [
+        "any"
+      ],
+      "since": "0.60.34",
+      "proof": "docs-qa.sh",
+      "secrets_needed": [],
+      "manifest_sha256": "fd4783976e5d4c50fa311c37408e57e7ce4c47b56a40778a10c0f1e178bacf05",
+      "tools": [
+        {
+          "name": "ask_docs",
+          "kind": "python",
+          "file": "ask_docs.py",
+          "sha256": "e6d5ee67cbc0be115345617185ca28e03ce24444566c599a7e1688e24e8bb7ae"
+        }
+      ],
+      "first_call": {
+        "tool": "ask_docs",
+        "args": {
+          "query": "What port does the VPN client connect on?"
+        },
+        "expect": "result.payload contains vpn-setup.md"
+      }
+    },
+    {
+      "name": "first-run",
+      "title": "First run: publish a tool and call it",
+      "summary": "Sign up, publish table_note as a python tool that appends through mcphost.table, call it, and read back the real output.",
+      "use_case": [
+        "first-run"
+      ],
+      "clients": [
+        "any"
+      ],
+      "since": "0.60.18",
+      "proof": "proof.sh",
+      "secrets_needed": [],
+      "manifest_sha256": "e35b2dbfab7476c968a8c4aff3f4cc8b58776989e8cc9ba05fc1efc054825795",
+      "tools": [
+        {
+          "name": "table_note",
+          "kind": "python",
+          "file": "tools/table_note.py",
+          "sha256": "b1e4d996fd6f6dd317d67a466b0322384ea9d424096e897b326a60a440b15b1b"
+        }
+      ],
+      "first_call": {
+        "tool": "table_note",
+        "args": {
+          "note": "hello from my first tool"
+        },
+        "expect": "result.appended == 1"
+      }
+    },
+    {
+      "name": "share-a-tool",
+      "title": "Share a tool, not a key",
+      "summary": "Publish an http tool that injects a secret, share it to a group, and let a teammate call it without ever seeing the key.",
+      "use_case": [
+        "share"
+      ],
+      "clients": [
+        "any"
+      ],
+      "since": "0.57.3",
+      "proof": "proof.sh",
+      "secrets_needed": [
+        "upstream_key"
+      ],
+      "manifest_sha256": "ad394236ae1824b8ddf9f0494e011db603d3b512681e8c38e560120cecf3070c",
+      "tools": [],
+      "first_call": {
+        "tool": "paid_api",
+        "args": {},
+        "expect": "result.payload.ok == true"
+      }
+    },
+    {
+      "name": "team-memory",
+      "title": "One memory for all your agents",
+      "summary": "Publish remember, recall and forget as python tools over a shared table, share them to a group, and revoke a teammate.",
+      "use_case": [
+        "memory",
+        "share"
+      ],
+      "clients": [
+        "any"
+      ],
+      "since": "0.59.1",
+      "proof": "proof.sh",
+      "secrets_needed": [],
+      "manifest_sha256": "d54e6eea5a12dd12ecb8b5cbe87073d0561c7b1a65754bae6d766f9214b50dea",
+      "tools": [
+        {
+          "name": "remember",
+          "kind": "python",
+          "file": "tools/remember.py",
+          "sha256": "ccbb3de2656d34c51991b283bc0bd930da4226e4c83a314160c41ea7d47dda7d"
+        },
+        {
+          "name": "recall",
+          "kind": "python",
+          "file": "tools/recall.py",
+          "sha256": "b56ea4f91b56f18b3dd8c9ab2419ba10d423f22b46c924db3ce899a535cf7cb5"
+        },
+        {
+          "name": "forget",
+          "kind": "python",
+          "file": "tools/forget.py",
+          "sha256": "02003944dc85d7935d3ed3d29c658774356a05bd33aa57686b6cf1272d689150"
+        }
+      ],
+      "first_call": {
+        "tool": "recall",
+        "args": {
+          "query": "deploy window"
+        },
+        "expect": "result.found == true"
+      }
+    },
+    {
+      "name": "uptime-probes",
+      "title": "Uptime probes with no server",
+      "summary": "Publish a scheduled probe and a status tool; a 503 target is marked down with down_since, a healthy one shows 100%.",
+      "use_case": [
+        "uptime"
+      ],
+      "clients": [
+        "any"
+      ],
+      "since": "0.59.3",
+      "proof": "proof.sh",
+      "secrets_needed": [],
+      "manifest_sha256": "38c96037bd374af837c04fa08f892cac9522252c342c2d9579fe4a1834af027a",
+      "tools": [
+        {
+          "name": "probe",
+          "kind": "python",
+          "file": "tools/probe.py",
+          "sha256": "1a2aed3a229f3c7f1b50febb69cde6133dc70bca4264d9d60c8e58858e5dd5b9",
+          "network": "public"
+        },
+        {
+          "name": "status",
+          "kind": "python",
+          "file": "tools/status.py",
+          "sha256": "aa876fcc7c40568f8f04d8a0e03ca3930c55a74792e5916cd8b5950e2228b53a"
+        }
+      ],
+      "first_call": {
+        "tool": "probe",
+        "args": {},
+        "expect": "result.probed == 1"
+      }
+    },
+    {
+      "name": "webhook-inbox",
+      "title": "Webhook inbox in one call",
+      "summary": "One host.webhook_inbox.create call returns a signed URL; a curl to it shows up in host.tool_call and host.msg.wait.",
+      "use_case": [
+        "webhook"
+      ],
+      "clients": [
+        "any"
+      ],
+      "since": "0.107.16",
+      "proof": "proof.sh",
+      "secrets_needed": [],
+      "manifest_sha256": "b2e9f733dc05522803e0ec8b36f899b7d5c6fcea3e2b167feebca6462c0ce186",
+      "tools": [],
+      "first_call": {
+        "tool": "host.webhook_inbox.create",
+        "args": {
+          "name": "inbox"
+        },
+        "expect": "result.url contains https://"
+      }
+    }
+  ]
+}

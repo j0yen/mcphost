@@ -1,0 +1,12 @@
+[example]
+name = "share-a-tool"
+title = "Share a tool, not a key"
+summary = "Publish an http tool that injects a secret, share it to a group, and let a teammate call it without ever seeing the key."
+use_case = ["share"]
+clients = ["any"]
+since = "0.57.3"
+secrets_needed = ["upstream_key"]
+
+[first_call]
+tool = "paid_api"
+expect = "result.payload.ok == true"

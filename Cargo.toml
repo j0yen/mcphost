@@ -22,7 +22,7 @@ strip = true
 [package]
 autotests = false  # gen-test-suites.sh: explicit [[test]] suites below
 name = "mcphost"
-version = "0.107.43"
+version = "0.107.44"
 edition = "2024"
 rust-version = "1.95"
 description = "Hosted MCP runtime where your agent publishes its own tools by tool call and keeps working."
@@ -155,6 +155,11 @@ mqo-result-profiler = { path = "vendor/mqo-result-profiler", version = "0.1.0" }
 mqo-chart-recommender = { path = "vendor/mqo-chart-recommender", version = "0.1.0" }
 mqo-vega-emitter = { path = "vendor/mqo-vega-emitter", version = "0.1.0" }
 mqo-chart-caption = { path = "vendor/mqo-chart-caption", version = "0.1.0" }
+
+[build-dependencies]
+# PRD-mcphost-example-manifest-contract R4: build.rs reads examples/index.json.
+serde_json = "1"
+sha2 = "0.10"
 
 [features]
 # PRD-mcphost-classify-precision: gates PythonKind's test-only selftest

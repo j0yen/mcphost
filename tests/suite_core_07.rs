@@ -725,6 +725,18 @@ mod enduserctl_ac10_list_100k_pages_under_50ms_stable_cursor;
 mod envelope_ac1_http_declared_output_promoted;
 #[path = "envelope_ac4_tool_test_reports_missing_declared_output.rs"]
 mod envelope_ac4_tool_test_reports_missing_declared_output;
+#[path = "exmf_ac01_seven_manifests_check_green.rs"]
+mod exmf_ac01_seven_manifests_check_green;
+#[path = "exmf_ac02_bad_manifest_exits_two_index_untouched.rs"]
+mod exmf_ac02_bad_manifest_exits_two_index_untouched;
+#[path = "exmf_ac03_index_matches_directories.rs"]
+mod exmf_ac03_index_matches_directories;
+#[path = "exmf_ac04_stale_index_fails_the_build.rs"]
+mod exmf_ac04_stale_index_fails_the_build;
+#[path = "exmf_ac05_schema_matches_committed_file.rs"]
+mod exmf_ac05_schema_matches_committed_file;
+#[path = "exmf_ac06_zero_manifests_exits_two.rs"]
+mod exmf_ac06_zero_manifests_exits_two;
 #[path = "fbtl_ac02_anonymous_send_stores_row.rs"]
 mod fbtl_ac02_anonymous_send_stores_row;
 #[path = "fbtl_ac03_text_limits_and_control_chars.rs"]
@@ -1817,19 +1829,3 @@ mod runs_ac09_quickstart_and_llms_txt_name_job_limits;
 mod runs_ac10_wait_long_polls;
 #[path = "runs_ac11_admin_runs_reap.rs"]
 mod runs_ac11_admin_runs_reap;
-#[path = "runsubject_ac01_async_assertion_end_user_on_run.rs"]
-mod runsubject_ac01_async_assertion_end_user_on_run;
-#[path = "runsubject_ac02_list_filters_by_end_user_subject.rs"]
-mod runsubject_ac02_list_filters_by_end_user_subject;
-#[path = "runsubject_ac03_oauth_run_carries_issuer_and_method.rs"]
-mod runsubject_ac03_oauth_run_carries_issuer_and_method;
-#[path = "runsubject_ac04_schedule_fired_run_end_user_null.rs"]
-mod runsubject_ac04_schedule_fired_run_end_user_null;
-#[path = "runsubject_ac05_list_output_unchanged_but_for_end_user.rs"]
-mod runsubject_ac05_list_output_unchanged_but_for_end_user;
-#[path = "runsubject_ac06_migration_0048_under_1s_at_100k_rows.rs"]
-mod runsubject_ac06_migration_0048_under_1s_at_100k_rows;
-#[path = "runsubject_ac07_llms_txt_names_end_user_and_filter.rs"]
-mod runsubject_ac07_llms_txt_names_end_user_and_filter;
-#[path = "sandboxready_ac7_conformance_suite.rs"]
-mod sandboxready_ac7_conformance_suite;

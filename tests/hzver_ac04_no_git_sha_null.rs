@@ -19,13 +19,46 @@ fn build_rs_in_gitless_tree_emits_no_sha() {
     std::fs::create_dir_all(&tmp).unwrap();
     let exe = tmp.join("build_script");
     let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".into());
-    let status = Command::new(rustc)
-        .args(["--edition", "2024", "-o"])
-        .arg(&exe)
-        .arg(format!("{manifest}/build.rs"))
-        .status()
-        .expect("compile build.rs");
-    assert!(status.success());
+    // build.rs uses the crate's build-dependencies (serde_json, sha2 for the
+    // examples index), so hand rustc the already-built rlibs from this test
+    // binary's own deps dir.
+    let deps = std::env::current_exe().unwrap().parent().unwrap().to_path_buf();
+    let rlib = |krate: &str| -> Vec<std::path::PathBuf> {
+        let prefix = format!("lib{krate}-");
+        let mut v: Vec<_> = std::fs::read_dir(&deps)
+            .unwrap()
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| {
+                let n = p.file_name().unwrap().to_string_lossy().into_owned();
+                n.starts_with(&prefix) && n.ends_with(".rlib")
+            })
+            .collect();
+        v.sort();
+        v
+    };
+    let mut compiled = false;
+    'try_all: for sj in rlib("serde_json") {
+        for sh in rlib("sha2") {
+            let status = Command::new(&rustc)
+                .args(["--edition", "2024", "-o"])
+                .arg(&exe)
+                .arg(format!("{manifest}/build.rs"))
+                .arg("-L")
+                .arg(format!("dependency={}", deps.display()))
+                .arg("--extern")
+                .arg(format!("serde_json={}", sj.display()))
+                .arg("--extern")
+                .arg(format!("sha2={}", sh.display()))
+                .stderr(std::process::Stdio::null())
+                .status()
+                .expect("compile build.rs");
+            if status.success() {
+                compiled = true;
+                break 'try_all;
+            }
+        }
+    }
+    assert!(compiled, "build.rs did not compile against any serde_json/sha2 rlib in {}", deps.display());
 
     let workdir = tmp.join("tree");
     std::fs::create_dir_all(&workdir).unwrap();

@@ -1,0 +1,23 @@
+[example]
+name = "uptime-probes"
+title = "Uptime probes with no server"
+summary = "Publish a scheduled probe and a status tool; a 503 target is marked down with down_since, a healthy one shows 100%."
+use_case = ["uptime"]
+clients = ["any"]
+since = "0.59.3"
+secrets_needed = []
+
+[[tools]]
+name = "probe"
+kind = "python"
+file = "tools/probe.py"
+network = "public"
+
+[[tools]]
+name = "status"
+kind = "python"
+file = "tools/status.py"
+
+[first_call]
+tool = "probe"
+expect = "result.probed == 1"

@@ -1,0 +1,20 @@
+[example]
+name = "database-in-a-minute"
+title = "A database in one minute"
+summary = "Create a table, load fixture.csv, and ask equality, range, count, GROUP BY and LIKE questions as plain SQL."
+use_case = ["database"]
+clients = ["any"]
+since = "0.59.2"
+secrets_needed = []
+
+[[tools]]
+name = "csv_import"
+kind = "python"
+file = "tools/csv_import.py"
+
+[first_call]
+tool = "host.table.query"
+expect = "result.rows.0.total == 57165.0"
+
+[first_call.args]
+sql = "SELECT SUM(amount) AS total FROM expenses"
