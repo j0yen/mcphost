@@ -1332,6 +1332,13 @@
       "AC7": "tests/cest_ac07_estimate_listed_and_in_quickstart.rs",
       "AC8": "deferred -- operator-provisioned: live prod dry run under the fleet tenant after deploy."
     },
+    "cestb": {
+      "_prd": "PRD-mcphost-call-cost-estimate-b.md (test_prefix: cestb)",
+      "AC1": "tests/cestb_ac01_dry_run_counts_as_estimate_not_call.rs",
+      "AC2": "tests/cestb_ac02_anonymous_estimate_is_the_real_auth_error.rs",
+      "AC3": "tests/cestb_ac03_estimate_listed_and_in_quickstart.rs",
+      "AC4": "deferred -- operator-provisioned: live prod dry run under the fleet tenant after deploy (Live AC)."
+    },
     "tlint": {
       "_prd": "PRD-mcphost-timing-assertion-lint.md (test_prefix: tlint)",
       "AC1": "tests/tlint_ac01_hand_skip_then_bare_assert_fails.rs",
