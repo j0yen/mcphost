@@ -43,6 +43,7 @@ pub mod email;
 pub mod enduser;
 pub mod enduserctl;
 pub mod errors;
+pub mod examples;
 pub mod export;
 pub mod feedback;
 pub mod federation;

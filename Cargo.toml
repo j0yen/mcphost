@@ -156,6 +156,11 @@ mqo-chart-recommender = { path = "vendor/mqo-chart-recommender", version = "0.1.
 mqo-vega-emitter = { path = "vendor/mqo-vega-emitter", version = "0.1.0" }
 mqo-chart-caption = { path = "vendor/mqo-chart-caption", version = "0.1.0" }
 
+[build-dependencies]
+# PRD-mcphost-example-manifest-contract R4: build.rs reads examples/index.json.
+serde_json = "1"
+sha2 = "0.10"
+
 [features]
 # PRD-mcphost-classify-precision: gates PythonKind's test-only selftest
 # constructor/setters (`for_test_with_selftest`,

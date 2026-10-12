@@ -725,6 +725,18 @@ mod enduserctl_ac10_list_100k_pages_under_50ms_stable_cursor;
 mod envelope_ac1_http_declared_output_promoted;
 #[path = "envelope_ac4_tool_test_reports_missing_declared_output.rs"]
 mod envelope_ac4_tool_test_reports_missing_declared_output;
+#[path = "exmf_ac01_seven_manifests_check_green.rs"]
+mod exmf_ac01_seven_manifests_check_green;
+#[path = "exmf_ac02_bad_manifest_exits_two_index_untouched.rs"]
+mod exmf_ac02_bad_manifest_exits_two_index_untouched;
+#[path = "exmf_ac03_index_matches_directories.rs"]
+mod exmf_ac03_index_matches_directories;
+#[path = "exmf_ac04_stale_index_fails_the_build.rs"]
+mod exmf_ac04_stale_index_fails_the_build;
+#[path = "exmf_ac05_schema_matches_committed_file.rs"]
+mod exmf_ac05_schema_matches_committed_file;
+#[path = "exmf_ac06_zero_manifests_exits_two.rs"]
+mod exmf_ac06_zero_manifests_exits_two;
 #[path = "fbtl_ac02_anonymous_send_stores_row.rs"]
 mod fbtl_ac02_anonymous_send_stores_row;
 #[path = "fbtl_ac03_text_limits_and_control_chars.rs"]

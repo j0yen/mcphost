@@ -96,6 +96,16 @@ enum Command {
         #[command(subcommand)]
         action: FeedbackCommand,
     },
+    /// PRD-mcphost-example-manifest-contract: validate the `examples/*/
+    /// example.toml` manifests. Needs no DB and no sandbox.
+    Examples {
+        /// The examples directory. Defaults to `examples` relative to the
+        /// current directory (run from the repo root).
+        #[arg(long, global = true, default_value = "examples")]
+        dir: PathBuf,
+        #[command(subcommand)]
+        action: ExamplesCommand,
+    },
     /// PRD-mcphost-surface-fluidity requirement 4 (AC5): regenerate
     /// `www/llms.txt`'s generated `## Tools` section from the same
     /// descriptors `tools/list` serves, so the two can never drift the way
@@ -371,6 +381,19 @@ enum ContractCommand {
         #[arg(long)]
         path: Option<PathBuf>,
     },
+}
+
+#[derive(Subcommand)]
+enum ExamplesCommand {
+    /// Validate every manifest without writing anything. Exit 2 naming the
+    /// directory, field and reason of each failure.
+    Check,
+    /// Validate every manifest, then write `<dir>/index.json`. Nothing is
+    /// written when any manifest fails (exit 2).
+    Index,
+    /// Print the JSON schema of `example.toml`, with the use-case and
+    /// client vocabularies inlined, to stdout.
+    Schema,
 }
 
 #[derive(Subcommand)]
@@ -683,6 +706,33 @@ async fn main() -> anyhow::Result<()> {
                 println!("submission-pack: wrote {} files to {}", files.len(), chatgpt.display());
                 Ok(())
             }
+        }
+        Command::Examples { dir, action } => {
+            // No `init_tracing()`: plain stdout/exit-code contract, like
+            // `LlmsTxt` below.
+            let kinds = mcphost::examples::registered_kind_names();
+            match action {
+                ExamplesCommand::Check => match mcphost::examples::collect(&dir, &kinds) {
+                    Ok(entries) => println!("examples check: {} examples", entries.len()),
+                    Err(errs) => {
+                        for e in &errs {
+                            eprintln!("{e}");
+                        }
+                        std::process::exit(2);
+                    }
+                },
+                ExamplesCommand::Schema => print!("{}", mcphost::examples::render_schema()),
+                ExamplesCommand::Index => match mcphost::examples::write_index(&dir, &kinds) {
+                    Ok(n) => println!("examples index: wrote {} ({n} examples)", dir.join(mcphost::examples::INDEX_FILE).display()),
+                    Err(errs) => {
+                        for e in &errs {
+                            eprintln!("{e}");
+                        }
+                        std::process::exit(2);
+                    }
+                },
+            }
+            Ok(())
         }
         Command::LlmsTxt { check, path, readme, clients } => {
             // Deliberately no `init_tracing()`: same rationale as

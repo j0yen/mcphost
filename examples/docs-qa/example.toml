@@ -1,0 +1,21 @@
+[example]
+name = "docs-qa"
+title = "Docs Q&A in a minute"
+summary = "Put and index an 8-document corpus, publish ask_docs, and ask six gold questions; five of six must hit."
+use_case = ["docs-qa"]
+clients = ["any"]
+since = "0.60.34"
+proof = "docs-qa.sh"
+secrets_needed = []
+
+[[tools]]
+name = "ask_docs"
+kind = "python"
+file = "ask_docs.py"
+
+[first_call]
+tool = "ask_docs"
+expect = "result.payload contains vpn-setup.md"
+
+[first_call.args]
+query = "What port does the VPN client connect on?"

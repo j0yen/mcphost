@@ -191,6 +191,11 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // tests, kept separate from the ci lane for the same
     // required_commands-immutability reason as the lanes above) -- an
     // intended addition, not drift.
+    // PRD-mcphost-example-manifest-contract added its own "example-manifest"
+    // lane (routes the generated examples/index.json and
+    // examples/example.schema.json to the exmf_ac proof tests, kept separate
+    // from the examples lane for the same required_commands-immutability
+    // reason as the lanes above) -- an intended addition, not drift.
     assert_eq!(
         added,
         vec![
@@ -202,6 +207,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "docs-links",
             "docsearch-fixtures",
             "event-trigger-self-test-fixtures",
+            "example-manifest",
             "examples",
             "flake-lint",
             "host-pressure-doc-check",
@@ -219,7 +225,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "wasm-fixtures"
         ],
         "only admin-schemas, blobguard-fixtures, checkcompat-race-soak, child-proc-lint, contracts, docs-links, docsearch-fixtures, \
-         event-trigger-self-test-fixtures, examples, flake-lint, host-pressure-doc-check, launch-docs, \
+         event-trigger-self-test-fixtures, example-manifest, examples, flake-lint, host-pressure-doc-check, launch-docs, \
          loop-config, oauthconf-data, plugin, registry-manifest, required-checks, sandbox-api-docs, sharing-docs, \
          spec-fields-doc-check, tool-naming, vendor, and wasm-fixtures may have been added since \
          {BASELINE_REV}"

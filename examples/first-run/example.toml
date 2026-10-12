@@ -1,0 +1,20 @@
+[example]
+name = "first-run"
+title = "First run: publish a tool and call it"
+summary = "Sign up, publish table_note as a python tool that appends through mcphost.table, call it, and read back the real output."
+use_case = ["first-run"]
+clients = ["any"]
+since = "0.60.18"
+secrets_needed = []
+
+[[tools]]
+name = "table_note"
+kind = "python"
+file = "tools/table_note.py"
+
+[first_call]
+tool = "table_note"
+expect = "result.appended == 1"
+
+[first_call.args]
+note = "hello from my first tool"

@@ -1,0 +1,30 @@
+[example]
+name = "team-memory"
+title = "One memory for all your agents"
+summary = "Publish remember, recall and forget as python tools over a shared table, share them to a group, and revoke a teammate."
+use_case = ["memory", "share"]
+clients = ["any"]
+since = "0.59.1"
+secrets_needed = []
+
+[[tools]]
+name = "remember"
+kind = "python"
+file = "tools/remember.py"
+
+[[tools]]
+name = "recall"
+kind = "python"
+file = "tools/recall.py"
+
+[[tools]]
+name = "forget"
+kind = "python"
+file = "tools/forget.py"
+
+[first_call]
+tool = "recall"
+expect = "result.found == true"
+
+[first_call.args]
+query = "deploy window"

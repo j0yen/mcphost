@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "example": {
+      "additionalProperties": false,
+      "properties": {
+        "clients": {
+          "items": {
+            "enum": [
+              "claude_code",
+              "claude_ai",
+              "chatgpt",
+              "cursor",
+              "copilot_vscode",
+              "codex",
+              "gemini_cli",
+              "any"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "name": {
+          "description": "must equal the directory name",
+          "minLength": 1,
+          "type": "string"
+        },
+        "proof": {
+          "default": "proof.sh",
+          "description": "relative path of the proof script",
+          "type": "string"
+        },
+        "secrets_needed": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "since": {
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 60,
+          "minLength": 1,
+          "type": "string"
+        },
+        "use_case": {
+          "items": {
+            "enum": [
+              "uptime",
+              "database",
+              "docs-qa",
+              "webhook",
+              "chart",
+              "memory",
+              "share",
+              "first-run"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "title",
+        "summary",
+        "use_case",
+        "clients",
+        "since"
+      ],
+      "type": "object"
+    },
+    "first_call": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "type": "object"
+        },
+        "expect": {
+          "description": "result.<path> <op> <value>; op is one of ==, !=, contains",
+          "type": "string"
+        },
+        "tool": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "expect"
+      ],
+      "type": "object"
+    },
+    "tools": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "description": "path relative to the example directory",
+            "type": "string"
+          },
+          "kind": {
+            "description": "a name from KindRegistry::names(), checked by `mcphost examples check`",
+            "type": "string"
+          },
+          "name": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "network": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "file"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "example",
+    "first_call"
+  ],
+  "title": "mcphost example manifest (examples/<name>/example.toml)",
+  "type": "object"
+}
