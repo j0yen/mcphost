@@ -1463,6 +1463,13 @@
       "AC7": "tests/fbeh_ac07_hint_is_one_short_line.rs",
       "AC8": "deferred -- operator-provisioned: prod tool_not_found call after deploy."
     },
+    "tsvr": {
+      "_prd": "PRD-mcphost-table-schema-violation-names-the-remedy.md (test_prefix: tsvr)",
+      "AC1": "tests/tsvr_ac01_unknown_column_names_declared.rs",
+      "AC2": "tests/tsvr_ac02_type_mismatch_names_accepted_shape.rs",
+      "AC3": "tests/tsvr_ac03_python_bridge_carries_payload.rs",
+      "AC4": "deferred -- operator-provisioned: live prod host.table.append after deploy."
+    },
     "cclib": {
       "_prd": "PRD-mcphost-call-cli-from-contract-b.md (test_prefix: cclib)",
       "AC1": "tests/cclib_ac01_contract_skew_warning.rs",

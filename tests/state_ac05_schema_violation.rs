@@ -30,7 +30,7 @@ async fn wrong_type_is_rejected_and_writes_nothing() {
         .expect_err("wrong-typed value must be rejected");
     assert_eq!(err.error_code.as_deref(), Some("state_schema_violation"));
     assert_eq!(err.data["field"], json!("last_value"));
-    assert_eq!(err.data["expected"], json!("real"));
+    assert_eq!(err.data["expected"]["type"], json!("real"));
 
     let result = extract_structured(
         &client
