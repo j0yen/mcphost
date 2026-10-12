@@ -30,7 +30,7 @@ py() { python3 -I - "$@"; }
 
 render_toml() {
   py <<'PY'
-import glob, itertools, os, re, sys
+import glob, itertools, os, re, subprocess, sys
 import yaml
 
 MARK = re.compile(r'^\s*#\s*required-checks:\s*exclude\b')
@@ -59,9 +59,23 @@ def excluded_ids(text):
                 ids.add(cur)
     return ids
 
+_shards = []
+
+def shard_count():
+    # The sandbox matrix is not written in ci.yml: its `plan` job derives it
+    # from this command (PRD-mcphost-ci-sandbox-shards-balanced), so the
+    # contexts are derived from it too.
+    if not _shards:
+        _shards.append(int(subprocess.run(
+            ['scripts/ci-test-partition.sh', 'shards'],
+            check=True, capture_output=True, text=True).stdout))
+    return _shards[0]
+
 def render(name, combo):
     def sub(m):
         e = m.group(1)
+        if re.fullmatch(r'needs\.\w+\.outputs\.shards', e):
+            return str(shard_count())
         mm = re.fullmatch(r'matrix\.(\w+)', e)
         if not mm or mm.group(1) not in combo:
             sys.exit(f"required-checks: cannot render `${{{{ {e} }}}}` in job name {name!r}")
@@ -81,6 +95,10 @@ for path in sorted(glob.glob(os.path.join(os.environ['WORKFLOWS_DIR'], '*.y*ml')
             continue
         name = str(job.get('name', jid))
         matrix = (job.get('strategy') or {}).get('matrix') or {}
+        if isinstance(matrix, str):
+            if not re.fullmatch(r'\$\{\{\s*fromJson\(needs\.\w+\.outputs\.matrix\)\s*\}\}', matrix.strip()):
+                sys.exit(f"required-checks: {path}: job {jid}: cannot resolve matrix {matrix!r}")
+            matrix = {'shard': list(range(1, shard_count() + 1))}
         if any(k in matrix for k in ('include', 'exclude')):
             sys.exit(f"required-checks: {path}: job {jid}: matrix include/exclude is not supported")
         keys = [k for k, v in matrix.items() if isinstance(v, list)]

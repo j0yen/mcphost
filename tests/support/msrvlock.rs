@@ -102,14 +102,16 @@ pub fn toml_equals_generate(workflows: &Path, toml: &Path) -> Result<(), String>
     }
 }
 
-pub const NINE: [&str; 9] = [
+pub const CONTEXTS: [&str; 11] = [
     "docs client blocks match docs/clients.toml",
     "docs external links resolve",
     "flake-lint (env-mutation, single-shot-perf, receipt-read)",
     "msrv check (builds with the declared rust-version toolchain)",
     "registry-manifest --check + schema validation",
+    "sandbox shard plan",
     "sandbox suites (all shards)",
-    "sandbox suites (user namespaces, shard 1/2)",
-    "sandbox suites (user namespaces, shard 2/2)",
+    "sandbox suites (user namespaces, shard 1/3)",
+    "sandbox suites (user namespaces, shard 2/3)",
+    "sandbox suites (user namespaces, shard 3/3)",
     "static analysis + core suites",
 ];

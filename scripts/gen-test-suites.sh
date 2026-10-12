@@ -74,10 +74,11 @@ CHECK = MODE == "--check"
 REPO_ROOT = os.getcwd()
 CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 
-# Kept in sync with ci-test-partition.sh's SANDBOX_SHARDS comment: if the
-# sandbox cap below ever pushes that partition past 2 suites (or the core
-# partition past however many exist today), widen SANDBOX_SHARDS there and
-# the matrix in .github/workflows/ci.yml to match. P0 requirement: no suite
+# The shard count is read from `ci-test-partition.sh shards` (its one
+# SANDBOX_SHARDS definition) and enforced at the bottom of this script. If the
+# sandbox cap below ever pushes that partition past that many suites (or the core
+# partition past however many exist today), widen SANDBOX_SHARDS there; the
+# workflow matrix follows it (ci.yml's plan job). P0 requirement: no suite
 # exceeds roughly 60 files, and the total (both partitions) stays <=10.
 #
 # Per-partition, not one global number (2026-09-12 follow-up): the
@@ -86,8 +87,8 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # files lived in "core" (5 of them) -- at cap 80, core's non-exclusive
 # files bucketed into 3 suites, landing the grand total at 3 + 5 + 2 = 10
 # (sandbox's 2-suite split is already load-bearing for
-# `.github/workflows/ci.yml`'s SANDBOX_SHARDS=2 matrix -- a 1-suite sandbox
-# would starve shard 2 and trip ci-test-partition.sh's own empty-shard
+# `.github/workflows/ci.yml`'s sandbox matrix -- a 1-suite sandbox
+# would starve a later shard and trip ci-test-partition.sh's own empty-shard
 # guard -- so its cap stays untouched by this kind of bump).
 #
 # PRD-mcphost-python-kind-plain-env (2026-09-13 follow-up): a new sandbox
@@ -98,7 +99,7 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # 1 singleton) and the grand total to 11. Sandbox's cap can't absorb this
 # (raising it would still leave the 1 extra singleton binary, and shrinking
 # its normal-bucket count below 2 risks the empty-shard guard on
-# SANDBOX_SHARDS=2 the moment sandbox grows again) so core's cap absorbs it
+# the shard count the moment sandbox grows again) so core's cap absorbs it
 # instead: raised 80 -> 120, collapsing core's non-exclusive buckets from 3
 # to 1, landing the grand total at 1 + 6 + (2 + 1) = 10 -- exactly the AC1
 # ceiling, not under it by luck. (Core's exclusive-singleton count moved
@@ -1126,7 +1127,20 @@ def check_plan(migrations, suite_files, new_cargo_toml, all_files):
     return 0
 
 
+def sandbox_shard_count():
+    """The one SANDBOX_SHARDS definition, read from ci-test-partition.sh."""
+    out = subprocess.run([CLASSIFY_SCRIPT, "shards"], capture_output=True, text=True)
+    if out.returncode != 0 or not out.stdout.strip().isdigit():
+        die(f"`ci-test-partition.sh shards` did not print a count: {out.stdout!r} {out.stderr!r}")
+    return int(out.stdout.strip())
+
+
 migrations, suite_files, new_cargo_toml, all_files = compute_plan()
+SHARDS = sandbox_shard_count()
+SANDBOX_SUITES = [n for n in suite_files if re.match(r"suite(_env)?_sandbox_\d+\.rs$", os.path.basename(n))]
+if len(SANDBOX_SUITES) < SHARDS:
+    die(f"{len(SANDBOX_SUITES)} sandbox suites cannot fill {SHARDS} shards "
+        "(SANDBOX_SHARDS in scripts/ci-test-partition.sh): lower it")
 if CHECK:
     sys.exit(check_plan(migrations, suite_files, new_cargo_toml, all_files))
 else:

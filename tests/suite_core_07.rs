@@ -509,6 +509,12 @@ mod ci_sandbox_ac03_incapable_in_ci_skips_and_fails_job;
 mod ci_sandbox_ac04_incapable_outside_ci_fails_loudly;
 #[path = "ci_sandbox_ac06_sandbox_suites_run_as_a_parallel_job.rs"]
 mod ci_sandbox_ac06_sandbox_suites_run_as_a_parallel_job;
+#[path = "cishard_ac01_balanced_shards_from_recorded_weights.rs"]
+mod cishard_ac01_balanced_shards_from_recorded_weights;
+#[path = "cishard_ac02_one_shard_count_source.rs"]
+mod cishard_ac02_one_shard_count_source;
+#[path = "cishard_ac03_run_wall_budget_and_readout.rs"]
+mod cishard_ac03_run_wall_budget_and_readout;
 #[path = "classify_ac9_is_within_proptest.rs"]
 mod classify_ac9_is_within_proptest;
 #[path = "clink_ac01_for_url_pinned_fixtures.rs"]

@@ -56,6 +56,7 @@
 #   ci-test-partition.sh sandbox-shard <n> <of>   # this shard's slice of the
 #                                                  # sandbox suite list, same
 #                                                  # flag shape as `sandbox`
+#   ci-test-partition.sh shards    # the sandbox shard count (SANDBOX_SHARDS)
 #   ci-test-partition.sh list <sandbox|core>   # bare SUITE names, one per line
 #   ci-test-partition.sh classify-file <path>  # "sandbox" or "core" for one file
 #   ci-test-partition.sh check     # exit 0 iff total, disjoint, and unshadowed
@@ -63,24 +64,30 @@
 # AC6 follow-up: even run as its own job, the sandbox partition alone measured
 # 313s (v0.13.3) against the 300s budget -- one job wasn't enough, so the
 # sandbox job is further split into SANDBOX_SHARDS matrix jobs, each running
-# `sandbox-shard <n> <SANDBOX_SHARDS>`. Suites are assigned to shards by
-# `index-in-the-sorted-suite-list mod SANDBOX_SHARDS`. `--lib` (the
-# sandbox-surface unit tests) only ships in shard 1, so it runs once per CI
-# run, not once per shard.
+# `sandbox-shard <n> <SANDBOX_SHARDS>`.
 #
-# SANDBOX_SHARDS dropped from 3 to 2 with the consolidation PRD: consolidation
-# groups the (now capped-at-60-files-per-suite) sandbox files into exactly 2
-# suite binaries (see gen-test-suites.sh's MAX_PER_SUITE), and `check` below
-# refuses a shard count that would leave any shard without a suite to run
-# (same rule as before, just measured in suites instead of files). If a
-# future `tests/` growth pushes gen-test-suites.sh past 2 sandbox suites,
-# widen SANDBOX_SHARDS here AND the matrix in `.github/workflows/ci.yml` to
-# match -- this is a manual sync, same as it was pre-consolidation.
+# PRD-mcphost-ci-sandbox-shards-balanced: the split is by COST, not position.
+# `scripts/ci-suite-weights.json` records seconds per sandbox suite binary and
+# for `--lib` (from the latest green CI run's `finished in` lines); suites are
+# placed heaviest first into the lightest shard (ties: sorted name, lowest
+# shard), then `--lib` goes to the lightest shard. `check` fails when a suite
+# has no weight or when the predicted heaviest shard exceeds
+# SHARD_PREDICT_LIMIT seconds. SANDBOX_SHARDS below is the ONE definition of
+# the shard count: `shards` prints it, ci.yml's plan job and
+# gen-test-suites.sh read that command, and a test fails if a literal count
+# reappears in either file.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-SANDBOX_SHARDS=2
+SANDBOX_SHARDS="${SANDBOX_SHARDS:-3}"
+
+# Recorded seconds per sandbox suite (and `lib`); overridable for tests.
+WEIGHTS_FILE="${CI_SUITE_WEIGHTS_FILE:-$REPO_ROOT/scripts/ci-suite-weights.json}"
+WEIGHTS_REL="scripts/ci-suite-weights.json"
+# Predicted heaviest shard above this fails `check` (the CI run budget warns at
+# 240 s and fails above 300 s; see ci.yml's sandbox step).
+SHARD_PREDICT_LIMIT=240
 
 # The sandbox-execution surface. `supports_user_namespaces` and
 # `require_user_namespaces_or_ci_skip` are the capability guard itself;
@@ -149,9 +156,57 @@ validate_shard_args() { # <idx> <count> -> exit 0 iff both are ints and 1<=idx<=
   fi
 }
 
+weight_of() { # <name> -> recorded seconds, empty when absent
+  jq -r --arg k "$1" '.[$k] // empty' "$WEIGHTS_FILE" 2>/dev/null
+}
+
+# assign_sandbox <count> -> "<shard> <name> <weight>" lines for every sandbox
+# suite plus the pseudo-name `lib`: suites heaviest first into the lightest
+# shard, then lib into the lightest. Deterministic: ties by sorted name, then
+# lowest shard index. Exit 1 (naming each) when a weight is missing.
+assign_sandbox() {
+  local count="$1" name missing=0 rows=""
+  while read -r name; do
+    [ -n "$name" ] || continue
+    if [ -z "$(weight_of "$name")" ]; then
+      echo "ci-test-partition: sandbox suite '$name' has no weight in $WEIGHTS_REL -- record its measured seconds there" >&2
+      missing=1
+    else
+      rows="$rows$(weight_of "$name") $name"$'\n'
+    fi
+  done < <(suite_names sandbox)
+  if [ -z "$(weight_of lib)" ]; then
+    echo "ci-test-partition: 'lib' has no weight in $WEIGHTS_REL -- record the seconds of the --lib run there" >&2
+    missing=1
+  fi
+  [ "$missing" -eq 0 ] || return 1
+  {
+    printf '%s' "$rows" | LC_ALL=C sort -k1,1nr -k2,2
+    printf '%s lib\n' "$(weight_of lib)"
+  } | awk -v n="$count" '
+    { w[NR] = $1; nm[NR] = $2 }
+    END {
+      for (s = 1; s <= n; s++) load[s] = 0
+      # lib is always the last line: placed after every suite.
+      for (i = 1; i <= NR; i++) {
+        best = 1
+        for (s = 2; s <= n; s++) if (load[s] < load[best]) best = s
+        load[best] += w[i]
+        print best, nm[i], w[i]
+      }
+    }'
+}
+
 shard_names() { # <sandbox|core> <index, 1-based> <count> -> bare suite names, one per line
-  local want="$1" idx="$2" count="$3" i=0 name
+  local want="$1" idx="$2" count="$3" i=0 name sh weight plan
   validate_shard_args "$idx" "$count" || return "$?"
+  if [ "$want" = sandbox ]; then
+    plan="$(assign_sandbox "$count")" || return 1
+    while read -r sh name weight; do
+      if [ "$sh" = "$idx" ] && [ "$name" != lib ]; then printf '%s\n' "$name"; fi
+    done <<<"$plan"
+    return 0
+  fi
   while read -r name; do
     [ -n "$name" ] || continue
     if [ $(( i % count )) -eq $(( idx - 1 )) ]; then
@@ -162,22 +217,26 @@ shard_names() { # <sandbox|core> <index, 1-based> <count> -> bare suite names, o
 }
 
 shard() { # <sandbox|core> <index, 1-based> <count> -> this shard's cargo flags
-  local want="$1" idx="$2" count="$3" name
+  local want="$1" idx="$2" count="$3" name names plan sh nm weight
 
   validate_shard_args "$idx" "$count" || return "$?"
 
-  # Only shard 1 carries the unit-test surface, so `--lib` runs once per CI
-  # run rather than once per shard.
-  if [ "$idx" -eq 1 ]; then
-    case "$want" in
-      sandbox) printf -- '--lib' ;;
-      core)    printf -- '--bins' ;;
-    esac
-  fi
+  # `--lib` runs once per CI run: sandbox puts it on the lightest shard
+  # (assign_sandbox); core keeps it on shard 1.
+  case "$want" in
+    sandbox)
+      plan="$(assign_sandbox "$count")" || return 1
+      while read -r sh nm weight; do
+        if [ "$nm" = lib ] && [ "$sh" = "$idx" ]; then printf -- '--lib'; fi
+      done <<<"$plan"
+      ;;
+    core) if [ "$idx" -eq 1 ]; then printf -- '--bins'; fi ;;
+  esac
+  names="$(shard_names "$want" "$idx" "$count")" || return 1
   while read -r name; do
     [ -n "$name" ] || continue
     printf -- ' --test %s' "$name"
-  done < <(shard_names "$want" "$idx" "$count")
+  done <<<"$names"
   printf '\n'
 }
 
@@ -276,15 +335,30 @@ check() {
     rc=1
   fi
 
-  [ "$rc" -eq 0 ] && echo "ci-test-partition: ok ($(printf '%s\n' "$sandbox_files" | wc -l) sandbox suites across $SANDBOX_SHARDS shards, $(printf '%s\n' "$core_files" | wc -l) core suites)"
+  # Cost model: every sandbox suite (and lib) needs a recorded weight, and the
+  # predicted heaviest shard must leave headroom under the CI run budget.
+  local plan heaviest
+  if plan="$(assign_sandbox "$SANDBOX_SHARDS" 2>&1)"; then
+    heaviest="$(printf '%s\n' "$plan" | awk '{ l[$1] += $3 } END { m = 0; for (s in l) if (l[s] > m) m = l[s]; print m }')"
+    if awk -v h="$heaviest" -v l="$SHARD_PREDICT_LIMIT" 'BEGIN { exit !(h > l) }'; then
+      echo "ci-test-partition: predicted heaviest sandbox shard is ${heaviest}s (> ${SHARD_PREDICT_LIMIT}s) from the weights in $WEIGHTS_REL -- widen SANDBOX_SHARDS or refresh the weights" >&2
+      rc=1
+    fi
+  else
+    printf '%s\n' "$plan" >&2
+    rc=1
+  fi
+
+  [ "$rc" -eq 0 ] && echo "ci-test-partition: ok ($(printf '%s\n' "$sandbox_files" | wc -l) sandbox suites across $SANDBOX_SHARDS shards, predicted heaviest shard ${heaviest}s, $(printf '%s\n' "$core_files" | wc -l) core suites)"
   return "$rc"
 }
 
 case "${1:-}" in
   sandbox|core)  emit "$1" ;;
+  shards)        echo "$SANDBOX_SHARDS" ;;
   sandbox-shard) shard sandbox "${2:?usage: ci-test-partition.sh sandbox-shard <n> <of>}" "${3:?usage: ci-test-partition.sh sandbox-shard <n> <of>}" ;;
   list)          suite_names "${2:?usage: ci-test-partition.sh list <sandbox|core>}" ;;
   classify-file) classify "${2:?usage: ci-test-partition.sh classify-file <path>}" ;;
   check)         check ;;
-  *) echo "usage: $(basename "$0") <sandbox|core|sandbox-shard <n> <of>|list <p>|classify-file <path>|check>" >&2; exit 2 ;;
+  *) echo "usage: $(basename "$0") <sandbox|core|shards|sandbox-shard <n> <of>|list <p>|classify-file <path>|check>" >&2; exit 2 ;;
 esac
