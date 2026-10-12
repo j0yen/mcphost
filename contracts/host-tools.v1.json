@@ -2853,15 +2853,6 @@
           "request": {
             "properties": {
               "args": {
-                "properties": {
-                  "q": {
-                    "type": "string"
-                  },
-                  "table": {
-                    "type": "string"
-                  }
-                },
-                "required": [],
                 "type": "object"
               },
               "tool": {
@@ -8608,17 +8599,6 @@
           "example": {
             "properties": {
               "args": {
-                "properties": {
-                  "body": {
-                    "type": "string"
-                  },
-                  "to": {
-                    "items": {
-                      "type": "string"
-                    },
-                    "type": "array"
-                  }
-                },
                 "type": "object"
               },
               "tool": {
@@ -8756,26 +8736,6 @@
                   "type": "string"
                 },
                 "arguments": {
-                  "properties": {
-                    "id": {
-                      "type": "string"
-                    },
-                    "key": {
-                      "type": "string"
-                    },
-                    "msg": {
-                      "type": "string"
-                    },
-                    "n": {
-                      "type": "integer"
-                    },
-                    "text": {
-                      "type": "string"
-                    },
-                    "value": {
-                      "type": "object"
-                    }
-                  },
                   "type": "object"
                 },
                 "call": {
@@ -8919,17 +8879,6 @@
               "publish_call": {
                 "properties": {
                   "arguments": {
-                    "properties": {
-                      "kind": {
-                        "type": "string"
-                      },
-                      "name": {
-                        "type": "string"
-                      },
-                      "spec": {
-                        "type": "object"
-                      }
-                    },
                     "type": "object"
                   },
                   "call": {
@@ -8955,14 +8904,6 @@
               "test_call": {
                 "properties": {
                   "arguments": {
-                    "properties": {
-                      "args": {
-                        "type": "object"
-                      },
-                      "name": {
-                        "type": "string"
-                      }
-                    },
                     "type": "object"
                   },
                   "call": {
@@ -8992,41 +8933,6 @@
                   "type": "string"
                 },
                 "arguments": {
-                  "properties": {
-                    "args": {
-                      "type": "object"
-                    },
-                    "handoff": {
-                      "type": "boolean"
-                    },
-                    "id": {
-                      "type": "string"
-                    },
-                    "key": {
-                      "type": "string"
-                    },
-                    "kind": {
-                      "type": "string"
-                    },
-                    "msg": {
-                      "type": "string"
-                    },
-                    "n": {
-                      "type": "integer"
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "spec": {
-                      "type": "object"
-                    },
-                    "text": {
-                      "type": "string"
-                    },
-                    "value": {
-                      "type": "object"
-                    }
-                  },
                   "type": "object"
                 },
                 "call": {
@@ -9047,23 +8953,6 @@
             "items": {
               "properties": {
                 "arguments": {
-                  "properties": {
-                    "args": {
-                      "type": "object"
-                    },
-                    "invocations": {
-                      "type": "array"
-                    },
-                    "kind": {
-                      "type": "string"
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "spec": {
-                      "type": "object"
-                    }
-                  },
                   "type": "object"
                 },
                 "call": {
@@ -16667,51 +16556,6 @@
                   "type": "string"
                 },
                 "resolved_args": {
-                  "properties": {
-                    "a": {
-                      "type": [
-                        "object",
-                        "integer"
-                      ]
-                    },
-                    "lead": {
-                      "type": [
-                        "object",
-                        "array"
-                      ]
-                    },
-                    "leads": {
-                      "type": "array"
-                    },
-                    "owner": {
-                      "type": "string"
-                    },
-                    "region": {
-                      "type": "object"
-                    },
-                    "rows": {
-                      "type": [
-                        "object",
-                        "array",
-                        "null"
-                      ]
-                    },
-                    "table": {
-                      "type": "string"
-                    },
-                    "url": {
-                      "type": "object"
-                    },
-                    "x": {
-                      "type": [
-                        "object",
-                        "integer"
-                      ]
-                    },
-                    "y": {
-                      "type": "object"
-                    }
-                  },
                   "type": "object"
                 },
                 "result": {
@@ -19122,14 +18966,6 @@
           "wait": {
             "properties": {
               "args": {
-                "properties": {
-                  "timeout_s": {
-                    "type": "integer"
-                  },
-                  "unread_only": {
-                    "type": "boolean"
-                  }
-                },
                 "type": "object"
               },
               "tool": {
