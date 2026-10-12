@@ -18,27 +18,15 @@
 //! layer instead of the trait layer since a subprocess can't be handed a
 //! Rust trait object.
 
-use std::net::{Ipv4Addr, SocketAddr, TcpListener};
-use std::process::Stdio;
-use std::time::Duration;
 
 use serde_json::json;
-use tokio::process::Command;
-use tokio::time::Instant;
+use crate::serve;
+use serve::{ServeChild, ServeEnv};
 use wiremock::matchers::method;
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use crate::busyaudit::scratch_data_dir;
 use crate::common::{McpClient, extract_structured};
-
-/// Spelled via `Ipv4Addr::LOCALHOST`, never a dotted literal -- a literal
-/// IP in a test file trips the harness's hermeticity scan (see
-/// `busyaudit_ac02_env_override_busy_timeout.rs`'s note 1).
-fn free_loopback_addr() -> SocketAddr {
-    let listener =
-        TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).expect("bind ephemeral port");
-    listener.local_addr().expect("local_addr")
-}
 
 fn token_from_claim_url(claim_url: &str) -> &str {
     claim_url.rsplit('/').next().expect("claim_url has a path segment")
@@ -54,35 +42,16 @@ async fn from_is_passed_verbatim_and_reply_to_is_the_bare_address() {
 
     let data_dir = scratch_data_dir("owncopy-ac02");
     std::fs::create_dir_all(&data_dir).expect("create scratch data dir");
-    let addr = free_loopback_addr();
-    let bin = env!("CARGO_BIN_EXE_mcphost");
-    let child = Command::new(bin)
-        .arg("serve")
-        .env("MCPHOST_DATA_DIR", &data_dir)
-        .env("MCPHOST_BIND", addr.to_string())
-        .env("MCPHOST_EMAIL_API_URL", fake_provider.uri())
-        .env("MCPHOST_EMAIL_FROM", "mcphost <hello@mcphost.dev>")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-        .expect("spawn mcphost serve");
-
-    // Generous deadline: this test shares a box with ~650 other tests when
-    // the full suite runs, and a cold `serve` start also runs migrations
-    // and the python kind's sandbox self-test before it binds.
-    let base_url = format!("http://{addr}");
-    let ready_deadline = Instant::now() + Duration::from_secs(60);
-    loop {
-        if reqwest::get(format!("{base_url}/healthz")).await.is_ok() {
-            break;
-        }
-        assert!(
-            Instant::now() < ready_deadline,
-            "mcphost serve did not become ready in time"
-        );
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+    let mut server = ServeChild::spawn(ServeEnv {
+        data_dir: data_dir.clone(),
+        extra_env: vec![
+            ("MCPHOST_EMAIL_API_URL".into(), fake_provider.uri()),
+            ("MCPHOST_EMAIL_FROM".into(), "mcphost <hello@mcphost.dev>".into()),
+        ],
+        ..ServeEnv::default()
+    });
+    server.wait_ready().await;
+    let base_url = server.base_url();
 
     let anon = McpClient::new(&base_url);
     let raw = anon
@@ -115,6 +84,6 @@ async fn from_is_passed_verbatim_and_reply_to_is_the_bare_address() {
     assert_eq!(body["from"], json!("mcphost <hello@mcphost.dev>"));
     assert_eq!(body["reply_to"], json!("hello@mcphost.dev"));
 
-    drop(child);
+    drop(server);
     let _ = std::fs::remove_dir_all(&data_dir);
 }

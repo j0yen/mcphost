@@ -1254,6 +1254,16 @@
       "AC6": "tests/cfix_ac06_unrunnable_unfixtured_step_is_skipped_and_named.rs",
       "AC7": "tests/cfix_ac07_quickstart_names_fixtures.rs",
       "AC8": "deferred -- operator-provisioned: live prod MCP call after deploy (jq prints fixture)"
+    },
+    "cproc": {
+      "_prd": "PRD-mcphost-child-process-test-harness.md (test_prefix: cproc)",
+      "AC1": "tests/cproc_ac01_raw_serve_spawn_and_pipe_read_fail.rs",
+      "AC2": "tests/cproc_ac02_guard_struct_fails_waited_child_passes.rs",
+      "AC3": "tests/cproc_ac03_allow_set_derived_from_serve_rs.rs",
+      "AC4": "tests/cproc_ac04_stalled_child_fails_within_deadline_and_is_reaped.rs",
+      "AC5": "tests/cproc_ac05_ready_deadline_is_the_host_aware_timeout.rs",
+      "AC6": "tests/cproc_ac06_real_tree_has_no_raw_spawns_or_guards.rs",
+      "AC7": "tests/cproc_ac07_flake_lint_job_runs_child_proc_lint.rs"
     }
   }
 }

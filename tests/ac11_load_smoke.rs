@@ -16,25 +16,14 @@
 //! names that suite binary and the module-qualified filter narrows it to
 //! this file) and read the printed p95/RSS.
 
-use std::process::{Child, Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::Instant;
+
+use crate::serve;
+use serve::{ServeChild, ServeEnv};
 
 use mcphost::auth::{generate_key, generate_namespace, hash_key};
 use mcphost::db::Db;
 use serde_json::json;
-
-struct ChildGuard(Child);
-impl Drop for ChildGuard {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
-
-fn free_port() -> u16 {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
-    listener.local_addr().unwrap().port()
-}
 
 fn rss_bytes(pid: u32) -> Option<u64> {
     let status = std::fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
@@ -82,36 +71,17 @@ async fn two_hundred_concurrent_echo_calls() {
     }
     drop(db);
 
-    let port = free_port();
-    let bin = env!("CARGO_BIN_EXE_mcphost");
-    let mut child = Command::new(bin)
-        .arg("serve")
-        .env("MCPHOST_DATA_DIR", &data_dir)
-        .env("MCPHOST_BIND", format!("127.0.0.1:{port}"))
-        .env("MCPHOST_ADMIN_KEY", "ac11-admin-key")
-        .env("MCPHOST_SECRET_KEY", "ac11-secret-key")
-        .env("MCPHOST_LOG_LEVEL", "warn")
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn mcphost serve");
-    let pid = child.id();
-    let stderr = child.stderr.take();
-    let mut guard = ChildGuard(child);
-
-    let base_url = format!("http://127.0.0.1:{port}");
+    let mut server = ServeChild::spawn(ServeEnv {
+        data_dir: data_dir.clone(),
+        admin_key: Some("ac11-admin-key".into()),
+        secret_key: Some("ac11-secret-key".into()),
+        extra_env: vec![("MCPHOST_LOG_LEVEL".into(), "warn".into())],
+        ..ServeEnv::default()
+    });
+    let pid = server.child_id();
+    server.wait_ready().await;
+    let base_url = server.base_url();
     let http = reqwest::Client::new();
-    let deadline = Instant::now() + crate::common::serve_ready_timeout();
-    loop {
-        if reqwest::get(format!("{base_url}/healthz")).await.is_ok() {
-            break;
-        }
-        if Instant::now() > deadline {
-            let buf = crate::common::kill_then_read_stderr(&mut guard.0, stderr);
-            panic!("mcphost serve did not become healthy in time; stderr:\n{buf}");
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
 
     // Publish `echo` under every tenant before the timed window.
     for (ns, key) in &tenants {

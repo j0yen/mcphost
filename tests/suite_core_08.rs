@@ -22,6 +22,24 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "share_ac01_public_tool_cross_tenant_call.rs"]
+mod share_ac01_public_tool_cross_tenant_call;
+#[path = "share_ac02_private_tool_still_not_found.rs"]
+mod share_ac02_private_tool_still_not_found;
+#[path = "share_ac03_group_visibility_members_only.rs"]
+mod share_ac03_group_visibility_members_only;
+#[path = "share_ac04_secret_never_reaches_caller.rs"]
+mod share_ac04_secret_never_reaches_caller;
+#[path = "share_ac05_usage_and_quota_attribution.rs"]
+mod share_ac05_usage_and_quota_attribution;
+#[path = "share_ac06_share_quota_exceeded.rs"]
+mod share_ac06_share_quota_exceeded;
+#[path = "share_ac07_catalog_search_and_well_known.rs"]
+mod share_ac07_catalog_search_and_well_known;
+#[path = "share_ac08_unshare_revokes_access.rs"]
+mod share_ac08_unshare_revokes_access;
+#[path = "share_ac09_admin_tool_unshare.rs"]
+mod share_ac09_admin_tool_unshare;
 #[path = "sharedcall_ac01_host_tool_call_public_cross_tenant.rs"]
 mod sharedcall_ac01_host_tool_call_public_cross_tenant;
 #[path = "sharedcall_ac02_group_share_non_member_gets_hint.rs"]

@@ -179,12 +179,19 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // "blobguard-fixtures" lane (routes tests/fixtures/blobguard/** and the
     // generated docs/blob-types.md to the blobguard_ac0N proof tests and
     // gendocs's drift test) -- an intended addition, not drift.
+    // PRD-mcphost-child-process-test-harness added its own "child-proc-lint"
+    // lane (routes scripts/child-proc-lint.py and its fixture templates to
+    // the script's own run over tests/ plus the cproc_ac tests, kept separate
+    // from the pre-existing flake-lint lane for the same
+    // required_commands-immutability reason as the lanes above) -- an
+    // intended addition, not drift.
     assert_eq!(
         added,
         vec![
             "admin-schemas",
             "blobguard-fixtures",
             "checkcompat-race-soak",
+            "child-proc-lint",
             "contracts",
             "docs-links",
             "docsearch-fixtures",
@@ -204,7 +211,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "vendor",
             "wasm-fixtures"
         ],
-        "only admin-schemas, blobguard-fixtures, checkcompat-race-soak, contracts, docs-links, docsearch-fixtures, \
+        "only admin-schemas, blobguard-fixtures, checkcompat-race-soak, child-proc-lint, contracts, docs-links, docsearch-fixtures, \
          event-trigger-self-test-fixtures, examples, flake-lint, host-pressure-doc-check, launch-docs, \
          loop-config, oauthconf-data, plugin, registry-manifest, sandbox-api-docs, sharing-docs, \
          spec-fields-doc-check, tool-naming, vendor, and wasm-fixtures may have been added since \

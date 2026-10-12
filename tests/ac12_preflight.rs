@@ -24,21 +24,11 @@
 use crate::common;
 use common::{McpClient, TestServer};
 use serde_json::json;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-struct ChildGuard(Child);
-impl Drop for ChildGuard {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
-
-fn free_port() -> u16 {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
-    listener.local_addr().unwrap().port()
-}
+use crate::serve;
+use serve::{ServeChild, ServeEnv};
 
 #[tokio::test]
 async fn protocol_half_matches_synthorg_preflight() {
@@ -178,34 +168,15 @@ async fn synthorg_binary_preflight_exits_zero_when_available() {
     // see in production, not just the in-process test harness.
     let data_dir = std::env::temp_dir().join(format!("mcphost-ac12-{}", std::process::id()));
     std::fs::create_dir_all(&data_dir).unwrap();
-    let port = free_port();
-    let bin = env!("CARGO_BIN_EXE_mcphost");
-    let mut child = Command::new(bin)
-        .arg("serve")
-        .env("MCPHOST_DATA_DIR", &data_dir)
-        .env("MCPHOST_BIND", format!("127.0.0.1:{port}"))
-        .env("MCPHOST_ADMIN_KEY", "ac12-admin-key")
-        .env("MCPHOST_SECRET_KEY", "ac12-secret-key")
-        .env("MCPHOST_LOG_LEVEL", "warn")
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn mcphost serve");
-    let stderr = child.stderr.take();
-    let mut guard = ChildGuard(child);
-
-    let base_url = format!("http://127.0.0.1:{port}");
-    let deadline = Instant::now() + crate::common::serve_ready_timeout();
-    loop {
-        if reqwest::get(format!("{base_url}/healthz")).await.is_ok() {
-            break;
-        }
-        if Instant::now() > deadline {
-            let buf = crate::common::kill_then_read_stderr(&mut guard.0, stderr);
-            panic!("mcphost serve did not become healthy in time; stderr:\n{buf}");
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
+    let mut server = ServeChild::spawn(ServeEnv {
+        data_dir: data_dir.clone(),
+        admin_key: Some("ac12-admin-key".into()),
+        secret_key: Some("ac12-secret-key".into()),
+        extra_env: vec![("MCPHOST_LOG_LEVEL".into(), "warn".into())],
+        ..ServeEnv::default()
+    });
+    server.wait_ready().await;
+    let base_url = server.base_url();
 
     let mcp_url = format!("{base_url}/mcp");
     let mut cmd = Command::new(&invocation[0]);
@@ -238,18 +209,13 @@ async fn synthorg_binary_preflight_exits_zero_when_available() {
 /// helper must kill first, so it returns even for a child that never exits.
 #[test]
 fn kill_then_read_stderr_returns_for_a_live_child() {
-    let mut child = Command::new("sleep")
-        .arg("600")
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("spawn sleep");
-    let stderr = child.stderr.take();
-    let mut guard = ChildGuard(child);
+    let mut cmd = Command::new("sleep");
+    cmd.arg("600");
+    let mut server = ServeChild::spawn_command(cmd, 0);
 
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        let out = common::kill_then_read_stderr(&mut guard.0, stderr);
+        let out = server.diagnostics();
         let _ = tx.send(out);
     });
     rx.recv_timeout(Duration::from_secs(15))

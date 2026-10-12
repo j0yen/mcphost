@@ -7,7 +7,13 @@
 // original name, path, and test names (nextest's test list, with this
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
+#[path = "support/serve.rs"]
+mod serve;
 
+#[path = "cproc_ac04_stalled_child_fails_within_deadline_and_is_reaped.rs"]
+mod cproc_ac04_stalled_child_fails_within_deadline_and_is_reaped;
+#[path = "cproc_ac05_ready_deadline_is_the_host_aware_timeout.rs"]
+mod cproc_ac05_ready_deadline_is_the_host_aware_timeout;
 #[path = "firstpub_ac08_quickstart_http_starter.rs"]
 mod firstpub_ac08_quickstart_http_starter;
 #[path = "flakelint_ac01_env_mutation.rs"]
