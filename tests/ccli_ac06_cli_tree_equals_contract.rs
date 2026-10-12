@@ -62,6 +62,12 @@ fn expected_from(contract_json: &Value) -> BTreeMap<String, Expected> {
             if !is_plain(schema) {
                 flag.push_str("-json");
             }
+            // Same collision rule as call_cli::build_command: a property whose
+            // flag name is one of `mcphost call`'s own flags is exposed as
+            // `--<name>-arg` (e.g. host.blob.put's `url`).
+            if OWN_FLAGS.contains(&flag.as_str()) {
+                flag.push_str("-arg");
+            }
             flags.insert(flag, first_sentence(schema["description"].as_str().unwrap_or("")));
         }
         out.insert(

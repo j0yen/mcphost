@@ -85,6 +85,30 @@
       }
     },
     {
+      "name": "file-share",
+      "title": "Share a file that expires on its own",
+      "summary": "Put a blob with a ttl, hand out its signed URL, and let retention expire and prune it without a cleanup job.",
+      "use_case": [
+        "share"
+      ],
+      "clients": [
+        "any"
+      ],
+      "since": "0.107.45",
+      "proof": "retention-proof.sh",
+      "secrets_needed": [],
+      "manifest_sha256": "40b56b756c1f6f8d4ec41eb5210df6d63c37b2c440394ac45f107cbbe634007e",
+      "tools": [],
+      "first_call": {
+        "tool": "host.blob.put",
+        "args": {
+          "name": "report.pdf",
+          "ttl_s": 120
+        },
+        "expect": "result.data.quota.blob_bytes_max.limit != 0"
+      }
+    },
+    {
       "name": "first-run",
       "title": "First run: publish a tool and call it",
       "summary": "Sign up, publish table_note as a python tool that appends through mcphost.table, call it, and read back the real output.",

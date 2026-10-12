@@ -549,6 +549,8 @@ const UNPAGED_EXPORT: &str =
     "export or arbitrary-query semantics: the caller bounds the result, so no page cursor applies";
 const UNPAGED_BOUNDED: &str =
     "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows";
+const UNPAGED_NAME_WINDOW: &str =
+    "limit-only name-ordered window with a prefix filter; no keyset cursor is offered yet";
 const UNPAGED_RANKED: &str =
     "relevance-ranked top-k result, not a keyset-ordered list, so there is no stable cursor";
 const UNPAGED_ECHO: &str =
@@ -563,6 +565,8 @@ pub const UNPAGED_VERBS: &[(&str, &str)] = &[
     ("host.agent.search", UNPAGED_LEGACY),
     ("host.ask.list", UNPAGED_WINDOW),
     ("host.audit.chain", UNPAGED_WINDOW),
+    ("host.blob.gc", UNPAGED_BOUNDED),
+    ("host.blob.list", UNPAGED_NAME_WINDOW),
     ("host.catalog.search", UNPAGED_WINDOW),
     ("host.changelog", UNPAGED_EXPORT),
     ("host.docs.search", UNPAGED_RANKED),

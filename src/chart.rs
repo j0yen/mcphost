@@ -338,49 +338,22 @@ pub async fn table_charts_list(state: &AppState, tenant: &Tenant, _args: &Value)
 
 // ---- signed share URL -----------------------------------------------------
 
-fn hex_encode(bytes: &[u8]) -> String {
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        s.push_str(&format!("{b:02x}"));
-    }
-    s
-}
-
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut diff = 0u8;
-    for (x, y) in a.iter().zip(b.iter()) {
-        diff |= x ^ y;
-    }
-    diff == 0
-}
-
 fn chart_path(id: &str) -> String {
     format!("/charts/{id}")
 }
 
-/// Same HMAC-over-`"{path}:{expires}"` scheme `export::sign` uses, keyed by
-/// the sharing tenant's own `key_hash` (technical considerations: "the same
-/// HMAC scheme and 24-hour expiry `src/export.rs` uses").
-fn sign(key_hash: &str, id: &str, expires_unix: i64) -> String {
-    sign_path(key_hash, &chart_path(id), expires_unix)
-}
-
 /// The HMAC-over-`"{path}:{expires}"` scheme itself, shared with
-/// `asks.rs` (PRD-mcphost-ask-user-decision: "signed like `/charts/`").
+/// `asks.rs` (PRD-mcphost-ask-user-decision: "signed like `/charts/`");
+/// the scheme lives in [`crate::signed_url`].
 pub(crate) fn sign_path(key_hash: &str, path: &str, expires_unix: i64) -> String {
-    let message = format!("{path}:{expires_unix}");
-    hex_encode(&crate::billing::hmac_sha256(key_hash.as_bytes(), message.as_bytes()))
+    crate::signed_url::sign(key_hash, path, expires_unix)
 }
 
 /// `pub` (like `export::signed_download_url`): both the real caller below
 /// and this crate's own test suite (an already-expired or
-/// altered-signature URl AC9 needs) mint one.
+/// altered-signature URl AC9 needs) mint one, through [`crate::signed_url`].
 pub fn signed_chart_url(public_url: &str, key_hash: &str, id: &str, expires_unix: i64) -> String {
-    let sig = sign(key_hash, id, expires_unix);
-    format!("{public_url}{}?exp={expires_unix}&sig={sig}", chart_path(id))
+    crate::signed_url::mint(public_url, key_hash, &chart_path(id), "exp", expires_unix)
 }
 
 // ---- host.table.chart / host.table.charts ---------------------------------
@@ -559,20 +532,16 @@ pub async fn download(
     let Ok(Some(tenant)) = state.db.find_tenant_by_id(tenant_id).await else {
         return (StatusCode::NOT_FOUND, "chart not found").into_response();
     };
-    let (Some(expires_raw), Some(sig)) = (params.get("exp"), params.get("sig")) else {
-        return (StatusCode::FORBIDDEN, "missing signature").into_response();
-    };
-    let Ok(expires_unix) = expires_raw.parse::<i64>() else {
-        return (StatusCode::FORBIDDEN, "invalid signature").into_response();
-    };
-    let expected = sign(&tenant.key_hash, &id, expires_unix);
-    if !constant_time_eq(sig.as_bytes(), expected.as_bytes()) {
-        return (StatusCode::FORBIDDEN, "invalid signature").into_response();
-    }
-    // AC9: past its expiry, a validly-signed URL reads 410 -- the
-    // signature was genuine, only stale.
-    if crate::state::now_unix() > expires_unix {
-        return (StatusCode::GONE, "chart link expired").into_response();
+    // AC9: 403 for a missing/altered signature, 410 for a genuine one past
+    // its expiry -- one shared check (R5).
+    if let Err((status, msg)) = crate::signed_url::verify(
+        &tenant.key_hash,
+        &chart_path(&id),
+        params.get("exp").map(String::as_str),
+        params.get("sig").map(String::as_str),
+        crate::state::now_unix(),
+    ) {
+        return (status, msg).into_response();
     }
 
     let path = tables::tenant_db_path(&state, tenant.id);

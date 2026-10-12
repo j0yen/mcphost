@@ -478,6 +478,12 @@ pub struct AppState {
     /// [`AppState::reuse_session_tenant`]: a field, not a process-wide env
     /// var, since the core suites run in parallel in one binary.
     pub anon_healthz_extra_key: std::sync::Arc<std::sync::OnceLock<&'static str>>,
+    /// PRD-mcphost-blob-retention-and-quota: seconds added to the wall clock
+    /// everywhere the blob store reads "now" ([`crate::blobs::now`]). Always
+    /// 0 in production; a test advances it to make a ttl lapse without
+    /// sleeping. A field, not a process-wide static, since the core suites
+    /// run in parallel in one binary.
+    pub blob_clock_offset_secs: std::sync::Arc<std::sync::atomic::AtomicI64>,
 }
 
 /// requirement 6's own default: 60 calls per client IP per minute.

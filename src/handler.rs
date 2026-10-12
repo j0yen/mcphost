@@ -2145,6 +2145,116 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &["name"],
             ),
         ),
+        // PRD-mcphost-blob-put-get-signed-url R1: any file, stored in one
+        // call and shared by a signed URL.
+        Tool::new(
+            "host.blob.put",
+            "Store a file of any type under this tenant and get back {id, name, bytes, mime, \
+             sha256, url, expires, version}; url is a signed link (valid 24h) that serves the \
+             bytes with the stored Content-Type. mime is the explicit one, else sniffed from the \
+             name and magic bytes (pdf, png, jpeg, gif, webp, zip, gzip, xlsx, docx, csv, json, \
+             txt, md), else application/octet-stream. The same name stores a new version of the \
+             same id; identical bytes are a no-op. Rotating the tenant key invalidates \
+             outstanding urls. Give exactly one of content_base64 or url (the host fetches it, \
+             so the bytes never pass through your context). Ceilings: blob_max_bytes per file, blob_bytes_max in total, \
+             blobs_max files -- see host.quickstart limits.plan.",
+            host_schema(
+                json!({
+                    "name": {"type": "string", "description": "File name; the same name on a later put creates a new version of the same id."},
+                    "content_base64": {"type": "string", "description": "The file's bytes, base64-encoded; use url instead to have the host fetch them."},
+                    "url": {"type": "string", "description": "http(s) URL the host fetches (10 s, at most blob_max_bytes, no redirects); refused for private, loopback, link-local and internal hosts. Use content_base64 instead for bytes you hold."},
+                    "mime": {"type": "string", "description": "Content type; sniffed from name and content when omitted."},
+                    "ttl_s": {"type": "integer", "description": "Seconds until the file expires, 1-31536000 (365 days); omitted = never. After it host.blob.get answers blob_expired and the url answers 410."},
+                }),
+                &["name"],
+            ),
+        ),
+        Tool::new(
+            "host.blob.touch",
+            "Set a stored file to expire ttl_s seconds from now (extends, shortens or revives one the nightly prune has not removed yet). Returns {id, name, expires_at}.",
+            host_schema(
+                json!({
+                    "id": {"type": "string", "description": "Blob id."},
+                    "ttl_s": {"type": "integer", "description": "Seconds from now until the file expires, 1-31536000 (365 days)."},
+                }),
+                &["id", "ttl_s"],
+            ),
+        ),
+        Tool::new(
+            "host.blob.policy",
+            "Set this tenant's blob defaults and read them back: {default_ttl_s, keep_latest_versions, notify_before_s}. \
+             default_ttl_s is the expiry a put without ttl_s gets (null = never); keep_latest_versions (1-100) keeps that many \
+             versions of one name live and marks older ones expired at write time; notify_before_s > 0 puts one blob.expiring \
+             message in the inbox that long before blobs lapse (0 = off). A field you leave out is unchanged; null clears it.",
+            host_schema(
+                json!({
+                    "default_ttl_s": {"type": ["integer", "null"], "description": "Seconds a stored file lives when put gives no ttl_s, 1-31536000; null = never."},
+                    "keep_latest_versions": {"type": ["integer", "null"], "description": "Versions of one name kept live, 1-100; null = only the current one."},
+                    "notify_before_s": {"type": "integer", "description": "Send a blob.expiring inbox message this many seconds before expiry; 0 = off."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.blob.gc",
+            "Preview or run the blob prune. dry_run: true (default) returns {expiring: [{id, name, version, bytes, expires_at}], \
+             bytes_total, count} for files expiring within within_s seconds (0 = already expired); dry_run: false deletes the \
+             already-expired set now and returns {deleted, bytes_freed}.",
+            host_schema(
+                json!({
+                    "dry_run": {"type": "boolean", "description": "true (default) lists; false deletes the already-expired set."},
+                    "within_s": {"type": "integer", "description": "List files expiring within this many seconds; 0 (default) = already expired."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.blob.get",
+            "Read a stored file by id or name. as: \"url\" (default) returns the metadata and a \
+             fresh signed url, costing no read; as: \"base64\" also returns content_base64, \
+             refused with blob_too_large_inline (use host.blob.url) for a file over 1 MiB.",
+            host_schema(
+                json!({
+                    "id": {"type": "string", "description": "Blob id; use name instead if you don't have it."},
+                    "name": {"type": "string", "description": "Blob name; use id instead if you have it."},
+                    "as": {"type": "string", "enum": ["url", "base64"], "description": "\"url\" (default) or \"base64\" (files up to 1 MiB)."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.blob.list",
+            "List this tenant's stored files by name: {blobs: [{id, name, bytes, mime, sha256, \
+             version, ...}], count, total_bytes} -- total_bytes is the usage line against \
+             blob_bytes_max.",
+            host_schema(
+                json!({
+                    "prefix": {"type": "string", "description": "Only files whose name starts with this."},
+                    "limit": {"type": "integer", "description": "Max files to return, 1-1000; default 100."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.blob.delete",
+            "Delete a stored file by id: its bytes and row go, and outstanding urls stop working.",
+            host_schema(
+                json!({"id": {"type": "string", "description": "Blob id to delete."}}),
+                &["id"],
+            ),
+        ),
+        Tool::new(
+            "host.blob.url",
+            "Mint a fresh signed download url for a stored file; ttl_s defaults to 24 h and is at \
+             most 7 days (604800).",
+            host_schema(
+                json!({
+                    "id": {"type": "string", "description": "Blob id."},
+                    "ttl_s": {"type": "integer", "description": "Seconds the url stays valid, 1-604800; default 86400."},
+                }),
+                &["id"],
+            ),
+        ),
         Tool::new(
             "host.docs.get",
             "Read a document by id or name -- version defaults to the current one; text: true \
@@ -5039,6 +5149,10 @@ impl DocsBackend for TenantDocsBridge {
             "quota" => control::data_quota_for(&self.state, &self.tenant)
                 .await
                 .map(|q| q.unwrap_or(Value::Null)),
+            // PRD-mcphost-blob-put-get-signed-url R6: `mcphost.blob` rides
+            // this same channel (no second socket for a `network: none`
+            // sandbox), so its two ops are routed here.
+            "blob_get" | "blob_put" => crate::blobs::bridge(&self.state, &self.tenant, op, &args).await,
             other => Err(AppError::InvalidArgs(format!("unknown docs op '{other}'"))),
         };
         result.map_err(app_error_to_kind_error)
@@ -5587,13 +5701,17 @@ impl McpHostHandler {
         }
         let wanted = match &result {
             Ok(v) => v.is_object(),
-            Err(AppError::Structured { code, .. }) => code.contains("quota_exceeded"),
+            // R4: the blob refusals (`quota_blobs`, `quota_blob_bytes`,
+            // `blob_too_large`, `blob_expired`, ...) carry the room left too.
+            Err(AppError::Structured { code, .. }) => {
+                code.contains("quota_exceeded") || code.starts_with("blob_") || code.starts_with("quota_blob")
+            }
             Err(_) => false,
         };
         if !wanted {
             return result;
         }
-        let usage = match self.state.db.data_usage(tenant.id).await {
+        let usage = match self.state.db.data_usage_at(tenant.id, crate::blobs::now(&self.state)).await {
             Ok(u) => u,
             Err(e) => {
                 tracing::warn!(tenant = %tenant.namespace, error = %e, "data_usage failed; data.quota omitted");
@@ -5869,6 +5987,14 @@ impl McpHostHandler {
             "host.table.handle_drop" => tables::table_handle_drop(&self.state, tenant, &args).await,
             "host.table.handle_export" => crate::export::handle_export(&self.state, tenant, &args).await,
             "host.docs.put" => docs::doc_put(&self.state, tenant, &args).await,
+            "host.blob.put" => crate::blobs::blob_put(&self.state, tenant, &args).await,
+            "host.blob.get" => crate::blobs::blob_get(&self.state, tenant, &args).await,
+            "host.blob.list" => crate::blobs::blob_list(&self.state, tenant, &args).await,
+            "host.blob.delete" => crate::blobs::blob_delete(&self.state, tenant, &args).await,
+            "host.blob.url" => crate::blobs::blob_url(&self.state, tenant, &args).await,
+            "host.blob.touch" => crate::blobs::blob_touch(&self.state, tenant, &args).await,
+            "host.blob.policy" => crate::blobs::blob_policy(&self.state, tenant, &args).await,
+            "host.blob.gc" => crate::blobs::blob_gc(&self.state, tenant, &args).await,
             "host.docs.get" => docs::doc_get(&self.state, tenant, &args).await,
             "host.docs.list" => docs::doc_list(&self.state, tenant, &args).await,
             "host.docs.delete" => docs::doc_delete(&self.state, tenant, &args).await,

@@ -250,6 +250,12 @@ const MIGRATION_0086: &str = include_str!("../migrations/0086_feedback.sql");
 const MIGRATION_0087: &str = include_str!("../migrations/0087_dead_letters.sql");
 /// PRD-mcphost-event-trigger-from-webhook R4: the ring's eviction counter.
 const MIGRATION_0088: &str = include_str!("../migrations/0088_dead_letter_drops.sql");
+/// PRD-mcphost-blob-put-get-signed-url R1: the `blobs` metadata table.
+const MIGRATION_0089: &str = include_str!("../migrations/0089_blobs.sql");
+/// PRD-mcphost-blob-retention-and-quota R1/R3: `blobs.expires_at`/`missing`.
+const MIGRATION_0090: &str = include_str!("../migrations/0090_blob_expiry.sql");
+/// PRD-mcphost-blob-retention-and-quota R2/R6: `blob_policy`, `blob_versions`.
+const MIGRATION_0091: &str = include_str!("../migrations/0091_blob_policy_versions.sql");
 
 /// PRD-mcphost-session-bound-tenant-key requirement 3: `kind` on
 /// `signup_events`. Renumbered to 0080 during this rebase: mcphost-tool-
@@ -2839,7 +2845,46 @@ impl Db {
         // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0086)?;
         Self::migrate_0087_dead_letters(&conn)?;
-        Self::migrate_0088_dead_letter_drops(&conn)
+        Self::migrate_0088_dead_letter_drops(&conn)?;
+        Self::migrate_0089_blobs(&conn)?;
+        Self::migrate_0090_blob_expiry(&conn)?;
+        Self::migrate_0091_blob_policy_versions(&conn)
+    }
+
+    /// PRD-mcphost-blob-retention-and-quota R2: `CREATE TABLE IF NOT EXISTS`
+    /// batch, gated on the `blob_policy` table like 0089.
+    fn migrate_0091_blob_policy_versions(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'blob_policy'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0091)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-blob-retention-and-quota R1/R3: same `pragma_table_info`
+    /// gate as 0002, on the first of the two added columns.
+    fn migrate_0090_blob_expiry(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('blobs') WHERE name = 'expires_at'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0090)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-blob-put-get-signed-url R1: same idempotency pattern as
+    /// 0037, gated on the `blobs` table.
+    fn migrate_0089_blobs(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'blobs'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0089)?;
+        }
+        Ok(())
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -8869,7 +8914,18 @@ impl Db {
     /// `export_bytes_max`) have no stored usage and are left out, so they
     /// render `used: null`.
     pub async fn data_usage(&self, tenant_id: i64) -> Result<crate::plans::DataUsage, AppError> {
+        self.data_usage_at(tenant_id, crate::state::now_unix()).await
+    }
+
+    /// [`Self::data_usage`] at an explicit `now` -- the instant a blob stops
+    /// counting against `blobs_max`/`blob_bytes_max` (its `expires_at`).
+    pub async fn data_usage_at(&self, tenant_id: i64, now: i64) -> Result<crate::plans::DataUsage, AppError> {
         let mut usage = crate::plans::DataUsage::default();
+        // PRD-mcphost-blob-retention-and-quota R4: `blob_max_bytes` is a
+        // per-file cap with no stored usage, so it renders `used: null`.
+        let (blobs, blob_bytes) = self.blobs_usage_live(tenant_id, now).await?;
+        usage.used.insert("blobs_max".into(), blobs);
+        usage.used.insert("blob_bytes_max".into(), blob_bytes);
         let state_bytes = self.state_bytes_used(tenant_id).await?;
         let state_rows = self
             .with_conn(move |conn| {
@@ -15632,6 +15688,361 @@ impl Db {
         .await
     }
 
+    // ---- blobs (PRD-mcphost-blob-put-get-signed-url R1) -------------------
+
+    pub async fn blob_find_by_name(&self, tenant_id: i64, name: String) -> Result<Option<BlobRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                &format!("SELECT {BLOB_COLS} FROM blobs WHERE tenant_id = ?1 AND name = ?2"),
+                params![tenant_id, name],
+                blob_row_from,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    pub async fn blob_find_by_id(&self, tenant_id: i64, id: String) -> Result<Option<BlobRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                &format!("SELECT {BLOB_COLS} FROM blobs WHERE tenant_id = ?1 AND id = ?2"),
+                params![tenant_id, id],
+                blob_row_from,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// The unauthenticated `/blobs/{id}` route's lookup: ids are globally
+    /// unique ULIDs, and the signature (keyed by the owning tenant) is the
+    /// whole auth story.
+    pub async fn blob_find_any_tenant(&self, id: String) -> Result<Option<BlobRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                &format!("SELECT {BLOB_COLS} FROM blobs WHERE id = ?1"),
+                params![id],
+                blob_row_from,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `(blobs, bytes)` across this tenant's blobs -- the quota-check input.
+    pub async fn blobs_usage(&self, tenant_id: i64) -> Result<(i64, i64), AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*), COALESCE(SUM(bytes), 0) FROM blobs WHERE tenant_id = ?1",
+                params![tenant_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `(blobs, bytes)` across this tenant's blobs that have not expired at
+    /// `now` -- what the quota ceilings are compared against (an expired
+    /// blob awaiting the prune no longer holds room).
+    pub async fn blobs_usage_live(&self, tenant_id: i64, now: i64) -> Result<(i64, i64), AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*), COALESCE(SUM(bytes), 0) + COALESCE((SELECT SUM(bytes) FROM blob_versions \
+                     WHERE tenant_id = ?1 AND expired = 0 AND (expires_at IS NULL OR expires_at > ?2)), 0) \
+                 FROM blobs WHERE tenant_id = ?1 AND (expires_at IS NULL OR expires_at > ?2)",
+                params![tenant_id, now],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Insert a brand-new blob row, or bump `version` on the row already
+    /// holding `name`. Returns the resulting row.
+    pub async fn blob_upsert(
+        &self,
+        tenant_id: i64,
+        new_id: String,
+        write: BlobWrite,
+        now: i64,
+    ) -> Result<BlobRow, AppError> {
+        let BlobWrite { name, mime, bytes, sha256, expires_at, keep_versions } = write;
+        self.with_conn(move |conn| {
+            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
+            let out: Result<BlobRow, AppError> = (|| {
+                let existing: Option<BlobRow> = conn
+                    .query_row(
+                        &format!("SELECT {BLOB_COLS} FROM blobs WHERE tenant_id = ?1 AND name = ?2"),
+                        params![tenant_id, name],
+                        blob_row_from,
+                    )
+                    .optional()?;
+                let id = match existing {
+                    Some(old) => {
+                        // R2: a policy that keeps more than the current
+                        // version archives the one being replaced, then ages
+                        // out whatever falls outside the newest `keep`.
+                        if let Some(keep) = keep_versions.filter(|k| *k >= 2) {
+                            conn.execute(
+                                "INSERT OR REPLACE INTO blob_versions (tenant_id, id, version, name, mime, \
+                                     bytes, sha256, created_at, expires_at, expired) \
+                                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0)",
+                                params![
+                                    tenant_id, old.id, old.version, old.name, old.mime, old.bytes,
+                                    old.sha256, old.updated_at, old.expires_at
+                                ],
+                            )?;
+                            conn.execute(
+                                "UPDATE blob_versions SET expired = 1, expires_at = ?1 \
+                                 WHERE tenant_id = ?2 AND id = ?3 AND expired = 0 AND version <= ?4",
+                                params![now, tenant_id, old.id, old.version + 1 - keep],
+                            )?;
+                        }
+                        conn.execute(
+                            "UPDATE blobs SET version = version + 1, mime = ?1, bytes = ?2, \
+                                 sha256 = ?3, updated_at = ?4, expires_at = ?5, missing = 0 \
+                                 WHERE tenant_id = ?6 AND id = ?7",
+                            params![mime, bytes, sha256, now, expires_at, tenant_id, old.id],
+                        )?;
+                        old.id
+                    }
+                    None => {
+                        conn.execute(
+                            "INSERT INTO blobs (id, tenant_id, name, version, mime, bytes, sha256, \
+                                 created_at, updated_at, expires_at) \
+                                 VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?7, ?8)",
+                            params![new_id, tenant_id, name, mime, bytes, sha256, now, expires_at],
+                        )?;
+                        new_id
+                    }
+                };
+                conn.query_row(
+                    &format!("SELECT {BLOB_COLS} FROM blobs WHERE tenant_id = ?1 AND id = ?2"),
+                    params![tenant_id, id],
+                    blob_row_from,
+                )
+                .map_err(AppError::from)
+            })();
+            match out {
+                Ok(row) => {
+                    conn.execute("COMMIT", []).map_err(AppError::from)?;
+                    Ok(row)
+                }
+                Err(e) => {
+                    let _ = conn.execute("ROLLBACK", []);
+                    Err(e)
+                }
+            }
+        })
+        .await
+    }
+
+    pub async fn blob_list(
+        &self,
+        tenant_id: i64,
+        prefix: Option<String>,
+        limit: i64,
+    ) -> Result<Vec<BlobRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(&format!(
+                "SELECT {BLOB_COLS} FROM blobs WHERE tenant_id = ?1 \
+                 AND (?2 IS NULL OR substr(name, 1, length(?2)) = ?2) ORDER BY name LIMIT ?3"
+            ))?;
+            let rows = stmt
+                .query_map(params![tenant_id, prefix, limit], blob_row_from)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-blob-retention-and-quota R1: set (or clear, `None`) one
+    /// blob's expiry. `false` when the tenant has no such blob.
+    pub async fn blob_set_expiry(
+        &self,
+        tenant_id: i64,
+        id: String,
+        expires_at: Option<i64>,
+    ) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "UPDATE blobs SET expires_at = ?1 WHERE tenant_id = ?2 AND id = ?3",
+                params![expires_at, tenant_id, id],
+            )?;
+            Ok(n > 0)
+        })
+        .await
+    }
+
+    /// R2: this tenant's policy, defaults when it never set one.
+    pub async fn blob_policy_get(&self, tenant_id: i64) -> Result<BlobPolicy, AppError> {
+        self.with_conn(move |conn| {
+            Ok(conn
+                .query_row(
+                    "SELECT default_ttl_s, keep_latest_versions, notify_before_s, last_notice_unix \
+                     FROM blob_policy WHERE tenant_id = ?1",
+                    params![tenant_id],
+                    |r| {
+                        Ok(BlobPolicy {
+                            default_ttl_s: r.get(0)?,
+                            keep_latest_versions: r.get(1)?,
+                            notify_before_s: r.get(2)?,
+                            last_notice_unix: r.get(3)?,
+                        })
+                    },
+                )
+                .optional()?
+                .unwrap_or_default())
+        })
+        .await
+    }
+
+    /// R2: replace this tenant's policy row (created lazily); the caller
+    /// merges its patch into [`Self::blob_policy_get`]'s result first.
+    pub async fn blob_policy_put(&self, tenant_id: i64, p: BlobPolicy) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO blob_policy (tenant_id, default_ttl_s, keep_latest_versions, notify_before_s, \
+                     last_notice_unix) VALUES (?1, ?2, ?3, ?4, ?5) \
+                 ON CONFLICT(tenant_id) DO UPDATE SET default_ttl_s = excluded.default_ttl_s, \
+                     keep_latest_versions = excluded.keep_latest_versions, \
+                     notify_before_s = excluded.notify_before_s, last_notice_unix = excluded.last_notice_unix",
+                params![tenant_id, p.default_ttl_s, p.keep_latest_versions, p.notify_before_s, p.last_notice_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// R5: every blob and superseded version of this tenant that expires at
+    /// or before `horizon` (versions the policy aged out always qualify).
+    pub async fn blob_gc_list(&self, tenant_id: i64, horizon: i64) -> Result<Vec<BlobGcItem>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, name, version, bytes, expires_at FROM blobs \
+                     WHERE tenant_id = ?1 AND expires_at IS NOT NULL AND expires_at <= ?2 \
+                 UNION ALL \
+                 SELECT id, name, version, bytes, expires_at FROM blob_versions \
+                     WHERE tenant_id = ?1 AND (expired = 1 OR (expires_at IS NOT NULL AND expires_at <= ?2)) \
+                 ORDER BY 2, 3",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id, horizon], |r| {
+                    Ok(BlobGcItem {
+                        id: r.get(0)?,
+                        name: r.get(1)?,
+                        version: r.get(2)?,
+                        bytes: r.get(3)?,
+                        expires_at: r.get(4)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// R5: delete everything [`Self::blob_gc_list`] lists at `now` for this
+    /// tenant, rows and files, through the same batch code the nightly prune
+    /// runs. Returns `(deleted, bytes_freed)`.
+    pub async fn blob_purge_expired(&self, tenant_id: i64, now: i64) -> Result<(i64, i64), AppError> {
+        let data_dir = self.data_dir().to_path_buf();
+        self.with_conn(move |conn| {
+            let out = crate::retention::purge_expired_blobs(conn, &data_dir, now, Some(tenant_id))
+                .map_err(AppError::from)?;
+            Ok((out.rows, out.bytes))
+        })
+        .await
+    }
+
+    /// R6: every tenant whose policy asks for an expiry notice, with its
+    /// lead time and when the last notice went out.
+    pub async fn blob_notice_policies(&self) -> Result<Vec<(i64, BlobPolicy)>, AppError> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT tenant_id, default_ttl_s, keep_latest_versions, notify_before_s, last_notice_unix \
+                 FROM blob_policy WHERE notify_before_s > 0 ORDER BY tenant_id",
+            )?;
+            let rows = stmt
+                .query_map([], |r| {
+                    Ok((
+                        r.get(0)?,
+                        BlobPolicy {
+                            default_ttl_s: r.get(1)?,
+                            keep_latest_versions: r.get(2)?,
+                            notify_before_s: r.get(3)?,
+                            last_notice_unix: r.get(4)?,
+                        },
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// R6: this tenant's live blobs that lapse in `(now, horizon]`, soonest
+    /// first, as `(id, bytes, expires_at)`.
+    pub async fn blobs_expiring_between(
+        &self,
+        tenant_id: i64,
+        now: i64,
+        horizon: i64,
+    ) -> Result<Vec<(String, i64, i64)>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, bytes, expires_at FROM blobs WHERE tenant_id = ?1 AND expires_at > ?2 \
+                 AND expires_at <= ?3 ORDER BY expires_at, id",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id, now, horizon], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// R6: claim today's notice for this tenant -- true for exactly one
+    /// caller per `min_gap_secs` window, however many ticks race.
+    pub async fn blob_notice_claim(&self, tenant_id: i64, now: i64, min_gap_secs: i64) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "UPDATE blob_policy SET last_notice_unix = ?1 WHERE tenant_id = ?2 AND last_notice_unix <= ?3",
+                params![now, tenant_id, now - min_gap_secs],
+            )?;
+            Ok(n > 0)
+        })
+        .await
+    }
+
+    /// R2: forget a blob's superseded versions, returning their numbers so
+    /// the caller can unlink `<id>.v<n>`.
+    pub async fn blob_versions_take(&self, tenant_id: i64, id: String) -> Result<Vec<i64>, AppError> {
+        self.with_conn(move |conn| {
+            let versions = {
+                let mut stmt = conn
+                    .prepare("SELECT version FROM blob_versions WHERE tenant_id = ?1 AND id = ?2")?;
+                stmt.query_map(params![tenant_id, id], |r| r.get(0))?.collect::<Result<Vec<i64>, _>>()?
+            };
+            conn.execute("DELETE FROM blob_versions WHERE tenant_id = ?1 AND id = ?2", params![tenant_id, id])?;
+            Ok(versions)
+        })
+        .await
+    }
+
+    pub async fn blob_delete(&self, tenant_id: i64, id: String) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute("DELETE FROM blobs WHERE tenant_id = ?1 AND id = ?2", params![tenant_id, id])?;
+            Ok(n > 0)
+        })
+        .await
+    }
+
     /// requirement 1: the tenant's current change watermark -- the highest
     /// `seq` across every document (live or deleted), `0` for a tenant with
     /// none yet.
@@ -19717,6 +20128,77 @@ pub struct DocumentRow {
     pub updated_at: i64,
     pub deleted_at: Option<i64>,
     pub seq: i64,
+}
+
+const BLOB_COLS: &str =
+    "id, tenant_id, name, version, mime, bytes, sha256, created_at, updated_at, expires_at, missing";
+
+fn blob_row_from(r: &rusqlite::Row<'_>) -> rusqlite::Result<BlobRow> {
+    Ok(BlobRow {
+        id: r.get(0)?,
+        tenant_id: r.get(1)?,
+        name: r.get(2)?,
+        version: r.get(3)?,
+        mime: r.get(4)?,
+        bytes: r.get(5)?,
+        sha256: r.get(6)?,
+        created_at: r.get(7)?,
+        updated_at: r.get(8)?,
+        expires_at: r.get(9)?,
+        missing: r.get::<_, i64>(10)? != 0,
+    })
+}
+
+/// The content-derived fields of a [`Db::blob_upsert`] write.
+#[derive(Debug, Clone)]
+pub struct BlobWrite {
+    pub name: String,
+    pub mime: String,
+    pub bytes: i64,
+    pub sha256: String,
+    /// PRD-mcphost-blob-retention-and-quota R1: the new version's expiry.
+    pub expires_at: Option<i64>,
+    /// R2: the tenant policy's `keep_latest_versions` (`None` = only the
+    /// current version is kept).
+    pub keep_versions: Option<i64>,
+}
+
+/// R2/R6: one `blob_policy` row; the defaults for a tenant with none.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct BlobPolicy {
+    pub default_ttl_s: Option<i64>,
+    pub keep_latest_versions: Option<i64>,
+    pub notify_before_s: i64,
+    pub last_notice_unix: i64,
+}
+
+/// R5: one blob (or superseded version) the prune would take.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BlobGcItem {
+    pub id: String,
+    pub name: String,
+    pub version: i64,
+    pub bytes: i64,
+    pub expires_at: i64,
+}
+
+/// PRD-mcphost-blob-put-get-signed-url: one `blobs` row.
+#[derive(Debug, Clone)]
+pub struct BlobRow {
+    pub id: String,
+    pub tenant_id: i64,
+    pub name: String,
+    pub version: i64,
+    pub mime: String,
+    pub bytes: i64,
+    pub sha256: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    /// PRD-mcphost-blob-retention-and-quota R1: unix-seconds expiry, `None`
+    /// = never.
+    pub expires_at: Option<i64>,
+    /// R3: the nightly prune found the row's file gone from disk.
+    pub missing: bool,
 }
 
 /// [`Db::documents_put`]'s return shape.

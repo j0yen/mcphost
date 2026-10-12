@@ -84,6 +84,7 @@ pub mod sandbox;
 pub mod secrets;
 pub mod session_bind;
 pub mod sharing;
+pub mod signed_url;
 pub mod state;
 pub mod statusfeed;
 pub mod submission_pack;

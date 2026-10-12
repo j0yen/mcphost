@@ -89,7 +89,7 @@ fn mime_unsupported(mime: &str) -> AppError {
         message: format!(
             "mime '{mime}' is not supported; allowed mimes are {ALLOWED_MIMES:?}"
         ),
-        data: json!({"mime": mime, "allowed": ALLOWED_MIMES}),
+        data: json!({"mime": mime, "allowed": ALLOWED_MIMES, "hint": "binary files go to host.blob.put"}),
     }
 }
 

@@ -27,7 +27,6 @@ use flate2::write::GzEncoder;
 use serde_json::{Value, json};
 use tar::{Builder, Header};
 
-use crate::billing::hmac_sha256;
 use crate::db::{MessageRow, RunRow, StartExportRun, Tenant, ToolRow};
 use crate::errors::AppError;
 use crate::state::AppState;
@@ -47,46 +46,19 @@ pub const ENDUSER_EXPORT_TOOL_NAME: &str = "host.enduser.export";
 pub const HANDLE_EXPORT_TOOL_NAME: &str = "host.table.handle_export";
 const EXPORT_DIR: &str = "exports";
 /// AC2: a signed download URL is valid for this long.
-pub const EXPORT_URL_TTL_SECS: i64 = 24 * 60 * 60;
-
-fn hex_encode(bytes: &[u8]) -> String {
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        s.push_str(&format!("{b:02x}"));
-    }
-    s
-}
-
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut diff = 0u8;
-    for (x, y) in a.iter().zip(b.iter()) {
-        diff |= x ^ y;
-    }
-    diff == 0
-}
+pub const EXPORT_URL_TTL_SECS: i64 = crate::signed_url::DEFAULT_TTL_SECS;
 
 fn export_path(run_id: &str) -> String {
     format!("/exports/{run_id}")
 }
 
-/// HMAC-SHA256 over `"{path}:{expires_unix}"`, keyed by the exporting
-/// tenant's own `key_hash` -- already stored server-side for every tenant,
-/// so this needs no new secret (technical considerations).
-fn sign(key_hash: &str, run_id: &str, expires_unix: i64) -> String {
-    let message = format!("{}:{expires_unix}", export_path(run_id));
-    hex_encode(&hmac_sha256(key_hash.as_bytes(), message.as_bytes()))
-}
-
-/// The full signed URL a completed export's run result carries. `pub` so
-/// both [`build_archive`] (the real caller) and this crate's own test
-/// suite (AC2's "after 24h, 410" case, which needs a validly-signed but
+/// The full signed URL a completed export's run result carries, minted by
+/// [`crate::signed_url`] like every other signed route. `pub` so both
+/// [`build_archive`] (the real caller) and this crate's own test suite
+/// (AC2's "after 24h, 410" case, which needs a validly-signed but
 /// already-expired URL no real 24-hour wait could produce) can mint one.
 pub fn signed_download_url(public_url: &str, key_hash: &str, run_id: &str, expires_unix: i64) -> String {
-    let sig = sign(key_hash, run_id, expires_unix);
-    format!("{public_url}{}?expires={expires_unix}&sig={sig}", export_path(run_id))
+    crate::signed_url::mint(public_url, key_hash, &export_path(run_id), "expires", expires_unix)
 }
 
 fn arg_tools_filter(args: &Value) -> Result<Option<Vec<String>>, AppError> {
@@ -742,20 +714,16 @@ pub async fn download(
     let Ok(Some(tenant)) = state.db.find_tenant_by_id(run.tenant_id).await else {
         return (StatusCode::NOT_FOUND, "export not found").into_response();
     };
-    let (Some(expires_raw), Some(sig)) = (params.get("expires"), params.get("sig")) else {
-        return (StatusCode::FORBIDDEN, "missing signature").into_response();
-    };
-    let Ok(expires_unix) = expires_raw.parse::<i64>() else {
-        return (StatusCode::FORBIDDEN, "invalid signature").into_response();
-    };
-    let expected = sign(&tenant.key_hash, &run_id, expires_unix);
-    if !constant_time_eq(sig.as_bytes(), expected.as_bytes()) {
-        return (StatusCode::FORBIDDEN, "invalid signature").into_response();
-    }
-    // AC2: past its expiry, a validly-signed URL reads 410, not 403 -- the
-    // signature was genuine, only stale.
-    if crate::state::now_unix() > expires_unix {
-        return (StatusCode::GONE, "export link expired").into_response();
+    // AC2: 403 for a missing/altered signature, 410 for a genuine one past
+    // its expiry -- one shared check (R5).
+    if let Err((status, msg)) = crate::signed_url::verify(
+        &tenant.key_hash,
+        &export_path(&run_id),
+        params.get("expires").map(String::as_str),
+        params.get("sig").map(String::as_str),
+        crate::state::now_unix(),
+    ) {
+        return (status, msg).into_response();
     }
     let (filename, content_type) = if is_handle_export {
         (format!("{run_id}.csv"), "text/csv")

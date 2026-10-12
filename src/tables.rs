@@ -2645,6 +2645,7 @@ mod tests {
             redeemed_peers: crate::peer_recent::PeerRecents::new(),
             reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             anon_healthz_extra_key: Default::default(),
+            blob_clock_offset_secs: Default::default(),
         }
     }
 

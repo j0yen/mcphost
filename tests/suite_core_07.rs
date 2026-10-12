@@ -227,6 +227,18 @@ mod billing_ac10_webhook_mode_mismatch;
 mod billing_ac11_healthz_paying_tenants;
 #[path = "billing_ac13_checkout_reuse.rs"]
 mod billing_ac13_checkout_reuse;
+#[path = "blobgc_ac02_ttl_expiry_blob_expired_and_410.rs"]
+mod blobgc_ac02_ttl_expiry_blob_expired_and_410;
+#[path = "blobgc_ac03_keep_latest_versions_gc_dry_run.rs"]
+mod blobgc_ac03_keep_latest_versions_gc_dry_run;
+#[path = "blobgc_ac04_nightly_prune_rows_files_orphans.rs"]
+mod blobgc_ac04_nightly_prune_rows_files_orphans;
+#[path = "blobgc_ac05_data_quota_on_put_and_refusal.rs"]
+mod blobgc_ac05_data_quota_on_put_and_refusal;
+#[path = "blobgc_ac06_disk_floor_refuses_put.rs"]
+mod blobgc_ac06_disk_floor_refuses_put;
+#[path = "blobgc_ac07_expiring_notice_once.rs"]
+mod blobgc_ac07_expiring_notice_once;
 #[path = "blobguard_ac01_benign_corpus_not_refused.rs"]
 mod blobguard_ac01_benign_corpus_not_refused;
 #[path = "blobguard_ac02_type_and_magic_refused_415.rs"]
@@ -241,6 +253,18 @@ mod blobguard_ac05_allowlist_mode_png_fast;
 mod blobguard_ac06_one_table_one_set;
 #[path = "blobguard_ac07_active_content_svg.rs"]
 mod blobguard_ac07_active_content_svg;
+#[path = "blobput_ac01_corpus_has_binary_fixture_task.rs"]
+mod blobput_ac01_corpus_has_binary_fixture_task;
+#[path = "blobput_ac02_pdf_put_sniffs_mime_and_serves_bytes.rs"]
+mod blobput_ac02_pdf_put_sniffs_mime_and_serves_bytes;
+#[path = "blobput_ac03_signed_routes_share_403_and_410.rs"]
+mod blobput_ac03_signed_routes_share_403_and_410;
+#[path = "blobput_ac04_quota_refusals_and_plan_ceilings.rs"]
+mod blobput_ac04_quota_refusals_and_plan_ceilings;
+#[path = "blobput_ac05_url_fetch_refusals_write_nothing.rs"]
+mod blobput_ac05_url_fetch_refusals_write_nothing;
+#[path = "blobput_ac07_tenant_isolation.rs"]
+mod blobput_ac07_tenant_isolation;
 #[path = "bridgedisc_ac07_sandbox_api_doc_check.rs"]
 mod bridgedisc_ac07_sandbox_api_doc_check;
 #[path = "budget_ac01_ported_ledger_seven_tests.rs"]
@@ -799,18 +823,6 @@ mod flakelint_ac04_allow_list;
 mod flakelint_ac06_perf_budget_skip_and_median;
 #[path = "flakelint_ac07_timing_tests_use_perf_budget.rs"]
 mod flakelint_ac07_timing_tests_use_perf_budget;
-#[path = "fldp_ac02_tool_list_fields_two_keys_under_12kib.rs"]
-mod fldp_ac02_tool_list_fields_two_keys_under_12kib;
-#[path = "fldp_ac03_field_unknown_names_nearest_before_any_read.rs"]
-mod fldp_ac03_field_unknown_names_nearest_before_any_read;
-#[path = "fldp_ac04_fields_one_set.rs"]
-mod fldp_ac04_fields_one_set;
-#[path = "fldp_ac05_fields_name_walk_450_docs.rs"]
-mod fldp_ac05_fields_name_walk_450_docs;
-#[path = "fldp_ac06_empty_fields_and_unpaged_verbs_are_args_invalid.rs"]
-mod fldp_ac06_empty_fields_and_unpaged_verbs_are_args_invalid;
-#[path = "fldp_ac07_include_result_is_sugar_for_fields_result.rs"]
-mod fldp_ac07_include_result_is_sugar_for_fields_result;
 #[path = "fleetips_reclassify_backfill.rs"]
 mod fleetips_reclassify_backfill;
 #[path = "ftruth_ac01_never_unknown_at_insert.rs"]
@@ -1823,9 +1835,3 @@ mod rowpol_ac09_filtered_vs_unfiltered_p95_within_3ms;
 mod rowpol_ac10_policy_set_refuses_a_widening_rule;
 #[path = "run_metrics_handoff_glob_regression.rs"]
 mod run_metrics_handoff_glob_regression;
-#[path = "runoverflow_ac03_progress_counter_monotonic_validation.rs"]
-mod runoverflow_ac03_progress_counter_monotonic_validation;
-#[path = "runoverflow_ac04_inline_part_zero_and_out_of_range_not_found.rs"]
-mod runoverflow_ac04_inline_part_zero_and_out_of_range_not_found;
-#[path = "runoverflow_ac05_http_async_2mib_overflows_to_parts.rs"]
-mod runoverflow_ac05_http_async_2mib_overflows_to_parts;

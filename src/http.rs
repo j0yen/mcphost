@@ -1813,6 +1813,9 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         // PRD-mcphost-ask-user-decision: the signed, keyless answer page a
         // `host.ask.create` call's `url` points at -- see `asks::get_page`.
         .route("/a/{id}", get(crate::asks::get_page).post(crate::asks::post_answer))
+        // PRD-mcphost-blob-put-get-signed-url R1: the signed link a
+        // `host.blob.put` result carries -- see `blobs::download`.
+        .route("/blobs/{id}", get(crate::blobs::download))
         // PRD-mcphost-human-claim-magic-link requirements 2-3: the claim
         // flow's own three plain-HTML routes -- `/claim/verify/{code}` is
         // registered alongside `/claim/{token}` without ambiguity since
