@@ -383,6 +383,12 @@ mod cfan_ac05_publish_checks_for_each_and_item_scope;
 mod cfan_ac06_ceiling_rendered_and_quickstart_example;
 #[path = "cfan_ac07_empty_array_runs_the_next_step.rs"]
 mod cfan_ac07_empty_array_runs_the_next_step;
+#[path = "cfanc_ac01_children_carry_role_step_no_item_index.rs"]
+mod cfanc_ac01_children_carry_role_step_no_item_index;
+#[path = "cfanc_ac02_role_enum_equals_emitted_roles.rs"]
+mod cfanc_ac02_role_enum_equals_emitted_roles;
+#[path = "cfanc_ac03_fixtures_keyed_by_step_and_item.rs"]
+mod cfanc_ac03_fixtures_keyed_by_step_and_item;
 #[path = "cfix_ac01_fixture_replaces_unreachable_step.rs"]
 mod cfix_ac01_fixture_replaces_unreachable_step;
 #[path = "cfix_ac02_fully_fixtured_dry_run_makes_no_upstream_call.rs"]

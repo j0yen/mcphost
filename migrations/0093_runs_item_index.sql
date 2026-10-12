@@ -1,0 +1,11 @@
+-- compat: previous -- one additive nullable column on an existing table; an
+-- old release simply never queries it
+-- (PRD-mcphost-migration-safety requirement 4).
+-- mcphost 0093_runs_item_index: PRD-mcphost-chain-fanout-children-excludes-
+-- composition-child R1.
+--
+-- One item of a `for_each` step is a composed child with the step's own
+-- `step_no`; `item_index` (0-based) says which item. NULL for a step's own
+-- run and every non-composed row, which is how the wire `role` ("step" vs
+-- "item") is derived. Rows written before this migration stay NULL.
+ALTER TABLE runs ADD COLUMN item_index INTEGER;

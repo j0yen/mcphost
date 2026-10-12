@@ -1385,6 +1385,13 @@
       "AC7": "tests/cfan_ac07_empty_array_runs_the_next_step.rs",
       "AC8": "deferred -- operator-provisioned: live prod probe with a keyed echo chain after deploy."
     },
+    "cfanc": {
+      "_prd": "PRD-mcphost-chain-fanout-children-excludes-composition-child.md (test_prefix: cfanc)",
+      "AC1": "tests/cfanc_ac01_children_carry_role_step_no_item_index.rs",
+      "AC2": "tests/cfanc_ac02_role_enum_equals_emitted_roles.rs",
+      "AC3": "tests/cfanc_ac03_fixtures_keyed_by_step_and_item.rs",
+      "AC4": "deferred -- operator-provisioned: live prod probe with a keyed echo chain after deploy."
+    },
     "fldp": {
       "_prd": "PRD-mcphost-fields-projection-on-list-verbs.md (test_prefix: fldp)",
       "AC2": "tests/fldp_ac02_tool_list_fields_two_keys_under_12kib.rs",

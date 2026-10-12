@@ -9274,6 +9274,12 @@
                 "finished_unix": {
                   "type": "integer"
                 },
+                "item_index": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
                 "manual": {
                   "type": "boolean"
                 },
@@ -9308,6 +9314,13 @@
                     "object",
                     "null"
                   ]
+                },
+                "role": {
+                  "enum": [
+                    "step",
+                    "item"
+                  ],
+                  "type": "string"
                 },
                 "run_id": {
                   "type": "string"

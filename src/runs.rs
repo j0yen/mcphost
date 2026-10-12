@@ -169,6 +169,19 @@ fn end_user_to_json(run: &RunRow) -> Value {
 }
 
 fn run_to_json(run: &RunRow) -> Value {
+    let mut value = run_to_json_base(run);
+    // PRD-mcphost-chain-fanout-children-excludes-composition-child R2: only a
+    // composed child carries a role; a top-level run's row is unchanged.
+    if run.parent_run_id.is_some()
+        && let Some(obj) = value.as_object_mut()
+    {
+        obj.insert("role".to_string(), json!(run_role(run)));
+        obj.insert("item_index".to_string(), json!(run.item_index));
+    }
+    value
+}
+
+fn run_to_json_base(run: &RunRow) -> Value {
     let progress = run
         .progress_json
         .as_deref()
@@ -235,6 +248,15 @@ fn run_to_json(run: &RunRow) -> Value {
         "step_no": run.step_no,
         "parent_tool": run.parent_tool,
     })
+}
+
+/// Every `role` [`run_to_json`] can emit for a composed child; the
+/// `host.runs.get` output-schema enum is generated from this list.
+pub const RUN_ROLES: [&str; 2] = ["step", "item"];
+
+/// A run's `role` on the wire, derived from `item_index` alone (one writer).
+fn run_role(run: &RunRow) -> &'static str {
+    if run.item_index.is_some() { RUN_ROLES[1] } else { RUN_ROLES[0] }
 }
 
 /// `host.runs.get`/`wait`'s shared "inline the result" step: part 0 of
@@ -312,19 +334,26 @@ pub async fn get(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Valu
     Ok(value)
 }
 
-/// `{"<step_no>": <child result>}` in step order for every finished child
-/// with a stored result, plus the step numbers omitted because their result
-/// exceeds one part ([`RUN_PART_BYTES`]) or is no longer stored.
+/// `{"<key>": <child result>}` in (step, item) order for every finished child
+/// with a stored result, plus the keys omitted because their result exceeds
+/// one part ([`RUN_PART_BYTES`]) or is no longer stored. A step's own run is
+/// keyed `"<step_no>"`, one item of a `for_each` step `"<step_no>:<item_index>"`
+/// (PRD-mcphost-chain-fanout-children-excludes-composition-child R3), so the
+/// items of one fan-out never overwrite each other.
 async fn child_fixtures(
     state: &AppState,
     tenant_id: i64,
     children: &[RunRow],
-) -> Result<(Map<String, Value>, Vec<i64>), AppError> {
+) -> Result<(Map<String, Value>, Vec<String>), AppError> {
     let mut ordered: Vec<(&RunRow, i64)> = children.iter().filter_map(|c| c.step_no.map(|n| (c, n))).collect();
-    ordered.sort_by_key(|(_, n)| *n);
+    ordered.sort_by_key(|(c, n)| (*n, c.item_index));
     let mut fixtures = Map::new();
     let mut truncated = Vec::new();
     for (child, step_no) in ordered {
+        let key = match child.item_index {
+            Some(index) => format!("{step_no}:{index}"),
+            None => step_no.to_string(),
+        };
         let Some(result_ref) = child
             .result_ref
             .as_deref()
@@ -335,17 +364,14 @@ async fn child_fixtures(
         let single_part = result_ref.get("parts").and_then(Value::as_i64) == Some(1);
         let fits = result_ref.get("bytes").and_then(Value::as_u64).unwrap_or(0) as usize <= RUN_PART_BYTES;
         if !(single_part && fits) {
-            truncated.push(step_no);
+            truncated.push(key);
             continue;
         }
         match state.db.state_kv_get(tenant_id, part_key(&child.id, 0), String::new()).await? {
             Some((value_json, _)) => {
-                fixtures.insert(
-                    step_no.to_string(),
-                    serde_json::from_str(&value_json).unwrap_or(Value::Null),
-                );
+                fixtures.insert(key, serde_json::from_str(&value_json).unwrap_or(Value::Null));
             }
-            None => truncated.push(step_no), // purged.
+            None => truncated.push(key), // purged.
         }
     }
     Ok((fixtures, truncated))
@@ -1617,6 +1643,7 @@ mod tests {
             parent_run_id: None,
             step_no: None,
             parent_tool: None,
+            item_index: None,
         };
         let value = run_to_json(&run);
         assert_eq!(value["purged"], json!(true));

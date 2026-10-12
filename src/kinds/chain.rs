@@ -1125,7 +1125,7 @@ async fn run_fanout(
                 args,
                 None,
                 Some(step_no as i64),
-                Some(format!("{step_no}:{index}")),
+                Some(index as i64),
             )
             .await
             {

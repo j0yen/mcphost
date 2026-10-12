@@ -1899,10 +1899,11 @@ pub async fn compose_call(
     compose_call_ref(ctx, tenant_id, target_name, args, timeout_s, step_no, None).await
 }
 
-/// [`compose_call`] with `trigger_suffix`: PRD-mcphost-chain-fanout-and-join
+/// [`compose_call`] with `item_index`: PRD-mcphost-chain-fanout-and-join
 /// R2 -- one item of a `for_each` step records its run row's `trigger_ref` as
-/// `<parent_run_id>#<trigger_suffix>` (`2:7` = step 2, item 7) instead of the
-/// bare parent id.
+/// `<parent_run_id>#<step_no>:<item_index>` (a log convention) instead of the
+/// bare parent id, and (PRD-mcphost-chain-fanout-children-excludes-
+/// composition-child R1) the index itself in the `item_index` column.
 #[allow(clippy::too_many_arguments)]
 pub async fn compose_call_ref(
     ctx: &CallCtx,
@@ -1911,7 +1912,7 @@ pub async fn compose_call_ref(
     args: Value,
     timeout_s: Option<u64>,
     step_no: Option<i64>,
-    trigger_suffix: Option<String>,
+    item_index: Option<i64>,
 ) -> Result<Value, KindError> {
     let child_run_id = crate::state::new_ulid();
     let started_unix = crate::state::now_unix();
@@ -1962,13 +1963,14 @@ pub async fn compose_call_ref(
             .insert_composed_run(crate::db::ComposedRun {
                 run_id: child_run_id,
                 tenant_id,
-                trigger_ref: match &trigger_suffix {
-                    Some(suffix) => format!("{parent_run_id}#{suffix}"),
-                    None => parent_run_id.clone(),
+                trigger_ref: match (item_index, step_no) {
+                    (Some(index), Some(step)) => format!("{parent_run_id}#{step}:{index}"),
+                    _ => parent_run_id.clone(),
                 },
                 parent_run_id,
                 tool_name: target_name.to_string(),
                 step_no,
+                item_index,
                 parent_tool: ctx.tool_name.clone().unwrap_or_default(),
                 status: status.to_string(),
                 error_class,

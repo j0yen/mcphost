@@ -257,6 +257,8 @@ const MIGRATION_0090: &str = include_str!("../migrations/0090_blob_expiry.sql");
 /// PRD-mcphost-blob-retention-and-quota R2/R6: `blob_policy`, `blob_versions`.
 const MIGRATION_0091: &str = include_str!("../migrations/0091_blob_policy_versions.sql");
 const MIGRATION_0092: &str = include_str!("../migrations/0092_confirm_tokens.sql");
+/// PRD-mcphost-chain-fanout-children-excludes-composition-child R1: `runs.item_index`.
+const MIGRATION_0093: &str = include_str!("../migrations/0093_runs_item_index.sql");
 
 /// PRD-mcphost-session-bound-tenant-key requirement 3: `kind` on
 /// `signup_events`. Renumbered to 0080 during this rebase: mcphost-tool-
@@ -1248,13 +1250,17 @@ pub struct RunRow {
     /// own tool name (NOT the top of a nested composition tree) -- `None`
     /// for every non-composed row.
     pub parent_tool: Option<String>,
+    /// migration 0093: the item's 0-based index within a `for_each` step's
+    /// fan-out; `None` for a step's own run and every non-composed row. The
+    /// wire `role` is derived from it (`"item"` iff `Some`), never stored.
+    pub item_index: Option<i64>,
 }
 
 const RUN_COLUMNS: &str = "id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, \
     status, progress_json, result_ref, error_class, started_unix, finished_unix, duration_ms, \
     deadline_s, attempt, purged_unix, args_json, manual, test_run, message_id, counters_json, \
     error_data_json, end_user_subject, end_user_issuer, end_user_method, parent_run_id, step_no, \
-    parent_tool";
+    parent_tool, item_index";
 
 fn run_row_from_row(r: &Row) -> rusqlite::Result<RunRow> {
     Ok(RunRow {
@@ -1286,6 +1292,7 @@ fn run_row_from_row(r: &Row) -> rusqlite::Result<RunRow> {
         parent_run_id: r.get(25)?,
         step_no: r.get(26)?,
         parent_tool: r.get(27)?,
+        item_index: r.get(28)?,
     })
 }
 
@@ -2129,6 +2136,9 @@ pub struct ComposedRun {
     pub trigger_ref: String,
     pub tool_name: String,
     pub step_no: Option<i64>,
+    /// The item's 0-based index for one item of a `for_each` step; `None`
+    /// for a step's own run.
+    pub item_index: Option<i64>,
     pub parent_tool: String,
     pub status: String,
     pub error_class: Option<String>,
@@ -2863,7 +2873,8 @@ impl Db {
         Self::migrate_0089_blobs(&conn)?;
         Self::migrate_0090_blob_expiry(&conn)?;
         Self::migrate_0091_blob_policy_versions(&conn)?;
-        Self::migrate_0092_confirm_tokens(&conn)
+        Self::migrate_0092_confirm_tokens(&conn)?;
+        Self::migrate_0093_runs_item_index(&conn)
     }
 
     /// PRD-mcphost-destructive-verb-confirmation-token R2/R5: gated on the
@@ -2874,6 +2885,18 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0092)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-chain-fanout-children-excludes-composition-child R1:
+    /// `runs.item_index`, gated on the column like 0062.
+    fn migrate_0093_runs_item_index(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('runs') WHERE name = 'item_index'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0093)?;
         }
         Ok(())
     }
@@ -10575,6 +10598,7 @@ impl Db {
             trigger_ref,
             tool_name,
             step_no,
+            item_index,
             parent_tool,
             status,
             error_class,
@@ -10590,12 +10614,12 @@ impl Db {
             conn.execute(
                 "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, parent_run_id, \
                  step_no, parent_tool, status, error_class, result_ref, started_unix, finished_unix, \
-                 duration_ms, attempt, end_user_subject, end_user_issuer, end_user_method) \
-                 VALUES (?1, ?2, ?3, 'composition', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 1, ?14, ?15, ?16)",
+                 duration_ms, attempt, end_user_subject, end_user_issuer, end_user_method, item_index) \
+                 VALUES (?1, ?2, ?3, 'composition', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 1, ?14, ?15, ?16, ?17)",
                 params![
                     run_id, tenant_id, tool_name, trigger_ref, parent_run_id, step_no,
                     parent_tool, status, error_class, result_ref, started_unix, finished_unix,
-                    duration_ms, end_user_subject, end_user_issuer, end_user_method
+                    duration_ms, end_user_subject, end_user_issuer, end_user_method, item_index
                 ],
             )?;
             Ok(())
@@ -10611,7 +10635,8 @@ impl Db {
     pub async fn get_run_children(&self, tenant_id: i64, run_id: String) -> Result<Vec<RunRow>, AppError> {
         self.with_conn(move |conn| {
             let mut stmt = conn.prepare(&format!(
-                "SELECT {RUN_COLUMNS} FROM runs WHERE tenant_id = ?1 AND parent_run_id = ?2 ORDER BY rowid"
+                "SELECT {RUN_COLUMNS} FROM runs WHERE tenant_id = ?1 AND parent_run_id = ?2 \
+                 ORDER BY step_no, item_index, rowid"
             ))?;
             let rows = stmt
                 .query_map(params![tenant_id, run_id], run_row_from_row)?
@@ -10639,7 +10664,7 @@ impl Db {
                 (0..parent_ids.len()).map(|i| format!("?{}", i + 2)).collect::<Vec<_>>().join(", ");
             let mut stmt = conn.prepare(&format!(
                 "SELECT {RUN_COLUMNS} FROM runs WHERE tenant_id = ?1 \
-                 AND parent_run_id IN ({placeholders}) ORDER BY rowid"
+                 AND parent_run_id IN ({placeholders}) ORDER BY step_no, item_index, rowid"
             ))?;
             let mut binds: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(tenant_id)];
             for id in parent_ids {
@@ -11021,7 +11046,7 @@ impl Db {
             let mut stmt = conn.prepare(&sql)?;
             let rows = stmt
                 .query_map(rusqlite::params_from_iter(binds.iter()), |r| {
-                    Ok(RunPageRow { run: run_row_from_row(r)?, rowid: r.get(28)? })
+                    Ok(RunPageRow { run: run_row_from_row(r)?, rowid: r.get(29)? })
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(rows)
