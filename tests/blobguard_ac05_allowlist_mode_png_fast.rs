@@ -30,6 +30,9 @@ fn child_stores_png_in_allowlist_mode() {
     // Time added by the guard = the guard's own check of the bytes (best of
     // three, so a loaded host's scheduling noise is not charged to it);
     // differencing two disk writes measures the disk, not the guard.
+    // Hang guard around the whole upload + measurement; the 50 ms guard
+    // assertion keeps its own number and honors MCPHOST_PERF_SKIP.
+    crate::deadline_budget!(60_000, {
     let t = std::time::Instant::now();
     let r = post(&blobs);
     let upload_total = t.elapsed();
@@ -50,6 +53,7 @@ fn child_stores_png_in_allowlist_mode() {
     let row: serde_json::Value = serde_json::from_slice(&std::fs::read(blobs.join(format!("{id}.json"))).unwrap()).unwrap();
     assert_eq!(row["scan_json"]["mode"], "allowlist");
     assert_eq!(row["scan_json"]["result"], "pass");
-    assert!(added < std::time::Duration::from_millis(50), "guard added {added:?}");
+    assert!(crate::common::perf_skipped() || added < std::time::Duration::from_millis(50), "guard added {added:?}");
     println!("stored=allowlist");
+    });
 }

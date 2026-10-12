@@ -11,7 +11,6 @@
 use crate::common;
 use common::{TestServer, extract_structured, signup};
 use serde_json::json;
-use std::time::{Duration, Instant};
 
 #[tokio::test]
 async fn wait_returns_as_soon_as_the_run_finalizes() {
@@ -37,19 +36,16 @@ async fn wait_returns_as_soon_as_the_run_finalizes() {
     );
     let run_id = enqueue["run_id"].as_str().expect("run_id").to_string();
 
-    let started = Instant::now();
-    let waited = extract_structured(
-        &client
-            .tools_call("host.runs.wait", json!({"run_id": run_id, "timeout_s": 20}))
-            .await
-            .expect("wait ok"),
-    );
-    let elapsed = started.elapsed();
+    // An echo job must finalize and return `wait` well before the 20s bound.
+    let waited = crate::deadline_budget!(10_000, {
+        extract_structured(
+            &client
+                .tools_call("host.runs.wait", json!({"run_id": run_id, "timeout_s": 20}))
+                .await
+                .expect("wait ok"),
+        )
+    });
     assert_eq!(waited["status"], json!("done"), "wait result: {waited}");
-    assert!(
-        elapsed < Duration::from_secs(10),
-        "an echo job must finalize and return `wait` well before the 20s bound, took {elapsed:?}"
-    );
 }
 
 /// A `run_id` that will never finalize (there is no executor for a raw,
@@ -96,17 +92,14 @@ async fn wait_returns_at_its_own_bound_when_the_run_never_finalizes() {
         .await
         .expect("insert_queued_run");
 
-    let started = Instant::now();
-    let waited = extract_structured(
-        &client
-            .tools_call("host.runs.wait", json!({"run_id": run_id, "timeout_s": 1}))
-            .await
-            .expect("wait ok"),
-    );
-    let elapsed = started.elapsed();
-    assert!(
-        elapsed < Duration::from_secs(3),
-        "wait must return at its own ~1s bound, took {elapsed:?}: {waited}"
-    );
+    // wait must return at its own ~1s bound.
+    let _waited = crate::deadline_budget!(3000, {
+        extract_structured(
+            &client
+                .tools_call("host.runs.wait", json!({"run_id": run_id, "timeout_s": 1}))
+                .await
+                .expect("wait ok"),
+        )
+    });
     let _ = key;
 }

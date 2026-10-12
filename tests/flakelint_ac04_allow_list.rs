@@ -1,6 +1,6 @@
 //! PRD-mcphost-test-suite-flake-lints
 //! AC4 (P0) — Given an allow-list entry
-//! `tests/legacy.rs:single-shot-perf # measured on quiet box only`, When
+//! `tests/legacy.rs:env-mutation # measured on quiet box only`, When
 //! the lint runs on that file, Then exit 0 and the report lists
 //! `allowed: 1`.
 //!
@@ -69,17 +69,15 @@ fn run_lint(scratch: &Path) -> std::process::Output {
 #[test]
 fn allow_listed_finding_passes_and_is_counted() {
     let body = "#[test]\n\
-                 fn measures_once() {\n\
-                 \x20   let start = std::time::Instant::now();\n\
-                 \x20   do_work();\n\
-                 \x20   assert!(start.elapsed() \
-                 < std::time::Duration::from_millis(50));\n\
+                 fn mutates_env() {\n\
+                 \x20   std::env::set_\
+                 var(\"X\", \"1\");\n\
                  }\n";
     let scratch = scratch_with_fixture(
         "ac04",
         "legacy.rs",
         body,
-        "tests/legacy.rs:single-shot-perf # measured on quiet box only\n",
+        "tests/legacy.rs:env-mutation # measured on quiet box only\n",
     );
 
     let out = run_lint(&scratch);

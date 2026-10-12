@@ -6,7 +6,7 @@ use crate::common;
 use common::{TestServer, extract_structured, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[tokio::test]
 async fn no_dependency_tool_runs_within_five_seconds_and_meters_usage() {
@@ -43,19 +43,17 @@ async fn no_dependency_tool_runs_within_five_seconds_and_meters_usage() {
         .await
         .expect("publish ok");
 
-    let started = Instant::now();
-    let result = poll_until_ready(
-        &client,
-        &format!("{ns}.adder"),
-        json!({"a": 2, "b": 3}),
-        Duration::from_secs(5),
-    )
-    .await
-    .unwrap_or_else(|e| panic!("call must succeed within 5s: {} {}", e.code, e.message));
-    assert!(
-        started.elapsed() < Duration::from_secs(5),
-        "publish-to-callable must land within 5s for a no-dependency tool"
-    );
+    // publish-to-callable must land within 5s for a no-dependency tool
+    let result = crate::deadline_budget!(5000, {
+        poll_until_ready(
+            &client,
+            &format!("{ns}.adder"),
+            json!({"a": 2, "b": 3}),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("call must succeed within 5s: {} {}", e.code, e.message))
+    });
     assert_eq!(extract_structured(&result)["sum"], json!(5));
 
     let tenant = server

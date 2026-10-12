@@ -20,7 +20,7 @@ use crate::common;
 use common::{TestServer, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[tokio::test]
 async fn declared_timeout_of_45s_lets_a_40s_sleep_complete() {
@@ -54,16 +54,12 @@ async fn declared_timeout_of_45s_lets_a_40s_sleep_complete() {
         .await
         .expect("warm call ok");
 
-    let started = Instant::now();
-    let result = client
-        .tools_call(&qualified, json!({"seconds": 40}))
-        .await
-        .expect("a 40s sleep under a 45s declared timeout must succeed");
-    let elapsed = started.elapsed();
-    assert!(
-        elapsed >= Duration::from_secs(39) && elapsed < Duration::from_secs(45),
-        "expected the call to take about 40s, took {elapsed:?}"
-    );
+    let result = crate::deadline_budget!(45_000, at_least = 39_000, {
+        client
+            .tools_call(&qualified, json!({"seconds": 40}))
+            .await
+            .expect("a 40s sleep under a 45s declared timeout must succeed")
+    });
     let structured = common::extract_structured(&result);
     assert_eq!(structured["ok"], json!(true));
 }
@@ -97,20 +93,16 @@ async fn declared_timeout_of_45s_names_the_45s_deadline_on_overrun() {
         .await
         .expect("warm call ok");
 
-    let started = Instant::now();
-    let err = client
-        .tools_call(&qualified, json!({"seconds": 50}))
-        .await
-        .expect_err("a 50s sleep under a 45s declared timeout must time out");
-    let elapsed = started.elapsed();
+    let err = crate::deadline_budget!(50_000, at_least = 44_000, {
+        client
+            .tools_call(&qualified, json!({"seconds": 50}))
+            .await
+            .expect_err("a 50s sleep under a 45s declared timeout must time out")
+    });
     assert_eq!(err.error_code.as_deref(), Some("call_timeout"));
     assert!(
         err.message.contains("45s"),
         "call_timeout message must name the 45s deadline that actually applied: {}",
         err.message
-    );
-    assert!(
-        elapsed >= Duration::from_secs(44) && elapsed < Duration::from_secs(50),
-        "expected the timeout at about 45s, took {elapsed:?}"
     );
 }

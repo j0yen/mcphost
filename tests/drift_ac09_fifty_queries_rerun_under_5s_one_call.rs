@@ -6,7 +6,6 @@
 use crate::common;
 use common::{McpClient, TestServer, signup};
 use serde_json::json;
-use std::time::{Duration, Instant};
 
 #[tokio::test]
 async fn fifty_affected_queries_rerun_fast_and_meter_one_call() {
@@ -43,10 +42,9 @@ async fn fifty_affected_queries_rerun_fast_and_meter_one_call() {
         .await
         .expect("model_set");
 
-    let started = Instant::now();
-    mcphost::tables_model::tick_once(&server.state).await.expect("tick_once");
-    let elapsed = started.elapsed();
-    assert!(elapsed < Duration::from_secs(5), "re-run took too long: {elapsed:?}");
+    crate::deadline_budget!(5000, {
+        mcphost::tables_model::tick_once(&server.state).await.expect("tick_once");
+    });
 
     let calls_after = server.state.db.count_calls_since(tenant.id, midnight, true).await.expect("count_calls_since");
     assert_eq!(calls_after, calls_before + 1, "daily call count must rise by exactly one: before={calls_before} after={calls_after}");

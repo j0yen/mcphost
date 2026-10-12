@@ -5,7 +5,7 @@
 use crate::common;
 use common::{McpClient, TestServer, http_kind_registry, signup};
 use serde_json::json;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use wiremock::matchers::method;
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -39,16 +39,13 @@ async fn slow_upstream_times_out_within_budget() {
         .await
         .expect("publish ok");
 
-    let start = Instant::now();
-    let err = client
-        .tools_call(&format!("{ns}.slow"), json!({}))
-        .await
-        .expect_err("a request slower than timeout_s must time out");
-    let elapsed = start.elapsed();
+    // timeout_s=1 must fail within timeout_s + 1s.
+    let err = crate::deadline_budget!(2000, {
+        client
+            .tools_call(&format!("{ns}.slow"), json!({}))
+            .await
+            .expect_err("a request slower than timeout_s must time out")
+    });
 
     assert_eq!(err.error_code.as_deref(), Some("upstream_timeout"));
-    assert!(
-        elapsed < Duration::from_secs(2),
-        "timeout_s=1 must fail within timeout_s + 1s, took {elapsed:?}"
-    );
 }

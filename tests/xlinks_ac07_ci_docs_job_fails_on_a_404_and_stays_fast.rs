@@ -83,11 +83,8 @@ fn a_green_pr_checks_a_large_url_set_within_the_60_second_budget() {
     let file = dir.join("pr.md");
     let body: String = (0..120).map(|i| format!("- http://127.0.0.1:{port}/ok?n={i}\n")).collect();
     std::fs::write(&file, body).unwrap();
-    let start = std::time::Instant::now();
-    let out = xlinks::run_checker(&[&file]);
-    let took = start.elapsed();
+    let out = crate::deadline_budget!(60_000, { xlinks::run_checker(&[&file]) });
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert_eq!(out.status.code(), Some(0), "a green set must pass: {stdout}");
     assert!(!stdout.contains("FAIL"), "{stdout}");
-    assert!(took < std::time::Duration::from_secs(60), "120 URLs took {took:?}, budget is 60 s");
 }

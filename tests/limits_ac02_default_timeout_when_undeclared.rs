@@ -19,7 +19,7 @@ use crate::common;
 use common::{TestServer, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[tokio::test]
 async fn undeclared_timeout_uses_the_real_30s_default() {
@@ -55,20 +55,16 @@ async fn undeclared_timeout_uses_the_real_30s_default() {
         .await
         .expect("warm call ok");
 
-    let started = Instant::now();
-    let err = client
-        .tools_call(&qualified, json!({"seconds": 32}))
-        .await
-        .expect_err("a 32s sleep with no declared timeout_s must time out at the 30s default");
-    let elapsed = started.elapsed();
+    let err = crate::deadline_budget!(32_000, at_least = 29_000, {
+        client
+            .tools_call(&qualified, json!({"seconds": 32}))
+            .await
+            .expect_err("a 32s sleep with no declared timeout_s must time out at the 30s default")
+    });
     assert_eq!(err.error_code.as_deref(), Some("call_timeout"));
     assert!(
         err.message.contains("30s"),
         "call_timeout message must name the 30s default: {}",
         err.message
-    );
-    assert!(
-        elapsed >= Duration::from_secs(29) && elapsed < Duration::from_secs(32),
-        "expected the timeout at about 30s, took {elapsed:?}"
     );
 }

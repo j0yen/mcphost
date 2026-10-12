@@ -1,7 +1,8 @@
 //! PRD-mcphost-test-suite-flake-lints
 //! AC2 (P0) — Given a fixture asserting `start.elapsed() <
 //! Duration::from_millis(50)` once, When the lint runs, Then
-//! `single-shot-perf` is reported; given the same budget inside
+//! the lint reports it (via `scripts/timing-lint.py`, which replaced the old
+//! same-line `single-shot-perf` rule); given the same budget inside
 //! `perf_budget!(50, …)`, Then exit 0.
 //!
 //! Same scratch-directory convention as
@@ -41,6 +42,11 @@ fn scratch_with_fixture(tag: &str, name: &str, body: &str) -> PathBuf {
         scripts_dir.join("flake-lint.sh"),
     )
     .expect("copy flake-lint.sh");
+    fs::copy(
+        root.join("scripts/timing-lint.py"),
+        scripts_dir.join("timing-lint.py"),
+    )
+    .expect("copy timing-lint.py");
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -72,7 +78,7 @@ fn run_lint(scratch: &Path) -> std::process::Output {
 }
 
 #[test]
-fn single_shot_elapsed_assert_blocks_with_single_shot_perf() {
+fn single_shot_elapsed_assert_blocks_with_a_timing_lint_finding() {
     let body = "#[test]\n\
                  fn measures_once() {\n\
                  \x20   let start = std::time::Instant::now();\n\
@@ -92,7 +98,7 @@ fn single_shot_elapsed_assert_blocks_with_single_shot_perf() {
     );
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("tests/bare_perf.rs:5 single-shot-perf"),
+        stdout.contains("tests/bare_perf.rs:5: elapsed("),
         "finding must name the exact file:line of the assert!; stdout was:\n{stdout}"
     );
 

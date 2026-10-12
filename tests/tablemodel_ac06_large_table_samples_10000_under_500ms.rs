@@ -51,20 +51,16 @@ async fn describe_samples_10000_of_50000_rows_within_500ms() {
         start += BATCH;
     }
 
-    let began = std::time::Instant::now();
-    let result = client
-        .tools_call("host.table.describe", json!({"table": "big"}))
-        .await
-        .expect("describe (bootstrap compute)");
-    let elapsed = began.elapsed();
+    // describe's bootstrap compute must finish in under 500ms
+    let result = crate::deadline_budget!(500, {
+        client
+            .tools_call("host.table.describe", json!({"table": "big"}))
+            .await
+            .expect("describe (bootstrap compute)")
+    });
     let model = extract_structured(&result);
 
     assert_eq!(model["row_count"], TOTAL_ROWS, "model: {model}");
     assert_eq!(model["sample_count"], 10_000, "model: {model}");
     assert_eq!(model["sampled"], true, "model: {model}");
-    assert!(
-        elapsed.as_millis() < 500,
-        "describe's compute took {}ms, expected < 500ms",
-        elapsed.as_millis()
-    );
 }

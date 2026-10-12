@@ -7,7 +7,6 @@
 use crate::common;
 use common::{TestServer, extract_structured, signup, wasm_fixture_b64, wasm_kind_registry};
 use serde_json::json;
-use std::time::{Duration, Instant};
 
 #[tokio::test]
 async fn loop_forever_times_out_and_oom_is_capped_and_the_server_still_serves_after() {
@@ -49,17 +48,14 @@ async fn loop_forever_times_out_and_oom_is_capped_and_the_server_still_serves_af
         .await
         .expect("publish echo tool");
 
-    let started = Instant::now();
-    let err = client
-        .tools_call(&format!("{ns}.spinner"), json!({}))
-        .await
-        .expect_err("an infinite loop must not return normally");
-    let elapsed = started.elapsed();
+    // must terminate well within budget
+    let err = crate::deadline_budget!(5000, {
+        client
+            .tools_call(&format!("{ns}.spinner"), json!({}))
+            .await
+            .expect_err("an infinite loop must not return normally")
+    });
     assert_eq!(err.error_code.as_deref(), Some("tool_timeout"));
-    assert!(
-        elapsed < Duration::from_secs(5),
-        "must terminate well within budget, took {elapsed:?}"
-    );
 
     let err = client
         .tools_call(&format!("{ns}.hog"), json!({}))

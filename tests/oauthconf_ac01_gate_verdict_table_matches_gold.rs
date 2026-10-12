@@ -12,8 +12,6 @@
 //! 401ing, so this file's own assertions no longer assume `prm`/`iss` are
 //! the two families that read pass; `iss` alone still does.
 
-use std::time::Instant;
-
 use crate::common;
 use crate::oauthclient;
 use common::TestServer;
@@ -25,10 +23,7 @@ async fn gate_verdict_table_matches_gold_within_20s() {
     let mcp_url = format!("{}/mcp", server.base_url);
     let http = reqwest::Client::new();
 
-    let start = Instant::now();
-    let results = oauthclient::run_all(&http, &mcp_url).await;
-    let elapsed = start.elapsed();
-    assert!(common::perf_skipped() || elapsed.as_secs() < 20, "gate run took {elapsed:?}, must finish under 20s");
+    let results = crate::deadline_budget!(20_000, { oauthclient::run_all(&http, &mcp_url).await });
 
     let gold = oauthclient::load_scenarios();
     assert_eq!(results.len(), gold.len(), "every scenario in scenarios.toml must have a result");

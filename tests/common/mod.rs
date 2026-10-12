@@ -2009,6 +2009,7 @@ macro_rules! perf_median {
     }};
 }
 
+/// timing-helper
 #[macro_export]
 macro_rules! perf_budget {
     ($budget_ms:expr, $body:block) => {{
@@ -2032,6 +2033,7 @@ macro_rules! perf_budget {
 /// `budget_ms`, for budgets on the OVERHEAD a feature adds (e.g. query
 /// logging) rather than on a whole call. Same skip (`MCPHOST_PERF_SKIP=1`),
 /// warm-up and median sampling as `perf_budget!` (shared `perf_median!`).
+/// timing-helper
 #[macro_export]
 macro_rules! perf_overhead_budget {
     ($budget_ms:expr, $base:block, $measured:block) => {{
@@ -2054,9 +2056,49 @@ macro_rules! perf_overhead_budget {
     }};
 }
 
+/// `deadline_budget!(budget_ms, { body })` — PRD-mcphost-timing-assertion-lint
+/// requirement 3: a hang-guard DEADLINE, not a performance budget. Runs `body`
+/// ONCE (no warm-up, no median -- the bodies are one-shot calls that cannot be
+/// repeated) and asserts it finished within `budget_ms`, scaled x3 when
+/// `$MCPHOST_PERF_SKIP=1` marks the host as loaded. Unlike `perf_budget!` it is
+/// NEVER skipped: a hang guard must still fire on a loaded host, so it only
+/// widens. Prints `deadline_budget: elapsed=… budget=…ms` to stderr on every
+/// run and evaluates to `body`'s value.
+///
+/// `deadline_budget!(budget_ms, at_least = min_ms, { body })` also asserts the
+/// body took AT LEAST `min_ms` (unscaled -- load only makes things slower), for
+/// tests proving a call really waited out its declared timeout.
+///
+/// timing-helper
+#[macro_export]
+macro_rules! deadline_budget {
+    ($budget_ms:expr, $body:block) => {
+        $crate::deadline_budget!($budget_ms, at_least = 0, $body)
+    };
+    ($budget_ms:expr, at_least = $min_ms:expr, $body:block) => {{
+        let __db_scale: u64 = if $crate::common::perf_skipped() { 3 } else { 1 };
+        let __db_budget_ms: u64 = ($budget_ms as u64) * __db_scale;
+        let __db_start = std::time::Instant::now();
+        let __db_out = $body;
+        let __db_elapsed = __db_start.elapsed();
+        eprintln!("deadline_budget: elapsed={__db_elapsed:?} budget={__db_budget_ms}ms");
+        assert!(
+            __db_elapsed <= std::time::Duration::from_millis(__db_budget_ms),
+            "deadline_budget: elapsed={__db_elapsed:?} budget={__db_budget_ms}ms"
+        );
+        assert!(
+            __db_elapsed >= std::time::Duration::from_millis($min_ms as u64),
+            "deadline_budget: elapsed={__db_elapsed:?} under minimum {}ms",
+            $min_ms
+        );
+        __db_out
+    }};
+}
+
 /// Readiness window for a spawned `mcphost serve` subprocess. 30 s normally,
 /// 90 s when `MCPHOST_PERF_SKIP=1` marks the host as loaded (the same signal
 /// `perf_budget!` honors), instead of a fixed 10 s that a loaded host misses.
+/// timing-helper
 pub fn serve_ready_timeout() -> std::time::Duration {
     if std::env::var("MCPHOST_PERF_SKIP").ok().as_deref() == Some("1") {
         std::time::Duration::from_secs(90)

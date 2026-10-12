@@ -6,7 +6,7 @@
 use crate::common;
 use common::{McpClient, TestServer};
 use serde_json::json;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[tokio::test]
 async fn paused_signup_refuses_a_bare_call_fast_and_creates_nothing() {
@@ -20,18 +20,14 @@ async fn paused_signup_refuses_a_bare_call_fast_and_creates_nothing() {
     tokio::time::sleep(Duration::from_secs(1)).await;
 
     let session = McpClient::new(&server.base_url).with_session_continuity();
-    let started = Instant::now();
-    let err = session
-        .tools_call("host.whoami", json!({}))
-        .await
-        .expect_err("a bare host.* call while paused must be refused");
-    let elapsed = started.elapsed();
+    let err = crate::deadline_budget!(1000, {
+        session
+            .tools_call("host.whoami", json!({}))
+            .await
+            .expect_err("a bare host.* call while paused must be refused")
+    });
 
     assert_eq!(err.error_code.as_deref(), Some("signup_paused"), "{err:?}");
-    assert!(
-        elapsed < Duration::from_secs(1),
-        "signup_paused must be returned within 1s, took {elapsed:?}"
-    );
 
     let tenants = server.state.db.list_tenants().await.expect("list tenants");
     assert_eq!(tenants.len(), 0, "nothing must be created while paused");

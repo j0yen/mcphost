@@ -81,29 +81,26 @@ def main(args):\n    \
         .await
         .expect("insert_queued_run");
 
-    let started = Instant::now();
-    let deadline = started + Duration::from_secs(20);
-    loop {
-        let got = extract_structured(
-            &client
-                .tools_call("host.runs.get", json!({"run_id": run_id}))
-                .await
-                .expect("runs.get ok"),
-        );
-        if got["status"] == json!("timeout") {
-            assert_eq!(
-                got["progress"],
-                json!({"pct": 50, "msg": "half"}),
-                "last progress must be kept on timeout: {got}"
+    // A 3s deadline must time out well under 15s of test slack.
+    let got = crate::deadline_budget!(15_000, {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        loop {
+            let got = extract_structured(
+                &client
+                    .tools_call("host.runs.get", json!({"run_id": run_id}))
+                    .await
+                    .expect("runs.get ok"),
             );
-            let elapsed = started.elapsed();
-            assert!(
-                elapsed < Duration::from_secs(15),
-                "a 3s deadline must time out well under 15s of test slack, took {elapsed:?}"
-            );
-            return;
+            if got["status"] == json!("timeout") {
+                break got;
+            }
+            assert!(Instant::now() < deadline, "job never timed out within 20s: {got}");
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
-        assert!(Instant::now() < deadline, "job never timed out within 20s: {got}");
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
+    });
+    assert_eq!(
+        got["progress"],
+        json!({"pct": 50, "msg": "half"}),
+        "last progress must be kept on timeout: {got}"
+    );
 }

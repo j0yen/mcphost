@@ -16,7 +16,6 @@ use mcphost::kinds::python::PythonKind;
 use mcphost::sandbox;
 use serde_json::{Value, json};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 struct NoLookup;
 impl NameLookup for NoLookup {
@@ -109,24 +108,21 @@ async fn tool_publish_is_rejected_fast_with_the_structured_shape() {
     let (_ns, key) = signup(&server.base_url, "AC3 Tenant").await;
     let client = common::McpClient::with_bearer(&server.base_url, &key);
 
-    let started = Instant::now();
-    let err = client
-        .tools_call(
-            "host.tool_publish",
-            json!({
-                "name": "my_py",
-                "kind": "python",
-                "spec": {"source": "def main(args):\n    return {}\n"},
-            }),
-        )
-        .await
-        .expect_err("publish on an unready sandbox must be rejected");
-    let elapsed = started.elapsed();
+    // must reject in under 1s
+    let err = crate::deadline_budget!(1000, {
+        client
+            .tools_call(
+                "host.tool_publish",
+                json!({
+                    "name": "my_py",
+                    "kind": "python",
+                    "spec": {"source": "def main(args):\n    return {}\n"},
+                }),
+            )
+            .await
+            .expect_err("publish on an unready sandbox must be rejected")
+    });
     assert_sandbox_unavailable_shape(&err);
-    assert!(
-        elapsed < Duration::from_secs(1),
-        "must reject in under 1s, took {elapsed:?}"
-    );
 }
 
 #[tokio::test]

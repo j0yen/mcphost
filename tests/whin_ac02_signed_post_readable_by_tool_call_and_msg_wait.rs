@@ -11,7 +11,6 @@ use crate::whin;
 use common::extract_structured;
 use mcphost::sandbox;
 use serde_json::{Value, json};
-use std::time::{Duration, Instant};
 
 fn event_ids(read: &Value) -> Vec<String> {
     let rows = read
@@ -34,17 +33,16 @@ async fn signed_post_is_a_tool_call_row_and_a_msg_wait_message() {
     let url = created["url"].as_str().expect("url").to_string();
     let secret = created["secret"].as_str().expect("secret").to_string();
 
-    let started = Instant::now();
-    let resp = fx.post_signed(&url, &secret, br#"{"id":"evt-fixture-1"}"#).await;
-    assert_eq!(resp.status(), 200, "signed delivery must be accepted");
-
     // The python environment may still be building on the first call; that
     // wait is the sandbox's, not the delivery's, so only the post-ready
-    // round trips are held to the 5 s bound.
-    let first = fx.read("inbox").await;
-    let ready_at = Instant::now();
+    // round trips are held to the 5 s bound. The post + first read together
+    // must finish within 30 s.
+    let first = crate::deadline_budget!(30_000, {
+        let resp = fx.post_signed(&url, &secret, br#"{"id":"evt-fixture-1"}"#).await;
+        assert_eq!(resp.status(), 200, "signed delivery must be accepted");
+        fx.read("inbox").await
+    });
     assert!(event_ids(&first).contains(&"evt-fixture-1".to_string()), "tool_call rows: {first}");
-    assert!(ready_at.duration_since(started) < Duration::from_secs(30), "read took too long");
 
     let wait = fx
         .client

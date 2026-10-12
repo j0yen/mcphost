@@ -17,7 +17,6 @@ use mcphost::auth::{generate_key, generate_namespace, hash_key};
 use mcphost::db::Db;
 use mcphost::plans::PlanCatalog;
 use serde_json::json;
-use std::time::Instant;
 
 #[tokio::test]
 async fn funnel_reports_six_stages_split_real_and_synthetic() {
@@ -100,14 +99,11 @@ async fn funnel_reports_six_stages_split_real_and_synthetic() {
     .await
     .expect("create tenant b");
 
-    let started = Instant::now();
-    let report = mcphost::funnel::compute(&db, &plans, None)
-        .await
-        .expect("compute funnel");
-    assert!(
-        started.elapsed().as_secs() < 2,
-        "AC5: funnel must compute in under 2s"
-    );
+    let report = crate::deadline_budget!(2000, {
+        mcphost::funnel::compute(&db, &plans, None)
+            .await
+            .expect("compute funnel")
+    });
 
     assert_eq!(report.real.signed_up, 2, "{report:?}");
     assert_eq!(report.real.published, 1, "{report:?}");

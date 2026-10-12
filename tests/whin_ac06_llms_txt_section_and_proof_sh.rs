@@ -11,7 +11,6 @@ use common::{TempDataDir, TestServer, python_kind_registry};
 use mcphost::handler::llms_txt_tool_names;
 use mcphost::kinds::KindRegistry;
 use mcphost::sandbox;
-use std::time::{Duration, Instant};
 use tokio::process::Command;
 
 const LLMS_TXT: &str = include_str!("../www/llms.txt");
@@ -60,16 +59,16 @@ async fn proof_sh_exits_zero_in_under_thirty_seconds() {
     let server = TestServer::start_with_kinds(python_kind_registry(&envs.0)).await;
     let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/webhook-inbox/proof.sh");
 
-    let started = Instant::now();
     // Async `Command`: a blocking `output()` would starve the in-process
-    // server's own axum task.
-    let output = Command::new("bash")
-        .arg(&script)
-        .env("MCPHOST_URL", format!("{}/mcp", server.base_url))
-        .output()
-        .await
-        .expect("run proof.sh");
-    let elapsed = started.elapsed();
+    // server's own axum task. proof.sh must finish within 30 s.
+    let output = crate::deadline_budget!(30_000, {
+        Command::new("bash")
+            .arg(&script)
+            .env("MCPHOST_URL", format!("{}/mcp", server.base_url))
+            .output()
+            .await
+            .expect("run proof.sh")
+    });
     let transcript = format!(
         "{}\n--- stderr ---\n{}",
         String::from_utf8_lossy(&output.stdout),
@@ -77,5 +76,4 @@ async fn proof_sh_exits_zero_in_under_thirty_seconds() {
     );
     assert!(output.status.success(), "proof.sh exited non-zero:\n{transcript}");
     assert!(transcript.contains("RESULT: PASS"), "{transcript}");
-    assert!(elapsed < Duration::from_secs(30), "proof.sh took {elapsed:?}:\n{transcript}");
 }

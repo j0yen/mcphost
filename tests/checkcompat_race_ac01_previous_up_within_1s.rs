@@ -15,7 +15,7 @@
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn scratch_data_dir(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
@@ -57,17 +57,18 @@ fn broken_previous_binary_fails_fast_naming_previous_up() {
         "/usr/bin/false"
     };
 
-    let start = Instant::now();
-    let output = Command::new(mcphost_bin())
-        .arg("migrate")
-        .arg("--check-compat")
-        .arg("--previous")
-        .arg(broken_previous)
-        .arg("--db")
-        .arg(&db_path)
-        .output()
-        .expect("run mcphost migrate --check-compat");
-    let elapsed = start.elapsed();
+    // check-compat must fail within 1s of a previous binary that never comes up.
+    let output = crate::deadline_budget!(1000, {
+        Command::new(mcphost_bin())
+            .arg("migrate")
+            .arg("--check-compat")
+            .arg("--previous")
+            .arg(broken_previous)
+            .arg("--db")
+            .arg(&db_path)
+            .output()
+            .expect("run mcphost migrate --check-compat")
+    });
 
     assert_eq!(
         output.status.code(),
@@ -75,15 +76,6 @@ fn broken_previous_binary_fails_fast_naming_previous_up() {
         "check-compat should exit 4 on a broken previous binary, got {:?}\nstderr: {}",
         output.status.code(),
         String::from_utf8_lossy(&output.stderr)
-    );
-
-    if std::env::var("MCPHOST_PERF_SKIP").ok().as_deref() == Some("1") {
-        eprintln!("perf skipped (load): check-compat took {elapsed:?}");
-        return;
-    }
-    assert!(
-        elapsed.as_secs_f64() < 1.0,
-        "check-compat should fail within 1s of a previous binary that never comes up, took {elapsed:?}"
     );
 
     let stderr = String::from_utf8_lossy(&output.stderr);
