@@ -410,7 +410,129 @@ pub enum AppError {
     TrustedIssuerQuotaExceeded { limit: i64, used: i64 },
 }
 
+/// One instance of every [`AppError`] variant, plus a `Structured` for each
+/// [`crate::feedback::KIND_LEVEL_CODES`] entry: the enumeration the
+/// `fbeh_every_code_has_a_kind` drift test walks. Adding a variant without
+/// adding it here fails to compile (the exhaustive match in
+/// `variant_witness`).
+pub fn all_variants_for_test() -> Vec<AppError> {
+    fn variant_witness(e: &AppError) {
+        match e {
+            AppError::Unauthorized
+            | AppError::TenantKeyMissing(_)
+            | AppError::TenantKeyInvalid
+            | AppError::Forbidden
+            | AppError::TenantDisabled
+            | AppError::RateLimited
+            | AppError::ToolNotFound(_)
+            | AppError::TenantNotFound(_)
+            | AppError::InvalidParams(_)
+            | AppError::UnknownKind { .. }
+            | AppError::InvalidToolName(_)
+            | AppError::SpecTooLarge(_)
+            | AppError::TooManyTools(_)
+            | AppError::InvalidSpec(_)
+            | AppError::InvalidArgs(_)
+            | AppError::SecretMissing(_)
+            | AppError::Structured { .. }
+            | AppError::MultiInvalid { .. }
+            | AppError::CallTimeout(_)
+            | AppError::Storage(_)
+            | AppError::Internal(_)
+            | AppError::RegistryDisabled
+            | AppError::NamespaceUnverified
+            | AppError::RegistryRejected(_)
+            | AppError::ShareQuotaExceeded { .. }
+            | AppError::GroupNotFound(_)
+            | AppError::HandoffTokenInvalid
+            | AppError::HandoffTokenRedeemed
+            | AppError::HandoffTokenExpired
+            | AppError::VersionNotFound { .. }
+            | AppError::IssuerAlreadyRegistered
+            | AppError::IssuerQuotaExceeded { .. }
+            | AppError::IssuerNotFound(_)
+            | AppError::InvalidToken(_)
+            | AppError::ConflictingCredentials
+            | AppError::WrongTenant
+            | AppError::InsufficientScope
+            | AppError::AuthConflict
+            | AppError::TrustedIssuerQuotaExceeded { .. } => {}
+        }
+    }
+    let s = || "x".to_string();
+    let mut all = vec![
+        AppError::Unauthorized,
+        AppError::TenantKeyMissing(None),
+        AppError::TenantKeyInvalid,
+        AppError::Forbidden,
+        AppError::TenantDisabled,
+        AppError::RateLimited,
+        AppError::ToolNotFound("t.no_such".into()),
+        AppError::TenantNotFound(s()),
+        AppError::InvalidParams(s()),
+        AppError::UnknownKind { requested: s(), registered: vec!["http"], aliases: vec![] },
+        AppError::InvalidToolName(s()),
+        AppError::SpecTooLarge(70_000),
+        AppError::TooManyTools(100),
+        AppError::InvalidSpec(s()),
+        AppError::InvalidArgs(s()),
+        AppError::SecretMissing(s()),
+        AppError::MultiInvalid {
+            message: "2 fields invalid".into(),
+            errors: vec![AppError::InvalidSpec(s()), AppError::InvalidSpec(s())],
+        },
+        AppError::CallTimeout(30),
+        AppError::Storage(s()),
+        AppError::Internal(s()),
+        AppError::RegistryDisabled,
+        AppError::NamespaceUnverified,
+        AppError::RegistryRejected(s()),
+        AppError::ShareQuotaExceeded { limit: 1, used: 1 },
+        AppError::GroupNotFound(s()),
+        AppError::HandoffTokenInvalid,
+        AppError::HandoffTokenRedeemed,
+        AppError::HandoffTokenExpired,
+        AppError::VersionNotFound { requested: 9, min: 1, max: 2 },
+        AppError::IssuerAlreadyRegistered,
+        AppError::IssuerQuotaExceeded { limit: 1, used: 1 },
+        AppError::IssuerNotFound(s()),
+        AppError::InvalidToken("expired"),
+        AppError::ConflictingCredentials,
+        AppError::WrongTenant,
+        AppError::InsufficientScope,
+        AppError::AuthConflict,
+        AppError::TrustedIssuerQuotaExceeded { limit: 1, used: 1 },
+    ];
+    for code in crate::feedback::KIND_LEVEL_CODES {
+        all.push(AppError::Structured { code, message: s(), data: Value::Null });
+    }
+    all.iter().for_each(variant_witness);
+    all
+}
+
 impl AppError {
+    /// PRD-mcphost-error-responses-invite-feedback R4: a kind-level error
+    /// that does not know which tool it ran for (`tool_exception`,
+    /// `upstream_status`, `args_invalid`) gets `data.tool` from the call
+    /// site that does, so its `feedback_hint` can name it. Never overwrites
+    /// a `data.tool` the error already carries.
+    pub fn with_tool(self, tool: &str) -> Self {
+        match self {
+            AppError::Structured { code, message, data }
+                if matches!(code, "tool_exception" | "upstream_status" | "args_invalid") =>
+            {
+                let mut data = match data {
+                    Value::Object(m) => m,
+                    Value::Null => Map::new(),
+                    other => Map::from_iter([("detail".to_string(), other)]),
+                };
+                data.entry("tool".to_string()).or_insert(json!(tool));
+                AppError::Structured { code, message, data: Value::Object(data) }
+            }
+            other => other,
+        }
+    }
+
     /// The machine-readable code every AC-facing test matches on.
     pub fn code(&self) -> &'static str {
         match self {
@@ -906,6 +1028,12 @@ impl AppError {
             AppError::Structured { data, .. } if data.is_object() => {
                 data.as_object().cloned().unwrap_or_default()
             }
+            // R2: a non-object `data` is kept as `detail` beside the hint.
+            AppError::Structured { data, .. } if !data.is_null() => {
+                let mut m = Map::new();
+                m.insert("detail".to_string(), data.clone());
+                m
+            }
             _ => Map::new(),
         };
         obj.insert("error_code".to_string(), json!(code));
@@ -1000,6 +1128,24 @@ impl AppError {
         // `Internal`'s (which also folds it into `message` above, unchanged
         // from before this PRD).
         obj.insert("request_id".to_string(), json!(request_id));
+        // PRD-mcphost-error-responses-invite-feedback R2/R4: the one place
+        // every error gets its `feedback_hint`, generated from the code. The
+        // tool is the one the error names (`ToolNotFound`) or `data.tool`.
+        if !obj.contains_key("feedback_hint") {
+            let tool = match &self {
+                AppError::ToolNotFound(name) => Some(name.clone()),
+                _ => obj.get("tool").and_then(Value::as_str).map(str::to_string),
+            };
+            let id = matches!(
+                code,
+                "internal" | "storage" | "registry_rejected" | "service_unavailable"
+            )
+            .then_some(request_id.as_str());
+            obj.insert(
+                "feedback_hint".to_string(),
+                json!(crate::feedback::feedback_hint(code, tool.as_deref(), id)),
+            );
+        }
         // AC1: `help_url` for every code `crate::help::HELP_CODES` lists,
         // resolving on whichever base this call arrived on -- absent (not
         // `null`) for every other code, and absent entirely when no base

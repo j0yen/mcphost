@@ -807,6 +807,18 @@ mod exmf_ac04_stale_index_fails_the_build;
 mod exmf_ac05_schema_matches_committed_file;
 #[path = "exmf_ac06_zero_manifests_exits_two.rs"]
 mod exmf_ac06_zero_manifests_exits_two;
+#[path = "fbeh_ac02_hint_on_every_variant.rs"]
+mod fbeh_ac02_hint_on_every_variant;
+#[path = "fbeh_ac03_missing_mapping_is_named.rs"]
+mod fbeh_ac03_missing_mapping_is_named;
+#[path = "fbeh_ac04_tool_exception_names_the_tool.rs"]
+mod fbeh_ac04_tool_exception_names_the_tool;
+#[path = "fbeh_ac05_internal_hint_carries_request_id.rs"]
+mod fbeh_ac05_internal_hint_carries_request_id;
+#[path = "fbeh_ac06_messages_byte_identical.rs"]
+mod fbeh_ac06_messages_byte_identical;
+#[path = "fbeh_ac07_hint_is_one_short_line.rs"]
+mod fbeh_ac07_hint_is_one_short_line;
 #[path = "fbtl_ac02_anonymous_send_stores_row.rs"]
 mod fbtl_ac02_anonymous_send_stores_row;
 #[path = "fbtl_ac03_text_limits_and_control_chars.rs"]

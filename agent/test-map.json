@@ -1445,6 +1445,17 @@
       "AC7": "tests/timp_ac07_archive_layout_one_enum.rs",
       "AC8": "deferred -- operator-provisioned: live prod export + tar -tzf of the joe-test tenant after deploy."
     },
+    "fbeh": {
+      "_prd": "PRD-mcphost-error-responses-invite-feedback.md (test_prefix: fbeh)",
+      "AC1": "deferred -- live premise check run by the operator after land (see the PRD's Premise check section).",
+      "AC2": "tests/fbeh_ac02_hint_on_every_variant.rs",
+      "AC3": "tests/fbeh_ac03_missing_mapping_is_named.rs",
+      "AC4": "tests/fbeh_ac04_tool_exception_names_the_tool.rs",
+      "AC5": "tests/fbeh_ac05_internal_hint_carries_request_id.rs",
+      "AC6": "tests/fbeh_ac06_messages_byte_identical.rs",
+      "AC7": "tests/fbeh_ac07_hint_is_one_short_line.rs",
+      "AC8": "deferred -- operator-provisioned: prod tool_not_found call after deploy."
+    },
     "cclib": {
       "_prd": "PRD-mcphost-call-cli-from-contract-b.md (test_prefix: cclib)",
       "AC1": "tests/cclib_ac01_contract_skew_warning.rs",
