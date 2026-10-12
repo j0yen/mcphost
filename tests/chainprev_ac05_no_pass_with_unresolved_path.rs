@@ -3,7 +3,7 @@
 //! verdict is not `pass` and `success` is not `true`.
 
 use crate::common;
-use common::{McpClient, TestServer, chain_and_http_kind_registry, publish, signup};
+use common::{McpClient, TestServer, chain_and_http_kind_registry, publish, publish_forced, signup};
 use serde_json::{Value, json};
 
 fn has_unresolved_path(v: &Value) -> bool {
@@ -45,7 +45,7 @@ async fn no_dry_run_with_an_unresolved_path_reports_pass() {
     let mut saw_unresolved = 0;
     for (name, steps) in chains {
         let chain = format!("chain_{name}");
-        publish(&client, &chain, "chain", json!({"steps": steps})).await;
+        publish_forced(&client, &chain, "chain", json!({"steps": steps})).await;
         let result = client
             .tools_call("host.tool_test", json!({"name": chain, "args": {}}))
             .await

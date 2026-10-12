@@ -51,6 +51,16 @@ Test-harness only (PRD-mcphost-timing-assertion-lint): `scripts/timing-lint.py` 
 wall-clock assertion under `tests/` that sits outside a `/// timing-helper` macro/fn of
 `tests/common/mod.rs`; new `deadline_budget!(ms, { body })` hang-guard helper (one run, x3 under
 `MCPHOST_PERF_SKIP=1`, never skipped). No product change.
+`host.tool_publish` of a chain now refuses a mapping that cannot resolve
+(PRD-mcphost-chain-publish-time-path-check): every `$.prev.result.<field>` and
+`$.steps[i].result.<field>` is checked against the predecessor's declared `outputs`, else the
+keys its completed runs actually returned (recorded per tool in `tools.observed_outputs_json`,
+migration 0085). An unresolvable path fails `compose_mapping_unresolved` with `data.available`,
+`data.did_you_mean`, `data.prev_fields_source` and `data.runs_sampled`, and no tool row is
+written; `force: true` publishes anyway and the response `gates` entry reads `verdict: will_fail,
+forced: true`. A `$.steps[i]` at or past the step's own position is `will_fail` with
+`reason: "forward reference"`. The publish response lists `prev_fields_source`, `runs_sampled`
+and `observed_drift` (declared outputs no run ever returned).
 
 ## v0.107.13 — 2026-10-10
 

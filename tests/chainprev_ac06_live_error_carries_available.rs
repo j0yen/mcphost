@@ -5,7 +5,7 @@
 //! `did_you_mean`.
 
 use crate::common;
-use common::{McpClient, TestServer, chain_kind_registry, publish, signup};
+use common::{McpClient, TestServer, chain_kind_registry, publish, publish_forced, signup};
 use serde_json::json;
 
 async fn call_with_mapping(label: &str, mapping: &str) -> common::RpcError {
@@ -21,7 +21,7 @@ async fn call_with_mapping(label: &str, mapping: &str) -> common::RpcError {
             {"tool": "step2", "args": {"v": mapping}},
         ]
     });
-    let chain = publish(&client, "pipeline", "chain", spec).await;
+    let chain = publish_forced(&client, "pipeline", "chain", spec).await;
     client
         .tools_call(&chain, json!({}))
         .await

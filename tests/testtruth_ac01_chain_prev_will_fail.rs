@@ -5,7 +5,7 @@
 //! "count"]}` and no step executed.
 
 use crate::common;
-use common::{McpClient, TestServer, chain_and_http_kind_registry, publish, signup};
+use common::{McpClient, TestServer, chain_and_http_kind_registry, publish, publish_forced, signup};
 use serde_json::json;
 
 #[tokio::test]
@@ -32,7 +32,7 @@ async fn prev_mapping_absent_from_predecessor_outputs_is_will_fail() {
             {"tool": "step2", "args": {"rows": "$.prev.rows"}},
         ]
     });
-    publish(&client, "pipeline", "chain", chain_spec).await;
+    publish_forced(&client, "pipeline", "chain", chain_spec).await;
 
     let result = client
         .tools_call("host.tool_test", json!({"name": "pipeline", "args": {}}))

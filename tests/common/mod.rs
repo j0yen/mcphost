@@ -1506,6 +1506,23 @@ impl McpClient {
 /// `<namespace>.<name>` `tools/call` would use. Panics on a publish
 /// failure (every caller in that suite expects success; a test asserting a
 /// publish-time rejection calls `host.tool_publish` directly instead).
+/// [`publish`] with `force: true` -- for a test that deliberately publishes a
+/// chain whose mapping the publish gate would refuse as `will_fail`
+/// (PRD-mcphost-chain-publish-time-path-check requirement 3).
+pub async fn publish_forced(client: &McpClient, name: &str, kind: &str, spec: Value) -> String {
+    let result = client
+        .tools_call(
+            "host.tool_publish",
+            json!({"name": name, "kind": kind, "spec": spec, "force": true}),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("forced publish '{name}' failed: {} {}", e.code, e.message));
+    extract_structured(&result)["name"]
+        .as_str()
+        .expect("published tool's qualified name")
+        .to_string()
+}
+
 pub async fn publish(client: &McpClient, name: &str, kind: &str, spec: Value) -> String {
     let result = client
         .tools_call(

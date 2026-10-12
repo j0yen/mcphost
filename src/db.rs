@@ -197,6 +197,7 @@ const MIGRATION_0082: &str = include_str!("../migrations/0082_calls_refused.sql"
 const MIGRATION_0083: &str = include_str!("../migrations/0083_asks.sql");
 /// PRD-mcphost-call-trace-replay requirement 2: the `call_traces` table.
 const MIGRATION_0084: &str = include_str!("../migrations/0084_call_traces.sql");
+const MIGRATION_0085: &str = include_str!("../migrations/0085_tools_observed_outputs.sql");
 
 /// PRD-mcphost-session-bound-tenant-key requirement 3: `kind` on
 /// `signup_events`. Renumbered to 0080 during this rebase: mcphost-tool-
@@ -276,6 +277,18 @@ fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
 /// list and [`tool_from_row`] stay in lockstep with each other -- same
 /// convention as [`TENANT_COLUMNS`]/[`tenant_from_row`] above
 /// (PRD-mcphost-sharing migration 0013).
+/// Cap on distinct keys recorded per tool in `tools.observed_outputs_json`.
+pub const OBSERVED_KEYS_CAP: usize = 64;
+
+/// PRD-mcphost-chain-publish-time-path-check requirement 1: the shape of
+/// what a tool's finished runs actually returned.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct ObservedOutputs {
+    pub keys: std::collections::BTreeMap<String, String>,
+    pub runs_sampled: i64,
+    pub last_unix: i64,
+}
+
 const TOOL_COLUMNS: &str = "id, tenant_id, name, kind, spec, created_at, visibility, \
     share_description, shared_unix, shared_group, unshared_by, current_version, scopes, \
     expose_spec, spec_exposed_unix, spec_reads";
@@ -2723,7 +2736,8 @@ impl Db {
         Self::migrate_0081_host_tool_usage_did_you_mean_outcome(&conn)?;
         Self::migrate_0082_calls_refused(&conn)?;
         Self::migrate_0083_asks(&conn)?;
-        Self::migrate_0084_call_traces(&conn)
+        Self::migrate_0084_call_traces(&conn)?;
+        Self::migrate_0085_tools_observed_outputs(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -3872,6 +3886,19 @@ impl Db {
     /// EXISTS`, so running it twice is a no-op.
     fn migrate_0084_call_traces(conn: &Connection) -> Result<(), AppError> {
         conn.execute_batch(MIGRATION_0084)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-chain-publish-time-path-check requirement 1: same
+    /// idempotency pattern as 0002-0082, gated on
+    /// `tools.observed_outputs_json`.
+    fn migrate_0085_tools_observed_outputs(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tools') WHERE name = 'observed_outputs_json'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0085)?;
+        }
         Ok(())
     }
 
@@ -6792,6 +6819,72 @@ impl Db {
             )?;
             touch_tenant_tool_change(conn, tenant_id)?;
             Ok(next_version)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-chain-publish-time-path-check requirement 1: folds one
+    /// finished run's `shape` into `tools.observed_outputs_json` --
+    /// `keys = keys U shape` (a key once observed is never removed, capped at
+    /// [`OBSERVED_KEYS_CAP`]), `runs_sampled += 1`. One transaction on the
+    /// serialized connection, so concurrent runs never lose an update.
+    pub async fn merge_observed_outputs(
+        &self,
+        tenant_id: i64,
+        name: String,
+        shape: std::collections::BTreeMap<String, String>,
+    ) -> Result<(), AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            let prior: Option<String> = tx
+                .query_row(
+                    "SELECT observed_outputs_json FROM tools WHERE tenant_id = ?1 AND name = ?2",
+                    params![tenant_id, name],
+                    |r| r.get(0),
+                )
+                .optional()?
+                .flatten();
+            let mut merged = prior
+                .and_then(|t| serde_json::from_str::<ObservedOutputs>(&t).ok())
+                .unwrap_or_default();
+            for (k, ty) in shape {
+                if merged.keys.len() >= OBSERVED_KEYS_CAP && !merged.keys.contains_key(&k) {
+                    continue;
+                }
+                merged.keys.insert(k, ty);
+            }
+            merged.runs_sampled += 1;
+            merged.last_unix = now;
+            let text = serde_json::to_string(&merged)
+                .map_err(|e| AppError::Internal(format!("observed outputs serialize: {e}")))?;
+            tx.execute(
+                "UPDATE tools SET observed_outputs_json = ?1 WHERE tenant_id = ?2 AND name = ?3",
+                params![text, tenant_id, name],
+            )?;
+            tx.commit()?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// The tool's recorded [`ObservedOutputs`], `None` before its first
+    /// qualifying run (or for an unknown tool).
+    pub async fn get_observed_outputs(
+        &self,
+        tenant_id: i64,
+        name: String,
+    ) -> Result<Option<ObservedOutputs>, AppError> {
+        self.with_conn(move |conn| {
+            let text: Option<String> = conn
+                .query_row(
+                    "SELECT observed_outputs_json FROM tools WHERE tenant_id = ?1 AND name = ?2",
+                    params![tenant_id, name],
+                    |r| r.get(0),
+                )
+                .optional()?
+                .flatten();
+            Ok(text.and_then(|t| serde_json::from_str(&t).ok()))
         })
         .await
     }

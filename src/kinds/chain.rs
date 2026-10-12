@@ -49,6 +49,27 @@ use crate::errors::AppError;
 
 pub struct ChainKind;
 
+// CONTEXT_KEYS-BEGIN
+/// PRD-mcphost-chain-publish-time-path-check requirement 5: the ONE table of
+/// context keys. [`step_context`] (the constructor) and every checker below
+/// read the names from here; nothing else in this file spells them, and
+/// `tests/cpath_ac07_context_keys_table_parity.rs` scans the file to keep it
+/// that way.
+pub struct ContextKeys {
+    /// Top level: the chain call's own args.
+    pub input: &'static str,
+    /// Top level: `{result}` of the previous step, or null.
+    pub prev: &'static str,
+    /// Top level: `[{result}, ...]` of every earlier step.
+    pub steps: &'static str,
+    /// The one key under `prev` / `steps[i]`.
+    pub result: &'static str,
+}
+
+pub const CONTEXT_KEYS: ContextKeys =
+    ContextKeys { input: "input", prev: "prev", steps: "steps", result: "result" };
+// CONTEXT_KEYS-END
+
 /// Requirement 4 ("up to three nearest sibling names"): the closest
 /// `tenant_names` to `name` by plain edit distance, nearest first, capped
 /// at three -- no distance cutoff (unlike `errors::did_you_mean`'s kind-name
@@ -120,9 +141,9 @@ pub async fn resolve_steps(db: &crate::db::Db, tenant_id: i64, spec: &Value) -> 
 /// built, so the two cannot drift apart.
 pub fn step_context(input: &Value, prev: Option<&Value>, steps: &[Value]) -> Value {
     json!({
-        "input": input,
-        "prev": prev.map(|r| json!({"result": r})),
-        "steps": steps.iter().map(|r| json!({"result": r})).collect::<Vec<_>>(),
+        (CONTEXT_KEYS.input): input,
+        (CONTEXT_KEYS.prev): prev.map(|r| json!({ (CONTEXT_KEYS.result): r })),
+        (CONTEXT_KEYS.steps): steps.iter().map(|r| json!({ (CONTEXT_KEYS.result): r })).collect::<Vec<_>>(),
     })
 }
 
@@ -133,13 +154,13 @@ fn object_keys(v: &Value) -> std::collections::BTreeSet<String> {
 /// The first-level keys a mapping may use under `$.prev` (today `{result}`),
 /// read from a sample context [`step_context`] built.
 pub fn accepted_prev_keys() -> std::collections::BTreeSet<String> {
-    object_keys(&step_context(&Value::Null, Some(&Value::Null), &[])["prev"])
+    object_keys(&step_context(&Value::Null, Some(&Value::Null), &[])[CONTEXT_KEYS.prev])
 }
 
 /// The first-level keys a mapping may use under `$.steps[i]` (today
 /// `{result}`), read from a sample context [`step_context`] built.
 pub fn accepted_step_keys() -> std::collections::BTreeSet<String> {
-    object_keys(&step_context(&Value::Null, None, &[Value::Null])["steps"][0])
+    object_keys(&step_context(&Value::Null, None, &[Value::Null])[CONTEXT_KEYS.steps][0])
 }
 
 fn keys_phrase(keys: &std::collections::BTreeSet<String>) -> String {
@@ -214,11 +235,11 @@ impl StepRef {
     /// from (`None` when that step never produced one).
     fn base_result<'a>(&self, context: &'a Value) -> Option<&'a Value> {
         let holder = if self.is_prev {
-            &context["prev"]
+            &context[CONTEXT_KEYS.prev]
         } else {
-            &context["steps"][self.predecessor_no - 1]
+            &context[CONTEXT_KEYS.steps][self.predecessor_no - 1]
         };
-        holder.get("result").filter(|v| !v.is_null())
+        holder.get(CONTEXT_KEYS.result).filter(|v| !v.is_null())
     }
 
     /// This path rebuilt with the `hop` names inserted ahead of every
@@ -323,51 +344,169 @@ enum RefCheck {
     Unverifiable,
 }
 
+/// PRD-mcphost-chain-publish-time-path-check requirement 1: a JSON value's
+/// type name as recorded in `tools.observed_outputs_json`.
+fn json_type(v: &Value) -> &'static str {
+    match v {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
+}
+
+/// PRD-mcphost-chain-publish-time-path-check requirement 1: the observed
+/// shape of one run result -- top-level keys of an object result mapped to
+/// their JSON type, plus, for an object-valued key, its own keys one level
+/// down as `"<key>.<sub>"`. Empty for a non-object result. Capped at
+/// [`crate::db::OBSERVED_KEYS_CAP`] keys.
+pub fn observed_shape(result: &Value) -> std::collections::BTreeMap<String, &'static str> {
+    let mut out = std::collections::BTreeMap::new();
+    let Some(map) = result.as_object() else {
+        return out;
+    };
+    for (k, v) in map {
+        out.insert(k.clone(), json_type(v));
+        if let Value::Object(sub) = v {
+            for (sk, sv) in sub {
+                out.insert(format!("{k}.{sk}"), json_type(sv));
+            }
+        }
+    }
+    while out.len() > crate::db::OBSERVED_KEYS_CAP {
+        out.pop_last();
+    }
+    out
+}
+
+/// What a predecessor's `$.prev.result.<key>` mapping is checked against:
+/// its declared `outputs` when it has any, else the keys its finished runs
+/// actually returned.
+struct PathBasis {
+    /// Top-level key names, sorted for `observed`, declaration order for
+    /// `declared`.
+    names: Vec<String>,
+    /// Of those, the observed ones whose value was a JSON array (the
+    /// `did_you_mean` fallback when no name is a near typo).
+    array_names: Vec<String>,
+    source: &'static str,
+    /// `Some` whenever the tool has at least one recorded run.
+    runs_sampled: Option<i64>,
+    /// Declared names no run ever returned (empty unless `declared` and
+    /// there is observed history).
+    drift: Vec<String>,
+}
+
+async fn path_basis(
+    db: &crate::db::Db,
+    kinds: &KindRegistry,
+    tenant_id: i64,
+    tool: &str,
+    use_observed: bool,
+) -> Option<PathBasis> {
+    let declared = declared_output_names(db, kinds, tenant_id, tool).await.unwrap_or_default();
+    let observed = if use_observed {
+        db.get_observed_outputs(tenant_id, tool.to_string()).await.ok().flatten()
+    } else {
+        None
+    };
+    let observed_top: Vec<String> = observed
+        .as_ref()
+        .map(|o| o.keys.keys().filter(|k| !k.contains('.')).cloned().collect())
+        .unwrap_or_default();
+    let runs_sampled = observed.as_ref().map(|o| o.runs_sampled);
+    if !declared.is_empty() {
+        let drift = if observed.is_some() {
+            declared.iter().filter(|d| !observed_top.contains(d)).cloned().collect()
+        } else {
+            Vec::new()
+        };
+        return Some(PathBasis { names: declared, array_names: Vec::new(), source: "declared", runs_sampled, drift });
+    }
+    let o = observed?;
+    if observed_top.is_empty() {
+        return None;
+    }
+    let array_names = observed_top
+        .iter()
+        .filter(|k| o.keys.get(*k).is_some_and(|t| t == "array"))
+        .cloned()
+        .collect();
+    Some(PathBasis { names: observed_top, array_names, source: "observed", runs_sampled, drift: Vec::new() })
+}
+
+impl PathBasis {
+    /// The key to suggest for a missing `name`: a near typo among the
+    /// names, else -- for an observed shape -- its one array-valued key
+    /// (an agent asking for `rows` of a `{items, count}` result wants the
+    /// collection).
+    fn suggest(&self, name: &str) -> Option<String> {
+        if self.names.iter().any(|d| d == name) {
+            return None;
+        }
+        if let Some(near) = closest_name(name, &self.names) {
+            return Some(near.to_string());
+        }
+        match self.array_names.as_slice() {
+            [only] => Some(only.clone()),
+            _ => None,
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn check_step_ref(
     db: Option<&crate::db::Db>,
     kinds: Option<&KindRegistry>,
     tenant_id: i64,
     predecessor_tool: &str,
     r: &StepRef,
+    use_observed: bool,
 ) -> RefCheck {
-    let declared = match (db, kinds) {
-        (Some(db), Some(kinds)) => declared_output_names(db, kinds, tenant_id, predecessor_tool)
-            .await
-            .unwrap_or_default(),
-        _ => Vec::new(),
+    let basis = match (db, kinds) {
+        (Some(db), Some(kinds)) => path_basis(db, kinds, tenant_id, predecessor_tool, use_observed).await,
+        _ => None,
     };
     let mut evidence = Map::new();
-    if !declared.is_empty() {
-        evidence.insert("available".to_string(), json!(declared));
-        evidence.insert("predecessor_keys".to_string(), json!(declared));
+    if let Some(b) = &basis {
+        evidence.insert("available".to_string(), json!(b.names));
+        evidence.insert("predecessor_keys".to_string(), json!(b.names));
+        if b.source == "observed" || b.runs_sampled.is_some() {
+            evidence.insert("prev_fields_source".to_string(), json!(b.source));
+        }
+        if let Some(n) = b.runs_sampled {
+            evidence.insert("runs_sampled".to_string(), json!(n));
+        }
     }
     let Some(first) = r.name(0) else {
         return RefCheck::Unverifiable;
     };
     if !r.accepted_keys().contains(first) {
         // Missing hop: `$.prev.<seg>` should be `$.prev.result.<seg>`; when
-        // the predecessor's declared fields name a close match for `<seg>`,
-        // point at that field instead.
-        let suggestion = match closest_name(first, &declared) {
-            Some(near) if !declared.iter().any(|d| d == first) => r.rebuilt(&["result"], Some((0, near))),
-            _ => r.rebuilt(&["result"], None),
+        // the predecessor's fields name a close match for `<seg>`, point at
+        // that field instead.
+        let suggestion = match basis.as_ref().and_then(|b| b.suggest(first)) {
+            Some(near) => r.rebuilt(&[CONTEXT_KEYS.result], Some((0, &near))),
+            None => r.rebuilt(&[CONTEXT_KEYS.result], None),
         };
         evidence.insert("did_you_mean".to_string(), json!(suggestion));
         return RefCheck::WillFail(evidence);
     }
     let Some(field) = r.name(1) else {
         // Whole predecessor value (`$.prev.result`): nothing to check
-        // against a schema; Pass only if the predecessor declares one.
-        return if declared.is_empty() { RefCheck::Unverifiable } else { RefCheck::Pass };
+        // against a schema; Pass only if the predecessor has one.
+        return if basis.is_none() { RefCheck::Unverifiable } else { RefCheck::Pass };
     };
-    if declared.is_empty() {
+    let Some(basis) = basis else {
         return RefCheck::Unverifiable;
-    }
-    if declared.iter().any(|d| d == field) || super::ENVELOPE_WRAPPER_KEYS.contains(&field) {
+    };
+    if basis.names.iter().any(|d| d == field) || super::ENVELOPE_WRAPPER_KEYS.contains(&field) {
         RefCheck::Pass
     } else {
-        if let Some(near) = closest_name(field, &declared) {
-            evidence.insert("did_you_mean".to_string(), json!(r.rebuilt(&[], Some((1, near)))));
+        if let Some(near) = basis.suggest(field) {
+            evidence.insert("did_you_mean".to_string(), json!(r.rebuilt(&[], Some((1, &near)))));
         }
         RefCheck::WillFail(evidence)
     }
@@ -405,6 +544,7 @@ async fn steps_verdict(
     kinds: Option<&KindRegistry>,
     tenant_id: i64,
     steps: &[ParsedStep],
+    use_observed: bool,
 ) -> StepsVerdict {
     let mut failures: Vec<Value> = Vec::new();
     let mut unverifiable_step: Option<usize> = None;
@@ -420,10 +560,22 @@ async fn steps_verdict(
                 continue; // whole-value mapping -- nothing to check.
             }
             let predecessor_no = r.predecessor_no;
+            // PRD-mcphost-chain-publish-time-path-check requirement 4: a
+            // `$.steps[i]` at or past the step's own position has no result
+            // yet when the step runs.
+            if predecessor_no >= step_no {
+                failures.push(json!({
+                    "step": step_no,
+                    "path": raw,
+                    "reason": "forward reference",
+                    "available": [],
+                }));
+                continue;
+            }
             let Some(predecessor) = steps.get(predecessor_no - 1) else {
                 continue; // out of range -- not this check's concern.
             };
-            match check_step_ref(db, kinds, tenant_id, &predecessor.tool, &r).await {
+            match check_step_ref(db, kinds, tenant_id, &predecessor.tool, &r, use_observed).await {
                 RefCheck::Pass => {
                     passes.insert((step_no, raw.clone()));
                 }
@@ -472,7 +624,13 @@ pub(crate) async fn verdict(
     let Ok(steps) = parse_steps(spec) else {
         return json!({"verdict": "unverifiable", "reason": "spec does not parse"});
     };
-    steps_verdict(Some(db), Some(kinds), tenant_id, &steps).await.overall
+    let mut overall = steps_verdict(Some(db), Some(kinds), tenant_id, &steps, true).await.overall;
+    // PRD-mcphost-chain-publish-time-path-check requirement 2 (AC3): a
+    // predecessor nothing is known about yet is settled by running it.
+    if overall["verdict"] == json!("unverifiable") {
+        overall["next"] = json!({"tool": "host.tool_test"});
+    }
+    overall
 }
 
 /// PRD-mcphost-chain-prev-contract P1 requirement 6: per step after the
@@ -491,14 +649,23 @@ pub(crate) async fn prev_fields(
     };
     let mut out = Vec::new();
     for (i, step) in steps.iter().enumerate().skip(1) {
-        let declared = declared_output_names(db, kinds, tenant_id, &steps[i - 1].tool)
-            .await
-            .unwrap_or_default();
-        let entry = if declared.is_empty() {
-            json!({"step": i + 1, "tool": step.tool, "prev_fields": null,
-                   "hint": "predecessor declares no outputs; host.tool_test reports prev_fields from its dry-run result"})
-        } else {
-            json!({"step": i + 1, "tool": step.tool, "prev_fields": declared, "prev_fields_source": "declared"})
+        let basis = path_basis(db, kinds, tenant_id, &steps[i - 1].tool, true).await;
+        let entry = match basis {
+            None => json!({"step": i + 1, "tool": step.tool, "prev_fields": null,
+                   "hint": "predecessor declares no outputs and has no completed run; host.tool_test reports prev_fields from its dry-run result",
+                   "next": {"tool": "host.tool_test"}}),
+            Some(b) => {
+                // Observed keys are reported sorted (a set), declared keys in
+                // declaration order.
+                let mut e = json!({"step": i + 1, "tool": step.tool, "prev_fields": b.names, "prev_fields_source": b.source});
+                if let Some(n) = b.runs_sampled {
+                    e["runs_sampled"] = json!(n);
+                    if b.source == "declared" {
+                        e["observed_drift"] = json!(b.drift);
+                    }
+                }
+                e
+            }
         };
         out.push(entry);
     }
@@ -601,7 +768,7 @@ fn parse_steps(spec: &Value) -> Result<Vec<ParsedStep>, KindError> {
         .as_object()
         .ok_or_else(|| invalid_spec("spec: must be a JSON object"))?;
     let steps_raw = obj
-        .get("steps")
+        .get(CONTEXT_KEYS.steps)
         .ok_or_else(|| invalid_spec("spec.steps: is required"))?
         .as_array()
         .ok_or_else(|| invalid_spec("spec.steps: must be an array"))?;
@@ -762,9 +929,9 @@ fn actual_result_evidence(r: &StepRef, base: &Value) -> Map<String, Value> {
     let suggestion = match (r.name(0), r.name(1)) {
         // Missing hop: `$.prev.<seg>` where `<seg>` is a field of the result.
         (Some(seg), _) if !r.accepted_keys().contains(seg) => {
-            closest_name(seg, &available).map(|near| r.rebuilt(&["result"], Some((0, near))))
+            closest_name(seg, &available).map(|near| r.rebuilt(&[CONTEXT_KEYS.result], Some((0, near))))
         }
-        (Some("result"), Some(field)) if !available.iter().any(|k| k == field) => {
+        (Some(hop), Some(field)) if hop == CONTEXT_KEYS.result && !available.iter().any(|k| k == field) => {
             closest_name(field, &available).map(|near| r.rebuilt(&[], Some((1, near))))
         }
         _ => None,
@@ -843,6 +1010,7 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
         ctx.compose_kinds.as_ref(),
         ctx.tenant_id,
         steps,
+        false,
     )
     .await;
     let fixtures = match DRY_RUN_FIXTURES.try_with(|f| f.clone()) {
@@ -873,7 +1041,7 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
     if sv.overall["verdict"] == json!("will_fail") {
         return Ok(json!({
             "chain_dry_run": true,
-            "steps": [],
+            (CONTEXT_KEYS.steps): [],
             "inputs_required": inputs_required,
             "verdict": "will_fail",
             "failures": sv.overall["failures"].clone(),
@@ -978,7 +1146,7 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
                         "resolved": "host",
                         "side_effects": true,
                         "dispatched": true,
-                        "result": result,
+                        (CONTEXT_KEYS.result): result,
                     });
                     insert_prev_fields(&mut entry, &prev_fields);
                     report.push(entry);
@@ -1033,7 +1201,7 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
                     if let Value::Object(map) = &mut entry {
                         map.insert("source".to_string(), json!("dry_run"));
                         map.insert("dispatched".to_string(), json!(true));
-                        map.insert("result".to_string(), result.clone());
+                        map.insert(CONTEXT_KEYS.result.to_string(), result.clone());
                     }
                     report.push(entry);
                     step_results.push(result.clone());
@@ -1063,7 +1231,7 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
     let (executed, fixtured, skipped) = (count("dry_run"), count("fixture"), count("skipped"));
     let mut out = json!({
         "chain_dry_run": true,
-        "steps": report,
+        (CONTEXT_KEYS.steps): report,
         "inputs_required": inputs_required,
         "executed": executed,
         "fixtured": fixtured,
@@ -1124,13 +1292,15 @@ impl Kind for ChainKind {
     /// PRD-mcphost-spec-unknown-field-rejection requirement 1/4: `steps` is
     /// the only top-level field [`parse_steps`] reads today -- per-step key
     /// checking (`tool`/`args`/`on_error`, requirement 7) is a deferred P1
-    /// follow-up, not this field list's concern.
+    /// follow-up, not this field list's concern. Kept a plain literal:
+    /// `scripts/spec-fields-doc-check.sh` parses it straight out of this
+    /// file (the chain SPEC's field, not a context key).
     fn known_spec_fields(&self) -> &'static [&'static str] {
         &["steps"]
     }
 
     fn required_spec_field(&self) -> Option<&'static str> {
-        Some("steps")
+        Some(CONTEXT_KEYS.steps)
     }
 
     /// PRD-mcphost-chain-run-lineage requirement 1: `input_schema` is
@@ -1295,7 +1465,7 @@ impl Kind for ChainKind {
                         // the finished call's trace directly (no further
                         // step to map through) can read any step's result,
                         // not only the last one.
-                        "result": result.clone(),
+                        (CONTEXT_KEYS.result): result.clone(),
                     }));
                     step_results.push(result.clone());
                     prev = Some(result.clone());
@@ -1340,14 +1510,14 @@ impl Kind for ChainKind {
         // module doc).
         let result = last_ok_result.unwrap_or(Value::Null);
         Ok(json!({
-            "result": result,
-            "steps": steps_trace,
+            (CONTEXT_KEYS.result): result,
+            (CONTEXT_KEYS.steps): steps_trace,
             "failed_steps": failed_steps,
         }))
     }
 
     fn payload_from_call_result<'a>(&self, call_result: &'a Value) -> Option<&'a Value> {
-        call_result.get("result")
+        call_result.get(CONTEXT_KEYS.result)
     }
 
     fn example(&self) -> KindExample {
@@ -1364,7 +1534,7 @@ impl Kind for ChainKind {
         // own, same as before this PRD.
         KindExample {
             spec: json!({
-                "steps": [
+                (CONTEXT_KEYS.steps): [
                     {"tool": crate::control::STARTER_TOOL_NAME, "args": {"text": "$.input.text"}},
                     {"tool": "host.table.append", "args": {"table": "runs", "rows": "$.prev.result.appended"}}
                 ]

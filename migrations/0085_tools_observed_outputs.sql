@@ -1,0 +1,12 @@
+-- compat: previous -- one additive nullable column on a pre-existing table
+-- (`tools.observed_outputs_json`); an old release never selects it and the
+-- existing statements name their columns, so no result set changes
+-- (PRD-mcphost-migration-safety requirement 4).
+-- mcphost 0083_tools_observed_outputs: PRD-mcphost-chain-publish-time-path-check
+-- requirement 1.
+--
+-- `observed_outputs_json`: `{"keys": {"<key>": "<json type>"}, "runs_sampled":
+-- n, "last_unix": t}` -- the union of the top-level (and one level down,
+-- `"<key>.<sub>"`) keys of every `done` single-part JSON-object run result.
+-- NULL until the tool's first such run.
+ALTER TABLE tools ADD COLUMN observed_outputs_json TEXT;
