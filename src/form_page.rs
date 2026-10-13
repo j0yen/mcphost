@@ -290,6 +290,22 @@ pub fn csrf_valid(state: &AppState, token_id: &str, presented: &str) -> bool {
 
 pub const CSRF_TTL_SECONDS: i64 = 3600;
 
+/// Tokens already spent, with the unix time each stops being valid anyway.
+/// A token is single-use: a replayed POST is refused like an expired one, so
+/// it can neither run the tool nor notify the inbox a second time. The token
+/// embeds a per-process salted hash, so one process-wide set cannot collide
+/// across servers.
+static SPENT_CSRF: std::sync::Mutex<Option<std::collections::HashMap<String, i64>>> = std::sync::Mutex::new(None);
+
+/// Marks `presented` spent; false when it already was.
+fn consume_csrf(presented: &str) -> bool {
+    let now = crate::state::now_unix();
+    let mut guard = SPENT_CSRF.lock().unwrap_or_else(|e| e.into_inner());
+    let spent = guard.get_or_insert_with(Default::default);
+    spent.retain(|_, expires| *expires > now);
+    spent.insert(presented.to_string(), now + CSRF_TTL_SECONDS).is_none()
+}
+
 /// `GET /f/{token}/{tool}` (R2): 404 bytes unless the token resolves to a
 /// url-shared tool published with `ui.form`.
 pub async fn form_get(
@@ -442,7 +458,7 @@ pub async fn form_post(
 
     let presented = posted.iter().find(|(k, _)| k == CSRF_FIELD).map(|(_, v)| v.as_str()).unwrap_or("");
     let submitted: Vec<(String, String)> = posted.iter().filter(|(k, _)| k != CSRF_FIELD).cloned().collect();
-    if !csrf_valid(&state, &share.token_id, presented) {
+    if !csrf_valid(&state, &share.token_id, presented) || !consume_csrf(presented) {
         return page(StatusCode::FORBIDDEN, &submitted, &[], &banner_error("This form expired; check your entries and submit again."));
     }
 

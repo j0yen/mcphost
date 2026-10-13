@@ -945,6 +945,12 @@ mod ftool_ac02_input_map_covers_validator_types;
 mod ftool_ac03_form_page_renders_inputs;
 #[path = "ftool_ac04_form_post_validates_and_runs.rs"]
 mod ftool_ac04_form_post_validates_and_runs;
+#[path = "ftoolb_ac01_submission_wakes_msg_wait_once.rs"]
+mod ftoolb_ac01_submission_wakes_msg_wait_once;
+#[path = "ftoolb_ac02_no_ui_form_means_404_and_no_form_url.rs"]
+mod ftoolb_ac02_no_ui_form_means_404_and_no_form_url;
+#[path = "ftoolb_ac03_form_post_rate_limited_like_x.rs"]
+mod ftoolb_ac03_form_post_rate_limited_like_x;
 #[path = "ftruth_ac01_never_unknown_at_insert.rs"]
 mod ftruth_ac01_never_unknown_at_insert;
 #[path = "ftruth_ac02_fleet_ip_vs_human.rs"]
