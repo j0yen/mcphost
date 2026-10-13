@@ -1,0 +1,27 @@
+{
+  "name": "add_numbers",
+  "spec": {
+    "source": "def main(args):\n    return {\"sum\": args[\"a\"] + args[\"b\"]}\n",
+    "args_schema": {
+      "type": "object",
+      "properties": {
+        "a": {
+          "type": "number"
+        },
+        "b": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "a",
+        "b"
+      ]
+    }
+  },
+  "invocations": [
+    {
+      "a": 2,
+      "b": 3.5
+    }
+  ]
+}

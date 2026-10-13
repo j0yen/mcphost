@@ -621,6 +621,16 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # (8 core + 2 sandbox = 10) with --check ok.
 MAX_PER_SUITE = {"core": 900, "sandbox": 220}
 
+# The P0 ceiling on core+sandbox test binaries (tests/suite_ac1_ten_binaries_
+# and_names_preserved.rs). ci-test-partition.sh's `check` greps this very line
+# (`^MAX_SUITES = N`) so the gate enforces the same cap -- change it here only. When the planned
+# core+sandbox count would exceed it, compute_plan() grows the per-suite file
+# budget of the sandbox partition (else core), one file at a time, until the
+# plan fits -- the automated form of the hand-retunes recorded above
+# (PRD-mcphost-first-tool-from-description, run 764, 2026-10-12: 8 core + 3
+# sandbox = 11 until the sandbox budget auto-grew past 220).
+MAX_SUITES = 10
+
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"
 GEN_MARK_END = "# END gen-test-suites.sh generated suites"
@@ -963,9 +973,27 @@ def compute_plan():
         else:
             by_partition[part].append(stem)
 
+    caps = dict(MAX_PER_SUITE)
+    # The sandbox shard floor counts env sandbox suites too (see the
+    # SANDBOX_SUITES check at the bottom), so the plain sandbox partition may
+    # shrink to SHARDS minus however many env sandbox suites exist.
+    env_names = build_suites("suite_env", ENV_MAX_PER_SUITE, env_by_partition, env_exclusive_by_partition, migrations, {})
+    min_buckets = {"core": 1, "sandbox": max(1, sandbox_shard_count() - len(env_names["sandbox"]))}
+    for _ in range(5000):
+        scratch = {}
+        names = build_suites("suite", caps, by_partition, exclusive_by_partition, migrations, scratch)
+        total = len(names["core"]) + len(names["sandbox"])
+        growable = [p for p in ("sandbox", "core") if len(names[p]) > min_buckets[p]]
+        if total <= MAX_SUITES or not growable:
+            break
+        # sandbox first: its bucket count is pinned near the shard count, so
+        # a 3rd sandbox bucket is the usual overflow; core only if sandbox
+        # is already at its floor.
+        caps[growable[0]] += 1
+
     suite_files = {}  # path -> content
     suite_names_by_partition = build_suites(
-        "suite", MAX_PER_SUITE, by_partition, exclusive_by_partition, migrations, suite_files
+        "suite", caps, by_partition, exclusive_by_partition, migrations, suite_files
     )
     env_suite_names_by_partition = build_suites(
         "suite_env", ENV_MAX_PER_SUITE, env_by_partition, env_exclusive_by_partition, migrations, suite_files

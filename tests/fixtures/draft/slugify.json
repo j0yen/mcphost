@@ -1,0 +1,22 @@
+{
+  "name": "slugify",
+  "spec": {
+    "source": "import re\n\ndef main(args):\n    slug = re.sub(r\"[^a-z0-9]+\", \"-\", args[\"title\"].lower()).strip(\"-\")\n    return {\"slug\": slug}\n",
+    "args_schema": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title"
+      ]
+    }
+  },
+  "invocations": [
+    {
+      "title": "Hello, World! 2026"
+    }
+  ]
+}

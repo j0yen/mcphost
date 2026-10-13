@@ -257,6 +257,19 @@ check() {
     rc=1
   fi
 
+  # Same P0 cap CI's suite_ac1_ten_binaries_and_names_preserved enforces: read
+  # from the ONE definition (MAX_SUITES in gen-test-suites.sh), never a copy.
+  local max_suites n_suites
+  max_suites="$(grep -oE '^MAX_SUITES *= *[0-9]+' "$gen" | grep -oE '[0-9]+$')"
+  n_suites="$(ls "$REPO_ROOT"/tests/suite_core_*.rs "$REPO_ROOT"/tests/suite_sandbox_*.rs 2>/dev/null | wc -l)"
+  if [ -z "$max_suites" ]; then
+    echo "ci-test-partition: cannot read MAX_SUITES from $gen" >&2
+    rc=1
+  elif [ "$n_suites" -gt "$max_suites" ]; then
+    echo "ci-test-partition: $n_suites tests/suite_core_*.rs + tests/suite_sandbox_*.rs files exceed MAX_SUITES=$max_suites (the P0 cap CI enforces); regenerate with scripts/gen-test-suites.sh" >&2
+    rc=1
+  fi
+
   if ! grep -qE '^\s*autotests\s*=\s*false' "$REPO_ROOT/Cargo.toml"; then
     echo "ci-test-partition: Cargo.toml is missing 'autotests = false' -- this" >&2
     echo "  script assumes gen-test-suites.sh's explicit [[test]] suites, not" >&2

@@ -6205,6 +6205,7 @@ impl McpHostHandler {
             "host.tool.test" => self.tool_test(tenant, args).await,
             "host.bridge.test" => self.bridge_test(tenant, args).await,
             "host.spec.test" => self.spec_test(tenant, args).await,
+            "host.tool_from_description" => self.tool_from_description(tenant, args).await,
             "host.tool.run" => self.tool_run(tenant, args).await,
             "host.tool.call" => self.host_tool_call(tenant, args, calls_auth_method, end_user).await,
             // PRD-mcphost-call-cost-estimate requirement 3: `host.estimate` IS
@@ -8279,6 +8280,120 @@ impl McpHostHandler {
             }),
             &["tenant_key"],
         ))
+    }
+
+    /// `host.tool_from_description` (PRD-mcphost-first-tool-from-description
+    /// R3/R4): asks the configured [`crate::drafter::Drafter`] for a python
+    /// spec built from the kind's generated contract, `spec_test`s it, retries
+    /// once with the failure data, then publishes and (when `share` is true)
+    /// mints a public URL. Calls the same `spec_test`, `tool_publish` and
+    /// `tool_share` functions a hand-written spec goes through.
+    async fn tool_from_description(&self, tenant: &Tenant, args: Value) -> Result<Value, AppError> {
+        use crate::drafter::{MAX_DRAFT_INVOCATIONS, build_prompt, spec_test_verdict};
+        const MAX_ATTEMPTS: u64 = 2;
+
+        let description = args
+            .get("description")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|d| !d.is_empty())
+            .ok_or_else(|| AppError::InvalidArgs("missing required argument 'description'".into()))?
+            .to_string();
+        let kind_name = args.get("kind").and_then(Value::as_str).unwrap_or("python");
+        if kind_name != "python" {
+            return Err(AppError::InvalidArgs(format!(
+                "host.tool_from_description drafts python tools only; got kind '{kind_name}'"
+            )));
+        }
+        let share = args.get("share").and_then(Value::as_bool).unwrap_or(true);
+        let Some(drafter) = self.state.drafter.clone() else {
+            return Err(AppError::Structured {
+                code: "draft_unavailable",
+                message: "this host has no draft model configured".to_string(),
+                data: json!({"next_call": {"tool": "host.quickstart", "args": {}}}),
+            });
+        };
+        let kind: Arc<dyn Kind> = self.state.kinds.get("python").ok_or_else(|| AppError::UnknownKind {
+            requested: "python".to_string(),
+            registered: self.state.kinds.names(),
+            aliases: crate::kinds::aliases::alias_names(),
+        })?;
+        let example = kind.example();
+
+        let mut retry: Option<(Value, Value)> = None;
+        let mut last: Option<(AppError, Value, String)> = None;
+        for attempt in 1..=MAX_ATTEMPTS {
+            let prompt = build_prompt(&description, &example, retry.as_ref().map(|(s, e)| (s, e)));
+            let draft = drafter.draft(&prompt).await?;
+            let invocations: Vec<Value> = draft.invocations.iter().take(MAX_DRAFT_INVOCATIONS).cloned().collect();
+            let spec = draft.spec.clone();
+            let name = args
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .or_else(|| draft.name.clone())
+                .unwrap_or_else(|| "drafted_tool".to_string());
+            let outcome = self
+                .spec_test(tenant, json!({"kind": "python", "spec": spec, "invocations": invocations}))
+                .await;
+            let failure = match outcome {
+                Ok(result) => match spec_test_verdict(&result) {
+                    Ok(()) => {
+                        control::tool_publish(&self.state, tenant, &json!({"name": name, "kind": "python", "spec": spec}))
+                            .await?;
+                        let mut public_url = Value::Null;
+                        if share {
+                            let shared = crate::sharing::tool_share(
+                                &self.state,
+                                tenant,
+                                &json!({"name": name, "visibility": "url"}),
+                            )
+                            .await?;
+                            public_url = shared.get("url").cloned().unwrap_or(Value::Null);
+                        }
+                        let ran = result["invocations"].as_array().map_or(0, Vec::len);
+                        return Ok(json!({
+                            "name": name,
+                            "qualified_name": format!("{}.{}", tenant.namespace, name),
+                            "public_url": public_url,
+                            "source": spec["source"],
+                            "test": {"ok": true, "invocations": result["invocations"], "ran": ran},
+                            "attempts": attempt,
+                        }));
+                    }
+                    Err(invocation) => {
+                        let message = invocation["message"].as_str().unwrap_or("invocation failed").to_string();
+                        let data = json!({"invocation": invocation, "invocations": result["invocations"]});
+                        (
+                            AppError::Structured { code: "draft_test_failed", message, data: data.clone() },
+                            data,
+                        )
+                    }
+                },
+                Err(e) => {
+                    let data = serde_json::to_value(e.clone().into_error_data()).unwrap_or(Value::Null);
+                    (e, data)
+                }
+            };
+            retry = Some((spec.clone(), failure.1));
+            last = Some((failure.0, spec, name));
+        }
+
+        // R4: the last spec_test error, unchanged, plus the best draft and the
+        // call that publishes it by hand.
+        let (err, draft_spec, name) = last.expect("the loop runs at least once");
+        let code = err.code();
+        let ed = err.into_error_data();
+        let mut data = match ed.data {
+            Some(Value::Object(m)) => m,
+            _ => serde_json::Map::new(),
+        };
+        data.insert("draft_spec".to_string(), draft_spec.clone());
+        data.insert(
+            "next_call".to_string(),
+            json!({"tool": "host.tool_publish", "args": {"name": name, "kind": "python", "spec": draft_spec}}),
+        );
+        Err(AppError::Structured { code, message: ed.message.to_string(), data: Value::Object(data) })
     }
 
     /// `host.tool_run` (PRD-mcphost-code-tools-warm-pool requirement 3,

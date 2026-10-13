@@ -1,0 +1,22 @@
+{
+  "name": "reverse_text",
+  "spec": {
+    "source": "def main(args):\n    return {\"reversed\": args[\"text\"][::-1]}\n",
+    "args_schema": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ]
+    }
+  },
+  "invocations": [
+    {
+      "text": "hello"
+    }
+  ]
+}

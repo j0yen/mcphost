@@ -1198,6 +1198,12 @@ async fn main() -> anyhow::Result<()> {
                     email_config.api_key.clone(),
                     email_config.provider,
                 ));
+            let draft_config = mcphost::drafter::DrafterConfig::from_env();
+            let drafter: Option<Arc<dyn mcphost::drafter::Drafter>> = if draft_config.is_configured() {
+                Some(Arc::new(mcphost::drafter::HttpDrafter::new(draft_config)?))
+            } else {
+                None
+            };
             let claim_token_ttl_secs = mcphost::state::claim_token_ttl_secs_from_env();
             let claim_rate_limit_per_hour = mcphost::state::claim_rate_limit_per_hour_from_env();
             // loop/mcphost-fleet-ips: our own fleet boxes (orch, hub) now
@@ -1310,6 +1316,7 @@ async fn main() -> anyhow::Result<()> {
                 claim_rate_limit_per_hour,
                 email_config,
                 email_client,
+                drafter,
                 bans: mcphost::bans::BanCache::new(),
                 ban_denials_threshold: mcphost::bans::ban_denials_threshold_from_env(),
                 ban_claim_rate_threshold: mcphost::bans::ban_claim_rate_threshold_from_env(),

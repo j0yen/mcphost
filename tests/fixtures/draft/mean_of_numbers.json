@@ -1,0 +1,30 @@
+{
+  "name": "mean_of_numbers",
+  "spec": {
+    "source": "def main(args):\n    nums = args[\"numbers\"]\n    return {\"mean\": sum(nums) / len(nums) if nums else None}\n",
+    "args_schema": {
+      "type": "object",
+      "properties": {
+        "numbers": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        }
+      },
+      "required": [
+        "numbers"
+      ]
+    }
+  },
+  "invocations": [
+    {
+      "numbers": [
+        1,
+        2,
+        3,
+        4
+      ]
+    }
+  ]
+}

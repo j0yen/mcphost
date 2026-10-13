@@ -1,0 +1,22 @@
+{
+  "name": "celsius_to_fahrenheit",
+  "spec": {
+    "source": "def main(args):\n    return {\"fahrenheit\": args[\"celsius\"] * 9 / 5 + 32}\n",
+    "args_schema": {
+      "type": "object",
+      "properties": {
+        "celsius": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "celsius"
+      ]
+    }
+  },
+  "invocations": [
+    {
+      "celsius": 21.5
+    }
+  ]
+}

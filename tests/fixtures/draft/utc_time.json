@@ -1,0 +1,13 @@
+{
+  "name": "utc_time",
+  "spec": {
+    "source": "import datetime\n\ndef main(args):\n    return {\"now\": datetime.datetime.now(datetime.timezone.utc).isoformat()}\n",
+    "args_schema": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  "invocations": [
+    {}
+  ]
+}

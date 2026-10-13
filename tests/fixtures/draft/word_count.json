@@ -1,0 +1,22 @@
+{
+  "name": "word_count",
+  "spec": {
+    "source": "def main(args):\n    return {\"words\": len(args[\"text\"].split())}\n",
+    "args_schema": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ]
+    }
+  },
+  "invocations": [
+    {
+      "text": "one two three"
+    }
+  ]
+}

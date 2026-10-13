@@ -1,0 +1,22 @@
+{
+  "name": "is_palindrome",
+  "spec": {
+    "source": "def main(args):\n    s = \"\".join(c for c in args[\"word\"].lower() if c.isalnum())\n    return {\"palindrome\": s == s[::-1]}\n",
+    "args_schema": {
+      "type": "object",
+      "properties": {
+        "word": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "word"
+      ]
+    }
+  },
+  "invocations": [
+    {
+      "word": "Racecar"
+    }
+  ]
+}
