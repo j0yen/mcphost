@@ -1833,17 +1833,3 @@ mod owncopy_ac03_pages_match_draft_text;
 mod owncopy_ac04_error_pages_match_draft_no_env_var;
 #[path = "owncopy_ac05_no_claim_verify_tenant_in_visible_text.rs"]
 mod owncopy_ac05_no_claim_verify_tenant_in_visible_text;
-#[path = "ownmt_ac01_claim_url_on_every_onboarding_path.rs"]
-mod ownmt_ac01_claim_url_on_every_onboarding_path;
-#[path = "ownmt_ac02_claim_nudge_on_first_publish.rs"]
-mod ownmt_ac02_claim_nudge_on_first_publish;
-#[path = "ownmt_ac03_email_provider_shape_and_failure_journal.rs"]
-mod ownmt_ac03_email_provider_shape_and_failure_journal;
-#[path = "ownmt_ac04_healthz_claims_block.rs"]
-mod ownmt_ac04_healthz_claims_block;
-#[path = "ownmt_ac05_claim_email_configured_signal.rs"]
-mod ownmt_ac05_claim_email_configured_signal;
-#[path = "ownmt_ac06_claim_round_trip_for_journey_claim_step.rs"]
-mod ownmt_ac06_claim_round_trip_for_journey_claim_step;
-#[path = "ownmt_ac07_claim_page_shows_remember_note.rs"]
-mod ownmt_ac07_claim_page_shows_remember_note;

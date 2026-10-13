@@ -24,6 +24,20 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "ownmt_ac01_claim_url_on_every_onboarding_path.rs"]
+mod ownmt_ac01_claim_url_on_every_onboarding_path;
+#[path = "ownmt_ac02_claim_nudge_on_first_publish.rs"]
+mod ownmt_ac02_claim_nudge_on_first_publish;
+#[path = "ownmt_ac03_email_provider_shape_and_failure_journal.rs"]
+mod ownmt_ac03_email_provider_shape_and_failure_journal;
+#[path = "ownmt_ac04_healthz_claims_block.rs"]
+mod ownmt_ac04_healthz_claims_block;
+#[path = "ownmt_ac05_claim_email_configured_signal.rs"]
+mod ownmt_ac05_claim_email_configured_signal;
+#[path = "ownmt_ac06_claim_round_trip_for_journey_claim_step.rs"]
+mod ownmt_ac06_claim_round_trip_for_journey_claim_step;
+#[path = "ownmt_ac07_claim_page_shows_remember_note.rs"]
+mod ownmt_ac07_claim_page_shows_remember_note;
 #[path = "pgtr_ac01_inconsistency_census.rs"]
 mod pgtr_ac01_inconsistency_census;
 #[path = "pgtr_ac02_docs_list_walk_ends_exactly_once.rs"]
