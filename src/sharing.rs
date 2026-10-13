@@ -105,8 +105,8 @@ pub async fn tool_share(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
     // (AC8): a tool that was previously `url`-shared and is now being
     // shared into `public`/`group` instead has its old token revoked --
     // switching visibility is not a no-op for an already-live public URL.
-    let url = if visibility == "url" {
-        Some(crate::public_tool::mint_or_reuse_url_share(state, tenant, &name).await?)
+    let token = if visibility == "url" {
+        Some(crate::public_tool::mint_or_reuse_url_share_token(state, tenant, &name).await?)
     } else {
         if row.visibility == "url" {
             crate::public_tool::revoke_url_share(state, tenant.id, &name).await?;
@@ -133,10 +133,15 @@ pub async fn tool_share(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
         "description": description,
         "expose_spec": expose_spec,
     });
-    if let Some(url) = url
+    if let Some(token) = token
         && let Some(obj) = result.as_object_mut()
     {
-        obj.insert("url".to_string(), json!(url));
+        obj.insert("url".to_string(), json!(crate::public_tool::public_tool_url(state, &token, &name)));
+        // PRD-mcphost-form-tool R2: the argument form, only for a tool
+        // published with `ui.form`.
+        if crate::form_page::has_form(&row.spec) {
+            obj.insert("form_url".to_string(), json!(crate::form_page::form_url(state, &token, &name)));
+        }
         // PRD-mcphost-demo-url-per-tool R4: the read-only demo page, next to
         // the callable `url`.
         obj.insert(

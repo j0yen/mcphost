@@ -931,6 +931,14 @@ mod fldp_ac06_empty_fields_and_unpaged_verbs_are_args_invalid;
 mod fldp_ac07_include_result_is_sugar_for_fields_result;
 #[path = "fleetips_reclassify_backfill.rs"]
 mod fleetips_reclassify_backfill;
+#[path = "ftool_ac01_demo_try_it_does_not_notify_owner.rs"]
+mod ftool_ac01_demo_try_it_does_not_notify_owner;
+#[path = "ftool_ac02_input_map_covers_validator_types.rs"]
+mod ftool_ac02_input_map_covers_validator_types;
+#[path = "ftool_ac03_form_page_renders_inputs.rs"]
+mod ftool_ac03_form_page_renders_inputs;
+#[path = "ftool_ac04_form_post_validates_and_runs.rs"]
+mod ftool_ac04_form_post_validates_and_runs;
 #[path = "ftruth_ac01_never_unknown_at_insert.rs"]
 mod ftruth_ac01_never_unknown_at_insert;
 #[path = "ftruth_ac02_fleet_ip_vs_human.rs"]
