@@ -993,6 +993,10 @@ mod gsig_ac02_status_json_carries_signals;
 mod gsig_ac03_breach_and_clear_broadcast_once;
 #[path = "gsig_ac04_bad_override_is_rejected_at_boot.rs"]
 mod gsig_ac04_bad_override_is_rejected_at_boot;
+#[path = "gsigb_ac01_heal_toml_docs_drift.rs"]
+mod gsigb_ac01_heal_toml_docs_drift;
+#[path = "gsigb_ac02_one_tick_reads_unknown.rs"]
+mod gsigb_ac02_one_tick_reads_unknown;
 #[path = "handle_ac01_materialize_50k_rows_summary.rs"]
 mod handle_ac01_materialize_50k_rows_summary;
 #[path = "handle_ac02_query_handle_group_by_matches_source.rs"]

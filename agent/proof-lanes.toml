@@ -334,7 +334,7 @@ required_commands = [
 [[lane]]
 id = "heal-config"
 description = "heal.toml (PRD-mcphost-golden-signals-self-probe R3): the golden-signal thresholds compiled into src/signals.rs via include_str!, so a change to it is proven the way a src/ edit is."
-globs = ["heal.toml"]
+globs = ["heal.toml", "docs/self-healing.md", "scripts/heal-doc-check.sh"]
 required_commands = [
   "cargo check --workspace",
   "cargo clippy --workspace -- -D warnings",
