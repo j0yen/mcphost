@@ -6720,7 +6720,8 @@ impl Db {
         self.with_conn(move |conn| {
             let mut stmt = conn.prepare(
                 "SELECT tenant_id, started_unix, \
-                        (caller_tenant_id IS NOT NULL AND caller_tenant_id != tenant_id) \
+                        ((caller_tenant_id IS NOT NULL AND caller_tenant_id != tenant_id) \
+                  OR end_user_subject IS NOT NULL) \
                  FROM calls WHERE ok = 1 AND started_unix >= ?1 ORDER BY tenant_id, started_unix",
             )?;
             let rows = stmt

@@ -95,6 +95,10 @@ enum Command {
         /// `probe`); defaults to 7.
         #[arg(long)]
         days: Option<i64>,
+        /// Print one install surface's five stages as a table (an id from
+        /// `install_links::SURFACES`, or `other`); an unknown id exits 2.
+        #[arg(long)]
+        surface: Option<String>,
         /// Print the report as JSON instead of the default text table.
         #[arg(long)]
         json: bool,
@@ -597,7 +601,7 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         },
-        Command::Funnel { since, days, json } => {
+        Command::Funnel { since, days, surface, json } => {
             // Deliberately no `init_tracing()`: same rationale as
             // `SandboxCheck` above -- this subcommand's whole contract is
             // stdout output a shell (or the measure job) parses, and a
@@ -613,6 +617,14 @@ async fn main() -> anyhow::Result<()> {
                 },
                 None => None,
             };
+            if let Some(want) = surface.as_deref() {
+                let valid: Vec<&str> =
+                    mcphost::install_links::SURFACES.iter().copied().chain(["other"]).collect();
+                if !valid.contains(&want) {
+                    eprintln!("funnel: unknown --surface '{want}'; valid ids: {}", valid.join(", "));
+                    std::process::exit(2);
+                }
+            }
             let dir = data_dir();
             let db = Db::open(&dir)?;
             db.migrate().await?;
@@ -622,7 +634,26 @@ async fn main() -> anyhow::Result<()> {
             let days = days.unwrap_or(7).clamp(1, 365);
             let (by_surface, probe) =
                 mcphost::funnel::surface_report(&db, mcphost::state::now_unix(), days).await?;
-            if json {
+            if let (Some(want), false) = (surface.as_deref(), json) {
+                let row = &by_surface[want];
+                let cell = |k: &str| match &row[k] {
+                    serde_json::Value::Null => "n/a".to_string(),
+                    v => v.to_string(),
+                };
+                println!(
+                    "{:<14} {:>9} {:>8} {:>10} {:>20} {:>11}",
+                    "surface", "signed_up", "claimed", "published", "first_external_call", "day7_active"
+                );
+                println!(
+                    "{:<14} {:>9} {:>8} {:>10} {:>20} {:>11}",
+                    want,
+                    cell("signed_up"),
+                    cell("claimed"),
+                    cell("published"),
+                    cell("first_external_call"),
+                    cell("day7_active"),
+                );
+            } else if json {
                 let mut body = report.to_json();
                 if let Some(obj) = body.as_object_mut() {
                     obj.insert("by_surface".to_string(), by_surface);

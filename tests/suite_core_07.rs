@@ -937,6 +937,12 @@ mod fsurf_ac02_surfaces_drift;
 mod fsurf_ac03_by_surface_and_probe;
 #[path = "fsurf_ac04_day7_active_null_until_mature.rs"]
 mod fsurf_ac04_day7_active_null_until_mature;
+#[path = "fsurfb_ac01_own_key_call_not_external.rs"]
+mod fsurfb_ac01_own_key_call_not_external;
+#[path = "fsurfb_ac02_admin_funnel_matches_cli.rs"]
+mod fsurfb_ac02_admin_funnel_matches_cli;
+#[path = "fsurfb_ac03_surface_flag_table_and_exit_2.rs"]
+mod fsurfb_ac03_surface_flag_table_and_exit_2;
 #[path = "ftool_ac01_demo_try_it_does_not_notify_owner.rs"]
 mod ftool_ac01_demo_try_it_does_not_notify_owner;
 #[path = "ftool_ac02_input_map_covers_validator_types.rs"]
