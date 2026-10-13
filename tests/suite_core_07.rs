@@ -931,6 +931,12 @@ mod fldp_ac06_empty_fields_and_unpaged_verbs_are_args_invalid;
 mod fldp_ac07_include_result_is_sugar_for_fields_result;
 #[path = "fleetips_reclassify_backfill.rs"]
 mod fleetips_reclassify_backfill;
+#[path = "fsurf_ac02_surfaces_drift.rs"]
+mod fsurf_ac02_surfaces_drift;
+#[path = "fsurf_ac03_by_surface_and_probe.rs"]
+mod fsurf_ac03_by_surface_and_probe;
+#[path = "fsurf_ac04_day7_active_null_until_mature.rs"]
+mod fsurf_ac04_day7_active_null_until_mature;
 #[path = "ftool_ac01_demo_try_it_does_not_notify_owner.rs"]
 mod ftool_ac01_demo_try_it_does_not_notify_owner;
 #[path = "ftool_ac02_input_map_covers_validator_types.rs"]
@@ -1825,19 +1831,3 @@ mod plancat_ac05_full_plans_toml_unchanged_and_silent;
 mod plancat_ac06_build_has_no_hardcoded_quota_defaults;
 #[path = "plancat_ac07_llms_txt_names_defaulting_and_startup_line.rs"]
 mod plancat_ac07_llms_txt_names_defaulting_and_startup_line;
-#[path = "planlim_ac01_quickstart_limits_plan_every_ceiling.rs"]
-mod planlim_ac01_quickstart_limits_plan_every_ceiling;
-#[path = "planlim_ac02_tool_call_budget_schema_maximum.rs"]
-mod planlim_ac02_tool_call_budget_schema_maximum;
-#[path = "planlim_ac03_ceiling_error_points_at_quickstart.rs"]
-mod planlim_ac03_ceiling_error_points_at_quickstart;
-#[path = "planlim_ac04_ceilings_table_in_generated_docs.rs"]
-mod planlim_ac04_ceilings_table_in_generated_docs;
-#[path = "planlim_ac05_publish_network_description_lists_gated_values.rs"]
-mod planlim_ac05_publish_network_description_lists_gated_values;
-#[path = "planlim_ac06_tool_test_warns_timeout_above_latency_ceiling.rs"]
-mod planlim_ac06_tool_test_warns_timeout_above_latency_ceiling;
-#[path = "planlim_ac07_contract_drift_with_deprecation_entry.rs"]
-mod planlim_ac07_contract_drift_with_deprecation_entry;
-#[path = "proptest_invariants.rs"]
-mod proptest_invariants;

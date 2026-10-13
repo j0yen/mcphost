@@ -595,6 +595,20 @@ fn contact_request_row_from_row(r: &Row) -> rusqlite::Result<ContactRequestRow> 
     })
 }
 
+/// One tenant's inputs to the per-surface funnel
+/// ([`Db::surface_funnel_tenants`]).
+#[derive(Debug, Clone)]
+pub struct SurfaceFunnelTenant {
+    pub id: i64,
+    pub namespace: String,
+    pub client_name: Option<String>,
+    pub funnel_origin: String,
+    pub created_unix: i64,
+    pub claimed_unix: Option<i64>,
+    pub first_publish_unix: Option<i64>,
+    pub has_tool: bool,
+}
+
 /// PRD-mcphost-activation-funnel requirement 3: one tenant's window-scoped
 /// activation data, as [`Db::funnel_rows`] reads it -- `admin::funnel` and
 /// `admin::funnel_7d_external` both aggregate a `Vec` of these in Rust
@@ -6645,6 +6659,55 @@ impl Db {
                 conn.prepare("SELECT tenant_id, started_unix, ok FROM calls ORDER BY tenant_id, started_unix")?;
             let rows = stmt
                 .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get::<_, i64>(2)? != 0)))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-funnel-by-surface-nightly-probe R2/R3: one row per
+    /// tenant created at or after `since_unix`, with everything the
+    /// per-surface report groups on.
+    pub async fn surface_funnel_tenants(&self, since_unix: i64) -> Result<Vec<SurfaceFunnelTenant>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, namespace, client_name, funnel_origin, created_unix, claimed_unix, \
+                        first_publish_unix, EXISTS(SELECT 1 FROM tools WHERE tools.tenant_id = tenants.id) \
+                 FROM tenants WHERE created_unix IS NOT NULL AND created_unix >= ?1",
+            )?;
+            let rows = stmt
+                .query_map(params![since_unix], |r| {
+                    Ok(SurfaceFunnelTenant {
+                        id: r.get(0)?,
+                        namespace: r.get(1)?,
+                        client_name: r.get(2)?,
+                        funnel_origin: r.get(3)?,
+                        created_unix: r.get(4)?,
+                        claimed_unix: r.get(5)?,
+                        first_publish_unix: r.get(6)?,
+                        has_tool: r.get::<_, i64>(7)? != 0,
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// The successful calls (`tenant_id`, `started_unix`, `external`) at or
+    /// after `since_unix`, `external` meaning the caller is another tenant
+    /// (`caller_tenant_id` set and not the tenant itself) -- the one range
+    /// read of `calls` the per-surface report needs (indexed on
+    /// `tenant_id, started_unix`).
+    pub async fn surface_funnel_calls(&self, since_unix: i64) -> Result<Vec<(i64, i64, bool)>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT tenant_id, started_unix, \
+                        (caller_tenant_id IS NOT NULL AND caller_tenant_id != tenant_id) \
+                 FROM calls WHERE ok = 1 AND started_unix >= ?1 ORDER BY tenant_id, started_unix",
+            )?;
+            let rows = stmt
+                .query_map(params![since_unix], |r| Ok((r.get(0)?, r.get(1)?, r.get::<_, i64>(2)? != 0)))?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             Ok(rows)
         })

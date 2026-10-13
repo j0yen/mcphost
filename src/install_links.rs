@@ -97,6 +97,38 @@ pub const SURFACE_IDS: [&str; 13] = [
     "cline",
 ];
 
+/// The surface set the funnel reports by (PRD-mcphost-funnel-by-surface-
+/// nightly-probe R1): the same slice the README install section and the
+/// `host.quickstart` client list are rendered from.
+pub const SURFACES: &[&str] = &SURFACE_IDS;
+
+/// Extra lower-cased `clientInfo.name` prefixes the funnel maps to a
+/// surface id beyond [`CLIENT_INFO_NAMES`] (the install doc's own table):
+/// clients that announce themselves by a name the install doc does not need
+/// to list. Every id here must be in [`SURFACES`].
+pub const SURFACE_EXTRA_PREFIXES: &[(&str, &str)] = &[("chatgpt", "chatgpt"), ("openai-mcp", "chatgpt")];
+
+/// Folds a client name to its alphanumerics, lower-cased, so
+/// `Claude Code 2.0`, `claude-code` and `claude_code` compare equal.
+fn fold_client_name(name: &str) -> String {
+    name.chars().filter(|c| c.is_ascii_alphanumeric()).map(|c| c.to_ascii_lowercase()).collect()
+}
+
+/// R1: maps a stored `tenants.client_name` to one id from [`SURFACES`];
+/// unknown or `NULL` is `other`. Prefix match, case- and
+/// punctuation-insensitive, over [`CLIENT_INFO_NAMES`] then
+/// [`SURFACE_EXTRA_PREFIXES`].
+pub fn surface_id(client_name: Option<&str>) -> &'static str {
+    let Some(name) = client_name else { return "other" };
+    let folded = fold_client_name(name);
+    CLIENT_INFO_NAMES
+        .iter()
+        .chain(SURFACE_EXTRA_PREFIXES.iter())
+        .find(|(prefix, _)| folded.starts_with(&fold_client_name(prefix)))
+        .map(|(_, id)| *id)
+        .unwrap_or("other")
+}
+
 /// The full install table built from one base URL, plus the `mcp_url` it
 /// was built from and the original four forms under their original field
 /// names: a thin compatibility view (the PRD's technical considerations),
