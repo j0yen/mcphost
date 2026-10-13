@@ -326,6 +326,10 @@ pub struct AppState {
     /// (technical considerations: "Tests never reach the network"), same
     /// shape as [`AppState::billing_client`].
     pub email_client: std::sync::Arc<dyn crate::email::EmailClient>,
+    /// PRD-mcphost-first-tool-from-description R1: the outbound LLM client
+    /// behind `host.tool_from_description`; `None` = not configured
+    /// (`MCPHOST_DRAFT_API_URL` unset), the tool answers `draft_unavailable`.
+    pub drafter: Option<std::sync::Arc<dyn crate::drafter::Drafter>>,
     /// PRD-mcphost-abuse-guard-ban-list requirement 6: the in-memory mirror
     /// of every active `bans` row -- see [`crate::bans::BanCache`].
     pub bans: crate::bans::BanCache,

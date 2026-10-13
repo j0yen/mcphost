@@ -432,6 +432,14 @@ mod tables_ac08_docs_and_kv_vs_table_sentence;
 mod testtruth_ac04_python_compose_unverifiable_in_dry_run;
 #[path = "testtruth_ac05_verdict_on_every_kind_dry_run.rs"]
 mod testtruth_ac05_verdict_on_every_kind_dry_run;
+#[path = "tfd_ac01_fixture_sentences_pass_first_draft.rs"]
+mod tfd_ac01_fixture_sentences_pass_first_draft;
+#[path = "tfd_ac02_prompt_is_generated_contract_only.rs"]
+mod tfd_ac02_prompt_is_generated_contract_only;
+#[path = "tfd_ac03_retry_then_publish_and_share.rs"]
+mod tfd_ac03_retry_then_publish_and_share;
+#[path = "tfd_ac04_final_failure_carries_draft_and_next_call.rs"]
+mod tfd_ac04_final_failure_carries_draft_and_next_call;
 #[path = "tgraph_ac09_python_sandbox_join_paths.rs"]
 mod tgraph_ac09_python_sandbox_join_paths;
 #[path = "tooltest_ac13_publish_error_parity.rs"]

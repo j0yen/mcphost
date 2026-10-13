@@ -414,6 +414,7 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
         claim_rate_limit_per_hour: mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
         email_config: mcphost::email::EmailConfig::default(),
         email_client: Arc::new(mcphost::email::FakeEmailClient::new()),
+        drafter: None,
         bans: mcphost::bans::BanCache::new(),
         ban_denials_threshold: mcphost::bans::BAN_DENIALS_THRESHOLD_DEFAULT,
         ban_claim_rate_threshold: mcphost::bans::BAN_CLAIM_RATE_THRESHOLD_DEFAULT,
@@ -465,6 +466,26 @@ impl TestServer {
     pub async fn start_with_plans(mutate: impl FnOnce(&mut mcphost::plans::PlanCatalog)) -> Self {
         let (mut state, data_dir) = bare_app_state().await;
         mutate(&mut state.plans);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind ephemeral port");
+        let addr = listener.local_addr().expect("local addr");
+        state.public_url = format!("http://{addr}");
+        let state = Arc::new(state);
+        let serve_state = state.clone();
+        tokio::spawn(async move {
+            let _ = mcphost::http::serve_on_listener(listener, serve_state).await;
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        Self { base_url: format!("http://{addr}"), data_dir, state }
+    }
+
+    /// PRD-mcphost-first-tool-from-description: a server whose AppState
+    /// carries `drafter` (a `FakeDrafter` in every test) over `kinds`.
+    pub async fn start_with_drafter(kinds: KindRegistry, drafter: Arc<dyn mcphost::drafter::Drafter>) -> Self {
+        let (mut state, data_dir) = bare_app_state().await;
+        state.kinds = kinds;
+        state.drafter = Some(drafter);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind ephemeral port");
@@ -1098,6 +1119,7 @@ impl TestServer {
             claim_rate_limit_per_hour,
             email_config,
             email_client,
+            drafter: None,
             bans: mcphost::bans::BanCache::new(),
             ban_denials_threshold: mcphost::bans::BAN_DENIALS_THRESHOLD_DEFAULT,
             ban_claim_rate_threshold: mcphost::bans::BAN_CLAIM_RATE_THRESHOLD_DEFAULT,
@@ -1858,6 +1880,7 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
         claim_rate_limit_per_hour: mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
         email_config: mcphost::email::EmailConfig::default(),
         email_client: std::sync::Arc::new(mcphost::email::FakeEmailClient::new()),
+        drafter: None,
         bans: mcphost::bans::BanCache::new(),
         ban_denials_threshold: mcphost::bans::BAN_DENIALS_THRESHOLD_DEFAULT,
         ban_claim_rate_threshold: mcphost::bans::BAN_CLAIM_RATE_THRESHOLD_DEFAULT,

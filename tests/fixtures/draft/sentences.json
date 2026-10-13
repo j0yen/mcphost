@@ -1,0 +1,42 @@
+[
+  {
+    "id": "utc_time",
+    "description": "return the current UTC time as ISO 8601"
+  },
+  {
+    "id": "add_numbers",
+    "description": "add two numbers and return the sum"
+  },
+  {
+    "id": "reverse_text",
+    "description": "reverse a string"
+  },
+  {
+    "id": "word_count",
+    "description": "count the words in a piece of text"
+  },
+  {
+    "id": "celsius_to_fahrenheit",
+    "description": "convert a temperature from celsius to fahrenheit"
+  },
+  {
+    "id": "is_palindrome",
+    "description": "check whether a word is a palindrome"
+  },
+  {
+    "id": "slugify",
+    "description": "turn a title into a url slug"
+  },
+  {
+    "id": "fizzbuzz",
+    "description": "return fizzbuzz for the numbers 1 through n"
+  },
+  {
+    "id": "sha256_hex",
+    "description": "hash a string with sha256 and return the hex digest"
+  },
+  {
+    "id": "mean_of_numbers",
+    "description": "compute the mean of a list of numbers"
+  }
+]

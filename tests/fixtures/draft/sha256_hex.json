@@ -1,0 +1,22 @@
+{
+  "name": "sha256_hex",
+  "spec": {
+    "source": "import hashlib\n\ndef main(args):\n    return {\"sha256\": hashlib.sha256(args[\"text\"].encode(\"utf-8\")).hexdigest()}\n",
+    "args_schema": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ]
+    }
+  },
+  "invocations": [
+    {
+      "text": "abc"
+    }
+  ]
+}
