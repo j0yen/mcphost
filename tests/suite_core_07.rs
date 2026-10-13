@@ -503,6 +503,14 @@ mod checkcompat_race_ac06_explicit_bind_still_enforces_token;
 mod checkcompat_race_ac07_suite_green_and_clippy_clean;
 #[path = "checkcompat_race_ac08_deferral_is_justified.rs"]
 mod checkcompat_race_ac08_deferral_is_justified;
+#[path = "chg_ac01_changelog_headings_parse.rs"]
+mod chg_ac01_changelog_headings_parse;
+#[path = "chg_ac02_contract_since_drift.rs"]
+mod chg_ac02_contract_since_drift;
+#[path = "chg_ac03_changelog_renamed_lists_every_alias.rs"]
+mod chg_ac03_changelog_renamed_lists_every_alias;
+#[path = "chg_ac04_changelog_defaults_to_last_seen_version.rs"]
+mod chg_ac04_changelog_defaults_to_last_seen_version;
 #[path = "ci_sandbox_ac01_workflow_executes_sandbox_suites.rs"]
 mod ci_sandbox_ac01_workflow_executes_sandbox_suites;
 #[path = "ci_sandbox_ac03_incapable_in_ci_skips_and_fails_job.rs"]

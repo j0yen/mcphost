@@ -272,7 +272,7 @@
         "type": "object"
       },
       "name": "billing_checkout",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "billing.plans",
@@ -289,7 +289,7 @@
         "type": "object"
       },
       "name": "billing_plans",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "billing.status",
@@ -306,7 +306,7 @@
         "type": "object"
       },
       "name": "billing_status",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "description": "Accept a pending contact request addressed to you: both you and the requester become accepted contacts, visible from either side via host.agent.contacts().",
@@ -1121,7 +1121,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.107.36"
     },
     {
       "description": "Read one ask's audit row: {ask_id, question, options, status, choice, created_unix, answered_unix, expires_unix, waited_total_ms, events}. events is the ordered trail: created, then exactly one answered or expired. Rows persist 30 days after expiry.",
@@ -1211,7 +1211,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.107.36"
     },
     {
       "description": "List this tenant's asks, newest first, as {asks: [audit rows]} -- who answered what and how long the agent waited. Rows persist 30 days after expiry.",
@@ -1297,7 +1297,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.107.36",
       "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
     },
     {
@@ -1351,7 +1351,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.107.36"
     },
     {
       "description": "Newest-first page of the hash-chained audit log, optionally scoped to one subject. Returns {records, returned_count, withheld_count} where withheld_count is how many more matching records exist beyond this page. Tenant-key only.",
@@ -1430,7 +1430,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.87.0",
       "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
     },
     {
@@ -1476,7 +1476,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.87.0"
     },
     {
       "description": "Delete a stored file by id: its bytes and row go, and outstanding urls stop working.",
@@ -1597,7 +1597,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.107.47"
     },
     {
       "description": "Preview or run the blob prune. dry_run: true (default) returns {expiring: [{id, name, version, bytes, expires_at}], bytes_total, count} for files expiring within within_s seconds (0 = already expired); dry_run: false deletes the already-expired set now and returns {deleted, bytes_freed}.",
@@ -1746,7 +1746,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.107.47",
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
@@ -1904,7 +1904,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.107.47"
     },
     {
       "description": "List this tenant's stored files by name: {blobs: [{id, name, bytes, mime, sha256, version, ...}], count, total_bytes} -- total_bytes is the usage line against blob_bytes_max.",
@@ -2066,7 +2066,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.107.47",
       "unpaged_reason": "limit-only name-ordered window with a prefix filter; no keyset cursor is offered yet"
     },
     {
@@ -2202,7 +2202,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.107.47"
     },
     {
       "description": "Store a file of any type under this tenant and get back {id, name, bytes, mime, sha256, url, expires, version}; url is a signed link (valid 24h) that serves the bytes with the stored Content-Type. mime is the explicit one, else sniffed from the name and magic bytes (pdf, png, jpeg, gif, webp, zip, gzip, xlsx, docx, csv, json, txt, md), else application/octet-stream. The same name stores a new version of the same id; identical bytes are a no-op. Rotating the tenant key invalidates outstanding urls. Give exactly one of content_base64 or url (the host fetches it, so the bytes never pass through your context). Ceilings: blob_max_bytes per file, blob_bytes_max in total, blobs_max files -- see host.quickstart limits.plan.",
@@ -2362,7 +2362,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.107.47"
     },
     {
       "description": "Set a stored file to expire ttl_s seconds from now (extends, shortens or revives one the nightly prune has not removed yet). Returns {id, name, expires_at}.",
@@ -2484,7 +2484,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.107.47"
     },
     {
       "description": "Mint a fresh signed download url for a stored file; ttl_s defaults to 24 h and is at most 7 days (604800).",
@@ -2609,7 +2609,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.107.47"
     },
     {
       "description": "Dry-run an unpublished http spec against its real upstream; for the other cases see host.quickstart.",
@@ -2708,7 +2708,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.81.1"
     },
     {
       "alias_of": "host.bridge.test",
@@ -2901,7 +2901,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.107.38"
     },
     {
       "description": "Return one public tool's descriptor and args_schema by its full name (<namespace>.<name>).",
@@ -3106,12 +3106,12 @@
       "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
     },
     {
-      "description": "List what changed in the host.*/billing.* tool surface -- additions, deprecations, and removals -- since an optional version. Read-only.",
+      "description": "List what changed in the host.*/billing.* tool surface -- releases, added tools, renamed tools, deprecations, and removals -- since an optional version (default: the version you last called with). Read-only.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
           "since": {
-            "description": "Only list changes after this version, e.g. \"0.57.0\", or a contract_version string from host.whoami. Omit to list every tracked change.",
+            "description": "Only list changes after this version, e.g. \"0.57.0\", or a contract_version string from host.whoami. Omit (or \"last_seen\") for the version you last called with; a tenant never seen gets the last 5 releases and since: null.",
             "type": "string"
           },
           "tenant_key": {
@@ -3125,6 +3125,20 @@
       "name": "host.changelog",
       "output_schema": {
         "properties": {
+          "added": {
+            "items": {
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "since": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
           "additions": {
             "items": {
               "properties": {
@@ -3139,8 +3153,14 @@
             },
             "type": "array"
           },
+          "deprecated": {
+            "type": "array"
+          },
           "deprecations": {
             "type": "array"
+          },
+          "now": {
+            "type": "string"
           },
           "onboarding": {
             "properties": {
@@ -3165,22 +3185,74 @@
             },
             "type": "object"
           },
+          "releases": {
+            "items": {
+              "properties": {
+                "date": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "releases_error": {
+            "type": "string"
+          },
           "removals": {
             "type": "array"
           },
+          "removed": {
+            "type": "array"
+          },
+          "renamed": {
+            "items": {
+              "properties": {
+                "from": {
+                  "type": "string"
+                },
+                "since": {
+                  "type": "string"
+                },
+                "sunset": {
+                  "type": "string"
+                },
+                "to": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
           "since": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
+          "added",
           "additions",
+          "deprecated",
           "deprecations",
+          "now",
+          "releases",
           "removals",
+          "removed",
+          "renamed",
           "since"
         ],
         "type": "object"
       },
-      "since": "0.58.1",
+      "since": "0.58.0",
       "unpaged_reason": "export or arbitrary-query semantics: the caller bounds the result, so no page cursor applies"
     },
     {
@@ -3218,7 +3290,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.1"
     },
     {
       "description": "Owner-only: freeze a channel (group or named). Further host.channel.post calls get channel_frozen; host.channel.read keeps working.",
@@ -3255,7 +3327,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.1"
     },
     {
       "description": "Create a named channel, or return the existing one of that name; or, with group instead of name, open (idempotently) the one channel for a group you own -- every current member can then host.channel.post/read it. Two channel kinds exist, named and group, and both are fully readable: host.channel.post/read/close/freeze/ unfreeze all resolve a named or a group channel's id (or a named channel's own name) the same way. Refuses channels_max (quota_exceeded) past the plan's cap.",
@@ -3300,7 +3372,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.59.1"
     },
     {
       "description": "Post to a channel by name or channel_id. Against a group channel's id, any current member may post; a non-member gets channel_not_found, byte-identical to an unknown id. Against a named channel, any tenant that knows its id or name may post; closed or frozen (either kind) refuses with channel_closed/channel_frozen.",
@@ -3357,7 +3429,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.59.1"
     },
     {
       "description": "Read a channel's posts (group or named -- by id, or a named channel's own name) in seq order since a cursor (default: your own last read position, or 0 for a first read). ack: true stores the last returned post as your new read position (an empty read leaves it unchanged); next_cursor is absent on the last page. A group channel's non-member, or anyone but a named channel's own owner, gets channel_not_found.",
@@ -3478,7 +3550,7 @@
         "type": "object"
       },
       "paged": true,
-      "since": "0.58.0"
+      "since": "0.60.1"
     },
     {
       "description": "Owner-only: undo host.channel.freeze (group or named); the next post succeeds with the next seq.",
@@ -3515,7 +3587,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.1"
     },
     {
       "description": "Soft-delete a document by id or name; still visible via host.docs.list {since} with deleted: true. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
@@ -3562,7 +3634,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.10"
     },
     {
       "description": "Read a document by id or name -- version defaults to the current one; text: true also returns the extracted plain text this document's mime produced at put time.",
@@ -3650,7 +3722,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.10"
     },
     {
       "description": "Configure this tenant's search index provider. provider: \"none\" (lexical only, the default) or \"openai-compatible\" (endpoint, model, and secret -- a tenant secret name used as the embeddings request's bearer -- all required). Changing config re-indexes every document from scratch in the background.",
@@ -3702,7 +3774,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.16"
     },
     {
       "description": "List documents in this tenant's document store. Without since, returns the current live snapshot; with since (a watermark from host.docs.status, 0 for everything), returns every document changed since, including deleted ones (deleted: true).",
@@ -3836,7 +3908,7 @@
         "type": "object"
       },
       "paged": true,
-      "since": "0.58.0"
+      "since": "0.60.10"
     },
     {
       "description": "Drop stored versions of a document older than older_than_versions versions back from its current one -- get {version: <a dropped version>} then reads not found. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
@@ -3889,7 +3961,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.10"
     },
     {
       "description": "Write (or, for an already-used name, create a new version of) a document in this tenant's document store. mime is detected from name and content when omitted; allowed mimes are text/plain, text/markdown, application/json, text/csv. content (or content_base64 for arbitrary bytes) must be at most MCPHOST_DOC_MAX_BYTES (default 2 MiB). Identical content to the current version is a no-op that repeats the current version.",
@@ -3957,7 +4029,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.10"
     },
     {
       "description": "Force this tenant's search index to re-chunk (and re-embed, if a provider is configured) one document (document_id) or, without document_id, every document, on the indexer's next tick.",
@@ -3988,7 +4060,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.16"
     },
     {
       "description": "Ranked passage search over this tenant's document store. Lexical (BM25) by default, or hybrid (reciprocal rank fusion of lexical and embeddings) once a provider is configured via host.docs.index_config -- falls back to lexical (index.mode: \"lexical-fallback\") if the provider call fails. mode overrides the default: \"lexical\" (never calls the provider), \"embeddings\", or \"hybrid\" (both require a configured provider). Returns [{document_id, name, version, chunk_no, offset, text, score, ranks: {lexical, embeddings}}] -- ranks names each hit's 1-based position in whichever source list(s) found it -- plus an index block naming the mode and how stale the index is.",
@@ -4058,7 +4130,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.60.16",
       "unpaged_reason": "relevance-ranked top-k result, not a keyset-ordered list, so there is no stable cursor"
     },
     {
@@ -4137,7 +4209,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.10"
     },
     {
       "description": "Enqueue a drift re-run for target (a declared table or a document name) without waiting for a version change -- a periodic sweep. The next tick produces a review with the current deltas even if nothing has actually changed.",
@@ -4182,7 +4254,7 @@
         ],
         "type": "object"
       },
-      "since": "0.79.0"
+      "since": "0.81.0"
     },
     {
       "description": "Resolve a drift review item with a reason (e.g. \"cosmetic\"); it then no longer appears under host.drift.reviews(open_only: true), and host.drift.review shows the reason.",
@@ -4224,7 +4296,7 @@
         ],
         "type": "object"
       },
-      "since": "0.79.0"
+      "since": "0.81.0"
     },
     {
       "description": "Return one drift review item in full, including every QueryDelta/SearchDelta: before/after row_count, sample_hash, error_code (queries) or top5/overlap (searches), and which ones changed or regressed.",
@@ -4366,7 +4438,7 @@
         ],
         "type": "object"
       },
-      "since": "0.79.0"
+      "since": "0.81.0"
     },
     {
       "description": "List this tenant's drift review items (a table note, table schema, or document change whose affected logged queries/searches were re-run), newest first. Each entry summarizes a change: changed_count and regressed_count, without the full per-query/search deltas -- call host.drift.review for those.",
@@ -4442,7 +4514,7 @@
         ],
         "type": "object"
       },
-      "since": "0.79.0",
+      "since": "0.81.0",
       "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
     },
     {
@@ -4474,7 +4546,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.17"
     },
     {
       "description": "One end user's calls (tool, outcome, run_id, impersonated) merged with its revoke/unrevoke/purge control-plane events, newest first, paged by cursor.",
@@ -4558,7 +4630,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.60.24",
       "unpaged_reason": "keeps its own pre-Paged cursor encoding; converges onto paged::Cursor in a follow-up migration"
     },
     {
@@ -4596,7 +4668,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.24"
     },
     {
       "description": "One end user's roster row (subject, issuer, first_seen, last_seen, calls_total, revoked_at, revoked_by, purged_at) plus its live state_rows, vault_connections, and runs_30d counts.",
@@ -4678,7 +4750,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.24"
     },
     {
       "description": "List this tenant's end users with last-seen and call counts, newest last-seen first. Optional since (unix seconds, filters last_seen), revoked (bool), limit (default 50, max 1000), and cursor (from a previous page's cursor field).",
@@ -4757,7 +4829,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.60.24",
       "unpaged_reason": "keeps its own pre-Paged cursor encoding; converges onto paged::Cursor in a follow-up migration"
     },
     {
@@ -4803,7 +4875,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.24"
     },
     {
       "description": "Revoke an end user: its next identified call is refused with end_user_revoked, no tool runs, and its vault-token connections are disconnected. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
@@ -4847,7 +4919,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.24"
     },
     {
       "description": "Reverse a prior host.enduser.revoke; the end user's calls succeed again. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
@@ -4888,7 +4960,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.24"
     },
     {
       "description": "The end user (if any) this call itself carries: {subject, issuer, method, verified_at} from the OAuth bearer's sub/iss or a verified end_user_assertion; null when the call carries no verified end-user identity.",
@@ -4941,7 +5013,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.17"
     },
     {
       "description": "Ask whether a call to one of your tools fits your plan and what it uses, without making it: the same checks as host.tool_call, no call row, no slot held.",
@@ -5142,7 +5214,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.107.33"
     },
     {
       "description": "Read the status of one of your own example proposals: pending, approved, rejected or merged, with decided_by, reason and the PR URL once known.",
@@ -5223,7 +5295,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.107.66"
     },
     {
       "description": "Turn a working tool into a PR-ready example: snapshot the tool at its current version, run proof_call {args, expect} against it now, render an example directory (example.toml with [provenance], tools/, proof.sh) and store it as a proposal for admin review. Refuses secret_leak {line} when the source holds a stored secret's literal value, not_portable when it uses tenant state, tables, groups or another tenant's tool, proof_failed, example_exists, too_many_proposals (3 open). Accepted examples carry license MIT. Returns {proposal_id, status: pending, rendered}.",
@@ -5356,7 +5428,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.107.66"
     },
     {
       "description": "Build a downloadable .tar.gz of everything this tenant owns: tool sources, state, host.table.* tables (schema + rows), table notes, documents (original bytes), secret NAMES (never values), run/thread history and usage, plus a version-2 manifest.json (sha256 and bytes per entry; its tools list is re-publishable via host.tool_publish). Runs as a background job (poll host.runs.get with the returned run_id) -- calling this again while one is already running returns that same run_id rather than starting a second one. The finished run's result carries a download_url valid 24 hours.",
@@ -5417,7 +5489,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.58.4"
     },
     {
       "description": "Read one of your own feedback rows by feedback_id, with the theme_id and theme status it was clustered into (null theme_id until the nightly pass reaches it). Anyone else's id is feedback_not_found.",
@@ -5563,7 +5635,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.107.43",
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
@@ -5617,7 +5689,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.107.43"
     },
     {
       "description": "Add a tenant (by namespace) to a group this tenant owns.",
@@ -5848,7 +5920,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.107.50"
     },
     {
       "description": "Create an invite link: a friend who connects to the returned url and makes a first host.* call gets a fresh tenant whose contact with you is already accepted and whose listed tools are already shared. The free plan allows 3 live invites at once (host.invite.revoke frees a slot); your own standing invite -- its url is the invite_url field on host.whoami -- never counts against this.",
@@ -5982,7 +6054,7 @@
         "required": [],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.83.0",
       "unpaged_reason": "not a list verb: the array is a field of a single-record or mutation response"
     },
     {
@@ -6042,7 +6114,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.83.0",
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
@@ -6087,7 +6159,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.83.0"
     },
     {
       "description": "Issue a new tenant key and invalidate the current one immediately: every other call using the old key fails as unauthenticated from this point on. Returns the new key exactly once -- use it (as tenant_key or Authorization) for every call after this one.",
@@ -6171,7 +6243,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.81.1"
     },
     {
       "alias_of": "host.key.rotate",
@@ -6274,7 +6346,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.64.1"
     },
     {
       "description": "List everything a node depends on (upstream) and everything that depends on it (downstream). A downstream list over 100 nodes comes back as downstream_count plus a downstream_handle to page through with host.lineage.trace_page.",
@@ -6353,7 +6425,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.64.1"
     },
     {
       "description": "Page through a host.lineage.trace downstream_handle, 50 nodes at a time.",
@@ -6425,7 +6497,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.64.1"
     },
     {
       "description": "Mark messages as read for you; unread_only inbox reads stop returning them. Per-recipient -- a sender never sees others' receipts.",
@@ -7206,7 +7278,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.60.28",
       "unpaged_reason": "keeps its own pre-Paged cursor encoding; converges onto paged::Cursor in a follow-up migration"
     },
     {
@@ -7248,7 +7320,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.60.28",
       "unpaged_reason": "export or arbitrary-query semantics: the caller bounds the result, so no page cursor applies"
     },
     {
@@ -7286,7 +7358,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.28"
     },
     {
       "description": "Deny a pending client (from host.oauth.pending): every later authorize attempt reads client_not_allowed.",
@@ -7323,7 +7395,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.28"
     },
     {
       "description": "Diagnose this tenant's OIDC provider setup: discovery reachable, jwks_uri reachable, per-tenant resource metadata, whether the callback URL is listed in the provider's discovery document (when exposed), and a dry-run authorize URL. One line per check with ok|fail and a fix.",
@@ -7370,7 +7442,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.29"
     },
     {
       "description": "Revoke one hosted-authorization-server grant by id (from host.oauth.grants): its access tokens fail within 60s and its refresh tokens stop rotating. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
@@ -7411,7 +7483,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.26"
     },
     {
       "description": "List the OAuth clients currently connected to this tenant through mcphost's own hosted authorization server (host.oauth.issuer_set is for a tenant's own bring-your-own issuer instead): each grant's client_name, method (cimd|dcr), resource, created_at and last_used_at.",
@@ -7470,7 +7542,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.60.26",
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
@@ -7512,7 +7584,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.11"
     },
     {
       "description": "Register (or update) an OAuth issuer for this tenant: bearer JWTs with iss equal to issuer, a matching aud, verified against jwks_url, authenticate as this tenant. Up to 3 issuers per tenant; an issuer already registered by another tenant is refused issuer_already_registered.",
@@ -7567,7 +7639,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.11"
     },
     {
       "description": "List this tenant's registered OAuth issuers with their audience, jwks_url, and JWKS fetch age.",
@@ -7594,7 +7666,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.60.11",
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
@@ -7639,7 +7711,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.60.28",
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
@@ -7687,7 +7759,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.60.28",
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
@@ -7804,7 +7876,7 @@
         "required": [],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.60.28",
       "unpaged_reason": "not a list verb: the array is a field of a single-record or mutation response"
     },
     {
@@ -7869,7 +7941,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.29"
     },
     {
       "description": "Remove this tenant's OIDC identity provider: every federated grant it produced is revoked immediately, and the per-tenant resource falls back to key/claim (owner) login.",
@@ -7896,7 +7968,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.29"
     },
     {
       "description": "Register (or update) this tenant's own OIDC identity provider: end users who connect to this tenant's per-tenant resource log in through it. Fetches the issuer's discovery document once (https only) and stores authorization_endpoint, token_endpoint, and jwks_uri. client_secret is encrypted at rest and never shown again.",
@@ -7995,7 +8067,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.29"
     },
     {
       "description": "Revoke every one of this tenant's live grants, refresh tokens and pending clients at once: access tokens fail within 60s. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
@@ -8030,7 +8102,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.28"
     },
     {
       "description": "Declare (or update) one scope this tenant's tools may require: name (a catalogued name, or the built-ins read/write) and a human-readable description shown on the OAuth consent page. Up to 32 catalog entries per tenant.",
@@ -8076,7 +8148,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.31"
     },
     {
       "description": "List this tenant's own scope catalog: name and description.",
@@ -8103,7 +8175,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.60.31",
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
@@ -8145,7 +8217,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.32"
     },
     {
       "description": "Register (or update) an identity-assertion issuer for this tenant's enterprise-managed auth: identity assertions with iss equal to issuer, from client_id, verified against jwks_url, mint a token for the employee they name -- no consent screen. Up to 4 trusted issuers per tenant; a 5th is refused quota_trusted_issuers; an issuer already trusted by another tenant is refused issuer_already_registered.",
@@ -8208,7 +8280,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.32"
     },
     {
       "description": "List this tenant's trusted identity-assertion issuers with their jwks_url, client_id and audience.",
@@ -8235,7 +8307,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.60.32",
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
@@ -8286,7 +8358,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.87.0"
     },
     {
       "description": "List this tenant's row/docs policies.",
@@ -8313,7 +8385,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.87.0",
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
@@ -8393,7 +8465,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.87.0"
     },
     {
       "description": "Report (or merge in) counters and/or pct/msg on a run, by id. Each named counter (items_processed, items_total, bytes_out, custom.<k>) is monotonic on its own -- a lower value than what's already stored fails validation with nothing written. Read back via host.runs.get/wait/list's counters field.",
@@ -8472,7 +8544,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.19"
     },
     {
       "description": "Return the shortest ordered sequence of calls to a working tool of `kind`, with your namespace and a filled-in example already substituted in, plus the current limits and a try_before_call table naming the one dry-run tool for each case. Read-only -- this call alone never creates a tenant. Call this before host.tool_publish if you're not sure what a spec should look like. Unauthenticated callers get a worked example with no tenant data; any other host.*/billing.* call creates a tenant on first use, no signup required.",
@@ -9409,7 +9481,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.81.1"
     },
     {
       "alias_of": "host.registry.publish",
@@ -10294,7 +10366,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.19"
     },
     {
       "description": "Delete the stored results of every done run finished at or before before_unix; each then reads done with result: null, purged: true. Frees state_bytes_max quota the results were counted against. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
@@ -10702,7 +10774,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.81.1",
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
@@ -10749,7 +10821,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.81.1"
     },
     {
       "alias_of": "host.secret.list",
@@ -10860,7 +10932,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.81.1"
     },
     {
       "alias_of": "host.self.offboard",
@@ -10932,7 +11004,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.21"
     },
     {
       "description": "Remove a caller_limit set by host.share.caller_limit. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
@@ -10985,7 +11057,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.21"
     },
     {
       "description": "Dry-run an unpublished spec of any kind with example invocations; for the other cases see host.quickstart.",
@@ -11167,7 +11239,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.81.1"
     },
     {
       "alias_of": "host.spec.test",
@@ -12468,7 +12540,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.64.0"
     },
     {
       "description": "List this tenant's stored (host.table.chart {share: true}) charts, newest first, each with id, title, created_unix, and expires_unix.",
@@ -12512,7 +12584,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.64.0",
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
@@ -13433,7 +13505,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.12"
     },
     {
       "description": "Drop a declared table and every row it holds. Refused as lineage_blocked when a tool, chain, chart, or handle would break, unless confirm: true. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
@@ -13718,7 +13790,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.72.0",
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
@@ -13760,7 +13832,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.86.0"
     },
     {
       "description": "Export one query-result handle's rows as CSV through a background job, returning a run_id; poll host.runs.get for the signed /exports/{run_id} download URL (valid 24h).",
@@ -13797,7 +13869,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.86.0"
     },
     {
       "description": "List this tenant's live query-result handles (host.table.query {handle: true}), newest first, each with its row_count, bytes, created_unix, expires_unix, last_used_unix and derived_from SQL.",
@@ -13850,7 +13922,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.86.0",
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
@@ -13934,7 +14006,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.72.0"
     },
     {
       "description": "List this tenant's declared tables, each with its current row count, plus the tenant's whole table-store byte usage.",
@@ -14054,7 +14126,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.60.12"
     },
     {
       "description": "List every declared table that has a computed semantic model, each with its version, staleness, row count and when it was last computed.",
@@ -14101,7 +14173,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.60.12",
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
@@ -14171,7 +14243,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.72.0",
       "unpaged_reason": "export or arbitrary-query semantics: the caller bounds the result, so no page cursor applies"
     },
     {
@@ -14571,7 +14643,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.84.0"
     },
     {
       "description": "List this tenant's own host.table.query call history, newest first: sql (as submitted, truncated to 4096 bytes with truncated: true past that), row_count (null on refusal), duration_ms, error_code and error_message (null on success). Keeps the newest 1,000 calls.",
@@ -14676,7 +14748,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.79.0",
       "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
     },
     {
@@ -14745,7 +14817,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.84.0",
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
@@ -15184,7 +15256,7 @@
         },
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.81.1"
     },
     {
       "description": "Return a unified diff between two published versions of one of this tenant's tools.",
@@ -15239,7 +15311,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.81.1"
     },
     {
       "description": "List every published version of one of this tenant's tools, newest first, each with its creation time, source_sha256, and whether it's the current one.",
@@ -15293,7 +15365,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.81.1"
     },
     {
       "description": "List this tenant's published tools. fields projects each row to the named keys; limit returns only the first N tools (truncated: true when more exist).",
@@ -15485,7 +15557,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.81.1",
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
@@ -15530,7 +15602,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.81.1"
     },
     {
       "description": "Publish a tool of a registered kind (e.g. python, http or echo; the kind argument's enum lists them all) under this tenant's namespace. Call host.quickstart(kind) first for a filled-in example spec and the full publish-to-call sequence. Python's sandbox API: import mcphost (mcphost.table, mcphost.state, mcphost.docs). Name must match ^[a-z][a-z0-9_]{1,40}$; a rejection names the failing field and a corrected example. Try host.tool_test before a real call.",
@@ -15910,7 +15982,7 @@
         },
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.81.1"
     },
     {
       "description": "Remove a published tool by its local name. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
@@ -15951,7 +16023,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.81.1"
     },
     {
       "description": "Make an earlier published version of one of this tenant's tools current again -- the next host.tool_call (or namespaced call) runs that version's source. See host.tool_history for the valid version numbers.",
@@ -15993,7 +16065,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.81.1"
     },
     {
       "description": "Debug-run a published python tool: result.payload plus duration_ms and exit_code; for the other cases see host.quickstart.",
@@ -16140,7 +16212,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.81.1"
     },
     {
       "description": "Share one of this tenant's published tools with everyone (visibility: \"public\") or with a named group this tenant owns (visibility: \"group\", group: <name>). The tool keeps running in this tenant's own sandbox with this tenant's own secrets; a caller reaches it as <this tenant's namespace>.<name>.",
@@ -16257,7 +16329,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.81.1"
     },
     {
       "description": "Read a shared tool's kind and redacted spec -- only works when the owner shared it with expose_spec: true. The spec never carries env values or secret references (see host.tool_share's expose_spec).",
@@ -16324,7 +16396,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.81.1"
     },
     {
       "description": "Dry-run a published tool by name: verdict (pass/will_fail/unverifiable), writes rolled back (dry_run); see host.quickstart.",
@@ -16965,7 +17037,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.81.1"
     },
     {
       "description": "Take a shared tool back to private.",
@@ -17002,7 +17074,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.81.1"
     },
     {
       "alias_of": "host.tool.call",
@@ -17113,7 +17185,7 @@
         }
       },
       "name": "host.tool_diff",
-      "since": "0.58.0"
+      "since": "0.60.0"
     },
     {
       "alias_of": "host.tool.history",
@@ -17140,7 +17212,7 @@
         }
       },
       "name": "host.tool_history",
-      "since": "0.58.0"
+      "since": "0.60.0"
     },
     {
       "alias_of": "host.tool.list",
@@ -17428,7 +17500,7 @@
         }
       },
       "name": "host.tool_rollback",
-      "since": "0.58.0"
+      "since": "0.60.0"
     },
     {
       "alias_of": "host.tool.run",
@@ -17535,7 +17607,7 @@
         }
       },
       "name": "host.tool_spec_shared",
-      "since": "0.58.0"
+      "since": "0.60.34"
     },
     {
       "alias_of": "host.tool.test",
@@ -17716,7 +17788,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.107.44",
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
@@ -18626,7 +18698,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.107.11"
     },
     {
       "description": "Calls, errors and duration percentiles for this tenant over a window. Pass `by` (\"tool\", \"caller\", or \"end_user\") for a breakdown instead of the plain per-tenant summary: \"caller\" (only valid for a tool this tenant has shared) shows which tenant called in and how much; \"end_user\" shows which identified end user called, with the caller tenant folded into the key when the call crossed tenants. Breakdown rows cap at 1000 per page; pass the returned `cursor` back to page further.",
@@ -18936,7 +19008,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.66.0"
     },
     {
       "description": "Revoke an end user's stored upstream token for a provider. The next call needing it returns upstream_not_connected with a fresh host.vault.connect_link URL.",
@@ -18978,7 +19050,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.66.0"
     },
     {
       "description": "Delete a registered upstream OAuth provider and revoke every end user's stored token for it; a disconnected end user's host.vault.status then shows connected: false.",
@@ -19015,7 +19087,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.66.0"
     },
     {
       "description": "Register or update a tenant's upstream OAuth provider (e.g. \"slack\") so end users can connect it; client_secret is stored encrypted and never returned by host.vault.providers. Per-plan vault_providers_max caps distinct provider names.",
@@ -19082,7 +19154,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.66.0"
     },
     {
       "description": "List this tenant's registered upstream OAuth providers (auth_url, token_url, client_id, scopes) -- client_secret never appears here.",
@@ -19132,7 +19204,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0",
+      "since": "0.66.0",
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
@@ -19210,7 +19282,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.66.0"
     },
     {
       "description": "Create a webhook inbox in one call: publishes the reader tool `name`, sets one webhook trigger bound to it and returns {url, secret, tool, trigger_id, wait: {tool: \"host.msg.wait\", args}, next}. POST a signed body to url; within seconds host.tool_call(name=<name>) lists the last 50 events and host.msg.wait(**wait.args) returns a message whose data.event_id names the event. Idempotent by name: a repeat returns the same url and no secret unless rotate is true. Refused with plan_limit (data.limit) at the plan's event_triggers_max.",
@@ -19319,7 +19391,7 @@
         ],
         "type": "object"
       },
-      "since": "0.58.0"
+      "since": "0.107.18"
     },
     {
       "description": "Return the calling tenant's identity, including key_age_s and key_rotated_at for auditing credential hygiene.",
@@ -19583,7 +19655,7 @@
         "type": "object"
       },
       "name": "host_agent_contact_accept",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.agent.contact_deny",
@@ -19606,7 +19678,7 @@
         "type": "object"
       },
       "name": "host_agent_contact_deny",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.agent.contact_request",
@@ -19633,7 +19705,7 @@
         "type": "object"
       },
       "name": "host_agent_contact_request",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.agent.contacts",
@@ -19660,7 +19732,7 @@
         "type": "object"
       },
       "name": "host_agent_contacts",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.agent.contacts_import",
@@ -19686,7 +19758,7 @@
         "type": "object"
       },
       "name": "host_agent_contacts_import",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.agent.lookup",
@@ -19709,7 +19781,7 @@
         "type": "object"
       },
       "name": "host_agent_lookup",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.agent.mute",
@@ -19732,7 +19804,7 @@
         "type": "object"
       },
       "name": "host_agent_mute",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.agent.profile_set",
@@ -19787,7 +19859,7 @@
         "type": "object"
       },
       "name": "host_agent_profile_set",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.agent.search",
@@ -19820,7 +19892,7 @@
         "type": "object"
       },
       "name": "host_agent_search",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.agent.unmute",
@@ -19843,7 +19915,7 @@
         "type": "object"
       },
       "name": "host_agent_unmute",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.agent.whoami",
@@ -19860,7 +19932,7 @@
         "type": "object"
       },
       "name": "host_agent_whoami",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.ask.create",
@@ -19909,7 +19981,7 @@
         "type": "object"
       },
       "name": "host_ask_create",
-      "since": "0.58.0"
+      "since": "0.107.36"
     },
     {
       "alias_of": "host.ask.get",
@@ -19932,7 +20004,7 @@
         "type": "object"
       },
       "name": "host_ask_get",
-      "since": "0.58.0"
+      "since": "0.107.36"
     },
     {
       "alias_of": "host.ask.list",
@@ -19962,7 +20034,7 @@
         "type": "object"
       },
       "name": "host_ask_list",
-      "since": "0.58.0"
+      "since": "0.107.36"
     },
     {
       "alias_of": "host.ask.wait",
@@ -19989,7 +20061,7 @@
         "type": "object"
       },
       "name": "host_ask_wait",
-      "since": "0.58.0"
+      "since": "0.107.36"
     },
     {
       "alias_of": "host.audit.chain",
@@ -20018,7 +20090,7 @@
         "type": "object"
       },
       "name": "host_audit_chain",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.audit.verify",
@@ -20046,7 +20118,7 @@
         "type": "object"
       },
       "name": "host_audit_verify",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.blob.delete",
@@ -20069,7 +20141,7 @@
         "type": "object"
       },
       "name": "host_blob_delete",
-      "since": "0.58.0"
+      "since": "0.107.47"
     },
     {
       "alias_of": "host.blob.gc",
@@ -20094,7 +20166,7 @@
         "type": "object"
       },
       "name": "host_blob_gc",
-      "since": "0.58.0"
+      "since": "0.107.47"
     },
     {
       "alias_of": "host.blob.get",
@@ -20127,7 +20199,7 @@
         "type": "object"
       },
       "name": "host_blob_get",
-      "since": "0.58.0"
+      "since": "0.107.47"
     },
     {
       "alias_of": "host.blob.list",
@@ -20152,7 +20224,7 @@
         "type": "object"
       },
       "name": "host_blob_list",
-      "since": "0.58.0"
+      "since": "0.107.47"
     },
     {
       "alias_of": "host.blob.policy",
@@ -20187,7 +20259,7 @@
         "type": "object"
       },
       "name": "host_blob_policy",
-      "since": "0.58.0"
+      "since": "0.107.47"
     },
     {
       "alias_of": "host.blob.put",
@@ -20226,7 +20298,7 @@
         "type": "object"
       },
       "name": "host_blob_put",
-      "since": "0.58.0"
+      "since": "0.107.47"
     },
     {
       "alias_of": "host.blob.touch",
@@ -20254,7 +20326,7 @@
         "type": "object"
       },
       "name": "host_blob_touch",
-      "since": "0.58.0"
+      "since": "0.107.47"
     },
     {
       "alias_of": "host.blob.url",
@@ -20281,7 +20353,7 @@
         "type": "object"
       },
       "name": "host_blob_url",
-      "since": "0.58.0"
+      "since": "0.107.47"
     },
     {
       "alias_of": "host.bridge.test",
@@ -20309,7 +20381,7 @@
         "type": "object"
       },
       "name": "host_bridge_test",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.call_trace",
@@ -20342,7 +20414,7 @@
         "type": "object"
       },
       "name": "host_call_trace",
-      "since": "0.58.0"
+      "since": "0.107.38"
     },
     {
       "alias_of": "host.catalog.get",
@@ -20365,7 +20437,7 @@
         "type": "object"
       },
       "name": "host_catalog_get",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.catalog.search",
@@ -20390,16 +20462,16 @@
         "type": "object"
       },
       "name": "host_catalog_search",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.changelog",
-      "description": "List what changed in the host.*/billing.* tool surface -- additions, deprecations, and removals -- since an optional version. Read-only.",
+      "description": "List what changed in the host.*/billing.* tool surface -- releases, added tools, renamed tools, deprecations, and removals -- since an optional version (default: the version you last called with). Read-only.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
           "since": {
-            "description": "Only list changes after this version, e.g. \"0.57.0\", or a contract_version string from host.whoami. Omit to list every tracked change.",
+            "description": "Only list changes after this version, e.g. \"0.57.0\", or a contract_version string from host.whoami. Omit (or \"last_seen\") for the version you last called with; a tenant never seen gets the last 5 releases and since: null.",
             "type": "string"
           },
           "tenant_key": {
@@ -20411,7 +20483,7 @@
         "type": "object"
       },
       "name": "host_changelog",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.channel.close",
@@ -20434,7 +20506,7 @@
         "type": "object"
       },
       "name": "host_channel_close",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.channel.freeze",
@@ -20457,7 +20529,7 @@
         "type": "object"
       },
       "name": "host_channel_freeze",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.channel.open",
@@ -20482,7 +20554,7 @@
         "type": "object"
       },
       "name": "host_channel_open",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.channel.post",
@@ -20514,7 +20586,7 @@
         "type": "object"
       },
       "name": "host_channel_post",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.channel.read",
@@ -20578,7 +20650,7 @@
         "type": "object"
       },
       "name": "host_channel_read",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.channel.unfreeze",
@@ -20601,7 +20673,7 @@
         "type": "object"
       },
       "name": "host_channel_unfreeze",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.docs.delete",
@@ -20630,7 +20702,7 @@
         "type": "object"
       },
       "name": "host_docs_delete",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.docs.get",
@@ -20663,7 +20735,7 @@
         "type": "object"
       },
       "name": "host_docs_get",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.docs.index_config",
@@ -20702,7 +20774,7 @@
         "type": "object"
       },
       "name": "host_docs_index_config",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.docs.list",
@@ -20770,7 +20842,7 @@
         "type": "object"
       },
       "name": "host_docs_list",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.docs.purge",
@@ -20805,7 +20877,7 @@
         "type": "object"
       },
       "name": "host_docs_purge",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.docs.put",
@@ -20847,7 +20919,7 @@
         "type": "object"
       },
       "name": "host_docs_put",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.docs.reindex",
@@ -20868,7 +20940,7 @@
         "type": "object"
       },
       "name": "host_docs_reindex",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.docs.search",
@@ -20913,7 +20985,7 @@
         "type": "object"
       },
       "name": "host_docs_search",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.docs.status",
@@ -20930,7 +21002,7 @@
         "type": "object"
       },
       "name": "host_docs_status",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.drift.check",
@@ -20953,7 +21025,7 @@
         "type": "object"
       },
       "name": "host_drift_check",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.drift.resolve",
@@ -20981,7 +21053,7 @@
         "type": "object"
       },
       "name": "host_drift_resolve",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.drift.review",
@@ -21004,7 +21076,7 @@
         "type": "object"
       },
       "name": "host_drift_review",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.drift.reviews",
@@ -21029,7 +21101,7 @@
         "type": "object"
       },
       "name": "host_drift_reviews",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.enduser.assertion_secret_rotate",
@@ -21046,7 +21118,7 @@
         "type": "object"
       },
       "name": "host_enduser_assertion_secret_rotate",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.enduser.audit",
@@ -21081,7 +21153,7 @@
         "type": "object"
       },
       "name": "host_enduser_audit",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.enduser.export",
@@ -21104,7 +21176,7 @@
         "type": "object"
       },
       "name": "host_enduser_export",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.enduser.get",
@@ -21127,7 +21199,7 @@
         "type": "object"
       },
       "name": "host_enduser_get",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.enduser.list",
@@ -21160,7 +21232,7 @@
         "type": "object"
       },
       "name": "host_enduser_list",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.enduser.purge",
@@ -21187,7 +21259,7 @@
         "type": "object"
       },
       "name": "host_enduser_purge",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.enduser.revoke",
@@ -21217,7 +21289,7 @@
         "type": "object"
       },
       "name": "host_enduser_revoke",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.enduser.unrevoke",
@@ -21244,7 +21316,7 @@
         "type": "object"
       },
       "name": "host_enduser_unrevoke",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.enduser.whoami",
@@ -21261,7 +21333,7 @@
         "type": "object"
       },
       "name": "host_enduser_whoami",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.estimate",
@@ -21322,7 +21394,7 @@
         "type": "object"
       },
       "name": "host_estimate",
-      "since": "0.58.0"
+      "since": "0.107.33"
     },
     {
       "alias_of": "host.example.proposal_status",
@@ -21345,7 +21417,7 @@
         "type": "object"
       },
       "name": "host_example_proposal_status",
-      "since": "0.58.0"
+      "since": "0.107.66"
     },
     {
       "alias_of": "host.example.propose",
@@ -21430,7 +21502,7 @@
         "type": "object"
       },
       "name": "host_example_propose",
-      "since": "0.58.0"
+      "since": "0.107.66"
     },
     {
       "alias_of": "host.export",
@@ -21454,7 +21526,7 @@
         "type": "object"
       },
       "name": "host_export",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.feedback.get",
@@ -21498,7 +21570,7 @@
         "type": "object"
       },
       "name": "host_feedback_list",
-      "since": "0.58.0"
+      "since": "0.107.43"
     },
     {
       "alias_of": "host.feedback.send",
@@ -21537,7 +21609,7 @@
         "type": "object"
       },
       "name": "host_feedback_send",
-      "since": "0.58.0"
+      "since": "0.107.43"
     },
     {
       "alias_of": "host.group.add",
@@ -21565,7 +21637,7 @@
         "type": "object"
       },
       "name": "host_group_add",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.group.create",
@@ -21592,7 +21664,7 @@
         "type": "object"
       },
       "name": "host_group_create",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.group.list",
@@ -21609,7 +21681,7 @@
         "type": "object"
       },
       "name": "host_group_list",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.group.remove",
@@ -21641,7 +21713,7 @@
         "type": "object"
       },
       "name": "host_group_remove",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.import",
@@ -21670,7 +21742,7 @@
         "type": "object"
       },
       "name": "host_import",
-      "since": "0.58.0"
+      "since": "0.107.50"
     },
     {
       "alias_of": "host.invite.create",
@@ -21710,7 +21782,7 @@
         "type": "object"
       },
       "name": "host_invite_create",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.invite.list",
@@ -21727,7 +21799,7 @@
         "type": "object"
       },
       "name": "host_invite_list",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.invite.revoke",
@@ -21754,7 +21826,7 @@
         "type": "object"
       },
       "name": "host_invite_revoke",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.key.rotate",
@@ -21771,7 +21843,7 @@
         "type": "object"
       },
       "name": "host_key_rotate",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.lineage.blast_radius",
@@ -21807,7 +21879,7 @@
         "type": "object"
       },
       "name": "host_lineage_blast_radius",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.lineage.trace",
@@ -21830,7 +21902,7 @@
         "type": "object"
       },
       "name": "host_lineage_trace",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.lineage.trace_page",
@@ -21857,7 +21929,7 @@
         "type": "object"
       },
       "name": "host_lineage_trace_page",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.msg.ack",
@@ -21883,7 +21955,7 @@
         "type": "object"
       },
       "name": "host_msg_ack",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.msg.block",
@@ -21906,7 +21978,7 @@
         "type": "object"
       },
       "name": "host_msg_block",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.msg.inbox",
@@ -21969,7 +22041,7 @@
         "type": "object"
       },
       "name": "host_msg_inbox",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.msg.reply",
@@ -22009,7 +22081,7 @@
         "type": "object"
       },
       "name": "host_msg_reply",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.msg.send",
@@ -22056,7 +22128,7 @@
         "type": "object"
       },
       "name": "host_msg_send",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.msg.thread",
@@ -22121,7 +22193,7 @@
         "type": "object"
       },
       "name": "host_msg_thread",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.msg.unblock",
@@ -22144,7 +22216,7 @@
         "type": "object"
       },
       "name": "host_msg_unblock",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.msg.wait",
@@ -22173,7 +22245,7 @@
         "type": "object"
       },
       "name": "host_msg_wait",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.oauth.audit",
@@ -22205,7 +22277,7 @@
         "type": "object"
       },
       "name": "host_oauth_audit",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.oauth.audit_export",
@@ -22233,7 +22305,7 @@
         "type": "object"
       },
       "name": "host_oauth_audit_export",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.oauth.client_approve",
@@ -22256,7 +22328,7 @@
         "type": "object"
       },
       "name": "host_oauth_client_approve",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.oauth.client_deny",
@@ -22279,7 +22351,7 @@
         "type": "object"
       },
       "name": "host_oauth_client_deny",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.oauth.doctor",
@@ -22296,7 +22368,7 @@
         "type": "object"
       },
       "name": "host_oauth_doctor",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.oauth.grant_revoke",
@@ -22323,7 +22395,7 @@
         "type": "object"
       },
       "name": "host_oauth_grant_revoke",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.oauth.grants",
@@ -22340,7 +22412,7 @@
         "type": "object"
       },
       "name": "host_oauth_grants",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.oauth.issuer_remove",
@@ -22367,7 +22439,7 @@
         "type": "object"
       },
       "name": "host_oauth_issuer_remove",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.oauth.issuer_set",
@@ -22404,7 +22476,7 @@
         "type": "object"
       },
       "name": "host_oauth_issuer_set",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.oauth.issuers",
@@ -22421,7 +22493,7 @@
         "type": "object"
       },
       "name": "host_oauth_issuers",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.oauth.pending",
@@ -22438,7 +22510,7 @@
         "type": "object"
       },
       "name": "host_oauth_pending",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.oauth.policy",
@@ -22455,7 +22527,7 @@
         "type": "object"
       },
       "name": "host_oauth_policy",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.oauth.policy_set",
@@ -22502,7 +22574,7 @@
         "type": "object"
       },
       "name": "host_oauth_policy_set",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.oauth.provider",
@@ -22519,7 +22591,7 @@
         "type": "object"
       },
       "name": "host_oauth_provider",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.oauth.provider_remove",
@@ -22536,7 +22608,7 @@
         "type": "object"
       },
       "name": "host_oauth_provider_remove",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.oauth.provider_set",
@@ -22588,7 +22660,7 @@
         "type": "object"
       },
       "name": "host_oauth_provider_set",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.oauth.revoke_all",
@@ -22609,7 +22681,7 @@
         "type": "object"
       },
       "name": "host_oauth_revoke_all",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.oauth.scope_set",
@@ -22641,7 +22713,7 @@
         "type": "object"
       },
       "name": "host_oauth_scope_set",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.oauth.scopes",
@@ -22658,7 +22730,7 @@
         "type": "object"
       },
       "name": "host_oauth_scopes",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.oauth.trusted_issuer_remove",
@@ -22685,7 +22757,7 @@
         "type": "object"
       },
       "name": "host_oauth_trusted_issuer_remove",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.oauth.trusted_issuer_set",
@@ -22726,7 +22798,7 @@
         "type": "object"
       },
       "name": "host_oauth_trusted_issuer_set",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.oauth.trusted_issuers",
@@ -22743,7 +22815,7 @@
         "type": "object"
       },
       "name": "host_oauth_trusted_issuers",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.policy.attrs_set",
@@ -22774,7 +22846,7 @@
         "type": "object"
       },
       "name": "host_policy_attrs_set",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.policy.list",
@@ -22791,7 +22863,7 @@
         "type": "object"
       },
       "name": "host_policy_list",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.policy.set",
@@ -22825,7 +22897,7 @@
         "type": "object"
       },
       "name": "host_policy_set",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.progress",
@@ -22860,7 +22932,7 @@
         "type": "object"
       },
       "name": "host_progress",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.quickstart",
@@ -22881,7 +22953,7 @@
         "type": "object"
       },
       "name": "host_quickstart",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.redeem",
@@ -22904,7 +22976,7 @@
         "type": "object"
       },
       "name": "host_redeem",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.registry.publish",
@@ -22921,7 +22993,7 @@
         "type": "object"
       },
       "name": "host_registry_publish",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.runs.cancel",
@@ -22944,7 +23016,7 @@
         "type": "object"
       },
       "name": "host_runs_cancel",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.runs.get",
@@ -22971,7 +23043,7 @@
         "type": "object"
       },
       "name": "host_runs_get",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.runs.list",
@@ -23075,7 +23147,7 @@
         "type": "object"
       },
       "name": "host_runs_list",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.runs.part",
@@ -23102,7 +23174,7 @@
         "type": "object"
       },
       "name": "host_runs_part",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.runs.purge",
@@ -23129,7 +23201,7 @@
         "type": "object"
       },
       "name": "host_runs_purge",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.runs.wait",
@@ -23160,7 +23232,7 @@
         "type": "object"
       },
       "name": "host_runs_wait",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.secret.list",
@@ -23177,7 +23249,7 @@
         "type": "object"
       },
       "name": "host_secret_list",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.secret.set",
@@ -23209,7 +23281,7 @@
         "type": "object"
       },
       "name": "host_secret_set",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.self.offboard",
@@ -23226,7 +23298,7 @@
         "type": "object"
       },
       "name": "host_self_offboard",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.share.caller_limit",
@@ -23259,7 +23331,7 @@
         "type": "object"
       },
       "name": "host_share_caller_limit",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.share.caller_limit_remove",
@@ -23291,7 +23363,7 @@
         "type": "object"
       },
       "name": "host_share_caller_limit_remove",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.spec.test",
@@ -23328,7 +23400,7 @@
         "type": "object"
       },
       "name": "host_spec_test",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.state.delete",
@@ -23362,7 +23434,7 @@
         "type": "object"
       },
       "name": "host_state_delete",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.state.delete_rows",
@@ -23400,7 +23472,7 @@
         "type": "object"
       },
       "name": "host_state_delete_rows",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.state.get",
@@ -23430,7 +23502,7 @@
         "type": "object"
       },
       "name": "host_state_get",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.state.insert",
@@ -23468,7 +23540,7 @@
         "type": "object"
       },
       "name": "host_state_insert",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.state.list",
@@ -23500,7 +23572,7 @@
         "type": "object"
       },
       "name": "host_state_list",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.state.query",
@@ -23542,7 +23614,7 @@
         "type": "object"
       },
       "name": "host_state_query",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.state.set",
@@ -23580,7 +23652,7 @@
         "type": "object"
       },
       "name": "host_state_set",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.state.table_create",
@@ -23616,7 +23688,7 @@
         "type": "object"
       },
       "name": "host_state_table_create",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.state.table_drop",
@@ -23643,7 +23715,7 @@
         "type": "object"
       },
       "name": "host_state_table_drop",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.table.append",
@@ -23674,7 +23746,7 @@
         "type": "object"
       },
       "name": "host_table_append",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.table.chart",
@@ -23709,7 +23781,7 @@
         "type": "object"
       },
       "name": "host_table_chart",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.table.charts",
@@ -23726,7 +23798,7 @@
         "type": "object"
       },
       "name": "host_table_charts",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.table.create",
@@ -23762,7 +23834,7 @@
         "type": "object"
       },
       "name": "host_table_create",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.table.describe",
@@ -23785,7 +23857,7 @@
         "type": "object"
       },
       "name": "host_table_describe",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.table.drop",
@@ -23816,7 +23888,7 @@
         "type": "object"
       },
       "name": "host_table_drop",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.table.graph",
@@ -23841,7 +23913,7 @@
         "type": "object"
       },
       "name": "host_table_graph",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.table.handle_drop",
@@ -23868,7 +23940,7 @@
         "type": "object"
       },
       "name": "host_table_handle_drop",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.table.handle_export",
@@ -23891,7 +23963,7 @@
         "type": "object"
       },
       "name": "host_table_handle_export",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.table.handles",
@@ -23908,7 +23980,7 @@
         "type": "object"
       },
       "name": "host_table_handles",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.table.join_paths",
@@ -23936,7 +24008,7 @@
         "type": "object"
       },
       "name": "host_table_join_paths",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.table.list",
@@ -23953,7 +24025,7 @@
         "type": "object"
       },
       "name": "host_table_list",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.table.model_set",
@@ -23993,7 +24065,7 @@
         "type": "object"
       },
       "name": "host_table_model_set",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.table.models",
@@ -24010,7 +24082,7 @@
         "type": "object"
       },
       "name": "host_table_models",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.table.next_questions",
@@ -24037,7 +24109,7 @@
         "type": "object"
       },
       "name": "host_table_next_questions",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.table.query",
@@ -24068,7 +24140,7 @@
         "type": "object"
       },
       "name": "host_table_query",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.table.query_diagnose",
@@ -24091,7 +24163,7 @@
         "type": "object"
       },
       "name": "host_table_query_diagnose",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.table.query_log",
@@ -24116,7 +24188,7 @@
         "type": "object"
       },
       "name": "host_table_query_log",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.table.query_stats",
@@ -24137,7 +24209,7 @@
         "type": "object"
       },
       "name": "host_table_query_stats",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.table.schema",
@@ -24160,7 +24232,7 @@
         "type": "object"
       },
       "name": "host_table_schema",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.tool.call",
@@ -24230,7 +24302,7 @@
         "type": "object"
       },
       "name": "host_tool_call",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.tool.diff",
@@ -24263,7 +24335,7 @@
         "type": "object"
       },
       "name": "host_tool_diff",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.tool.history",
@@ -24286,7 +24358,7 @@
         "type": "object"
       },
       "name": "host_tool_history",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.tool.list",
@@ -24333,7 +24405,7 @@
         "type": "object"
       },
       "name": "host_tool_list",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.tool.logs",
@@ -24360,7 +24432,7 @@
         "type": "object"
       },
       "name": "host_tool_logs",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.tool.publish",
@@ -24483,7 +24555,7 @@
         "type": "object"
       },
       "name": "host_tool_publish",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.tool.remove",
@@ -24510,7 +24582,7 @@
         "type": "object"
       },
       "name": "host_tool_remove",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.tool.rollback",
@@ -24538,7 +24610,7 @@
         "type": "object"
       },
       "name": "host_tool_rollback",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.tool.run",
@@ -24570,7 +24642,7 @@
         "type": "object"
       },
       "name": "host_tool_run",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.tool.share",
@@ -24610,7 +24682,7 @@
         "type": "object"
       },
       "name": "host_tool_share",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.tool.spec_shared",
@@ -24633,7 +24705,7 @@
         "type": "object"
       },
       "name": "host_tool_spec_shared",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.tool.test",
@@ -24665,7 +24737,7 @@
         "type": "object"
       },
       "name": "host_tool_test",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.tool.unshare",
@@ -24688,7 +24760,7 @@
         "type": "object"
       },
       "name": "host_tool_unshare",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.trigger.dead_letters",
@@ -24719,7 +24791,7 @@
         "type": "object"
       },
       "name": "host_trigger_dead_letters",
-      "since": "0.58.0"
+      "since": "0.107.44"
     },
     {
       "alias_of": "host.trigger.fire",
@@ -24744,7 +24816,7 @@
         "type": "object"
       },
       "name": "host_trigger_fire",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.trigger.get",
@@ -24769,7 +24841,7 @@
         "type": "object"
       },
       "name": "host_trigger_get",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.trigger.list",
@@ -24790,7 +24862,7 @@
         "type": "object"
       },
       "name": "host_trigger_list",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.trigger.pause",
@@ -24819,7 +24891,7 @@
         "type": "object"
       },
       "name": "host_trigger_pause",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.trigger.remove",
@@ -24848,7 +24920,7 @@
         "type": "object"
       },
       "name": "host_trigger_remove",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.trigger.replay",
@@ -24885,7 +24957,7 @@
         "type": "object"
       },
       "name": "host_trigger_replay",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.trigger.resume",
@@ -24914,7 +24986,7 @@
         "type": "object"
       },
       "name": "host_trigger_resume",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.trigger.set",
@@ -24980,7 +25052,7 @@
         "type": "object"
       },
       "name": "host_trigger_set",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.trigger.test",
@@ -25019,7 +25091,7 @@
         "type": "object"
       },
       "name": "host_trigger_test",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.uptime.create",
@@ -25054,7 +25126,7 @@
         "type": "object"
       },
       "name": "host_uptime_create",
-      "since": "0.58.0"
+      "since": "0.107.11"
     },
     {
       "alias_of": "host.usage",
@@ -25091,7 +25163,7 @@
         "type": "object"
       },
       "name": "host_usage",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.vault.connect_link",
@@ -25119,7 +25191,7 @@
         "type": "object"
       },
       "name": "host_vault_connect_link",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.vault.disconnect",
@@ -25147,7 +25219,7 @@
         "type": "object"
       },
       "name": "host_vault_disconnect",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.vault.provider_remove",
@@ -25170,7 +25242,7 @@
         "type": "object"
       },
       "name": "host_vault_provider_remove",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.vault.provider_set",
@@ -25223,7 +25295,7 @@
         "type": "object"
       },
       "name": "host_vault_provider_set",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.vault.providers",
@@ -25240,7 +25312,7 @@
         "type": "object"
       },
       "name": "host_vault_providers",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.vault.status",
@@ -25263,7 +25335,7 @@
         "type": "object"
       },
       "name": "host_vault_status",
-      "since": "0.58.0"
+      "since": "0.103.1"
     },
     {
       "alias_of": "host.webhook_inbox.create",
@@ -25299,7 +25371,7 @@
         "type": "object"
       },
       "name": "host_webhook_inbox_create",
-      "since": "0.58.0"
+      "since": "0.107.18"
     },
     {
       "alias_of": "host.whoami",
@@ -25316,7 +25388,7 @@
         "type": "object"
       },
       "name": "host_whoami",
-      "since": "0.58.0"
+      "since": "0.103.1"
     }
   ]
 }

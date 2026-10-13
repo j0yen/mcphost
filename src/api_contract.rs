@@ -29,27 +29,6 @@ pub const DEFAULT_CONTRACT_PATH: &str = "contracts/host-tools.v1.json";
 /// [`DEFAULT_CONTRACT_PATH`].
 pub const DEFAULT_DEPRECATIONS_PATH: &str = "contracts/deprecations.json";
 
-/// The `since` recorded for every tool that already existed when this
-/// contract system shipped. This is deliberately NOT an attempt to
-/// backfill each tool's true historical introduction version (that
-/// history isn't recoverable from the source tree) -- it's the version as
-/// of which this crate started tracking `since` at all, honestly labeled
-/// as such rather than guessed per tool. A tool added after this baseline
-/// (e.g. `host.changelog` itself, requirement 4 / AC6) gets its own,
-/// later `since`.
-pub const CONTRACT_BASELINE_SINCE: &str = "0.58.0";
-
-/// `host.changelog`'s own `since` (requirement 4 / AC6: it must itself
-/// show up as an addition). Kept in sync with `Cargo.toml`'s `version` by
-/// this PRD's own version-bump commit -- see that commit's CHANGELOG.md
-/// entry.
-pub const HOST_CHANGELOG_SINCE: &str = "0.58.1";
-
-/// PRD-mcphost-drift-review requirement 7/10: `host.drift.*`'s own
-/// `since`, same "kept in sync with Cargo.toml's version by this PRD's
-/// own version-bump commit" convention as [`HOST_CHANGELOG_SINCE`].
-pub const HOST_DRIFT_SINCE: &str = "0.79.0";
-
 /// requirement 1's "output envelope fields": the field every `host.*`/
 /// `billing.*` result MAY carry, added by requirement 3 (AC4) when the
 /// call used a deprecated field -- see
@@ -120,16 +99,169 @@ pub fn load_deprecations(path: &std::path::Path) -> anyhow::Result<Vec<Deprecati
     }
 }
 
-/// The `since` this contract records for `name`. See
-/// [`CONTRACT_BASELINE_SINCE`]/[`HOST_CHANGELOG_SINCE`]'s own docs.
-fn since_for_tool(name: &str) -> &'static str {
-    if name == "host.changelog" {
-        HOST_CHANGELOG_SINCE
-    } else if name.starts_with("host.drift.") {
-        HOST_DRIFT_SINCE
-    } else {
-        CONTRACT_BASELINE_SINCE
+/// The committed contract file, compiled in: the single record of when each
+/// tool first appeared (`since`). `dump_contract` reads it back, so a rebuilt
+/// dump keeps every tool's `since` and only a tool the file has never seen
+/// takes the current version.
+pub const COMMITTED_CONTRACT: &str = include_str!("../contracts/host-tools.v1.json");
+
+fn committed_since() -> &'static std::collections::BTreeMap<String, String> {
+    static MAP: std::sync::OnceLock<std::collections::BTreeMap<String, String>> = std::sync::OnceLock::new();
+    MAP.get_or_init(|| since_map(COMMITTED_CONTRACT))
+}
+
+/// `name -> since` for every tool in a contract file's text (empty when the
+/// text does not parse; drift is reported by [`since_drift`], not here).
+pub fn since_map(contract_text: &str) -> std::collections::BTreeMap<String, String> {
+    let Ok(v) = serde_json::from_str::<Value>(contract_text) else {
+        return Default::default();
+    };
+    v["tools"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|t| Some((t["name"].as_str()?.to_string(), t["since"].as_str()?.to_string())))
+        .collect()
+}
+
+/// The `since` this contract records for `name`: the committed value, or the
+/// current crate version for a tool the committed file has not seen yet.
+fn since_for_tool(name: &str) -> String {
+    committed_since()
+        .get(name)
+        .cloned()
+        .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string())
+}
+
+/// The contract-drift check for `since`: one message per live tool that has
+/// no `since` in `committed` (naming the version to record), and per
+/// committed `since` that is malformed or newer than this crate's version.
+pub fn since_drift(committed: &str, kinds: &KindRegistry) -> Vec<String> {
+    let recorded = since_map(committed);
+    let now = env!("CARGO_PKG_VERSION");
+    let mut out = Vec::new();
+    for t in crate::handler::host_tool_descriptors(kinds) {
+        if !recorded.contains_key(t.name.as_ref()) {
+            out.push(format!(
+                "tool `{}` has no `since` in contracts/host-tools.v1.json; record \"since\": \"{now}\"",
+                t.name
+            ));
+        }
     }
+    for (name, since) in &recorded {
+        if Version::parse(since).is_none() {
+            out.push(format!("tool `{name}` records malformed `since` {since:?}"));
+        } else if version_gt(since, now) {
+            out.push(format!("tool `{name}` records `since` {since}, newer than the current version {now}"));
+        }
+    }
+    out
+}
+
+
+/// The committed `CHANGELOG.md`, compiled in so `host.changelog` can list
+/// releases without reading the filesystem.
+pub const CHANGELOG_MD: &str = include_str!("../CHANGELOG.md");
+
+/// Plain `MAJOR.MINOR.PATCH` (the only form releases use; see `version_gt`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Version {
+    pub major: u64,
+    pub minor: u64,
+    pub patch: u64,
+}
+
+impl Version {
+    pub fn parse(s: &str) -> Option<Version> {
+        let mut it = s.split('.');
+        let mut next = || {
+            let p = it.next()?;
+            (!p.is_empty() && p.bytes().all(|b| b.is_ascii_digit())).then(|| p.parse::<u64>().ok()).flatten()
+        };
+        let v = Version { major: next()?, minor: next()?, patch: next()? };
+        it.next().is_none().then_some(v)
+    }
+}
+
+impl std::fmt::Display for Version {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
+    }
+}
+
+/// One `## v<semver> — <date>` section of `CHANGELOG.md`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Release {
+    pub version: Version,
+    pub date: String,
+    /// First paragraph of the section, at most 300 characters.
+    pub summary: String,
+}
+
+/// A `## ` heading in `CHANGELOG.md` that is not `## v<semver> — <YYYY-MM-DD>`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChangelogError {
+    pub line: usize,
+    pub heading: String,
+    pub reason: String,
+}
+
+impl std::fmt::Display for ChangelogError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "CHANGELOG.md line {}: {:?}: {}", self.line, self.heading, self.reason)
+    }
+}
+
+impl std::error::Error for ChangelogError {}
+
+const SUMMARY_MAX: usize = 300;
+
+/// Parses every `## ` heading of `text` (file order, newest first) into a
+/// [`Release`]. Strict: a heading that is not `## v<semver> — <YYYY-MM-DD>`
+/// is an error, so the file cannot silently stop being a contract.
+pub fn parse_changelog(text: &str) -> Result<Vec<Release>, ChangelogError> {
+    let mut releases: Vec<Release> = Vec::new();
+    let mut summary_done = false;
+    for (idx, line) in text.lines().enumerate() {
+        if let Some(rest) = line.strip_prefix("## ") {
+            let err = |reason: &str| ChangelogError {
+                line: idx + 1,
+                heading: line.to_string(),
+                reason: reason.to_string(),
+            };
+            let (ver, date) = rest.split_once(" — ").ok_or_else(|| err("expected `v<semver> — <date>`"))?;
+            let version = ver
+                .strip_prefix('v')
+                .and_then(Version::parse)
+                .ok_or_else(|| err("version is not `v<semver>`"))?;
+            let date = date.trim();
+            let b = date.as_bytes();
+            let shaped = b.len() == 10
+                && b.iter().enumerate().all(|(i, c)| if i == 4 || i == 7 { *c == b'-' } else { c.is_ascii_digit() });
+            if !shaped {
+                return Err(err("date is not YYYY-MM-DD"));
+            }
+            releases.push(Release { version, date: date.to_string(), summary: String::new() });
+            summary_done = false;
+        } else if let Some(r) = releases.last_mut()
+            && !summary_done
+        {
+            if line.trim().is_empty() {
+                summary_done = !r.summary.is_empty();
+            } else {
+                if !r.summary.is_empty() {
+                    r.summary.push(' ');
+                }
+                r.summary.push_str(line.trim());
+            }
+        }
+    }
+    for r in &mut releases {
+        if r.summary.chars().count() > SUMMARY_MAX {
+            r.summary = r.summary.chars().take(SUMMARY_MAX).collect();
+        }
+    }
+    Ok(releases)
 }
 
 /// Recursively rebuilds `value` with every object's keys inserted in
@@ -688,15 +820,75 @@ fn version_gt(a: &str, b: &str) -> bool {
 /// removed) newer than `since` too. `kinds` is the caller's real registry
 /// (not a fixed one) -- see [`crate::control::changelog`]'s own doc for
 /// why this differs from [`dump_contract`]'s committed-contract use.
-pub fn changelog(kinds: &KindRegistry, deprecations: &[Deprecation], since: &str) -> Value {
+pub fn changelog(kinds: &KindRegistry, deprecations: &[Deprecation], since: Option<&str>) -> Value {
+    static RELEASES: std::sync::OnceLock<Result<Vec<Release>, ChangelogError>> = std::sync::OnceLock::new();
+    match RELEASES.get_or_init(|| parse_changelog(CHANGELOG_MD)) {
+        Ok(releases) => changelog_at(kinds, deprecations, releases, env!("CARGO_PKG_VERSION"), since),
+        Err(e) => {
+            tracing::error!(error = %e, "CHANGELOG.md does not parse; host.changelog serves no releases");
+            let mut out = changelog_at(kinds, deprecations, &[], env!("CARGO_PKG_VERSION"), since);
+            out["releases_error"] = json!(e.to_string());
+            out
+        }
+    }
+}
+
+/// [`changelog`] with the release list and the host's own version injected
+/// (so a test can stand a host at another version). `since: None` is a
+/// tenant that has never been seen: the last five releases, and the other
+/// lists cover exactly those releases.
+pub fn changelog_at(
+    kinds: &KindRegistry,
+    deprecations: &[Deprecation],
+    all_releases: &[Release],
+    now: &str,
+    since: Option<&str>,
+) -> Value {
+    let now_v = Version::parse(now);
+    let upto: Vec<&Release> = all_releases.iter().filter(|r| now_v.is_none_or(|n| r.version <= n)).collect();
+    let (shown, effective): (Vec<&Release>, String) = match since.and_then(Version::parse) {
+        Some(s) => (upto.iter().copied().filter(|r| r.version > s).collect(), since.unwrap_or("0.0.0").to_string()),
+        None if since.is_some() => (upto.clone(), since.unwrap_or("0.0.0").to_string()),
+        None => {
+            let shown: Vec<&Release> = upto.iter().copied().take(5).collect();
+            let floor = upto.get(5).map_or("0.0.0".to_string(), |r| r.version.to_string());
+            (shown, floor)
+        }
+    };
+    let releases: Vec<Value> = shown
+        .iter()
+        .map(|r| json!({"version": r.version.to_string(), "date": r.date, "summary": r.summary}))
+        .collect();
+    let since_out = since.map(str::to_string);
+    let since: &str = &effective;
+    let in_range = |v: &str| version_gt(v, since) && !version_gt(v, now);
+
     let mut tools = crate::handler::host_tool_descriptors(kinds);
     tools.sort_by(|a, b| a.name.cmp(&b.name));
 
     let additions: Vec<Value> = tools
         .iter()
         .map(|t| t.name.to_string())
-        .filter(|name| version_gt(since_for_tool(name), since))
+        .filter(|name| in_range(&since_for_tool(name)))
         .map(|name| json!({"name": name, "since": since_for_tool(&name)}))
+        .collect();
+
+    // Every `TOOL_ALIASES` entry whose canonical name appeared after `since`
+    // (the rename shipped with the canonical). `since` is that release;
+    // `sunset` comes from the alias's `deprecations.json` entry when it has
+    // one, else the table-wide `SUNSET_DATE`.
+    let renamed: Vec<Value> = crate::tool_aliases::TOOL_ALIASES
+        .iter()
+        .filter(|a| in_range(&since_for_tool(a.canonical)))
+        .map(|a| {
+            let entry = deprecations.iter().find(|d| d.path == a.alias && !d.narrowing_only);
+            json!({
+                "from": a.alias,
+                "to": a.canonical,
+                "since": since_for_tool(a.canonical),
+                "sunset": entry.map_or(crate::tool_aliases::SUNSET_DATE, |d| d.sunset.as_str()),
+            })
+        })
         .collect();
 
     let live_field_exists = |path: &str| -> bool {
@@ -743,7 +935,13 @@ pub fn changelog(kinds: &KindRegistry, deprecations: &[Deprecation], since: &str
         .collect();
 
     json!({
-        "since": since,
+        "since": since_out,
+        "now": now,
+        "releases": releases,
+        "added": additions,
+        "renamed": renamed,
+        "deprecated": announced,
+        "removed": removals,
         "additions": additions,
         "deprecations": announced,
         "removals": removals,
