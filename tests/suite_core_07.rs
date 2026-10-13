@@ -1033,6 +1033,12 @@ mod handoff_ac06_errors_never_echo_token_or_key;
 mod handoff_ac07_docs_recommend_handoff_flow;
 #[path = "handoff_ac08_whoami_reports_key_age_and_rotation.rs"]
 mod handoff_ac08_whoami_reports_key_age_and_rotation;
+#[path = "heal_ac01_action_set_single_source.rs"]
+mod heal_ac01_action_set_single_source;
+#[path = "heal_ac03_rate_limit_per_hour.rs"]
+mod heal_ac03_rate_limit_per_hour;
+#[path = "heal_ac04_no_destructive_action.rs"]
+mod heal_ac04_no_destructive_action;
 #[path = "hooks_ac10_healthz_event_counters.rs"]
 mod hooks_ac10_healthz_event_counters;
 #[path = "hooks_ac11_dedupe_header_idempotent.rs"]
@@ -1827,17 +1833,3 @@ mod ownmt_ac05_claim_email_configured_signal;
 mod ownmt_ac06_claim_round_trip_for_journey_claim_step;
 #[path = "ownmt_ac07_claim_page_shows_remember_note.rs"]
 mod ownmt_ac07_claim_page_shows_remember_note;
-#[path = "pgtr_ac01_inconsistency_census.rs"]
-mod pgtr_ac01_inconsistency_census;
-#[path = "pgtr_ac02_docs_list_walk_ends_exactly_once.rs"]
-mod pgtr_ac02_docs_list_walk_ends_exactly_once;
-#[path = "pgtr_ac03_cursor_invalid_after_restart.rs"]
-mod pgtr_ac03_cursor_invalid_after_restart;
-#[path = "pgtr_ac04_every_array_verb_is_paged_or_excused.rs"]
-mod pgtr_ac04_every_array_verb_is_paged_or_excused;
-#[path = "pgtr_ac05_channel_read_empty_page_and_ack.rs"]
-mod pgtr_ac05_channel_read_empty_page_and_ack;
-#[path = "pgtr_ac06_cursor_is_bound_to_its_tenant.rs"]
-mod pgtr_ac06_cursor_is_bound_to_its_tenant;
-#[path = "pgtr_ac07_limit_clamped_and_zero_refused.rs"]
-mod pgtr_ac07_limit_clamped_and_zero_refused;

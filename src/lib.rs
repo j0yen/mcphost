@@ -56,6 +56,7 @@ pub mod form_page;
 pub mod funnel;
 pub mod gendocs;
 pub mod handler;
+pub mod heal;
 pub mod help;
 pub mod hooks;
 pub mod hostpressure;

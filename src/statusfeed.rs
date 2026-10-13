@@ -465,6 +465,7 @@ pub async fn status_json(state: &AppState) -> Result<Value, AppError> {
         "incidents_recent_30d": recent_closed.iter().map(incident_json).collect::<Vec<_>>(),
         "warnings": warnings,
         "signals": state.signals.status_json(now_unix()),
+        "heal": crate::heal::status_block(state).await?,
     });
     // PRD-mcphost-healthz-version-field requirement 3: whole-feed only; the
     // per-component rollup (`daily_rows`) stays unchanged.
