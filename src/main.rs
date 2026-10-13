@@ -86,6 +86,10 @@ enum Command {
         /// (`YYYY-MM-DD`). Unset reports on every tenant.
         #[arg(long)]
         since: Option<String>,
+        /// Window, in days, of the per-surface report (`by_surface` /
+        /// `probe`); defaults to 7.
+        #[arg(long)]
+        days: Option<i64>,
         /// Print the report as JSON instead of the default text table.
         #[arg(long)]
         json: bool,
@@ -565,7 +569,7 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         },
-        Command::Funnel { since, json } => {
+        Command::Funnel { since, days, json } => {
             // Deliberately no `init_tracing()`: same rationale as
             // `SandboxCheck` above -- this subcommand's whole contract is
             // stdout output a shell (or the measure job) parses, and a
@@ -587,9 +591,19 @@ async fn main() -> anyhow::Result<()> {
             let plans_path = mcphost::plans::PlanCatalog::path_from_env(&dir);
             let plans = mcphost::plans::PlanCatalog::load_or_init(&plans_path)?;
             let report = mcphost::funnel::compute(&db, &plans, since_unix).await?;
+            let days = days.unwrap_or(7).clamp(1, 365);
+            let (by_surface, probe) =
+                mcphost::funnel::surface_report(&db, mcphost::state::now_unix(), days).await?;
             if json {
-                println!("{}", serde_json::to_string(&report.to_json())?);
+                let mut body = report.to_json();
+                if let Some(obj) = body.as_object_mut() {
+                    obj.insert("by_surface".to_string(), by_surface);
+                    obj.insert("probe".to_string(), probe);
+                }
+                println!("{}", serde_json::to_string(&body)?);
             } else {
+                println!("by_surface (humans, last {days} d): {by_surface}");
+                println!("probe (fleet/probe tenants, last 24 h): {probe}");
                 for (label, stage) in [("real", &report.real), ("synthetic", &report.synthetic)] {
                     println!(
                         "{label}: signed_up={} published={} called={} returned={} hit_cap={} upgraded={} median_signup_to_first_call_secs={}",

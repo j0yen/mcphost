@@ -24,6 +24,22 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "planlim_ac01_quickstart_limits_plan_every_ceiling.rs"]
+mod planlim_ac01_quickstart_limits_plan_every_ceiling;
+#[path = "planlim_ac02_tool_call_budget_schema_maximum.rs"]
+mod planlim_ac02_tool_call_budget_schema_maximum;
+#[path = "planlim_ac03_ceiling_error_points_at_quickstart.rs"]
+mod planlim_ac03_ceiling_error_points_at_quickstart;
+#[path = "planlim_ac04_ceilings_table_in_generated_docs.rs"]
+mod planlim_ac04_ceilings_table_in_generated_docs;
+#[path = "planlim_ac05_publish_network_description_lists_gated_values.rs"]
+mod planlim_ac05_publish_network_description_lists_gated_values;
+#[path = "planlim_ac06_tool_test_warns_timeout_above_latency_ceiling.rs"]
+mod planlim_ac06_tool_test_warns_timeout_above_latency_ceiling;
+#[path = "planlim_ac07_contract_drift_with_deprecation_entry.rs"]
+mod planlim_ac07_contract_drift_with_deprecation_entry;
+#[path = "proptest_invariants.rs"]
+mod proptest_invariants;
 #[path = "provaudit_ac01_synthetic_signup_stamped.rs"]
 mod provaudit_ac01_synthetic_signup_stamped;
 #[path = "provaudit_ac02_external_signup_stamped.rs"]

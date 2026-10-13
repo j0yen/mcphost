@@ -163,6 +163,95 @@ pub async fn compute(
     Ok(FunnelReport { real, synthetic })
 }
 
+/// PRD-mcphost-funnel-by-surface-nightly-probe R2: one install surface's
+/// launch stages over humans only.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct SurfaceStage {
+    pub signed_up: i64,
+    pub claimed: i64,
+    pub published: i64,
+    pub first_external_call: i64,
+    /// Tenants with a successful call on days 7-14 after signup, counted
+    /// over tenants at least 14 days old only; `None` (JSON `null`) while
+    /// the row has no such tenant -- not yet measurable, never `0` (R6).
+    pub day7_active: Option<i64>,
+}
+
+const DAY: i64 = 86_400;
+/// Age at which `day7_active` becomes measurable (the end of the day 7-14
+/// window).
+const DAY7_MATURITY_SECS: i64 = 14 * DAY;
+/// The `probe` line looks back this far.
+const PROBE_WINDOW_SECS: i64 = DAY;
+
+/// R3: `(by_surface, probe)` for the trailing `days` (default window is
+/// whole UTC days, so a tenant born exactly `days` ago is inside it).
+/// `by_surface` counts `funnel_origin = human` tenants under every
+/// [`crate::install_links::SURFACES`] id plus `other`; `probe` lists the
+/// `fleet`/`probe` tenants born in the last 24 h with the furthest stage
+/// each reached.
+pub async fn surface_report(db: &Db, now: i64, days: i64) -> Result<(Value, Value), AppError> {
+    let since = (now - days * DAY).div_euclid(DAY) * DAY;
+    let tenants = db.surface_funnel_tenants(since).await?;
+    let mut calls: HashMap<i64, Vec<(i64, bool)>> = HashMap::new();
+    for (tenant_id, started_unix, external) in db.surface_funnel_calls(since).await? {
+        calls.entry(tenant_id).or_default().push((started_unix, external));
+    }
+
+    let mut rows: std::collections::BTreeMap<&'static str, SurfaceStage> = crate::install_links::SURFACES
+        .iter()
+        .copied()
+        .chain(["other"])
+        .map(|id| (id, SurfaceStage::default()))
+        .collect();
+    let mut probe: Vec<(i64, Value)> = Vec::new();
+
+    for t in &tenants {
+        let tenant_calls = calls.get(&t.id).map(Vec::as_slice).unwrap_or(&[]);
+        let first_external = tenant_calls.iter().find(|(at, ext)| *ext && *at >= t.created_unix).map(|(at, _)| *at);
+        let published = t.has_tool || t.first_publish_unix.is_some();
+        match t.funnel_origin.as_str() {
+            "human" => {
+                let row = rows.entry(crate::install_links::surface_id(t.client_name.as_deref())).or_default();
+                row.signed_up += 1;
+                row.claimed += i64::from(t.claimed_unix.is_some());
+                row.published += i64::from(published);
+                row.first_external_call += i64::from(first_external.is_some());
+                if now >= t.created_unix + DAY7_MATURITY_SECS {
+                    let active = tenant_calls.iter().any(|(at, _)| {
+                        *at >= t.created_unix + 7 * DAY && *at <= t.created_unix + DAY7_MATURITY_SECS
+                    });
+                    *row.day7_active.get_or_insert(0) += i64::from(active);
+                }
+            }
+            "fleet" | "probe" if t.created_unix >= now - PROBE_WINDOW_SECS => {
+                let (stage, reached_at) = if let Some(at) = first_external {
+                    ("first_external_call", at)
+                } else if published {
+                    ("published", t.first_publish_unix.unwrap_or(t.created_unix))
+                } else if let Some(at) = t.claimed_unix {
+                    ("claimed", at)
+                } else {
+                    ("signed_up", t.created_unix)
+                };
+                probe.push((
+                    t.created_unix,
+                    json!({
+                        "tenant_id": t.id,
+                        "namespace": t.namespace,
+                        "client_name": t.client_name,
+                        "stage": stage,
+                        "reached_at": reached_at,
+                    }),
+                ));
+            }
+            _ => {}
+        }
+    }
+    probe.sort_by_key(|(created, _)| std::cmp::Reverse(*created));
+    Ok((json!(rows), Value::Array(probe.into_iter().map(|(_, v)| v).collect())))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

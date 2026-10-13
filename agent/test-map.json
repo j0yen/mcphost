@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-example-from-published-tool.md (test_prefix: exprp)",
+  "ac_test_map_prd": "PRD-mcphost-funnel-by-surface-nightly-probe.md (test_prefix: fsurf)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,13 +28,10 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/exprp_ac01_rendered_example_forks_and_proves.rs",
-    "AC2": "tests/exprp_ac02_literal_secret_value_is_refused.rs",
-    "AC3": "tests/exprp_ac03_non_portable_and_failing_proof_are_refused.rs",
-    "AC4": "tests/exprp_ac04_admin_decides_and_the_proposer_sees_it.rs",
-    "AC5": "tests/exprp_ac05_pull_writes_the_clone_commits_and_merges.rs",
-    "AC6": "tests/exprp_ac06_name_collision_and_open_proposal_cap.rs",
-    "AC7": "deferred -- operator-provisioned: live prod propose by the joe-test tenant after deploy (scripts/live/example-propose.sh)."
+    "AC1": "deferred -- operator-provisioned: Live premise check over prod client_name data, recorded by the operator after land.",
+    "AC2": "tests/fsurf_ac02_surfaces_drift.rs",
+    "AC3": "tests/fsurf_ac03_by_surface_and_probe.rs",
+    "AC4": "tests/fsurf_ac04_day7_active_null_until_mature.rs"
   },
   "ac_test_map_by_prefix": {
     "ccli": {
@@ -1492,6 +1489,17 @@
       "AC5": "tests/exprp_ac05_pull_writes_the_clone_commits_and_merges.rs",
       "AC6": "tests/exprp_ac06_name_collision_and_open_proposal_cap.rs",
       "AC7": "deferred -- operator-provisioned: live prod propose by the joe-test tenant after deploy (scripts/live/example-propose.sh)."
+    },
+    "cnfm": {
+      "_prd": "PRD-mcphost-destructive-verb-confirmation-token.md (test_prefix: cnfm)",
+      "AC1": "deferred -- operator-provisioned: Live premise check over prod/orch truth-tier transcripts, recorded by the operator after land.",
+      "AC2": "tests/cnfm_ac02_confirm_required_over_threshold.rs",
+      "AC3": "tests/cnfm_ac03_token_deletes_once.rs",
+      "AC4": "tests/cnfm_ac04_token_bound_to_args_state_and_time.rs",
+      "AC5": "tests/cnfm_ac05_tools_list_marks_destructive_verbs.rs",
+      "AC6": "tests/cnfm_ac06_scratch_tenant_is_never_gated.rs",
+      "AC7": "tests/cnfm_ac07_plan_override_disables_the_gate.rs",
+      "AC8": "deferred -- operator-provisioned: live prod delete of joe-test table cnfm_live after deploy."
     }
   }
 }
