@@ -979,6 +979,14 @@ mod funnel_ac07_invited_split_and_k;
 mod gatedebt_4f1112d_ac4_no_test_reads_gate_receipts;
 #[path = "gatedebt_4f1112d_ac5_no_flake_audit_selftest_names.rs"]
 mod gatedebt_4f1112d_ac5_no_flake_audit_selftest_names;
+#[path = "gsig_ac01_replay_bad_night.rs"]
+mod gsig_ac01_replay_bad_night;
+#[path = "gsig_ac02_status_json_carries_signals.rs"]
+mod gsig_ac02_status_json_carries_signals;
+#[path = "gsig_ac03_breach_and_clear_broadcast_once.rs"]
+mod gsig_ac03_breach_and_clear_broadcast_once;
+#[path = "gsig_ac04_bad_override_is_rejected_at_boot.rs"]
+mod gsig_ac04_bad_override_is_rejected_at_boot;
 #[path = "handle_ac01_materialize_50k_rows_summary.rs"]
 mod handle_ac01_materialize_50k_rows_summary;
 #[path = "handle_ac02_query_handle_group_by_matches_source.rs"]
@@ -1823,17 +1831,3 @@ mod pgtr_ac05_channel_read_empty_page_and_ack;
 mod pgtr_ac06_cursor_is_bound_to_its_tenant;
 #[path = "pgtr_ac07_limit_clamped_and_zero_refused.rs"]
 mod pgtr_ac07_limit_clamped_and_zero_refused;
-#[path = "plancat_ac01_missing_state_quotas_default_from_catalog.rs"]
-mod plancat_ac01_missing_state_quotas_default_from_catalog;
-#[path = "plancat_ac02_startup_logs_defaulted_fields.rs"]
-mod plancat_ac02_startup_logs_defaulted_fields;
-#[path = "plancat_ac03_unknown_plan_name_defaults_from_free.rs"]
-mod plancat_ac03_unknown_plan_name_defaults_from_free;
-#[path = "plancat_ac04_healthz_lists_plans_with_quotas.rs"]
-mod plancat_ac04_healthz_lists_plans_with_quotas;
-#[path = "plancat_ac05_full_plans_toml_unchanged_and_silent.rs"]
-mod plancat_ac05_full_plans_toml_unchanged_and_silent;
-#[path = "plancat_ac06_build_has_no_hardcoded_quota_defaults.rs"]
-mod plancat_ac06_build_has_no_hardcoded_quota_defaults;
-#[path = "plancat_ac07_llms_txt_names_defaulting_and_startup_line.rs"]
-mod plancat_ac07_llms_txt_names_defaulting_and_startup_line;

@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-example-from-published-tool.md",
-  "intent_slug": "mcphost-example-from-published-tool",
-  "root_motivation": "**Who:** the agent whose tool works and whose user would let others copy it; Joe, who wants more examples without writing them. **What:** a one-call path from \"my tool works\" to a reviewable example directory with a proof and the author tenant recorded. **Why not today:** examples are hand-written directories; nothing packages a tool plus a proof call into the manifest shape, scrubs secrets, or puts it in front of a reviewer.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-golden-signals-self-probe.md",
+  "intent_slug": "mcphost-golden-signals-self-probe",
+  "root_motivation": "**Who:** the actuators in `visions/mcphost-self-healing.md` (they need a trigger that is not \"5 probes failed\"); the chain, which cannot tell a host night from a tools night; the agent reading `/status.json` before publishing. **What:** a per-minute measurement of the host's own latency, contention, disk and pool, with a documented green/amber/red band per signal. **Why not today:** prod 10-07 13:21-13:22 UTC `database is locked` killed a ban tick and a scheduler tick; 237 `failed to write host.table.query log row` rows 10-04 \u2192 10-08; 12 `timed out draining in-flight responses`. Through all of it `/status.json` read `operational`, `uptime_30d: 1.0` on all four components, because `probe_exec` (`statusfeed.rs:104`) asks \"did one exec return\" and nothing asks \"how long, how contended, how full\". **Premise (agent viewpoint):** \"when my tool is slow at 3 am, the host already knows whether it is the host.\" Falsifier: the signals stay green on a bad night (AC 1 tests the band logic agai...",
   "user_persona": "An agent that calls host.example.propose {tool, proof_call, title, use_case} after its user says \"this works, share it\", then reads host.example.proposal_status until an admin approves and `mcphost examples proposals pull` opens the PR.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,44 +14,26 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a fixture tenant with a tool reading `{{ secret.TOKEN }}` and a passing proof call, When `host.example.propose` runs and the rendered example is forked into a fresh tenant that sets `TOKEN`, Then the proof call satisfies `expect` unchanged; a fail is reported as the falsifier firing with the rendered diff.",
-      "test": "tests/exprp_ac01_rendered_example_forks_and_proves.rs"
+      "description": "Given `tests/fixtures/gsig_bad_night.jsonl` (samples with `sqlite_write_ms` \u2265 500 for 4 min from 13:21) and the compiled `heal.toml`, When `mcphost signals replay` runs, Then it prints exactly one `sqlite_write_ms` breach with `since` at 13:21 and one clear, and zero breaches for the other four signals.",
+      "test": "tests/gsig_ac01_replay_bad_night.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a tool whose source contains the literal value of a stored secret, When `host.example.propose` runs, Then it returns `secret_leak {line}` with no value echoed and no proposal row.",
-      "test": "tests/exprp_ac02_literal_secret_value_is_refused.rs"
+      "description": "Given a running host with the probe ticking, When `/status.json` is fetched after 3 ticks, Then `signals` has all five keys with numeric `value`, `band \u2208 {green, amber, red}`, and `samples_5m \u2265 3` for `echo_p95_ms`.",
+      "test": "tests/gsig_ac02_status_json_carries_signals.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a tool whose spec calls `host.state.insert`, When proposed, Then `not_portable` names the reference; given a `proof_call` whose `expect` does not hold now, Then `proof_failed` with the actual result excerpt.",
-      "test": "tests/exprp_ac03_non_portable_and_failing_proof_are_refused.rs"
+      "description": "Given a signal whose value crosses `red` at t and stays, When `for_s` elapses, Then exactly one `SignalBreach` is broadcast and a second subscriber receives the same event; When it returns below `amber`, Then exactly one `SignalClear` follows.",
+      "test": "tests/gsig_ac03_breach_and_clear_broadcast_once.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a pending proposal, When `admin.example_proposals {action: approve, id}` runs, Then status is `approved` with `decided_by`; a non-admin bearer gets `forbidden`; the proposer's `host.example.proposal_status` shows `approved`.",
-      "test": "tests/exprp_ac04_admin_decides_and_the_proposer_sees_it.rs"
-    },
-    {
-      "id": "AC5",
-      "level": "MUST",
-      "description": "Given one approved proposal and a clone on a fixture host, When `mcphost examples proposals pull --repo <clone>` runs with `gh` stubbed, Then the clone has `examples/<name>/{example.toml,tools/,proof.sh}`, `mcphost examples check` passes on it, one commit exists, and the proposal is `merged` with the PR URL.",
-      "test": "tests/exprp_ac05_pull_writes_the_clone_commits_and_merges.rs"
-    },
-    {
-      "id": "AC6",
-      "level": "MUST",
-      "description": "Given a proposal for a name already in the embedded index, When proposed, Then `example_exists`; given a 4th open proposal from one tenant, Then `too_many_proposals`.",
-      "test": "tests/exprp_ac06_name_collision_and_open_proposal_cap.rs"
-    },
-    {
-      "id": "AC7",
-      "level": "MUST",
-      "description": "Given prod after deploy, When the joe-test tenant proposes its `table_note`-style tool with a passing proof call, Then the response carries a `proposal_id` and `admin.example_proposals list` shows it pending (Live; evidence: `bash scripts/live/example-propose.sh https://mcphost.dev/mcp` prints `proposal_id`)",
-      "test": "deferred -- operator-provisioned: live prod propose by the joe-test tenant after deploy (scripts/live/example-propose.sh)."
+      "description": "Given `MCPHOST_HEAL_TOML` pointing at a file with `[signals.echo_p95_ms] red = \"fast\"`, When the host boots, Then it logs `heal.toml override rejected` and `/status.json.signals.echo_p95_ms.red` is the compiled `2000`.",
+      "test": "tests/gsig_ac04_bad_override_is_rejected_at_boot.rs"
     }
   ],
   "scope": [

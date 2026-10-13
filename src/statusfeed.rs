@@ -184,18 +184,67 @@ async fn run_probe(state: &AppState, component: &str) -> (bool, i64) {
 /// `bans::tick_once`.
 pub async fn tick_once(state: &AppState) -> Result<(), AppError> {
     let now = now_unix();
+    let mut exec_latency_ms = 0;
     for component in COMPONENTS {
         let (ok, latency_ms) = match state.status_probe_override.get(component) {
             Some(forced) => (forced, 0),
             None => run_probe(state, component).await,
         };
+        if component == "exec" {
+            exec_latency_ms = latency_ms;
+        }
         state
             .db
             .insert_status_sample(component.to_string(), now, ok, latency_ms, "self".to_string())
             .await?;
         check_component_alert(state, component).await?;
     }
+    sample_signals(state, now, exec_latency_ms).await;
     Ok(())
+}
+
+/// Echo-probe calls per tick, counting the `exec` component probe above.
+const ECHO_CALLS_PER_TICK: usize = 3;
+
+/// PRD-mcphost-golden-signals-self-probe R1/R2: after the component probes,
+/// the same tick takes the five golden-signal samples. A signal with nothing
+/// to measure this tick (no python kind, no cold start in the window)
+/// records `0`, i.e. "nothing slow", rather than skipping the sample.
+async fn sample_signals(state: &AppState, now: i64, exec_latency_ms: i64) {
+    use crate::signals::{Signal, WINDOW_SECS, percentile};
+    let signals = &state.signals;
+    let started = Instant::now();
+
+    let mut echo_ms = vec![exec_latency_ms as f64];
+    if state.status_probe_override.get("exec").is_none() {
+        for _ in 1..ECHO_CALLS_PER_TICK {
+            echo_ms.push(probe_exec(state).await.1 as f64);
+        }
+    }
+    signals.record_echo_calls(now, &echo_ms);
+    signals.record(Signal::EchoP95Ms, now, signals.echo_p95_ms());
+
+    let wedge_factor = signals.config().threshold(Signal::SandboxPool).wedge_factor.unwrap_or(3.0);
+    let pool = state.kinds.get("python").and_then(|k| k.pool_signals(wedge_factor)).unwrap_or_default();
+    let cold: Vec<f64> = pool
+        .cold_starts
+        .iter()
+        .filter(|(ts, _)| now - ts <= WINDOW_SECS)
+        .map(|(_, ms)| *ms as f64)
+        .collect();
+    signals.record(Signal::ColdStartP50Ms, now, percentile(&cold, 50.0));
+
+    let write_started = Instant::now();
+    if let Err(e) = state.db.signals_probe_write().await {
+        tracing::warn!(error = %e, "signals_probe write failed");
+    }
+    signals.record(Signal::SqliteWriteMs, now, write_started.elapsed().as_secs_f64() * 1000.0);
+
+    let free_mb = state.disk_guard.free_bytes(state.db.data_dir()) / (1024 * 1024);
+    signals.record(Signal::DiskFreeMb, now, free_mb as f64);
+
+    signals.record(Signal::SandboxPool, now, pool.wedged as f64 / pool.pool_size.max(1) as f64);
+    tracing::debug!(signals_probe_ms = started.elapsed().as_millis() as u64, "golden signals sampled");
 }
 
 /// requirement 6 / AC9: fires `status.component_down` and auto-opens a
@@ -407,6 +456,7 @@ pub async fn status_json(state: &AppState) -> Result<Value, AppError> {
         "incidents_open": open_incidents.iter().map(incident_json).collect::<Vec<_>>(),
         "incidents_recent_30d": recent_closed.iter().map(incident_json).collect::<Vec<_>>(),
         "warnings": warnings,
+        "signals": state.signals.status_json(now_unix()),
     });
     // PRD-mcphost-healthz-version-field requirement 3: whole-feed only; the
     // per-component rollup (`daily_rows`) stays unchanged.

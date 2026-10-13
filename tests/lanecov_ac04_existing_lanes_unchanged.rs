@@ -200,6 +200,11 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // lane (routes contracts/host-output-schemas.v1.json and the captured
     // response corpus tests/fixtures/outsch/** to the outsch_ac proof
     // tests) -- an intended addition since the baseline.
+    // PRD-mcphost-golden-signals-self-probe added its own "heal-config" lane
+    // (routes heal.toml -- the golden-signal thresholds compiled into
+    // src/signals.rs via include_str! -- to the workspace check, clippy, and
+    // test commands, so a change to it is proven the way a src/ edit is) --
+    // an intended addition since the baseline.
     assert_eq!(
         added,
         vec![
@@ -214,6 +219,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "example-manifest",
             "examples",
             "flake-lint",
+            "heal-config",
             "host-pressure-doc-check",
             "launch-docs",
             "loop-config",

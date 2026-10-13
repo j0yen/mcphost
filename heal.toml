@@ -1,0 +1,41 @@
+# PRD-mcphost-golden-signals-self-probe R3: the thresholds the host grades its
+# own golden signals against. Compiled into the binary (`include_str!`);
+# `MCPHOST_HEAL_TOML=<path>` may override it wholesale, and a malformed or
+# incomplete override is rejected in favor of this file.
+#
+# A signal is `red` at or past `red`, `amber` at or past `amber` (for
+# `disk_free_mb`, whose bad direction is down, at or below), else green. A
+# signal red for `for_s` seconds emits one SignalBreach.
+
+[signals.echo_p95_ms]
+amber = 1000
+red = 2000
+for_s = 300
+unit = "ms"
+
+[signals.cold_start_p50_ms]
+amber = 1500
+red = 4000
+for_s = 300
+unit = "ms"
+
+[signals.sqlite_write_ms]
+amber = 50
+red = 500
+for_s = 120
+unit = "ms"
+
+[signals.disk_free_mb]
+amber = 4096
+red = 1024
+for_s = 60
+unit = "MiB"
+
+[signals.sandbox_pool]
+amber = 0.25
+red = 0.5
+for_s = 120
+unit = "ratio"
+# A pool child is wedged once it is older than wedge_factor x the call's
+# wall-clock timeout with no result.
+wedge_factor = 3.0

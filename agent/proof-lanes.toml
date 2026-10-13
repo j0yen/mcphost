@@ -330,3 +330,13 @@ required_commands = [
   "cargo test --workspace outsch_ac",
   "cargo test --workspace outschb_ac",
 ]
+
+[[lane]]
+id = "heal-config"
+description = "heal.toml (PRD-mcphost-golden-signals-self-probe R3): the golden-signal thresholds compiled into src/signals.rs via include_str!, so a change to it is proven the way a src/ edit is."
+globs = ["heal.toml"]
+required_commands = [
+  "cargo check --workspace",
+  "cargo clippy --workspace -- -D warnings",
+  "cargo test --workspace",
+]
