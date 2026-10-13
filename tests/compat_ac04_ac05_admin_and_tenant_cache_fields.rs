@@ -124,7 +124,10 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
         // three new dotted tools plus their flattened forms, 388 + 6 = 394.
         // PRD-mcphost-export-tables-and-import-restore: host.import, one new
         // dotted tool plus its flattened form, 394 + 2 = 396.
-        396,
+        // PRD-mcphost-example-from-published-tool: host.example.propose and
+        // host.example.proposal_status, two dotted tools plus their
+        // flattened forms, 396 + 4 = 400.
+        400,
         "there must be exactly the sixteen host.* control-plane tools \
          (incl. host.quickstart, host.tool_run, host.bridge_test, host.spec_test -- \
          PRD-mcphost-tool-test, and host.redeem/host.key_rotate -- \

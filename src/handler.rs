@@ -3186,6 +3186,48 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &[],
             ),
         ),
+        // PRD-mcphost-example-from-published-tool R1/R4: turn a working tool
+        // into a reviewable example proposal, and read its outcome back.
+        Tool::new(
+            "host.example.propose",
+            crate::example_propose::PROPOSE_DESCRIPTION,
+            host_schema(
+                json!({
+                    "tool": {"type": "string", "description": "Name of one of your published tools; the example takes its name."},
+                    "proof_call": {
+                        "type": "object",
+                        "description": "The call that proves the tool works: args for the tool and expect, `result.<path> <op> <value>` with op one of ==, !=, contains.",
+                        "properties": {
+                            "args": {"type": "object", "description": "Arguments for the proof call."},
+                            "expect": {"type": "string", "description": "Assertion on the call result, e.g. result.probed == 1."},
+                        },
+                        "required": ["expect"],
+                    },
+                    "title": {"type": "string", "description": "Example title, 1 to 60 characters."},
+                    "summary": {"type": "string", "description": "One-line summary, up to 200 characters; defaults to the tool's description."},
+                    "use_case": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": crate::examples::EXAMPLE_USE_CASES},
+                        "description": "One or more use-case tags.",
+                    },
+                    "clients": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": crate::examples::CLIENT_TAGS},
+                        "description": "Clients the example suits; default [\"any\"].",
+                    },
+                }),
+                &["tool", "proof_call", "title", "use_case"],
+            ),
+        ),
+        Tool::new(
+            "host.example.proposal_status",
+            "Read the status of one of your own example proposals: pending, approved, rejected \
+             or merged, with decided_by, reason and the PR URL once known.",
+            host_schema(
+                json!({"id": {"type": "integer", "description": "The proposal_id host.example.propose returned."}}),
+                &["id"],
+            ),
+        ),
         // PRD-mcphost-agent-inbox: directed messages and threads between
         // tenants, addressed through the agent directory above.
         Tool::new(
@@ -4864,6 +4906,24 @@ fn admin_tools() -> Vec<Tool> {
                 &[],
             ),
         ),
+        // PRD-mcphost-example-from-published-tool R4/R7.
+        Tool::new(
+            "admin.example_proposals",
+            "Review tenant example proposals (host.example.propose). action list shows them \
+             (status narrows; id returns one with its rendered files), approve/reject decide a \
+             pending one, record decided_by and tell the proposer by inbox message; merge (used by \
+             `mcphost examples proposals pull`) marks an approved one merged with its pr_url.",
+            schema(
+                json!({
+                    "action": {"type": "string", "enum": ["list", "approve", "reject", "merge"]},
+                    "id": {"type": "integer"},
+                    "reason": {"type": "string"},
+                    "pr_url": {"type": "string"},
+                    "status": {"type": "string", "enum": ["pending", "approved", "rejected", "merged"]},
+                }),
+                &["action"],
+            ),
+        ),
         Tool::new(
             "admin.alerts.ack",
             "Acknowledge one alert by id -- appears in admin_audit under the operator identity.",
@@ -6312,6 +6372,8 @@ impl McpHostHandler {
             "host.agent.lookup" => agents::lookup(&self.state, &args).await,
             "host.agent.search" => agents::search(&self.state, &args).await,
             // PRD-mcphost-agent-inbox requirements 2-5, 9.
+            "host.example.propose" => self.example_propose(tenant, args).await,
+            "host.example.proposal_status" => crate::example_propose::proposal_status(&self.state, tenant, &args).await,
             "host.msg.send" => messaging::send(&self.state, tenant, &args).await,
             "host.msg.reply" => messaging::reply(&self.state, tenant, &args).await,
             "host.msg.inbox" => messaging::inbox(&self.state, tenant, &args).await,
@@ -6630,6 +6692,7 @@ impl McpHostHandler {
             // PRD-mcphost-alerting-webhook requirement 5.
             "admin.alerts.list" => admin::alerts_list(&self.state, &args).await,
             "admin.alerts.ack" => admin::alerts_ack(&self.state, &args).await,
+            "admin.example_proposals" => admin::example_proposals(&self.state, &args).await,
             "admin.alerts.raise" => admin::alerts_raise(&self.state, &args).await,
             // PRD-mcphost-status-feed requirement 4/8.
             "admin.incident.open" => admin::incident_open(&self.state, &args).await,
@@ -8510,6 +8573,28 @@ impl McpHostHandler {
             obj.insert("data".to_string(), json!({"clamped_to": clamped}));
         }
         Ok(out)
+    }
+
+    /// PRD-mcphost-example-from-published-tool R1-R3/R6: `host.example.propose`.
+    /// The proof call runs through [`Self::host_tool_call`], so a slow tool
+    /// costs the proposer's own budget.
+    async fn example_propose(&self, tenant: &Tenant, args: Value) -> Result<Value, AppError> {
+        let req = crate::example_propose::parse(&args)?;
+        let prepared = crate::example_propose::precheck(&self.state, tenant, &req).await?;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(crate::example_propose::PROOF_BUILD_WAIT_MS);
+        let outcome = loop {
+            let call = json!({"name": req.tool, "args": req.proof_args});
+            let result = self.host_tool_call(tenant, call, "key", None).await;
+            let building = match &result {
+                Err(e) => e.code() == "tool_building",
+                Ok(v) => v.get("status") == Some(&json!("building")),
+            };
+            if !building || std::time::Instant::now() >= deadline {
+                break result;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        };
+        crate::example_propose::finish(&self.state, tenant, &req, prepared, outcome).await
     }
 
     async fn host_tool_call(

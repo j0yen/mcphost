@@ -24,6 +24,20 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "provaudit_ac01_synthetic_signup_stamped.rs"]
+mod provaudit_ac01_synthetic_signup_stamped;
+#[path = "provaudit_ac02_external_signup_stamped.rs"]
+mod provaudit_ac02_external_signup_stamped;
+#[path = "provaudit_ac03_migration_backfill_counts.rs"]
+mod provaudit_ac03_migration_backfill_counts;
+#[path = "provaudit_ac04_healthz_split_shape.rs"]
+mod provaudit_ac04_healthz_split_shape;
+#[path = "provaudit_ac05_admin_audit_log.rs"]
+mod provaudit_ac05_admin_audit_log;
+#[path = "provaudit_ac06_null_origin_rejected.rs"]
+mod provaudit_ac06_null_origin_rejected;
+#[path = "provaudit_ac07_ip_class_triage.rs"]
+mod provaudit_ac07_ip_class_triage;
 #[path = "proxy_ac1_loopback_xff_resolves_signup_source.rs"]
 mod proxy_ac1_loopback_xff_resolves_signup_source;
 #[path = "proxy_ac2_non_loopback_peer_ignores_header.rs"]

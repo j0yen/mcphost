@@ -394,6 +394,32 @@ enum ExamplesCommand {
     /// Print the JSON schema of `example.toml`, with the use-case and
     /// client vocabularies inlined, to stdout.
     Schema,
+    /// PRD-mcphost-example-from-published-tool R5: work with tenant example
+    /// proposals. Needs `$MCPHOST_ADMIN_KEY` and `gh` on PATH.
+    Proposals {
+        #[command(subcommand)]
+        action: ProposalsCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum ProposalsCommand {
+    /// Write every approved proposal into a clone as `examples/<name>/`
+    /// (index regenerated), commit it on its own branch, open one PR per
+    /// proposal with `gh pr create`, and mark the proposal merged once the
+    /// PR URL is recorded.
+    Pull {
+        /// The clone of the repo to write into (clean working tree).
+        #[arg(long)]
+        repo: PathBuf,
+        /// Host base URL.
+        #[arg(long, env = "MCPHOST_URL", default_value = "https://mcphost.dev")]
+        url: String,
+        /// One branch per proposal is the only mode; the flag is accepted
+        /// for the spelling the PRD gave.
+        #[arg(long)]
+        approve_branch: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -722,6 +748,24 @@ async fn main() -> anyhow::Result<()> {
                     }
                 },
                 ExamplesCommand::Schema => print!("{}", mcphost::examples::render_schema()),
+                ExamplesCommand::Proposals { action: ProposalsCommand::Pull { repo, url, approve_branch: _ } } => {
+                    let Some(admin_key) = std::env::var("MCPHOST_ADMIN_KEY").ok().filter(|k| !k.is_empty()) else {
+                        eprintln!("examples proposals pull: MCPHOST_ADMIN_KEY is unset");
+                        std::process::exit(2);
+                    };
+                    let opts = mcphost::example_pull::Opts { repo, url, admin_key };
+                    let (pulled, failed) = mcphost::example_pull::pull(&opts, &kinds).await;
+                    for p in &pulled {
+                        println!("proposal {} -> examples/{} on {}: {}", p.id, p.name, p.branch, p.pr_url);
+                    }
+                    println!("examples proposals pull: {} merged, {} failed", pulled.len(), failed.len());
+                    for f in &failed {
+                        eprintln!("{f}");
+                    }
+                    if !failed.is_empty() {
+                        std::process::exit(1);
+                    }
+                }
                 ExamplesCommand::Index => match mcphost::examples::write_index(&dir, &kinds) {
                     Ok(n) => println!("examples index: wrote {} ({n} examples)", dir.join(mcphost::examples::INDEX_FILE).display()),
                     Err(errs) => {

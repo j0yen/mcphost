@@ -90,6 +90,11 @@ const BLOB_RETENTION_TOOLS_ADDED: usize = 3;
 /// `flattened_count`).
 const IMPORT_TOOLS_ADDED: usize = 1;
 
+/// PRD-mcphost-example-from-published-tool: host.example.propose and
+/// host.example.proposal_status, two more non-alias tools (flattened forms
+/// counted by `flattened_count`).
+const EXAMPLE_PROPOSE_TOOLS_ADDED: usize = 2;
+
 /// PRD-mcphost-tools-list-alias-truth: one flattened `a_b_c` clone per
 /// dotted canonical, read off the registry rather than a literal.
 fn flattened_count(kinds: &KindRegistry) -> usize {
@@ -120,11 +125,12 @@ fn full_registry_grew_by_exactly_the_alias_count_with_nothing_removed() {
             + BLOB_TOOLS_ADDED
             + BLOB_RETENTION_TOOLS_ADDED
             + IMPORT_TOOLS_ADDED
+            + EXAMPLE_PROPOSE_TOOLS_ADDED
             + flattened_count(&kinds),
         "the full host.*/billing.* registry must have grown by exactly the number of aliases \
          this PRD added (plus any later-landing PRD's own non-alias tools, and any earlier- \
          or later-landing PRD's own documented growth, including row-policy's own later five \
          tools), with nothing removed"
     );
-    assert_eq!(total, 396, "pin the exact new total (188 + 168 flattened forms, PRD-mcphost-tools-list-alias-truth); PRD-mcphost-invite-links, PRD-mcphost-result-handles, PRD-mcphost-call-cost-estimate, PRD-mcphost-ask-user-decision, PRD-mcphost-call-trace-replay, PRD-mcphost-feedback-tool-and-ledger, PRD-mcphost-event-trigger-from-webhook's host.trigger.dead_letters, PRD-mcphost-blob-put-get-signed-url, PRD-mcphost-blob-retention-and-quota, PRD-mcphost-export-tables-and-import-restore, and this PRD's own growth grew it to");
+    assert_eq!(total, 400, "pin the exact new total (188 + 168 flattened forms, PRD-mcphost-tools-list-alias-truth); PRD-mcphost-invite-links, PRD-mcphost-result-handles, PRD-mcphost-call-cost-estimate, PRD-mcphost-ask-user-decision, PRD-mcphost-call-trace-replay, PRD-mcphost-feedback-tool-and-ledger, PRD-mcphost-event-trigger-from-webhook's host.trigger.dead_letters, PRD-mcphost-blob-put-get-signed-url, PRD-mcphost-blob-retention-and-quota, PRD-mcphost-export-tables-and-import-restore, PRD-mcphost-example-from-published-tool, and this PRD's own growth grew it to");
 }

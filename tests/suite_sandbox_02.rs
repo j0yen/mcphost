@@ -16,6 +16,8 @@ mod chart_fixture;
 mod ctrace;
 #[path = "support/docs_qa.rs"]
 mod docs_qa;
+#[path = "support/exprp.rs"]
+mod exprp;
 #[path = "support/federation.rs"]
 mod federation;
 #[path = "support/host.rs"]
@@ -148,6 +150,8 @@ mod envelope_ac2_python_object_declared_output_promoted;
 mod envelope_ac3_python_scalar_promotion_warns;
 #[path = "envelope_ac5_replay_recorded_sessions.rs"]
 mod envelope_ac5_replay_recorded_sessions;
+#[path = "exprp_ac01_rendered_example_forks_and_proves.rs"]
+mod exprp_ac01_rendered_example_forks_and_proves;
 #[path = "fedlogin_ac03_python_env_and_whoami.rs"]
 mod fedlogin_ac03_python_env_and_whoami;
 #[path = "firstpub_ac01_quickstart_starter_tool.rs"]

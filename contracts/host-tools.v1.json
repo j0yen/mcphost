@@ -5145,6 +5145,220 @@
       "since": "0.58.0"
     },
     {
+      "description": "Read the status of one of your own example proposals: pending, approved, rejected or merged, with decided_by, reason and the PR URL once known.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "The proposal_id host.example.propose returned.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "host.example.proposal_status",
+      "output_schema": {
+        "properties": {
+          "created_at": {
+            "type": "integer"
+          },
+          "decided_at": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "decided_by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pr_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "tenant": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "tenant",
+          "tool",
+          "name",
+          "version",
+          "status",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "since": "0.58.0"
+    },
+    {
+      "description": "Turn a working tool into a PR-ready example: snapshot the tool at its current version, run proof_call {args, expect} against it now, render an example directory (example.toml with [provenance], tools/, proof.sh) and store it as a proposal for admin review. Refuses secret_leak {line} when the source holds a stored secret's literal value, not_portable when it uses tenant state, tables, groups or another tenant's tool, proof_failed, example_exists, too_many_proposals (3 open). Accepted examples carry license MIT. Returns {proposal_id, status: pending, rendered}.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "clients": {
+            "description": "Clients the example suits; default [\"any\"].",
+            "items": {
+              "enum": [
+                "claude_code",
+                "claude_ai",
+                "chatgpt",
+                "cursor",
+                "copilot_vscode",
+                "codex",
+                "gemini_cli",
+                "any"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "proof_call": {
+            "description": "The call that proves the tool works: args for the tool and expect, `result.<path> <op> <value>` with op one of ==, !=, contains.",
+            "properties": {
+              "args": {
+                "description": "Arguments for the proof call.",
+                "type": "object"
+              },
+              "expect": {
+                "description": "Assertion on the call result, e.g. result.probed == 1.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "expect"
+            ],
+            "type": "object"
+          },
+          "summary": {
+            "description": "One-line summary, up to 200 characters; defaults to the tool's description.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "title": {
+            "description": "Example title, 1 to 60 characters.",
+            "type": "string"
+          },
+          "tool": {
+            "description": "Name of one of your published tools; the example takes its name.",
+            "type": "string"
+          },
+          "use_case": {
+            "description": "One or more use-case tags.",
+            "items": {
+              "enum": [
+                "uptime",
+                "database",
+                "docs-qa",
+                "webhook",
+                "chart",
+                "memory",
+                "share",
+                "first-run"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "tool",
+          "proof_call",
+          "title",
+          "use_case"
+        ],
+        "type": "object"
+      },
+      "name": "host.example.propose",
+      "output_schema": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "proposal_id": {
+            "type": "integer"
+          },
+          "rendered": {
+            "properties": {
+              "contents": {
+                "type": "object"
+              },
+              "example_toml": {
+                "type": "string"
+              },
+              "files": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "files",
+              "example_toml",
+              "contents"
+            ],
+            "type": "object"
+          },
+          "secrets_needed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "proposal_id",
+          "status",
+          "name",
+          "secrets_needed",
+          "rendered"
+        ],
+        "type": "object"
+      },
+      "since": "0.58.0"
+    },
+    {
       "description": "Build a downloadable .tar.gz of everything this tenant owns: tool sources, state, host.table.* tables (schema + rows), table notes, documents (original bytes), secret NAMES (never values), run/thread history and usage, plus a version-2 manifest.json (sha256 and bytes per entry; its tools list is re-publishable via host.tool_publish). Runs as a background job (poll host.runs.get with the returned run_id) -- calling this again while one is already running returns that same run_id rather than starting a second one. The finished run's result carries a download_url valid 24 hours.",
       "input_schema": {
         "additionalProperties": false,
@@ -21002,6 +21216,114 @@
         "type": "object"
       },
       "name": "host_estimate",
+      "since": "0.58.0"
+    },
+    {
+      "alias_of": "host.example.proposal_status",
+      "description": "Read the status of one of your own example proposals: pending, approved, rejected or merged, with decided_by, reason and the PR URL once known.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "The proposal_id host.example.propose returned.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "host_example_proposal_status",
+      "since": "0.58.0"
+    },
+    {
+      "alias_of": "host.example.propose",
+      "description": "Turn a working tool into a PR-ready example: snapshot the tool at its current version, run proof_call {args, expect} against it now, render an example directory (example.toml with [provenance], tools/, proof.sh) and store it as a proposal for admin review. Refuses secret_leak {line} when the source holds a stored secret's literal value, not_portable when it uses tenant state, tables, groups or another tenant's tool, proof_failed, example_exists, too_many_proposals (3 open). Accepted examples carry license MIT. Returns {proposal_id, status: pending, rendered}.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "clients": {
+            "description": "Clients the example suits; default [\"any\"].",
+            "items": {
+              "enum": [
+                "claude_code",
+                "claude_ai",
+                "chatgpt",
+                "cursor",
+                "copilot_vscode",
+                "codex",
+                "gemini_cli",
+                "any"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "proof_call": {
+            "description": "The call that proves the tool works: args for the tool and expect, `result.<path> <op> <value>` with op one of ==, !=, contains.",
+            "properties": {
+              "args": {
+                "description": "Arguments for the proof call.",
+                "type": "object"
+              },
+              "expect": {
+                "description": "Assertion on the call result, e.g. result.probed == 1.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "expect"
+            ],
+            "type": "object"
+          },
+          "summary": {
+            "description": "One-line summary, up to 200 characters; defaults to the tool's description.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "title": {
+            "description": "Example title, 1 to 60 characters.",
+            "type": "string"
+          },
+          "tool": {
+            "description": "Name of one of your published tools; the example takes its name.",
+            "type": "string"
+          },
+          "use_case": {
+            "description": "One or more use-case tags.",
+            "items": {
+              "enum": [
+                "uptime",
+                "database",
+                "docs-qa",
+                "webhook",
+                "chart",
+                "memory",
+                "share",
+                "first-run"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "tool",
+          "proof_call",
+          "title",
+          "use_case"
+        ],
+        "type": "object"
+      },
+      "name": "host_example_propose",
       "since": "0.58.0"
     },
     {
