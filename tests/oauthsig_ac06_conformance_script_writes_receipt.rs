@@ -28,9 +28,14 @@ use std::process::Command;
 /// `/usr/bin:/bin` assumed no Node install lives there, which is false on any
 /// box where npm came from apt (`/usr/bin/npx`), so the "absent" scenario ran
 /// the real conformance suite instead and exited 1.
-fn npx_free_path() -> PathBuf {
+///
+/// The directory is unique per call (`tag`): tests in this file run in
+/// parallel threads of one process, and a pid-only name made each call's
+/// `remove_dir_all` delete the symlinks another test's script was mid-run on
+/// (`date`/`mkdir`/`env` not found -> non-zero exit, no receipt: the CI flake).
+fn npx_free_path(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir()
-        .join(format!("mcphost-oauthsig-ac06-npx-free-{}", std::process::id()));
+        .join(format!("mcphost-oauthsig-ac06-npx-free-{tag}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).expect("create npx-free PATH dir");
     for tool in ["bash", "sh", "env", "dirname", "date", "mkdir", "rm", "cat", "tee", "sed"] {
@@ -99,7 +104,7 @@ fn npx_absent_exits_2_with_a_one_line_reason_and_writes_no_receipt() {
 
     let output = Command::new(scratch.join("scripts/oauth-conformance.sh"))
         .arg("http://127.0.0.1:1/mcp")
-        .env("PATH", npx_free_path())
+        .env("PATH", npx_free_path("absent"))
         .output()
         .expect("run oauth-conformance.sh");
 
@@ -116,7 +121,7 @@ fn npx_absent_exits_2_with_a_one_line_reason_and_writes_no_receipt() {
 fn npx_present_and_passing_exits_0_and_writes_the_receipt() {
     let scratch = scratch_repo_root("npx-pass");
     write_fake_npx(&scratch, 0);
-    let path = format!("{}:{}", scratch.join("bin").display(), npx_free_path().display());
+    let path = format!("{}:{}", scratch.join("bin").display(), npx_free_path("pass").display());
 
     let output = Command::new(scratch.join("scripts/oauth-conformance.sh"))
         .arg("http://127.0.0.1:1/mcp")
@@ -138,7 +143,7 @@ fn npx_present_and_passing_exits_0_and_writes_the_receipt() {
 fn npx_present_and_failing_exits_non_zero_and_still_writes_the_receipt() {
     let scratch = scratch_repo_root("npx-fail");
     write_fake_npx(&scratch, 1);
-    let path = format!("{}:{}", scratch.join("bin").display(), npx_free_path().display());
+    let path = format!("{}:{}", scratch.join("bin").display(), npx_free_path("fail").display());
 
     let output = Command::new(scratch.join("scripts/oauth-conformance.sh"))
         .arg("http://127.0.0.1:1/mcp")
