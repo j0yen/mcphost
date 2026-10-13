@@ -16,6 +16,7 @@
 # Usage:
 #   pin-tests.sh          # run every pin, exit 1 if any failed
 #   pin-tests.sh --list   # print the pairs and exit 0
+#   pin-tests.sh --cargo-free  # only the cargo-free drift checks (gate form)
 set -euo pipefail
 
 PINS=(
@@ -31,6 +32,34 @@ cd "$(dirname "$0")/.."
 
 if [ "${1:-}" = "--list" ]; then
   printf '%s\n' "${PINS[@]}"
+  exit 0
+fi
+
+if [ "${1:-}" = "--cargo-free" ]; then
+  start=$SECONDS
+  failed=0
+  for chk in "gen-test-suites --check:scripts/gen-test-suites.sh --check" \
+             "ci-test-partition check:scripts/ci-test-partition.sh check"; do
+    name=${chk%%:*}
+    cmd=${chk#*:}
+    t0=$SECONDS
+    # shellcheck disable=SC2086
+    if out=$(bash $cmd 2>&1); then
+      status=pass
+    else
+      status=FAIL
+      failed=1
+    fi
+    echo "pin-tests: $status $name ($((SECONDS - t0))s)"
+    if [ "$status" = FAIL ]; then
+      printf '%s\n' "$out" | tail -40
+    fi
+  done
+  if [ "$failed" -ne 0 ]; then
+    echo "pin-tests: FAILED (2 checks, $((SECONDS - start))s)"
+    exit 1
+  fi
+  echo "pin-tests: ok (2 checks, $((SECONDS - start))s)"
   exit 0
 fi
 
