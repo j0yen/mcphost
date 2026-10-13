@@ -1650,6 +1650,30 @@ struct WarmPool {
     max_total: usize,
     hits: AtomicU64,
     misses: AtomicU64,
+    /// PRD-mcphost-golden-signals-self-probe: the last [`COLD_START_KEEP`]
+    /// cold-call durations `(unix ts, ms)`.
+    cold_starts: Mutex<VecDeque<(i64, u64)>>,
+    /// Calls currently running, by flight id: when each started and its
+    /// wall-clock timeout. A call still here past a multiple of its timeout
+    /// is wedged.
+    inflight: Mutex<HashMap<u64, (Instant, Duration)>>,
+    next_flight: AtomicU64,
+}
+
+/// How many cold-call durations [`WarmPool::cold_starts`] keeps.
+const COLD_START_KEEP: usize = 256;
+
+/// Removes its call from [`WarmPool::inflight`] when the call ends, however
+/// it ends.
+struct FlightGuard {
+    warm: Arc<WarmPool>,
+    id: u64,
+}
+
+impl Drop for FlightGuard {
+    fn drop(&mut self) {
+        self.warm.inflight.lock().unwrap_or_else(|e| e.into_inner()).remove(&self.id);
+    }
 }
 
 impl WarmPool {
@@ -1661,6 +1685,41 @@ impl WarmPool {
             max_total,
             hits: AtomicU64::new(0),
             misses: AtomicU64::new(0),
+            cold_starts: Mutex::new(VecDeque::new()),
+            inflight: Mutex::new(HashMap::new()),
+            next_flight: AtomicU64::new(0),
+        }
+    }
+
+    fn begin_flight(self: &Arc<Self>, wall_clock_timeout: Duration) -> FlightGuard {
+        let id = self.next_flight.fetch_add(1, Ordering::Relaxed);
+        self.inflight
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(id, (Instant::now(), wall_clock_timeout));
+        FlightGuard { warm: self.clone(), id }
+    }
+
+    fn record_cold_start(&self, ms: u64) {
+        let mut guard = self.cold_starts.lock().unwrap_or_else(|e| e.into_inner());
+        if guard.len() == COLD_START_KEEP {
+            guard.pop_front();
+        }
+        guard.push_back((crate::state::now_unix(), ms));
+    }
+
+    fn pool_signals(&self, wedge_factor: f64) -> crate::kinds::PoolSignals {
+        let wedged = self
+            .inflight
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .values()
+            .filter(|(started, timeout)| started.elapsed().as_secs_f64() > wedge_factor * timeout.as_secs_f64())
+            .count();
+        crate::kinds::PoolSignals {
+            cold_starts: self.cold_starts.lock().unwrap_or_else(|e| e.into_inner()).iter().copied().collect(),
+            wedged,
+            pool_size: self.pool_size(),
         }
     }
 
@@ -5706,6 +5765,10 @@ impl Kind for PythonKind {
             return Err(host_capacity_error(retry_after_ms));
         };
 
+        // PRD-mcphost-golden-signals-self-probe: counted as in flight until
+        // this call returns, so the pool-health signal can see a wedge.
+        let _flight = self.warm.begin_flight(Duration::from_secs(parsed.effective_timeout_s() + 2));
+
         let secret_env = self.secret_env(&parsed, ctx);
         let secret_values: Vec<String> = secret_env.iter().map(|(_, v)| v.clone()).collect();
         // PRD-mcphost-python-kind-plain-env requirement 1 (AC1/AC6): this
@@ -5876,6 +5939,7 @@ impl Kind for PythonKind {
         );
         // Requirement 3: feeds `estimate_retry_after_ms`'s p50 window.
         self.record_call_duration(cold_call_elapsed);
+        self.warm.record_cold_start(cold_call_elapsed.as_millis() as u64);
         let outcome = outcome.map_err(|e| KindError::Exec(format!("sandbox spawn failed: {e}")))?;
 
         let (cpu_ms, peak_rss_kb) = outcome_usage(&outcome);
@@ -6129,6 +6193,11 @@ impl Kind for PythonKind {
     /// publish-time readiness gate both read this.
     fn sandbox_status(&self) -> Option<sandbox::SandboxStatus> {
         Some(self.selftest.read_status())
+    }
+
+    /// PRD-mcphost-golden-signals-self-probe R2.
+    fn pool_signals(&self, wedge_factor: f64) -> Option<crate::kinds::PoolSignals> {
+        Some(self.warm.pool_signals(wedge_factor))
     }
 
     /// PRD-mcphost-sandbox-ready requirement 4: `admin.sandbox_recheck`.

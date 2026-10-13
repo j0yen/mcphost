@@ -75,6 +75,11 @@ enum Command {
         #[command(subcommand)]
         action: BillingCommand,
     },
+    /// PRD-mcphost-golden-signals-self-probe: golden-signal tooling.
+    Signals {
+        #[command(subcommand)]
+        action: SignalsCommand,
+    },
     /// PRD-mcphost-tenant-attribution P0 requirement 4 (AC5): signups ->
     /// published -> first successful call -> returned -> hit the daily
     /// cap -> upgraded, split real (`source_class = external`) from
@@ -427,6 +432,17 @@ enum ProposalsCommand {
 }
 
 #[derive(Subcommand)]
+enum SignalsCommand {
+    /// Feed a recorded `{"ts","signal","value"}` JSONL file through the
+    /// compiled `heal.toml` band logic and print each breach (with its
+    /// `since`) and clear.
+    Replay {
+        /// The samples file, one JSON object per line, in time order.
+        path: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
 enum BillingCommand {
     /// Requirement 51: read pro tenants' unemitted `ok` calls, POST one
     /// Stripe meter event per tenant (chunked at 100 events/request), and
@@ -525,6 +541,18 @@ async fn main() -> anyhow::Result<()> {
                 Ok(())
             }
         }
+        Command::Signals { action } => match action {
+            SignalsCommand::Replay { path } => {
+                let text = std::fs::read_to_string(&path)
+                    .map_err(|e| anyhow::anyhow!("read {}: {e}", path.display()))?;
+                let events = mcphost::signals::replay(&mcphost::signals::HealConfig::compiled(), &text)
+                    .map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
+                for ev in &events {
+                    println!("{}", mcphost::signals::render_event(ev));
+                }
+                Ok(())
+            }
+        },
         Command::Billing { action } => match action {
             BillingCommand::EmitMeter => {
                 init_tracing();
@@ -1348,6 +1376,7 @@ async fn main() -> anyhow::Result<()> {
                 reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(
                     mcphost::state::reuse_session_tenant_from_env(),
                 )),
+                signals: mcphost::signals::Signals::from_env(),
                 anon_healthz_extra_key: Default::default(),
                 blob_clock_offset_secs: Default::default(),
                 confirm_clock_offset_secs: Default::default(),

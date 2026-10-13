@@ -24,6 +24,20 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "plancat_ac01_missing_state_quotas_default_from_catalog.rs"]
+mod plancat_ac01_missing_state_quotas_default_from_catalog;
+#[path = "plancat_ac02_startup_logs_defaulted_fields.rs"]
+mod plancat_ac02_startup_logs_defaulted_fields;
+#[path = "plancat_ac03_unknown_plan_name_defaults_from_free.rs"]
+mod plancat_ac03_unknown_plan_name_defaults_from_free;
+#[path = "plancat_ac04_healthz_lists_plans_with_quotas.rs"]
+mod plancat_ac04_healthz_lists_plans_with_quotas;
+#[path = "plancat_ac05_full_plans_toml_unchanged_and_silent.rs"]
+mod plancat_ac05_full_plans_toml_unchanged_and_silent;
+#[path = "plancat_ac06_build_has_no_hardcoded_quota_defaults.rs"]
+mod plancat_ac06_build_has_no_hardcoded_quota_defaults;
+#[path = "plancat_ac07_llms_txt_names_defaulting_and_startup_line.rs"]
+mod plancat_ac07_llms_txt_names_defaulting_and_startup_line;
 #[path = "planlim_ac01_quickstart_limits_plan_every_ceiling.rs"]
 mod planlim_ac01_quickstart_limits_plan_every_ceiling;
 #[path = "planlim_ac02_tool_call_budget_schema_maximum.rs"]

@@ -419,6 +419,7 @@ mod tests {
             tenant_key_arg_memory: crate::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
             redeemed_peers: crate::peer_recent::PeerRecents::new(),
             reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            signals: crate::signals::Signals::compiled(),
             anon_healthz_extra_key: Default::default(),
             blob_clock_offset_secs: Default::default(),
             confirm_clock_offset_secs: Default::default(),

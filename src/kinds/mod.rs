@@ -2030,6 +2030,16 @@ pub async fn compose_call_ref(
     result
 }
 
+/// What [`Kind::pool_signals`] reports: python cold-call durations
+/// `(unix ts, ms)` recent enough to be worth windowing, in-flight calls past
+/// `wedge_factor` x their wall-clock timeout, and the warm pool's size.
+#[derive(Clone, Debug, Default)]
+pub struct PoolSignals {
+    pub cold_starts: Vec<(i64, u64)>,
+    pub wedged: usize,
+    pub pool_size: usize,
+}
+
 /// A tool execution kind. Implementors are registered in a [`KindRegistry`]
 /// under a fixed [`Kind::name`]; `host.tool_publish` names the kind by that
 /// string and stores the caller's `spec` alongside it.
@@ -2286,6 +2296,13 @@ pub trait Kind: Send + Sync {
     /// fresh status, having already updated whatever [`Kind::sandbox_status`]
     /// reads from. `None` (the default) for a kind with none.
     async fn sandbox_recheck(&self) -> Option<crate::sandbox::SandboxStatus> {
+        None
+    }
+
+    /// PRD-mcphost-golden-signals-self-probe R2: this kind's sandbox-pool
+    /// readings for the cold-start and pool-health signals. `None` (the
+    /// default) for a kind with no pool.
+    fn pool_signals(&self, _wedge_factor: f64) -> Option<PoolSignals> {
         None
     }
 

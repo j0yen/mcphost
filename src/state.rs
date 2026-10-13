@@ -481,6 +481,8 @@ pub struct AppState {
     /// `TestServer::start()`, same rationale as
     /// [`AppState::reuse_session_tenant`]: a field, not a process-wide env
     /// var, since the core suites run in parallel in one binary.
+    /// PRD-mcphost-golden-signals-self-probe: the golden-signal rings.
+    pub signals: crate::signals::Signals,
     pub anon_healthz_extra_key: std::sync::Arc<std::sync::OnceLock<&'static str>>,
     /// PRD-mcphost-blob-retention-and-quota: seconds added to the wall clock
     /// everywhere the blob store reads "now" ([`crate::blobs::now`]). Always

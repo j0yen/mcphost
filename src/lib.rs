@@ -93,6 +93,7 @@ pub mod session_bind;
 pub mod sharing;
 pub mod signed_url;
 pub mod state;
+pub mod signals;
 pub mod statusfeed;
 pub mod submission_pack;
 pub mod tables;

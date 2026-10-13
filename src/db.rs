@@ -4289,6 +4289,23 @@ impl Db {
         .unwrap_or(false)
     }
 
+    /// PRD-mcphost-golden-signals-self-probe R2: one timed-by-the-caller
+    /// `INSERT ...; DELETE` on the `signals_probe` scratch table (created if
+    /// absent), through the same server-role connection a tenant write uses
+    /// -- so a locked database shows up as a slow call, `busy_timeout` wait
+    /// included.
+    pub async fn signals_probe_write(&self) -> Result<(), AppError> {
+        self.with_conn(|conn| {
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS signals_probe (id INTEGER PRIMARY KEY, ts INTEGER NOT NULL); \
+                 INSERT INTO signals_probe (ts) VALUES (strftime('%s', 'now')); \
+                 DELETE FROM signals_probe;",
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
     /// Test/ops-only: toggle `PRAGMA query_only` to simulate an unwritable
     /// database (AC14) without relying on filesystem permission semantics
     /// that don't apply to already-open file descriptors.
