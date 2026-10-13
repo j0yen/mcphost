@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-feedback-themes-nightly.md",
-  "intent_slug": "mcphost-feedback-themes-nightly",
-  "root_motivation": "**Who:** Joe, who will read feedback once a day; synthorg, which will turn themes into seeds; the agent, whose single line should land next to 11 others saying the same thing. **What:** a theme table with counts and evidence, an admin verb, a counts-only public field. **Why not today:** `feedback` rows (PRD-mcphost-feedback-tool-and-ledger) are flat; `admin.*` verbs (`admin.rs`: 20 verbs, `admin.status.rollup` the closest) expose no feedback; `/status.json` (`statusfeed.rs`) carries component uptime only. An LLM clusterer would make the theme list a prompt-injection surface; the standing rule is quoted data, never instructions. **Premise (creative):** normalized text + code + tool is enough to cluster. **Falsifier:** AC 1 runs the 10-08 error corpus through the normalizer and asserts 4\u201320 themes.",
-  "user_persona": "An agent that calls host.state.delete_rows with an empty filter on a 5 000-row table, reads confirm_required.dry_run_first, runs the dry run, notices the empty filter and fixes it; a Claude Code user who sees a destructive marker on host.table.drop.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-host-changelog-since.md",
+  "intent_slug": "mcphost-host-changelog-since",
+  "root_motivation": "**Who:** the agent returning after a day or a week; the vision's resume tool, which embeds this. **What:** what moved on the host since I was last here — in names it can act on. **Why not today:** `api_contract::changelog` (`:507`) filters tools by `version_gt(since_for_tool(name), since)` and `since_for_tool` returns `HOST_CHANGELOG_SINCE` for one tool, `HOST_DRIFT_SINCE` for the `host.drift.*` family and `CONTRACT_BASELINE_SINCE` for everything else, so a tool added in 0.105.0 is dated to the baseline. `TOOL_ALIASES` (`src/tool_aliases.rs:41-62`) holds 20 `alias → canonical` pairs that `tools/list` advertises with `alias_of`, and the changelog never mentions them. `CHANGELOG.md` has one `## v… — date` heading per release since 0.70.1 and no reader. The tenant's last version is not stored (`TENANT_COLUMNS`, `src/db.rs:213-218`). **Premise (agent viewpoint):** the host already knows every change; the surface only needs to be generated from the places that know. **Falsifier:*...",
+  "user_persona": "An agent that calls host.example.propose {tool, proof_call, title, use_case} after its user says \"this works, share it\", then reads host.example.proposal_status until an admin approves and `mcphost examples proposals pull` opens the PR.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,50 +14,26 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the 56 live error texts of the 10-08 chain stored as a fixture with their codes and tools, When `normalize` and the key are applied, Then the theme count is between 4 and 20, proving the LLM-free key separates asks.",
-      "test": "tests/fbth_ac01_normalizer_separates_asks.rs"
+      "description": "Given the committed `CHANGELOG.md`, When `parse_changelog` runs, Then every `## ` heading yields `(semver, date)`, versions are strictly descending, the count equals the number of `## v` lines, and the top version matches `Cargo.toml` (the falsifier as a test).",
+      "test": "tests/chg_ac01_changelog_headings_parse.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given two rows with texts `args_invalid said 4.78 is not an integer` and `args_invalid says 12.5 is not an integer` on the same tool, When clustered, Then they share one `theme_id` with `count: 2` and both ids in `example_ids`.",
-      "test": "tests/fbth_ac02_similar_texts_share_a_theme.rs"
+      "description": "Given a tool present in `host_tools` and absent from `contracts/host-tools.v1.json`, When the contract-drift test runs, Then it fails naming the tool and the version it must record as `since`.",
+      "test": "tests/chg_ac02_contract_since_drift.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given rows with the same text but different `error_code`, When clustered, Then they land in different themes.",
-      "test": "tests/fbth_ac03_error_code_splits_themes.rs"
+      "description": "Given `since: \"0.0.0\"`, When `host.changelog` runs, Then `renamed` has exactly `TOOL_ALIASES.len()` entries and each `from`/`to` pair matches the table.",
+      "test": "tests/chg_ac03_changelog_renamed_lists_every_alias.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a clustered table, When the nightly task runs again with no new rows, Then no theme row changes (`count`, `last_seen`, `example_ids` identical) and 0 `feedback` rows are updated.",
-      "test": "tests/fbth_ac04_rerun_changes_nothing.rs"
-    },
-    {
-      "id": "AC5",
-      "level": "MUST",
-      "description": "Given `MCPHOST_ADMIN_KEY` and 3 themes, When `admin.feedback.themes {since:\"7d\"}` is called, Then 3 themes come back sorted by `count` desc and a call without the key returns `unauthorized`.",
-      "test": "tests/fbth_ac05_admin_themes_verb.rs"
-    },
-    {
-      "id": "AC6",
-      "level": "MUST",
-      "description": "Given `/status.json`, When parsed, Then `feedback` has exactly the keys `rows_24h` and `themes_open`, both integers.",
-      "test": "tests/fbth_ac06_status_json_feedback_counts.rs"
-    },
-    {
-      "id": "AC7",
-      "level": "MUST",
-      "description": "Given a tenant that filed `f_a` and another that filed `f_b`, When the first calls `host.feedback.get {feedback_id:\"f_b\"}`, Then the code is `feedback_not_found`; `f_a` returns `theme_id` and `status: \"open\"` after clustering.",
-      "test": "tests/fbth_ac07_feedback_get_is_owner_only.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Given prod after deploy and one planted feedback filed the previous day, When the nightly task has run, Then `/status.json.feedback.themes_open \u2265 1` (Live; evidence: `ssh orch 'curl -s https://www.mcphost.dev/status.json | python3 -c \"import json,sys; print(json.load(sys.stdin)[\\\"feedback\\\"])\"'`)",
-      "test": "deferred -- operator-provisioned: Live check of prod /status.json after deploy and a planted feedback row filed the previous day."
+      "description": "Given a tenant whose `last_seen_version` is 0.105.0 on a host at 0.108.0, When `host.changelog {}` runs, Then `since` is `\"0.105.0\"`, `releases` are exactly the headings in (0.105.0, 0.108.0], and `added` lists only tools with `since` in that range.",
+      "test": "tests/chg_ac04_changelog_defaults_to_last_seen_version.rs"
     }
   ],
   "scope": [

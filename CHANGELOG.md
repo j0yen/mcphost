@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased
+## v0.107.72 — 2026-10-13
+
+`host.changelog` (PRD-mcphost-host-changelog-since) now answers `{since, now, releases, added, renamed,
+deprecated, removed}`: `releases` are the `## v<semver> — <date>` headings of this file in
+(`since`, `now`] (parsed by `api_contract::parse_changelog`; a malformed heading fails a test), `added`
+uses each tool's real `since` recorded in `contracts/host-tools.v1.json`, and `renamed` lists every
+`TOOL_ALIASES` pair. With no `since` it defaults to the version the tenant last called with
+(`tenants.last_seen_version`, migration 0095); a tenant never seen gets `since: null` and the last 5
+releases. `additions`/`deprecations`/`removals` stay as aliases of the new fields.
 
 `host.example.propose {tool, proof_call: {args, expect}, title, summary?, use_case, clients?}`
 (PRD-mcphost-example-from-published-tool) snapshots a tenant's tool at its current version, runs the
@@ -24,19 +32,6 @@ refused `compose_fanout_exceeded` (`data.limit`, `data.actual`) before any item 
 default `on_error` an item failure fails the chain `compose_fanout_item_failed`; with `continue` the
 chain reports `failed_steps`. `$.item`/`$.index` outside a `for_each` step is refused at publish
 `compose_item_outside_for_each`.
-
-## v0.107.17 — 2026-10-11
-
-`host.tool_test(name, args, fixtures)` dry-runs a chain against recorded step results
-(PRD-mcphost-chain-dry-run): `fixtures` maps a step number or tool name to the result that step
-returned; a fixtured step executes nothing and later mappings resolve against it. Each step in the
-report carries `source` (`fixture` | `dry_run` | `skipped`, with a `reason` when skipped), and the
-report counts `executed`, `fixtured` and `skipped`. A fixture carrying none of a step's declared
-`outputs` fails `fixture_shape_mismatch` (`data.expected`, `data.given`); fixtures on a non-chain
-tool fail `fixtures_not_applicable`; over 256 KiB fail `fixtures_too_large` (`data.limit_bytes`).
-`host.runs.get(run_id, as_fixtures=true)` returns a chain run's child results as `fixtures`.
-`host.quickstart(kind="chain")` prints both calls.
-## Unreleased
 
 `mcphost call <tool> --<arg> <value> [--url <host>] [--json]` calls a host tool from the shell
 (PRD-mcphost-call-cli-from-contract). The subcommands, flags, value types, enums and help text are
@@ -117,6 +112,18 @@ and flattened name. `docs/tools.md` gains a `Returns` block per tool, and `api_c
 reports a removed or narrowed output field (`host.runs.get.output.started_at`) unless
 `deprecations.json` excuses it. Response bodies are unchanged.
 
+## v0.107.17 — 2026-10-11
+
+`host.tool_test(name, args, fixtures)` dry-runs a chain against recorded step results
+(PRD-mcphost-chain-dry-run): `fixtures` maps a step number or tool name to the result that step
+returned; a fixtured step executes nothing and later mappings resolve against it. Each step in the
+report carries `source` (`fixture` | `dry_run` | `skipped`, with a `reason` when skipped), and the
+report counts `executed`, `fixtured` and `skipped`. A fixture carrying none of a step's declared
+`outputs` fails `fixture_shape_mismatch` (`data.expected`, `data.given`); fixtures on a non-chain
+tool fail `fixtures_not_applicable`; over 256 KiB fail `fixtures_too_large` (`data.limit_bytes`).
+`host.runs.get(run_id, as_fixtures=true)` returns a chain run's child results as `fixtures`.
+`host.quickstart(kind="chain")` prints both calls.
+
 ## v0.107.13 — 2026-10-10
 
 `host.webhook_inbox.create(name, verify?, rotate?)` makes a webhook inbox one call
@@ -130,15 +137,6 @@ last 10 minutes now fails `tenant_key_missing` naming its tenant instead of mint
 `host.quickstart(kind="inbox"|"webhook")` returns a one-step recipe (`recipes_nearby:
 ["agent-inbox"]` for `inbox`); `recipe.steps` for `webhook` shrinks from three entries to one.
 
-## v0.107.4 — 2026-10-09
-
-`GET /status.json` gains a `host` object (PRD-mcphost-status-host-pressure):
-`load1`, `load5`, `psi_cpu_some_avg60` (percent), `cpu_steal_pct_since_boot`
-(percent), `mem_available_mb` (MiB), `nproc` and `sampled_at` (unix seconds),
-sampled from `/proc` per request; an unreadable source is `null`, never an
-error. `status.html` prints one `host  load …` line under the components.
-The `?component=&days=` rollup is unchanged; `MCPHOST_STATUS_HOST=0` omits the
-object. Field table: `docs/metrics.md` (generated, `scripts/host-pressure-doc-check.sh`).
 ## v0.107.8 — 2026-10-10
 
 One paging contract for the list verbs (PRD-mcphost-paged-trait-on-every-list-verb).
@@ -154,6 +152,16 @@ integer (`channel.read`) or document name (`docs.list`) cursor is read for 60
 days and logged once per tenant as `cursor_legacy`. Clients that looped until
 `next_cursor` was null, or relied on it being present, must loop until it is
 absent.
+
+## v0.107.4 — 2026-10-09
+
+`GET /status.json` gains a `host` object (PRD-mcphost-status-host-pressure):
+`load1`, `load5`, `psi_cpu_some_avg60` (percent), `cpu_steal_pct_since_boot`
+(percent), `mem_available_mb` (MiB), `nproc` and `sampled_at` (unix seconds),
+sampled from `/proc` per request; an unreadable source is `null`, never an
+error. `status.html` prints one `host  load …` line under the components.
+The `?component=&days=` rollup is unchanged; `MCPHOST_STATUS_HOST=0` omits the
+object. Field table: `docs/metrics.md` (generated, `scripts/host-pressure-doc-check.sh`).
 
 ## v0.107.1 — 2026-10-09
 
@@ -205,18 +213,6 @@ and content-free on every hostname, and every HTTPS response now
 carries `Strict-Transport-Security` (PRD-mcphost-reachability-alt-host).
 No `MCPHOST_ALT_PUBLIC_URLS` set means no visible change at all.
 
-## v0.89.1 — 2026-10-05
-
-The ownership email and the three claim-flow pages (enter address,
-after-send, done) now use Joe's approved copy instead of the original
-"Claim your mcphost tenant" / "Click to verify" strings a recipient
-judged spammy on sight: the subject and body say what an agent did and
-what the link does, the sender renders as `mcphost <hello@mcphost.dev>`
-with mail replying to that address, and the seven claim error pages
-drop operator-only detail (env var names) from the page in favor of the
-log line (PRD-mcphost-ownership-copy). No visible string in the flow
-says "claim", "verify", or "tenant" outside a URL or HTML attribute.
-
 ## v0.90.0 — 2026-10-05
 
 The claim link is delivered, nudged once, and counted (PRD-mcphost-
@@ -241,6 +237,18 @@ release also promotes the daily journey's `claim` step out of
 journey harness a real magic-link round trip for it (`claim_start`,
 `read_mail_sink`, `claim_verify`) instead of the permanent skip stub it
 carried before -- a broken claim page now fails the whole journey.
+
+## v0.89.1 — 2026-10-05
+
+The ownership email and the three claim-flow pages (enter address,
+after-send, done) now use Joe's approved copy instead of the original
+"Claim your mcphost tenant" / "Click to verify" strings a recipient
+judged spammy on sight: the subject and body say what an agent did and
+what the link does, the sender renders as `mcphost <hello@mcphost.dev>`
+with mail replying to that address, and the seven claim error pages
+drop operator-only detail (env var names) from the page in favor of the
+log line (PRD-mcphost-ownership-copy). No visible string in the flow
+says "claim", "verify", or "tenant" outside a URL or HTML attribute.
 
 ## v0.85.0 — 2026-10-04
 
@@ -295,22 +303,6 @@ tenant-scoped and mirrored into the python sandbox as `mcphost.table
 `description` keys now also mark the tenant's graph stale so the next
 tick picks up the annotation.
 
-## v0.70.1 — 2026-10-02
-
-Security: `wasmtime`/`wasmtime-wasi` bumped 46.0.3 -> 48.0.5, resolving
-RUSTSEC-2026-0321, -0322, -0323, -0324 (wasmtime-wasi: `poll_oneoff` fuel
-bypass, excessive host memory on stdio-less guests, uninitialized struct
-padding leaked by `fd_readdir`, pre-epoch filesystem timestamp panic) and
--0327 (wasmtime: unvalidated async-lifted callback result count overflows
-a native stack buffer). All five require `>=48.0.4` to resolve; also
-bumps `yoke-derive` 0.8.3 -> 0.8.4 (0.8.3 was yanked, unrelated to
-wasmtime, surfaced by the same `cargo deny check advisories` gate).
-`WASM_RUNTIME_VERSION` (reported in `/healthz`) now reads "wasmtime
-48.0.5" to match. `deny.toml`'s RUSTSEC-2026-0316/-0314 gate-debt ignores
-are removed -- both were already `>=48.0.3` fixes the same bump covers.
-
-## v0.71.0 — 2026-10-02
-
 Triggers now have a tenant-unique `name` (default `<kind>:<tool_name>`).
 `host.trigger.set` with an existing name updates that trigger in place
 (tool, schedule, verify config) instead of minting a duplicate -- the id
@@ -329,6 +321,21 @@ repeating the call is safe.
 PRD-mcphost-trigger-set-idempotent AC1-AC7. AC8 (Live, operator-provisioned
 production rollout on prod tenant joe-test) is deferred -- not something
 this repo's own test suite can prove.
+
+## v0.70.1 — 2026-10-02
+
+Security: `wasmtime`/`wasmtime-wasi` bumped 46.0.3 -> 48.0.5, resolving
+RUSTSEC-2026-0321, -0322, -0323, -0324 (wasmtime-wasi: `poll_oneoff` fuel
+bypass, excessive host memory on stdio-less guests, uninitialized struct
+padding leaked by `fd_readdir`, pre-epoch filesystem timestamp panic) and
+-0327 (wasmtime: unvalidated async-lifted callback result count overflows
+a native stack buffer). All five require `>=48.0.4` to resolve; also
+bumps `yoke-derive` 0.8.3 -> 0.8.4 (0.8.3 was yanked, unrelated to
+wasmtime, surfaced by the same `cargo deny check advisories` gate).
+`WASM_RUNTIME_VERSION` (reported in `/healthz`) now reads "wasmtime
+48.0.5" to match. `deny.toml`'s RUSTSEC-2026-0316/-0314 gate-debt ignores
+are removed -- both were already `>=48.0.3` fixes the same bump covers.
+
 ## v0.70.0 — 2026-10-02
 
 `host.trigger.test` on a `kind="event"` trigger now signs the delivery
@@ -355,6 +362,44 @@ PRD-mcphost-event-trigger-self-test AC1-AC10, all hermetically paired. AC11
 (the live nightly truth-tier recipe score, gated on this PRD and
 PRD-synthorg-truth-tier-probe-as-tenant both being deployed to prod) is
 deferred — operator-provisioned.
+
+`host.tool_share(name, visibility: "url")` mints a plain-HTTPS endpoint for
+a published tool: `https://<host>/x/<token>/<tool>`, a 26-character base32
+bearer token stored hashed (and, separately, encrypted at rest so a
+re-share can redisplay the same URL). `GET`/`POST` run the tool -- the
+query string or JSON body become its arguments -- and return `{ok, result,
+run_id}`; a run past the 25s synchronous threshold answers `202 {run_id,
+poll}` instead, pollable at `GET /x/<token>/<tool>/runs/<run_id>`.
+Governed by the same controls as every other call path: a 60-call-per-
+minute-per-IP limiter (`429` + `Retry-After`), the admin kill switch
+(`503`), and `host.tool_unshare`/admin override (immediate `404`, timed
+indistinguishably from a token that was never issued). `PUT`/`DELETE` are
+`405`; `GET` carries `Access-Control-Allow-Origin: *` and `OPTIONS`
+preflights answer `204`, so a browser page on another origin can call one
+directly.
+
+PRD-mcphost-public-tool-url AC1-AC8, AC10 (`pubtool_ac*` test files). AC9
+(prod live-call receipt) is deferred to the operator at deploy time.
+
+One naming rule for every `host.*` tool, `host.<family>.<verb>`
+(`docs/tool-naming.md`), enforced by `scripts/tool-naming-lint.sh`. The 20
+tools that violated it (`host.tool_publish`/`host.tool_share`/... and
+`host.key_rotate`, `host.self_offboard`, `host.secret_set`,
+`host.secret_list`, `host.registry_publish`, `host.bridge_test`,
+`host.spec_test`) are now registered under their dotted canonical names
+and keep working under their old names as deprecated aliases: `tools/list`
+advertises each alias with `x-deprecated: {replaced_by, sunset}` (sunset
+2026-12-31), a successful alias call's result carries a matching
+`_meta.deprecated` hint, and a `tool_deprecated_alias` log line fires at
+most once per tenant per day (`tool_alias_calls{tool}`, documented in
+`docs/metrics.md`, counts alias vs. canonical calls for the sunset
+decision). An unmatched `host.*` name one or two edits from a canonical
+now gets `did_you_mean` in its `tool_not_found` error, never suggesting a
+deprecated alias. `host.whoami`'s first answer in a session links
+`naming_rule_url`. `docs/tools.md` (canonical name, family, aliases,
+description) is generated from the live registry by `mcphost gen-docs`;
+`docs/agent-quickstart.md`, `docs/sharing.md`, `plugin/skills/mcphost/
+SKILL.md`, and `www/llms.txt` now teach the canonical names.
 
 ## v0.69.0 — 2026-10-02
 
@@ -386,8 +431,6 @@ composed child instead of hardcoding it off.
 PRD-mcphost-dry-run-side-effects AC1-AC7. AC8 (Live, prod tenant joe-test)
 is left for the gate.
 
-## v0.69.0 — 2026-10-02
-
 `host.quickstart kind=python` now carries `sandbox_api`: `import mcphost`
 plus the one-line call signatures for every `mcphost.*` submodule the
 runner script registers (`state`, `table`, `docs`, `lineage`, `channel`,
@@ -410,48 +453,6 @@ python kind's `network` field help both name `import mcphost` and
 
 PRD-mcphost-sandbox-bridge-discoverability AC1-AC7. AC8 (Live, prod
 synthorg probe) is left for the gate.
-
-## v0.70.0 — 2026-10-01
-
-`host.tool_share(name, visibility: "url")` mints a plain-HTTPS endpoint for
-a published tool: `https://<host>/x/<token>/<tool>`, a 26-character base32
-bearer token stored hashed (and, separately, encrypted at rest so a
-re-share can redisplay the same URL). `GET`/`POST` run the tool -- the
-query string or JSON body become its arguments -- and return `{ok, result,
-run_id}`; a run past the 25s synchronous threshold answers `202 {run_id,
-poll}` instead, pollable at `GET /x/<token>/<tool>/runs/<run_id>`.
-Governed by the same controls as every other call path: a 60-call-per-
-minute-per-IP limiter (`429` + `Retry-After`), the admin kill switch
-(`503`), and `host.tool_unshare`/admin override (immediate `404`, timed
-indistinguishably from a token that was never issued). `PUT`/`DELETE` are
-`405`; `GET` carries `Access-Control-Allow-Origin: *` and `OPTIONS`
-preflights answer `204`, so a browser page on another origin can call one
-directly.
-
-PRD-mcphost-public-tool-url AC1-AC8, AC10 (`pubtool_ac*` test files). AC9
-(prod live-call receipt) is deferred to the operator at deploy time.
-## v0.70.0 — 2026-10-02
-
-One naming rule for every `host.*` tool, `host.<family>.<verb>`
-(`docs/tool-naming.md`), enforced by `scripts/tool-naming-lint.sh`. The 20
-tools that violated it (`host.tool_publish`/`host.tool_share`/... and
-`host.key_rotate`, `host.self_offboard`, `host.secret_set`,
-`host.secret_list`, `host.registry_publish`, `host.bridge_test`,
-`host.spec_test`) are now registered under their dotted canonical names
-and keep working under their old names as deprecated aliases: `tools/list`
-advertises each alias with `x-deprecated: {replaced_by, sunset}` (sunset
-2026-12-31), a successful alias call's result carries a matching
-`_meta.deprecated` hint, and a `tool_deprecated_alias` log line fires at
-most once per tenant per day (`tool_alias_calls{tool}`, documented in
-`docs/metrics.md`, counts alias vs. canonical calls for the sunset
-decision). An unmatched `host.*` name one or two edits from a canonical
-now gets `did_you_mean` in its `tool_not_found` error, never suggesting a
-deprecated alias. `host.whoami`'s first answer in a session links
-`naming_rule_url`. `docs/tools.md` (canonical name, family, aliases,
-description) is generated from the live registry by `mcphost gen-docs`;
-`docs/agent-quickstart.md`, `docs/sharing.md`, `plugin/skills/mcphost/
-SKILL.md`, and `www/llms.txt` now teach the canonical names.
-## v0.69.0 — 2026-10-02
 
 `host.table.query {sql, handle: true, ttl_s?}` runs a SELECT with no row
 cap and materialises it as `hdl_<id>`, a table in the tenant's own SQLite
@@ -488,8 +489,6 @@ applies the same treatment to its own argument keys. Every `host.*` and
 false`. A new `scripts/spec-fields-doc-check.sh` keeps each kind's
 `docs/kinds/*.md` page in sync with its `known_spec_fields()` list,
 checked in its own `spec-fields-doc-check` proof-lane.
-
-## v0.68.0 — 2026-10-01
 
 `host.table.schema` now returns a `description` (table-level, and per
 column) wherever a matching `host.table.model_set` annotation exists;
@@ -554,8 +553,6 @@ on `/u/<secret>/mcp` that also carries an `Authorization: Bearer` for a
 either credential. The bearer key, `Authorization` header, `tenant_key`
 argument, and session binding all keep working unchanged -- the URL is an
 additional credential, not a replacement.
-
-## v0.67.0 — 2026-10-01
 
 Anonymous sessions now see a 12-tool starter `tools/list` (`signup` plus
 `host.quickstart`, `host.redeem`, `billing.plans`, `host.whoami`,
@@ -658,8 +655,6 @@ AC9 (whole-suite-green-at-landing) is deferred to the wm-build gate itself;
 AC10 (Live, prod journey-harness evidence) is pasted into the receipt by
 the operator after deploy.
 
-## v0.65.0 — 2026-10-01
-
 `host.quickstart kind=python` now returns `sandbox_api`: `{import: "import
 mcphost", modules: {mcphost.state, mcphost.table, mcphost.docs,
 mcphost.lineage}, attrs: [mcphost.call, mcphost.progress]}`, built from one
@@ -704,31 +699,6 @@ groups every `EnvGuard`-using test into its own `suite_env_<core|sandbox>`
 binary so a guard bug can only ever race another guarded test.
 `enduserctl_ac10` (the PRD's own named false-red) and nine other
 `set_var`-shaped tests are converted to `EnvGuard`/`perf_budget!`.
-
-## v0.63.0 — 2026-09-30
-
-`host.table.chart(sql, title?, mark?, share?)` turns one SQL call into a
-chart recommendation, a Vega-Lite v5 spec, and a caption whose numbers are
-computed from the rows the query returned, never guessed by a model.
-`mqo-chart-vocab`, `mqo-result-profiler`, `mqo-chart-recommender`,
-`mqo-vega-emitter`, and `mqo-chart-caption` are vendored unchanged from
-ai-stack's chart chain as path dependencies under `vendor/`; mcphost's own
-`src/chart.rs` profiles a SQL result's rows into a `result-profile.v1`
-value, reusing `src/tables_model.rs`'s existing key/category/measure/date
-classifiers rather than inventing new thresholds. `share: true` stores the
-chart (capped at 100 per tenant, oldest evicted) and returns a
-`share_url` signed the same way `src/export.rs` signs `/exports/{run_id}`,
-good for 24 hours and openable with no login at `/charts/{id}` — the page
-inlines the spec and caption, never a tenant id or key.
-`mcphost.table.chart(sql)` reaches the same tool from a `python` sandbox
-tool. `host.table.charts()` lists a tenant's stored charts newest first.
-`www/llms.txt` gains a "Chart in a minute" recipe section (under 50
-lines, SQL only) and `examples/chart-in-a-minute/` a runnable proof
-script.
-
-PRD-mcphost-chart-in-a-minute AC1-AC11, AC13, AC14. AC12 (Live: a
-`proof.sh` run against `https://mcphost.dev/mcp` from carbon after deploy)
-is deferred — operator-provisioned.
 
 ## v0.64.0 — 2026-09-30
 
@@ -784,6 +754,31 @@ tenant's fixture chart blocks `host.table.drop("expenses")` without confirm
 and succeeds with `confirm: true` against a deployed box, receipt under
 docs/receipts/) is deferred -- operator-provisioned.
 
+## v0.63.0 — 2026-09-30
+
+`host.table.chart(sql, title?, mark?, share?)` turns one SQL call into a
+chart recommendation, a Vega-Lite v5 spec, and a caption whose numbers are
+computed from the rows the query returned, never guessed by a model.
+`mqo-chart-vocab`, `mqo-result-profiler`, `mqo-chart-recommender`,
+`mqo-vega-emitter`, and `mqo-chart-caption` are vendored unchanged from
+ai-stack's chart chain as path dependencies under `vendor/`; mcphost's own
+`src/chart.rs` profiles a SQL result's rows into a `result-profile.v1`
+value, reusing `src/tables_model.rs`'s existing key/category/measure/date
+classifiers rather than inventing new thresholds. `share: true` stores the
+chart (capped at 100 per tenant, oldest evicted) and returns a
+`share_url` signed the same way `src/export.rs` signs `/exports/{run_id}`,
+good for 24 hours and openable with no login at `/charts/{id}` — the page
+inlines the spec and caption, never a tenant id or key.
+`mcphost.table.chart(sql)` reaches the same tool from a `python` sandbox
+tool. `host.table.charts()` lists a tenant's stored charts newest first.
+`www/llms.txt` gains a "Chart in a minute" recipe section (under 50
+lines, SQL only) and `examples/chart-in-a-minute/` a runnable proof
+script.
+
+PRD-mcphost-chart-in-a-minute AC1-AC11, AC13, AC14. AC12 (Live: a
+`proof.sh` run against `https://mcphost.dev/mcp` from carbon after deploy)
+is deferred — operator-provisioned.
+
 ## v0.61.1 — 2026-09-30
 
 `host.quickstart` and `host.tool_publish` now accept the job-word an agent
@@ -820,8 +815,6 @@ Observability and docs follow: `calls.auth_method` gains `session` alongside `ke
 
 PRD-mcphost-session-bound-tenant-after-signup AC1-AC13, all hermetically paired -- no deferral. AC14 (Live: the next nightly explore run's `credential_arg_missing` count against production after deploy) is the operator's own post-deploy step, outside this build.
 
-## v0.61.0 — 2026-09-29
-
 A `chain` tool's `inputSchema` now names exactly the `$.input.*` fields its steps actually read (derived from the same step-argument mapping `compose_call` already resolves at call time) instead of the empty `{"type": "object"}` every chain published before -- a call missing one now refuses up front with `compose_input_missing` (naming every missing field, plus the first step and tool that needed it) before dispatching step one, rather than failing confusingly partway through; `host.tool_test`'s dry-run report gains the same `inputs_required` list. Every `compose_call` dispatch -- each step of a chain, and the `mcphost.call` sidecar bridge -- now writes its own `runs` row (`trigger: "composition"`, `parent_run_id`, `step_no`, `parent_tool`, status `done`/`failed`, migration `0057_runs_parent_run_id.sql`, three additive nullable columns) alongside the parent's own row, which is unchanged; a child inherits the parent's `end_user` and meters as part of the same call, not a second one. `host.runs.list` gains `parent_run_id`/`include_children` (default: top-level rows only, same as before this PRD); `host.runs.get` inlines one level of `children`. Deleting a tenant or purging a run's result window cascades to every composed child the same way it already did for a top-level run. `/healthz` gains `runs.composition_children_total`/`runs.composition_parents_failed_input_total`.
 
 PRD-mcphost-chain-run-lineage AC1-AC12. AC13 (Live: a real multi-step chain run against production after deploy, its parent and children visible via `host.runs.get`) is deferred -- operator-provisioned.
@@ -829,11 +822,11 @@ PRD-mcphost-chain-run-lineage AC1-AC12. AC13 (Live: a real multi-step chain run 
 
 PRD-mcphost-event-trigger-self-test AC1-AC10, all hermetically paired. AC11 (the live nightly truth-tier recipe score, gated on this PRD and PRD-synthorg-truth-tier-probe-as-tenant both being deployed to prod) is deferred -- operator-provisioned.
 
-## v0.60.17 — 2026-09-26
+## v0.60.27 — 2026-09-27
 
-`host.tool_share` gains an `expose_spec` opt-in (default false, migration `0045_tool_spec_exposure.sql`): once set, any tenant the tool is shared with can call the new `host.tool_spec_shared {tool: "<owner_namespace>.<name>"}` to read that tool's kind and a redacted spec -- for a python-kind tool, `source`/`args_schema`/`requirements`/`timeout_s`/`network` only, never `env` or a `{{ secret.<name> }}` reference. Sharing (or re-sharing) without the flag clears any prior exposure and resets the read counter; reading counts against the reader's own call quota and is logged the same as `host.tool_call`. Unshared or unexposed reads fail the same way `host.tool_call` already does on an unshared tool -- `tool_not_found` when the tool isn't visible to the caller at all, `spec_not_exposed` when it is shared but `expose_spec` is off -- never revealing which case it is to a caller who shouldn't know the tool exists. `host.tool_list`/the owner's own listing gain `expose_spec`, `exposed_at`, and `spec_reads`.
+A tenant can now scope what a token is allowed to reach. `host.oauth.scope_set {name, description}` adds a name to the tenant's own scope catalog (`read`/`write` are always valid with no row needed, just for a consent-page description); `host.tool_publish {..., scopes: [...]}` tags a tool with up to 8 catalogued-or-built-in names (`migrations/0051_tool_scopes_and_consent.sql`: new `oauth_scopes` table, additive `tools.scopes`/`oauth_grants.scope` columns, both defaulted so every existing row reads exactly as before). Requesting `scope=read` at `/oauth/authorize` shows the consent page exactly the tools that scope unlocks, by name and description; the issued token's `scope` claim carries what was granted, `tools/list` on that token shows only the intersecting tools (plus every `host.*`/`billing.*` tool, unconditionally), and a call outside the token's scope gets the spec's 403 `insufficient_scope` naming the union scope a step-up re-`/oauth/authorize` should request. Republishing a tool's `scopes` takes effect on its very next call, no token reissue. Per-tenant protected-resource metadata's `scopes_supported` now lists `mcp`, `read`, `write`, and the tenant's own catalog names once any exist (root metadata is unaffected, always `["mcp"]`); `admin.oauth.stats` tallies `consents_by_scope_7d`, and `host.oauth.grants` rows show their granted `scope`. Tenant keys, `scope=mcp` tokens, and pre-existing bring-your-own-issuer tokens with no `scope` claim are unaffected -- `mcp` still means full access.
 
-PRD-mcphost-shared-tool-spec-readback AC1-AC10, all hermetically paired. AC10 (the two-actor flow: tenant A publishes a python tool carrying an `env` entry, shares it to a group containing tenant B with `expose_spec: true`, B reads the spec and gets `source` but no `env`, and A's calls listing -- `host.usage`'s `calls_by_others`, this control plane's owner-visible read of the `calls` rows the PRD spells `host.calls.list` -- shows B's read) is proven in-process on every `cargo test` by `tests/mcphost_shared_tool_spec_readback_ac10_two_tenant_spec_read_and_calls_listing.rs`, against a real local server with two freshly signed-up tenants; no deferral, no live gate, no hand-taken prod snapshot. Reachability of this branch's surface at `https://mcphost.dev` after deploy is verified separately by the daemon's own live stage, not by a build-time test.
+PRD-mcphost-tool-scopes-and-consent AC1-AC8. AC9 (Live: a real consent-scoped token against production after deploy) is deferred -- operator-provisioned.
 
 ## v0.60.26 — 2026-09-27
 
@@ -841,19 +834,26 @@ A tenant now decides which clients may connect through mcphost's hosted authoriz
 
 PRD-mcphost-oauth-client-policy AC1-AC9. AC10 (Live: a synthetic operator-labelled tenant driven with curl against production after deploy, receipt under `docs/receipts/`) is deferred -- operator-provisioned.
 
-## v0.60.27 — 2026-09-27
-
-A tenant can now scope what a token is allowed to reach. `host.oauth.scope_set {name, description}` adds a name to the tenant's own scope catalog (`read`/`write` are always valid with no row needed, just for a consent-page description); `host.tool_publish {..., scopes: [...]}` tags a tool with up to 8 catalogued-or-built-in names (`migrations/0051_tool_scopes_and_consent.sql`: new `oauth_scopes` table, additive `tools.scopes`/`oauth_grants.scope` columns, both defaulted so every existing row reads exactly as before). Requesting `scope=read` at `/oauth/authorize` shows the consent page exactly the tools that scope unlocks, by name and description; the issued token's `scope` claim carries what was granted, `tools/list` on that token shows only the intersecting tools (plus every `host.*`/`billing.*` tool, unconditionally), and a call outside the token's scope gets the spec's 403 `insufficient_scope` naming the union scope a step-up re-`/oauth/authorize` should request. Republishing a tool's `scopes` takes effect on its very next call, no token reissue. Per-tenant protected-resource metadata's `scopes_supported` now lists `mcp`, `read`, `write`, and the tenant's own catalog names once any exist (root metadata is unaffected, always `["mcp"]`); `admin.oauth.stats` tallies `consents_by_scope_7d`, and `host.oauth.grants` rows show their granted `scope`. Tenant keys, `scope=mcp` tokens, and pre-existing bring-your-own-issuer tokens with no `scope` claim are unaffected -- `mcp` still means full access.
-
-PRD-mcphost-tool-scopes-and-consent AC1-AC8. AC9 (Live: a real consent-scoped token against production after deploy) is deferred -- operator-provisioned.
-
 ## v0.60.19 — 2026-09-26
 
 An old `plans.toml` (one written before a quota existed, or hand-edited to name only a few fields) no longer zeroes an absent quota: `PlanBuilder::build` now fills every missing `Option<i64>` field from `default_catalog()`'s row for that plan name (the `free` plan's row for a name `default_catalog()` doesn't recognize), never a literal -- the bug that shipped `state_bytes_max == 0` for every tenant on a box whose `plans.toml` predated tenant state (`run-result-overflow-to-state` AC10, prod 0.60.18) and silently failed every stateful write with `state_quota`. `PlanCatalog::from_toml` reports which fields it filled in per plan; `load_or_init` logs one `plans.toml: plan=<name> defaulted=[<field>, ...]` INFO line per plan at startup (nothing logged for a plan naming every field). Admin `/healthz` gains `plans: [{name, state_bytes_max, state_rows_max, table_bytes_max, docs_bytes_max, jobs_concurrent, end_users_max}]` from the loaded catalog, so an operator or instrument can see a quota is non-zero without reading the box's own file. `www/llms.txt`'s Operator notes now name both the defaulting behavior and the startup log line.
 
 PRD-mcphost-plan-catalog-state-quota-defaults AC1-AC7. AC8 (Live: admin healthz plus a `host.state.set` call against production with the operator's own 2026-09-26 `plans.toml` still in place) is deferred -- operator-provisioned.
 
+## v0.60.18 — 2026-09-26
+
+Every run now remembers the end user it ran as, when any: `runs` gains `end_user_subject`/`end_user_issuer`/`end_user_method` (nullable, migration `0048_runs_end_user_subject.sql`, indexed alongside `tenant_id`), written at enqueue from the caller's already-resolved end user -- the same value its `calls` row gets for a synchronous call. `host.runs.get`, `host.runs.wait`, and `host.runs.list` all return `end_user: {subject, issuer, method} | null`; a trigger-fired run (schedule/event/message/webhook) always reads `null`, since none of those paths resolve an end user. `host.runs.list {end_user_subject}` filters to just that end user's runs within the tenant; an unrecognized subject returns an empty list, never an error. Tenants with no end users see byte-identical `host.runs.list` output aside from the added `end_user: null` key.
+
+PRD-mcphost-runs-end-user-subject AC1-AC7. AC8 (Live: a real published python tool called twice through `https://mcphost.dev/mcp` with two assertions after deploy) is deferred -- operator-provisioned.
+A tenant now has a control plane for the end users its tools serve. `host.enduser.list {since?, revoked?, limit?, cursor?}` returns each end user's `subject`/`issuer`/`first_seen`/`last_seen`/`calls_total`/`revoked_at`/`revoked_by`/`purged_at`, upserted from a 10s batched flush (`migrations/0047_end_user_audit_and_revoke.sql`'s `end_users` table) rather than per call, and pages a 100k-row roster in under 50ms per page via a `(tenant_id, last_seen DESC, subject DESC)` keyset cursor. `host.enduser.get {subject}` adds live `state_rows`/`vault_connections`/`runs_30d` counts; `host.enduser.audit {subject, since?, limit?, cursor?}` merges that subject's `calls` history (`tool`, `outcome`, `run_id` -- `calls` gains a `run_id` column) with its revoke/unrevoke/purge events from a new `tenant_audit` table (append-only, sibling to `admin_audit` rather than a reuse of it). `host.enduser.revoke {subject, reason?}` refuses that subject's next identified call with `end_user_revoked` (checked synchronously before dispatch, never batched) and disconnects its `vault_tokens` connections; `host.enduser.unrevoke {subject}` reverses it. `host.enduser.purge {subject}` -- rejected with `revoke_required` unless already revoked -- deletes the subject's scoped `tenant_state_rows`/`tenant_state_kv`/`vault_tokens` rows, de-identifies (never deletes) its `calls` rows, sets `purged_at`, and writes the audit tombstone, returning `{state_rows, vault_tokens}` counts. `host.enduser.export {subject}` bundles one subject's state rows and call history at `/exports/<run_id>`, the same envelope `host.export` returns. `admin.enduser.stats` reports per-tenant `active_30d`/`revoked`/`purged` totals and is itself recorded in `admin_audit`.
+
+PRD-mcphost-end-user-audit-and-revoke AC1-AC10. AC11 (Live: a real prod revoke+purge against a test end user after deploy) is deferred -- operator-provisioned.
+
 ## v0.60.17 — 2026-09-26
+
+`host.tool_share` gains an `expose_spec` opt-in (default false, migration `0045_tool_spec_exposure.sql`): once set, any tenant the tool is shared with can call the new `host.tool_spec_shared {tool: "<owner_namespace>.<name>"}` to read that tool's kind and a redacted spec -- for a python-kind tool, `source`/`args_schema`/`requirements`/`timeout_s`/`network` only, never `env` or a `{{ secret.<name> }}` reference. Sharing (or re-sharing) without the flag clears any prior exposure and resets the read counter; reading counts against the reader's own call quota and is logged the same as `host.tool_call`. Unshared or unexposed reads fail the same way `host.tool_call` already does on an unshared tool -- `tool_not_found` when the tool isn't visible to the caller at all, `spec_not_exposed` when it is shared but `expose_spec` is off -- never revealing which case it is to a caller who shouldn't know the tool exists. `host.tool_list`/the owner's own listing gain `expose_spec`, `exposed_at`, and `spec_reads`.
+
+PRD-mcphost-shared-tool-spec-readback AC1-AC10, all hermetically paired. AC10 (the two-actor flow: tenant A publishes a python tool carrying an `env` entry, shares it to a group containing tenant B with `expose_spec: true`, B reads the spec and gets `source` but no `env`, and A's calls listing -- `host.usage`'s `calls_by_others`, this control plane's owner-visible read of the `calls` rows the PRD spells `host.calls.list` -- shows B's read) is proven in-process on every `cargo test` by `tests/mcphost_shared_tool_spec_readback_ac10_two_tenant_spec_read_and_calls_listing.rs`, against a real local server with two freshly signed-up tenants; no deferral, no live gate, no hand-taken prod snapshot. Reachability of this branch's surface at `https://mcphost.dev` after deploy is verified separately by the daemon's own live stage, not by a build-time test.
 
 `host.tool_call {name: "<owner_namespace>.<tool>"}` now resolves through the sharing table the same way raw `tools/call` with a qualified name already did -- the call form `www/llms.txt` has documented since the share-a-tool recipe shipped now actually works, with the same metering/quota/audit behavior (`call_shared_tool`/a new `runs::enqueue_shared`, both built on `sharing::resolve_shared_tool`). A qualified name whose owner doesn't exist, whose tool doesn't exist, or which isn't shared with the caller returns `tool_not_found` with an identical `data.hint` ("shared tools are called as `<owner_namespace>.<tool>`; ask the owner to `host.tool_share` it with you or your group") for all three cases, indistinguishable in bytes and within 10ms p95 of each other. `host.tool_call {..., async: true}` on a qualified name enqueues under the caller's own tenant; `host.runs.get`/`.wait` stay scoped to the caller, never the owner. `host.whoami` gains `shared_tools: [{name, owner, via: "direct"|"group:<g>"}]`, listing every tool currently shared with the caller. `www/llms.txt`'s "Share a tool, not a key" section is now generated from `docs/sharing.md` (`scripts/gen-docs-sharing.sh --check` catches drift, naming the line); `examples/share-a-tool/proof.sh` exercises both the raw and the `host.tool_call` qualified forms and records both in a small receipt.
 
@@ -867,20 +867,6 @@ PRD-mcphost-upstream-token-vault AC1-AC11. AC12 (Live: a real Slack test app and
 A shared tool's owner can now see who used it, and how much: `host.usage {tool?, by: "tool"|"caller"|"end_user", window, limit, cursor}` breaks down calls by tool name, by the cross-tenant caller's namespace (`by: "caller"`, only valid for a tool this tenant has shared -- rejected with `args_invalid` naming the constraint otherwise), or by identified end user (`by: "end_user"`, folding the caller's namespace into the key as `<caller namespace>:<subject>` when the identified call crossed tenants, so the same subject calling in through two different callers gets two rows). Each row is `{key, calls, errors, p95_ms, bytes_out}` (`bytes_out` is always 0 today -- no per-call response-size column exists yet); results page at up to 1000 keys with a `cursor`. `host.usage` with no `by` is unchanged, byte for byte. `host.share.caller_limit {tool, caller_tenant, calls_per_day}` / `.caller_limit_remove` let a shared tool's owner cap one caller's calls per UTC day; exceeding it rejects with `quota_caller` (`reset_at` at the next UTC midnight) before the call ever dispatches -- no `calls` row at all, and only that caller is affected. A new daily rollup (`usage_daily`, migration `0043_shared_tool_caller_usage.sql`, kept 90 days) lets a 30-day-or-wider `host.usage` breakdown answer from ~90 small rows instead of scanning raw `calls` -- proven under 200ms at 1M events. `admin.usage.top {window, by: "tool"|"tenant"}` shows the operator the heaviest tools or tenants on the whole host, audited to `admin_audit`.
 
 PRD-mcphost-shared-tool-caller-usage AC1-AC9. AC10 (Live: a second tenant calling the operator's shared test tool on prod, visible via `host.usage {by: "caller"}` on mcphost-1) is deferred -- operator-provisioned.
-## v0.60.18 — 2026-09-26
-
-Every run now remembers the end user it ran as, when any: `runs` gains `end_user_subject`/`end_user_issuer`/`end_user_method` (nullable, migration `0048_runs_end_user_subject.sql`, indexed alongside `tenant_id`), written at enqueue from the caller's already-resolved end user -- the same value its `calls` row gets for a synchronous call. `host.runs.get`, `host.runs.wait`, and `host.runs.list` all return `end_user: {subject, issuer, method} | null`; a trigger-fired run (schedule/event/message/webhook) always reads `null`, since none of those paths resolve an end user. `host.runs.list {end_user_subject}` filters to just that end user's runs within the tenant; an unrecognized subject returns an empty list, never an error. Tenants with no end users see byte-identical `host.runs.list` output aside from the added `end_user: null` key.
-
-PRD-mcphost-runs-end-user-subject AC1-AC7. AC8 (Live: a real published python tool called twice through `https://mcphost.dev/mcp` with two assertions after deploy) is deferred -- operator-provisioned.
-A tenant now has a control plane for the end users its tools serve. `host.enduser.list {since?, revoked?, limit?, cursor?}` returns each end user's `subject`/`issuer`/`first_seen`/`last_seen`/`calls_total`/`revoked_at`/`revoked_by`/`purged_at`, upserted from a 10s batched flush (`migrations/0047_end_user_audit_and_revoke.sql`'s `end_users` table) rather than per call, and pages a 100k-row roster in under 50ms per page via a `(tenant_id, last_seen DESC, subject DESC)` keyset cursor. `host.enduser.get {subject}` adds live `state_rows`/`vault_connections`/`runs_30d` counts; `host.enduser.audit {subject, since?, limit?, cursor?}` merges that subject's `calls` history (`tool`, `outcome`, `run_id` -- `calls` gains a `run_id` column) with its revoke/unrevoke/purge events from a new `tenant_audit` table (append-only, sibling to `admin_audit` rather than a reuse of it). `host.enduser.revoke {subject, reason?}` refuses that subject's next identified call with `end_user_revoked` (checked synchronously before dispatch, never batched) and disconnects its `vault_tokens` connections; `host.enduser.unrevoke {subject}` reverses it. `host.enduser.purge {subject}` -- rejected with `revoke_required` unless already revoked -- deletes the subject's scoped `tenant_state_rows`/`tenant_state_kv`/`vault_tokens` rows, de-identifies (never deletes) its `calls` rows, sets `purged_at`, and writes the audit tombstone, returning `{state_rows, vault_tokens}` counts. `host.enduser.export {subject}` bundles one subject's state rows and call history at `/exports/<run_id>`, the same envelope `host.export` returns. `admin.enduser.stats` reports per-tenant `active_30d`/`revoked`/`purged` totals and is itself recorded in `admin_audit`.
-
-PRD-mcphost-end-user-audit-and-revoke AC1-AC10. AC11 (Live: a real prod revoke+purge against a test end user after deploy) is deferred -- operator-provisioned.
-
-## v0.60.15 — 2026-09-26
-
-Every tool call now carries an optional verified end-user identity: the OAuth bearer's `sub`/`iss` when the caller authenticated that way, or a tenant-signed HS256 `end_user_assertion` (claims `sub`/`iat`/`exp <= iat + 3600`) for key-based callers, minted against a per-tenant secret set with `host.enduser.assertion_secret_rotate` (returned once, stored encrypted at rest, never shown again -- not even in `host.secret_list`). A python-kind tool sees `MCPHOST_END_USER_ID`/`MCPHOST_END_USER_ISSUER`/`MCPHOST_END_USER_METHOD`, an http-kind tool's upstream request carries `X-MCPHost-End-User`/`X-MCPHost-End-User-Issuer`; absent identity means the variables/header are unset, never empty. Every call row now has `end_user_subject`/`end_user_issuer`/`end_user_method` (migration `0042_end_user_identity.sql`). `host.state.*` and `host.table.*` gain an `end_user: "self" | "<subject>" | null` argument: `"self"` resolves to the call's own verified identity (`end_user_required` if there isn't one) and scopes reads/writes to that subject's own rows -- u1 and u2 writing the same key each see only their own value, and a read with no `end_user` still sees the tenant-wide row; `host.state.query`'s `end_user: "self"` predicate is served by a new composite index (`tenant_id, table_name, end_user_subject`), not a full scan. An explicit subject (rather than `"self"`) is only accepted when the call itself carries no end-user identity of its own -- a server-side batch job impersonating a specific end user -- and that use is marked `impersonated`; passing one when the call already has its own identity is rejected. `host.enduser.whoami` returns the caller's `{subject, issuer, method, verified_at}` or null. A new plan knob `end_users_max` (free 100, pro 10,000) counts distinct end-user subjects that wrote state in the trailing 30 days; the 101st in that window is rejected with `quota_end_users` (reads keep working).
-
-PRD-mcphost-end-user-identity AC1-AC11. AC12 (Live: a real published python tool on prod, two assertions, two subjects visible in `host.runs.list`) is deferred -- operator-provisioned, per the coder dispatch's own deferred-AC convention.
 
 ## v0.60.16 — 2026-09-26
 
@@ -888,25 +874,17 @@ PRD-mcphost-end-user-identity AC1-AC11. AC12 (Live: a real published python tool
 
 PRD-mcphost-docs-qa-recipe AC1-AC8, AC6. AC9 (Live: a real signup from carbon against production, receipt committed under `docs/receipts/`) and AC10 (the truth-tier panel run measuring `rag_indexer` satisfaction after land) are deferred -- both operator-provisioned, needing a real deploy and a real panel run this worktree's own gate cannot reach.
 
+## v0.60.15 — 2026-09-26
+
+Every tool call now carries an optional verified end-user identity: the OAuth bearer's `sub`/`iss` when the caller authenticated that way, or a tenant-signed HS256 `end_user_assertion` (claims `sub`/`iat`/`exp <= iat + 3600`) for key-based callers, minted against a per-tenant secret set with `host.enduser.assertion_secret_rotate` (returned once, stored encrypted at rest, never shown again -- not even in `host.secret_list`). A python-kind tool sees `MCPHOST_END_USER_ID`/`MCPHOST_END_USER_ISSUER`/`MCPHOST_END_USER_METHOD`, an http-kind tool's upstream request carries `X-MCPHost-End-User`/`X-MCPHost-End-User-Issuer`; absent identity means the variables/header are unset, never empty. Every call row now has `end_user_subject`/`end_user_issuer`/`end_user_method` (migration `0042_end_user_identity.sql`). `host.state.*` and `host.table.*` gain an `end_user: "self" | "<subject>" | null` argument: `"self"` resolves to the call's own verified identity (`end_user_required` if there isn't one) and scopes reads/writes to that subject's own rows -- u1 and u2 writing the same key each see only their own value, and a read with no `end_user` still sees the tenant-wide row; `host.state.query`'s `end_user: "self"` predicate is served by a new composite index (`tenant_id, table_name, end_user_subject`), not a full scan. An explicit subject (rather than `"self"`) is only accepted when the call itself carries no end-user identity of its own -- a server-side batch job impersonating a specific end user -- and that use is marked `impersonated`; passing one when the call already has its own identity is rejected. `host.enduser.whoami` returns the caller's `{subject, issuer, method, verified_at}` or null. A new plan knob `end_users_max` (free 100, pro 10,000) counts distinct end-user subjects that wrote state in the trailing 30 days; the 101st in that window is rejected with `quota_end_users` (reads keep working).
+
+PRD-mcphost-end-user-identity AC1-AC11. AC12 (Live: a real published python tool on prod, two assertions, two subjects visible in `host.runs.list`) is deferred -- operator-provisioned, per the coder dispatch's own deferred-AC convention.
+
 ## v0.60.14 — 2026-09-26
 
 The status page now reports what the host measured, not a static file: a per-minute self-sampler (`migrations/0041_status_feed.sql`) probes four components in process -- `mcp` (the same anonymous `tools/list` construction the MCP endpoint uses, plus a db-writability check), `exec` (an echo-kind call through the `python` kind's sandbox path; absent registration counts as failing), `billing` (a signed no-op replayed through `billing::process_webhook`; trivially ok when no webhook secret is configured), `claim` (`claim::resolve_claim_token` against a bogus token) -- none of it touching `calls`/metering or the network. `GET /status.json` (anonymous, `Cache-Control: max-age=60`) reports `{state, generated_at, components: [{name, state, uptime_30d, uptime_90d, last_sample}], incidents_open, incidents_recent_30d}`; `state`/a component's own `state` are `operational`/`ok` unless a component's last 5 samples aren't all ok (`degraded`/`failing`) or an open incident's `impact` is `partial` (`degraded`) or `major` (`outage`). `GET /status.json?component=<name>&days=<n>` returns that component's daily rollup rows instead. Operators run incidents with `admin.incident.open {title, impact, components}` / `.update {id, message}` / `.close {id, message}` (each lands in `admin_audit`) and post external probe results (e.g. mcphost-deploy's outside-in reachability check) with `admin.status.sample {component, ok, latency_ms, source}`, `source` preserved per row. A daily tick rolls raw samples up into `status_daily` (`ok_samples`/`total_samples`/`p95_latency_ms` per component per day, never pruned) and prunes raw samples past 90 days; `admin.status.rollup {since?, until?}` recomputes it on demand. When a component fails 5 consecutive self-samples with no open incident already naming it, a `status.component_down` alert fires (through the existing alerting registry) and a `partial`-impact incident auto-opens; 10 consecutive ok samples auto-closes it with a timeline note. `www/status.html` now fetches `/status.json` and renders state/components/incidents client-side, falling back to static text when the fetch fails.
 
 PRD-mcphost-status-feed AC1-AC10. AC11's mechanism (an always-on `/status.json` fetch plus the `status.html` render check) is proven every run by `tests/statusfeed_ac11_live_status_trailer.rs`; only its prod leg (Live: `https://mcphost.dev/status.json` after deploy, with the healthz-version-plus-transcript receipt, gated on `MCPHOST_LIVE=1`) is deferred -- operator-provisioned, per the PRD frontmatter's `mock_justifications`.
-## v0.60.10 — 2026-09-25
-
-Ranked passage search over the document store (`migrations/0044_docs_index.sql`): a background indexer follows each tenant's document watermark every 10s, chunks changed documents by paragraph into ≤800-character windows with a 100-character overlap, and replaces that document's `doc_chunks` rows atomically (deletes drop their chunks the same way). `host.docs.search {query, k, filter: {prefix?, name?}}` returns `[{document_id, name, version, chunk_no, offset, text, score}]` -- lexical by default (BM25 over an FTS5 index, porter-stemmed so "refund"/"refunds" both match), or cosine over embeddings once `host.docs.index_config {provider: "openai-compatible", endpoint, model, secret, dims?}` is set (the query itself is embedded through the same provider at search time; any provider failure falls back to lexical with `index.mode: "lexical-fallback"`, never an error). `host.docs.status` gains an `index` block (`mode`, `indexed_watermark`, `lag_seconds`, `pending_documents`, `chunks`, `rebuilding`, `quota_chunks_reached`); `host.docs.reindex {document_id?}` forces a document (or every document) back into the pending set. New plan knob `docs_chunks_max` (free 10,000, pro 50,000) stops the indexer at the cap rather than growing past it, leaving search to answer over whatever did get indexed. A 20-document fixture corpus with 30 gold questions (`tests/fixtures/docsearch/`) proves lexical top-5 hit rate ≥ 0.9.
-
-PRD-mcphost-docs-semantic-search AC1-AC11. AC12 (Live: a real put/search against production mcphost-1 within 60s of a deploy) deferred -- operator-provisioned.
-
-## v0.60.9 — 2026-09-25
-
-A per-tenant document store (`migrations/0037_documents.sql`): `host.docs.put {name, content|content_base64, mime?, metadata?}` stores text/markdown/JSON/CSV (mime detected from name and content when omitted, content sniffing rejects binary formats like `image/png` naming the allowed mimes) up to `MCPHOST_DOC_MAX_BYTES` (default 2 MiB) -- a `put` under an already-used name bumps that document's `version` and the tenant's `seq` watermark, unless the content is byte-identical, which is a no-op that repeats the current version. JSON is extracted to `path: value` lines (`{"a": {"b": 1}}` -> `a.b: 1`) and CSV to one `col=value, ...` line per row; `host.docs.get {id|name, version?, text?}` returns that extracted text on request. `host.docs.list {since?, prefix?, limit, cursor}` returns the live snapshot without `since`, or every document changed since a watermark (including deleted ones, `deleted: true`) with it; `host.docs.delete` soft-deletes; `host.docs.status` reports `{documents, bytes, text_bytes, watermark, quota}`; `host.docs.purge {id|name, older_than_versions}` drops old stored versions. New plan knobs `docs_max` (free 200, pro 20,000) and `docs_bytes_max` (free 50 MiB, pro 5 GiB) refuse further writes with `quota_docs`/`quota_docs_bytes`; every put emits a `docs.put_bytes` metering event. A python-kind tool reads `MCPHOST_DOCS_ENDPOINT` and calls `mcphost.docs.get(id)` to get a document's extracted text over the same in-process sandbox bridge `mcphost.state`/`mcphost.table` already use, no `host.tool_call` round trip. `host.export`'s archive now includes each live document's current version under `documents/<id>.json`.
-
-PRD-mcphost-document-store AC1-AC11. AC12 (Live: a real put/list against production mcphost-1) deferred -- operator-provisioned.
-The host now raises an alert (a new `alerts` table, migration 0037) when signups pause/resume, a tenant's plan knob (`calls_per_day`) trips `MCPHOST_ALERT_QUOTA_TRIP_THRESHOLD` (default 20) times in 5 minutes, or 5xx-class tool errors exceed `MCPHOST_ALERT_ERROR_RATE_PCT` (default 5%) of calls over a trailing 5-minute window with at least `MCPHOST_ALERT_ERROR_RATE_MIN_CALLS` (default 50) calls. Each alert is one JSON POST (`{id, key, severity, title, body, raised_at, host}`, 5s timeout, 3 retries at 1s/5s/25s backoff) to `MCPHOST_ALERT_WEBHOOK_URL` when set, and one system-sender message into `MCPHOST_ALERT_TENANT`'s `host.msg.inbox` when set; with neither configured, an alert is stored only and `/healthz` reports `alerts.sink: "store-only"`. A repeat of the same alert `key` within `MCPHOST_ALERT_COOLDOWN_SECS` (default 900) collapses into the open row's `repeat_count` instead of re-delivering; the next fresh row after the window carries the collapsed row's own `repeat_count` in its body. `MCPHOST_ALERT_MIN_SEVERITY` (default `warn`) filters delivery, never storage. Operators manage alerts with `admin.alerts.list {limit, since, unacked_only}`, `admin.alerts.ack {id}`, and `admin.alerts.raise {key, severity, title, body}` (the sink mcphost-deploy and other out-of-process sources post through; `body` is capped at 16 KiB) -- `ack`/`raise` land in `admin_audit`. `/healthz` gains `alerts.{open, last_raised_at, sink}`.
-
-PRD-mcphost-alerting-webhook AC1-AC11. AC12 (Live: toggling the pause file on production mcphost-1 and checking `admin.alerts.list`) deferred -- operator-provisioned.
 
 ## v0.60.11 — 2026-09-25
 
@@ -916,9 +894,22 @@ PRD-mcphost-sqlite-busy-timeout-audit AC1-AC10. AC11 (a real showhn-load-proof r
 
 ## v0.60.10 — 2026-09-25
 
+Ranked passage search over the document store (`migrations/0044_docs_index.sql`): a background indexer follows each tenant's document watermark every 10s, chunks changed documents by paragraph into ≤800-character windows with a 100-character overlap, and replaces that document's `doc_chunks` rows atomically (deletes drop their chunks the same way). `host.docs.search {query, k, filter: {prefix?, name?}}` returns `[{document_id, name, version, chunk_no, offset, text, score}]` -- lexical by default (BM25 over an FTS5 index, porter-stemmed so "refund"/"refunds" both match), or cosine over embeddings once `host.docs.index_config {provider: "openai-compatible", endpoint, model, secret, dims?}` is set (the query itself is embedded through the same provider at search time; any provider failure falls back to lexical with `index.mode: "lexical-fallback"`, never an error). `host.docs.status` gains an `index` block (`mode`, `indexed_watermark`, `lag_seconds`, `pending_documents`, `chunks`, `rebuilding`, `quota_chunks_reached`); `host.docs.reindex {document_id?}` forces a document (or every document) back into the pending set. New plan knob `docs_chunks_max` (free 10,000, pro 50,000) stops the indexer at the cap rather than growing past it, leaving search to answer over whatever did get indexed. A 20-document fixture corpus with 30 gold questions (`tests/fixtures/docsearch/`) proves lexical top-5 hit rate ≥ 0.9.
+
+PRD-mcphost-docs-semantic-search AC1-AC11. AC12 (Live: a real put/search against production mcphost-1 within 60s of a deploy) deferred -- operator-provisioned.
+
 Every declared `host.table.*` table now builds its own semantic model: `host.table.describe {table}` returns, per column, its inferred type, `null_share`, `distinct`/`distinct_share`, `min`/`max` or `top_values`, and a `role` (`key|category|measure|date|id|text`, plus the raw `inferred_role`) -- `key` when every sampled value is distinct and none are null, `category` when at most 20 distinct values and under 5% distinct-share, `measure` when numeric and not a key, `date` when at least 95% of values parse as an ISO date, `id` when text with over 90% distinct-share and a stable length -- and per table its `row_count`, candidate `primary_key`, detected `foreign_keys` (a `*_id`-named or key-matching column whose sampled distinct values are at least 95% contained in another declared table's own key column), suggested `measures` (`sum`/`avg`/`min`/`max` per measure column), and `dimensions` (its category/date columns). Inference samples up to 10,000 rows (`sampled: true` past that) and completes in under 500ms even at 50,000 rows. `append`/`create` mark an existing model stale; a 10s background tick recomputes it (bounding both "within 30s" and "at most once per 10s per table" from the same cadence) -- `describe` never blocks on a recompute, instead returning the previous model with `stale: true`. `host.table.model_set {table, column?, key, value}` (`key` one of `role`/`unit`/`description`/`hidden`) records an annotation that survives every later refresh, merged back in on every `describe` (an annotation's `role` wins over the inference, which still shows through as `inferred_role`); `host.table.models` lists every table with a computed model; `host.table.drop` removes both the model and its annotations. New tables `table_models`/`table_model_annotations` (`migrations/0039_table_models.sql`).
 
 PRD-mcphost-table-semantic-model AC1-AC10. AC11 (Live: the operator tenant loads the database-in-a-minute sample CSV on mcphost-1 and calls `describe`, capturing the transcript under `docs/receipts/`) deferred -- operator-provisioned.
+
+## v0.60.9 — 2026-09-25
+
+A per-tenant document store (`migrations/0037_documents.sql`): `host.docs.put {name, content|content_base64, mime?, metadata?}` stores text/markdown/JSON/CSV (mime detected from name and content when omitted, content sniffing rejects binary formats like `image/png` naming the allowed mimes) up to `MCPHOST_DOC_MAX_BYTES` (default 2 MiB) -- a `put` under an already-used name bumps that document's `version` and the tenant's `seq` watermark, unless the content is byte-identical, which is a no-op that repeats the current version. JSON is extracted to `path: value` lines (`{"a": {"b": 1}}` -> `a.b: 1`) and CSV to one `col=value, ...` line per row; `host.docs.get {id|name, version?, text?}` returns that extracted text on request. `host.docs.list {since?, prefix?, limit, cursor}` returns the live snapshot without `since`, or every document changed since a watermark (including deleted ones, `deleted: true`) with it; `host.docs.delete` soft-deletes; `host.docs.status` reports `{documents, bytes, text_bytes, watermark, quota}`; `host.docs.purge {id|name, older_than_versions}` drops old stored versions. New plan knobs `docs_max` (free 200, pro 20,000) and `docs_bytes_max` (free 50 MiB, pro 5 GiB) refuse further writes with `quota_docs`/`quota_docs_bytes`; every put emits a `docs.put_bytes` metering event. A python-kind tool reads `MCPHOST_DOCS_ENDPOINT` and calls `mcphost.docs.get(id)` to get a document's extracted text over the same in-process sandbox bridge `mcphost.state`/`mcphost.table` already use, no `host.tool_call` round trip. `host.export`'s archive now includes each live document's current version under `documents/<id>.json`.
+
+PRD-mcphost-document-store AC1-AC11. AC12 (Live: a real put/list against production mcphost-1) deferred -- operator-provisioned.
+The host now raises an alert (a new `alerts` table, migration 0037) when signups pause/resume, a tenant's plan knob (`calls_per_day`) trips `MCPHOST_ALERT_QUOTA_TRIP_THRESHOLD` (default 20) times in 5 minutes, or 5xx-class tool errors exceed `MCPHOST_ALERT_ERROR_RATE_PCT` (default 5%) of calls over a trailing 5-minute window with at least `MCPHOST_ALERT_ERROR_RATE_MIN_CALLS` (default 50) calls. Each alert is one JSON POST (`{id, key, severity, title, body, raised_at, host}`, 5s timeout, 3 retries at 1s/5s/25s backoff) to `MCPHOST_ALERT_WEBHOOK_URL` when set, and one system-sender message into `MCPHOST_ALERT_TENANT`'s `host.msg.inbox` when set; with neither configured, an alert is stored only and `/healthz` reports `alerts.sink: "store-only"`. A repeat of the same alert `key` within `MCPHOST_ALERT_COOLDOWN_SECS` (default 900) collapses into the open row's `repeat_count` instead of re-delivering; the next fresh row after the window carries the collapsed row's own `repeat_count` in its body. `MCPHOST_ALERT_MIN_SEVERITY` (default `warn`) filters delivery, never storage. Operators manage alerts with `admin.alerts.list {limit, since, unacked_only}`, `admin.alerts.ack {id}`, and `admin.alerts.raise {key, severity, title, body}` (the sink mcphost-deploy and other out-of-process sources post through; `body` is capped at 16 KiB) -- `ack`/`raise` land in `admin_audit`. `/healthz` gains `alerts.{open, last_raised_at, sink}`.
+
+PRD-mcphost-alerting-webhook AC1-AC11. AC12 (Live: toggling the pause file on production mcphost-1 and checking `admin.alerts.list`) deferred -- operator-provisioned.
 
 ## v0.60.8 — 2026-09-25
 
@@ -941,27 +932,29 @@ PRD-mcphost-signup-kill-switch-and-source AC1-AC10.
 
 PRD-mcphost-human-claim-magic-link AC1-AC13.
 
-## v0.59.5 — 2026-09-22
-
-A `python` tool's `requirements` are now resolved to a hash-locked, advisory-checked env instead of installed by bare name. At publish, non-empty requirements resolve via `uv pip compile --generate-hashes`; the lock is stored (`tool_lock`, one row per tool version) and env builds use `uv pip sync --require-hashes` from that lock forever after -- a later rebuild (a process restart, a cold box) always installs the exact locked versions, never a fresh, possibly-drifted resolve. Every requirement name is checked against a denylist and a Damerau-Levenshtein-distance-1-of-top-100-PyPI-names near-name policy before any resolution runs (`MCPHOST_PKG_DENY` to override the denylist); a typosquat like `reqeusts` fails publish with `dependency_policy: denied (near-name of requests)`. Each resolved (or caller-supplied, see below) lock is checked against a small offline advisory table (`$MCPHOST_ADVISORY_DB_PATH` to point at a different one); a pin with a known advisory and an available fix fails publish naming the advisory id and fixed version when `MCPHOST_ADVISORY_MODE=fail` (default `warn`, which records the advisory but still publishes). An agent may supply its own pre-resolved `--require-hashes` lock text as `requirements` instead of names -- the host validates the hash shape and stores it verbatim, never re-resolving it. `network: "egress"` joins the pre-existing `none`/`public` as a third python-kind network value, refused at publish for any plan but `pro`. A new unattended daily job (`admin.dependency_reaudit` to trigger it on demand) re-checks every stored lock against the advisory table and updates its advisory count in place, with no republish and without disabling the tool -- `host.tool_list` reports `advisories: n` per tool, live. `admin.usage` gains `tools_by_network`/`tools_by_advisory_state` tallies across every published python tool.
-
-PRD-mcphost-python-dependency-policy AC1-AC5, AC7-AC9. AC6 (prod after ship: first-try publish rate for python tools, unchanged within the seed noise floor, proof: the next synthetic-panel measure row in the trailer) deferred -- operator-provisioned, operator-authorized in the PRD's own frontmatter.
 ## v0.60.1 — 2026-09-22
 
 Every tenant can now give an agent an inbound URL: `host.trigger.set(kind="webhook", name, tool, verify?)` (a fourth trigger kind, alongside schedule/event/message) returns `{url, secret}` once -- `host.trigger.get`/`list` never repeat the secret. A `POST` to that opaque `/hook/{id}` URL (id is not the tenant id) is verified (`verify: "hmac"` by default, checking `X-Mcphost-Signature: sha256=<hmac>` over the body with the generated secret; `"none"`; or P2 `"stripe"`, checking a Stripe-style `Stripe-Signature: t=,v1=` over the same secret), up to 256 KB, and on success is appended as a row to the tenant's own `inbox_<name>` state table and fires the bound tool with that row as its argument -- the run is visible in `host.runs.list(trigger="webhook")`. A repeated `X-Mcphost-Delivery-Id` within 24h is 200 without a second row. Webhooks share the existing `schedules_max` quota (free 3), not a new one. `pause` still stores deliveries without firing; `resume` never auto-replays; `host.trigger.replay(id, row_id)` re-fires one stored row by its inbox row id (a paused delivery has no run to replay from, unlike an event/message trigger's own run_id-addressed replay). `host.trigger.test` on a webhook trigger builds and self-signs a synthetic delivery and runs it through the identical accept path a real `POST` would.
 
 PRD-mcphost-webhook-inbox AC1-AC9, AC11-AC12. AC10 (Live, a real `examples/webhook-inbox/proof.sh` run against production `https://mcphost.dev/mcp`) deferred -- operator-provisioned, outside this build's non-deferred AC list.
 
-## v0.59.4 — 2026-09-22
-
-Every `host.tool_publish` is now a new, immutable version instead of an overwrite: `migrations/0028_tool_versions.sql` adds a `tool_versions` table (one row per publish, with its own `source_sha256`) and `tools.current_version`, backfilling every pre-existing tool as its own version 1. `host.tool_history {name}` lists a tool's versions newest-first with a `current` flag; `host.tool_rollback {name, version}` moves `current_version` back (or forward) to an earlier publish -- the next `host.tool_call`/namespaced call runs that version's source -- refusing an unknown version with an argument error naming the surviving range. The oldest version beyond the tenant's plan `versions_max` (free 5, pro 20) is pruned on every publish. `host.tool_call` and a cross-tenant `<namespace>.<name>` call both accept an optional `version` to pin a call to one specific version regardless of whatever the owner publishes next; an unpinned sharer's result carries a one-time `version_changed: {from, to}` note the first call after the owner's publish or rollback actually changes what's running, never repeated on a following call with no further change. `host.tool_remove` now deletes every version along with the tool. `host.tool_diff {name, from, to}` (P2) returns a unified diff between two versions' own stored spec.
-
-PRD-mcphost-tool-versions AC1-AC5, AC7-AC9. AC6 (a real publish/rollback/history proof against production `https://mcphost.dev/mcp`) deferred -- operator-provisioned, no network egress to it from this build.
 ## v0.60.0 — 2026-09-22
 
 `host.channel.*` gains the group-based channel this PRD describes, on top of the minimal ungated slice `host.channel.open`/`post` already shipped: `host.channel.open(group=...)` opens (idempotently, `channels_max`-quota'd) the one channel for a group the caller owns; every current member can `host.channel.post`/`read` it, gated through the same `is_group_member` query `tools/list` already uses for group-shared tools; total order and unread state are a dense per-channel `seq` and a per-member stored cursor, so every member reading from its own cursor sees every post once, in order, own posts included. Removing a member from the group (`host.group.remove`) revokes its access on the next call without touching its earlier posts' authorship. A bound `host.trigger.set(kind="message", channel_id=...)` fires the same message-trigger path a direct message does, one run per current member excluding the poster, deduped on `(trigger_id, message_id)`. `channel_posts_per_hour` (free 120) caps posting; `channel_retention_days` (free 14) bounds how long posts survive, enforced by a housekeeping tick that runs alongside the scheduler/prune background tasks. The owner can `host.channel.close` (posts refused, reads keep working) or `host.channel.freeze`/`unfreeze` (same, reversible).
 
 PRD-mcphost-agent-channels AC1-AC10.
+
+## v0.59.5 — 2026-09-22
+
+A `python` tool's `requirements` are now resolved to a hash-locked, advisory-checked env instead of installed by bare name. At publish, non-empty requirements resolve via `uv pip compile --generate-hashes`; the lock is stored (`tool_lock`, one row per tool version) and env builds use `uv pip sync --require-hashes` from that lock forever after -- a later rebuild (a process restart, a cold box) always installs the exact locked versions, never a fresh, possibly-drifted resolve. Every requirement name is checked against a denylist and a Damerau-Levenshtein-distance-1-of-top-100-PyPI-names near-name policy before any resolution runs (`MCPHOST_PKG_DENY` to override the denylist); a typosquat like `reqeusts` fails publish with `dependency_policy: denied (near-name of requests)`. Each resolved (or caller-supplied, see below) lock is checked against a small offline advisory table (`$MCPHOST_ADVISORY_DB_PATH` to point at a different one); a pin with a known advisory and an available fix fails publish naming the advisory id and fixed version when `MCPHOST_ADVISORY_MODE=fail` (default `warn`, which records the advisory but still publishes). An agent may supply its own pre-resolved `--require-hashes` lock text as `requirements` instead of names -- the host validates the hash shape and stores it verbatim, never re-resolving it. `network: "egress"` joins the pre-existing `none`/`public` as a third python-kind network value, refused at publish for any plan but `pro`. A new unattended daily job (`admin.dependency_reaudit` to trigger it on demand) re-checks every stored lock against the advisory table and updates its advisory count in place, with no republish and without disabling the tool -- `host.tool_list` reports `advisories: n` per tool, live. `admin.usage` gains `tools_by_network`/`tools_by_advisory_state` tallies across every published python tool.
+
+PRD-mcphost-python-dependency-policy AC1-AC5, AC7-AC9. AC6 (prod after ship: first-try publish rate for python tools, unchanged within the seed noise floor, proof: the next synthetic-panel measure row in the trailer) deferred -- operator-provisioned, operator-authorized in the PRD's own frontmatter.
+
+## v0.59.4 — 2026-09-22
+
+Every `host.tool_publish` is now a new, immutable version instead of an overwrite: `migrations/0028_tool_versions.sql` adds a `tool_versions` table (one row per publish, with its own `source_sha256`) and `tools.current_version`, backfilling every pre-existing tool as its own version 1. `host.tool_history {name}` lists a tool's versions newest-first with a `current` flag; `host.tool_rollback {name, version}` moves `current_version` back (or forward) to an earlier publish -- the next `host.tool_call`/namespaced call runs that version's source -- refusing an unknown version with an argument error naming the surviving range. The oldest version beyond the tenant's plan `versions_max` (free 5, pro 20) is pruned on every publish. `host.tool_call` and a cross-tenant `<namespace>.<name>` call both accept an optional `version` to pin a call to one specific version regardless of whatever the owner publishes next; an unpinned sharer's result carries a one-time `version_changed: {from, to}` note the first call after the owner's publish or rollback actually changes what's running, never repeated on a following call with no further change. `host.tool_remove` now deletes every version along with the tool. `host.tool_diff {name, from, to}` (P2) returns a unified diff between two versions' own stored spec.
+
+PRD-mcphost-tool-versions AC1-AC5, AC7-AC9. AC6 (a real publish/rollback/history proof against production `https://mcphost.dev/mcp`) deferred -- operator-provisioned, no network egress to it from this build.
 
 ## v0.59.2 — 2026-09-22
 
@@ -1201,7 +1194,6 @@ squatted handle. New `agent_profiles` table (migration 0020) plus
 
 ## v0.49.0 — 2026-09-13
 
-
 At HEAD c627803, the gate on mcphost blocked on 1 inherited
 finding(s) — landed by earlier merges, not by the PRD that was gate-pending
 when this was drafted (PRD-build-gate-debt-auto-prd requirement 2:
@@ -1372,11 +1364,11 @@ Four of the twenty-one sessions in the 2026-09-08 measure at v0.26.3 lost roughl
 
 P1 (AC6 — publish-time structured warning when a preceding tool_test showed missing declared fields) is deferred: it needs a cross-cutting persistence/execution decision (whether to persist the last tool_test's envelope verdict per tool row, or have host.tool_publish itself perform a live call) this PRD's Technical considerations section does not scope.
 
-## v0.26.3
+## v0.26.3 — 2026-09-03
 
 - chore release: gate baseline shrunk to reviewer-agent only after rollback-plan passed under redeploy-tag; tagged so HEAD stays taggable under that model.
 
-## v0.26.2
+## v0.26.2 — 2026-09-03
 
 - redeploy-tag rollback model onboarding: agent/deploy-manifest.toml marker + v0.26.1 tag-lineage backfill (PRD-rollback-redeploy-tag-onboard AC1/AC2 un-deferral).
 
@@ -1404,7 +1396,6 @@ Fix shared mcphost gate debt (secret Debug leak + test expect false-positive in 
 Pro tenants' successful calls flow to Stripe's `mcphost_tool_calls` billing meter, so usage past the plan's included volume invoices itself through the live graduated price (50,000 calls included, then per-call). A new `mcphost billing emit-meter` subcommand ships batches idempotently from the `calls` table behind a high-water mark, checkout sessions carry the metered price beside the base price, and tenants learn their Stripe customer id from the webhook that upgrades them.
 
 ## v0.23.0 — 2026-09-07
-
 
 Two changes aimed at the integration_specialist segment, both grounded in the 2026-09-06 baseline panel (segment satisfaction 0.67): http-kind tool responses land their body at `result.payload` the same way python-kind responses do, and a REST endpoint becomes a published tool from a declarative spec (base URL, method, param mapping) instead of hand-written glue. The measure of success is a candidate consume run lifting the segment against the pinned baseline.
 
@@ -1783,7 +1774,7 @@ The host validates the spec, lists the tool, and on each call renders the templa
 with the arguments, injects the tenant's secrets, performs the request with a
 timeout, and returns the parsed response. No code, no YAML file, no repository.
 
-## 0.1.3
+## v0.1.3 — 2026-09-03
 
 scripts point at the rustbuild skill (autobuilder link retired); CI install-action pin corrected to the real v2.49.27 commit; test-only expect allowlisted for the BAD_RUST audit; extended-gates.toml + PRD copy for the ac-traceability producer.
 

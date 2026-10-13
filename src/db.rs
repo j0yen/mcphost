@@ -314,6 +314,8 @@ pub enum DraftReservation {
 
 /// PRD-mcphost-feedback-themes-nightly R1: `feedback_themes`, `feedback.theme_id`.
 const MIGRATION_0097: &str = include_str!("../migrations/0097_feedback_themes.sql");
+/// PRD-mcphost-host-changelog-since R4: `tenants.last_seen_version`.
+const MIGRATION_0098: &str = include_str!("../migrations/0098_last_seen_version.sql");
 
 /// PRD-mcphost-session-bound-tenant-key requirement 3: `kind` on
 /// `signup_events`. Renumbered to 0080 during this rebase: mcphost-tool-
@@ -339,7 +341,7 @@ const TENANT_COLUMNS: &str = "id, namespace, display_name, key_hash, created_at,
     signup_source, owner_email, owner_verified_at, claim_token_hash, claim_expires_at, \
     url_secret_hash, url_rotated_at, invited_by_tenant_id, last_seen_unix, \
     first_call_unix, first_publish_unix, first_own_call_unix, second_session_unix, \
-    claimed_unix, paid_unix, created_session_id, claim_token_plain, paid_test_unix, funnel_origin";
+    claimed_unix, paid_unix, created_session_id, claim_token_plain, paid_test_unix, funnel_origin, last_seen_version";
 
 fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
     Ok(Tenant {
@@ -386,6 +388,7 @@ fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
         claim_token_plain: r.get(40)?,
         paid_test_unix: r.get(41)?,
         funnel_origin: r.get(42)?,
+        last_seen_version: r.get(43)?,
     })
 }
 
@@ -916,6 +919,11 @@ pub struct Tenant {
     /// existed, or by a path this PRD's P1 backfill hasn't reached yet --
     /// never written intentionally by a live handler (AC1).
     pub funnel_origin: String,
+    /// PRD-mcphost-host-changelog-since R4: the host version of this
+    /// tenant's PREVIOUS authenticated call (loaded before
+    /// `Db::touch_last_seen` bumps it, like [`Self::last_seen_unix`]).
+    /// `None` for a tenant with no call since migration 0095.
+    pub last_seen_version: Option<String>,
 }
 
 /// PRD-mcphost-funnel-truth: the three tables migration 0078 added
@@ -2948,7 +2956,8 @@ impl Db {
         conn.execute_batch(MIGRATION_0094)?;
         conn.execute_batch(MIGRATION_0095)?;
         Self::migrate_0096_heal_ledger(&conn)?;
-        Self::migrate_0097_feedback_themes(&conn)
+        Self::migrate_0097_feedback_themes(&conn)?;
+        Self::migrate_0098_last_seen_version(&conn)
     }
 
     /// PRD-mcphost-heal-action-registry-and-ledger R2: `incidents.action` and
@@ -2972,6 +2981,18 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0097)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-host-changelog-since R4: `tenants.last_seen_version`,
+    /// gated on the column like 0092.
+    fn migrate_0098_last_seen_version(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'last_seen_version'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0098)?;
         }
         Ok(())
     }
@@ -4563,6 +4584,7 @@ impl Db {
                 claim_token_plain: None,
                 paid_test_unix: None,
                 funnel_origin,
+                last_seen_version: None,
             })
         })
         .await
@@ -4869,9 +4891,9 @@ impl Db {
     pub async fn touch_last_seen(&self, tenant_id: i64, unix: i64) -> Result<(), AppError> {
         self.with_conn(move |conn| {
             conn.execute(
-                "UPDATE tenants SET last_seen_unix = ?1, \
+                "UPDATE tenants SET last_seen_unix = ?1, last_seen_version = ?3, \
                  first_call_unix = COALESCE(first_call_unix, ?1) WHERE id = ?2",
-                params![unix, tenant_id],
+                params![unix, tenant_id, env!("CARGO_PKG_VERSION")],
             )?;
             Ok(())
         })

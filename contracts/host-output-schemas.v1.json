@@ -2189,13 +2189,85 @@
         "type": "array"
       },
       "since": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "now": {
+        "type": "string"
+      },
+      "releases": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "string"
+            },
+            "date": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "added": {
+        "items": {
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "since": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "renamed": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            },
+            "since": {
+              "type": "string"
+            },
+            "sunset": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "deprecated": {
+        "type": "array"
+      },
+      "removed": {
+        "type": "array"
+      },
+      "releases_error": {
         "type": "string"
       }
     },
     "required": [
+      "added",
       "additions",
+      "deprecated",
       "deprecations",
+      "now",
+      "releases",
       "removals",
+      "removed",
+      "renamed",
       "since"
     ],
     "type": "object"

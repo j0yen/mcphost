@@ -53,15 +53,15 @@ async fn changelog_since_0_57_0_lists_additions_including_itself() {
 }
 
 #[tokio::test]
-async fn changelog_with_no_since_still_lists_host_changelog() {
+async fn changelog_since_zero_still_lists_host_changelog() {
     let server = TestServer::start().await;
     let (_ns, key) = signup(&server.base_url, "AC6 Tenant No Since").await;
     let client = common::McpClient::with_bearer(&server.base_url, &key);
 
     let result = client
-        .tools_call("host.changelog", json!({}))
+        .tools_call("host.changelog", json!({"since": "0.0.0"}))
         .await
-        .expect("host.changelog must succeed with no since argument");
+        .expect("host.changelog must succeed with since 0.0.0");
     let structured = common::extract_structured(&result);
     let names: Vec<&str> = structured["additions"]
         .as_array()

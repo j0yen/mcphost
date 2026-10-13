@@ -1412,8 +1412,19 @@ pub fn whoami_admin(state: &AppState) -> Value {
 /// same distinction `llms_txt::tenant_tool_names`'s doc already draws for
 /// the analogous name-set question) and `state.deprecations`. Pure and
 /// synchronous -- no DB read needed beyond what's already in `state`.
-pub fn changelog(state: &AppState, args: &Value) -> Result<Value, AppError> {
-    let since = args.get("since").and_then(Value::as_str).unwrap_or("0.0.0");
+pub fn changelog(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    // PRD-mcphost-host-changelog-since R4: no `since` (or "last_seen") means
+    // the version this tenant carried before this call; `None` (never seen)
+    // yields the last five releases.
+    let since = match args.get("since").and_then(Value::as_str) {
+        None | Some("last_seen") => match tenant.last_seen_version.as_deref() {
+            Some(v) => v,
+            None => {
+                return Ok(crate::api_contract::changelog(&state.kinds, &state.deprecations, None));
+            }
+        },
+        Some(explicit) => explicit,
+    };
     // PRD-mcphost-contract-version-reported R7: a `contract_version` string
     // (`<n>.<sha12>`) or a full contract sha resolves to the release that
     // produced it. The only contract this host can resolve without git is
@@ -1449,7 +1460,7 @@ pub fn changelog(state: &AppState, args: &Value) -> Result<Value, AppError> {
     Ok(crate::api_contract::changelog(
         &state.kinds,
         &state.deprecations,
-        since,
+        Some(since),
     ))
 }
 

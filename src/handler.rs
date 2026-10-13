@@ -1415,15 +1415,17 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         // `api_contract::changelog`.
         Tool::new(
             "host.changelog",
-            "List what changed in the host.*/billing.* tool surface -- additions, \
-             deprecations, and removals -- since an optional version. Read-only.",
+            "List what changed in the host.*/billing.* tool surface -- releases, added \
+             tools, renamed tools, deprecations, and removals -- since an optional version \
+             (default: the version you last called with). Read-only.",
             host_schema(
                 json!({
                     "since": {
                         "type": "string",
                         "description": "Only list changes after this version, e.g. \"0.57.0\", or a \
-                            contract_version string from host.whoami. Omit to list every \
-                            tracked change.",
+                            contract_version string from host.whoami. Omit (or \"last_seen\") \
+                            for the version you last called with; a tenant never seen gets the \
+                            last 5 releases and since: null.",
                     },
                 }),
                 &[],
@@ -6269,7 +6271,7 @@ impl McpHostHandler {
             "host.tool.rollback" => control::tool_rollback(&self.state, tenant, &args).await,
             "host.tool.diff" => control::tool_diff(&self.state, tenant, &args).await,
             "host.usage" => control::usage(&self.state, tenant, &args).await,
-            "host.changelog" => control::changelog(&self.state, &args),
+            "host.changelog" => control::changelog(&self.state, tenant, &args),
             "host.export" => crate::export::export(&self.state, tenant, &args).await,
             "host.import" => crate::import::import(&self.state, tenant, &args).await,
             "host.tool.share" => crate::sharing::tool_share(&self.state, tenant, &args).await,
