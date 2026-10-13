@@ -35,6 +35,13 @@ cmd = "./scripts/ci-test-partition.sh check"
 where = "host"
 wall_minutes = 10
 
+# 2026-10-13: runs 764/765 went CI-red after a green gate on hand-kept pin assertions only CI ran.
+[[check]]
+name = "pin-tests"
+cmd = "./scripts/pin-tests.sh"
+where = "host"
+wall_minutes = 45  # warm 24 s (suites built by the inner); a cold tree (hand-rebased wt) measured 40 min on a loaded host 10-13 12:4x am
+
 [[check]]
 name = "bad-rust-audit"
 cmd = "./scripts/audit.sh"
