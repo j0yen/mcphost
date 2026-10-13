@@ -40,7 +40,7 @@ wall_minutes = 10
 name = "pin-tests"
 cmd = "./scripts/pin-tests.sh"
 where = "host"
-wall_minutes = 15
+wall_minutes = 45  # warm 24 s (suites built by the inner); a cold tree (hand-rebased wt) measured 40 min on a loaded host 10-13 12:4x am
 
 [[check]]
 name = "bad-rust-audit"
