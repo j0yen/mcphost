@@ -2037,6 +2037,10 @@ pub async fn compose_call_ref(
 pub struct PoolSignals {
     pub cold_starts: Vec<(i64, u64)>,
     pub wedged: usize,
+    /// The `tenant/tool` key of each wedged call: for the tracing line only,
+    /// never `/status.json`.
+    pub wedged_keys: Vec<String>,
+    /// Every child the pool tracks, idle or out on a call.
     pub pool_size: usize,
 }
 

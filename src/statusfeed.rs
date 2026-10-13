@@ -243,6 +243,14 @@ async fn sample_signals(state: &AppState, now: i64, exec_latency_ms: i64) {
     let free_mb = state.disk_guard.free_bytes(state.db.data_dir()) / (1024 * 1024);
     signals.record(Signal::DiskFreeMb, now, free_mb as f64);
 
+    if !pool.wedged_keys.is_empty() {
+        tracing::warn!(
+            "signal=sandbox_pool wedged={} pool_size={} wedged_keys={}",
+            pool.wedged,
+            pool.pool_size,
+            pool.wedged_keys.join(",")
+        );
+    }
     signals.record(Signal::SandboxPool, now, pool.wedged as f64 / pool.pool_size.max(1) as f64);
     tracing::debug!(signals_probe_ms = started.elapsed().as_millis() as u64, "golden signals sampled");
 }

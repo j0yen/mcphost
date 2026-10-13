@@ -1654,10 +1654,18 @@ struct WarmPool {
     /// cold-call durations `(unix ts, ms)`.
     cold_starts: Mutex<VecDeque<(i64, u64)>>,
     /// Calls currently running, by flight id: when each started and its
-    /// wall-clock timeout. A call still here past a multiple of its timeout
-    /// is wedged.
-    inflight: Mutex<HashMap<u64, (Instant, Duration)>>,
+    /// wall-clock timeout, and the `tenant/tool` key it runs. A call still
+    /// here past a multiple of its timeout is wedged.
+    inflight: Mutex<HashMap<u64, Flight>>,
     next_flight: AtomicU64,
+}
+
+/// One call in flight: when it started, its wall-clock timeout, and the
+/// `tenant/tool` key it runs.
+struct Flight {
+    started: Instant,
+    timeout: Duration,
+    key: String,
 }
 
 /// How many cold-call durations [`WarmPool::cold_starts`] keeps.
@@ -1691,12 +1699,12 @@ impl WarmPool {
         }
     }
 
-    fn begin_flight(self: &Arc<Self>, wall_clock_timeout: Duration) -> FlightGuard {
+    fn begin_flight(self: &Arc<Self>, key: String, wall_clock_timeout: Duration) -> FlightGuard {
         let id = self.next_flight.fetch_add(1, Ordering::Relaxed);
         self.inflight
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .insert(id, (Instant::now(), wall_clock_timeout));
+            .insert(id, Flight { started: Instant::now(), timeout: wall_clock_timeout, key });
         FlightGuard { warm: self.clone(), id }
     }
 
@@ -1709,17 +1717,23 @@ impl WarmPool {
     }
 
     fn pool_signals(&self, wedge_factor: f64) -> crate::kinds::PoolSignals {
-        let wedged = self
-            .inflight
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .values()
-            .filter(|(started, timeout)| started.elapsed().as_secs_f64() > wedge_factor * timeout.as_secs_f64())
-            .count();
+        let (children, mut wedged_keys) = {
+            let inflight = self.inflight.lock().unwrap_or_else(|e| e.into_inner());
+            let keys: Vec<String> = inflight
+                .values()
+                .filter(|f| f.started.elapsed().as_secs_f64() > wedge_factor * f.timeout.as_secs_f64())
+                .map(|f| f.key.clone())
+                .collect();
+            (inflight.len(), keys)
+        };
+        wedged_keys.sort();
         crate::kinds::PoolSignals {
             cold_starts: self.cold_starts.lock().unwrap_or_else(|e| e.into_inner()).iter().copied().collect(),
-            wedged,
-            pool_size: self.pool_size(),
+            wedged: wedged_keys.len(),
+            wedged_keys,
+            // Every child the pool tracks: idle warm entries plus the ones
+            // out on a call (a call takes its entry out of `entries`).
+            pool_size: self.pool_size() + children,
         }
     }
 
@@ -4854,6 +4868,18 @@ impl PythonKind {
         )
     }
 
+    /// PRD-mcphost-golden-signals-self-probe-b AC3: registers a call as in
+    /// flight for `key`, as if it started `age` ago under `timeout`, until
+    /// the returned guard drops. The only way a test can hold a wedged child
+    /// without a real hung sandbox.
+    pub fn hold_test_flight(&self, key: &str, timeout: Duration, age: Duration) -> Box<dyn std::any::Any + Send> {
+        let guard = self.warm.begin_flight(key.to_string(), timeout);
+        if let Some(entry) = self.warm.inflight.lock().unwrap_or_else(|e| e.into_inner()).get_mut(&guard.id) {
+            entry.started = Instant::now().checked_sub(age).unwrap_or(entry.started);
+        }
+        Box::new(guard)
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn build(
         data_dir: &Path,
@@ -5767,7 +5793,8 @@ impl Kind for PythonKind {
 
         // PRD-mcphost-golden-signals-self-probe: counted as in flight until
         // this call returns, so the pool-health signal can see a wedge.
-        let _flight = self.warm.begin_flight(Duration::from_secs(parsed.effective_timeout_s() + 2));
+        let flight_key = format!("{}/{}", ctx.tenant_id, ctx.tool_name.as_deref().unwrap_or("<unnamed>"));
+        let _flight = self.warm.begin_flight(flight_key, Duration::from_secs(parsed.effective_timeout_s() + 2));
 
         let secret_env = self.secret_env(&parsed, ctx);
         let secret_values: Vec<String> = secret_env.iter().map(|(_, v)| v.clone()).collect();
