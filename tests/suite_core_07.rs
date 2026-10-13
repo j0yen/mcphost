@@ -855,6 +855,20 @@ mod fbeh_ac05_internal_hint_carries_request_id;
 mod fbeh_ac06_messages_byte_identical;
 #[path = "fbeh_ac07_hint_is_one_short_line.rs"]
 mod fbeh_ac07_hint_is_one_short_line;
+#[path = "fbth_ac01_normalizer_separates_asks.rs"]
+mod fbth_ac01_normalizer_separates_asks;
+#[path = "fbth_ac02_similar_texts_share_a_theme.rs"]
+mod fbth_ac02_similar_texts_share_a_theme;
+#[path = "fbth_ac03_error_code_splits_themes.rs"]
+mod fbth_ac03_error_code_splits_themes;
+#[path = "fbth_ac04_rerun_changes_nothing.rs"]
+mod fbth_ac04_rerun_changes_nothing;
+#[path = "fbth_ac05_admin_themes_verb.rs"]
+mod fbth_ac05_admin_themes_verb;
+#[path = "fbth_ac06_status_json_feedback_counts.rs"]
+mod fbth_ac06_status_json_feedback_counts;
+#[path = "fbth_ac07_feedback_get_is_owner_only.rs"]
+mod fbth_ac07_feedback_get_is_owner_only;
 #[path = "fbtl_ac02_anonymous_send_stores_row.rs"]
 mod fbtl_ac02_anonymous_send_stores_row;
 #[path = "fbtl_ac03_text_limits_and_control_chars.rs"]
@@ -1819,17 +1833,3 @@ mod owncopy_ac03_pages_match_draft_text;
 mod owncopy_ac04_error_pages_match_draft_no_env_var;
 #[path = "owncopy_ac05_no_claim_verify_tenant_in_visible_text.rs"]
 mod owncopy_ac05_no_claim_verify_tenant_in_visible_text;
-#[path = "ownmt_ac01_claim_url_on_every_onboarding_path.rs"]
-mod ownmt_ac01_claim_url_on_every_onboarding_path;
-#[path = "ownmt_ac02_claim_nudge_on_first_publish.rs"]
-mod ownmt_ac02_claim_nudge_on_first_publish;
-#[path = "ownmt_ac03_email_provider_shape_and_failure_journal.rs"]
-mod ownmt_ac03_email_provider_shape_and_failure_journal;
-#[path = "ownmt_ac04_healthz_claims_block.rs"]
-mod ownmt_ac04_healthz_claims_block;
-#[path = "ownmt_ac05_claim_email_configured_signal.rs"]
-mod ownmt_ac05_claim_email_configured_signal;
-#[path = "ownmt_ac06_claim_round_trip_for_journey_claim_step.rs"]
-mod ownmt_ac06_claim_round_trip_for_journey_claim_step;
-#[path = "ownmt_ac07_claim_page_shows_remember_note.rs"]
-mod ownmt_ac07_claim_page_shows_remember_note;

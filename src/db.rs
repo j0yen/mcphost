@@ -312,6 +312,9 @@ pub enum DraftReservation {
     HostCap { used: i64 },
 }
 
+/// PRD-mcphost-feedback-themes-nightly R1: `feedback_themes`, `feedback.theme_id`.
+const MIGRATION_0097: &str = include_str!("../migrations/0097_feedback_themes.sql");
+
 /// PRD-mcphost-session-bound-tenant-key requirement 3: `kind` on
 /// `signup_events`. Renumbered to 0080 during this rebase: mcphost-tool-
 /// call-host-verb-forward claimed 0079 first, landing on main ahead of this
@@ -2945,7 +2948,7 @@ impl Db {
         conn.execute_batch(MIGRATION_0094)?;
         conn.execute_batch(MIGRATION_0095)?;
         Self::migrate_0096_heal_ledger(&conn)?;
-        Ok(())
+        Self::migrate_0097_feedback_themes(&conn)
     }
 
     /// PRD-mcphost-heal-action-registry-and-ledger R2: `incidents.action` and
@@ -2957,6 +2960,18 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0096)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-feedback-themes-nightly R1: gated on the
+    /// `feedback.theme_id` column (the batch ends with its `ALTER`).
+    fn migrate_0097_feedback_themes(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('feedback') WHERE name = 'theme_id'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0097)?;
         }
         Ok(())
     }

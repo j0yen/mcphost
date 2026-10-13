@@ -3397,6 +3397,54 @@
     ],
     "type": "object"
   },
+  "host.feedback.get": {
+    "properties": {
+      "context": {
+        "type": [
+          "object",
+          "null"
+        ]
+      },
+      "created_unix": {
+        "type": "integer"
+      },
+      "feedback_id": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "last_call_ids": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "status": {
+        "type": "string"
+      },
+      "text": {
+        "type": "string"
+      },
+      "theme_id": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "required": [
+      "context",
+      "created_unix",
+      "feedback_id",
+      "kind",
+      "last_call_ids",
+      "status",
+      "text",
+      "theme_id"
+    ],
+    "type": "object"
+  },
   "host.feedback.list": {
     "properties": {
       "count": {

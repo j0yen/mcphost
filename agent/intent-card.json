@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-golden-signals-self-probe.md",
-  "intent_slug": "mcphost-golden-signals-self-probe",
-  "root_motivation": "**Who:** the actuators in `visions/mcphost-self-healing.md` (they need a trigger that is not \"5 probes failed\"); the chain, which cannot tell a host night from a tools night; the agent reading `/status.json` before publishing. **What:** a per-minute measurement of the host's own latency, contention, disk and pool, with a documented green/amber/red band per signal. **Why not today:** prod 10-07 13:21-13:22 UTC `database is locked` killed a ban tick and a scheduler tick; 237 `failed to write host.table.query log row` rows 10-04 \u2192 10-08; 12 `timed out draining in-flight responses`. Through all of it `/status.json` read `operational`, `uptime_30d: 1.0` on all four components, because `probe_exec` (`statusfeed.rs:104`) asks \"did one exec return\" and nothing asks \"how long, how contended, how full\". **Premise (agent viewpoint):** \"when my tool is slow at 3 am, the host already knows whether it is the host.\" Falsifier: the signals stay green on a bad night (AC 1 tests the band logic agai...",
-  "user_persona": "An agent that calls host.example.propose {tool, proof_call, title, use_case} after its user says \"this works, share it\", then reads host.example.proposal_status until an admin approves and `mcphost examples proposals pull` opens the PR.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-feedback-themes-nightly.md",
+  "intent_slug": "mcphost-feedback-themes-nightly",
+  "root_motivation": "**Who:** Joe, who will read feedback once a day; synthorg, which will turn themes into seeds; the agent, whose single line should land next to 11 others saying the same thing. **What:** a theme table with counts and evidence, an admin verb, a counts-only public field. **Why not today:** `feedback` rows (PRD-mcphost-feedback-tool-and-ledger) are flat; `admin.*` verbs (`admin.rs`: 20 verbs, `admin.status.rollup` the closest) expose no feedback; `/status.json` (`statusfeed.rs`) carries component uptime only. An LLM clusterer would make the theme list a prompt-injection surface; the standing rule is quoted data, never instructions. **Premise (creative):** normalized text + code + tool is enough to cluster. **Falsifier:** AC 1 runs the 10-08 error corpus through the normalizer and asserts 4\u201320 themes.",
+  "user_persona": "An agent that calls host.state.delete_rows with an empty filter on a 5 000-row table, reads confirm_required.dry_run_first, runs the dry run, notices the empty filter and fixes it; a Claude Code user who sees a destructive marker on host.table.drop.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,36 +14,61 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given `tests/fixtures/gsig_bad_night.jsonl` (samples with `sqlite_write_ms` \u2265 500 for 4 min from 13:21) and the compiled `heal.toml`, When `mcphost signals replay` runs, Then it prints exactly one `sqlite_write_ms` breach with `since` at 13:21 and one clear, and zero breaches for the other four signals.",
-      "test": "tests/gsig_ac01_replay_bad_night.rs"
+      "description": "Given the 56 live error texts of the 10-08 chain stored as a fixture with their codes and tools, When `normalize` and the key are applied, Then the theme count is between 4 and 20, proving the LLM-free key separates asks.",
+      "test": "tests/fbth_ac01_normalizer_separates_asks.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a running host with the probe ticking, When `/status.json` is fetched after 3 ticks, Then `signals` has all five keys with numeric `value`, `band \u2208 {green, amber, red}`, and `samples_5m \u2265 3` for `echo_p95_ms`.",
-      "test": "tests/gsig_ac02_status_json_carries_signals.rs"
+      "description": "Given two rows with texts `args_invalid said 4.78 is not an integer` and `args_invalid says 12.5 is not an integer` on the same tool, When clustered, Then they share one `theme_id` with `count: 2` and both ids in `example_ids`.",
+      "test": "tests/fbth_ac02_similar_texts_share_a_theme.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a signal whose value crosses `red` at t and stays, When `for_s` elapses, Then exactly one `SignalBreach` is broadcast and a second subscriber receives the same event; When it returns below `amber`, Then exactly one `SignalClear` follows.",
-      "test": "tests/gsig_ac03_breach_and_clear_broadcast_once.rs"
+      "description": "Given rows with the same text but different `error_code`, When clustered, Then they land in different themes.",
+      "test": "tests/fbth_ac03_error_code_splits_themes.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given `MCPHOST_HEAL_TOML` pointing at a file with `[signals.echo_p95_ms] red = \"fast\"`, When the host boots, Then it logs `heal.toml override rejected` and `/status.json.signals.echo_p95_ms.red` is the compiled `2000`.",
-      "test": "tests/gsig_ac04_bad_override_is_rejected_at_boot.rs"
+      "description": "Given a clustered table, When the nightly task runs again with no new rows, Then no theme row changes (`count`, `last_seen`, `example_ids` identical) and 0 `feedback` rows are updated.",
+      "test": "tests/fbth_ac04_rerun_changes_nothing.rs"
+    },
+    {
+      "id": "AC5",
+      "level": "MUST",
+      "description": "Given `MCPHOST_ADMIN_KEY` and 3 themes, When `admin.feedback.themes {since:\"7d\"}` is called, Then 3 themes come back sorted by `count` desc and a call without the key returns `unauthorized`.",
+      "test": "tests/fbth_ac05_admin_themes_verb.rs"
+    },
+    {
+      "id": "AC6",
+      "level": "MUST",
+      "description": "Given `/status.json`, When parsed, Then `feedback` has exactly the keys `rows_24h` and `themes_open`, both integers.",
+      "test": "tests/fbth_ac06_status_json_feedback_counts.rs"
+    },
+    {
+      "id": "AC7",
+      "level": "MUST",
+      "description": "Given a tenant that filed `f_a` and another that filed `f_b`, When the first calls `host.feedback.get {feedback_id:\"f_b\"}`, Then the code is `feedback_not_found`; `f_a` returns `theme_id` and `status: \"open\"` after clustering.",
+      "test": "tests/fbth_ac07_feedback_get_is_owner_only.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given prod after deploy and one planted feedback filed the previous day, When the nightly task has run, Then `/status.json.feedback.themes_open \u2265 1` (Live; evidence: `ssh orch 'curl -s https://www.mcphost.dev/status.json | python3 -c \"import json,sys; print(json.load(sys.stdin)[\\\"feedback\\\"])\"'`)",
+      "test": "deferred -- operator-provisioned: Live check of prod /status.json after deploy and a planted feedback row filed the previous day."
     }
   ],
   "scope": [
-    "src/example_propose.rs (new): parse, snapshot, scrub, portability check, render, validate, tar, proof-call expectation.",
-    "src/example_pull.rs (new): `mcphost examples proposals pull` (branch, commit, push, gh pr create, merge record).",
-    "src/examples.rs: load_with over any file source; optional [provenance] table in the manifest, index and schema.",
-    "src/handler.rs, src/admin.rs, src/db.rs, migrations/0092: host.example.propose, host.example.proposal_status, admin.example_proposals, the example_proposals table."
+    "src/confirm.rs (new): the gated set derived from WRITE_VERBS, token mint/hash, canonical args hash, confirm_required/confirm_invalid errors.",
+    "src/handler.rs: dispatch gate (dry-run measure, token check, scratch bypass), destructiveHint annotations and description suffix in host_tools.",
+    "src/db.rs + migrations/0092_confirm_tokens.sql: confirm_tokens table, tenants.scratch_of.",
+    "src/plans.rs: Plan.confirm_rows_min (free 100, paid 1000, 0 disables).",
+    "docs/host-tools.md, docs/plans.md, www/llms-full.txt: generated."
   ],
   "non_goals": [
-    "Auto-merging; paying proposers; proposing tools that read tenant state tables; editing a proposal in place; shipping a timer for the pull."
+    "Human approval; gating scratch tenants; gating host.key.rotate and host.self.offboard; changing what any verb does once confirmed."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -52,30 +77,35 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "secret_values_never_returned": "A stored secret's value is compared server-side in constant time and never appears in a response, error or rendered file."
+      "token_never_stored": "only sha256(token) is stored; the token is shown once by the dry run."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does the gallery grow only as fast as Joe writes directories?",
-      "a": "Nothing packages a tenant's working tool and its proof into the manifest shape."
+      "q": "Why can an agent delete 5 000 rows by accident?",
+      "a": "dry_run is optional and nobody is required to read it."
     },
     {
       "why": 2,
-      "q": "Why not share the tool with host.tool_share?",
-      "a": "That exposes a callable tool, not a forkable example with a proof, secret names and provenance."
+      "q": "Why not a prose warning?",
+      "a": "Prose at a boundary is skipped; a refusal carrying the exact dry-run call cannot be."
+    },
+    {
+      "why": 3,
+      "q": "Why bind the token to args and diff?",
+      "a": "A token for another filter or another state would authorise a different delete."
     }
   ],
   "created_at": "2026-10-12T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Python tool reading `{{ secret.TOKEN }}`?",
-      "resolution": "Secret references are found in every spec string and in a python spec's `secrets` list; the tests use the http kind because python tools cannot build in the box-mode test environment."
+      "question": "Which diffs are gated?",
+      "resolution": "A dry-run diff with a measurable row count (rows[].delete, tables[].rows) at or above plan confirm_rows_min; verbs that report no count are not gated yet."
     },
     {
-      "question": "What does --approve-branch mean?",
-      "resolution": "One branch per approved proposal is the only mode; the flag is accepted and ignored."
+      "question": "Token bound to key or session?",
+      "resolution": "Tenant (key hash), per the PRD default."
     }
   ]
 }

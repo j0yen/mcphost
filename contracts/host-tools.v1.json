@@ -5420,6 +5420,76 @@
       "since": "0.58.0"
     },
     {
+      "description": "Read one of your own feedback rows by feedback_id, with the theme_id and theme status it was clustered into (null theme_id until the nightly pass reaches it). Anyone else's id is feedback_not_found.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "feedback_id": {
+            "description": "An id host.feedback.send returned.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "feedback_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.feedback.get",
+      "output_schema": {
+        "properties": {
+          "context": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "created_unix": {
+            "type": "integer"
+          },
+          "feedback_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "last_call_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "status": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "theme_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "context",
+          "created_unix",
+          "feedback_id",
+          "kind",
+          "last_call_ids",
+          "status",
+          "text",
+          "theme_id"
+        ],
+        "type": "object"
+      },
+      "since": "0.58.0"
+    },
+    {
       "description": "List your own feedback (newest first, status received). Anonymous callers get [].",
       "input_schema": {
         "additionalProperties": false,
@@ -21384,6 +21454,29 @@
         "type": "object"
       },
       "name": "host_export",
+      "since": "0.58.0"
+    },
+    {
+      "alias_of": "host.feedback.get",
+      "description": "Read one of your own feedback rows by feedback_id, with the theme_id and theme status it was clustered into (null theme_id until the nightly pass reaches it). Anyone else's id is feedback_not_found.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "feedback_id": {
+            "description": "An id host.feedback.send returned.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "feedback_id"
+        ],
+        "type": "object"
+      },
+      "name": "host_feedback_get",
       "since": "0.58.0"
     },
     {

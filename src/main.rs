@@ -1442,6 +1442,9 @@ async fn main() -> anyhow::Result<()> {
             // PRD-mcphost-data-retention requirement 2: the nightly prune,
             // started once here alongside the other two background tasks.
             mcphost::retention::spawn_prune_scheduler((*state).clone());
+            // PRD-mcphost-feedback-themes-nightly requirement 3: the 03:10 UTC
+            // feedback clustering pass.
+            mcphost::feedback::spawn_theme_scheduler((*state).clone());
             // PRD-mcphost-agent-channels requirement 8: the channel
             // retention tick, started once here alongside the other
             // background tasks.

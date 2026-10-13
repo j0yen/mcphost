@@ -1656,6 +1656,35 @@ pub async fn status_rollup(state: &AppState, args: &Value) -> Result<Value, AppE
     Ok(json!({ "recomputed_days": recomputed }))
 }
 
+/// `admin.feedback.themes {since?, kind?, status?}` (PRD-mcphost-feedback-
+/// themes-nightly R4): the clustered feedback themes seen within `since`
+/// (`"24h"`, `"7d"`, `"30d"`; default `"7d"`), `count` desc then `last_seen`
+/// desc. Carries ids and counts, never a row's raw text.
+pub async fn feedback_themes(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let now = crate::state::now_unix();
+    let since = arg_str_opt(args, "since").unwrap_or_else(|| "7d".to_string());
+    let window = crate::feedback::parse_since(&since)
+        .ok_or_else(|| AppError::InvalidParams(format!("since must look like \"24h\" or \"7d\"; got '{since}'")))?;
+    let kind = arg_str_opt(args, "kind");
+    if let Some(k) = &kind
+        && crate::feedback::FeedbackKind::parse(k).is_none()
+    {
+        return Err(AppError::InvalidParams(format!(
+            "kind must be one of: {}",
+            crate::feedback::FeedbackKind::ALL.map(|k| k.as_str()).join(", ")
+        )));
+    }
+    let status = arg_str_opt(args, "status");
+    let themes = state
+        .db
+        .list_feedback_themes(now - window, kind, status, crate::feedback::THEMES_LIMIT_MAX)
+        .await?;
+    Ok(json!({
+        "themes": themes.iter().map(crate::feedback::FeedbackTheme::to_json).collect::<Vec<_>>(),
+        "generated_unix": now,
+    }))
+}
+
 fn vault_provider_stats_json(p: &crate::db::VaultProviderStats) -> Value {
     json!({
         "name": p.name,

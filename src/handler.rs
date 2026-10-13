@@ -778,7 +778,7 @@ pub(crate) fn self_check_tools_list(state: &AppState) -> usize {
 /// PRD-mcphost-feedback-tool-and-ledger: the two verbs an anonymous caller
 /// may use without being implicitly signed up.
 fn is_feedback_tool(name: &str) -> bool {
-    matches!(name, "host.feedback.send" | "host.feedback.list")
+    matches!(name, "host.feedback.send" | "host.feedback.list" | "host.feedback.get")
 }
 
 /// PRD-mcphost-one-next-tool requirement 1 (AC1): the starter set an
@@ -3248,6 +3248,16 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &["id"],
             ),
         ),
+        Tool::new(
+            crate::feedback::tool_descriptors()[2].0,
+            crate::feedback::tool_descriptors()[2].1,
+            host_schema(
+                json!({
+                    "feedback_id": {"type": "string", "description": "An id host.feedback.send returned."},
+                }),
+                &["feedback_id"],
+            ),
+        ),
         // PRD-mcphost-agent-inbox: directed messages and threads between
         // tenants, addressed through the agent directory above.
         Tool::new(
@@ -5020,6 +5030,21 @@ fn admin_tools() -> Vec<Tool> {
                 &[],
             ),
         ),
+        // PRD-mcphost-feedback-themes-nightly R4.
+        Tool::new(
+            "admin.feedback.themes",
+            "List the nightly feedback themes (count, tenants, example feedback ids, last call \
+             ids), count descending. since: \"24h\", \"7d\" (default) or \"30d\"; optional kind \
+             and status filters. Never carries a row's text.",
+            schema(
+                json!({
+                    "since": {"type": "string", "description": "Window: 24h, 7d (default) or 30d."},
+                    "kind": {"type": "string", "enum": crate::feedback::FeedbackKind::schema_enum()},
+                    "status": {"type": "string"},
+                }),
+                &[],
+            ),
+        ),
         // PRD-mcphost-upstream-token-vault-status P0 requirement 2 (AC4/AC5).
         Tool::new(
             "admin.vault.stats",
@@ -6721,6 +6746,8 @@ impl McpHostHandler {
             "admin.incident.close" => admin::incident_close(&self.state, &args).await,
             "admin.status.sample" => admin::status_sample(&self.state, &args).await,
             "admin.status.rollup" => admin::status_rollup(&self.state, &args).await,
+            // PRD-mcphost-feedback-themes-nightly R4.
+            "admin.feedback.themes" => admin::feedback_themes(&self.state, &args).await,
             // PRD-mcphost-upstream-token-vault-status P0 requirement 2 (AC4/AC5).
             "admin.vault.stats" => admin::vault_stats(&self.state).await,
             // PRD-mcphost-end-user-audit-and-revoke P1 requirement 7 (AC9).
@@ -10135,7 +10162,7 @@ impl ServerHandler for McpHostHandler {
             (_, "host.quickstart") => control::quickstart(&self.state, None, &args, None),
             // PRD-mcphost-feedback-tool-and-ledger requirement 3: reachable
             // anonymously (never implicit-signs-up) or as a tenant.
-            (Auth::Anonymous | Auth::Tenant(..), "host.feedback.send" | "host.feedback.list")
+            (Auth::Anonymous | Auth::Tenant(..), "host.feedback.send" | "host.feedback.list" | "host.feedback.get")
                 if !(matches!(auth, Auth::Anonymous) && tenant_path_namespace(parts).is_some()) =>
             {
                 let tenant_id = match &auth {
@@ -10164,6 +10191,8 @@ impl ServerHandler for McpHostHandler {
                         return Err(crate::write_verbs::no_dry_run_error(verb, reason).into_error_data());
                     }
                     crate::feedback::send(&self.state, &sender, &args).await
+                } else if body_name == "host.feedback.get" {
+                    crate::feedback::get(&self.state, &sender, &args).await
                 } else {
                     crate::feedback::list(&self.state, &sender, &args).await
                 }
