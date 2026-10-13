@@ -4,9 +4,29 @@
 //! `host.quickstart` shows `limits.plan.dead_letters_max: 100` for every
 //! plan a test renders.
 
+use std::time::{Duration, Instant};
+
 use crate::common;
-use common::{extract_structured, signup};
+use common::{McpClient, extract_structured, signup};
 use serde_json::json;
+
+/// Block until `want` runs exist for the tenant and none is queued or
+/// running, so the next delivery cannot meet the `jobs_concurrent` ceiling.
+async fn wait_until_runs_idle(client: &McpClient, want: usize) {
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let list = extract_structured(
+            &client.tools_call("host.runs.list", json!({"limit": 100})).await.expect("runs.list"),
+        );
+        let runs = list["runs"].as_array().expect("runs array");
+        let busy = runs.iter().any(|r| r["status"] == json!("queued") || r["status"] == json!("running"));
+        if runs.len() >= want && !busy {
+            return;
+        }
+        assert!(Instant::now() < deadline, "runs never went idle: {list:?}");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
 
 #[tokio::test]
 async fn hundred_and_first_letter_evicts_the_oldest() {
@@ -36,11 +56,20 @@ async fn hundred_and_first_letter_evicts_the_oldest() {
 
     // Free plan: 30 deliveries a minute are accepted, every further one is
     // refused `events_rate_limited` -- 101 letters from deliveries 30..=130.
+    // A free-plan tenant also has `jobs_concurrent: 1`: an accepted delivery
+    // that lands while the previous echo run is still `running` is rejected
+    // `jobs_concurrent_exceeded` and writes one extra dead letter, which is
+    // older than the rate-limited ones, so the ring would evict it first and
+    // `dropped_count` would drift to 2 or 3 under load. The test therefore
+    // waits for each accepted run to finish before posting the next delivery.
     let http = reqwest::Client::new();
     let url = format!("{}/hooks/{}/ring_hook", server.base_url, ns);
     for n in 0..131 {
         let resp = http.post(&url).body(json!({"n": n}).to_string()).send().await.expect("POST");
         assert_eq!(resp.status(), if n < 30 { 202 } else { 429 }, "delivery {n}");
+        if n < 30 {
+            wait_until_runs_idle(&client, n + 1).await;
+        }
     }
 
     let listed = extract_structured(
