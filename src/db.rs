@@ -298,6 +298,16 @@ const MIGRATION_0092: &str = include_str!("../migrations/0092_confirm_tokens.sql
 const MIGRATION_0093: &str = include_str!("../migrations/0093_runs_item_index.sql");
 /// PRD-mcphost-example-from-published-tool R4: the `example_proposals` table.
 const MIGRATION_0094: &str = include_str!("../migrations/0094_example_proposals.sql");
+/// PRD-mcphost-first-tool-from-description R5: the `draft_events` table.
+const MIGRATION_0095: &str = include_str!("../migrations/0095_draft_events.sql");
+
+/// Outcome of [`Db::reserve_draft`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DraftReservation {
+    Reserved(i64),
+    TenantLimit { used: i64 },
+    HostCap { used: i64 },
+}
 
 /// PRD-mcphost-session-bound-tenant-key requirement 3: `kind` on
 /// `signup_events`. Renumbered to 0080 during this rebase: mcphost-tool-
@@ -2930,6 +2940,7 @@ impl Db {
         Self::migrate_0093_runs_item_index(&conn)?;
         // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0094)?;
+        conn.execute_batch(MIGRATION_0095)?;
         Ok(())
     }
 
@@ -12466,6 +12477,79 @@ impl Db {
                 params![batch_id, tenant_id, first_call_id, last_call_id, count, mode, created_at],
             )?;
             Ok(mode)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-first-tool-from-description R5: admits one draft. Counts
+    /// the tenant's rows since `day_start` and the host's rows since
+    /// `day_start` and inserts a pending row only when both are under their
+    /// limits, in one statement sequence on the single connection, so two
+    /// concurrent sixth calls cannot both pass.
+    pub async fn reserve_draft(
+        &self,
+        tenant_id: i64,
+        day_start: i64,
+        tenant_limit: i64,
+        host_cap: i64,
+    ) -> Result<DraftReservation, AppError> {
+        let now = crate::state::now_unix();
+        self.with_conn(move |conn| {
+            let tenant_used: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM draft_events WHERE tenant_id = ?1 AND ts >= ?2",
+                params![tenant_id, day_start],
+                |r| r.get(0),
+            )?;
+            if tenant_used >= tenant_limit {
+                return Ok(DraftReservation::TenantLimit { used: tenant_used });
+            }
+            let host_used: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM draft_events WHERE ts >= ?1",
+                params![day_start],
+                |r| r.get(0),
+            )?;
+            if host_used >= host_cap {
+                return Ok(DraftReservation::HostCap { used: host_used });
+            }
+            conn.execute(
+                "INSERT INTO draft_events (tenant_id, ts) VALUES (?1, ?2)",
+                params![tenant_id, now],
+            )?;
+            Ok(DraftReservation::Reserved(conn.last_insert_rowid()))
+        })
+        .await
+    }
+
+    /// Records a reserved draft's outcome and the tokens it cost.
+    pub async fn finish_draft(
+        &self,
+        id: i64,
+        ok: bool,
+        attempts: i64,
+        (prompt_tokens, completion_tokens): (i64, i64),
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE draft_events SET ok = ?2, attempts = ?3, prompt_tokens = ?4, \
+                 completion_tokens = ?5 WHERE id = ?1",
+                params![id, ok, attempts, prompt_tokens, completion_tokens],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `/healthz`'s `drafts_24h`: `{n, ok, failed, tokens}` since `since`.
+    pub async fn drafts_since(&self, since: i64) -> Result<serde_json::Value, AppError> {
+        self.with_conn(move |conn| {
+            let (n, ok, tokens): (i64, i64, i64) = conn.query_row(
+                "SELECT COUNT(*), COALESCE(SUM(ok), 0), \
+                        COALESCE(SUM(prompt_tokens + completion_tokens), 0) \
+                 FROM draft_events WHERE ts >= ?1",
+                params![since],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )?;
+            Ok(serde_json::json!({"n": n, "ok": ok, "failed": n - ok, "tokens": tokens}))
         })
         .await
     }

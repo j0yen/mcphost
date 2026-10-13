@@ -939,6 +939,25 @@ const SPEC_TEST_DESC: &str =
 const TOOL_RUN_DESC: &str =
     "Debug-run a published python tool: result.payload plus duration_ms and exit_code; for the other cases see host.quickstart.";
 
+/// PRD-mcphost-first-tool-from-description R3: the descriptor
+/// `list_tools` adds while a draft model is configured.
+fn tool_from_description_tool() -> Tool {
+    Tool::new(
+        "host.tool_from_description",
+        "Describe a tool in one sentence; the host drafts a python spec, tests it, publishes it, \
+         and returns the qualified name, public_url, source and test result.",
+        host_schema(
+            json!({
+                "description": {"type": "string", "description": "What the tool should do, in one sentence."},
+                "name": {"type": "string", "description": "Optional tool name; default is the model's proposal."},
+                "kind": {"type": "string", "enum": ["python"], "description": "Only python is drafted."},
+                "share": {"type": "boolean", "description": "Mint a public url (default true)."},
+            }),
+            &["description"],
+        ),
+    )
+}
+
 /// PRD-mcphost-surface-fluidity requirement 4 (AC5): the name set
 /// `www/llms.txt`'s generated tool section is built from -- the
 /// authenticated superset of `host_tools` (a strict superset of the
@@ -8289,9 +8308,6 @@ impl McpHostHandler {
     /// mints a public URL. Calls the same `spec_test`, `tool_publish` and
     /// `tool_share` functions a hand-written spec goes through.
     async fn tool_from_description(&self, tenant: &Tenant, args: Value) -> Result<Value, AppError> {
-        use crate::drafter::{MAX_DRAFT_INVOCATIONS, build_prompt, spec_test_verdict};
-        const MAX_ATTEMPTS: u64 = 2;
-
         let description = args
             .get("description")
             .and_then(Value::as_str)
@@ -8320,11 +8336,72 @@ impl McpHostHandler {
         })?;
         let example = kind.example();
 
+        // R5: admit the draft against `drafts_per_day` and the host cap
+        // before the model is asked; the pending row counts concurrent calls.
+        let plan = self.state.plans.get(&tenant.plan).ok_or_else(|| {
+            AppError::Internal(format!("tenant's plan '{}' is not in the loaded plan catalog", tenant.plan))
+        })?;
+        let day_start = now_unix() - now_unix().rem_euclid(86_400);
+        let draft_id = match self
+            .state
+            .db
+            .reserve_draft(tenant.id, day_start, plan.drafts_per_day, crate::drafter::daily_cap())
+            .await?
+        {
+            crate::db::DraftReservation::Reserved(id) => id,
+            crate::db::DraftReservation::TenantLimit { used } => {
+                return Err(AppError::Structured {
+                    code: "plan_limit",
+                    message: format!(
+                        "this plan allows {} drafts_per_day; this tenant already made {used} today",
+                        plan.drafts_per_day
+                    ),
+                    data: json!({
+                        "limit": plan.drafts_per_day,
+                        "used": used,
+                        "field": "drafts_per_day",
+                        "drafts_per_day": plan.drafts_per_day,
+                    }),
+                });
+            }
+            crate::db::DraftReservation::HostCap { used } => {
+                return Err(AppError::Structured {
+                    code: "draft_unavailable",
+                    message: format!("this host's daily draft cap ({used}) is spent; try again tomorrow"),
+                    data: json!({"next_call": {"tool": "host.quickstart", "args": {}}}),
+                });
+            }
+        };
+        self.draft_loop(tenant, &args, &description, share, &drafter, &example, draft_id).await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn draft_loop(
+        &self,
+        tenant: &Tenant,
+        args: &Value,
+        description: &str,
+        share: bool,
+        drafter: &Arc<dyn crate::drafter::Drafter>,
+        example: &crate::kinds::KindExample,
+        draft_id: i64,
+    ) -> Result<Value, AppError> {
+        use crate::drafter::{MAX_DRAFT_INVOCATIONS, build_prompt, spec_test_verdict};
+        const MAX_ATTEMPTS: u64 = 2;
+        let (mut ptok, mut ctok) = (0i64, 0i64);
         let mut retry: Option<(Value, Value)> = None;
         let mut last: Option<(AppError, Value, String)> = None;
         for attempt in 1..=MAX_ATTEMPTS {
-            let prompt = build_prompt(&description, &example, retry.as_ref().map(|(s, e)| (s, e)));
-            let draft = drafter.draft(&prompt).await?;
+            let prompt = build_prompt(description, example, retry.as_ref().map(|(s, e)| (s, e)));
+            let draft = match drafter.draft(&prompt).await {
+                Ok(d) => d,
+                Err(e) => {
+                    let _ = self.state.db.finish_draft(draft_id, false, attempt as i64, (ptok, ctok)).await;
+                    return Err(e);
+                }
+            };
+            ptok += draft.prompt_tokens;
+            ctok += draft.completion_tokens;
             let invocations: Vec<Value> = draft.invocations.iter().take(MAX_DRAFT_INVOCATIONS).cloned().collect();
             let spec = draft.spec.clone();
             let name = args
@@ -8352,6 +8429,7 @@ impl McpHostHandler {
                             public_url = shared.get("url").cloned().unwrap_or(Value::Null);
                         }
                         let ran = result["invocations"].as_array().map_or(0, Vec::len);
+                        let _ = self.state.db.finish_draft(draft_id, true, attempt as i64, (ptok, ctok)).await;
                         return Ok(json!({
                             "name": name,
                             "qualified_name": format!("{}.{}", tenant.namespace, name),
@@ -8379,6 +8457,7 @@ impl McpHostHandler {
             last = Some((failure.0, spec, name));
         }
 
+        let _ = self.state.db.finish_draft(draft_id, false, MAX_ATTEMPTS as i64, (ptok, ctok)).await;
         // R4: the last spec_test error, unchanged, plus the best draft and the
         // call that publishes it by hand.
         let (err, draft_spec, name) = last.expect("the loop runs at least once");
@@ -9394,6 +9473,7 @@ impl ServerHandler for McpHostHandler {
         // tests but silently drop the fields the next time an `Auth`
         // variant is added -- see the anonymous/admin branches this
         // replaced, which did exactly that.
+        let is_admin = matches!(auth, Auth::Admin);
         let (mut tools, ttl_ms) = match auth {
             // PRD-mcphost-one-next-tool requirement 1 (AC1): an anonymous or
             // invalid-bearer session now sees only the starter set, not the
@@ -9477,6 +9557,12 @@ impl ServerHandler for McpHostHandler {
                 (tools, ttl_ms)
             }
         };
+        // PRD-mcphost-first-tool-from-description R6: listed for every auth
+        // only while a draft model is configured, like `host.spec_test`'s
+        // gate; absent otherwise, and a direct call answers `draft_unavailable`.
+        if self.state.drafter.is_some() && !is_admin {
+            tools.push(tool_from_description_tool());
+        }
         annotate_deprecated_tools(&mut tools, &self.state.deprecations);
         Ok(ListToolsResult::with_all_items(tools)
             .with_ttl_ms(ttl_ms)

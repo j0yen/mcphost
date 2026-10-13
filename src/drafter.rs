@@ -23,6 +23,17 @@ pub const DRAFT_TIMEOUT: Duration = Duration::from_secs(30);
 /// Most `invocations` a draft may propose (`spec_test`'s own cap is wider).
 pub const MAX_DRAFT_INVOCATIONS: usize = 3;
 
+/// Host-wide drafts per UTC day when `MCPHOST_DRAFT_DAILY_CAP` is unset.
+pub const DEFAULT_DAILY_CAP: i64 = 200;
+
+/// `$MCPHOST_DRAFT_DAILY_CAP`, read per call so an operator can lower it live.
+pub fn daily_cap() -> i64 {
+    std::env::var("MCPHOST_DRAFT_DAILY_CAP")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(DEFAULT_DAILY_CAP)
+}
+
 /// The tool-name rule `host.tool_publish` enforces; shown to the model
 /// verbatim.
 pub const TOOL_NAME_REGEX: &str = "^[a-z][a-z0-9_]{1,40}$";

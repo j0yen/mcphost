@@ -51,6 +51,7 @@ EXCEPTIONS = [
     ("host.import", "singleton noun: no sibling verb under 'import'"),
     ("host.progress", "singleton noun: no sibling verb under 'progress'"),
     ("host.call_trace", "singleton noun: no sibling verb under 'call_trace' (the name PRD-mcphost-call-trace-replay gives agents)"),
+    ("host.tool_from_description", "the name PRD-mcphost-first-tool-from-description gives agents; a drafting verb on the tool family, listed only while a draft model is configured"),
 ]
 EXCEPTION_NAMES = {name for name, _ in EXCEPTIONS}
 

@@ -210,6 +210,17 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
     // both empty arrays (not absent) on a box with nothing classified yet.
     if let Some(obj) = body.as_object_mut() {
         obj.extend(state.build.json());
+        // PRD-mcphost-first-tool-from-description R6: whether a draft model
+        // is configured, and the last day's drafts with their token cost.
+        obj.insert("draft_configured".to_string(), json!(state.drafter.is_some()));
+        obj.insert(
+            "drafts_24h".to_string(),
+            state
+                .db
+                .drafts_since(crate::state::now_unix() - 86_400)
+                .await
+                .unwrap_or(json!({"n": 0, "ok": 0, "failed": 0, "tokens": 0})),
+        );
         let by_class = state
             .db
             .count_tenants_by_source_class()

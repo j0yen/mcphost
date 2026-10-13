@@ -442,6 +442,12 @@ mod tfd_ac02_prompt_is_generated_contract_only;
 mod tfd_ac03_retry_then_publish_and_share;
 #[path = "tfd_ac04_final_failure_carries_draft_and_next_call.rs"]
 mod tfd_ac04_final_failure_carries_draft_and_next_call;
+#[path = "tfdb_ac01_sixth_draft_refused_plan_limit.rs"]
+mod tfdb_ac01_sixth_draft_refused_plan_limit;
+#[path = "tfdb_ac02_unconfigured_hides_tool_and_healthz_says_so.rs"]
+mod tfdb_ac02_unconfigured_hides_tool_and_healthz_says_so;
+#[path = "tfdb_ac03_anonymous_first_call_implicit_signup.rs"]
+mod tfdb_ac03_anonymous_first_call_implicit_signup;
 #[path = "tgraph_ac09_python_sandbox_join_paths.rs"]
 mod tgraph_ac09_python_sandbox_join_paths;
 #[path = "tooltest_ac13_publish_error_parity.rs"]
