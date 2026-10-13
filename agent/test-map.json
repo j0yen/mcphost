@@ -1462,6 +1462,13 @@
       "AC7": "tests/fbeh_ac07_hint_is_one_short_line.rs",
       "AC8": "deferred -- operator-provisioned: prod tool_not_found call after deploy."
     },
+    "ftool": {
+      "_prd": "PRD-mcphost-form-tool.md (test_prefix: ftool)",
+      "AC1": "tests/ftool_ac01_demo_try_it_does_not_notify_owner.rs",
+      "AC2": "tests/ftool_ac02_input_map_covers_validator_types.rs",
+      "AC3": "tests/ftool_ac03_form_page_renders_inputs.rs",
+      "AC4": "tests/ftool_ac04_form_post_validates_and_runs.rs"
+    },
     "tsvr": {
       "_prd": "PRD-mcphost-table-schema-violation-names-the-remedy.md (test_prefix: tsvr)",
       "AC1": "tests/tsvr_ac01_unknown_column_names_declared.rs",

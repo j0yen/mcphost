@@ -670,6 +670,7 @@ fn tool_publish_spec_branches(kinds: &KindRegistry) -> Value {
                 .into_iter()
                 .map(|field| {
                     let schema = match kind.spec_field_description(field) {
+                        _ if field == "ui" => crate::form_page::ui_field_schema(),
                         Some(description) => json!({"description": description}),
                         None => json!({}),
                     };

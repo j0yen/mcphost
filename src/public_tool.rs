@@ -42,9 +42,15 @@ pub fn public_tool_url(state: &AppState, token: &str, tool: &str) -> String {
 /// still be re-displayed on the next `host.tool_share` call -- unlike a
 /// webhook trigger's secret, this one is never shown-once-and-forgotten).
 pub async fn mint_or_reuse_url_share(state: &AppState, tenant: &Tenant, name: &str) -> Result<String, AppError> {
+    let token = mint_or_reuse_url_share_token(state, tenant, name).await?;
+    Ok(public_tool_url(state, &token, name))
+}
+
+/// [`mint_or_reuse_url_share`]'s token, for callers that build a different
+/// URL from it (`form_page::form_url`).
+pub async fn mint_or_reuse_url_share_token(state: &AppState, tenant: &Tenant, name: &str) -> Result<String, AppError> {
     if let Some((_, token_enc, token_nonce)) = state.db.find_url_share(tenant.id, name.to_string()).await? {
-        let token = state.secrets.decrypt(&token_enc, &token_nonce)?;
-        return Ok(public_tool_url(state, &token, name));
+        return state.secrets.decrypt(&token_enc, &token_nonce);
     }
     let token = crate::auth::generate_public_token();
     let token_hash = crate::auth::hash_key(&token);
@@ -62,7 +68,7 @@ pub async fn mint_or_reuse_url_share(state: &AppState, tenant: &Tenant, name: &s
             crate::state::now_unix(),
         )
         .await?;
-    Ok(public_tool_url(state, &token, name))
+    Ok(token)
 }
 
 /// `host.tool_unshare`/a `host.tool_share` to any other visibility (AC4,
@@ -80,15 +86,15 @@ pub async fn revoke_url_share(state: &AppState, tenant_id: i64, name: &str) -> R
 /// resolve through the exact same branch below -- requirement 5 / AC4's
 /// own constant-time guarantee comes from there being only one "no row"
 /// code path, not from a timing-sensitive workaround.
-enum ShareError {
+pub(crate) enum ShareError {
     NotFound,
     TenantPaused,
 }
 
-struct ResolvedShare {
-    tenant: Tenant,
-    tool_row: ToolRow,
-    token_id: String,
+pub(crate) struct ResolvedShare {
+    pub(crate) tenant: Tenant,
+    pub(crate) tool_row: ToolRow,
+    pub(crate) token_id: String,
 }
 
 /// The one indexed lookup (requirement 2/5/9) every `/x/{token}/{tool}...`
@@ -98,7 +104,7 @@ struct ResolvedShare {
 /// (AC7's own 503), so a caller can never distinguish "wrong token" from
 /// "right token, wrong tool" from "token revoked" from "tool no longer
 /// shared".
-async fn resolve_share(state: &AppState, token: &str, tool: &str) -> Result<ResolvedShare, ShareError> {
+pub(crate) async fn resolve_share(state: &AppState, token: &str, tool: &str) -> Result<ResolvedShare, ShareError> {
     let hash = crate::auth::hash_key(token);
     let Ok(Some((tenant_id, tool_name, token_id))) = state.db.find_url_share_by_hash(hash).await else {
         return Err(ShareError::NotFound);
@@ -129,11 +135,11 @@ async fn resolve_share(state: &AppState, token: &str, tool: &str) -> Result<Reso
 /// "leak nothing about why it failed" convention
 /// [`crate::webhooks::webhook_error_response`] already uses for its own
 /// opaque-id route.
-fn not_found_response() -> Response {
+pub(crate) fn not_found_response() -> Response {
     StatusCode::NOT_FOUND.into_response()
 }
 
-fn tenant_paused_response() -> Response {
+pub(crate) fn tenant_paused_response() -> Response {
     (
         StatusCode::SERVICE_UNAVAILABLE,
         Json(json!({"ok": false, "error": {"code": "tenant_paused", "message": "this tenant is currently paused"}})),
@@ -149,7 +155,7 @@ fn error_envelope(status: StatusCode, code: &str, message: String) -> Response {
 /// `source_ip` -- this route sits on the same axum `Router` behind the
 /// same reverse proxy, so it needs the same `X-Forwarded-For` handling to
 /// get a real per-caller address instead of Caddy's own loopback one.
-fn client_ip(headers: &HeaderMap, peer: SocketAddr) -> String {
+pub(crate) fn client_ip(headers: &HeaderMap, peer: SocketAddr) -> String {
     let forwarded_for = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok());
     crate::state::resolve_source_ip(Some(&peer.ip().to_string()), forwarded_for)
 }
@@ -158,7 +164,7 @@ fn client_ip(headers: &HeaderMap, peer: SocketAddr) -> String {
 /// [`resolve_share`] so a flood of requests never pays for the token
 /// lookup either, and (requirement's own "no run created") strictly before
 /// [`dispatch`] ever enqueues anything.
-fn rate_limited_response() -> Response {
+pub(crate) fn rate_limited_response() -> Response {
     let mut response = (
         StatusCode::TOO_MANY_REQUESTS,
         Json(json!({"ok": false, "error": {"code": "rate_limited", "message": "too many calls from this address; try again shortly"}})),
@@ -200,7 +206,7 @@ fn app_error_response(state: &AppState, err: AppError) -> Response {
     (status, Json(json!({"ok": false, "error": obj}))).into_response()
 }
 
-const TERMINAL_STATUSES: &[&str] = &["done", "error", "timeout", "cancelled"];
+pub(crate) const TERMINAL_STATUSES: &[&str] = &["done", "error", "timeout", "cancelled"];
 
 /// Requirement 3 (AC2/AC3/AC6): waits up to
 /// [`AppState::public_url_sync_deadline`] for `run_id` to reach a terminal

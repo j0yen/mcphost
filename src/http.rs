@@ -1679,7 +1679,13 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         .route("/x/{token}/{tool}/runs/{run_id}", get(crate::public_tool::x_poll))
         .route_layer(middleware::from_fn(crate::public_tool::add_cors_header));
 
+    // PRD-mcphost-form-tool: the argument form for a url-shared tool with
+    // `ui.form`; no CORS header (a form page is for a browser tab, not a
+    // cross-origin `fetch`).
+    let form_router = Router::new().route("/f/{token}/{tool}", get(crate::form_page::form_get).post(crate::form_page::form_post));
+
     Router::new()
+        .merge(form_router)
         .route("/d/{namespace}/{tool}", get(crate::demo_page::demo_get))
         .route("/healthz", get(healthz))
         // PRD-mcphost-reachability-alt-host requirement 3 / AC3: a human

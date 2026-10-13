@@ -51,6 +51,7 @@ pub mod export;
 pub mod feedback;
 pub mod import;
 pub mod federation;
+pub mod form_page;
 pub mod funnel;
 pub mod gendocs;
 pub mod handler;

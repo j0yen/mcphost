@@ -910,6 +910,21 @@ pub async fn enqueue_url(
     args: Value,
     token_id: &str,
 ) -> Result<String, AppError> {
+    enqueue_with_trigger(state, tenant, local_name, args, ("url", token_id)).await
+}
+
+/// [`enqueue_url`]'s body with the run's `trigger` as a parameter:
+/// `/f/` submissions (PRD-mcphost-form-tool) run through the identical
+/// validate-and-queue path as `/x/` and are marked `trigger = "form"`.
+/// `(trigger, token_id)` travel as one pair: the run's trigger and the share
+/// token that started it.
+pub async fn enqueue_with_trigger(
+    state: &AppState,
+    tenant: &Tenant,
+    local_name: &str,
+    args: Value,
+    (trigger, token_id): (&str, &str),
+) -> Result<String, AppError> {
     let row = state
         .db
         .get_tool(tenant.id, local_name.to_string())
@@ -948,7 +963,7 @@ pub async fn enqueue_url(
             run_id.clone(),
             tenant.id,
             local_name.to_string(),
-            "url".to_string(),
+            trigger.to_string(),
             Some(token_id.to_string()),
             None,
             deadline_s,

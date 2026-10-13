@@ -15484,7 +15484,25 @@
                   "additionalProperties": false,
                   "properties": {
                     "reads": {},
-                    "schema": {}
+                    "schema": {},
+                    "ui": {
+                      "additionalProperties": false,
+                      "description": "Optional presentation hints. `form: true` gives a url-shared tool a /f/ page where a person fills in the arguments and the submission lands in your inbox.",
+                      "properties": {
+                        "form": {
+                          "type": "boolean"
+                        },
+                        "submit_label": {
+                          "maxLength": 40,
+                          "type": "string"
+                        },
+                        "success_text": {
+                          "maxLength": 200,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    }
                   },
                   "required": [
                     "schema"
@@ -17175,7 +17193,25 @@
                   "additionalProperties": false,
                   "properties": {
                     "reads": {},
-                    "schema": {}
+                    "schema": {},
+                    "ui": {
+                      "additionalProperties": false,
+                      "description": "Optional presentation hints. `form: true` gives a url-shared tool a /f/ page where a person fills in the arguments and the submission lands in your inbox.",
+                      "properties": {
+                        "form": {
+                          "type": "boolean"
+                        },
+                        "submit_label": {
+                          "maxLength": 40,
+                          "type": "string"
+                        },
+                        "success_text": {
+                          "maxLength": 200,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    }
                   },
                   "required": [
                     "schema"
@@ -24256,7 +24292,25 @@
                   "additionalProperties": false,
                   "properties": {
                     "reads": {},
-                    "schema": {}
+                    "schema": {},
+                    "ui": {
+                      "additionalProperties": false,
+                      "description": "Optional presentation hints. `form: true` gives a url-shared tool a /f/ page where a person fills in the arguments and the submission lands in your inbox.",
+                      "properties": {
+                        "form": {
+                          "type": "boolean"
+                        },
+                        "submit_label": {
+                          "maxLength": 40,
+                          "type": "string"
+                        },
+                        "success_text": {
+                          "maxLength": 200,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    }
                   },
                   "required": [
                     "schema"

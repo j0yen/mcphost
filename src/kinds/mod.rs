@@ -660,7 +660,7 @@ impl Path {
 /// (`lineage::register_tool_publish`) is read directly off the raw spec by
 /// every kind, not owned by any one kind's own parser, so it would
 /// otherwise look "unknown" on every kind it's used with.
-pub const UNIVERSAL_SPEC_FIELDS: &[&str] = &["reads"];
+pub const UNIVERSAL_SPEC_FIELDS: &[&str] = &["reads", "ui"];
 
 /// Requirement 1's Levenshtein `did_you_mean`: the single nearest field in
 /// `known` within [`MAX_DID_YOU_MEAN_SPEC_FIELD_DISTANCE`] edits, nearest
@@ -731,6 +731,48 @@ pub fn check_unknown_spec_field(kind: &dyn Kind, spec: &Value, registry: &KindRe
             }
         }
         return Some(KindError::structured_with("unknown_spec_field", message, data));
+    }
+    check_ui_spec(obj.get("ui")?)
+}
+
+/// PRD-mcphost-form-tool R1: the `ui` spec field's sub-fields. A key outside
+/// [`crate::form_page::UI_FIELDS`] fails `unknown_spec_field` naming it
+/// (`data.field = "ui.<key>"`); a known key of the wrong type or over its
+/// cap fails `invalid_spec`.
+fn check_ui_spec(ui: &Value) -> Option<KindError> {
+    let known: Vec<&str> = crate::form_page::UI_FIELDS.iter().map(|(n, _, _)| *n).collect();
+    let Some(obj) = ui.as_object() else {
+        return Some(invalid_spec_error("ui", json_type_name(ui), "an object", json!({"form": true})));
+    };
+    for key in obj.keys() {
+        if !known.contains(&key.as_str()) {
+            let message = format!("'{key}' is not a ui spec field; known: {}", known.join(", "));
+            return Some(KindError::structured_with(
+                "unknown_spec_field",
+                message,
+                json!({"field": format!("ui.{key}"), "kind": "ui", "known": known}),
+            ));
+        }
+    }
+    for (name, ty, max) in crate::form_page::UI_FIELDS {
+        let Some(value) = obj.get(*name) else { continue };
+        let ok = match *ty {
+            "boolean" => value.is_boolean(),
+            _ => value.is_string(),
+        };
+        if !ok {
+            return Some(invalid_spec_error(format!("ui.{name}"), json_type_name(value), &format!("a {ty}"), json!(null)));
+        }
+        if let (Some(max), Some(s)) = (max, value.as_str())
+            && s.chars().count() > *max
+        {
+            return Some(invalid_spec_error(
+                format!("ui.{name}"),
+                "a longer string",
+                &format!("at most {max} characters"),
+                json!("Recorded, thanks"),
+            ));
+        }
     }
     None
 }
