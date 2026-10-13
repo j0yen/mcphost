@@ -1514,6 +1514,13 @@
       "AC2": "tests/gsig_ac02_status_json_carries_signals.rs",
       "AC3": "tests/gsig_ac03_breach_and_clear_broadcast_once.rs",
       "AC4": "tests/gsig_ac04_bad_override_is_rejected_at_boot.rs"
+    },
+    "fsurfb": {
+      "_prd": "PRD-mcphost-funnel-by-surface-nightly-probe-b.md (test_prefix: fsurfb)",
+      "AC1": "tests/fsurfb_ac01_own_key_call_not_external.rs",
+      "AC2": "tests/fsurfb_ac02_admin_funnel_matches_cli.rs",
+      "AC3": "tests/fsurfb_ac03_surface_flag_table_and_exit_2.rs",
+      "AC4": "deferred -- operator-provisioned: Live check on prod after deploy."
     }
   }
 }
