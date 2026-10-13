@@ -1,0 +1,2 @@
+{"context":{"error_code":"args_invalid","tool":"host.tool_call"},"created_unix":1791850752,"feedback_id":"f_4a7d5a6e7a3685a2","kind":"wrong_error","last_call_ids":[],"status":"received","text":"args_invalid said 4.78 is not an integer","theme_id":null}
+{"context":{"error_code":"args_invalid","tool":"host.tool_call"},"created_unix":1791850752,"feedback_id":"f_4a7d5a6e7a3685a2","kind":"wrong_error","last_call_ids":[],"status":"open","text":"args_invalid said 4.78 is not an integer","theme_id":"th_665856a52db1"}

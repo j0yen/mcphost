@@ -446,6 +446,9 @@ pub async fn status_json(state: &AppState) -> Result<Value, AppError> {
         .list_recent_closed_incidents(now_unix() - RECENT_INCIDENTS_DAYS * 86_400)
         .await?;
     let overall = overall_state(&states, &open_incidents);
+    // PRD-mcphost-feedback-themes-nightly R5: counts only -- never a text
+    // field, so nothing a sender wrote can reach this anonymous feed.
+    let (rows_24h, themes_open) = state.db.feedback_counts(now_unix()).await?;
     // PRD-mcphost-first-hour-support-surface requirement 4 (AC5): an
     // unconfigured support channel is a readiness warning, not a silent
     // blank -- the same phrase `help::support_line`'s generated pages use,
@@ -466,6 +469,7 @@ pub async fn status_json(state: &AppState) -> Result<Value, AppError> {
         "warnings": warnings,
         "signals": state.signals.status_json(now_unix()),
         "heal": crate::heal::status_block(state).await?,
+        "feedback": {"rows_24h": rows_24h, "themes_open": themes_open},
     });
     // PRD-mcphost-healthz-version-field requirement 3: whole-feed only; the
     // per-component rollup (`daily_rows`) stays unchanged.

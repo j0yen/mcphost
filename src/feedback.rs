@@ -14,6 +14,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
+use rusqlite::{OptionalExtension, params};
 use serde_json::{Value, json};
 
 use crate::errors::AppError;
@@ -282,7 +283,7 @@ pub struct Sender<'a> {
     pub ring_key: String,
 }
 
-pub fn tool_descriptors() -> [(&'static str, &'static str); 2] {
+pub fn tool_descriptors() -> [(&'static str, &'static str); 3] {
     [
         (
             "host.feedback.send",
@@ -292,6 +293,12 @@ pub fn tool_descriptors() -> [(&'static str, &'static str); 2] {
         (
             "host.feedback.list",
             "List your own feedback (newest first, status received). Anonymous callers get [].",
+        ),
+        (
+            "host.feedback.get",
+            "Read one of your own feedback rows by feedback_id, with the theme_id and theme \
+             status it was clustered into (null theme_id until the nightly pass reaches it). \
+             Anyone else's id is feedback_not_found.",
         ),
     ]
 }
@@ -385,6 +392,42 @@ pub async fn send(state: &AppState, sender: &Sender<'_>, args: &Value) -> Result
     Ok(json!({"feedback_id": feedback_id, "kind": kind.as_str()}))
 }
 
+/// `host.feedback.get {feedback_id}` (PRD-mcphost-feedback-themes-nightly
+/// R6): the caller's own row, with its theme. A row the caller does not own
+/// -- and every row, for an anonymous caller -- is `feedback_not_found`, the
+/// same answer as an id that never existed.
+pub async fn get(state: &AppState, sender: &Sender<'_>, args: &Value) -> Result<Value, AppError> {
+    let id = args.get("feedback_id").and_then(Value::as_str).unwrap_or_default().trim().to_string();
+    if id.is_empty() {
+        return Err(AppError::InvalidParams("feedback_id must not be empty".to_string()));
+    }
+    let not_found = || AppError::Structured {
+        code: "feedback_not_found",
+        message: format!("no feedback '{id}' filed by this caller"),
+        data: json!({"feedback_id": id}),
+    };
+    let Some(tenant_id) = sender.tenant_id else { return Err(not_found()) };
+    let row = state.db.get_feedback(id.clone()).await?;
+    let Some(row) = row.filter(|r| r.tenant_id == Some(tenant_id)) else {
+        return Err(not_found());
+    };
+    let theme_id = state.db.feedback_row_theme_id(row.feedback_id.clone()).await?;
+    let theme = match &theme_id {
+        Some(t) => state.db.get_feedback_theme(t.clone()).await?,
+        None => None,
+    };
+    Ok(json!({
+        "feedback_id": row.feedback_id,
+        "kind": row.kind,
+        "text": row.text,
+        "context": row.context_json.and_then(|c| serde_json::from_str::<Value>(&c).ok()),
+        "last_call_ids": serde_json::from_str::<Value>(&row.last_call_ids).unwrap_or_else(|_| json!([])),
+        "theme_id": theme_id,
+        "status": theme.map_or(STATUS_RECEIVED.to_string(), |t| t.status),
+        "created_unix": row.created_unix,
+    }))
+}
+
 /// Largest `limit` `host.feedback.list` honours.
 pub const LIST_LIMIT_MAX: i64 = 100;
 const LIST_LIMIT_DEFAULT: i64 = 20;
@@ -462,4 +505,459 @@ pub fn render_table(rows: &[(crate::db::FeedbackRow, Option<String>)]) -> String
         ));
     }
     out
+}
+
+// ---------------------------------------------------------------------------
+// PRD-mcphost-feedback-themes-nightly: LLM-free theme key.
+// ---------------------------------------------------------------------------
+
+/// Words that carry no ask (R2: a 40-word list). Reporting verbs are here so
+/// `said` / `says` / `reports` do not split one complaint into several.
+pub const STOP_WORDS: [&str; 40] = [
+    "a", "an", "the", "is", "are", "was", "were", "be", "been", "it", "its", "this", "that",
+    "to", "of", "in", "on", "at", "for", "with", "and", "or", "but", "so", "i", "my", "me",
+    "we", "you", "your", "said", "says", "say", "saying", "reported", "reports", "got", "get",
+    "gets", "getting",
+];
+
+/// Characters kept in an alphabetic token: letters and `_` (so an error code
+/// such as `args_invalid` stays one word).
+fn is_word_char(c: char) -> bool {
+    c.is_ascii_alphabetic() || c == '_'
+}
+
+/// True for `f_…` / `t_…` / `th_…` / `c_…` ids (hex-ish tail).
+fn is_prefixed_id(tok: &str) -> bool {
+    ["th_", "f_", "t_", "c_"].iter().any(|p| {
+        tok.strip_prefix(p)
+            .is_some_and(|rest| !rest.is_empty() && rest.chars().all(|c| c.is_ascii_hexdigit()))
+    })
+}
+
+/// Replaces quoted strings (`"…"`, `` `…` ``, and `'…'` that opens after a
+/// non-alphanumeric so contractions survive) with a single `_` token.
+fn blank_quoted(lower: &str) -> String {
+    let chars: Vec<char> = lower.chars().collect();
+    let mut out = String::with_capacity(lower.len());
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        let opens = match c {
+            '"' | '`' => true,
+            '\'' => i == 0 || !chars[i - 1].is_alphanumeric(),
+            _ => false,
+        };
+        if opens {
+            // A backslash escapes the next char, so `"a \"b\" c"` (a JSON body
+            // echoed into the error) is one quoted value, not three.
+            let mut j = i + 1;
+            while j < chars.len() && chars[j] != c {
+                j += if chars[j] == '\\' { 2 } else { 1 };
+            }
+            if j < chars.len() {
+                out.push_str(" _ ");
+                i = j + 1;
+                continue;
+            }
+        }
+        out.push(c);
+        i += 1;
+    }
+    out
+}
+
+/// Drops a trailing ` at <file>.py:<line>` traceback location: the line number
+/// differs per tenant tool while the error is the same ask.
+fn strip_traceback_location(lower: &str) -> String {
+    if let Some((head, tail)) = lower.rsplit_once(" at ")
+        && let Some((file, line)) = tail.trim().rsplit_once(':')
+        && file.ends_with(".py")
+        && !line.is_empty()
+        && line.chars().all(|c| c.is_ascii_digit())
+    {
+        return head.to_string();
+    }
+    lower.to_string()
+}
+
+/// R2: the normalized prefix of `text`. Lowercases, replaces quoted strings,
+/// digit runs, hex ids of 8+ chars, dotted paths and `f_`/`t_`/`th_` ids with `_`, drops
+/// [`STOP_WORDS`], and keeps the first 6 alphabetic tokens (a run of `_`
+/// placeholders between them is kept as one `_`). Pure.
+pub fn normalize(text: &str) -> String {
+    let lower = blank_quoted(&strip_traceback_location(&text.to_lowercase()));
+    let mut parts: Vec<String> = Vec::new();
+    let mut words = 0usize;
+    let mut cur = String::new();
+    let flush = |cur: &mut String, parts: &mut Vec<String>, words: &mut usize| {
+        if cur.is_empty() {
+            return;
+        }
+        let tok = std::mem::take(cur);
+        let all_hex = tok.len() >= 8 && tok.chars().all(|c| c.is_ascii_hexdigit());
+        let placeholder = tok == "_"
+            || tok == "null"
+            || is_prefixed_id(&tok)
+            || all_hex
+            || tok.contains('.')
+            || tok.chars().any(|c| c.is_ascii_digit() || !c.is_ascii());
+        if placeholder {
+            if parts.last().map(String::as_str) != Some("_") {
+                parts.push("_".to_string());
+            }
+        } else if tok.chars().all(is_word_char)
+            && !tok.chars().all(|c| c == '_')
+            && !STOP_WORDS.contains(&tok.as_str())
+            && *words < 6
+        {
+            parts.push(tok);
+            *words += 1;
+        }
+    };
+    let chars: Vec<char> = lower.chars().collect();
+    let joins = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    for (i, &c) in chars.iter().enumerate() {
+        // A `.` between word chars joins a dotted path (`budget.max_tool_latency_ms`,
+        // `t_6238451c.lc_chain_runner`), which is a value and becomes `_`.
+        let dotted = c == '.' && i > 0 && joins(chars[i - 1]) && chars.get(i + 1).is_some_and(|n| joins(*n));
+        if c.is_ascii_alphanumeric() || c == '_' || !c.is_ascii() || dotted {
+            cur.push(c);
+        } else {
+            flush(&mut cur, &mut parts, &mut words);
+        }
+    }
+    flush(&mut cur, &mut parts, &mut words);
+    while parts.last().map(String::as_str) == Some("_") {
+        parts.pop();
+    }
+    parts.join(" ")
+}
+
+/// The theme key's four parts: `kind|error_code|tool|prefix`.
+pub fn theme_key(kind: &str, error_code: &str, tool: &str, text: &str) -> String {
+    format!("{kind}|{error_code}|{}|{}", normalize_tool(tool), normalize(text))
+}
+
+/// The tool part of a theme key without per-tenant instance noise: tenant tool
+/// names carry an 8-hex build suffix or prefix (`lambda_cost_watch_358f31f4`,
+/// `dc617cce_transform`) that differs per run for the same ask. Pure.
+pub fn normalize_tool(tool: &str) -> String {
+    let is_hex8 = |s: &str| s.len() == 8 && s.chars().all(|c| c.is_ascii_hexdigit());
+    let mut t = tool;
+    if let Some((head, tail)) = t.rsplit_once('_') && is_hex8(tail) {
+        t = head;
+    }
+    if let Some((head, tail)) = t.split_once('_') && is_hex8(head) {
+        t = tail;
+    }
+    t.to_string()
+}
+
+/// `th_` + 12 hex of `sha256(key)[..6]`: stable across runs and hosts.
+pub fn theme_id_for_key(key: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(key.as_bytes());
+    format!("th_{}", digest[..6].iter().map(|b| format!("{b:02x}")).collect::<String>())
+}
+
+/// The `(error_code, tool)` a feedback row's `context_json` carries (empty
+/// strings when absent).
+pub fn context_code_tool(context_json: Option<&str>) -> (String, String) {
+    let v: Value = context_json.and_then(|c| serde_json::from_str(c).ok()).unwrap_or(Value::Null);
+    let get = |k: &str| v.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
+    (get("error_code"), get("tool"))
+}
+
+/// The theme id a whole row maps to.
+pub fn theme_id_for_row(kind: &str, context_json: Option<&str>, text: &str) -> String {
+    let (code, tool) = context_code_tool(context_json);
+    theme_id_for_key(&theme_key(kind, &code, &tool, text))
+}
+
+// ---------------------------------------------------------------------------
+// Theme table access.
+// ---------------------------------------------------------------------------
+
+/// Caps from R1 / Technical considerations.
+pub const THEME_EXAMPLES_MAX: usize = 5;
+pub const THEME_TENANTS_MAX: usize = 20;
+pub const THEME_CALL_IDS_MAX: usize = 25;
+/// Largest theme list `admin.feedback.themes` returns.
+pub const THEMES_LIMIT_MAX: i64 = 500;
+pub const THEME_STATUS_OPEN: &str = "open";
+
+/// One `feedback_themes` row.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FeedbackTheme {
+    pub theme_id: String,
+    pub kind: String,
+    pub error_code: String,
+    pub tool: String,
+    pub text_prefix: String,
+    pub count: i64,
+    pub tenants: Vec<String>,
+    pub example_ids: Vec<String>,
+    pub call_ids: Vec<String>,
+    pub first_seen_unix: i64,
+    pub last_seen_unix: i64,
+    pub status: String,
+}
+
+impl FeedbackTheme {
+    fn from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Self> {
+        let arr = |s: String| serde_json::from_str::<Vec<String>>(&s).unwrap_or_default();
+        Ok(Self {
+            theme_id: r.get(0)?,
+            kind: r.get(1)?,
+            error_code: r.get(2)?,
+            tool: r.get(3)?,
+            text_prefix: r.get(4)?,
+            count: r.get(5)?,
+            tenants: arr(r.get(6)?),
+            example_ids: arr(r.get(7)?),
+            call_ids: arr(r.get(8)?),
+            first_seen_unix: r.get(9)?,
+            last_seen_unix: r.get(10)?,
+            status: r.get(11)?,
+        })
+    }
+
+    /// The wire shape `admin.feedback.themes` and the CLI print.
+    pub fn to_json(&self) -> Value {
+        json!({
+            "theme_id": self.theme_id,
+            "kind": self.kind,
+            "error_code": self.error_code,
+            "tool": self.tool,
+            "text_prefix": self.text_prefix,
+            "count": self.count,
+            "tenants": self.tenants,
+            "example_ids": self.example_ids,
+            "last_call_ids": self.call_ids,
+            "first_seen_unix": self.first_seen_unix,
+            "last_seen_unix": self.last_seen_unix,
+            "status": self.status,
+        })
+    }
+}
+
+const THEME_COLS: &str = "theme_id, kind, error_code, tool, text_prefix, count, tenants_json, \
+     example_ids_json, call_ids_json, first_seen_unix, last_seen_unix, status";
+
+/// What one clustering pass did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ClusterStats {
+    /// `feedback` rows whose `theme_id` was set this pass.
+    pub rows_clustered: usize,
+    /// Distinct themes created or grown.
+    pub themes_touched: usize,
+}
+
+/// `(id, feedback_id, kind, text, context_json, tenant_id, last_call_ids, created_unix)`.
+type PendingRow = (i64, String, String, String, Option<String>, Option<i64>, String, i64);
+
+fn push_capped(v: &mut Vec<String>, item: &str, cap: usize) {
+    if v.len() < cap && !v.iter().any(|x| x == item) {
+        v.push(item.to_string());
+    }
+}
+
+impl crate::db::Db {
+    /// R3: for each `feedback` row with a NULL `theme_id` (oldest first),
+    /// computes the key, upserts the theme and stamps the row. Idempotent: a
+    /// pass with no unclustered rows writes nothing at all.
+    pub async fn cluster_feedback(&self) -> Result<ClusterStats, AppError> {
+        self.with_conn(|conn| {
+            let pending: Vec<PendingRow> = {
+                let mut stmt = conn.prepare(
+                    "SELECT id, feedback_id, kind, text, context_json, tenant_id, last_call_ids, \
+                     created_unix FROM feedback WHERE theme_id IS NULL \
+                     ORDER BY created_unix, id",
+                )?;
+                let rows = stmt.query_map([], |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?))
+                })?;
+                rows.collect::<Result<Vec<_>, _>>()?
+            };
+            if pending.is_empty() {
+                return Ok(ClusterStats::default());
+            }
+            let tx = conn.unchecked_transaction()?;
+            let mut touched: HashMap<String, FeedbackTheme> = HashMap::new();
+            for (id, feedback_id, kind, text, context_json, tenant_id, call_ids, created) in &pending {
+                let (code, tool) = context_code_tool(context_json.as_deref());
+                let prefix = normalize(text);
+                let theme_id = theme_id_for_key(&format!("{kind}|{code}|{tool}|{prefix}"));
+                if !touched.contains_key(&theme_id) {
+                    let existing = tx
+                        .query_row(
+                            &format!("SELECT {THEME_COLS} FROM feedback_themes WHERE theme_id = ?1"),
+                            params![theme_id],
+                            FeedbackTheme::from_row,
+                        )
+                        .optional()?;
+                    let theme = existing.unwrap_or_else(|| FeedbackTheme {
+                        theme_id: theme_id.clone(),
+                        kind: kind.clone(),
+                        error_code: code.clone(),
+                        tool: tool.clone(),
+                        text_prefix: prefix.clone(),
+                        count: 0,
+                        tenants: Vec::new(),
+                        example_ids: Vec::new(),
+                        call_ids: Vec::new(),
+                        first_seen_unix: *created,
+                        last_seen_unix: *created,
+                        status: THEME_STATUS_OPEN.to_string(),
+                    });
+                    touched.insert(theme_id.clone(), theme);
+                }
+                let theme = touched.get_mut(&theme_id).expect("inserted above");
+                theme.count += 1;
+                theme.first_seen_unix = theme.first_seen_unix.min(*created);
+                theme.last_seen_unix = theme.last_seen_unix.max(*created);
+                push_capped(&mut theme.example_ids, feedback_id, THEME_EXAMPLES_MAX);
+                if let Some(t) = tenant_id {
+                    push_capped(&mut theme.tenants, &format!("t{t}"), THEME_TENANTS_MAX);
+                }
+                for c in serde_json::from_str::<Vec<String>>(call_ids).unwrap_or_default() {
+                    push_capped(&mut theme.call_ids, &c, THEME_CALL_IDS_MAX);
+                }
+                tx.execute("UPDATE feedback SET theme_id = ?1 WHERE id = ?2", params![theme_id, id])?;
+            }
+            for t in touched.values() {
+                tx.execute(
+                    "INSERT INTO feedback_themes (theme_id, kind, error_code, tool, text_prefix, count, \
+                     tenants_json, example_ids_json, call_ids_json, first_seen_unix, last_seen_unix, status) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12) \
+                     ON CONFLICT(theme_id) DO UPDATE SET count = excluded.count, \
+                     tenants_json = excluded.tenants_json, example_ids_json = excluded.example_ids_json, \
+                     call_ids_json = excluded.call_ids_json, first_seen_unix = excluded.first_seen_unix, \
+                     last_seen_unix = excluded.last_seen_unix",
+                    params![
+                        t.theme_id, t.kind, t.error_code, t.tool, t.text_prefix, t.count,
+                        json!(t.tenants).to_string(), json!(t.example_ids).to_string(),
+                        json!(t.call_ids).to_string(), t.first_seen_unix, t.last_seen_unix, t.status
+                    ],
+                )?;
+            }
+            tx.commit()?;
+            Ok(ClusterStats { rows_clustered: pending.len(), themes_touched: touched.len() })
+        })
+        .await
+    }
+
+    /// R4: themes seen at or after `since_unix`, optionally one kind and/or
+    /// status, `count` desc then `last_seen` desc.
+    pub async fn list_feedback_themes(
+        &self,
+        since_unix: i64,
+        kind: Option<String>,
+        status: Option<String>,
+        limit: i64,
+    ) -> Result<Vec<FeedbackTheme>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(&format!(
+                "SELECT {THEME_COLS} FROM feedback_themes WHERE last_seen_unix >= ?1 \
+                 AND (?2 IS NULL OR kind = ?2) AND (?3 IS NULL OR status = ?3) \
+                 ORDER BY count DESC, last_seen_unix DESC, theme_id LIMIT ?4"
+            ))?;
+            let rows = stmt.query_map(params![since_unix, kind, status, limit], FeedbackTheme::from_row)?;
+            Ok(rows.collect::<Result<Vec<_>, _>>()?)
+        })
+        .await
+    }
+
+    /// One theme by id.
+    pub async fn get_feedback_theme(&self, theme_id: String) -> Result<Option<FeedbackTheme>, AppError> {
+        self.with_conn(move |conn| {
+            Ok(conn
+                .query_row(
+                    &format!("SELECT {THEME_COLS} FROM feedback_themes WHERE theme_id = ?1"),
+                    params![theme_id],
+                    FeedbackTheme::from_row,
+                )
+                .optional()?)
+        })
+        .await
+    }
+
+    /// The `theme_id` a feedback row was clustered into (None before the
+    /// nightly pass reaches it).
+    pub async fn feedback_row_theme_id(&self, feedback_id: String) -> Result<Option<String>, AppError> {
+        self.with_conn(move |conn| {
+            Ok(conn
+                .query_row("SELECT theme_id FROM feedback WHERE feedback_id = ?1", params![feedback_id], |r| {
+                    r.get::<_, Option<String>>(0)
+                })
+                .optional()?
+                .flatten())
+        })
+        .await
+    }
+
+    /// R5: `(rows filed in the last 24 h, open themes)` -- counts only.
+    pub async fn feedback_counts(&self, now_unix: i64) -> Result<(i64, i64), AppError> {
+        self.with_conn(move |conn| {
+            let rows: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM feedback WHERE created_unix >= ?1",
+                params![now_unix - 86_400],
+                |r| r.get(0),
+            )?;
+            let open: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM feedback_themes WHERE status = ?1",
+                params![THEME_STATUS_OPEN],
+                |r| r.get(0),
+            )?;
+            Ok((rows, open))
+        })
+        .await
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Nightly task (R3).
+// ---------------------------------------------------------------------------
+
+/// The nightly pass runs at this UTC time, ahead of the midnight-PDT
+/// (07:00 UTC) discovery chain that reads the themes.
+const THEME_HOUR_UTC: i64 = 3;
+const THEME_MINUTE_UTC: i64 = 10;
+
+/// Seconds from `now_unix` to the next 03:10 UTC.
+pub fn secs_until_next_theme_run(now_unix: i64) -> u64 {
+    let today_run = now_unix.div_euclid(86_400) * 86_400 + THEME_HOUR_UTC * 3600 + THEME_MINUTE_UTC * 60;
+    let next = if today_run > now_unix { today_run } else { today_run + 86_400 };
+    (next - now_unix).max(0) as u64
+}
+
+/// Same "never joined, `tokio::spawn` loop" convention as
+/// [`crate::retention::spawn_prune_scheduler`].
+pub fn spawn_theme_scheduler(state: AppState) -> tokio::task::JoinHandle<()> {
+    spawn_theme_loop(state, None)
+}
+
+/// Test-only: the same unattended loop firing every `interval`.
+pub fn spawn_theme_scheduler_for_test(
+    state: AppState,
+    interval: std::time::Duration,
+) -> tokio::task::JoinHandle<()> {
+    spawn_theme_loop(state, Some(interval))
+}
+
+fn spawn_theme_loop(state: AppState, interval: Option<std::time::Duration>) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        loop {
+            let sleep_for = interval
+                .unwrap_or_else(|| std::time::Duration::from_secs(secs_until_next_theme_run(now_unix())));
+            tokio::time::sleep(sleep_for).await;
+            match state.db.cluster_feedback().await {
+                Ok(s) if s.rows_clustered > 0 => {
+                    tracing::info!(rows = s.rows_clustered, themes = s.themes_touched, "feedback themes clustered");
+                }
+                Ok(_) => {}
+                Err(e) => tracing::warn!(error = %e, "nightly feedback clustering failed"),
+            }
+        }
+    })
 }

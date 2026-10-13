@@ -855,6 +855,20 @@ mod fbeh_ac05_internal_hint_carries_request_id;
 mod fbeh_ac06_messages_byte_identical;
 #[path = "fbeh_ac07_hint_is_one_short_line.rs"]
 mod fbeh_ac07_hint_is_one_short_line;
+#[path = "fbth_ac01_normalizer_separates_asks.rs"]
+mod fbth_ac01_normalizer_separates_asks;
+#[path = "fbth_ac02_similar_texts_share_a_theme.rs"]
+mod fbth_ac02_similar_texts_share_a_theme;
+#[path = "fbth_ac03_error_code_splits_themes.rs"]
+mod fbth_ac03_error_code_splits_themes;
+#[path = "fbth_ac04_rerun_changes_nothing.rs"]
+mod fbth_ac04_rerun_changes_nothing;
+#[path = "fbth_ac05_admin_themes_verb.rs"]
+mod fbth_ac05_admin_themes_verb;
+#[path = "fbth_ac06_status_json_feedback_counts.rs"]
+mod fbth_ac06_status_json_feedback_counts;
+#[path = "fbth_ac07_feedback_get_is_owner_only.rs"]
+mod fbth_ac07_feedback_get_is_owner_only;
 #[path = "fbtl_ac02_anonymous_send_stores_row.rs"]
 mod fbtl_ac02_anonymous_send_stores_row;
 #[path = "fbtl_ac03_text_limits_and_control_chars.rs"]
