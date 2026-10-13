@@ -1525,6 +1525,13 @@
       "AC1": "tests/gsigb_ac01_heal_toml_docs_drift.rs",
       "AC2": "tests/gsigb_ac02_one_tick_reads_unknown.rs",
       "AC3": "tests/gsigb_ac03_wedged_child_in_pool_signal.rs"
+    },
+    "tfdb": {
+      "_prd": "PRD-mcphost-first-tool-from-description-b.md (test_prefix: tfdb)",
+      "AC1": "tests/tfdb_ac01_sixth_draft_refused_plan_limit.rs",
+      "AC2": "tests/tfdb_ac02_unconfigured_hides_tool_and_healthz_says_so.rs",
+      "AC3": "tests/tfdb_ac03_anonymous_first_call_implicit_signup.rs",
+      "AC4": "deferred -- operator-provisioned: Live probe against prod once Joe sets the MCPHOST_DRAFT_* env."
     }
   }
 }

@@ -251,6 +251,10 @@ pub struct Plan {
     /// tenant may have pending (unanswered, unexpired) at once -- a further
     /// create refuses with `asks_limit`. "free 5, pro 100".
     pub asks_open_max: i64,
+    /// PRD-mcphost-first-tool-from-description R5: `host.tool_from_description`
+    /// calls a tenant may make per UTC day (`plan_limit` naming
+    /// `drafts_per_day`). "free 5, pro 100".
+    pub drafts_per_day: i64,
     /// PRD-mcphost-chain-fanout-and-join R3: the most items one `for_each`
     /// chain step may fan out over; more is refused `compose_fanout_exceeded`
     /// before any item runs. "free 20, pro 50".
@@ -562,6 +566,7 @@ impl PlanCatalog {
                     // allows 3 live".
                     invites_max: 3,
                     asks_open_max: 5,
+                    drafts_per_day: 5,
                     chain_fanout_max: 20,
                     // PRD-mcphost-result-handles Open Questions: "free 64
                     // MiB" of live query-result handles.
@@ -667,6 +672,7 @@ impl PlanCatalog {
                     // the ~8x free/pro ratio `channels_max` already uses.
                     invites_max: 25,
                     asks_open_max: 100,
+                    drafts_per_day: 100,
                     chain_fanout_max: 50,
                     // PRD-mcphost-result-handles: no published pro number
                     // -- sized against the same ~8x free/pro ratio
@@ -806,6 +812,7 @@ impl PlanCatalog {
             ));
             out.push_str(&format!("invites_max = {}\n", p.invites_max));
             out.push_str(&format!("asks_open_max = {}\n", p.asks_open_max));
+            out.push_str(&format!("drafts_per_day = {}\n", p.drafts_per_day));
             out.push_str(&format!("chain_fanout_max = {}\n", p.chain_fanout_max));
             out.push_str(&format!(
                 "table_handle_bytes_max = {}\n",
@@ -913,6 +920,7 @@ impl PlanCatalog {
                 "vault_providers_max" => builder.vault_providers_max = Some(int_value()),
                 "invites_max" => builder.invites_max = Some(int_value()),
                 "asks_open_max" => builder.asks_open_max = Some(int_value()),
+                "drafts_per_day" => builder.drafts_per_day = Some(int_value()),
                 "chain_fanout_max" => builder.chain_fanout_max = Some(int_value()),
                 "table_handle_bytes_max" => builder.table_handle_bytes_max = Some(int_value()),
                 "budget_max_child_calls" => builder.budget_max_child_calls = Some(int_value()),
@@ -1003,6 +1011,7 @@ struct PlanBuilder {
     vault_providers_max: Option<i64>,
     invites_max: Option<i64>,
     asks_open_max: Option<i64>,
+    drafts_per_day: Option<i64>,
     chain_fanout_max: Option<i64>,
     table_handle_bytes_max: Option<i64>,
     budget_max_child_calls: Option<i64>,
@@ -1078,6 +1087,7 @@ impl PlanBuilder {
             vault_providers_max: quota!(vault_providers_max),
             invites_max: quota!(invites_max),
             asks_open_max: quota!(asks_open_max),
+            drafts_per_day: quota!(drafts_per_day),
             chain_fanout_max: quota!(chain_fanout_max),
             table_handle_bytes_max: quota!(table_handle_bytes_max),
             budget_max_child_calls: quota!(budget_max_child_calls),
