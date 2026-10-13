@@ -24,6 +24,7 @@ PINS=(
   "suite_core_07:outsch_ac01"
   "suite_core_08:toolname_ac08_tools_list_counts_updated"
   "suite_core_07:compat_ac04_ac05_admin_and_tenant_cache_fields"
+  "suite_core_07:lanecov_ac01"
 )
 
 cd "$(dirname "$0")/.."
