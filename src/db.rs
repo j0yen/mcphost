@@ -301,6 +301,9 @@ const MIGRATION_0094: &str = include_str!("../migrations/0094_example_proposals.
 /// PRD-mcphost-first-tool-from-description R5: the `draft_events` table.
 const MIGRATION_0095: &str = include_str!("../migrations/0095_draft_events.sql");
 
+/// PRD-mcphost-heal-action-registry-and-ledger R2: `incidents.action` and siblings.
+const MIGRATION_0096: &str = include_str!("../migrations/0096_heal_ledger.sql");
+
 /// Outcome of [`Db::reserve_draft`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DraftReservation {
@@ -2941,6 +2944,20 @@ impl Db {
         // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0094)?;
         conn.execute_batch(MIGRATION_0095)?;
+        Self::migrate_0096_heal_ledger(&conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-heal-action-registry-and-ledger R2: `incidents.action` and
+    /// its six siblings, gated on the `action` column (the batch is all
+    /// `ALTER`s, so a rerun must skip it).
+    fn migrate_0096_heal_ledger(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('incidents') WHERE name = 'action'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0096)?;
+        }
         Ok(())
     }
 
@@ -18292,6 +18309,102 @@ impl Db {
                 params![title, impact, components_json, opened_at, timeline_json, auto],
             )?;
             Ok(conn.last_insert_rowid())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-heal-action-registry-and-ledger R3: one action row. The
+    /// ledger accepts only names `HealAction` knows (`FromStr`) and writes
+    /// the row already closed, so it never shows as an open incident.
+    pub async fn insert_heal_row(&self, row: crate::heal::HealRow) -> Result<i64, AppError> {
+        let name = row.action.as_str();
+        if name.parse::<crate::heal::HealAction>().is_err() {
+            return Err(AppError::Internal(format!("heal ledger refuses unknown action {name}")));
+        }
+        let outcome = row.outcome.as_str();
+        let timeline = json!([{"ts": row.at, "type": "heal", "message": format!("{name}: {outcome}")}]).to_string();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO incidents (title, impact, components_json, opened_at, closed_at, \
+                 timeline_json, auto, action, trigger_json, before_json, after_json, outcome, \
+                 dry_run, duration_ms) \
+                 VALUES (?1, 'minor', '[]', ?2, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![
+                    format!("heal: {name}"),
+                    row.at,
+                    timeline,
+                    name,
+                    row.trigger.to_string(),
+                    row.before.to_string(),
+                    row.after.to_string(),
+                    outcome,
+                    row.dry_run,
+                    row.duration_ms,
+                ],
+            )?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+    }
+
+    /// Reads one action row back; `None` for an unknown id or a prose row.
+    pub async fn find_heal_row(&self, id: i64) -> Result<Option<crate::heal::HealRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT action, opened_at, outcome, dry_run, duration_ms, trigger_json, before_json, \
+                 after_json FROM incidents WHERE id = ?1 AND action IS NOT NULL",
+                params![id],
+                |r| {
+                    let json_col = |i: usize| -> rusqlite::Result<Value> {
+                        Ok(r.get::<_, Option<String>>(i)?
+                            .and_then(|t| serde_json::from_str(&t).ok())
+                            .unwrap_or(Value::Null))
+                    };
+                    Ok(crate::heal::HealRow {
+                        id,
+                        action: r.get::<_, String>(0)?.parse().unwrap_or(crate::heal::HealAction::LogRotate),
+                        at: r.get(1)?,
+                        outcome: r.get::<_, String>(2)?.parse().unwrap_or(crate::heal::HealOutcome::Failed),
+                        dry_run: r.get::<_, i64>(3)? != 0,
+                        duration_ms: r.get::<_, Option<i64>>(4)?.unwrap_or(0),
+                        trigger: json_col(5)?,
+                        before: json_col(6)?,
+                        after: json_col(7)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Rate-limit input: rows for `action` that actually ran (`ok`/`failed`)
+    /// at or after `since`.
+    pub async fn heal_executed_since(&self, action: String, since: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT count(*) FROM incidents WHERE action = ?1 AND opened_at > ?2 \
+                 AND dry_run = 0 AND outcome IN ('ok', 'failed')",
+                params![action, since],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `/status.json.heal.last_24h`: `(outcome, count)` since `since`.
+    pub async fn heal_outcome_counts_since(&self, since: i64) -> Result<Vec<(String, i64)>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT outcome, count(*) FROM incidents WHERE action IS NOT NULL \
+                 AND opened_at >= ?1 GROUP BY outcome",
+            )?;
+            let rows = stmt
+                .query_map(params![since], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
         })
         .await
     }

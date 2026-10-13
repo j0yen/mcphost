@@ -205,6 +205,9 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // src/signals.rs via include_str! -- to the workspace check, clippy, and
     // test commands, so a change to it is proven the way a src/ edit is) --
     // an intended addition since the baseline.
+    // PRD-mcphost-heal-action-registry-and-ledger added its own "heal-docs"
+    // lane (routes scripts/heal-doc-check.sh and docs/self-healing.md to the
+    // script's check mode) -- an intended addition since the baseline.
     assert_eq!(
         added,
         vec![
@@ -220,6 +223,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "examples",
             "flake-lint",
             "heal-config",
+            "heal-docs",
             "host-pressure-doc-check",
             "launch-docs",
             "loop-config",
@@ -236,7 +240,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "wasm-fixtures"
         ],
         "only admin-schemas, blobguard-fixtures, checkcompat-race-soak, child-proc-lint, contracts, docs-links, docsearch-fixtures, \
-         event-trigger-self-test-fixtures, example-manifest, examples, flake-lint, host-pressure-doc-check, launch-docs, \
+         event-trigger-self-test-fixtures, example-manifest, examples, flake-lint, heal-config, heal-docs, host-pressure-doc-check, launch-docs, \
          loop-config, oauthconf-data, output-schemas, plugin, registry-manifest, required-checks, sandbox-api-docs, sharing-docs, \
          spec-fields-doc-check, tool-naming, vendor, and wasm-fixtures may have been added since \
          {BASELINE_REV}"

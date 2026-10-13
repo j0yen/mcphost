@@ -340,3 +340,11 @@ required_commands = [
   "cargo clippy --workspace -- -D warnings",
   "cargo test --workspace",
 ]
+
+[[lane]]
+id = "heal-docs"
+description = "PRD-mcphost-heal-action-registry-and-ledger R6 (AC1): scripts/heal-doc-check.sh, the drift check that docs/self-healing.md carries one table row per HealAction rendered from src/heal.rs's own heal_actions! invocation. Added project-locally, same gap class and reasoning as the sandbox-api-docs lane above (its own lane so tests/lanecov_ac04_existing_lanes_unchanged.rs's pinned baseline stays green). Proof is the script's check mode (bare invocation), matching tests/heal_ac01_action_set_single_source.rs."
+globs = ["scripts/heal-doc-check.sh", "docs/self-healing.md"]
+required_commands = [
+  "scripts/heal-doc-check.sh",
+]
