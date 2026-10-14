@@ -1721,6 +1721,8 @@ mod mrefu_ac01_breaking_migration_refuses_with_report;
 mod mrefu_ac02_compatible_migration_reports_ok;
 #[path = "mrefu_ac03_schema_is_generated_and_drift_tested.rs"]
 mod mrefu_ac03_schema_is_generated_and_drift_tested;
+#[path = "mrefu_ac04_previous_up_failure_exits_4_with_tables_changed.rs"]
+mod mrefu_ac04_previous_up_failure_exits_4_with_tables_changed;
 #[path = "msg_ac01_send_reaches_inbox.rs"]
 mod msg_ac01_send_reaches_inbox;
 #[path = "msg_ac02_reply_appends_next_seq.rs"]
