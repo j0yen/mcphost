@@ -1199,6 +1199,8 @@ mod hzver_ac05_component_rollup_unchanged;
 mod idecl_ac01_annotation_cuts_blind_retries;
 #[path = "idecl_ac02_http_get_defaults_idempotent_read_only.rs"]
 mod idecl_ac02_http_get_defaults_idempotent_read_only;
+#[path = "idecl_ac04_every_kind_and_host_tool_declares_a_default.rs"]
+mod idecl_ac04_every_kind_and_host_tool_declares_a_default;
 #[path = "implsign_ac01_bare_call_creates_implicit_tenant_with_onboarding.rs"]
 mod implsign_ac01_bare_call_creates_implicit_tenant_with_onboarding;
 #[path = "implsign_ac02_second_call_carries_no_onboarding.rs"]
