@@ -10950,6 +10950,145 @@
       "since": "0.58.0"
     },
     {
+      "description": "A trigger's run receipts, newest first, with a summary: {rows: [{trigger_id, tool, run_id, source, started_unix, duration_ms, status, error_code, output_excerpt}], summary: {runs, ok, failed, streak_failed, last_ok_unix, last_error, next_fire_unix}}. Address one trigger with trigger_id, or every trigger on a tool with tool. Three failures in a row send one inbox message from @host until the next success.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "Rows to return (default 20, at most 50).",
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "since_unix": {
+            "description": "Only receipts started at or after this unix time.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "tool": {
+            "description": "Every trigger on this tool.",
+            "type": "string"
+          },
+          "trigger_id": {
+            "description": "The trigger id.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.schedule_receipts",
+      "output_schema": {
+        "properties": {
+          "rows": {
+            "items": {
+              "properties": {
+                "cost_calls": {
+                  "type": "integer"
+                },
+                "duration_ms": {
+                  "type": "integer"
+                },
+                "error_code": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "output_excerpt": {
+                  "type": "string"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                },
+                "started_unix": {
+                  "type": "integer"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "tool": {
+                  "type": "string"
+                },
+                "trigger_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "trigger_id",
+                "tool",
+                "run_id",
+                "source",
+                "started_unix",
+                "duration_ms",
+                "status",
+                "output_excerpt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "summary": {
+            "properties": {
+              "failed": {
+                "type": "integer"
+              },
+              "last_error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "last_ok_unix": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "next_fire_unix": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "ok": {
+                "type": "integer"
+              },
+              "runs": {
+                "type": "integer"
+              },
+              "streak_failed": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "runs",
+              "ok",
+              "failed",
+              "streak_failed",
+              "last_ok_unix",
+              "last_error",
+              "next_fire_unix"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "rows",
+          "summary"
+        ],
+        "type": "object"
+      },
+      "since": "0.107.80",
+      "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
+    },
+    {
       "description": "List this tenant's secret names (never their values).",
       "input_schema": {
         "additionalProperties": false,
@@ -23622,6 +23761,41 @@
       },
       "name": "host_runs_wait",
       "since": "0.103.1"
+    },
+    {
+      "alias_of": "host.schedule_receipts",
+      "description": "A trigger's run receipts, newest first, with a summary: {rows: [{trigger_id, tool, run_id, source, started_unix, duration_ms, status, error_code, output_excerpt}], summary: {runs, ok, failed, streak_failed, last_ok_unix, last_error, next_fire_unix}}. Address one trigger with trigger_id, or every trigger on a tool with tool. Three failures in a row send one inbox message from @host until the next success.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "Rows to return (default 20, at most 50).",
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "since_unix": {
+            "description": "Only receipts started at or after this unix time.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "tool": {
+            "description": "Every trigger on this tool.",
+            "type": "string"
+          },
+          "trigger_id": {
+            "description": "The trigger id.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host_schedule_receipts",
+      "since": "0.107.80"
     },
     {
       "alias_of": "host.secret.list",

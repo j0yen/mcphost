@@ -133,7 +133,9 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
         // plus its flattened form, 402 + 2 = 404.
         // PRD-mcphost-help-search-tool: host.help.search, one more dotted
         // tool plus its flattened form, 404 + 2 = 406.
-        406,
+        // PRD-mcphost-scheduled-job-receipts: host.schedule_receipts, one more
+        // dotted tool plus its flattened form, 406 + 2 = 408.
+        408,
         "there must be exactly the sixteen host.* control-plane tools \
          (incl. host.quickstart, host.tool_run, host.bridge_test, host.spec_test -- \
          PRD-mcphost-tool-test, and host.redeem/host.key_rotate -- \

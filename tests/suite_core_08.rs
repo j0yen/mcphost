@@ -17,6 +17,8 @@ mod oauth;
 mod oauthclient;
 #[path = "support/serve.rs"]
 mod serve;
+#[path = "support/sjrc.rs"]
+mod sjrc;
 #[path = "support/timp.rs"]
 mod timp;
 #[path = "support/uprg.rs"]
@@ -446,6 +448,20 @@ mod sharedrunscope_ac07_migration_backfills_legacy_rows;
 mod sharedrunscope_ac08_proof_script_owner_ledger_check;
 #[path = "signupfleet_ac01_fleet_ips_bypass_signup_rate_limit.rs"]
 mod signupfleet_ac01_fleet_ips_bypass_signup_rate_limit;
+#[path = "sjrc_ac01_one_call_summarizes_five_fires.rs"]
+mod sjrc_ac01_one_call_summarizes_five_fires;
+#[path = "sjrc_ac02_third_consecutive_failure_alerts_once.rs"]
+mod sjrc_ac02_third_consecutive_failure_alerts_once;
+#[path = "sjrc_ac03_excerpt_is_cut_and_redacted.rs"]
+mod sjrc_ac03_excerpt_is_cut_and_redacted;
+#[path = "sjrc_ac04_pause_produces_nothing_resume_restarts_streak.rs"]
+mod sjrc_ac04_pause_produces_nothing_resume_restarts_streak;
+#[path = "sjrc_ac05_sweeper_drops_receipts_past_plan_retention.rs"]
+mod sjrc_ac05_sweeper_drops_receipts_past_plan_retention;
+#[path = "sjrc_ac06_manual_schedule_and_event_fires_all_leave_receipts.rs"]
+mod sjrc_ac06_manual_schedule_and_event_fires_all_leave_receipts;
+#[path = "sjrc_ac07_limit_ceiling_and_empty_tool.rs"]
+mod sjrc_ac07_limit_ceiling_and_empty_tool;
 #[path = "specpath_ac01_map_form_normalizes_and_publishes.rs"]
 mod specpath_ac01_map_form_normalizes_and_publishes;
 #[path = "specpath_ac02_outputs_map_value_type_error.rs"]

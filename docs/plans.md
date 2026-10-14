@@ -49,6 +49,7 @@ Every numeric ceiling in the plan table, as `host.quickstart` `limits.plan` repo
 | `jobs_concurrent` | 1 | 3 |
 | `msg_body_bytes_max` | 16384 | 16384 |
 | `msgs_per_hour` | 60 | 2000 |
+| `receipts_retention_days` | 7 | 30 |
 | `recipients_per_msg_max` | 5 | 20 |
 | `schedule_min_interval_s` | 300 | 60 |
 | `schedules_max` | 3 | 25 |
