@@ -25,6 +25,11 @@ use mcphost::secrets::SecretBox;
 use mcphost::state::AppState;
 use serde_json::{Value, json};
 
+/// Serializes the tests that read or rewrite the doc files
+/// `scripts/sandbox-api-doc-check.sh` owns: `--write` rewrites them in place
+/// and a concurrent copy or check can see a half-written file.
+pub static DOC_CHECK_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// The anonymous `/healthz` key set, read from the crate const so no test
 /// restates it (`scripts/healthz-keys-lint.py` fails a literal).
 pub fn anon_healthz_keys() -> &'static [&'static str] {

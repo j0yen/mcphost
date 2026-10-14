@@ -130,6 +130,7 @@ fn the_install_table_gives_claude_ai_and_chatgpt_the_entry_url_and_a_personal_ba
 
 #[test]
 fn sandbox_api_doc_check_passes() {
+    let _doc_files = common::DOC_CHECK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let out = std::process::Command::new("bash")
         .arg("scripts/sandbox-api-doc-check.sh")
         .current_dir(env!("CARGO_MANIFEST_DIR"))

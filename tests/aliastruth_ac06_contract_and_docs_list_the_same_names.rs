@@ -23,11 +23,14 @@ async fn contract_and_docs_name_exactly_what_tools_list_advertises() {
 
     // The doc-regeneration path the PRD names, run in write mode first: it
     // must leave the committed names untouched (exit 0).
-    let status = Command::new("bash")
-        .arg(format!("{}/scripts/sandbox-api-doc-check.sh", env!("CARGO_MANIFEST_DIR")))
-        .arg("--write")
-        .status()
-        .expect("run sandbox-api-doc-check.sh --write");
+    let status = {
+        let _doc_files = common::DOC_CHECK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        Command::new("bash")
+            .arg(format!("{}/scripts/sandbox-api-doc-check.sh", env!("CARGO_MANIFEST_DIR")))
+            .arg("--write")
+            .status()
+            .expect("run sandbox-api-doc-check.sh --write")
+    };
     assert!(status.success(), "sandbox-api-doc-check.sh --write failed: {status}");
 
     // api_contract: the committed dump.
