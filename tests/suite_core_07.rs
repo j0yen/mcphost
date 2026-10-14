@@ -635,6 +635,18 @@ mod ctrv_ac05_contract_json_is_served_with_etag_and_304;
 mod ctrv_ac06_committed_contract_file_matches_served_sha;
 #[path = "ctrv_ac07_changelog_since_accepts_contract_version.rs"]
 mod ctrv_ac07_changelog_since_accepts_contract_version;
+#[path = "dbmw_ac02_db_maintenance_truncates_wal_and_vacuums.rs"]
+mod dbmw_ac02_db_maintenance_truncates_wal_and_vacuums;
+#[path = "dbmw_ac03_backup_lock_refuses_window.rs"]
+mod dbmw_ac03_backup_lock_refuses_window;
+#[path = "dbmw_ac04_log_rotate_sweeps_only_expired_scratch_and_exports.rs"]
+mod dbmw_ac04_log_rotate_sweeps_only_expired_scratch_and_exports;
+#[path = "dbmw_ac05_busy_truncate_retries_passive.rs"]
+mod dbmw_ac05_busy_truncate_retries_passive;
+#[path = "dbmw_ac06_maintenance_run_dry_run.rs"]
+mod dbmw_ac06_maintenance_run_dry_run;
+#[path = "dbmw_ac07_window_runs_the_retention_pruner.rs"]
+mod dbmw_ac07_window_runs_the_retention_pruner;
 #[path = "demo_ac01_page_lists_three_runs_newest_first.rs"]
 mod demo_ac01_page_lists_three_runs_newest_first;
 #[path = "demo_ac02_unshared_unknown_tool_unknown_ns_identical_404.rs"]
@@ -1817,23 +1829,3 @@ mod oauthsig_ac04_admin_oauth_stats_funnel;
 mod oauthsig_ac05_healthz_cache_and_p95;
 #[path = "oauthsig_ac06_conformance_script_writes_receipt.rs"]
 mod oauthsig_ac06_conformance_script_writes_receipt;
-#[path = "outsch_ac01_oneof_budget_falsifier.rs"]
-mod outsch_ac01_oneof_budget_falsifier;
-#[path = "outsch_ac02_every_canonical_declares_an_object_output_schema.rs"]
-mod outsch_ac02_every_canonical_declares_an_object_output_schema;
-#[path = "outsch_ac03_contract_dump_marks_aliases_and_outputs.rs"]
-mod outsch_ac03_contract_dump_marks_aliases_and_outputs;
-#[path = "outsch_ac04_tools_list_carries_output_schema.rs"]
-mod outsch_ac04_tools_list_carries_output_schema;
-#[path = "outsch_ac05_whoami_one_schema_for_every_connection.rs"]
-mod outsch_ac05_whoami_one_schema_for_every_connection;
-#[path = "outsch_ac06_diff_flags_a_removed_output_field.rs"]
-mod outsch_ac06_diff_flags_a_removed_output_field;
-#[path = "outsch_ac07_tools_doc_has_a_returns_block.rs"]
-mod outsch_ac07_tools_doc_has_a_returns_block;
-#[path = "outschb_ac01_whoami_one_schema_for_every_connection.rs"]
-mod outschb_ac01_whoami_one_schema_for_every_connection;
-#[path = "outschb_ac02_diff_flags_a_removed_output_field.rs"]
-mod outschb_ac02_diff_flags_a_removed_output_field;
-#[path = "outschb_ac03_tools_doc_has_a_returns_block.rs"]
-mod outschb_ac03_tools_doc_has_a_returns_block;

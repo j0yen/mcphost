@@ -26,6 +26,26 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "outsch_ac01_oneof_budget_falsifier.rs"]
+mod outsch_ac01_oneof_budget_falsifier;
+#[path = "outsch_ac02_every_canonical_declares_an_object_output_schema.rs"]
+mod outsch_ac02_every_canonical_declares_an_object_output_schema;
+#[path = "outsch_ac03_contract_dump_marks_aliases_and_outputs.rs"]
+mod outsch_ac03_contract_dump_marks_aliases_and_outputs;
+#[path = "outsch_ac04_tools_list_carries_output_schema.rs"]
+mod outsch_ac04_tools_list_carries_output_schema;
+#[path = "outsch_ac05_whoami_one_schema_for_every_connection.rs"]
+mod outsch_ac05_whoami_one_schema_for_every_connection;
+#[path = "outsch_ac06_diff_flags_a_removed_output_field.rs"]
+mod outsch_ac06_diff_flags_a_removed_output_field;
+#[path = "outsch_ac07_tools_doc_has_a_returns_block.rs"]
+mod outsch_ac07_tools_doc_has_a_returns_block;
+#[path = "outschb_ac01_whoami_one_schema_for_every_connection.rs"]
+mod outschb_ac01_whoami_one_schema_for_every_connection;
+#[path = "outschb_ac02_diff_flags_a_removed_output_field.rs"]
+mod outschb_ac02_diff_flags_a_removed_output_field;
+#[path = "outschb_ac03_tools_doc_has_a_returns_block.rs"]
+mod outschb_ac03_tools_doc_has_a_returns_block;
 #[path = "owncopy_ac01_email_subject_and_body_match_draft.rs"]
 mod owncopy_ac01_email_subject_and_body_match_draft;
 #[path = "owncopy_ac02_from_and_reply_to_passed_verbatim.rs"]

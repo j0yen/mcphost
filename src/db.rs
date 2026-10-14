@@ -14894,6 +14894,16 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-db-maintenance-window R7: when the retention pruner last
+    /// started a cycle (`None` when it never has).
+    pub async fn last_prune_started_unix(&self) -> Result<Option<i64>, AppError> {
+        self.with_conn(|conn| {
+            conn.query_row("SELECT max(started_unix) FROM prune_log", [], |r| r.get(0))
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
     /// P1 requirement 6 (AC9): `/healthz`'s own `last_prune_ok` -- a
     /// lighter read than [`Self::usage_size_stats`] (skips the
     /// `rows_by_table` full-table-scan pass) for a check-every-request
@@ -18490,6 +18500,24 @@ impl Db {
             .map_err(AppError::from)
         })
         .await
+    }
+
+    /// The newest real (non-dry-run) row for `action`, `None` when there is none.
+    pub async fn latest_heal_row(&self, action: crate::heal::HealAction) -> Result<Option<crate::heal::HealRow>, AppError> {
+        let id: Option<i64> = self
+            .with_conn(move |conn| {
+                conn.query_row(
+                    "SELECT max(id) FROM incidents WHERE action = ?1 AND dry_run = 0",
+                    params![action.as_str()],
+                    |r| r.get(0),
+                )
+                .map_err(AppError::from)
+            })
+            .await?;
+        match id {
+            Some(id) => self.find_heal_row(id).await,
+            None => Ok(None),
+        }
     }
 
     /// `/status.json.heal.last_24h`: `(outcome, count)` since `since`.
