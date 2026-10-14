@@ -1581,7 +1581,8 @@
       "AC5": "tests/sjrc_ac05_sweeper_drops_receipts_past_plan_retention.rs",
       "AC6": "tests/sjrc_ac06_manual_schedule_and_event_fires_all_leave_receipts.rs",
       "AC7": "tests/sjrc_ac07_limit_ceiling_and_empty_tool.rs",
-      "AC8": "deferred -- operator-provisioned: Live check of prod via examples/scheduled-job-receipts/proof.sh.",
+      "AC8": "deferred -- operator-provisioned: Live check of prod via examples/scheduled-job-receipts/proof.sh."
+    },
     "oauthmeta": {
       "_prd": "PRD-mcphost-oauth-metadata-lists-hosted-as.md (test_prefix: oauthmeta)",
       "AC1": "tests/oauthmeta_ac01_tenant_document_lists_hosted_as.rs",
