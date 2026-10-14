@@ -362,6 +362,102 @@ pub const CLIENT_INFO_NAMES: &[(&str, &str)] = &[
     ("kilo", "cline"),
 ];
 
+/// `User-Agent` substrings (lower-cased) a client sends on `/mcp` that name
+/// its surface, for callers that send no usable `clientInfo`
+/// (PRD-mcphost-quickstart-by-client R1). Every id here must be in
+/// [`SURFACE_IDS`] (asserted by `tests/qsbc_ac01_*`).
+pub const USER_AGENT_NAMES: &[(&str, &str)] = &[
+    ("claude-code", "claude_code"),
+    ("cursor", "cursor"),
+    ("codex", "codex_cli"),
+    ("gemini", "gemini_cli"),
+    ("opencode", "opencode"),
+    ("vscode", "vscode"),
+    ("windsurf", "windsurf"),
+];
+
+/// One row per surface id: `(surface id, caveats, next tool)`
+/// (PRD-mcphost-quickstart-by-client R1). The only prose a surface carries
+/// beyond its install artefact; `tests/qsbc_ac01_*` asserts the ids equal
+/// [`SURFACE_IDS`] exactly, so a new surface without a row fails the build.
+pub const SURFACE_CAVEATS: &[(&str, &[&str], &str)] = &[
+    ("claude_code", &["Run the command in a shell; restart Claude Code if /mcp does not list mcphost"], "host.whoami"),
+    ("cursor", &["Cursor opens the deep link in the editor; the first request on /mcp creates your tenant"], "host.whoami"),
+    ("vscode", &["VS Code opens the deep link in the editor; confirm the install prompt it shows"], "host.whoami"),
+    (
+        "claude_ai",
+        &["Claude.ai connects over OAuth only: approve the consent page, then call host.whoami"],
+        "host.whoami",
+    ),
+    (
+        "chatgpt",
+        &[
+            "ChatGPT connects over OAuth only: on the consent page press \"Create a new workspace\", then call host.whoami",
+        ],
+        "host.whoami",
+    ),
+    ("codex_cli", &["Run the command in a shell; Codex reads the server list at startup, so restart it"], "host.whoami"),
+    ("gemini_cli", &["Run the command in a shell; Gemini CLI reads the server list at startup, so restart it"], "host.whoami"),
+    ("opencode", &["Run the command in a shell; OpenCode reads the server list at startup, so restart it"], "host.whoami"),
+    ("amp", &["Run the command in a shell; reload Amp so it lists mcphost's tools"], "host.whoami"),
+    ("goose", &["Goose adds the server from a session via /extension; there is no command to run"], "host.whoami"),
+    ("warp", &["Warp adds the server from its agent settings; there is no command to run"], "host.whoami"),
+    ("windsurf", &["Merge the JSON block into mcp_config.json, then refresh Windsurf's MCP list"], "host.whoami"),
+    (
+        "cline",
+        &["Merge the JSON block into cline_mcp_settings.json; the streamableHttp type is required"],
+        "host.whoami",
+    ),
+];
+
+/// R2: the surface a caller is running in, as `(surface id, from)` where
+/// `from` is `"clientInfo"` or `"user_agent"`. `clientInfo.name` wins;
+/// matching is case-insensitive substring over [`CLIENT_INFO_NAMES`] (then
+/// [`SURFACE_EXTRA_PREFIXES`], which names ChatGPT), then
+/// [`USER_AGENT_NAMES`] over the `User-Agent`.
+pub fn detect(client_name: Option<&str>, user_agent: Option<&str>) -> Option<(&'static str, &'static str)> {
+    let find = |text: &str, tables: &[&[(&'static str, &'static str)]]| {
+        let text = text.to_ascii_lowercase();
+        tables
+            .iter()
+            .flat_map(|t| t.iter())
+            .find(|(needle, _)| text.contains(*needle))
+            .map(|(_, id)| *id)
+    };
+    if let Some(id) = client_name.and_then(|n| find(n, &[CLIENT_INFO_NAMES, SURFACE_EXTRA_PREFIXES])) {
+        return Some((id, "clientInfo"));
+    }
+    user_agent.and_then(|ua| find(ua, &[USER_AGENT_NAMES])).map(|id| (id, "user_agent"))
+}
+
+/// R3/R5: the `client` block `host.quickstart` and
+/// `GET /connect/go/{id}?format=json` both return, rendered for `base`.
+/// `detected` is `None` for an unknown caller: every field but `all` is
+/// then null (`caveats` empty).
+pub fn client_block(base: &str, detected: Option<(&str, &str)>) -> serde_json::Value {
+    let all = install_doc_url();
+    let Some((id, from)) = detected else {
+        return json!({
+            "detected": null, "from": null, "install": null, "snippet": null,
+            "caveats": [], "next": null, "all": all,
+        });
+    };
+    let surface = surface_for(base, id);
+    let row = SURFACE_CAVEATS.iter().find(|(row_id, _, _)| *row_id == id);
+    json!({
+        "detected": id,
+        "from": from,
+        "snippet": surface.as_ref().map(|s| s.artefact.clone()),
+        "install": surface,
+        "caveats": row.map(|(_, caveats, _)| caveats.to_vec()).unwrap_or_default(),
+        "next": row.map(|(_, _, tool)| json!({
+            "tool": tool,
+            "why": "First call on this connection: read-only, and it creates your tenant.",
+        })),
+        "all": all,
+    })
+}
+
 /// The agent-readable install document for `base`: a "which client am I"
 /// table, one `## ` section per install surface (artefact in a fenced
 /// block), then the "first call" section. Generated, never hand-edited:

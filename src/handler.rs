@@ -576,6 +576,17 @@ fn peer_client_info(ctx: &RequestContext<RoleServer>) -> Option<(String, String)
     })
 }
 
+/// PRD-mcphost-quickstart-by-client R4: the surface this `host.quickstart`
+/// caller is running in -- `clientInfo` (initialize or per-request `_meta`,
+/// as [`peer_client_info`] reads it) first, then the `User-Agent`.
+fn quickstart_detection(
+    ctx: &RequestContext<RoleServer>,
+    parts: &http::request::Parts,
+) -> Option<(&'static str, &'static str)> {
+    let client = peer_client_info(ctx);
+    crate::install_links::detect(client.as_ref().map(|(name, _)| name.as_str()), user_agent_header(parts).as_deref())
+}
+
 // ---- static control-plane / admin tool descriptors -----------------------
 
 fn schema(props: Value, required: &[&str]) -> Map<String, Value> {
@@ -10207,6 +10218,21 @@ impl ServerHandler for McpHostHandler {
                 let path_url_secret = url_path_secret(parts);
                 match control::quickstart(&self.state, Some(tenant), &args, path_url_secret) {
                     Ok(mut result) => {
+                        // PRD-mcphost-quickstart-by-client R3/R6: the
+                        // `client` block for the surface asking, rendered
+                        // for the caller's own personal URL when this call
+                        // came over `/u/{secret}/mcp`; the detected id is
+                        // written to `tenants.client_name` when the
+                        // tenant has none (best-effort, never overwrites).
+                        let detected = quickstart_detection(&ctx, parts);
+                        let public = self.state.public_url.trim_end_matches('/');
+                        let base = path_url_secret.map_or_else(|| public.to_string(), |secret| format!("{public}/u/{secret}"));
+                        result["client"] = crate::install_links::client_block(&base, detected);
+                        if tenant.client_name.is_none()
+                            && let Some((id, _)) = detected
+                        {
+                            let _ = self.state.db.set_tenant_client_info(tenant.id, id.to_string(), String::new()).await;
+                        }
                         // PRD-mcphost-composition requirement 6: once this
                         // tenant has at least two tools of its own,
                         // `host.quickstart(kind="chain")`'s example wires
@@ -10250,7 +10276,13 @@ impl ServerHandler for McpHostHandler {
                     Err(e) => Err(e),
                 }
             }
-            (_, "host.quickstart") => control::quickstart(&self.state, None, &args, None),
+            (_, "host.quickstart") => control::quickstart(&self.state, None, &args, None).map(|mut result| {
+                // PRD-mcphost-quickstart-by-client R3: anonymous callers get
+                // the same `client` block, rendered for the public endpoint.
+                result["client"] =
+                    crate::install_links::client_block(&self.state.public_url, quickstart_detection(&ctx, parts));
+                result
+            }),
             // PRD-mcphost-help-search-tool R4: public text, no tenant data --
             // reachable anonymously (never implicit-signs-up) or as a tenant.
             (_, "host.help.search") => crate::help_search::call(&self.state.kinds, &args),

@@ -1332,9 +1332,15 @@ fn render_connect_page(links: &crate::install_links::Links) -> String {
 /// deep link (`deeplink` kind) or renders the surface's instruction page
 /// (every other kind). Any `client` outside the install table's twelve ids
 /// is 404 and records nothing.
+#[derive(serde::Deserialize)]
+struct ConnectGoQuery {
+    format: Option<String>,
+}
+
 async fn connect_go(
     State(state): State<Arc<AppState>>,
     Path(client): Path<String>,
+    Query(params): Query<ConnectGoQuery>,
     headers: HeaderMap,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
 ) -> Response {
@@ -1343,6 +1349,14 @@ async fn connect_go(
     let Some(surface) = crate::install_links::surface_for(&state.public_url, &id) else {
         return StatusCode::NOT_FOUND.into_response();
     };
+    // PRD-mcphost-quickstart-by-client R5: `?format=json` is the same
+    // `client` block `host.quickstart` returns (`from` is `"path"`: the id
+    // came from the URL). Docs fetch it; it is not an install click, so no
+    // funnel event.
+    if params.format.as_deref() == Some("json") {
+        let block = crate::install_links::client_block(&state.public_url, Some((surface.id, "path")));
+        return (StatusCode::OK, axum::Json(block)).into_response();
+    }
     let ip = crate::claim::source_ip(&headers, peer);
     let origin = crate::state::classify_funnel_origin(&ip, false, &state.fleet_ips);
     let event = format!("install_link:{}", surface.id);

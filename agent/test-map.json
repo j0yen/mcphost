@@ -1540,6 +1540,17 @@
       "AC2": "tests/hsr_ac02_import_mcphost_dev_finds_python_example.rs",
       "AC3": "tests/hsr_ac03_kind_filter_and_unknown_kind.rs",
       "AC4": "tests/hsr_ac04_response_under_2kb_truncation_marked.rs"
+    },
+    "qsbc": {
+      "_prd": "PRD-mcphost-quickstart-by-client.md (test_prefix: qsbc)",
+      "AC1": "tests/qsbc_ac01_detection_keys_on_known_names.rs",
+      "AC2": "tests/qsbc_ac02_quickstart_client_cursor.rs",
+      "AC3": "tests/qsbc_ac03_quickstart_client_user_agent.rs",
+      "AC4": "tests/qsbc_ac04_quickstart_client_unknown.rs",
+      "AC5": "tests/qsbc_ac05_quickstart_client_chatgpt.rs",
+      "AC6": "tests/qsbc_ac06_connect_go_json_matches_quickstart.rs",
+      "AC7": "tests/qsbc_ac07_quickstart_writes_client_name.rs",
+      "AC8": "deferred -- operator-provisioned: AC8 is a live prod curl against https://mcphost.dev/mcp after deploy."
     }
   }
 }
