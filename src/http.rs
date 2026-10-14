@@ -666,6 +666,12 @@ async fn well_known_oauth_protected_resource(State(state): State<Arc<AppState>>)
     }
 }
 
+/// PRD-mcphost-oauth-first-entry-url requirement 3 (AC2): the entry
+/// document, served at `oauth::entry_metadata_path()`.
+async fn well_known_oauth_protected_resource_entry(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    Json(crate::oauth::protected_resource_metadata_for_entry(&state))
+}
+
 /// PRD-mcphost-hosted-authorization-server AC1: `GET
 /// /.well-known/oauth-authorization-server` and `GET
 /// /.well-known/openid-configuration` -- the same RFC 8414 document at
@@ -1029,6 +1035,8 @@ async fn oauth_401_upgrade(State(state): State<Arc<AppState>>, req: Request<Body
     let path = req.uri().path();
     let metadata_url = if path == "/mcp" {
         format!("{}/.well-known/oauth-protected-resource", state.public_url)
+    } else if path == crate::oauth::OAUTH_ENTRY_PATH {
+        crate::oauth::entry_metadata_url(&state.public_url)
     } else if let Some(ns) = path.strip_prefix("/t/").and_then(|s| s.strip_suffix("/mcp")) {
         crate::oauth::tenant_metadata_url(&state.public_url, ns)
     } else {
@@ -1520,6 +1528,62 @@ async fn require_known_tenant_namespace(
 }
 
 
+/// PRD-mcphost-oauth-first-entry-url requirement 2 (AC1): every request on
+/// the OAuth-first entry path answers 401 + `WWW-Authenticate: Bearer
+/// resource_metadata="<entry document>", scope="mcp"` unless it carries a
+/// bearer, BEFORE any JSON-RPC parsing and for every method including
+/// `initialize` -- the one thing an OAuth-only client (Claude.ai, ChatGPT)
+/// needs to start discovery. Runs outside (and in front of) the implicit-
+/// signup dispatch, so a credential-less request never creates a tenant.
+async fn require_entry_bearer(State(state): State<Arc<AppState>>, req: Request<Body>, next: Next) -> Response {
+    let Some(token) = crate::auth::extract_bearer(req.headers()) else {
+        return entry_unauthorized(&state, None);
+    };
+    // requirement 4: only a valid OAuth token minted for the entry resource
+    // gets past the gate -- a raw tenant key, a malformed bearer, or a token
+    // for another audience is 401 `invalid_token` / `wrong_audience`.
+    if token.split('.').count() != 3 {
+        return entry_unauthorized(&state, Some("malformed"));
+    }
+    let verdict = match crate::oauth::validate_bearer(&state, &token).await {
+        Ok(caller) => crate::oauth::check_entry_audience(&state.public_url, req.uri().path(), &caller),
+        Err(e) => Err(e),
+    };
+    match verdict {
+        Ok(()) => next.run(req).await,
+        Err(crate::errors::AppError::InvalidToken(reason)) => entry_unauthorized(&state, Some(reason)),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error_code": "storage", "error": "storage error"})),
+        )
+            .into_response(),
+    }
+}
+
+/// The entry path's 401: the challenge names the entry document; the body
+/// is the JSON-RPC error shape every other 401 on this server carries
+/// (`error.data.error_code` / `error_description`).
+fn entry_unauthorized(state: &AppState, invalid: Option<&'static str>) -> Response {
+    let metadata_url = crate::oauth::entry_metadata_url(&state.public_url);
+    let data = match invalid {
+        Some(reason) => json!({"error_code": "invalid_token", "error_description": reason}),
+        None => json!({
+            "error_code": "authorization_required",
+            "error": "this URL is OAuth-only: authorize through the metadata named in WWW-Authenticate",
+        }),
+    };
+    let body = json!({
+        "jsonrpc": "2.0",
+        "id": null,
+        "error": {"code": -32001, "message": "authorization required", "data": data},
+    });
+    let mut response = (StatusCode::UNAUTHORIZED, Json(body)).into_response();
+    if let Ok(value) = HeaderValue::from_str(&format!("Bearer resource_metadata=\"{metadata_url}\", scope=\"mcp\"")) {
+        response.headers_mut().insert(axum::http::header::WWW_AUTHENTICATE, value);
+    }
+    response
+}
+
 /// PRD-mcphost-session-bound-tenant-after-signup requirement 1: the session
 /// identity the binding map is keyed by.
 ///
@@ -1686,7 +1750,16 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
     // merged router) for exactly the reason `tenant_mcp_router` above
     // already documents: `.layer()` would wrap the default fallback too.
     let root_mcp_router = Router::new()
-        .route_service("/mcp", service)
+        .route_service("/mcp", service.clone())
+        .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id));
+
+    // PRD-mcphost-oauth-first-entry-url requirement 2: `OAUTH_ENTRY_PATH`
+    // serves the identical streamable-HTTP service as `/mcp`, behind a gate
+    // that 401s (with the entry document's challenge) before the service
+    // ever parses a body. Same `route_layer` shape as the routers above.
+    let entry_mcp_router = Router::new()
+        .route_service(crate::oauth::OAUTH_ENTRY_PATH, service.clone())
+        .route_layer(middleware::from_fn_with_state(state.clone(), require_entry_bearer))
         .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id));
 
     // PRD-mcphost-public-tool-url requirement 11 (AC10): its own sub-router
@@ -1772,6 +1845,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
             "/.well-known/oauth-protected-resource",
             get(well_known_oauth_protected_resource),
         )
+        .route(&crate::oauth::entry_metadata_path(), get(well_known_oauth_protected_resource_entry))
         .route(
             "/.well-known/oauth-authorization-server",
             get(well_known_authorization_server),
@@ -1874,6 +1948,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         .merge(tenant_mcp_router)
         .merge(url_mcp_router)
         .merge(invite_mcp_router)
+        .merge(entry_mcp_router)
         .merge(public_tool_router)
         // PRD-mcphost-session-bound-tenant-after-signup requirement 7
         // (AC10): `oauth_401_upgrade` must run INSIDE (closer to the

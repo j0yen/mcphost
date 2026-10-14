@@ -128,6 +128,7 @@ async fn resolve_auth(state: &AppState, parts: &http::request::Parts) -> Result<
         // autherr_ac4's "not-a-real-key-at-all" case is unaffected).
         None if key.split('.').count() == 3 => {
             let result = crate::oauth::validate_bearer(state, &key).await?;
+            crate::oauth::check_entry_audience(&state.public_url, parts.uri.path(), &result)?;
             match state.db.find_tenant_by_id(result.tenant_id).await? {
                 Some(t) if t.disabled => Err(AppError::TenantDisabled),
                 Some(t) => {

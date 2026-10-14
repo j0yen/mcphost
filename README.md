@@ -256,7 +256,7 @@ Docs: <https://code.visualstudio.com/api/extension-guides/ai/mcp> (checked 2026-
 
 1. Open Settings, then Connectors, then Add custom connector.
 2. Name: mcphost
-3. Remote MCP server URL: https://mcphost.dev/mcp
+3. Remote MCP server URL: https://mcphost.dev/login/mcp
 4. Save, then enable the connector in a chat to connect.
 
 Docs: <https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp> (checked 2026-10-09)
@@ -266,7 +266,7 @@ Docs: <https://support.claude.com/en/articles/11175166-get-started-with-custom-c
 1. Open ChatGPT, then Plugins, then Add.
 2. Choose Create custom MCP server.
 3. Name: mcphost
-4. MCP server URL: https://mcphost.dev/mcp
+4. MCP server URL: https://mcphost.dev/login/mcp
 5. Choose OAuth, then Create. On the consent page press Create a new workspace.
 
 Docs: <https://platform.openai.com/docs/mcp> (checked 2026-10-09)

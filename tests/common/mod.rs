@@ -25,6 +25,49 @@ use mcphost::secrets::SecretBox;
 use mcphost::state::AppState;
 use serde_json::{Value, json};
 
+/// Serializes the tests that read or rewrite the doc files
+/// `scripts/sandbox-api-doc-check.sh` owns: `--write` rewrites them in place
+/// and a concurrent copy or check can see a half-written file.
+pub static DOC_CHECK_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// A scratch copy of every file `scripts/sandbox-api-doc-check.sh` reads or
+/// regenerates, laid out at the same relative paths. A test that needs to run
+/// the script in `--write` mode does it here, never on the repo's own tree: a
+/// `--write` on the real tree is visible, half-finished, to every concurrently
+/// running test that reads `www/llms.txt`, `README.md` and the other docs.
+pub fn doc_check_scratch(label: &str) -> PathBuf {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let dir = std::env::temp_dir().join(format!(
+        "mcphost-doccheck-{label}-{}-{}",
+        process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    let _guard = DOC_CHECK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    for rel in [
+        "scripts/sandbox-api-doc-check.sh",
+        "scripts/host-tools-doc-check.sh",
+        "src/write_verbs.rs",
+        "src/kinds/python.rs",
+        "src/oauth.rs",
+        "docs/host-tools.md",
+        "docs/kinds/python.md",
+        "docs/oauth-connect.md",
+        "www/llms.txt",
+        "www/llms-install.md",
+        "www/llms-full.txt",
+        "www/index.html",
+        "plugin/skills/mcphost/SKILL.md",
+        "README.md",
+        "llms-install.md",
+    ] {
+        let dest = dir.join(rel);
+        std::fs::create_dir_all(dest.parent().expect("parent")).expect("mkdir scratch");
+        std::fs::copy(root.join(rel), &dest).unwrap_or_else(|e| panic!("copy {rel}: {e}"));
+    }
+    dir
+}
+
 /// The anonymous `/healthz` key set, read from the crate const so no test
 /// restates it (`scripts/healthz-keys-lint.py` fails a literal).
 pub fn anon_healthz_keys() -> &'static [&'static str] {
@@ -2474,4 +2517,76 @@ pub async fn ttfs_tenant(
         }
     }
     db.find_tenant_by_namespace(namespace.to_string()).await.expect("query").expect("tenant exists")
+}
+
+/// PRD-mcphost-oauth-first-entry-url: DCR-register a native client, post the
+/// consent form for `resource` with `consent_extra` (`new_workspace=1`, or a
+/// `tenant_key`), and exchange the code. Returns `(client_id, token response
+/// JSON)` -- the whole token response, so a caller reads `access_token`
+/// without this helper deciding what else it needs.
+pub async fn oauth_consent_and_token(base_url: &str, resource: &str, consent_extra: &[(&str, &str)]) -> (String, Value) {
+    use base64::Engine as _;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use sha2::{Digest, Sha256};
+
+    let http = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).build().unwrap();
+    let register: Value = http
+        .post(format!("{base_url}/oauth/register"))
+        .json(&json!({"application_type": "native", "redirect_uris": ["http://127.0.0.1/cb"]}))
+        .send()
+        .await
+        .expect("POST /oauth/register")
+        .json()
+        .await
+        .expect("register json");
+    let client_id = register["client_id"].as_str().expect("client_id").to_string();
+    let verifier = "a-pkce-verifier-at-least-43-chars-long-for-realism";
+    let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
+    let mut form: Vec<(&str, &str)> = vec![
+        ("response_type", "code"),
+        ("client_id", client_id.as_str()),
+        ("redirect_uri", "http://127.0.0.1/cb"),
+        ("code_challenge", challenge.as_str()),
+        ("code_challenge_method", "S256"),
+        ("state", "abc"),
+        ("scope", "mcp"),
+        ("resource", resource),
+    ];
+    form.extend_from_slice(consent_extra);
+    let consent = http
+        .post(format!("{base_url}/oauth/authorize"))
+        .form(&form)
+        .send()
+        .await
+        .expect("POST /oauth/authorize");
+    assert!(consent.status().is_redirection(), "consent must redirect: {}", consent.status());
+    let location = consent.headers().get("location").expect("Location").to_str().unwrap().to_string();
+    let (_, query) = location.split_once('?').expect("redirect query");
+    let code = query.split('&').find_map(|p| p.strip_prefix("code=")).unwrap_or_else(|| panic!("no code in {location}"));
+    let token: Value = http
+        .post(format!("{base_url}/oauth/token"))
+        .form(&[
+            ("grant_type", "authorization_code"),
+            ("code", code),
+            ("redirect_uri", "http://127.0.0.1/cb"),
+            ("client_id", client_id.as_str()),
+            ("code_verifier", verifier),
+        ])
+        .send()
+        .await
+        .expect("POST /oauth/token")
+        .json()
+        .await
+        .expect("token json");
+    (client_id, token)
+}
+
+/// The signature-unverified `aud` claim of a JWT access token, for tests
+/// that assert which resource a token was minted for.
+pub fn jwt_aud(token: &str) -> String {
+    use base64::Engine as _;
+    let payload = token.split('.').nth(1).expect("JWT payload segment");
+    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(payload).expect("payload base64url");
+    let claims: Value = serde_json::from_slice(&bytes).expect("payload json");
+    claims["aud"].as_str().expect("aud claim").to_string()
 }

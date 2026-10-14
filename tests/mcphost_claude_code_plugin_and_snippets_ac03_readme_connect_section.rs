@@ -6,6 +6,7 @@
 
 const README: &str = include_str!("../README.md");
 const URL: &str = "https://mcphost.dev/mcp";
+const ENTRY_URL: &str = "https://mcphost.dev/login/mcp";
 
 fn connect_section() -> &'static str {
     let start = README
@@ -43,9 +44,12 @@ fn each_client_block_mentions_the_url() {
             .unwrap_or_else(|| panic!("'## Connect' section must mention {label}"));
         let window_end = (label_idx + 600).min(section.len());
         let window = &section[label_idx..window_end];
+        // PRD-mcphost-oauth-first-entry-url: Claude.ai is an OAuth-only
+        // client, so its block names the OAuth-first entry URL instead.
+        let want = if label == "Claude.ai" { ENTRY_URL } else { URL };
         assert!(
-            window.contains(URL),
-            "the {label} block must contain {URL} within a reasonable distance of its label"
+            window.contains(want),
+            "the {label} block must contain {want} within a reasonable distance of its label"
         );
     }
 }

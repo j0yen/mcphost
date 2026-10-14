@@ -177,6 +177,44 @@ pub fn resource_tenant_namespace(public_url: &str, resource: &str) -> Option<Str
         .map(str::to_string)
 }
 
+/// PRD-mcphost-oauth-first-entry-url requirement 1: the one path constant the
+/// OAuth-first entry URL is built from. The router, the canonical-resource
+/// helpers below, the metadata route, and the docs/doc-check assertions all
+/// read this -- never a second spelling of the literal.
+pub const OAUTH_ENTRY_PATH: &str = "/login/mcp";
+
+/// The RFC 9728 well-known prefix the protected-resource documents live under.
+pub const PROTECTED_RESOURCE_WELL_KNOWN: &str = "/.well-known/oauth-protected-resource";
+
+/// requirement 1: the entry resource URI (`<public_url>/login/mcp`) -- what
+/// a client names as `resource` and what an entry token carries as `aud`.
+pub fn entry_resource_uri(public_url: &str) -> String {
+    format!("{}{OAUTH_ENTRY_PATH}", public_url.trim_end_matches('/'))
+}
+
+/// requirement 1: the route the entry document is served at.
+pub fn entry_metadata_path() -> String {
+    format!("{PROTECTED_RESOURCE_WELL_KNOWN}{OAUTH_ENTRY_PATH}")
+}
+
+/// requirement 4: an entry-audience token is valid on the entry path and only
+/// there, and the entry path accepts only entry-audience tokens (a token for
+/// `/mcp`, a per-tenant resource, or a bring-your-own issuer is
+/// `wrong_audience` there). `path` is the request URI path.
+pub fn check_entry_audience(public_url: &str, path: &str, caller: &OauthCaller) -> Result<(), AppError> {
+    let is_entry_token = caller.audience.as_deref() == Some(entry_resource_uri(public_url).as_str());
+    if (path == OAUTH_ENTRY_PATH) == is_entry_token {
+        Ok(())
+    } else {
+        Err(AppError::InvalidToken("wrong_audience"))
+    }
+}
+
+/// requirement 2: the entry document URL the 401 challenge names.
+pub fn entry_metadata_url(public_url: &str) -> String {
+    format!("{}{}", public_url.trim_end_matches('/'), entry_metadata_path())
+}
+
 /// P2 requirement 8: `$MCPHOST_OAUTH_ALLOWED_ALGS`, a comma-separated list
 /// of `RS256`/`ES256` (the only two this crate's JWK-to-`DecodingKey`
 /// mapping in [`decoding_key_for`] can ever produce); an unrecognized name
@@ -478,6 +516,10 @@ pub struct OauthCaller {
     pub email: Option<String>,
     /// See [`OauthCaller::email`]; surfaced as `MCPHOST_END_USER_NAME`.
     pub name: Option<String>,
+    /// PRD-mcphost-oauth-first-entry-url requirement 4: the resource a hosted
+    /// token was minted for (its `aud`), so the path it is presented on can be
+    /// checked against it. `None` for a bring-your-own issuer's token.
+    pub audience: Option<String>,
 }
 
 /// The JWT's `payload` segment, decoded (base64url) but NOT signature
@@ -660,6 +702,7 @@ pub async fn validate_bearer(state: &AppState, token: &str) -> Result<OauthCalle
         scope,
         email: None,
         name: None,
+        audience: None,
     })
 }
 
@@ -1011,7 +1054,19 @@ pub async fn admin_stats(state: &AppState) -> Result<Value, AppError> {
             *tally.entry(word.to_string()).or_insert(0) += 1;
         }
     }
-    Ok(json!({"consents_by_scope_7d": tally}))
+    // PRD-mcphost-oauth-first-entry-url requirement 7: what came in through
+    // the entry URL. Registrations are grants minted for the entry resource;
+    // calls are OAuth (`hosted_token`) calls by tenants whose every grant is
+    // an entry grant, so a call is never attributed to the entry URL when the
+    // tenant could equally have made it over `/mcp`.
+    let entry = entry_resource_uri(&state.public_url);
+    let entry_url_registrations_7d = state.db.entry_url_registrations_since(entry.clone(), since).await?;
+    let entry_url_calls_7d = state.db.entry_url_calls_since(entry, since).await?;
+    Ok(json!({
+        "consents_by_scope_7d": tally,
+        "entry_url_registrations_7d": entry_url_registrations_7d,
+        "entry_url_calls_7d": entry_url_calls_7d,
+    }))
 }
 
 /// `admin.oauth.issuers` (AC9): every registered issuer, its owning
@@ -1110,6 +1165,22 @@ pub async fn protected_resource_metadata(state: &AppState) -> Result<Value, AppE
         "scopes_supported": ["mcp"],
         "resource_documentation": format!("{}/docs", state.public_url),
     }))
+}
+
+/// `GET /.well-known/oauth-protected-resource/login/mcp` (PRD-mcphost-oauth-
+/// first-entry-url requirement 3 / AC2): `resource` is the entry resource,
+/// `authorization_servers` is exactly this host (the hosted authorization
+/// server -- never a tenant's registered issuer, so the document stays
+/// tenant-less and non-enumerating), and `scopes_supported` is the root
+/// document's.
+pub fn protected_resource_metadata_for_entry(state: &AppState) -> Value {
+    json!({
+        "resource": entry_resource_uri(&state.public_url),
+        "authorization_servers": [state.public_url.trim_end_matches('/')],
+        "bearer_methods_supported": ["header"],
+        "scopes_supported": ["mcp"],
+        "resource_documentation": format!("{}/docs", state.public_url),
+    })
 }
 
 /// `GET /.well-known/oauth-protected-resource/t/{ns}/mcp` (PRD-mcphost-tenant-resource-metadata

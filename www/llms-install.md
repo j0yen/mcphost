@@ -61,7 +61,7 @@ Follow these steps:
 ```text
 1. Open Settings, then Connectors, then Add custom connector.
 2. Name: mcphost
-3. Remote MCP server URL: https://mcphost.dev/mcp
+3. Remote MCP server URL: https://mcphost.dev/login/mcp
 4. Save, then enable the connector in a chat to connect.
 ```
 
@@ -75,7 +75,7 @@ Follow these steps:
 1. Open ChatGPT, then Plugins, then Add.
 2. Choose Create custom MCP server.
 3. Name: mcphost
-4. MCP server URL: https://mcphost.dev/mcp
+4. MCP server URL: https://mcphost.dev/login/mcp
 5. Choose OAuth, then Create. On the consent page press Create a new workspace.
 ```
 

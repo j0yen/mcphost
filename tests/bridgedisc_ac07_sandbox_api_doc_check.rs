@@ -27,6 +27,15 @@ const TOUCHED: &[&str] = &[
     "docs/kinds/python.md",
     "www/llms.txt",
     "plugin/skills/mcphost/SKILL.md",
+    "src/oauth.rs",
+    // PRD-mcphost-oauth-first-entry-url: the script also checks that every
+    // client page names the one OAUTH_ENTRY_PATH.
+    "README.md",
+    "llms-install.md",
+    "www/llms-install.md",
+    "www/llms-full.txt",
+    "www/index.html",
+    "docs/oauth-connect.md",
 ];
 
 fn scratch_copy(label: &str) -> std::path::PathBuf {
@@ -35,6 +44,7 @@ fn scratch_copy(label: &str) -> std::path::PathBuf {
         std::process::id(),
         mcphost::state::now_unix_ms()
     ));
+    let _doc_files = crate::common::DOC_CHECK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     for rel in TOUCHED {
         let dest = dir.join(rel);
         std::fs::create_dir_all(dest.parent().expect("parent dir")).expect("create scratch subdir");

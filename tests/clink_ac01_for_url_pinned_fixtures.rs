@@ -23,7 +23,9 @@ const CLAUDE_CODE_FIXTURE: &str = "claude mcp add --transport http mcphost https
 const CLAUDE_AI_STEPS_FIXTURE: &[&str] = &[
     "Open Settings, then Connectors, then Add custom connector.",
     "Name: mcphost",
-    "Remote MCP server URL: https://mcphost.dev/mcp",
+    // PRD-mcphost-oauth-first-entry-url requirement 6: Claude.ai is given the
+    // OAuth-first entry URL, not the root.
+    "Remote MCP server URL: https://mcphost.dev/login/mcp",
     "Save, then enable the connector in a chat to connect.",
 ];
 

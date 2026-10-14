@@ -42,6 +42,7 @@ fn host_tools_doc_names_the_reason_beside_the_verb_and_the_check_script_catches_
 
     // Run the real check script against a scratch copy of what it reads.
     let dir = std::env::temp_dir().join(format!("mcphost-dryv-ac06-{}-{}", std::process::id(), mcphost::state::now_unix_ms()));
+    let doc_files = common::DOC_CHECK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     for rel in [
         "scripts/sandbox-api-doc-check.sh",
         "scripts/host-tools-doc-check.sh",
@@ -51,11 +52,21 @@ fn host_tools_doc_names_the_reason_beside_the_verb_and_the_check_script_catches_
         "docs/kinds/python.md",
         "www/llms.txt",
         "plugin/skills/mcphost/SKILL.md",
+        "src/oauth.rs",
+        // PRD-mcphost-oauth-first-entry-url: the script also checks that every
+        // client page names the one OAUTH_ENTRY_PATH.
+        "README.md",
+        "llms-install.md",
+        "www/llms-install.md",
+        "www/llms-full.txt",
+        "www/index.html",
+        "docs/oauth-connect.md",
     ] {
         let dest = dir.join(rel);
         std::fs::create_dir_all(dest.parent().expect("parent")).expect("mkdir");
         std::fs::copy(repo_root().join(rel), &dest).unwrap_or_else(|e| panic!("copy {rel}: {e}"));
     }
+    drop(doc_files);
     let run = |args: &[&str]| {
         Command::new("bash")
             .arg(dir.join("scripts/sandbox-api-doc-check.sh"))
@@ -75,6 +86,12 @@ fn host_tools_doc_names_the_reason_beside_the_verb_and_the_check_script_catches_
 
     let fixed = run(&["--write"]);
     assert!(fixed.status.success(), "{}", String::from_utf8_lossy(&fixed.stderr));
-    assert!(run(&[]).status.success(), "--write regenerates the doc");
+    let regenerated = run(&[]);
+    assert!(
+        regenerated.status.success(),
+        "--write regenerates the doc: {}{}",
+        String::from_utf8_lossy(&regenerated.stdout),
+        String::from_utf8_lossy(&regenerated.stderr)
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }

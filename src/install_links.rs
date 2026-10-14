@@ -199,10 +199,17 @@ pub fn for_url(base: &str) -> Links {
 
     let claude_code_command = format!("claude mcp add --transport http {CLIENT_NAME} {mcp_url}");
 
+    // PRD-mcphost-oauth-first-entry-url requirement 6: the OAuth-only clients
+    // (Claude.ai, ChatGPT) are given the OAuth-first entry URL, the one URL
+    // that answers them with the 401 their connector flow needs. A personal
+    // `/u/<secret>` base already carries its own credential and keeps its
+    // own `/mcp` URL.
+    let oauth_url = if base.contains("/u/") { mcp_url.clone() } else { crate::oauth::entry_resource_uri(base) };
+
     let claude_ai_steps = vec![
         "Open Settings, then Connectors, then Add custom connector.".to_string(),
         format!("Name: {CLIENT_NAME}"),
-        format!("Remote MCP server URL: {mcp_url}"),
+        format!("Remote MCP server URL: {oauth_url}"),
         "Save, then enable the connector in a chat to connect.".to_string(),
     ];
 
@@ -210,7 +217,7 @@ pub fn for_url(base: &str) -> Links {
         "Open ChatGPT, then Plugins, then Add.".to_string(),
         "Choose Create custom MCP server.".to_string(),
         format!("Name: {CLIENT_NAME}"),
-        format!("MCP server URL: {mcp_url}"),
+        format!("MCP server URL: {oauth_url}"),
         "Choose OAuth, then Create. On the consent page press Create a new workspace.".to_string(),
     ];
     let goose_steps = vec![

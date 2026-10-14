@@ -731,7 +731,10 @@ fn error_redirect(redirect_uri: &str, error: &str, state_param: Option<&str>) ->
 /// recognized per-tenant resource, `Err(())` for anything else (an
 /// unrecognized `resource`, or one naming a tenant that doesn't exist).
 async fn resolve_resource_tenant(state: &AppState, resource: &str) -> Result<Option<crate::db::Tenant>, ()> {
-    if resource == root_resource(state) {
+    // PRD-mcphost-oauth-first-entry-url requirement 4: the OAuth-first entry
+    // resource has root semantics (key, claim code, or "new workspace"),
+    // minting an `aud` of its own.
+    if resource == root_resource(state) || resource == crate::oauth::entry_resource_uri(&state.public_url) {
         return Ok(None);
     }
     let Some(ns) = crate::oauth::resource_tenant_namespace(&state.public_url, resource) else {
@@ -1960,6 +1963,7 @@ pub async fn validate_hosted_bearer(
         name: (is_assertion_grant || is_federated)
             .then(|| claims.get("name").and_then(Value::as_str).map(str::to_string))
             .flatten(),
+        audience: Some(aud.to_string()),
     })
 }
 
