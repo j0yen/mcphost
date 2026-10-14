@@ -86,6 +86,12 @@ fn host_tools_doc_names_the_reason_beside_the_verb_and_the_check_script_catches_
 
     let fixed = run(&["--write"]);
     assert!(fixed.status.success(), "{}", String::from_utf8_lossy(&fixed.stderr));
-    assert!(run(&[]).status.success(), "--write regenerates the doc");
+    let regenerated = run(&[]);
+    assert!(
+        regenerated.status.success(),
+        "--write regenerates the doc: {}{}",
+        String::from_utf8_lossy(&regenerated.stdout),
+        String::from_utf8_lossy(&regenerated.stderr)
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
