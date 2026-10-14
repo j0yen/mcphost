@@ -2646,6 +2646,26 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &["name"],
             ),
         ),
+        // PRD-mcphost-host-doctor-tool R2: recent failed calls, grouped.
+        Tool::new(
+            "host.doctor",
+            "What has been going wrong: this tenant's newest failed calls grouped by error \
+             family, each group with the next concrete step. Returns {window: {calls, failed, \
+             first_ts, last_ts}, groups: [{code, family, class, count, tools, last_ts, \
+             first_source_line?, line?, next}]} biggest group first; tool_exception groups carry \
+             the tool-source line of the newest failure. No failed calls: groups: [] and a next \
+             saying so (hint: host.quickstart when the tenant has no tools yet). The admin key \
+             may pass tenant: <namespace>; a tenant key naming another tenant is forbidden.",
+            host_schema(
+                json!({
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 200, "description": "How many of the newest failed calls to group (default 50)."},
+                    "tool": {"type": "string", "description": "Only this tool's failures."},
+                    "since_s": {"type": "integer", "minimum": 1, "description": "Only failures from the last this-many seconds."},
+                    "tenant": {"type": "string", "description": "A tenant namespace; admin key only (a tenant key may name only itself)."},
+                }),
+                &[],
+            ),
+        ),
         // PRD-mcphost-call-trace-replay R5/R6: what the host saw for one call.
         Tool::new(
             "host.call_trace",
@@ -6266,6 +6286,7 @@ impl McpHostHandler {
             }
             "host.uptime.create" => self.uptime_create(tenant, args, calls_auth_method, end_user).await,
             "host.call_trace" => self.call_trace(Some(tenant), args).await,
+            "host.doctor" => self.doctor(Some(tenant), args).await,
             "host.webhook_inbox.create" => crate::webhook_inbox::create(&self.state, tenant, &args).await,
             "host.tool.history" => control::tool_history(&self.state, tenant, &args).await,
             "host.tool.rollback" => control::tool_rollback(&self.state, tenant, &args).await,
@@ -7194,6 +7215,7 @@ impl McpHostHandler {
                         Some(run_id.clone()),
                         step_tool.clone(),
                         trace,
+                        None,
                     )
                     .await
                 {
@@ -7299,6 +7321,7 @@ impl McpHostHandler {
                         Some(run_id.clone()),
                         step_tool.clone(),
                         trace,
+                        Some(crate::doctor::error_summary_of(&app_err)),
                     )
                     .await
                 {
@@ -7337,6 +7360,7 @@ impl McpHostHandler {
                         Some(run_id.clone()),
                         step_tool.clone(),
                         trace,
+                        Some(crate::doctor::error_summary_of(&AppError::CallTimeout(resolved_timeout.as_secs()))),
                     )
                     .await
                 {
@@ -7780,6 +7804,65 @@ impl McpHostHandler {
             }
         }
     }
+    /// PRD-mcphost-host-doctor-tool R2/R5/R6: `host.doctor`. `tenant` is
+    /// `None` for the admin bearer, which must name the tenant to read.
+    async fn doctor(&self, tenant: Option<&Tenant>, args: Value) -> Result<Value, AppError> {
+        if let Some(known) = known_control_plane_args("host.doctor", &self.state.kinds) {
+            crate::errors::check_unknown_argument(&args, "host.doctor", &known)?;
+        }
+        let limit = match args.get("limit") {
+            None | Some(Value::Null) => 50,
+            Some(v) => v
+                .as_i64()
+                .filter(|n| (1..=200).contains(n))
+                .ok_or_else(|| AppError::InvalidArgs("limit must be an integer from 1 to 200".into()))?,
+        };
+        let since_s = match args.get("since_s") {
+            None | Some(Value::Null) => None,
+            Some(v) => Some(
+                v.as_i64()
+                    .filter(|n| *n >= 1)
+                    .ok_or_else(|| AppError::InvalidArgs("since_s must be a positive integer".into()))?,
+            ),
+        };
+        let tool = args.get("tool").and_then(Value::as_str).map(str::to_string);
+        let named = args.get("tenant").and_then(Value::as_str);
+        let target_id = match (tenant, named) {
+            (Some(t), None) => t.id,
+            (Some(t), Some(ns)) if ns == t.namespace => t.id,
+            (Some(_), Some(_)) => return Err(AppError::Forbidden),
+            (None, Some(ns)) => {
+                self.state
+                    .db
+                    .find_tenant_by_namespace(ns.to_string())
+                    .await?
+                    .ok_or_else(|| AppError::TenantNotFound(ns.to_string()))?
+                    .id
+            }
+            (None, None) => {
+                return Err(AppError::InvalidArgs("the admin key must pass tenant: <namespace>".into()));
+            }
+        };
+        let since_unix = since_s.map(|s| now_unix() - s);
+        let (rows, calls) = self.state.db.doctor_failed_calls(target_id, limit, tool, since_unix).await?;
+        let mut out = json!({
+            "window": {
+                "calls": calls,
+                "failed": rows.len(),
+                "first_ts": rows.last().map(|r| r.started_at.clone()),
+                "last_ts": rows.first().map(|r| r.started_at.clone()),
+            },
+            "groups": crate::doctor::build_groups(&rows),
+        });
+        if rows.is_empty() {
+            out["next"] = json!(crate::doctor::empty_next(limit));
+            if self.state.db.count_tools(target_id).await? == 0 {
+                out["hint"] = json!("host.quickstart");
+            }
+        }
+        Ok(out)
+    }
+
     /// PRD-mcphost-call-trace-replay R5/R6: `host.call_trace`. `tenant` is
     /// `None` for the admin bearer, which may read any tenant's trace but
     /// never replays one (a replay runs as the call's owner).
@@ -10312,6 +10395,7 @@ impl ServerHandler for McpHostHandler {
             // PRD-mcphost-call-trace-replay R5: the admin bearer may read any
             // tenant's trace.
             (Auth::Admin, "host.call_trace") => self.call_trace(None, args).await,
+            (Auth::Admin, "host.doctor") => self.doctor(None, args).await,
             (Auth::Admin, _) => Err(AppError::Forbidden),
             (Auth::Tenant(_, _), name) if name.starts_with("admin.") => {
                 let _ = name;

@@ -2699,6 +2699,100 @@
     ],
     "type": "object"
   },
+  "host.doctor": {
+    "properties": {
+      "groups": {
+        "items": {
+          "properties": {
+            "class": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "code": {
+              "type": "string"
+            },
+            "count": {
+              "type": "integer"
+            },
+            "family": {
+              "type": "string"
+            },
+            "first_source_line": {
+              "type": "string"
+            },
+            "last_ts": {
+              "type": "string"
+            },
+            "line": {
+              "type": "integer"
+            },
+            "next": {
+              "type": "string"
+            },
+            "tools": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "class",
+            "code",
+            "count",
+            "family",
+            "last_ts",
+            "next",
+            "tools"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "hint": {
+        "type": "string"
+      },
+      "next": {
+        "type": "string"
+      },
+      "window": {
+        "properties": {
+          "calls": {
+            "type": "integer"
+          },
+          "failed": {
+            "type": "integer"
+          },
+          "first_ts": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_ts": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "calls",
+          "failed",
+          "first_ts",
+          "last_ts"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "groups",
+      "window"
+    ],
+    "type": "object"
+  },
   "host.drift.check": {
     "properties": {
       "kind": {

@@ -303,6 +303,8 @@ const MIGRATION_0095: &str = include_str!("../migrations/0095_draft_events.sql")
 
 /// PRD-mcphost-heal-action-registry-and-ledger R2: `incidents.action` and siblings.
 const MIGRATION_0096: &str = include_str!("../migrations/0096_heal_ledger.sql");
+/// PRD-mcphost-host-doctor-tool R1: `calls.error_summary`.
+const MIGRATION_0099: &str = include_str!("../migrations/0099_calls_error_summary.sql");
 
 /// Outcome of [`Db::reserve_draft`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2957,7 +2959,21 @@ impl Db {
         conn.execute_batch(MIGRATION_0095)?;
         Self::migrate_0096_heal_ledger(&conn)?;
         Self::migrate_0097_feedback_themes(&conn)?;
-        Self::migrate_0098_last_seen_version(&conn)
+        Self::migrate_0098_last_seen_version(&conn)?;
+        Self::migrate_0099_calls_error_summary(&conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-host-doctor-tool R1: `calls.error_summary`, gated on the
+    /// column (the batch is a single `ALTER`, so a rerun must skip it).
+    fn migrate_0099_calls_error_summary(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('calls') WHERE name = 'error_summary'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0099)?;
+        }
+        Ok(())
     }
 
     /// PRD-mcphost-heal-action-registry-and-ledger R2: `incidents.action` and
@@ -10048,6 +10064,7 @@ impl Db {
             run_id,
             step_tool,
             None,
+            None,
         )
         .await
         .map(|_| ())
@@ -10083,6 +10100,9 @@ impl Db {
         run_id: Option<String>,
         step_tool: Option<String>,
         trace: Option<NewCallTrace>,
+        // PRD-mcphost-host-doctor-tool R1: `crate::doctor::error_summary`'s
+        // output for a failed call, `None` for an ok call.
+        error_summary: Option<String>,
     ) -> Result<i64, AppError> {
         let started_at = now_rfc3339();
         let started_unix = now_unix();
@@ -10116,9 +10136,9 @@ impl Db {
         self.with_conn(move |conn| {
             let tx = conn.unchecked_transaction()?;
             tx.execute(
-                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id, auth_method, step_tool) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
-                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone(), auth_method, step_tool],
+                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id, auth_method, step_tool, error_summary) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone(), auth_method, step_tool, error_summary],
             )?;
             let call_id = tx.last_insert_rowid();
             tx.execute(
@@ -12195,6 +12215,47 @@ impl Db {
     }
 
     /// The last `limit` log lines for a tool, oldest first.
+    /// PRD-mcphost-host-doctor-tool R2: the newest `limit` failed calls of
+    /// `tenant_id` (optionally one `tool`, optionally since `since_unix`),
+    /// newest first, and how many calls (any outcome but `test`) the tenant
+    /// made since the oldest of them. Rides `idx_calls_tenant_started`.
+    pub async fn doctor_failed_calls(
+        &self,
+        tenant_id: i64,
+        limit: i64,
+        tool: Option<String>,
+        since_unix: Option<i64>,
+    ) -> Result<(Vec<crate::doctor::FailedCall>, i64), AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT tool_name, COALESCE(error_class, 'unknown'), error_summary, started_at, started_unix \
+                 FROM calls WHERE tenant_id = ?1 AND ok = 0 AND outcome <> 'test' \
+                 AND (?2 IS NULL OR tool_name = ?2) AND started_unix >= COALESCE(?3, 0) \
+                 ORDER BY started_unix DESC, id DESC LIMIT ?4",
+            )?;
+            let mut oldest_unix = None;
+            let rows = stmt
+                .query_map(params![tenant_id, tool, since_unix, limit], |r| {
+                    oldest_unix = Some(r.get::<_, i64>(4)?);
+                    Ok(crate::doctor::FailedCall {
+                        tool: r.get(0)?,
+                        error_class: r.get(1)?,
+                        error_summary: r.get(2)?,
+                        started_at: r.get(3)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            let calls: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM calls WHERE tenant_id = ?1 AND outcome <> 'test' \
+                 AND (?2 IS NULL OR tool_name = ?2) AND started_unix >= ?3",
+                params![tenant_id, tool, oldest_unix.or(since_unix).unwrap_or(0)],
+                |r| r.get(0),
+            )?;
+            Ok((rows, calls))
+        })
+        .await
+    }
+
     pub async fn tail_logs(
         &self,
         tenant_id: i64,
