@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-db-maintenance-window.md",
-  "intent_slug": "mcphost-db-maintenance-window",
-  "root_motivation": "**Who:** the agent whose 3 am write waits on a 5.7 MB WAL being checkpointed under load; the chain, whose midnight hour is the busiest of the day (journal warn/error peak 6480 lines at 07:00 UTC vs 127 at 15:00); Joe, who runs `VACUUM` by hand never. **What:** routine database and disk hygiene at the hour nobody is there, with evidence. **Why not today:** `wal_checkpoint_passive` (`db.rs:2525`) runs every `MCPHOST_DB_WAL_CHECKPOINT_SECS` regardless of load and PASSIVE never truncates under readers; `PRAGMA optimize` is never run (grep: 0 hits); prod `mcphost.db` is 349 MB with a 5.7 MB WAL and 239 entries in `scratch/`, the journal holds 1.6 GB; 10-07 13:21-13:22 UTC two background ticks failed `database is locked`. The retention pruner has a disk floor but no notion of a quiet hour. **Premise (agent viewpoint):** \"the host tidies up when I am not there, and my writes at peak are faster for it.\" Falsifier: the quiet-hour computation picks the chain hour (AC 1 feeds a recorded 14-day...",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tool-test-examples-from-schema.md",
+  "intent_slug": "mcphost-tool-test-examples-from-schema",
+  "root_motivation": "**Who:** the autonomous coding agent publishing its first tool; the truth-tier persona whose `call` family means \"published but never called successfully\". **What:** a dry run that needs no invented arguments and teaches the correct shape by example. **Why not today:** `host.tool.test` is `&[\"name\", \"args\"]` (`handler.rs:1150-1163`); `host.spec.test` requires `invocations` (`handler.rs:6819`). Inferred python schemas type only keys with literal defaults (`infer.rs:264-277`: string/boolean/integer/number) and leave `args[\"k\"]` keys as `{}`. No code path turns a schema into a value. Explore 10-08: 10 \u00d7 `4.78 is not of type \"integer\"`; 10-07: 3 \u00d7 the same. **Premise (creative):** a schema-derived example that runs is a better first call than a guess. **Falsifier:** frontmatter; AC 1 runs the corpus.",
   "user_persona": "An agent that calls host.state.delete_rows with an empty filter on a 5 000-row table, reads confirm_required.dry_run_first, runs the dry run, notices the empty filter and fixes it; a Claude Code user who sees a destructive marker on host.table.drop.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -12,52 +12,40 @@
   },
   "acceptance_criteria": [
     {
-      "id": "AC1",
-      "level": "MUST",
-      "description": "Given this PRD has landed, When the operator runs the premise check recorded under \"## Premise check (operator)\" below, Then its result is written into this PRD and a failed premise parks the PRD (Live; evidence: operator premise check, see \"## Premise check (operator)\")",
-      "test": "deferred -- operator-provisioned: Live premise check against prod calls histogram, recorded under \"## Premise check (operator)\"."
-    },
-    {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a test database with a 3 MB WAL and 1 000 freelist pages under `auto_vacuum = INCREMENTAL`, When `DbMaintenance` runs, Then `after.wal_mb` is 0, `after.freelist_count` is 0, `checkpoint_result` is `TRUNCATE`, `outcome` is `ok` and `optimize_ms` is a positive integer.",
-      "test": "tests/dbmw_ac02_db_maintenance_truncates_wal_and_vacuums.rs"
+      "description": "Given a schema with `integer` (with and without `minimum: 3`), `number`, `enum: [\"a\",\"b\"]`, `format: date`, `default: 7`, `required: [\"q\"]` and an optional untyped key, When generated, Then the values are `1`/`3`, `1.5`, `\"a\"`, `\"2026-01-01\"`, `7`, `q` present, the untyped key absent and listed in `untyped`, and the integer is not a float in the serialized JSON.",
+      "test": "tests/exargs_ac02_generator_values.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given `<data_dir>/.backup-lock` created 10 min ago, When the window fires, Then both rows read `refused` with `reason: \"backup in progress\"`, nothing is checkpointed, and the next attempt is scheduled 3600 s later; Given the lock is 3 h old, Then the actions run and a tracing line says `stale backup lock ignored`.",
-      "test": "tests/dbmw_ac03_backup_lock_refuses_window.rs"
+      "description": "Given a published python tool whose inferred schema is `{\"properties\": {\"n\": {\"type\": \"integer\", \"default\": 2}}}`, When `host.tool.test name=<tool>` runs with no `args`, Then the tool runs with `{\"n\": 2}`, the response carries `example_args: {\"n\": 2}` and `untyped: []`, and the same call with `args: {\"n\": 5}` carries no `example_args`.",
+      "test": "tests/exargs_ac03_tool_test_runs_the_example.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given `scratch/` holds 5 entries older than 24 h and 3 younger, plus `exports/` with one expired export, When `LogRotate` runs, Then exactly 5 + 1 entries are removed, `mcphost.db`, `mcphost.db-wal`, `envs/`, `public/` and `authz_signing_key.der` are untouched (hash-compared), and `after.journal_vacuum_requested` is `true`.",
-      "test": "tests/dbmw_ac04_log_rotate_sweeps_only_expired_scratch_and_exports.rs"
+      "description": "Given a schema the generator cannot satisfy (`minimum: 10, maximum: 5`), When tested without args, Then the response is `example_unavailable` naming `/n` and no sandbox run starts.",
+      "test": "tests/exargs_ac04_unsatisfiable_schema_is_refused.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a reader holding a long transaction, When `wal_checkpoint(TRUNCATE)` is busy, Then the executor retries PASSIVE once, the row reads `ok` with `checkpoint_result: PASSIVE`, and no statement exceeded its 30-s deadline.",
-      "test": "tests/dbmw_ac05_busy_truncate_retries_passive.rs"
+      "description": "Given `host.tool_publish` with `dry_run: true` and no `invocations`, and `host.spec.test` with no `invocations`, When called, Then each runs exactly one generated example and reports it under `example_args`.",
+      "test": "tests/exargs_ac05_publish_dry_run_and_spec_test_run_one_example.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given `mcphost maintenance run --dry-run`, When it runs, Then it prints `before` values for both actions, writes two `would_run` rows and changes no file or pragma (hash-compared).",
-      "test": "tests/dbmw_ac06_maintenance_run_dry_run.rs"
+      "description": "Given a nested schema (`object` with `items` 9 levels deep), When generated, Then recursion stops at depth 8 with `untyped` naming the cut path and no panic.",
+      "test": "tests/exargs_ac06_depth_limit.rs"
     },
     {
       "id": "AC7",
       "level": "SHOULD",
-      "description": "Given the retention pruner last ran 21 h ago, When the window fires, Then the pruner's daily pass runs inside it and its own log line appears between the two maintenance rows' timestamps.",
-      "test": "tests/dbmw_ac07_window_runs_the_retention_pruner.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Given this PRD deployed to prod and one quiet hour elapsed, When `/status.json` is fetched, Then `maintenance.last.outcome` is `ok` and `maintenance.last.wal_mb` is below 1 (Live; evidence: `curl -s https://mcphost.dev/status.json | jq -c .maintenance`)",
-      "test": "deferred -- operator-provisioned: Live check of prod /status.json.maintenance after one quiet hour."
+      "description": "Given `host.quickstart(kind: python)` and `www/llms.txt`, When read, Then the `try_before_call` sentence says `args` may be omitted and names `example_args`, and a test asserts both texts carry the same sentence.",
+      "test": "tests/exargs_ac07_try_before_call_sentence.rs"
     }
   ],
   "scope": [

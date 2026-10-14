@@ -64,6 +64,7 @@ mcphost.dev is the server's address; the Python module is 'import mcphost' (mcph
    ```
    host.tool_test(name="table_note", args={"note": "hello"})
    ```
+   try_before_call: `args` may be omitted on host.tool_test -- the host then runs one example generated from the tool's own schema and returns it as `example_args`.
 6. Share it with a teammate: `host.invite.create()` returns an
    `/i/<code>/mcp` URL -- whoever connects there and makes their own
    first call gets a fresh tenant already in contact with you, with any

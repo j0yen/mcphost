@@ -150,6 +150,8 @@ mod envelope_ac2_python_object_declared_output_promoted;
 mod envelope_ac3_python_scalar_promotion_warns;
 #[path = "envelope_ac5_replay_recorded_sessions.rs"]
 mod envelope_ac5_replay_recorded_sessions;
+#[path = "exargs_ac07_try_before_call_sentence.rs"]
+mod exargs_ac07_try_before_call_sentence;
 #[path = "exprp_ac01_rendered_example_forks_and_proves.rs"]
 mod exprp_ac01_rendered_example_forks_and_proves;
 #[path = "fedlogin_ac03_python_env_and_whoami.rs"]

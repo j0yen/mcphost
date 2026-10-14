@@ -1244,7 +1244,9 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                     },
                     "args": {
                         "type": "object",
-                        "description": "Arguments to pass, same shape as a real call.",
+                        "description": "Arguments to pass, same shape as a real call. Omit to run one \
+                            example generated from the tool's args_schema; the response then carries \
+                            example_args (what ran) and untyped (keys the schema gave no type for).",
                     },
                     "fixtures": {
                         "type": "object",
@@ -1253,7 +1255,7 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                             against it. host.runs.get(run_id, as_fixtures=true) exports a real run in this shape.",
                     },
                 }),
-                &["name", "args"],
+                &["name"],
             ),
         ),
         Tool::new(
@@ -4254,10 +4256,11 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                         "items": {"type": "object"},
                         "maxItems": MAX_TEST_INVOCATIONS,
                         "description": "Up to 5 example call-argument objects to run through the \
-                            spec, e.g. [{\"msg\": \"hi\"}].",
+                            spec, e.g. [{\"msg\": \"hi\"}]. Omit to run one example generated from \
+                            the spec's args_schema; the response then carries example_args.",
                     },
                 }),
-                &["kind", "spec", "invocations"],
+                &["kind", "spec"],
             ),
         ));
     }
@@ -6281,7 +6284,7 @@ impl McpHostHandler {
             }
             "host.key.rotate" => control::key_rotate(&self.state, tenant).await,
             "host.self.offboard" => control::self_offboard(&self.state, tenant).await,
-            "host.tool.publish" => control::tool_publish(&self.state, tenant, &args).await,
+            "host.tool.publish" => self.tool_publish_with_example(tenant, args).await,
             "host.tool.list" => control::tool_list(&self.state, tenant, &args).await,
             "host.tool.remove" => control::tool_remove(&self.state, tenant, &args).await,
             "host.tool.logs" => control::tool_logs(&self.state, tenant, &args).await,
@@ -7410,8 +7413,12 @@ impl McpHostHandler {
             .and_then(Value::as_str)
             .ok_or_else(|| AppError::InvalidArgs("missing required argument 'name'".into()))?
             .to_string();
-        let call_args = args
+        // PRD-mcphost-tool-test-examples-from-schema R3: `args` omitted (or
+        // null) means "run the example generated from this tool's schema".
+        let args_given = args.get("args").is_some_and(|v| !v.is_null());
+        let mut call_args = args
             .get("args")
+            .filter(|v| !v.is_null())
             .cloned()
             .unwrap_or_else(|| Value::Object(Default::default()));
 
@@ -7488,6 +7495,14 @@ impl McpHostHandler {
         }
 
         let descriptor = kind.describe(&row.spec);
+        // R3/R2 (AC3/AC4): generate before anything validates or runs; an
+        // example that fails its own schema is refused with no sandbox run.
+        let mut generated: Option<crate::kinds::example::Example> = None;
+        if !args_given && !kind.validates_own_args() {
+            let ex = example_or_refusal(&descriptor.input_schema)?;
+            call_args = ex.args.clone();
+            generated = Some(ex);
+        }
         // PRD-mcphost-chain-run-lineage requirement 2/10: `host.tool_test`
         // must be able to dry-run a chain missing some of its required
         // inputs (reporting `inputs_required`/unresolved paths rather than
@@ -7702,6 +7717,9 @@ impl McpHostHandler {
                     map.insert("envelope".to_string(), envelope);
                 }
                 if let Value::Object(map) = &mut value {
+                    if let Some(ex) = &generated {
+                        add_example_fields(map, ex);
+                    }
                     map.insert("state".to_string(), state_backend.snapshot().to_json());
                     // PRD-mcphost-dry-run-side-effects requirement 3: `.entry`
                     // (not a plain `insert`) so `chain`'s own pre-existing
@@ -8153,6 +8171,37 @@ impl McpHostHandler {
     /// (`host.bridge_test`'s "test a spec you haven't published" idea,
     /// generalized from `http`-only to every kind, and from one invocation
     /// to up to five) without either.
+    /// `host.tool_publish`; a `dry_run` with no `invocations` also runs the one
+    /// generated example through `spec_test` and reports it beside the gates
+    /// (PRD-mcphost-tool-test-examples-from-schema R4, AC5).
+    async fn tool_publish_with_example(&self, tenant: &Tenant, args: Value) -> Result<Value, AppError> {
+        let mut out = control::tool_publish(&self.state, tenant, &args).await?;
+        let dry_run = args.get("dry_run").and_then(Value::as_bool).unwrap_or(false);
+        let has_invocations = args.get("invocations").is_some_and(|v| !v.is_null());
+        let (Some(kind), Some(spec)) = (args.get("kind"), args.get("spec")) else {
+            return Ok(out);
+        };
+        if !dry_run || has_invocations || out["ok"] != json!(true) {
+            return Ok(out);
+        }
+        let tested = self.spec_test(tenant, json!({"kind": kind, "spec": spec})).await;
+        if let Some(map) = out.as_object_mut() {
+            match tested {
+                Ok(t) => {
+                    for key in ["invocations", "example_args", "untyped", "schema_hint"] {
+                        if let Some(v) = t.get(key) {
+                            map.insert(key.to_string(), v.clone());
+                        }
+                    }
+                }
+                Err(e) => {
+                    map.insert("example_error".to_string(), json!(e.to_string()));
+                }
+            }
+        }
+        Ok(out)
+    }
+
     async fn spec_test(&self, tenant: &Tenant, args: Value) -> Result<Value, AppError> {
         let kind_name = args
             .get("kind")
@@ -8163,22 +8212,25 @@ impl McpHostHandler {
             .get("spec")
             .cloned()
             .ok_or_else(|| AppError::InvalidArgs("missing required argument 'spec'".into()))?;
-        let invocations = args
-            .get("invocations")
-            .and_then(Value::as_array)
-            .cloned()
-            .ok_or_else(|| {
-                AppError::InvalidArgs("missing required argument 'invocations'".into())
-            })?;
+        // PRD-mcphost-tool-test-examples-from-schema R4: `invocations` is
+        // optional; absent means "run the one example generated from the
+        // spec's own args_schema" (filled in below once the kind is known).
+        let given_invocations = match args.get("invocations") {
+            None | Some(Value::Null) => None,
+            Some(Value::Array(list)) => Some(list.clone()),
+            Some(_) => {
+                return Err(AppError::InvalidArgs("'invocations' must be an array of argument objects".into()));
+            }
+        };
+        let invocations_len = given_invocations.as_ref().map_or(1, Vec::len);
 
         // AC7: refused naming the limit, zero invocations run -- checked
         // before any other work (spec validation included).
-        if invocations.len() > MAX_TEST_INVOCATIONS {
+        if invocations_len > MAX_TEST_INVOCATIONS {
             return Err(AppError::Structured {
                 code: "too_many_invocations",
                 message: format!(
-                    "at most {MAX_TEST_INVOCATIONS} invocations per host.spec_test call; got {}",
-                    invocations.len()
+                    "at most {MAX_TEST_INVOCATIONS} invocations per host.spec_test call; got {invocations_len}"
                 ),
                 data: json!({"limit": MAX_TEST_INVOCATIONS}),
             });
@@ -8242,6 +8294,17 @@ impl McpHostHandler {
 
         let descriptor = kind.describe(&spec);
         let requirements = kind.requirements(&spec);
+        let mut generated: Option<crate::kinds::example::Example> = None;
+        let invocations: Vec<Value> = match given_invocations {
+            Some(list) => list,
+            None if kind.validates_own_args() => vec![json!({})],
+            None => {
+                let ex = example_or_refusal(&descriptor.input_schema)?;
+                let one = ex.args.clone();
+                generated = Some(ex);
+                vec![one]
+            }
+        };
 
         let secrets = build_secret_resolver(&self.state, tenant.id).await?;
         let call_timeout = self.resolve_call_timeout(&kind, &spec);
@@ -8428,10 +8491,10 @@ impl McpHostHandler {
         if kind_name == "python" {
             report["tool_lint"] = json!(crate::kinds::python_lint::lint_spec(&spec));
         }
-        Ok(crate::secrets::redact_keys(
-            &report,
-            &["tenant_key"],
-        ))
+        if let (Some(ex), Some(map)) = (&generated, report.as_object_mut()) {
+            add_example_fields(map, ex);
+        }
+        Ok(crate::secrets::redact_keys(&report, &["tenant_key"]))
     }
 
     /// `host.tool_from_description` (PRD-mcphost-first-tool-from-description
@@ -10775,4 +10838,31 @@ impl ServerHandler for McpHostHandler {
     }
 
     async fn on_initialized(&self, _context: NotificationContext<RoleServer>) {}
+}
+
+/// PRD-mcphost-tool-test-examples-from-schema R2 (AC4): the generated example
+/// for `schema`, or an `example_unavailable` refusal naming the failing path.
+fn example_or_refusal(schema: &Value) -> Result<crate::kinds::example::Example, AppError> {
+    crate::kinds::example::checked_example(schema).map_err(|e| AppError::Structured {
+        code: "example_unavailable",
+        message: format!(
+            "no example could be generated from this tool's args_schema: {} at {}; pass `args` explicitly",
+            e.message,
+            if e.path.is_empty() { "/" } else { &e.path }
+        ),
+        data: json!({"path": e.path, "reason": e.message}),
+    })
+}
+
+/// R3/R7: report the example that ran, the keys it had no type for, and (only
+/// when there are any) a hint for fixing that.
+fn add_example_fields(map: &mut serde_json::Map<String, Value>, ex: &crate::kinds::example::Example) {
+    map.insert("example_args".to_string(), ex.args.clone());
+    map.insert("untyped".to_string(), json!(ex.untyped));
+    if !ex.untyped.is_empty() {
+        map.insert(
+            "schema_hint".to_string(),
+            json!(format!("add defaults to untyped keys: {}", ex.untyped.join(", "))),
+        );
+    }
 }
