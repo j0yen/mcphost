@@ -26,6 +26,7 @@ pub mod claim;
 pub mod client;
 pub mod cli;
 pub mod compat_check;
+pub mod compat_report;
 pub mod consent;
 pub mod control;
 pub mod cron;

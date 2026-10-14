@@ -28,6 +28,8 @@ mod fake_as;
 mod federation;
 #[path = "support/lanecov.rs"]
 mod lanecov;
+#[path = "support/mrefu.rs"]
+mod mrefu;
 #[path = "support/msrvlock.rs"]
 mod msrvlock;
 #[path = "support/oauth.rs"]
@@ -1713,6 +1715,8 @@ mod minimal_ac3_wrong_bearer_matches_anonymous;
 mod minimal_ac4_liveness_failure_returns_5xx;
 #[path = "minimal_ac5_tenant_bearer_gets_anonymous_body.rs"]
 mod minimal_ac5_tenant_bearer_gets_anonymous_body;
+#[path = "mrefu_ac01_breaking_migration_refuses_with_report.rs"]
+mod mrefu_ac01_breaking_migration_refuses_with_report;
 #[path = "msg_ac01_send_reaches_inbox.rs"]
 mod msg_ac01_send_reaches_inbox;
 #[path = "msg_ac02_reply_appends_next_seq.rs"]

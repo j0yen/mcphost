@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CompatReport",
+  "description": "The document `--report` writes. `step`, `detail`, `reason` and `remedy`\nare `null` on `ok: true`, and `bypass` is then absent.",
+  "type": "object",
+  "properties": {
+    "bypass": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Bypass"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "checked_at_unix": {
+      "type": "integer",
+      "format": "int64"
+    },
+    "db_path": {
+      "type": "string"
+    },
+    "detail": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "from": {
+      "description": "The previous binary's `--version`.",
+      "type": "string"
+    },
+    "migrations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/MigrationRef"
+      }
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "remedy": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "schema_version": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "step": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "tables_changed": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/TableChange"
+      }
+    },
+    "to": {
+      "description": "This binary's version.",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "ok",
+    "from",
+    "to",
+    "db_path",
+    "checked_at_unix",
+    "migrations",
+    "tables_changed"
+  ],
+  "$defs": {
+    "Bypass": {
+      "description": "The single lift: `<env>=<value>` where value is `<from>..<to>`.",
+      "type": "object",
+      "properties": {
+        "env": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "env",
+        "value"
+      ]
+    },
+    "Compat": {
+      "description": "The `-- compat:` header of a migration file.",
+      "type": "string",
+      "enum": [
+        "previous",
+        "breaking"
+      ]
+    },
+    "MigrationRef": {
+      "type": "object",
+      "properties": {
+        "compat": {
+          "$ref": "#/$defs/Compat"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "compat"
+      ]
+    },
+    "TableChange": {
+      "type": "object",
+      "properties": {
+        "change": {
+          "$ref": "#/$defs/TableChangeKind"
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "table": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "table",
+        "change",
+        "columns"
+      ]
+    },
+    "TableChangeKind": {
+      "type": "string",
+      "enum": [
+        "added",
+        "dropped",
+        "columns_added",
+        "columns_dropped",
+        "altered"
+      ]
+    }
+  }
+}

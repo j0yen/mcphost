@@ -64,6 +64,9 @@ use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
 
 use crate::client::{self, RpcRequest, extract_structured};
+use crate::compat_report::{
+    self, CompatReport, Compat, ReportInputs, TableChange, attribute_migrations, build_report,
+};
 use crate::db::Db;
 
 /// Shared, growable byte buffer for a child's captured stderr tail --
@@ -130,6 +133,136 @@ pub async fn run(
     previous_binary: &Path,
     run_as: Option<&str>,
 ) -> Result<(), CompatCheckFailure> {
+    let inputs = CheckInputs { live_db_path, previous_binary, run_as, extra_migrations_dir: None };
+    run_checked(&inputs, None).await
+}
+
+/// Everything one check needs. `extra_migrations_dir` is the fixture seam
+/// (`mcphost migrate --check-compat --extra-migrations-dir`): its `*.sql`
+/// files are applied to the scratch copy, in name order, after this
+/// release's own migrations. Production never sets it.
+pub struct CheckInputs<'a> {
+    pub live_db_path: &'a Path,
+    pub previous_binary: &'a Path,
+    pub run_as: Option<&'a str>,
+    pub extra_migrations_dir: Option<&'a Path>,
+}
+
+/// What the check learned on the way, kept even when a later probe fails
+/// (the schema diff runs before the probes so a `previous-up` crash still
+/// reports `tables_changed`).
+#[derive(Default)]
+struct Findings {
+    tables_changed: Vec<TableChange>,
+    /// `(file name, compat header, sql)` of each extra-directory migration.
+    extra: Vec<(String, Compat, String)>,
+}
+
+/// PRD-mcphost-migration-refusal-contract: run the check and return the
+/// whole [`CompatReport`], passing or failing.
+pub async fn run_with_report(inputs: &CheckInputs<'_>) -> CompatReport {
+    let mut findings = Findings::default();
+    let result = run_checked(inputs, Some(&mut findings)).await;
+    let from = previous_version(inputs.previous_binary).await;
+    let extra: Vec<compat_report::MigrationSource<'_>> =
+        findings.extra.iter().map(|(n, c, sql)| (n.as_str(), *c, sql.as_str())).collect();
+    let migrations = attribute_migrations(&findings.tables_changed, &extra);
+    let checked_at_unix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or_default();
+    build_report(ReportInputs {
+        from,
+        to: env!("CARGO_PKG_VERSION").to_string(),
+        db_path: inputs.live_db_path.display().to_string(),
+        checked_at_unix,
+        migrations,
+        tables_changed: findings.tables_changed,
+        failure: result.err().map(|f| (f.step.to_string(), f.detail)),
+    })
+}
+
+/// The `--report` CLI path: run, write the report (via a tmp file, then rename),
+/// print the single stdout line, and return the process exit code (0 ok, 3
+/// incompatible, 4 previous-up, 5 report unwritable). The historic
+/// `FAILED at step` line stays on stderr for one release.
+pub async fn run_cli_with_report(inputs: &CheckInputs<'_>, report_path: &Path) -> i32 {
+    let report = run_with_report(inputs).await;
+    let mut text = serde_json::to_string_pretty(&report).unwrap_or_default();
+    text.push('\n');
+    let tmp = report_path.with_extension("json.tmp");
+    let written = std::fs::write(&tmp, &text).and_then(|()| std::fs::rename(&tmp, report_path));
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&tmp);
+        eprintln!("check-compat: cannot write report {}: {e}", report_path.display());
+        println!("check-compat: report-unwritable report={}", report_path.display());
+        return compat_report::EXIT_REPORT_UNWRITABLE;
+    }
+    println!(
+        "check-compat: {} report={}",
+        compat_report::outcome_word(&report),
+        report_path.display()
+    );
+    if let (Some(step), Some(detail)) = (&report.step, &report.detail) {
+        eprintln!("check-compat: FAILED at step '{step}': {detail}");
+    }
+    compat_report::exit_code(&report)
+}
+
+/// The previous binary's `--version`, reduced to its version token
+/// (`mcphost 0.106.0` -> `0.106.0`); `unknown` when it will not say.
+async fn previous_version(bin: &Path) -> String {
+    let run = Command::new(bin)
+        .arg("--version")
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .kill_on_drop(true)
+        .output();
+    match tokio::time::timeout(Duration::from_secs(5), run).await {
+        Ok(Ok(out)) if out.status.success() => parse_version_token(&String::from_utf8_lossy(&out.stdout)),
+        _ => "unknown".to_string(),
+    }
+}
+
+fn parse_version_token(text: &str) -> String {
+    text.split_whitespace()
+        .rev()
+        .map(|t| t.trim_start_matches('v'))
+        .find(|t| t.starts_with(|c: char| c.is_ascii_digit()))
+        .map_or_else(|| "unknown".to_string(), str::to_string)
+}
+
+/// Apply the fixture directory's `*.sql` files to the scratch copy.
+fn apply_extra_migrations(
+    copy_db: &Path,
+    dir: Option<&Path>,
+) -> Result<Vec<(String, Compat, String)>, CompatCheckFailure> {
+    let Some(dir) = dir else { return Ok(Vec::new()) };
+    let fail = |detail: String| CompatCheckFailure { step: "migrate", detail };
+    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
+        .map_err(|e| fail(format!("cannot read extra migrations dir {}: {e}", dir.display())))?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "sql"))
+        .collect();
+    files.sort();
+    let conn = Connection::open(copy_db)
+        .map_err(|e| fail(format!("cannot open the copy to apply extra migrations: {e}")))?;
+    let mut applied = Vec::new();
+    for path in files {
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let sql = std::fs::read_to_string(&path).map_err(|e| fail(format!("cannot read {name}: {e}")))?;
+        conn.execute_batch(&sql).map_err(|e| fail(format!("applying {name} to the copy failed: {e}")))?;
+        applied.push((name, Compat::from_header(&sql), sql));
+    }
+    Ok(applied)
+}
+
+async fn run_checked(
+    inputs: &CheckInputs<'_>,
+    mut findings: Option<&mut Findings>,
+) -> Result<(), CompatCheckFailure> {
+    let CheckInputs { live_db_path, previous_binary, run_as, extra_migrations_dir } = *inputs;
     fail_if_missing(previous_binary)?;
 
     let scratch = ScratchDir::new().map_err(|e| CompatCheckFailure {
@@ -152,6 +285,13 @@ pub async fn run(
             step: "migrate",
             detail: format!("applying pending migrations to the copy failed: {e}"),
         })?;
+    }
+
+    let extra = apply_extra_migrations(&copy_db_path, extra_migrations_dir)?;
+    if let Some(found) = findings.as_deref_mut() {
+        found.tables_changed = compat_report::diff_schemas(live_db_path, &copy_db_path)
+            .map_err(|detail| CompatCheckFailure { step: "migrate", detail })?;
+        found.extra = extra;
     }
 
     // Resolved against the live database (already proven to exist by
