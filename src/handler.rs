@@ -9694,7 +9694,9 @@ impl ServerHandler for McpHostHandler {
     ) -> Result<CallToolResponse, McpError> {
         // PRD-mcphost-usage-in-every-response: the slot the admission checks
         // park their `calls_per_day` read in, for `_meta.usage` below.
-        let result: Result<CallToolResponse, McpError> = crate::usage::scope(async move {
+        // `Box::pin`: the whole dispatch future lives on the heap, not inline in
+        // this frame (inlined it overflowed a 2 MiB test-thread stack).
+        let result: Result<CallToolResponse, McpError> = Box::pin(crate::usage::scope(async move {
         let parts = get_parts(&ctx)?;
         let source = source_ip(parts);
         let header_name = mcp_name_header(parts);
@@ -10746,7 +10748,7 @@ impl ServerHandler for McpHostHandler {
                 Err(app_err.into_error_data_at(Some(&self.state.public_url)))
             }
         }
-        })
+        }))
         .await;
         result
     }
