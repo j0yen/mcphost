@@ -246,7 +246,7 @@ fn apply_extra_migrations(
         .filter(|p| p.extension().is_some_and(|x| x == "sql"))
         .collect();
     files.sort();
-    let conn = Connection::open(copy_db)
+    let conn = Connection::open_with_flags(copy_db, rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)
         .map_err(|e| fail(format!("cannot open the copy to apply extra migrations: {e}")))?;
     let mut applied = Vec::new();
     for path in files {
