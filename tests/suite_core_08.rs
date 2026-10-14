@@ -196,6 +196,20 @@ mod qdiag_ac07_description_annotation_offers_candidate;
 mod qdiag_ac08_footprint_columns_est_tokens;
 #[path = "qdiag_ac11_ten_concurrent_refused_queries_all_hinted.rs"]
 mod qdiag_ac11_ten_concurrent_refused_queries_all_hinted;
+#[path = "qsbc_ac01_detection_keys_on_known_names.rs"]
+mod qsbc_ac01_detection_keys_on_known_names;
+#[path = "qsbc_ac02_quickstart_client_cursor.rs"]
+mod qsbc_ac02_quickstart_client_cursor;
+#[path = "qsbc_ac03_quickstart_client_user_agent.rs"]
+mod qsbc_ac03_quickstart_client_user_agent;
+#[path = "qsbc_ac04_quickstart_client_unknown.rs"]
+mod qsbc_ac04_quickstart_client_unknown;
+#[path = "qsbc_ac05_quickstart_client_chatgpt.rs"]
+mod qsbc_ac05_quickstart_client_chatgpt;
+#[path = "qsbc_ac06_connect_go_json_matches_quickstart.rs"]
+mod qsbc_ac06_connect_go_json_matches_quickstart;
+#[path = "qsbc_ac07_quickstart_writes_client_name.rs"]
+mod qsbc_ac07_quickstart_writes_client_name;
 #[path = "refrow_ac01_args_invalid_writes_refused_row.rs"]
 mod refrow_ac01_args_invalid_writes_refused_row;
 #[path = "refrow_ac02_calls_per_day_refusal_writes_row_not_quota.rs"]
