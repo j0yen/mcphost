@@ -28,6 +28,24 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "oauthpol_ac01_allowlist_by_client_id_and_cimd_host.rs"]
+mod oauthpol_ac01_allowlist_by_client_id_and_cimd_host;
+#[path = "oauthpol_ac02_approve_mode_pending_approve_deny.rs"]
+mod oauthpol_ac02_approve_mode_pending_approve_deny;
+#[path = "oauthpol_ac03_session_ttls_and_max_grant_age.rs"]
+mod oauthpol_ac03_session_ttls_and_max_grant_age;
+#[path = "oauthpol_ac04_reconsent_after_forces_consent_again.rs"]
+mod oauthpol_ac04_reconsent_after_forces_consent_again;
+#[path = "oauthpol_ac05_revoke_all_grants_and_pending.rs"]
+mod oauthpol_ac05_revoke_all_grants_and_pending;
+#[path = "oauthpol_ac06_audit_paging_and_export.rs"]
+mod oauthpol_ac06_audit_paging_and_export;
+#[path = "oauthpol_ac07_operator_block_list_and_admin_rejection.rs"]
+mod oauthpol_ac07_operator_block_list_and_admin_rejection;
+#[path = "oauthpol_ac08_cimd_host_daily_registration_cap.rs"]
+mod oauthpol_ac08_cimd_host_daily_registration_cap;
+#[path = "oauthpol_ac09_no_policy_defaults_match_hosted_as.rs"]
+mod oauthpol_ac09_no_policy_defaults_match_hosted_as;
 #[path = "oauthrs_ac01_protected_resource_metadata_empty.rs"]
 mod oauthrs_ac01_protected_resource_metadata_empty;
 #[path = "oauthrs_ac02_bearer_jwt_runs_as_tenant.rs"]
