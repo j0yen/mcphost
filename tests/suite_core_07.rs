@@ -1717,6 +1717,8 @@ mod minimal_ac4_liveness_failure_returns_5xx;
 mod minimal_ac5_tenant_bearer_gets_anonymous_body;
 #[path = "mrefu_ac01_breaking_migration_refuses_with_report.rs"]
 mod mrefu_ac01_breaking_migration_refuses_with_report;
+#[path = "mrefu_ac02_compatible_migration_reports_ok.rs"]
+mod mrefu_ac02_compatible_migration_reports_ok;
 #[path = "msg_ac01_send_reaches_inbox.rs"]
 mod msg_ac01_send_reaches_inbox;
 #[path = "msg_ac02_reply_appends_next_seq.rs"]
