@@ -1054,7 +1054,19 @@ pub async fn admin_stats(state: &AppState) -> Result<Value, AppError> {
             *tally.entry(word.to_string()).or_insert(0) += 1;
         }
     }
-    Ok(json!({"consents_by_scope_7d": tally}))
+    // PRD-mcphost-oauth-first-entry-url requirement 7: what came in through
+    // the entry URL. Registrations are grants minted for the entry resource;
+    // calls are OAuth (`hosted_token`) calls by tenants whose every grant is
+    // an entry grant, so a call is never attributed to the entry URL when the
+    // tenant could equally have made it over `/mcp`.
+    let entry = entry_resource_uri(&state.public_url);
+    let entry_url_registrations_7d = state.db.entry_url_registrations_since(entry.clone(), since).await?;
+    let entry_url_calls_7d = state.db.entry_url_calls_since(entry, since).await?;
+    Ok(json!({
+        "consents_by_scope_7d": tally,
+        "entry_url_registrations_7d": entry_url_registrations_7d,
+        "entry_url_calls_7d": entry_url_calls_7d,
+    }))
 }
 
 /// `admin.oauth.issuers` (AC9): every registered issuer, its owning

@@ -10449,6 +10449,37 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-oauth-first-entry-url requirement 7: grants minted for
+    /// `resource` (the entry resource) since `since_unix`.
+    pub async fn entry_url_registrations_since(&self, resource: String, since_unix: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM oauth_grants WHERE resource = ?1 AND created_unix >= ?2",
+                params![resource, since_unix],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-oauth-first-entry-url requirement 7: `hosted_token` calls
+    /// since `since_unix` by tenants that hold a grant for `resource` and no
+    /// grant for any other resource.
+    pub async fn entry_url_calls_since(&self, resource: String, since_unix: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM calls WHERE auth_method = 'hosted_token' AND started_unix >= ?2 \
+                 AND tenant_id IN (SELECT tenant_id FROM oauth_grants WHERE resource = ?1) \
+                 AND tenant_id NOT IN (SELECT tenant_id FROM oauth_grants WHERE resource <> ?1)",
+                params![resource, since_unix],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
     /// PRD-mcphost-session-bound-tenant-after-signup requirement 8 (AC11):
     /// how many calls in the window resolved through a session binding --
     /// `calls.auth_method = 'session'`, the value this PRD adds to migration
