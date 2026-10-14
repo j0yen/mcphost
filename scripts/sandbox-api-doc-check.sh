@@ -139,7 +139,11 @@ sys.stdout.write(text[start_idx:end_idx])
 PY
   )
   while IFS= read -r name; do
-    if ! printf '%s\n' "$ACTUAL" | grep -qF "\`mcphost.${name}\`"; then
+    # A here-string, not `printf | grep -q`: grep -q exits on its first match
+    # and, under `pipefail`, a printf still writing its trailing newline gets
+    # SIGPIPE and fails the pipeline -- a false "is missing" about 1 run in 100
+    # under load.
+    if ! grep -qF "\`mcphost.${name}\`" <<<"$ACTUAL"; then
       echo "sandbox-api-doc-check.sh: $f is missing mcphost.${name}" >&2
       FAILURES=$((FAILURES + 1))
     fi
