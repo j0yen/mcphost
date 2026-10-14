@@ -790,6 +790,7 @@ fn is_feedback_tool(name: &str) -> bool {
 /// here (Non-goals).
 const STARTER_TOOL_NAMES: &[&str] = &[
     "host.quickstart",
+    "host.help.search",
     "host.redeem",
     "billing.plans",
     "host.whoami",
@@ -1089,7 +1090,7 @@ fn mark_scratch(value: &mut Value) {
 /// (required or not) carries a `description`, including `host.bridge_test.spec`
 /// and `host.spec_test.invocations`, which previously had none -- see
 /// `tests/surface_ac04_required_field_descriptions.rs`.
-fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
+pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
     let mut tools = vec![
         Tool::new(
             "host.whoami",
@@ -1174,6 +1175,11 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 }),
                 &[],
             ),
+        ),
+        Tool::new(
+            "host.help.search",
+            crate::help_search::TOOL_DESCRIPTION,
+            host_schema(crate::help_search::schema_properties(kinds), &["q"]),
         ),
         Tool::new(
             "host.tool.list",
@@ -9862,7 +9868,7 @@ impl ServerHandler for McpHostHandler {
         if via_tenant_key_arg
             && matches!(auth, Auth::Anonymous)
             && (body_name.starts_with("host.") || body_name.starts_with("billing."))
-            && !matches!(body_name.as_str(), "host.quickstart" | "host.redeem" | "billing.plans")
+            && !matches!(body_name.as_str(), "host.quickstart" | "host.help.search" | "host.redeem" | "billing.plans")
             && !is_feedback_tool(&body_name)
             && tenant_path_namespace(parts).is_none()
             && crate::invites::invite_path_code(parts).is_none()
@@ -10245,6 +10251,9 @@ impl ServerHandler for McpHostHandler {
                 }
             }
             (_, "host.quickstart") => control::quickstart(&self.state, None, &args, None),
+            // PRD-mcphost-help-search-tool R4: public text, no tenant data --
+            // reachable anonymously (never implicit-signs-up) or as a tenant.
+            (_, "host.help.search") => crate::help_search::call(&self.state.kinds, &args),
             // PRD-mcphost-feedback-tool-and-ledger requirement 3: reachable
             // anonymously (never implicit-signs-up) or as a tenant.
             (Auth::Anonymous | Auth::Tenant(..), "host.feedback.send" | "host.feedback.list" | "host.feedback.get")

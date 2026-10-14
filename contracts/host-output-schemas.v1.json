@@ -3769,6 +3769,76 @@
     ],
     "type": "object"
   },
+  "host.help.search": {
+    "properties": {
+      "hint": {
+        "type": "string"
+      },
+      "hits": {
+        "items": {
+          "properties": {
+            "anchor": {
+              "type": "string"
+            },
+            "example": {
+              "properties": {
+                "anchor": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string"
+                },
+                "lang": {
+                  "type": "string"
+                },
+                "truncated": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "anchor",
+                "code",
+                "lang"
+              ],
+              "type": "object"
+            },
+            "next_tool": {
+              "type": "string"
+            },
+            "score": {
+              "type": "number"
+            },
+            "snippet": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "anchor",
+            "score",
+            "snippet",
+            "title"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "index_version": {
+        "type": "string"
+      },
+      "total": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "hits",
+      "index_version",
+      "total"
+    ],
+    "type": "object"
+  },
   "host.import": {
     "properties": {
       "run_id": {

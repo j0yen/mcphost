@@ -1,0 +1,42 @@
+[
+  {
+    "error": "unknown_import: no module 'mcphost.dev'",
+    "anchor": "docs/kinds/python.md#the-sandbox-api"
+  },
+  {
+    "error": "url: host 'mcphost.dev' is not a publicly callable host",
+    "anchor": "docs/kinds/http.md#top"
+  },
+  {
+    "error": "TypeError: string indices must be integers",
+    "anchor": "docs/kinds/python.md#top"
+  },
+  {
+    "error": "args_schema 112.5 is not of type 'integer'",
+    "anchor": "docs/kinds/python.md#top"
+  },
+  {
+    "error": "budget.max_tool_latency_ms 180000 is above the free plan ceiling",
+    "anchor": "docs/plans.md#plan-ceilings"
+  },
+  {
+    "error": "$.prev.action mapping path does not resolve",
+    "anchor": "docs/kinds/chain.md#top"
+  },
+  {
+    "error": "compose_mapping_missing",
+    "anchor": "docs/kinds/chain.md#top"
+  },
+  {
+    "error": "network public is not allowed on the free plan",
+    "anchor": "README.md#egress-proxy-network-public-egress"
+  },
+  {
+    "error": "tenant_key_missing",
+    "anchor": "docs/agent-quickstart.md#quickstart-for-agents"
+  },
+  {
+    "error": "No such tool available: mcp__host__host_tool_call",
+    "anchor": "tool:host.tool_call"
+  }
+]

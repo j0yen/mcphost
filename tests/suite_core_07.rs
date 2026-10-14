@@ -1139,6 +1139,14 @@ mod hpress_ac05_daily_rows_have_no_host;
 mod hpress_ac06_status_html_host_line;
 #[path = "hpress_ac07_metrics_doc_matches_struct.rs"]
 mod hpress_ac07_metrics_doc_matches_struct;
+#[path = "hsr_ac01_top10_errors_have_fix_anchor.rs"]
+mod hsr_ac01_top10_errors_have_fix_anchor;
+#[path = "hsr_ac02_import_mcphost_dev_finds_python_example.rs"]
+mod hsr_ac02_import_mcphost_dev_finds_python_example;
+#[path = "hsr_ac03_kind_filter_and_unknown_kind.rs"]
+mod hsr_ac03_kind_filter_and_unknown_kind;
+#[path = "hsr_ac04_response_under_2kb_truncation_marked.rs"]
+mod hsr_ac04_response_under_2kb_truncation_marked;
 #[path = "http_ac01_secret_redaction.rs"]
 mod http_ac01_secret_redaction;
 #[path = "http_ac02_publish_ssrf_literal.rs"]

@@ -119,6 +119,7 @@ fn embed_examples() {
 
 fn main() {
     embed_examples();
+    embed_help_docs();
     println!("cargo:rerun-if-changed=.git/HEAD");
     println!("cargo:rerun-if-env-changed=MCPHOST_GIT_SHA");
     if std::env::var_os("MCPHOST_GIT_SHA").is_some() {
@@ -140,4 +141,39 @@ fn main() {
     if !sha.is_empty() {
         println!("cargo:rustc-env=MCPHOST_GIT_SHA={sha}");
     }
+}
+
+/// PRD-mcphost-help-search-tool R1: writes `$OUT_DIR/help_docs_embedded.rs`,
+/// which `src/help_search.rs` `include!`s as `HELP_DOCS` -- README.md, every
+/// `docs/**/*.md` found on disk (so a new page is indexed without a code
+/// edit) and `www/llms.txt`, each as `(repo-relative path, include_str!)`.
+fn embed_help_docs() {
+    println!("cargo:rerun-if-changed=docs");
+    println!("cargo:rerun-if-changed=README.md");
+    println!("cargo:rerun-if-changed=www/llms.txt");
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
+    let root = std::path::Path::new(&manifest_dir);
+    let mut paths = vec!["README.md".to_string(), "www/llms.txt".to_string()];
+    let mut stack = vec![root.join("docs")];
+    while let Some(dir) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        for entry in rd.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().is_some_and(|e| e == "md")
+                && let Ok(rel) = path.strip_prefix(root)
+            {
+                paths.push(rel.to_string_lossy().replace('\\', "/"));
+            }
+        }
+    }
+    paths.sort();
+    let mut out = String::from("pub static HELP_DOCS: &[(&str, &str)] = &[\n");
+    for rel in &paths {
+        out.push_str(&format!("({rel:?}, include_str!({:?})),\n", root.join(rel).to_string_lossy()));
+    }
+    out.push_str("];\n");
+    let dest = std::path::Path::new(&std::env::var("OUT_DIR").expect("OUT_DIR")).join("help_docs_embedded.rs");
+    std::fs::write(dest, out).expect("write help_docs_embedded.rs");
 }
