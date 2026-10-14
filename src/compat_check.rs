@@ -260,7 +260,7 @@ fn apply_extra_migrations(
 
 async fn run_checked(
     inputs: &CheckInputs<'_>,
-    mut findings: Option<&mut Findings>,
+    findings: Option<&mut Findings>,
 ) -> Result<(), CompatCheckFailure> {
     let CheckInputs { live_db_path, previous_binary, run_as, extra_migrations_dir } = *inputs;
     fail_if_missing(previous_binary)?;
@@ -288,7 +288,7 @@ async fn run_checked(
     }
 
     let extra = apply_extra_migrations(&copy_db_path, extra_migrations_dir)?;
-    if let Some(found) = findings.as_deref_mut() {
+    if let Some(found) = findings {
         found.tables_changed = compat_report::diff_schemas(live_db_path, &copy_db_path)
             .map_err(|detail| CompatCheckFailure { step: "migrate", detail })?;
         found.extra = extra;
