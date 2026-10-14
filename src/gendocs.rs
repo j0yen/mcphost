@@ -334,6 +334,7 @@ pub fn render_tools_markdown(kinds: &KindRegistry) -> String {
     for (pattern, note) in crate::export::ArchiveEntry::layout() {
         out.push_str(&format!("| `{pattern}` | {note} |\n"));
     }
+    out.push_str(&render_annotations_section());
     // PRD-mcphost-contract-output-schemas R7: one `Returns` block per tool,
     // rendered from the same `output_schema` the contract and `tools/list`
     // carry.
@@ -347,6 +348,27 @@ pub fn render_tools_markdown(kinds: &KindRegistry) -> String {
         let Some(schema) = &t.output_schema else { continue };
         out.push_str(&format!("\n### `{}`\n\n**Returns**\n\n", t.name));
         out.push_str(&render_returns_block(schema));
+    }
+    out
+}
+
+/// PRD-mcphost-tool-idempotent-declaration R6: the `## Annotations` table --
+/// one row per [`crate::handler::HOST_TOOL_HINTS`] entry (the table
+/// `tools/list` annotates from), so the doc cannot disagree with the wire.
+pub fn render_annotations_section() -> String {
+    let mut rows: Vec<&(&str, bool, bool)> = crate::handler::HOST_TOOL_HINTS.iter().collect();
+    rows.sort_by_key(|(name, _, _)| *name);
+    let mut out = String::from("\n## Annotations\n\n");
+    out.push_str(&format!(
+        "Every tool in `tools/list` carries the standard MCP annotations {}. \
+         `destructiveHint` is the opposite of `idempotentHint`. A tenant tool gets the same three: \
+         `idempotent` in its spec (default false; an http `GET` defaults true), read-only only for an \
+         idempotent http `GET`.\n\n",
+        crate::llms_txt::annotation_fields_list()
+    ));
+    out.push_str("| tool | idempotent | readOnly | destructive |\n|---|---|---|---|\n");
+    for (name, idempotent, read_only) in rows {
+        out.push_str(&format!("| `{name}` | {idempotent} | {read_only} | {} |\n", !idempotent));
     }
     out
 }

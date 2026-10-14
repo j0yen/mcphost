@@ -35,9 +35,12 @@ async fn gated_verbs_are_marked_destructive_and_say_how_to_confirm() {
         assert!(description.ends_with(CONFIRM_SENTENCE), "{name} description must end with the confirm sentence: {description}");
     }
 
-    // Every other dotted tool carries neither the marker nor the sentence.
+    // Every other dotted tool carries no confirm sentence; its
+    // `destructiveHint` is only the PRD-mcphost-tool-idempotent-declaration
+    // one (`!idempotent`, from `HOST_TOOL_HINTS`), never the confirm gate's.
     for (name, tool) in tools.iter().filter(|(n, _)| n.contains('.') && !gated_name(n)) {
-        assert!(tool["annotations"].get("destructiveHint").is_none_or(Value::is_null), "{name}: {tool}");
+        let idempotent = tool["annotations"]["idempotentHint"].as_bool();
+        assert_eq!(tool["annotations"]["destructiveHint"].as_bool(), idempotent.map(|i| !i), "{name}: {tool}");
         let description = tool["description"].as_str().unwrap_or_default();
         assert!(!description.contains(CONFIRM_SENTENCE), "{name} is not gated: {description}");
     }

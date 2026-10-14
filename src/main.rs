@@ -893,6 +893,13 @@ async fn main() -> anyhow::Result<()> {
                 std::process::exit(2);
             });
             files.push((readme, readme_existing, readme_updated));
+            // PRD-mcphost-tool-idempotent-declaration R6: `docs/tools.md`
+            // (its Annotations table) is covered by the same --check; the
+            // path is relative to the cwd like the other defaults.
+            let tools_doc = PathBuf::from(mcphost::gendocs::TOOLS_DOC_PATH);
+            let tools_doc_existing = read(&tools_doc);
+            let tools_doc_updated = mcphost::gendocs::render_tools_markdown(&kinds);
+            files.push((tools_doc, tools_doc_existing, tools_doc_updated));
             let mut stale = false;
             for (p, existing, updated) in &files {
                 if updated == existing {

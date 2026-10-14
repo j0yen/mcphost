@@ -89,6 +89,12 @@ pub fn tenant_tool_names(kinds: &KindRegistry) -> Vec<String> {
     names
 }
 
+/// The three annotation field names, backticked and comma-joined, from
+/// [`crate::handler::ANNOTATION_FIELDS`].
+pub fn annotation_fields_list() -> String {
+    crate::handler::ANNOTATION_FIELDS.iter().map(|f| format!("`{f}`")).collect::<Vec<_>>().join(", ")
+}
+
 /// Render the generated `## Tools` section, bracketed by
 /// [`TOOLS_SECTION_START`]/[`TOOLS_SECTION_END`] markers so
 /// [`splice_into`] can find and replace it on a re-run without disturbing
@@ -106,6 +112,12 @@ pub fn render_tools_section(kinds: &KindRegistry) -> String {
     for name in tenant_tool_names(kinds) {
         out.push_str(&format!("- `{name}`\n"));
     }
+    // Not a "- `name`" line: the tools parity test reads those as tool names.
+    out.push_str(&format!(
+        "\nEvery tool in `tools/list` carries the MCP annotations {} (a published tool's \
+         `idempotent` spec flag sets them; full table in docs/tools.md).\n",
+        annotation_fields_list()
+    ));
     out.push_str(&render_paging_section());
     out.push_str(TOOLS_SECTION_END);
     out

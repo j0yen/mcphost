@@ -15625,6 +15625,7 @@
                 "spec": {
                   "additionalProperties": false,
                   "properties": {
+                    "idempotent": {},
                     "reads": {},
                     "schema": {},
                     "ui": {
@@ -17334,6 +17335,7 @@
                 "spec": {
                   "additionalProperties": false,
                   "properties": {
+                    "idempotent": {},
                     "reads": {},
                     "schema": {},
                     "ui": {
@@ -24456,6 +24458,7 @@
                 "spec": {
                   "additionalProperties": false,
                   "properties": {
+                    "idempotent": {},
                     "reads": {},
                     "schema": {},
                     "ui": {
