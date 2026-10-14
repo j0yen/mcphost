@@ -6010,6 +6010,113 @@
       "since": "0.58.0"
     },
     {
+      "description": "Search this host's own documentation and tool descriptions. Returns up to k hits (default 3, response under 2 KB), each with a snippet, the nearest runnable example and an anchor. Read-only, anonymous, no tenant data -- call it with the error text or import line you are stuck on before reading any docs file.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "k": {
+            "default": 3,
+            "description": "How many hits to return (default 3).",
+            "maximum": 5,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "kind": {
+            "description": "Only search the page of this registered kind (docs/kinds/<kind>.md).",
+            "enum": [
+              "echo"
+            ],
+            "type": "string"
+          },
+          "q": {
+            "description": "What you are stuck on: a tool name, an error code or message, an import line.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "q"
+        ],
+        "type": "object"
+      },
+      "name": "host.help.search",
+      "output_schema": {
+        "properties": {
+          "hint": {
+            "type": "string"
+          },
+          "hits": {
+            "items": {
+              "properties": {
+                "anchor": {
+                  "type": "string"
+                },
+                "example": {
+                  "properties": {
+                    "anchor": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "lang": {
+                      "type": "string"
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "anchor",
+                    "code",
+                    "lang"
+                  ],
+                  "type": "object"
+                },
+                "next_tool": {
+                  "type": "string"
+                },
+                "score": {
+                  "type": "number"
+                },
+                "snippet": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "anchor",
+                "score",
+                "snippet",
+                "title"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "index_version": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "hits",
+          "index_version",
+          "total"
+        ],
+        "type": "object"
+      },
+      "since": "0.58.0",
+      "unpaged_reason": "relevance-ranked top-k result, not a keyset-ordered list, so there is no stable cursor"
+    },
+    {
       "description": "Restore a completed host.export of this tenant into an EMPTY tenant: tools (through the host.tool_publish validators), state, host.table.* tables and rows, table notes and documents. Pass run_id (a finished host.export run) or url (its signed download URL). A tenant that already holds a tool, state key, table or document is refused as tenant_not_empty naming what exists; an archive larger than this plan's export_bytes_max is refused as quota_exceeded before anything is written. Secret values are never exported: the result's secrets_to_set names the ones to set again. Runs as a background job (poll host.runs.get: entries_done / entries_total); dry_run: true validates and returns the entry counts and bytes without writing.",
       "input_schema": {
         "additionalProperties": false,
@@ -21880,6 +21987,43 @@
       },
       "name": "host_group_remove",
       "since": "0.103.1"
+    },
+    {
+      "alias_of": "host.help.search",
+      "description": "Search this host's own documentation and tool descriptions. Returns up to k hits (default 3, response under 2 KB), each with a snippet, the nearest runnable example and an anchor. Read-only, anonymous, no tenant data -- call it with the error text or import line you are stuck on before reading any docs file.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "k": {
+            "default": 3,
+            "description": "How many hits to return (default 3).",
+            "maximum": 5,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "kind": {
+            "description": "Only search the page of this registered kind (docs/kinds/<kind>.md).",
+            "enum": [
+              "echo"
+            ],
+            "type": "string"
+          },
+          "q": {
+            "description": "What you are stuck on: a tool name, an error code or message, an import line.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "q"
+        ],
+        "type": "object"
+      },
+      "name": "host_help_search",
+      "since": "0.58.0"
     },
     {
       "alias_of": "host.import",

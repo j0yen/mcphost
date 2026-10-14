@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-db-maintenance-window.md (test_prefix: dbmw)",
+  "ac_test_map_prd": "PRD-mcphost-help-search-tool.md (test_prefix: hsr)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,14 +28,10 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "deferred -- operator-provisioned: Live premise check against prod calls histogram, recorded under \"## Premise check (operator)\".",
-    "AC2": "tests/dbmw_ac02_db_maintenance_truncates_wal_and_vacuums.rs",
-    "AC3": "tests/dbmw_ac03_backup_lock_refuses_window.rs",
-    "AC4": "tests/dbmw_ac04_log_rotate_sweeps_only_expired_scratch_and_exports.rs",
-    "AC5": "tests/dbmw_ac05_busy_truncate_retries_passive.rs",
-    "AC6": "tests/dbmw_ac06_maintenance_run_dry_run.rs",
-    "AC7": "tests/dbmw_ac07_window_runs_the_retention_pruner.rs",
-    "AC8": "deferred -- operator-provisioned: Live check of prod /status.json.maintenance after one quiet hour."
+    "AC1": "tests/hsr_ac01_top10_errors_have_fix_anchor.rs",
+    "AC2": "tests/hsr_ac02_import_mcphost_dev_finds_python_example.rs",
+    "AC3": "tests/hsr_ac03_kind_filter_and_unknown_kind.rs",
+    "AC4": "tests/hsr_ac04_response_under_2kb_truncation_marked.rs"
   },
   "ac_test_map_by_prefix": {
     "ccli": {
@@ -1537,6 +1533,13 @@
       "AC2": "tests/hostdoc_ac02_error_summary_has_exception_line_and_source.rs",
       "AC3": "tests/hostdoc_ac03_every_next_template_renders_fully.rs",
       "AC4": "tests/hostdoc_ac04_empty_window_and_no_tools.rs"
+    },
+    "hsr": {
+      "_prd": "PRD-mcphost-help-search-tool.md (test_prefix: hsr)",
+      "AC1": "tests/hsr_ac01_top10_errors_have_fix_anchor.rs",
+      "AC2": "tests/hsr_ac02_import_mcphost_dev_finds_python_example.rs",
+      "AC3": "tests/hsr_ac03_kind_filter_and_unknown_kind.rs",
+      "AC4": "tests/hsr_ac04_response_under_2kb_truncation_marked.rs"
     }
   }
 }
