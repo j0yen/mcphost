@@ -1825,6 +1825,8 @@ mod oauthrs_ac08_conflicting_credentials;
 mod oauthrs_ac09_admin_lists_issuers_and_audits;
 #[path = "oauthrs_ac10_key_based_flow_unchanged.rs"]
 mod oauthrs_ac10_key_based_flow_unchanged;
+#[path = "oauthrs_ac11_issuer_and_jwks_url_must_be_https.rs"]
+mod oauthrs_ac11_issuer_and_jwks_url_must_be_https;
 #[path = "oauthsig_ac01_auth_method_by_credential.rs"]
 mod oauthsig_ac01_auth_method_by_credential;
 #[path = "oauthsig_ac02_healthz_calls_and_tenants_by_method.rs"]

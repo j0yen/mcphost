@@ -43,6 +43,68 @@ fn arg_str_opt(args: &Value, name: &str) -> Option<String> {
     args.get(name).and_then(Value::as_str).map(str::to_string)
 }
 
+/// Hotfix (prod root `/.well-known/oauth-protected-resource` listed the
+/// placeholder `toolconf-probe`): an `issuer` or `jwks_url` a tenant registers
+/// must be an `https://` URL with a plain host (`[A-Za-z0-9.-]`, optional
+/// `:port`), an optional path, no whitespace, no fragment, and -- for an
+/// issuer -- no query. Under the `test-support` feature `http://` is accepted
+/// for loopback hosts only, matching `federation::is_https_issuer` (the test
+/// JWKS servers bind 127.0.0.1).
+fn require_https_url(field: &str, value: &str, allow_query: bool) -> Result<(), AppError> {
+    let bad = || {
+        let shown: String = value.chars().take(64).collect();
+        AppError::InvalidArgs(format!("{field} must be an https:// URL (got \"{shown}\")"))
+    };
+    let (rest, tls) = if let Some(r) = value.strip_prefix("https://") {
+        (r, true)
+    } else if cfg!(feature = "test-support") {
+        match value.strip_prefix("http://") {
+            Some(r) => (r, false),
+            None => return Err(bad()),
+        }
+    } else {
+        return Err(bad());
+    };
+    if value.chars().any(|c| c.is_whitespace() || c.is_control()) || value.contains('#') {
+        return Err(bad());
+    }
+    if !allow_query && value.contains('?') {
+        return Err(bad());
+    }
+    let authority = rest.split(['/', '?']).next().unwrap_or("");
+    let (host, port) = match authority.rsplit_once(':') {
+        Some((h, p)) => (h, Some(p)),
+        None => (authority, None),
+    };
+    let port_ok = match port {
+        None => true,
+        Some(p) => !p.is_empty() && p.len() <= 5 && p.bytes().all(|b| b.is_ascii_digit()) && p.parse::<u16>().is_ok(),
+    };
+    if !port_ok {
+        return Err(bad());
+    }
+    let host_ok = !host.is_empty()
+        && !host.starts_with(['.', '-'])
+        && host.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-');
+    if !host_ok {
+        return Err(bad());
+    }
+    if !tls && !matches!(host, "127.0.0.1" | "localhost") {
+        return Err(bad());
+    }
+    Ok(())
+}
+
+/// Validate a tenant-registered issuer string (see [`require_https_url`]).
+pub(crate) fn require_https_issuer(issuer: &str) -> Result<(), AppError> {
+    require_https_url("issuer", issuer, false)
+}
+
+/// Validate a tenant-registered `jwks_url` (the server fetches it).
+pub(crate) fn require_https_jwks_url(jwks_url: &str) -> Result<(), AppError> {
+    require_https_url("jwks_url", jwks_url, true)
+}
+
 /// PRD-mcphost-tenant-resource-metadata requirement 1/2: the one resource
 /// URI a tenant's namespace maps to -- computed from `public_url` and the
 /// namespace every time, never stored, so it can never drift from either.
@@ -618,6 +680,8 @@ pub async fn issuer_set(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
     let audience =
         arg_str_opt(args, "audience").unwrap_or_else(|| canonical_resource_uri(&state.public_url, &tenant.namespace));
     let jwks_url = arg_str(args, "jwks_url")?;
+    require_https_issuer(&issuer)?;
+    require_https_jwks_url(&jwks_url)?;
 
     if let Some(existing) = state.db.find_oauth_issuer_by_issuer(issuer.clone()).await? {
         if existing.tenant_id != tenant.id {
@@ -798,6 +862,8 @@ pub async fn trusted_issuer_set(state: &AppState, tenant: &Tenant, args: &Value)
     let issuer = arg_str(args, "issuer")?;
     let jwks_url = arg_str(args, "jwks_url")?;
     let client_id = arg_str(args, "client_id")?;
+    require_https_issuer(&issuer)?;
+    require_https_jwks_url(&jwks_url)?;
     let audience = args.get("audience").and_then(Value::as_str).map(str::to_string);
 
     if let Some(existing) = state.db.find_trusted_issuer_by_issuer(issuer.clone()).await? {
