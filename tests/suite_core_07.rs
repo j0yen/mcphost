@@ -841,6 +841,16 @@ mod enduserctl_ac10_list_100k_pages_under_50ms_stable_cursor;
 mod envelope_ac1_http_declared_output_promoted;
 #[path = "envelope_ac4_tool_test_reports_missing_declared_output.rs"]
 mod envelope_ac4_tool_test_reports_missing_declared_output;
+#[path = "exargs_ac02_generator_values.rs"]
+mod exargs_ac02_generator_values;
+#[path = "exargs_ac03_tool_test_runs_the_example.rs"]
+mod exargs_ac03_tool_test_runs_the_example;
+#[path = "exargs_ac04_unsatisfiable_schema_is_refused.rs"]
+mod exargs_ac04_unsatisfiable_schema_is_refused;
+#[path = "exargs_ac05_publish_dry_run_and_spec_test_run_one_example.rs"]
+mod exargs_ac05_publish_dry_run_and_spec_test_run_one_example;
+#[path = "exargs_ac06_depth_limit.rs"]
+mod exargs_ac06_depth_limit;
 #[path = "exmf_ac01_seven_manifests_check_green.rs"]
 mod exmf_ac01_seven_manifests_check_green;
 #[path = "exmf_ac02_bad_manifest_exits_two_index_untouched.rs"]
@@ -1827,15 +1837,3 @@ mod oauthrs_ac09_admin_lists_issuers_and_audits;
 mod oauthrs_ac10_key_based_flow_unchanged;
 #[path = "oauthrs_ac11_issuer_and_jwks_url_must_be_https.rs"]
 mod oauthrs_ac11_issuer_and_jwks_url_must_be_https;
-#[path = "oauthsig_ac01_auth_method_by_credential.rs"]
-mod oauthsig_ac01_auth_method_by_credential;
-#[path = "oauthsig_ac02_healthz_calls_and_tenants_by_method.rs"]
-mod oauthsig_ac02_healthz_calls_and_tenants_by_method;
-#[path = "oauthsig_ac03_admin_oauth_stats_tenant_rows_and_admin_only.rs"]
-mod oauthsig_ac03_admin_oauth_stats_tenant_rows_and_admin_only;
-#[path = "oauthsig_ac04_admin_oauth_stats_funnel.rs"]
-mod oauthsig_ac04_admin_oauth_stats_funnel;
-#[path = "oauthsig_ac05_healthz_cache_and_p95.rs"]
-mod oauthsig_ac05_healthz_cache_and_p95;
-#[path = "oauthsig_ac06_conformance_script_writes_receipt.rs"]
-mod oauthsig_ac06_conformance_script_writes_receipt;

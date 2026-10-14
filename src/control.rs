@@ -130,6 +130,11 @@ fn quickstart_limits(state: &AppState, plan_name: &str) -> Value {
         })
 }
 
+/// PRD-mcphost-tool-test-examples-from-schema R6 (AC7): the one sentence
+/// `host.quickstart`'s `try_before_call` rows and `www/llms.txt` both carry;
+/// `tests/exargs_ac07_*` asserts the two texts hold exactly this string.
+pub const TRY_BEFORE_CALL_OMIT_ARGS: &str = "try_before_call: `args` may be omitted on host.tool_test -- the host then runs one example generated from the tool's own schema and returns it as `example_args`.";
+
 /// The `try_before_call` table `host.quickstart` returns (PRD-mcphost-
 /// surface-fluidity requirement 1), factored out so the no-`kind` index
 /// builds the identical rows. `kind_name`/`example` pick the kind the
@@ -154,6 +159,7 @@ fn quickstart_try_before_call(
         "case": "a published tool, by name",
         "call": "host.tool_test",
         "arguments": {"name": tool_name, "args": example.call_args},
+        "note": TRY_BEFORE_CALL_OMIT_ARGS,
     })];
     // PRD-mcphost-call-cost-estimate requirement 7: the free question to ask
     // before the first call that carries a budget or a large argument.

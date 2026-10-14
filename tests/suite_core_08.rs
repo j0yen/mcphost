@@ -26,6 +26,18 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "oauthsig_ac01_auth_method_by_credential.rs"]
+mod oauthsig_ac01_auth_method_by_credential;
+#[path = "oauthsig_ac02_healthz_calls_and_tenants_by_method.rs"]
+mod oauthsig_ac02_healthz_calls_and_tenants_by_method;
+#[path = "oauthsig_ac03_admin_oauth_stats_tenant_rows_and_admin_only.rs"]
+mod oauthsig_ac03_admin_oauth_stats_tenant_rows_and_admin_only;
+#[path = "oauthsig_ac04_admin_oauth_stats_funnel.rs"]
+mod oauthsig_ac04_admin_oauth_stats_funnel;
+#[path = "oauthsig_ac05_healthz_cache_and_p95.rs"]
+mod oauthsig_ac05_healthz_cache_and_p95;
+#[path = "oauthsig_ac06_conformance_script_writes_receipt.rs"]
+mod oauthsig_ac06_conformance_script_writes_receipt;
 #[path = "outsch_ac01_oneof_budget_falsifier.rs"]
 mod outsch_ac01_oneof_budget_falsifier;
 #[path = "outsch_ac02_every_canonical_declares_an_object_output_schema.rs"]

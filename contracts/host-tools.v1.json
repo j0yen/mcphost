@@ -11302,7 +11302,7 @@
         "additionalProperties": false,
         "properties": {
           "invocations": {
-            "description": "Up to 5 example call-argument objects to run through the spec, e.g. [{\"msg\": \"hi\"}].",
+            "description": "Up to 5 example call-argument objects to run through the spec, e.g. [{\"msg\": \"hi\"}]. Omit to run one example generated from the spec's args_schema; the response then carries example_args.",
             "items": {
               "type": "object"
             },
@@ -11324,8 +11324,7 @@
         },
         "required": [
           "kind",
-          "spec",
-          "invocations"
+          "spec"
         ],
         "type": "object"
       },
@@ -11509,7 +11508,7 @@
         "additionalProperties": false,
         "properties": {
           "invocations": {
-            "description": "Up to 5 example call-argument objects to run through the spec, e.g. [{\"msg\": \"hi\"}].",
+            "description": "Up to 5 example call-argument objects to run through the spec, e.g. [{\"msg\": \"hi\"}]. Omit to run one example generated from the spec's args_schema; the response then carries example_args.",
             "items": {
               "type": "object"
             },
@@ -11531,8 +11530,7 @@
         },
         "required": [
           "kind",
-          "spec",
-          "invocations"
+          "spec"
         ],
         "type": "object",
         "x-deprecated": {
@@ -16689,7 +16687,7 @@
         "additionalProperties": false,
         "properties": {
           "args": {
-            "description": "Arguments to pass, same shape as a real call.",
+            "description": "Arguments to pass, same shape as a real call. Omit to run one example generated from the tool's args_schema; the response then carries example_args (what ran) and untyped (keys the schema gave no type for).",
             "type": "object"
           },
           "fixtures": {
@@ -16706,8 +16704,7 @@
           }
         },
         "required": [
-          "name",
-          "args"
+          "name"
         ],
         "type": "object"
       },
@@ -17901,7 +17898,7 @@
         "additionalProperties": false,
         "properties": {
           "args": {
-            "description": "Arguments to pass, same shape as a real call.",
+            "description": "Arguments to pass, same shape as a real call. Omit to run one example generated from the tool's args_schema; the response then carries example_args (what ran) and untyped (keys the schema gave no type for).",
             "type": "object"
           },
           "fixtures": {
@@ -17918,8 +17915,7 @@
           }
         },
         "required": [
-          "name",
-          "args"
+          "name"
         ],
         "type": "object",
         "x-deprecated": {
@@ -23765,7 +23761,7 @@
         "additionalProperties": false,
         "properties": {
           "invocations": {
-            "description": "Up to 5 example call-argument objects to run through the spec, e.g. [{\"msg\": \"hi\"}].",
+            "description": "Up to 5 example call-argument objects to run through the spec, e.g. [{\"msg\": \"hi\"}]. Omit to run one example generated from the spec's args_schema; the response then carries example_args.",
             "items": {
               "type": "object"
             },
@@ -23787,8 +23783,7 @@
         },
         "required": [
           "kind",
-          "spec",
-          "invocations"
+          "spec"
         ],
         "type": "object"
       },
@@ -25107,7 +25102,7 @@
         "additionalProperties": false,
         "properties": {
           "args": {
-            "description": "Arguments to pass, same shape as a real call.",
+            "description": "Arguments to pass, same shape as a real call. Omit to run one example generated from the tool's args_schema; the response then carries example_args (what ran) and untyped (keys the schema gave no type for).",
             "type": "object"
           },
           "fixtures": {
@@ -25124,8 +25119,7 @@
           }
         },
         "required": [
-          "name",
-          "args"
+          "name"
         ],
         "type": "object"
       },

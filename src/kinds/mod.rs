@@ -20,6 +20,7 @@ pub mod chain;
 pub mod conformance;
 pub mod docs;
 pub mod echo;
+pub mod example;
 pub mod http;
 pub mod outcomes;
 pub mod infer;
