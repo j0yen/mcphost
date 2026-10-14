@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-scheduled-job-receipts.md (test_prefix: sjrc)",
+  "ac_test_map_prd": "PRD-mcphost-oauth-metadata-lists-hosted-as.md (test_prefix: oauthmeta)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,14 +28,12 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/sjrc_ac01_one_call_summarizes_five_fires.rs",
-    "AC2": "tests/sjrc_ac02_third_consecutive_failure_alerts_once.rs",
-    "AC3": "tests/sjrc_ac03_excerpt_is_cut_and_redacted.rs",
-    "AC4": "tests/sjrc_ac04_pause_produces_nothing_resume_restarts_streak.rs",
-    "AC5": "tests/sjrc_ac05_sweeper_drops_receipts_past_plan_retention.rs",
-    "AC6": "tests/sjrc_ac06_manual_schedule_and_event_fires_all_leave_receipts.rs",
-    "AC7": "tests/sjrc_ac07_limit_ceiling_and_empty_tool.rs",
-    "AC8": "deferred -- operator-provisioned: Live check of prod via examples/scheduled-job-receipts/proof.sh."
+    "AC1": "tests/oauthmeta_ac01_tenant_document_lists_hosted_as.rs",
+    "AC2": "tests/oauthmeta_ac02_registered_issuer_follows_hosted_as.rs",
+    "AC3": "tests/oauthmeta_ac03_issuer_url_validator_gates_setters.rs",
+    "AC4": "tests/oauthmeta_ac04_stored_non_url_issuer_leaves_documents.rs",
+    "AC5": "tests/oauthmeta_ac05_contract_walk_document_to_token.rs",
+    "AC6": "deferred -- live: AC6 is a prod curl of the joe-test tenant document after deploy."
   },
   "ac_test_map_by_prefix": {
     "ccli": {
@@ -1584,7 +1582,15 @@
       "AC6": "tests/sjrc_ac06_manual_schedule_and_event_fires_all_leave_receipts.rs",
       "AC7": "tests/sjrc_ac07_limit_ceiling_and_empty_tool.rs",
       "AC8": "deferred -- operator-provisioned: Live check of prod via examples/scheduled-job-receipts/proof.sh."
+    },
+    "oauthmeta": {
+      "_prd": "PRD-mcphost-oauth-metadata-lists-hosted-as.md (test_prefix: oauthmeta)",
+      "AC1": "tests/oauthmeta_ac01_tenant_document_lists_hosted_as.rs",
+      "AC2": "tests/oauthmeta_ac02_registered_issuer_follows_hosted_as.rs",
+      "AC3": "tests/oauthmeta_ac03_issuer_url_validator_gates_setters.rs",
+      "AC4": "tests/oauthmeta_ac04_stored_non_url_issuer_leaves_documents.rs",
+      "AC5": "tests/oauthmeta_ac05_contract_walk_document_to_token.rs",
+      "AC6": "deferred -- live: AC6 is a prod curl of the joe-test tenant document after deploy."
     }
   }
 }
-

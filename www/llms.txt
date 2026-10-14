@@ -540,8 +540,14 @@ Every tenant has its own canonical resource URI:
 bare `<public-url>/mcp`, so it discovers only your identity provider:
 
 - `GET <public-url>/.well-known/oauth-protected-resource/t/<your-namespace>/mcp`
-  lists only the issuer(s) you registered with `host.oauth.issuer_set`,
-  under `authorization_servers` -- never another tenant's.
+  lists, under `authorization_servers`, mcphost's own authorization server
+  (`<public-url>`) first, then the issuer(s) you registered with
+  `host.oauth.issuer_set`, in that order and deduplicated -- never another
+  tenant's. A client that reads `authorization_servers[0]` always lands on
+  an authorization server that can issue a token for your tenant. Issuers
+  must be absolute `https://` URLs (`host.oauth.issuer_set`,
+  `host.oauth.trusted_issuer_set` and `host.oauth.provider_set` refuse
+  anything else with `issuer_url_invalid`).
 - Register your identity provider with `host.oauth.issuer_set(issuer,
   jwks_url)`. `audience` is optional and defaults to your own canonical
   resource URI above; set it explicitly only if your identity provider

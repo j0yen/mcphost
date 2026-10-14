@@ -1797,6 +1797,16 @@ mod oauthconf_ac05_probe_cli_json_matches_gate_and_exit_codes;
 mod oauthconf_ac06_records_and_receipt_never_leak_secrets;
 #[path = "oauthconf_ac07_scenarios_doc_matches_gold_and_docs_sharing_check.rs"]
 mod oauthconf_ac07_scenarios_doc_matches_gold_and_docs_sharing_check;
+#[path = "oauthmeta_ac01_tenant_document_lists_hosted_as.rs"]
+mod oauthmeta_ac01_tenant_document_lists_hosted_as;
+#[path = "oauthmeta_ac02_registered_issuer_follows_hosted_as.rs"]
+mod oauthmeta_ac02_registered_issuer_follows_hosted_as;
+#[path = "oauthmeta_ac03_issuer_url_validator_gates_setters.rs"]
+mod oauthmeta_ac03_issuer_url_validator_gates_setters;
+#[path = "oauthmeta_ac04_stored_non_url_issuer_leaves_documents.rs"]
+mod oauthmeta_ac04_stored_non_url_issuer_leaves_documents;
+#[path = "oauthmeta_ac05_contract_walk_document_to_token.rs"]
+mod oauthmeta_ac05_contract_walk_document_to_token;
 #[path = "oauthpol_ac01_allowlist_by_client_id_and_cimd_host.rs"]
 mod oauthpol_ac01_allowlist_by_client_id_and_cimd_host;
 #[path = "oauthpol_ac02_approve_mode_pending_approve_deny.rs"]
@@ -1815,25 +1825,3 @@ mod oauthpol_ac07_operator_block_list_and_admin_rejection;
 mod oauthpol_ac08_cimd_host_daily_registration_cap;
 #[path = "oauthpol_ac09_no_policy_defaults_match_hosted_as.rs"]
 mod oauthpol_ac09_no_policy_defaults_match_hosted_as;
-#[path = "oauthrs_ac01_protected_resource_metadata_empty.rs"]
-mod oauthrs_ac01_protected_resource_metadata_empty;
-#[path = "oauthrs_ac02_bearer_jwt_runs_as_tenant.rs"]
-mod oauthrs_ac02_bearer_jwt_runs_as_tenant;
-#[path = "oauthrs_ac03_invalid_tokens_rejected_with_reasons.rs"]
-mod oauthrs_ac03_invalid_tokens_rejected_with_reasons;
-#[path = "oauthrs_ac04_401_challenge_signup_still_open.rs"]
-mod oauthrs_ac04_401_challenge_signup_still_open;
-#[path = "oauthrs_ac05_unknown_kid_refetch_throttled.rs"]
-mod oauthrs_ac05_unknown_kid_refetch_throttled;
-#[path = "oauthrs_ac06_jwks_server_down_unknown_issuer.rs"]
-mod oauthrs_ac06_jwks_server_down_unknown_issuer;
-#[path = "oauthrs_ac07_issuer_registration_limits.rs"]
-mod oauthrs_ac07_issuer_registration_limits;
-#[path = "oauthrs_ac08_conflicting_credentials.rs"]
-mod oauthrs_ac08_conflicting_credentials;
-#[path = "oauthrs_ac09_admin_lists_issuers_and_audits.rs"]
-mod oauthrs_ac09_admin_lists_issuers_and_audits;
-#[path = "oauthrs_ac10_key_based_flow_unchanged.rs"]
-mod oauthrs_ac10_key_based_flow_unchanged;
-#[path = "oauthrs_ac11_issuer_and_jwks_url_must_be_https.rs"]
-mod oauthrs_ac11_issuer_and_jwks_url_must_be_https;

@@ -1909,6 +1909,11 @@ pub async fn serve_on_listener(
     // PRD-mcphost-tools-list-alias-truth AC4: two tools whose flattened
     // names collide stop the server before it accepts a connection.
     crate::handler::validate_tool_registry(&state.kinds)?;
+    // PRD-mcphost-oauth-metadata-lists-hosted-as R4: once per process, name
+    // stored issuers the metadata documents now omit.
+    if let Err(e) = crate::oauth::warn_invalid_stored_issuers(&state).await {
+        tracing::warn!(error = %e, "could not scan stored OAuth issuers at startup");
+    }
     let app = build_router(state);
     tracing::info!(addr = ?listener.local_addr().ok(), "mcphost listening");
     axum::serve(

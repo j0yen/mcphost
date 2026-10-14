@@ -195,6 +195,9 @@ pub async fn provider_set(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     let require_verified_email = args.get("require_verified_email").and_then(Value::as_bool).unwrap_or(true);
     let owner_login = args.get("owner_login").and_then(Value::as_bool).unwrap_or(false);
 
+    // PRD-mcphost-oauth-metadata-lists-hosted-as R2: the same validator the
+    // other two issuer setters use, before any network fetch.
+    crate::oauth::require_https_issuer(&issuer)?;
     let discovery = fetch_discovery(&issuer).await.map_err(|reason| AppError::Structured {
         code: "provider_discovery_failed",
         message: format!("could not fetch discovery document for issuer '{issuer}': {reason}"),

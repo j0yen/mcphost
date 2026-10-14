@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-scheduled-job-receipts.md",
-  "intent_slug": "mcphost-scheduled-job-receipts",
-  "root_motivation": "**Premise (agent's viewpoint):** an agent that set a schedule for its user will be asked \"is it still running?\" tomorrow; it wants one call that answers with a streak and the last output, and it wants to be told before being asked. The host records runs with `trigger_ref` (`src/runs.rs:1203-1208`) and fires schedules in `spawn_scheduler` (`src/triggers.rs:883`), but `host.runs.list` (`src/handler.rs:2412`) returns pages of runs with no per-trigger aggregate and no next-fire time, and nothing is pushed on failure. **Falsifier:** if one `host.runs.list` call can yield `streak_failed` and `next_fire_unix` for a trigger, receipts are redundant. AC1 asserts the fields are absent from `runs.list` and present in `schedule_receipts`. **Why not today:** PRD-mcphost-schedules (built 09-09) shipped fire + logs; PRD-mcphost-alerting-webhook (shipped 09-25) alerts on tool errors by webhook, not on a trigger's streak and not into the inbox.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-oauth-metadata-lists-hosted-as.md",
+  "intent_slug": "mcphost-oauth-metadata-lists-hosted-as",
+  "root_motivation": "A tenant that already exists (an ICP row 1 agent owner, or synthorg's explore cohort standing in for one) points an OAuth client at its canonical resource `https://mcphost.dev/t/<ns>/mcp`. The client gets the correct 401 and fetches the tenant document, which says no authorization server exists. The client stops. synthorg's explore OAuth cohort fails 42 of 42 sessions a night this way (`explore-20261013T081050Z`, `sessions/admin_agent-11/session.json`: `oauth_trace = [{\"step\":\"discover\",\"status\":\"error\"}]`), so the nightly read on OAuth clients has been zero information since the cohort shipped. The hosted authorization server would have issued a token for that very tenant: `resolve_resource_tenant` resolves the per-tenant resource to the tenant (`src/authz.rs:872-879`) and the token's `aud` is checked against the grant's recorded resource (`src/authz.rs:1920`). The document is wrong, not the server.",
   "user_persona": "An agent that calls host.state.delete_rows with an empty filter on a 5 000-row table, reads confirm_required.dry_run_first, runs the dry run, notices the empty filter and fixes it; a Claude Code user who sees a destructive marker on host.table.drop.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,50 +14,38 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a schedule fired 5 times (3 ok, then 2 failing) via `host.trigger.fire`, When `host.schedule_receipts(trigger_id)` is called once, Then it returns 5 rows and `summary.streak_failed == 2`, `summary.ok == 3`, `summary.next_fire_unix` set, while the same test asserts `host.runs.list(trigger=\"schedule\")` carries none of `streak_failed`, `last_ok_unix`, `next_fire_unix` (premise holds; if it does, the test fails).",
-      "test": "tests/sjrc_ac01_one_call_summarizes_five_fires.rs"
+      "description": "Given tenant T with no issuers and no provider, When `GET /.well-known/oauth-protected-resource/t/<ns>/mcp` is called, Then `authorization_servers == [\"<public_url>\"]` and `resource == \"<public_url>/t/<ns>/mcp\"`.",
+      "test": "tests/oauthmeta_ac01_tenant_document_lists_hosted_as.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the third consecutive failure, When the run ends, Then exactly one message from `@host` with subject `schedule <tool> failed 3x in a row` and `data.trigger_id` is in `host.msg.inbox`; the fourth failure sends nothing; a success then two more failures send nothing; a success then three failures send one more.",
-      "test": "tests/sjrc_ac02_third_consecutive_failure_alerts_once.rs"
+      "description": "Given T registered issuer I with `host.oauth.issuer_set`, When the tenant document is fetched, Then `authorization_servers == [\"<public_url>\", I]`; Given I equals `public_url`, Then it appears once.",
+      "test": "tests/oauthmeta_ac02_registered_issuer_follows_hosted_as.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a run whose result is 1 000 chars and contains a value matching `(?i)secret`, When the receipt is written, Then `output_excerpt` is 240 chars plus `\u2026`, the secret value is `\u2022\u2022\u2022`, and `run_id` resolves through `host.runs.part`.",
-      "test": "tests/sjrc_ac03_excerpt_is_cut_and_redacted.rs"
+      "description": "Given `host.oauth.trusted_issuer_set` with issuer `toolconf-probe`, `ftp://x`, or `https://`, When called, Then the error code is `issuer_url_invalid` and no row is written; Given `https://idp.example.com` or `http://127.0.0.1:8080`, Then the row is written.",
+      "test": "tests/oauthmeta_ac03_issuer_url_validator_gates_setters.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given `host.trigger.pause`, When the scheduler ticks three times, Then no receipt and no message is produced; Given `host.trigger.resume`, Then the next fire's receipt exists and `streak_failed` restarts at 0.",
-      "test": "tests/sjrc_ac04_pause_produces_nothing_resume_restarts_streak.rs"
+      "description": "Given a stored issuer row whose value is `toolconf-probe`, When the root and the tenant documents are fetched, Then neither lists it and the process log carries one `issuer_url_invalid` warning naming the tenant id and count.",
+      "test": "tests/oauthmeta_ac04_stored_non_url_issuer_leaves_documents.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a free tenant with receipts 8 days old, When the sweeper runs, Then those rows are gone, `summary.runs` counts only the retained ones, and keyed `host.quickstart.limits.plan.receipts_retention_days == 7` (pro: 30).",
-      "test": "tests/sjrc_ac05_sweeper_drops_receipts_past_plan_retention.rs"
+      "description": "Given a fresh key-signup tenant on a test server, When the `oauthmeta` contract walk runs from its tenant document with no hard-coded authorization-server URL, Then `discover`, `metadata`, `register`, `authorize`, `consent`, and `token` succeed and a bearer `tools/call` on the document's `resource` returns the tenant's `host.whoami`.",
+      "test": "tests/oauthmeta_ac05_contract_walk_document_to_token.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a manual `host.trigger.fire`, a scheduled fire, and a signed POST to an event trigger, When each run ends, Then three receipts exist with `source` manual, schedule and event respectively, and `host.trigger.get` on each shows `last_receipt`.",
-      "test": "tests/sjrc_ac06_manual_schedule_and_event_fires_all_leave_receipts.rs"
-    },
-    {
-      "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given `limit: 51`, When called, Then `args_invalid` names `limit \u2264 50`; Given a tool with no triggers, Then `rows` is empty and `summary.runs == 0` without error.",
-      "test": "tests/sjrc_ac07_limit_ceiling_and_empty_tool.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Given prod after this lands, When the proof script signs up, publishes a tool, sets a schedule, fires it three times and lists receipts, Then it prints `receipts=3 streak_failed=0` and exits 0 (Live; evidence: `bash examples/scheduled-job-receipts/proof.sh https://mcphost.dev/mcp`)",
-      "test": "deferred -- operator-provisioned: Live check of prod via examples/scheduled-job-receipts/proof.sh."
+      "description": "Given the landed binary deployed on prod, When the tenant document for the joe-test tenant is fetched, Then its first authorization server is `https://mcphost.dev` (Live; evidence: `curl -s https://mcphost.dev/.well-known/oauth-protected-resource/t/t_3556946d/mcp | python3 -c 'import json,sys;print(json.load(sys.stdin)[\"authorization_servers\"][0])'`)",
+      "test": "deferred -- live: AC6 is a prod curl of the joe-test tenant document after deploy."
     }
   ],
   "scope": [

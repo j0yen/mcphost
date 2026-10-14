@@ -2,7 +2,8 @@
 //! AC1 (P0) — Given tenant T with namespace `acme` and issuer I registered
 //! with no audience, When `GET /.well-known/oauth-protected-resource/t/acme/mcp`
 //! is called, Then it returns 200 with `resource == "<public>/t/acme/mcp"`,
-//! `authorization_servers == [I]`, `scopes_supported == ["mcp"]`, and the
+//! `authorization_servers == [<public>, I]` (hosted AS first, per
+//! PRD-mcphost-oauth-metadata-lists-hosted-as R1), `scopes_supported == ["mcp"]`, and the
 //! root document's `authorization_servers` still lists this tenant's issuer
 //! (plus, per PRD-mcphost-hosted-authorization-server, the host's own AS --
 //! isolation means no OTHER tenant's issuer ever appears there).
@@ -39,7 +40,7 @@ async fn tenant_metadata_document_lists_only_this_tenants_issuer() {
     let body: Value = resp.json().await.expect("parse tenant metadata JSON");
 
     assert_eq!(body["resource"], json!(format!("{}/t/{ns}/mcp", server.base_url)));
-    assert_eq!(body["authorization_servers"], json!([issuer]));
+    assert_eq!(body["authorization_servers"], json!([server.base_url, issuer]));
     assert_eq!(body["scopes_supported"], json!(["mcp"]));
     assert_eq!(body["bearer_methods_supported"], json!(["header"]));
 

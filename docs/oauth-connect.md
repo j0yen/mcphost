@@ -35,6 +35,18 @@ Add an MCP server pointing at `https://mcphost.dev/mcp` (Cursor Settings ->
 MCP -> Add new MCP server, transport `http`). Cursor follows the same
 OAuth discovery and redirects you to the same consent page.
 
+## Which authorization server a tenant document lists
+
+`GET <public-url>/.well-known/oauth-protected-resource/t/<your-namespace>/mcp`
+lists mcphost's own authorization server (`<public-url>`) first for every
+tenant, then the issuers you registered with `host.oauth.issuer_set`,
+deduplicated. A client that reads `authorization_servers[0]` therefore always
+reaches an authorization server that can issue a token for your tenant.
+Issuer values must be absolute `https://` URLs: `host.oauth.issuer_set`,
+`host.oauth.trusted_issuer_set` and `host.oauth.provider_set` refuse anything
+else with the error code `issuer_url_invalid`, and a stored value that is not
+a URL is left out of both metadata documents.
+
 ## What the consent page asks for
 
 The consent page names the connecting client and the resource it is
