@@ -24,6 +24,7 @@ pub mod http;
 pub mod outcomes;
 pub mod infer;
 pub mod python;
+pub mod python_lint;
 pub mod wasm;
 
 /// Error returned by a [`Kind`]'s methods. Distinct from the JSON-RPC error

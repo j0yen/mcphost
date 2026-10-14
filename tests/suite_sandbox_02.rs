@@ -452,6 +452,18 @@ mod tfdb_ac02_unconfigured_hides_tool_and_healthz_says_so;
 mod tfdb_ac03_anonymous_first_call_implicit_signup;
 #[path = "tgraph_ac09_python_sandbox_join_paths.rs"]
 mod tgraph_ac09_python_sandbox_join_paths;
+#[path = "toollint_ac02_mcphost_not_imported.rs"]
+mod toollint_ac02_mcphost_not_imported;
+#[path = "toollint_ac03_string_arg_subscripted.rs"]
+mod toollint_ac03_string_arg_subscripted;
+#[path = "toollint_ac04_return_not_json.rs"]
+mod toollint_ac04_return_not_json;
+#[path = "toollint_ac05_envelope_subscript_not_flagged.rs"]
+mod toollint_ac05_envelope_subscript_not_flagged;
+#[path = "toollint_ac06_replay_corpus_fast_and_panic_free.rs"]
+mod toollint_ac06_replay_corpus_fast_and_panic_free;
+#[path = "toollint_ac07_lint_rules_table.rs"]
+mod toollint_ac07_lint_rules_table;
 #[path = "tooltest_ac13_publish_error_parity.rs"]
 mod tooltest_ac13_publish_error_parity;
 #[path = "tooltest_ac1_python_two_invocations.rs"]
