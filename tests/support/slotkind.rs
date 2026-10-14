@@ -48,6 +48,10 @@ impl Kind for SlotKind {
         "slot"
     }
 
+    fn idempotent_default(&self, _spec: &serde_json::Value) -> bool {
+        false
+    }
+
     fn known_spec_fields(&self) -> &'static [&'static str] {
         &["schema", "hold_ms"]
     }

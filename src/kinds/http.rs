@@ -381,6 +381,16 @@ fn http_field_hint(field: &str) -> Option<(&'static str, Value)> {
     })
 }
 
+/// `true` for the methods HTTP defines as safe (`GET`, `HEAD`).
+pub fn http_method_is_read(method: &str) -> bool {
+    method.eq_ignore_ascii_case("GET") || method.eq_ignore_ascii_case("HEAD")
+}
+
+/// Whether `spec` parses and its method (direct or `upstream`) is a read.
+pub fn spec_is_read(spec: &Value) -> bool {
+    parse_spec(spec).is_ok_and(|parsed| http_method_is_read(&parsed.method))
+}
+
 fn parse_spec(spec: &Value) -> Result<HttpSpec, KindError> {
     if !spec.is_object() {
         return Err(KindError::InvalidSpec("spec: must be a JSON object".into()));
@@ -1067,6 +1077,12 @@ impl HttpKind {
 impl Kind for HttpKind {
     fn name(&self) -> &'static str {
         "http"
+    }
+
+    /// `GET`/`HEAD` are safe to repeat; every other method is not. Reads the
+    /// method after `parse_spec`, so an `upstream` tool's method counts too.
+    fn idempotent_default(&self, spec: &Value) -> bool {
+        spec_is_read(spec)
     }
 
     fn validate(&self, spec: &Value) -> Result<(), KindError> {

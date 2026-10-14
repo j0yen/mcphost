@@ -1650,6 +1650,10 @@ impl Kind for ChainKind {
         "chain"
     }
 
+    fn idempotent_default(&self, _spec: &Value) -> bool {
+        false
+    }
+
     fn validate(&self, spec: &Value) -> Result<(), KindError> {
         parse_steps(spec).map(|_| ())
     }

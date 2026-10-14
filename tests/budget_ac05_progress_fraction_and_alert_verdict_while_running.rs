@@ -25,6 +25,10 @@ impl Kind for SlowEchoKind {
         "slow"
     }
 
+    fn idempotent_default(&self, _spec: &serde_json::Value) -> bool {
+        false
+    }
+
     fn validate(&self, _spec: &Value) -> Result<(), KindError> {
         Ok(())
     }

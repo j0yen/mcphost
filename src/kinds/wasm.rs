@@ -501,6 +501,10 @@ impl Kind for WasmKind {
         "wasm"
     }
 
+    fn idempotent_default(&self, _spec: &Value) -> bool {
+        false
+    }
+
     fn validate(&self, spec: &Value) -> Result<(), KindError> {
         self.validate_all(spec).into_iter().next().map_or(Ok(()), Err)
     }

@@ -436,6 +436,10 @@ impl Kind for UptimeKind {
         KIND_NAME
     }
 
+    fn idempotent_default(&self, _spec: &serde_json::Value) -> bool {
+        false
+    }
+
     fn validate(&self, spec: &Value) -> Result<(), KindError> {
         if !matches!(role_of(spec), "probe" | "status") {
             return Err(KindError::InvalidSpec("spec.role: must be \"probe\" or \"status\"".into()));

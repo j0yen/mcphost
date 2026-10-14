@@ -21,6 +21,10 @@ impl Kind for EchoKind {
         "echo"
     }
 
+    fn idempotent_default(&self, _spec: &Value) -> bool {
+        false
+    }
+
     fn validate(&self, spec: &Value) -> Result<(), KindError> {
         self.validate_all(spec)
             .into_iter()

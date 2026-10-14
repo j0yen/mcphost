@@ -5560,6 +5560,10 @@ impl Kind for PythonKind {
         "python"
     }
 
+    fn idempotent_default(&self, _spec: &Value) -> bool {
+        false
+    }
+
     fn validate(&self, spec: &Value) -> Result<(), KindError> {
         let parsed = parse_spec(spec)?;
         validate_spec_fields(&parsed, &self.own_domain)

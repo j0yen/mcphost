@@ -837,7 +837,7 @@ fn end_user_arg_schema() -> Value {
 }
 
 pub(crate) fn signup_tool() -> Tool {
-    Tool::new(
+    let mut tool = Tool::new(
         "signup",
         "Explicit signup, for a client that cannot keep a session across calls: create a \
          tenant and receive a bearer key and namespace. Unauthenticated. Most clients never \
@@ -858,7 +858,12 @@ pub(crate) fn signup_tool() -> Tool {
             }),
             &["name"],
         ),
-    )
+    );
+    // PRD-mcphost-tool-idempotent-declaration R3: `signup` has a row too.
+    if let Some((idempotent, read_only)) = host_tool_hint("signup") {
+        tool.annotations = Some(tool_annotations(idempotent, read_only));
+    }
+    tool
 }
 
 /// PRD-mcphost-publish-first-try requirement 1 (AC1) named `host.tool_test`
@@ -956,6 +961,224 @@ fn tool_from_description_tool() -> Tool {
             &["description"],
         ),
     )
+}
+
+/// PRD-mcphost-tool-idempotent-declaration R4: the three MCP
+/// `ToolAnnotations` keys mcphost sets. A drift test serialises rmcp's own
+/// struct and asserts these are exactly its keys.
+pub const ANNOTATION_FIELDS: [&str; 3] = ["idempotentHint", "readOnlyHint", "destructiveHint"];
+
+/// PRD-mcphost-tool-idempotent-declaration R3: `(name, idempotent, read_only)`
+/// for every canonical `host.*`/`billing.*` tool and `signup`;
+/// `destructiveHint` is `!idempotent`. A test asserts every canonical name
+/// has a row (aliases inherit the canonical's annotations).
+pub const HOST_TOOL_HINTS: &[(&str, bool, bool)] = &[
+    ("billing.checkout", false, false),
+    ("billing.plans", true, true),
+    ("billing.status", true, true),
+    ("host.agent.contact_accept", true, false),
+    ("host.agent.contact_deny", true, false),
+    ("host.agent.contact_request", false, false),
+    ("host.agent.contacts", true, true),
+    ("host.agent.contacts_import", false, false),
+    ("host.agent.lookup", true, true),
+    ("host.agent.mute", true, false),
+    ("host.agent.profile_set", true, false),
+    ("host.agent.search", true, true),
+    ("host.agent.unmute", true, false),
+    ("host.agent.whoami", true, true),
+    ("host.ask.create", false, false),
+    ("host.ask.get", true, true),
+    ("host.ask.list", true, true),
+    ("host.ask.wait", true, true),
+    ("host.audit.chain", true, true),
+    ("host.audit.verify", true, true),
+    ("host.blob.delete", false, false),
+    ("host.blob.gc", false, false),
+    ("host.blob.get", true, true),
+    ("host.blob.list", true, true),
+    ("host.blob.policy", true, true),
+    ("host.blob.put", false, false),
+    ("host.blob.touch", true, false),
+    ("host.blob.url", true, true),
+    ("host.bridge.test", false, false),
+    ("host.call_trace", true, true),
+    ("host.catalog.get", true, true),
+    ("host.catalog.search", true, true),
+    ("host.changelog", true, true),
+    ("host.channel.close", false, false),
+    ("host.channel.freeze", true, false),
+    ("host.channel.open", false, false),
+    ("host.channel.post", false, false),
+    ("host.channel.read", true, true),
+    ("host.channel.unfreeze", true, false),
+    ("host.docs.delete", false, false),
+    ("host.docs.get", true, true),
+    ("host.docs.index_config", true, true),
+    ("host.docs.list", true, true),
+    ("host.docs.purge", false, false),
+    ("host.docs.put", false, false),
+    ("host.docs.reindex", true, false),
+    ("host.docs.search", true, true),
+    ("host.docs.status", true, true),
+    ("host.drift.check", true, true),
+    ("host.drift.resolve", true, false),
+    ("host.drift.review", true, true),
+    ("host.drift.reviews", true, true),
+    ("host.enduser.assertion_secret_rotate", false, false),
+    ("host.enduser.audit", true, true),
+    ("host.enduser.export", true, true),
+    ("host.enduser.get", true, true),
+    ("host.enduser.list", true, true),
+    ("host.enduser.purge", false, false),
+    ("host.enduser.revoke", false, false),
+    ("host.enduser.unrevoke", true, false),
+    ("host.enduser.whoami", true, true),
+    ("host.estimate", true, true),
+    ("host.example.proposal_status", true, true),
+    ("host.example.propose", false, false),
+    ("host.export", true, true),
+    ("host.feedback.get", true, true),
+    ("host.feedback.list", true, true),
+    ("host.feedback.send", false, false),
+    ("host.group.add", true, false),
+    ("host.group.create", false, false),
+    ("host.group.list", true, true),
+    ("host.group.remove", false, false),
+    ("host.import", false, false),
+    ("host.invite.create", false, false),
+    ("host.invite.list", true, true),
+    ("host.invite.revoke", false, false),
+    ("host.key.rotate", false, false),
+    ("host.lineage.blast_radius", true, true),
+    ("host.lineage.trace", true, true),
+    ("host.lineage.trace_page", true, true),
+    ("host.msg.ack", true, false),
+    ("host.msg.block", true, false),
+    ("host.msg.inbox", true, true),
+    ("host.msg.reply", false, false),
+    ("host.msg.send", false, false),
+    ("host.msg.thread", true, true),
+    ("host.msg.unblock", true, false),
+    ("host.msg.wait", true, true),
+    ("host.oauth.audit", true, true),
+    ("host.oauth.audit_export", true, true),
+    ("host.oauth.client_approve", true, false),
+    ("host.oauth.client_deny", true, false),
+    ("host.oauth.doctor", true, true),
+    ("host.oauth.grant_revoke", false, false),
+    ("host.oauth.grants", true, true),
+    ("host.oauth.issuer_remove", false, false),
+    ("host.oauth.issuer_set", true, false),
+    ("host.oauth.issuers", true, true),
+    ("host.oauth.pending", true, true),
+    ("host.oauth.policy", true, true),
+    ("host.oauth.policy_set", true, false),
+    ("host.oauth.provider", true, true),
+    ("host.oauth.provider_remove", false, false),
+    ("host.oauth.provider_set", true, false),
+    ("host.oauth.revoke_all", false, false),
+    ("host.oauth.scope_set", true, false),
+    ("host.oauth.scopes", true, true),
+    ("host.oauth.trusted_issuer_remove", false, false),
+    ("host.oauth.trusted_issuer_set", true, false),
+    ("host.oauth.trusted_issuers", true, true),
+    ("host.policy.attrs_set", true, false),
+    ("host.policy.list", true, true),
+    ("host.policy.set", true, false),
+    ("host.progress", true, true),
+    ("host.quickstart", true, true),
+    ("host.redeem", false, false),
+    ("host.registry.publish", false, false),
+    ("host.runs.cancel", false, false),
+    ("host.runs.get", true, true),
+    ("host.runs.list", true, true),
+    ("host.runs.part", true, true),
+    ("host.runs.purge", false, false),
+    ("host.runs.wait", true, true),
+    ("host.secret.list", true, true),
+    ("host.secret.set", true, false),
+    ("host.self.offboard", false, false),
+    ("host.share.caller_limit", true, true),
+    ("host.share.caller_limit_remove", false, false),
+    ("host.spec.test", false, false),
+    ("host.state.delete", false, false),
+    ("host.state.delete_rows", false, false),
+    ("host.state.get", true, true),
+    ("host.state.insert", false, false),
+    ("host.state.list", true, true),
+    ("host.state.query", true, true),
+    ("host.state.set", true, false),
+    ("host.state.table_create", false, false),
+    ("host.state.table_drop", false, false),
+    ("host.table.append", false, false),
+    ("host.table.chart", false, false),
+    ("host.table.charts", true, true),
+    ("host.table.create", false, false),
+    ("host.table.describe", true, true),
+    ("host.table.drop", false, false),
+    ("host.table.graph", true, true),
+    ("host.table.handle_drop", false, false),
+    ("host.table.handle_export", true, true),
+    ("host.table.handles", true, true),
+    ("host.table.join_paths", true, true),
+    ("host.table.list", true, true),
+    ("host.table.model_set", true, false),
+    ("host.table.models", true, true),
+    ("host.table.next_questions", true, true),
+    ("host.table.query", true, true),
+    ("host.table.query_diagnose", true, true),
+    ("host.table.query_log", true, true),
+    ("host.table.query_stats", true, true),
+    ("host.table.schema", true, true),
+    ("host.tool.call", false, false),
+    ("host.tool.diff", true, true),
+    ("host.tool.history", true, true),
+    ("host.tool.list", true, true),
+    ("host.tool.logs", true, true),
+    ("host.tool.publish", false, false),
+    ("host.tool.remove", false, false),
+    ("host.tool.rollback", false, false),
+    ("host.tool.run", false, false),
+    ("host.tool.share", true, false),
+    ("host.tool.spec_shared", true, true),
+    ("host.tool.test", false, false),
+    ("host.tool.unshare", false, false),
+    ("host.trigger.dead_letters", true, true),
+    ("host.trigger.fire", false, false),
+    ("host.trigger.get", true, true),
+    ("host.trigger.list", true, true),
+    ("host.trigger.pause", true, false),
+    ("host.trigger.remove", false, false),
+    ("host.trigger.replay", false, false),
+    ("host.trigger.resume", true, false),
+    ("host.trigger.set", true, false),
+    ("host.trigger.test", false, false),
+    ("host.uptime.create", false, false),
+    ("host.usage", true, true),
+    ("host.vault.connect_link", true, false),
+    ("host.vault.disconnect", false, false),
+    ("host.vault.provider_remove", false, false),
+    ("host.vault.provider_set", true, false),
+    ("host.vault.providers", true, true),
+    ("host.vault.status", true, true),
+    ("host.webhook_inbox.create", false, false),
+    ("host.whoami", true, true),
+    ("signup", false, false),
+];
+
+/// The `(idempotent, read_only)` row for a canonical control-plane tool.
+pub fn host_tool_hint(name: &str) -> Option<(bool, bool)> {
+    HOST_TOOL_HINTS.iter().find(|(n, _, _)| *n == name).map(|(_, i, r)| (*i, *r))
+}
+
+/// The wire `annotations` for a tool: `destructiveHint` is `!idempotent`.
+pub fn tool_annotations(idempotent: bool, read_only: bool) -> rmcp::model::ToolAnnotations {
+    let mut annotations = rmcp::model::ToolAnnotations::default();
+    annotations.idempotent_hint = Some(idempotent);
+    annotations.read_only_hint = Some(read_only);
+    annotations.destructive_hint = Some(!idempotent);
+    annotations
 }
 
 /// PRD-mcphost-surface-fluidity requirement 4 (AC5): the name set
@@ -4264,13 +4487,21 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
     for tool in tools.iter_mut() {
         tool.output_schema = crate::output_schemas::output_schema_for(tool.name.as_ref());
     }
+    // PRD-mcphost-tool-idempotent-declaration R3: every control-plane tool
+    // carries its `HOST_TOOL_HINTS` row as standard MCP annotations (before
+    // the alias pass, so aliases inherit them).
+    for tool in tools.iter_mut() {
+        if let Some((idempotent, read_only)) = host_tool_hint(tool.name.as_ref()) {
+            tool.annotations = Some(tool_annotations(idempotent, read_only));
+        }
+    }
     // PRD-mcphost-destructive-verb-confirmation-token R4: every confirm-gated
     // verb is marked `destructiveHint` and its description ends with the
     // confirm rule -- both read off the registry (`confirm::gated`), so a
     // verb added to `WRITE_VERBS` is annotated with no further code.
     for tool in tools.iter_mut() {
         if crate::confirm::gated_name(&tool.name) {
-            let mut annotations = rmcp::model::ToolAnnotations::default();
+            let mut annotations = tool.annotations.clone().unwrap_or_default();
             annotations.destructive_hint = Some(true);
             annotations.idempotent_hint = Some(false);
             tool.annotations = Some(annotations);
@@ -9554,12 +9785,15 @@ impl ServerHandler for McpHostHandler {
                         if row.kind == "echo" {
                             meta.0.insert("stub".to_string(), json!(true));
                         }
+                        let (idempotent, read_only) = crate::kinds::tool_hint_flags(kind.as_ref(), &row.spec);
                         let mut published = Tool::new(
                             format!("{}.{}", tenant.namespace, row.name),
                             descriptor.description,
                             value_to_json_object(descriptor.input_schema),
                         )
                         .with_meta(meta);
+                        // PRD-mcphost-tool-idempotent-declaration R3.
+                        published.annotations = Some(tool_annotations(idempotent, read_only));
                         // PRD-mcphost-contract-output-schemas R3: a tenant
                         // tool carries `outputSchema` only when its spec
                         // declared `outputs` -- the fields it promises at

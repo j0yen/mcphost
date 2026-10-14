@@ -660,7 +660,7 @@ impl Path {
 /// (`lineage::register_tool_publish`) is read directly off the raw spec by
 /// every kind, not owned by any one kind's own parser, so it would
 /// otherwise look "unknown" on every kind it's used with.
-pub const UNIVERSAL_SPEC_FIELDS: &[&str] = &["reads", "ui"];
+pub const UNIVERSAL_SPEC_FIELDS: &[&str] = &["reads", "ui", "idempotent"];
 
 /// Requirement 1's Levenshtein `did_you_mean`: the single nearest field in
 /// `known` within [`MAX_DID_YOU_MEAN_SPEC_FIELD_DISTANCE`] edits, nearest
@@ -732,7 +732,30 @@ pub fn check_unknown_spec_field(kind: &dyn Kind, spec: &Value, registry: &KindRe
         }
         return Some(KindError::structured_with("unknown_spec_field", message, data));
     }
+    if let Some(flag) = obj.get("idempotent")
+        && !flag.is_boolean()
+    {
+        return Some(invalid_spec_error("idempotent", json_type_name(flag), "a boolean", json!(true)));
+    }
     check_ui_spec(obj.get("ui")?)
+}
+
+/// PRD-mcphost-tool-idempotent-declaration R3: `(idempotent, read_only)` for a
+/// stored tenant tool. `read_only` is an http GET/HEAD that is also
+/// idempotent (a publisher cannot declare a read non-idempotent and keep it
+/// read-only).
+pub fn tool_hint_flags(kind: &dyn Kind, spec: &Value) -> (bool, bool) {
+    let idempotent = effective_idempotent(kind, spec);
+    (idempotent, idempotent && kind.name() == "http" && http::spec_is_read(spec))
+}
+
+/// PRD-mcphost-tool-idempotent-declaration R1/R2: the effective
+/// `idempotent` of a stored tool -- the publisher's explicit boolean when
+/// the spec carries one, else the kind's own default.
+pub fn effective_idempotent(kind: &dyn Kind, spec: &Value) -> bool {
+    spec.get("idempotent")
+        .and_then(Value::as_bool)
+        .unwrap_or_else(|| kind.idempotent_default(spec))
 }
 
 /// PRD-mcphost-form-tool R1: the `ui` spec field's sub-fields. A key outside
@@ -2070,6 +2093,12 @@ pub trait Kind: Send + Sync {
     fn known_spec_fields(&self) -> &'static [&'static str] {
         &[]
     }
+
+    /// PRD-mcphost-tool-idempotent-declaration R2: whether a tool of this
+    /// kind is safe to retry when its spec carries no `idempotent` flag.
+    /// Deliberately NOT defaulted -- every kind states it, so a new kind
+    /// cannot ship without deciding (`tests/idecl_ac04_*`).
+    fn idempotent_default(&self, spec: &Value) -> bool;
 
     /// PRD-mcphost-publish-schema-from-registry requirement 2: the one spec
     /// field this kind's parser requires unconditionally (`echo.schema`,
