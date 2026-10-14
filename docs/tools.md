@@ -2149,6 +2149,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Returns**
 
+- `activation`: object
 - `admin`: boolean
 - `admin_schema_version`: integer
 - `auth_method`: string

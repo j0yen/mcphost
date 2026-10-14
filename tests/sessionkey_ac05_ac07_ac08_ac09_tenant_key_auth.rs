@@ -63,6 +63,12 @@ async fn whoami_via_tenant_key_matches_the_bearer_path() {
     // design) -- so the argument path alone gains session_tenant on this
     // very call. Same deliberate-asymmetry treatment as `next` above.
     arg_result.as_object_mut().unwrap().remove("session_tenant");
+    // PRD-mcphost-time-to-first-success-public R2: `activation` reads the
+    // tenant's own stamps, and the first (bearer) call stamps `first_call`
+    // before the second call reads it -- state changing between the two calls,
+    // not a difference between the auth paths.
+    bearer_result.as_object_mut().unwrap().remove("activation");
+    arg_result.as_object_mut().unwrap().remove("activation");
     assert_eq!(
         bearer_result, arg_result,
         "an argument-authenticated whoami must return exactly what the bearer path returns"

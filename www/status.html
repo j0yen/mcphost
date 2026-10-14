@@ -119,6 +119,15 @@ rss      37.3 MiB</code></pre>
       "  " + num(host.nproc) + " cpu";
   }
 
+  // PRD-mcphost-time-to-first-success-public requirement 5: one line from
+  // `onboarding_7d`; "n/a" until enough strangers have a stamp, nothing at
+  // all when the server predates the key.
+  function onboardingLine(o) {
+    if (!o || typeof o !== "object") { return ""; }
+    return "Strangers reach their first working tool in p50 " + num(o.p50_s_to_first_own_call) +
+      " s (n=" + num(o.n) + ", 7 d)";
+  }
+
   function renderIncidents(data) {
     var open = data.incidents_open || [];
     var recent = data.incidents_recent_30d || [];
@@ -152,6 +161,8 @@ rss      37.3 MiB</code></pre>
       componentsEl.textContent = "";
       var hl = hostLine(data.host);
       if (hl) { rows.push('<span class="dim">' + hl + '</span>'); }
+      var ol = onboardingLine(data.onboarding_7d);
+      if (ol) { rows.push('<span class="dim">' + ol + '</span>'); }
       componentsEl.innerHTML = rows.join("\n");
 
       renderIncidents(data);

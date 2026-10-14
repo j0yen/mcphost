@@ -200,7 +200,26 @@ pub async fn tick_once(state: &AppState) -> Result<(), AppError> {
         check_component_alert(state, component).await?;
     }
     sample_signals(state, now, exec_latency_ms).await;
+    refresh_onboarding(state, now).await?;
     Ok(())
+}
+
+/// PRD-mcphost-time-to-first-success-public R3: recomputes the cached
+/// `onboarding_7d` block (one SQL) so `/status.json` stays a read.
+async fn refresh_onboarding(state: &AppState, now: i64) -> Result<(), AppError> {
+    let block = crate::funnel::onboarding_7d(&state.db, now, crate::funnel::ONBOARDING_MIN_N).await?;
+    *state.onboarding_cache.lock().unwrap_or_else(|e| e.into_inner()) = Some(block);
+    Ok(())
+}
+
+/// The cached block, computed on first read when no tick has run yet.
+async fn onboarding_block(state: &AppState) -> Result<Value, AppError> {
+    let cached = state.onboarding_cache.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    if let Some(block) = cached {
+        return Ok(block);
+    }
+    refresh_onboarding(state, now_unix()).await?;
+    Ok(state.onboarding_cache.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or(Value::Null))
 }
 
 /// Echo-probe calls per tick, counting the `exec` component probe above.
@@ -471,6 +490,7 @@ pub async fn status_json(state: &AppState) -> Result<Value, AppError> {
         "heal": crate::heal::status_block(state).await?,
         "maintenance": crate::maintenance::status_block(state).await?,
         "feedback": {"rows_24h": rows_24h, "themes_open": themes_open},
+        "onboarding_7d": onboarding_block(state).await?,
     });
     // PRD-mcphost-healthz-version-field requirement 3: whole-feed only; the
     // per-component rollup (`daily_rows`) stays unchanged.

@@ -762,6 +762,20 @@ mod trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent;
 mod tsvr_ac01_unknown_column_names_declared;
 #[path = "tsvr_ac02_type_mismatch_names_accepted_shape.rs"]
 mod tsvr_ac02_type_mismatch_names_accepted_shape;
+#[path = "ttfs_ac01_onboarding_7d_reads_external_stamps.rs"]
+mod ttfs_ac01_onboarding_7d_reads_external_stamps;
+#[path = "ttfs_ac02_whoami_activation_first_call_only.rs"]
+mod ttfs_ac02_whoami_activation_first_call_only;
+#[path = "ttfs_ac03_milestone_table_is_the_one_key_set.rs"]
+mod ttfs_ac03_milestone_table_is_the_one_key_set;
+#[path = "ttfs_ac04_onboarding_block_carries_no_identifiers.rs"]
+mod ttfs_ac04_onboarding_block_carries_no_identifiers;
+#[path = "ttfs_ac05_under_five_tenants_shows_n_and_nulls.rs"]
+mod ttfs_ac05_under_five_tenants_shows_n_and_nulls;
+#[path = "ttfs_ac06_admin_has_no_activation_and_unclassified_excluded.rs"]
+mod ttfs_ac06_admin_has_no_activation_and_unclassified_excluded;
+#[path = "ttfs_ac07_by_client_only_for_groups_of_five.rs"]
+mod ttfs_ac07_by_client_only_for_groups_of_five;
 #[path = "unkfield_ac04_trigger_set_unknown_argument.rs"]
 mod unkfield_ac04_trigger_set_unknown_argument;
 #[path = "unkfield_ac05_tools_list_additional_properties_false.rs"]

@@ -665,6 +665,18 @@ pub struct FunnelRow {
     pub funnel_origin: String,
 }
 
+/// One external tenant's activation stamps, as [`Db::onboarding_rows`] reads
+/// them (PRD-mcphost-time-to-first-success-public R3).
+#[derive(Debug, Clone)]
+pub struct OnboardingRow {
+    pub created_unix: i64,
+    pub first_call_unix: Option<i64>,
+    pub first_publish_unix: Option<i64>,
+    pub first_own_call_unix: Option<i64>,
+    pub second_session_unix: Option<i64>,
+    pub client_name: Option<String>,
+}
+
 /// PRD-mcphost-second-session-nudge requirement 1: one row per tenant the
 /// daily sweep (`returns::sweep`) needs to decide what to do -- a
 /// dedicated, narrow `SELECT` (same "own query, not the whole `Tenant`"
@@ -6695,6 +6707,34 @@ impl Db {
                         paid_source: r.get(9)?,
                         nudged_unix: r.get(10)?,
                         funnel_origin: r.get(11)?,
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-time-to-first-success-public R3: one row per tenant with
+    /// `origin = 'external'` created at or after `since_unix` -- the one
+    /// read `funnel::onboarding_7d` aggregates. `origin = 'unclassified'`
+    /// (a row from before migration 0012) never matches.
+    pub async fn onboarding_rows(&self, since_unix: i64) -> Result<Vec<OnboardingRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT created_unix, first_call_unix, first_publish_unix, first_own_call_unix, \
+                        second_session_unix, client_name \
+                 FROM tenants WHERE origin = 'external' AND created_unix IS NOT NULL AND created_unix >= ?1",
+            )?;
+            let rows = stmt
+                .query_map(params![since_unix], |r| {
+                    Ok(OnboardingRow {
+                        created_unix: r.get(0)?,
+                        first_call_unix: r.get(1)?,
+                        first_publish_unix: r.get(2)?,
+                        first_own_call_unix: r.get(3)?,
+                        second_session_unix: r.get(4)?,
+                        client_name: r.get(5)?,
                     })
                 })?
                 .collect::<rusqlite::Result<Vec<_>>>()?;

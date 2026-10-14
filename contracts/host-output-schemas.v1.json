@@ -12956,6 +12956,41 @@
   },
   "host.whoami": {
     "properties": {
+      "activation": {
+        "properties": {
+          "first_call_s": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "first_own_call_s": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "first_publish_s": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "next_milestone": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "second_session_s": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "admin": {
         "type": "boolean"
       },
