@@ -3597,6 +3597,18 @@
           "string",
           "null"
         ]
+      },
+      "version": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "anchor": {
+        "type": [
+          "string",
+          "null"
+        ]
       }
     },
     "required": [
@@ -3620,7 +3632,10 @@
         "items": {
           "properties": {
             "context": {
-              "type": "null"
+              "type": [
+                "object",
+                "null"
+              ]
             },
             "created_unix": {
               "type": "integer"
@@ -3642,6 +3657,18 @@
             },
             "text": {
               "type": "string"
+            },
+            "version": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "anchor": {
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "required": [

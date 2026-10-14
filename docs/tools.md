@@ -868,6 +868,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Returns**
 
+- `anchor`: string | null
 - `context`: object | null (always)
 - `created_unix`: integer (always)
 - `feedback_id`: string (always)
@@ -876,6 +877,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `status`: string (always)
 - `text`: string (always)
 - `theme_id`: string | null (always)
+- `version`: string | null
 
 ### `host.feedback.list`
 

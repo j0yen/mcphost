@@ -316,6 +316,8 @@ pub enum DraftReservation {
 
 /// PRD-mcphost-feedback-themes-nightly R1: `feedback_themes`, `feedback.theme_id`.
 const MIGRATION_0097: &str = include_str!("../migrations/0097_feedback_themes.sql");
+/// PRD-mcphost-feedback-closed-loop-notice R1/R3: ship columns + `feedback_notices`.
+const MIGRATION_0100: &str = include_str!("../migrations/0100_feedback_ship.sql");
 /// PRD-mcphost-host-changelog-since R4: `tenants.last_seen_version`.
 const MIGRATION_0098: &str = include_str!("../migrations/0098_last_seen_version.sql");
 
@@ -1746,7 +1748,7 @@ pub struct ClaimsSummary {
     pub nudged_then_claimed: i64,
 }
 
-fn now_rfc3339() -> String {
+pub(crate) fn now_rfc3339() -> String {
     // No chrono dependency: a stable, sortable, human-readable stamp is all
     // any AC needs (`created_at`/`started_at` are opaque strings to callers).
     let dur = SystemTime::now()
@@ -2973,6 +2975,19 @@ impl Db {
         Self::migrate_0097_feedback_themes(&conn)?;
         Self::migrate_0098_last_seen_version(&conn)?;
         Self::migrate_0099_calls_error_summary(&conn)?;
+        Self::migrate_0100_feedback_ship(&conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-feedback-closed-loop-notice: gated on
+    /// `feedback_themes.shipped_version` (the batch ends with the table).
+    fn migrate_0100_feedback_ship(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('feedback_themes') WHERE name = 'shipped_version'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0100)?;
+        }
         Ok(())
     }
 
@@ -13546,6 +13561,14 @@ impl Db {
                     .exists(params![thread_id, sender.id])?;
                 if !is_participant {
                     return Err(AppError::thread_not_found());
+                }
+                // PRD-mcphost-feedback-closed-loop-notice R2: a thread the host
+                // opened (a `@mcphost` message, no sending tenant) takes no replies.
+                let host_authored: bool = conn
+                    .prepare("SELECT 1 FROM messages WHERE thread_id = ?1 AND from_address = ?2 AND from_tenant_id IS NULL")?
+                    .exists(params![thread_id, crate::feedback::SYSTEM_SENDER])?;
+                if host_authored {
+                    return Err(AppError::system_sender_only());
                 }
                 let other_ids: Vec<i64> = Self::thread_participant_ids(conn, &thread_id)?
                     .into_iter()

@@ -5087,6 +5087,21 @@ fn admin_tools() -> Vec<Tool> {
                 &[],
             ),
         ),
+        // PRD-mcphost-feedback-closed-loop-notice R1.
+        Tool::new(
+            "admin.feedback.ship",
+            "Mark a feedback theme shipped in a version and send each filing tenant one inbox \
+             message from @mcphost naming the version and doc anchor (ids only, never feedback \
+             text). Returns {notified, anonymous, already_notified}; a second call notifies no one.",
+            schema(
+                json!({
+                    "theme_id": {"type": "string", "description": "The theme id (th_...)."},
+                    "version": {"type": "string", "description": "The release that fixed it, e.g. 0.110.0."},
+                    "anchor": {"type": "string", "description": "llms.txt anchor slug the notice links to."},
+                }),
+                &["theme_id", "version"],
+            ),
+        ),
         // PRD-mcphost-upstream-token-vault-status P0 requirement 2 (AC4/AC5).
         Tool::new(
             "admin.vault.stats",
@@ -6791,6 +6806,7 @@ impl McpHostHandler {
             "admin.status.rollup" => admin::status_rollup(&self.state, &args).await,
             // PRD-mcphost-feedback-themes-nightly R4.
             "admin.feedback.themes" => admin::feedback_themes(&self.state, &args).await,
+            "admin.feedback.ship" => admin::feedback_ship(&self.state, &args).await,
             // PRD-mcphost-upstream-token-vault-status P0 requirement 2 (AC4/AC5).
             "admin.vault.stats" => admin::vault_stats(&self.state).await,
             // PRD-mcphost-end-user-audit-and-revoke P1 requirement 7 (AC9).

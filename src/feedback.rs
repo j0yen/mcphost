@@ -416,24 +416,58 @@ pub async fn get(state: &AppState, sender: &Sender<'_>, args: &Value) -> Result<
         Some(t) => state.db.get_feedback_theme(t.clone()).await?,
         None => None,
     };
-    Ok(json!({
+    let status = FeedbackStatus::of_theme(theme.as_ref());
+    let mut out = json!({
         "feedback_id": row.feedback_id,
         "kind": row.kind,
         "text": row.text,
         "context": row.context_json.and_then(|c| serde_json::from_str::<Value>(&c).ok()),
         "last_call_ids": serde_json::from_str::<Value>(&row.last_call_ids).unwrap_or_else(|_| json!([])),
         "theme_id": theme_id,
-        "status": theme.map_or(STATUS_RECEIVED.to_string(), |t| t.status),
+        "status": status.as_str(),
         "created_unix": row.created_unix,
-    }))
+    });
+    if let (FeedbackStatus::Shipped, Some(t)) = (status, &theme) {
+        out["version"] = json!(t.shipped_version);
+        out["anchor"] = json!(t.shipped_anchor);
+    }
+    Ok(out)
 }
 
 /// Largest `limit` `host.feedback.list` honours.
 pub const LIST_LIMIT_MAX: i64 = 100;
 const LIST_LIMIT_DEFAULT: i64 = 20;
 
-/// Every row's `status` until a later PRD adds more states.
-pub const STATUS_RECEIVED: &str = "received";
+/// PRD-mcphost-feedback-closed-loop-notice R5: the per-row status
+/// `host.feedback.get`/`list` report, the sibling of [`FeedbackKind`].
+/// `Themed` is a row whose theme is still `open` in `feedback_themes`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FeedbackStatus {
+    Received,
+    Themed,
+    Shipped,
+}
+
+impl FeedbackStatus {
+    pub const ALL: [FeedbackStatus; 3] = [FeedbackStatus::Received, FeedbackStatus::Themed, FeedbackStatus::Shipped];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            FeedbackStatus::Received => "received",
+            FeedbackStatus::Themed => "themed",
+            FeedbackStatus::Shipped => "shipped",
+        }
+    }
+
+    /// The status of a row from its theme (`None` = not yet clustered).
+    pub fn of_theme(theme: Option<&FeedbackTheme>) -> Self {
+        match theme {
+            None => FeedbackStatus::Received,
+            Some(t) if t.status == THEME_STATUS_SHIPPED => FeedbackStatus::Shipped,
+            Some(_) => FeedbackStatus::Themed,
+        }
+    }
+}
 
 /// `host.feedback.list {limit?}`: the caller's own rows, newest first.
 /// Anonymous callers get an empty list and a note.
@@ -447,20 +481,30 @@ pub async fn list(state: &AppState, sender: &Sender<'_>, args: &Value) -> Result
         .unwrap_or(LIST_LIMIT_DEFAULT)
         .clamp(1, LIST_LIMIT_MAX);
     let rows = state.db.list_feedback_for_tenant(tenant_id, limit).await?;
-    let items: Vec<Value> = rows
-        .into_iter()
-        .map(|r| {
+    let mut items: Vec<Value> = Vec::with_capacity(rows.len());
+    for r in rows {
+        let theme = match state.db.feedback_row_theme_id(r.feedback_id.clone()).await? {
+            Some(t) => state.db.get_feedback_theme(t).await?,
+            None => None,
+        };
+        let status = FeedbackStatus::of_theme(theme.as_ref());
+        let mut item = {
             json!({
                 "feedback_id": r.feedback_id,
                 "kind": r.kind,
                 "text": r.text,
                 "context": r.context_json.and_then(|c| serde_json::from_str::<Value>(&c).ok()),
                 "last_call_ids": serde_json::from_str::<Value>(&r.last_call_ids).unwrap_or_else(|_| json!([])),
-                "status": STATUS_RECEIVED,
+                "status": status.as_str(),
                 "created_unix": r.created_unix,
             })
-        })
-        .collect();
+        };
+        if let (FeedbackStatus::Shipped, Some(t)) = (status, &theme) {
+            item["version"] = json!(t.shipped_version);
+            item["anchor"] = json!(t.shipped_anchor);
+        }
+        items.push(item);
+    }
     let count = items.len();
     Ok(json!({"feedback": items, "count": count}))
 }
@@ -701,6 +745,9 @@ pub struct FeedbackTheme {
     pub first_seen_unix: i64,
     pub last_seen_unix: i64,
     pub status: String,
+    pub shipped_version: Option<String>,
+    pub shipped_anchor: Option<String>,
+    pub shipped_unix: Option<i64>,
 }
 
 impl FeedbackTheme {
@@ -719,6 +766,9 @@ impl FeedbackTheme {
             first_seen_unix: r.get(9)?,
             last_seen_unix: r.get(10)?,
             status: r.get(11)?,
+            shipped_version: r.get(12)?,
+            shipped_anchor: r.get(13)?,
+            shipped_unix: r.get(14)?,
         })
     }
 
@@ -737,12 +787,16 @@ impl FeedbackTheme {
             "first_seen_unix": self.first_seen_unix,
             "last_seen_unix": self.last_seen_unix,
             "status": self.status,
+            "shipped_version": self.shipped_version,
+            "shipped_anchor": self.shipped_anchor,
+            "shipped_unix": self.shipped_unix,
         })
     }
 }
 
 const THEME_COLS: &str = "theme_id, kind, error_code, tool, text_prefix, count, tenants_json, \
-     example_ids_json, call_ids_json, first_seen_unix, last_seen_unix, status";
+     example_ids_json, call_ids_json, first_seen_unix, last_seen_unix, status, \
+     shipped_version, shipped_anchor, shipped_unix";
 
 /// What one clustering pass did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -809,6 +863,9 @@ impl crate::db::Db {
                         first_seen_unix: *created,
                         last_seen_unix: *created,
                         status: THEME_STATUS_OPEN.to_string(),
+                        shipped_version: None,
+                        shipped_anchor: None,
+                        shipped_unix: None,
                     });
                     touched.insert(theme_id.clone(), theme);
                 }
@@ -916,6 +973,143 @@ impl crate::db::Db {
 }
 
 // ---------------------------------------------------------------------------
+// Ship + notices (PRD-mcphost-feedback-closed-loop-notice).
+// ---------------------------------------------------------------------------
+
+pub const THEME_STATUS_SHIPPED: &str = "shipped";
+/// The reserved sender of every ship notice (R2).
+pub const SYSTEM_SENDER: &str = "@mcphost";
+/// Subject of the thread a ship notice opens (R3).
+pub const NOTICE_SUBJECT: &str = "feedback shipped";
+const NOTICE_IDS_MAX: usize = 5;
+const LLMS_TXT_URL: &str = "https://www.mcphost.dev/llms.txt";
+
+/// What one `admin.feedback.ship` did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ShipOutcome {
+    pub notified: i64,
+    pub anonymous: i64,
+    pub already_notified: i64,
+}
+
+impl ShipOutcome {
+    pub fn to_json(self) -> Value {
+        json!({"notified": self.notified, "anonymous": self.anonymous, "already_notified": self.already_notified})
+    }
+}
+
+/// The notice body: ids, version and anchor only -- never a row's text.
+pub fn notice_body(feedback_ids: &[String], theme_id: &str, version: &str, anchor: Option<&str>) -> String {
+    let mut ids = feedback_ids.iter().take(NOTICE_IDS_MAX).cloned().collect::<Vec<_>>().join(", ");
+    if feedback_ids.len() > NOTICE_IDS_MAX {
+        ids.push_str(&format!(" and {} more", feedback_ids.len() - NOTICE_IDS_MAX));
+    }
+    let url = match anchor {
+        Some(a) => format!("{LLMS_TXT_URL}#{a}"),
+        None => LLMS_TXT_URL.to_string(),
+    };
+    format!("Your feedback {ids} (theme {theme_id}) shipped in {version} \u{2014} {url}")
+}
+
+impl crate::db::Db {
+    /// R1/R3: marks the theme shipped and sends one `@mcphost` inbox message
+    /// per distinct live filing tenant that has no `feedback_notices` row yet,
+    /// all in one transaction. `anonymous` is every member row without a
+    /// reachable filer (NULL tenant, or a tenant deleted since -- its rows
+    /// cascade away, so it is the theme's `count` minus the live-tenant rows).
+    /// A theme that is already shipped keeps its first version/anchor.
+    /// `Ok(None)` when the theme does not exist.
+    pub async fn ship_feedback_theme(
+        &self,
+        theme_id: String,
+        version: String,
+        anchor: Option<String>,
+    ) -> Result<Option<ShipOutcome>, AppError> {
+        self.with_conn(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            let Some(theme) = tx
+                .query_row(
+                    &format!("SELECT {THEME_COLS} FROM feedback_themes WHERE theme_id = ?1"),
+                    params![theme_id],
+                    FeedbackTheme::from_row,
+                )
+                .optional()?
+            else {
+                return Ok(None);
+            };
+            let now = now_unix();
+            let (version, anchor) = match (&theme.shipped_version, theme.status == THEME_STATUS_SHIPPED) {
+                (Some(v), true) => (v.clone(), theme.shipped_anchor.clone()),
+                _ => (version, anchor),
+            };
+            tx.execute(
+                "UPDATE feedback_themes SET status = ?1, shipped_version = ?2, shipped_anchor = ?3, \
+                 shipped_unix = COALESCE(shipped_unix, ?4) WHERE theme_id = ?5",
+                params![THEME_STATUS_SHIPPED, version, anchor, now, theme_id],
+            )?;
+            // (tenant_id, feedback_id) of every member row whose tenant still exists.
+            let members: Vec<(i64, String)> = {
+                let mut stmt = tx.prepare(
+                    "SELECT f.tenant_id, f.feedback_id FROM feedback f JOIN tenants t ON t.id = f.tenant_id \
+                     WHERE f.theme_id = ?1 ORDER BY f.created_unix, f.id",
+                )?;
+                let rows = stmt.query_map(params![theme_id], |r| Ok((r.get(0)?, r.get(1)?)))?;
+                rows.collect::<Result<Vec<_>, _>>()?
+            };
+            let mut by_tenant: Vec<(i64, Vec<String>)> = Vec::new();
+            for (tenant_id, feedback_id) in &members {
+                match by_tenant.iter_mut().find(|(t, _)| t == tenant_id) {
+                    Some((_, ids)) => ids.push(feedback_id.clone()),
+                    None => by_tenant.push((*tenant_id, vec![feedback_id.clone()])),
+                }
+            }
+            let mut out = ShipOutcome { anonymous: (theme.count - members.len() as i64).max(0), ..Default::default() };
+            let now_ms = crate::state::now_unix_ms();
+            let stamp = crate::db::now_rfc3339();
+            for (tenant_id, ids) in &by_tenant {
+                let already: bool = tx
+                    .prepare("SELECT 1 FROM feedback_notices WHERE theme_id = ?1 AND tenant_id = ?2")?
+                    .exists(params![theme_id, tenant_id])?;
+                if already {
+                    out.already_notified += 1;
+                    continue;
+                }
+                let thread_id = crate::state::new_ulid();
+                tx.execute(
+                    "INSERT INTO threads (id, created_by, created_at, created_unix_ms) VALUES (?1, NULL, ?2, ?3)",
+                    params![thread_id, stamp, now_ms],
+                )?;
+                tx.execute(
+                    "INSERT INTO thread_participants (thread_id, tenant_id, joined_at) VALUES (?1, ?2, ?3)",
+                    params![thread_id, tenant_id, stamp],
+                )?;
+                let message_id = crate::state::new_ulid();
+                let body = notice_body(ids, &theme_id, &version, anchor.as_deref());
+                let data = json!({"system": true, "subject": NOTICE_SUBJECT, "theme_id": theme_id}).to_string();
+                tx.execute(
+                    "INSERT INTO messages (id, thread_id, seq, from_tenant_id, from_address, body, data_json, \
+                     source_class, created_at, created_unix_ms, urgent) \
+                     VALUES (?1, ?2, 1, NULL, ?3, ?4, ?5, 'system', ?6, ?7, 0)",
+                    params![message_id, thread_id, SYSTEM_SENDER, body, data, stamp, now_ms],
+                )?;
+                tx.execute(
+                    "INSERT INTO message_receipts (message_id, tenant_id, read_at) VALUES (?1, ?2, NULL)",
+                    params![message_id, tenant_id],
+                )?;
+                tx.execute(
+                    "INSERT INTO feedback_notices (theme_id, tenant_id, message_id, sent_unix) VALUES (?1, ?2, ?3, ?4)",
+                    params![theme_id, tenant_id, message_id, now],
+                )?;
+                out.notified += 1;
+            }
+            tx.commit()?;
+            Ok(Some(out))
+        })
+        .await
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Nightly task (R3).
 // ---------------------------------------------------------------------------
 
@@ -929,6 +1123,63 @@ pub fn secs_until_next_theme_run(now_unix: i64) -> u64 {
     let today_run = now_unix.div_euclid(86_400) * 86_400 + THEME_HOUR_UTC * 3600 + THEME_MINUTE_UTC * 60;
     let next = if today_run > now_unix { today_run } else { today_run + 86_400 };
     (next - now_unix).max(0) as u64
+}
+
+/// One `CHANGELOG.md` line that links a theme to a release (R4).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChangelogShip {
+    pub theme_id: String,
+    pub version: String,
+    pub anchor: Option<String>,
+}
+
+/// R4: every `(theme:th_<12 hex>)` line under a `## [v]<version>` heading,
+/// with the optional `anchor:<slug>` token on the same line. Lines before the
+/// first version heading are ignored.
+pub fn scan_changelog(text: &str) -> Vec<ChangelogShip> {
+    let mut version: Option<String> = None;
+    let mut out = Vec::new();
+    for line in text.lines() {
+        if let Some(h) = line.strip_prefix("## ") {
+            let tok = h.trim().trim_start_matches('[').split(|c: char| c.is_whitespace() || c == ']').next();
+            version = tok
+                .map(|t| t.trim_start_matches('v'))
+                .filter(|t| t.chars().next().is_some_and(|c| c.is_ascii_digit()))
+                .map(str::to_string);
+            continue;
+        }
+        let Some(version) = &version else { continue };
+        let Some(at) = line.find("(theme:th_") else { continue };
+        let id: String = line[at + "(theme:".len()..].chars().take(3 + 12).collect();
+        let hex = id.strip_prefix("th_").unwrap_or_default();
+        if hex.len() != 12 || !hex.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')) {
+            continue;
+        }
+        let anchor = line
+            .split_whitespace()
+            .find_map(|w| w.strip_prefix("anchor:"))
+            .map(|a| a.trim_matches(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_')).to_string())
+            .filter(|a| !a.is_empty());
+        out.push(ChangelogShip { theme_id: id, version: version.clone(), anchor });
+    }
+    out
+}
+
+/// The nightly pass: cluster, then ship every still-open theme a `changelog`
+/// line names. Returns the shipped theme ids.
+pub async fn run_nightly_pass(state: &AppState, changelog: &str) -> Result<Vec<String>, AppError> {
+    state.db.cluster_feedback().await?;
+    let mut shipped = Vec::new();
+    for line in scan_changelog(changelog) {
+        let Some(theme) = state.db.get_feedback_theme(line.theme_id.clone()).await? else { continue };
+        if theme.status == THEME_STATUS_SHIPPED {
+            continue;
+        }
+        if state.db.ship_feedback_theme(line.theme_id.clone(), line.version, line.anchor).await?.is_some() {
+            shipped.push(line.theme_id);
+        }
+    }
+    Ok(shipped)
 }
 
 /// Same "never joined, `tokio::spawn` loop" convention as
@@ -957,6 +1208,11 @@ fn spawn_theme_loop(state: AppState, interval: Option<std::time::Duration>) -> t
                 }
                 Ok(_) => {}
                 Err(e) => tracing::warn!(error = %e, "nightly feedback clustering failed"),
+            }
+            match run_nightly_pass(&state, crate::api_contract::CHANGELOG_MD).await {
+                Ok(shipped) if !shipped.is_empty() => tracing::info!(themes = shipped.len(), "feedback themes shipped"),
+                Ok(_) => {}
+                Err(e) => tracing::warn!(error = %e, "nightly feedback ship failed"),
             }
         }
     })

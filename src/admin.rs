@@ -1685,6 +1685,26 @@ pub async fn feedback_themes(state: &AppState, args: &Value) -> Result<Value, Ap
     }))
 }
 
+/// `admin.feedback.ship {theme_id, version, anchor?}` (PRD-mcphost-feedback-
+/// closed-loop-notice R1): ships the theme and notifies each filing tenant
+/// once. Idempotent: a second call returns `notified: 0`.
+pub async fn feedback_ship(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let theme_id = arg_str_opt(args, "theme_id").unwrap_or_default();
+    let version = arg_str_opt(args, "version").unwrap_or_default();
+    if theme_id.trim().is_empty() || version.trim().is_empty() {
+        return Err(AppError::InvalidParams("theme_id and version are required".to_string()));
+    }
+    let anchor = arg_str_opt(args, "anchor").filter(|a| !a.trim().is_empty());
+    match state.db.ship_feedback_theme(theme_id.trim().to_string(), version.trim().to_string(), anchor).await? {
+        Some(out) => Ok(out.to_json()),
+        None => Err(AppError::Structured {
+            code: "feedback_theme_not_found",
+            message: format!("no feedback theme '{theme_id}'"),
+            data: json!({"theme_id": theme_id}),
+        }),
+    }
+}
+
 fn vault_provider_stats_json(p: &crate::db::VaultProviderStats) -> Value {
     json!({
         "name": p.name,

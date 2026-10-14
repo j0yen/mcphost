@@ -1522,6 +1522,15 @@
       "AC7": "tests/fbth_ac07_feedback_get_is_owner_only.rs",
       "AC8": "deferred -- operator-provisioned: Live check of prod /status.json after deploy and a planted feedback row filed the previous day."
     },
+    "fbcl": {
+      "_prd": "PRD-mcphost-feedback-closed-loop-notice.md (test_prefix: fbcl)",
+      "AC2": "tests/fbcl_ac02_ship_notifies_each_filing_tenant.rs",
+      "AC3": "tests/fbcl_ac03_second_ship_is_idempotent.rs",
+      "AC4": "tests/fbcl_ac04_nightly_changelog_ship.rs",
+      "AC5": "tests/fbcl_ac05_send_to_mcphost_forbidden.rs",
+      "AC6": "tests/fbcl_ac06_deleted_filer_counts_anonymous.rs",
+      "AC7": "tests/fbcl_ac07_get_reports_shipped_version_anchor.rs"
+    },
     "chg": {
       "_prd": "PRD-mcphost-host-changelog-since.md (test_prefix: chg)",
       "AC1": "tests/chg_ac01_changelog_headings_parse.rs",
