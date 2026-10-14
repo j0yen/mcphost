@@ -284,6 +284,8 @@ mod mcphost_uptime_probes_ac05_target_cap_at_20;
 mod mcphost_uptime_probes_ac07_synthorg_task_five_completions;
 #[path = "mcphost_uptime_probes_ac09_down_since_flip_sends_inbox.rs"]
 mod mcphost_uptime_probes_ac09_down_since_flip_sends_inbox;
+#[path = "oauthentry_ac06_path_contract_docs_router_quickstart.rs"]
+mod oauthentry_ac06_path_contract_docs_router_quickstart;
 #[path = "plainenv_ac01_env_reaches_process.rs"]
 mod plainenv_ac01_env_reaches_process;
 #[path = "plainenv_ac02_invalid_names_refused.rs"]

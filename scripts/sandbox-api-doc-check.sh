@@ -151,6 +151,28 @@ if ! "$(dirname "$0")/host-tools-doc-check.sh" >/dev/null; then
   FAILURES=$((FAILURES + 1))
 fi
 
+# PRD-mcphost-oauth-first-entry-url requirement 1: the OAuth-first entry path
+# is the one constant `OAUTH_ENTRY_PATH` in src/oauth.rs. Every client page
+# that names the entry URL must carry exactly that path (nothing else under
+# /login/), and the install docs must name it at all.
+ENTRY_PATH=$(sed -n 's|^pub const OAUTH_ENTRY_PATH: &str = "\(.*\)";|\1|p' src/oauth.rs)
+if [ -z "$ENTRY_PATH" ]; then
+  echo "sandbox-api-doc-check.sh: could not read OAUTH_ENTRY_PATH from src/oauth.rs" >&2
+  FAILURES=$((FAILURES + 1))
+else
+  for f in README.md llms-install.md www/llms-install.md www/llms.txt www/llms-full.txt www/index.html docs/oauth-connect.md; do
+    if ! grep -qF "https://mcphost.dev${ENTRY_PATH}" "$f"; then
+      echo "sandbox-api-doc-check.sh: $f does not name the OAuth entry URL https://mcphost.dev${ENTRY_PATH}" >&2
+      FAILURES=$((FAILURES + 1))
+    fi
+    stray=$(grep -oE 'https://mcphost\.dev/login/[A-Za-z0-9_./-]*' "$f" | grep -vxF "https://mcphost.dev${ENTRY_PATH}" || true)
+    if [ -n "$stray" ]; then
+      echo "sandbox-api-doc-check.sh: $f names an entry path other than ${ENTRY_PATH}: $stray" >&2
+      FAILURES=$((FAILURES + 1))
+    fi
+  done
+fi
+
 if [ "$FAILURES" -gt 0 ]; then
   echo "sandbox-api-doc-check.sh: FAILED (${FAILURES} issue(s))" >&2
   exit 1

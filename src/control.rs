@@ -926,6 +926,7 @@ pub fn quickstart(
         let mut response = json!({
             "authenticated": false,
             "install_doc_url": crate::install_links::install_doc_url(),
+            "oauth_entry_url": crate::oauth::entry_resource_uri(&state.public_url),
             "steps": [{
                 "call": "signup",
                 "arguments": {"name": "<your name>", "handoff": true},
@@ -1126,6 +1127,9 @@ pub fn quickstart(
         }
         map.insert("endpoint".to_string(), json!(endpoint));
         map.insert("install_doc_url".to_string(), json!(crate::install_links::install_doc_url()));
+        // PRD-mcphost-oauth-first-entry-url requirement 6: the URL to give an
+        // OAuth-only client (Claude.ai, ChatGPT).
+        map.insert("oauth_entry_url".to_string(), json!(crate::oauth::entry_resource_uri(&state.public_url)));
     }
     // PRD-mcphost-client-install-links P0 requirement 3 (AC3): the same
     // four install forms `/connect` renders, now for the caller's own

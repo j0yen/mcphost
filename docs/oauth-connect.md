@@ -2,14 +2,16 @@
 
 mcphost hosts its own OAuth 2.1 authorization server (PKCE, S256 only), so
 an OAuth-only MCP client -- claude.ai custom connectors, ChatGPT connectors
--- can connect to `https://mcphost.dev/mcp` without ever seeing a bearer
-key. Claude Code and Cursor can use the same flow, or paste a key directly
+-- can connect without ever seeing a bearer key: give them the OAuth-first
+entry URL, `https://mcphost.dev/login/mcp`, which answers 401 with the
+discovery metadata those clients need (the root `/mcp` serves anonymous
+agents directly and never challenges). Claude Code and Cursor can use the same flow, or paste a key directly
 (see `docs/agent-quickstart.md`).
 
 ## claude.ai custom connector
 
 1. In claude.ai, open **Settings -> Connectors -> Add custom connector**.
-2. Enter `https://mcphost.dev/mcp` as the server URL.
+2. Enter `https://mcphost.dev/login/mcp` as the server URL.
 3. claude.ai discovers `/.well-known/oauth-authorization-server`, registers
    itself dynamically (`POST /oauth/register`), and opens mcphost's
    `/oauth/authorize` consent page in a browser tab.
