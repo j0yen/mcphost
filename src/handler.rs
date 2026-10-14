@@ -9692,6 +9692,9 @@ impl ServerHandler for McpHostHandler {
         request: CallToolRequestParams,
         ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, McpError> {
+        // PRD-mcphost-usage-in-every-response: the slot the admission checks
+        // park their `calls_per_day` read in, for `_meta.usage` below.
+        let result: Result<CallToolResponse, McpError> = crate::usage::scope(async move {
         let parts = get_parts(&ctx)?;
         let source = source_ip(parts);
         let header_name = mcp_name_header(parts);
@@ -10721,6 +10724,13 @@ impl ServerHandler for McpHostHandler {
                 if let Some(clamped) = limit_clamped {
                     meta.0.insert("mcphost".to_string(), json!({"limit_clamped": clamped}));
                 }
+                // PRD-mcphost-usage-in-every-response R2: the count the call's
+                // own `calls_per_day` check read, plus the row it just wrote.
+                if let Auth::Tenant(tenant, _) = &auth
+                    && let Some(usage) = crate::usage::result_usage(&self.state, tenant).await
+                {
+                    meta.0.insert("usage".to_string(), usage);
+                }
                 let result = if meta.0.is_empty() { result } else { result.with_meta(Some(meta)) };
                 Ok(CallToolResponse::from(result))
             }
@@ -10736,6 +10746,9 @@ impl ServerHandler for McpHostHandler {
                 Err(app_err.into_error_data_at(Some(&self.state.public_url)))
             }
         }
+        })
+        .await;
+        result
     }
 
     async fn on_initialized(&self, _context: NotificationContext<RoleServer>) {}

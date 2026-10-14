@@ -72,6 +72,7 @@ pub mod clients;
 pub mod llms_txt;
 pub mod messaging;
 pub mod paged;
+pub mod usage;
 pub mod preflight;
 pub mod metering;
 pub mod network_policy;

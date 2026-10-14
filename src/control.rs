@@ -2527,9 +2527,13 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
         0.0
     };
     let quota = data_quota_for(state, tenant).await?;
+    // PRD-mcphost-usage-in-every-response R3: the same block every
+    // successful result's `_meta.usage` carries, from the same function.
+    let plan = crate::usage::plan_usage_snapshot(state, tenant, None).await?.to_json();
     Ok(json!({
         "window": window,
         "quota": quota,
+        "plan": plan,
         "calls": stats.calls,
         "errors": stats.errors,
         "p50_ms": stats.p50_ms,
