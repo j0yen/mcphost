@@ -1719,6 +1719,8 @@ mod minimal_ac5_tenant_bearer_gets_anonymous_body;
 mod mrefu_ac01_breaking_migration_refuses_with_report;
 #[path = "mrefu_ac02_compatible_migration_reports_ok.rs"]
 mod mrefu_ac02_compatible_migration_reports_ok;
+#[path = "mrefu_ac03_schema_is_generated_and_drift_tested.rs"]
+mod mrefu_ac03_schema_is_generated_and_drift_tested;
 #[path = "msg_ac01_send_reaches_inbox.rs"]
 mod msg_ac01_send_reaches_inbox;
 #[path = "msg_ac02_reply_appends_next_seq.rs"]
