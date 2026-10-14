@@ -3041,6 +3041,25 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &[],
             ),
         ),
+        // PRD-mcphost-scheduled-job-receipts R2: one call answers "is my
+        // schedule healthy?".
+        Tool::new(
+            "host.schedule_receipts",
+            "A trigger's run receipts, newest first, with a summary: {rows: [{trigger_id, tool, \
+             run_id, source, started_unix, duration_ms, status, error_code, output_excerpt}], \
+             summary: {runs, ok, failed, streak_failed, last_ok_unix, last_error, next_fire_unix}}. \
+             Address one trigger with trigger_id, or every trigger on a tool with tool. Three \
+             failures in a row send one inbox message from @host until the next success.",
+            host_schema(
+                json!({
+                    "trigger_id": {"type": "string", "description": "The trigger id."},
+                    "tool": {"type": "string", "description": "Every trigger on this tool."},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 50, "description": "Rows to return (default 20, at most 50)."},
+                    "since_unix": {"type": "integer", "description": "Only receipts started at or after this unix time."},
+                }),
+                &[],
+            ),
+        ),
         // PRD-mcphost-inbound-events P0 requirement 3: an event trigger's
         // own dry-run and re-run tools, alongside host.trigger.fire above.
         Tool::new(
@@ -6450,6 +6469,7 @@ impl McpHostHandler {
             "host.trigger.resume" => crate::triggers::resume(&self.state, tenant, &args).await,
             "host.trigger.remove" => crate::triggers::remove(&self.state, tenant, &args).await,
             "host.trigger.fire" => crate::triggers::fire(&self.state, tenant, &args).await,
+            "host.schedule_receipts" => crate::receipts::schedule_receipts(&self.state, tenant, &args).await,
             "host.trigger.test" => crate::hooks::test(&self.state, tenant, &args).await,
             "host.trigger.replay" => crate::hooks::replay(&self.state, tenant, &args).await,
             "host.trigger.dead_letters" => crate::deadletters::list(&self.state, tenant, &args).await,

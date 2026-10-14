@@ -90,6 +90,7 @@ pub mod registry_manifest;
 pub mod retention;
 pub mod returns;
 pub mod rowpolicy;
+pub mod receipts;
 pub mod runs;
 pub mod sandbox;
 pub mod secrets;

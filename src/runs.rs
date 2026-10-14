@@ -1418,6 +1418,9 @@ async fn run_one_job(state: AppState, run: RunRow) {
     // a single-part JSON-object result, folded into the tool's
     // `observed_outputs_json` once the run is finalized `done`.
     let mut observed: Option<std::collections::BTreeMap<String, String>> = None;
+    // PRD-mcphost-scheduled-job-receipts R1: what the receipt excerpts.
+    let mut receipt_result = Value::Null;
+    let wants_receipt = crate::receipts::receipt_source(&run).is_some();
     let (status, result_ref, error_class, error_data) = match outcome {
         JobOutcome::Done { result_value } => {
             // PRD-mcphost-run-result-overflow-to-state requirement 1: the
@@ -1428,6 +1431,9 @@ async fn run_one_job(state: AppState, run: RunRow) {
             // before this PRD), several 256 KiB text chunks of its own
             // JSON encoding when it doesn't (P0 requirement 1's "chunked
             // into RUN_PART_BYTES parts").
+            if wants_receipt {
+                receipt_result = result_value.clone();
+            }
             let value_json = serde_json::to_string(&result_value).unwrap_or_else(|_| "null".to_string());
             let bytes = value_json.len() as i64;
             if value_json.len() <= crate::state::MAX_TOOL_OUTPUT_BYTES {
@@ -1487,6 +1493,9 @@ async fn run_one_job(state: AppState, run: RunRow) {
             }
         }
         JobOutcome::Error { error_class, error_data } => {
+            if wants_receipt && let Some(data) = &error_data {
+                receipt_result = Value::String(data.clone());
+            }
             ("error".to_string(), None, Some(error_class), error_data)
         }
         JobOutcome::Timeout => ("timeout".to_string(), None, None, None),
@@ -1503,11 +1512,30 @@ async fn run_one_job(state: AppState, run: RunRow) {
     }
     let errored = status == "error";
     let dead_letter_class = error_class.clone();
+    let receipt_status = status.clone();
+    let receipt_error = error_class.clone();
     let finalized = state
         .db
         .finalize_run(run_id.clone(), tenant_id, status, result_ref, error_class, error_data, finished_unix, duration_ms)
         .await
         .unwrap_or(false);
+
+    // PRD-mcphost-scheduled-job-receipts R1: one receipt per trigger-fired
+    // run, written as the run reaches its terminal state.
+    if finalized && wants_receipt {
+        let error_code = match receipt_status.as_str() {
+            "timeout" => Some("timeout".to_string()),
+            _ => receipt_error,
+        };
+        let end = crate::receipts::RunEnd {
+            status: &receipt_status,
+            error_code,
+            result: &receipt_result,
+            duration_ms,
+            finished_unix,
+        };
+        crate::receipts::record_run_end(&state, &run, end).await;
+    }
 
     // PRD-mcphost-event-trigger-from-webhook R1: an event-fired run that
     // ended `error` is a dead letter the tenant can list and replay.

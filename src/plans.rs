@@ -187,6 +187,11 @@ pub struct Plan {
     /// the `free` plan's own default (14) when a hand-edited `plans.toml`
     /// predates this key.
     pub channel_retention_days: i64,
+    /// PRD-mcphost-scheduled-job-receipts R4: how many days a trigger
+    /// receipt survives the housekeeping sweep (free 7, pro 30). Defaults to
+    /// the `free` plan's own default (7) when a hand-edited `plans.toml`
+    /// predates this key.
+    pub receipts_retention_days: i64,
     /// PRD-mcphost-document-store P0 requirement 5: how many live documents
     /// this plan's tenants may hold at once (`host.docs.put` on a name that
     /// doesn't already exist refuses past this with `quota_docs`). Defaults
@@ -543,6 +548,7 @@ impl PlanCatalog {
                     channels_max: 3,
                     channel_posts_per_hour: 120,
                     channel_retention_days: 14,
+                    receipts_retention_days: 7,
                     // PRD-mcphost-document-store P0 requirement 5: "free
                     // 200" documents, "free 50 MiB".
                     docs_max: 200,
@@ -649,6 +655,7 @@ impl PlanCatalog {
                     channels_max: 25,
                     channel_posts_per_hour: 2_000,
                     channel_retention_days: 90,
+                    receipts_retention_days: 30,
                     // PRD-mcphost-document-store P0 requirement 5: "pro
                     // 20,000" documents, "pro 5 GiB".
                     docs_max: 20_000,
@@ -798,6 +805,10 @@ impl PlanCatalog {
                 "channel_retention_days = {}\n",
                 p.channel_retention_days
             ));
+            out.push_str(&format!(
+                "receipts_retention_days = {}\n",
+                p.receipts_retention_days
+            ));
             out.push_str(&format!("docs_max = {}\n", p.docs_max));
             out.push_str(&format!("docs_bytes_max = {}\n", p.docs_bytes_max));
             out.push_str(&format!("docs_chunks_max = {}\n", p.docs_chunks_max));
@@ -909,6 +920,7 @@ impl PlanCatalog {
                 "channels_max" => builder.channels_max = Some(int_value()),
                 "channel_posts_per_hour" => builder.channel_posts_per_hour = Some(int_value()),
                 "channel_retention_days" => builder.channel_retention_days = Some(int_value()),
+                "receipts_retention_days" => builder.receipts_retention_days = Some(int_value()),
                 "docs_max" => builder.docs_max = Some(int_value()),
                 "docs_bytes_max" => builder.docs_bytes_max = Some(int_value()),
                 "docs_chunks_max" => builder.docs_chunks_max = Some(int_value()),
@@ -1000,6 +1012,7 @@ struct PlanBuilder {
     channels_max: Option<i64>,
     channel_posts_per_hour: Option<i64>,
     channel_retention_days: Option<i64>,
+    receipts_retention_days: Option<i64>,
     docs_max: Option<i64>,
     docs_bytes_max: Option<i64>,
     docs_chunks_max: Option<i64>,
@@ -1076,6 +1089,7 @@ impl PlanBuilder {
             channels_max: quota!(channels_max),
             channel_posts_per_hour: quota!(channel_posts_per_hour),
             channel_retention_days: quota!(channel_retention_days),
+            receipts_retention_days: quota!(receipts_retention_days),
             docs_max: quota!(docs_max),
             docs_bytes_max: quota!(docs_bytes_max),
             docs_chunks_max: quota!(docs_chunks_max),

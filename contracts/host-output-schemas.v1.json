@@ -7092,6 +7092,110 @@
     ],
     "type": "object"
   },
+  "host.schedule_receipts": {
+    "properties": {
+      "rows": {
+        "items": {
+          "properties": {
+            "cost_calls": {
+              "type": "integer"
+            },
+            "duration_ms": {
+              "type": "integer"
+            },
+            "error_code": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "output_excerpt": {
+              "type": "string"
+            },
+            "run_id": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "started_unix": {
+              "type": "integer"
+            },
+            "status": {
+              "type": "string"
+            },
+            "tool": {
+              "type": "string"
+            },
+            "trigger_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "trigger_id",
+            "tool",
+            "run_id",
+            "source",
+            "started_unix",
+            "duration_ms",
+            "status",
+            "output_excerpt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "summary": {
+        "properties": {
+          "failed": {
+            "type": "integer"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_ok_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "next_fire_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "ok": {
+            "type": "integer"
+          },
+          "runs": {
+            "type": "integer"
+          },
+          "streak_failed": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "runs",
+          "ok",
+          "failed",
+          "streak_failed",
+          "last_ok_unix",
+          "last_error",
+          "next_fire_unix"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "rows",
+      "summary"
+    ],
+    "type": "object"
+  },
   "host.secret.list": {
     "properties": {
       "names": {

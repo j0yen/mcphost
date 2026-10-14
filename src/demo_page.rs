@@ -83,7 +83,7 @@ fn scrub_text(text: &str, secrets: &[String]) -> String {
     result
 }
 
-fn redact(value: &Value, secrets: &[String]) -> Value {
+pub(crate) fn redact(value: &Value, secrets: &[String]) -> Value {
     match value {
         Value::Object(map) => Value::Object(
             map.iter()
@@ -100,7 +100,7 @@ fn redact(value: &Value, secrets: &[String]) -> Value {
 }
 
 /// The tenant's decrypted `host.secret` values, for [`scrub_text`].
-async fn tenant_secret_values(state: &AppState, tenant_id: i64) -> Vec<String> {
+pub(crate) async fn tenant_secret_values(state: &AppState, tenant_id: i64) -> Vec<String> {
     let mut values = Vec::new();
     for name in state.db.list_secret_names(tenant_id).await.unwrap_or_default() {
         if let Ok(Some((enc, nonce))) = state.db.get_secret(tenant_id, name).await

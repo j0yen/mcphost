@@ -305,6 +305,10 @@ const MIGRATION_0095: &str = include_str!("../migrations/0095_draft_events.sql")
 const MIGRATION_0096: &str = include_str!("../migrations/0096_heal_ledger.sql");
 /// PRD-mcphost-host-doctor-tool R1: `calls.error_summary`.
 const MIGRATION_0099: &str = include_str!("../migrations/0099_calls_error_summary.sql");
+/// PRD-mcphost-scheduled-job-receipts R1: the `trigger_receipts` table.
+const MIGRATION_0100: &str = include_str!("../migrations/0100_trigger_receipts.sql");
+/// PRD-mcphost-scheduled-job-receipts R3: the `trigger_streak_floor` table.
+const MIGRATION_0101: &str = include_str!("../migrations/0101_trigger_streak_floor.sql");
 
 /// Outcome of [`Db::reserve_draft`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2973,6 +2977,9 @@ impl Db {
         Self::migrate_0097_feedback_themes(&conn)?;
         Self::migrate_0098_last_seen_version(&conn)?;
         Self::migrate_0099_calls_error_summary(&conn)?;
+        // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
+        conn.execute_batch(MIGRATION_0100)?;
+        conn.execute_batch(MIGRATION_0101)?;
         Ok(())
     }
 

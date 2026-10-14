@@ -209,6 +209,13 @@ fn trigger_kind_mismatch(name: &str, existing_kind: &str, requested_kind: &str) 
 async fn trigger_to_json(state: &AppState, tenant: &Tenant, row: TriggerRow) -> Value {
     let (kind, id) = (row.kind.clone(), row.id.clone());
     let mut value = trigger_to_json_inner(state, tenant, row).await;
+    // PRD-mcphost-scheduled-job-receipts R5: the newest receipt and the
+    // current failure streak, for every kind of trigger.
+    let (last_receipt, streak_failed) = crate::receipts::last_receipt_and_streak(state, tenant.id, &id).await;
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert("last_receipt".to_string(), last_receipt);
+        obj.insert("streak_failed".to_string(), json!(streak_failed));
+    }
     // PRD-mcphost-event-trigger-from-webhook R7: the dead-letter tally of an
     // event or webhook trigger.
     if matches!(kind.as_str(), "event" | "webhook")
@@ -708,7 +715,13 @@ pub async fn pause(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
 /// replayed" falls out of this for free: there was only ever one
 /// `next_unix` to miss, never a backlog).
 pub async fn resume(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    set_enabled(state, tenant, args, true).await
+    let out = set_enabled(state, tenant, args, true).await?;
+    // PRD-mcphost-scheduled-job-receipts R3: a resumed schedule's failure
+    // streak restarts at 0.
+    if let Some(id) = out.get("id").and_then(Value::as_str) {
+        state.db.reset_trigger_streak(tenant.id, id.to_string()).await?;
+    }
+    Ok(out)
 }
 
 /// `host.trigger.remove(id|name)` (AC7's per-trigger primitive;
