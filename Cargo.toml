@@ -16,6 +16,9 @@ members = [
     "vendor/mqo-chart-caption",
 ]
 
+[profile.dev]
+debug = "line-tables-only"  # 2026-10-13 red leg 78: full debuginfo made every test binary 830-900 MB (34 artifacts > 300 MB = 22.8 G per worktree) and saturated the build host's NVMe; line tables keep file:line in backtraces and panics
+
 [profile.release]
 strip = true
 
