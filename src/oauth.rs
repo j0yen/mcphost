@@ -197,6 +197,19 @@ pub fn entry_metadata_path() -> String {
     format!("{PROTECTED_RESOURCE_WELL_KNOWN}{OAUTH_ENTRY_PATH}")
 }
 
+/// requirement 4: an entry-audience token is valid on the entry path and only
+/// there, and the entry path accepts only entry-audience tokens (a token for
+/// `/mcp`, a per-tenant resource, or a bring-your-own issuer is
+/// `wrong_audience` there). `path` is the request URI path.
+pub fn check_entry_audience(public_url: &str, path: &str, caller: &OauthCaller) -> Result<(), AppError> {
+    let is_entry_token = caller.audience.as_deref() == Some(entry_resource_uri(public_url).as_str());
+    if (path == OAUTH_ENTRY_PATH) == is_entry_token {
+        Ok(())
+    } else {
+        Err(AppError::InvalidToken("wrong_audience"))
+    }
+}
+
 /// requirement 2: the entry document URL the 401 challenge names.
 pub fn entry_metadata_url(public_url: &str) -> String {
     format!("{}{}", public_url.trim_end_matches('/'), entry_metadata_path())
@@ -503,6 +516,10 @@ pub struct OauthCaller {
     pub email: Option<String>,
     /// See [`OauthCaller::email`]; surfaced as `MCPHOST_END_USER_NAME`.
     pub name: Option<String>,
+    /// PRD-mcphost-oauth-first-entry-url requirement 4: the resource a hosted
+    /// token was minted for (its `aud`), so the path it is presented on can be
+    /// checked against it. `None` for a bring-your-own issuer's token.
+    pub audience: Option<String>,
 }
 
 /// The JWT's `payload` segment, decoded (base64url) but NOT signature
@@ -685,6 +702,7 @@ pub async fn validate_bearer(state: &AppState, token: &str) -> Result<OauthCalle
         scope,
         email: None,
         name: None,
+        audience: None,
     })
 }
 

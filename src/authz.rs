@@ -1963,6 +1963,7 @@ pub async fn validate_hosted_bearer(
         name: (is_assertion_grant || is_federated)
             .then(|| claims.get("name").and_then(Value::as_str).map(str::to_string))
             .flatten(),
+        audience: Some(aud.to_string()),
     })
 }
 

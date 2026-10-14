@@ -1536,10 +1536,28 @@ async fn require_known_tenant_namespace(
 /// needs to start discovery. Runs outside (and in front of) the implicit-
 /// signup dispatch, so a credential-less request never creates a tenant.
 async fn require_entry_bearer(State(state): State<Arc<AppState>>, req: Request<Body>, next: Next) -> Response {
-    if crate::auth::extract_bearer(req.headers()).is_some() {
-        return next.run(req).await;
+    let Some(token) = crate::auth::extract_bearer(req.headers()) else {
+        return entry_unauthorized(&state, None);
+    };
+    // requirement 4: only a valid OAuth token minted for the entry resource
+    // gets past the gate -- a raw tenant key, a malformed bearer, or a token
+    // for another audience is 401 `invalid_token` / `wrong_audience`.
+    if token.split('.').count() != 3 {
+        return entry_unauthorized(&state, Some("malformed"));
     }
-    entry_unauthorized(&state, None)
+    let verdict = match crate::oauth::validate_bearer(&state, &token).await {
+        Ok(caller) => crate::oauth::check_entry_audience(&state.public_url, req.uri().path(), &caller),
+        Err(e) => Err(e),
+    };
+    match verdict {
+        Ok(()) => next.run(req).await,
+        Err(crate::errors::AppError::InvalidToken(reason)) => entry_unauthorized(&state, Some(reason)),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error_code": "storage", "error": "storage error"})),
+        )
+            .into_response(),
+    }
 }
 
 /// The entry path's 401: the challenge names the entry document; the body
