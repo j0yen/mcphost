@@ -117,9 +117,41 @@ fn embed_examples() {
     std::fs::write(std::path::Path::new(&out_dir).join("examples_embedded.rs"), out).expect("write examples_embedded.rs");
 }
 
+/// PRD-mcphost-migration-refusal-contract R3: the migration index the
+/// compat report reads is GENERATED from `migrations/*.sql` (name, the
+/// first line's `-- compat:` header, and the file text), never listed by
+/// hand, so a new migration file cannot be missing from the report.
+/// A file whose header is neither word is indexed as `breaking` (the
+/// fail-safe reading); `tests/migration_compat_headers.rs` keeps that
+/// case from ever landing.
+fn embed_migrations_index() {
+    println!("cargo:rerun-if-changed=migrations");
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
+    let root = std::path::Path::new(&manifest_dir).join("migrations");
+    let mut names: Vec<String> = std::fs::read_dir(&root)
+        .expect("read migrations/")
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|x| x == "sql"))
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    let mut out = String::from("pub static MIGRATION_INDEX: &[(&str, &str, &str)] = &[\n");
+    for name in &names {
+        let path = root.join(name);
+        let text = std::fs::read_to_string(&path).expect("read migration");
+        let first = text.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim_start();
+        let compat = if first.starts_with("-- compat: previous") { "previous" } else { "breaking" };
+        out.push_str(&format!("({name:?}, {compat:?}, include_str!({:?})),\n", path.to_string_lossy()));
+    }
+    out.push_str("];\n");
+    let dest = std::path::Path::new(&std::env::var("OUT_DIR").expect("OUT_DIR")).join("migrations_index.rs");
+    std::fs::write(dest, out).expect("write migrations_index.rs");
+}
+
 fn main() {
     embed_examples();
     embed_help_docs();
+    embed_migrations_index();
     println!("cargo:rerun-if-changed=.git/HEAD");
     println!("cargo:rerun-if-env-changed=MCPHOST_GIT_SHA");
     if std::env::var_os("MCPHOST_GIT_SHA").is_some() {

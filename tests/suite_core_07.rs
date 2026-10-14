@@ -28,6 +28,8 @@ mod fake_as;
 mod federation;
 #[path = "support/lanecov.rs"]
 mod lanecov;
+#[path = "support/mrefu.rs"]
+mod mrefu;
 #[path = "support/msrvlock.rs"]
 mod msrvlock;
 #[path = "support/oauth.rs"]
@@ -1713,6 +1715,14 @@ mod minimal_ac3_wrong_bearer_matches_anonymous;
 mod minimal_ac4_liveness_failure_returns_5xx;
 #[path = "minimal_ac5_tenant_bearer_gets_anonymous_body.rs"]
 mod minimal_ac5_tenant_bearer_gets_anonymous_body;
+#[path = "mrefu_ac01_breaking_migration_refuses_with_report.rs"]
+mod mrefu_ac01_breaking_migration_refuses_with_report;
+#[path = "mrefu_ac02_compatible_migration_reports_ok.rs"]
+mod mrefu_ac02_compatible_migration_reports_ok;
+#[path = "mrefu_ac03_schema_is_generated_and_drift_tested.rs"]
+mod mrefu_ac03_schema_is_generated_and_drift_tested;
+#[path = "mrefu_ac04_previous_up_failure_exits_4_with_tables_changed.rs"]
+mod mrefu_ac04_previous_up_failure_exits_4_with_tables_changed;
 #[path = "msg_ac01_send_reaches_inbox.rs"]
 mod msg_ac01_send_reaches_inbox;
 #[path = "msg_ac02_reply_appends_next_seq.rs"]
@@ -1819,21 +1829,3 @@ mod oauthmeta_ac03_issuer_url_validator_gates_setters;
 mod oauthmeta_ac04_stored_non_url_issuer_leaves_documents;
 #[path = "oauthmeta_ac05_contract_walk_document_to_token.rs"]
 mod oauthmeta_ac05_contract_walk_document_to_token;
-#[path = "oauthpol_ac01_allowlist_by_client_id_and_cimd_host.rs"]
-mod oauthpol_ac01_allowlist_by_client_id_and_cimd_host;
-#[path = "oauthpol_ac02_approve_mode_pending_approve_deny.rs"]
-mod oauthpol_ac02_approve_mode_pending_approve_deny;
-#[path = "oauthpol_ac03_session_ttls_and_max_grant_age.rs"]
-mod oauthpol_ac03_session_ttls_and_max_grant_age;
-#[path = "oauthpol_ac04_reconsent_after_forces_consent_again.rs"]
-mod oauthpol_ac04_reconsent_after_forces_consent_again;
-#[path = "oauthpol_ac05_revoke_all_grants_and_pending.rs"]
-mod oauthpol_ac05_revoke_all_grants_and_pending;
-#[path = "oauthpol_ac06_audit_paging_and_export.rs"]
-mod oauthpol_ac06_audit_paging_and_export;
-#[path = "oauthpol_ac07_operator_block_list_and_admin_rejection.rs"]
-mod oauthpol_ac07_operator_block_list_and_admin_rejection;
-#[path = "oauthpol_ac08_cimd_host_daily_registration_cap.rs"]
-mod oauthpol_ac08_cimd_host_daily_registration_cap;
-#[path = "oauthpol_ac09_no_policy_defaults_match_hosted_as.rs"]
-mod oauthpol_ac09_no_policy_defaults_match_hosted_as;

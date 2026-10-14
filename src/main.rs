@@ -62,6 +62,21 @@ enum Command {
         /// units) already runs the live service as.
         #[arg(long)]
         run_as: Option<String>,
+        /// PRD-mcphost-migration-refusal-contract R1/R2: with
+        /// `--check-compat`, write the machine-readable `CompatReport` JSON
+        /// here. Exit codes then: 0 ok, 3 incompatible, 4 the previous
+        /// binary never came up, 5 the report could not be written, 2
+        /// usage. Without it the one-line output and exit 4 are unchanged.
+        #[arg(long)]
+        report: Option<PathBuf>,
+        /// R4: print the JSON schema of the report and exit (the committed
+        /// `docs/compat-report.schema.json` is exactly this output).
+        #[arg(long)]
+        print_report_schema: bool,
+        /// Fixture seam for tests: apply this directory's `*.sql` files to
+        /// the scratch copy after this release's own migrations.
+        #[arg(long, hide = true)]
+        extra_migrations_dir: Option<PathBuf>,
     },
     /// Print the version and exit.
     Version,
@@ -534,14 +549,36 @@ async fn main() -> anyhow::Result<()> {
             previous,
             db: db_path,
             run_as,
+            report,
+            print_report_schema,
+            extra_migrations_dir,
         } => {
+            if print_report_schema {
+                print!("{}", mcphost::compat_report::report_schema_json());
+                return Ok(());
+            }
             init_tracing();
+            if report.is_some() && !check_compat {
+                eprintln!("mcphost migrate --report requires --check-compat");
+                std::process::exit(mcphost::compat_report::EXIT_USAGE);
+            }
             if check_compat {
                 let Some(previous_bin) = previous else {
                     eprintln!("mcphost migrate --check-compat requires --previous <path>");
                     std::process::exit(2);
                 };
                 let live_db = db_path.unwrap_or_else(|| data_dir().join("mcphost.db"));
+                if let Some(report_path) = report {
+                    let inputs = mcphost::compat_check::CheckInputs {
+                        live_db_path: &live_db,
+                        previous_binary: &previous_bin,
+                        run_as: run_as.as_deref(),
+                        extra_migrations_dir: extra_migrations_dir.as_deref(),
+                    };
+                    let code =
+                        mcphost::compat_check::run_cli_with_report(&inputs, &report_path).await;
+                    std::process::exit(code);
+                }
                 match mcphost::compat_check::run(&live_db, &previous_bin, run_as.as_deref()).await
                 {
                     Ok(()) => {

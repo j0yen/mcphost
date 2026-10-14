@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-oauth-first-entry-url.md",
-  "intent_slug": "mcphost-oauth-first-entry-url",
-  "root_motivation": "A person whose only agent is Claude.ai or ChatGPT adds mcphost as a connector. Those clients run OAuth only when the server answers 401; mcphost's root answers 200 to everything unauthenticated since PRD-mcphost-implicit-signup (2026-10-01, Joe: one URL, never the key dance). The connector either connects as an anonymous implicit tenant the person can never log back into, or ChatGPT refuses it because its Apps directory requires OAuth (project memory: the ChatGPT Apps gating item is OAuth tenant login). PRD-mcphost-oauth-first-grant-signup built the consent branch for exactly this person and its AC 8 names a Claude.ai connector at `https://mcphost.dev/mcp`, but no path from that URL reaches consent: the live path is unexercised and therefore presumed broken. The same gap zeroes synthorg's OAuth read (42/42 explore sessions a night fail at `discover`).",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-migration-refusal-contract.md",
+  "intent_slug": "mcphost-migration-refusal-contract",
+  "root_motivation": "**Who:** the deploy tool at 2 am on the deploy-on-land path; Joe reading its refusal; the agent whose tenant is behind a release that never lands because every retry refuses the same way (32 refusals in a row on 09-10, PRD-mcphost-deploy-incompatible-migration). **What:** a refusal that names what changed, why the old binary cannot run it, and the exact single lift. **Why not today:** `CompatCheckFailure` carries `step` and a free-text `detail` (`compat_check.rs:80-83`); the migration that caused the failure, its `-- compat:` header, and the tables it touched are known to the scratch run (it migrated a copy, `ScratchDir`) and thrown away. The bypass value's shape lives in the private deploy repo; the binary cannot tell the operator what to set. Prose at the boundary drifted once already: the deploy tool's parser keys on the `FAILED at step` string. **Consequence:** every refusal is a research task; the standing rule (10-07) says generate the contract.",
   "user_persona": "An agent that calls host.state.delete_rows with an empty filter on a 5 000-row table, reads confirm_required.dry_run_first, runs the dry run, notices the empty filter and fixes it; a Claude Code user who sees a destructive marker on host.table.drop.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,38 +14,26 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given no credential, When `POST /login/mcp` carries `initialize`, `tools/list`, or `tools/call`, Then each answers 401 with `WWW-Authenticate: Bearer resource_metadata=\"<public_url>/.well-known/oauth-protected-resource/login/mcp\", scope=\"mcp\"` and no tenant is created.",
-      "test": "tests/oauthentry_ac01_every_method_401_with_entry_challenge.rs"
+      "description": "Given a temp db migrated by a fixture `-- compat: breaking` migration that drops a column and a stub previous binary failing `tools_call`, When `--check-compat --report r.json` runs, Then exit is 3 and `r.json` validates against `docs/compat-report.schema.json` with `migrations[0].compat == \"breaking\"`, `tables_changed[0].change == \"columns_dropped\"`, `bypass.value == \"<from>..<to>\"`.",
+      "test": "tests/mrefu_ac01_breaking_migration_refuses_with_report.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given `GET /.well-known/oauth-protected-resource/login/mcp`, When fetched, Then `resource == \"<public_url>/login/mcp\"` and `authorization_servers == [\"<public_url>\"]`.",
-      "test": "tests/oauthentry_ac02_entry_document_names_entry_resource.rs"
+      "description": "Given a compatible migration (`-- compat: previous`, one nullable column), When the check runs, Then exit 0, `ok: true`, `tables_changed[0].change == \"columns_added\"`, and `bypass` is absent.",
+      "test": "tests/mrefu_ac02_compatible_migration_reports_ok.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a DCR client, When it authorizes with `resource=<public_url>/login/mcp` and the consent form chooses \"new workspace\", Then a tenant with `source: \"oauth\"` exists, the token's `aud` is the entry resource, and `host.whoami` over `POST /login/mcp` with that bearer returns that tenant with `onboarding.url`.",
-      "test": "tests/oauthentry_ac03_new_workspace_on_entry_resource.rs"
+      "description": "Given `--print-report-schema`, When compared to the committed `docs/compat-report.schema.json`, Then they are byte-equal, and renaming one field in a test copy of the struct makes the comparison fail.",
+      "test": "tests/mrefu_ac03_schema_is_generated_and_drift_tested.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a token minted for `<public_url>/mcp` or for `<public_url>/t/<ns>/mcp`, When presented on `/login/mcp`, Then 401 with error `wrong_audience`; Given the entry token presented on `/mcp`, Then `wrong_audience`.",
-      "test": "tests/oauthentry_ac04_entry_audience_is_enforced_both_ways.rs"
-    },
-    {
-      "id": "AC5",
-      "level": "MUST",
-      "description": "Given the conformance harness profiles `claude` and `chatgpt` with no pre-existing tenant, When run against the entry URL, Then both reach `tools/list` through \"new workspace\".",
-      "test": "tests/oauthentry_ac05_claude_chatgpt_profiles_reach_tools_list.rs"
-    },
-    {
-      "id": "AC6",
-      "level": "MUST",
-      "description": "Given the router, the metadata route, `www/` client pages, `llms-install.md`, and `host.quickstart`, When the `oauthentry` path-contract test runs, Then every occurrence of the entry path equals `OAUTH_ENTRY_PATH` and `sandbox-api-doc-check.sh` passes.",
-      "test": "tests/oauthentry_ac06_path_contract_docs_router_quickstart.rs"
+      "description": "Given a previous binary that exits 1 on start, When the check runs, Then exit 4, `step == \"previous-up\"`, and `tables_changed` is still populated.",
+      "test": "tests/mrefu_ac04_previous_up_failure_exits_4_with_tables_changed.rs"
     }
   ],
   "scope": [
