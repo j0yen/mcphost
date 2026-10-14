@@ -2475,3 +2475,61 @@ pub async fn ttfs_tenant(
     }
     db.find_tenant_by_namespace(namespace.to_string()).await.expect("query").expect("tenant exists")
 }
+
+/// Feedback text every fbcl fixture files; ship notices must never echo it.
+pub const FBCL_SECRET_TEXT: &str = "args_invalid said SECRET-FEEDBACK-MARKER is not an integer";
+
+/// PRD-mcphost-feedback-closed-loop-notice fixture: one tenant per name each
+/// files [`FBCL_SECRET_TEXT`] through `host.feedback.send`, plus `anon`
+/// anonymous rows with the same text; clusters and returns
+/// `(clients, tenant_ids, theme_id)`.
+pub async fn fbcl_themed(server: &TestServer, names: &[&str], anon: usize) -> (Vec<McpClient>, Vec<i64>, String) {
+    let context = json!({"error_code": "args_invalid", "tool": "host.tool_call"});
+    let mut clients = Vec::new();
+    for name in names {
+        let (_ns, key) = signup(&server.base_url, name).await;
+        let c = McpClient::with_bearer(&server.base_url, &key);
+        c.tools_call(
+            "host.feedback.send",
+            json!({"kind": "wrong_error", "text": FBCL_SECRET_TEXT, "context": context}),
+        )
+        .await
+        .expect("feedback send");
+        clients.push(c);
+    }
+    let now = mcphost::state::now_unix();
+    for i in 0..anon {
+        server
+            .state
+            .db
+            .insert_feedback(
+                format!("f_anon{i}"),
+                None,
+                "wrong_error".into(),
+                FBCL_SECRET_TEXT.into(),
+                Some(context.to_string()),
+                None,
+                None,
+                "[]".into(),
+                "iphash".into(),
+                now,
+                mcphost::db::FeedbackCap::None,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+    }
+    server.state.db.cluster_feedback().await.unwrap();
+    let admin = McpClient::with_bearer(&server.base_url, ADMIN_KEY);
+    let out = extract_structured(&admin.tools_call("admin.feedback.themes", json!({})).await.unwrap());
+    let themes = out["themes"].as_array().unwrap();
+    assert_eq!(themes.len(), 1, "one theme: {out}");
+    let theme_id = themes[0]["theme_id"].as_str().unwrap().to_string();
+    let tenant_ids = themes[0]["tenants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t.as_str().unwrap().trim_start_matches('t').parse().unwrap())
+        .collect();
+    (clients, tenant_ids, theme_id)
+}

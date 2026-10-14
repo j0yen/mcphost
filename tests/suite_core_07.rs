@@ -873,6 +873,18 @@ mod exprp_ac04_admin_decides_and_the_proposer_sees_it;
 mod exprp_ac05_pull_writes_the_clone_commits_and_merges;
 #[path = "exprp_ac06_name_collision_and_open_proposal_cap.rs"]
 mod exprp_ac06_name_collision_and_open_proposal_cap;
+#[path = "fbcl_ac02_ship_notifies_each_filing_tenant.rs"]
+mod fbcl_ac02_ship_notifies_each_filing_tenant;
+#[path = "fbcl_ac03_second_ship_is_idempotent.rs"]
+mod fbcl_ac03_second_ship_is_idempotent;
+#[path = "fbcl_ac04_nightly_changelog_ship.rs"]
+mod fbcl_ac04_nightly_changelog_ship;
+#[path = "fbcl_ac05_send_to_mcphost_forbidden.rs"]
+mod fbcl_ac05_send_to_mcphost_forbidden;
+#[path = "fbcl_ac06_deleted_filer_counts_anonymous.rs"]
+mod fbcl_ac06_deleted_filer_counts_anonymous;
+#[path = "fbcl_ac07_get_reports_shipped_version_anchor.rs"]
+mod fbcl_ac07_get_reports_shipped_version_anchor;
 #[path = "fbeh_ac02_hint_on_every_variant.rs"]
 mod fbeh_ac02_hint_on_every_variant;
 #[path = "fbeh_ac03_missing_mapping_is_named.rs"]
@@ -1815,25 +1827,3 @@ mod oauthpol_ac07_operator_block_list_and_admin_rejection;
 mod oauthpol_ac08_cimd_host_daily_registration_cap;
 #[path = "oauthpol_ac09_no_policy_defaults_match_hosted_as.rs"]
 mod oauthpol_ac09_no_policy_defaults_match_hosted_as;
-#[path = "oauthrs_ac01_protected_resource_metadata_empty.rs"]
-mod oauthrs_ac01_protected_resource_metadata_empty;
-#[path = "oauthrs_ac02_bearer_jwt_runs_as_tenant.rs"]
-mod oauthrs_ac02_bearer_jwt_runs_as_tenant;
-#[path = "oauthrs_ac03_invalid_tokens_rejected_with_reasons.rs"]
-mod oauthrs_ac03_invalid_tokens_rejected_with_reasons;
-#[path = "oauthrs_ac04_401_challenge_signup_still_open.rs"]
-mod oauthrs_ac04_401_challenge_signup_still_open;
-#[path = "oauthrs_ac05_unknown_kid_refetch_throttled.rs"]
-mod oauthrs_ac05_unknown_kid_refetch_throttled;
-#[path = "oauthrs_ac06_jwks_server_down_unknown_issuer.rs"]
-mod oauthrs_ac06_jwks_server_down_unknown_issuer;
-#[path = "oauthrs_ac07_issuer_registration_limits.rs"]
-mod oauthrs_ac07_issuer_registration_limits;
-#[path = "oauthrs_ac08_conflicting_credentials.rs"]
-mod oauthrs_ac08_conflicting_credentials;
-#[path = "oauthrs_ac09_admin_lists_issuers_and_audits.rs"]
-mod oauthrs_ac09_admin_lists_issuers_and_audits;
-#[path = "oauthrs_ac10_key_based_flow_unchanged.rs"]
-mod oauthrs_ac10_key_based_flow_unchanged;
-#[path = "oauthrs_ac11_issuer_and_jwks_url_must_be_https.rs"]
-mod oauthrs_ac11_issuer_and_jwks_url_must_be_https;

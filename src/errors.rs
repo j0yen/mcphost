@@ -1313,6 +1313,17 @@ impl AppError {
         }
     }
 
+    /// PRD-mcphost-feedback-closed-loop-notice R2: `@mcphost` is a
+    /// sender-only system handle; a message to it or a reply on one of its
+    /// threads is refused with a hint at the tool that does reach the host.
+    pub fn system_sender_only() -> Self {
+        AppError::Structured {
+            code: "forbidden",
+            message: "@mcphost only sends system notices; it cannot receive messages".to_string(),
+            data: json!({"hint": "host.feedback.send"}),
+        }
+    }
+
     /// PRD-mcphost-agent-inbox requirement 7: `msgs_per_hour`,
     /// `msg_body_bytes_max`, and `recipients_per_msg_max` all fail the
     /// whole `host.msg.send`/`reply` call with this shape (AC9/AC10:

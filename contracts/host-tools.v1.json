@@ -5643,6 +5643,12 @@
       "name": "host.feedback.get",
       "output_schema": {
         "properties": {
+          "anchor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "context": {
             "type": [
               "object",
@@ -5671,6 +5677,12 @@
             "type": "string"
           },
           "theme_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
             "type": [
               "string",
               "null"
@@ -5717,8 +5729,17 @@
           "feedback": {
             "items": {
               "properties": {
+                "anchor": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "context": {
-                  "type": "null"
+                  "type": [
+                    "object",
+                    "null"
+                  ]
                 },
                 "created_unix": {
                   "type": "integer"
@@ -5740,6 +5761,12 @@
                 },
                 "text": {
                   "type": "string"
+                },
+                "version": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 }
               },
               "required": [

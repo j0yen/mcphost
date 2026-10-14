@@ -143,6 +143,9 @@ pub async fn send(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     if to.is_empty() {
         return Err(AppError::InvalidArgs("to: must name at least one address".to_string()));
     }
+    if to.iter().any(|a| a.trim().eq_ignore_ascii_case(crate::feedback::SYSTEM_SENDER)) {
+        return Err(AppError::system_sender_only());
+    }
 
     // requirement 7: whole-call quota checks, before anything is stored
     // (AC9/AC10: "stores nothing").

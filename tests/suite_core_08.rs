@@ -26,6 +26,28 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "oauthrs_ac01_protected_resource_metadata_empty.rs"]
+mod oauthrs_ac01_protected_resource_metadata_empty;
+#[path = "oauthrs_ac02_bearer_jwt_runs_as_tenant.rs"]
+mod oauthrs_ac02_bearer_jwt_runs_as_tenant;
+#[path = "oauthrs_ac03_invalid_tokens_rejected_with_reasons.rs"]
+mod oauthrs_ac03_invalid_tokens_rejected_with_reasons;
+#[path = "oauthrs_ac04_401_challenge_signup_still_open.rs"]
+mod oauthrs_ac04_401_challenge_signup_still_open;
+#[path = "oauthrs_ac05_unknown_kid_refetch_throttled.rs"]
+mod oauthrs_ac05_unknown_kid_refetch_throttled;
+#[path = "oauthrs_ac06_jwks_server_down_unknown_issuer.rs"]
+mod oauthrs_ac06_jwks_server_down_unknown_issuer;
+#[path = "oauthrs_ac07_issuer_registration_limits.rs"]
+mod oauthrs_ac07_issuer_registration_limits;
+#[path = "oauthrs_ac08_conflicting_credentials.rs"]
+mod oauthrs_ac08_conflicting_credentials;
+#[path = "oauthrs_ac09_admin_lists_issuers_and_audits.rs"]
+mod oauthrs_ac09_admin_lists_issuers_and_audits;
+#[path = "oauthrs_ac10_key_based_flow_unchanged.rs"]
+mod oauthrs_ac10_key_based_flow_unchanged;
+#[path = "oauthrs_ac11_issuer_and_jwks_url_must_be_https.rs"]
+mod oauthrs_ac11_issuer_and_jwks_url_must_be_https;
 #[path = "oauthsig_ac01_auth_method_by_credential.rs"]
 mod oauthsig_ac01_auth_method_by_credential;
 #[path = "oauthsig_ac02_healthz_calls_and_tenants_by_method.rs"]

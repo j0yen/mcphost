@@ -1,7 +1,7 @@
 //! PRD-mcphost-feedback-themes-nightly AC7 — Given a tenant that filed `f_a`
 //! and another that filed `f_b`, When the first calls `host.feedback.get
 //! {feedback_id:"f_b"}`, Then the code is `feedback_not_found`; `f_a` returns
-//! `theme_id` and `status: "open"` after clustering.
+//! `theme_id` and `status: "themed"` after clustering.
 
 use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
@@ -53,7 +53,7 @@ async fn get_is_owner_only_and_carries_the_theme_after_clustering() {
     let after = extract_structured(&a.tools_call("host.feedback.get", json!({"feedback_id": f_a})).await.unwrap());
     let theme_id = after["theme_id"].as_str().expect("theme_id after clustering");
     assert!(theme_id.starts_with("th_"));
-    assert_eq!(after["status"], "open");
+    assert_eq!(after["status"], "themed");
     assert_eq!(after["feedback_id"], json!(f_a));
     // Both tenants' variants share the theme, but each reads only its own row.
     let theirs = server.state.db.feedback_row_theme_id(f_b).await.unwrap();
