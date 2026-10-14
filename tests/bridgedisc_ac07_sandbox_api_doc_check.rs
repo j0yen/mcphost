@@ -27,6 +27,15 @@ const TOUCHED: &[&str] = &[
     "docs/kinds/python.md",
     "www/llms.txt",
     "plugin/skills/mcphost/SKILL.md",
+    "src/oauth.rs",
+    // PRD-mcphost-oauth-first-entry-url: the script also checks that every
+    // client page names the one OAUTH_ENTRY_PATH.
+    "README.md",
+    "llms-install.md",
+    "www/llms-install.md",
+    "www/llms-full.txt",
+    "www/index.html",
+    "docs/oauth-connect.md",
 ];
 
 fn scratch_copy(label: &str) -> std::path::PathBuf {

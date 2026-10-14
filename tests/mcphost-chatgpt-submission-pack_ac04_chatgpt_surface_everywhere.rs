@@ -15,7 +15,8 @@ fn table_has_a_chatgpt_steps_row_with_doc_url_and_checked_date() {
     assert_eq!(row.kind, Kind::Steps);
     assert!(row.doc_url.starts_with("https://"), "{row:?}");
     assert_eq!(row.checked.len(), 10, "YYYY-MM-DD: {row:?}");
-    assert!(row.artefact.contains("https://mcphost.dev/mcp"), "{row:?}");
+    // PRD-mcphost-oauth-first-entry-url: ChatGPT is OAuth-only, so its steps name the entry URL.
+    assert!(row.artefact.contains("https://mcphost.dev/login/mcp"), "{row:?}");
     for step in ["Plugins", "Add", "Create custom MCP server"] {
         assert!(row.artefact.contains(step), "step names {step:?}: {row:?}");
     }
