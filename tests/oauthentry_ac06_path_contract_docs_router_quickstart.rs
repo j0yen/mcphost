@@ -105,7 +105,7 @@ async fn router_metadata_and_quickstart_all_use_the_one_constant() {
     let (_ns, key) = common::signup(&server.base_url, "Quickstart Caller").await;
     let tenant = common::extract_structured(
         &common::McpClient::with_bearer(&server.base_url, &key)
-            .tools_call("host.quickstart", json!({"kind": "python"}))
+            .tools_call("host.quickstart", json!({"kind": "echo"}))
             .await
             .expect("tenant quickstart"),
     );
