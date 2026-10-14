@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-host-changelog-since.md",
-  "intent_slug": "mcphost-host-changelog-since",
-  "root_motivation": "**Who:** the agent returning after a day or a week; the vision's resume tool, which embeds this. **What:** what moved on the host since I was last here — in names it can act on. **Why not today:** `api_contract::changelog` (`:507`) filters tools by `version_gt(since_for_tool(name), since)` and `since_for_tool` returns `HOST_CHANGELOG_SINCE` for one tool, `HOST_DRIFT_SINCE` for the `host.drift.*` family and `CONTRACT_BASELINE_SINCE` for everything else, so a tool added in 0.105.0 is dated to the baseline. `TOOL_ALIASES` (`src/tool_aliases.rs:41-62`) holds 20 `alias → canonical` pairs that `tools/list` advertises with `alias_of`, and the changelog never mentions them. `CHANGELOG.md` has one `## v… — date` heading per release since 0.70.1 and no reader. The tenant's last version is not stored (`TENANT_COLUMNS`, `src/db.rs:213-218`). **Premise (agent viewpoint):** the host already knows every change; the surface only needs to be generated from the places that know. **Falsifier:*...",
-  "user_persona": "An agent that calls host.example.propose {tool, proof_call, title, use_case} after its user says \"this works, share it\", then reads host.example.proposal_status until an admin approves and `mcphost examples proposals pull` opens the PR.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-db-maintenance-window.md",
+  "intent_slug": "mcphost-db-maintenance-window",
+  "root_motivation": "**Who:** the agent whose 3 am write waits on a 5.7 MB WAL being checkpointed under load; the chain, whose midnight hour is the busiest of the day (journal warn/error peak 6480 lines at 07:00 UTC vs 127 at 15:00); Joe, who runs `VACUUM` by hand never. **What:** routine database and disk hygiene at the hour nobody is there, with evidence. **Why not today:** `wal_checkpoint_passive` (`db.rs:2525`) runs every `MCPHOST_DB_WAL_CHECKPOINT_SECS` regardless of load and PASSIVE never truncates under readers; `PRAGMA optimize` is never run (grep: 0 hits); prod `mcphost.db` is 349 MB with a 5.7 MB WAL and 239 entries in `scratch/`, the journal holds 1.6 GB; 10-07 13:21-13:22 UTC two background ticks failed `database is locked`. The retention pruner has a disk floor but no notion of a quiet hour. **Premise (agent viewpoint):** \"the host tidies up when I am not there, and my writes at peak are faster for it.\" Falsifier: the quiet-hour computation picks the chain hour (AC 1 feeds a recorded 14-day...",
+  "user_persona": "An agent that calls host.state.delete_rows with an empty filter on a 5 000-row table, reads confirm_required.dry_run_first, runs the dry run, notices the empty filter and fixes it; a Claude Code user who sees a destructive marker on host.table.drop.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,26 +14,50 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the committed `CHANGELOG.md`, When `parse_changelog` runs, Then every `## ` heading yields `(semver, date)`, versions are strictly descending, the count equals the number of `## v` lines, and the top version matches `Cargo.toml` (the falsifier as a test).",
-      "test": "tests/chg_ac01_changelog_headings_parse.rs"
+      "description": "Given this PRD has landed, When the operator runs the premise check recorded under \"## Premise check (operator)\" below, Then its result is written into this PRD and a failed premise parks the PRD (Live; evidence: operator premise check, see \"## Premise check (operator)\")",
+      "test": "deferred -- operator-provisioned: Live premise check against prod calls histogram, recorded under \"## Premise check (operator)\"."
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a tool present in `host_tools` and absent from `contracts/host-tools.v1.json`, When the contract-drift test runs, Then it fails naming the tool and the version it must record as `since`.",
-      "test": "tests/chg_ac02_contract_since_drift.rs"
+      "description": "Given a test database with a 3 MB WAL and 1 000 freelist pages under `auto_vacuum = INCREMENTAL`, When `DbMaintenance` runs, Then `after.wal_mb` is 0, `after.freelist_count` is 0, `checkpoint_result` is `TRUNCATE`, `outcome` is `ok` and `optimize_ms` is a positive integer.",
+      "test": "tests/dbmw_ac02_db_maintenance_truncates_wal_and_vacuums.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given `since: \"0.0.0\"`, When `host.changelog` runs, Then `renamed` has exactly `TOOL_ALIASES.len()` entries and each `from`/`to` pair matches the table.",
-      "test": "tests/chg_ac03_changelog_renamed_lists_every_alias.rs"
+      "description": "Given `<data_dir>/.backup-lock` created 10 min ago, When the window fires, Then both rows read `refused` with `reason: \"backup in progress\"`, nothing is checkpointed, and the next attempt is scheduled 3600 s later; Given the lock is 3 h old, Then the actions run and a tracing line says `stale backup lock ignored`.",
+      "test": "tests/dbmw_ac03_backup_lock_refuses_window.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a tenant whose `last_seen_version` is 0.105.0 on a host at 0.108.0, When `host.changelog {}` runs, Then `since` is `\"0.105.0\"`, `releases` are exactly the headings in (0.105.0, 0.108.0], and `added` lists only tools with `since` in that range.",
-      "test": "tests/chg_ac04_changelog_defaults_to_last_seen_version.rs"
+      "description": "Given `scratch/` holds 5 entries older than 24 h and 3 younger, plus `exports/` with one expired export, When `LogRotate` runs, Then exactly 5 + 1 entries are removed, `mcphost.db`, `mcphost.db-wal`, `envs/`, `public/` and `authz_signing_key.der` are untouched (hash-compared), and `after.journal_vacuum_requested` is `true`.",
+      "test": "tests/dbmw_ac04_log_rotate_sweeps_only_expired_scratch_and_exports.rs"
+    },
+    {
+      "id": "AC5",
+      "level": "MUST",
+      "description": "Given a reader holding a long transaction, When `wal_checkpoint(TRUNCATE)` is busy, Then the executor retries PASSIVE once, the row reads `ok` with `checkpoint_result: PASSIVE`, and no statement exceeded its 30-s deadline.",
+      "test": "tests/dbmw_ac05_busy_truncate_retries_passive.rs"
+    },
+    {
+      "id": "AC6",
+      "level": "MUST",
+      "description": "Given `mcphost maintenance run --dry-run`, When it runs, Then it prints `before` values for both actions, writes two `would_run` rows and changes no file or pragma (hash-compared).",
+      "test": "tests/dbmw_ac06_maintenance_run_dry_run.rs"
+    },
+    {
+      "id": "AC7",
+      "level": "SHOULD",
+      "description": "Given the retention pruner last ran 21 h ago, When the window fires, Then the pruner's daily pass runs inside it and its own log line appears between the two maintenance rows' timestamps.",
+      "test": "tests/dbmw_ac07_window_runs_the_retention_pruner.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given this PRD deployed to prod and one quiet hour elapsed, When `/status.json` is fetched, Then `maintenance.last.outcome` is `ok` and `maintenance.last.wal_mb` is below 1 (Live; evidence: `curl -s https://mcphost.dev/status.json | jq -c .maintenance`)",
+      "test": "deferred -- operator-provisioned: Live check of prod /status.json.maintenance after one quiet hour."
     }
   ],
   "scope": [

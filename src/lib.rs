@@ -61,6 +61,7 @@ pub mod heal;
 pub mod help;
 pub mod hooks;
 pub mod hostpressure;
+pub mod maintenance;
 pub mod http;
 pub mod install_links;
 pub mod invites;

@@ -75,6 +75,12 @@ enum Command {
         #[command(subcommand)]
         action: BillingCommand,
     },
+    /// PRD-mcphost-db-maintenance-window: the daily database and disk
+    /// hygiene window.
+    Maintenance {
+        #[command(subcommand)]
+        action: MaintenanceCommand,
+    },
     /// PRD-mcphost-golden-signals-self-probe: golden-signal tooling.
     Signals {
         #[command(subcommand)]
@@ -436,6 +442,18 @@ enum ProposalsCommand {
 }
 
 #[derive(Subcommand)]
+enum MaintenanceCommand {
+    /// Run the maintenance window now (`db_maintenance` then `log_rotate`),
+    /// honouring the backup lock and the per-action rate limit.
+    Run {
+        /// Print the plan with the current `before` values and write two
+        /// `would_run` rows; change no file or pragma.
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
+
+#[derive(Subcommand)]
 enum SignalsCommand {
     /// Feed a recorded `{"ts","signal","value"}` JSONL file through the
     /// compiled `heal.toml` band logic and print each breach (with its
@@ -545,6 +563,25 @@ async fn main() -> anyhow::Result<()> {
                 Ok(())
             }
         }
+        Command::Maintenance { action } => match action {
+            MaintenanceCommand::Run { dry_run } => {
+                init_tracing();
+                let db = mcphost::db::Db::open(&data_dir())?;
+                db.migrate().await?;
+                let report = mcphost::maintenance::run_window(&db, mcphost::state::now_unix(), dry_run).await?;
+                for row in &report.rows {
+                    println!(
+                        "{} outcome={} before={} after={}",
+                        row.action.as_str(),
+                        row.outcome.as_str(),
+                        row.before,
+                        row.after
+                    );
+                }
+                println!("next_unix={}", report.next_unix);
+                Ok(())
+            }
+        },
         Command::Signals { action } => match action {
             SignalsCommand::Replay { path } => {
                 let text = std::fs::read_to_string(&path)
@@ -1492,6 +1529,8 @@ async fn main() -> anyhow::Result<()> {
             // here alongside the other background tasks.
             mcphost::statusfeed::spawn_tick((*state).clone());
             mcphost::statusfeed::spawn_daily_tick((*state).clone());
+            // PRD-mcphost-db-maintenance-window R6: once a day at the quiet hour.
+            mcphost::maintenance::spawn_scheduler(state.db.clone());
             // PRD-mcphost-result-handles P0 requirement 4: the 30s handle
             // expiry tick, started once here alongside the other
             // background tasks.

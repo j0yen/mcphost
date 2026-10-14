@@ -13,6 +13,7 @@ use std::str::FromStr;
 
 use serde_json::{Value, json};
 
+use crate::db::Db;
 use crate::errors::AppError;
 use crate::state::{AppState, now_unix};
 
@@ -69,8 +70,8 @@ heal_actions! {
     SandboxPoolRestart => ("sandbox_pool_restart", 4, "Restart the warm python sandbox pool when its workers wedge."),
     LoadShed => ("load_shed", 6, "Briefly refuse new anonymous work while host pressure is above threshold."),
     Rollback => ("rollback", 1, "Return to the previous release; refused until its actuator lands."),
-    DbMaintenance => ("db_maintenance", 2, "Checkpoint the write-ahead log when it grows past its size threshold."),
-    LogRotate => ("log_rotate", 2, "Rotate host logs when the log volume nears full."),
+    DbMaintenance => ("db_maintenance", 1, "Optimise, empty the write-ahead log and reclaim free pages once a day at the quietest hour."),
+    LogRotate => ("log_rotate", 1, "Sweep expired scratch and export files once a day and flag a journal vacuum."),
 }
 
 impl FromStr for HealAction {
@@ -191,18 +192,43 @@ where
     F: FnOnce() -> Fut,
     Fut: Future<Output = Result<Value, AppError>>,
 {
+    execute_on(&state.db, action, trigger, now, dry_run, Value::Null, run).await
+}
+
+/// The key a `run` closure's evidence sets to a reason string to make the
+/// row read `refused` (the closure ran, decided not to act, and changed
+/// nothing). Its `before` is kept; `after` becomes `{"reason": …}`.
+pub const REFUSED_KEY: &str = "refused";
+
+/// [`execute_at`] against a bare [`Db`] (the `mcphost maintenance` CLI has no
+/// `AppState`). `plan_before` is what a `would_run` row records as `before`,
+/// since the closure never runs in a dry run.
+#[allow(clippy::too_many_arguments)]
+pub async fn execute_on<F, Fut>(
+    db: &Db,
+    action: HealAction,
+    trigger: Value,
+    now: i64,
+    dry_run: bool,
+    plan_before: Value,
+    run: F,
+) -> Result<HealRow, AppError>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<Value, AppError>>,
+{
     let policy = action.policy();
     let mut before = Value::Null;
     let mut after = Value::Null;
     let mut duration_ms = 0;
     let outcome = if dry_run {
+        before = plan_before;
         HealOutcome::WouldRun
     } else if action == HealAction::Rollback {
         // Row-only until the rollback actuator PRD lands.
         HealOutcome::Refused
     } else {
-        let ran = state
-            .db
+        let ran = db
             .heal_executed_since(action.as_str().to_string(), now - RATE_WINDOW_SECS)
             .await?;
         if ran >= i64::from(policy.max_per_hour) {
@@ -214,8 +240,13 @@ where
             match result {
                 Ok(evidence) => {
                     before = evidence.get("before").cloned().unwrap_or(Value::Null);
-                    after = evidence.get("after").cloned().unwrap_or(Value::Null);
-                    HealOutcome::Ok
+                    if let Some(reason) = evidence.get(REFUSED_KEY).and_then(Value::as_str) {
+                        after = json!({"reason": reason});
+                        HealOutcome::Refused
+                    } else {
+                        after = evidence.get("after").cloned().unwrap_or(Value::Null);
+                        HealOutcome::Ok
+                    }
                 }
                 Err(e) => {
                     after = json!({"error": e.to_string()});
@@ -235,7 +266,7 @@ where
         before,
         after,
     };
-    row.id = state.db.insert_heal_row(row.clone()).await?;
+    row.id = db.insert_heal_row(row.clone()).await?;
     tracing::info!("heal action={} outcome={} id={}", action.as_str(), outcome.as_str(), row.id);
     Ok(row)
 }

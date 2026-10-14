@@ -469,6 +469,7 @@ pub async fn status_json(state: &AppState) -> Result<Value, AppError> {
         "warnings": warnings,
         "signals": state.signals.status_json(now_unix()),
         "heal": crate::heal::status_block(state).await?,
+        "maintenance": crate::maintenance::status_block(state).await?,
         "feedback": {"rows_24h": rows_24h, "themes_open": themes_open},
     });
     // PRD-mcphost-healthz-version-field requirement 3: whole-feed only; the

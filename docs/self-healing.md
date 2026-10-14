@@ -41,6 +41,6 @@ The table below is generated from `src/heal.rs` by
 | `sandbox_pool_restart` | 4 | no | Restart the warm python sandbox pool when its workers wedge. |
 | `load_shed` | 6 | no | Briefly refuse new anonymous work while host pressure is above threshold. |
 | `rollback` | 1 | no | Return to the previous release; refused until its actuator lands. |
-| `db_maintenance` | 2 | no | Checkpoint the write-ahead log when it grows past its size threshold. |
-| `log_rotate` | 2 | no | Rotate host logs when the log volume nears full. |
+| `db_maintenance` | 1 | no | Optimise, empty the write-ahead log and reclaim free pages once a day at the quietest hour. |
+| `log_rotate` | 1 | no | Sweep expired scratch and export files once a day and flag a journal vacuum. |
 <!-- mcphost-heal-actions:end -->
