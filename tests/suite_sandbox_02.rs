@@ -172,6 +172,8 @@ mod firstpub_ac07_llms_txt_first_run_executes;
 mod gsigb_ac03_wedged_child_in_pool_signal;
 #[path = "handle_ac09_python_sandbox_materialize_then_query.rs"]
 mod handle_ac09_python_sandbox_materialize_then_query;
+#[path = "hostdoc_ac02_error_summary_has_exception_line_and_source.rs"]
+mod hostdoc_ac02_error_summary_has_exception_line_and_source;
 #[path = "infer_ac01_ac02_ac03_python_schema.rs"]
 mod infer_ac01_ac02_ac03_python_schema;
 #[path = "infer_ac04_python_explicit_schema.rs"]

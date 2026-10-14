@@ -36,7 +36,7 @@ either would break the one guarantee this rule exists to protect. Not
 noun -- there's nothing to disambiguate, so `host.<noun>.get` would just
 be noise. Today's singleton nouns: `host.whoami`, `host.redeem`,
 `host.quickstart`, `host.usage`, `host.changelog`, `host.export`,
-`host.import`, `host.progress`, `host.call_trace`. `scripts/tool-naming-lint.sh` lists these, with this same
+`host.import`, `host.progress`, `host.call_trace`, `host.doctor`. `scripts/tool-naming-lint.sh` lists these, with this same
 reason, every time it runs -- see that script for the authoritative,
 machine-checked list (this paragraph can drift; the lint cannot).
 

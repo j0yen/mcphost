@@ -69,6 +69,10 @@ const ASK_TOOLS_ADDED: usize = 4;
 /// non-alias tool (its flattened form is counted by `flattened_count`).
 const CALL_TRACE_TOOLS_ADDED: usize = 1;
 
+/// PRD-mcphost-host-doctor-tool: host.doctor, one more genuinely new
+/// non-alias tool (its flattened form is counted by `flattened_count`).
+const DOCTOR_TOOLS_ADDED: usize = 1;
+
 /// PRD-mcphost-feedback-tool-and-ledger: host.feedback.send and
 /// host.feedback.list, two genuinely new non-alias tools (their flattened
 /// forms are counted by `flattened_count`); PRD-mcphost-feedback-themes-
@@ -121,6 +125,7 @@ fn full_registry_grew_by_exactly_the_alias_count_with_nothing_removed() {
             + ESTIMATE_TOOLS_ADDED
             + ASK_TOOLS_ADDED
             + CALL_TRACE_TOOLS_ADDED
+            + DOCTOR_TOOLS_ADDED
             + FEEDBACK_TOOLS_ADDED
             + DEAD_LETTERS_TOOLS_ADDED
             + BLOB_TOOLS_ADDED
@@ -133,5 +138,5 @@ fn full_registry_grew_by_exactly_the_alias_count_with_nothing_removed() {
          or later-landing PRD's own documented growth, including row-policy's own later five \
          tools), with nothing removed"
     );
-    assert_eq!(total, 402, "pin the exact new total (188 + 168 flattened forms, PRD-mcphost-tools-list-alias-truth); PRD-mcphost-invite-links, PRD-mcphost-result-handles, PRD-mcphost-call-cost-estimate, PRD-mcphost-ask-user-decision, PRD-mcphost-call-trace-replay, PRD-mcphost-feedback-tool-and-ledger, PRD-mcphost-event-trigger-from-webhook's host.trigger.dead_letters, PRD-mcphost-blob-put-get-signed-url, PRD-mcphost-blob-retention-and-quota, PRD-mcphost-export-tables-and-import-restore, PRD-mcphost-example-from-published-tool, PRD-mcphost-feedback-themes-nightly host.feedback.get, and this PRD's own growth grew it to");
+    assert_eq!(total, 404, "pin the exact new total (188 + 168 flattened forms, PRD-mcphost-tools-list-alias-truth); PRD-mcphost-invite-links, PRD-mcphost-result-handles, PRD-mcphost-call-cost-estimate, PRD-mcphost-ask-user-decision, PRD-mcphost-call-trace-replay, PRD-mcphost-feedback-tool-and-ledger, PRD-mcphost-event-trigger-from-webhook's host.trigger.dead_letters, PRD-mcphost-blob-put-get-signed-url, PRD-mcphost-blob-retention-and-quota, PRD-mcphost-export-tables-and-import-restore, PRD-mcphost-example-from-published-tool, PRD-mcphost-feedback-themes-nightly host.feedback.get, PRD-mcphost-host-doctor-tool's host.doctor, and this PRD's own growth grew it to");
 }

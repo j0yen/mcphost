@@ -129,7 +129,9 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
         // flattened forms, 396 + 4 = 400.
         // PRD-mcphost-feedback-themes-nightly: host.feedback.get, one more
         // dotted tool plus its flattened form, 400 + 2 = 402.
-        402,
+        // PRD-mcphost-host-doctor-tool: host.doctor, one new dotted tool
+        // plus its flattened form, 402 + 2 = 404.
+        404,
         "there must be exactly the sixteen host.* control-plane tools \
          (incl. host.quickstart, host.tool_run, host.bridge_test, host.spec_test -- \
          PRD-mcphost-tool-test, and host.redeem/host.key_rotate -- \
