@@ -172,6 +172,8 @@ mod firstpub_ac07_llms_txt_first_run_executes;
 mod gsigb_ac03_wedged_child_in_pool_signal;
 #[path = "handle_ac09_python_sandbox_materialize_then_query.rs"]
 mod handle_ac09_python_sandbox_materialize_then_query;
+#[path = "idecl_ac03_python_defaults_not_idempotent.rs"]
+mod idecl_ac03_python_defaults_not_idempotent;
 #[path = "infer_ac01_ac02_ac03_python_schema.rs"]
 mod infer_ac01_ac02_ac03_python_schema;
 #[path = "infer_ac04_python_explicit_schema.rs"]
