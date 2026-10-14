@@ -30,6 +30,44 @@ use serde_json::{Value, json};
 /// and a concurrent copy or check can see a half-written file.
 pub static DOC_CHECK_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+/// A scratch copy of every file `scripts/sandbox-api-doc-check.sh` reads or
+/// regenerates, laid out at the same relative paths. A test that needs to run
+/// the script in `--write` mode does it here, never on the repo's own tree: a
+/// `--write` on the real tree is visible, half-finished, to every concurrently
+/// running test that reads `www/llms.txt`, `README.md` and the other docs.
+pub fn doc_check_scratch(label: &str) -> PathBuf {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let dir = std::env::temp_dir().join(format!(
+        "mcphost-doccheck-{label}-{}-{}",
+        process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    let _guard = DOC_CHECK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    for rel in [
+        "scripts/sandbox-api-doc-check.sh",
+        "scripts/host-tools-doc-check.sh",
+        "src/write_verbs.rs",
+        "src/kinds/python.rs",
+        "src/oauth.rs",
+        "docs/host-tools.md",
+        "docs/kinds/python.md",
+        "docs/oauth-connect.md",
+        "www/llms.txt",
+        "www/llms-install.md",
+        "www/llms-full.txt",
+        "www/index.html",
+        "plugin/skills/mcphost/SKILL.md",
+        "README.md",
+        "llms-install.md",
+    ] {
+        let dest = dir.join(rel);
+        std::fs::create_dir_all(dest.parent().expect("parent")).expect("mkdir scratch");
+        std::fs::copy(root.join(rel), &dest).unwrap_or_else(|e| panic!("copy {rel}: {e}"));
+    }
+    dir
+}
+
 /// The anonymous `/healthz` key set, read from the crate const so no test
 /// restates it (`scripts/healthz-keys-lint.py` fails a literal).
 pub fn anon_healthz_keys() -> &'static [&'static str] {

@@ -23,15 +23,23 @@ async fn contract_and_docs_name_exactly_what_tools_list_advertises() {
 
     // The doc-regeneration path the PRD names, run in write mode first: it
     // must leave the committed names untouched (exit 0).
-    let status = {
-        let _doc_files = common::DOC_CHECK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        Command::new("bash")
-            .arg(format!("{}/scripts/sandbox-api-doc-check.sh", env!("CARGO_MANIFEST_DIR")))
-            .arg("--write")
-            .status()
-            .expect("run sandbox-api-doc-check.sh --write")
-    };
+    // Run in a scratch copy, not the repo tree: a `--write` on the real files
+    // is seen half-finished by every concurrently running docs test.
+    let scratch = common::doc_check_scratch("aliastruth-ac06");
+    let status = Command::new("bash")
+        .arg(scratch.join("scripts/sandbox-api-doc-check.sh"))
+        .arg("--write")
+        .status()
+        .expect("run sandbox-api-doc-check.sh --write");
     assert!(status.success(), "sandbox-api-doc-check.sh --write failed: {status}");
+    for rel in ["docs/kinds/python.md", "www/llms.txt", "plugin/skills/mcphost/SKILL.md", "docs/host-tools.md"] {
+        assert_eq!(
+            std::fs::read_to_string(scratch.join(rel)).expect("read regenerated"),
+            read(rel),
+            "--write must leave the committed {rel} untouched"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&scratch);
 
     // api_contract: the committed dump.
     let contract: Value = serde_json::from_str(&read("contracts/host-tools.v1.json")).expect("contract json");
