@@ -95,9 +95,52 @@ fn require_https_url(field: &str, value: &str, allow_query: bool) -> Result<(), 
     Ok(())
 }
 
-/// Validate a tenant-registered issuer string (see [`require_https_url`]).
+/// PRD-mcphost-oauth-metadata-lists-hosted-as R2: the ONE predicate that
+/// decides whether an issuer string may live in a public metadata document.
+/// `trusted_issuer_set`, `issuer_set` and `provider_set` gate their writes
+/// on it ([`require_https_issuer`]) and both metadata builders filter stored
+/// rows with it, so what is accepted on write and what is listed on read
+/// cannot drift. An issuer is an absolute `https://` URL with a host, no
+/// credentials, no query and no fragment; `http://` is accepted only on a
+/// loopback host and only under the `test-support` feature (the test JWKS
+/// servers bind 127.0.0.1). Parsed with the `url` crate (re-exported by
+/// `reqwest`).
+pub fn valid_issuer_url(issuer: &str) -> bool {
+    if issuer.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return false;
+    }
+    let Ok(url) = reqwest::Url::parse(issuer) else {
+        return false;
+    };
+    if url.query().is_some() || url.fragment().is_some() || !url.username().is_empty() || url.password().is_some() {
+        return false;
+    }
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    match url.scheme() {
+        "https" => true,
+        "http" => {
+            let host = host.trim_start_matches('[').trim_end_matches(']');
+            cfg!(feature = "test-support")
+                && (host == "localhost" || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback()))
+        }
+        _ => false,
+    }
+}
+
+/// Validate a tenant-registered issuer string with [`valid_issuer_url`];
+/// refused with the structured code `issuer_url_invalid`.
 pub(crate) fn require_https_issuer(issuer: &str) -> Result<(), AppError> {
-    require_https_url("issuer", issuer, false)
+    if valid_issuer_url(issuer) {
+        return Ok(());
+    }
+    let shown: String = issuer.chars().take(64).collect();
+    Err(AppError::Structured {
+        code: "issuer_url_invalid",
+        message: format!("issuer must be an https:// URL (got \"{shown}\")"),
+        data: json!({"field": "issuer"}),
+    })
 }
 
 /// Validate a tenant-registered `jwks_url` (the server fetches it).
@@ -1008,6 +1051,35 @@ pub async fn admin_jwks_refresh(state: &AppState, args: &Value) -> Result<Value,
 
 // ---- RFC 9728 protected-resource metadata --------------------------------
 
+/// PRD-mcphost-oauth-metadata-lists-hosted-as R4: logs one `tracing::warn!`
+/// per tenant that holds stored issuer rows (bring-your-own or trusted) the
+/// issuer validator rejects, naming the tenant id and the row count -- never
+/// the value, which may be a secret-shaped probe string. Called once from
+/// server startup, so it fires once per process; the rows stay in the table
+/// and only leave the public documents. Returns the number of rejected rows.
+pub async fn warn_invalid_stored_issuers(state: &AppState) -> Result<usize, AppError> {
+    let mut per_tenant: std::collections::BTreeMap<i64, usize> = std::collections::BTreeMap::new();
+    for (row, _namespace) in state.db.list_oauth_issuers_with_tenant().await? {
+        if !valid_issuer_url(&row.issuer) {
+            *per_tenant.entry(row.tenant_id).or_insert(0) += 1;
+        }
+    }
+    for (row, _namespace) in state.db.list_trusted_issuers_with_tenant().await? {
+        if !valid_issuer_url(&row.issuer) {
+            *per_tenant.entry(row.tenant_id).or_insert(0) += 1;
+        }
+    }
+    for (tenant_id, count) in &per_tenant {
+        tracing::warn!(
+            code = "issuer_url_invalid",
+            tenant_id = *tenant_id,
+            count = *count,
+            "stored OAuth issuers fail the issuer URL validator and are omitted from the metadata documents"
+        );
+    }
+    Ok(per_tenant.values().sum())
+}
+
 /// `GET /.well-known/oauth-protected-resource` (AC1, requirement 1):
 /// `resource` is this host's own public URL; `authorization_servers` is
 /// the distinct issuer URLs registered across every tenant (never a
@@ -1022,6 +1094,10 @@ pub async fn admin_jwks_refresh(state: &AppState, args: &Value) -> Result<Value,
 /// than depending on insertion order.
 pub async fn protected_resource_metadata(state: &AppState) -> Result<Value, AppError> {
     let mut issuers = state.db.list_distinct_oauth_issuer_urls().await?;
+    // PRD-mcphost-oauth-metadata-lists-hosted-as R2: a stored row the issuer
+    // validator rejects (a legacy `toolconf-probe`) never reaches a public
+    // document; it stays in the table.
+    issuers.retain(|i| valid_issuer_url(i));
     let own = state.public_url.trim_end_matches('/').to_string();
     if !issuers.iter().any(|i| i == &own) {
         issuers.push(own);
@@ -1043,21 +1119,22 @@ pub async fn protected_resource_metadata(state: &AppState) -> Result<Value, AppE
 /// never another tenant's, the whole point of a per-tenant document
 /// (Non-goals/Goals: "non-enumerable") -- PLUS, when this tenant has an
 /// OIDC federation provider registered (`host.oauth.provider_set`,
-/// PRD-mcphost-federated-end-user-login), this host's own hosted-AS issuer
-/// (AC11: a federated tenant's end users authenticate through mcphost's own
-/// authorization-code round trip, not the upstream OIDC provider directly,
-/// so a client needs to discover mcphost itself as an authorization server
-/// here -- the same value [`protected_resource_metadata`] always lists for
-/// the root document). Hosted AS listed first, deduplicated against an own
-/// issuer that happens to equal it. A tenant with no provider registered
-/// keeps exactly today's behaviour: only its own issuers.
+/// PRD-mcphost-federated-end-user-login), this host's own hosted-AS issuer.
+/// PRD-mcphost-oauth-metadata-lists-hosted-as R1: that entry is now listed
+/// for EVERY tenant, not only a federated one -- the hosted AS consents for
+/// any per-tenant resource (`authz::resolve_resource_tenant`) and mints
+/// `aud` as that resource, so a document that omitted it hid the only
+/// authorization server able to issue for the tenant. Hosted AS first (the
+/// entry RFC 9728 clients read as `authorization_servers[0]`), then the
+/// tenant's own issuers, deduplicated against an own issuer that happens to
+/// equal it.
 pub async fn protected_resource_metadata_for_tenant(state: &AppState, tenant: &Tenant) -> Result<Value, AppError> {
     let rows = state.db.list_oauth_issuers_by_tenant(tenant.id).await?;
-    let mut issuers: Vec<String> = rows.into_iter().map(|row| row.issuer).collect();
-    if state.db.find_oauth_provider_by_tenant(tenant.id).await?.is_some() {
-        let own = state.public_url.trim_end_matches('/').to_string();
-        if !issuers.iter().any(|i| i == &own) {
-            issuers.insert(0, own);
+    let own = state.public_url.trim_end_matches('/').to_string();
+    let mut issuers: Vec<String> = vec![own];
+    for row in rows {
+        if valid_issuer_url(&row.issuer) && !issuers.contains(&row.issuer) {
+            issuers.push(row.issuer);
         }
     }
     // PRD-mcphost-tool-scopes-and-consent requirement 3 (AC7): `mcp`

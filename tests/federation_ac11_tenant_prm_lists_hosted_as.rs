@@ -12,8 +12,9 @@
 //! own issuer list (a live-verifier finding against
 //! `protected_resource_metadata_for_tenant`, which previously built
 //! `authorization_servers` only from `list_oauth_issuers_by_tenant`). A
-//! tenant with no provider registered keeps exactly today's behaviour:
-//! only its own issuers, hosted AS absent.
+//! tenant with no provider registered now lists the hosted AS too
+//! (PRD-mcphost-oauth-metadata-lists-hosted-as R1): hosted AS first, then
+//! its own issuers.
 
 use crate::common;
 use crate::federation;
@@ -121,7 +122,7 @@ async fn tenant_with_own_issuer_and_provider_lists_hosted_as_and_own_issuer() {
 }
 
 #[tokio::test]
-async fn tenant_without_provider_keeps_own_issuers_only() {
+async fn tenant_without_provider_lists_hosted_as_then_own_issuers() {
     let server = TestServer::start().await;
     let (ns, key) = signup(&server.base_url, "No Provider Tenant").await;
     let client = McpClient::with_bearer(&server.base_url, &key);
@@ -148,8 +149,8 @@ async fn tenant_without_provider_keeps_own_issuers_only() {
 
     assert_eq!(
         body["authorization_servers"],
-        json!([issuer]),
-        "a tenant with no federation provider registered must keep today's \
-         behaviour unchanged -- only its own issuer, hosted AS absent: {body}"
+        json!([server.base_url, issuer]),
+        "a tenant with no federation provider registered lists the hosted AS \
+         first (PRD-mcphost-oauth-metadata-lists-hosted-as R1), then its own issuer: {body}"
     );
 }

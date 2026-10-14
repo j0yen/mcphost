@@ -711,6 +711,10 @@ impl AppError {
                 // over-long `remember` argument is the same caller-input
                 // problem as the `state_*` group above.
                 "remember_too_long" | "invalid_params" => ErrorCode::INVALID_PARAMS,
+                // PRD-mcphost-oauth-metadata-lists-hosted-as R2: a malformed
+                // issuer on `issuer_set`/`trusted_issuer_set`/`provider_set`
+                // is the same caller-input problem.
+                "issuer_url_invalid" => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-schedules requirements 2/4: a bad cron
                 // expression, an over-quota schedules_max, or a too-short
                 // schedule_min_interval_s are all caller-input problems,
