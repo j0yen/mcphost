@@ -837,17 +837,20 @@ pub async fn enqueue(
     let descriptor = kind.describe(&row.spec);
     // PRD-mcphost-chain-run-lineage requirement 3: see
     // `Kind::validates_own_args`'s own doc comment.
-    if !kind.validates_own_args()
-        && let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
-        && let Err(e) = validator.validate(&args)
-    {
-        let args_err = crate::kinds::describe_args_error(&e);
-        return Err(AppError::Structured {
-            code: "args_invalid",
-            message: args_err.message(),
-            data: args_err.data(),
-        });
-    }
+    let args = if kind.validates_own_args() {
+        args
+    } else {
+        match crate::kinds::coerce::check_args(&descriptor.input_schema, &args) {
+            Ok((args, _coerced)) => args,
+            Err(args_err) => {
+                return Err(AppError::Structured {
+                    code: "args_invalid",
+                    message: args_err.message(),
+                    data: args_err.data(),
+                });
+            }
+        }
+    };
     let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
         AppError::Internal(format!(
             "tenant's plan '{}' is not in the loaded plan catalog",
@@ -937,16 +940,16 @@ pub async fn enqueue_with_trigger(
         ))
     })?;
     let descriptor = kind.describe(&row.spec);
-    if let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
-        && let Err(e) = validator.validate(&args)
-    {
-        let args_err = crate::kinds::describe_args_error(&e);
-        return Err(AppError::Structured {
-            code: "args_invalid",
-            message: args_err.message(),
-            data: args_err.data(),
-        });
-    }
+    let args = match crate::kinds::coerce::check_args(&descriptor.input_schema, &args) {
+        Ok((args, _coerced)) => args,
+        Err(args_err) => {
+            return Err(AppError::Structured {
+                code: "args_invalid",
+                message: args_err.message(),
+                data: args_err.data(),
+            });
+        }
+    };
     let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
         AppError::Internal(format!(
             "tenant's plan '{}' is not in the loaded plan catalog",
@@ -1009,17 +1012,20 @@ pub async fn enqueue_shared(
     let descriptor = kind.describe(&row.spec);
     // PRD-mcphost-chain-run-lineage requirement 3: see
     // `Kind::validates_own_args`'s own doc comment.
-    if !kind.validates_own_args()
-        && let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
-        && let Err(e) = validator.validate(&args)
-    {
-        let args_err = crate::kinds::describe_args_error(&e);
-        return Err(AppError::Structured {
-            code: "args_invalid",
-            message: args_err.message(),
-            data: args_err.data(),
-        });
-    }
+    let args = if kind.validates_own_args() {
+        args
+    } else {
+        match crate::kinds::coerce::check_args(&descriptor.input_schema, &args) {
+            Ok((args, _coerced)) => args,
+            Err(args_err) => {
+                return Err(AppError::Structured {
+                    code: "args_invalid",
+                    message: args_err.message(),
+                    data: args_err.data(),
+                });
+            }
+        }
+    };
     let plan = state.plans.get(&caller.plan).ok_or_else(|| {
         AppError::Internal(format!(
             "tenant's plan '{}' is not in the loaded plan catalog",

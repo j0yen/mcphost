@@ -19,7 +19,7 @@ use serde_json::{Value, json};
 
 use crate::db::{Tenant, ToolRow};
 use crate::errors::AppError;
-use crate::kinds::{Kind, describe_args_error};
+use crate::kinds::Kind;
 use crate::state::AppState;
 
 /// Whether the list runs for a call that will dispatch or for an estimate.
@@ -196,12 +196,9 @@ fn args_schema<'a>(ctx: &'a Ctx<'a>) -> CheckFuture<'a> {
             return Ok(());
         }
         let descriptor = target.kind.describe(&target.spec);
-        if let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
-            && let Err(e) = validator.validate(ctx.args)
-        {
+        if let Err(args_err) = crate::kinds::coerce::check_args(&descriptor.input_schema, ctx.args) {
             // The wire code for a schema-invalid call to a published tool is
             // `args_invalid`, phase `args_coercion` (see `describe_args_error`).
-            let args_err = describe_args_error(&e);
             return Err(AppError::Structured {
                 code: "args_invalid",
                 message: args_err.message(),

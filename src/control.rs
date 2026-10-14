@@ -1443,6 +1443,7 @@ pub fn changelog(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Valu
                 actual_type: None,
                 got: format!("{since:?}"),
                 docs: "host.changelog",
+                coercion_tried: None,
                 raw: format!(
                     "'{since}' is not a contract this host knows; expected a release like \"0.57.0\" or this host's contract_version {}",
                     state.contract.version

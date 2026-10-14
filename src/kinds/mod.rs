@@ -17,6 +17,7 @@ use crate::budget::Verdict;
 
 pub mod aliases;
 pub mod chain;
+pub mod coerce;
 pub mod conformance;
 pub mod docs;
 pub mod echo;
@@ -165,6 +166,7 @@ pub fn describe_args_error(err: &jsonschema::ValidationError<'_>) -> ArgsError {
         got: excerpt_of(&err.instance),
         docs: "host.tool_test",
         raw: err.to_string(),
+        coercion_tried: None,
     }
 }
 
@@ -199,6 +201,10 @@ pub struct ArgsError {
     pub actual_type: Option<String>,
     pub got: String,
     pub docs: &'static str,
+    /// PRD-mcphost-schema-coercion-opt-in R3: `"<from> → <to>"` when an
+    /// opted-in coercion was attempted on this value and refused.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coercion_tried: Option<String>,
     #[serde(skip)]
     pub raw: String,
 }
@@ -1725,17 +1731,20 @@ async fn compose_dispatch(
     })?;
 
     let descriptor = kind.describe(&row.spec);
-    if !kind.validates_own_args()
-        && let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
-        && let Err(e) = validator.validate(&args)
-    {
-        let args_err = describe_args_error(&e);
-        return Err(KindError::Structured {
-            code: "args_invalid",
-            message: args_err.message(),
-            data: args_err.data(),
-        });
-    }
+    let args = if kind.validates_own_args() {
+        args
+    } else {
+        match coerce::check_args(&descriptor.input_schema, &args) {
+            Ok((args, _coerced)) => args,
+            Err(args_err) => {
+                return Err(KindError::Structured {
+                    code: "args_invalid",
+                    message: args_err.message(),
+                    data: args_err.data(),
+                });
+            }
+        }
+    };
 
     // Requirement 1: an explicit `timeout_s` further bounds this one child
     // call, but never past the parent's own remaining deadline -- "a

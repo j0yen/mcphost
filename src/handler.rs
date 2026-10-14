@@ -24,7 +24,7 @@ use crate::kinds::{
     CallCtx, CallLog, ChannelBackend, DocsBackend, DriftBackend, Kind, KindError, KindRegistry,
     LineageBackend, MAX_TEST_INVOCATIONS, MsgBackend, NoChannel, NoDocs, NoLineage, NoMsg,
     NoState, NoTable, NullLog, NullResourceSink, ResourceSink, SecretResolver, StateBackend,
-    TableBackend, describe_args_error, run_spec_test,
+    TableBackend, run_spec_test,
 };
 use crate::state::{
     AppState, MAX_SPEC_BYTES, TOOLS_LIST_TTL_GRACE_SECS, TOOLS_LIST_TTL_MS_STEADY, now_unix,
@@ -6938,6 +6938,15 @@ impl McpHostHandler {
                 Ok(target) => target,
                 Err(refusal) => return Err(settle(refusal).await),
             };
+        // PRD-mcphost-schema-coercion-opt-in: opted-in properties are
+        // coerced once here; the `args_schema` preflight row below runs the
+        // same `check_args` (idempotent) and reports any refusal.
+        let (args, coerced) = if target.kind.validates_own_args() {
+            (args, Vec::new())
+        } else {
+            let o = crate::kinds::coerce::coerce_args(&target.kind.describe(&target.spec).input_schema, &args);
+            (o.args, o.coerced)
+        };
         let preflight_ctx = crate::preflight::Ctx {
             state: &self.state,
             mode: crate::preflight::Mode::Real,
@@ -7237,6 +7246,7 @@ impl McpHostHandler {
                 // requirement's own "a shared tool's unpinned caller"
                 // wording.
                 let mut value = value;
+                crate::kinds::coerce::attach_coerced(&mut value, &coerced);
                 if version.is_none()
                     && let Some(caller) = caller
                     && let Ok(Some(prev)) = self
@@ -7452,23 +7462,27 @@ impl McpHostHandler {
         // inputs (reporting `inputs_required`/unresolved paths rather than
         // refusing outright) -- see `Kind::validates_own_args`'s own doc
         // comment.
-        if !kind.validates_own_args()
-            && let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
-            && let Err(e) = validator.validate(&call_args)
-        {
-            // Requirement 1/AC3 (PRD-mcphost-python-kind-runtime): phase
-            // `args_coercion`, naming the argument and both types -- shared
-            // with every kind via `describe_args_error`, wired through
-            // `AppError::Structured` (not `ArgsInvalid`) so the extra `data`
-            // fields survive into the JSON-RPC response; the wire code stays
-            // pinned to exactly `args_invalid` either way.
-            let args_err = describe_args_error(&e);
-            return Err(AppError::Structured {
-                code: "args_invalid",
-                message: args_err.message(),
-                data: args_err.data(),
-            });
-        }
+        // PRD-mcphost-schema-coercion-opt-in: `check_args` is the one gate --
+        // opted-in properties are coerced here, then validated.
+        // Requirement 1/AC3 (PRD-mcphost-python-kind-runtime): phase
+        // `args_coercion`, naming the argument and both types -- wired
+        // through `AppError::Structured` (not `ArgsInvalid`) so the extra
+        // `data` fields survive into the JSON-RPC response; the wire code
+        // stays pinned to exactly `args_invalid` either way.
+        let (call_args, coerced) = if kind.validates_own_args() {
+            (call_args, Vec::new())
+        } else {
+            match crate::kinds::coerce::check_args(&descriptor.input_schema, &call_args) {
+                Ok(checked) => checked,
+                Err(args_err) => {
+                    return Err(AppError::Structured {
+                        code: "args_invalid",
+                        message: args_err.message(),
+                        data: args_err.data(),
+                    });
+                }
+            }
+        };
 
         let secret_map = build_secret_map(&self.state, tenant.id).await?;
         let secrets: Arc<dyn SecretResolver> = Arc::new(MapSecretResolver(secret_map.clone()));
@@ -7643,6 +7657,7 @@ impl McpHostHandler {
             // matching a value the caller controls.
             Ok(Ok(value)) => {
                 let mut value = crate::secrets::redact_keys(&value, &["tenant_key"]);
+                crate::kinds::coerce::attach_coerced(&mut value, &coerced);
                 // PRD-mcphost-result-envelope-contract requirement 4, AC4:
                 // before publish, name any declared output field this
                 // spec's implementation buries -- `kind.declared_outputs`
@@ -7955,16 +7970,16 @@ impl McpHostHandler {
         }
 
         let descriptor = kind.describe(&spec);
-        if let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
-            && let Err(e) = validator.validate(&call_args)
-        {
-            let args_err = describe_args_error(&e);
-            return Err(AppError::Structured {
-                code: "args_invalid",
-                message: args_err.message(),
-                data: args_err.data(),
-            });
-        }
+        let (call_args, _coerced) = match crate::kinds::coerce::check_args(&descriptor.input_schema, &call_args) {
+            Ok(checked) => checked,
+            Err(args_err) => {
+                return Err(AppError::Structured {
+                    code: "args_invalid",
+                    message: args_err.message(),
+                    data: args_err.data(),
+                });
+            }
+        };
 
         let secrets = build_secret_resolver(&self.state, tenant.id).await?;
         let resolved_timeout = self.resolve_call_timeout(&kind, &spec);
@@ -8559,23 +8574,27 @@ impl McpHostHandler {
         // `Kind::validates_own_args`'s own doc comment -- `chain` is
         // `tool_run_unsupported` regardless, but this keeps every dispatch
         // path's schema-check behavior consistent.
-        if !kind.validates_own_args()
-            && let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
-            && let Err(e) = validator.validate(&call_args)
-        {
-            // Requirement 1/AC3 (PRD-mcphost-python-kind-runtime): phase
-            // `args_coercion`, naming the argument and both types -- shared
-            // with every kind via `describe_args_error`, wired through
-            // `AppError::Structured` (not `ArgsInvalid`) so the extra `data`
-            // fields survive into the JSON-RPC response; the wire code stays
-            // pinned to exactly `args_invalid` either way.
-            let args_err = describe_args_error(&e);
-            return Err(AppError::Structured {
-                code: "args_invalid",
-                message: args_err.message(),
-                data: args_err.data(),
-            });
-        }
+        // PRD-mcphost-schema-coercion-opt-in: `check_args` is the one gate --
+        // opted-in properties are coerced here, then validated.
+        // Requirement 1/AC3 (PRD-mcphost-python-kind-runtime): phase
+        // `args_coercion`, naming the argument and both types -- wired
+        // through `AppError::Structured` (not `ArgsInvalid`) so the extra
+        // `data` fields survive into the JSON-RPC response; the wire code
+        // stays pinned to exactly `args_invalid` either way.
+        let (call_args, coerced) = if kind.validates_own_args() {
+            (call_args, Vec::new())
+        } else {
+            match crate::kinds::coerce::check_args(&descriptor.input_schema, &call_args) {
+                Ok(checked) => checked,
+                Err(args_err) => {
+                    return Err(AppError::Structured {
+                        code: "args_invalid",
+                        message: args_err.message(),
+                        data: args_err.data(),
+                    });
+                }
+            }
+        };
 
         let secret_map = build_secret_map(&self.state, tenant.id).await?;
         let secrets: Arc<dyn SecretResolver> = Arc::new(MapSecretResolver(secret_map.clone()));
@@ -8714,6 +8733,7 @@ impl McpHostHandler {
 
         let result = match outcome {
             Ok(Ok(mut value)) => {
+                crate::kinds::coerce::attach_coerced(&mut value, &coerced);
                 if let Some(obj) = value.as_object_mut() {
                     obj.insert("duration_ms".to_string(), json!(duration_ms));
                     obj.insert("state".to_string(), state_backend.snapshot().to_json());

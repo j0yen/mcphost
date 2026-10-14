@@ -15,6 +15,8 @@ mod busyaudit;
 mod oauth;
 #[path = "support/oauthclient.rs"]
 mod oauthclient;
+#[path = "support/serve.rs"]
+mod serve;
 #[path = "support/timp.rs"]
 mod timp;
 #[path = "support/uprg.rs"]
@@ -24,6 +26,22 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "outschb_ac01_whoami_one_schema_for_every_connection.rs"]
+mod outschb_ac01_whoami_one_schema_for_every_connection;
+#[path = "outschb_ac02_diff_flags_a_removed_output_field.rs"]
+mod outschb_ac02_diff_flags_a_removed_output_field;
+#[path = "outschb_ac03_tools_doc_has_a_returns_block.rs"]
+mod outschb_ac03_tools_doc_has_a_returns_block;
+#[path = "owncopy_ac01_email_subject_and_body_match_draft.rs"]
+mod owncopy_ac01_email_subject_and_body_match_draft;
+#[path = "owncopy_ac02_from_and_reply_to_passed_verbatim.rs"]
+mod owncopy_ac02_from_and_reply_to_passed_verbatim;
+#[path = "owncopy_ac03_pages_match_draft_text.rs"]
+mod owncopy_ac03_pages_match_draft_text;
+#[path = "owncopy_ac04_error_pages_match_draft_no_env_var.rs"]
+mod owncopy_ac04_error_pages_match_draft_no_env_var;
+#[path = "owncopy_ac05_no_claim_verify_tenant_in_visible_text.rs"]
+mod owncopy_ac05_no_claim_verify_tenant_in_visible_text;
 #[path = "ownmt_ac01_claim_url_on_every_onboarding_path.rs"]
 mod ownmt_ac01_claim_url_on_every_onboarding_path;
 #[path = "ownmt_ac02_claim_nudge_on_first_publish.rs"]

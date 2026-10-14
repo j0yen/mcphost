@@ -551,6 +551,20 @@ mod cnfm_ac05_tools_list_marks_destructive_verbs;
 mod cnfm_ac06_scratch_tenant_is_never_gated;
 #[path = "cnfm_ac07_plan_override_disables_the_gate.rs"]
 mod cnfm_ac07_plan_override_disables_the_gate;
+#[path = "coerce_ac01_falsifier_share_on_10_08_rows.rs"]
+mod coerce_ac01_falsifier_share_on_10_08_rows;
+#[path = "coerce_ac02_opt_in_accepts_string_and_float.rs"]
+mod coerce_ac02_opt_in_accepts_string_and_float;
+#[path = "coerce_ac03_lossy_values_stay_refused.rs"]
+mod coerce_ac03_lossy_values_stay_refused;
+#[path = "coerce_ac04_default_stays_strict.rs"]
+mod coerce_ac04_default_stays_strict;
+#[path = "coerce_ac05_depth_bound.rs"]
+mod coerce_ac05_depth_bound;
+#[path = "coerce_ac06_tool_test_reports_and_costs_little.rs"]
+mod coerce_ac06_tool_test_reports_and_costs_little;
+#[path = "coerce_ac07_table_round_trips.rs"]
+mod coerce_ac07_table_round_trips;
 #[path = "compat_ac01_ac02_ac03_cache_fields.rs"]
 mod compat_ac01_ac02_ac03_cache_fields;
 #[path = "compat_ac04_ac05_admin_and_tenant_cache_fields.rs"]
@@ -1825,19 +1839,3 @@ mod outsch_ac05_whoami_one_schema_for_every_connection;
 mod outsch_ac06_diff_flags_a_removed_output_field;
 #[path = "outsch_ac07_tools_doc_has_a_returns_block.rs"]
 mod outsch_ac07_tools_doc_has_a_returns_block;
-#[path = "outschb_ac01_whoami_one_schema_for_every_connection.rs"]
-mod outschb_ac01_whoami_one_schema_for_every_connection;
-#[path = "outschb_ac02_diff_flags_a_removed_output_field.rs"]
-mod outschb_ac02_diff_flags_a_removed_output_field;
-#[path = "outschb_ac03_tools_doc_has_a_returns_block.rs"]
-mod outschb_ac03_tools_doc_has_a_returns_block;
-#[path = "owncopy_ac01_email_subject_and_body_match_draft.rs"]
-mod owncopy_ac01_email_subject_and_body_match_draft;
-#[path = "owncopy_ac02_from_and_reply_to_passed_verbatim.rs"]
-mod owncopy_ac02_from_and_reply_to_passed_verbatim;
-#[path = "owncopy_ac03_pages_match_draft_text.rs"]
-mod owncopy_ac03_pages_match_draft_text;
-#[path = "owncopy_ac04_error_pages_match_draft_no_env_var.rs"]
-mod owncopy_ac04_error_pages_match_draft_no_env_var;
-#[path = "owncopy_ac05_no_claim_verify_tenant_in_visible_text.rs"]
-mod owncopy_ac05_no_claim_verify_tenant_in_visible_text;
