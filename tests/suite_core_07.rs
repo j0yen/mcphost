@@ -1095,6 +1095,12 @@ mod hooks_ac7_trigger_test_creates_marked_run;
 mod hooks_ac8_trigger_replay_new_run_trigger_ref;
 #[path = "hooks_ac9_paused_trigger_404.rs"]
 mod hooks_ac9_paused_trigger_404;
+#[path = "hostdoc_ac01_five_families_five_concrete_next_lines.rs"]
+mod hostdoc_ac01_five_families_five_concrete_next_lines;
+#[path = "hostdoc_ac03_every_next_template_renders_fully.rs"]
+mod hostdoc_ac03_every_next_template_renders_fully;
+#[path = "hostdoc_ac04_empty_window_and_no_tools.rs"]
+mod hostdoc_ac04_empty_window_and_no_tools;
 #[path = "hostedas_ac01_well_known_metadata.rs"]
 mod hostedas_ac01_well_known_metadata;
 #[path = "hostedas_ac02_cimd_client_identification.rs"]
@@ -1823,17 +1829,3 @@ mod oauthsig_ac04_admin_oauth_stats_funnel;
 mod oauthsig_ac05_healthz_cache_and_p95;
 #[path = "oauthsig_ac06_conformance_script_writes_receipt.rs"]
 mod oauthsig_ac06_conformance_script_writes_receipt;
-#[path = "outsch_ac01_oneof_budget_falsifier.rs"]
-mod outsch_ac01_oneof_budget_falsifier;
-#[path = "outsch_ac02_every_canonical_declares_an_object_output_schema.rs"]
-mod outsch_ac02_every_canonical_declares_an_object_output_schema;
-#[path = "outsch_ac03_contract_dump_marks_aliases_and_outputs.rs"]
-mod outsch_ac03_contract_dump_marks_aliases_and_outputs;
-#[path = "outsch_ac04_tools_list_carries_output_schema.rs"]
-mod outsch_ac04_tools_list_carries_output_schema;
-#[path = "outsch_ac05_whoami_one_schema_for_every_connection.rs"]
-mod outsch_ac05_whoami_one_schema_for_every_connection;
-#[path = "outsch_ac06_diff_flags_a_removed_output_field.rs"]
-mod outsch_ac06_diff_flags_a_removed_output_field;
-#[path = "outsch_ac07_tools_doc_has_a_returns_block.rs"]
-mod outsch_ac07_tools_doc_has_a_returns_block;
