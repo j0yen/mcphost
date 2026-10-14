@@ -1459,6 +1459,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `invocations`: array<object> (always)
 - `kind`: object (always)
 - `requirements`: array (always)
+- `tool_lint`: array<object>
 
 ### `host.state.delete`
 
@@ -1827,6 +1828,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `reason`: string
 - `resolved_from`: string
 - `steps`: array<object>
+- `tool_lint`: array<object>
 - `verdict`: string
 - `version`: integer
 - `welcome_back`: object

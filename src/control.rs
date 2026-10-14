@@ -1893,7 +1893,11 @@ pub async fn tool_publish(
         gates.push(gate);
     }
     if dry_run {
-        return Ok(json!({"ok": gates_ok, "gates": gates}));
+        let mut report = json!({"ok": gates_ok, "gates": gates});
+        if kind_name == "python" {
+            report["tool_lint"] = json!(crate::kinds::python_lint::lint_spec(&spec));
+        }
+        return Ok(report);
     }
     if !gates_ok {
         // Every existing single-failure test asserts on one of these four
@@ -2043,6 +2047,11 @@ pub async fn tool_publish(
         "kind": kind_name,
         "version": version,
     });
+    // PRD-mcphost-publish-time-tool-lint R5: advisory findings, `[]` when
+    // clean; a lint never changes whether the publish succeeded.
+    if let (true, Value::Object(map)) = (kind_name == "python", &mut response) {
+        map.insert("tool_lint".to_string(), json!(crate::kinds::python_lint::lint_spec(&spec)));
+    }
     // requirement 1 (user story): "host.tool_publish returns lock:
     // {packages: 7, hashes: true}" -- present only for a python tool that
     // actually declared/inferred requirements.

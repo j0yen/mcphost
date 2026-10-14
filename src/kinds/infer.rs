@@ -181,6 +181,13 @@ fn mask(source: &str) -> Masked {
     Masked { code, lits }
 }
 
+/// `source` with comments and string-literal bodies blanked (same length and
+/// byte offsets); the shared tokenization the publish-time lint reads
+/// ([`crate::kinds::python_lint`]).
+pub(crate) fn masked_source(source: &str) -> String {
+    mask(source).code_str().to_string()
+}
+
 impl Masked {
     fn code_str(&self) -> &str {
         // `code` is byte-for-byte the same length as the (valid UTF-8)
@@ -354,6 +361,17 @@ fn collect_py_keys(source: &str) -> Result<Vec<PyKey>, KindError> {
 /// Requirements 2/3/15: builds the `args_schema` object from the source's
 /// `args[...]` / `args.get(...)` accesses.
 pub fn infer_python_args_schema(source: &str) -> Result<Value, KindError> {
+    let schema = infer_python_args_schema_unchecked(source)?;
+    // Requirement 3: the inferred schema must itself pass the same check an
+    // authored schema passes.
+    jsonschema::validator_for(&schema)
+        .map_err(|e| KindError::Exec(format!("inferred args_schema failed self-check: {e}")))?;
+    Ok(schema)
+}
+
+/// [`infer_python_args_schema`] without the jsonschema self-check (compiling
+/// a validator dominates its cost); for callers that only read property types.
+pub(crate) fn infer_python_args_schema_unchecked(source: &str) -> Result<Value, KindError> {
     let keys = collect_py_keys(source)?;
     let mut properties = Map::new();
     let mut required: Vec<String> = Vec::new();
@@ -375,10 +393,6 @@ pub fn infer_python_args_schema(source: &str) -> Result<Value, KindError> {
     if !required.is_empty() {
         schema["required"] = Value::Array(required.into_iter().map(Value::String).collect());
     }
-    // Requirement 3: the inferred schema must itself pass the same check an
-    // authored schema passes.
-    jsonschema::validator_for(&schema)
-        .map_err(|e| KindError::Exec(format!("inferred args_schema failed self-check: {e}")))?;
     Ok(schema)
 }
 

@@ -11466,6 +11466,30 @@
           },
           "requirements": {
             "type": "array"
+          },
+          "tool_lint": {
+            "description": "Advisory publish-time lint findings for a python tool ([] when clean); a finding never blocks the publish.",
+            "items": {
+              "properties": {
+                "fix": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": "integer"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "rule": {
+                  "type": "string"
+                },
+                "source_line": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -16171,6 +16195,30 @@
                   "type": "integer"
                 },
                 "tool": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "tool_lint": {
+            "description": "Advisory publish-time lint findings for a python tool ([] when clean); a finding never blocks the publish.",
+            "items": {
+              "properties": {
+                "fix": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": "integer"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "rule": {
+                  "type": "string"
+                },
+                "source_line": {
                   "type": "string"
                 }
               },

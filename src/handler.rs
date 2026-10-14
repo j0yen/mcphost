@@ -8419,13 +8419,17 @@ impl McpHostHandler {
             _ => json!({"resolved": kind_name.clone(), "requested": kind_name.clone()}),
         };
 
+        let mut report = json!({
+            "kind": kind_report,
+            "args_schema": descriptor.input_schema,
+            "requirements": requirements,
+            "invocations": results,
+        });
+        if kind_name == "python" {
+            report["tool_lint"] = json!(crate::kinds::python_lint::lint_spec(&spec));
+        }
         Ok(crate::secrets::redact_keys(
-            &json!({
-                "kind": kind_report,
-                "args_schema": descriptor.input_schema,
-                "requirements": requirements,
-                "invocations": results,
-            }),
+            &report,
             &["tenant_key"],
         ))
     }
