@@ -209,10 +209,16 @@ fn run_to_json_base(run: &RunRow) -> Value {
     // `error_data_json` still reads as `{kind, data: {}}` rather than a
     // shape a client has to branch on.
     let error = run.error_class.as_deref().map(|kind| {
+        // The published output schemas declare `error.data` an object, so
+        // anything stored that does not parse to an object -- a NULL column,
+        // the TEXT `"null"` an `AppError::Structured { data: Value::Null }`
+        // wrote via `data.to_string()`, or any other non-object -- reads as
+        // `{}`. This also heals rows already in prod.
         let data = run
             .error_data_json
             .as_deref()
             .and_then(|s| serde_json::from_str::<Value>(s).ok())
+            .filter(Value::is_object)
             .unwrap_or_else(|| json!({}));
         json!({"kind": kind, "data": data})
     });
@@ -1669,5 +1675,135 @@ mod tests {
             ..run
         };
         assert_eq!(run_to_json(&not_purged)["purged"], json!(false));
+    }
+
+    /// A `RunRow` that is in `error` with the given stored `error_data_json`.
+    fn errored_run(error_data_json: Option<&str>) -> RunRow {
+        RunRow {
+            id: "01BBBB".to_string(),
+            tenant_id: 1,
+            tool_name: "transform".to_string(),
+            trigger: "job".to_string(),
+            trigger_ref: None,
+            caller_tenant_id: None,
+            status: "error".to_string(),
+            progress_json: None,
+            result_ref: None,
+            error_class: Some("storage".to_string()),
+            started_unix: Some(100),
+            finished_unix: Some(200),
+            duration_ms: Some(100_000),
+            deadline_s: Some(300),
+            attempt: 1,
+            purged_unix: None,
+            args_json: None,
+            manual: false,
+            test: false,
+            message_id: None,
+            counters_json: None,
+            error_data_json: error_data_json.map(str::to_string),
+            end_user_subject: None,
+            end_user_issuer: None,
+            end_user_method: None,
+            parent_run_id: None,
+            step_no: None,
+            parent_tool: None,
+            item_index: None,
+        }
+    }
+
+    /// A stored TEXT `"null"` (what `Structured { data: Value::Null }` writes)
+    /// and a NULL column both read back as the object `{}`; a real object is
+    /// passed through untouched.
+    #[test]
+    fn run_error_data_stored_null_text_and_null_column_read_as_empty_object() {
+        let text_null = run_to_json(&errored_run(Some("null")));
+        assert!(text_null["error"]["data"].is_object(), "stored TEXT \"null\": {text_null}");
+        assert_eq!(text_null["error"]["data"], json!({}));
+        assert_eq!(text_null["error"]["kind"], json!("storage"));
+
+        let null_column = run_to_json(&errored_run(None));
+        assert!(null_column["error"]["data"].is_object(), "NULL column: {null_column}");
+        assert_eq!(null_column["error"]["data"], json!({}));
+
+        let real = run_to_json(&errored_run(Some(r#"{"limit":10}"#)));
+        assert_eq!(real["error"]["data"], json!({"limit": 10}));
+    }
+
+    /// Every sub-schema, anywhere in `schema`, that is a run row: an object
+    /// schema whose `properties.error` itself declares `properties.data`.
+    fn run_envelope_schemas<'a>(schema: &'a Value, out: &mut Vec<&'a Value>) {
+        match schema {
+            Value::Object(map) => {
+                let is_run_envelope = map
+                    .get("properties")
+                    .and_then(|p| p.get("error"))
+                    .and_then(|e| e.get("properties"))
+                    .is_some_and(|p| p.get("data").is_some());
+                if is_run_envelope {
+                    out.push(schema);
+                }
+                map.values().for_each(|v| run_envelope_schemas(v, out));
+            }
+            Value::Array(items) => items.iter().for_each(|v| run_envelope_schemas(v, out)),
+            _ => {}
+        }
+    }
+
+    /// The run row's `error.data` contract is GENERATED, not documented:
+    /// every verb the output-schema registry (the one `tools/list`'s
+    /// `outputSchema` is read from) publishes with a run-row `error` envelope
+    /// is validated against what the real serializer, `run_to_json`, emits for
+    /// every shape `error_data_json` can be stored as. Synthorg's explore
+    /// verification failed 117/168 sessions on `host.runs.list` because a
+    /// stored `"null"` serialized as `"data": null` against `data: object`.
+    #[test]
+    fn run_error_data_validates_against_every_registered_output_schema() {
+        let stored: [Option<&str>; 8] = [
+            None,
+            Some("null"),
+            Some("{}"),
+            Some(r#"{"dimension":"child_calls","limit":10,"used":11}"#),
+            Some("[]"),
+            Some("\"text\""),
+            Some("42"),
+            Some("not json"),
+        ];
+        let mut checked = Vec::new();
+        for tool in crate::output_schemas::registered_tools() {
+            let schema = Value::Object(
+                (*crate::output_schemas::output_schema_for(tool).expect("registered tool has a schema")).clone(),
+            );
+            let mut envelopes = Vec::new();
+            run_envelope_schemas(&schema, &mut envelopes);
+            for envelope in &envelopes {
+                // Only `data`'s own type is under test here: relax the row
+                // schema to its error envelope so a verb-specific `required`
+                // list (e.g. `children`) cannot mask or fake a failure.
+                let error_schema = envelope["properties"]["error"].clone();
+                let validator = jsonschema::validator_for(&error_schema).expect("error envelope is a valid schema");
+                for raw in stored {
+                    let row = run_to_json(&errored_run(raw));
+                    let error = &row["error"];
+                    assert!(
+                        validator.is_valid(error),
+                        "{tool}: error_data_json={raw:?} serializes as {error}, which the published output schema rejects"
+                    );
+                    assert!(
+                        error["data"].is_object(),
+                        "{tool}: error.data must always be an object, got {error} (error_data_json={raw:?})"
+                    );
+                }
+            }
+            if !envelopes.is_empty() {
+                checked.push(tool);
+            }
+        }
+        // The registry is the source: if no verb carries the envelope the
+        // walk above is broken, not the contract.
+        assert!(
+            ["host.runs.get", "host.runs.list", "host.runs.wait"].iter().all(|t| checked.contains(t)),
+            "run-row verbs found in the registry: {checked:?}"
+        );
     }
 }
