@@ -2117,6 +2117,7 @@ pub const BRIDGE_ATTRS: &[&str] = &[
     "mcphost.call(name, args=None, timeout_s=None) -- call a sibling tool",
     "mcphost.progress(pct=None, msg=None) -- report progress from inside a job",
     "mcphost.quota() -- this tenant's data ceilings as {name: {used, limit, remaining}} (same object as host.usage quota)",
+    "mcphost.tool_meta() -- this tool's declared metadata as {\"idempotent\": bool} (the idempotentHint tools/list shows)",
 ];
 
 // ---- bridge return shapes (PRD-mcphost-sandbox-return-shape-contract) -------
@@ -2289,6 +2290,7 @@ pub const BRIDGE_RETURNS: &[BridgeReturn] = &[
     },
     BridgeReturn { function: "mcphost.call", shape: Plain("any (the called tool's result)") },
     BridgeReturn { function: "mcphost.progress", shape: Plain("bool or None") },
+    BridgeReturn { function: "mcphost.tool_meta", shape: Plain("dict {\"idempotent\": bool}") },
     BridgeReturn {
         function: "mcphost.quota",
         shape: Plain("dict {<ceiling>: {used, limit, remaining}} (host.usage quota)"),
@@ -3306,6 +3308,18 @@ _mcphost_mod.channel = _mcphost_channel_mod
 _mcphost_mod.msg = _mcphost_msg_mod
 _mcphost_mod.call = _mcphost_call
 _mcphost_mod.quota = _mcphost_quota
+
+# PRD-mcphost-tool-idempotent-declaration R5: `mcphost.tool_meta()` returns
+# this call's own tool metadata ({"idempotent": bool}); `run_one` refreshes
+# `_tool_meta` from the per-call payload, so a warm sandbox never serves a
+# previous tool's value.
+_tool_meta = {"idempotent": False}
+
+def _mcphost_tool_meta():
+    """This tool's declared metadata: {"idempotent": bool} (the tools/list idempotentHint)."""
+    return dict(_tool_meta)
+
+_mcphost_mod.tool_meta = _mcphost_tool_meta
 _mcphost_mod.CallError = McphostCallError
 _mcphost_mod.BridgeError = McphostBridgeError
 
@@ -3449,6 +3463,8 @@ def run_one(payload, t_start):
     if site_packages and site_packages not in sys.path:
         sys.path.insert(0, site_packages)
     args = payload.get("args", {})
+    _tool_meta.clear()
+    _tool_meta.update(payload.get("tool_meta") or {"idempotent": False})
     # PRD-mcphost-call-trace-replay requirement 4: t_args is stamped once the
     # payload is parsed; t_main/t_done/t_ser bracket the tool's own code and
     # the result's serialization.
@@ -3767,8 +3783,8 @@ fn payload_end_user(ctx: &CallCtx) -> Value {
 /// into a later, different caller's call on the same reused process.
 /// [`PY_RUNNER_SCRIPT`]'s `run_one` sets/clears the `MCPHOST_END_USER_*`
 /// env vars fresh from this field on every single call instead.
-fn call_payload(args: &Value, site_packages: &str, end_user: Value) -> Vec<u8> {
-    serde_json::to_vec(&json!({"args": args, "site_packages": site_packages, "end_user": end_user}))
+fn call_payload(args: &Value, site_packages: &str, end_user: Value, tool_meta: Value) -> Vec<u8> {
+    serde_json::to_vec(&json!({"args": args, "site_packages": site_packages, "end_user": end_user, "tool_meta": tool_meta}))
         .unwrap_or_default()
 }
 
@@ -5125,12 +5141,14 @@ impl PythonKind {
         self.envs_root.join(namespace).join(cache_key)
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn prepare_scratch(
         &self,
         source: &str,
         args: &Value,
         site_packages: &str,
         end_user: Value,
+        tool_meta: Value,
     ) -> Result<PathBuf, KindError> {
         let scratch = self.scratch_root.join(format!(
             "call-{}-{}",
@@ -5146,7 +5164,7 @@ impl PythonKind {
         tokio::fs::write(scratch.join("runner.py"), py_runner_script())
             .await
             .map_err(|e| KindError::Exec(format!("write runner: {e}")))?;
-        let payload = json!({"args": args, "site_packages": site_packages, "end_user": end_user});
+        let payload = json!({"args": args, "site_packages": site_packages, "end_user": end_user, "tool_meta": tool_meta});
         tokio::fs::write(
             scratch.join("stdin.json"),
             serde_json::to_vec(&payload).unwrap_or_default(),
@@ -5258,6 +5276,7 @@ impl PythonKind {
         // `missing` even though the same tool's cold call reported it
         // `found`.
         declared: &[OutputDecl],
+        tool_meta: Value,
     ) -> Option<Result<Value, KindError>> {
         let mut entry = self.warm.take(key)?;
         if entry.fingerprint != fingerprint {
@@ -5270,7 +5289,7 @@ impl PythonKind {
             return None;
         }
 
-        let payload = call_payload(args, &entry.site_packages, payload_end_user(ctx));
+        let payload = call_payload(args, &entry.site_packages, payload_end_user(ctx), tool_meta);
         let bridge = HostSidecarBridge { ctx };
         let warm_call_started = Instant::now();
         // PRD-mcphost-runs-and-jobs requirement 4 / AC4: register this
@@ -5846,6 +5865,7 @@ impl Kind for PythonKind {
                     &effective_schema,
                     &secret_values,
                     &parsed.outputs,
+                    json!({"idempotent": super::effective_idempotent(self, spec)}),
                 )
                 .await
             {
@@ -5905,7 +5925,13 @@ impl Kind for PythonKind {
             };
 
         let scratch = self
-            .prepare_scratch(&parsed.source, &args, &site_packages, payload_end_user(ctx))
+            .prepare_scratch(
+                &parsed.source,
+                &args,
+                &site_packages,
+                payload_end_user(ctx),
+                json!({"idempotent": super::effective_idempotent(self, spec)}),
+            )
             .await?;
         let stdin_payload = tokio::fs::read(scratch.join("stdin.json"))
             .await
@@ -6121,7 +6147,13 @@ impl Kind for PythonKind {
             };
 
         let scratch = self
-            .prepare_scratch(&parsed.source, &args, &site_packages, payload_end_user(ctx))
+            .prepare_scratch(
+                &parsed.source,
+                &args,
+                &site_packages,
+                payload_end_user(ctx),
+                json!({"idempotent": super::effective_idempotent(self, spec)}),
+            )
             .await?;
         let stdin_payload = tokio::fs::read(scratch.join("stdin.json"))
             .await
