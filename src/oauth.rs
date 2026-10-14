@@ -177,6 +177,31 @@ pub fn resource_tenant_namespace(public_url: &str, resource: &str) -> Option<Str
         .map(str::to_string)
 }
 
+/// PRD-mcphost-oauth-first-entry-url requirement 1: the one path constant the
+/// OAuth-first entry URL is built from. The router, the canonical-resource
+/// helpers below, the metadata route, and the docs/doc-check assertions all
+/// read this -- never a second spelling of the literal.
+pub const OAUTH_ENTRY_PATH: &str = "/login/mcp";
+
+/// The RFC 9728 well-known prefix the protected-resource documents live under.
+pub const PROTECTED_RESOURCE_WELL_KNOWN: &str = "/.well-known/oauth-protected-resource";
+
+/// requirement 1: the entry resource URI (`<public_url>/login/mcp`) -- what
+/// a client names as `resource` and what an entry token carries as `aud`.
+pub fn entry_resource_uri(public_url: &str) -> String {
+    format!("{}{OAUTH_ENTRY_PATH}", public_url.trim_end_matches('/'))
+}
+
+/// requirement 1: the route the entry document is served at.
+pub fn entry_metadata_path() -> String {
+    format!("{PROTECTED_RESOURCE_WELL_KNOWN}{OAUTH_ENTRY_PATH}")
+}
+
+/// requirement 2: the entry document URL the 401 challenge names.
+pub fn entry_metadata_url(public_url: &str) -> String {
+    format!("{}{}", public_url.trim_end_matches('/'), entry_metadata_path())
+}
+
 /// P2 requirement 8: `$MCPHOST_OAUTH_ALLOWED_ALGS`, a comma-separated list
 /// of `RS256`/`ES256` (the only two this crate's JWK-to-`DecodingKey`
 /// mapping in [`decoding_key_for`] can ever produce); an unrecognized name
