@@ -1368,6 +1368,21 @@ pub async fn whoami(
         if let Some(url) = claim_url_value {
             obj.insert("claim_url".to_string(), json!(url));
         }
+        // PRD-mcphost-time-to-first-success-public R2: how far this tenant
+        // is, in seconds since birth, and which milestone is next. Tenant
+        // callers only -- `whoami_admin` has no tenant row to read.
+        obj.insert(
+            "activation".to_string(),
+            crate::funnel::activation_json(
+                tenant.created_unix,
+                [
+                    tenant.first_call_unix,
+                    tenant.first_publish_unix,
+                    tenant.first_own_call_unix,
+                    tenant.second_session_unix,
+                ],
+            ),
+        );
         // requirement 1 (AC1): once claimed, `owner.verified_at` replaces
         // `claim_url` -- `owner_verified` above stays the pre-existing
         // bool-only read for callers that only need "is it claimed".

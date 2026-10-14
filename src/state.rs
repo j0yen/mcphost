@@ -494,6 +494,10 @@ pub struct AppState {
     /// wall clock when a `confirm` token is minted or checked. Always 0 in
     /// production; a test advances it to expire a token without sleeping.
     pub confirm_clock_offset_secs: std::sync::Arc<std::sync::atomic::AtomicI64>,
+    /// PRD-mcphost-time-to-first-success-public R3: the last computed
+    /// `onboarding_7d` block, refreshed by `statusfeed::tick_once` so
+    /// `/status.json` stays a read.
+    pub onboarding_cache: std::sync::Arc<std::sync::Mutex<Option<serde_json::Value>>>,
 }
 
 /// requirement 6's own default: 60 calls per client IP per minute.

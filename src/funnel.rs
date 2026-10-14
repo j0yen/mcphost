@@ -252,6 +252,141 @@ pub async fn surface_report(db: &Db, now: i64, days: i64) -> Result<(Value, Valu
     Ok((json!(rows), Value::Array(probe.into_iter().map(|(_, v)| v).collect())))
 }
 
+// ---- activation milestones (PRD-mcphost-time-to-first-success-public) ----
+
+/// R1: the activation milestones, in order, each with the tool that reaches
+/// it (`""` when none does -- `second_session` is time, not a call).
+/// `admin.funnel`'s stage names, `host.whoami.activation`'s keys and
+/// `/status.json.onboarding_7d`'s `stamped_n` keys are all read from this
+/// one table, so a fifth stamp added here appears on all three surfaces.
+pub const ACTIVATION_MILESTONES: &[(&str, &str)] = &[
+    ("first_call", "host.quickstart"),
+    ("first_publish", "host.tool_publish"),
+    ("first_own_call", "host.tool_call"),
+    ("second_session", ""),
+];
+
+/// `admin.funnel` stages that come after the activation milestones; not
+/// tenant-visible, so not in [`ACTIVATION_MILESTONES`].
+pub const ADMIN_ONLY_STAGES: &[&str] = &["claimed", "paid"];
+
+/// Fewest external tenants before `onboarding_7d` shows percentiles (the PRD's
+/// drafted minimum).
+pub const ONBOARDING_MIN_N: usize = 5;
+
+/// Nearest-rank percentile of an ascending-sorted, non-empty slice.
+fn nearest_rank(sorted: &[i64], pct: f64) -> i64 {
+    let rank = ((sorted.len() as f64) * pct / 100.0).ceil() as usize;
+    sorted[rank.saturating_sub(1).min(sorted.len() - 1)]
+}
+
+fn stamp_of(row: &crate::db::OnboardingRow, milestone: &str) -> Option<i64> {
+    match milestone {
+        "first_call" => row.first_call_unix,
+        "first_publish" => row.first_publish_unix,
+        "first_own_call" => row.first_own_call_unix,
+        "second_session" => row.second_session_unix,
+        other => unreachable!("unknown milestone {other}: add it to stamp_of"),
+    }
+}
+
+/// Seconds from `created` to each milestone's stamp (null when unstamped), in
+/// [`ACTIVATION_MILESTONES`] order.
+pub fn activation_seconds(
+    created: Option<i64>,
+    stamps: [Option<i64>; 4],
+) -> Vec<(&'static str, Option<i64>)> {
+    ACTIVATION_MILESTONES
+        .iter()
+        .zip(stamps)
+        .map(|((name, _), stamp)| (*name, created.zip(stamp).map(|(c, s)| (s - c).max(0))))
+        .collect()
+}
+
+/// R2: `host.whoami.activation` -- `<milestone>_s` seconds since birth (null
+/// until stamped, never 0) for each [`ACTIVATION_MILESTONES`] entry, plus
+/// `next_milestone` (`{name, tool}` of the first unreached one; `tool` is null
+/// for a milestone no tool reaches; the whole value is null once all are).
+pub fn activation_json(created: Option<i64>, stamps: [Option<i64>; 4]) -> Value {
+    let seconds = activation_seconds(created, stamps);
+    let mut out = serde_json::Map::new();
+    for (name, secs) in &seconds {
+        out.insert(format!("{name}_s"), json!(secs));
+    }
+    let next = ACTIVATION_MILESTONES.iter().zip(stamps).find(|(_, stamp)| stamp.is_none()).map(|((name, tool), _)| {
+        json!({"name": name, "tool": (!tool.is_empty()).then_some(*tool)})
+    });
+    out.insert("next_milestone".into(), next.unwrap_or(Value::Null));
+    Value::Object(out)
+}
+
+fn deltas(rows: &[&crate::db::OnboardingRow], milestone: &str) -> Vec<i64> {
+    let mut v: Vec<i64> = rows
+        .iter()
+        .filter_map(|r| stamp_of(r, milestone).map(|s| (s - r.created_unix).max(0)))
+        .collect();
+    v.sort_unstable();
+    v
+}
+
+fn percentile_or_null(sorted: &[i64], pct: f64, enough: bool) -> Value {
+    if enough && !sorted.is_empty() { json!(nearest_rank(sorted, pct)) } else { Value::Null }
+}
+
+/// The block's body for one group of rows.
+fn onboarding_group(rows: &[&crate::db::OnboardingRow], min_n: usize) -> serde_json::Map<String, Value> {
+    let enough = rows.len() >= min_n;
+    let mut out = serde_json::Map::new();
+    out.insert("n".into(), json!(rows.len()));
+    let mut stamped = serde_json::Map::new();
+    for (name, _) in ACTIVATION_MILESTONES {
+        stamped.insert((*name).to_string(), json!(deltas(rows, name).len()));
+    }
+    for name in ["first_publish", "first_own_call"] {
+        let d = deltas(rows, name);
+        out.insert(format!("p50_s_to_{name}"), percentile_or_null(&d, 50.0, enough));
+        out.insert(format!("p95_s_to_{name}"), percentile_or_null(&d, 95.0, enough));
+    }
+    let under = rows
+        .iter()
+        .filter(|r| r.first_own_call_unix.is_some_and(|s| s - r.created_unix <= 60))
+        .count();
+    let share = if enough && !rows.is_empty() {
+        json!((under as f64 / rows.len() as f64 * 1000.0).round() / 1000.0)
+    } else {
+        Value::Null
+    };
+    out.insert("under_60s_share".into(), share);
+    out.insert("stamped_n".into(), Value::Object(stamped));
+    out
+}
+
+/// R3: `/status.json.onboarding_7d` over `origin = 'external'` tenants created
+/// in the 7 days before `now`. Percentiles and `under_60s_share` are null
+/// below `min_n` tenants (the public path passes [`ONBOARDING_MIN_N`]). Only
+/// numbers and null leave this function (R4): no tenant, client or address.
+pub async fn onboarding_7d(db: &Db, now: i64, min_n: usize) -> Result<Value, AppError> {
+    let rows = db.onboarding_rows(now - 7 * 86_400).await?;
+    let all: Vec<&crate::db::OnboardingRow> = rows.iter().collect();
+    let mut block = onboarding_group(&all, min_n);
+    // R6: the same body per client surface for groups of at least
+    // `ONBOARDING_MIN_N` tenants. Names come from `SURFACE_IDS` (unknown or
+    // missing -> `other`), never the raw `client_name`.
+    let mut by_client = serde_json::Map::new();
+    let mut groups: std::collections::BTreeMap<&'static str, Vec<&crate::db::OnboardingRow>> = Default::default();
+    for row in &all {
+        groups.entry(crate::install_links::surface_id(row.client_name.as_deref())).or_default().push(row);
+    }
+    for (surface, group) in groups {
+        if group.len() >= ONBOARDING_MIN_N {
+            by_client.insert(surface.to_string(), Value::Object(onboarding_group(&group, min_n)));
+        }
+    }
+    block.insert("by_client".into(), Value::Object(by_client));
+    block.insert("computed_at".into(), json!(now));
+    Ok(Value::Object(block))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

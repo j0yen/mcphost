@@ -1743,24 +1743,35 @@ pub async fn enduser_stats(state: &AppState) -> Result<Value, AppError> {
     Ok(json!({ "tenants": tenants }))
 }
 
-/// PRD-mcphost-activation-funnel requirement 3: the six stages
+/// PRD-mcphost-activation-funnel requirement 3: the stages
 /// `admin.funnel`/`admin::funnel_7d_external` both report, in the order
-/// the PRD's own operator user story names them -- a `(name, getter)`
-/// table rather than six near-identical match arms, so adding a seventh
-/// stage later is a one-line change.
-type FunnelStageGetter = fn(&crate::db::FunnelRow) -> Option<i64>;
-const FUNNEL_STAGES: &[(&str, FunnelStageGetter)] = &[
-    ("first_call", |r| r.first_call_unix),
-    ("first_publish", |r| r.first_publish_unix),
-    ("first_own_call", |r| r.first_own_call_unix),
-    ("second_session", |r| r.second_session_unix),
-    ("claimed", |r| r.claimed_unix),
-    ("paid", |r| r.paid_unix),
-];
+/// the PRD's own operator user story names them.
+/// PRD-mcphost-time-to-first-success-public R1: the stage names are
+/// [`crate::funnel::ACTIVATION_MILESTONES`] then
+/// [`crate::funnel::ADMIN_ONLY_STAGES`], so a milestone added to the table
+/// appears here with no second edit (only its stamp below needs a column).
+fn funnel_stage_names() -> impl Iterator<Item = &'static str> {
+    crate::funnel::ACTIVATION_MILESTONES
+        .iter()
+        .map(|(name, _)| *name)
+        .chain(crate::funnel::ADMIN_ONLY_STAGES.iter().copied())
+}
+
+fn stage_stamp(name: &str, r: &crate::db::FunnelRow) -> Option<i64> {
+    match name {
+        "first_call" => r.first_call_unix,
+        "first_publish" => r.first_publish_unix,
+        "first_own_call" => r.first_own_call_unix,
+        "second_session" => r.second_session_unix,
+        "claimed" => r.claimed_unix,
+        "paid" => r.paid_unix,
+        other => unreachable!("funnel stage {other} has no stamp: add it to stage_stamp"),
+    }
+}
 
 /// Requirement 3: "a stage with count < 3 reports `median_minutes: null`"
 /// (AC6) -- `None` below that floor, else the usual even/odd-length
-/// median, in minutes (`FUNNEL_STAGES`' own timestamps are unix seconds).
+/// median, in minutes (the stages' own timestamps are unix seconds).
 fn median_minutes(mut minutes: Vec<f64>) -> Option<f64> {
     if minutes.len() < 3 {
         return None;
@@ -1778,12 +1789,11 @@ fn median_minutes(mut minutes: Vec<f64>) -> Option<f64> {
 /// Requirement 3's `stages: [{name, count, share, median_minutes}]`, over
 /// whichever rows the caller has already filtered to `signups` of.
 fn funnel_stage_stats(rows: &[&crate::db::FunnelRow], signups: i64) -> Vec<Value> {
-    FUNNEL_STAGES
-        .iter()
-        .map(|(name, getter)| {
+    funnel_stage_names()
+        .map(|name| {
             let mut minutes = Vec::new();
             for row in rows {
-                if let Some(stamp) = getter(row) {
+                if let Some(stamp) = stage_stamp(name, row) {
                     minutes.push((stamp - row.created_unix) as f64 / 60.0);
                 }
             }
@@ -1821,9 +1831,9 @@ fn funnel_breakdown_by(
     for (class, bucket_rows) in buckets {
         let signups = bucket_rows.len() as i64;
         let mut stages = serde_json::Map::new();
-        for (name, getter) in FUNNEL_STAGES {
-            let count = bucket_rows.iter().filter(|r| getter(r).is_some()).count();
-            stages.insert((*name).to_string(), json!(count));
+        for name in funnel_stage_names() {
+            let count = bucket_rows.iter().filter(|r| stage_stamp(name, r).is_some()).count();
+            stages.insert(name.to_string(), json!(count));
         }
         // PRD-mcphost-second-session-nudge requirement 5 (AC7): `nudged`
         // is every row this source's tenants have a finished nudge-sweep
@@ -1981,9 +1991,9 @@ pub async fn funnel_7d_external(state: &AppState) -> Result<Value, AppError> {
         rows.iter().filter(|r| r.source_class.as_deref() == Some("external")).collect();
     let mut obj = serde_json::Map::new();
     obj.insert("signups".to_string(), json!(external.len()));
-    for (name, getter) in FUNNEL_STAGES {
-        let count = external.iter().filter(|r| getter(r).is_some()).count();
-        obj.insert((*name).to_string(), json!(count));
+    for name in funnel_stage_names() {
+        let count = external.iter().filter(|r| stage_stamp(name, r).is_some()).count();
+        obj.insert(name.to_string(), json!(count));
     }
     // PRD-mcphost-second-session-nudge requirement 5: `return_rate` over
     // the same external, trailing-7-day set -- same `nudged_unix`/

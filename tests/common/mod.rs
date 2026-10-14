@@ -448,6 +448,7 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
         anon_healthz_extra_key: Default::default(),
         blob_clock_offset_secs: Default::default(),
         confirm_clock_offset_secs: Default::default(),
+        onboarding_cache: Default::default(),
         session_bindings,
     };
     (state, data_dir)
@@ -1154,6 +1155,7 @@ impl TestServer {
         anon_healthz_extra_key: Default::default(),
             blob_clock_offset_secs: Default::default(),
             confirm_clock_offset_secs: Default::default(),
+            onboarding_cache: Default::default(),
             session_bindings,
         });
 
@@ -1915,6 +1917,7 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
         anon_healthz_extra_key: Default::default(),
         blob_clock_offset_secs: Default::default(),
         confirm_clock_offset_secs: Default::default(),
+        onboarding_cache: Default::default(),
         session_bindings,
     }
 }
@@ -2433,4 +2436,42 @@ pub async fn vord_seed_runs(server: &TestServer, tenant_id: i64, total: usize, f
         }
     }
     failing
+}
+
+/// PRD-mcphost-time-to-first-success-public fixtures: inserts a tenant with
+/// the given `origin`/`client_name`, born at `created`, and stamps each
+/// milestone `stamps[i]` seconds after birth (`None` = unstamped), in
+/// `ACTIVATION_MILESTONES` order.
+#[allow(clippy::too_many_arguments)]
+pub async fn ttfs_tenant(
+    db: &Db,
+    namespace: &str,
+    origin: &str,
+    client_name: Option<&str>,
+    created: i64,
+    stamps: [Option<i64>; 4],
+) -> mcphost::db::Tenant {
+    let tenant = db
+        .create_tenant_attributed(
+            namespace.to_string(),
+            namespace.to_string(),
+            format!("hash-{namespace}"),
+            (origin == "synthetic").then(|| "fleet".to_string()),
+            None,
+            client_name.map(str::to_string),
+            None,
+            origin.to_string(),
+            None,
+        )
+        .await
+        .expect("create tenant");
+    db.set_tenant_stamp_for_test(tenant.id, "created_unix", created).await.expect("created");
+    for (column, stamp) in
+        ["first_call_unix", "first_publish_unix", "first_own_call_unix", "second_session_unix"].into_iter().zip(stamps)
+    {
+        if let Some(after) = stamp {
+            db.set_tenant_stamp_for_test(tenant.id, column, created + after).await.expect("stamp");
+        }
+    }
+    db.find_tenant_by_namespace(namespace.to_string()).await.expect("query").expect("tenant exists")
 }

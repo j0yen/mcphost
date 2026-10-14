@@ -423,6 +423,7 @@ mod tests {
             anon_healthz_extra_key: Default::default(),
             blob_clock_offset_secs: Default::default(),
             confirm_clock_offset_secs: Default::default(),
+            onboarding_cache: Default::default(),
         };
 
         let eu = verify_assertion(&state, &tenant, &token).await.expect("valid assertion");
