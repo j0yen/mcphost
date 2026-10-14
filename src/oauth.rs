@@ -1137,6 +1137,22 @@ pub async fn protected_resource_metadata(state: &AppState) -> Result<Value, AppE
     }))
 }
 
+/// `GET /.well-known/oauth-protected-resource/login/mcp` (PRD-mcphost-oauth-
+/// first-entry-url requirement 3 / AC2): `resource` is the entry resource,
+/// `authorization_servers` is exactly this host (the hosted authorization
+/// server -- never a tenant's registered issuer, so the document stays
+/// tenant-less and non-enumerating), and `scopes_supported` is the root
+/// document's.
+pub fn protected_resource_metadata_for_entry(state: &AppState) -> Value {
+    json!({
+        "resource": entry_resource_uri(&state.public_url),
+        "authorization_servers": [state.public_url.trim_end_matches('/')],
+        "bearer_methods_supported": ["header"],
+        "scopes_supported": ["mcp"],
+        "resource_documentation": format!("{}/docs", state.public_url),
+    })
+}
+
 /// `GET /.well-known/oauth-protected-resource/t/{ns}/mcp` (PRD-mcphost-tenant-resource-metadata
 /// requirement 2 / AC1): same shape as [`protected_resource_metadata`], but
 /// `resource` is this one tenant's own canonical URI and

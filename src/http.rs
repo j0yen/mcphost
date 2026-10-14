@@ -666,6 +666,12 @@ async fn well_known_oauth_protected_resource(State(state): State<Arc<AppState>>)
     }
 }
 
+/// PRD-mcphost-oauth-first-entry-url requirement 3 (AC2): the entry
+/// document, served at `oauth::entry_metadata_path()`.
+async fn well_known_oauth_protected_resource_entry(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    Json(crate::oauth::protected_resource_metadata_for_entry(&state))
+}
+
 /// PRD-mcphost-hosted-authorization-server AC1: `GET
 /// /.well-known/oauth-authorization-server` and `GET
 /// /.well-known/openid-configuration` -- the same RFC 8414 document at
@@ -1821,6 +1827,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
             "/.well-known/oauth-protected-resource",
             get(well_known_oauth_protected_resource),
         )
+        .route(&crate::oauth::entry_metadata_path(), get(well_known_oauth_protected_resource_entry))
         .route(
             "/.well-known/oauth-authorization-server",
             get(well_known_authorization_server),
