@@ -5,7 +5,7 @@
 
 use crate::common;
 use mcphost::handler::{HOST_TOOL_HINTS, canonical_control_plane_names};
-use mcphost::kinds::{Kind, KindRegistry};
+use mcphost::kinds::KindRegistry;
 use serde_json::{Value, json};
 use std::collections::HashSet;
 
