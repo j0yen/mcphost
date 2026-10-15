@@ -759,6 +759,10 @@ impl AppError {
                 // PRD-mcphost-call-audit-export R3: an export window over the
                 // row cap is a caller-input problem (narrow the window).
                 "too_many_rows" => ErrorCode::INVALID_PARAMS,
+                // PRD-mcphost-key-delegate-child-keys R2/R4: a delegation
+                // asking for more than its parent, or a revoke that would
+                // orphan live children, is a caller-input problem.
+                "scope_escalation" | "has_children" => ErrorCode::INVALID_PARAMS,
                 "replay_needs_secret" => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-inbound-events: `host.trigger.test`'s own
                 // caller-input problems -- a bad signature/payload, a rate

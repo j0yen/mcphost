@@ -4502,12 +4502,76 @@
     ],
     "type": "object"
   },
+  "host.key.delegate": {
+    "properties": {
+      "can_delegate": {
+        "type": "boolean"
+      },
+      "depth": {
+        "type": "integer"
+      },
+      "expires_at": {
+        "type": "integer"
+      },
+      "key": {
+        "type": "string"
+      },
+      "label": {
+        "type": "string"
+      },
+      "parent": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "scopes": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "tools": {
+        "items": {
+          "type": "string"
+        },
+        "type": [
+          "array",
+          "null"
+        ]
+      },
+      "usage": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "key",
+      "label",
+      "scopes",
+      "expires_at",
+      "depth",
+      "can_delegate"
+    ],
+    "type": "object"
+  },
   "host.key.list": {
     "properties": {
       "keys": {
         "items": {
           "properties": {
+            "can_delegate": {
+              "type": "boolean"
+            },
+            "children": {
+              "items": {
+                "type": "object"
+              },
+              "type": "array"
+            },
             "created_at": {
+              "type": "integer"
+            },
+            "depth": {
               "type": "integer"
             },
             "expires_at": {
@@ -4522,26 +4586,40 @@
                 "null"
               ]
             },
+            "parent": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "revoked_at": {
               "type": [
                 "integer",
                 "null"
               ]
             },
-            "tools": {
+            "scopes": {
               "items": {
                 "type": "string"
               },
               "type": "array"
+            },
+            "tools": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
             }
           },
           "required": [
-            "created_at",
-            "expires_at",
             "label",
-            "last_used_at",
-            "revoked_at",
-            "tools"
+            "depth",
+            "scopes",
+            "expires_at",
+            "children"
           ],
           "type": "object"
         },
@@ -4587,6 +4665,15 @@
     "properties": {
       "label": {
         "type": "string"
+      },
+      "labels": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "revoked": {
+        "type": "integer"
       },
       "revoked_at": {
         "type": "integer"
@@ -13996,6 +14083,35 @@
       },
       "display_name": {
         "type": "string"
+      },
+      "key": {
+        "properties": {
+          "can_delegate": {
+            "type": "boolean"
+          },
+          "depth": {
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "parent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
       },
       "invite_url": {
         "type": "string"

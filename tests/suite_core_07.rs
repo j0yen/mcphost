@@ -705,6 +705,20 @@ mod demo_ac05_ten_rows_capped_noindex_no_store;
 mod demo_ac06_share_returns_demo_url_unshare_404s;
 #[path = "demo_ac07_format_json_same_ten_rows_redacted.rs"]
 mod demo_ac07_format_json_same_ten_rows_redacted;
+#[path = "dkeyc_ac01_child_cannot_escalate_scope.rs"]
+mod dkeyc_ac01_child_cannot_escalate_scope;
+#[path = "dkeyc_ac02_chain_depth_and_can_delegate_gate.rs"]
+mod dkeyc_ac02_chain_depth_and_can_delegate_gate;
+#[path = "dkeyc_ac03_ttl_and_depth_ceilings.rs"]
+mod dkeyc_ac03_ttl_and_depth_ceilings;
+#[path = "dkeyc_ac04_cascade_revoke_is_one_transaction.rs"]
+mod dkeyc_ac04_cascade_revoke_is_one_transaction;
+#[path = "dkeyc_ac05_revoke_without_cascade_has_children.rs"]
+mod dkeyc_ac05_revoke_without_cascade_has_children;
+#[path = "dkeyc_ac06_plan_ceilings_delegated_keys_and_ttl.rs"]
+mod dkeyc_ac06_plan_ceilings_delegated_keys_and_ttl;
+#[path = "dkeyc_ac07_list_tree_and_whoami_key.rs"]
+mod dkeyc_ac07_list_tree_and_whoami_key;
 #[path = "docsearch_ac01_status_reports_watermark_lag_and_chunks.rs"]
 mod docsearch_ac01_status_reports_watermark_lag_and_chunks;
 #[path = "docsearch_ac02_lexical_search_returns_passage_and_offset.rs"]

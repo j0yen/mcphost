@@ -315,6 +315,8 @@ const MIGRATION_0102: &str = include_str!("../migrations/0102_tasks.sql");
 const MIGRATION_0103: &str = include_str!("../migrations/0103_indexes.sql");
 /// PRD-mcphost-key-scoped-to-tools R1: the `tenant_keys` table, `calls.key_id`.
 const MIGRATION_0104: &str = include_str!("../migrations/0104_tenant_keys.sql");
+/// PRD-mcphost-key-delegate-child-keys R1: delegation columns on `tenant_keys`.
+const MIGRATION_0109: &str = include_str!("../migrations/0109_key_delegation.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
@@ -3024,6 +3026,7 @@ impl Db {
         // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0107)?;
         Self::migrate_0108_calls_audit(&conn)?;
+        Self::migrate_0109_key_delegation(&conn)?;
         Ok(())
     }
 
@@ -3059,6 +3062,18 @@ impl Db {
             .exists([])?;
         if !has_table {
             conn.execute_batch(MIGRATION_0104)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-key-delegate-child-keys R1: gated on the first new column
+    /// (the batch is `ALTER`s, so a rerun must skip it).
+    fn migrate_0109_key_delegation(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenant_keys') WHERE name = 'parent_key_id'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0109)?;
         }
         Ok(())
     }
