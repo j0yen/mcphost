@@ -59,6 +59,7 @@ pub const TOOL_ALIASES: &[ToolAlias] = &[
     ToolAlias { alias: "host.secret_list", canonical: "host.secret.list" },
     ToolAlias { alias: "host.registry_publish", canonical: "host.registry.publish" },
     ToolAlias { alias: "host.spec_test", canonical: "host.spec.test" },
+    ToolAlias { alias: "host.job_timeline", canonical: "host.job.timeline" },
 ];
 
 /// `name` -> its canonical name, iff `name` is a registered alias.

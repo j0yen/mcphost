@@ -1323,6 +1323,14 @@ mod invite_ac11_lineage_chain_lookup_and_usage_k;
 mod invite_ac12_shares_are_one_hop_across_a_depth_3_chain;
 #[path = "invite_ac13_meta_invite_url_hint_once_per_session.rs"]
 mod invite_ac13_meta_invite_url_hint_once_per_session;
+#[path = "jtl_ac01_three_step_chain_timeline.rs"]
+mod jtl_ac01_three_step_chain_timeline;
+#[path = "jtl_ac02_mapping_miss_step_is_error_family_compose.rs"]
+mod jtl_ac02_mapping_miss_step_is_error_family_compose;
+#[path = "jtl_ac03_scheduled_run_is_one_entry.rs"]
+mod jtl_ac03_scheduled_run_is_one_entry;
+#[path = "jtl_ac04_running_chain_shows_in_flight_step.rs"]
+mod jtl_ac04_running_chain_shows_in_flight_step;
 #[path = "kcon_ac01_planted_drift_fails_naming_kind_case_code.rs"]
 mod kcon_ac01_planted_drift_fails_naming_kind_case_code;
 #[path = "kcon_ac03_no_error_code_literals_outside_contract.rs"]
