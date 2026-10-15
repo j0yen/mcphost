@@ -296,6 +296,18 @@ enum Command {
         #[arg(long)]
         path: Option<PathBuf>,
     },
+    /// PRD-mcphost-help-search-tool-b R6: the `host.help.search` hits for a
+    /// query, from the same embedded index the tool reads.
+    HelpSearch {
+        /// What you are stuck on: a tool name, an error code, an import line.
+        q: String,
+        /// Only search the page of this registered kind.
+        #[arg(long)]
+        kind: Option<String>,
+        /// Print the tool's JSON instead of a readable list.
+        #[arg(long)]
+        json: bool,
+    },
     /// PRD-mcphost-docs-examples-executed-nightly: the docs' tagged fences
     /// as an executable corpus (`classify`, `extract`, `run`).
     DocsExamples {
@@ -885,6 +897,28 @@ async fn main() -> anyhow::Result<()> {
                 mcphost::submission_pack::write_pack(&chatgpt, &files)?;
                 println!("submission-pack: wrote {} files to {}", files.len(), chatgpt.display());
                 Ok(())
+            }
+        }
+        Command::HelpSearch { q, kind, json } => {
+            // No `init_tracing()`: stdout is the contract, like `Examples`.
+            let kinds = mcphost::examples::registered_kinds();
+            let mut args = serde_json::json!({"q": q});
+            if let Some(kind) = kind {
+                args["kind"] = serde_json::Value::String(kind);
+            }
+            match mcphost::help_search::call(&kinds, &args) {
+                Ok(body) if json => {
+                    println!("{body}");
+                    Ok(())
+                }
+                Ok(body) => {
+                    print!("{}", mcphost::help_search::render_text(&body));
+                    Ok(())
+                }
+                Err(e) => {
+                    eprintln!("help-search: {e}");
+                    std::process::exit(2);
+                }
             }
         }
         Command::Examples { dir, action } => {
