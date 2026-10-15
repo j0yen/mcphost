@@ -965,6 +965,23 @@ async fn contract_json_route(State(state): State<Arc<AppState>>, headers: Header
     response
 }
 
+/// PRD-mcphost-heal-action-registry-and-ledger R4: `GET /incidents.json`,
+/// anonymous, last 24 h of action rows through the allowlist anonymiser.
+async fn incidents_json_route(State(state): State<Arc<AppState>>) -> Response {
+    let mut response = match crate::heal::incidents_json(&state).await {
+        Ok(value) => (StatusCode::OK, Json(value)).into_response(),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error_code": "storage", "error": "storage error"})),
+        )
+            .into_response(),
+    };
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static("max-age=30"));
+    response
+}
+
 /// PRD-mcphost-status-feed requirement 3/AC1/AC10: `GET /status.json`,
 /// anonymous, cacheable 60s. With `component`/`days` query params both
 /// present (AC10), returns that one component's daily rollup rows instead
@@ -1881,6 +1898,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         // side-effects contract `/healthz`'s anonymous body already has.
         .route("/reach", get(crate::reach::reach))
         .route("/status.json", get(status_json_route))
+        .route("/incidents.json", get(incidents_json_route))
         .route("/contract.json", get(contract_json_route))
         // mcphost-polish-p0-20260930 (audit finding 1), generalized by
         // PRD-mcphost-first-hour-support-surface: see `static_page`'s own

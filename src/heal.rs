@@ -270,3 +270,90 @@ where
     tracing::info!("heal action={} outcome={} id={}", action.as_str(), outcome.as_str(), row.id);
     Ok(row)
 }
+
+/// Key stems a public `trigger`/`before`/`after` may carry. A key passes when
+/// it equals a stem or starts/ends with one at an `_` boundary (`wal_mb`,
+/// `size_before`); everything else is dropped, so a new field is private
+/// until it is added here.
+pub const PUBLIC_KEY_STEMS: &[&str] = &[
+    "count", "ms", "mb", "ratio", "p95_ms", "wedged", "size", "from", "to", "reason", "signal", "threshold",
+];
+
+fn key_is_public(key: &str) -> bool {
+    let k = key.to_ascii_lowercase();
+    if k.contains("tenant") || k.contains("tool_name") {
+        return false;
+    }
+    PUBLIC_KEY_STEMS
+        .iter()
+        .any(|s| k == *s || k.starts_with(&format!("{s}_")) || k.ends_with(&format!("_{s}")))
+}
+
+/// Allowlist anonymiser for `/incidents.json`: keeps only [`PUBLIC_KEY_STEMS`]
+/// keys, at every depth.
+pub fn anonymise(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .filter(|(k, _)| key_is_public(k))
+                .map(|(k, v)| (k.clone(), anonymise(v)))
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.iter().map(anonymise).collect()),
+        other => other.clone(),
+    }
+}
+
+/// `GET /incidents.json` body: action rows from the last 24 h, newest first.
+pub async fn incidents_json(state: &AppState) -> Result<Value, AppError> {
+    let rows = state.db.list_heal_rows_since(now_unix() - 86_400, None, 200).await?;
+    Ok(Value::Array(
+        rows.iter()
+            .map(|r| {
+                json!({
+                    "id": r.id,
+                    "action": r.action.as_str(),
+                    "at": r.at,
+                    "outcome": r.outcome.as_str(),
+                    "dry_run": r.dry_run,
+                    "duration_ms": r.duration_ms,
+                    "trigger": anonymise(&r.trigger),
+                    "before": anonymise(&r.before),
+                    "after": anonymise(&r.after),
+                })
+            })
+            .collect(),
+    ))
+}
+
+/// Hard ceiling on `host.incidents.list`'s `limit`.
+pub const LIST_LIMIT_MAX: i64 = 200;
+
+/// `host.incidents.list {since_s?, action?, limit?}` (admin scope): full
+/// rows including the raw `trigger_json`/`before_json`/`after_json`.
+pub async fn incidents_list(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let since_s = args.get("since_s").and_then(Value::as_i64).unwrap_or(86_400).max(0);
+    let limit = args.get("limit").and_then(Value::as_i64).unwrap_or(LIST_LIMIT_MAX).clamp(1, LIST_LIMIT_MAX);
+    let action = match args.get("action").and_then(Value::as_str) {
+        Some(name) => Some(HealAction::from_str(name).map_err(AppError::InvalidArgs)?.as_str().to_string()),
+        None => None,
+    };
+    let rows = state.db.list_heal_rows_since(now_unix() - since_s, action, limit).await?;
+    Ok(json!({
+        "incidents": rows
+            .iter()
+            .map(|r| json!({
+                "id": r.id,
+                "action": r.action.as_str(),
+                "at": r.at,
+                "outcome": r.outcome.as_str(),
+                "dry_run": r.dry_run,
+                "duration_ms": r.duration_ms,
+                "trigger_json": r.trigger.to_string(),
+                "before_json": r.before.to_string(),
+                "after_json": r.after.to_string(),
+            }))
+            .collect::<Vec<_>>(),
+        "limit": limit,
+    }))
+}
