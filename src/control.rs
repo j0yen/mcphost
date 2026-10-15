@@ -1336,9 +1336,11 @@ pub async fn whoami(
     // re-minted here, which would silently invalidate a link already
     // relayed to the human.
     let claim_url_value = crate::claim::claim_url_for_tenant(&state.public_url, tenant);
+    let concurrency = concurrency_json(state, tenant);
     let mut response = json!({
         "tenant": tenant.namespace,
         "namespace": tenant.namespace,
+        "concurrency": concurrency,
         "display_name": tenant.display_name,
         "created_at": tenant.created_at,
         "disabled": tenant.disabled,
@@ -1434,6 +1436,29 @@ pub async fn whoami(
         }
     }
     Ok(response)
+}
+
+/// PRD-mcphost-call-concurrency-visible R1: `{limit, in_flight, host_limit,
+/// host_in_flight}` for `tenant`. `limit` is the plan's
+/// `concurrent_calls_per_tenant` (the ceiling the python kind's tenant
+/// semaphore is sized from); `in_flight` is `limit - available_permits()`
+/// and may be stale by one call by the time the caller reads it.
+pub fn concurrency_json(state: &AppState, tenant: &Tenant) -> Value {
+    let limit = state
+        .plans
+        .get(&tenant.plan)
+        .map(|plan| plan.concurrent_calls_per_tenant.max(0) as usize)
+        .unwrap_or(4);
+    let snap = state
+        .kinds
+        .get("python")
+        .and_then(|kind| kind.admission_snapshot(tenant.id, limit));
+    json!({
+        "limit": limit,
+        "in_flight": snap.map(|s| s.in_flight).unwrap_or(0),
+        "host_limit": snap.map(|s| s.host_limit).unwrap_or(crate::kinds::python::DEFAULT_MAX_CONCURRENT_CALLS),
+        "host_in_flight": snap.map(|s| s.host_in_flight).unwrap_or(0),
+    })
 }
 
 /// PRD-mcphost-admin-schema-contract P2 requirement 7 (AC7): `host.whoami`

@@ -1,7 +1,8 @@
 //! AC4 (PRD-mcphost-call-limits-honest) — Given plan `free` with
 //! `concurrent_calls_per_tenant: 4`, When tenant A issues 50 concurrent
 //! calls and tenant B one call, Then B's call succeeds and at least 40 of
-//! A's refusals are `capacity` with `scope: "tenant"` and a positive
+//! A's refusals are `concurrency_exceeded` (renamed from `capacity` by
+//! PRD-mcphost-call-concurrency-visible) with `scope: "tenant"` and a positive
 //! `retry_after_ms`.
 //!
 //! Uses the default plan catalog (`free` = 4, the same number this AC
@@ -83,7 +84,7 @@ async fn tenant_burst_is_capped_at_its_own_plan_limit_while_another_tenant_still
         assert_eq!(who, "A");
         match result {
             Ok(_) => ok_a += 1,
-            Err(e) if e.error_code.as_deref() == Some("capacity") => {
+            Err(e) if e.error_code.as_deref() == Some("concurrency_exceeded") => {
                 capacity_a += 1;
                 if e.data.get("scope").and_then(serde_json::Value::as_str) != Some("tenant") {
                     capacity_a_scopes_ok = false;
@@ -106,7 +107,7 @@ async fn tenant_burst_is_capped_at_its_own_plan_limit_while_another_tenant_still
 
     assert!(
         capacity_a >= 40,
-        "expected at least 40 of A's 50 calls refused with capacity, got {capacity_a} \
+        "expected at least 40 of A's 50 calls refused with concurrency_exceeded, got {capacity_a} \
          (ok={ok_a})"
     );
     assert!(

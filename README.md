@@ -628,7 +628,7 @@ same constants `host.quickstart`'s `limits` object reads.
   description is the oversized test payload used to *prove* the 1 MiB cap,
   not the cap itself).
 - **Concurrency**: 20 concurrent calls host-wide; per tenant, 4 per tenant on the free plan
-  (10 on pro). A refusal past your own tenant's cap is `capacity` with
+  (10 on pro). A refusal past your own tenant's cap is `concurrency_exceeded` with `in_flight`, `limit`,
   `scope: "tenant"` and a `retry_after_ms`; past the host-wide cap it's
   `scope: "host"`.
 - **Sandbox process cap**: a python tool's sandbox allows at most 64 live
