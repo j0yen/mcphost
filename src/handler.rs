@@ -10373,10 +10373,15 @@ impl ServerHandler for McpHostHandler {
         // fills once a sub-key resolves, read by the `calls` insert.
         let inner = crate::subkeys::CALL_KEY
             .scope(std::cell::Cell::new(None), self.call_tool_inner(request, ctx));
-        match channel {
+        let result = match channel {
             Some(channel) => crate::elicit::CLIENT_CHANNEL.scope(channel, inner).await,
             None => inner.await,
-        }
+        };
+        // PRD-mcphost-incident-banner-for-agents R3: every result feeds the
+        // 5-minute error-rate window.
+        let code = result.as_ref().err().and_then(|e| crate::incident_banner::error_code_of(&e.data));
+        crate::incident_banner::record_result(&self.state.public_url, crate::state::now_unix(), code.as_deref());
+        result
     }
 
     async fn on_initialized(&self, _context: NotificationContext<RoleServer>) {}

@@ -1343,6 +1343,14 @@ mod implsign_ac05_pre_existing_anonymous_tools_create_no_tenant;
 mod implsign_ac06_unknown_tenant_key_stays_invalid;
 #[path = "implsign_ac07_no_bare_call_ever_returns_tenant_key_missing.rs"]
 mod implsign_ac07_no_bare_call_ever_returns_tenant_key_missing;
+#[path = "incban_ac01_error_rate_opens_incident.rs"]
+mod incban_ac01_error_rate_opens_incident;
+#[path = "incban_ac02_tenant_faults_carry_no_incident.rs"]
+mod incban_ac02_tenant_faults_carry_no_incident;
+#[path = "incban_ac03_http_500_retry_after_and_incident.rs"]
+mod incban_ac03_http_500_retry_after_and_incident;
+#[path = "incban_ac04_host_fault_codes_drift.rs"]
+mod incban_ac04_host_fault_codes_drift;
 #[path = "infer_ac05_ac06_ac07_http_schema.rs"]
 mod infer_ac05_ac06_ac07_http_schema;
 #[path = "infer_ac14_latency_budget.rs"]

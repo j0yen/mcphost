@@ -200,6 +200,7 @@ pub async fn tick_once(state: &AppState) -> Result<(), AppError> {
         check_component_alert(state, component).await?;
     }
     sample_signals(state, now, exec_latency_ms).await;
+    crate::incident_banner::tick(state).await?;
     refresh_onboarding(state, now).await?;
     Ok(())
 }
@@ -316,8 +317,15 @@ fn incident_names_component(incident: &Incident, component: &str) -> bool {
 }
 
 async fn open_auto_incident(state: &AppState, component: &str) -> Result<(), AppError> {
-    let now = now_unix();
     let title = format!("{component} is failing self-checks");
+    open_auto_incident_titled(state, component, &title).await
+}
+
+/// The one auto-open path: the self-probe streak and the request-level
+/// error-rate trigger (`incident_banner::evaluate_error_rate`) both land here.
+pub(crate) async fn open_auto_incident_titled(state: &AppState, component: &str, title: &str) -> Result<(), AppError> {
+    let now = now_unix();
+    let title = title.to_string();
     let timeline = json!([{"ts": now, "type": "opened", "message": title}]).to_string();
     let components_json = json!([component]).to_string();
     let id = state
@@ -338,12 +346,13 @@ async fn open_auto_incident(state: &AppState, component: &str) -> Result<(), App
 }
 
 async fn close_auto_incident(state: &AppState, incident: &Incident) -> Result<(), AppError> {
+    let message = format!("auto-resolved: {AUTO_INCIDENT_CLOSE_STREAK} consecutive ok samples");
+    close_auto_incident_with(state, incident, &message).await
+}
+
+pub(crate) async fn close_auto_incident_with(state: &AppState, incident: &Incident, message: &str) -> Result<(), AppError> {
     let now = now_unix();
-    let entry = json!({
-        "ts": now,
-        "type": "closed",
-        "message": format!("auto-resolved: {AUTO_INCIDENT_CLOSE_STREAK} consecutive ok samples"),
-    });
+    let entry = json!({"ts": now, "type": "closed", "message": message});
     state.db.incident_close(incident.id, entry, now).await?;
     Ok(())
 }
