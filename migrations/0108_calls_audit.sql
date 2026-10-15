@@ -1,6 +1,6 @@
 -- compat: previous -- additive columns with defaults on an existing table; an
 -- old release never queries them and every old row reads as `primary` / 0.
--- mcphost 0107_calls_audit: PRD-mcphost-call-audit-export R1/R2.
+-- mcphost 0108_calls_audit: PRD-mcphost-call-audit-export R1/R2.
 --
 -- `calls.credential` names the credential kind that made the call (one enum,
 -- `calllog::Credential`); `bytes_in` / `bytes_out` are the measured request
