@@ -1183,6 +1183,10 @@ mod hsr_ac02_import_mcphost_dev_finds_python_example;
 mod hsr_ac03_kind_filter_and_unknown_kind;
 #[path = "hsr_ac04_response_under_2kb_truncation_marked.rs"]
 mod hsr_ac04_response_under_2kb_truncation_marked;
+#[path = "hsrb_ac01_empty_and_symbol_queries_return_hint.rs"]
+mod hsrb_ac01_empty_and_symbol_queries_return_hint;
+#[path = "hsrb_ac02_listed_in_both_tools_lists_llms_txt_and_manifest.rs"]
+mod hsrb_ac02_listed_in_both_tools_lists_llms_txt_and_manifest;
 #[path = "http_ac01_secret_redaction.rs"]
 mod http_ac01_secret_redaction;
 #[path = "http_ac02_publish_ssrf_literal.rs"]
