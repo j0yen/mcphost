@@ -1558,6 +1558,12 @@
       "AC3": "tests/hostdoc_ac03_every_next_template_renders_fully.rs",
       "AC4": "tests/hostdoc_ac04_empty_window_and_no_tools.rs"
     },
+    "hostdocb": {
+      "_prd": "PRD-mcphost-host-doctor-tool-b.md (test_prefix: hostdocb)",
+      "AC1": "tests/hostdocb_ac01_admin_and_forbidden_tenant.rs",
+      "AC2": "tests/hostdocb_ac02_limit_window_and_group_order.rs",
+      "AC3": "tests/hostdocb_ac03_args_invalid_refusal_is_a_row.rs"
+    },
     "hsr": {
       "_prd": "PRD-mcphost-help-search-tool.md (test_prefix: hsr)",
       "AC1": "tests/hsr_ac01_top10_errors_have_fix_anchor.rs",

@@ -1149,6 +1149,12 @@ mod hostdoc_ac01_five_families_five_concrete_next_lines;
 mod hostdoc_ac03_every_next_template_renders_fully;
 #[path = "hostdoc_ac04_empty_window_and_no_tools.rs"]
 mod hostdoc_ac04_empty_window_and_no_tools;
+#[path = "hostdocb_ac01_admin_and_forbidden_tenant.rs"]
+mod hostdocb_ac01_admin_and_forbidden_tenant;
+#[path = "hostdocb_ac02_limit_window_and_group_order.rs"]
+mod hostdocb_ac02_limit_window_and_group_order;
+#[path = "hostdocb_ac03_args_invalid_refusal_is_a_row.rs"]
+mod hostdocb_ac03_args_invalid_refusal_is_a_row;
 #[path = "hostedas_ac01_well_known_metadata.rs"]
 mod hostedas_ac01_well_known_metadata;
 #[path = "hostedas_ac02_cimd_client_identification.rs"]
@@ -1821,19 +1827,3 @@ mod msrvlock_ac03_generate_lists_nine_contexts;
 mod msrvlock_ac04_check_compares_live_protection;
 #[path = "msrvlock_ac05_toml_equals_generate.rs"]
 mod msrvlock_ac05_toml_equals_generate;
-#[path = "nexttool_ac01_anonymous_starter_set.rs"]
-mod nexttool_ac01_anonymous_starter_set;
-#[path = "nexttool_ac02_authenticated_listing_unchanged.rs"]
-mod nexttool_ac02_authenticated_listing_unchanged;
-#[path = "nexttool_ac03_signup_emits_list_changed.rs"]
-mod nexttool_ac03_signup_emits_list_changed;
-#[path = "nexttool_ac04_tool_publish_next_hint.rs"]
-mod nexttool_ac04_tool_publish_next_hint;
-#[path = "nexttool_ac05_five_distinct_tools_suppresses_hint.rs"]
-mod nexttool_ac05_five_distinct_tools_suppresses_hint;
-#[path = "nexttool_ac06_hints_false_suppresses_hint.rs"]
-mod nexttool_ac06_hints_false_suppresses_hint;
-#[path = "nexttool_ac07_header_authenticated_never_gets_hint.rs"]
-mod nexttool_ac07_header_authenticated_never_gets_hint;
-#[path = "nexttool_ac09_host_usage_hints_shown_and_followed.rs"]
-mod nexttool_ac09_host_usage_hints_shown_and_followed;

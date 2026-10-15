@@ -7111,6 +7111,7 @@ impl McpHostHandler {
                 .to_string(),
             other => other.code().to_string(),
         };
+        let summary = crate::doctor::error_summary_of(&err);
         if let Err(e) = self
             .state
             .db
@@ -7123,6 +7124,7 @@ impl McpHostHandler {
                 tenant.origin_detail.clone(),
                 caller.map(|c| c.id),
                 auth_method.to_string(),
+                Some(summary),
             )
             .await
         {

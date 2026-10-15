@@ -265,6 +265,8 @@ pub struct FailedCall {
     pub tool: String,
     pub error_class: String,
     pub error_summary: Option<String>,
+    /// `calls.outcome`: `error`, `timeout`, or `refused` (nothing ran).
+    pub outcome: String,
     pub started_at: String,
 }
 
@@ -275,6 +277,7 @@ pub fn build_groups(rows: &[FailedCall]) -> Vec<Value> {
         code: String,
         class: Option<String>,
         count: usize,
+        outcomes: std::collections::BTreeMap<String, usize>,
         tools: Vec<&'a str>,
         newest: &'a FailedCall,
         newest_parsed: Parsed,
@@ -291,6 +294,7 @@ pub fn build_groups(rows: &[FailedCall]) -> Vec<Value> {
                     code,
                     class: parsed.class.clone(),
                     count: 0,
+                    outcomes: std::collections::BTreeMap::new(),
                     tools: Vec::new(),
                     newest: row,
                     newest_parsed: parsed.clone(),
@@ -301,6 +305,7 @@ pub fn build_groups(rows: &[FailedCall]) -> Vec<Value> {
         };
         let g = &mut groups[idx];
         g.count += 1;
+        *g.outcomes.entry(row.outcome.clone()).or_default() += 1;
         if !g.tools.contains(&row.tool.as_str()) {
             g.tools.push(&row.tool);
         }
@@ -310,6 +315,9 @@ pub fn build_groups(rows: &[FailedCall]) -> Vec<Value> {
             g.source = Some((src.clone(), parsed.line));
         }
     }
+    // `rows` is newest first, so groups were pushed in order of their newest
+    // row; the stable sort keeps that order among equal counts (count, then
+    // newest `last_ts`).
     groups.sort_by_key(|g| std::cmp::Reverse(g.count));
     groups
         .into_iter()
@@ -324,6 +332,7 @@ pub fn build_groups(rows: &[FailedCall]) -> Vec<Value> {
                 "family": family,
                 "class": g.class,
                 "count": g.count,
+                "outcomes": g.outcomes,
                 "tools": g.tools,
                 "last_ts": g.newest.started_at,
                 "next": render_next(family, &g.newest.tool, &parsed),
