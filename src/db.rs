@@ -18586,6 +18586,35 @@ impl Db {
         .await
     }
 
+    /// Action rows (newest first) opened at or after `since`, optionally for
+    /// one `action`, at most `limit`.
+    pub async fn list_heal_rows_since(
+        &self,
+        since: i64,
+        action: Option<String>,
+        limit: i64,
+    ) -> Result<Vec<crate::heal::HealRow>, AppError> {
+        let ids: Vec<i64> = self
+            .with_conn(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id FROM incidents WHERE action IS NOT NULL AND opened_at >= ?1 \
+                     AND (?2 IS NULL OR action = ?2) ORDER BY id DESC LIMIT ?3",
+                )?;
+                let rows = stmt
+                    .query_map(params![since, action, limit], |r| r.get::<_, i64>(0))?
+                    .collect::<rusqlite::Result<Vec<_>>>()?;
+                Ok(rows)
+            })
+            .await?;
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            if let Some(row) = self.find_heal_row(id).await? {
+                out.push(row);
+            }
+        }
+        Ok(out)
+    }
+
     /// Rate-limit input: rows for `action` that actually ran (`ok`/`failed`)
     /// at or after `since`.
     pub async fn heal_executed_since(&self, action: String, since: i64) -> Result<i64, AppError> {
@@ -18637,7 +18666,8 @@ impl Db {
     pub async fn find_incident(&self, id: i64) -> Result<Option<Incident>, AppError> {
         self.with_conn(move |conn| {
             conn.query_row(
-                "SELECT id, title, impact, components_json, opened_at, closed_at, timeline_json, auto \
+                "SELECT id, title, impact, components_json, opened_at, closed_at, timeline_json, auto, \
+                 action, outcome, dry_run, duration_ms, trigger_json, before_json, after_json \
                  FROM incidents WHERE id = ?1",
                 params![id],
                 incident_from_row,
@@ -18652,7 +18682,8 @@ impl Db {
     pub async fn list_open_incidents(&self) -> Result<Vec<Incident>, AppError> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, title, impact, components_json, opened_at, closed_at, timeline_json, auto \
+                "SELECT id, title, impact, components_json, opened_at, closed_at, timeline_json, auto, \
+                 action, outcome, dry_run, duration_ms, trigger_json, before_json, after_json \
                  FROM incidents WHERE closed_at IS NULL ORDER BY opened_at DESC",
             )?;
             let rows = stmt
@@ -18668,7 +18699,8 @@ impl Db {
     pub async fn list_recent_closed_incidents(&self, since_closed_at: i64) -> Result<Vec<Incident>, AppError> {
         self.with_conn(move |conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, title, impact, components_json, opened_at, closed_at, timeline_json, auto \
+                "SELECT id, title, impact, components_json, opened_at, closed_at, timeline_json, auto, \
+                 action, outcome, dry_run, duration_ms, trigger_json, before_json, after_json \
                  FROM incidents WHERE closed_at IS NOT NULL AND closed_at >= ?1 \
                  ORDER BY closed_at DESC",
             )?;
@@ -21185,6 +21217,14 @@ pub struct Incident {
     pub closed_at: Option<i64>,
     pub timeline_json: String,
     pub auto: bool,
+    /// PRD-mcphost-heal-action-registry-and-ledger R2: `None` on every prose row.
+    pub action: Option<String>,
+    pub outcome: Option<String>,
+    pub dry_run: bool,
+    pub duration_ms: Option<i64>,
+    pub trigger_json: Option<String>,
+    pub before_json: Option<String>,
+    pub after_json: Option<String>,
 }
 
 fn incident_from_row(r: &Row) -> rusqlite::Result<Incident> {
@@ -21197,6 +21237,13 @@ fn incident_from_row(r: &Row) -> rusqlite::Result<Incident> {
         closed_at: r.get(5)?,
         timeline_json: r.get(6)?,
         auto: r.get(7)?,
+        action: r.get(8)?,
+        outcome: r.get(9)?,
+        dry_run: r.get::<_, i64>(10)? != 0,
+        duration_ms: r.get(11)?,
+        trigger_json: r.get(12)?,
+        before_json: r.get(13)?,
+        after_json: r.get(14)?,
     })
 }
 

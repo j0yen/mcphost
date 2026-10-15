@@ -10680,6 +10680,11 @@ impl McpHostHandler {
                 }
                 bind_session_to_created_tenant(&self.state, session_id.as_deref(), &ctx.peer, redeemed).await
             }
+            // PRD-mcphost-heal-action-registry-and-ledger R7: admin scope
+            // only. Anonymous callers are refused (never implicit-signed-up:
+            // the raw `trigger_json` is host-private) and tenants are forbidden.
+            (Auth::Anonymous | Auth::Invalid, "host.incidents.list") => Err(AppError::Unauthorized),
+            (Auth::Tenant(..), "host.incidents.list") => Err(AppError::Forbidden),
             // PRD-mcphost-implicit-signup requirement 1 (AC1): a bare
             // `host.*`/`billing.*` call with no `Authorization` header, no
             // `tenant_key` argument, and (since no binding exists yet) no
@@ -10765,6 +10770,7 @@ impl McpHostHandler {
             // tenant's trace.
             (Auth::Admin, "host.call_trace") => self.call_trace(None, args).await,
             (Auth::Admin, "host.doctor") => self.doctor(None, args).await,
+            (Auth::Admin, "host.incidents.list") => crate::heal::incidents_list(&self.state, &args).await,
             (Auth::Admin, _) => Err(AppError::Forbidden),
             (Auth::Tenant(_, _), name) if name.starts_with("admin.") => {
                 let _ = name;

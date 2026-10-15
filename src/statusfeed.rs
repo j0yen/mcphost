@@ -399,7 +399,20 @@ fn overall_state(component_states: &[&str], open_incidents: &[Incident]) -> &'st
 /// `incident_close` reuse this for the same wire shape `/status.json`'s
 /// `incidents_open`/`incidents_recent_30d` already use.
 pub(crate) fn incident_json(incident: &Incident) -> Value {
+    // Public wire: evidence goes through the same allowlist as `/incidents.json`.
+    let evidence = |raw: &Option<String>| -> Value {
+        raw.as_deref()
+            .and_then(|t| serde_json::from_str::<Value>(t).ok())
+            .map_or(Value::Null, |v| crate::heal::anonymise(&v))
+    };
     json!({
+        "action": incident.action,
+        "outcome": incident.outcome,
+        "dry_run": incident.dry_run,
+        "duration_ms": incident.duration_ms,
+        "trigger": evidence(&incident.trigger_json),
+        "before": evidence(&incident.before_json),
+        "after": evidence(&incident.after_json),
         "id": incident.id,
         "title": incident.title,
         "impact": incident.impact,

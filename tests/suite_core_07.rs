@@ -1103,6 +1103,12 @@ mod heal_ac01_action_set_single_source;
 mod heal_ac03_rate_limit_per_hour;
 #[path = "heal_ac04_no_destructive_action.rs"]
 mod heal_ac04_no_destructive_action;
+#[path = "healb_ac01_incidents_json_anonymised.rs"]
+mod healb_ac01_incidents_json_anonymised;
+#[path = "healb_ac02_pre_ledger_rows_render_action_null.rs"]
+mod healb_ac02_pre_ledger_rows_render_action_null;
+#[path = "healb_ac03_incidents_list_admin_only.rs"]
+mod healb_ac03_incidents_list_admin_only;
 #[path = "hidx_ac02_three_sources_build_with_offsets.rs"]
 mod hidx_ac02_three_sources_build_with_offsets;
 #[path = "hidx_ac03_source_kinds_one_set.rs"]
@@ -1831,15 +1837,3 @@ mod oauthconf_ac05_probe_cli_json_matches_gate_and_exit_codes;
 mod oauthconf_ac06_records_and_receipt_never_leak_secrets;
 #[path = "oauthconf_ac07_scenarios_doc_matches_gold_and_docs_sharing_check.rs"]
 mod oauthconf_ac07_scenarios_doc_matches_gold_and_docs_sharing_check;
-#[path = "oauthentry_ac01_every_method_401_with_entry_challenge.rs"]
-mod oauthentry_ac01_every_method_401_with_entry_challenge;
-#[path = "oauthentry_ac02_entry_document_names_entry_resource.rs"]
-mod oauthentry_ac02_entry_document_names_entry_resource;
-#[path = "oauthentry_ac03_new_workspace_on_entry_resource.rs"]
-mod oauthentry_ac03_new_workspace_on_entry_resource;
-#[path = "oauthentry_ac04_entry_audience_is_enforced_both_ways.rs"]
-mod oauthentry_ac04_entry_audience_is_enforced_both_ways;
-#[path = "oauthentry_ac05_claude_chatgpt_profiles_reach_tools_list.rs"]
-mod oauthentry_ac05_claude_chatgpt_profiles_reach_tools_list;
-#[path = "oauthentry_ac06_path_contract_docs_router_quickstart.rs"]
-mod oauthentry_ac06_path_contract_docs_router_quickstart;
