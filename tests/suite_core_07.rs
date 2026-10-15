@@ -541,6 +541,10 @@ mod clink_ac04_readme_install_links_drift;
 mod clink_ac05_connect_go_records_click_and_redirects;
 #[path = "clink_ac06_digest_install_link_clicks_humans_only.rs"]
 mod clink_ac06_digest_install_link_clicks_humans_only;
+#[path = "clive_ac01_complete_fixture_keyless_envelope.rs"]
+mod clive_ac01_complete_fixture_keyless_envelope;
+#[path = "clive_ac03_empty_params_gets_bare_minus_32601.rs"]
+mod clive_ac03_empty_params_gets_bare_minus_32601;
 #[path = "cnfm_ac02_confirm_required_over_threshold.rs"]
 mod cnfm_ac02_confirm_required_over_threshold;
 #[path = "cnfm_ac03_token_deletes_once.rs"]

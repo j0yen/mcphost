@@ -15,10 +15,10 @@ fn params_for(method: &str) -> Value {
         "tools/call" => json!({"name": "signup", "arguments": {"name": "creg ac03"}}),
         "resources/read" | "resources/subscribe" | "resources/unsubscribe" => json!({"uri": "mcphost://x"}),
         "prompts/get" => json!({"name": "x"}),
-        "completion/complete" => json!({
-            "ref": {"type": "ref/prompt", "name": "x"},
-            "argument": {"name": "a", "value": "v"}
-        }),
+        "completion/complete" => {
+            let body: Value = serde_json::from_str(include_str!("fixtures/clive_complete_keyless.json")).expect("fixture is JSON");
+            body["params"].clone()
+        }
         "logging/setLevel" => json!({"level": "info"}),
         "sampling/createMessage" => json!({"messages": [], "maxTokens": 1}),
         "elicitation/create" => json!({
