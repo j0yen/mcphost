@@ -1,0 +1,20 @@
+# refreshed 2026-10-15
+# docs-link-known-good.txt -- hosts whose links resolved at the last refresh
+# (scripts/docs-link-check.sh; one host per line). A URL on a listed host is
+# not requested: it prints `OK cached`. Rewritten only by
+# `scripts/docs-link-check.sh --refresh-known-good`, which re-checks every
+# URL on each listed host and drops a host that stops resolving.
+ampcode.com
+code.claude.com
+code.visualstudio.com
+developers.openai.com
+docs.cline.bot
+docs.cursor.com
+docs.warp.dev
+docs.windsurf.com
+geminicli.com
+goose-docs.ai
+opencode.ai
+platform.openai.com
+registry.modelcontextprotocol.io
+support.claude.com

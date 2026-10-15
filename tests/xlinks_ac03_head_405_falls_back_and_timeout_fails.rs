@@ -1,7 +1,8 @@
 //! AC3 (PRD-mcphost-docs-external-links-resolve) -- Given a host that
 //! answers HEAD with 405 and GET with 200, When checked, Then it passes;
-//! Given a host that never answers within the timeout, Then it fails with
-//! status `timeout` after one retry.
+//! Given a host that never answers within the timeout, Then it warns with
+//! status `timeout` after one retry and the run still exits 0 (an external
+//! host's latency must not fail a required check).
 //!
 //! The script's timeout defaults to 10 s (asserted below against the
 //! script text); the runner sets `DOCS_LINK_TIMEOUT=1` so the hang case
@@ -24,7 +25,7 @@ fn head_405_then_get_200_passes() {
 }
 
 #[test]
-fn a_host_that_never_answers_fails_with_timeout() {
+fn a_host_that_never_answers_warns_with_timeout() {
     let port = xlinks::serve();
     let dir = xlinks::scratch("ac03b");
     let file = dir.join("doc.md");
@@ -36,8 +37,9 @@ fn a_host_that_never_answers_fails_with_timeout() {
     // happened), and the whole run stays well bounded.
     let out = crate::deadline_budget!(10_000, at_least = 1900, { xlinks::run_checker(&[&file]) });
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert_eq!(out.status.code(), Some(1), "stdout: {stdout}");
-    assert!(stdout.contains(&format!("FAIL timeout {url} {}:1", file.display())), "{stdout}");
+    assert_eq!(out.status.code(), Some(0), "stdout: {stdout}");
+    assert!(stdout.contains(&format!("WARN timeout {url} {}:1", file.display())), "{stdout}");
+    assert!(!stdout.contains("FAIL"), "{stdout}");
 }
 
 #[test]
