@@ -372,6 +372,13 @@ order_enum! {
     }
 }
 
+order_enum! {
+    CallsOrder {
+        default: NewestFirst;
+        NewestFirst => ("newest_first", "c.id", "c.id", Desc, UniqueInt),
+    }
+}
+
 /// Resolve a call's `order`: absent/null -> the enum's default; an unknown
 /// name -> `args_invalid` listing the declared ones.
 pub fn resolve_order<O: OrderEnum>(args: &Value) -> Result<O, AppError> {
@@ -523,6 +530,10 @@ paged_verbs! {
         row: crate::db::RunPageRow, order: RunsOrder,
         fields: ["run_id", "tool", "trigger", "trigger_ref", "status", "progress", "counters", "result", "result_ref", "purged", "error_class", "error", "started_unix", "finished_unix", "duration_ms", "deadline_s", "attempt", "manual", "test", "end_user", "parent_run_id", "step_no", "parent_tool", "children"],
         cursor_of: |r: &crate::db::RunPageRow, _o: RunsOrder| Cursor::new(r.rowid, r.run.id.clone()) }
+    CallsList { verb: "host.calls.list", key: "calls", default: 100, max: 500,
+        row: crate::calllog::CallRow, order: CallsOrder,
+        fields: ["ts", "credential", "key_label", "tool", "outcome", "error_class", "duration_ms", "bytes_in", "bytes_out", "end_user_subject", "run_id"],
+        cursor_of: |r: &crate::calllog::CallRow, _o: CallsOrder| Cursor::new(r.id, r.id.to_string()) }
     DocsList { verb: "host.docs.list", key: "documents", default: 100, max: 1000,
         row: crate::db::DocumentRow, order: DocsOrder,
         fields: ["id", "name", "version", "mime", "bytes", "text_bytes", "metadata", "seq", "created_at", "updated_at", "deleted"],

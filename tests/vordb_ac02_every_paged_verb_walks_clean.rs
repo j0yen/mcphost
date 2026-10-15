@@ -10,7 +10,7 @@
 
 use crate::common;
 use common::{McpClient, TestServer, signup, vord_dups_and_skips, vord_seed_runs, vord_walk};
-use mcphost::paged::{ChannelOrder, DocsOrder, InboxOrder, OrderEnum, PAGED_VERBS, RunsOrder, ThreadOrder};
+use mcphost::paged::{CallsOrder, ChannelOrder, DocsOrder, InboxOrder, OrderEnum, PAGED_VERBS, RunsOrder, ThreadOrder};
 use serde_json::json;
 use std::time::Duration;
 
@@ -20,7 +20,7 @@ fn the_all_verb_walk_names_every_paged_verb_and_every_declared_order() {
     for verb in PAGED_VERBS {
         assert!(walk.contains(&format!("\"{verb}\"")), "{verb} is Paged but the concurrent walk never mentions it");
     }
-    for names in [DocsOrder::names(), InboxOrder::names(), ThreadOrder::names(), ChannelOrder::names(), RunsOrder::names()] {
+    for names in [DocsOrder::names(), InboxOrder::names(), ThreadOrder::names(), ChannelOrder::names(), RunsOrder::names(), CallsOrder::names()] {
         assert!(!names.is_empty(), "every Paged verb declares at least one order");
     }
     for needle in ["const TRIALS: usize = 20;", "DocsOrder::names()", "RunsOrder::names()"] {

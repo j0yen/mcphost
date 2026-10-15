@@ -1455,6 +1455,7 @@ async fn main() -> anyhow::Result<()> {
 
             let db = Db::open(&data_dir())?;
             db.migrate().await?;
+            db.set_plan_calls_retention(&plans);
             let authz_key = mcphost::authz::AuthzSigningKey::load_or_generate(&data_dir())?;
             // PRD-mcphost-data-retention requirement 1: (re-)sync
             // `retention_policy` from env on every start, so a changed

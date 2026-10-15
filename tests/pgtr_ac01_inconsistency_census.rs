@@ -80,8 +80,9 @@ async fn census_counts_list_verbs_cursors_and_end_of_list_conventions() {
     .expect("write census");
 
     // 10 at the PRD baseline; PRD-mcphost-declared-ordering-per-verb made
-    // `host.runs.list` the 11th (it pages over the filtered set now).
-    assert_eq!(cursored.len(), 11, "cursored verbs drifted from the expected set: {cursored:?}");
+    // `host.runs.list` the 11th (it pages over the filtered set now);
+    // PRD-mcphost-call-audit-export's `host.calls.list` is the 12th.
+    assert_eq!(cursored.len(), 12, "cursored verbs drifted from the expected set: {cursored:?}");
     assert!(
         cursored.len() < list_shaped.len(),
         "cursored share is already 100% ({} of {}): the PRD has nothing left to do",
@@ -91,11 +92,12 @@ async fn census_counts_list_verbs_cursors_and_end_of_list_conventions() {
     // PRD baseline 32, plus host.ask.list (PRD-mcphost-ask-user-decision, a
     // windowed `{asks: [...]}` audit list registered unpaged in
     // `paged::UNPAGED_VERBS`), plus host.key.list
-    // (PRD-mcphost-key-scoped-to-tools, bounded by the plan's `sub_keys_max`).
+    // (PRD-mcphost-key-scoped-to-tools, bounded by the plan's `sub_keys_max`),
+    // plus host.calls.list (PRD-mcphost-call-audit-export, a cursored verb).
     assert_eq!(
         list_shaped.len(),
-        34,
-        "list-shaped verbs drifted from the PRD baseline 32 + host.ask.list + host.key.list: {list_shaped:?}"
+        35,
+        "list-shaped verbs drifted from the PRD baseline 32 + host.ask.list + host.key.list + host.calls.list: {list_shaped:?}"
     );
     assert_eq!(
         conventions,

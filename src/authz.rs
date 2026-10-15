@@ -120,6 +120,14 @@ impl AuthzSigningKey {
             .map_err(|e| AppError::Internal(format!("authz signing key: bad decoding key: {e}")))
     }
 
+    /// PRD-mcphost-call-audit-export R3: an `ES256` signature over raw
+    /// `message` bytes, as base64url of the fixed-width `r || s` form (the
+    /// JWS encoding), verifiable against this key's published JWK.
+    pub fn sign_bytes(&self, message: &[u8]) -> Result<String, AppError> {
+        jsonwebtoken::crypto::sign(message, &self.encoding_key, Algorithm::ES256)
+            .map_err(|e| AppError::Internal(format!("authz: failed to sign bytes: {e}")))
+    }
+
     /// Signs an access-token JWT's claims with this key, `ES256`, `kid` set.
     pub fn sign(&self, claims: &Value) -> Result<String, AppError> {
         let mut header = Header::new(Algorithm::ES256);

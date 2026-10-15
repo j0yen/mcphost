@@ -255,6 +255,25 @@ fn delete_batches(
     Ok(total)
 }
 
+/// PRD-mcphost-call-audit-export R4: deletes `calls` rows older than `days`
+/// for every tenant on `plan`, in [`PRUNE_BATCH_SIZE`] batches.
+fn delete_plan_calls(conn: &Connection, plan: &str, days: i64, now_unix: i64) -> rusqlite::Result<i64> {
+    let cutoff = now_unix - days.saturating_mul(86_400);
+    let sql = format!(
+        "DELETE FROM calls WHERE rowid IN (SELECT rowid FROM calls WHERE started_unix < ?1 \
+         AND tenant_id IN (SELECT id FROM tenants WHERE plan = ?2) LIMIT {PRUNE_BATCH_SIZE})"
+    );
+    let mut total = 0i64;
+    loop {
+        let affected = conn.execute(&sql, params![cutoff, plan])? as i64;
+        total += affected;
+        if affected < PRUNE_BATCH_SIZE {
+            break;
+        }
+    }
+    Ok(total)
+}
+
 /// What one [`purge_expired_blobs`] pass removed.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct BlobPurge {
@@ -473,15 +492,17 @@ pub struct PruneOutcome {
 /// connection lets two independent write transactions actually contend at
 /// the database level -- the scenario `busy_timeout` (rather than an
 /// in-process lock) exists to cover, and the one AC4 exercises.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn prune_sync(
     db_path: &Path,
     db_cfg: &crate::db::DbConfig,
     counters: &std::sync::Arc<crate::db::DbCounters>,
     windows: &[(String, i64)],
+    plan_calls_days: &[(String, i64)],
     now_unix: i64,
 ) -> PruneOutcome {
     crate::db::instrument_block(counters, crate::db::ROLE_PRUNE, || {
-        prune_sync_inner(db_path, db_cfg, windows, now_unix)
+        prune_sync_inner(db_path, db_cfg, windows, plan_calls_days, now_unix)
     })
 }
 
@@ -489,6 +510,7 @@ fn prune_sync_inner(
     db_path: &Path,
     db_cfg: &crate::db::DbConfig,
     windows: &[(String, i64)],
+    plan_calls_days: &[(String, i64)],
     now_unix: i64,
 ) -> PruneOutcome {
     let mut deleted = std::collections::BTreeMap::new();
@@ -528,6 +550,17 @@ fn prune_sync_inner(
                     deleted,
                     error: Some(format!("{}: {e}", table.physical_table)),
                 };
+            }
+        }
+    }
+    // PRD-mcphost-call-audit-export R4: the plan's own `calls` window, on top
+    // of the host-wide one above (the shorter of the two wins).
+    for (plan, days) in plan_calls_days {
+        match delete_plan_calls(&conn, plan, *days, now_unix) {
+            Ok(n) => *deleted.entry("calls".to_string()).or_insert(0) += n,
+            Err(e) => {
+                crate::db::note_rusqlite_error(&e);
+                return PruneOutcome { deleted, error: Some(format!("calls ({plan}): {e}")) };
             }
         }
     }

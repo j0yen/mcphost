@@ -292,7 +292,7 @@ pub async fn mint(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
 /// allowlist. Everything else under `host.*`/`billing.*`/`admin.*` -- the
 /// always-refused set (`host.key.*`, `host.secret.*`, `host.lockdown`,
 /// `host.self.offboard`, `host.export` included) -- is `permission_denied`.
-pub const ALWAYS_LISTED: &[&str] = &["host.whoami", "host.quickstart", "host.tool.reach"];
+pub const ALWAYS_LISTED: &[&str] = &["host.whoami", "host.quickstart", "host.tool.reach", "host.calls.list"];
 
 impl SubKey {
     /// Whether this sub-key may see/call the tool whose wire name is `name`

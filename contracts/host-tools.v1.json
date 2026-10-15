@@ -2912,6 +2912,227 @@
       "since": "0.107.38"
     },
     {
+      "description": "Export the calls made with this tenant's keys in a window as CSV (the host.calls.list columns, newest first), with its sha256 and an ES256 signature over the CSV bytes: verify with the JWK named by kid at /.well-known/jwks.json. Primary key only.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "since": {
+            "description": "Window start: \"-24h\", \"-30d\", a YYYY-MM-DD day or an RFC 3339 instant (default -24h).",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "until": {
+            "description": "Window end, same forms (default now).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.calls.export",
+      "output_schema": {
+        "properties": {
+          "alg": {
+            "type": "string"
+          },
+          "csv": {
+            "type": "string"
+          },
+          "kid": {
+            "type": "string"
+          },
+          "rows": {
+            "type": "integer"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          },
+          "signature_der": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "alg",
+          "csv",
+          "kid",
+          "rows",
+          "sha256",
+          "signature",
+          "signature_der"
+        ],
+        "type": "object"
+      },
+      "since": "0.108.6"
+    },
+    {
+      "description": "List the calls made with this tenant's keys, newest first: when, which credential (primary, sub_key, oauth, trigger, cron, webhook, shared_caller), tool, outcome, duration and byte sizes. Filter by key_label, tool, outcome or credential. A sub-key sees only its own rows.",
+      "fields_enum": [
+        "ts",
+        "credential",
+        "key_label",
+        "tool",
+        "outcome",
+        "error_class",
+        "duration_ms",
+        "bytes_in",
+        "bytes_out",
+        "end_user_subject",
+        "run_id"
+      ],
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "credential": {
+            "description": "Only calls made with this credential kind.",
+            "type": "string"
+          },
+          "cursor": {
+            "description": "Opaque keyset cursor: pass the previous page's next_cursor verbatim; omit for the first page.",
+            "type": "string"
+          },
+          "fields": {
+            "description": "Return only these row fields; default all.",
+            "items": {
+              "enum": [
+                "ts",
+                "credential",
+                "key_label",
+                "tool",
+                "outcome",
+                "error_class",
+                "duration_ms",
+                "bytes_in",
+                "bytes_out",
+                "end_user_subject",
+                "run_id"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "key_label": {
+            "description": "Only calls made with the sub-key labelled so.",
+            "type": "string"
+          },
+          "limit": {
+            "default": 100,
+            "description": "Page size, 1..=max for this verb (a larger value is clamped and reported in _meta.mcphost.limit_clamped).",
+            "maximum": 500,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "order": {
+            "default": "newest_first",
+            "description": "Row order; default newest_first.",
+            "enum": [
+              "newest_first"
+            ],
+            "type": "string"
+          },
+          "outcome": {
+            "description": "Only calls with this outcome (ok, error, refused, ...).",
+            "type": "string"
+          },
+          "since": {
+            "description": "Window start: \"-24h\", \"-30d\", a YYYY-MM-DD day or an RFC 3339 instant (default -24h).",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "tool": {
+            "description": "Only calls to this tool.",
+            "type": "string"
+          },
+          "until": {
+            "description": "Window end, same forms (default now).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.calls.list",
+      "output_schema": {
+        "properties": {
+          "calls": {
+            "items": {
+              "properties": {
+                "bytes_in": {
+                  "type": "integer"
+                },
+                "bytes_out": {
+                  "type": "integer"
+                },
+                "credential": {
+                  "type": "string"
+                },
+                "duration_ms": {
+                  "type": "integer"
+                },
+                "end_user_subject": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "error_class": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "key_label": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "outcome": {
+                  "type": "string"
+                },
+                "run_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "tool": {
+                  "type": "string"
+                },
+                "ts": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "calls"
+        ],
+        "type": "object"
+      },
+      "paged": true,
+      "since": "0.108.6"
+    },
+    {
       "description": "Return one public tool's descriptor and args_schema by its full name (<namespace>.<name>).",
       "input_schema": {
         "additionalProperties": false,
@@ -22043,6 +22264,113 @@
       },
       "name": "host_call_trace",
       "since": "0.107.38"
+    },
+    {
+      "alias_of": "host.calls.export",
+      "description": "Export the calls made with this tenant's keys in a window as CSV (the host.calls.list columns, newest first), with its sha256 and an ES256 signature over the CSV bytes: verify with the JWK named by kid at /.well-known/jwks.json. Primary key only.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "since": {
+            "description": "Window start: \"-24h\", \"-30d\", a YYYY-MM-DD day or an RFC 3339 instant (default -24h).",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "until": {
+            "description": "Window end, same forms (default now).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host_calls_export",
+      "since": "0.108.6"
+    },
+    {
+      "alias_of": "host.calls.list",
+      "description": "List the calls made with this tenant's keys, newest first: when, which credential (primary, sub_key, oauth, trigger, cron, webhook, shared_caller), tool, outcome, duration and byte sizes. Filter by key_label, tool, outcome or credential. A sub-key sees only its own rows.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "credential": {
+            "description": "Only calls made with this credential kind.",
+            "type": "string"
+          },
+          "cursor": {
+            "description": "Opaque keyset cursor: pass the previous page's next_cursor verbatim; omit for the first page.",
+            "type": "string"
+          },
+          "fields": {
+            "description": "Return only these row fields; default all.",
+            "items": {
+              "enum": [
+                "ts",
+                "credential",
+                "key_label",
+                "tool",
+                "outcome",
+                "error_class",
+                "duration_ms",
+                "bytes_in",
+                "bytes_out",
+                "end_user_subject",
+                "run_id"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "key_label": {
+            "description": "Only calls made with the sub-key labelled so.",
+            "type": "string"
+          },
+          "limit": {
+            "default": 100,
+            "description": "Page size, 1..=max for this verb (a larger value is clamped and reported in _meta.mcphost.limit_clamped).",
+            "maximum": 500,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "order": {
+            "default": "newest_first",
+            "description": "Row order; default newest_first.",
+            "enum": [
+              "newest_first"
+            ],
+            "type": "string"
+          },
+          "outcome": {
+            "description": "Only calls with this outcome (ok, error, refused, ...).",
+            "type": "string"
+          },
+          "since": {
+            "description": "Window start: \"-24h\", \"-30d\", a YYYY-MM-DD day or an RFC 3339 instant (default -24h).",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "tool": {
+            "description": "Only calls to this tool.",
+            "type": "string"
+          },
+          "until": {
+            "description": "Window end, same forms (default now).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host_calls_list",
+      "since": "0.108.6"
     },
     {
       "alias_of": "host.catalog.get",

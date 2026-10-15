@@ -32,6 +32,15 @@ async fn ninety_one_day_row_pruned_eighty_nine_day_row_kept() {
         .set_retention_days_for_test("calls".to_string(), 90)
         .await
         .expect("set calls retention window");
+    // PRD-mcphost-call-audit-export R4: a Free tenant now keeps 7 days of
+    // `calls`; this test is about the host-wide 90-day window, so its tenant
+    // is on Pro (90 days) and only that window applies.
+    server
+        .state
+        .db
+        .upgrade_tenant_plan(tenant.id, "pro".to_string(), "2026-10-01T00:00:00Z".to_string(), None)
+        .await
+        .expect("move tenant to pro");
 
     let now = mcphost::state::now_unix();
     let ninety_one_days_ago = now - 91 * 86_400;
