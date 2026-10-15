@@ -1103,6 +1103,12 @@ mod heal_ac01_action_set_single_source;
 mod heal_ac03_rate_limit_per_hour;
 #[path = "heal_ac04_no_destructive_action.rs"]
 mod heal_ac04_no_destructive_action;
+#[path = "healb_ac01_incidents_json_anonymised.rs"]
+mod healb_ac01_incidents_json_anonymised;
+#[path = "healb_ac02_pre_ledger_rows_render_action_null.rs"]
+mod healb_ac02_pre_ledger_rows_render_action_null;
+#[path = "healb_ac03_incidents_list_admin_only.rs"]
+mod healb_ac03_incidents_list_admin_only;
 #[path = "hidx_ac02_three_sources_build_with_offsets.rs"]
 mod hidx_ac02_three_sources_build_with_offsets;
 #[path = "hidx_ac03_source_kinds_one_set.rs"]
