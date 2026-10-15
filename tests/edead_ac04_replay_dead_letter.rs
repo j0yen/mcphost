@@ -49,31 +49,44 @@ async fn replaying_a_rate_limited_letter_runs_its_body_every_time() {
 
     // The replay does not pass through the rate limiter, so it works inside
     // the same window the 31st delivery was refused in.
-    let first = extract_structured(
-        &client
-            .tools_call("host.trigger.replay", json!({"dead_letter_id": letter_id}))
-            .await
-            .expect("replay"),
-    );
-    let first_run = first["run_id"].as_str().expect("run_id").to_string();
-
-    // The executor leases one run per tenant per tick, so the replay waits
-    // behind the 30 deliveries accepted before it.
+    // The replay is admitted like any run: while the earlier deliveries still
+    // hold the tenant's concurrency slots it is `rejected`, so a rejected
+    // replay is replayed again once a slot frees (each attempt is its own run).
     let deadline = Instant::now() + Duration::from_secs(120);
+    let mut first_run;
     loop {
-        let got = extract_structured(
+        let first = extract_structured(
             &client
-                .tools_call("host.runs.get", json!({"run_id": first_run}))
+                .tools_call("host.trigger.replay", json!({"dead_letter_id": letter_id}))
                 .await
-                .expect("runs.get"),
+                .expect("replay"),
         );
-        if got["status"] == json!("done") {
-            assert_eq!(got["result"]["event"]["body"], thirty_first, "{got:?}");
-            assert_eq!(got["trigger"], json!("event"));
-            break;
+        first_run = first["run_id"].as_str().expect("run_id").to_string();
+
+        // The executor leases one run per tenant per tick, so the replay waits
+        // behind the 30 deliveries accepted before it.
+        let got = loop {
+            let got = extract_structured(
+                &client
+                    .tools_call("host.runs.get", json!({"run_id": first_run}))
+                    .await
+                    .expect("runs.get"),
+            );
+            if got["status"] != json!("queued") && got["status"] != json!("running") {
+                break got;
+            }
+            assert!(Instant::now() < deadline, "replayed run never finished: {got:?}");
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        };
+        if got["status"] == json!("rejected") {
+            assert!(Instant::now() < deadline, "replayed run never admitted: {got:?}");
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            continue;
         }
-        assert!(Instant::now() < deadline, "replayed run never finished: {got:?}");
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert_eq!(got["status"], json!("done"), "{got:?}");
+        assert_eq!(got["result"]["event"]["body"], thirty_first, "{got:?}");
+        assert_eq!(got["trigger"], json!("event"));
+        break;
     }
 
     let listed = extract_structured(

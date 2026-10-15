@@ -1552,6 +1552,12 @@
       "AC3": "tests/hsr_ac03_kind_filter_and_unknown_kind.rs",
       "AC4": "tests/hsr_ac04_response_under_2kb_truncation_marked.rs"
     },
+    "hsrb": {
+      "_prd": "PRD-mcphost-help-search-tool-b.md (test_prefix: hsrb)",
+      "AC1": "tests/hsrb_ac01_empty_and_symbol_queries_return_hint.rs",
+      "AC2": "tests/hsrb_ac02_listed_in_both_tools_lists_llms_txt_and_manifest.rs",
+      "AC3": "tests/hsrb_ac03_cli_help_search_json_equals_tool_json.rs"
+    },
     "qsbc": {
       "_prd": "PRD-mcphost-quickstart-by-client.md (test_prefix: qsbc)",
       "AC1": "tests/qsbc_ac01_detection_keys_on_known_names.rs",
