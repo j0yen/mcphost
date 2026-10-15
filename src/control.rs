@@ -1502,6 +1502,25 @@ pub fn changelog(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Valu
                 data: args_err.data(),
             });
         }
+    } else if crate::api_contract::Version::parse(since).is_none() {
+        let args_err = crate::kinds::ArgsError {
+            phase: "args_coercion",
+            instance_path: "/since".to_string(),
+            argument: Some("since".to_string()),
+            field: Some("since".to_string()),
+            expected_type: None,
+            actual_type: None,
+            got: format!("{since:?}"),
+            docs: "host.changelog",
+            raw: format!(
+                "field 'since': '{since}' is not a semver; expected <major>.<minor>.<patch> like \"0.57.0\", or \"last_seen\""
+            ),
+        };
+        return Err(AppError::Structured {
+            code: "args_invalid",
+            message: args_err.message(),
+            data: args_err.data(),
+        });
     } else {
         since
     };
