@@ -573,9 +573,170 @@ pub fn index(kinds: &KindRegistry) -> &'static HelpIndex {
     INDEX.get_or_init(|| HelpIndex::build(kinds))
 }
 
-/// PRD-mcphost-help-search-tool R7: called once per request with the
-/// normalized query and the top hit's anchor. The telemetry PRD fills this.
-pub fn observe(_normalized_query: &str, _top_anchor: Option<&str>) {}
+/// What one `host.help.search` call leaves for the telemetry table
+/// (PRD-mcphost-docs-telemetry-failed-after-search R2): the normalized
+/// query and the top hit's anchor, never the raw text.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Observation {
+    pub query_norm: String,
+    pub top_anchor: Option<String>,
+}
+
+const QUERY_NORM_MAX_CHARS: usize = 80;
+
+/// PRD-mcphost-docs-telemetry-failed-after-search R2: lowercase, quotes
+/// stripped, URLs -> `<url>`, `t_<hex>` namespaces -> `<tenant>`, long
+/// key-shaped tokens -> `<key>`, digit runs -> `<n>`, whitespace collapsed,
+/// cut at 80 chars.
+pub fn normalize_query(q: &str) -> String {
+    let lowered = q.to_lowercase();
+    let mut out: Vec<String> = Vec::new();
+    for raw in lowered.split_whitespace() {
+        let tok: String = raw.chars().filter(|c| !matches!(c, '"' | '\'' | '`')).collect();
+        if tok.is_empty() {
+            continue;
+        }
+        let bare = tok.trim_matches(|c: char| !c.is_alphanumeric() && c != '_');
+        let key_shaped = bare.len() >= 20
+            && bare.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+            && bare.chars().any(|c| c.is_ascii_digit())
+            && bare.chars().any(|c| c.is_ascii_alphabetic());
+        let tenant_ns = bare.strip_prefix("t_").is_some_and(|h| !h.is_empty() && h.chars().all(|c| c.is_ascii_hexdigit()));
+        let rendered = if tok.starts_with("http://") || tok.starts_with("https://") {
+            "<url>".to_string()
+        } else if tenant_ns {
+            "<tenant>".to_string()
+        } else if key_shaped {
+            "<key>".to_string()
+        } else {
+            let mut r = String::new();
+            let mut in_digits = false;
+            for c in tok.chars() {
+                if c.is_ascii_digit() {
+                    if !in_digits {
+                        r.push_str("<n>");
+                    }
+                    in_digits = true;
+                } else {
+                    in_digits = false;
+                    r.push(c);
+                }
+            }
+            r
+        };
+        out.push(rendered);
+    }
+    let joined = out.join(" ");
+    joined.chars().take(QUERY_NORM_MAX_CHARS).collect::<String>().trim_end().to_string()
+}
+
+/// R3: the error-path hook. Detaches the join `UPDATE`, so the failing call
+/// pays only a task spawn (AC4's p99 <= 1 ms), never the write.
+pub fn note_failure(state: &std::sync::Arc<crate::state::AppState>, tenant_id: i64, code: &str, tool: &str) {
+    let state = std::sync::Arc::clone(state);
+    let (code, tool) = (code.to_string(), tool.to_string());
+    tokio::spawn(async move {
+        let _ = state.db.join_help_search_failure(tenant_id, code, tool, crate::state::now_unix()).await;
+    });
+}
+
+const GAPS_TOP: usize = 10;
+const GAPS_WINDOW_DAYS: i64 = 7;
+/// The `/status.json` block is recomputed at most this often per database.
+const GAPS_CACHE_S: i64 = 60;
+
+/// R4/R6: the docs-gap aggregate over the last `days` days: counts and
+/// normalized queries only. `top` is the <= 10 queries most often followed
+/// by a failure, with the error code and anchor most often seen for each.
+pub async fn gaps(db: &crate::db::Db, days: i64, now: i64) -> Result<Value, AppError> {
+    use std::collections::BTreeMap;
+    let (searches, followed, rows) = db.help_search_gap_rows(now - days * 86_400).await?;
+    #[derive(Default)]
+    struct Group {
+        failures: i64,
+        codes: BTreeMap<String, i64>,
+        anchors: BTreeMap<Option<String>, i64>,
+    }
+    let mut groups: BTreeMap<String, Group> = BTreeMap::new();
+    let mut by_code: BTreeMap<String, i64> = BTreeMap::new();
+    for (query, code, anchor, n) in rows {
+        // Re-normalized on the way out: a row written by an older build can
+        // never put a digit, URL or namespace on the anonymous feed.
+        let g = groups.entry(normalize_query(&query)).or_default();
+        g.failures += n;
+        *g.codes.entry(code.clone()).or_default() += n;
+        *g.anchors.entry(anchor).or_default() += n;
+        *by_code.entry(code).or_default() += n;
+    }
+    // Most frequent wins; ties go to the smallest key (BTreeMap order).
+    fn mode<K: Clone>(m: &BTreeMap<K, i64>) -> Option<K> {
+        m.iter().fold(None::<(&K, i64)>, |best, (k, n)| match best {
+            Some((_, bn)) if bn >= *n => best,
+            _ => Some((k, *n)),
+        })
+        .map(|(k, _)| k.clone())
+    }
+    let mut top: Vec<(String, Group)> = groups.into_iter().collect();
+    top.sort_by(|a, b| b.1.failures.cmp(&a.1.failures).then_with(|| a.0.cmp(&b.0)));
+    top.truncate(GAPS_TOP);
+    let top: Vec<Value> = top
+        .iter()
+        .map(|(query, g)| {
+            json!({
+                "query": query,
+                "failures": g.failures,
+                "top_code": mode(&g.codes),
+                "top_anchor": mode(&g.anchors).flatten(),
+            })
+        })
+        .collect();
+    let pct = if searches == 0 { 0.0 } else { (followed as f64 * 1000.0 / searches as f64).round() / 10.0 };
+    Ok(json!({
+        "window_days": days,
+        "searches": searches,
+        "searches_total": searches,
+        "followed_by_failure": followed,
+        "followed_by_failure_pct": pct,
+        "top": top,
+        "by_code": by_code,
+    }))
+}
+
+/// `host.help.gaps {days?: 1..30 = 7}` (operator key only, gated by the
+/// caller): [`gaps`] with `by_code`.
+pub async fn gaps_call(db: &crate::db::Db, args: &Value, now: i64) -> Result<Value, AppError> {
+    let days = match args.get("days") {
+        None | Some(Value::Null) => GAPS_WINDOW_DAYS,
+        Some(v) => match v.as_i64() {
+            Some(n) if (1..=30).contains(&n) => n,
+            _ => return Err(args_invalid("days must be an integer from 1 to 30".to_string())),
+        },
+    };
+    gaps(db, days, now).await
+}
+
+type GapsCache = std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, (i64, Value)>>;
+static GAPS_CACHE: OnceLock<GapsCache> = OnceLock::new();
+
+/// `/status.json`'s `docs_gaps`: [`gaps`] over 7 days without `by_code`,
+/// served from a 60-s cache keyed by database.
+pub async fn status_block(db: &crate::db::Db, now: i64) -> Result<Value, AppError> {
+    let cache = GAPS_CACHE.get_or_init(Default::default);
+    let key = db.path().to_path_buf();
+    if let Some((at, block)) = cache.lock().unwrap_or_else(|e| e.into_inner()).get(&key)
+        && now - at < GAPS_CACHE_S
+    {
+        return Ok(block.clone());
+    }
+    let mut block = gaps(db, GAPS_WINDOW_DAYS, now).await?;
+    if let Some(o) = block.as_object_mut() {
+        o.remove("by_code");
+        o.remove("searches_total");
+        o.remove("followed_by_failure_pct");
+    }
+    cache.lock().unwrap_or_else(|e| e.into_inner()).insert(key, (now, block.clone()));
+    Ok(block)
+}
 
 fn args_invalid(message: String) -> AppError {
     AppError::InvalidArgs(message)
@@ -583,6 +744,12 @@ fn args_invalid(message: String) -> AppError {
 
 /// `host.help.search`: `args` is the call's argument object.
 pub fn call(kinds: &KindRegistry, args: &Value) -> Result<Value, AppError> {
+    call_observed(kinds, args).map(|(body, _)| body)
+}
+
+/// [`call`] plus the [`Observation`] the telemetry table records (`None`
+/// when the query had no searchable terms).
+pub fn call_observed(kinds: &KindRegistry, args: &Value) -> Result<(Value, Option<Observation>), AppError> {
     let k = match args.get("k") {
         None | Some(Value::Null) => DEFAULT_K,
         Some(v) => match v.as_u64() {
@@ -606,12 +773,15 @@ pub fn call(kinds: &KindRegistry, args: &Value) -> Result<Value, AppError> {
     let idx = index(kinds);
     let terms = query_terms(q);
     if terms.is_empty() {
-        return Ok(json!({"hits": [], "total": 0, "hint": HINT, "index_version": idx.version()}));
+        return Ok((json!({"hits": [], "total": 0, "hint": HINT, "index_version": idx.version()}), None));
     }
     let (mut hits, total) = idx.search(q, k, kind);
     fit(&mut hits, total, idx.version(), &content_terms(q));
-    observe(&terms.join(" "), hits.first().map(|h| h.anchor.as_str()));
-    Ok(render(&hits, total, idx.version()))
+    let obs = Observation {
+        query_norm: normalize_query(q),
+        top_anchor: hits.first().map(|h| h.anchor.clone()),
+    };
+    Ok((render(&hits, total, idx.version()), Some(obs)))
 }
 
 /// The CLI's readable form of a [`call`] result.

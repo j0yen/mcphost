@@ -80,6 +80,12 @@ pub const POLICY_TABLES: &[PolicyTable] = &[
         env_var: "MCPHOST_RETENTION_MESSAGES_DAYS",
         default_days: 90,
     },
+    // PRD-mcphost-docs-telemetry-failed-after-search R5.
+    PolicyTable {
+        name: "help_search_events",
+        env_var: "MCPHOST_RETENTION_HELP_SEARCH_EVENTS_DAYS",
+        default_days: 30,
+    },
     // PRD-mcphost-blob-retention-and-quota R3: not an age window like the
     // rows above but a grace period -- a blob is removed once its own
     // `expires_at` plus this many days has passed. Executed by
@@ -174,12 +180,25 @@ const EXECUTABLE_TABLES: &[ExecutableTable] = &[
         extra_where: None,
     },
     ExecutableTable {
+        policy_name: "help_search_events",
+        physical_table: "help_search_events",
+        age_column: AgeColumn::UnixSeconds("searched_unix"),
+        extra_where: None,
+    },
+    ExecutableTable {
         policy_name: "messages",
         physical_table: "messages",
         age_column: AgeColumn::UnixMillis("created_unix_ms"),
         extra_where: None,
     },
 ];
+
+/// R5: the one-line sweep summary logged after every prune cycle, e.g.
+/// `retention sweep: calls=0 help_search_events=12 ...`.
+pub fn sweep_log_line(deleted: &std::collections::BTreeMap<String, i64>) -> String {
+    let parts: Vec<String> = deleted.iter().map(|(table, n)| format!("{table}={n}")).collect();
+    format!("retention sweep: {}", parts.join(" "))
+}
 
 /// A cutoff value ready to bind into a `WHERE <age_column> < ?1` clause,
 /// already rendered in whichever unit/format that column stores.

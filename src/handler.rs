@@ -10816,7 +10816,28 @@ impl McpHostHandler {
             }),
             // PRD-mcphost-help-search-tool R4: public text, no tenant data --
             // reachable anonymously (never implicit-signs-up) or as a tenant.
-            (_, "host.help.search") => crate::help_search::call(&self.state.kinds, &args),
+            // PRD-mcphost-docs-telemetry-failed-after-search R2: one
+            // `help_search_events` row per call, `tenant_id` NULL when anonymous.
+            (_, "host.help.search") => {
+                match crate::help_search::call_observed(&self.state.kinds, &args) {
+                    Ok((body, obs)) => {
+                        if let Some(obs) = obs {
+                            let tenant_id = match &auth {
+                                Auth::Tenant(t, _) => Some(t.id),
+                                _ => None,
+                            };
+                            // Best-effort: telemetry never fails the search.
+                            let _ = self
+                                .state
+                                .db
+                                .record_help_search(tenant_id, obs.query_norm, obs.top_anchor, now_unix())
+                                .await;
+                        }
+                        Ok(body)
+                    }
+                    Err(e) => Err(e),
+                }
+            }
             // PRD-mcphost-feedback-tool-and-ledger requirement 3: reachable
             // anonymously (never implicit-signs-up) or as a tenant.
             (Auth::Anonymous | Auth::Tenant(..), "host.feedback.send" | "host.feedback.list" | "host.feedback.get")
@@ -10888,6 +10909,9 @@ impl McpHostHandler {
             // the raw `trigger_json` is host-private) and tenants are forbidden.
             (Auth::Anonymous | Auth::Invalid, "host.incidents.list") => Err(AppError::Unauthorized),
             (Auth::Tenant(..), "host.incidents.list") => Err(AppError::Forbidden),
+            // PRD-mcphost-docs-telemetry-failed-after-search R6: operator key only.
+            (Auth::Anonymous | Auth::Invalid, "host.help.gaps") => Err(AppError::Unauthorized),
+            (Auth::Tenant(..), "host.help.gaps") => Err(AppError::Forbidden),
             // PRD-mcphost-implicit-signup requirement 1 (AC1): a bare
             // `host.*`/`billing.*` call with no `Authorization` header, no
             // `tenant_key` argument, and (since no binding exists yet) no
@@ -10974,6 +10998,7 @@ impl McpHostHandler {
             (Auth::Admin, "host.call_trace") => self.call_trace(None, args).await,
             (Auth::Admin, "host.doctor") => self.doctor(None, args).await,
             (Auth::Admin, "host.incidents.list") => crate::heal::incidents_list(&self.state, &args).await,
+            (Auth::Admin, "host.help.gaps") => crate::help_search::gaps_call(&self.state.db, &args, now_unix()).await,
             (Auth::Admin, _) => Err(AppError::Forbidden),
             (Auth::Tenant(_, _), name) if name.starts_with("admin.") => {
                 let _ = name;
@@ -11301,6 +11326,15 @@ impl McpHostHandler {
                     && let Some(outcome) = crate::kinds::outcomes::find(requested)
                 {
                     self.record_did_you_mean(tenant, &body_name, outcome.outcome).await;
+                }
+                // PRD-mcphost-docs-telemetry-failed-after-search R3: a keyed
+                // tenant's failed call joins its newest unjoined search of
+                // the last 120 s. Detached, so the error path pays only the
+                // spawn, never the write.
+                if let Auth::Tenant(tenant, _) = &auth
+                    && body_name != "host.help.search"
+                {
+                    crate::help_search::note_failure(&self.state, tenant.id, app_err.code(), &body_name);
                 }
                 Err(app_err.into_error_data_at(Some(&self.state.public_url)))
             }

@@ -504,6 +504,7 @@ pub async fn status_json(state: &AppState) -> Result<Value, AppError> {
         "maintenance": crate::maintenance::status_block(state).await?,
         "feedback": {"rows_24h": rows_24h, "themes_open": themes_open},
         "onboarding_7d": onboarding_block(state).await?,
+        "docs_gaps": crate::help_search::status_block(&state.db, now_unix()).await?,
     });
     // PRD-mcphost-healthz-version-field requirement 3: whole-feed only; the
     // per-component rollup (`daily_rows`) stays unchanged.
