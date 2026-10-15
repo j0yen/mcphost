@@ -3881,6 +3881,83 @@
     ],
     "type": "object"
   },
+  "host.index.query": {
+    "properties": {
+      "index": {
+        "properties": {
+          "chunks": {
+            "type": "integer"
+          },
+          "lag_seconds": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pending": {
+            "type": "integer"
+          },
+          "stale_sources": {
+            "items": {
+              "properties": {
+                "behind_by": {
+                  "type": "integer"
+                },
+                "ref": {
+                  "type": "string"
+                },
+                "since_s": {
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "results": {
+        "items": {
+          "properties": {
+            "byte_end": {
+              "type": "integer"
+            },
+            "byte_start": {
+              "type": "integer"
+            },
+            "ref": {
+              "type": "string"
+            },
+            "score": {
+              "type": "number"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "index",
+      "results"
+    ],
+    "type": "object"
+  },
+  "host.index.refresh": {
+    "properties": {
+      "queued": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "queued"
+    ],
+    "type": "object"
+  },
   "host.index.status": {
     "properties": {
       "chunks": {
@@ -3906,6 +3983,9 @@
       "sources": {
         "items": {
           "properties": {
+            "behind_by": {
+              "type": "integer"
+            },
             "chunks": {
               "type": "integer"
             },
@@ -3918,8 +3998,28 @@
             "last_error": {
               "type": "string"
             },
+            "paused": {
+              "type": "boolean"
+            },
             "ref": {
               "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "stale_sources": {
+        "items": {
+          "properties": {
+            "behind_by": {
+              "type": "integer"
+            },
+            "ref": {
+              "type": "string"
+            },
+            "since_s": {
+              "type": "integer"
             }
           },
           "type": "object"

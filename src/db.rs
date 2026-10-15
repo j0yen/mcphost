@@ -317,6 +317,8 @@ const MIGRATION_0103: &str = include_str!("../migrations/0103_indexes.sql");
 const MIGRATION_0104: &str = include_str!("../migrations/0104_tenant_keys.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
+/// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
+const MIGRATION_0106: &str = include_str!("../migrations/0106_index_refresh.sql");
 
 /// Outcome of [`Db::reserve_draft`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -3000,6 +3002,19 @@ impl Db {
         conn.execute_batch(MIGRATION_0103)?;
         Self::migrate_0104_tenant_keys(&conn)?;
         Self::migrate_0105_asks_channel(&conn)?;
+        Self::migrate_0106_index_refresh(&conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-index-refresh-on-change R1/R2: gated on the last `ALTER`'s
+    /// column (the batch is mostly `ALTER`s, so a rerun must skip it).
+    fn migrate_0106_index_refresh(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('index_sources') WHERE name = 'marker'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0106)?;
+        }
         Ok(())
     }
 

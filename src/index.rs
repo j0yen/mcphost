@@ -35,6 +35,11 @@ pub const URL_TIMEOUT: Duration = Duration::from_secs(10);
 const URL_MAX_REDIRECTS: usize = 3;
 /// Most sources one index may name.
 pub const SOURCES_MAX: usize = 20;
+/// R4: a url source's `refresh_s` when the caller names none, floored by
+/// the plan's `schedule_min_interval_s`.
+pub const DEFAULT_URL_REFRESH_S: i64 = 3600;
+/// R6: consecutive url failures that pause the source.
+pub const URL_FAIL_LIMIT: i64 = 3;
 /// Most columns one table source may name.
 const COLUMNS_MAX: usize = 16;
 
@@ -93,6 +98,7 @@ pub fn sources_schema() -> Value {
                 "table": {"type": "string", "description": "table: a host.table table name."},
                 "columns": {"type": "array", "items": {"type": "string"}, "description": "table: the columns whose text to index."},
                 "url": {"type": "string", "description": "url: the page to fetch."},
+                "refresh_s": {"type": "integer", "description": "url: seconds between looks at the page (default 3600; the plan's schedule floor is the minimum, free 300)."},
             },
             "required": ["kind"],
         },
@@ -122,6 +128,16 @@ pub fn render_retrieval_doc() -> String {
         "An unknown `kind` is refused `args_invalid` with the message `{}`.\n\n",
         kinds_message()
     ));
+    out.push_str("## Freshness\n\n");
+    out.push_str(
+        "Every source carries a change marker: the document watermark for `doc`, a per-table \
+         write counter for `table`, the `ETag` / `Last-Modified` for `url`. The background \
+         indexer re-chunks only what moved and keeps the vector of any chunk whose text is \
+         unchanged. `host.index.status` and `host.index.query` carry `stale_sources: [{ref, \
+         behind_by, since_s}]`, empty when the index is current. A `url` source is looked at \
+         every `refresh_s` seconds (default 3600; below the plan's schedule floor, free 300, is \
+         `args_invalid` with `data.minimum`); three failures in a row pause it until `host.index.refresh` names it.\n\n",
+    );
     out.push_str("## Limits\n\n");
     out.push_str(
         "`host.quickstart` `limits.plan` carries `index_max` (indexes per tenant, refused \
@@ -174,6 +190,38 @@ fn quota_index_max(limit: i64, used: i64) -> AppError {
     }
 }
 
+/// R5: `refresh_s` under the plan's floor is `args_invalid` carrying the
+/// floor as `data.minimum`.
+fn refresh_below_minimum(got: i64, minimum: i64) -> AppError {
+    // Rendered through `ArgsError` like every other `args_invalid` site
+    // (argmsg_ac06 contract): one message shape, one `data` shape, plus the
+    // R5 `data.minimum` floor.
+    let args_err = crate::kinds::ArgsError {
+        phase: "args_coercion",
+        instance_path: "/sources/refresh_s".to_string(),
+        argument: Some("sources".to_string()),
+        field: Some("refresh_s".to_string()),
+        expected_type: None,
+        actual_type: None,
+        got: got.to_string(),
+        docs: "host.index_create",
+        raw: format!("sources[].refresh_s must be at least {minimum} seconds on this plan (got {got})"),
+    };
+    let mut data = args_err.data();
+    data["minimum"] = json!(minimum);
+    AppError::Structured {
+        code: "args_invalid",
+        message: args_err.message(),
+        data,
+    }
+}
+
+fn plan_of<'a>(state: &'a AppState, tenant: &Tenant) -> Result<&'a crate::plans::Plan, AppError> {
+    state.plans.get(&tenant.plan).ok_or_else(|| {
+        AppError::Internal(format!("tenant's plan '{}' is not in the loaded plan catalog", tenant.plan))
+    })
+}
+
 fn host_not_allowed(host: &str) -> AppError {
     AppError::Structured {
         code: "host_not_allowed",
@@ -197,6 +245,8 @@ struct SourceSpec {
     kind: IndexSourceKind,
     reference: String,
     spec: Value,
+    /// A url source's refresh interval, already checked against the plan.
+    refresh_s: Option<i64>,
 }
 
 /// A loopback-hosted instance (local dev, the test harness) may fetch
@@ -244,7 +294,7 @@ async fn validate_source(
                 Some(Value::String(s)) => s.clone(),
                 Some(_) => return Err(invalid(format!("sources[{i}].prefix must be a string"))),
             };
-            Ok(SourceSpec { kind, reference: prefix.clone(), spec: json!({"kind": "doc", "prefix": prefix}) })
+            Ok(SourceSpec { kind, reference: prefix.clone(), spec: json!({"kind": "doc", "prefix": prefix}), refresh_s: None })
         }
         IndexSourceKind::Table => {
             let table = obj
@@ -278,6 +328,7 @@ async fn validate_source(
                 kind,
                 reference: table.clone(),
                 spec: json!({"kind": "table", "table": table, "columns": columns}),
+                refresh_s: None,
             })
         }
         IndexSourceKind::Url => {
@@ -287,7 +338,23 @@ async fn validate_source(
                 .ok_or_else(|| invalid(format!("sources[{i}].url is required for a url source")))?
                 .to_string();
             check_url(state, &url)?;
-            Ok(SourceSpec { kind, reference: url.clone(), spec: json!({"kind": "url", "url": url}) })
+            let floor = plan_of(state, tenant)?.schedule_min_interval_s;
+            let refresh_s = match obj.get("refresh_s") {
+                None | Some(Value::Null) => DEFAULT_URL_REFRESH_S.max(floor),
+                Some(v) => {
+                    let n = v.as_i64().ok_or_else(|| invalid(format!("sources[{i}].refresh_s must be an integer")))?;
+                    if n < floor {
+                        return Err(refresh_below_minimum(n, floor));
+                    }
+                    n
+                }
+            };
+            Ok(SourceSpec {
+                kind,
+                reference: url.clone(),
+                spec: json!({"kind": "url", "url": url, "refresh_s": refresh_s}),
+                refresh_s: Some(refresh_s),
+            })
         }
     }
 }
@@ -367,10 +434,11 @@ pub async fn index_create(state: &AppState, tenant: &Tenant, args: &Value) -> Re
                 )?;
                 let index_id = conn.last_insert_rowid();
                 for (pos, s) in specs.iter().enumerate() {
+                    let marker_seen = initial_marker(conn, tenant_id, s.kind, &s.reference)?;
                     conn.execute(
                         "INSERT INTO index_sources \
-                             (index_id, tenant_id, position, kind, ref, spec_json, updated_at) \
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                             (index_id, tenant_id, position, kind, ref, spec_json, updated_at, marker_seen, refresh_s) \
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                         params![
                             index_id,
                             tenant_id,
@@ -378,7 +446,9 @@ pub async fn index_create(state: &AppState, tenant: &Tenant, args: &Value) -> Re
                             s.kind.as_str(),
                             s.reference,
                             s.spec.to_string(),
-                            now
+                            now,
+                            marker_seen,
+                            s.refresh_s
                         ],
                     )?;
                 }
@@ -411,7 +481,7 @@ pub async fn index_status(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     })?;
     let tenant_id = tenant.id;
     let name_c = name.clone();
-    let (created_at, sources) = state
+    let (index_id, created_at) = state
         .db
         .with_conn(move |conn| {
             let row: Option<(i64, i64)> = conn
@@ -421,80 +491,259 @@ pub async fn index_status(state: &AppState, tenant: &Tenant, args: &Value) -> Re
                     |r| Ok((r.get(0)?, r.get(1)?)),
                 )
                 .optional()?;
-            let (index_id, created_at) = row.ok_or_else(|| index_not_found(&name_c))?;
+            row.ok_or_else(|| index_not_found(&name_c))
+        })
+        .await?;
+    let sources =
+        load_sources(state, tenant_id, "s.tenant_id = ?1 AND s.index_id = ?2", Some(index_id)).await?;
+    let counts: std::collections::HashMap<i64, (i64, Option<String>)> = state
+        .db
+        .with_conn(move |conn| {
             let mut stmt = conn.prepare(
-                "SELECT kind, ref, state, items, \
-                        (SELECT COUNT(*) FROM index_chunks c WHERE c.source_id = index_sources.id), \
-                        last_error \
-                 FROM index_sources WHERE index_id = ?1 ORDER BY position",
+                "SELECT s.id, (SELECT COUNT(*) FROM index_chunks c WHERE c.source_id = s.id), s.last_error \
+                 FROM index_sources s WHERE s.index_id = ?1",
             )?;
             let rows = stmt
-                .query_map(params![index_id], |r| {
-                    Ok((
-                        r.get::<_, String>(0)?,
-                        r.get::<_, String>(1)?,
-                        r.get::<_, String>(2)?,
-                        r.get::<_, i64>(3)?,
-                        r.get::<_, i64>(4)?,
-                        r.get::<_, Option<String>>(5)?,
-                    ))
-                })?
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok((created_at, rows))
+                .query_map(params![index_id], |r| Ok((r.get(0)?, (r.get(1)?, r.get(2)?))))?
+                .collect::<Result<_, _>>()?;
+            Ok(rows)
         })
         .await?;
 
-    let pending = sources.iter().filter(|s| s.2 == "pending").count() as i64;
-    let chunks: i64 = sources.iter().map(|s| s.4).sum();
+    let pending = sources.iter().filter(|s| s.state == "pending").count() as i64;
+    let chunks: i64 = counts.values().map(|c| c.0).sum();
     let now = crate::state::now_unix();
     let lag_seconds = crate::docs::lag_seconds_since((pending > 0).then_some(created_at), now);
-    let rows: Vec<Value> = sources
-        .into_iter()
-        .map(|(kind, reference, _, items, chunks, last_error)| {
-            let mut o = json!({"kind": kind, "ref": reference, "items": items, "chunks": chunks});
-            if let Some(e) = last_error {
-                o["last_error"] = json!(e);
-            }
-            o
-        })
-        .collect();
+    let mut rows: Vec<Value> = Vec::with_capacity(sources.len());
+    for s in &sources {
+        let (n_chunks, last_error) = counts.get(&s.id).cloned().unwrap_or((0, None));
+        let (behind_by, _) = behind(state, tenant_id, s, now).await;
+        let mut o = json!({
+            "kind": s.kind, "ref": s.reference, "items": s.items, "chunks": n_chunks, "behind_by": behind_by,
+        });
+        if let Some(e) = last_error {
+            o["last_error"] = json!(e);
+        }
+        if s.paused {
+            o["paused"] = json!(true);
+        }
+        rows.push(o);
+    }
     Ok(json!({
         "name": name,
         "chunks": chunks,
         "pending": pending,
         "lag_seconds": lag_seconds,
         "quota": {"index_chunks_max": plan.index_chunks_max},
+        "stale_sources": stale_sources_of(state, tenant_id, &sources).await,
         "sources": rows,
     }))
 }
 
-// ---- the build pass -------------------------------------------------------
+// ---- host.index.refresh ---------------------------------------------------
 
-/// One pending source, as the tick reads it.
+/// R4: `{name, source?}` forces a pass: every named source (all of the
+/// index's when `source` is absent) gets `marker_seen = NULL`, so the next
+/// tick re-reads it whole -- a url regardless of `refresh_s` -- and a paused
+/// url source is resumed. Returns `{queued: n}`.
+pub async fn index_refresh(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let name = args
+        .get("name")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid("missing required argument 'name'"))?
+        .to_string();
+    let source = match args.get("source") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(s)) => Some(s.clone()),
+        Some(_) => return Err(invalid("source must be a string (a source's ref)")),
+    };
+    let tenant_id = tenant.id;
+    let now = crate::state::now_unix();
+    let queued = state
+        .db
+        .with_conn(move |conn| {
+            let index_id: i64 = conn
+                .query_row(
+                    "SELECT id FROM indexes WHERE tenant_id = ?1 AND name = ?2",
+                    params![tenant_id, name],
+                    |r| r.get(0),
+                )
+                .optional()?
+                .ok_or_else(|| index_not_found(&name))?;
+            let n = conn.execute(
+                "UPDATE index_sources SET marker_seen = NULL, paused = 0, fail_count = 0, updated_at = ?3 \
+                 WHERE index_id = ?1 AND (?2 IS NULL OR ref = ?2)",
+                params![index_id, source, now],
+            )?;
+            match (n, &source) {
+                (0, Some(s)) => Err(invalid(format!("index '{name}' has no source with ref '{s}'"))),
+                _ => Ok(n as i64),
+            }
+        })
+        .await?;
+    Ok(json!({"queued": queued}))
+}
+
+// ---- host.index.query -----------------------------------------------------
+
+/// Most hits one query returns.
+const QUERY_K_MAX: i64 = 50;
+const QUERY_K_DEFAULT: i64 = 5;
+
+/// R5: lexical search over one index's chunks. `index` carries the same
+/// freshness block `host.index.status` does, `stale_sources` computed by the
+/// one function both use, so the agent knows what the hits may not include.
+pub async fn index_query(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let query = args
+        .get("query")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid("missing required argument 'query'"))?
+        .to_string();
+    let k = match args.get("k") {
+        None | Some(Value::Null) => QUERY_K_DEFAULT,
+        Some(v) => v
+            .as_i64()
+            .filter(|k| (1..=QUERY_K_MAX).contains(k))
+            .ok_or_else(|| invalid(format!("k must be an integer 1-{QUERY_K_MAX}")))?,
+    };
+    let status = index_status(state, tenant, args).await?;
+    let name = status["name"].as_str().unwrap_or_default().to_string();
+    let tenant_id = tenant.id;
+    let results: Vec<Value> = match crate::docs_index::sanitize_fts_query(&query) {
+        None => Vec::new(),
+        Some(fts) => {
+            state
+                .db
+                .with_conn(move |conn| {
+                    let mut stmt = conn.prepare(
+                        "SELECT c.item_ref, c.byte_start, c.byte_end, c.text, bm25(index_chunks_fts) \
+                         FROM index_chunks_fts JOIN index_chunks c ON c.id = index_chunks_fts.rowid \
+                         JOIN indexes i ON i.id = c.index_id \
+                         WHERE index_chunks_fts MATCH ?1 AND i.tenant_id = ?2 AND i.name = ?3 \
+                         ORDER BY bm25(index_chunks_fts) LIMIT ?4",
+                    )?;
+                    let rows = stmt
+                        .query_map(params![fts, tenant_id, name, k], |r| {
+                            Ok(json!({
+                                "ref": r.get::<_, String>(0)?,
+                                "byte_start": r.get::<_, i64>(1)?,
+                                "byte_end": r.get::<_, i64>(2)?,
+                                "text": r.get::<_, String>(3)?,
+                                "score": -r.get::<_, f64>(4)?,
+                            }))
+                        })?
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(rows)
+                })
+                .await?
+        }
+    };
+    Ok(json!({
+        "results": results,
+        "index": {
+            "name": status["name"],
+            "chunks": status["chunks"],
+            "pending": status["pending"],
+            "lag_seconds": status["lag_seconds"],
+            "stale_sources": status["stale_sources"],
+        },
+    }))
+}
+
+// ---- the build and refresh passes -----------------------------------------
+
+/// One source row, as the tick and `host.index.status` read it.
 struct PendingSource {
     id: i64,
     kind: String,
+    reference: String,
     spec: Value,
     cursor: String,
+    state: String,
+    items: i64,
     max_chars: usize,
     overlap: usize,
+    /// R1: the marker the last pass targeted / the one the content reflects.
+    marker: Option<String>,
+    marker_seen: Option<String>,
+    refresh_s: Option<i64>,
+    last_checked_at: Option<i64>,
+    last_changed_at: Option<i64>,
+    fail_count: i64,
+    paused: bool,
+}
+
+const SOURCE_COLS: &str = "s.id, s.index_id, s.kind, s.ref, s.spec_json, s.cursor, s.state, s.items, \
+     i.max_chars, i.overlap_chars, s.marker, s.marker_seen, s.refresh_s, s.last_checked_at, \
+     s.last_changed_at, s.fail_count, s.paused";
+
+fn source_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<PendingSource> {
+    Ok(PendingSource {
+        id: r.get(0)?,
+        kind: r.get(2)?,
+        reference: r.get(3)?,
+        spec: serde_json::from_str(&r.get::<_, String>(4)?).unwrap_or(Value::Null),
+        cursor: r.get(5)?,
+        state: r.get(6)?,
+        items: r.get(7)?,
+        max_chars: r.get::<_, i64>(8)? as usize,
+        overlap: r.get::<_, i64>(9)? as usize,
+        marker: r.get(10)?,
+        marker_seen: r.get(11)?,
+        refresh_s: r.get(12)?,
+        last_checked_at: r.get(13)?,
+        last_changed_at: r.get(14)?,
+        fail_count: r.get(15)?,
+        paused: r.get::<_, i64>(16)? != 0,
+    })
 }
 
 /// What reading one batch of one source produced.
 struct Batch {
-    /// `(item_ref, chunks)` per item read this tick.
+    /// `(item_ref, chunks)` per item read this tick; an item with no chunks
+    /// has its old chunks removed (a deleted document).
     items: Vec<(String, Vec<Chunk>)>,
     cursor: String,
     done: bool,
     error: Option<String>,
+    /// A refresh pass: success clears `last_error`, failures count.
+    refresh: bool,
+    /// Delete every chunk of the source first (a table rewrite).
+    reset: bool,
+    /// Stored as `marker` / `marker_seen` when `Some`.
+    marker: Option<String>,
+    marker_seen: Option<String>,
+    /// The source's absolute `items` count, else `items += items read`.
+    items_set: Option<i64>,
+    /// A url source was looked at / found changed this pass.
+    checked: bool,
+    changed: bool,
 }
 
-/// Tenants with at least one source still to build.
+impl Batch {
+    fn new(items: Vec<(String, Vec<Chunk>)>, cursor: String, done: bool, error: Option<String>) -> Batch {
+        Batch {
+            items,
+            cursor,
+            done,
+            error,
+            refresh: false,
+            reset: false,
+            marker: None,
+            marker_seen: None,
+            items_set: None,
+            checked: false,
+            changed: false,
+        }
+    }
+}
+
+/// Tenants with a source to build or to keep fresh.
 pub async fn tenants_with_pending_sources(state: &AppState) -> Result<Vec<i64>, AppError> {
     state
         .db
         .with_conn(|conn| {
-            let mut stmt = conn.prepare("SELECT DISTINCT tenant_id FROM index_sources WHERE state = 'pending'")?;
+            let mut stmt = conn.prepare("SELECT DISTINCT tenant_id FROM index_sources WHERE paused = 0")?;
             Ok(stmt.query_map([], |r| r.get(0))?.collect::<Result<Vec<i64>, _>>()?)
         })
         .await
@@ -504,7 +753,8 @@ pub async fn tenants_with_pending_sources(state: &AppState) -> Result<Vec<i64>, 
 /// [`ITEMS_PER_TICK`] items (one url source per tick), chunks them with its
 /// index's `chunking`, and commits chunks plus cursor in one transaction.
 /// A failing source records `last_error` and finishes; it never aborts the
-/// sources behind it.
+/// sources behind it. Then every finished source whose marker moved is
+/// refreshed the same way ([`refresh_source`]).
 pub async fn tick_tenant(state: &AppState, tenant_id: i64) -> Result<(), AppError> {
     let Some(tenant) = state.db.find_tenant_by_id(tenant_id).await? else {
         return Ok(());
@@ -513,7 +763,7 @@ pub async fn tick_tenant(state: &AppState, tenant_id: i64) -> Result<(), AppErro
         return Ok(());
     };
     let chunks_max = plan.index_chunks_max;
-    let sources = pending_sources(state, tenant_id).await?;
+    let sources = load_sources(state, tenant_id, "s.tenant_id = ?1 AND s.state = 'pending' AND s.paused = 0", None).await?;
     let mut url_fetched = false;
     for src in sources {
         if src.kind == IndexSourceKind::Url.as_str() {
@@ -527,43 +777,61 @@ pub async fn tick_tenant(state: &AppState, tenant_id: i64) -> Result<(), AppErro
             tracing::warn!(tenant_id, source_id = src.id, error = %e, "index builder: commit failed");
         }
     }
+    let done = load_sources(state, tenant_id, "s.tenant_id = ?1 AND s.state = 'done' AND s.paused = 0", None).await?;
+    for src in done {
+        if src.kind == IndexSourceKind::Url.as_str() && url_fetched {
+            continue;
+        }
+        match refresh_source(state, tenant_id, &src).await {
+            Ok(Some(batch)) => {
+                if src.kind == IndexSourceKind::Url.as_str() {
+                    url_fetched = true;
+                }
+                if let Err(e) = commit_batch(state, tenant_id, &src, batch, chunks_max).await {
+                    tracing::warn!(tenant_id, source_id = src.id, error = %e, "index refresh: commit failed");
+                }
+            }
+            Ok(None) => {}
+            Err(e) => tracing::warn!(tenant_id, source_id = src.id, error = %e, "index refresh: read failed"),
+        }
+    }
     Ok(())
 }
 
-async fn pending_sources(state: &AppState, tenant_id: i64) -> Result<Vec<PendingSource>, AppError> {
+/// `filter` is a `WHERE` fragment over `s` (sources) and `i` (indexes) with
+/// `?1` = the tenant id and, when given, `?2` = the index id.
+async fn load_sources(
+    state: &AppState,
+    tenant_id: i64,
+    filter: &str,
+    index_id: Option<i64>,
+) -> Result<Vec<PendingSource>, AppError> {
+    let sql = format!(
+        "SELECT {SOURCE_COLS} FROM index_sources s JOIN indexes i ON i.id = s.index_id \
+         WHERE {filter} ORDER BY s.index_id, s.position, s.id"
+    );
     state
         .db
         .with_conn(move |conn| {
-            let mut stmt = conn.prepare(
-                "SELECT s.id, s.kind, s.spec_json, s.cursor, i.max_chars, i.overlap_chars \
-                 FROM index_sources s JOIN indexes i ON i.id = s.index_id \
-                 WHERE s.tenant_id = ?1 AND s.state = 'pending' ORDER BY s.id",
-            )?;
-            let rows = stmt
-                .query_map(params![tenant_id], |r| {
-                    Ok(PendingSource {
-                        id: r.get(0)?,
-                        kind: r.get(1)?,
-                        spec: serde_json::from_str(&r.get::<_, String>(2)?).unwrap_or(Value::Null),
-                        cursor: r.get(3)?,
-                        max_chars: r.get::<_, i64>(4)? as usize,
-                        overlap: r.get::<_, i64>(5)? as usize,
-                    })
-                })?
-                .collect::<Result<Vec<_>, _>>()?;
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = match index_id {
+                Some(id) => stmt.query_map(params![tenant_id, id], source_from_row)?,
+                None => stmt.query_map(params![tenant_id], source_from_row)?,
+            }
+            .collect::<Result<Vec<_>, _>>()?;
             Ok(rows)
         })
         .await
 }
 
 fn failed(cursor: &str, code: impl Into<String>) -> Batch {
-    Batch { items: Vec::new(), cursor: cursor.to_string(), done: true, error: Some(code.into()) }
+    Batch::new(Vec::new(), cursor.to_string(), true, Some(code.into()))
 }
 
 async fn read_batch(state: &AppState, tenant_id: i64, src: &PendingSource) -> Batch {
     let result = match IndexSourceKind::parse(&src.kind) {
         Some(IndexSourceKind::Doc) => read_docs(state, tenant_id, src).await,
-        Some(IndexSourceKind::Table) => read_table(state, tenant_id, src).await,
+        Some(IndexSourceKind::Table) => read_table(state, tenant_id, src, src.cursor.parse().unwrap_or(0)).await,
         Some(IndexSourceKind::Url) => Ok(read_url(state, src).await),
         None => Ok(failed(&src.cursor, "unknown_source_kind")),
     };
@@ -608,10 +876,11 @@ async fn read_docs(state: &AppState, tenant_id: i64, src: &PendingSource) -> Res
         items.push((name.clone(), chunk_text_with(&text, src.max_chars, src.overlap)));
         cursor = name;
     }
-    Ok(Batch { items, cursor, done, error: None })
+    Ok(Batch::new(items, cursor, done, None))
 }
 
-async fn read_table(state: &AppState, tenant_id: i64, src: &PendingSource) -> Result<Batch, AppError> {
+/// Reads up to [`ITEMS_PER_TICK`] rows of a table source with `rowid > after`.
+async fn read_table(state: &AppState, tenant_id: i64, src: &PendingSource, after: i64) -> Result<Batch, AppError> {
     let table = src.spec.get("table").and_then(Value::as_str).unwrap_or("").to_string();
     let columns: Vec<String> = src
         .spec
@@ -619,7 +888,6 @@ async fn read_table(state: &AppState, tenant_id: i64, src: &PendingSource) -> Re
         .and_then(Value::as_array)
         .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
         .unwrap_or_default();
-    let after: i64 = src.cursor.parse().unwrap_or(0);
     let select_cols: Vec<String> = columns.iter().map(|c| crate::tables::quote_ident(c)).collect();
     let sql = format!(
         "SELECT rowid AS __rowid, {} FROM {} WHERE rowid > {after} ORDER BY rowid LIMIT {}",
@@ -634,11 +902,11 @@ async fn read_table(state: &AppState, tenant_id: i64, src: &PendingSource) -> Re
     .await
     {
         Ok(rows) => rows,
-        Err(AppError::Structured { code, .. }) => return Ok(failed(&src.cursor, code)),
+        Err(AppError::Structured { code, .. }) => return Ok(failed(&after.to_string(), code)),
         Err(e) => return Err(e),
     };
     let done = rows.len() as i64 <= ITEMS_PER_TICK;
-    let mut cursor = src.cursor.clone();
+    let mut cursor = after.to_string();
     let mut items = Vec::with_capacity(rows.len());
     for row in rows.iter().take(ITEMS_PER_TICK as usize) {
         let rowid = row.get("__rowid").and_then(Value::as_i64).unwrap_or(after);
@@ -654,26 +922,370 @@ async fn read_table(state: &AppState, tenant_id: i64, src: &PendingSource) -> Re
         items.push((format!("{table}:{rowid}"), chunk_text_with(&text, src.max_chars, src.overlap)));
         cursor = rowid.to_string();
     }
-    Ok(Batch { items, cursor, done, error: None })
+    Ok(Batch::new(items, cursor, done, None))
 }
 
+// ---- change markers and staleness (R1, R5) ---------------------------------
+
+/// R1: `(change_counter, rewrite_counter, changed_at)` of a table; a table
+/// never written since the counters existed reads `(0, 0, 0)`.
+fn table_counters(conn: &rusqlite::Connection, tenant_id: i64, table: &str) -> rusqlite::Result<(i64, i64, i64)> {
+    Ok(conn
+        .query_row(
+            "SELECT change_counter, rewrite_counter, changed_at FROM table_change_counters \
+             WHERE tenant_id = ?1 AND table_name = ?2",
+            params![tenant_id, table],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .optional()?
+        .unwrap_or((0, 0, 0)))
+}
+
+/// The marker a table source stores: `"<change_counter>:<rewrite_counter>"`.
+fn table_marker(cc: i64, rc: i64) -> String {
+    format!("{cc}:{rc}")
+}
+
+fn parse_table_marker(m: &str) -> Option<(i64, i64)> {
+    let (a, b) = m.split_once(':')?;
+    Some((a.parse().ok()?, b.parse().ok()?))
+}
+
+/// The highest document `seq` under `prefix` (deleted documents count: a
+/// delete moves the marker).
+fn docs_marker(conn: &rusqlite::Connection, tenant_id: i64, prefix: &str) -> rusqlite::Result<i64> {
+    conn.query_row(
+        "SELECT COALESCE(MAX(seq), 0) FROM documents WHERE tenant_id = ?1 AND substr(name, 1, ?2) = ?3",
+        params![tenant_id, prefix.chars().count() as i64, prefix],
+        |r| r.get(0),
+    )
+}
+
+/// The marker a new source starts from: everything up to now is covered by
+/// its first build, so only later changes read as behind.
+fn initial_marker(
+    conn: &rusqlite::Connection,
+    tenant_id: i64,
+    kind: IndexSourceKind,
+    reference: &str,
+) -> rusqlite::Result<Option<String>> {
+    Ok(match kind {
+        IndexSourceKind::Doc => Some(docs_marker(conn, tenant_id, reference)?.to_string()),
+        IndexSourceKind::Table => {
+            let (cc, rc, _) = table_counters(conn, tenant_id, reference)?;
+            Some(table_marker(cc, rc))
+        }
+        IndexSourceKind::Url => None,
+    })
+}
+
+/// Where a table source's next read starts, and whether it is a rewrite
+/// (every row again) rather than an append (rows past the cursor).
+struct TablePlan {
+    cur: String,
+    start: i64,
+    rewrite: bool,
+    /// A rewrite already under way against this very `cur`.
+    in_progress: bool,
+}
+
+/// `None` when the table source is up to date.
+fn table_plan(src: &PendingSource, cc: i64, rc: i64) -> Option<TablePlan> {
+    let cur = table_marker(cc, rc);
+    let in_progress = src.cursor.starts_with("rw") && src.marker.as_deref() == Some(cur.as_str());
+    if src.marker_seen.as_deref() == Some(cur.as_str()) && !in_progress {
+        return None;
+    }
+    let seen_rc = src.marker_seen.as_deref().and_then(parse_table_marker).map(|(_, r)| r);
+    let rewrite = in_progress || seen_rc != Some(rc);
+    let start = if in_progress {
+        src.cursor[2..].parse().unwrap_or(0)
+    } else if rewrite {
+        0
+    } else {
+        src.cursor.parse().unwrap_or(0)
+    };
+    Some(TablePlan { cur, start, rewrite, in_progress })
+}
+
+/// R1: items of `src` whose marker moved since `marker_seen`, and since
+/// when. `(0, 0)` when nothing is behind. The one place `behind_by` is
+/// computed; `stale_sources` and `host.index.status` both read it.
+async fn behind(state: &AppState, tenant_id: i64, src: &PendingSource, now: i64) -> (i64, i64) {
+    let found = match IndexSourceKind::parse(&src.kind) {
+        Some(IndexSourceKind::Doc) => {
+            let prefix = src.spec.get("prefix").and_then(Value::as_str).unwrap_or("").to_string();
+            let after = src.marker_seen.as_deref().and_then(|m| m.parse::<i64>().ok()).unwrap_or(-1);
+            state
+                .db
+                .with_conn(move |conn| {
+                    Ok(conn.query_row(
+                        "SELECT COUNT(*), MIN(updated_at) FROM documents \
+                         WHERE tenant_id = ?1 AND substr(name, 1, ?2) = ?3 AND seq > ?4",
+                        params![tenant_id, prefix.chars().count() as i64, prefix, after],
+                        |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Option<i64>>(1)?)),
+                    )?)
+                })
+                .await
+                .map(|(n, since)| (n, since.unwrap_or(now)))
+        }
+        Some(IndexSourceKind::Table) => {
+            let table = src.reference.clone();
+            let counters = state.db.with_conn(move |conn| Ok(table_counters(conn, tenant_id, &table)?)).await;
+            match counters {
+                Ok((cc, rc, changed_at)) => match table_plan(src, cc, rc) {
+                    None => Ok((0, now)),
+                    Some(plan) => {
+                        let sql = format!(
+                            "SELECT COUNT(*) AS n FROM {} WHERE rowid > {}",
+                            crate::tables::quote_ident(&src.reference),
+                            plan.start
+                        );
+                        let path = crate::tables::tenant_db_path(state, tenant_id);
+                        let n = crate::tables::with_tenant_conn(
+                            path,
+                            state.db.cfg(),
+                            state.db.counters_handle(),
+                            move |conn| crate::tables::run_query_sync(conn, &sql),
+                        )
+                        .await
+                        .ok()
+                        .and_then(|rows| rows.first().and_then(|r| r.get("n").and_then(Value::as_i64)))
+                        // A table that is gone still has a rewrite to apply.
+                        .unwrap_or(1);
+                        Ok((n, if changed_at > 0 { changed_at } else { now }))
+                    }
+                },
+                Err(e) => Err(e),
+            }
+        }
+        Some(IndexSourceKind::Url) => {
+            let moved = src.marker_seen.is_none() || src.marker != src.marker_seen;
+            Ok((i64::from(moved), src.last_changed_at.unwrap_or(now)))
+        }
+        None => Ok((0, now)),
+    };
+    match found {
+        Ok((n, since)) if n > 0 => (n, (now - since).max(0)),
+        _ => (0, 0),
+    }
+}
+
+/// R5: `[{ref, behind_by, since_s}]` for every source of the index that is
+/// behind -- what an answer from the index may not include. Empty when the
+/// index is current. The one function `host.index.status` and
+/// `host.index.query` both call.
+async fn stale_sources_of(state: &AppState, tenant_id: i64, sources: &[PendingSource]) -> Vec<Value> {
+    let now = crate::state::now_unix();
+    let mut out = Vec::new();
+    for src in sources {
+        let (behind_by, since_s) = behind(state, tenant_id, src, now).await;
+        if behind_by > 0 {
+            out.push(json!({"ref": src.reference, "behind_by": behind_by, "since_s": since_s}));
+        }
+    }
+    out
+}
+
+// ---- the refresh pass (R3) -------------------------------------------------
+
+/// Reads whatever moved in one finished source; `None` when nothing did.
+async fn refresh_source(state: &AppState, tenant_id: i64, src: &PendingSource) -> Result<Option<Batch>, AppError> {
+    match IndexSourceKind::parse(&src.kind) {
+        Some(IndexSourceKind::Doc) => refresh_docs(state, tenant_id, src).await,
+        Some(IndexSourceKind::Table) => refresh_table(state, tenant_id, src).await,
+        Some(IndexSourceKind::Url) => Ok(refresh_url(state, src).await),
+        None => Ok(None),
+    }
+}
+
+fn refreshing(mut batch: Batch) -> Batch {
+    batch.refresh = true;
+    batch
+}
+
+/// `(id, name, version, deleted, seq)` of a document past `marker_seen`.
+type MovedDoc = (String, String, i64, bool, i64);
+
+/// Documents with `seq > marker_seen` under the prefix: a live one is
+/// re-chunked, a deleted one loses its chunks (the open question's default).
+async fn refresh_docs(state: &AppState, tenant_id: i64, src: &PendingSource) -> Result<Option<Batch>, AppError> {
+    let prefix = src.spec.get("prefix").and_then(Value::as_str).unwrap_or("").to_string();
+    let after = src.marker_seen.as_deref().and_then(|m| m.parse::<i64>().ok()).unwrap_or(-1);
+    let prefix_c = prefix.clone();
+    let (cur, live, moved): (i64, i64, Vec<MovedDoc>) = state
+        .db
+        .with_conn(move |conn| {
+            let n = prefix_c.chars().count() as i64;
+            let cur = docs_marker(conn, tenant_id, &prefix_c)?;
+            let live: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM documents WHERE tenant_id = ?1 AND deleted_at IS NULL \
+                 AND substr(name, 1, ?2) = ?3",
+                params![tenant_id, n, prefix_c],
+                |r| r.get(0),
+            )?;
+            let mut stmt = conn.prepare(
+                "SELECT id, name, version, deleted_at IS NOT NULL, seq FROM documents \
+                 WHERE tenant_id = ?1 AND substr(name, 1, ?2) = ?3 AND seq > ?4 ORDER BY seq LIMIT ?5",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id, n, prefix_c, after, ITEMS_PER_TICK + 1], |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get::<_, i64>(3)? != 0, r.get(4)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok((cur, live, rows))
+        })
+        .await?;
+    if moved.is_empty() {
+        if src.marker_seen.as_deref() == Some(cur.to_string().as_str()) {
+            return Ok(None);
+        }
+        let mut b = Batch::new(Vec::new(), src.cursor.clone(), true, None);
+        b.marker_seen = Some(cur.to_string());
+        b.items_set = Some(live);
+        return Ok(Some(refreshing(b)));
+    }
+    let all = moved.len() as i64 <= ITEMS_PER_TICK;
+    let take = moved.len().min(ITEMS_PER_TICK as usize);
+    let mut items = Vec::with_capacity(take);
+    let mut last_seq = after;
+    for (id, name, version, deleted, seq) in moved.into_iter().take(take) {
+        last_seq = seq;
+        if deleted {
+            items.push((name, Vec::new()));
+            continue;
+        }
+        let text = state.db.document_blob_get(tenant_id, id, version).await?.map(|(_, t)| t).unwrap_or_default();
+        items.push((name, chunk_text_with(&text, src.max_chars, src.overlap)));
+    }
+    let mut b = Batch::new(items, src.cursor.clone(), true, None);
+    b.marker_seen = Some(if all { cur.max(last_seq) } else { last_seq }.to_string());
+    b.items_set = Some(live);
+    Ok(Some(refreshing(b)))
+}
+
+/// A table source: an append re-chunks only the rows past the cursor, any
+/// other write (create / drop / exec) re-reads every row.
+async fn refresh_table(state: &AppState, tenant_id: i64, src: &PendingSource) -> Result<Option<Batch>, AppError> {
+    let table = src.reference.clone();
+    let (cc, rc, _) = state.db.with_conn(move |conn| Ok(table_counters(conn, tenant_id, &table)?)).await?;
+    let Some(plan) = table_plan(src, cc, rc) else {
+        return Ok(None);
+    };
+    let reset = plan.rewrite && !plan.in_progress;
+    let mut batch = read_table(state, tenant_id, src, plan.start).await?;
+    let read = batch.items.len() as i64;
+    let base = if reset { 0 } else { src.items };
+    if batch.error.is_some() {
+        // A table that is gone: nothing left to index, the error says why.
+        batch.marker_seen = Some(plan.cur.clone());
+        batch.cursor = "0".to_string();
+        batch.items_set = Some(0);
+    } else if batch.done {
+        batch.marker_seen = Some(plan.cur.clone());
+        batch.items_set = Some(base + read);
+    } else {
+        if plan.rewrite {
+            batch.cursor = format!("rw{}", batch.cursor);
+            batch.marker = Some(plan.cur.clone());
+        }
+        batch.done = true;
+        batch.items_set = Some(base + read);
+    }
+    batch.reset = reset;
+    Ok(Some(refreshing(batch)))
+}
+
+/// What one url fetch found.
+enum Fetched {
+    /// A 304: the page has not changed since the validator was sent.
+    NotModified,
+    /// A 200: the body and the marker it implies.
+    Body { text: String, marker: String },
+}
+
+/// R1: the marker of a fetched page -- its `ETag`, else `Last-Modified`,
+/// else (a server with neither) a hash of the body.
+fn url_marker(headers: &reqwest::header::HeaderMap, text: &str) -> String {
+    let header = |name| headers.get(name).and_then(|v| v.to_str().ok());
+    if let Some(etag) = header(reqwest::header::ETAG) {
+        format!("etag:{etag}")
+    } else if let Some(lm) = header(reqwest::header::LAST_MODIFIED) {
+        format!("lm:{lm}")
+    } else {
+        format!("sha:{}", sha256_hex(text))
+    }
+}
+
+/// The first build of a url source: unconditional fetch.
 async fn read_url(state: &AppState, src: &PendingSource) -> Batch {
     let url = src.spec.get("url").and_then(Value::as_str).unwrap_or("").to_string();
-    match fetch_url(state, &url).await {
-        Ok(text) => Batch {
-            items: vec![(url, chunk_text_with(&text, src.max_chars, src.overlap))],
-            cursor: String::new(),
-            done: true,
-            error: None,
-        },
+    let mut batch = match fetch_url(state, &url, None).await {
+        Ok(Fetched::Body { text, marker }) => {
+            let mut b = Batch::new(
+                vec![(url, chunk_text_with(&text, src.max_chars, src.overlap))],
+                String::new(),
+                true,
+                None,
+            );
+            b.marker = Some(marker.clone());
+            b.marker_seen = Some(marker);
+            b.changed = true;
+            b
+        }
+        Ok(Fetched::NotModified) => failed(&src.cursor, "http_304"),
         Err(code) => failed(&src.cursor, code),
+    };
+    batch.checked = true;
+    batch
+}
+
+/// R4: a finished url source is fetched when a refresh was forced
+/// (`marker_seen` NULL), when it is retrying after a failure, or when
+/// `refresh_s` has passed since the last look -- with `If-None-Match` /
+/// `If-Modified-Since` so an unchanged page costs a 304 and nothing else.
+async fn refresh_url(state: &AppState, src: &PendingSource) -> Option<Batch> {
+    let now = crate::state::now_unix();
+    let forced = src.marker_seen.is_none();
+    let due = forced
+        || src.fail_count > 0
+        || now - src.last_checked_at.unwrap_or(0) >= src.refresh_s.unwrap_or(DEFAULT_URL_REFRESH_S);
+    if !due {
+        return None;
     }
+    let url = src.spec.get("url").and_then(Value::as_str).unwrap_or("").to_string();
+    let validator = if forced { None } else { src.marker_seen.as_deref() };
+    let mut batch = match fetch_url(state, &url, validator).await {
+        Ok(Fetched::NotModified) => Batch::new(Vec::new(), src.cursor.clone(), true, None),
+        Ok(Fetched::Body { text, marker }) => {
+            if !forced && src.marker_seen.as_deref() == Some(marker.as_str()) {
+                Batch::new(Vec::new(), src.cursor.clone(), true, None)
+            } else {
+                let mut b = Batch::new(
+                    vec![(url, chunk_text_with(&text, src.max_chars, src.overlap))],
+                    src.cursor.clone(),
+                    true,
+                    None,
+                );
+                b.marker = Some(marker.clone());
+                b.marker_seen = Some(marker);
+                b.items_set = Some(1);
+                b.changed = true;
+                b
+            }
+        }
+        Err(code) => failed(&src.cursor, code),
+    };
+    batch.checked = true;
+    Some(refreshing(batch))
 }
 
 /// GET `url` with redirects followed by hand so every hop passes the same
 /// host check as the create-time one; the body is read up to
-/// [`URL_MAX_BYTES`]. `Err` is the short code stored as `last_error`.
-async fn fetch_url(state: &AppState, start: &str) -> Result<String, String> {
+/// [`URL_MAX_BYTES`]. `validator` is a stored marker (`etag:..` / `lm:..`)
+/// sent back as a conditional header. `Err` is the short code stored as
+/// `last_error`.
+async fn fetch_url(state: &AppState, start: &str, validator: Option<&str>) -> Result<Fetched, String> {
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .timeout(URL_TIMEOUT)
@@ -682,8 +1294,19 @@ async fn fetch_url(state: &AppState, start: &str) -> Result<String, String> {
     let mut url = start.to_string();
     for _ in 0..=URL_MAX_REDIRECTS {
         check_url(state, &url).map_err(|_| "host_not_allowed".to_string())?;
-        let mut resp = client.get(&url).send().await.map_err(|_| "fetch_failed".to_string())?;
+        let mut req = client.get(&url);
+        if let Some(v) = validator {
+            if let Some(etag) = v.strip_prefix("etag:") {
+                req = req.header(reqwest::header::IF_NONE_MATCH, etag);
+            } else if let Some(lm) = v.strip_prefix("lm:") {
+                req = req.header(reqwest::header::IF_MODIFIED_SINCE, lm);
+            }
+        }
+        let mut resp = req.send().await.map_err(|_| "fetch_failed".to_string())?;
         let status = resp.status();
+        if status == reqwest::StatusCode::NOT_MODIFIED && validator.is_some() {
+            return Ok(Fetched::NotModified);
+        }
         if status.is_redirection() {
             let next = resp
                 .headers()
@@ -697,6 +1320,7 @@ async fn fetch_url(state: &AppState, start: &str) -> Result<String, String> {
         if !status.is_success() {
             return Err(format!("http_{}", status.as_u16()));
         }
+        let headers = resp.headers().clone();
         let mut body: Vec<u8> = Vec::new();
         while let Some(part) = resp.chunk().await.map_err(|_| "fetch_failed".to_string())? {
             let room = URL_MAX_BYTES - body.len();
@@ -705,13 +1329,109 @@ async fn fetch_url(state: &AppState, start: &str) -> Result<String, String> {
                 break;
             }
         }
-        return Ok(String::from_utf8_lossy(&body).into_owned());
+        let text = String::from_utf8_lossy(&body).into_owned();
+        let marker = url_marker(&headers, &text);
+        return Ok(Fetched::Body { text, marker });
     }
     Err("too_many_redirects".to_string())
 }
 
-/// Writes one source's batch atomically: its chunks (truncated to the
-/// tenant's `index_chunks_max` room) plus the cursor, counts and state.
+fn sha256_hex(text: &str) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(text.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Inputs per embeddings request.
+const EMBED_BATCH: usize = 64;
+
+/// R3: the vector for every chunk text of `items` that can have one, keyed
+/// by `sha256(text)`. A new chunk whose text is byte-identical to a replaced
+/// one reuses its vector; the rest are embedded -- one request per
+/// [`EMBED_BATCH`] -- when the tenant configured an embeddings provider
+/// (`host.docs.index_config`). A provider failure leaves those chunks with
+/// no vector (lexical only), exactly as the documents indexer does.
+async fn prepare_vectors(
+    state: &AppState,
+    tenant_id: i64,
+    source_id: i64,
+    items: &[(String, Vec<Chunk>)],
+) -> std::collections::HashMap<String, Vec<u8>> {
+    let mut vectors = reusable_vectors(state, source_id, items).await.unwrap_or_default();
+    let mut missing: Vec<(String, String)> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for chunk in items.iter().flat_map(|(_, chunks)| chunks) {
+        let hash = sha256_hex(&chunk.text);
+        if !vectors.contains_key(&hash) && seen.insert(hash.clone()) {
+            missing.push((hash, chunk.text.clone()));
+        }
+    }
+    if missing.is_empty() {
+        return vectors;
+    }
+    let Ok(Some(cfg)) = state.db.doc_index_state_get(tenant_id).await else {
+        return vectors;
+    };
+    let (true, Some(endpoint), Some(model), Some(secret)) = (
+        cfg.provider == "openai-compatible",
+        cfg.endpoint.as_deref(),
+        cfg.model.as_deref(),
+        cfg.secret_name.as_deref(),
+    ) else {
+        return vectors;
+    };
+    for group in missing.chunks(EMBED_BATCH) {
+        let inputs: Vec<String> = group.iter().map(|(_, t)| t.clone()).collect();
+        match crate::docs_index::call_embeddings_provider(state, tenant_id, endpoint, model, secret, &inputs).await {
+            Ok(embeddings) if embeddings.len() == group.len() => {
+                for ((hash, _), embedding) in group.iter().zip(embeddings) {
+                    vectors.insert(hash.clone(), crate::docs_index::encode_vector(&embedding));
+                }
+            }
+            Ok(_) => {
+                tracing::warn!(tenant_id, "index builder: embeddings provider returned the wrong number of vectors");
+                break;
+            }
+            Err(e) => {
+                tracing::warn!(tenant_id, error = %e, "index builder: embeddings provider call failed");
+                break;
+            }
+        }
+    }
+    vectors
+}
+
+/// The vectors the batch's items currently hold.
+async fn reusable_vectors(
+    state: &AppState,
+    source_id: i64,
+    items: &[(String, Vec<Chunk>)],
+) -> Result<std::collections::HashMap<String, Vec<u8>>, AppError> {
+    let refs: Vec<String> = items.iter().map(|(r, _)| r.clone()).collect();
+    state
+        .db
+        .with_conn(move |conn| {
+            let mut out = std::collections::HashMap::new();
+            let mut stmt = conn.prepare(
+                "SELECT text_hash, vector FROM index_chunks \
+                 WHERE source_id = ?1 AND item_ref = ?2 AND vector IS NOT NULL AND text_hash IS NOT NULL",
+            )?;
+            for item_ref in &refs {
+                let rows = stmt.query_map(params![source_id, item_ref], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?))
+                })?;
+                for row in rows {
+                    let (hash, vector) = row?;
+                    out.insert(hash, vector);
+                }
+            }
+            Ok(out)
+        })
+        .await
+}
+
+/// Writes one source's batch atomically: each item's chunks replace its old
+/// ones (truncated to the tenant's `index_chunks_max` room, a replaced
+/// item's old chunks counting as room), plus the cursor, counts and state.
 async fn commit_batch(
     state: &AppState,
     tenant_id: i64,
@@ -720,18 +1440,25 @@ async fn commit_batch(
     chunks_max: i64,
 ) -> Result<(), AppError> {
     let source_id = src.id;
+    let is_url = src.kind == IndexSourceKind::Url.as_str();
     let now = crate::state::now_unix();
+    let vectors = prepare_vectors(state, tenant_id, source_id, &batch.items).await;
     state
         .db
         .with_conn(move |conn| {
             conn.execute("BEGIN IMMEDIATE", [])?;
             let outcome: Result<(), AppError> = (|| {
-                let total: i64 = conn.query_row(
-                    "SELECT COUNT(*) FROM index_chunks WHERE tenant_id = ?1",
-                    params![tenant_id],
-                    |r| r.get(0),
-                )?;
-                let mut room = (chunks_max - total).max(0);
+                if batch.reset {
+                    conn.execute("DELETE FROM index_chunks WHERE source_id = ?1", params![source_id])?;
+                }
+                let mut room = {
+                    let total: i64 = conn.query_row(
+                        "SELECT COUNT(*) FROM index_chunks WHERE tenant_id = ?1",
+                        params![tenant_id],
+                        |r| r.get(0),
+                    )?;
+                    (chunks_max - total).max(0)
+                };
                 let mut done = batch.done;
                 let mut error = batch.error.clone();
                 let mut items_read = 0i64;
@@ -741,6 +1468,11 @@ async fn commit_batch(
                     |r| r.get(0),
                 )?;
                 for (item_ref, chunks) in &batch.items {
+                    let removed = conn.execute(
+                        "DELETE FROM index_chunks WHERE source_id = ?1 AND item_ref = ?2",
+                        params![source_id, item_ref],
+                    )? as i64;
+                    room += removed;
                     if room == 0 && !chunks.is_empty() {
                         done = true;
                         error = Some("quota_index_chunks_max".to_string());
@@ -753,10 +1485,13 @@ async fn commit_batch(
                             error = Some("quota_index_chunks_max".to_string());
                             break;
                         }
+                        let hash = sha256_hex(&c.text);
+                        let vector = vectors.get(&hash);
                         conn.execute(
                             "INSERT INTO index_chunks \
-                                 (index_id, source_id, tenant_id, item_ref, chunk_no, byte_start, byte_end, text) \
-                             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                                 (index_id, source_id, tenant_id, item_ref, chunk_no, byte_start, byte_end, \
+                                  text, text_hash, vector) \
+                             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                             params![
                                 index_id,
                                 source_id,
@@ -765,7 +1500,9 @@ async fn commit_batch(
                                 n as i64,
                                 c.offset,
                                 c.offset + c.len,
-                                c.text
+                                c.text,
+                                hash,
+                                vector
                             ],
                         )?;
                         room -= 1;
@@ -774,10 +1511,49 @@ async fn commit_batch(
                         break;
                     }
                 }
+                let (items, last_error, fail_count, paused): (i64, Option<String>, i64, i64) = conn.query_row(
+                    "SELECT items, last_error, fail_count, paused FROM index_sources WHERE id = ?1",
+                    params![source_id],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+                )?;
+                let items = batch.items_set.unwrap_or(items + items_read);
+                // R6: the first clean refresh pass clears an earlier error; a
+                // build keeps the sticky error it always had.
+                let transient = error.as_deref().is_some_and(|e| e != "quota_index_chunks_max");
+                let last_error = match (&error, batch.refresh) {
+                    (Some(e), _) => Some(e.clone()),
+                    (None, true) => None,
+                    (None, false) => last_error,
+                };
+                let (fail_count, paused) = if is_url && transient {
+                    (fail_count + 1, i64::from(fail_count + 1 >= URL_FAIL_LIMIT))
+                } else if is_url && error.is_none() {
+                    (0, paused)
+                } else {
+                    (fail_count, paused)
+                };
                 conn.execute(
-                    "UPDATE index_sources SET cursor = ?1, items = items + ?2, state = ?3, \
-                         last_error = COALESCE(?4, last_error), updated_at = ?5 WHERE id = ?6",
-                    params![batch.cursor, items_read, if done { "done" } else { "pending" }, error, now, source_id],
+                    "UPDATE index_sources SET cursor = ?1, items = ?2, state = ?3, last_error = ?4, \
+                         updated_at = ?5, marker = COALESCE(?6, marker), \
+                         marker_seen = COALESCE(?7, marker_seen), \
+                         last_checked_at = CASE WHEN ?8 THEN ?5 ELSE last_checked_at END, \
+                         last_changed_at = CASE WHEN ?9 THEN ?5 ELSE last_changed_at END, \
+                         fail_count = ?10, paused = ?11 \
+                     WHERE id = ?12",
+                    params![
+                        batch.cursor,
+                        items,
+                        if done { "done" } else { "pending" },
+                        last_error,
+                        now,
+                        batch.marker,
+                        batch.marker_seen,
+                        batch.checked,
+                        batch.changed,
+                        fail_count,
+                        paused,
+                        source_id
+                    ],
                 )?;
                 Ok(())
             })();

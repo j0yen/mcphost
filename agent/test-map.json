@@ -1665,6 +1665,15 @@
       "AC3": "tests/hidx_ac03_source_kinds_one_set.rs",
       "AC4": "tests/hidx_ac04_index_max_quota.rs"
     },
+    "hrfr": {
+      "_prd": "PRD-mcphost-index-refresh-on-change.md (test_prefix: hrfr)",
+      "AC2": "tests/hrfr_ac02_incremental_refresh_after_appends_and_reput.rs",
+      "AC3": "tests/hrfr_ac03_query_carries_stale_sources_while_ticking.rs",
+      "AC4": "tests/hrfr_ac04_url_conditional_refresh_and_floor.rs",
+      "AC5": "tests/hrfr_ac05_rechunk_keeps_vectors_of_unchanged_chunks.rs",
+      "AC6": "tests/hrfr_ac06_table_write_verbs_bump_change_counter.rs",
+      "AC7": "tests/hrfr_ac07_failing_url_pauses_until_refreshed.rs"
+    },
     "creg": {
       "_prd": "PRD-mcphost-server-capabilities-from-registry.md (test_prefix: creg)",
       "AC1": "tests/creg_ac01_premise_two_truths_then_minus_32601.rs",

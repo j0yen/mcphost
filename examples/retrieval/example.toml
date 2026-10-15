@@ -1,0 +1,16 @@
+[example]
+name = "retrieval"
+title = "Retrieval that follows its sources"
+summary = "Index documents, table columns and urls under one name; re-put a document and watch behind_by go 1 then 0 as the index follows."
+use_case = ["docs-qa"]
+clients = ["any"]
+since = "0.107.99"
+secrets_needed = []
+
+[first_call]
+tool = "host.index.query"
+expect = "result.results contains hidx-probe"
+
+[first_call.args]
+name = "hidx-probe"
+query = "hidx-probe"

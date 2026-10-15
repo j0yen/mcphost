@@ -541,6 +541,7 @@ pub async fn model_set(state: &AppState, tenant: &Tenant, args: &Value) -> Resul
     let graph_affecting = key == "role" || key == "description";
 
     state.db.upsert_table_model_annotation(tenant.id, table.clone(), column.clone(), key.clone(), value.clone()).await?;
+    tables::bump_change_counter(state, tenant.id, &table, false).await;
 
     // PRD-mcphost-drift-review requirement 1/3 (AC1): every annotation
     // change is a "table note" change -- versioned and enqueued for

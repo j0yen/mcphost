@@ -727,7 +727,54 @@ pub async fn table_create(state: &AppState, tenant: &Tenant, args: &Value) -> Re
         tracing::warn!(error = %e, table = %name, "failed to mark table model stale after create");
     }
 
+    bump_change_counter(state, tenant.id, &name, true).await;
+
     Ok(json!({"name": name, "created": true}))
+}
+
+/// PRD-mcphost-index-refresh-on-change R2: every `host.table.*` verb that
+/// writes, each of which bumps `change_counter` of the table (or handle) it
+/// names exactly once per successful call through [`bump_change_counter`].
+/// `tests/hrfr_ac06_*` asserts this is the set of `host.table.*` entries in
+/// [`crate::write_verbs::WRITE_VERBS`] and that each verb moves the counter.
+pub const TABLE_WRITE_VERBS: &[&str] = &[
+    "host.table.create",
+    "host.table.append",
+    "host.table.drop",
+    "host.table.handle_drop",
+    "host.table.model_set",
+];
+
+/// PRD-mcphost-index-refresh-on-change R2: bumps `change_counter` of `table`
+/// (and `rewrite_counter` when the write is not an append, so an index over
+/// it re-reads every row). The row lives in the main db, so it is a second
+/// write right after the tenant-db one; best-effort, a failure here never
+/// fails the write. Skipped under a dry run, which writes nothing.
+pub async fn bump_change_counter(state: &AppState, tenant_id: i64, table: &str, rewrite: bool) {
+    if crate::dryrun::active() {
+        return;
+    }
+    let table = table.to_string();
+    let now = crate::state::now_unix();
+    let rw = i64::from(rewrite);
+    let res = state
+        .db
+        .with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO table_change_counters \
+                     (tenant_id, table_name, change_counter, rewrite_counter, changed_at) \
+                 VALUES (?1, ?2, 1, ?3, ?4) \
+                 ON CONFLICT (tenant_id, table_name) DO UPDATE SET \
+                     change_counter = change_counter + 1, \
+                     rewrite_counter = rewrite_counter + ?3, changed_at = ?4",
+                params![tenant_id, table, rw, now],
+            )?;
+            Ok(())
+        })
+        .await;
+    if let Err(e) = res {
+        tracing::warn!(error = %e, "failed to bump table change counter");
+    }
 }
 
 /// `(row count, payload bytes)` of table `name`: bytes is the summed byte
@@ -850,6 +897,9 @@ pub async fn table_drop(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
     // when neither ever existed): `dropped == false` for a name that was
     // never declared, in which case there is nothing to clean up either.
     state.db.delete_table_model_and_annotations(tenant.id, name.clone()).await?;
+    if dropped {
+        bump_change_counter(state, tenant.id, &name, true).await;
+    }
 
     // PRD-mcphost-lineage-blast-radius requirement 7 (AC4): a confirmed
     // drop over breaking consumers gets its own audit line (the refusal
@@ -1102,6 +1152,8 @@ pub async fn table_append(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     if let Err(e) = state.db.mark_table_graph_stale(tenant.id).await {
         tracing::warn!(error = %e, table = %table, "failed to mark table graph stale after append");
     }
+
+    bump_change_counter(state, tenant.id, &table, false).await;
 
     Ok(json!({"table": table, "appended": ids.len(), "ids": ids}))
 }
@@ -2509,6 +2561,9 @@ pub async fn table_handle_drop(state: &AppState, tenant: &Tenant, args: &Value) 
         Ok(true)
     })
     .await?;
+    if dropped {
+        bump_change_counter(state, tenant.id, &handle, true).await;
+    }
     Ok(json!({"handle": handle, "dropped": dropped}))
 }
 

@@ -32,6 +32,36 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "msg_ac01_send_reaches_inbox.rs"]
+mod msg_ac01_send_reaches_inbox;
+#[path = "msg_ac02_reply_appends_next_seq.rs"]
+mod msg_ac02_reply_appends_next_seq;
+#[path = "msg_ac03_non_participant_thread_not_found.rs"]
+mod msg_ac03_non_participant_thread_not_found;
+#[path = "msg_ac04_dedupe_key.rs"]
+mod msg_ac04_dedupe_key;
+#[path = "msg_ac05_block.rs"]
+mod msg_ac05_block;
+#[path = "msg_ac06_inbox_cursor_concurrent.rs"]
+mod msg_ac06_inbox_cursor_concurrent;
+#[path = "msg_ac07_forged_from.rs"]
+mod msg_ac07_forged_from;
+#[path = "msg_ac08_contact_policy_closed.rs"]
+mod msg_ac08_contact_policy_closed;
+#[path = "msg_ac09_msgs_per_hour_quota.rs"]
+mod msg_ac09_msgs_per_hour_quota;
+#[path = "msg_ac10_body_and_recipients_quota.rs"]
+mod msg_ac10_body_and_recipients_quota;
+#[path = "msg_ac11_tenant_delete_cascade.rs"]
+mod msg_ac11_tenant_delete_cascade;
+#[path = "msg_ac12_send_latency.rs"]
+mod msg_ac12_send_latency;
+#[path = "msg_ac13_unread_only.rs"]
+mod msg_ac13_unread_only;
+#[path = "msg_ac14_thread_continuation.rs"]
+mod msg_ac14_thread_continuation;
+#[path = "msg_regr01_dedupe_hit_preserves_refused.rs"]
+mod msg_regr01_dedupe_hit_preserves_refused;
 #[path = "msrvlock_ac01_stale_lock_fails.rs"]
 mod msrvlock_ac01_stale_lock_fails;
 #[path = "msrvlock_ac02_cargo_steps_are_locked.rs"]

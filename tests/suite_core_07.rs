@@ -1191,6 +1191,18 @@ mod hpress_ac05_daily_rows_have_no_host;
 mod hpress_ac06_status_html_host_line;
 #[path = "hpress_ac07_metrics_doc_matches_struct.rs"]
 mod hpress_ac07_metrics_doc_matches_struct;
+#[path = "hrfr_ac02_incremental_refresh_after_appends_and_reput.rs"]
+mod hrfr_ac02_incremental_refresh_after_appends_and_reput;
+#[path = "hrfr_ac03_query_carries_stale_sources_while_ticking.rs"]
+mod hrfr_ac03_query_carries_stale_sources_while_ticking;
+#[path = "hrfr_ac04_url_conditional_refresh_and_floor.rs"]
+mod hrfr_ac04_url_conditional_refresh_and_floor;
+#[path = "hrfr_ac05_rechunk_keeps_vectors_of_unchanged_chunks.rs"]
+mod hrfr_ac05_rechunk_keeps_vectors_of_unchanged_chunks;
+#[path = "hrfr_ac06_table_write_verbs_bump_change_counter.rs"]
+mod hrfr_ac06_table_write_verbs_bump_change_counter;
+#[path = "hrfr_ac07_failing_url_pauses_until_refreshed.rs"]
+mod hrfr_ac07_failing_url_pauses_until_refreshed;
 #[path = "hsr_ac01_top10_errors_have_fix_anchor.rs"]
 mod hsr_ac01_top10_errors_have_fix_anchor;
 #[path = "hsr_ac02_import_mcphost_dev_finds_python_example.rs"]
@@ -1799,33 +1811,3 @@ mod mrefu_ac02_compatible_migration_reports_ok;
 mod mrefu_ac03_schema_is_generated_and_drift_tested;
 #[path = "mrefu_ac04_previous_up_failure_exits_4_with_tables_changed.rs"]
 mod mrefu_ac04_previous_up_failure_exits_4_with_tables_changed;
-#[path = "msg_ac01_send_reaches_inbox.rs"]
-mod msg_ac01_send_reaches_inbox;
-#[path = "msg_ac02_reply_appends_next_seq.rs"]
-mod msg_ac02_reply_appends_next_seq;
-#[path = "msg_ac03_non_participant_thread_not_found.rs"]
-mod msg_ac03_non_participant_thread_not_found;
-#[path = "msg_ac04_dedupe_key.rs"]
-mod msg_ac04_dedupe_key;
-#[path = "msg_ac05_block.rs"]
-mod msg_ac05_block;
-#[path = "msg_ac06_inbox_cursor_concurrent.rs"]
-mod msg_ac06_inbox_cursor_concurrent;
-#[path = "msg_ac07_forged_from.rs"]
-mod msg_ac07_forged_from;
-#[path = "msg_ac08_contact_policy_closed.rs"]
-mod msg_ac08_contact_policy_closed;
-#[path = "msg_ac09_msgs_per_hour_quota.rs"]
-mod msg_ac09_msgs_per_hour_quota;
-#[path = "msg_ac10_body_and_recipients_quota.rs"]
-mod msg_ac10_body_and_recipients_quota;
-#[path = "msg_ac11_tenant_delete_cascade.rs"]
-mod msg_ac11_tenant_delete_cascade;
-#[path = "msg_ac12_send_latency.rs"]
-mod msg_ac12_send_latency;
-#[path = "msg_ac13_unread_only.rs"]
-mod msg_ac13_unread_only;
-#[path = "msg_ac14_thread_continuation.rs"]
-mod msg_ac14_thread_continuation;
-#[path = "msg_regr01_dedupe_hit_preserves_refused.rs"]
-mod msg_regr01_dedupe_hit_preserves_refused;
