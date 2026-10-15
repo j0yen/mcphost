@@ -160,6 +160,19 @@ impl Db {
         .await
     }
 
+    /// Sub-keys of `tenant_id` that are neither revoked nor expired at `now`.
+    pub async fn count_active_sub_keys(&self, tenant_id: i64, now: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM tenant_keys \
+                 WHERE tenant_id = ?1 AND revoked_at IS NULL AND expires_at > ?2",
+                params![tenant_id, now],
+                |r| r.get(0),
+            )?)
+        })
+        .await
+    }
+
     pub async fn count_sub_keys(&self, tenant_id: i64) -> Result<i64, AppError> {
         self.with_conn(move |conn| {
             Ok(conn.query_row(
@@ -223,6 +236,27 @@ pub async fn mint(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
                 data: json!({"tool": name}),
             });
         }
+    }
+    // R7: the plan's `sub_keys_max` bounds active sub-keys.
+    let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
+        AppError::Internal(format!("tenant's plan '{}' is not in the loaded plan catalog", tenant.plan))
+    })?;
+    let active = state.db.count_active_sub_keys(tenant.id, now_unix()).await?;
+    if active >= plan.sub_keys_max {
+        return Err(AppError::Structured {
+            code: "plan_required",
+            message: format!(
+                "sub_keys_max: the {} plan allows {} active sub-keys and this tenant holds {active} -- \
+                 revoke one with host.key.revoke, or upgrade",
+                tenant.plan, plan.sub_keys_max
+            ),
+            data: json!({
+                "field": "sub_keys_max",
+                "plan": tenant.plan,
+                "limit": plan.sub_keys_max,
+                "used": active,
+            }),
+        });
     }
     let key = generate_sub_key();
     let label = match args.get("label") {
