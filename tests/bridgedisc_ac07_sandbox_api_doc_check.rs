@@ -26,6 +26,7 @@ const TOUCHED: &[&str] = &[
     "src/kinds/python.rs",
     "docs/kinds/python.md",
     "www/llms.txt",
+    "docs/protocol/capabilities.md",
     "plugin/skills/mcphost/SKILL.md",
     "src/oauth.rs",
     // PRD-mcphost-oauth-first-entry-url: the script also checks that every

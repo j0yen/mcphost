@@ -922,6 +922,28 @@ pub fn quickstart(
     args: &Value,
     path_url_secret: Option<&str>,
 ) -> Result<Value, AppError> {
+    let mut response = quickstart_inner(state, tenant, args, path_url_secret)?;
+    // PRD-mcphost-server-capabilities-from-registry requirement 6: anonymous
+    // and keyed alike, generated from the same `CAPABILITIES` const as
+    // `initialize.capabilities` and `/capabilities.json`.
+    if let Value::Object(map) = &mut response {
+        map.insert(
+            "capabilities".to_string(),
+            json!({
+                "implemented": crate::capabilities::implemented_names(),
+                "unsupported": crate::capabilities::unsupported_names(),
+            }),
+        );
+    }
+    Ok(response)
+}
+
+fn quickstart_inner(
+    state: &AppState,
+    tenant: Option<&Tenant>,
+    args: &Value,
+    path_url_secret: Option<&str>,
+) -> Result<Value, AppError> {
     let Some(tenant) = tenant else {
         let mut response = json!({
             "authenticated": false,

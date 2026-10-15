@@ -166,6 +166,13 @@ enum Command {
         #[arg(long)]
         clients: Option<PathBuf>,
     },
+    /// PRD-mcphost-server-capabilities-from-registry requirement 4: print
+    /// the generated `## Capabilities` section (`--doc`: the whole
+    /// `docs/protocol/capabilities.md`) for `scripts/sandbox-api-doc-check.sh`.
+    CapabilitiesSection {
+        #[arg(long)]
+        doc: bool,
+    },
     /// PRD-mcphost-first-hour-support-surface requirement 3 (AC4):
     /// regenerate `docs/plans.md` from `billing::plans_from_catalog` over
     /// `PlanCatalog::default_catalog()` -- the exact data `billing.plans`
@@ -922,6 +929,18 @@ async fn main() -> anyhow::Result<()> {
                         std::process::exit(2);
                     }
                 },
+            }
+            Ok(())
+        }
+        Command::CapabilitiesSection { doc } => {
+            let text = if doc {
+                mcphost::llms_txt::render_capabilities_doc()
+            } else {
+                mcphost::llms_txt::render_capabilities_section()
+            };
+            print!("{text}");
+            if !doc {
+                println!();
             }
             Ok(())
         }

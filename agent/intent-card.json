@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-task-handoff-tool.md",
-  "intent_slug": "mcphost-task-handoff-tool",
-  "root_motivation": "**Who:** an agent that needs another agent to do one unit of work and report back. **What:** post the work, learn when it is claimed, receive the result on its existing wait, and see a dead letter when the deadline passes. **Why not today:** `host.msg.send` carries body, data and dedupe_key and `host.msg.wait` long-polls the inbox, but nothing says a message is a task: no claim, no completion, no deadline, no state. **Premise (creative):** a task is a thread with a state machine the host owns. **Falsifier:** tenant A posts a task to B, B claims and completes it, and A's `host.msg.wait` returns the completion within 2 s; if it cannot ride the existing thread/inbox path, the handoff is two messages and a convention, and the PRD dies at AC 1.",
-  "user_persona": "An agent that calls host.state.delete_rows with an empty filter on a 5 000-row table, reads confirm_required.dry_run_first, runs the dry run, notices the empty filter and fixes it; a Claude Code user who sees a destructive marker on host.table.drop.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-server-capabilities-from-registry.md",
+  "intent_slug": "mcphost-server-capabilities-from-registry",
+  "root_motivation": "**Who:** the autonomous coding agent whose client decides at `initialize` what to offer the user; synthorg's conformance link. **What:** one truth about the MCP primitives this host speaks, the same in the advertisement, the docs, `/capabilities.json` and the method behaviour. **Why:** `initialize` advertised only tools while `resources/list` and `prompts/list` answered empty results, so a probing client believed resources exist.",
+  "user_persona": "An agent that reads `https://mcphost.dev/capabilities.json` with no key, sees `resources` is not implemented, and on a stray `resources/list` gets `-32601` with `data.alternative: host.table.list` and a `help_url` instead of an empty list.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,61 +14,56 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given tenants A and B, When A posts a task to B, B claims and completes it with `result: {\"n\": 1}`, Then A's `host.msg.wait` (cursor from before the post) returns within 2 s a message whose `data.task` has `status: \"done\"` and `result.n == 1`.",
-      "test": "tests/thand_ac01_poster_wait_returns_completion.rs"
+      "description": "Given a 0.107.0-shaped in-process server (registry absent, rmcp defaults), When `resources/list`, `prompts/list` and `resources/templates/list` are sent, Then each returns a `result` while `initialize.capabilities` omits `resources` and `prompts`; Given the registry wired, When the same three are sent, Then each returns `-32601` with `data.capability` naming the row.",
+      "test": "tests/creg_ac01_premise_two_truths_then_minus_32601.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given `host_tools()`, When the drift test runs, Then `host.task.get`'s `status` enum equals `TaskStatus::ALL` and llms.txt lists the same five words.",
-      "test": "tests/thand_ac02_status_enum_source_of_truth.rs"
+      "description": "Given `CAPABILITIES`, When `initialize` is answered, Then `capabilities` equals exactly the rows with `implemented: true` rendered through `server_capabilities()`, and `grep -rn 'enable_tools()' src/ | grep -v capabilities.rs` prints nothing.",
+      "test": "tests/creg_ac02_initialize_capabilities_from_registry.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a posted task, When B and a third tenant C both call `claim`, Then B gets `status: \"claimed\"` and C gets `task_not_found`; a second `claim` by B returns `task_already_claimed`.",
-      "test": "tests/thand_ac03_claim_is_recipient_only_and_once.rs"
+      "description": "Given every row, When each of its `methods` is sent to an in-process server, Then implemented rows answer a `result` and unimplemented rows `-32601` with `data.help_url` ending `/help/capability_unsupported` and `data.alternative` equal to the row's; a row whose `methods` is empty fails the test naming the row.",
+      "test": "tests/creg_ac03_every_method_matches_its_row.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given `deadline_s: 60` and no claim, When the housekeeping tick runs at deadline + 60 s, Then the task is `dead`, A's `dead_letters` lists it with `reason: \"deadline\"`, and the thread's last message is from `host` with `data.task.status: \"dead\"`.",
-      "test": "tests/thand_ac04_deadline_sweep_dead_letters.rs"
+      "description": "Given `GET /capabilities.json` with no key, When fetched 100 times in 10 s, Then every response is 200 with `primitives.tools.implemented == true`, `version` equal to `CARGO_PKG_VERSION`, and no signup or tenant row is created.",
+      "test": "tests/creg_ac04_capabilities_json_keyless.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a completed task, When `complete` is called again with a different result, Then the stored result is returned with `already_complete: true` and no new thread message is posted.",
-      "test": "tests/thand_ac05_complete_is_idempotent.rs"
+      "description": "Given `www/llms.txt` and `docs/protocol/capabilities.md`, When `scripts/sandbox-api-doc-check.sh` runs, Then it exits 0 only if both `## Capabilities` sections equal `render_capabilities_section()` byte-for-byte; with one row edited it exits 1 naming the file.",
+      "test": "tests/creg_ac05_capabilities_docs_in_sync.rs"
     },
     {
       "id": "AC6",
-      "level": "MUST",
-      "description": "Given a free tenant with 20 open tasks, When it posts a 21st, Then `quota_exceeded` names `tasks_open_max`; Given a `to` address that blocked A, Then `agent_not_found`.",
-      "test": "tests/thand_ac06_open_task_quota_and_refusals.rs"
+      "level": "SHOULD",
+      "description": "Given anonymous and keyed `host.quickstart`, When called, Then `capabilities.implemented` lists exactly the implemented row names and `capabilities.unsupported` the rest, in registry order.",
+      "test": "tests/creg_ac06_quickstart_names_capabilities.rs"
     },
     {
       "id": "AC7",
-      "level": "MUST",
-      "description": "Given tenant B is deleted, When `host.task.get` and `host.msg.thread` are called by A, Then the task row is gone and the thread no longer lists B as a participant.",
-      "test": "tests/thand_ac07_tenant_delete_cascade.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Given prod after deploy, When the live script runs two implicit tenants through post \u2192 wait \u2192 claim \u2192 complete \u2192 wait, Then it prints `status: done` and a latency under 3,000 ms (Live; evidence: `ssh orch 'bash ~/wintermute/mcphost/scripts/task-handoff-live.sh https://mcphost.dev'`)",
-      "test": "deferred -- operator-provisioned: Live check of prod via scripts/task-handoff-live.sh."
+      "level": "SHOULD",
+      "description": "Given two rows with the same `probe` name, When the test suite runs, Then `creg_ac07_probe_names_unique` fails naming both rows.",
+      "test": "tests/creg_ac07_probe_names_unique.rs"
     }
   ],
   "scope": [
-    "src/tasks.rs (new): TaskStatus (the one status enum), post/claim/complete/get/dead_letters, the deadline sweep.",
-    "src/messaging.rs: send_outcome/reply_outcome so a task rides the existing send/reply path.",
-    "src/handler.rs, src/output_schemas.rs, src/plans.rs, src/paged.rs, src/main.rs: descriptors and dispatch, generated status enum, tasks_open_max, unpaged entry, sweep task.",
-    "migrations/0102_tasks.sql: the tasks table.",
-    "contracts/, docs/, www/llms.txt: regenerated contract, tools doc, plans and the task section."
+    "src/capabilities.rs (new): CAPABILITIES, server_capabilities(), unsupported_error(), capabilities_document().",
+    "src/handler.rs: get_info and the unimplemented-primitive hooks.",
+    "src/http.rs: GET /capabilities.json and the -32601 enrichment layer.",
+    "src/llms_txt.rs, src/main.rs, scripts/sandbox-api-doc-check.sh: generated ## Capabilities section.",
+    "src/control.rs: host.quickstart capabilities field.",
+    "src/help.rs: capability_unsupported."
   ],
   "non_goals": [
-    "Fan-out to many claimers; retries by the host; payment or wallets; a new transport; host.task.cancel (R8, P1, not in this build's AC list)."
+    "Implementing any primitive (sibling PRDs flip one row each); OAuth scope changes; changing tools/* behaviour; building logging and roots."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -77,27 +72,35 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "status_single_source": "TaskStatus::ALL feeds the output schemas, the get description and llms.txt",
-      "delivery": "a task is a thread; no second inbox"
+      "token_never_stored": "only sha256(token) is stored; the token is shown once by the dry run."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can't an agent hand work to another agent with a receipt?",
-      "a": "Messages carry no task state: no claim, completion or deadline."
+      "q": "Why can a client not trust what this host speaks?",
+      "a": "initialize advertises tools only, but rmcp's default hooks answer empty results for resources and prompts."
     },
     {
       "why": 2,
-      "q": "Why is there no state?",
-      "a": "threads and messages were built for conversation, not work items."
+      "q": "Why was that never caught?",
+      "a": "handler.rs was the only place a capability was named and nothing listed the MCP methods, so no test could compare the advertisement with the behaviour."
+    },
+    {
+      "why": 3,
+      "q": "What prevents drift now?",
+      "a": "One CAPABILITIES const generates the advertisement, /capabilities.json, the docs sections and the method list a drift test walks."
     }
   ],
-  "created_at": "2026-10-14T00:00:00Z",
+  "created_at": "2026-10-12T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Does claim post a thread message?",
-      "resolution": "Yes, a best-effort claimed notice from the claimer; a failed notice never undoes the claim."
+      "question": "Which diffs are gated?",
+      "resolution": "A dry-run diff with a measurable row count (rows[].delete, tables[].rows) at or above plan confirm_rows_min; verbs that report no count are not gated yet."
+    },
+    {
+      "question": "Token bound to key or session?",
+      "resolution": "Tenant (key hash), per the PRD default."
     }
   ]
 }

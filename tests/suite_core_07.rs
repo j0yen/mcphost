@@ -615,6 +615,20 @@ mod cproc_ac07_flake_lint_job_runs_child_proc_lint;
 mod cprocb_ac02_real_tree_clean_and_six_files_use_helper;
 #[path = "cprocb_ac03_flake_lint_job_fails_on_raw_spawn_before_toolchain.rs"]
 mod cprocb_ac03_flake_lint_job_fails_on_raw_spawn_before_toolchain;
+#[path = "creg_ac01_premise_two_truths_then_minus_32601.rs"]
+mod creg_ac01_premise_two_truths_then_minus_32601;
+#[path = "creg_ac02_initialize_capabilities_from_registry.rs"]
+mod creg_ac02_initialize_capabilities_from_registry;
+#[path = "creg_ac03_every_method_matches_its_row.rs"]
+mod creg_ac03_every_method_matches_its_row;
+#[path = "creg_ac04_capabilities_json_keyless.rs"]
+mod creg_ac04_capabilities_json_keyless;
+#[path = "creg_ac05_capabilities_docs_in_sync.rs"]
+mod creg_ac05_capabilities_docs_in_sync;
+#[path = "creg_ac06_quickstart_names_capabilities.rs"]
+mod creg_ac06_quickstart_names_capabilities;
+#[path = "creg_ac07_probe_names_unique.rs"]
+mod creg_ac07_probe_names_unique;
 #[path = "ctrace_ac05_trace_access_is_tenant_scoped.rs"]
 mod ctrace_ac05_trace_access_is_tenant_scoped;
 #[path = "ctrace_ac06_sweep_keeps_newest_200_within_24h.rs"]

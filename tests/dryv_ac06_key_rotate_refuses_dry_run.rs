@@ -51,6 +51,7 @@ fn host_tools_doc_names_the_reason_beside_the_verb_and_the_check_script_catches_
         "docs/host-tools.md",
         "docs/kinds/python.md",
         "www/llms.txt",
+        "docs/protocol/capabilities.md",
         "plugin/skills/mcphost/SKILL.md",
         "src/oauth.rs",
         // PRD-mcphost-oauth-first-entry-url: the script also checks that every

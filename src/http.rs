@@ -777,6 +777,20 @@ async fn well_known_catalog(State(state): State<Arc<AppState>>) -> impl IntoResp
     }
 }
 
+/// PRD-mcphost-server-capabilities-from-registry requirement 3: `GET
+/// /capabilities.json`, unauthenticated and DB-free (so safe keyless under
+/// the signup rate limit), rendered from the same `CAPABILITIES` const as
+/// `initialize.capabilities`. `?implemented=1` keeps only implemented rows.
+async fn capabilities_json(Query(params): Query<HashMap<String, String>>) -> Response {
+    let only_implemented = params.get("implemented").is_some_and(|v| v == "1");
+    (
+        StatusCode::OK,
+        [(CACHE_CONTROL, HeaderValue::from_static("max-age=60"))],
+        Json(crate::capabilities::capabilities_document(only_implemented)),
+    )
+        .into_response()
+}
+
 /// mcphost-polish-p0-20260930 (audit finding 1): README's own "Connect"
 /// checklist links `/status.html` and `/aup.html`, but neither was ever
 /// routed by this binary -- a comment on the `boa_engine` dev-dependency
@@ -1584,6 +1598,60 @@ fn entry_unauthorized(state: &AppState, invalid: Option<&'static str>) -> Respon
     response
 }
 
+/// PRD-mcphost-server-capabilities-from-registry requirement 2: methods
+/// `rmcp` cannot route to a handler hook (`sampling/createMessage`,
+/// `elicitation/create` and `roots/list` are server-to-client requests; a
+/// client sending them gets rmcp's bare `-32601 "<method>"`) still have to
+/// carry `data.{capability,alternative,help_url}`. When the request names (via
+/// `Mcp-Method`) a method of an unimplemented capability row and the reply
+/// is a `-32601` with no `data`, the error is replaced by
+/// [`crate::capabilities::unsupported_error`]; every other response -- in
+/// particular the hooks' own already-enriched errors -- passes untouched.
+async fn enrich_unsupported_errors(
+    State(state): State<Arc<AppState>>,
+    req: Request<Body>,
+    next: Next,
+) -> Response {
+    let method = req
+        .headers()
+        .get("mcp-method")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    let resp = next.run(req).await;
+    let Some(method) = method else { return resp };
+    if !crate::capabilities::capability_for_method(&method).is_some_and(|c| !c.implemented) {
+        return resp;
+    }
+    let is_json = resp
+        .headers()
+        .get(http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|c| c.starts_with("application/json"));
+    // rmcp answers these with HTTP 400, hooks with 200: the status is kept.
+    if !is_json {
+        return resp;
+    }
+    let (mut parts, body) = resp.into_parts();
+    let Ok(bytes) = axum::body::to_bytes(body, 64 * 1024).await else {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+    let mut doc: Value = match serde_json::from_slice(&bytes) {
+        Ok(v) => v,
+        Err(_) => return Response::from_parts(parts, Body::from(bytes)),
+    };
+    let bare = doc.get("error").is_some_and(|e| {
+        e.get("code").and_then(Value::as_i64) == Some(-32601) && e.get("data").is_none()
+    });
+    if !bare {
+        return Response::from_parts(parts, Body::from(bytes));
+    }
+    let err = crate::capabilities::unsupported_error(&method, Some(&state.public_url));
+    doc["error"] = serde_json::to_value(err).unwrap_or(Value::Null);
+    let out = serde_json::to_vec(&doc).unwrap_or_default();
+    parts.headers.remove(http::header::CONTENT_LENGTH);
+    Response::from_parts(parts, Body::from(out))
+}
+
 /// PRD-mcphost-session-bound-tenant-after-signup requirement 1: the session
 /// identity the binding map is keyed by.
 ///
@@ -1714,7 +1782,8 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         // PRD-mcphost-session-bound-tenant-after-signup requirement 1: a
         // `/t/{ns}/mcp` connection gets a session identity on exactly the
         // same terms as `/mcp` -- see `root_mcp_router` below.
-        .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id));
+        .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id))
+        .route_layer(middleware::from_fn_with_state(state.clone(), enrich_unsupported_errors));
 
     // PRD-mcphost-url-bound-tenants requirement 1: `/u/{secret}/mcp` serves
     // the identical streamable-HTTP service as `/mcp`/`/t/{ns}/mcp` --
@@ -1728,7 +1797,8 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
             state.clone(),
             require_known_url_secret,
         ))
-        .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id));
+        .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id))
+        .route_layer(middleware::from_fn_with_state(state.clone(), enrich_unsupported_errors));
 
     // PRD-mcphost-invite-links requirement 2: `/i/{code}/mcp` serves the
     // identical streamable-HTTP service as `/mcp`/`/u/{secret}/mcp` --
@@ -1741,7 +1811,8 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
             state.clone(),
             require_live_invite_code,
         ))
-        .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id));
+        .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id))
+        .route_layer(middleware::from_fn_with_state(state.clone(), enrich_unsupported_errors));
 
     // PRD-mcphost-session-bound-tenant-after-signup requirement 1: only the
     // streamable-HTTP routes get a session identity, so `/healthz`, the
@@ -1751,7 +1822,8 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
     // already documents: `.layer()` would wrap the default fallback too.
     let root_mcp_router = Router::new()
         .route_service("/mcp", service.clone())
-        .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id));
+        .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id))
+        .route_layer(middleware::from_fn_with_state(state.clone(), enrich_unsupported_errors));
 
     // PRD-mcphost-oauth-first-entry-url requirement 2: `OAUTH_ENTRY_PATH`
     // serves the identical streamable-HTTP service as `/mcp`, behind a gate
@@ -1760,7 +1832,8 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
     let entry_mcp_router = Router::new()
         .route_service(crate::oauth::OAUTH_ENTRY_PATH, service.clone())
         .route_layer(middleware::from_fn_with_state(state.clone(), require_entry_bearer))
-        .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id));
+        .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id))
+        .route_layer(middleware::from_fn_with_state(state.clone(), enrich_unsupported_errors));
 
     // PRD-mcphost-public-tool-url requirement 11 (AC10): its own sub-router
     // so `add_cors_header` (`route_layer`, not `.layer()`, same rationale
@@ -1841,6 +1914,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
             get(well_known_server_json),
         )
         .route("/.well-known/mcp/catalog.json", get(well_known_catalog))
+        .route("/capabilities.json", get(capabilities_json))
         .route(
             "/.well-known/oauth-protected-resource",
             get(well_known_oauth_protected_resource),
