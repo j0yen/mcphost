@@ -825,8 +825,49 @@ impl TestServer {
                 api_key: Some("test-email-key".to_string()),
                 from: Some("noreply@mcphost.invalid".to_string()),
                 provider: mcphost::email::EmailProvider::default(),
+                inbound: Default::default(),
             },
             email_client,
+            mcphost::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,
+            mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
+            mcphost::db::DbConfig::from_env(),
+            mcphost::alerts::AlertConfig::default(),
+            mcphost::state::FleetIps::empty(),
+            mcphost::state::VerifiedClientIds::empty(),
+            Vec::new(),
+        )
+        .await
+    }
+
+    /// PRD-mcphost-inbound-email-address-per-tenant: a server with inbound
+    /// email enabled -- `secret` is `MCPHOST_EMAIL_INBOUND_SECRET`, `provider`
+    /// picks the verifier (`fake` selects `FakeInbound`).
+    pub async fn start_with_email_inbound(
+        secret: &str,
+        provider: mcphost::email::EmailProvider,
+        fake: bool,
+    ) -> Self {
+        Self::start_full_with_email(
+            Some(ADMIN_KEY.to_string()),
+            KindRegistry::with_builtin(),
+            mcphost::state::CALL_TIMEOUT,
+            None,
+            mcphost::state::SIGNUP_RATE_LIMIT_PER_HOUR,
+            mcphost::billing::BillingConfig::default(),
+            Arc::new(mcphost::billing::FakeBillingClient::new(
+                mcphost::state::now_unix(),
+            )),
+            Vec::new(),
+            mcphost::email::EmailConfig {
+                provider,
+                inbound: mcphost::email_inbound::InboundConfig {
+                    secret: Some(secret.to_string()),
+                    domain: None,
+                    fake,
+                },
+                ..Default::default()
+            },
+            Arc::new(mcphost::email::FakeEmailClient::new()),
             mcphost::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,
             mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
             mcphost::db::DbConfig::from_env(),
@@ -864,6 +905,7 @@ impl TestServer {
                 api_key: Some("test-email-key".to_string()),
                 from: Some("noreply@mcphost.invalid".to_string()),
                 provider: mcphost::email::EmailProvider::default(),
+                inbound: Default::default(),
             },
             email_client,
             mcphost::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,

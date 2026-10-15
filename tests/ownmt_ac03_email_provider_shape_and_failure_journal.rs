@@ -25,6 +25,7 @@ async fn server_with_provider(mock: &MockServer, provider: EmailProvider) -> Tes
         api_key: Some(SENTINEL_API_KEY.to_string()),
         from: Some("claim@mcphost.dev".to_string()),
         provider,
+        inbound: Default::default(),
     };
     let email_client: Arc<dyn mcphost::email::EmailClient> = Arc::new(HttpEmailClient::new(
         reqwest::Client::new(),

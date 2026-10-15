@@ -819,6 +819,8 @@ mod edead_ac05_ring_and_plan_ceiling;
 mod edead_ac06_event_in_chain_context;
 #[path = "edead_ac07_reason_table_cannot_drift.rs"]
 mod edead_ac07_reason_table_cannot_drift;
+#[path = "emin_ac02_address_is_stable_and_enabled.rs"]
+mod emin_ac02_address_is_stable_and_enabled;
 #[path = "enduser_ac02_assertion_http_headers_and_calls_row.rs"]
 mod enduser_ac02_assertion_http_headers_and_calls_row;
 #[path = "enduser_ac03_invalid_assertion_rejected.rs"]

@@ -75,6 +75,8 @@ pub struct EmailConfig {
     /// here, from `$MCPHOST_EMAIL_PROVIDER` -- every other field predates
     /// this PRD.
     pub provider: EmailProvider,
+    /// PRD-mcphost-inbound-email-address-per-tenant: the inbound half.
+    pub inbound: crate::email_inbound::InboundConfig,
 }
 
 impl EmailConfig {
@@ -84,6 +86,7 @@ impl EmailConfig {
             api_key: std::env::var("MCPHOST_EMAIL_API_KEY").ok(),
             from: std::env::var("MCPHOST_EMAIL_FROM").ok(),
             provider: EmailProvider::from_env(),
+            inbound: crate::email_inbound::InboundConfig::from_env(),
         }
     }
 

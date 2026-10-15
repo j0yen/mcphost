@@ -4648,6 +4648,41 @@
       "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
     },
     {
+      "description": "Return this tenant's inbound email address: {address, domain, enabled}. Mail sent to it arrives as a message in host.msg.inbox / host.msg.wait whose data.kind is one of: email_received, email_inbound_quota_exceeded, email_bounced. email_received carries {message_id, from, to, subject, text, html_stripped, received_at, attachments, truncated}. The address is the same on every call; enabled is false until the host has an inbound signing secret.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.email.address",
+      "output_schema": {
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "address",
+          "domain",
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "since": "0.107.95"
+    },
+    {
       "description": "Generate and store a new per-tenant secret for signing end_user_assertion (HS256 compact JWS, claims sub/iat/exp with exp <= iat + 3600). Returns the secret once; it is never shown again and never appears in host.secret_list. Assertions signed with any prior secret stop verifying immediately -- no overlap window.",
       "input_schema": {
         "additionalProperties": false,
@@ -22312,6 +22347,23 @@
       },
       "name": "host_drift_reviews",
       "since": "0.103.1"
+    },
+    {
+      "alias_of": "host.email.address",
+      "description": "Return this tenant's inbound email address: {address, domain, enabled}. Mail sent to it arrives as a message in host.msg.inbox / host.msg.wait whose data.kind is one of: email_received, email_inbound_quota_exceeded, email_bounced. email_received carries {message_id, from, to, subject, text, html_stripped, received_at, attachments, truncated}. The address is the same on every call; enabled is false until the host has an inbound signing secret.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host_email_address",
+      "since": "0.107.95"
     },
     {
       "alias_of": "host.enduser.assertion_secret_rotate",

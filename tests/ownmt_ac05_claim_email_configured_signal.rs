@@ -46,6 +46,7 @@ async fn configured_once_the_three_mail_variables_are_set() {
         api_key: Some("test-email-key".to_string()),
         from: Some("claim@mcphost.dev".to_string()),
         provider: EmailProvider::default(),
+        inbound: Default::default(),
     };
     let server = TestServer::start_full_with_email(
         Some(ADMIN_KEY.to_string()),

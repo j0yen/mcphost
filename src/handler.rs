@@ -2786,6 +2786,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &["name", "urls"],
             ),
         ),
+        // PRD-mcphost-inbound-email-address-per-tenant R1: the tenant's inbound address.
+        Tool::new(
+            "host.email.address",
+            crate::email_inbound::address_tool_description(),
+            host_schema(json!({}), &[]),
+        ),
         // PRD-mcphost-webhook-inbox-one-call R1: a webhook inbox in one call.
         Tool::new(
             "host.webhook_inbox.create",
@@ -6543,6 +6549,7 @@ impl McpHostHandler {
             "host.uptime.create" => self.uptime_create(tenant, args, calls_auth_method, end_user).await,
             "host.call_trace" => self.call_trace(Some(tenant), args).await,
             "host.doctor" => self.doctor(Some(tenant), args).await,
+            "host.email.address" => Ok(crate::email_inbound::address(&self.state, tenant)),
             "host.webhook_inbox.create" => crate::webhook_inbox::create(&self.state, tenant, &args).await,
             "host.tool.history" => control::tool_history(&self.state, tenant, &args).await,
             "host.tool.rollback" => control::tool_rollback(&self.state, tenant, &args).await,

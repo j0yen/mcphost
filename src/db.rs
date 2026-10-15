@@ -315,6 +315,8 @@ const MIGRATION_0102: &str = include_str!("../migrations/0102_tasks.sql");
 const MIGRATION_0103: &str = include_str!("../migrations/0103_indexes.sql");
 /// PRD-mcphost-key-scoped-to-tools R1: the `tenant_keys` table, `calls.key_id`.
 const MIGRATION_0104: &str = include_str!("../migrations/0104_tenant_keys.sql");
+/// PRD-mcphost-inbound-email-address-per-tenant R7: the `email_inbound_log` table.
+const MIGRATION_0105: &str = include_str!("../migrations/0105_email_inbound.sql");
 
 /// Outcome of [`Db::reserve_draft`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2989,6 +2991,8 @@ impl Db {
         conn.execute_batch(MIGRATION_0102)?;
         conn.execute_batch(MIGRATION_0103)?;
         Self::migrate_0104_tenant_keys(&conn)?;
+        // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
+        conn.execute_batch(MIGRATION_0105)?;
         Ok(())
     }
 
@@ -18248,6 +18252,39 @@ impl Db {
                 params![message_id, tenant_id],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-inbound-email-address-per-tenant R7: one delivery's log row.
+    pub async fn insert_email_inbound_log(
+        &self,
+        tenant_id: Option<i64>,
+        provider_message_id: String,
+        outcome: &'static str,
+        bytes: i64,
+    ) -> Result<(), AppError> {
+        let now = now_rfc3339();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO email_inbound_log (tenant_id, provider_message_id, outcome, received_at, bytes) \
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![tenant_id, provider_message_id, outcome, now, bytes],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// The `(provider_message_id, outcome)` of every `email_inbound_log`
+    /// row, oldest first.
+    pub async fn email_inbound_log_rows(&self) -> Result<Vec<(String, String)>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare("SELECT provider_message_id, outcome FROM email_inbound_log ORDER BY id")?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
         })
         .await
     }

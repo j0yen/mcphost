@@ -45,6 +45,7 @@ pub mod drift;
 pub mod dryrun;
 pub mod write_verbs;
 pub mod email;
+pub mod email_inbound;
 pub mod enduser;
 pub mod enduserctl;
 pub mod errors;

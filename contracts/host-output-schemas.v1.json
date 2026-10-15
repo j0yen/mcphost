@@ -13421,6 +13421,25 @@
     ],
     "type": "object"
   },
+  "host.email.address": {
+    "properties": {
+      "address": {
+        "type": "string"
+      },
+      "domain": {
+        "type": "string"
+      },
+      "enabled": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "address",
+      "domain",
+      "enabled"
+    ],
+    "type": "object"
+  },
   "host.webhook_inbox.create": {
     "properties": {
       "created": {

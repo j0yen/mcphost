@@ -111,6 +111,7 @@ async fn claim_email_failure_never_leaves_a_journal_row_at_unknown() {
         api_key: Some("sentinel-key".to_string()),
         from: Some("claim@mcphost.dev".to_string()),
         provider: mcphost::email::EmailProvider::Resend,
+        inbound: Default::default(),
     };
     let email_client: std::sync::Arc<dyn mcphost::email::EmailClient> =
         std::sync::Arc::new(mcphost::email::HttpEmailClient::new(

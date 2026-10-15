@@ -608,6 +608,11 @@ async fn billing_webhook(
     }
 }
 
+/// PRD-mcphost-inbound-email-address-per-tenant: `POST /email/inbound`.
+async fn email_inbound(State(state): State<Arc<AppState>>, headers: HeaderMap, body: Bytes) -> Response {
+    crate::email_inbound::receive(state, headers, body).await
+}
+
 /// `GET /billing/done` / `GET /billing/cancel` (requirement: "plain text
 /// pages"): the `success_url`/`cancel_url` a Checkout Session redirects a
 /// human's browser to after they finish (or abandon) payment. This host
@@ -1985,6 +1990,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
             get(crate::federation::get_callback).post(crate::federation::post_callback),
         )
         .route("/billing/webhook", post(billing_webhook))
+        .route("/email/inbound", post(email_inbound))
         .route("/billing/done", get(billing_done))
         .route("/billing/cancel", get(billing_cancel))
         // PRD-mcphost-inbound-events P0 requirement 1: the Caddy catch-all
