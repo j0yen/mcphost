@@ -821,6 +821,8 @@ mod edead_ac05_ring_and_plan_ceiling;
 mod edead_ac06_event_in_chain_context;
 #[path = "edead_ac07_reason_table_cannot_drift.rs"]
 mod edead_ac07_reason_table_cannot_drift;
+#[path = "emin_ac01_synthorg_task_reads_a_forwarded_mail.rs"]
+mod emin_ac01_synthorg_task_reads_a_forwarded_mail;
 #[path = "emin_ac02_address_is_stable_and_enabled.rs"]
 mod emin_ac02_address_is_stable_and_enabled;
 #[path = "emin_ac03_signed_mail_is_an_inbox_message.rs"]

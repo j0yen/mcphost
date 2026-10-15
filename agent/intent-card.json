@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-sse-frame-contract-generated.md",
-  "intent_slug": "mcphost-sse-frame-contract-generated",
-  "root_motivation": "**Who:** synthorg's conformance link (`toolconf.py:_raw_200_envelope`), mcphost's own `compat_check` and `oauthclient` test clients, and any agent SDK author who reads mcphost's docs. **What:** the exact sequence of SSE frames for each request type, readable before connecting. **Why not today:** the sequence is the sum of `rmcp`'s `json_response` fallback and wherever a `peer.notify_*` call sits (`handler.rs:326` after signup, `:372` after session bind). `compat_check.rs:896-915` and synthorg `toolconf.py:1097-1135` each parse by hand (\"the last frame carrying result or error\"); `docs/` has no protocol page; `llms.txt` says nothing about SSE. **Consequence:** the 10-08 conformance night (1/188) was spent on a contract both sides already implemented; the next notification the host adds (progress frames, next in this vision) repeats it unless the sequence is generated.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-inbound-email-address-per-tenant.md",
+  "intent_slug": "mcphost-inbound-email-address-per-tenant",
+  "root_motivation": "**Who:** the autonomous coding agent whose user says \"forward the receipts here and file them\" (truth-tier `integration_specialist`, `ops_automator`). **What:** an address the agent can hand its user in the first session, and the mail that arrives there as structured data the agent's next tool call can read. **Why not today:** mcphost has no inbound mail route: `src/http.rs:1706` (`/billing/webhook`) and `:1719` (`/hook/{id}`) are the only signed ingress and both take JSON events. `src/email.rs:45-51` `EmailMessage` is outbound-only with five text fields. `grep -rn 'inbound\\|MX\\|DKIM' src/` hits only `hooks.rs` and `plans.rs` comments about `kind = \"event\"` triggers. `Plan` (`plans.rs:15-132`) has no mail ceiling. **Premise (agent viewpoint):** \"my user lives in email; a forwarded mail should reach me as a tool-readable message without my user installing anything.\" Falsifier above; AC 1 plants the measuring task.",
   "user_persona": "An agent that reads `https://mcphost.dev/capabilities.json` with no key, sees `resources` is not implemented, and on a stray `resources/list` gets `-32601` with `data.alternative: host.table.list` and a `help_url` instead of an empty list.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,44 +14,26 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given an in-process server and 100 key-less `tools/call` requests each on a fresh connection, When the bodies are split into frames, Then all 100 are `text/event-stream` with methods `[notifications/tools/list_changed, <result>]` in that order and the counts are printed (the falsifier).",
-      "test": "tests/sfc_ac01_keyless_call_frames_are_stable.rs"
+      "description": "Given synthorg's corpus, When the `email_forward_receipt` task is added and the chain runs in fake-provider mode, Then the ledger records \u2265 1 `host_email_address` call and the task's gold `email_received` row is observed, so the demand number exists.",
+      "test": "tests/emin_ac01_synthorg_task_reads_a_forwarded_mail.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given every row of `FRAME_SEQUENCES`, When the drift test sends that request type, Then the observed frame methods match the row's cardinality pattern and the content type matches `json_when_single_frame`.",
-      "test": "tests/sfc_ac02_wire_frames_match_table.rs"
+      "description": "Given a tenant `acme-7f3a`, When it calls `host.email.address`, Then it receives `{address: \"acme-7f3a@in.mcphost.dev\", enabled: true}` and the same address on every later call.",
+      "test": "tests/emin_ac02_address_is_stable_and_enabled.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a keyed `tools/call` of `host.whoami`, When the response is read, Then it is `application/json` with exactly one frame carrying `result`, and the row for `tools/call:keyed` says `[Result{1}]`.",
-      "test": "tests/sfc_ac03_keyed_call_is_one_json_frame.rs"
+      "description": "Given a Resend-shaped POST with a valid `svix-signature` for `acme-7f3a@in.mcphost.dev`, When `/email/inbound` handles it, Then one inbox message with `data.kind == \"email_received\"`, the parsed `from`, `subject`, `text` and `html_stripped` exists and `host.msg.wait` returns it within 10 s.",
+      "test": "tests/emin_ac03_signed_mail_is_an_inbox_message.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a test that calls `peer.notify_tool_list_changed()` directly inside a `tools/list` handler, When it runs in debug, Then `frames::emit` panics with the request type and the disallowed frame kind.",
-      "test": "tests/sfc_ac04_stray_notify_panics_in_debug.rs"
-    },
-    {
-      "id": "AC5",
-      "level": "MUST",
-      "description": "Given `scripts/protocol-frames-check.sh --check` after a row is added to the table without `--write`, When it runs, Then it exits 1 naming `docs/protocol/frames.md` and `www/frames.json`; after `--write`, exit 0.",
-      "test": "tests/sfc_ac05_frames_check_script_names_drift.rs"
-    },
-    {
-      "id": "AC6",
-      "level": "MUST",
-      "description": "Given a captured body `[result, notifications/tools/list_changed]` (wrong order), When `frames::select_result` is applied with `tools/call:keyless_signup`, Then it returns `frame_contract_violation` listing both methods; Given the correct order, Then it returns the result frame.",
-      "test": "tests/sfc_ac06_select_result_rejects_wrong_order.rs"
-    },
-    {
-      "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given `www/llms.txt`, When the drift check runs, Then its Transport section equals the script's rendering byte for byte.",
-      "test": "tests/sfc_ac07_llms_txt_transport_section_matches_script.rs"
+      "description": "Given a POST with a wrong signature, a timestamp older than 5 minutes, or no signature, When handled, Then the response is 401 `email_signature_invalid` and no inbox or log row is written.",
+      "test": "tests/emin_ac04_bad_signature_is_401_and_writes_nothing.rs"
     }
   ],
   "scope": [

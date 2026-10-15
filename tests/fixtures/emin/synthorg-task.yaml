@@ -1,0 +1,29 @@
+# Consumer task for the synthorg mcphost corpus (corpora/mcphost/consumer-tasks.yaml,
+# see its own header comment for the id/segments/task/gold schema). Proposed
+# addition for PRD-mcphost-inbound-email-address-per-tenant AC1 -- the corpus
+# lives in a separate repository outside this worktree's scope (build_into:
+# mcphost only), so the block is kept here and
+# tests/emin_ac01_synthorg_task_reads_a_forwarded_mail.rs drives it against an
+# in-process server in fake-provider mode (MCPHOST_EMAIL_PROVIDER=fake: the
+# harness POSTs the fixture mail with the x-mcphost-fake-inbound header).
+#
+# Segment: integration_specialist (incumbent: a shared mailbox someone checks
+# by hand). The task's demand number is the count of host_email_address calls
+# in the chain ledger (`usecases_kept`); the gold is the email_received row.
+tasks:
+  - id: integration-specialist-email-forward-receipt
+    segments: [integration_specialist]
+    fixture_mail:
+      from: ap@vendor.com
+      subject: Invoice 4421
+      text: Please pay 120 EUR by Friday.
+    task: >
+      Your user says "forward the receipts to you and file them". Sign up,
+      ask the host for your inbound email address with `host.email.address`,
+      and state it to your user. A receipt mail will be forwarded to that
+      address; wait for it with `host.msg.wait` and report its subject.
+    gold:
+      tool_name: host.msg.wait
+      call_check: "result.messages[0].data.kind == email_received"
+      kind: host
+      subject: Invoice 4421
