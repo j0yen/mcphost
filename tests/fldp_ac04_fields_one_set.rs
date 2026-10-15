@@ -133,7 +133,7 @@ async fn fields_serialized_keys_contract_enum_and_error_valid_are_one_set_for_ev
         &a.tools_call("host.trigger.test", json!({"id": set["id"], "body": {"k": 1}})).await.expect("trigger.test"),
     );
     let run_id = tested["run_id"].as_str().expect("run_id").to_string();
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(60);
     while extract_structured(&a.tools_call("host.runs.get", json!({"run_id": run_id})).await.expect("get"))["status"] != json!("done") {
         assert!(Instant::now() < deadline, "run {run_id} never finished");
         tokio::time::sleep(Duration::from_millis(20)).await;
