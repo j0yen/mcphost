@@ -1,44 +1,69 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-index-create-from-sources.md",
-  "intent_slug": "mcphost-index-create-from-sources",
-  "root_motivation": "**Who:** the rag_indexer persona and any agent told to answer from files and a table. **What:** one call that names a corpus and a status it can poll. **Why not today:** host.docs.search indexes only host.docs.put text; a table column or a URL cannot be chunked and there is no index object.",
-  "user_persona": "An agent that calls host.index.create with a doc prefix, a table column and a URL, then polls host.index.status until pending is 0.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-sse-frame-contract-generated.md",
+  "intent_slug": "mcphost-sse-frame-contract-generated",
+  "root_motivation": "**Who:** synthorg's conformance link (`toolconf.py:_raw_200_envelope`), mcphost's own `compat_check` and `oauthclient` test clients, and any agent SDK author who reads mcphost's docs. **What:** the exact sequence of SSE frames for each request type, readable before connecting. **Why not today:** the sequence is the sum of `rmcp`'s `json_response` fallback and wherever a `peer.notify_*` call sits (`handler.rs:326` after signup, `:372` after session bind). `compat_check.rs:896-915` and synthorg `toolconf.py:1097-1135` each parse by hand (\"the last frame carrying result or error\"); `docs/` has no protocol page; `llms.txt` says nothing about SSE. **Consequence:** the 10-08 conformance night (1/188) was spent on a contract both sides already implemented; the next notification the host adds (progress frames, next in this vision) repeats it unless the sequence is generated.",
+  "user_persona": "An agent that reads `https://mcphost.dev/capabilities.json` with no key, sees `resources` is not implemented, and on a stray `resources/list` gets `-32601` with `data.alternative: host.table.list` and a `help_url` instead of an empty list.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 3
+    "target": 7
   },
   "acceptance_criteria": [
     {
+      "id": "AC1",
+      "level": "MUST",
+      "description": "Given an in-process server and 100 key-less `tools/call` requests each on a fresh connection, When the bodies are split into frames, Then all 100 are `text/event-stream` with methods `[notifications/tools/list_changed, <result>]` in that order and the counts are printed (the falsifier).",
+      "test": "tests/sfc_ac01_keyless_call_frames_are_stable.rs"
+    },
+    {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given 8 documents under `hb/`, a 100-row table with a `notes` column and a fixture URL, When `host.index.create` runs with the three sources and two ticks pass, Then `host.index.status` reports `pending: 0`, `chunks` >= 110, three source rows each with `items` > 0, and every chunk's `byte_end - byte_start` equals its `text` length in bytes.",
-      "test": "tests/hidx_ac02_three_sources_build_with_offsets.rs"
+      "description": "Given every row of `FRAME_SEQUENCES`, When the drift test sends that request type, Then the observed frame methods match the row's cardinality pattern and the content type matches `json_when_single_frame`.",
+      "test": "tests/sfc_ac02_wire_frames_match_table.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given `sources: [{kind: \"blob\"}]`, When `host.index.create` runs, Then `args_invalid` is returned and its message lists exactly the `IndexSourceKind` variants; Given the rendered schema and `docs/retrieval.md`, Then the drift test asserts both equal the enum.",
-      "test": "tests/hidx_ac03_source_kinds_one_set.rs"
+      "description": "Given a keyed `tools/call` of `host.whoami`, When the response is read, Then it is `application/json` with exactly one frame carrying `result`, and the row for `tools/call:keyed` says `[Result{1}]`.",
+      "test": "tests/sfc_ac03_keyed_call_is_one_json_frame.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a free tenant with 3 indexes, When a fourth is created, Then `quota_index_max` is returned with `data.limit: 3`, and `host.quickstart.limits.plan.index_max` reads `3` from the same `Plan` field.",
-      "test": "tests/hidx_ac04_index_max_quota.rs"
+      "description": "Given a test that calls `peer.notify_tool_list_changed()` directly inside a `tools/list` handler, When it runs in debug, Then `frames::emit` panics with the request type and the disallowed frame kind.",
+      "test": "tests/sfc_ac04_stray_notify_panics_in_debug.rs"
+    },
+    {
+      "id": "AC5",
+      "level": "MUST",
+      "description": "Given `scripts/protocol-frames-check.sh --check` after a row is added to the table without `--write`, When it runs, Then it exits 1 naming `docs/protocol/frames.md` and `www/frames.json`; after `--write`, exit 0.",
+      "test": "tests/sfc_ac05_frames_check_script_names_drift.rs"
+    },
+    {
+      "id": "AC6",
+      "level": "MUST",
+      "description": "Given a captured body `[result, notifications/tools/list_changed]` (wrong order), When `frames::select_result` is applied with `tools/call:keyless_signup`, Then it returns `frame_contract_violation` listing both methods; Given the correct order, Then it returns the result frame.",
+      "test": "tests/sfc_ac06_select_result_rejects_wrong_order.rs"
+    },
+    {
+      "id": "AC7",
+      "level": "SHOULD",
+      "description": "Given `www/llms.txt`, When the drift check runs, Then its Transport section equals the script's rendering byte for byte.",
+      "test": "tests/sfc_ac07_llms_txt_transport_section_matches_script.rs"
     }
   ],
   "scope": [
-    "src/index.rs (new): IndexSourceKind, host.index.create/status, the per-source build pass.",
-    "migrations/0100_indexes.sql: indexes, index_sources, index_chunks, index_chunks_fts.",
-    "src/plans.rs: index_max and index_chunks_max Plan fields.",
-    "src/docs_index.rs: tick_tenant gains the index pass; chunk_text_with.",
-    "docs/retrieval.md, schema and llms.txt rendered from IndexSourceKind."
+    "src/capabilities.rs (new): CAPABILITIES, server_capabilities(), unsupported_error(), capabilities_document().",
+    "src/handler.rs: get_info and the unimplemented-primitive hooks.",
+    "src/http.rs: GET /capabilities.json and the -32601 enrichment layer.",
+    "src/llms_txt.rs, src/main.rs, scripts/sandbox-api-doc-check.sh: generated ## Capabilities section.",
+    "src/control.rs: host.quickstart capabilities field.",
+    "src/help.rs: capability_unsupported."
   ],
   "non_goals": [
-    "Querying, embeddings, re-index on change, host.index.list/delete and the sandbox bridge (R6)."
+    "Implementing any primitive (sibling PRDs flip one row each); OAuth scope changes; changing tools/* behaviour; building logging and roots."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -47,21 +72,35 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "kinds_one_set": "IndexSourceKind is the only list of source kinds; schema enum, args_invalid message and docs are generated from it."
+      "token_never_stored": "only sha256(token) is stored; the token is shown once by the dry run."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does a rag_indexer build RAG by hand?",
-      "a": "There is no index object over documents, tables and URLs."
+      "q": "Why can a client not trust what this host speaks?",
+      "a": "initialize advertises tools only, but rmcp's default hooks answer empty results for resources and prompts."
+    },
+    {
+      "why": 2,
+      "q": "Why was that never caught?",
+      "a": "handler.rs was the only place a capability was named and nothing listed the MCP methods, so no test could compare the advertisement with the behaviour."
+    },
+    {
+      "why": 3,
+      "q": "What prevents drift now?",
+      "a": "One CAPABILITIES const generates the advertisement, /capabilities.json, the docs sections and the method list a drift test walks."
     }
   ],
   "created_at": "2026-10-12T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Does a doc source follow new documents?",
-      "resolution": "No: it snapshots at build; refresh is the index-refresh PRD."
+      "question": "Which diffs are gated?",
+      "resolution": "A dry-run diff with a measurable row count (rows[].delete, tables[].rows) at or above plan confirm_rows_min; verbs that report no count are not gated yet."
+    },
+    {
+      "question": "Token bound to key or session?",
+      "resolution": "Tenant (key hash), per the PRD default."
     }
   ]
 }

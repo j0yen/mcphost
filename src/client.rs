@@ -128,22 +128,14 @@ pub async fn rpc_call(
         )
     })?;
     let parsed: Value = if content_type.starts_with("text/event-stream") {
-        text.split("\n\n")
-            .filter_map(|block| {
-                block.lines().find_map(|line| {
-                    line.strip_prefix("data: ").or_else(|| line.strip_prefix("data:"))
-                })
-            })
-            .filter(|data| !data.is_empty())
-            .filter_map(|data| serde_json::from_str::<Value>(data).ok())
-            .collect::<Vec<Value>>()
-            .pop()
-            .ok_or_else(|| {
-                unparsed(
-                    format!("{method} SSE response ({status}) carried no JSON-RPC message"),
-                    text.clone(),
-                )
-            })?
+        // PRD-mcphost-sse-frame-contract-generated R5: the result frame is
+        // picked by the FRAME_SEQUENCES row for this request type, and a body
+        // the row does not allow is a `frame_contract_violation`.
+        let frames = crate::protocol::frames::split_sse_frames(&text);
+        let request_type = crate::protocol::frames::request_type_of(method, bearer.is_some());
+        crate::protocol::frames::select_result(&frames, request_type)
+            .cloned()
+            .map_err(|violation| unparsed(format!("{method} SSE response ({status}): {violation}"), text.clone()))?
     } else {
         serde_json::from_str(&text).map_err(|e| {
             unparsed(

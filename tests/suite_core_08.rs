@@ -444,6 +444,20 @@ mod sessionkey_ac18_tool_logs_no_key;
 mod sessionkey_ac19_nested_tenant_key_redacted;
 #[path = "sessionkey_ac20_error_message_no_key.rs"]
 mod sessionkey_ac20_error_message_no_key;
+#[path = "sfc_ac01_keyless_call_frames_are_stable.rs"]
+mod sfc_ac01_keyless_call_frames_are_stable;
+#[path = "sfc_ac02_wire_frames_match_table.rs"]
+mod sfc_ac02_wire_frames_match_table;
+#[path = "sfc_ac03_keyed_call_is_one_json_frame.rs"]
+mod sfc_ac03_keyed_call_is_one_json_frame;
+#[path = "sfc_ac04_stray_notify_panics_in_debug.rs"]
+mod sfc_ac04_stray_notify_panics_in_debug;
+#[path = "sfc_ac05_frames_check_script_names_drift.rs"]
+mod sfc_ac05_frames_check_script_names_drift;
+#[path = "sfc_ac06_select_result_rejects_wrong_order.rs"]
+mod sfc_ac06_select_result_rejects_wrong_order;
+#[path = "sfc_ac07_llms_txt_transport_section_matches_script.rs"]
+mod sfc_ac07_llms_txt_transport_section_matches_script;
 #[path = "share_ac01_public_tool_cross_tenant_call.rs"]
 mod share_ac01_public_tool_cross_tenant_call;
 #[path = "share_ac02_private_tool_still_not_found.rs"]

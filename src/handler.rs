@@ -324,7 +324,7 @@ async fn bind_session_to_created_tenant(
         maybe_stamp_second_session(state, &tenant, Some(session_id)).await;
     }
     tracing::info!(tenant = %tenant.namespace, "session bound to tenant after signup");
-    if let Err(e) = peer.notify_tool_list_changed().await {
+    if let Err(e) = crate::protocol::frames::emit(peer, crate::protocol::frames::FrameKind::ListChanged, crate::protocol::frames::REQ_KEYLESS_SIGNUP).await {
         tracing::warn!(tenant = %tenant.namespace, error = %e, "notify_tool_list_changed failed");
     }
     if let Some(obj) = value.as_object_mut() {
@@ -377,7 +377,7 @@ async fn record_implicit_signup_memory(
     if let Err(e) = state.db.set_created_session_id(tenant.id, session_id.to_string()).await {
         tracing::warn!(error = %e, tenant = %tenant.namespace, "failed to record created_session_id");
     }
-    if let Err(e) = peer.notify_tool_list_changed().await {
+    if let Err(e) = crate::protocol::frames::emit(peer, crate::protocol::frames::FrameKind::ListChanged, crate::protocol::frames::REQ_KEYLESS_SIGNUP).await {
         tracing::warn!(tenant = %tenant.namespace, error = %e, "notify_tool_list_changed failed");
     }
 }

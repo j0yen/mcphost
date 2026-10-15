@@ -173,6 +173,9 @@ if [ "$MODE" = "write" ]; then
   # PRD-mcphost-dry-run-on-write-verbs R5: docs/host-tools.md, generated
   # from src/write_verbs.rs, rides along in both modes.
   "$(dirname "$0")/host-tools-doc-check.sh" --write || exit $?
+  # PRD-mcphost-sse-frame-contract-generated: frames.md/frames.json and the
+  # llms.txt Transport block, generated from FRAME_SEQUENCES.
+  "$(dirname "$0")/protocol-frames-check.sh" --write || exit $?
   exit 0
 fi
 
@@ -231,6 +234,11 @@ for f in "${CAP_TARGETS[@]}"; do
     FAILURES=$((FAILURES + 1))
   fi
 done
+
+if ! "$(dirname "$0")/protocol-frames-check.sh" --check 2>/dev/null; then
+  "$(dirname "$0")/protocol-frames-check.sh" --check >&2
+  FAILURES=$((FAILURES + 1))
+fi
 
 if ! "$(dirname "$0")/host-tools-doc-check.sh" >/dev/null; then
   "$(dirname "$0")/host-tools-doc-check.sh" >&2
