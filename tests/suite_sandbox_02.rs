@@ -178,6 +178,8 @@ mod gsigb_ac03_wedged_child_in_pool_signal;
 mod handle_ac09_python_sandbox_materialize_then_query;
 #[path = "hostdoc_ac02_error_summary_has_exception_line_and_source.rs"]
 mod hostdoc_ac02_error_summary_has_exception_line_and_source;
+#[path = "hsrb_ac03_cli_help_search_json_equals_tool_json.rs"]
+mod hsrb_ac03_cli_help_search_json_equals_tool_json;
 #[path = "infer_ac01_ac02_ac03_python_schema.rs"]
 mod infer_ac01_ac02_ac03_python_schema;
 #[path = "infer_ac04_python_explicit_schema.rs"]

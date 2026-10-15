@@ -162,7 +162,7 @@ pub struct IndexFirstCall {
 /// Every kind name the production registry registers (`serve` registers
 /// echo, http, python, chain, wasm), so a kind removed from the registry
 /// fails `examples check`.
-pub fn registered_kind_names() -> Vec<&'static str> {
+pub fn registered_kinds() -> crate::kinds::KindRegistry {
     let mut kinds = crate::kinds::KindRegistry::with_builtin();
     if let Ok((http, python)) =
         crate::kinds::network_kinds("https://mcphost.dev", &std::env::temp_dir().join("mcphost-examples-kinds"))
@@ -172,7 +172,11 @@ pub fn registered_kind_names() -> Vec<&'static str> {
     }
     kinds.register(std::sync::Arc::new(crate::kinds::chain::ChainKind));
     kinds.register(std::sync::Arc::new(crate::kinds::wasm::WasmKind::new()));
-    kinds.names()
+    kinds
+}
+
+pub fn registered_kind_names() -> Vec<&'static str> {
+    registered_kinds().names()
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {

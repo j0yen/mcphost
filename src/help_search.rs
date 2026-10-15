@@ -611,6 +611,25 @@ pub fn call(kinds: &KindRegistry, args: &Value) -> Result<Value, AppError> {
     Ok(render(&hits, total, idx.version()))
 }
 
+/// The CLI's readable form of a [`call`] result.
+pub fn render_text(body: &Value) -> String {
+    let hits = body["hits"].as_array().cloned().unwrap_or_default();
+    if hits.is_empty() {
+        return format!("no hits; {}\n", body["hint"].as_str().unwrap_or(HINT));
+    }
+    let mut out = String::new();
+    for hit in &hits {
+        out.push_str(&format!("{}\n  {}\n", hit["anchor"].as_str().unwrap_or_default(), hit["snippet"].as_str().unwrap_or_default()));
+        if let Some(code) = hit["example"]["code"].as_str() {
+            out.push_str(&format!("  example ({}):\n", hit["example"]["lang"].as_str().unwrap_or_default()));
+            for line in code.lines() {
+                out.push_str(&format!("    {line}\n"));
+            }
+        }
+    }
+    out
+}
+
 /// The `host.help.search` input schema properties (`host_schema` adds
 /// `tenant_key`).
 pub fn schema_properties(kinds: &KindRegistry) -> Value {
