@@ -11,6 +11,8 @@ mod common;
 mod assertion;
 #[path = "support/busyaudit.rs"]
 mod busyaudit;
+#[path = "support/fake_as.rs"]
+mod fake_as;
 #[path = "support/oauth.rs"]
 mod oauth;
 #[path = "support/oauthclient.rs"]
@@ -28,6 +30,20 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "oauthconf_ac01_gate_verdict_table_matches_gold.rs"]
+mod oauthconf_ac01_gate_verdict_table_matches_gold;
+#[path = "oauthconf_ac02_cimd_preferred_over_dcr_and_unsupported_without_either.rs"]
+mod oauthconf_ac02_cimd_preferred_over_dcr_and_unsupported_without_either;
+#[path = "oauthconf_ac03_authorize_request_scope_resource_pkce_state.rs"]
+mod oauthconf_ac03_authorize_request_scope_resource_pkce_state;
+#[path = "oauthconf_ac04_attack_probes_pass_only_on_as_refusal.rs"]
+mod oauthconf_ac04_attack_probes_pass_only_on_as_refusal;
+#[path = "oauthconf_ac05_probe_cli_json_matches_gate_and_exit_codes.rs"]
+mod oauthconf_ac05_probe_cli_json_matches_gate_and_exit_codes;
+#[path = "oauthconf_ac06_records_and_receipt_never_leak_secrets.rs"]
+mod oauthconf_ac06_records_and_receipt_never_leak_secrets;
+#[path = "oauthconf_ac07_scenarios_doc_matches_gold_and_docs_sharing_check.rs"]
+mod oauthconf_ac07_scenarios_doc_matches_gold_and_docs_sharing_check;
 #[path = "oauthentry_ac01_every_method_401_with_entry_challenge.rs"]
 mod oauthentry_ac01_every_method_401_with_entry_challenge;
 #[path = "oauthentry_ac02_entry_document_names_entry_resource.rs"]
