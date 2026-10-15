@@ -1977,6 +1977,37 @@ pub async fn compose_call_ref(
     let child_run_id = crate::state::new_ulid();
     let started_unix = crate::state::now_unix();
     let start = Instant::now();
+    let (end_user_subject, end_user_issuer, end_user_method) = match &ctx.end_user {
+        Some(e) => (Some(e.subject.clone()), e.issuer.clone(), Some(e.method.as_str().to_string())),
+        None => (None, None, None),
+    };
+    // PRD-mcphost-job-timeline-tool R2: the step's row exists from the moment
+    // it starts (`in_flight`), so a timeline read mid-run sees it `running`.
+    let row_for = |parent_run_id: &String| crate::db::ComposedRun {
+        run_id: child_run_id.clone(),
+        tenant_id,
+        trigger_ref: match (item_index, step_no) {
+            (Some(index), Some(step)) => format!("{parent_run_id}#{step}:{index}"),
+            _ => parent_run_id.clone(),
+        },
+        parent_run_id: parent_run_id.clone(),
+        tool_name: target_name.to_string(),
+        step_no,
+        item_index,
+        parent_tool: ctx.tool_name.clone().unwrap_or_default(),
+        status: crate::db::COMPOSED_IN_FLIGHT.to_string(),
+        error_class: None,
+        result_ref: None,
+        started_unix,
+        finished_unix: None,
+        duration_ms: None,
+        end_user_subject: end_user_subject.clone(),
+        end_user_issuer: end_user_issuer.clone(),
+        end_user_method: end_user_method.clone(),
+    };
+    if let (Some(parent_run_id), Some(db)) = (ctx.parent_run_id.as_ref(), ctx.compose_db.as_ref()) {
+        let _ = db.insert_composed_run(row_for(parent_run_id)).await;
+    }
     let result = compose_dispatch(ctx, tenant_id, target_name, args, timeout_s, &child_run_id).await;
 
     if let (Some(parent_run_id), Some(db)) = (ctx.parent_run_id.clone(), ctx.compose_db.as_ref()) {
@@ -2015,37 +2046,53 @@ pub async fn compose_call_ref(
                 .await;
             result_ref = Some(json!({"parts": 1, "bytes": bytes, "content_type": "application/json"}).to_string());
         }
-        let (end_user_subject, end_user_issuer, end_user_method) = match &ctx.end_user {
-            Some(e) => (Some(e.subject.clone()), e.issuer.clone(), Some(e.method.as_str().to_string())),
-            None => (None, None, None),
+        let done = crate::db::ComposedRun {
+            status: status.to_string(),
+            error_class,
+            result_ref,
+            finished_unix: Some(finished_unix),
+            duration_ms: Some(duration_ms),
+            ..row_for(&parent_run_id)
         };
-        let _ = db
-            .insert_composed_run(crate::db::ComposedRun {
-                run_id: child_run_id,
-                tenant_id,
-                trigger_ref: match (item_index, step_no) {
-                    (Some(index), Some(step)) => format!("{parent_run_id}#{step}:{index}"),
-                    _ => parent_run_id.clone(),
-                },
-                parent_run_id,
-                tool_name: target_name.to_string(),
-                step_no,
-                item_index,
-                parent_tool: ctx.tool_name.clone().unwrap_or_default(),
-                status: status.to_string(),
-                error_class,
-                result_ref,
-                started_unix,
-                finished_unix,
-                duration_ms,
-                end_user_subject,
-                end_user_issuer,
-                end_user_method,
-            })
-            .await;
+        if !db.finish_composed_run(done.clone()).await.unwrap_or(false) {
+            let _ = db.insert_composed_run(done).await;
+        }
     }
 
     result
+}
+
+/// PRD-mcphost-job-timeline-tool R2: records the run row of a chain step that
+/// failed BEFORE any dispatch (its argument mapping resolved to nothing and
+/// `on_error: continue` let the chain go on), so the step still has a row for
+/// `host.job.timeline` to read. A no-op when lineage is not active, same as
+/// [`compose_call_ref`].
+pub async fn record_undispatched_step(ctx: &CallCtx, tenant_id: i64, target_name: &str, step_no: i64, error_class: &str) {
+    let (Some(parent_run_id), Some(db)) = (ctx.parent_run_id.clone(), ctx.compose_db.as_ref()) else {
+        return;
+    };
+    let now = crate::state::now_unix();
+    let _ = db
+        .insert_composed_run(crate::db::ComposedRun {
+            run_id: crate::state::new_ulid(),
+            tenant_id,
+            trigger_ref: parent_run_id.clone(),
+            parent_run_id,
+            tool_name: target_name.to_string(),
+            step_no: Some(step_no),
+            item_index: None,
+            parent_tool: ctx.tool_name.clone().unwrap_or_default(),
+            status: "failed".to_string(),
+            error_class: Some(error_class.to_string()),
+            result_ref: None,
+            started_unix: now,
+            finished_unix: Some(now),
+            duration_ms: Some(0),
+            end_user_subject: None,
+            end_user_issuer: None,
+            end_user_method: None,
+        })
+        .await;
 }
 
 /// What [`Kind::pool_signals`] reports: python cold-call durations

@@ -3043,6 +3043,21 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &["run_id"],
             ),
         ),
+        // PRD-mcphost-job-timeline-tool R1.
+        Tool::new(
+            "host.job.timeline",
+            "Step-by-step timeline of one run, from the rows the host keeps: {run, steps: [{step, \
+             tool, run_id, started_unix, finished_unix, duration_ms, status, error_class, \
+             error_family, attempts, bytes_out}], totals: {steps, done, error, running, skipped, \
+             bytes_out, wall_ms}}. A chain gives one entry per step in step order; any other run \
+             gives one entry; a run still going shows its in-flight step as status running with \
+             finished_unix null. error_family names the error code's family (upstream, compose, \
+             args, tool, budget, host, other).",
+            host_schema(
+                json!({"run_id": {"type": "string", "description": "The run id to read the timeline of."}}),
+                &["run_id"],
+            ),
+        ),
         // PRD-mcphost-schedules P0 requirement 2: schedule triggers,
         // alongside host.runs.* above -- a schedule's own firings show up
         // there as `trigger: "schedule"` runs.
@@ -6692,6 +6707,7 @@ impl McpHostHandler {
             "host.runs.purge" => crate::runs::purge(&self.state, tenant, &args).await,
             "host.runs.wait" => crate::runs::wait(&self.state, tenant, &args).await,
             "host.runs.part" => crate::runs::part(&self.state, tenant, &args).await,
+            "host.job.timeline" => crate::timeline::job_timeline(&self.state, tenant, &args).await,
             "host.progress" => crate::runs::progress(&self.state, tenant, &args).await,
             "host.trigger.set" => crate::triggers::set(&self.state, tenant, &args).await,
             "host.trigger.list" => crate::triggers::list(&self.state, tenant, &args).await,

@@ -2247,12 +2247,20 @@ pub struct ComposedRun {
     pub error_class: Option<String>,
     pub result_ref: Option<String>,
     pub started_unix: i64,
-    pub finished_unix: i64,
-    pub duration_ms: i64,
+    /// `None` only for the [`COMPOSED_IN_FLIGHT`] row written when a step starts.
+    pub finished_unix: Option<i64>,
+    pub duration_ms: Option<i64>,
     pub end_user_subject: Option<String>,
     pub end_user_issuer: Option<String>,
     pub end_user_method: Option<String>,
 }
+
+/// PRD-mcphost-job-timeline-tool R2: the stored `status` of a composed child
+/// row whose step has started and not finished. Deliberately not `running`
+/// or `queued`: those two are what the executor counts against concurrency
+/// caps, re-leases at startup and leases to run, none of which a composed
+/// child (already executing inside its parent's call) may ever be.
+pub const COMPOSED_IN_FLIGHT: &str = "in_flight";
 
 /// PRD-mcphost-shared-tool-caller-usage requirement 6 (AC7): the window
 /// size at and past which [`Db::usage_breakdown`] reads the `usage_daily`
@@ -11094,6 +11102,24 @@ impl Db {
                 ],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// Settles the [`COMPOSED_IN_FLIGHT`] row `run` names to its terminal
+    /// outcome. `false` when no such row exists (the start-of-step insert
+    /// failed), so the caller inserts `run` whole instead.
+    pub async fn finish_composed_run(&self, run: ComposedRun) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let changed = conn.execute(
+                "UPDATE runs SET status = ?1, error_class = ?2, result_ref = ?3, finished_unix = ?4, \
+                 duration_ms = ?5 WHERE id = ?6 AND tenant_id = ?7 AND status = ?8",
+                params![
+                    run.status, run.error_class, run.result_ref, run.finished_unix, run.duration_ms,
+                    run.run_id, run.tenant_id, COMPOSED_IN_FLIGHT
+                ],
+            )?;
+            Ok(changed > 0)
         })
         .await
     }

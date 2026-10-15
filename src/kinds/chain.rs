@@ -1893,6 +1893,14 @@ impl Kind for ChainKind {
                     );
                     if step.continue_on_error {
                         failed_steps.push(failed_step_no);
+                        super::record_undispatched_step(
+                            ctx,
+                            ctx.tenant_id,
+                            &step.tool,
+                            failed_step_no as i64,
+                            codes::COMPOSE_MAPPING_MISSING,
+                        )
+                        .await;
                         steps_trace.push(json!({
                             "step": failed_step_no,
                             "tool": step.tool,

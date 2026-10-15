@@ -145,7 +145,9 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
         // plus its flattened form, 422 + 2 = 424; host.key.list and
         // host.key.revoke, two more dotted tools plus their flattened forms,
         // 424 + 4 = 428.
-        428,
+        // PRD-mcphost-job-timeline-tool: host.job.timeline, its deprecated-style
+        // alias host.job_timeline and the shared flattened form, 428 + 3 = 431.
+        431,
         "there must be exactly the sixteen host.* control-plane tools \
          (incl. host.quickstart, host.tool_run, host.bridge_test, host.spec_test -- \
          PRD-mcphost-tool-test, and host.redeem/host.key_rotate -- \

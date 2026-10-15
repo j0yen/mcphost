@@ -6582,6 +6582,220 @@
       "since": "0.83.0"
     },
     {
+      "description": "Step-by-step timeline of one run, from the rows the host keeps: {run, steps: [{step, tool, run_id, started_unix, finished_unix, duration_ms, status, error_class, error_family, attempts, bytes_out}], totals: {steps, done, error, running, skipped, bytes_out, wall_ms}}. A chain gives one entry per step in step order; any other run gives one entry; a run still going shows its in-flight step as status running with finished_unix null. error_family names the error code's family (upstream, compose, args, tool, budget, host, other).",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "run_id": {
+            "description": "The run id to read the timeline of.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.job.timeline",
+      "output_schema": {
+        "properties": {
+          "run": {
+            "properties": {
+              "duration_ms": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "error_class": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "finished_unix": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "run_id": {
+                "type": "string"
+              },
+              "started_unix": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": "string"
+              },
+              "tool": {
+                "type": "string"
+              },
+              "trigger": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "duration_ms",
+              "error_class",
+              "finished_unix",
+              "run_id",
+              "started_unix",
+              "status",
+              "tool",
+              "trigger"
+            ],
+            "type": "object"
+          },
+          "steps": {
+            "items": {
+              "properties": {
+                "attempts": {
+                  "type": "integer"
+                },
+                "bytes_out": {
+                  "type": "integer"
+                },
+                "duration_ms": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "error_class": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "error_family": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "finished_unix": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "started_unix": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "type": "string"
+                },
+                "step": {
+                  "type": "integer"
+                },
+                "tool": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "attempts",
+                "bytes_out",
+                "duration_ms",
+                "error_class",
+                "error_family",
+                "finished_unix",
+                "run_id",
+                "started_unix",
+                "status",
+                "step",
+                "tool"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "totals": {
+            "properties": {
+              "bytes_out": {
+                "type": "integer"
+              },
+              "done": {
+                "type": "integer"
+              },
+              "error": {
+                "type": "integer"
+              },
+              "running": {
+                "type": "integer"
+              },
+              "skipped": {
+                "type": "integer"
+              },
+              "steps": {
+                "type": "integer"
+              },
+              "wall_ms": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "bytes_out",
+              "done",
+              "error",
+              "running",
+              "skipped",
+              "steps",
+              "wall_ms"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "run",
+          "steps",
+          "totals"
+        ],
+        "type": "object"
+      },
+      "since": "0.107.98"
+    },
+    {
+      "alias_of": "host.job.timeline",
+      "description": "Step-by-step timeline of one run, from the rows the host keeps: {run, steps: [{step, tool, run_id, started_unix, finished_unix, duration_ms, status, error_class, error_family, attempts, bytes_out}], totals: {steps, done, error, running, skipped, bytes_out, wall_ms}}. A chain gives one entry per step in step order; any other run gives one entry; a run still going shows its in-flight step as status running with finished_unix null. error_family names the error code's family (upstream, compose, args, tool, budget, host, other).",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "run_id": {
+            "description": "The run id to read the timeline of.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id"
+        ],
+        "type": "object",
+        "x-deprecated": {
+          "replaced_by": "host.job.timeline",
+          "sunset": "2026-12-31"
+        }
+      },
+      "name": "host.job_timeline",
+      "since": "0.107.98"
+    },
+    {
       "description": "List this tenant's sub-keys: label, tools, created_at, expires_at, revoked_at, last_used_at. Never returns a key. Primary key only.",
       "input_schema": {
         "additionalProperties": false,
@@ -10186,7 +10400,10 @@
                   "type": "null"
                 },
                 "duration_ms": {
-                  "type": "integer"
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
                 },
                 "end_user": {
                   "properties": {
@@ -10226,7 +10443,10 @@
                   ]
                 },
                 "finished_unix": {
-                  "type": "integer"
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
                 },
                 "item_index": {
                   "type": [
@@ -23184,6 +23404,29 @@
       },
       "name": "host_invite_revoke",
       "since": "0.103.1"
+    },
+    {
+      "alias_of": "host.job.timeline",
+      "description": "Step-by-step timeline of one run, from the rows the host keeps: {run, steps: [{step, tool, run_id, started_unix, finished_unix, duration_ms, status, error_class, error_family, attempts, bytes_out}], totals: {steps, done, error, running, skipped, bytes_out, wall_ms}}. A chain gives one entry per step in step order; any other run gives one entry; a run still going shows its in-flight step as status running with finished_unix null. error_family names the error code's family (upstream, compose, args, tool, budget, host, other).",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "run_id": {
+            "description": "The run id to read the timeline of.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "name": "host_job_timeline",
+      "since": "0.107.98"
     },
     {
       "alias_of": "host.key.list",

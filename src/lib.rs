@@ -111,6 +111,7 @@ pub mod tables;
 pub mod tables_graph;
 pub mod tables_model;
 pub mod tasks;
+pub mod timeline;
 pub mod tenant_state;
 pub mod tool_aliases;
 pub mod triggers;

@@ -4093,6 +4093,171 @@
     ],
     "type": "object"
   },
+  "host.job.timeline": {
+    "properties": {
+      "run": {
+        "properties": {
+          "run_id": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "trigger": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "error_class": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "started_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "finished_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "duration_ms",
+          "error_class",
+          "finished_unix",
+          "run_id",
+          "started_unix",
+          "status",
+          "tool",
+          "trigger"
+        ],
+        "type": "object"
+      },
+      "steps": {
+        "items": {
+          "properties": {
+            "step": {
+              "type": "integer"
+            },
+            "tool": {
+              "type": "string"
+            },
+            "run_id": {
+              "type": "string"
+            },
+            "started_unix": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "finished_unix": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "duration_ms": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "status": {
+              "type": "string"
+            },
+            "error_class": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "error_family": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "attempts": {
+              "type": "integer"
+            },
+            "bytes_out": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "attempts",
+            "bytes_out",
+            "duration_ms",
+            "error_class",
+            "error_family",
+            "finished_unix",
+            "run_id",
+            "started_unix",
+            "status",
+            "step",
+            "tool"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "totals": {
+        "properties": {
+          "bytes_out": {
+            "type": "integer"
+          },
+          "done": {
+            "type": "integer"
+          },
+          "error": {
+            "type": "integer"
+          },
+          "running": {
+            "type": "integer"
+          },
+          "skipped": {
+            "type": "integer"
+          },
+          "steps": {
+            "type": "integer"
+          },
+          "wall_ms": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bytes_out",
+          "done",
+          "error",
+          "running",
+          "skipped",
+          "steps",
+          "wall_ms"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "run",
+      "steps",
+      "totals"
+    ],
+    "type": "object"
+  },
   "host.key.list": {
     "properties": {
       "keys": {
@@ -6367,7 +6532,10 @@
               "type": "null"
             },
             "duration_ms": {
-              "type": "integer"
+              "type": [
+                "integer",
+                "null"
+              ]
             },
             "end_user": {
               "properties": {
@@ -6407,7 +6575,10 @@
               ]
             },
             "finished_unix": {
-              "type": "integer"
+              "type": [
+                "integer",
+                "null"
+              ]
             },
             "item_index": {
               "type": [
