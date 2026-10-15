@@ -1528,7 +1528,8 @@
     },
     "chgb": {
       "_prd": "PRD-mcphost-host-changelog-since-b.md (test_prefix: chgb)",
-      "AC1": "tests/chgb_ac01_fresh_tenant_last_five_releases.rs"
+      "AC1": "tests/chgb_ac01_fresh_tenant_last_five_releases.rs",
+      "AC2": "tests/chgb_ac02_out_of_order_heading_not_monotonic.rs"
     },
     "hostdoc": {
       "_prd": "PRD-mcphost-host-doctor-tool.md (test_prefix: hostdoc)",
