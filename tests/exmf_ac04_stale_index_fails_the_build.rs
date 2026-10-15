@@ -37,6 +37,7 @@ fn scratch(tag: &str) -> PathBuf {
     .unwrap();
     std::fs::copy(root().join("Cargo.lock"), tmp.join("Cargo.lock")).unwrap();
     std::fs::copy(root().join("build.rs"), tmp.join("build.rs")).unwrap();
+    std::fs::copy(root().join("src/doc_scan.rs"), tmp.join("src/doc_scan.rs")).unwrap();
     std::fs::copy(root().join("rust-toolchain.toml"), tmp.join("rust-toolchain.toml")).unwrap();
     copy_dir(&root().join("examples"), &tmp.join("examples"));
     tmp

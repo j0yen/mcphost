@@ -183,7 +183,7 @@ async fn ac12_claude_agent_sdk_sequence_lists_signup_with_schema() {
     // the starter set.
     assert_eq!(
         tools.len(),
-        15,
+        16, // +1: host.help.get (PRD-mcphost-emitted-doc-pointers-resolve)
         "signup plus the eleven-tool starter set (PRD-mcphost-one-next-tool requirement 1), \
          host.policy.*/host.audit.* (PRD-mcphost-row-policy) are tenant-key-only and not in \
          it: {tools:?}"

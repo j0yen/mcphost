@@ -1178,6 +1178,11 @@ impl AppError {
             && let Some(url) = crate::help::help_url(base, code)
         {
             obj.insert("help_url".to_string(), json!(url));
+            // PRD-mcphost-emitted-doc-pointers-resolve R4: the same page's
+            // doc section as an anchor `host.help.get` takes as-is.
+            if let Some(entry) = crate::help::entry(code) {
+                obj.insert("anchor".to_string(), json!(entry.doc_link.as_str()));
+            }
         }
         ErrorData::new(jsonrpc_code, message, Some(Value::Object(obj)))
     }

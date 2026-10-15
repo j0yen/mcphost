@@ -1214,6 +1214,7 @@ fn quickstart_inner(
                 "name": alias.recipe,
                 "steps": crate::kinds::aliases::recipe_steps(alias.recipe, tool_name, &example.spec),
                 "docs": "host.quickstart",
+                "anchor": crate::doc_anchors::DocAnchor::DocsToolsHostQuickstart.as_str(),
             }),
         );
         let nearby = crate::kinds::aliases::recipes_nearby(alias);
@@ -1234,8 +1235,18 @@ fn quickstart_inner(
             "hint".to_string(),
             json!(trigger_set_hint(alias, &kind_name_requested)),
         );
+        map.insert("anchor".to_string(), json!(crate::doc_anchors::DocAnchor::DocsToolsHostTriggerSet.as_str()));
     }
     Ok(response)
+}
+
+/// PRD-mcphost-emitted-doc-pointers-resolve R4: `data` with the `anchor`
+/// beside its `docs` field, for `host.help.get`.
+fn with_anchor(mut data: Value, anchor: crate::doc_anchors::DocAnchor) -> Value {
+    if let Value::Object(map) = &mut data {
+        map.insert("anchor".to_string(), json!(anchor.as_str()));
+    }
+    data
 }
 
 /// AC8's `hint` text: names the exact `host.trigger.set(kind=...)` call for
@@ -1524,7 +1535,7 @@ pub fn changelog(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Valu
             return Err(AppError::Structured {
                 code: "args_invalid",
                 message: args_err.message(),
-                data: args_err.data(),
+                data: with_anchor(args_err.data(), crate::doc_anchors::DocAnchor::DocsToolsHostChangelog),
             });
         }
     } else if crate::api_contract::Version::parse(since).is_none() {
@@ -1544,7 +1555,7 @@ pub fn changelog(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Valu
         return Err(AppError::Structured {
             code: "args_invalid",
             message: args_err.message(),
-            data: args_err.data(),
+            data: with_anchor(args_err.data(), crate::doc_anchors::DocAnchor::DocsToolsHostChangelog),
         });
     } else {
         since

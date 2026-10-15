@@ -61,18 +61,7 @@ pub struct Chunk {
 /// `lowercase, non-alphanumerics to '-'` (runs collapsed, edges trimmed):
 /// the one slugger every anchor in this index uses.
 pub fn slugify(heading: &str) -> String {
-    let mut out = String::new();
-    for c in heading.chars() {
-        if c.is_alphanumeric() {
-            out.extend(c.to_lowercase());
-        } else if !out.is_empty() && !out.ends_with('-') {
-            out.push('-');
-        }
-    }
-    while out.ends_with('-') {
-        out.pop();
-    }
-    out
+    crate::doc_anchors::slugify(heading)
 }
 
 struct Section {
