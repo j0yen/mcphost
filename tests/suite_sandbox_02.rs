@@ -44,6 +44,8 @@ mod aliastruth_ac05_contract_next_hints_are_advertised;
 mod askd_ac01_composed_path_costs_more_host_calls_than_verbs;
 #[path = "blobput_ac06_python_bridge_reads_exact_bytes.rs"]
 mod blobput_ac06_python_bridge_reads_exact_bytes;
+#[path = "blobputb_ac02_python_bridge_reads_exact_bytes.rs"]
+mod blobputb_ac02_python_bridge_reads_exact_bytes;
 #[path = "bridgedisc_ac01_sandbox_api_source_of_truth.rs"]
 mod bridgedisc_ac01_sandbox_api_source_of_truth;
 #[path = "bridgedisc_ac02_starter_tool_bridge_table.rs"]
