@@ -1261,6 +1261,7 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
             state: Arc::new(state.clone()),
             tenant: tenant.clone(),
         }) as Arc<dyn ChannelBackend>,
+        elicit: Arc::new(crate::elicit::NoClientElicit),
         msg: Arc::new(TenantMsgBridge {
             state: Arc::new(state.clone()),
             tenant: tenant.clone(),

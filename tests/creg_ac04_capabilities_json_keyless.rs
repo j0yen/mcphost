@@ -37,8 +37,11 @@ async fn capabilities_json_is_keyless_fast_and_creates_no_rows() {
     });
 
     let filtered: Value = http.get(format!("{url}?implemented=1")).send().await.expect("get").json().await.expect("json");
-    let names: Vec<&str> = filtered["primitives"].as_object().expect("object").keys().map(String::as_str).collect();
-    assert_eq!(names, ["tools"], "?implemented=1 keeps only implemented rows");
+    let mut names: Vec<&str> = filtered["primitives"].as_object().expect("object").keys().map(String::as_str).collect();
+    names.sort_unstable();
+    let mut implemented = mcphost::capabilities::implemented_names();
+    implemented.sort_unstable();
+    assert_eq!(names, implemented, "?implemented=1 keeps only implemented rows");
 
     assert_eq!(tenant_count(&server).await, before, "no tenant row may be created");
     assert_eq!(server.state.db.probe_tenant_count().await.expect("probe"), signups_before);

@@ -315,6 +315,8 @@ const MIGRATION_0102: &str = include_str!("../migrations/0102_tasks.sql");
 const MIGRATION_0103: &str = include_str!("../migrations/0103_indexes.sql");
 /// PRD-mcphost-key-scoped-to-tools R1: the `tenant_keys` table, `calls.key_id`.
 const MIGRATION_0104: &str = include_str!("../migrations/0104_tenant_keys.sql");
+/// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
+const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 
 /// Outcome of [`Db::reserve_draft`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2989,6 +2991,7 @@ impl Db {
         conn.execute_batch(MIGRATION_0102)?;
         conn.execute_batch(MIGRATION_0103)?;
         Self::migrate_0104_tenant_keys(&conn)?;
+        Self::migrate_0105_asks_channel(&conn)?;
         Ok(())
     }
 
@@ -3000,6 +3003,18 @@ impl Db {
             .exists([])?;
         if !has_table {
             conn.execute_batch(MIGRATION_0104)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`, gated on
+    /// the column (the batch is a single `ALTER`, so a rerun must skip it).
+    fn migrate_0105_asks_channel(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('asks') WHERE name = 'channel'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0105)?;
         }
         Ok(())
     }

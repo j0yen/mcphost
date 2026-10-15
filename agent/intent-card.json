@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-sse-frame-contract-generated.md",
-  "intent_slug": "mcphost-sse-frame-contract-generated",
-  "root_motivation": "**Who:** synthorg's conformance link (`toolconf.py:_raw_200_envelope`), mcphost's own `compat_check` and `oauthclient` test clients, and any agent SDK author who reads mcphost's docs. **What:** the exact sequence of SSE frames for each request type, readable before connecting. **Why not today:** the sequence is the sum of `rmcp`'s `json_response` fallback and wherever a `peer.notify_*` call sits (`handler.rs:326` after signup, `:372` after session bind). `compat_check.rs:896-915` and synthorg `toolconf.py:1097-1135` each parse by hand (\"the last frame carrying result or error\"); `docs/` has no protocol page; `llms.txt` says nothing about SSE. **Consequence:** the 10-08 conformance night (1/188) was spent on a contract both sides already implemented; the next notification the host adds (progress frames, next in this vision) repeats it unless the sequence is generated.",
-  "user_persona": "An agent that reads `https://mcphost.dev/capabilities.json` with no key, sees `resources` is not implemented, and on a stray `resources/list` gets `-32601` with `data.alternative: host.table.list` and a `help_url` instead of an empty list.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-elicitation-with-ask-fallback.md",
+  "intent_slug": "mcphost-elicitation-with-ask-fallback",
+  "root_motivation": "**Who:** the agent whose deployed tool must pause for a human decision; the human who should answer in the client they are already looking at, and only fall back to a link when the client cannot ask. **What:** one bridge call that asks the user, typed, through the best channel the connection supports, and never hangs the tool. **Why not today:** mcphost has no server\u2192client request path at all (`CallCtx` carries no peer; `Cargo.toml:41` omits rmcp's `elicitation` feature). PRD-mcphost-ask-user-decision (queued) gives `host.ask.create`/`host.ask.wait`, which the agent calls itself from outside the tool \u2014 right for an agent planning a schedule, wrong for a tool that is already running and needs the answer now. The explore run of 10-08 shows 12 tracebacks from tools inventing their own waits. **Consequence:** tools that need a human either poll a table the agent must fill, or refuse; the client's native form UI goes unused.",
+  "user_persona": "An agent that calls host.index.create with a doc prefix, a table column and a URL, then polls host.index.status until pending is 0.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,44 +14,50 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given an in-process server and 100 key-less `tools/call` requests each on a fresh connection, When the bodies are split into frames, Then all 100 are `text/event-stream` with methods `[notifications/tools/list_changed, <result>]` in that order and the counts are printed (the falsifier).",
-      "test": "tests/sfc_ac01_keyless_call_frames_are_stable.rs"
+      "description": "Given mcphost built with rmcp's `elicitation` feature and an in-process python-mcp 2.1.1 client whose `elicitation_callback` fixture answers `{confirm: true}`, When a python tool calls `mcphost.elicit(\"Rotate?\", {confirm: {type: \"boolean\"}})` inside `tools/call`, Then the tool receives `{action: \"accept\", content: {confirm: true}}` within one call and the ask-user audit has one row with `channel: client`.",
+      "test": "tests/melc_ac01_typed_elicit_via_client_callback.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given every row of `FRAME_SEQUENCES`, When the drift test sends that request type, Then the observed frame methods match the row's cardinality pattern and the content type matches `json_when_single_frame`.",
-      "test": "tests/sfc_ac02_wire_frames_match_table.rs"
+      "description": "Given a client without `elicitation`, When the same tool runs and the ask-user page receives the answer within 5 s, Then the tool receives `{action: \"accept\", content}` and the row says `channel: link`; Given no answer within the wait, Then `{action: \"pending\", ask_id, url, expires_unix}` is returned before the tool's own timeout.",
+      "test": "tests/melc_ac02_link_fallback_for_clients_without_elicitation.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a keyed `tools/call` of `host.whoami`, When the response is read, Then it is `application/json` with exactly one frame carrying `result`, and the row for `tools/call:keyed` says `[Result{1}]`.",
-      "test": "tests/sfc_ac03_keyed_call_is_one_json_frame.rs"
+      "description": "Given a schema with a nested object or 9 properties, When `mcphost.elicit` is called, Then `elicit_schema_invalid {path, allowed}` is raised and no client request and no ask row exist.",
+      "test": "tests/melc_ac03_invalid_schema_is_refused_before_any_ask.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a test that calls `peer.notify_tool_list_changed()` directly inside a `tools/list` handler, When it runs in debug, Then `frames::emit` panics with the request type and the disallowed frame kind.",
-      "test": "tests/sfc_ac04_stray_notify_panics_in_debug.rs"
+      "description": "Given `ELICIT_SCHEMA_SUBSET`, When the bridge docstring, `docs/sandbox-api.md` and the rmcp mapping test are rendered, Then all three list exactly the const's types and limits.",
+      "test": "tests/melc_ac04_schema_subset_one_const_three_renderings.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given `scripts/protocol-frames-check.sh --check` after a row is added to the table without `--write`, When it runs, Then it exits 1 naming `docs/protocol/frames.md` and `www/frames.json`; after `--write`, exit 0.",
-      "test": "tests/sfc_ac05_frames_check_script_names_drift.rs"
+      "description": "Given a fixture client that answers `decline`, When the tool elicits, Then `{action: \"decline\"}` is returned unchanged; Given a client that never answers, Then `elicit_timeout` at `timeout_s` and the tool still returns inside its budget.",
+      "test": "tests/melc_ac05_decline_is_returned_and_silence_times_out.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a captured body `[result, notifications/tools/list_changed]` (wrong order), When `frames::select_result` is applied with `tools/call:keyless_signup`, Then it returns `frame_contract_violation` listing both methods; Given the correct order, Then it returns the result frame.",
-      "test": "tests/sfc_ac06_select_result_rejects_wrong_order.rs"
+      "description": "Given a job-triggered run, When the tool elicits, Then `elicit_unsupported {reason: \"no_client\"}` is returned and the run row records the code.",
+      "test": "tests/melc_ac06_job_run_has_no_client_and_records_the_code.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given `www/llms.txt`, When the drift check runs, Then its Transport section equals the script's rendering byte for byte.",
-      "test": "tests/sfc_ac07_llms_txt_transport_section_matches_script.rs"
+      "level": "MUST",
+      "description": "Given a tool that elicits 4 times, When run against a fixture client, Then elicits 1-3 succeed and the 4th returns `elicit_calls_exceeded {limit: 3}`.",
+      "test": "tests/melc_ac07_fourth_elicit_in_one_call_is_refused.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given prod after deploy, When `/capabilities.json` is fetched keyless, Then `elicitation` is implemented with the ask-user fallback named (Live; evidence: `curl -s https://mcphost.dev/capabilities.json | jq -e '.primitives.elicitation.implemented == true and .primitives.elicitation.alternative == \"host.ask.create\"'`)",
+      "test": "deferred -- operator-provisioned: live curl of https://mcphost.dev/capabilities.json after deploy."
     }
   ],
   "scope": [

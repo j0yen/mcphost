@@ -134,6 +134,14 @@ required_commands = [
 ]
 
 [[lane]]
+id = "elicit-docs"
+description = "PRD-mcphost-elicitation-with-ask-fallback (2026-10-15): docs/sandbox-api.md, whose schema-subset table is generated from ELICIT_SCHEMA_SUBSET in src/elicit.rs and proven equal to the bridge docstring and the rmcp mapping by tests/melc_ac04_*. Given its own lane rather than folded into an existing one, so the pinned lane baselines stay unchanged."
+globs = ["docs/sandbox-api.md"]
+required_commands = [
+  "cargo test --test suite_sandbox_02 melc_ac04",
+]
+
+[[lane]]
 id = "spec-fields-doc-check"
 description = "PRD-mcphost-spec-unknown-field-rejection requirement 6 (AC7): scripts/spec-fields-doc-check.sh diffs each kind's known_spec_fields() (parsed straight out of its own src/kinds/<kind>.rs, never a second hand-maintained list) against its docs/kinds/<kind>.md page, so the two can't silently drift. Given its own lane rather than folded into the pre-existing docs lane above, since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane's required_commands as an immutable baseline and folding in here would have changed the docs lane's own required_commands (same reasoning as the sharing-docs/launch-docs lanes above)."
 globs = ["scripts/spec-fields-doc-check.sh"]

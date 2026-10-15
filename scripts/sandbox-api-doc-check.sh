@@ -83,7 +83,7 @@ apply_to_file() {
     return 2
   fi
   local tmp
-  tmp="$(mktemp)"
+  tmp="$(mktemp "$file.XXXXXX")"  # same dir: mv is an atomic rename, no unlink window
   python3 - "$file" "$START" "$END" "$rendered" > "$tmp" <<'PY'
 import sys
 
@@ -94,6 +94,7 @@ start_idx = text.index(start_marker)
 end_idx = text.index(end_marker) + len(end_marker)
 sys.stdout.write(text[:start_idx] + rendered + text[end_idx:])
 PY
+  chmod 644 "$tmp"
   mv "$tmp" "$file"
 }
 

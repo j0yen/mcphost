@@ -29,6 +29,11 @@ fn params_for(method: &str) -> Value {
     }
 }
 
+/// Methods this host SENDS to the client rather than receives: the row is
+/// implemented, but a client posting one gets rmcp's bare `-32601` by spec
+/// (PRD-mcphost-elicitation-with-ask-fallback flips `elicitation`).
+const SERVER_INITIATED: &[&str] = &["elicitation/create"];
+
 /// The row-level precondition the drift test needs: a row names its methods.
 fn methods_problem(row: &Capability) -> Option<String> {
     row.methods.is_empty().then(|| format!("capability row `{}` has an empty `methods` list", row.name))
@@ -45,6 +50,9 @@ async fn every_method_of_every_row_answers_as_its_row_says() {
     for row in CAPABILITIES {
         for method in row.methods {
             let reply = client.rpc(method, params_for(method)).await;
+            if row.implemented && SERVER_INITIATED.contains(method) {
+                continue;
+            }
             if row.implemented {
                 if reply.get("result").is_none() {
                     failures.push(format!("{}: implemented row `{}` must answer a result, got {reply}", method, row.name));

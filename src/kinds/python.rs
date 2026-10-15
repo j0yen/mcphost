@@ -2108,6 +2108,13 @@ pub const BRIDGE_MODULES: &[BridgeModule] = &[
             "mcphost.msg.inbox(limit=50, cursor=None) -- read this tenant's inbox",
         ],
     },
+    BridgeModule {
+        name: "elicit",
+        purpose: "ask the user a typed question mid-call: the client's form when it can, the ask-user link otherwise",
+        signatures: &[
+            "mcphost.elicit(message, schema, timeout_s=None) -- ask the user; returns {action: accept|decline|cancel|pending, ...} (help(mcphost.elicit) lists the accepted schema subset)",
+        ],
+    },
 ];
 
 /// The two bridge functions that live as plain attributes on the top-level
@@ -2287,6 +2294,10 @@ pub const BRIDGE_RETURNS: &[BridgeReturn] = &[
         function: "mcphost.msg.inbox",
         shape: Envelope(&[("messages", "list")]),
     },
+    BridgeReturn {
+        function: "mcphost.elicit",
+        shape: Plain("dict {action: accept|decline|cancel, content?} or {action: pending, ask_id, url, expires_unix}"),
+    },
     BridgeReturn { function: "mcphost.call", shape: Plain("any (the called tool's result)") },
     BridgeReturn { function: "mcphost.progress", shape: Plain("bool or None") },
     BridgeReturn {
@@ -2339,7 +2350,9 @@ fn runner_returns_json() -> String {
 /// guard), built once.
 pub fn py_runner_script() -> &'static str {
     static SCRIPT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-    SCRIPT.get_or_init(|| PY_RUNNER_SCRIPT_TEMPLATE.replace("__BRIDGE_RETURNS_JSON__", &runner_returns_json()))
+    SCRIPT.get_or_init(|| PY_RUNNER_SCRIPT_TEMPLATE
+            .replace("__BRIDGE_RETURNS_JSON__", &runner_returns_json())
+            .replace("__ELICIT_SUBSET__", &crate::elicit::render_subset()))
 }
 
 /// `host.quickstart`'s `bridge_returns`: every [`BRIDGE_RETURNS`] row as
@@ -3295,6 +3308,46 @@ _mcphost_msg_mod.inbox = _msg_inbox
 _mcphost_msg_mod.MsgError = McphostMsgError
 _mcphost_msg_mod.BridgeError = McphostBridgeError
 
+# ---- mcphost.elicit (PRD-mcphost-elicitation-with-ask-fallback) -----------
+#
+# Same request-line-out/response-line-in round trip, marked
+# `__mcphost_elicit__`. `mcphost.elicit(...)` is called like a function but
+# registered as `mcphost.elicit` in `sys.modules` like its siblings, so the
+# module object itself is callable.
+class McphostElicitError(McphostBridgeError):
+    # The code leads the message, so an uncaught raise still names it on the
+    # host side (`kinds::python::map_envelope_error`).
+    def __init__(self, code, message, data=None):
+        McphostBridgeError.__init__(self, code, code + ": " + message, data)
+
+_ELICIT_DOC = """mcphost.elicit(message, schema, timeout_s=None): ask the user a typed question while this tool runs.
+
+Accepted schema subset (__ELICIT_SUBSET__).
+The client's own form answers when it advertised elicitation; otherwise the ask-user link does."""
+
+class _McphostElicitModule(_mcphost_types.ModuleType):
+    def __call__(self, message, schema, timeout_s=None):
+        """Ask the user a typed question; the schema subset is in help(mcphost.elicit)."""
+        request = {"__mcphost_elicit__": True, "message": message, "schema": schema}
+        if timeout_s is not None:
+            request["timeout_s"] = timeout_s
+        _real_stdout.write(json.dumps(request))
+        _real_stdout.write("\n")
+        _real_stdout.flush()
+        line = sys.stdin.readline()
+        if not line:
+            raise McphostElicitError("elicit_unavailable", "the elicit bridge closed")
+        resp = json.loads(line)
+        if not resp.get("ok"):
+            raise McphostElicitError(
+                resp.get("code", "elicit_error"), resp.get("message", "elicit failed"), resp.get("data")
+            )
+        return resp.get("result")
+
+_mcphost_elicit_mod = _McphostElicitModule("mcphost.elicit", _ELICIT_DOC)
+_mcphost_elicit_mod.ElicitError = McphostElicitError
+_mcphost_elicit_mod.BridgeError = McphostBridgeError
+
 _mcphost_mod = _mcphost_types.ModuleType("mcphost")
 _mcphost_mod.state = _mcphost_state_mod
 _mcphost_mod.table = _mcphost_table_mod
@@ -3304,6 +3357,7 @@ _mcphost_mod.lineage = _mcphost_lineage_mod
 _mcphost_mod.drift = _mcphost_drift_mod
 _mcphost_mod.channel = _mcphost_channel_mod
 _mcphost_mod.msg = _mcphost_msg_mod
+_mcphost_mod.elicit = _mcphost_elicit_mod
 _mcphost_mod.call = _mcphost_call
 _mcphost_mod.quota = _mcphost_quota
 _mcphost_mod.CallError = McphostCallError
@@ -3342,6 +3396,7 @@ sys.modules["mcphost.lineage"] = _mcphost_lineage_mod
 sys.modules["mcphost.drift"] = _mcphost_drift_mod
 sys.modules["mcphost.channel"] = _mcphost_channel_mod
 sys.modules["mcphost.msg"] = _mcphost_msg_mod
+sys.modules["mcphost.elicit"] = _mcphost_elicit_mod
 
 # ---- return shapes (PRD-mcphost-sandbox-return-shape-contract) --------------
 #
@@ -3645,6 +3700,20 @@ fn map_envelope_error(envelope: &Value, stderr_tail: &str, own_domain: &str) -> 
             // traceback reaches the caller.
             if let Some(module) = runtime_unknown_import(error, message, own_domain) {
                 return unknown_import_error(&module, own_domain);
+            }
+            // PRD-mcphost-elicitation-with-ask-fallback: an uncaught
+            // `mcphost.elicit` refusal keeps its own code (`elicit_unsupported`
+            // in a job run, ...), so the run row records it.
+            if error == "McphostElicitError"
+                && let Some(code) = message
+                    .split_once(": ")
+                    .and_then(|(c, _)| crate::elicit::ELICIT_ERROR_CODES.iter().find(|k| **k == c))
+            {
+                return KindError::structured_with(
+                    code,
+                    message.to_string(),
+                    json!({"phase": "tool_code", "exception_class": error}),
+                );
             }
             // Requirement 1/AC2: every exception that escapes the tool's
             // own code is `phase: tool_code`, carries the exception class
@@ -4146,6 +4215,35 @@ impl SidecarBridge for MsgSidecarBridge<'_> {
     }
 }
 
+/// PRD-mcphost-elicitation-with-ask-fallback: `PY_RUNNER_SCRIPT`'s
+/// `mcphost.elicit` emits `{"__mcphost_elicit__": true, "message": ...,
+/// "schema": ..., "timeout_s": ...}` and blocks on the response line.
+struct ElicitSidecarBridge<'a> {
+    ctx: &'a CallCtx,
+}
+
+#[async_trait::async_trait]
+impl SidecarBridge for ElicitSidecarBridge<'_> {
+    async fn intercept(&self, line: &[u8]) -> Option<Vec<u8>> {
+        let request: Value = serde_json::from_slice(line).ok()?;
+        if request.get("__mcphost_elicit__").and_then(Value::as_bool) != Some(true) {
+            return None;
+        }
+        let response = match self.ctx.elicit.elicit(request, self.ctx.time_remaining()).await {
+            Ok(result) => json!({"ok": true, "result": result}),
+            Err(e) => {
+                let (code, message, data) = match e {
+                    KindError::Structured { code, message, data } => (code, message, data),
+                    KindError::InvalidArgs(m) | KindError::InvalidSpec(m) => ("elicit_args_invalid", m, Value::Null),
+                    KindError::Exec(m) => ("elicit_error", m, Value::Null),
+                };
+                json!({"ok": false, "code": code, "message": message, "data": data})
+            }
+        };
+        Some(serde_json::to_vec(&response).unwrap_or_default())
+    }
+}
+
 /// PRD-mcphost-composition requirement 1: bridges the same sidecar channel
 /// to `kinds::compose_call` -- `PY_RUNNER_SCRIPT`'s `mcphost.call(name,
 /// args, timeout_s=None)` emits `{"__mcphost_call__": true, "name": ...,
@@ -4288,6 +4386,10 @@ impl SidecarBridge for HostSidecarBridge<'_> {
         }
         let msg_bridge = MsgSidecarBridge { ctx: self.ctx };
         if let Some(response) = msg_bridge.intercept(line).await {
+            return Some(response);
+        }
+        let elicit_bridge = ElicitSidecarBridge { ctx: self.ctx };
+        if let Some(response) = elicit_bridge.intercept(line).await {
             return Some(response);
         }
         let progress_bridge = ProgressSidecarBridge { ctx: self.ctx };
@@ -6594,6 +6696,7 @@ mod tests {
             vault_token: None,
             channel: Arc::new(crate::kinds::NoChannel),
             msg: Arc::new(crate::kinds::NoMsg),
+            elicit: Arc::new(crate::elicit::NoClientElicit),
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             sidecar_ops_max: i64::MAX,
             host_dispatch: None,
@@ -6910,6 +7013,7 @@ mod tests {
             vault_token: None,
             channel: Arc::new(crate::kinds::NoChannel),
             msg: Arc::new(crate::kinds::NoMsg),
+            elicit: Arc::new(crate::elicit::NoClientElicit),
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             sidecar_ops_max: i64::MAX,
             host_dispatch: None,
