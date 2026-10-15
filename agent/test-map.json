@@ -1721,6 +1721,15 @@
       "AC6": "tests/melc_ac06_job_run_has_no_client_and_records_the_code.rs",
       "AC7": "tests/melc_ac07_fourth_elicit_in_one_call_is_refused.rs",
       "AC8": "deferred -- operator-provisioned: live curl of https://mcphost.dev/capabilities.json after deploy."
+    },
+    "dtf": {
+      "_prd": "PRD-mcphost-docs-telemetry-failed-after-search.md (test_prefix: dtf)",
+      "AC2": "tests/dtf_ac02_search_then_failure_row_joined_once.rs",
+      "AC3": "tests/dtf_ac03_anonymous_and_stale_never_joined.rs",
+      "AC4": "tests/dtf_ac04_fifty_concurrent_failures_joined_once_fast.rs",
+      "AC5": "tests/dtf_ac05_status_json_docs_gaps_top10_normalized.rs",
+      "AC6": "tests/dtf_ac06_host_help_gaps_operator_only.rs",
+      "AC7": "tests/dtf_ac07_retention_sweeps_help_search_events.rs"
     }
   }
 }

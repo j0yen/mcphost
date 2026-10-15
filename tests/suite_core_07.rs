@@ -803,6 +803,18 @@ mod dryv_ac05_real_errors_pass_through;
 mod dryv_ac06_key_rotate_refuses_dry_run;
 #[path = "dryv_ac07_tools_list_dry_run_schema.rs"]
 mod dryv_ac07_tools_list_dry_run_schema;
+#[path = "dtf_ac02_search_then_failure_row_joined_once.rs"]
+mod dtf_ac02_search_then_failure_row_joined_once;
+#[path = "dtf_ac03_anonymous_and_stale_never_joined.rs"]
+mod dtf_ac03_anonymous_and_stale_never_joined;
+#[path = "dtf_ac04_fifty_concurrent_failures_joined_once_fast.rs"]
+mod dtf_ac04_fifty_concurrent_failures_joined_once_fast;
+#[path = "dtf_ac05_status_json_docs_gaps_top10_normalized.rs"]
+mod dtf_ac05_status_json_docs_gaps_top10_normalized;
+#[path = "dtf_ac06_host_help_gaps_operator_only.rs"]
+mod dtf_ac06_host_help_gaps_operator_only;
+#[path = "dtf_ac07_retention_sweeps_help_search_events.rs"]
+mod dtf_ac07_retention_sweeps_help_search_events;
 #[path = "dxn_ac01_classify_fences.rs"]
 mod dxn_ac01_classify_fences;
 #[path = "dxn_ac02_extract_corpus_and_drift_check.rs"]

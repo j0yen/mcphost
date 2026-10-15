@@ -319,6 +319,12 @@ const MIGRATION_0104: &str = include_str!("../migrations/0104_tenant_keys.sql");
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
 const MIGRATION_0106: &str = include_str!("../migrations/0106_index_refresh.sql");
+/// PRD-mcphost-docs-telemetry-failed-after-search R1: `help_search_events`.
+const MIGRATION_0107: &str = include_str!("../migrations/0107_help_search_events.sql");
+
+/// PRD-mcphost-docs-telemetry-failed-after-search R3: how long after a
+/// `host.help.search` the same tenant's first failed call still joins it.
+pub const HELP_SEARCH_JOIN_WINDOW_S: i64 = 120;
 
 /// Outcome of [`Db::reserve_draft`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -3003,6 +3009,8 @@ impl Db {
         Self::migrate_0104_tenant_keys(&conn)?;
         Self::migrate_0105_asks_channel(&conn)?;
         Self::migrate_0106_index_refresh(&conn)?;
+        // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
+        conn.execute_batch(MIGRATION_0107)?;
         Ok(())
     }
 
@@ -5783,6 +5791,124 @@ impl Db {
                 params![tenant_id, called_tool],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-docs-telemetry-failed-after-search R2: one row per
+    /// `host.help.search` call (`tenant_id` `None` for an anonymous caller).
+    pub async fn record_help_search(
+        &self,
+        tenant_id: Option<i64>,
+        query_norm: String,
+        top_anchor: Option<String>,
+        searched_unix: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO help_search_events (tenant_id, query_norm, top_anchor, searched_unix) \
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![tenant_id, query_norm, top_anchor, searched_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// R3: joins this tenant's newest unjoined search from the last 120 s to
+    /// the failed call -- one indexed `UPDATE` of at most one row.
+    pub async fn join_help_search_failure(
+        &self,
+        tenant_id: i64,
+        failed_code: String,
+        failed_tool: String,
+        now: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE help_search_events SET failed_code = ?2, failed_tool = ?3, failed_unix = ?4 \
+                 WHERE id = ( \
+                     SELECT id FROM help_search_events \
+                     WHERE tenant_id = ?1 AND failed_code IS NULL AND searched_unix >= ?5 \
+                     ORDER BY searched_unix DESC, id DESC LIMIT 1 \
+                 )",
+                params![tenant_id, failed_code, failed_tool, now, now - HELP_SEARCH_JOIN_WINDOW_S],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// R4/R6: `(searches, followed_by_failure, [(query_norm, failed_code,
+    /// top_anchor, n)])` over rows searched at or after `since_unix`; the
+    /// group rows cover joined (failed) searches only.
+    #[allow(clippy::type_complexity)]
+    pub async fn help_search_gap_rows(
+        &self,
+        since_unix: i64,
+    ) -> Result<(i64, i64, Vec<(String, String, Option<String>, i64)>), AppError> {
+        self.with_conn(move |conn| {
+            let (searches, followed): (i64, i64) = conn.query_row(
+                "SELECT COUNT(*), COUNT(failed_code) FROM help_search_events WHERE searched_unix >= ?1",
+                params![since_unix],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?;
+            let mut stmt = conn.prepare(
+                "SELECT query_norm, failed_code, top_anchor, COUNT(*) FROM help_search_events \
+                 WHERE searched_unix >= ?1 AND failed_code IS NOT NULL \
+                 GROUP BY query_norm, failed_code, top_anchor",
+            )?;
+            let rows = stmt
+                .query_map(params![since_unix], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok((searches, followed, rows))
+        })
+        .await
+    }
+
+    /// Test-only: seeds a fully-shaped `help_search_events` row.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_help_search_event_for_test(
+        &self,
+        tenant_id: Option<i64>,
+        query_norm: &str,
+        top_anchor: Option<&str>,
+        searched_unix: i64,
+        failed_code: Option<&str>,
+    ) -> Result<(), AppError> {
+        let (query_norm, top_anchor, failed_code) =
+            (query_norm.to_string(), top_anchor.map(str::to_string), failed_code.map(str::to_string));
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO help_search_events (tenant_id, query_norm, top_anchor, searched_unix, failed_code, \
+                 failed_tool, failed_unix) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    tenant_id,
+                    query_norm,
+                    top_anchor,
+                    searched_unix,
+                    failed_code,
+                    failed_code.as_ref().map(|_| "host.tool_publish"),
+                    failed_code.as_ref().map(|_| searched_unix + 1),
+                ],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Test-only: every `help_search_events` row, oldest first, as
+    /// `(tenant_id, query_norm, top_anchor, failed_code, failed_tool)`.
+    pub async fn help_search_events_for_test(
+        &self,
+    ) -> Result<Vec<(Option<i64>, String, Option<String>, Option<String>, Option<String>)>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT tenant_id, query_norm, top_anchor, failed_code, failed_tool \
+                 FROM help_search_events ORDER BY id",
+            )?;
+            let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?;
+            rows.collect::<Result<Vec<_>, _>>().map_err(AppError::from)
         })
         .await
     }
@@ -14773,6 +14899,7 @@ impl Db {
         if let Err(e) = self.rollup_usage_daily(finished).await {
             tracing::warn!(error = %e, "usage_daily rollup failed");
         }
+        tracing::info!("{}", crate::retention::sweep_log_line(&outcome.deleted));
         match outcome.error {
             None => Ok(PruneReport {
                 deleted: outcome.deleted,
