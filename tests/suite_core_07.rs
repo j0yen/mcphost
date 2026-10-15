@@ -1363,6 +1363,12 @@ mod kst_ac02_subkey_lists_and_denies_by_allowlist;
 mod kst_ac03_mint_validates_names_and_is_primary_only;
 #[path = "kst_ac04_ttl_expiry_and_revoke.rs"]
 mod kst_ac04_ttl_expiry_and_revoke;
+#[path = "kstb_ac01_subkeys_survive_primary_rotate.rs"]
+mod kstb_ac01_subkeys_survive_primary_rotate;
+#[path = "kstb_ac02_shared_in_subkey_follows_share.rs"]
+mod kstb_ac02_shared_in_subkey_follows_share;
+#[path = "kstb_ac03_sub_keys_max_plan_ceiling.rs"]
+mod kstb_ac03_sub_keys_max_plan_ceiling;
 #[path = "lanecov_ac01_every_tracked_path_routes.rs"]
 mod lanecov_ac01_every_tracked_path_routes;
 #[path = "lanecov_ac02_coverage_test_is_actually_run.rs"]

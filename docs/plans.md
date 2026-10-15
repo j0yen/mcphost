@@ -60,6 +60,7 @@ Every numeric ceiling in the plan table, as `host.quickstart` `limits.plan` repo
 | `state_bytes_max` | 5242880 | 209715200 |
 | `state_ops_per_call_max` | 200 | 200 |
 | `state_rows_max` | 10000 | 100000 |
+| `sub_keys_max` | 5 | 100 |
 | `table_bytes_max` | 10485760 | 524288000 |
 | `table_handle_bytes_max` | 67108864 | 536870912 |
 | `table_rows_max` | 5000 | 200000 |

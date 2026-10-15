@@ -176,6 +176,11 @@ pub struct Plan {
     /// predates this key, same tolerant-parse convention as every other
     /// field above.
     pub channels_max: i64,
+    /// PRD-mcphost-key-scoped-to-tools R7: how many active sub-keys
+    /// (`host.key.mint`) a tenant may hold at once; a further mint is
+    /// `plan_required` naming `sub_keys_max`. Defaults to the `free` plan's
+    /// own default (5) when a hand-edited `plans.toml` predates this key.
+    pub sub_keys_max: i64,
     /// requirement 3 / AC7: how many `host.channel.post` calls a single
     /// tenant may make in a sliding hour, across every channel it's a
     /// member of (`quota_exceeded` naming `channel_posts_per_hour`).
@@ -559,6 +564,7 @@ impl PlanCatalog {
                     // at build: "free channels_max 3, channel_posts_per_hour
                     // 120, channel_retention_days 14".
                     channels_max: 3,
+                    sub_keys_max: 5,
                     channel_posts_per_hour: 120,
                     channel_retention_days: 14,
                     receipts_retention_days: 7,
@@ -669,6 +675,7 @@ impl PlanCatalog {
                     // open question, no published pro number, sized against
                     // the ~16x-33x ratio the rest of this catalog uses.
                     channels_max: 25,
+                    sub_keys_max: 100,
                     channel_posts_per_hour: 2_000,
                     channel_retention_days: 90,
                     receipts_retention_days: 30,
@@ -816,6 +823,7 @@ impl PlanCatalog {
             out.push_str(&format!("export_bytes_max = {}\n", p.export_bytes_max));
             out.push_str(&format!("versions_max = {}\n", p.versions_max));
             out.push_str(&format!("channels_max = {}\n", p.channels_max));
+            out.push_str(&format!("sub_keys_max = {}\n", p.sub_keys_max));
             out.push_str(&format!(
                 "channel_posts_per_hour = {}\n",
                 p.channel_posts_per_hour
@@ -940,6 +948,7 @@ impl PlanCatalog {
                 "export_bytes_max" => builder.export_bytes_max = Some(int_value()),
                 "versions_max" => builder.versions_max = Some(int_value()),
                 "channels_max" => builder.channels_max = Some(int_value()),
+                "sub_keys_max" => builder.sub_keys_max = Some(int_value()),
                 "channel_posts_per_hour" => builder.channel_posts_per_hour = Some(int_value()),
                 "channel_retention_days" => builder.channel_retention_days = Some(int_value()),
                 "receipts_retention_days" => builder.receipts_retention_days = Some(int_value()),
@@ -1035,6 +1044,7 @@ struct PlanBuilder {
     export_bytes_max: Option<i64>,
     versions_max: Option<i64>,
     channels_max: Option<i64>,
+    sub_keys_max: Option<i64>,
     channel_posts_per_hour: Option<i64>,
     channel_retention_days: Option<i64>,
     receipts_retention_days: Option<i64>,
@@ -1115,6 +1125,7 @@ impl PlanBuilder {
             export_bytes_max: quota!(export_bytes_max),
             versions_max: quota!(versions_max),
             channels_max: quota!(channels_max),
+            sub_keys_max: quota!(sub_keys_max),
             channel_posts_per_hour: quota!(channel_posts_per_hour),
             channel_retention_days: quota!(channel_retention_days),
             receipts_retention_days: quota!(receipts_retention_days),
