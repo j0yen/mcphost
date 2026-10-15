@@ -63,7 +63,7 @@ fn registry() -> &'static Registry {
 /// 1. a property declared `{"type": "null"}` (only ever observed null) is
 ///    unconstrained: a null observation carries no type information;
 /// 2. every property that is not `required` also accepts `null` (the type
-///    gains `"null"`, an `enum` gains `null`);
+///    gains `"null"`; a closed `enum` stays closed);
 /// 3. a `*cursor` key is never `required`.
 fn relax_object_schema(schema: &mut Map<String, Value>) {
     let mut required: Vec<String> = schema
@@ -95,22 +95,21 @@ fn relax_object_schema(schema: &mut Map<String, Value>) {
     }
 }
 
-/// `schema` also accepts `null`: `type: T` becomes `type: [T, "null"]`, an
-/// `enum` gains `null`. A schema with no `type` (unconstrained, or a union)
-/// is left alone.
+/// `schema` also accepts `null`: `type: T` becomes `type: [T, "null"]`. A schema
+/// with no `type` (unconstrained, or a union) is left alone, and so is an
+/// `enum`: those are closed sets generated from Rust (`RUN_ROLES`,
+/// `TaskStatus`), where an `Option` is not invisible.
 fn allow_null(schema: &mut Map<String, Value>) {
+    if schema.contains_key("enum") {
+        return;
+    }
     match schema.get_mut("type") {
         Some(Value::String(t)) => {
             let t = std::mem::take(t);
             schema.insert("type".to_string(), Value::from(vec![t, "null".to_string()]));
         }
         Some(Value::Array(types)) if !types.iter().any(|t| t == "null") => types.push(Value::from("null")),
-        _ => return,
-    }
-    if let Some(Value::Array(variants)) = schema.get_mut("enum")
-        && !variants.contains(&Value::Null)
-    {
-        variants.push(Value::Null);
+        _ => {}
     }
 }
 

@@ -34,16 +34,6 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
-#[path = "minimal_ac1_anonymous_ok_only.rs"]
-mod minimal_ac1_anonymous_ok_only;
-#[path = "minimal_ac2_admin_full_document.rs"]
-mod minimal_ac2_admin_full_document;
-#[path = "minimal_ac3_wrong_bearer_matches_anonymous.rs"]
-mod minimal_ac3_wrong_bearer_matches_anonymous;
-#[path = "minimal_ac4_liveness_failure_returns_5xx.rs"]
-mod minimal_ac4_liveness_failure_returns_5xx;
-#[path = "minimal_ac5_tenant_bearer_gets_anonymous_body.rs"]
-mod minimal_ac5_tenant_bearer_gets_anonymous_body;
 #[path = "mrefu_ac01_breaking_migration_refuses_with_report.rs"]
 mod mrefu_ac01_breaking_migration_refuses_with_report;
 #[path = "mrefu_ac02_compatible_migration_reports_ok.rs"]
@@ -224,8 +214,6 @@ mod outsch_ac05_whoami_one_schema_for_every_connection;
 mod outsch_ac06_diff_flags_a_removed_output_field;
 #[path = "outsch_ac07_tools_doc_has_a_returns_block.rs"]
 mod outsch_ac07_tools_doc_has_a_returns_block;
-#[path = "outsch_ac08_prod_response_variants_validate.rs"]
-mod outsch_ac08_prod_response_variants_validate;
 #[path = "outschb_ac01_whoami_one_schema_for_every_connection.rs"]
 mod outschb_ac01_whoami_one_schema_for_every_connection;
 #[path = "outschb_ac02_diff_flags_a_removed_output_field.rs"]

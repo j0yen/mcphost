@@ -12762,13 +12762,9 @@
                 "role": {
                   "enum": [
                     "step",
-                    "item",
-                    null
+                    "item"
                   ],
-                  "type": [
-                    "string",
-                    "null"
-                  ]
+                  "type": "string"
                 },
                 "run_id": {
                   "type": [
