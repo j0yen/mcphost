@@ -212,6 +212,9 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // PRD-mcphost-elicitation-with-ask-fallback added its own "elicit-docs"
     // lane (routes the elicitation docs to their check) -- an intended
     // addition since the baseline (rb seat hand-fix 10-15 2:0x am, CI lanecov red on PR 280).
+    // PRD-mcphost-connection-provider-registry added its own "connect-providers"
+    // lane (routes providers.toml and docs/connections.md to the cargo proof) --
+    // an intended addition since the baseline.
     // PRD-mcphost-task-handoff-live-script added its own "live-scripts" lane
     // (routes scripts/task-handoff-live.sh to its proof tests) -- an intended
     // addition since the baseline (rb seat hand-fix 10-15 5:5x am, CI lanecov red on PR 297).
@@ -222,6 +225,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "blobguard-fixtures",
             "checkcompat-race-soak",
             "child-proc-lint",
+            "connect-providers",
             "contracts",
             "docs-links",
             "docsearch-fixtures",
@@ -248,7 +252,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "vendor",
             "wasm-fixtures"
         ],
-        "only admin-schemas, blobguard-fixtures, checkcompat-race-soak, child-proc-lint, contracts, docs-links, docsearch-fixtures, \
+        "only admin-schemas, blobguard-fixtures, checkcompat-race-soak, child-proc-lint, connect-providers, contracts, docs-links, docsearch-fixtures, \
          event-trigger-self-test-fixtures, example-manifest, examples, flake-lint, heal-config, heal-docs, host-pressure-doc-check, launch-docs, \
          loop-config, oauthconf-data, output-schemas, plugin, registry-manifest, required-checks, sandbox-api-docs, sharing-docs, \
          spec-fields-doc-check, tool-naming, vendor, and wasm-fixtures may have been added since \

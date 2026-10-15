@@ -629,6 +629,12 @@ mod cproc_ac07_flake_lint_job_runs_child_proc_lint;
 mod cprocb_ac02_real_tree_clean_and_six_files_use_helper;
 #[path = "cprocb_ac03_flake_lint_job_fails_on_raw_spawn_before_toolchain.rs"]
 mod cprocb_ac03_flake_lint_job_fails_on_raw_spawn_before_toolchain;
+#[path = "cprov_ac01_one_row_reaches_all_five_surfaces.rs"]
+mod cprov_ac01_one_row_reaches_all_five_surfaces;
+#[path = "cprov_ac02_provider_surfaces_cannot_drift.rs"]
+mod cprov_ac02_provider_surfaces_cannot_drift;
+#[path = "cprov_ac04_validate_scopes_names_the_unknown.rs"]
+mod cprov_ac04_validate_scopes_names_the_unknown;
 #[path = "creg_ac01_premise_two_truths_then_minus_32601.rs"]
 mod creg_ac01_premise_two_truths_then_minus_32601;
 #[path = "creg_ac02_initialize_capabilities_from_registry.rs"]

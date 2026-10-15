@@ -3229,6 +3229,23 @@ fn host_tools_part_07() -> Vec<Tool> {
                 &["run_id"],
             ),
         ),
+        // PRD-mcphost-connection-provider-registry R3: the providers a host can
+        // connect, from the generated `Provider` table.
+        Tool::new(
+            "host.connect.providers",
+            "List the upstream OAuth providers this host can connect: name, scopes ({name, purpose}), \
+             refresh (rotating | offline_access | none), docs_url, and available -- false with a \
+             reason (client_id_not_configured | client_secret_not_configured) until the host has \
+             registered the app. Never returns a client id or secret.",
+            host_schema(
+                json!({"provider": {
+                    "type": "string",
+                    "enum": crate::connect::provider_enum(),
+                    "description": "Only this provider's row.",
+                }}),
+                &[],
+            ),
+        ),
     ]
 }
 
@@ -6969,6 +6986,15 @@ impl McpHostHandler {
             "host.runs.purge" => crate::runs::purge(&self.state, tenant, &args).await,
             "host.runs.wait" => crate::runs::wait(&self.state, tenant, &args).await,
             "host.runs.part" => crate::runs::part(&self.state, tenant, &args).await,
+            "host.connect.providers" => {
+                let only = args.get("provider").and_then(Value::as_str);
+                if let Some(name) = only
+                    && crate::connect::Provider::parse(name).is_none()
+                {
+                    return Err(AppError::InvalidArgs(format!("unknown provider '{name}'")));
+                }
+                Ok(crate::connect::providers_json(only, &|k| std::env::var(k).ok()))
+            }
             "host.job.timeline" => crate::timeline::job_timeline(&self.state, tenant, &args).await,
             "host.progress" => crate::runs::progress(&self.state, tenant, &args).await,
             "host.trigger.set" => crate::triggers::set(&self.state, tenant, &args).await,

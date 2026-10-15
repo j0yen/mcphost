@@ -24,6 +24,7 @@ pub mod capabilities;
 pub mod channels;
 pub mod call_cli;
 pub mod chart;
+pub mod connect;
 pub mod claim;
 pub mod client;
 pub mod cli;

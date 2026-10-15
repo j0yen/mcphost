@@ -16,6 +16,8 @@ mod cproc_ac04_stalled_child_fails_within_deadline_and_is_reaped;
 mod cproc_ac05_ready_deadline_is_the_host_aware_timeout;
 #[path = "cprocb_ac01_perf_skip_ready_deadline_is_90s.rs"]
 mod cprocb_ac01_perf_skip_ready_deadline_is_90s;
+#[path = "cprov_ac03_unconfigured_secret_is_unavailable.rs"]
+mod cprov_ac03_unconfigured_secret_is_unavailable;
 #[path = "firstpub_ac08_quickstart_http_starter.rs"]
 mod firstpub_ac08_quickstart_http_starter;
 #[path = "flakelint_ac01_env_mutation.rs"]

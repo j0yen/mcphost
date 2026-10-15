@@ -1,0 +1,78 @@
+# The one place an upstream OAuth provider is described
+# (PRD-mcphost-connection-provider-registry). build.rs generates the
+# `Provider` table from this file; every surface that names a provider
+# (host.connect.providers, the `provider` schema enum, docs/connections.md,
+# the llms.txt "Upstream connections" section, scope validation, the callback
+# route table) reads that table. Adding a provider is adding a section here.
+#
+# Per provider: auth_url, token_url, scopes ({name, purpose}; the exact string
+# sent to the provider), refresh = rotating | offline_access | none,
+# client_id_env / client_secret_env (host-owned app credentials, read from the
+# environment), extra_authorize_params (table), docs_url.
+# `test_only = true` rows exist only in a build with the `test-support` feature.
+
+[github]
+auth_url = "https://github.com/login/oauth/authorize"
+token_url = "https://github.com/login/oauth/access_token"
+refresh = "none"
+client_id_env = "MCPHOST_CONNECT_GITHUB_CLIENT_ID"
+client_secret_env = "MCPHOST_CONNECT_GITHUB_CLIENT_SECRET"
+docs_url = "https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps"
+scopes = [
+  { name = "repo", purpose = "Read and write private and public repositories" },
+  { name = "read:user", purpose = "Read the user's profile" },
+  { name = "user:email", purpose = "Read the user's email addresses" },
+]
+
+[google]
+auth_url = "https://accounts.google.com/o/oauth2/v2/auth"
+token_url = "https://oauth2.googleapis.com/token"
+refresh = "offline_access"
+client_id_env = "MCPHOST_CONNECT_GOOGLE_CLIENT_ID"
+client_secret_env = "MCPHOST_CONNECT_GOOGLE_CLIENT_SECRET"
+docs_url = "https://developers.google.com/identity/protocols/oauth2/scopes"
+scopes = [
+  { name = "https://www.googleapis.com/auth/spreadsheets.readonly", purpose = "Read Google Sheets" },
+  { name = "https://www.googleapis.com/auth/drive.readonly", purpose = "Read Google Drive files" },
+  { name = "https://www.googleapis.com/auth/gmail.readonly", purpose = "Read Gmail messages" },
+]
+[google.extra_authorize_params]
+access_type = "offline"
+prompt = "consent"
+
+[slack]
+auth_url = "https://slack.com/oauth/v2/authorize"
+token_url = "https://slack.com/api/oauth.v2.access"
+refresh = "rotating"
+client_id_env = "MCPHOST_CONNECT_SLACK_CLIENT_ID"
+client_secret_env = "MCPHOST_CONNECT_SLACK_CLIENT_SECRET"
+docs_url = "https://api.slack.com/scopes"
+scopes = [
+  { name = "channels:read", purpose = "List public channels" },
+  { name = "chat:write", purpose = "Post messages" },
+  { name = "users:read", purpose = "List workspace members" },
+]
+
+# Public integration: needs Notion's approval, so it is `available: false`
+# until the host has registered credentials.
+[notion]
+auth_url = "https://api.notion.com/v1/oauth/authorize"
+token_url = "https://api.notion.com/v1/oauth/token"
+refresh = "none"
+client_id_env = "MCPHOST_CONNECT_NOTION_CLIENT_ID"
+client_secret_env = "MCPHOST_CONNECT_NOTION_CLIENT_SECRET"
+docs_url = "https://developers.notion.com/docs/authorization"
+scopes = []
+
+# The in-repo test OAuth server (tests/vault_*); never in a production build.
+[testprov]
+test_only = true
+auth_url = "http://127.0.0.1/oauth/authorize"
+token_url = "http://127.0.0.1/oauth/token"
+refresh = "rotating"
+client_id_env = "MCPHOST_CONNECT_TESTPROV_CLIENT_ID"
+client_secret_env = "MCPHOST_CONNECT_TESTPROV_CLIENT_SECRET"
+docs_url = "http://127.0.0.1/docs"
+scopes = [
+  { name = "testscope", purpose = "A scope the test OAuth server accepts" },
+]

@@ -364,3 +364,13 @@ globs = ["scripts/task-handoff-live.sh"]
 required_commands = [
   "cargo test --workspace thlive_ac",
 ]
+
+[[lane]]
+id = "connect-providers"
+description = "PRD-mcphost-connection-provider-registry: providers.toml (the one table build.rs turns into the Provider enum/table) and docs/connections.md (its generated render), and scripts/connections-doc-check.sh (the CI drift check over both). A providers.toml edit changes generated Rust, so it requires the same cargo proof as src/. Added project-locally as its own lane so tests/lanecov_ac04_existing_lanes_unchanged.rs's pinned baseline stays green."
+globs = ["providers.toml", "docs/connections.md", "scripts/connections-doc-check.sh"]
+required_commands = [
+  "cargo check --workspace",
+  "cargo clippy --workspace -- -D warnings",
+  "cargo test --workspace cprov_ac",
+]
