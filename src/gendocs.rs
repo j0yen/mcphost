@@ -32,6 +32,7 @@ use std::path::Path;
 
 use crate::help;
 use crate::kinds::KindRegistry;
+use crate::kinds::kinddoc::KindDoc;
 use crate::plans::{Plan, PlanCatalog};
 use crate::tool_aliases;
 
@@ -487,6 +488,164 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
         }
     }
     Ok(stale)
+}
+
+// ---- `gen-docs kinds` (PRD-mcphost-kind-docs-from-registry) ----
+
+/// Where each kind's page lives, relative to the repo root.
+pub const KIND_PAGES_DIR: &str = "docs/kinds";
+
+/// The generated blocks of a kind page, in page order. Each is wrapped in
+/// `<!-- <name>:start -->` / `<!-- <name>:end -->`.
+pub const KIND_BLOCKS: [&str; 4] = ["kind-fields", "kind-ceilings", "kind-errors", "kind-example"];
+
+fn escape_cell(text: &str) -> String {
+    text.replace('|', "\\|").replace('\n', " ")
+}
+
+/// One block's body (markers excluded) rendered from `doc`.
+pub fn render_kind_block(doc: &KindDoc, block: &str) -> String {
+    match block {
+        "kind-fields" => {
+            let mut out = String::from("| field | type | required | meaning |\n|---|---|---|---|\n");
+            for f in &doc.spec_fields {
+                out.push_str(&format!(
+                    "| `{}` | {} | {} | {} |\n",
+                    f.name,
+                    escape_cell(&f.ty),
+                    if f.required { "yes" } else { "no" },
+                    escape_cell(&f.meaning)
+                ));
+            }
+            out
+        }
+        "kind-ceilings" if doc.ceilings.is_empty() => {
+            "No plan ceiling bounds a call to this kind.\n".to_string()
+        }
+        "kind-ceilings" => {
+            let mut out = String::from("| ceiling | free | pro |\n|---|---|---|\n");
+            for c in &doc.ceilings {
+                out.push_str(&format!("| `{}` | {} | {} |\n", c.field, c.free, c.pro));
+            }
+            out
+        }
+        "kind-errors" if doc.error_codes.is_empty() => {
+            "This kind returns no kind-specific error codes.\n".to_string()
+        }
+        "kind-errors" => {
+            let mut out = String::from("| code | when |\n|---|---|\n");
+            for e in &doc.error_codes {
+                out.push_str(&format!("| `{}` | {} |\n", e.code, escape_cell(&e.when)));
+            }
+            out
+        }
+        "kind-example" => format!(
+            "```json\n{}\n```\n",
+            serde_json::to_string_pretty(&doc.example).unwrap_or_default()
+        ),
+        other => unreachable!("unknown kind block {other}"),
+    }
+}
+
+fn block_markers(block: &str) -> (String, String) {
+    (format!("<!-- {block}:start -->"), format!("<!-- {block}:end -->"))
+}
+
+fn block_heading(block: &str) -> &'static str {
+    match block {
+        "kind-fields" => "Spec fields",
+        "kind-ceilings" => "Kind ceilings",
+        "kind-errors" => "Error codes",
+        _ => "Canonical example",
+    }
+}
+
+/// The page text with `block`'s marked region set to `body`; a page with no
+/// markers for it gets the section appended (generated tail of the page).
+fn splice_kind_block(page: &str, block: &str, body: &str) -> String {
+    let (start, end) = block_markers(block);
+    if let (Some(s), Some(e)) = (page.find(&start), page.find(&end))
+        && s < e
+    {
+        return format!("{}{start}\n{body}{}", &page[..s], &page[e..]);
+    }
+    let mut out = page.trim_end().to_string();
+    out.push_str(&format!("\n\n## {}\n\n{start}\n{body}{end}\n", block_heading(block)));
+    out
+}
+
+/// One page block that differs from what the registry renders.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StaleBlock {
+    pub page: String,
+    pub block: &'static str,
+}
+
+impl std::fmt::Display for StaleBlock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} block {} is stale (run `mcphost gen-docs kinds --write`)", self.page, self.block)
+    }
+}
+
+/// Renders every registered kind's generated blocks into
+/// `<root>/docs/kinds/<kind>.md`. Under `write` the pages are rewritten;
+/// either way the stale blocks (as found, before any write) are returned.
+pub fn run_kinds(
+    root: &Path,
+    kinds: &KindRegistry,
+    plans: &PlanCatalog,
+    write: bool,
+) -> std::io::Result<Vec<StaleBlock>> {
+    let mut stale = Vec::new();
+    for name in kinds.names() {
+        let Some(kind) = kinds.get(name) else { continue };
+        let doc = kind.doc(plans);
+        let page_rel = format!("{KIND_PAGES_DIR}/{name}.md");
+        let path = root.join(&page_rel);
+        let current = std::fs::read_to_string(&path).unwrap_or_default();
+        let mut next = current.clone();
+        for block in KIND_BLOCKS {
+            let body = render_kind_block(&doc, block);
+            let spliced = splice_kind_block(&next, block, &body);
+            if spliced != next {
+                stale.push(StaleBlock { page: page_rel.clone(), block });
+            }
+            next = spliced;
+        }
+        if write && next != current {
+            std::fs::write(&path, next)?;
+        }
+    }
+    Ok(stale)
+}
+
+/// PRD-mcphost-kind-docs-from-registry R3: `<root>/docs/kinds/*.md`
+/// basenames must equal the registered kind names. Every violation is
+/// returned, each naming the kind or the page.
+pub fn check_kind_page_set(root: &Path, kinds: &KindRegistry) -> Result<(), Vec<String>> {
+    let mut pages: Vec<String> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(root.join(KIND_PAGES_DIR)) {
+        for entry in entries.flatten() {
+            let file = entry.file_name().to_string_lossy().into_owned();
+            if let Some(stem) = file.strip_suffix(".md") {
+                pages.push(stem.to_string());
+            }
+        }
+    }
+    pages.sort();
+    let names = kinds.names();
+    let mut problems = Vec::new();
+    for name in &names {
+        if !pages.iter().any(|p| p == name) {
+            problems.push(format!("kind `{name}` has no page {KIND_PAGES_DIR}/{name}.md"));
+        }
+    }
+    for page in &pages {
+        if !names.contains(&page.as_str()) {
+            problems.push(format!("page {KIND_PAGES_DIR}/{page}.md names no registered kind `{page}`"));
+        }
+    }
+    if problems.is_empty() { Ok(()) } else { Err(problems) }
 }
 
 #[cfg(test)]

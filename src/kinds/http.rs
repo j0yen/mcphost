@@ -1118,6 +1118,28 @@ static CONTRACT: KindContract = KindContract {
 
 #[async_trait::async_trait]
 impl Kind for HttpKind {
+    fn field_docs(&self) -> &'static [super::kinddoc::FieldDoc] {
+        use super::kinddoc::FieldDoc;
+        &[
+        FieldDoc { name: "method", ty: "string", meaning: "HTTP method of the upstream request" },
+        FieldDoc { name: "url", ty: "string", meaning: "upstream URL; `{name}` placeholders are filled from call arguments" },
+        FieldDoc { name: "headers", ty: "object", meaning: "request headers; values may reference secrets" },
+        FieldDoc { name: "query", ty: "object", meaning: "query-string parameters" },
+        FieldDoc { name: "body", ty: "object", meaning: "request body template" },
+        FieldDoc { name: "args_schema", ty: "object", meaning: "JSON Schema for the tool's call arguments" },
+        FieldDoc { name: "timeout_s", ty: "integer", meaning: "seconds the upstream call may take" },
+        FieldDoc { name: "response", ty: "object", meaning: "how to shape the upstream response into the tool result" },
+        FieldDoc { name: "description", ty: "string", meaning: "human-readable text shown in `tools/list`" },
+        FieldDoc { name: "outputs", ty: "array or object", meaning: "fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each" },
+        FieldDoc { name: "upstream", ty: "string", meaning: "name of a connected upstream provider to call instead of `method` + `url`" },
+        FieldDoc { name: concat!("upstream", "_provider"), ty: "string", meaning: "provider the `upstream` connection belongs to" },
+        ]
+    }
+
+    fn ceiling_fields(&self) -> &'static [&'static str] {
+        &["budget.max_tool_latency_ms", "budget.max_wall_ms"]
+    }
+
     fn contract(&self) -> &'static KindContract {
         &CONTRACT
     }

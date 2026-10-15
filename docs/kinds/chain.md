@@ -24,3 +24,73 @@ A chain step goes through the same composition primitive `mcphost.call` uses (`k
 `host.tool_test` takes `fixtures: {"<step number or tool name>": <recorded result>}` for a chain: a fixtured step executes nothing (no upstream call, no `calls_per_day`), its report entry is `{step, tool, source: "fixture", resolved_args, result}`, and later mappings resolve against it. Every other step reports `source: "dry_run"` (with its `result`) or `source: "skipped"` with a `reason`; the report's `executed`, `fixtured` and `skipped` count them. A fixture that carries none of a step's declared `outputs` is refused with `fixture_shape_mismatch` (`data.expected`, `data.given`); fixtures on a non-chain tool fail `fixtures_not_applicable`, more than 256 KiB in total fail `fixtures_too_large` (`data.limit_bytes`), and a tool name used by two steps needs the step number (`fixture_step_ambiguous`). `host.runs.get(run_id, as_fixtures=true)` exports a finished chain run's child results in exactly that shape (`fixtures`; steps too large for one part are listed under `truncated`).
 
 A step may fan out: add `"for_each": "$.prev.result.items"` (any mapping path to an array) and the step runs once per element, with `$.item` (the element) and `$.index` (its 0-based position) available in that step's `args` -- and nowhere else; `$.item` in a step with no `for_each` is refused at publish with `compose_item_outside_for_each`. At most `min(step.concurrency, plan.concurrent_calls_per_tenant)` items are in flight (`concurrency` is optional, a positive integer). More items than the plan's `chain_fanout_max` (free 20, pro 50; in `host.quickstart` `limits.plan`) is refused before any item runs with `compose_fanout_exceeded` (`data.limit`, `data.actual`); a `for_each` path that is not an array is `compose_mapping_type`, and publish reports one whose predecessor's observed or declared type is not an array as `will_fail` with `expected: "array"`. Each item is one child run (`trigger: "composition"`, `trigger_ref: "<parent_run_id>#<step>:<index>"`) that counts toward the 50-child tree cap. The step's result is `{"items": [r_0, ...], "failed": [{"index", "error_code", "message"}], "ok": n, "failed_count": m}` in input order, a failed item's slot being `null`, and the next step reads it as `$.prev.result.items`. With the default `on_error` the first failed item fails the chain with `compose_fanout_item_failed` (`data.step`, `data.index`, `data.item_error_code`, `data.message`) once in-flight items finish; with `"on_error": "continue"` the chain goes on and names the step in `failed_steps`. An empty array gives `{items: [], failed: [], ok: 0, failed_count: 0}` and the next step runs. An item that cannot start before the chain's deadline fails `deadline_exceeded`.
+
+## Spec fields
+
+<!-- kind-fields:start -->
+| field | type | required | meaning |
+|---|---|---|---|
+| `steps` | array of object | yes | ordered steps, each naming a `tool` and an `args` mapping (`$.input`, `$.prev.result`, `$.steps[i].result` paths or literals) |
+| `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
+| `ui` | object | no | optional presentation hints for clients that render a tool's result |
+<!-- kind-fields:end -->
+
+## Kind ceilings
+
+<!-- kind-ceilings:start -->
+| ceiling | free | pro |
+|---|---|---|
+| `budget.max_child_calls` | 20 | 50 |
+| `budget.max_wall_ms` | 60000 | 600000 |
+| `chain_fanout_max` | 20 | 50 |
+<!-- kind-ceilings:end -->
+
+## Error codes
+
+<!-- kind-errors:start -->
+| code | when |
+|---|---|
+| `compose_self_call` | a tool named itself as one of its own children |
+| `compose_depth_exceeded` | composition nested deeper than 4 levels |
+| `compose_children_exceeded` | one top-level call's tree exceeded 50 child calls |
+| `compose_item_outside_for_each` | `$.item` or `$.index` used in a step with no `for_each` |
+| `compose_mapping_type` | a mapping resolved to the wrong type (for example a non-array `for_each`) |
+| `compose_mapping_missing` | a mapping path resolved to nothing |
+| `compose_fanout_exceeded` | a `for_each` array was longer than the plan's `chain_fanout_max` |
+| `compose_fanout_item_failed` | an item of a `for_each` step failed |
+| `compose_input_missing` | a `$.input.<name>` mapping named an argument the call did not carry |
+| `tool_building` | the tool's dependencies are still building |
+| `tool_not_found` | a named tool does not exist for this tenant |
+| `tool_run_unsupported` | the tool cannot be run this way (for example a dry run) |
+<!-- kind-errors:end -->
+
+## Canonical example
+
+<!-- kind-example:start -->
+```json
+{
+  "steps": [
+    {
+      "args": {
+        "text": "$.input.text"
+      },
+      "tool": "table_note"
+    },
+    {
+      "args": {
+        "rows": "$.prev.result.appended",
+        "table": "runs"
+      },
+      "tool": "host.table.append"
+    },
+    {
+      "args": {
+        "note": "$.item"
+      },
+      "for_each": "$.input.notes",
+      "tool": "table_note"
+    }
+  ]
+}
+```
+<!-- kind-example:end -->

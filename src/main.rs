@@ -182,6 +182,8 @@ enum Command {
         /// rewriting it.
         #[arg(long)]
         check: bool,
+        #[command(subcommand)]
+        target: Option<GenDocsTarget>,
     },
     /// PRD-mcphost-call-cli-from-contract: call a host tool from the shell.
     /// The subcommands and flags come from the embedded contract
@@ -413,6 +415,21 @@ enum AdminCommand {
     /// Idempotent: a second run changes zero rows. Prints the counts
     /// changed and, per table, the post-run `funnel_origin` breakdown.
     BackfillOrigin,
+}
+
+/// `mcphost gen-docs <target>`: a generated-docs family with its own flags.
+#[derive(Subcommand, Debug)]
+enum GenDocsTarget {
+    /// PRD-mcphost-kind-docs-from-registry: render the marked blocks of
+    /// `docs/kinds/<kind>.md` from each kind's `KindDoc`. No flag (or
+    /// `--write`) rewrites the pages; `--check` exits 1 naming the stale
+    /// page and block without writing.
+    Kinds {
+        #[arg(long)]
+        check: bool,
+        #[arg(long, conflicts_with = "check")]
+        write: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1036,7 +1053,37 @@ async fn main() -> anyhow::Result<()> {
             }
             Ok(())
         }
-        Command::GenDocs { check } => {
+        Command::GenDocs {
+            target: Some(GenDocsTarget::Kinds { check, write }),
+            ..
+        } => {
+            // PRD-mcphost-kind-docs-from-registry: plain stdout/exit-code,
+            // no `init_tracing()`, like `GenDocs` below.
+            let kinds = mcphost::kinds::production_registry();
+            let plans = mcphost::plans::PlanCatalog::default_catalog();
+            let write = write || !check;
+            match mcphost::gendocs::run_kinds(std::path::Path::new("."), &kinds, &plans, write) {
+                Ok(stale) if check && !stale.is_empty() => {
+                    for s in &stale {
+                        eprintln!("gen-docs kinds --check: {s}");
+                    }
+                    std::process::exit(1);
+                }
+                Ok(_) if check => {
+                    println!("gen-docs kinds --check: docs/kinds/*.md are up to date");
+                    Ok(())
+                }
+                Ok(_) => {
+                    println!("gen-docs kinds: wrote docs/kinds/*.md");
+                    Ok(())
+                }
+                Err(e) => {
+                    eprintln!("gen-docs kinds: {e}");
+                    std::process::exit(2);
+                }
+            }
+        }
+        Command::GenDocs { check, .. } => {
             // Deliberately no `init_tracing()`: same rationale as `LlmsTxt`
             // above -- plain stdout/exit-code, no JSON log line.
             let kinds = KindRegistry::with_builtin();

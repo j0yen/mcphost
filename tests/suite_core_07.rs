@@ -1335,6 +1335,12 @@ mod jtl_ac04_running_chain_shows_in_flight_step;
 mod kcon_ac01_planted_drift_fails_naming_kind_case_code;
 #[path = "kcon_ac03_no_error_code_literals_outside_contract.rs"]
 mod kcon_ac03_no_error_code_literals_outside_contract;
+#[path = "kdr_ac02_python_page_tables_generated.rs"]
+mod kdr_ac02_python_page_tables_generated;
+#[path = "kdr_ac03_check_names_stale_block.rs"]
+mod kdr_ac03_check_names_stale_block;
+#[path = "kdr_ac04_page_set_matches_registry.rs"]
+mod kdr_ac04_page_set_matches_registry;
 #[path = "kindhonor_ac1_http_kind_honored.rs"]
 mod kindhonor_ac1_http_kind_honored;
 #[path = "kindhonor_ac3_spec_test_reports_kind.rs"]

@@ -1685,6 +1685,17 @@ static CONTRACT: KindContract = KindContract {
 
 #[async_trait::async_trait]
 impl Kind for ChainKind {
+    fn field_docs(&self) -> &'static [super::kinddoc::FieldDoc] {
+        use super::kinddoc::FieldDoc;
+        &[
+        FieldDoc { name: CONTEXT_KEYS.steps, ty: "array of object", meaning: "ordered steps, each naming a `tool` and an `args` mapping (`$.input`, `$.prev.result`, `$.steps[i].result` paths or literals)" },
+        ]
+    }
+
+    fn ceiling_fields(&self) -> &'static [&'static str] {
+        &["budget.max_child_calls", "budget.max_wall_ms", "chain_fanout_max"]
+    }
+
     fn contract(&self) -> &'static KindContract {
         &CONTRACT
     }

@@ -930,6 +930,76 @@ A chain step goes through the same composition primitive `mcphost.call` uses (`k
 
 A step may fan out: add `"for_each": "$.prev.result.items"` (any mapping path to an array) and the step runs once per element, with `$.item` (the element) and `$.index` (its 0-based position) available in that step's `args` -- and nowhere else; `$.item` in a step with no `for_each` is refused at publish with `compose_item_outside_for_each`. At most `min(step.concurrency, plan.concurrent_calls_per_tenant)` items are in flight (`concurrency` is optional, a positive integer). More items than the plan's `chain_fanout_max` (free 20, pro 50; in `host.quickstart` `limits.plan`) is refused before any item runs with `compose_fanout_exceeded` (`data.limit`, `data.actual`); a `for_each` path that is not an array is `compose_mapping_type`, and publish reports one whose predecessor's observed or declared type is not an array as `will_fail` with `expected: "array"`. Each item is one child run (`trigger: "composition"`, `trigger_ref: "<parent_run_id>#<step>:<index>"`) that counts toward the 50-child tree cap. The step's result is `{"items": [r_0, ...], "failed": [{"index", "error_code", "message"}], "ok": n, "failed_count": m}` in input order, a failed item's slot being `null`, and the next step reads it as `$.prev.result.items`. With the default `on_error` the first failed item fails the chain with `compose_fanout_item_failed` (`data.step`, `data.index`, `data.item_error_code`, `data.message`) once in-flight items finish; with `"on_error": "continue"` the chain goes on and names the step in `failed_steps`. An empty array gives `{items: [], failed: [], ok: 0, failed_count: 0}` and the next step runs. An item that cannot start before the chain's deadline fails `deadline_exceeded`.
 
+## Spec fields
+
+<!-- kind-fields:start -->
+| field | type | required | meaning |
+|---|---|---|---|
+| `steps` | array of object | yes | ordered steps, each naming a `tool` and an `args` mapping (`$.input`, `$.prev.result`, `$.steps[i].result` paths or literals) |
+| `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
+| `ui` | object | no | optional presentation hints for clients that render a tool's result |
+<!-- kind-fields:end -->
+
+## Kind ceilings
+
+<!-- kind-ceilings:start -->
+| ceiling | free | pro |
+|---|---|---|
+| `budget.max_child_calls` | 20 | 50 |
+| `budget.max_wall_ms` | 60000 | 600000 |
+| `chain_fanout_max` | 20 | 50 |
+<!-- kind-ceilings:end -->
+
+## Error codes
+
+<!-- kind-errors:start -->
+| code | when |
+|---|---|
+| `compose_self_call` | a tool named itself as one of its own children |
+| `compose_depth_exceeded` | composition nested deeper than 4 levels |
+| `compose_children_exceeded` | one top-level call's tree exceeded 50 child calls |
+| `compose_item_outside_for_each` | `$.item` or `$.index` used in a step with no `for_each` |
+| `compose_mapping_type` | a mapping resolved to the wrong type (for example a non-array `for_each`) |
+| `compose_mapping_missing` | a mapping path resolved to nothing |
+| `compose_fanout_exceeded` | a `for_each` array was longer than the plan's `chain_fanout_max` |
+| `compose_fanout_item_failed` | an item of a `for_each` step failed |
+| `compose_input_missing` | a `$.input.<name>` mapping named an argument the call did not carry |
+| `tool_building` | the tool's dependencies are still building |
+| `tool_not_found` | a named tool does not exist for this tenant |
+| `tool_run_unsupported` | the tool cannot be run this way (for example a dry run) |
+<!-- kind-errors:end -->
+
+## Canonical example
+
+<!-- kind-example:start -->
+```json
+{
+  "steps": [
+    {
+      "args": {
+        "text": "$.input.text"
+      },
+      "tool": "table_note"
+    },
+    {
+      "args": {
+        "rows": "$.prev.result.appended",
+        "table": "runs"
+      },
+      "tool": "host.table.append"
+    },
+    {
+      "args": {
+        "note": "$.item"
+      },
+      "for_each": "$.input.notes",
+      "tool": "table_note"
+    }
+  ]
+}
+```
+<!-- kind-example:end -->
+
 ## Kind: echo
 
 spec.schema is any JSON Schema; a call echoes back the arguments it was given, validated against it.
@@ -951,6 +1021,48 @@ Call arguments:
 ```
 
 Dry-run before publishing: `host.spec_test("echo", spec, invocations)` runs the example invocations above through the same path a real call would use and returns each one's output verbatim -- no tool row is written.
+
+## Spec fields
+
+<!-- kind-fields:start -->
+| field | type | required | meaning |
+|---|---|---|---|
+| `schema` | object | yes | JSON Schema the call arguments are validated against; a call echoes them back |
+| `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
+| `ui` | object | no | optional presentation hints for clients that render a tool's result |
+<!-- kind-fields:end -->
+
+## Kind ceilings
+
+<!-- kind-ceilings:start -->
+No plan ceiling bounds a call to this kind.
+<!-- kind-ceilings:end -->
+
+## Error codes
+
+<!-- kind-errors:start -->
+This kind returns no kind-specific error codes.
+<!-- kind-errors:end -->
+
+## Canonical example
+
+<!-- kind-example:start -->
+```json
+{
+  "schema": {
+    "properties": {
+      "msg": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "msg"
+    ],
+    "type": "object"
+  }
+}
+```
+<!-- kind-example:end -->
 
 ## Kind: http
 
@@ -976,6 +1088,62 @@ Result envelope contract: an optional `outputs` array of field names (`"outputs"
 `outputs` also accepts an object mapping each field name to the exact path to read it from, when the upstream buries it somewhere the wrapper search above won't find (`"outputs": {"ingestion_status": "$.json.ingestion_status"}` reads that field from `result.body.json.ingestion_status`). A path is `$` followed by dotted keys and bracketed integer indices only (`$.a.b[0].c`) -- no wildcards, filters, or recursive descent; an unsupported or malformed path is refused at publish, naming the field (`outputs.<name>`) and the accepted grammar.
 
 Other spec fields: `headers`/`query` (objects of header/query-parameter names to `{{ jinja }}`-templated values, the same templating `url`/`body` use), `timeout_s` (a positive integer number of seconds, default 10), `description` (a human-readable string shown in `tools/list`), and `upstream_provider` (a string naming a `host.vault.provider_set` provider whose connected end-user token this call uses, instead of a hand-templated `secret.<name>` header).
+
+## Spec fields
+
+<!-- kind-fields:start -->
+| field | type | required | meaning |
+|---|---|---|---|
+| `method` | string | no | HTTP method of the upstream request |
+| `url` | string | no | upstream URL; `{name}` placeholders are filled from call arguments |
+| `headers` | object | no | request headers; values may reference secrets |
+| `query` | object | no | query-string parameters |
+| `body` | object | no | request body template |
+| `args_schema` | object | no | JSON Schema for the tool's call arguments |
+| `timeout_s` | integer | no | seconds the upstream call may take |
+| `response` | object | no | how to shape the upstream response into the tool result |
+| `description` | string | no | human-readable text shown in `tools/list` |
+| `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each |
+| `upstream` | string | no | name of a connected upstream provider to call instead of `method` + `url` |
+| `upstream_provider` | string | no | provider the `upstream` connection belongs to |
+| `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
+| `ui` | object | no | optional presentation hints for clients that render a tool's result |
+<!-- kind-fields:end -->
+
+## Kind ceilings
+
+<!-- kind-ceilings:start -->
+| ceiling | free | pro |
+|---|---|---|
+| `budget.max_tool_latency_ms` | 30000 | 120000 |
+| `budget.max_wall_ms` | 60000 | 600000 |
+<!-- kind-ceilings:end -->
+
+## Error codes
+
+<!-- kind-errors:start -->
+| code | when |
+|---|---|
+| `upstream_auth` | the upstream refused the credentials (401/403) |
+| `upstream_rate_limited` | the upstream answered 429 |
+| `upstream_client_error` | the upstream answered another 4xx |
+| `upstream_error` | the upstream answered 5xx |
+| `upstream_timeout` | the upstream did not answer within the call's timeout |
+| `upstream_unreachable` | the upstream could not be reached |
+| `upstream_not_connected` | the named upstream provider is not connected for this tenant |
+| `host_not_allowed` | the target host is not on the allowed list or resolves to a private address |
+<!-- kind-errors:end -->
+
+## Canonical example
+
+<!-- kind-example:start -->
+```json
+{
+  "method": "GET",
+  "url": "https://api.example.com/items/{{id}}"
+}
+```
+<!-- kind-example:end -->
 
 ## Kind: python
 
@@ -1117,6 +1285,77 @@ Bounds, enforced at publish: at most 16 entries, at most 4 KiB total across ever
 
 The distinction is visible, not doctrinal: `host.tool_test` renders both in one listing, `env` values shown verbatim and secret values redacted, each labeled `"kind": "env"` or `"kind": "secret"`. `host.tool_list` returns a tool's `env` map to its owner; `admin.tool_list` reports env names and total size to an operator, never values. Updating `env` alone (no source change) takes effect on the tool's next call -- the warm pool re-fingerprints on an env change exactly as it does on a secret change, so a stale pooled process never serves old values.
 
+## Spec fields
+
+<!-- kind-fields:start -->
+| field | type | required | meaning |
+|---|---|---|---|
+| `source` | string | yes | Python source defining `main(args)` |
+| `requirements` | array of string | no | pip requirements, inferred from imports when omitted |
+| `args_schema` | object | no | JSON Schema for the call arguments, inferred from `source` when omitted |
+| `timeout_s` | integer | no | seconds the sandboxed call may run |
+| `memory_mb` | integer | no | megabytes the sandbox may use |
+| `network` | string | no | `none`, `public` or `egress`: what the process may reach beyond the `mcphost.*` bridges |
+| `secrets` | array of string | no | `host.secret_set` names injected as `SECRET_<NAME>` environment variables |
+| `env` | object | no | plain, non-secret environment variables |
+| `description` | string | no | human-readable text shown in `tools/list` |
+| `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each |
+| `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
+| `ui` | object | no | optional presentation hints for clients that render a tool's result |
+<!-- kind-fields:end -->
+
+## Kind ceilings
+
+<!-- kind-ceilings:start -->
+| ceiling | free | pro |
+|---|---|---|
+| `budget.max_tool_latency_ms` | 30000 | 120000 |
+| `budget.max_wall_ms` | 60000 | 600000 |
+<!-- kind-ceilings:end -->
+
+## Error codes
+
+<!-- kind-errors:start -->
+| code | when |
+|---|---|
+| `tool_exception` | the tool's code raised an uncaught exception |
+| `tool_output_invalid` | the tool's return value did not satisfy its declared outputs |
+| `tool_timeout` | the call ran past its `timeout_s` |
+| `tool_oom` | the call exceeded its `memory_mb` |
+| `tool_process_limit` | the sandboxed process hit its process or file limit |
+| `tool_output_too_large` | the tool's output exceeded the result size cap |
+| `upstream_auth` | the upstream refused the credentials (401/403) |
+| `upstream_rate_limited` | the upstream answered 429 |
+| `upstream_client_error` | the upstream answered another 4xx |
+| `upstream_error` | the upstream answered 5xx |
+| `upstream_timeout` | the upstream did not answer within the call's timeout |
+| `upstream_unreachable` | the upstream could not be reached |
+| `upstream_not_connected` | the named upstream provider is not connected for this tenant |
+| `host_not_allowed` | the target host is not on the allowed list or resolves to a private address |
+| `compose_self_call` | a tool named itself as one of its own children |
+| `compose_depth_exceeded` | composition nested deeper than 4 levels |
+| `compose_children_exceeded` | one top-level call's tree exceeded 50 child calls |
+| `compose_item_outside_for_each` | `$.item` or `$.index` used in a step with no `for_each` |
+| `compose_mapping_type` | a mapping resolved to the wrong type (for example a non-array `for_each`) |
+| `compose_mapping_missing` | a mapping path resolved to nothing |
+| `compose_fanout_exceeded` | a `for_each` array was longer than the plan's `chain_fanout_max` |
+| `compose_fanout_item_failed` | an item of a `for_each` step failed |
+| `compose_input_missing` | a `$.input.<name>` mapping named an argument the call did not carry |
+| `tool_building` | the tool's dependencies are still building |
+| `tool_not_found` | a named tool does not exist for this tenant |
+| `tool_run_unsupported` | the tool cannot be run this way (for example a dry run) |
+<!-- kind-errors:end -->
+
+## Canonical example
+
+<!-- kind-example:start -->
+```json
+{
+  "source": "def main(args):\n    return {\"doubled\": args[\"n\"] * 2}\n"
+}
+```
+<!-- kind-example:end -->
+
 ## Kind: wasm
 
 component is a base64-encoded WebAssembly component (component-model, not a core module) exporting `call: func(args: string) -> result<string, string>`; args_schema is optional (defaults to accepting any object).
@@ -1144,6 +1383,50 @@ Enforced by Wasmtime itself, not by an external sandbox: `timeout_s` (1-30, defa
 Choose `wasm` when a tool needs millisecond cold starts or must keep working on a box where the OS forbids the unprivileged user namespaces `python`'s sandbox depends on (isolation here travels with the compiled binary, not the host's userns/AppArmor policy); choose `python` when you want to author the tool as source on the host and let the host build its environment for you, since compiling a component is still the agent's own job (no server-side compile in this slice).
 
 Result envelope contract: a call's output always lands at `result.payload`; an optional `outputs` array or object (the same shapes `http`/`python` accept, including `$.a.b[0].c`-style paths) declares fields promoted into `result.payload.<field>`, searched one level deep under any key in the component's own returned JSON -- identical semantics to the `python` kind's own promotion.
+
+## Spec fields
+
+<!-- kind-fields:start -->
+| field | type | required | meaning |
+|---|---|---|---|
+| `component` | string | yes | the compiled WebAssembly component to call |
+| `args_schema` | object | no | JSON Schema for the call arguments |
+| `outputs` | array or object | no | fields a caller can rely on in `result.payload` |
+| `timeout_s` | integer | no | seconds the call may run |
+| `memory_mb` | integer | no | megabytes the component may use |
+| `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
+| `ui` | object | no | optional presentation hints for clients that render a tool's result |
+<!-- kind-fields:end -->
+
+## Kind ceilings
+
+<!-- kind-ceilings:start -->
+| ceiling | free | pro |
+|---|---|---|
+| `budget.max_tool_latency_ms` | 30000 | 120000 |
+| `budget.max_wall_ms` | 60000 | 600000 |
+<!-- kind-ceilings:end -->
+
+## Error codes
+
+<!-- kind-errors:start -->
+| code | when |
+|---|---|
+| `tool_exception` | the tool's code raised an uncaught exception |
+| `tool_trapped` | the tool trapped (a WebAssembly trap) |
+| `tool_timeout` | the call ran past its `timeout_s` |
+| `tool_oom` | the call exceeded its `memory_mb` |
+<!-- kind-errors:end -->
+
+## Canonical example
+
+<!-- kind-example:start -->
+```json
+{
+  "component": "AGFzbQEAAAAA"
+}
+```
+<!-- kind-example:end -->
 
 ## Benchmark: measure-0.26.3-20260908T085001Z.md
 

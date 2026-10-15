@@ -56,6 +56,17 @@ static CONTRACT: KindContract = KindContract {
 
 #[async_trait::async_trait]
 impl Kind for EchoKind {
+    fn field_docs(&self) -> &'static [super::kinddoc::FieldDoc] {
+        use super::kinddoc::FieldDoc;
+        &[
+        FieldDoc { name: "schema", ty: "object", meaning: "JSON Schema the call arguments are validated against; a call echoes them back" },
+        ]
+    }
+
+    fn ceiling_fields(&self) -> &'static [&'static str] {
+        &[]
+    }
+
     fn contract(&self) -> &'static KindContract {
         &CONTRACT
     }
