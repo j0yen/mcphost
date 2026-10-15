@@ -124,6 +124,45 @@ pub fn since_map(contract_text: &str) -> std::collections::BTreeMap<String, Stri
         .collect()
 }
 
+/// Why `bytes` cannot serve as a committed contract: it is not JSON (today's
+/// failure: a land rebase committed `<<<<<<<` conflict markers into the file)
+/// or it has no `tools` array. `None` when it is usable. [`since_map`] returns
+/// an empty map for such text, which would make `contract dump` stamp every
+/// tool's `since` with the current version -- so `contract dump` refuses first
+/// (see [`dump_guard`]).
+pub fn unusable_contract_reason(bytes: &[u8]) -> Option<String> {
+    match serde_json::from_slice::<Value>(bytes) {
+        Err(e) => Some(e.to_string()),
+        Ok(v) if !v["tools"].is_array() => Some("no tools array".to_string()),
+        Ok(_) => None,
+    }
+}
+
+/// `contract dump` precondition: refuse (returning the message to print, exit
+/// 2) when the committed contract at `path` exists but is unusable, or when the
+/// copy compiled into this binary (the source [`since_for_tool`] reads) is. A
+/// missing `path` (fresh repo) passes, keeping today's behaviour.
+pub fn dump_guard(path: &std::path::Path) -> Result<(), String> {
+    let refuse = |label: &str, reason: String| {
+        format!(
+            "contract dump: {label} does not parse ({reason}); resolve it (take main's version) before regenerating"
+        )
+    };
+    match std::fs::read(path) {
+        Ok(bytes) => {
+            if let Some(reason) = unusable_contract_reason(&bytes) {
+                return Err(refuse(&path.display().to_string(), reason));
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(format!("contract dump: cannot read {}: {e}", path.display())),
+    }
+    if let Some(reason) = unusable_contract_reason(COMMITTED_CONTRACT.as_bytes()) {
+        return Err(refuse(DEFAULT_CONTRACT_PATH, reason));
+    }
+    Ok(())
+}
+
 /// The `since` this contract records for `name`: the committed value, or the
 /// current crate version for a tool the committed file has not seen yet.
 fn since_for_tool(name: &str) -> String {

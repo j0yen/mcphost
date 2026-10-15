@@ -351,6 +351,8 @@ mod cclib_ac01_contract_skew_warning;
 mod cclib_ac02_cli_tree_equals_contract;
 #[path = "cclib_ac03_completions_rendered_from_the_table.rs"]
 mod cclib_ac03_completions_rendered_from_the_table;
+#[path = "cdump_ac01_unparsable_committed_contract_refused.rs"]
+mod cdump_ac01_unparsable_committed_contract_refused;
 #[path = "cest_ac01_dry_run_verdict_matches_real_call.rs"]
 mod cest_ac01_dry_run_verdict_matches_real_call;
 #[path = "cest_ac02_handler_runs_only_preflight_rows.rs"]
