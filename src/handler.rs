@@ -1262,6 +1262,39 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &["label"],
             ),
         ),
+        // PRD-mcphost-call-audit-export R2: the tenant's own call log.
+        Tool::new(
+            "host.calls.list",
+            "List the calls made with this tenant's keys, newest first: when, which credential \
+             (primary, sub_key, oauth, trigger, cron, webhook, shared_caller), tool, outcome, \
+             duration and byte sizes. Filter by key_label, tool, outcome or credential. A sub-key \
+             sees only its own rows.",
+            host_schema(
+                json!({
+                    "since": {"type": "string", "description": "Window start: \"-24h\", \"-30d\", a YYYY-MM-DD day or an RFC 3339 instant (default -24h)."},
+                    "until": {"type": "string", "description": "Window end, same forms (default now)."},
+                    "key_label": {"type": "string", "description": "Only calls made with the sub-key labelled so."},
+                    "tool": {"type": "string", "description": "Only calls to this tool."},
+                    "outcome": {"type": "string", "description": "Only calls with this outcome (ok, error, refused, ...)."},
+                    "credential": {"type": "string", "description": "Only calls made with this credential kind."},
+                }),
+                &[],
+            ),
+        ),
+        // PRD-mcphost-call-audit-export R3.
+        Tool::new(
+            "host.calls.export",
+            "Export the calls made with this tenant's keys in a window as CSV (the host.calls.list \
+             columns, newest first), with its sha256 and an ES256 signature over the CSV bytes: \
+             verify with the JWK named by kid at /.well-known/jwks.json. Primary key only.",
+            host_schema(
+                json!({
+                    "since": {"type": "string", "description": "Window start: \"-24h\", \"-30d\", a YYYY-MM-DD day or an RFC 3339 instant (default -24h)."},
+                    "until": {"type": "string", "description": "Window end, same forms (default now)."},
+                }),
+                &[],
+            ),
+        ),
         // PRD-mcphost-tenant-self-offboard P0 requirement 1 / AC1-4:
         // authenticated like every other host.* tenant tool -- host_schema's
         // tenant_key property is exactly the credential being retired here.
@@ -4793,6 +4826,20 @@ fn admin_tools() -> Vec<Tool> {
             "Disable a tenant; its key stops authenticating.",
             schema(json!({"tenant": {"type": "string"}}), &["tenant"]),
         ),
+        // PRD-mcphost-call-audit-export R5.
+        Tool::new(
+            "admin.calls_export",
+            "Export a tenant's call log for a window as the same signed CSV bundle the tenant's \
+             own host.calls.export returns (csv, rows, sha256, signature, kid, alg). Audited.",
+            schema(
+                json!({
+                    "tenant": {"type": "string", "description": "The tenant's namespace."},
+                    "since": {"type": "string", "description": "Window start: \"-24h\", YYYY-MM-DD or an RFC 3339 instant (default -24h)."},
+                    "until": {"type": "string", "description": "Window end, same forms (default now)."},
+                }),
+                &["tenant"],
+            ),
+        ),
         Tool::new(
             "admin.tenant_enable",
             "Re-enable a disabled tenant.",
@@ -6573,6 +6620,8 @@ impl McpHostHandler {
                 control::whoami(&self.state, tenant, subject, auth_method, session_tenant.as_deref()).await
             }
             "host.key.rotate" => control::key_rotate(&self.state, tenant).await,
+            "host.calls.list" => crate::calllog::list(&self.state, tenant, &args).await,
+            "host.calls.export" => crate::calllog::export(&self.state, tenant, &args).await,
             "host.key.mint" => crate::subkeys::mint(&self.state, tenant, &args).await,
             "host.key.list" => crate::subkeys::list(&self.state, tenant).await,
             "host.key.revoke" => crate::subkeys::revoke(&self.state, tenant, &args).await,
@@ -7020,6 +7069,7 @@ impl McpHostHandler {
             "admin.tenants" => admin::tenants(&self.state, &args).await,
             "admin.tenant_disable" => admin::tenant_disable(&self.state, &args).await,
             "admin.tenant_enable" => admin::tenant_enable(&self.state, &args).await,
+            "admin.calls_export" => admin::calls_export(&self.state, &args).await,
             "admin.tenant_delete" => admin::tenant_delete(&self.state, &args).await,
             "admin.tenant_delete_by_prefix" => {
                 admin::tenant_delete_by_prefix(&self.state, &args).await

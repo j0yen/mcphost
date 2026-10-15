@@ -140,8 +140,13 @@ async fn fields_serialized_keys_contract_enum_and_error_valid_are_one_set_for_ev
     }
     let runs = row_keys(&extract_structured(&a.tools_call("host.runs.list", json!({})).await.expect("runs")), "runs");
 
+    let ns_a = ns_a_of(&a).await;
+    a.tools_call(&format!("{ns_a}.reflect"), json!({})).await.expect("call reflect");
+    let calls = row_keys(&extract_structured(&a.tools_call("host.calls.list", json!({})).await.expect("calls")), "calls");
+
     let serialized = [
         ("host.docs.list", docs, json!({})),
+        ("host.calls.list", calls, json!({})),
         ("host.channel.read", posts, json!({"channel_id": channel})),
         ("host.msg.inbox", inbox, json!({})),
         ("host.msg.thread", thread_rows, json!({"thread_id": thread})),

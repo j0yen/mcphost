@@ -5,7 +5,8 @@
 
 use mcphost::paged::PAGED_VERBS;
 
-const DB_RS: &str = include_str!("../src/db.rs");
+/// `db.rs` plus `calllog.rs`, whose `impl Db` block holds `list_call_rows`.
+const DB_RS: &str = concat!(include_str!("../src/db.rs"), include_str!("../src/calllog.rs"));
 
 /// The `db.rs` functions whose SQL serves each `Paged` verb. A verb added to
 /// `PAGED_VERBS` without a row here fails
@@ -16,6 +17,7 @@ const VERB_DB_FNS: &[(&str, &[&str])] = &[
     ("host.msg.thread", &["msg_thread"]),
     ("host.docs.list", &["documents_list_live", "documents_list_since"]),
     ("host.runs.list", &["list_runs_page"]),
+    ("host.calls.list", &["list_call_rows"]),
 ];
 
 /// The text of `fn <name>` in `source`, from its signature to the matching

@@ -288,6 +288,20 @@ pub async fn tenant_disable(state: &AppState, args: &Value) -> Result<Value, App
     Ok(json!({ "tenant": tenant, "disabled": true }))
 }
 
+/// PRD-mcphost-call-audit-export R5: `admin.calls_export {tenant, since,
+/// until}` -- the tenant's own signed export bundle for an incident, built by
+/// the same [`crate::calllog::build_bundle`] `host.calls.export` uses.
+pub async fn calls_export(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let namespace = arg_str(args, "tenant")?;
+    let tenant = state
+        .db
+        .find_tenant_by_namespace(namespace.clone())
+        .await?
+        .ok_or_else(|| AppError::ToolNotFound(format!("tenant {namespace}")))?;
+    let filter = crate::calllog::filter_from_args(args, crate::state::now_unix())?;
+    crate::calllog::build_bundle(state, &tenant, filter).await
+}
+
 pub async fn tenant_enable(state: &AppState, args: &Value) -> Result<Value, AppError> {
     let tenant = arg_str(args, "tenant")?;
     let changed = state.db.set_tenant_disabled(tenant.clone(), false).await?;
@@ -798,6 +812,17 @@ pub fn admin_audit_entry(
             "tenant_disable".into(),
             args.get("tenant").and_then(Value::as_str).map(String::from),
             None,
+        )),
+        // PRD-mcphost-call-audit-export R5: one row per export, naming the
+        // tenant; the window rides in `detail`.
+        "admin.calls_export" => Some((
+            "calls_export".into(),
+            args.get("tenant").and_then(Value::as_str).map(String::from),
+            Some(format!(
+                "since={} until={}",
+                args.get("since").and_then(Value::as_str).unwrap_or("-24h"),
+                args.get("until").and_then(Value::as_str).unwrap_or("now")
+            )),
         )),
         "admin.tenant_enable" => Some((
             "tenant_enable".into(),

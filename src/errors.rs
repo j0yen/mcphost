@@ -745,6 +745,9 @@ impl AppError {
                 // PRD-mcphost-key-scoped-to-tools R3: a revoked or expired
                 // sub-key is a bad credential parameter (-32602).
                 "key_expired" | "key_revoked" => ErrorCode::INVALID_PARAMS,
+                // PRD-mcphost-call-audit-export R3: an export window over the
+                // row cap is a caller-input problem (narrow the window).
+                "too_many_rows" => ErrorCode::INVALID_PARAMS,
                 "replay_needs_secret" => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-inbound-events: `host.trigger.test`'s own
                 // caller-input problems -- a bad signature/payload, a rate

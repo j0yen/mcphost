@@ -26,6 +26,15 @@ async fn prune_removes_expired_rows_and_files_and_unlinks_orphans() {
     // A control row on the SQL side so "unchanged" has something to compare.
     let now = mcphost::state::now_unix();
     server.state.db.set_retention_days_for_test("calls".to_string(), 90).await.unwrap();
+    // PRD-mcphost-call-audit-export R4: a Free tenant now keeps 7 days of
+    // `calls`; this test is about the host-wide 90-day window, so its tenant
+    // is on Pro (90 days) and only that window applies.
+    server
+        .state
+        .db
+        .upgrade_tenant_plan(tenant.id, "pro".to_string(), "2026-10-01T00:00:00Z".to_string(), None)
+        .await
+        .expect("move tenant to pro");
     server.state.db.insert_calls_row_for_test(tenant.id, now - 91 * 86_400).await.unwrap();
     server.state.db.insert_calls_row_for_test(tenant.id, now - 89 * 86_400).await.unwrap();
 

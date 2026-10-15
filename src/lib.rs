@@ -79,6 +79,7 @@ pub mod paged;
 pub mod preflight;
 pub mod protocol;
 pub mod subkeys;
+pub mod calllog;
 pub mod metering;
 pub mod network_policy;
 pub mod oauth;

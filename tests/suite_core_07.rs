@@ -313,6 +313,20 @@ mod busyaudit_ac08_healthz_db_fields;
 mod busyaudit_ac09_contention_alert;
 #[path = "busyaudit_ac10_wal_checkpoint_cron.rs"]
 mod busyaudit_ac10_wal_checkpoint_cron;
+#[path = "cae_ac01_credential_on_every_call_row.rs"]
+mod cae_ac01_credential_on_every_call_row;
+#[path = "cae_ac02_cursor_pages_every_row_once.rs"]
+mod cae_ac02_cursor_pages_every_row_once;
+#[path = "cae_ac03_export_is_es256_signed_over_the_csv_bytes.rs"]
+mod cae_ac03_export_is_es256_signed_over_the_csv_bytes;
+#[path = "cae_ac04_free_plan_prunes_to_seven_days.rs"]
+mod cae_ac04_free_plan_prunes_to_seven_days;
+#[path = "cae_ac05_export_row_cap_and_subkey_scope.rs"]
+mod cae_ac05_export_row_cap_and_subkey_scope;
+#[path = "cae_ac06_admin_export_matches_the_tenants_own.rs"]
+mod cae_ac06_admin_export_matches_the_tenants_own;
+#[path = "cae_ac07_empty_window_exports_the_header_only.rs"]
+mod cae_ac07_empty_window_exports_the_header_only;
 #[path = "callerusage_ac01_caller_breakdown.rs"]
 mod callerusage_ac01_caller_breakdown;
 #[path = "callerusage_ac02_end_user_breakdown.rs"]

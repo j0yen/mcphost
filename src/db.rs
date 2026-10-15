@@ -326,6 +326,12 @@ const MIGRATION_0107: &str = include_str!("../migrations/0107_help_search_events
 /// `host.help.search` the same tenant's first failed call still joins it.
 pub const HELP_SEARCH_JOIN_WINDOW_S: i64 = 120;
 
+/// PRD-mcphost-call-audit-export R1/R2: `calls.credential`, `bytes_in/out`.
+const MIGRATION_0108: &str = include_str!("../migrations/0108_calls_audit.sql");
+
+/// `(plan name, calls_retention_days)` per plan, once loaded.
+type PlanCallsDays = Option<Vec<(String, i64)>>;
+
 /// Outcome of [`Db::reserve_draft`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DraftReservation {
@@ -2708,6 +2714,10 @@ pub struct Db {
     /// `AtomicI64` (not behind the `conn` mutex) since it's set from the
     /// checkpoint cron task, independent of any single statement.
     last_checkpoint_unix: Arc<std::sync::atomic::AtomicI64>,
+    /// PRD-mcphost-call-audit-export R4: `(plan name, calls_retention_days)`
+    /// the prune applies per plan; `None` until [`Db::set_plan_calls_retention`]
+    /// runs (the default catalog's numbers apply meanwhile).
+    plan_calls_days: Arc<std::sync::RwLock<PlanCallsDays>>,
 }
 
 impl Clone for Db {
@@ -2718,6 +2728,7 @@ impl Clone for Db {
             cfg: self.cfg,
             counters: self.counters.clone(),
             last_checkpoint_unix: self.last_checkpoint_unix.clone(),
+            plan_calls_days: self.plan_calls_days.clone(),
         }
     }
 }
@@ -2757,6 +2768,7 @@ impl Db {
             cfg,
             counters: DbCounters::new(),
             last_checkpoint_unix: Arc::new(std::sync::atomic::AtomicI64::new(0)),
+            plan_calls_days: Arc::new(std::sync::RwLock::new(None)),
         };
         db.migrate_sync()?;
         Ok(db)
@@ -3011,6 +3023,7 @@ impl Db {
         Self::migrate_0106_index_refresh(&conn)?;
         // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0107)?;
+        Self::migrate_0108_calls_audit(&conn)?;
         Ok(())
     }
 
@@ -3022,6 +3035,18 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0106)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-call-audit-export R1/R2: gated on `calls.credential` (the
+    /// batch is `ALTER`s, so a rerun must skip it).
+    fn migrate_0108_calls_audit(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('calls') WHERE name = 'credential'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0108)?;
         }
         Ok(())
     }
@@ -10339,6 +10364,9 @@ impl Db {
         // PRD-mcphost-key-scoped-to-tools R3: read here, on the request's
         // own task -- `with_conn` runs the closure on a blocking thread.
         let key_id = crate::subkeys::current_key_id();
+        // PRD-mcphost-call-audit-export R1: the credential kind, resolved on
+        // the request's own task for the same reason.
+        let credential = crate::calllog::resolve(Some(auth_method.as_str()), key_id, caller_tenant_id).as_str();
         let started_at = now_rfc3339();
         let started_unix = now_unix();
         let outcome = outcome.to_string();
@@ -10371,9 +10399,9 @@ impl Db {
         self.with_conn(move |conn| {
             let tx = conn.unchecked_transaction()?;
             tx.execute(
-                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id, auth_method, step_tool, error_summary, key_id) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
-                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone(), auth_method, step_tool, error_summary, key_id],
+                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id, auth_method, step_tool, error_summary, key_id, credential) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
+                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone(), auth_method, step_tool, error_summary, key_id, credential],
             )?;
             let call_id = tx.last_insert_rowid();
             tx.execute(
@@ -10423,12 +10451,14 @@ impl Db {
     ) -> Result<i64, AppError> {
         let started_at = now_rfc3339();
         let started_unix = now_unix();
+        let key_id = crate::subkeys::current_key_id();
+        let credential = crate::calllog::resolve(None, key_id, None).as_str();
         self.with_conn(move |conn| {
             let tx = conn.unchecked_transaction()?;
             tx.execute(
-                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, outcome, origin, origin_detail, error_code) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'test', ?8, ?9, ?7)",
-                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_code, origin, origin_detail],
+                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, outcome, origin, origin_detail, error_code, key_id, credential) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'test', ?8, ?9, ?7, ?10, ?11)",
+                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_code, origin, origin_detail, key_id, credential],
             )?;
             let call_id = tx.last_insert_rowid();
             if let Some(trace) = &trace {
@@ -10601,11 +10631,13 @@ impl Db {
     ) -> Result<(), AppError> {
         let started_at = now_rfc3339();
         let started_unix = now_unix();
+        let key_id = crate::subkeys::current_key_id();
+        let credential = crate::calllog::resolve(Some(auth_method.as_str()), key_id, caller_tenant_id).as_str();
         self.with_conn(move |conn| {
             conn.execute(
-                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, outcome, origin, origin_detail, caller_tenant_id, auth_method, error_code, error_summary) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, 0, 'refused', 'refused', ?6, ?7, ?8, ?9, ?10, ?11)",
-                params![tenant_id, tool_name, started_at, started_unix, duration_ms, origin, origin_detail, caller_tenant_id, auth_method, error_code, error_summary],
+                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, outcome, origin, origin_detail, caller_tenant_id, auth_method, error_code, error_summary, key_id, credential) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, 0, 'refused', 'refused', ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                params![tenant_id, tool_name, started_at, started_unix, duration_ms, origin, origin_detail, caller_tenant_id, auth_method, error_code, error_summary, key_id, credential],
             )?;
             Ok(())
         })
@@ -14855,6 +14887,22 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-call-audit-export R4: the loaded plan catalog's
+    /// `calls_retention_days`, applied per plan by every later prune.
+    pub fn set_plan_calls_retention(&self, plans: &crate::plans::PlanCatalog) {
+        let days = plans.plans.iter().map(|p| (p.name.clone(), p.calls_retention_days)).collect();
+        *self.plan_calls_days.write().unwrap_or_else(|e| e.into_inner()) = Some(days);
+    }
+
+    /// The per-plan `calls` windows the next prune applies.
+    fn plan_calls_retention(&self) -> Vec<(String, i64)> {
+        if let Some(days) = self.plan_calls_days.read().unwrap_or_else(|e| e.into_inner()).clone() {
+            return days;
+        }
+        let catalog = crate::plans::PlanCatalog::default_catalog();
+        catalog.plans.iter().map(|p| (p.name.clone(), p.calls_retention_days)).collect()
+    }
+
     /// Runs one full prune cycle -- the nightly scheduler and every AC1-4
     /// test funnel through this one method (a later admin-triggered
     /// on-demand cycle and `/healthz`/`admin.usage` reads of its outcome
@@ -14866,12 +14914,13 @@ impl Db {
     /// shared connection.
     pub async fn prune_once(&self) -> Result<PruneReport, AppError> {
         let windows = self.retention_windows().await?;
+        let plan_calls_days = self.plan_calls_retention();
         let path = self.path.clone();
         let cfg = self.cfg;
         let counters = self.counters.clone();
         let started = crate::state::now_unix();
         let outcome = tokio::task::spawn_blocking(move || {
-            crate::retention::prune_sync(&path, &cfg, &counters, &windows, started)
+            crate::retention::prune_sync(&path, &cfg, &counters, &windows, &plan_calls_days, started)
         })
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
@@ -15628,7 +15677,7 @@ impl Db {
         self.with_conn(move |conn| {
             conn.execute(
                 "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, \
-                 duration_ms, ok, error_class) VALUES (?1, 'test_tool', ?2, ?3, 0, 1, NULL)",
+                 duration_ms, ok, error_class, credential) VALUES (?1, 'test_tool', ?2, ?3, 0, 1, NULL, 'primary')",
                 params![tenant_id, crate::state::rfc3339_from_unix(started_unix), started_unix],
             )?;
             Ok(())
@@ -15651,7 +15700,7 @@ impl Db {
         self.with_conn(move |conn| {
             conn.execute(
                 "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, \
-                 duration_ms, ok, error_class, auth_method) VALUES (?1, 'test_tool', ?2, ?3, 0, 1, NULL, ?4)",
+                 duration_ms, ok, error_class, auth_method, credential) VALUES (?1, 'test_tool', ?2, ?3, 0, 1, NULL, ?4, 'primary')",
                 params![tenant_id, crate::state::rfc3339_from_unix(started_unix), started_unix, auth_method],
             )?;
             Ok(())
@@ -15955,7 +16004,7 @@ impl Db {
             {
                 let mut stmt = tx.prepare(
                     "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, \
-                     duration_ms, ok, error_class) VALUES (?1, 'test_tool', ?2, ?3, 0, 1, NULL)",
+                     duration_ms, ok, error_class, credential) VALUES (?1, 'test_tool', ?2, ?3, 0, 1, NULL, 'primary')",
                 )?;
                 for _ in 0..count {
                     stmt.execute(params![tenant_id, started_at, started_unix])?;
@@ -15991,8 +16040,8 @@ impl Db {
         self.with_conn(move |conn| {
             conn.execute(
                 "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, \
-                 duration_ms, ok, error_class, caller_tenant_id, end_user_subject) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                 duration_ms, ok, error_class, caller_tenant_id, end_user_subject, credential) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'primary')",
                 params![
                     tenant_id,
                     tool_name,
@@ -16040,7 +16089,7 @@ impl Db {
             {
                 let mut stmt = tx.prepare(
                     "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, \
-                     duration_ms, ok, error_class) VALUES (?1, ?2, ?3, ?4, 25, 1, NULL)",
+                     duration_ms, ok, error_class, credential) VALUES (?1, ?2, ?3, ?4, 25, 1, NULL, 'primary')",
                 )?;
                 for i in 0..count {
                     let (started_at, started_unix) = &days[(i % spread_days) as usize];

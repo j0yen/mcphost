@@ -560,9 +560,9 @@ async fn accept_delivery(
         .await;
     }
 
-    let _ = state
-        .db
-        .record_call(
+    let _ = crate::calllog::scoped(
+        crate::calllog::Credential::Webhook,
+        state.db.record_call(
             tenant.id,
             trigger.tool_name.clone(),
             0,
@@ -573,8 +573,9 @@ async fn accept_delivery(
             "accepted",
             tenant.origin.clone(),
             tenant.origin_detail.clone(),
-        )
-        .await;
+        ),
+    )
+    .await;
 
     Ok(AcceptOutcome { row_id, run_id })
 }

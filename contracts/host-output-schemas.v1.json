@@ -1996,6 +1996,108 @@
     ],
     "type": "object"
   },
+  "host.calls.export": {
+    "properties": {
+      "alg": {
+        "type": "string"
+      },
+      "csv": {
+        "type": "string"
+      },
+      "kid": {
+        "type": "string"
+      },
+      "rows": {
+        "type": "integer"
+      },
+      "sha256": {
+        "type": "string"
+      },
+      "signature": {
+        "type": "string"
+      },
+      "signature_der": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "alg",
+      "csv",
+      "kid",
+      "rows",
+      "sha256",
+      "signature",
+      "signature_der"
+    ],
+    "type": "object"
+  },
+  "host.calls.list": {
+    "properties": {
+      "calls": {
+        "items": {
+          "properties": {
+            "bytes_in": {
+              "type": "integer"
+            },
+            "bytes_out": {
+              "type": "integer"
+            },
+            "credential": {
+              "type": "string"
+            },
+            "duration_ms": {
+              "type": "integer"
+            },
+            "end_user_subject": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "error_class": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "key_label": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "outcome": {
+              "type": "string"
+            },
+            "run_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "tool": {
+              "type": "string"
+            },
+            "ts": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "next_cursor": {
+        "type": "string"
+      },
+      "truncated": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "calls"
+    ],
+    "type": "object"
+  },
   "host.catalog.get": {
     "properties": {
       "args_schema": {
