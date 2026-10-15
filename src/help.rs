@@ -39,6 +39,7 @@ pub const HELP_CODES: &[&str] = &[
     "ask_answered",
     "choice_invalid",
     "asks_limit",
+    "capability_unsupported",
 ];
 
 /// One `/help/<code>` page's content: meaning, likely cause, fix, and which
@@ -198,6 +199,13 @@ pub const HELP_ENTRIES: &[HelpEntry] = &[
         cause: "Asks were created faster than the user answered them, or old asks were never answered and have not yet expired.",
         fix: "Call host.ask.list {status: \"pending\"} to see the open asks and wait on or reuse one; a pending ask frees its slot when answered or expired. host.quickstart limits.plan.asks_open_max names the ceiling.",
         doc_link: "docs/plans.md",
+    },
+    HelpEntry {
+        code: "capability_unsupported",
+        meaning: "The method belongs to an MCP primitive this host does not implement (resources, prompts, completions, sampling, elicitation, logging or roots), so it answers -32601 as the MCP spec requires for an unadvertised capability.",
+        cause: "The client probed a method of a capability that initialize.capabilities does not advertise; GET /capabilities.json lists every primitive and whether it is implemented.",
+        fix: "Do not retry. Use the tool named in the error's data.alternative (when present), or read /capabilities.json to see which primitives this host speaks.",
+        doc_link: "docs/protocol/capabilities.md",
     },
 ];
 

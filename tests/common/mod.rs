@@ -54,6 +54,7 @@ pub fn doc_check_scratch(label: &str) -> PathBuf {
         "docs/kinds/python.md",
         "docs/oauth-connect.md",
         "www/llms.txt",
+        "docs/protocol/capabilities.md",
         "www/llms-install.md",
         "www/llms-full.txt",
         "www/index.html",
@@ -1563,6 +1564,53 @@ impl McpClient {
             outsch_capture(name, &result);
         }
         Ok(result)
+    }
+
+    /// PRD-mcphost-server-capabilities-from-registry: send any JSON-RPC
+    /// `method` (stateless 2026-07-28 shape, same `_meta` as [`Self::call`])
+    /// and return the whole response body -- `result` or `error` -- so a
+    /// test can assert on a `-32601` as readily as on a result.
+    pub async fn rpc(&self, method: &str, mut params: Value) -> Value {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        if let Some(obj) = params.as_object_mut() {
+            obj.insert(
+                "_meta".to_string(),
+                json!({
+                    "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                    "io.modelcontextprotocol/clientCapabilities": {},
+                    "io.modelcontextprotocol/clientInfo": {
+                        "name": self.client_name,
+                        "version": self.client_version,
+                    },
+                }),
+            );
+        }
+        // SEP-2243: methods that name a resource/prompt must carry it as
+        // `Mcp-Name` (`post_with_extra` only derives it for `tools/call`).
+        let mcp_name = params
+            .get("uri")
+            .or_else(|| params.get("name"))
+            .and_then(Value::as_str)
+            .filter(|_| method != "tools/call")
+            .map(str::to_string);
+        let body = json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params});
+        let resp = self
+            .post_with_extra(&body, Some("2026-07-28"), mcp_name.as_deref(), &[])
+            .await;
+        let status = resp.status();
+        let is_sse = resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|c| c.starts_with("text/event-stream"));
+        if is_sse {
+            let text = resp.text().await.unwrap_or_else(|e| panic!("read {method} SSE ({status}): {e}"));
+            parse_sse_messages(&text)
+                .pop()
+                .unwrap_or_else(|| panic!("{method} SSE body carried no message: {text}"))
+        } else {
+            resp.json().await.unwrap_or_else(|e| panic!("parse {method} response ({status}): {e}"))
+        }
     }
 
     pub async fn tools_list(&self) -> Result<Value, RpcError> {

@@ -97,6 +97,70 @@ PY
   mv "$tmp" "$file"
 }
 
+# PRD-mcphost-server-capabilities-from-registry requirement 4: the
+# `## Capabilities` section in www/llms.txt and docs/protocol/capabilities.md
+# is `mcphost capabilities-section` (llms_txt::render_capabilities_section)
+# byte-for-byte, so the CAPABILITIES registry stays the only place a
+# primitive is named. Binary: $MCPHOST_BIN, else $CARGO_BIN_EXE_mcphost (set
+# under `cargo test`), else a prebuilt target/{debug,release}/mcphost newer
+# than src/, else `cargo run`.
+CAP_START="<!-- capabilities:start -->"
+CAP_END="<!-- capabilities:end -->"
+CAP_TARGETS=("www/llms.txt" "docs/protocol/capabilities.md")
+
+mcphost_bin() {
+  local bin="${MCPHOST_BIN:-${CARGO_BIN_EXE_mcphost:-}}"
+  if [ -n "$bin" ]; then
+    "$bin" "$@"
+    return $?
+  fi
+  local cand
+  for cand in target/release/mcphost target/debug/mcphost; do
+    if [ -x "$cand" ] && [ -z "$(find src Cargo.toml Cargo.lock -newer "$cand" -print -quit 2>/dev/null)" ]; then
+      "$cand" "$@"
+      return $?
+    fi
+  done
+  cargo run -q --bin mcphost -- "$@"
+}
+
+# The marked block (markers included) of file $1 on stdout.
+cap_block_of() {
+  python3 - "$1" "$CAP_START" "$CAP_END" <<'PY'
+import sys
+
+path, start, end = sys.argv[1:4]
+with open(path, encoding="utf-8") as f:
+    text = f.read()
+if start not in text or end not in text:
+    sys.exit(3)
+sys.stdout.write(text[text.index(start) : text.index(end) + len(end)])
+PY
+}
+
+write_capabilities() {
+  local section doc
+  section="$(mcphost_bin capabilities-section)" || return $?
+  mkdir -p docs/protocol
+  mcphost_bin capabilities-section --doc > docs/protocol/capabilities.md || return $?
+  python3 - www/llms.txt "$CAP_START" "$CAP_END" "$section" <<'PY'
+import sys
+
+path, start, end, section = sys.argv[1:5]
+with open(path, encoding="utf-8") as f:
+    text = f.read()
+if start in text and end in text:
+    text = text[: text.index(start)] + section + text[text.index(end) + len(end) :]
+elif "\n## Contract\n" in text:
+    i = text.index("\n## Contract\n")
+    text = text[:i] + "\n" + section + "\n" + text[i:]
+else:
+    text = text.rstrip("\n") + "\n\n" + section + "\n"
+with open(path, "w", encoding="utf-8") as f:
+    f.write(text)
+PY
+}
+
 RENDERED="$(render_block)" || exit $?
 MODULE_COUNT=$(printf '%s\n' "$RENDERED" | grep -c '^- `mcphost\.')
 
@@ -104,6 +168,7 @@ if [ "$MODE" = "write" ]; then
   for f in "${TARGETS[@]}"; do
     apply_to_file "$f" "$RENDERED" || exit $?
   done
+  write_capabilities || exit $?
   echo "sandbox-api-doc-check.sh: wrote modules=${MODULE_COUNT} to ${#TARGETS[@]} files"
   # PRD-mcphost-dry-run-on-write-verbs R5: docs/host-tools.md, generated
   # from src/write_verbs.rs, rides along in both modes.
@@ -148,6 +213,23 @@ PY
       FAILURES=$((FAILURES + 1))
     fi
   done < <(printf '%s\n' "$RENDERED" | grep -o '`mcphost\.[a-z_]*`' | sed -e 's/`mcphost\.//' -e 's/`//')
+done
+
+CAP_EXPECTED="$(mcphost_bin capabilities-section)" || {
+  echo "sandbox-api-doc-check.sh: could not render the capabilities section (mcphost capabilities-section failed)" >&2
+  exit 2
+}
+for f in "${CAP_TARGETS[@]}"; do
+  if [ ! -f "$f" ]; then
+    echo "sandbox-api-doc-check.sh: $f does not exist (run sandbox-api-doc-check.sh --write)" >&2
+    FAILURES=$((FAILURES + 1))
+    continue
+  fi
+  CAP_ACTUAL="$(cap_block_of "$f")"
+  if [ "$CAP_ACTUAL" != "$CAP_EXPECTED" ]; then
+    echo "sandbox-api-doc-check.sh: $f ## Capabilities section differs from render_capabilities_section() (run sandbox-api-doc-check.sh --write)" >&2
+    FAILURES=$((FAILURES + 1))
+  fi
 done
 
 if ! "$(dirname "$0")/host-tools-doc-check.sh" >/dev/null; then
