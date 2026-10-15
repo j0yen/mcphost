@@ -1730,6 +1730,13 @@
       "AC5": "tests/dtf_ac05_status_json_docs_gaps_top10_normalized.rs",
       "AC6": "tests/dtf_ac06_host_help_gaps_operator_only.rs",
       "AC7": "tests/dtf_ac07_retention_sweeps_help_search_events.rs"
+    },
+    "edp": {
+      "_prd": "PRD-mcphost-emitted-doc-pointers-resolve.md (test_prefix: edp)",
+      "AC1": "tests/edp_ac01_pointers_resolve_against_headings.rs",
+      "AC2": "tests/edp_ac02_no_literal_anchors_outside_doc_anchors.rs",
+      "AC3": "tests/edp_ac03_help_get_returns_the_section.rs",
+      "AC4": "tests/edp_ac04_error_anchor_beside_help_url.rs"
     }
   }
 }

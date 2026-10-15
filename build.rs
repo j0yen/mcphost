@@ -7,6 +7,9 @@
 //! `include!`s as `EXAMPLES`.
 use std::process::Command;
 
+#[path = "src/doc_scan.rs"]
+mod doc_scan;
+
 /// Set to let a build proceed without a usable `examples/index.json` (the
 /// generator `mcphost examples index` has to be built before it can run).
 const REGEN_ENV: &str = "MCPHOST_EXAMPLES_REGEN";
@@ -151,6 +154,7 @@ fn embed_migrations_index() {
 fn main() {
     embed_examples();
     embed_help_docs();
+    embed_doc_anchors();
     embed_migrations_index();
     println!("cargo:rerun-if-changed=.git/HEAD");
     println!("cargo:rerun-if-env-changed=MCPHOST_GIT_SHA");
@@ -208,4 +212,89 @@ fn embed_help_docs() {
     out.push_str("];\n");
     let dest = std::path::Path::new(&std::env::var("OUT_DIR").expect("OUT_DIR")).join("help_docs_embedded.rs");
     std::fs::write(dest, out).expect("write help_docs_embedded.rs");
+}
+
+/// CamelCase variant name from `<path>#<slug>`: ASCII alphanumeric runs,
+/// each capitalised, `.md`/`.txt` dropped from the path.
+fn variant_name(path: &str, slug: &str) -> String {
+    let stem = path.trim_end_matches(".md").trim_end_matches(".txt");
+    let mut out = String::new();
+    for word in stem.split(|c: char| !c.is_ascii_alphanumeric()).chain(slug.split(|c: char| !c.is_ascii_alphanumeric())) {
+        let mut cs = word.chars();
+        if let Some(first) = cs.next() {
+            out.push(first.to_ascii_uppercase());
+            out.extend(cs.map(|c| c.to_ascii_lowercase()));
+        }
+    }
+    out
+}
+
+/// PRD-mcphost-emitted-doc-pointers-resolve R1: writes
+/// `$OUT_DIR/doc_anchors.rs`, which `src/doc_anchors.rs` `include!`s -- one
+/// `DocAnchor` variant and one `ENTRIES` row per markdown heading of
+/// README.md, `docs/**/*.md`, `www/llms.txt` and `www/llms-install.md`.
+fn embed_doc_anchors() {
+    println!("cargo:rerun-if-changed=docs");
+    println!("cargo:rerun-if-changed=README.md");
+    println!("cargo:rerun-if-changed=www/llms.txt");
+    println!("cargo:rerun-if-changed=www/llms-install.md");
+    println!("cargo:rerun-if-changed=src/doc_scan.rs");
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
+    let root = std::path::Path::new(&manifest_dir);
+    let mut paths = vec!["README.md".to_string(), "www/llms.txt".to_string(), "www/llms-install.md".to_string()];
+    let mut stack = vec![root.join("docs")];
+    while let Some(dir) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        for entry in rd.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().is_some_and(|e| e == "md")
+                && let Ok(rel) = path.strip_prefix(root)
+            {
+                paths.push(rel.to_string_lossy().replace('\\', "/"));
+            }
+        }
+    }
+    paths.sort();
+    let mut names: Vec<String> = Vec::new();
+    let mut rows = String::new();
+    for rel in &paths {
+        let Ok(text) = std::fs::read_to_string(root.join(rel)) else { continue };
+        for h in doc_scan::scan(&text) {
+            let mut name = variant_name(rel, &h.slug);
+            let base = name.clone();
+            let mut n = 2;
+            while names.contains(&name) {
+                name = format!("{base}{n}");
+                n += 1;
+            }
+            let example = match &h.example {
+                Some((lang, code)) => format!("Some(({lang:?}, {code:?}))"),
+                None => "None".to_string(),
+            };
+            rows.push_str(&format!(
+                "AnchorEntry {{ anchor: {:?}, path: {rel:?}, title: {:?}, level: {}, line: {}, text: {:?}, example: {example} }},\n",
+                format!("{rel}#{}", h.slug),
+                h.title,
+                h.level,
+                h.line,
+                h.text,
+            ));
+            names.push(name);
+        }
+    }
+    let mut out = String::from("#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]\npub enum DocAnchor {\n");
+    for name in &names {
+        out.push_str(&format!("    {name},\n"));
+    }
+    out.push_str("}\n\npub const ALL: &[DocAnchor] = &[\n");
+    for name in &names {
+        out.push_str(&format!("    DocAnchor::{name},\n"));
+    }
+    out.push_str("];\n\npub static ENTRIES: &[AnchorEntry] = &[\n");
+    out.push_str(&rows);
+    out.push_str("];\n");
+    let dest = std::path::Path::new(&std::env::var("OUT_DIR").expect("OUT_DIR")).join("doc_anchors.rs");
+    std::fs::write(dest, out).expect("write doc_anchors.rs");
 }

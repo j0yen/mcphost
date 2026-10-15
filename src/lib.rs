@@ -63,6 +63,8 @@ pub mod handler;
 pub mod doctor;
 pub mod heal;
 pub mod help;
+pub mod doc_anchors;
+pub mod doc_scan;
 pub mod help_search;
 pub mod hooks;
 pub mod hostpressure;

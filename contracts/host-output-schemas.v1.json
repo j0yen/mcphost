@@ -3777,6 +3777,48 @@
     ],
     "type": "object"
   },
+  "host.help.get": {
+    "properties": {
+      "anchor": {
+        "type": "string"
+      },
+      "example": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "lang": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "lang"
+        ],
+        "type": "object"
+      },
+      "line": {
+        "type": "integer"
+      },
+      "path": {
+        "type": "string"
+      },
+      "text": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "anchor",
+      "line",
+      "path",
+      "text",
+      "title"
+    ],
+    "type": "object"
+  },
   "host.help.search": {
     "properties": {
       "hint": {

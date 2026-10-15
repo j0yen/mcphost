@@ -26,8 +26,6 @@ mod exprp;
 mod federation;
 #[path = "support/lanecov.rs"]
 mod lanecov;
-#[path = "support/mrefu.rs"]
-mod mrefu;
 #[path = "support/oauth.rs"]
 mod oauth;
 #[path = "support/serve.rs"]
@@ -843,6 +841,14 @@ mod edead_ac05_ring_and_plan_ceiling;
 mod edead_ac06_event_in_chain_context;
 #[path = "edead_ac07_reason_table_cannot_drift.rs"]
 mod edead_ac07_reason_table_cannot_drift;
+#[path = "edp_ac01_pointers_resolve_against_headings.rs"]
+mod edp_ac01_pointers_resolve_against_headings;
+#[path = "edp_ac02_no_literal_anchors_outside_doc_anchors.rs"]
+mod edp_ac02_no_literal_anchors_outside_doc_anchors;
+#[path = "edp_ac03_help_get_returns_the_section.rs"]
+mod edp_ac03_help_get_returns_the_section;
+#[path = "edp_ac04_error_anchor_beside_help_url.rs"]
+mod edp_ac04_error_anchor_beside_help_url;
 #[path = "enduser_ac02_assertion_http_headers_and_calls_row.rs"]
 mod enduser_ac02_assertion_http_headers_and_calls_row;
 #[path = "enduser_ac03_invalid_assertion_rejected.rs"]
@@ -1823,11 +1829,3 @@ mod minimal_ac3_wrong_bearer_matches_anonymous;
 mod minimal_ac4_liveness_failure_returns_5xx;
 #[path = "minimal_ac5_tenant_bearer_gets_anonymous_body.rs"]
 mod minimal_ac5_tenant_bearer_gets_anonymous_body;
-#[path = "mrefu_ac01_breaking_migration_refuses_with_report.rs"]
-mod mrefu_ac01_breaking_migration_refuses_with_report;
-#[path = "mrefu_ac02_compatible_migration_reports_ok.rs"]
-mod mrefu_ac02_compatible_migration_reports_ok;
-#[path = "mrefu_ac03_schema_is_generated_and_drift_tested.rs"]
-mod mrefu_ac03_schema_is_generated_and_drift_tested;
-#[path = "mrefu_ac04_previous_up_failure_exits_4_with_tables_changed.rs"]
-mod mrefu_ac04_previous_up_failure_exits_4_with_tables_changed;
