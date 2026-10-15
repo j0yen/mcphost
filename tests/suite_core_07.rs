@@ -20,6 +20,8 @@ mod child_proc_lint;
 mod ctrace;
 #[path = "support/docs_qa.rs"]
 mod docs_qa;
+#[path = "support/emin.rs"]
+mod emin;
 #[path = "support/exprp.rs"]
 mod exprp;
 #[path = "support/fake_as.rs"]
@@ -821,6 +823,8 @@ mod edead_ac06_event_in_chain_context;
 mod edead_ac07_reason_table_cannot_drift;
 #[path = "emin_ac02_address_is_stable_and_enabled.rs"]
 mod emin_ac02_address_is_stable_and_enabled;
+#[path = "emin_ac03_signed_mail_is_an_inbox_message.rs"]
+mod emin_ac03_signed_mail_is_an_inbox_message;
 #[path = "enduser_ac02_assertion_http_headers_and_calls_row.rs"]
 mod enduser_ac02_assertion_http_headers_and_calls_row;
 #[path = "enduser_ac03_invalid_assertion_rejected.rs"]
