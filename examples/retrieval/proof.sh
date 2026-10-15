@@ -128,7 +128,7 @@ fi
 
 # The refresh check: re-put, then watch behind_by.
 put=$(mcp_call host.docs.put "{\"name\": \"$DOC\", \"content\": \"$TEXT\"}")
-check "re-put the probe document" "$([[ "$(field_of "$put" "'name' in d")" == "True" ]] && echo 1 || echo 0)"
+check "re-put the probe document (docs.put returns id + version)" "$([[ "$(field_of "$put" "'id' in d and 'version' in d")" == "True" ]] && echo 1 || echo 0)"
 
 START=$(date +%s)
 last=""
