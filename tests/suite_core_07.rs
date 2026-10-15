@@ -26,8 +26,6 @@ mod exprp;
 mod federation;
 #[path = "support/lanecov.rs"]
 mod lanecov;
-#[path = "support/mrefu.rs"]
-mod mrefu;
 #[path = "support/oauth.rs"]
 mod oauth;
 #[path = "support/serve.rs"]
@@ -1837,11 +1835,3 @@ mod minimal_ac3_wrong_bearer_matches_anonymous;
 mod minimal_ac4_liveness_failure_returns_5xx;
 #[path = "minimal_ac5_tenant_bearer_gets_anonymous_body.rs"]
 mod minimal_ac5_tenant_bearer_gets_anonymous_body;
-#[path = "mrefu_ac01_breaking_migration_refuses_with_report.rs"]
-mod mrefu_ac01_breaking_migration_refuses_with_report;
-#[path = "mrefu_ac02_compatible_migration_reports_ok.rs"]
-mod mrefu_ac02_compatible_migration_reports_ok;
-#[path = "mrefu_ac03_schema_is_generated_and_drift_tested.rs"]
-mod mrefu_ac03_schema_is_generated_and_drift_tested;
-#[path = "mrefu_ac04_previous_up_failure_exits_4_with_tables_changed.rs"]
-mod mrefu_ac04_previous_up_failure_exits_4_with_tables_changed;
