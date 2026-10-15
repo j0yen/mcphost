@@ -11565,7 +11565,9 @@ mod host_tools_stack_tests {
             .expect("spawn")
             .join()
             .expect("known_control_plane_args overflowed a 128 KiB stack");
-        let args = args.expect("host.trigger.set is a control-plane tool");
+        let Some(args) = args else {
+            panic!("host.trigger.set is a control-plane tool");
+        };
         assert!(args.iter().any(|a| a == "tool"), "host.trigger.set args: {args:?}");
     }
 }
