@@ -30,6 +30,20 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "nudge_ac01_claimed_tenant_gets_one_return_email.rs"]
+mod nudge_ac01_claimed_tenant_gets_one_return_email;
+#[path = "nudge_ac02_second_sweep_sends_nothing_more.rs"]
+mod nudge_ac02_second_sweep_sends_nothing_more;
+#[path = "nudge_ac03_unclaimed_tenant_recorded_as_none.rs"]
+mod nudge_ac03_unclaimed_tenant_recorded_as_none;
+#[path = "nudge_ac04_fleet_tenant_excluded.rs"]
+mod nudge_ac04_fleet_tenant_excluded;
+#[path = "nudge_ac05_provider_failure_retries_then_abandons.rs"]
+mod nudge_ac05_provider_failure_retries_then_abandons;
+#[path = "nudge_ac06_welcome_back_since_you_left.rs"]
+mod nudge_ac06_welcome_back_since_you_left;
+#[path = "nudge_ac07_funnel_reports_nudged_and_return_rate.rs"]
+mod nudge_ac07_funnel_reports_nudged_and_return_rate;
 #[path = "oauthconf_ac01_gate_verdict_table_matches_gold.rs"]
 mod oauthconf_ac01_gate_verdict_table_matches_gold;
 #[path = "oauthconf_ac02_cimd_preferred_over_dcr_and_unsupported_without_either.rs"]
