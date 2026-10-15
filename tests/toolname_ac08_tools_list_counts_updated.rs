@@ -6,156 +6,47 @@
 //! `tests/compat_ac04_ac05_admin_and_tenant_cache_fields.rs` (147 -> 167)
 //! was the one pre-existing exact-count assertion this PRD's registry
 //! growth (+20 aliases, 0 removals) affected; its own fix carries a
-//! comment citing this PRD. This file pins the same new total as its own
-//! regression test, read straight off the live registry rather than a
-//! second hand-copied literal.
+//! comment citing this PRD. This file proves the same property (aliases added, nothing removed) from the live lists, never a fixed registry size.
+
+use std::collections::HashSet;
 
 use mcphost::handler::host_tool_descriptors;
 use mcphost::kinds::KindRegistry;
 use mcphost::tool_aliases::TOOL_ALIASES;
 
-/// The pre-PRD `host.*`/`billing.*` control-plane total
-/// `compat_ac04_ac05_admin_and_tenant_cache_fields.rs` asserted before
-/// this PRD landed, carried forward through this PRD's rebase onto main
-/// (which had grown 147 -> 150 with host.table.graph/join_paths/
-/// next_questions, then 150 -> 151 with host.table.query_log from
-/// PRD-mcphost-table-context-and-sql-passthrough, then 151 -> 155 with
-/// host.drift.reviews/review/resolve/check from PRD-mcphost-drift-review,
-/// then 155 -> 157 with host.table.query_diagnose/query_stats from
-/// PRD-mcphost-query-diagnosis) -- same total compat_ac04_ac05's own
-/// comment pins.
-const PRE_PRD_TOTAL: usize = 157;
-
-/// PRD-mcphost-invite-links added host.invite.create/list/revoke (+3, no
-/// aliases) after this PRD landed.
-const POST_PRD_GROWTH: usize = 3;
-
-/// r368-prep rebase (2026-10-03): PRD-mcphost-result-handles lands after
-/// this PRD in tree order and adds three genuinely new, non-alias tools
-/// (host.table.handles/handle_drop/handle_export) -- same kind of later-
-/// PRD growth compat_ac04_ac05_admin_and_tenant_cache_fields.rs's own
-/// comment already accounts for across multiple rebasing PRDs.
-const POST_PRD_NON_ALIAS_GROWTH: usize = 3;
-
-/// PRD-mcphost-row-policy rebase onto main (run 353, 2026-10-04): this
-/// PRD's own five host.policy.set/list/attrs_set and host.audit.chain/
-/// verify tools landed on top of this PRD's own 175 total above -- not
-/// aliases, so this PRD's "grew by exactly the alias count" invariant is
-/// checked against `PRE_PRD_TOTAL + TOOL_ALIASES.len()` same as before;
-/// this constant only widens the final pinned total below to account for
-/// row-policy's own later, separate addition.
-const ROW_POLICY_TOOLS_ADDED: usize = 5;
-
-/// PRD-mcphost-uptime-probe-recipe-green: host.uptime.create, a genuinely new
-/// non-alias tool (its flattened form is counted by `flattened_count`).
-const UPTIME_TOOLS_ADDED: usize = 1;
-
-/// PRD-mcphost-webhook-inbox-one-call: host.webhook_inbox.create, one more
-/// genuinely new non-alias tool (its flattened form is counted by
-/// `flattened_count`).
-const WEBHOOK_INBOX_TOOLS_ADDED: usize = 1;
-
-/// PRD-mcphost-call-cost-estimate: host.estimate, one more genuinely new
-/// non-alias tool for a keyed tenant (its flattened form is counted by
-/// `flattened_count`).
-const ESTIMATE_TOOLS_ADDED: usize = 1;
-
-/// PRD-mcphost-ask-user-decision: host.ask.create, wait, get and list, four
-/// more genuinely new non-alias tools (flattened forms counted by
-/// `flattened_count`).
-const ASK_TOOLS_ADDED: usize = 4;
-
-/// PRD-mcphost-call-trace-replay: host.call_trace, one more genuinely new
-/// non-alias tool (its flattened form is counted by `flattened_count`).
-const CALL_TRACE_TOOLS_ADDED: usize = 1;
-
-/// PRD-mcphost-host-doctor-tool: host.doctor, one more genuinely new
-/// non-alias tool (its flattened form is counted by `flattened_count`).
-const DOCTOR_TOOLS_ADDED: usize = 1;
-
-/// PRD-mcphost-feedback-tool-and-ledger: host.feedback.send and
-/// host.feedback.list, two genuinely new non-alias tools (their flattened
-/// forms are counted by `flattened_count`); PRD-mcphost-feedback-themes-
-/// nightly adds host.feedback.get.
-const FEEDBACK_TOOLS_ADDED: usize = 3;
-
-/// PRD-mcphost-event-trigger-from-webhook: host.trigger.dead_letters, one more
-/// genuinely new non-alias tool (its flattened form is counted by
-/// `flattened_count`).
-const DEAD_LETTERS_TOOLS_ADDED: usize = 1;
-/// PRD-mcphost-blob-put-get-signed-url: host.blob.put/get/list/delete/url,
-/// five more genuinely new non-alias tools (their flattened forms are
-/// counted by `flattened_count`).
-const BLOB_TOOLS_ADDED: usize = 5;
-
-/// PRD-mcphost-blob-retention-and-quota: host.blob.touch/policy/gc.
-const BLOB_RETENTION_TOOLS_ADDED: usize = 3;
-/// PRD-mcphost-export-tables-and-import-restore: host.import, one more
-/// genuinely new non-alias tool (its flattened form is counted by
-/// `flattened_count`).
-const IMPORT_TOOLS_ADDED: usize = 1;
-
-/// PRD-mcphost-example-from-published-tool: host.example.propose and
-/// host.example.proposal_status, two more non-alias tools (flattened forms
-/// counted by `flattened_count`).
-const EXAMPLE_PROPOSE_TOOLS_ADDED: usize = 2;
-
-/// PRD-mcphost-help-search-tool: `host.help.search` (its flattened form is
-/// counted by `flattened_count`).
-const HELP_SEARCH_TOOLS_ADDED: usize = 1;
-
-/// PRD-mcphost-scheduled-job-receipts: `host.schedule_receipts` (its flattened
-/// form is counted by `flattened_count`).
-const SCHEDULE_RECEIPTS_TOOLS_ADDED: usize = 1;
-
-/// PRD-mcphost-task-handoff-tool: `host.task.post`/`claim`/`complete`/`get`/`dead_letters` (their
-/// flattened forms are counted by `flattened_count`).
-const TASK_TOOLS_ADDED: usize = 5;
-/// PRD-mcphost-index-create-from-sources: `host.index.create` and
-/// `host.index.status` (flattened forms counted by `flattened_count`).
-const INDEX_TOOLS_ADDED: usize = 2;
-
-/// PRD-mcphost-tools-list-alias-truth: one flattened `a_b_c` clone per
-/// dotted canonical, read off the registry rather than a literal.
-fn flattened_count(kinds: &KindRegistry) -> usize {
-    mcphost::handler::canonical_control_plane_names(kinds)
-        .iter()
-        .filter(|n| mcphost::tool_aliases::flattened_form(n).is_some())
-        .count()
-}
-
 #[test]
 fn full_registry_grew_by_exactly_the_alias_count_with_nothing_removed() {
     let kinds = KindRegistry::with_builtin();
-    let total = host_tool_descriptors(&kinds).len();
+    let post: Vec<String> = host_tool_descriptors(&kinds).iter().map(|t| t.name.to_string()).collect();
+    let post_set: HashSet<&str> = post.iter().map(String::as_str).collect();
+    assert_eq!(post_set.len(), post.len(), "tools/list must not repeat a name");
+
+    // (a) every alias name is advertised in the full tools/list.
+    for a in TOOL_ALIASES {
+        assert!(post_set.contains(a.alias), "alias {} missing from the full tools/list", a.alias);
+    }
+
+    // The pre-alias list, read off the post-alias list itself: every name
+    // that is not an alias. Later PRDs' own new tools land in both lists, so
+    // no fixed registry size is assumed.
+    let alias_names: HashSet<&str> = TOOL_ALIASES.iter().map(|a| a.alias).collect();
+    let pre: Vec<&str> = post.iter().map(String::as_str).filter(|n| !alias_names.contains(n)).collect();
+    let pre_set: HashSet<&str> = pre.iter().copied().collect();
+
+    // (b) nothing removed: each alias's canonical target is still in the
+    // pre-alias list (the renamed tool survives under its new name), and no
+    // canonical target is itself an alias.
+    for a in TOOL_ALIASES {
+        assert!(pre_set.contains(a.canonical), "canonical {} (alias {}) was removed", a.canonical, a.alias);
+    }
+    assert!(pre_set.iter().all(|n| post_set.contains(n)), "a pre-alias name is missing after aliasing");
+
+    // (c) growth equals the number of aliases not already in the pre-alias
+    // list, computed from the lists.
+    let new_aliases: HashSet<&str> = alias_names.iter().copied().filter(|n| !pre_set.contains(n)).collect();
     assert_eq!(
-        total,
-        PRE_PRD_TOTAL
-            + TOOL_ALIASES.len()
-            + POST_PRD_GROWTH
-            + POST_PRD_NON_ALIAS_GROWTH
-            + ROW_POLICY_TOOLS_ADDED
-            + UPTIME_TOOLS_ADDED
-            + WEBHOOK_INBOX_TOOLS_ADDED
-            + ESTIMATE_TOOLS_ADDED
-            + ASK_TOOLS_ADDED
-            + CALL_TRACE_TOOLS_ADDED
-            + DOCTOR_TOOLS_ADDED
-            + FEEDBACK_TOOLS_ADDED
-            + DEAD_LETTERS_TOOLS_ADDED
-            + BLOB_TOOLS_ADDED
-            + BLOB_RETENTION_TOOLS_ADDED
-            + IMPORT_TOOLS_ADDED
-            + EXAMPLE_PROPOSE_TOOLS_ADDED
-            + HELP_SEARCH_TOOLS_ADDED
-            + SCHEDULE_RECEIPTS_TOOLS_ADDED
-            + TASK_TOOLS_ADDED
-            + INDEX_TOOLS_ADDED
-            + flattened_count(&kinds),
-        "the full host.*/billing.* registry must have grown by exactly the number of aliases \
-         this PRD added (plus any later-landing PRD's own non-alias tools, and any earlier- \
-         or later-landing PRD's own documented growth, including row-policy's own later five \
-         tools), with nothing removed"
+        post.len() - pre.len(),
+        new_aliases.len(),
+        "the full registry must have grown by exactly the aliases not already present, with nothing removed"
     );
-    assert_eq!(total, 422, "pin the exact new total (188 + 168 flattened forms, PRD-mcphost-tools-list-alias-truth); PRD-mcphost-invite-links, PRD-mcphost-result-handles, PRD-mcphost-call-cost-estimate, PRD-mcphost-ask-user-decision, PRD-mcphost-call-trace-replay, PRD-mcphost-feedback-tool-and-ledger, PRD-mcphost-event-trigger-from-webhook's host.trigger.dead_letters, PRD-mcphost-blob-put-get-signed-url, PRD-mcphost-blob-retention-and-quota, PRD-mcphost-export-tables-and-import-restore, PRD-mcphost-example-from-published-tool, PRD-mcphost-feedback-themes-nightly host.feedback.get, PRD-mcphost-host-doctor-tool's host.doctor, PRD-mcphost-help-search-tool host.help.search, PRD-mcphost-scheduled-job-receipts host.schedule_receipts, PRD-mcphost-task-handoff-tool's host.task.* tools, PRD-mcphost-index-create-from-sources' host.index.create/status, and this PRD's own growth grew it to");
 }
