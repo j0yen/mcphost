@@ -198,17 +198,26 @@ pub struct Release {
     pub summary: String,
 }
 
-/// A `## ` heading in `CHANGELOG.md` that is not `## v<semver> — <YYYY-MM-DD>`.
+/// Why `CHANGELOG.md` is not a usable release list.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChangelogError {
-    pub line: usize,
-    pub heading: String,
-    pub reason: String,
+pub enum ChangelogError {
+    /// A `## ` heading that is not `## v<semver> — <YYYY-MM-DD>`.
+    Malformed { line: usize, heading: String, reason: String },
+    /// A heading whose version is not strictly lower than the one above it;
+    /// `at` is its 1-based line number.
+    NotMonotonic { at: usize },
 }
 
 impl std::fmt::Display for ChangelogError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "CHANGELOG.md line {}: {:?}: {}", self.line, self.heading, self.reason)
+        match self {
+            Self::Malformed { line, heading, reason } => {
+                write!(f, "CHANGELOG.md line {line}: {heading:?}: {reason}")
+            }
+            Self::NotMonotonic { at } => {
+                write!(f, "CHANGELOG.md line {at}: version is not lower than the heading above it")
+            }
+        }
     }
 }
 
@@ -224,7 +233,7 @@ pub fn parse_changelog(text: &str) -> Result<Vec<Release>, ChangelogError> {
     let mut summary_done = false;
     for (idx, line) in text.lines().enumerate() {
         if let Some(rest) = line.strip_prefix("## ") {
-            let err = |reason: &str| ChangelogError {
+            let err = |reason: &str| ChangelogError::Malformed {
                 line: idx + 1,
                 heading: line.to_string(),
                 reason: reason.to_string(),
@@ -240,6 +249,9 @@ pub fn parse_changelog(text: &str) -> Result<Vec<Release>, ChangelogError> {
                 && b.iter().enumerate().all(|(i, c)| if i == 4 || i == 7 { *c == b'-' } else { c.is_ascii_digit() });
             if !shaped {
                 return Err(err("date is not YYYY-MM-DD"));
+            }
+            if releases.last().is_some_and(|prev| version >= prev.version) {
+                return Err(ChangelogError::NotMonotonic { at: idx + 1 });
             }
             releases.push(Release { version, date: date.to_string(), summary: String::new() });
             summary_done = false;
@@ -822,11 +834,29 @@ fn version_gt(a: &str, b: &str) -> bool {
 /// why this differs from [`dump_contract`]'s committed-contract use.
 pub fn changelog(kinds: &KindRegistry, deprecations: &[Deprecation], since: Option<&str>) -> Value {
     static RELEASES: std::sync::OnceLock<Result<Vec<Release>, ChangelogError>> = std::sync::OnceLock::new();
-    match RELEASES.get_or_init(|| parse_changelog(CHANGELOG_MD)) {
-        Ok(releases) => changelog_at(kinds, deprecations, releases, env!("CARGO_PKG_VERSION"), since),
+    changelog_from(
+        kinds,
+        deprecations,
+        RELEASES.get_or_init(|| parse_changelog(CHANGELOG_MD)),
+        env!("CARGO_PKG_VERSION"),
+        since,
+    )
+}
+
+/// [`changelog_at`] over a parse result: a parse error serves `releases: []`
+/// plus `releases_error`, every other field intact, and never panics.
+pub fn changelog_from(
+    kinds: &KindRegistry,
+    deprecations: &[Deprecation],
+    parsed: &Result<Vec<Release>, ChangelogError>,
+    now: &str,
+    since: Option<&str>,
+) -> Value {
+    match parsed {
+        Ok(releases) => changelog_at(kinds, deprecations, releases, now, since),
         Err(e) => {
             tracing::error!(error = %e, "CHANGELOG.md does not parse; host.changelog serves no releases");
-            let mut out = changelog_at(kinds, deprecations, &[], env!("CARGO_PKG_VERSION"), since);
+            let mut out = changelog_at(kinds, deprecations, &[], now, since);
             out["releases_error"] = json!(e.to_string());
             out
         }
@@ -861,7 +891,10 @@ pub fn changelog_at(
         .collect();
     let since_out = since.map(str::to_string);
     let since: &str = &effective;
-    let in_range = |v: &str| version_gt(v, since) && !version_gt(v, now);
+    // A never-seen tenant has no baseline: nothing is "new" to it, so
+    // `added`/`renamed` stay empty and only the recent releases are listed.
+    let never_seen = since_out.is_none();
+    let in_range = |v: &str| !never_seen && version_gt(v, since) && !version_gt(v, now);
 
     let mut tools = crate::handler::host_tool_descriptors(kinds);
     tools.sort_by(|a, b| a.name.cmp(&b.name));

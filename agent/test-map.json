@@ -1531,6 +1531,12 @@
       "AC3": "tests/chg_ac03_changelog_renamed_lists_every_alias.rs",
       "AC4": "tests/chg_ac04_changelog_defaults_to_last_seen_version.rs"
     },
+    "chgb": {
+      "_prd": "PRD-mcphost-host-changelog-since-b.md (test_prefix: chgb)",
+      "AC1": "tests/chgb_ac01_fresh_tenant_last_five_releases.rs",
+      "AC2": "tests/chgb_ac02_out_of_order_heading_not_monotonic.rs",
+      "AC3": "tests/chgb_ac03_since_banana_args_invalid.rs"
+    },
     "hostdoc": {
       "_prd": "PRD-mcphost-host-doctor-tool.md (test_prefix: hostdoc)",
       "AC1": "tests/hostdoc_ac01_five_families_five_concrete_next_lines.rs",

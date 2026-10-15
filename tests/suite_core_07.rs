@@ -513,6 +513,12 @@ mod chg_ac02_contract_since_drift;
 mod chg_ac03_changelog_renamed_lists_every_alias;
 #[path = "chg_ac04_changelog_defaults_to_last_seen_version.rs"]
 mod chg_ac04_changelog_defaults_to_last_seen_version;
+#[path = "chgb_ac01_fresh_tenant_last_five_releases.rs"]
+mod chgb_ac01_fresh_tenant_last_five_releases;
+#[path = "chgb_ac02_out_of_order_heading_not_monotonic.rs"]
+mod chgb_ac02_out_of_order_heading_not_monotonic;
+#[path = "chgb_ac03_since_banana_args_invalid.rs"]
+mod chgb_ac03_since_banana_args_invalid;
 #[path = "ci_sandbox_ac01_workflow_executes_sandbox_suites.rs"]
 mod ci_sandbox_ac01_workflow_executes_sandbox_suites;
 #[path = "ci_sandbox_ac03_incapable_in_ci_skips_and_fails_job.rs"]
