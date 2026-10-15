@@ -215,7 +215,7 @@ pub enum AppError {
     #[error("forbidden")]
     Forbidden,
     #[error("tenant is disabled")]
-    TenantDisabled,
+    TenantDisabled { disabled_reason: Option<String> },
     #[error("signup rate limit exceeded for this source; try again later")]
     RateLimited,
     #[error("tool not found: {0}")]
@@ -422,7 +422,7 @@ pub fn all_variants_for_test() -> Vec<AppError> {
             | AppError::TenantKeyMissing(_)
             | AppError::TenantKeyInvalid
             | AppError::Forbidden
-            | AppError::TenantDisabled
+            | AppError::TenantDisabled { .. }
             | AppError::RateLimited
             | AppError::ToolNotFound(_)
             | AppError::TenantNotFound(_)
@@ -465,7 +465,7 @@ pub fn all_variants_for_test() -> Vec<AppError> {
         AppError::TenantKeyMissing(None),
         AppError::TenantKeyInvalid,
         AppError::Forbidden,
-        AppError::TenantDisabled,
+        AppError::TenantDisabled { disabled_reason: None },
         AppError::RateLimited,
         AppError::ToolNotFound("t.no_such".into()),
         AppError::TenantNotFound(s()),
@@ -544,7 +544,7 @@ impl AppError {
             AppError::TenantKeyMissing(_) => "tenant_key_missing",
             AppError::TenantKeyInvalid => "tenant_key_invalid",
             AppError::Forbidden => "forbidden",
-            AppError::TenantDisabled => "tenant_disabled",
+            AppError::TenantDisabled { .. } => "tenant_disabled",
             AppError::RateLimited => "rate_limited",
             AppError::ToolNotFound(_) => "tool_not_found",
             AppError::TenantNotFound(_) => "tenant_not_found",
@@ -622,7 +622,7 @@ impl AppError {
             AppError::Unauthorized
             | AppError::TenantKeyInvalid
             | AppError::Forbidden
-            | AppError::TenantDisabled
+            | AppError::TenantDisabled { .. }
             | AppError::RateLimited
             | AppError::RegistryDisabled
             | AppError::NamespaceUnverified
@@ -1088,6 +1088,12 @@ impl AppError {
                     "this connection authenticated as {namespace}; pass its tenant_key"
                 )),
             );
+        }
+        // R6 (PRD-mcphost-self-offboard-success-envelope): a disabled tenant
+        // error carries its reason so callers can distinguish self_offboard
+        // from admin_disable.
+        if let AppError::TenantDisabled { disabled_reason: Some(reason) } = &self {
+            obj.insert("disabled_reason".to_string(), json!(reason));
         }
         // PRD-mcphost-unknown-kind-routes-to-recipe requirement 4 (AC4):
         // `registered`/`aliases` ride straight through from the variant;
