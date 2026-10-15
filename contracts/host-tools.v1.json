@@ -17420,7 +17420,12 @@
                 "spec": {
                   "additionalProperties": false,
                   "properties": {
-                    "reads": {},
+                    "outputs": {
+                      "description": "fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind)"
+                    },
+                    "reads": {
+                      "description": "tables this tool reads, recorded for lineage and blast-radius reports"
+                    },
                     "schema": {},
                     "ui": {
                       "additionalProperties": false,
@@ -19152,7 +19157,12 @@
                 "spec": {
                   "additionalProperties": false,
                   "properties": {
-                    "reads": {},
+                    "outputs": {
+                      "description": "fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind)"
+                    },
+                    "reads": {
+                      "description": "tables this tool reads, recorded for lineage and blast-radius reports"
+                    },
                     "schema": {},
                     "ui": {
                       "additionalProperties": false,
@@ -26941,7 +26951,12 @@
                 "spec": {
                   "additionalProperties": false,
                   "properties": {
-                    "reads": {},
+                    "outputs": {
+                      "description": "fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind)"
+                    },
+                    "reads": {
+                      "description": "tables this tool reads, recorded for lineage and blast-radius reports"
+                    },
                     "schema": {},
                     "ui": {
                       "additionalProperties": false,

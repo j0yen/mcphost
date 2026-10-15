@@ -21,10 +21,8 @@
 //!   ...}, "steps": [{"result": ...}, ...]}`.
 //!
 //! Deferred to a later tick (documented, not silently dropped):
-//! - `outputs` (promoting named steps' fields into the chain's own result)
-//!   is accepted at publish time but not yet applied -- the chain's result
-//!   is always its last step's result, matching the *default* behavior
-//!   `outputs` would only override.
+//! - (none for `outputs`: the universal `outputs` spec field is applied --
+//!   see [`project_outputs`].)
 //! - `on_error: "continue"` (requirement 3) is implemented (requirement 3 /
 //!   AC7); `map` steps (P2) are not.
 //!
@@ -46,12 +44,38 @@ use super::contract::{
     CASE_BUDGET_EXCEEDED, CASE_CALL, CaseSkip, COMPOSE_FAMILY, ConformanceFixtures, KindContract, SourcePosition, TOOL_STATE_FAMILY, codes,
 };
 use super::{
-    CallCtx, HOST_STEPS_ALLOWED, Kind, KindError, KindExample, KindRegistry, Path, ToolDescriptor, compose_call,
-    compose_call_ref,
+    CallCtx, HOST_STEPS_ALLOWED, Kind, KindError, KindExample, KindRegistry, OutputDecl, Path, ToolDescriptor,
+    apply_output_decls, compose_call, compose_call_ref, spec_declared_outputs,
 };
 use crate::errors::AppError;
 
 pub struct ChainKind;
+
+/// The universal `outputs` spec field on a chain: `None` when nothing is
+/// declared (the call result is unchanged), else the `payload` map
+/// `result.payload.<field>` reads. A path entry (`$.steps[0].result.x`,
+/// `$.input.x`, `$.prev.result.x`) resolves against the chain's own
+/// [`step_context`] after the last step; a bare name is promoted from the
+/// last step's result by the same any-wrapper search python/wasm use. The
+/// map starts as a mirror of the last step's result object (the "payload
+/// mirrors body" shape every kind shares).
+fn project_outputs(
+    declared: &[OutputDecl],
+    input: &Value,
+    prev: Option<&Value>,
+    step_results: &[Value],
+    last: &Value,
+) -> Option<Value> {
+    if declared.is_empty() {
+        return None;
+    }
+    let (with_path, bare): (Vec<OutputDecl>, Vec<OutputDecl>) =
+        declared.iter().cloned().partition(|d| d.path.is_some());
+    let mut payload = last.as_object().cloned().unwrap_or_default();
+    apply_output_decls(&mut payload, &step_context(input, prev, step_results), &with_path, None);
+    apply_output_decls(&mut payload, last, &bare, None);
+    Some(Value::Object(payload))
+}
 
 // CONTEXT_KEYS-BEGIN
 /// PRD-mcphost-chain-publish-time-path-check requirement 5: the ONE table of
@@ -1705,7 +1729,12 @@ impl Kind for ChainKind {
     }
 
     fn validate(&self, spec: &Value) -> Result<(), KindError> {
-        parse_steps(spec).map(|_| ())
+        parse_steps(spec)?;
+        spec_declared_outputs(spec).map(|_| ())
+    }
+
+    fn declared_outputs(&self, spec: &Value) -> Vec<OutputDecl> {
+        spec_declared_outputs(spec).unwrap_or_default()
     }
 
     /// PRD-mcphost-spec-unknown-field-rejection requirement 1/4: `steps` is
@@ -1997,19 +2026,26 @@ impl Kind for ChainKind {
             }
         }
 
-        // Requirement 3: the chain's result is the last step's result
-        // (`outputs`-based promotion is a deferred follow-up -- see the
-        // module doc).
+        // Requirement 3: the chain's result is the last step's result.
         let result = last_ok_result.unwrap_or(Value::Null);
-        Ok(json!({
+        let declared = spec_declared_outputs(spec)?;
+        let payload = project_outputs(&declared, &args, prev.as_ref(), &step_results, &result);
+        let mut out = json!({
             (CONTEXT_KEYS.result): result,
             (CONTEXT_KEYS.steps): steps_trace,
             "failed_steps": failed_steps,
-        }))
+        });
+        if let (Some(payload), Some(obj)) = (payload, out.as_object_mut()) {
+            obj.insert("payload".to_string(), payload);
+        }
+        Ok(out)
     }
 
     fn payload_from_call_result<'a>(&self, call_result: &'a Value) -> Option<&'a Value> {
-        call_result.get(CONTEXT_KEYS.result)
+        // A chain that declares `outputs` carries the projected `payload`
+        // beside `result`; one that declares none keeps the last step's
+        // result as its payload.
+        call_result.get("payload").or_else(|| call_result.get(CONTEXT_KEYS.result))
     }
 
     fn example(&self) -> KindExample {

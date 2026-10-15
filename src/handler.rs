@@ -763,7 +763,10 @@ fn tool_publish_spec_branches(kinds: &KindRegistry) -> Value {
                     let schema = match kind.spec_field_description(field) {
                         _ if field == "ui" => crate::form_page::ui_field_schema(),
                         Some(description) => json!({"description": description}),
-                        None => json!({}),
+                        None => match crate::kinds::kinddoc::UNIVERSAL_FIELD_DOCS.iter().find(|d| d.name == field) {
+                            Some(doc) => json!({"description": doc.meaning}),
+                            None => json!({}),
+                        },
                     };
                     (field.to_string(), schema)
                 })
@@ -9949,14 +9952,13 @@ impl ServerHandler for McpHostHandler {
                  A `host.*` call with no `tenant_key` and no Authorization header, on a \
                  connection that never ran signup, no longer fails `tenant_key_missing` -- it \
                  implicitly signs that connection up as a new tenant instead; a `tenant_key` \
-                 that doesn't match any tenant still fails `tenant_key_invalid`. \
-                 Result envelope contract: \
-                 when a spec declares `outputs` (field names its tool emits, or a map from \
-                 field name to the exact `$.a.b[0].c`-style path to read it from), each is \
-                 readable at `result.payload.<field>` for every kind, regardless of how deep \
-                 the tool's own response nests it -- run `host.tool_test` before publishing to \
-                 see which declared fields your implementation buries. \
-                 host.tool_publish's `kind` argument is honored exactly as given -- an inline \
+                 that doesn't match any tenant still fails `tenant_key_invalid`. ",
+        );
+        // The spec-field sentence is generated from the kind registry, never
+        // hand-written: it cannot promise `outputs` on a kind that refuses it.
+        instructions.push_str(&crate::kinds::outputs_envelope_instruction(&self.state.kinds));
+        instructions.push_str(
+            "host.tool_publish's `kind` argument is honored exactly as given -- an inline \
                  `source` field only publishes as `python` and `upstream`/`method`+`url` fields \
                  only publish as `http` -- so request the kind your task needs and a mismatch \
                  returns a `kind_mismatch` error naming the disagreeing spec element instead of \

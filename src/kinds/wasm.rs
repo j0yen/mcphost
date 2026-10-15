@@ -555,7 +555,6 @@ impl Kind for WasmKind {
         &[
         FieldDoc { name: "component", ty: "string", meaning: "the compiled WebAssembly component to call" },
         FieldDoc { name: "args_schema", ty: "object", meaning: "JSON Schema for the call arguments" },
-        FieldDoc { name: "outputs", ty: "array or object", meaning: "fields a caller can rely on in `result.payload`" },
         FieldDoc { name: "timeout_s", ty: "integer", meaning: "seconds the call may run" },
         FieldDoc { name: "memory_mb", ty: "integer", meaning: "megabytes the component may use" },
         ]
@@ -587,7 +586,7 @@ impl Kind for WasmKind {
     /// PRD-mcphost-spec-unknown-field-rejection requirement 1/4: the exact
     /// set [`parse_spec`] reads.
     fn known_spec_fields(&self) -> &'static [&'static str] {
-        &["component", "args_schema", "outputs", "timeout_s", "memory_mb"]
+        &["component", "args_schema", "timeout_s", "memory_mb"]
     }
 
     fn required_spec_field(&self) -> Option<&'static str> {

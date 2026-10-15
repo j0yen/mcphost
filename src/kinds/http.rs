@@ -1130,7 +1130,6 @@ impl Kind for HttpKind {
         FieldDoc { name: "timeout_s", ty: "integer", meaning: "seconds the upstream call may take" },
         FieldDoc { name: "response", ty: "object", meaning: "how to shape the upstream response into the tool result" },
         FieldDoc { name: "description", ty: "string", meaning: "human-readable text shown in `tools/list`" },
-        FieldDoc { name: "outputs", ty: "array or object", meaning: "fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each" },
         FieldDoc { name: "upstream", ty: "string", meaning: "name of a connected upstream provider to call instead of `method` + `url`" },
         FieldDoc { name: concat!("upstream", "_provider"), ty: "string", meaning: "provider the `upstream` connection belongs to" },
         ]
@@ -1168,7 +1167,6 @@ impl Kind for HttpKind {
             "timeout_s",
             "response",
             "description",
-            "outputs",
             "upstream",
             key::UPSTREAM_PROVIDER,
         ]
