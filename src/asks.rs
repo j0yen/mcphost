@@ -120,10 +120,12 @@ pub struct AskRow {
     pub expires_unix: i64,
     pub answered_unix: Option<i64>,
     pub waited_total_ms: i64,
+    /// `link` or `client` (PRD-mcphost-elicitation-with-ask-fallback R5).
+    pub channel: String,
 }
 
 const ROW_COLUMNS: &str = "id, tenant_id, question, options_json, context, status, choice, \
-                           created_unix, expires_unix, answered_unix, waited_total_ms";
+                           created_unix, expires_unix, answered_unix, waited_total_ms, channel";
 
 fn row_from(r: &rusqlite::Row<'_>) -> rusqlite::Result<AskRow> {
     let options_json: String = r.get(3)?;
@@ -139,6 +141,7 @@ fn row_from(r: &rusqlite::Row<'_>) -> rusqlite::Result<AskRow> {
         expires_unix: r.get(8)?,
         answered_unix: r.get(9)?,
         waited_total_ms: r.get(10)?,
+        channel: r.get::<_, Option<String>>(11)?.unwrap_or_else(|| "link".to_string()),
     })
 }
 
@@ -298,8 +301,8 @@ pub async fn create(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
             }
             conn.execute(
                 "INSERT INTO asks (id, tenant_id, question, options_json, context, status, \
-                                   created_unix, expires_unix) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, 'pending', ?6, ?7)",
+                                   created_unix, expires_unix, channel) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, 'pending', ?6, ?7, 'link')",
                 params![row_id, tenant_id, parsed.question, options_json, parsed.context, now, expires_unix],
             )?;
             conn.execute(
@@ -320,6 +323,45 @@ pub async fn create(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
         // not, so the field is accepted and honestly reported unsent.
         "notified": false,
     }))
+}
+
+/// PRD-mcphost-elicitation-with-ask-fallback R3/R5: the audit row of a
+/// question the client's own form answered (`channel: client`): already
+/// `answered` (or `declined`/`cancelled`, recorded as the choice), never
+/// pending, with its `created` and `answered` events.
+pub async fn record_client_elicit(
+    state: &AppState,
+    tenant: &Tenant,
+    message: &str,
+    schema: &Value,
+    choice: &str,
+) -> Result<String, AppError> {
+    let id = new_ulid().to_ascii_lowercase();
+    let now = now_unix();
+    let question: String = message.chars().take(QUESTION_MAX_CHARS).collect();
+    let context = schema.to_string();
+    let (tenant_id, row_id, choice) = (tenant.id, id.clone(), choice.to_string());
+    state
+        .db
+        .with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO asks (id, tenant_id, question, options_json, context, status, choice, \
+                                   created_unix, expires_unix, answered_unix, channel) \
+                 VALUES (?1, ?2, ?3, '[]', ?4, 'answered', ?5, ?6, ?6, ?6, 'client')",
+                params![row_id, tenant_id, question, context, choice, now],
+            )?;
+            conn.execute(
+                "INSERT INTO ask_events (ask_id, kind, at_unix, detail) VALUES (?1, 'created', ?2, NULL)",
+                params![row_id, now],
+            )?;
+            conn.execute(
+                "INSERT INTO ask_events (ask_id, kind, at_unix, detail) VALUES (?1, 'answered', ?2, ?3)",
+                params![row_id, now, choice],
+            )?;
+            Ok(())
+        })
+        .await?;
+    Ok(id)
 }
 
 // ---- host.ask.wait ----------------------------------------------------------------
@@ -454,6 +496,7 @@ fn audit_row(row: &AskRow) -> Value {
         "answered_unix": row.answered_unix,
         "expires_unix": row.expires_unix,
         "waited_total_ms": row.waited_total_ms,
+        "channel": row.channel,
     })
 }
 

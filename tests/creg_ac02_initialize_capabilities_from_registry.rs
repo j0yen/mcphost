@@ -19,7 +19,7 @@ async fn initialize_capabilities_equal_the_implemented_rows() {
 
     // Independent of server_capabilities(): the advertised keys are exactly
     // the implemented rows (`tools` -> "tools", ...).
-    let mut expected: Vec<&str> = CAPABILITIES.iter().filter(|c| c.implemented).map(|c| c.name).collect();
+    let mut expected: Vec<&str> = CAPABILITIES.iter().filter(|c| c.implemented && !mcphost::capabilities::CLIENT_SIDE.contains(&c.name)).map(|c| c.name).collect();
     expected.sort_unstable();
     let mut actual: Vec<&str> = advertised.as_object().expect("capabilities object").keys().map(String::as_str).collect();
     actual.sort_unstable();

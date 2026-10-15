@@ -380,6 +380,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 - `answered_unix`: integer (always)
 - `ask_id`: string (always)
+- `channel`: string (always)
 - `choice`: string (always)
 - `created_unix`: integer (always)
 - `events`: array<object> (always)

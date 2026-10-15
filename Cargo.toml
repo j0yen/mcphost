@@ -41,7 +41,7 @@ name = "mcphost"
 path = "src/main.rs"
 
 [dependencies]
-rmcp = { version = "3.2.0", features = ["server", "transport-streamable-http-server", "macros"] }
+rmcp = { version = "3.2.0", features = ["server", "transport-streamable-http-server", "macros", "elicitation"] }
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["limit", "timeout", "trace"] }
