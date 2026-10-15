@@ -18,6 +18,17 @@ pub fn generate_key() -> String {
     to_hex(&bytes)
 }
 
+/// PRD-mcphost-key-scoped-to-tools R1: a sub-key -- same entropy as
+/// [`generate_key`] with an `mk_` prefix, so logs and `describe_args_error`
+/// can tell it from a tenant key. Stored hashed (`hash_key`) in
+/// `tenant_keys`, never in the clear.
+pub fn generate_sub_key() -> String {
+    format!("{SUB_KEY_PREFIX}{}", generate_key())
+}
+
+/// The prefix [`generate_sub_key`] puts on every sub-key.
+pub const SUB_KEY_PREFIX: &str = "mk_";
+
 /// A namespace of the form `t_<8 hex>`.
 pub fn generate_namespace() -> String {
     let mut bytes = [0u8; 4];

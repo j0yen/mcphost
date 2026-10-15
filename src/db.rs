@@ -313,6 +313,8 @@ const MIGRATION_0101: &str = include_str!("../migrations/0101_trigger_streak_flo
 const MIGRATION_0102: &str = include_str!("../migrations/0102_tasks.sql");
 /// PRD-mcphost-index-create-from-sources R1/R3: the named-index tables.
 const MIGRATION_0103: &str = include_str!("../migrations/0103_indexes.sql");
+/// PRD-mcphost-key-scoped-to-tools R1: the `tenant_keys` table, `calls.key_id`.
+const MIGRATION_0104: &str = include_str!("../migrations/0104_tenant_keys.sql");
 
 /// Outcome of [`Db::reserve_draft`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2986,6 +2988,19 @@ impl Db {
         conn.execute_batch(MIGRATION_0101)?;
         conn.execute_batch(MIGRATION_0102)?;
         conn.execute_batch(MIGRATION_0103)?;
+        Self::migrate_0104_tenant_keys(&conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-key-scoped-to-tools R1: gated on the new table (the batch
+    /// ends in an `ALTER`, so a rerun must skip it).
+    fn migrate_0104_tenant_keys(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tenant_keys'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0104)?;
+        }
         Ok(())
     }
 
@@ -10157,6 +10172,9 @@ impl Db {
         // output for a failed call, `None` for an ok call.
         error_summary: Option<String>,
     ) -> Result<i64, AppError> {
+        // PRD-mcphost-key-scoped-to-tools R3: read here, on the request's
+        // own task -- `with_conn` runs the closure on a blocking thread.
+        let key_id = crate::subkeys::current_key_id();
         let started_at = now_rfc3339();
         let started_unix = now_unix();
         let outcome = outcome.to_string();
@@ -10189,9 +10207,9 @@ impl Db {
         self.with_conn(move |conn| {
             let tx = conn.unchecked_transaction()?;
             tx.execute(
-                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id, auth_method, step_tool, error_summary) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
-                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone(), auth_method, step_tool, error_summary],
+                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id, auth_method, step_tool, error_summary, key_id) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone(), auth_method, step_tool, error_summary, key_id],
             )?;
             let call_id = tx.last_insert_rowid();
             tx.execute(

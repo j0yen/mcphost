@@ -1335,6 +1335,14 @@ mod kindroute_ac07_http_database_query_publish_carries_hint;
 mod kindroute_ac07_quickstart_no_kind_lists_kinds_aliases_recipes;
 #[path = "kindroute_ac08_full_suite_green_at_landing.rs"]
 mod kindroute_ac08_full_suite_green_at_landing;
+#[path = "kst_ac01_subkey_authenticates_as_tenant.rs"]
+mod kst_ac01_subkey_authenticates_as_tenant;
+#[path = "kst_ac02_subkey_lists_and_denies_by_allowlist.rs"]
+mod kst_ac02_subkey_lists_and_denies_by_allowlist;
+#[path = "kst_ac03_mint_validates_names_and_is_primary_only.rs"]
+mod kst_ac03_mint_validates_names_and_is_primary_only;
+#[path = "kst_ac04_ttl_expiry_and_revoke.rs"]
+mod kst_ac04_ttl_expiry_and_revoke;
 #[path = "lanecov_ac01_every_tracked_path_routes.rs"]
 mod lanecov_ac01_every_tracked_path_routes;
 #[path = "lanecov_ac02_coverage_test_is_actually_run.rs"]
@@ -1831,15 +1839,3 @@ mod oauthconf_ac05_probe_cli_json_matches_gate_and_exit_codes;
 mod oauthconf_ac06_records_and_receipt_never_leak_secrets;
 #[path = "oauthconf_ac07_scenarios_doc_matches_gold_and_docs_sharing_check.rs"]
 mod oauthconf_ac07_scenarios_doc_matches_gold_and_docs_sharing_check;
-#[path = "oauthentry_ac01_every_method_401_with_entry_challenge.rs"]
-mod oauthentry_ac01_every_method_401_with_entry_challenge;
-#[path = "oauthentry_ac02_entry_document_names_entry_resource.rs"]
-mod oauthentry_ac02_entry_document_names_entry_resource;
-#[path = "oauthentry_ac03_new_workspace_on_entry_resource.rs"]
-mod oauthentry_ac03_new_workspace_on_entry_resource;
-#[path = "oauthentry_ac04_entry_audience_is_enforced_both_ways.rs"]
-mod oauthentry_ac04_entry_audience_is_enforced_both_ways;
-#[path = "oauthentry_ac05_claude_chatgpt_profiles_reach_tools_list.rs"]
-mod oauthentry_ac05_claude_chatgpt_profiles_reach_tools_list;
-#[path = "oauthentry_ac06_path_contract_docs_router_quickstart.rs"]
-mod oauthentry_ac06_path_contract_docs_router_quickstart;
