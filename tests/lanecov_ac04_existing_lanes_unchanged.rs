@@ -211,6 +211,9 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // PRD-mcphost-elicitation-with-ask-fallback added its own "elicit-docs"
     // lane (routes the elicitation docs to their check) -- an intended
     // addition since the baseline (rb seat hand-fix 10-15 2:0x am, CI lanecov red on PR 280).
+    // PRD-mcphost-task-handoff-live-script added its own "live-scripts" lane
+    // (routes scripts/task-handoff-live.sh to its proof tests) -- an intended
+    // addition since the baseline (rb seat hand-fix 10-15 5:5x am, CI lanecov red on PR 297).
     assert_eq!(
         added,
         vec![
@@ -230,6 +233,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "heal-docs",
             "host-pressure-doc-check",
             "launch-docs",
+            "live-scripts",
             "loop-config",
             "oauthconf-data",
             "output-schemas",

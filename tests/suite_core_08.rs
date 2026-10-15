@@ -800,6 +800,16 @@ mod thand_ac05_complete_is_idempotent;
 mod thand_ac06_open_task_quota_and_refusals;
 #[path = "thand_ac07_tenant_delete_cascade.rs"]
 mod thand_ac07_tenant_delete_cascade;
+#[path = "thlive_ac01_script_usage_and_dependencies.rs"]
+mod thlive_ac01_script_usage_and_dependencies;
+#[path = "thlive_ac02_local_server_handoff_done.rs"]
+mod thlive_ac02_local_server_handoff_done;
+#[path = "thlive_ac04_closed_port_exits_1.rs"]
+mod thlive_ac04_closed_port_exits_1;
+#[path = "thlive_ac05_exit_trap_offboards_both_tenants.rs"]
+mod thlive_ac05_exit_trap_offboards_both_tenants;
+#[path = "thlive_ac06_json_flag_output.rs"]
+mod thlive_ac06_json_flag_output;
 #[path = "timp_ac01_export_lacks_tables_and_docs_baseline.rs"]
 mod timp_ac01_export_lacks_tables_and_docs_baseline;
 #[path = "timp_ac02_export_carries_tables_models_docs_manifest_v2.rs"]

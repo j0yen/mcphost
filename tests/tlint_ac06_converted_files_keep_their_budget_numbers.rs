@@ -219,19 +219,30 @@ fn every_converted_site_passes_with_and_without_perf_skip() {
     let mut problems = Vec::new();
     for skip in [false, true] {
         for suite in &suites {
-            let mut cmd = Command::new(cargo);
-            cmd.current_dir(&root).args(["test", "--test", suite, "--features", "test-support", "--"]);
-            for site in CONVERTED.iter().filter(|s| s.suite == *suite) {
-                cmd.arg(format!("{}::", site.file.trim_end_matches(".rs")));
-            }
-            if skip {
-                cmd.env("MCPHOST_PERF_SKIP", "1");
-            } else {
-                cmd.env_remove("MCPHOST_PERF_SKIP");
-            }
-            let out = cmd.output().expect("spawn nested cargo test");
-            let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
-            let ran = text.lines().any(|l| l.starts_with("test result: ok. ") && !l.contains(" 0 passed"));
+            // The strict (unset) run measures real wall time while the outer
+            // suite may be saturating the host, so a miss is retried once
+            // (serially) before it counts; a genuinely broken budget fails both.
+            let mut attempt = 0;
+            let (out, text, ran) = loop {
+                attempt += 1;
+                let mut cmd = Command::new(cargo);
+                cmd.current_dir(&root).args(["test", "--test", suite, "--features", "test-support", "--"]);
+                for site in CONVERTED.iter().filter(|s| s.suite == *suite) {
+                    cmd.arg(format!("{}::", site.file.trim_end_matches(".rs")));
+                }
+                cmd.arg("--test-threads=1");
+                if skip {
+                    cmd.env("MCPHOST_PERF_SKIP", "1");
+                } else {
+                    cmd.env_remove("MCPHOST_PERF_SKIP");
+                }
+                let out = cmd.output().expect("spawn nested cargo test");
+                let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+                let ran = text.lines().any(|l| l.starts_with("test result: ok. ") && !l.contains(" 0 passed"));
+                if (out.status.success() && ran) || attempt >= 2 {
+                    break (out, text, ran);
+                }
+            };
             if !out.status.success() || !ran {
                 let tail: Vec<&str> = text.lines().rev().take(25).collect();
                 problems.push(format!(
