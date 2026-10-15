@@ -37,7 +37,7 @@ fn msrvlock_ac04_two_current_entries_name_the_seven_missing() {
         .copied()
         .filter(|c| *c != "static analysis + core suites" && *c != "sandbox suites (all shards)")
         .collect();
-    assert_eq!(missing.len(), 9);
+    assert_eq!(missing.len(), 10);
     for c in missing {
         assert!(out.contains(c), "missing context not named: {c}\n{out}");
     }

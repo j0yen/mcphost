@@ -10,6 +10,10 @@ on:
     # reading CI-backed receipts by sha; no PR is involved for that ref.
     branches: [main, "autobuilder/**", "wm-build/gate/**"]
   pull_request:
+  # Merge queue: a required queue builds each entry on a gh-readonly-queue/*
+  # ref and waits for every required context on THAT commit. Without this
+  # trigger the queued entry has no checks and stalls. Same for registry.yml.
+  merge_group:
 
 permissions:
   contents: read
@@ -404,6 +408,63 @@ jobs:
 
       - name: cargo check --locked --all-targets with the declared MSRV
         run: cargo check --locked --all-targets
+
+  # Derived-contract regeneration checks (the wm-build gate's `repo:*` checks).
+  # Every generator runs in its CHECK mode and the job reports ALL stale files
+  # before failing, so a branch whose generated files drifted from their sources
+  # goes red here the way the gate would, instead of landing on main and failing
+  # every later PR (df738f5 left tests/suite_core_07/08.rs stale: gen-test-suites
+  # --check was only run by the gate). Add a new generator's check to the list.
+  regen-check:
+    name: regen-check (generated files match their sources)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: install rust toolchain (pinned by rust-toolchain.toml)
+        uses: actions-rust-lang/setup-rust-toolchain@9d7e65c320fdb52dcd45ffaa68deb6c02c8754d9 # v1.10.1
+
+      # Several checks (sandbox-api-doc-check, gen-llms-full) run the binary;
+      # build it once so they use target/debug/mcphost instead of `cargo run`.
+      - name: build mcphost binary for the generator checks
+        run: cargo build --locked --bin mcphost
+
+      - name: every generator in check mode
+        run: |
+          failed=0
+          check() {
+            echo "::group::$*"
+            if "$@"; then
+              echo "ok: $*"
+            else
+              echo "::error::stale generated file(s): $* (regenerate with the script's write mode and commit)"
+              failed=1
+            fi
+            echo "::endgroup::"
+          }
+          check ./scripts/gen-test-suites.sh --check
+          check ./scripts/ci-test-partition.sh check
+          check ./scripts/contract-lint.sh
+          check ./scripts/gen-docs-sharing.sh --check
+          check ./scripts/gen-oauth-scenarios-doc.sh --check
+          check ./scripts/protocol-frames-check.sh --check
+          check ./scripts/heal-doc-check.sh
+          check ./scripts/host-pressure-doc-check.sh
+          check ./scripts/spec-fields-doc-check.sh
+          check ./scripts/sandbox-api-doc-check.sh
+          check ./scripts/gen-llms-full.sh --check
+          # .github/required-checks.toml is the render of the workflow files.
+          check bash -c 'diff <(./scripts/required-checks.sh --print) .github/required-checks.toml'
+          exit "$failed"
+
+      # Informational until README.md / www/llms.txt are regenerated on main:
+      # gen-agent-docs --check was already stale before this job existed
+      # (docs/agent-quickstart.md moved ahead of its two rendered blocks).
+      - name: gen-agent-docs --check (informational)
+        run: |
+          ./scripts/gen-agent-docs.sh --check || echo "::warning::README.md / www/llms.txt are stale against docs/agent-quickstart.md (scripts/gen-agent-docs.sh regenerates them)"
 
   # Backs wm-build's `determinism` gate producer (CI-as-gate, 10-10).
   # Mirrors autobuilder extended-gates producers/determinism.rs: two cold
