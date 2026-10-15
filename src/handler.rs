@@ -96,7 +96,40 @@ fn calls_auth_method(
     }
 }
 
-async fn resolve_auth(state: &AppState, parts: &http::request::Parts) -> Result<Auth, AppError> {
+/// PRD-mcphost-key-scoped-to-tools R3: `resolve_auth` tries `tenant_keys`
+/// after `tenants.key_hash`. `Some(tenant)` (with `sub` filled) iff `key`
+/// is a known sub-key; `None` for every other key shape, so the callers'
+/// existing unknown-key handling is untouched. The caller applies its own
+/// disabled-tenant refusal (header and argument paths differ).
+async fn resolve_sub_key_tenant(
+    state: &AppState,
+    key: &str,
+    sub: &mut Option<crate::subkeys::SubKey>,
+) -> Result<Option<Tenant>, AppError> {
+    if !key.starts_with(crate::auth::SUB_KEY_PREFIX) {
+        return Ok(None);
+    }
+    let Some(found) = state.db.find_sub_key_by_hash(hash_key(key)).await? else {
+        return Ok(None);
+    };
+    let Some(tenant) = state.db.find_tenant_by_id(found.tenant_id).await? else {
+        return Ok(None);
+    };
+    if let Some(dead) = found.dead_reason(now_unix()) {
+        return Err(dead);
+    }
+    if let Err(e) = state.db.touch_sub_key(found.id, now_unix()).await {
+        tracing::warn!(error = %e, tenant = %tenant.namespace, "failed to bump sub-key last_used_at");
+    }
+    *sub = Some(found);
+    Ok(Some(tenant))
+}
+
+async fn resolve_auth(
+    state: &AppState,
+    parts: &http::request::Parts,
+    sub: &mut Option<crate::subkeys::SubKey>,
+) -> Result<Auth, AppError> {
     let Some(key) = extract_bearer(&parts.headers) else {
         return Ok(Auth::Anonymous);
     };
@@ -106,6 +139,15 @@ async fn resolve_auth(state: &AppState, parts: &http::request::Parts) -> Result<
         return Ok(Auth::Admin);
     }
     let hash = hash_key(&key);
+    if let Some(t) = resolve_sub_key_tenant(state, &key, sub).await? {
+        if t.disabled {
+            return Err(AppError::TenantDisabled);
+        }
+        if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
+            tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
+        }
+        return Ok(Auth::Tenant(Box::new(t), None));
+    }
     match state.db.find_tenant_by_key_hash(hash).await? {
         Some(t) if t.disabled => Err(AppError::TenantDisabled),
         Some(t) => {
@@ -154,11 +196,24 @@ async fn resolve_auth(state: &AppState, parts: &http::request::Parts) -> Result<
 /// Mirrors `resolve_auth`'s header branch exactly -- same disabled/unknown
 /// handling -- so an argument-based and header-based key are authorized
 /// identically (requirement 5) and refused identically (requirements 7, 8).
-async fn resolve_tenant_key_auth(state: &AppState, args: &Value) -> Result<Auth, AppError> {
+async fn resolve_tenant_key_auth(
+    state: &AppState,
+    args: &Value,
+    sub: &mut Option<crate::subkeys::SubKey>,
+) -> Result<Auth, AppError> {
     let Some(key) = args.get("tenant_key").and_then(Value::as_str) else {
         return Ok(Auth::Anonymous);
     };
     let hash = hash_key(key);
+    if let Some(t) = resolve_sub_key_tenant(state, key, sub).await? {
+        if t.disabled {
+            return Err(AppError::TenantKeyInvalid);
+        }
+        if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
+            tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
+        }
+        return Ok(Auth::Tenant(Box::new(t), None));
+    }
     match state.db.find_tenant_by_key_hash(hash).await? {
         // PRD-mcphost-auth-error-names-argument requirement 2 / AC3: unlike
         // the header path's `AppError::TenantDisabled` (unchanged --
@@ -1144,6 +1199,56 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
              new key exactly once -- use it (as tenant_key or Authorization) for every call \
              after this one.",
             host_schema(json!({}), &[]),
+        ),
+        // PRD-mcphost-key-scoped-to-tools R2: primary key only.
+        Tool::new(
+            "host.key.mint",
+            "Mint a sub-key that opens only the named tools (your own, or shared-in qualified \
+             names) plus host.whoami/host.quickstart, expires after ttl_s, and survives \
+             host.key.rotate. Returns the key once. Primary key only.",
+            host_schema(
+                json!({
+                    "tools": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "maxItems": 64,
+                        "description": "Tool names the sub-key may call: your own tools by local name, shared-in tools by qualified <namespace>.<name>.",
+                    },
+                    "ttl_s": {
+                        "type": "integer",
+                        "minimum": 60,
+                        "maximum": 7776000,
+                        "description": "Lifetime in seconds (default 2592000 = 30 days).",
+                    },
+                    "label": {
+                        "type": "string",
+                        "description": "Name for host.key.revoke / host.key.list; unique per tenant (default: generated).",
+                    },
+                }),
+                &["tools"],
+            ),
+        ),
+        // PRD-mcphost-key-scoped-to-tools R5.
+        Tool::new(
+            "host.key.list",
+            "List this tenant's sub-keys: label, tools, created_at, expires_at, revoked_at, \
+             last_used_at. Never returns a key. Primary key only.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "host.key.revoke",
+            "Revoke the sub-key with this label: its very next call fails key_revoked. Does \
+             not touch the primary key. Primary key only.",
+            host_schema(
+                json!({
+                    "label": {
+                        "type": "string",
+                        "description": "The label host.key.mint returned (see host.key.list).",
+                    },
+                }),
+                &["label"],
+            ),
         ),
         // PRD-mcphost-tenant-self-offboard P0 requirement 1 / AC1-4:
         // authenticated like every other host.* tenant tool -- host_schema's
@@ -6411,6 +6516,9 @@ impl McpHostHandler {
                 control::whoami(&self.state, tenant, subject, auth_method, session_tenant.as_deref()).await
             }
             "host.key.rotate" => control::key_rotate(&self.state, tenant).await,
+            "host.key.mint" => crate::subkeys::mint(&self.state, tenant, &args).await,
+            "host.key.list" => crate::subkeys::list(&self.state, tenant).await,
+            "host.key.revoke" => crate::subkeys::revoke(&self.state, tenant, &args).await,
             "host.self.offboard" => control::self_offboard(&self.state, tenant).await,
             "host.tool.publish" => self.tool_publish_with_example(tenant, args).await,
             "host.tool.list" => control::tool_list(&self.state, tenant, &args).await,
@@ -9846,13 +9954,14 @@ impl ServerHandler for McpHostHandler {
         // PRD-mcphost-url-bound-tenants requirement 1: same highest-
         // precedence path-secret step `call_tool` uses, so a `tools/list` on
         // a `/u/{secret}/mcp` connection sees that tenant's own tools too.
+        let mut sub_key: Option<crate::subkeys::SubKey> = None;
         let mut auth = match resolve_path_secret_auth(&self.state, parts)
             .await
             .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
         {
             Some(a) => a,
             None => {
-                resolve_auth(&self.state, parts)
+                resolve_auth(&self.state, parts, &mut sub_key)
                     .await
                     .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
             }
@@ -9891,6 +10000,10 @@ impl ServerHandler for McpHostHandler {
         // variant is added -- see the anonymous/admin branches this
         // replaced, which did exactly that.
         let is_admin = matches!(auth, Auth::Admin);
+        let tenant_ns = match &auth {
+            Auth::Tenant(t, _) => Some(t.namespace.clone()),
+            _ => None,
+        };
         let (mut tools, ttl_ms) = match auth {
             // PRD-mcphost-one-next-tool requirement 1 (AC1): an anonymous or
             // invalid-bearer session now sees only the starter set, not the
@@ -9980,6 +10093,12 @@ impl ServerHandler for McpHostHandler {
         if self.state.drafter.is_some() && !is_admin {
             tools.push(tool_from_description_tool());
         }
+        // PRD-mcphost-key-scoped-to-tools R4: a sub-key sees exactly its
+        // allowlist plus `subkeys::ALWAYS_LISTED`, applied after the scope
+        // filter and every push above.
+        if let (Some(sk), Some(ns)) = (&sub_key, tenant_ns.as_deref()) {
+            tools.retain(|t| sk.permits(ns, &t.name));
+        }
         annotate_deprecated_tools(&mut tools, &self.state.deprecations);
         Ok(ListToolsResult::with_all_items(tools)
             .with_ttl_ms(ttl_ms)
@@ -9987,6 +10106,22 @@ impl ServerHandler for McpHostHandler {
     }
 
     async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<CallToolResponse, McpError> {
+        // PRD-mcphost-key-scoped-to-tools R3: the cell `call_tool_inner`
+        // fills once a sub-key resolves, read by the `calls` insert.
+        crate::subkeys::CALL_KEY
+            .scope(std::cell::Cell::new(None), self.call_tool_inner(request, ctx))
+            .await
+    }
+
+    async fn on_initialized(&self, _context: NotificationContext<RoleServer>) {}
+}
+
+impl McpHostHandler {
+    pub(crate) async fn call_tool_inner(
         &self,
         request: CallToolRequestParams,
         ctx: RequestContext<RoleServer>,
@@ -10014,10 +10149,11 @@ impl ServerHandler for McpHostHandler {
             .await
             .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
         let via_url_secret = path_secret_auth.is_some();
+        let mut sub_key: Option<crate::subkeys::SubKey> = None;
         let mut auth = match path_secret_auth {
             Some(a) => a,
             None => {
-                resolve_auth(&self.state, parts)
+                resolve_auth(&self.state, parts, &mut sub_key)
                     .await
                     .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
             }
@@ -10039,7 +10175,7 @@ impl ServerHandler for McpHostHandler {
         // play for whatever `auth` becomes next.
         let via_tenant_key_arg = matches!(auth, Auth::Anonymous);
         if via_tenant_key_arg {
-            auth = resolve_tenant_key_auth(&self.state, &raw_args)
+            auth = resolve_tenant_key_auth(&self.state, &raw_args, &mut sub_key)
                 .await
                 .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
             // PRD-mcphost-session-bound-tenant-key requirement 1: this is
@@ -10314,6 +10450,17 @@ impl ServerHandler for McpHostHandler {
             && let Some((name, version)) = peer_client_info(&ctx)
         {
             let _ = self.state.db.set_tenant_client_info(tenant.id, name, version).await;
+        }
+        // PRD-mcphost-key-scoped-to-tools R3: rows this call writes to
+        // `calls` carry the sub-key's id, and a call outside its allowlist
+        // (or on the always-refused set) is `permission_denied` before any
+        // dispatch below runs.
+        if let (Some(sk), Auth::Tenant(tenant, _)) = (&sub_key, &auth) {
+            let _ = crate::subkeys::CALL_KEY.try_with(|c| c.set(Some(sk.id)));
+            let canonical = crate::tool_aliases::resolve(&body_name).unwrap_or(&body_name);
+            if !sk.permits(&tenant.namespace, canonical) {
+                return Err(sk.denied(canonical).into_error_data_at(Some(&self.state.public_url)));
+            }
         }
         // PRD-mcphost-abuse-guard-ban-list requirement 2 / AC2: every
         // authenticated tool call (header or tenant_key-argument alike)
@@ -11057,8 +11204,6 @@ impl ServerHandler for McpHostHandler {
             }
         }
     }
-
-    async fn on_initialized(&self, _context: NotificationContext<RoleServer>) {}
 }
 
 /// PRD-mcphost-tool-test-examples-from-schema R2 (AC4): the generated example

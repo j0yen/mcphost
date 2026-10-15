@@ -580,6 +580,7 @@ pub const UNPAGED_VERBS: &[(&str, &str)] = &[
     ("host.help.search", UNPAGED_RANKED),
     ("host.invite.create", UNPAGED_ECHO),
     ("host.invite.list", UNPAGED_BOUNDED),
+    ("host.key.list", UNPAGED_BOUNDED),
     ("host.msg.wait", UNPAGED_WAIT),
     ("host.oauth.audit", UNPAGED_LEGACY),
     ("host.oauth.audit_export", UNPAGED_EXPORT),

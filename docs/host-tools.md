@@ -53,6 +53,8 @@ Regenerate with `scripts/sandbox-api-doc-check.sh --write`.
 | `host.agent.profile_set` | write | supported | |
 | `host.share.caller_limit_remove` | remove | supported | |
 | `host.key.rotate` | rotate | refused | `external_effect` |
+| `host.key.mint` | write | refused | `external_effect` |
+| `host.key.revoke` | revoke | refused | `irreversible_by_design` |
 | `host.blob.put` | write | refused | `external_effect` |
 | `host.blob.delete` | delete | refused | `external_effect` |
 | `host.feedback.send` | write | refused | `external_effect` |

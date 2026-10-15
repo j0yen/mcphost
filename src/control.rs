@@ -759,7 +759,8 @@ pub async fn key_rotate(state: &AppState, tenant: &Tenant) -> Result<Value, AppE
             the tenant_key argument (or Authorization header) on every call from here on; \
             the old key now fails as unauthenticated. It also replaces your previous URL: the \
             old /u/<secret>/mcp link is now a 404, and the new url above needs no key or header \
-            at all.",
+            at all. Sub-keys minted with host.key.mint are NOT affected: host.key.rotate \
+            leaves them untouched and still valid.",
     }))
 }
 

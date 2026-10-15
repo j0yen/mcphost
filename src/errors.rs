@@ -661,6 +661,10 @@ impl AppError {
                 // signup path's own rate-limit refusal is the same
                 // caller-state gate as `rate_limited` right above it.
                 "rate_limited" | "signup_rate_limited" | "signup_paused" | "banned"
+                // PRD-mcphost-key-scoped-to-tools R3: a sub-key calling
+                // outside its allowlist is the same caller-credential
+                // problem as `insufficient_scope`.
+                | "permission_denied"
                 | "insufficient_scope" | "invite_invalid" | "invite_rate_limited" => {
                     ErrorCode::INVALID_REQUEST
                 }
@@ -735,6 +739,12 @@ impl AppError {
                 // mirrors `tool_not_found`; a replay left holding a masked
                 // value is a caller-input problem.
                 "trace_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
+                // PRD-mcphost-key-scoped-to-tools R2: `host.key.mint` naming a
+                // tool that is not the caller's own or shared in.
+                "not_found" => ErrorCode::RESOURCE_NOT_FOUND,
+                // PRD-mcphost-key-scoped-to-tools R3: a revoked or expired
+                // sub-key is a bad credential parameter (-32602).
+                "key_expired" | "key_revoked" => ErrorCode::INVALID_PARAMS,
                 "replay_needs_secret" => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-inbound-events: `host.trigger.test`'s own
                 // caller-input problems -- a bad signature/payload, a rate

@@ -4085,6 +4085,102 @@
     ],
     "type": "object"
   },
+  "host.key.list": {
+    "properties": {
+      "keys": {
+        "items": {
+          "properties": {
+            "created_at": {
+              "type": "integer"
+            },
+            "expires_at": {
+              "type": "integer"
+            },
+            "label": {
+              "type": "string"
+            },
+            "last_used_at": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "revoked_at": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "tools": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "created_at",
+            "expires_at",
+            "label",
+            "last_used_at",
+            "revoked_at",
+            "tools"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "keys"
+    ],
+    "type": "object"
+  },
+  "host.key.mint": {
+    "properties": {
+      "expires_at": {
+        "type": "integer"
+      },
+      "key": {
+        "type": "string"
+      },
+      "label": {
+        "type": "string"
+      },
+      "tools": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "usage": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "expires_at",
+      "key",
+      "label",
+      "tools",
+      "usage"
+    ],
+    "type": "object"
+  },
+  "host.key.revoke": {
+    "properties": {
+      "label": {
+        "type": "string"
+      },
+      "revoked_at": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "label",
+      "revoked_at"
+    ],
+    "type": "object"
+  },
   "host.key.rotate": {
     "properties": {
       "key": {

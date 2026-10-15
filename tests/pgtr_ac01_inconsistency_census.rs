@@ -90,11 +90,12 @@ async fn census_counts_list_verbs_cursors_and_end_of_list_conventions() {
     );
     // PRD baseline 32, plus host.ask.list (PRD-mcphost-ask-user-decision, a
     // windowed `{asks: [...]}` audit list registered unpaged in
-    // `paged::UNPAGED_VERBS`).
+    // `paged::UNPAGED_VERBS`), plus host.key.list
+    // (PRD-mcphost-key-scoped-to-tools, bounded by the plan's `sub_keys_max`).
     assert_eq!(
         list_shaped.len(),
-        33,
-        "list-shaped verbs drifted from the PRD baseline 32 + host.ask.list: {list_shaped:?}"
+        34,
+        "list-shaped verbs drifted from the PRD baseline 32 + host.ask.list + host.key.list: {list_shaped:?}"
     );
     assert_eq!(
         conventions,
