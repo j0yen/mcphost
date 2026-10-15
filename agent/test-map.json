@@ -600,6 +600,17 @@
       "AC10": "tests/busyaudit_ac10_wal_checkpoint_cron.rs",
       "AC11": "DEFERRED -- operator-provisioned: a real staging/mcphost-1 load-proof run (busy_total==0 against prod-shaped traffic) needs a live operator-provisioned box; not in this dispatch's assigned AC list (AC1-AC10 only)."
     },
+    "cae": {
+      "_prd": "PRD-mcphost-call-audit-export.md",
+      "AC1": "tests/cae_ac01_credential_on_every_call_row.rs",
+      "AC2": "tests/cae_ac02_cursor_pages_every_row_once.rs",
+      "AC3": "tests/cae_ac03_export_is_es256_signed_over_the_csv_bytes.rs",
+      "AC4": "tests/cae_ac04_free_plan_prunes_to_seven_days.rs",
+      "AC5": "tests/cae_ac05_export_row_cap_and_subkey_scope.rs",
+      "AC6": "tests/cae_ac06_admin_export_matches_the_tenants_own.rs",
+      "AC7": "tests/cae_ac07_empty_window_exports_the_header_only.rs",
+      "AC8": "DEFERRED -- operator-provisioned: live prod probe against https://mcphost.dev after landing."
+    },
     "callerusage": {
       "_prd": "PRD-mcphost-shared-tool-caller-usage.md -- superseded by mcphost-end-user-audit-and-revoke at HEAD; real test_prefix is callerusage",
       "AC1": "tests/callerusage_ac01_caller_breakdown.rs",
