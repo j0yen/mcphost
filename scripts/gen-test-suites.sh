@@ -747,7 +747,46 @@ def distribute_exclusive(buckets, exclusive_stems):
     return [[stem] for stem in sorted(exclusive_stems)] + [list(b) for b in buckets]
 
 
+# Affinity groups: tests/hzkeys_ac02_handler_body_equals_const.rs asserts that
+# EVERY test file reading the anonymous /healthz key set is `mod <stem>;`'d in
+# its OWN suite file (its meta-test re-runs that one binary with an extra key
+# armed and needs all the readers inside it). Which files those are is a
+# property of file CONTENT, not of filename prefix (ac14_*, busyaudit_*,
+# ctrv_*, hzkeys_*, hzver_*, minimal_* ...), so prefix bucketing alone splits
+# them whenever a bucket boundary (a cap fill that shifts with every added
+# test file) falls between two of the prefixes -- main went red on --check and
+# the PR branches that regenerated to fix it went red on hzkeys_ac02. The
+# needles below are the SAME strings that test greps for; keep them in sync
+# (tests/hzkeys_ac02_handler_body_equals_const.rs `anon_body_readers`). A file
+# matching one is filed under the single area key AFFINITY_KEY, which
+# `bucketize` never splits; `check_affinity` then refuses a plan that still
+# puts the group in more than one suite (e.g. a reader that is also
+# env-guarded, a contract file, or sandbox-classified).
+AFFINITY_NEEDLES = ("anon_healthz_keys()", "assert_anon_healthz(", "check_anon_healthz_keys(", "ANON_HEALTHZ_KEYS")
+AFFINITY_KEY = "hzkeys"
+AFFINITY = {}  # stem -> AFFINITY_KEY, filled by compute_plan() from file content
+
+
+def is_affinity(stem, content):
+    return not stem.startswith("suite_") and any(n in content for n in AFFINITY_NEEDLES)
+
+
+def check_affinity(suite_files):
+    """Die unless every AFFINITY stem sits in exactly one suite file."""
+    homes = {}
+    for path, content in suite_files.items():
+        for stem in re.findall(r'#\[path\s*=\s*"([^"/]+)\.rs"\]', content):
+            if stem in AFFINITY:
+                homes.setdefault(path, []).append(stem)
+    if len(homes) > 1:
+        detail = "; ".join(f"{os.path.basename(p)}: {', '.join(sorted(v))}" for p, v in sorted(homes.items()))
+        die("files reading the anonymous healthz key set must share ONE suite "
+            f"(tests/hzkeys_ac02_handler_body_equals_const.rs), but are split: {detail}")
+
+
 def area_key(stem):
+    if stem in AFFINITY:
+        return AFFINITY_KEY
     m = AC_PREFIX_RE.match(stem)
     if m:
         return "ac"
@@ -796,7 +835,7 @@ def existing_support_decls():
     `#[path = ...] mod <name>;` block this run could otherwise learn it
     from."""
     cache = {}
-    for suite_path in glob.glob("tests/suite_*.rs"):
+    for suite_path in sorted(glob.glob("tests/suite_*.rs")):
         if not GENERATED_SUITE_RE.match(os.path.basename(suite_path)):
             continue
         with open(suite_path, encoding="utf-8") as fh:
@@ -980,6 +1019,8 @@ def compute_plan():
         new_content, needs_common, needs_ci_sandbox, support_helpers = migrate_content(content)
         migrations[f] = (new_content, needs_common, needs_ci_sandbox, support_helpers)
         stem = os.path.basename(f)[:-3]
+        if is_affinity(stem, content):
+            AFFINITY[stem] = AFFINITY_KEY
         env = is_env_guarded(content)
         exclusive = is_exclusive_global(content)
         if is_contract(content):
@@ -1023,6 +1064,8 @@ def compute_plan():
     contract_suite_names_by_partition = build_suites(
         "suite_contracts", CONTRACT_MAX_PER_SUITE, contract_by_partition, contract_exclusive_by_partition, migrations, suite_files
     )
+
+    check_affinity(suite_files)
 
     all_suite_names = sorted(
         suite_names_by_partition["core"] + suite_names_by_partition["sandbox"]
