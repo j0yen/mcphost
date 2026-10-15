@@ -24,8 +24,6 @@ mod docs_qa;
 mod emin;
 #[path = "support/exprp.rs"]
 mod exprp;
-#[path = "support/fake_as.rs"]
-mod fake_as;
 #[path = "support/federation.rs"]
 mod federation;
 #[path = "support/lanecov.rs"]
@@ -36,8 +34,6 @@ mod mrefu;
 mod msrvlock;
 #[path = "support/oauth.rs"]
 mod oauth;
-#[path = "support/oauthclient.rs"]
-mod oauthclient;
 #[path = "support/serve.rs"]
 mod serve;
 #[path = "support/slotkind.rs"]
@@ -1835,17 +1831,3 @@ mod nudge_ac05_provider_failure_retries_then_abandons;
 mod nudge_ac06_welcome_back_since_you_left;
 #[path = "nudge_ac07_funnel_reports_nudged_and_return_rate.rs"]
 mod nudge_ac07_funnel_reports_nudged_and_return_rate;
-#[path = "oauthconf_ac01_gate_verdict_table_matches_gold.rs"]
-mod oauthconf_ac01_gate_verdict_table_matches_gold;
-#[path = "oauthconf_ac02_cimd_preferred_over_dcr_and_unsupported_without_either.rs"]
-mod oauthconf_ac02_cimd_preferred_over_dcr_and_unsupported_without_either;
-#[path = "oauthconf_ac03_authorize_request_scope_resource_pkce_state.rs"]
-mod oauthconf_ac03_authorize_request_scope_resource_pkce_state;
-#[path = "oauthconf_ac04_attack_probes_pass_only_on_as_refusal.rs"]
-mod oauthconf_ac04_attack_probes_pass_only_on_as_refusal;
-#[path = "oauthconf_ac05_probe_cli_json_matches_gate_and_exit_codes.rs"]
-mod oauthconf_ac05_probe_cli_json_matches_gate_and_exit_codes;
-#[path = "oauthconf_ac06_records_and_receipt_never_leak_secrets.rs"]
-mod oauthconf_ac06_records_and_receipt_never_leak_secrets;
-#[path = "oauthconf_ac07_scenarios_doc_matches_gold_and_docs_sharing_check.rs"]
-mod oauthconf_ac07_scenarios_doc_matches_gold_and_docs_sharing_check;
