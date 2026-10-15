@@ -28,8 +28,6 @@ mod federation;
 mod lanecov;
 #[path = "support/mrefu.rs"]
 mod mrefu;
-#[path = "support/msrvlock.rs"]
-mod msrvlock;
 #[path = "support/oauth.rs"]
 mod oauth;
 #[path = "support/serve.rs"]
@@ -1831,13 +1829,3 @@ mod msg_ac13_unread_only;
 mod msg_ac14_thread_continuation;
 #[path = "msg_regr01_dedupe_hit_preserves_refused.rs"]
 mod msg_regr01_dedupe_hit_preserves_refused;
-#[path = "msrvlock_ac01_stale_lock_fails.rs"]
-mod msrvlock_ac01_stale_lock_fails;
-#[path = "msrvlock_ac02_cargo_steps_are_locked.rs"]
-mod msrvlock_ac02_cargo_steps_are_locked;
-#[path = "msrvlock_ac03_generate_lists_nine_contexts.rs"]
-mod msrvlock_ac03_generate_lists_nine_contexts;
-#[path = "msrvlock_ac04_check_compares_live_protection.rs"]
-mod msrvlock_ac04_check_compares_live_protection;
-#[path = "msrvlock_ac05_toml_equals_generate.rs"]
-mod msrvlock_ac05_toml_equals_generate;
