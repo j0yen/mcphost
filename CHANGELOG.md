@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.108.0 — 2026-10-15
+
+Released by wm-build land: train 8: mcphost-host-changelog-since-b.
+
 ## v0.107.72 — 2026-10-13
 
 `host.changelog` (PRD-mcphost-host-changelog-since) now answers `{since, now, releases, added, renamed,
