@@ -1,0 +1,1 @@
+{"chunks": 125, "lag_seconds": 0, "name": "handbook", "pending": 0, "quota": {"index_chunks_max": 20000}, "sources": [{"chunks": 24, "items": 8, "kind": "doc", "ref": "hb/"}, {"chunks": 100, "items": 100, "kind": "table", "ref": "orders"}, {"chunks": 1, "items": 1, "kind": "url", "ref": "http://127.0.0.1:1/faq"}]}

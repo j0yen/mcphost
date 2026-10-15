@@ -28,6 +28,16 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "oauthmeta_ac01_tenant_document_lists_hosted_as.rs"]
+mod oauthmeta_ac01_tenant_document_lists_hosted_as;
+#[path = "oauthmeta_ac02_registered_issuer_follows_hosted_as.rs"]
+mod oauthmeta_ac02_registered_issuer_follows_hosted_as;
+#[path = "oauthmeta_ac03_issuer_url_validator_gates_setters.rs"]
+mod oauthmeta_ac03_issuer_url_validator_gates_setters;
+#[path = "oauthmeta_ac04_stored_non_url_issuer_leaves_documents.rs"]
+mod oauthmeta_ac04_stored_non_url_issuer_leaves_documents;
+#[path = "oauthmeta_ac05_contract_walk_document_to_token.rs"]
+mod oauthmeta_ac05_contract_walk_document_to_token;
 #[path = "oauthpol_ac01_allowlist_by_client_id_and_cimd_host.rs"]
 mod oauthpol_ac01_allowlist_by_client_id_and_cimd_host;
 #[path = "oauthpol_ac02_approve_mode_pending_approve_deny.rs"]

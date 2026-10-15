@@ -44,6 +44,8 @@ Every numeric ceiling in the plan table, as `host.quickstart` `limits.plan` repo
 | `events_per_minute` | 30 | 300 |
 | `export_bytes_max` | 52428800 | 1073741824 |
 | `inbox_rows_max` | 2000 | 20000 |
+| `index_chunks_max` | 20000 | 200000 |
+| `index_max` | 3 | 50 |
 | `invites_max` | 3 | 25 |
 | `job_max_s` | 300 | 900 |
 | `jobs_concurrent` | 1 | 3 |

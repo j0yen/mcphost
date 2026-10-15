@@ -2397,6 +2397,40 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &[],
             ),
         ),
+        // PRD-mcphost-index-create-from-sources R1/R4: a named index over
+        // documents, table columns and urls, built by the background indexer.
+        Tool::new(
+            "host.index.create",
+            "Register a named index over documents, table columns and urls and return at \
+             once ({name, sources, status: \"building\"}); the background indexer chunks every \
+             source with byte offsets. Poll host.index.status for progress. A fourth index on \
+             the free plan is refused quota_index_max.",
+            host_schema(
+                json!({
+                    "name": {"type": "string", "description": "Index name, ^[a-z0-9][a-z0-9_-]{0,63}$."},
+                    "sources": crate::index::sources_schema(),
+                    "chunking": {
+                        "type": "object",
+                        "description": "Chunk window in bytes; defaults max_chars 1200, overlap_chars 200.",
+                        "properties": {
+                            "max_chars": {"type": "integer"},
+                            "overlap_chars": {"type": "integer"},
+                        },
+                    },
+                }),
+                &["name", "sources"],
+            ),
+        ),
+        Tool::new(
+            "host.index.status",
+            "Build progress of one named index: chunks, pending (sources still being built), \
+             lag_seconds, quota.index_chunks_max, and per-source {kind, ref, items, chunks, \
+             last_error?}.",
+            host_schema(
+                json!({"name": {"type": "string", "description": "The index name."}}),
+                &["name"],
+            ),
+        ),
         Tool::new(
             "host.docs.status",
             "This tenant's document store counters: documents, bytes, text_bytes, the current \
@@ -6526,6 +6560,8 @@ impl McpHostHandler {
             "host.docs.search" => docs::doc_search(&self.state, tenant, &args, end_user).await,
             "host.docs.index_config" => docs::doc_index_config(&self.state, tenant, &args).await,
             "host.docs.reindex" => docs::doc_reindex(&self.state, tenant, &args).await,
+            "host.index.create" => crate::index::index_create(&self.state, tenant, &args).await,
+            "host.index.status" => crate::index::index_status(&self.state, tenant, &args).await,
             "host.drift.reviews" => crate::drift::reviews(&self.state, tenant, &args).await,
             "host.drift.review" => crate::drift::review_item(&self.state, tenant, &args).await,
             "host.drift.resolve" => crate::drift::resolve(&self.state, tenant, &args).await,

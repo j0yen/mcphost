@@ -58,6 +58,12 @@ pub struct Chunk {
 /// its own is split into fixed windows with a true, offset-shifting
 /// overlap instead (there is no larger unit to align to).
 pub fn chunk_text(text: &str) -> Vec<Chunk> {
+    chunk_text_with(text, CHUNK_MAX_CHARS, CHUNK_OVERLAP_CHARS)
+}
+
+/// [`chunk_text`] with the window and overlap sizes supplied by the caller
+/// (`host.index.create`'s `chunking`); `overlap` must be smaller than `max`.
+pub fn chunk_text_with(text: &str, max: usize, overlap: usize) -> Vec<Chunk> {
     let paragraphs = split_paragraphs(text);
     let mut chunks: Vec<Chunk> = Vec::new();
     let mut cur_start: Option<usize> = None;
@@ -68,16 +74,16 @@ pub fn chunk_text(text: &str) -> Vec<Chunk> {
         if p_text.trim().is_empty() {
             continue;
         }
-        if p_text.len() > CHUNK_MAX_CHARS {
+        if p_text.len() > max {
             flush_chunk(&mut chunks, cur_start, &cur_parts);
             cur_start = None;
             cur_parts.clear();
             cur_len = 0;
-            chunks.extend(split_long_paragraph(*p_start, p_text));
+            chunks.extend(split_long_paragraph(*p_start, p_text, max, overlap));
             continue;
         }
         let additional = if cur_parts.is_empty() { p_text.len() } else { 2 + p_text.len() };
-        if !cur_parts.is_empty() && cur_len + additional > CHUNK_MAX_CHARS {
+        if !cur_parts.is_empty() && cur_len + additional > max {
             flush_chunk(&mut chunks, cur_start, &cur_parts);
             cur_start = None;
             cur_parts.clear();
@@ -101,7 +107,7 @@ pub fn chunk_text(text: &str) -> Vec<Chunk> {
             c.len = combined.len() as i64;
             c.text = combined;
         }
-        prev_tail = tail_chars(&c.text, CHUNK_OVERLAP_CHARS);
+        prev_tail = tail_chars(&c.text, overlap);
     }
     chunks
 }
@@ -134,11 +140,11 @@ fn flush_chunk(chunks: &mut Vec<Chunk>, start: Option<usize>, parts: &[&str]) {
 /// A single paragraph too big for one window on its own: fixed
 /// [`CHUNK_MAX_CHARS`] windows with a true (offset-shifting)
 /// [`CHUNK_OVERLAP_CHARS`] overlap between them.
-fn split_long_paragraph(base_offset: usize, text: &str) -> Vec<Chunk> {
+fn split_long_paragraph(base_offset: usize, text: &str, max: usize, overlap: usize) -> Vec<Chunk> {
     let mut out = Vec::new();
     let mut start = 0usize;
     loop {
-        let mut end = (start + CHUNK_MAX_CHARS).min(text.len());
+        let mut end = (start + max).min(text.len());
         while end < text.len() && !text.is_char_boundary(end) {
             end += 1;
         }
@@ -151,7 +157,7 @@ fn split_long_paragraph(base_offset: usize, text: &str) -> Vec<Chunk> {
         if end >= text.len() {
             break;
         }
-        start = end.saturating_sub(CHUNK_OVERLAP_CHARS);
+        start = end.saturating_sub(overlap);
     }
     out
 }
@@ -381,16 +387,31 @@ async fn resolve_tenant_secret(
 /// aborting the whole tick -- one tenant's provider outage or malformed
 /// document must never stall every other tenant's own 10 s cadence.
 pub async fn tick_once(state: &AppState) -> Result<(), AppError> {
-    let tenant_ids = state.db.tenants_with_pending_docs().await?;
+    let mut tenant_ids = state.db.tenants_with_pending_docs().await?;
+    let docs_pending: std::collections::HashSet<i64> = tenant_ids.iter().copied().collect();
+    for id in crate::index::tenants_with_pending_sources(state).await? {
+        if !docs_pending.contains(&id) {
+            tenant_ids.push(id);
+        }
+    }
     for tenant_id in tenant_ids {
-        if let Err(e) = tick_tenant(state, tenant_id).await {
+        if let Err(e) = tick_tenant(state, tenant_id, docs_pending.contains(&tenant_id)).await {
             tracing::warn!(tenant_id, error = %e, "docs indexer: tick failed for tenant");
         }
     }
     Ok(())
 }
 
-async fn tick_tenant(state: &AppState, tenant_id: i64) -> Result<(), AppError> {
+/// One tenant's tick: the docs pass (only when documents are pending), then
+/// the named-index pass (`host.index.create` sources). A failing docs pass
+/// never skips the index pass.
+async fn tick_tenant(state: &AppState, tenant_id: i64, docs_pending: bool) -> Result<(), AppError> {
+    let docs = if docs_pending { docs_pass(state, tenant_id).await } else { Ok(()) };
+    let index = crate::index::tick_tenant(state, tenant_id).await;
+    docs.and(index)
+}
+
+async fn docs_pass(state: &AppState, tenant_id: i64) -> Result<(), AppError> {
     let now = crate::state::now_unix();
     state.db.doc_index_state_ensure(tenant_id, now).await?;
     let idx = state

@@ -23,6 +23,7 @@ Regenerate with `scripts/sandbox-api-doc-check.sh --write`.
 | `host.docs.put` | write | supported | |
 | `host.docs.delete` | delete | supported | |
 | `host.docs.purge` | delete | supported | |
+| `host.index.create` | write | supported | |
 | `host.enduser.purge` | delete | supported | |
 | `host.enduser.revoke` | revoke | supported | |
 | `host.enduser.unrevoke` | revoke | supported | |

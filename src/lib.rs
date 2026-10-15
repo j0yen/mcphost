@@ -40,6 +40,7 @@ pub mod docs;
 pub mod drafter;
 pub mod docs_examples;
 pub mod docs_index;
+pub mod index;
 pub mod drift;
 pub mod dryrun;
 pub mod write_verbs;

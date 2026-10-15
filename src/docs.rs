@@ -593,10 +593,15 @@ async fn index_lag_seconds(
     watermark: i64,
     now: i64,
 ) -> Result<i64, AppError> {
-    match state.db.documents_pending_oldest_updated_at(tenant_id, watermark).await? {
-        Some(t) => Ok((now - t).max(0)),
-        None => Ok(0),
-    }
+    let oldest = state.db.documents_pending_oldest_updated_at(tenant_id, watermark).await?;
+    Ok(lag_seconds_since(oldest, now))
+}
+
+/// The one `lag_seconds` rule, shared by `host.docs.status` and
+/// `host.index.status`: seconds since the oldest pending item was written,
+/// `0` once nothing is pending.
+pub(crate) fn lag_seconds_since(oldest_pending: Option<i64>, now: i64) -> i64 {
+    oldest_pending.map_or(0, |t| (now - t).max(0))
 }
 
 // ---- host.docs.search (P0 requirement 3) -----------------------------

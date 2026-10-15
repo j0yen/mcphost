@@ -3854,6 +3854,81 @@
     ],
     "type": "object"
   },
+  "host.index.create": {
+    "properties": {
+      "name": {
+        "type": "string"
+      },
+      "sources": {
+        "type": "integer"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "sources",
+      "status"
+    ],
+    "type": "object"
+  },
+  "host.index.status": {
+    "properties": {
+      "chunks": {
+        "type": "integer"
+      },
+      "lag_seconds": {
+        "type": "integer"
+      },
+      "name": {
+        "type": "string"
+      },
+      "pending": {
+        "type": "integer"
+      },
+      "quota": {
+        "properties": {
+          "index_chunks_max": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "sources": {
+        "items": {
+          "properties": {
+            "chunks": {
+              "type": "integer"
+            },
+            "items": {
+              "type": "integer"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "last_error": {
+              "type": "string"
+            },
+            "ref": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "chunks",
+      "lag_seconds",
+      "name",
+      "pending",
+      "quota",
+      "sources"
+    ],
+    "type": "object"
+  },
   "host.invite.create": {
     "properties": {
       "_meta": {

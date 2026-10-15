@@ -6160,6 +6160,181 @@
       "since": "0.107.50"
     },
     {
+      "description": "Register a named index over documents, table columns and urls and return at once ({name, sources, status: \"building\"}); the background indexer chunks every source with byte offsets. Poll host.index.status for progress. A fourth index on the free plan is refused quota_index_max.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "chunking": {
+            "description": "Chunk window in bytes; defaults max_chars 1200, overlap_chars 200.",
+            "properties": {
+              "max_chars": {
+                "type": "integer"
+              },
+              "overlap_chars": {
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Index name, ^[a-z0-9][a-z0-9_-]{0,63}$.",
+            "type": "string"
+          },
+          "sources": {
+            "description": "What to index, one object per source; kind is one of: doc, table, url. doc: {prefix} indexes this tenant's documents whose name starts with prefix; table: {table, columns} indexes the named text columns of a host.table table, one chunk set per row; url: {url} fetches one public http(s) page (2 MiB cap).",
+            "items": {
+              "properties": {
+                "columns": {
+                  "description": "table: the columns whose text to index.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "kind": {
+                  "enum": [
+                    "doc",
+                    "table",
+                    "url"
+                  ],
+                  "type": "string"
+                },
+                "prefix": {
+                  "description": "doc: document-name prefix.",
+                  "type": "string"
+                },
+                "table": {
+                  "description": "table: a host.table table name.",
+                  "type": "string"
+                },
+                "url": {
+                  "description": "url: the page to fetch.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "sources"
+        ],
+        "type": "object"
+      },
+      "name": "host.index.create",
+      "output_schema": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "sources": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "sources",
+          "status"
+        ],
+        "type": "object"
+      },
+      "since": "0.107.85"
+    },
+    {
+      "description": "Build progress of one named index: chunks, pending (sources still being built), lag_seconds, quota.index_chunks_max, and per-source {kind, ref, items, chunks, last_error?}.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "The index name.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host.index.status",
+      "output_schema": {
+        "properties": {
+          "chunks": {
+            "type": "integer"
+          },
+          "lag_seconds": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pending": {
+            "type": "integer"
+          },
+          "quota": {
+            "properties": {
+              "index_chunks_max": {
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "sources": {
+            "items": {
+              "properties": {
+                "chunks": {
+                  "type": "integer"
+                },
+                "items": {
+                  "type": "integer"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "last_error": {
+                  "type": "string"
+                },
+                "ref": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "chunks",
+          "lag_seconds",
+          "name",
+          "pending",
+          "quota",
+          "sources"
+        ],
+        "type": "object"
+      },
+      "since": "0.107.85"
+    },
+    {
       "description": "Create an invite link: a friend who connects to the returned url and makes a first host.* call gets a fresh tenant whose contact with you is already accepted and whose listed tools are already shared. The free plan allows 3 live invites at once (host.invite.revoke frees a slot); your own standing invite -- its url is the invite_url field on host.whoami -- never counts against this.",
       "input_schema": {
         "additionalProperties": false,
@@ -22643,6 +22818,108 @@
       },
       "name": "host_import",
       "since": "0.107.50"
+    },
+    {
+      "alias_of": "host.index.create",
+      "description": "Register a named index over documents, table columns and urls and return at once ({name, sources, status: \"building\"}); the background indexer chunks every source with byte offsets. Poll host.index.status for progress. A fourth index on the free plan is refused quota_index_max.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "chunking": {
+            "description": "Chunk window in bytes; defaults max_chars 1200, overlap_chars 200.",
+            "properties": {
+              "max_chars": {
+                "type": "integer"
+              },
+              "overlap_chars": {
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Index name, ^[a-z0-9][a-z0-9_-]{0,63}$.",
+            "type": "string"
+          },
+          "sources": {
+            "description": "What to index, one object per source; kind is one of: doc, table, url. doc: {prefix} indexes this tenant's documents whose name starts with prefix; table: {table, columns} indexes the named text columns of a host.table table, one chunk set per row; url: {url} fetches one public http(s) page (2 MiB cap).",
+            "items": {
+              "properties": {
+                "columns": {
+                  "description": "table: the columns whose text to index.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "kind": {
+                  "enum": [
+                    "doc",
+                    "table",
+                    "url"
+                  ],
+                  "type": "string"
+                },
+                "prefix": {
+                  "description": "doc: document-name prefix.",
+                  "type": "string"
+                },
+                "table": {
+                  "description": "table: a host.table table name.",
+                  "type": "string"
+                },
+                "url": {
+                  "description": "url: the page to fetch.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "sources"
+        ],
+        "type": "object"
+      },
+      "name": "host_index_create",
+      "since": "0.107.85"
+    },
+    {
+      "alias_of": "host.index.status",
+      "description": "Build progress of one named index: chunks, pending (sources still being built), lag_seconds, quota.index_chunks_max, and per-source {kind, ref, items, chunks, last_error?}.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "The index name.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host_index_status",
+      "since": "0.107.85"
     },
     {
       "alias_of": "host.invite.create",
