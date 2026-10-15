@@ -38,23 +38,23 @@ pub const SENDER: &str = "host.email";
 /// every variant appears in it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EmailInboxKind {
-    EmailReceived,
-    EmailInboundQuotaExceeded,
-    EmailBounced,
+    Received,
+    InboundQuotaExceeded,
+    Bounced,
 }
 
 impl EmailInboxKind {
     pub const ALL: &'static [EmailInboxKind] = &[
-        EmailInboxKind::EmailReceived,
-        EmailInboxKind::EmailInboundQuotaExceeded,
-        EmailInboxKind::EmailBounced,
+        EmailInboxKind::Received,
+        EmailInboxKind::InboundQuotaExceeded,
+        EmailInboxKind::Bounced,
     ];
 
     pub fn as_str(self) -> &'static str {
         match self {
-            EmailInboxKind::EmailReceived => "email_received",
-            EmailInboxKind::EmailInboundQuotaExceeded => "email_inbound_quota_exceeded",
-            EmailInboxKind::EmailBounced => "email_bounced",
+            EmailInboxKind::Received => "email_received",
+            EmailInboxKind::InboundQuotaExceeded => "email_inbound_quota_exceeded",
+            EmailInboxKind::Bounced => "email_bounced",
         }
     }
 
@@ -339,7 +339,7 @@ pub fn strip_html(html: &str) -> String {
             let skip_to = ["style", "script"].iter().find_map(|tag| {
                 let open = format!("<{tag}");
                 if lower[i..].starts_with(&open)
-                    && lower[i + open.len()..].starts_with(|c: char| c == '>' || c == ' ' || c == '/' || c == '\t' || c == '\n')
+                    && lower[i + open.len()..].starts_with(['>', ' ', '/', '\t', '\n'])
                 {
                     let close = format!("</{tag}");
                     Some(lower[i..].find(&close).map(|p| i + p).unwrap_or(bytes.len()))
@@ -413,7 +413,7 @@ pub async fn receive(state: std::sync::Arc<AppState>, headers: HeaderMap, body: 
     let (text, text_cut) = cap(&event.text);
     let (html_stripped, html_cut) = cap(&strip_html(&event.html));
     let data = json!({
-        "kind": EmailInboxKind::EmailReceived.as_str(),
+        "kind": EmailInboxKind::Received.as_str(),
         "message_id": event.message_id,
         "from": event.from,
         "to": event.to,
