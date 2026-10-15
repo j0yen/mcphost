@@ -137,10 +137,19 @@ async fn resolve_sub_key_tenant(
     Ok(Some(tenant))
 }
 
+/// A disabled tenant is refused at every resolver, except that a
+/// self-offboarded tenant may still reach its own lifecycle-terminal verb
+/// (`auth_shape::LIFECYCLE_TERMINAL_VERBS`) so that verb can answer
+/// idempotently instead of the auth layer turning success into an error.
+fn is_refused_disabled(t: &Tenant, verb: &str) -> bool {
+    t.disabled && !crate::auth_shape::lets_through_disabled(verb, t.disabled_reason.as_deref())
+}
+
 async fn resolve_auth(
     state: &AppState,
     parts: &http::request::Parts,
     sub: &mut Option<crate::subkeys::SubKey>,
+    verb: &str,
 ) -> Result<Auth, AppError> {
     let Some(key) = extract_bearer(&parts.headers) else {
         return Ok(Auth::Anonymous);
@@ -152,8 +161,8 @@ async fn resolve_auth(
     }
     let hash = hash_key(&key);
     if let Some(t) = resolve_sub_key_tenant(state, &key, sub).await? {
-        if t.disabled {
-            return Err(AppError::TenantDisabled);
+        if is_refused_disabled(&t, verb) {
+            return Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() });
         }
         if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
             tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
@@ -161,7 +170,7 @@ async fn resolve_auth(
         return Ok(Auth::Tenant(Box::new(t), None));
     }
     match state.db.find_tenant_by_key_hash(hash).await? {
-        Some(t) if t.disabled => Err(AppError::TenantDisabled),
+        Some(t) if is_refused_disabled(&t, verb) => Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() }),
         Some(t) => {
             // PRD-mcphost-agent-directory requirement 6: `last_seen` is the
             // tenant's most recent authenticated request -- bumped here,
@@ -184,7 +193,7 @@ async fn resolve_auth(
             let result = crate::oauth::validate_bearer(state, &key).await?;
             crate::oauth::check_entry_audience(&state.public_url, parts.uri.path(), &result)?;
             match state.db.find_tenant_by_id(result.tenant_id).await? {
-                Some(t) if t.disabled => Err(AppError::TenantDisabled),
+                Some(t) if is_refused_disabled(&t, verb) => Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() }),
                 Some(t) => {
                     if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
                         tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
@@ -212,13 +221,14 @@ async fn resolve_tenant_key_auth(
     state: &AppState,
     args: &Value,
     sub: &mut Option<crate::subkeys::SubKey>,
+    verb: &str,
 ) -> Result<Auth, AppError> {
     let Some(key) = args.get("tenant_key").and_then(Value::as_str) else {
         return Ok(Auth::Anonymous);
     };
     let hash = hash_key(key);
     if let Some(t) = resolve_sub_key_tenant(state, key, sub).await? {
-        if t.disabled {
+        if is_refused_disabled(&t, verb) {
             return Err(AppError::TenantKeyInvalid);
         }
         if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
@@ -235,7 +245,7 @@ async fn resolve_tenant_key_auth(
         // it never distinguishes "exists but disabled" from "doesn't
         // exist" for this path, so nothing about a guessed key's validity
         // leaks through it.
-        Some(t) if t.disabled => Err(AppError::TenantKeyInvalid),
+        Some(t) if is_refused_disabled(&t, verb) => Err(AppError::TenantKeyInvalid),
         Some(t) => {
             // See the mirrored comment in `resolve_auth` above.
             if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
@@ -269,13 +279,14 @@ fn url_path_secret(parts: &http::request::Parts) -> Option<&str> {
 async fn resolve_path_secret_auth(
     state: &AppState,
     parts: &http::request::Parts,
+    verb: &str,
 ) -> Result<Option<Auth>, AppError> {
     let Some(secret) = url_path_secret(parts) else {
         return Ok(None);
     };
     let hash = hash_key(secret);
     match state.db.find_tenant_by_url_secret_hash(hash).await? {
-        Some(t) if t.disabled => Err(AppError::TenantDisabled),
+        Some(t) if is_refused_disabled(&t, verb) => Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() }),
         Some(t) => {
             // See the mirrored comment in `resolve_auth` above.
             if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
@@ -467,14 +478,15 @@ async fn record_implicit_signup_memory(
 async fn resolve_session_binding(
     state: &AppState,
     session_id: &str,
+    verb: &str,
 ) -> Result<Option<Auth>, AppError> {
     let Some(tenant_id) = state.session_bindings.lookup(session_id, now_unix()) else {
         return Ok(None);
     };
     match state.db.find_tenant_by_id(tenant_id).await? {
-        Some(t) if t.disabled => {
+        Some(t) if is_refused_disabled(&t, verb) => {
             state.session_bindings.drop_binding(session_id);
-            Err(AppError::TenantDisabled)
+            Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() })
         }
         Some(t) => {
             // See the mirrored comment in `resolve_auth` above.
@@ -1171,7 +1183,17 @@ fn mark_scratch(value: &mut Value) {
 /// and `host.spec_test.invocations`, which previously had none -- see
 /// `tests/surface_ac04_required_field_descriptions.rs`.
 pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
-    let mut tools = vec![
+/// The `host_tools` descriptor table, built in `host_tools_part_NN` chunks of 16
+/// descriptors each. One `vec![...]` of ~200 `json!` schemas in a single
+/// function made `host_tools` a ~275 KB debug-build stack frame (every `json!`
+/// temporary gets its own slot) -- enough to overflow a 2 MiB test-thread stack
+/// when `host.trigger.set` reaches it through `known_control_plane_args` from
+/// inside the forwarded `host.tool_call` async chain (verbfwd_ac01). Each chunk is
+/// `#[inline(never)]`, so only the largest chunk is live at once; the table and
+/// its order are unchanged.
+#[inline(never)]
+fn host_tools_part_01(kinds: &KindRegistry) -> Vec<Tool> {
+    vec![
         Tool::new(
             "host.whoami",
             "Return the calling tenant's identity, including key_age_s and key_rotated_at \
@@ -1263,6 +1285,39 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &["label"],
             ),
         ),
+        // PRD-mcphost-call-audit-export R2: the tenant's own call log.
+        Tool::new(
+            "host.calls.list",
+            "List the calls made with this tenant's keys, newest first: when, which credential \
+             (primary, sub_key, oauth, trigger, cron, webhook, shared_caller), tool, outcome, \
+             duration and byte sizes. Filter by key_label, tool, outcome or credential. A sub-key \
+             sees only its own rows.",
+            host_schema(
+                json!({
+                    "since": {"type": "string", "description": "Window start: \"-24h\", \"-30d\", a YYYY-MM-DD day or an RFC 3339 instant (default -24h)."},
+                    "until": {"type": "string", "description": "Window end, same forms (default now)."},
+                    "key_label": {"type": "string", "description": "Only calls made with the sub-key labelled so."},
+                    "tool": {"type": "string", "description": "Only calls to this tool."},
+                    "outcome": {"type": "string", "description": "Only calls with this outcome (ok, error, refused, ...)."},
+                    "credential": {"type": "string", "description": "Only calls made with this credential kind."},
+                }),
+                &[],
+            ),
+        ),
+        // PRD-mcphost-call-audit-export R3.
+        Tool::new(
+            "host.calls.export",
+            "Export the calls made with this tenant's keys in a window as CSV (the host.calls.list \
+             columns, newest first), with its sha256 and an ES256 signature over the CSV bytes: \
+             verify with the JWK named by kid at /.well-known/jwks.json. Primary key only.",
+            host_schema(
+                json!({
+                    "since": {"type": "string", "description": "Window start: \"-24h\", \"-30d\", a YYYY-MM-DD day or an RFC 3339 instant (default -24h)."},
+                    "until": {"type": "string", "description": "Window end, same forms (default now)."},
+                }),
+                &[],
+            ),
+        ),
         // PRD-mcphost-tenant-self-offboard P0 requirement 1 / AC1-4:
         // authenticated like every other host.* tenant tool -- host_schema's
         // tenant_key property is exactly the credential being retired here.
@@ -1272,9 +1327,9 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
             "host.self.offboard",
             "Permanently close your own account: disables the tenant, cancels any active \
              Stripe subscription (pro plan), and stops your key from authenticating anything \
-             further -- same as an admin-disabled tenant. Idempotent: an already-offboarded \
-             key gets the same tenant_disabled/tenant_key_invalid error every other host.*/ \
-             billing.* call already gets from it, not a crash. This does not scrub historical \
+             further -- same as an admin-disabled tenant. Idempotent: a repeat call by an \
+             already-offboarded key returns {disabled: true, already_offboarded: true}, not an \
+             error; every other host.*/billing.* call still gets tenant_disabled/tenant_key_invalid. This does not scrub historical \
              usage/signup records -- those stay for audit, same as today's admin-disabled \
              tenants.",
             host_schema(json!({}), &[]),
@@ -1357,6 +1412,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &["name"],
             ),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_02() -> Vec<Tool> {
+    vec![
         Tool::new(
             "host.tool.test",
             TOOL_TEST_DESC,
@@ -1727,6 +1788,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &["tool", "caller_tenant"],
             ),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_03() -> Vec<Tool> {
+    vec![
         Tool::new(
             "host.group.create",
             "Create a named group this tenant owns, for host.tool_share(visibility: \"group\").",
@@ -1940,6 +2007,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &[],
             ),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_04() -> Vec<Tool> {
+    vec![
         Tool::new(
             "host.state.table_create",
             "Declare (or replace the schema of) a table in this tenant's state store. \
@@ -2254,6 +2327,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
              each with id, title, created_unix, and expires_unix.",
             host_schema(json!({}), &[]),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_05() -> Vec<Tool> {
+    vec![
         // PRD-mcphost-lineage-blast-radius requirements 6/8: "what breaks
         // if this table changes, before it changes" -- a small dependency
         // graph (table/column/tool/chain/document/chart/handle/run nodes)
@@ -2493,6 +2572,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &[],
             ),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_06() -> Vec<Tool> {
+    vec![
         Tool::new(
             "host.docs.list",
             "List documents in this tenant's document store. Without since, returns the current \
@@ -2742,6 +2827,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &["table"],
             ),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_07() -> Vec<Tool> {
+    vec![
         // PRD-mcphost-table-semantic-model requirement 6: an agent
         // annotation that survives refresh -- `describe` merges it back
         // in (annotation wins over inference for `role`) on every call.
@@ -3079,6 +3170,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &["run_id"],
             ),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_08() -> Vec<Tool> {
+    vec![
         // PRD-mcphost-job-timeline-tool R1.
         Tool::new(
             "host.job.timeline",
@@ -3360,6 +3457,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
              display name, contact_policy and plan. Never a key hash, billing field, or call log.",
             host_schema(json!({}), &[]),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_09() -> Vec<Tool> {
+    vec![
         Tool::new(
             "host.agent.profile_set",
             "Claim or update this tenant's agent-directory card: an optional unique @handle \
@@ -3665,6 +3768,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &[],
             ),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_10() -> Vec<Tool> {
+    vec![
         // PRD-mcphost-task-handoff-tool: a task is a thread with a state
         // machine the host owns; delivery rides host.msg.* unchanged.
         Tool::new(
@@ -3892,6 +4001,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &["addresses"],
             ),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_11() -> Vec<Tool> {
+    vec![
         // PRD-mcphost-agent-mesh-ops: the minimal `host.channel.*` vertical
         // slice this PRD's own AC4/AC7 need to exist against -- no
         // dependency PRD has built channels yet (see `channels.rs`'s
@@ -4086,6 +4201,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
             "List clients awaiting approval under this tenant's clients: approve policy.",
             host_schema(json!({}), &[]),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_12() -> Vec<Tool> {
+    vec![
         Tool::new(
             "host.oauth.client_approve",
             "Approve a pending client (from host.oauth.pending): its next /oauth/authorize \
@@ -4268,6 +4389,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
             "List this tenant's row/docs policies.",
             host_schema(json!({}), &[]),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_13() -> Vec<Tool> {
+    vec![
         Tool::new(
             "host.policy.attrs_set",
             "Set (merge) attributes on an end-user subject -- the values a policy's Attr(name) \
@@ -4525,7 +4652,23 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &["name"],
             ),
         ),
-    ];
+    ]
+}
+
+    let mut tools: Vec<Tool> = Vec::new();
+    tools.extend(host_tools_part_01(kinds));
+    tools.extend(host_tools_part_02());
+    tools.extend(host_tools_part_03());
+    tools.extend(host_tools_part_04());
+    tools.extend(host_tools_part_05());
+    tools.extend(host_tools_part_06());
+    tools.extend(host_tools_part_07());
+    tools.extend(host_tools_part_08());
+    tools.extend(host_tools_part_09());
+    tools.extend(host_tools_part_10());
+    tools.extend(host_tools_part_11());
+    tools.extend(host_tools_part_12());
+    tools.extend(host_tools_part_13());
     if authenticated {
         tools.push(Tool::new(
             "host.spec.test",
@@ -4798,6 +4941,20 @@ fn admin_tools() -> Vec<Tool> {
             "admin.tenant_disable",
             "Disable a tenant; its key stops authenticating.",
             schema(json!({"tenant": {"type": "string"}}), &["tenant"]),
+        ),
+        // PRD-mcphost-call-audit-export R5.
+        Tool::new(
+            "admin.calls_export",
+            "Export a tenant's call log for a window as the same signed CSV bundle the tenant's \
+             own host.calls.export returns (csv, rows, sha256, signature, kid, alg). Audited.",
+            schema(
+                json!({
+                    "tenant": {"type": "string", "description": "The tenant's namespace."},
+                    "since": {"type": "string", "description": "Window start: \"-24h\", YYYY-MM-DD or an RFC 3339 instant (default -24h)."},
+                    "until": {"type": "string", "description": "Window end, same forms (default now)."},
+                }),
+                &["tenant"],
+            ),
         ),
         Tool::new(
             "admin.tenant_enable",
@@ -6579,6 +6736,8 @@ impl McpHostHandler {
                 control::whoami(&self.state, tenant, subject, auth_method, session_tenant.as_deref()).await
             }
             "host.key.rotate" => control::key_rotate(&self.state, tenant).await,
+            "host.calls.list" => crate::calllog::list(&self.state, tenant, &args).await,
+            "host.calls.export" => crate::calllog::export(&self.state, tenant, &args).await,
             "host.key.mint" => crate::subkeys::mint(&self.state, tenant, &args).await,
             "host.key.list" => crate::subkeys::list(&self.state, tenant).await,
             "host.key.revoke" => crate::subkeys::revoke(&self.state, tenant, &args).await,
@@ -7026,6 +7185,7 @@ impl McpHostHandler {
             "admin.tenants" => admin::tenants(&self.state, &args).await,
             "admin.tenant_disable" => admin::tenant_disable(&self.state, &args).await,
             "admin.tenant_enable" => admin::tenant_enable(&self.state, &args).await,
+            "admin.calls_export" => admin::calls_export(&self.state, &args).await,
             "admin.tenant_delete" => admin::tenant_delete(&self.state, &args).await,
             "admin.tenant_delete_by_prefix" => {
                 admin::tenant_delete_by_prefix(&self.state, &args).await
@@ -10043,13 +10203,13 @@ impl ServerHandler for McpHostHandler {
         // precedence path-secret step `call_tool` uses, so a `tools/list` on
         // a `/u/{secret}/mcp` connection sees that tenant's own tools too.
         let mut sub_key: Option<crate::subkeys::SubKey> = None;
-        let mut auth = match resolve_path_secret_auth(&self.state, parts)
+        let mut auth = match resolve_path_secret_auth(&self.state, parts, "")
             .await
             .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
         {
             Some(a) => a,
             None => {
-                resolve_auth(&self.state, parts, &mut sub_key)
+                resolve_auth(&self.state, parts, &mut sub_key, "")
                     .await
                     .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
             }
@@ -10064,7 +10224,7 @@ impl ServerHandler for McpHostHandler {
         // nothing at all).
         if matches!(auth, Auth::Anonymous)
             && let Some(session_id) = session_id(parts)
-            && let Some(bound) = resolve_session_binding(&self.state, &session_id)
+            && let Some(bound) = resolve_session_binding(&self.state, &session_id, "")
                 .await
                 .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
         {
@@ -10247,7 +10407,7 @@ impl McpHostHandler {
         // tenant_key argument at all (AC1). `None` for every other path, in
         // which case resolution falls through to the pre-existing header
         // path exactly as before this PRD.
-        let path_secret_auth = resolve_path_secret_auth(&self.state, parts)
+        let path_secret_auth = resolve_path_secret_auth(&self.state, parts, &body_name)
             .await
             .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
         let via_url_secret = path_secret_auth.is_some();
@@ -10255,7 +10415,7 @@ impl McpHostHandler {
         let mut auth = match path_secret_auth {
             Some(a) => a,
             None => {
-                resolve_auth(&self.state, parts, &mut sub_key)
+                resolve_auth(&self.state, parts, &mut sub_key, &body_name)
                     .await
                     .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
             }
@@ -10277,7 +10437,7 @@ impl McpHostHandler {
         // play for whatever `auth` becomes next.
         let via_tenant_key_arg = matches!(auth, Auth::Anonymous);
         if via_tenant_key_arg {
-            auth = resolve_tenant_key_auth(&self.state, &raw_args, &mut sub_key)
+            auth = resolve_tenant_key_auth(&self.state, &raw_args, &mut sub_key, &body_name)
                 .await
                 .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
             // PRD-mcphost-session-bound-tenant-key requirement 1: this is
@@ -10305,7 +10465,7 @@ impl McpHostHandler {
         if via_tenant_key_arg
             && matches!(auth, Auth::Anonymous)
             && let Some(session_id) = session_id.as_deref()
-            && let Some(bound) = resolve_session_binding(&self.state, session_id)
+            && let Some(bound) = resolve_session_binding(&self.state, session_id, &body_name)
                 .await
                 .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
         {
@@ -10346,10 +10506,17 @@ impl McpHostHandler {
                     .await
                     .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
                 {
-                    Some(t) if t.disabled => {
+                    Some(t) if is_refused_disabled(&t, &body_name) => {
                         self.state.implicit_signup_memory.drop_binding(sid);
                         self.state.tenant_key_arg_memory.drop_binding(sid);
-                        return Err(AppError::TenantDisabled.into_error_data_at(Some(&self.state.public_url)));
+                        return Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() }.into_error_data_at(Some(&self.state.public_url)));
+                    }
+                    // A self-offboarded tenant calling its own lifecycle verb
+                    // again (`auth_shape`): served, so the verb answers
+                    // idempotently.
+                    Some(t) if t.disabled => {
+                        auth = Auth::Tenant(Box::new(t), None);
+                        via_session_binding = true;
                     }
                     // Requirement 2's config escape hatch: serve the call as
                     // the remembered tenant instead of refusing it --
@@ -10422,9 +10589,9 @@ impl McpHostHandler {
                         return Err(AppError::TenantKeyMissing(Some(t.namespace))
                             .into_error_data_at(Some(&self.state.public_url)));
                     }
-                    Ok(Some(_)) => {
+                    Ok(Some(t)) => {
                         self.state.redeemed_peers.forget(&peer);
-                        return Err(AppError::TenantDisabled.into_error_data_at(Some(&self.state.public_url)));
+                        return Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() }.into_error_data_at(Some(&self.state.public_url)));
                     }
                     Ok(None) => self.state.redeemed_peers.forget(&peer),
                     Err(e) => return Err(e.into_error_data_at(Some(&self.state.public_url))),
@@ -11375,5 +11542,32 @@ fn add_example_fields(map: &mut serde_json::Map<String, Value>, ex: &crate::kind
             "schema_hint".to_string(),
             json!(format!("add defaults to untyped keys: {}", ex.untyped.join(", "))),
         );
+    }
+}
+
+#[cfg(test)]
+mod host_tools_stack_tests {
+    use super::*;
+
+    /// verbfwd_ac01 overflowed CI's 2 MiB test-thread stack (SIGABRT). Not a
+    /// recursion: `host.trigger.set` -> `known_control_plane_args` ->
+    /// `host_tools` runs at the bottom of the already-deep forwarded
+    /// `host.tool_call` async chain (~1.8 MiB in a debug build), and
+    /// `host_tools` was one ~275 KB debug frame. Build the descriptor table
+    /// (the exact call `known_control_plane_args` makes) on a stack far below
+    /// that frame's old size so it cannot grow back into one.
+    #[test]
+    fn known_control_plane_args_fits_a_small_stack() {
+        const STACK: usize = 128 * 1024;
+        let args = std::thread::Builder::new()
+            .stack_size(STACK)
+            .spawn(|| known_control_plane_args("host.trigger.set", &KindRegistry::with_builtin()))
+            .expect("spawn")
+            .join()
+            .expect("known_control_plane_args overflowed a 128 KiB stack");
+        let Some(args) = args else {
+            panic!("host.trigger.set is a control-plane tool");
+        };
+        assert!(args.iter().any(|a| a == "tool"), "host.trigger.set args: {args:?}");
     }
 }

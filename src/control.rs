@@ -770,19 +770,21 @@ pub async fn key_rotate(state: &AppState, tenant: &Tenant) -> Result<Value, AppE
 /// `host.*` call (`tenant_key` argument or `Authorization` header, same as
 /// `host.key_rotate` above).
 ///
-/// AC2's idempotency needs no double-flip branch here: `resolve_auth`/
-/// `resolve_tenant_key_auth` (`handler.rs`) already refuse a *disabled*
-/// tenant's key before `dispatch_tenant_tool` ever calls this function --
-/// `tenant_disabled` on the header path, `tenant_key_invalid` on the
-/// `tenant_key`-argument path (AC3, same shape as an unissued key). So a
-/// second `host.self_offboard()` call with an already-offboarded tenant's
-/// key never reaches this body at all; it gets the same well-typed,
-/// non-crashing refusal every other `host.*`/`billing.*` call already gets
-/// from that key, which is precisely AC2's "clean typed result, not a
-/// crash or ambiguous error." [`crate::db::Db::self_offboard_tenant`]'s own
-/// `WHERE disabled = 0` guard is the second, defense-in-depth layer for
-/// that same invariant, not the primary mechanism.
+/// Idempotency (PRD-mcphost-self-offboard-success-envelope R2): the
+/// resolvers in `handler.rs` let an already-self-offboarded tenant reach
+/// this verb (`auth_shape::lets_through_disabled`), so a repeat call lands
+/// here with `tenant.disabled` set and answers with the
+/// `already_offboarded` envelope -- no second billing cancel, no second
+/// flip. Every other verb still refuses that tenant's key as before.
 pub async fn self_offboard(state: &AppState, tenant: &Tenant) -> Result<Value, AppError> {
+    if tenant.disabled {
+        return Ok(json!({
+            "tenant": tenant.namespace,
+            "disabled": true,
+            "disabled_reason": crate::auth_shape::SELF_OFFBOARD_REASON,
+            "already_offboarded": true,
+        }));
+    }
     // AC4: if this is a `pro` tenant with a Stripe customer on file,
     // cancel any live subscription BEFORE flipping the local row -- a
     // crash between the two calls leaves the tenant enabled (retryable),

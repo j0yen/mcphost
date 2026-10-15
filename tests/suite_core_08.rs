@@ -34,6 +34,36 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "metering_ac01_stripe_customer_id_null_default.rs"]
+mod metering_ac01_stripe_customer_id_null_default;
+#[path = "metering_ac02_webhook_stores_stripe_customer_id.rs"]
+mod metering_ac02_webhook_stores_stripe_customer_id;
+#[path = "metering_ac03_checkout_metered_line_item.rs"]
+mod metering_ac03_checkout_metered_line_item;
+#[path = "metering_ac04_emits_pro_calls_only.rs"]
+mod metering_ac04_emits_pro_calls_only;
+#[path = "metering_ac05_crash_replay.rs"]
+mod metering_ac05_crash_replay;
+#[path = "metering_ac06_failure_leaves_state_unmoved.rs"]
+mod metering_ac06_failure_leaves_state_unmoved;
+#[path = "metering_ac07_batches_cap_at_100.rs"]
+mod metering_ac07_batches_cap_at_100;
+#[path = "metering_ac08_healthz_meter_lag.rs"]
+mod metering_ac08_healthz_meter_lag;
+#[path = "metering_ac09_deploy_units_verify.rs"]
+mod metering_ac09_deploy_units_verify;
+#[path = "metering_ac11_admin_meter_status.rs"]
+mod metering_ac11_admin_meter_status;
+#[path = "metering_ac12_billing_status_stripe_reported_usage.rs"]
+mod metering_ac12_billing_status_stripe_reported_usage;
+#[path = "metering_billing_status_emitted_this_month.rs"]
+mod metering_billing_status_emitted_this_month;
+#[path = "migration_compat_headers.rs"]
+mod migration_compat_headers;
+#[path = "minimal_ac2_admin_full_document.rs"]
+mod minimal_ac2_admin_full_document;
+#[path = "minimal_ac3_wrong_bearer_matches_anonymous.rs"]
+mod minimal_ac3_wrong_bearer_matches_anonymous;
 #[path = "mrefu_ac01_breaking_migration_refuses_with_report.rs"]
 mod mrefu_ac01_breaking_migration_refuses_with_report;
 #[path = "mrefu_ac02_compatible_migration_reports_ok.rs"]
@@ -636,6 +666,20 @@ mod sjrc_ac05_sweeper_drops_receipts_past_plan_retention;
 mod sjrc_ac06_manual_schedule_and_event_fires_all_leave_receipts;
 #[path = "sjrc_ac07_limit_ceiling_and_empty_tool.rs"]
 mod sjrc_ac07_limit_ceiling_and_empty_tool;
+#[path = "soff_ac01_header_and_arg_returns_success_envelope.rs"]
+mod soff_ac01_header_and_arg_returns_success_envelope;
+#[path = "soff_ac02_header_only_returns_success_and_whoami_disabled.rs"]
+mod soff_ac02_header_only_returns_success_and_whoami_disabled;
+#[path = "soff_ac03_arg_only_returns_success_envelope.rs"]
+mod soff_ac03_arg_only_returns_success_envelope;
+#[path = "soff_ac04_already_offboarded_idempotent_all_shapes.rs"]
+mod soff_ac04_already_offboarded_idempotent_all_shapes;
+#[path = "soff_ac05_matrix_exhaustive_auth_shapes.rs"]
+mod soff_ac05_matrix_exhaustive_auth_shapes;
+#[path = "soff_ac06_non_lifecycle_verb_still_refused.rs"]
+mod soff_ac06_non_lifecycle_verb_still_refused;
+#[path = "soff_ac07_docs_document_already_offboarded.rs"]
+mod soff_ac07_docs_document_already_offboarded;
 #[path = "specpath_ac01_map_form_normalizes_and_publishes.rs"]
 mod specpath_ac01_map_form_normalizes_and_publishes;
 #[path = "specpath_ac02_outputs_map_value_type_error.rs"]

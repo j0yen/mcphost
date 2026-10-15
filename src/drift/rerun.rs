@@ -80,9 +80,9 @@ async fn process_one(state: &AppState, row: &DriftQueueRow) -> Result<(), AppErr
     // change's own re-run touched (AC9) -- charged once here, whether or
     // not the review above was actually a fresh one (the re-runs
     // themselves still happened either way).
-    let _ = state
-        .db
-        .record_call(
+    let _ = crate::calllog::scoped(
+        crate::calllog::Credential::Cron,
+        state.db.record_call(
             row.tenant_id,
             "host.drift.tick".to_string(),
             0,
@@ -93,8 +93,9 @@ async fn process_one(state: &AppState, row: &DriftQueueRow) -> Result<(), AppErr
             "ok",
             "background".to_string(),
             None,
-        )
-        .await;
+        ),
+    )
+    .await;
 
     Ok(())
 }

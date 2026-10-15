@@ -8,7 +8,7 @@
 
 use mcphost::api_contract::dump_contract;
 use mcphost::kinds::KindRegistry;
-use mcphost::paged::{ChannelOrder, DocsOrder, InboxOrder, OrderEnum, PAGED_VERBS, RunsOrder, ThreadOrder, paged_spec};
+use mcphost::paged::{CallsOrder, ChannelOrder, DocsOrder, InboxOrder, OrderEnum, PAGED_VERBS, RunsOrder, ThreadOrder, paged_spec};
 use serde_json::{Value, json};
 
 fn order_property(contract: &Value, verb: &str) -> Value {
@@ -38,12 +38,13 @@ fn docs_list_order_enumerates_exactly_the_docs_order_variants() {
 #[test]
 fn every_paged_verb_declares_its_order_enum_from_its_order_type() {
     let contract = dump_contract(&KindRegistry::with_builtin());
-    let expected: [(&str, Vec<&'static str>, &'static str); 5] = [
+    let expected: [(&str, Vec<&'static str>, &'static str); 6] = [
         ("host.docs.list", DocsOrder::names(), DocsOrder::DEFAULT.name()),
         ("host.msg.inbox", InboxOrder::names(), InboxOrder::DEFAULT.name()),
         ("host.msg.thread", ThreadOrder::names(), ThreadOrder::DEFAULT.name()),
         ("host.channel.read", ChannelOrder::names(), ChannelOrder::DEFAULT.name()),
         ("host.runs.list", RunsOrder::names(), RunsOrder::DEFAULT.name()),
+        ("host.calls.list", CallsOrder::names(), CallsOrder::DEFAULT.name()),
     ];
     assert_eq!(expected.len(), PAGED_VERBS.len(), "a Paged verb was added without extending this table");
     for (verb, names, default) in expected {

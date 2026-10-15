@@ -15,3 +15,4 @@ example.test  # reserved .test TLD (RFC 2606) used in doc examples
 https://api.stripe.com/v1/balance  # example upstream API call in a spec snippet; needs a bearer key (401 unauthenticated)
 docs/launch/wave1-checklist.md  # submission checklist: the listing pages it names do not exist until submitted; the site is bot-walled (403 to scripts)
 https://registry.modelcontextprotocol.io/v0.1/servers/dev.mcphost%2Fmcphost/versions/latest  # registry latest-version lookup; times out from GitHub runners (2026-10-12 PR #223 twice); the registry-manifest --check job validates the listing
+https://registry.modelcontextprotocol.io  # bare registry API base named as an example in the README publish section; the host is bot-walled/times out from scripts, the full listing URL above is the real link

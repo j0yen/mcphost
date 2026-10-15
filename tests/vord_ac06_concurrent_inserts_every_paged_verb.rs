@@ -10,7 +10,7 @@
 
 use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup, signup_and_make_pro, vord_dups_and_skips, vord_seed_runs, vord_walk};
-use mcphost::paged::{ChannelOrder, DocsOrder, InboxOrder, OrderEnum, PAGED_VERBS, RunsOrder, ThreadOrder};
+use mcphost::paged::{CallsOrder, ChannelOrder, DocsOrder, InboxOrder, OrderEnum, PAGED_VERBS, RunsOrder, ThreadOrder};
 use serde_json::{Value, json};
 use std::sync::Arc;
 use std::time::Duration;
@@ -140,6 +140,35 @@ async fn runs_fixture(server: &Arc<TestServer>, tag: &str, order: &str) -> Fixtu
     Fixture { reader, array_key: "runs", id_key: "run_id", args, pre, writer }
 }
 
+async fn calls_fixture(server: &Arc<TestServer>, tag: &str) -> Fixture {
+    let (ns, key) = signup(&server.base_url, &format!("Vord AC6 calls {tag}")).await;
+    let tenant = server.state.db.find_tenant_by_namespace(ns).await.expect("find").expect("tenant");
+    let now = mcphost::state::now_unix();
+    for i in 0..PRE_EXISTING {
+        server
+            .state
+            .db
+            .insert_call_row_for_test_full(tenant.id, format!("pre{i:04}"), None, None, true, 1, now - 60)
+            .await
+            .expect("seed row");
+    }
+    let reader = McpClient::with_bearer(&server.base_url, &key);
+    let args = json!({"since": "-1h"});
+    let pre = snapshot(&reader, "host.calls.list", "calls", "tool", &args).await;
+    let state = server.state.clone();
+    let writer = tokio::spawn(async move {
+        for i in 0..WRITTEN {
+            state
+                .db
+                .insert_call_row_for_test_full(tenant.id, format!("new{i:04}"), None, None, true, 1, now - 30)
+                .await
+                .expect("write row");
+            tokio::task::yield_now().await;
+        }
+    });
+    Fixture { reader, array_key: "calls", id_key: "tool", args, pre, writer }
+}
+
 async fn fixture(server: &Arc<TestServer>, verb: &str, order: &str, tag: &str) -> Fixture {
     match verb {
         "host.docs.list" => docs_fixture(server, tag, order).await,
@@ -147,6 +176,7 @@ async fn fixture(server: &Arc<TestServer>, verb: &str, order: &str, tag: &str) -
         "host.msg.thread" => thread_fixture(server, tag).await,
         "host.channel.read" => channel_fixture(server, tag).await,
         "host.runs.list" => runs_fixture(server, tag, order).await,
+        "host.calls.list" => calls_fixture(server, tag).await,
         other => panic!("{other} derives Paged but has no vord_ac06 fixture"),
     }
 }
@@ -159,6 +189,7 @@ fn declared() -> Vec<(&'static str, Vec<&'static str>)> {
         ("host.msg.thread", ThreadOrder::names()),
         ("host.channel.read", ChannelOrder::names()),
         ("host.runs.list", RunsOrder::names()),
+        ("host.calls.list", CallsOrder::names()),
     ]
 }
 
