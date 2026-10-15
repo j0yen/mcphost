@@ -21,6 +21,10 @@ const TOUCHED: &[&str] = &[
     // PRD-mcphost-dry-run-on-write-verbs: the script also checks the
     // generated write-verb table.
     "scripts/host-tools-doc-check.sh",
+    "scripts/protocol-frames-check.sh",
+    "src/protocol/frames.rs",
+    "docs/protocol/frames.md",
+    "www/frames.json",
     "src/write_verbs.rs",
     "docs/host-tools.md",
     "src/kinds/python.rs",

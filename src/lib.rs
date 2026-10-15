@@ -76,6 +76,7 @@ pub mod llms_txt;
 pub mod messaging;
 pub mod paged;
 pub mod preflight;
+pub mod protocol;
 pub mod metering;
 pub mod network_policy;
 pub mod oauth;

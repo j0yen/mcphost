@@ -1,0 +1,94 @@
+{
+  "generated_from": "src/protocol/frames.rs::FRAME_SEQUENCES",
+  "protocol_version": "2026-07-28",
+  "rows": [
+    {
+      "request_type": "initialize",
+      "frames": [
+        {
+          "method": "result",
+          "card": "{1}"
+        }
+      ],
+      "content_type": {
+        "rule": "json_when_single_frame",
+        "single_frame": "application/json",
+        "multi_frame": "text/event-stream"
+      }
+    },
+    {
+      "request_type": "tools/list",
+      "frames": [
+        {
+          "method": "result",
+          "card": "{1}"
+        }
+      ],
+      "content_type": {
+        "rule": "json_when_single_frame",
+        "single_frame": "application/json",
+        "multi_frame": "text/event-stream"
+      }
+    },
+    {
+      "request_type": "tools/call:keyed",
+      "frames": [
+        {
+          "method": "result",
+          "card": "{1}"
+        }
+      ],
+      "content_type": {
+        "rule": "json_when_single_frame",
+        "single_frame": "application/json",
+        "multi_frame": "text/event-stream"
+      }
+    },
+    {
+      "request_type": "tools/call:keyless_signup",
+      "frames": [
+        {
+          "method": "notifications/tools/list_changed",
+          "card": "{0,1}"
+        },
+        {
+          "method": "result",
+          "card": "{1}"
+        }
+      ],
+      "content_type": {
+        "rule": "json_when_single_frame",
+        "single_frame": "application/json",
+        "multi_frame": "text/event-stream"
+      }
+    },
+    {
+      "request_type": "tools/call:error",
+      "frames": [
+        {
+          "method": "error",
+          "card": "{1}"
+        }
+      ],
+      "content_type": {
+        "rule": "json_when_single_frame",
+        "single_frame": "application/json",
+        "multi_frame": "text/event-stream"
+      }
+    },
+    {
+      "request_type": "ping",
+      "frames": [
+        {
+          "method": "error",
+          "card": "{1}"
+        }
+      ],
+      "content_type": {
+        "rule": "json_when_single_frame",
+        "single_frame": "application/json",
+        "multi_frame": "text/event-stream"
+      }
+    }
+  ]
+}

@@ -890,17 +890,11 @@ async fn call_tool(
         .to_string();
     let body = if content_type.starts_with("text/event-stream") {
         let text = resp.text().await.map_err(|e| e.to_string())?;
-        text.split("\n\n")
-            .filter_map(|block| {
-                block.lines().find_map(|line| {
-                    line.strip_prefix("data: ").or_else(|| line.strip_prefix("data:"))
-                })
-            })
-            .filter(|data| !data.is_empty())
-            .filter_map(|data| serde_json::from_str::<Value>(data).ok())
-            .collect::<Vec<Value>>()
-            .pop()
-            .ok_or_else(|| format!("no JSON-RPC message in SSE body: {text}"))?
+        // PRD-mcphost-sse-frame-contract-generated R5: pick the result frame
+        // by the FRAME_SEQUENCES row, not by "the last frame wins".
+        let frames = crate::protocol::frames::split_sse_frames(&text);
+        let request_type = crate::protocol::frames::request_type_of("tools/call", bearer.is_some());
+        crate::protocol::frames::select_result(&frames, request_type).cloned().map_err(|violation| format!("{violation}: {text}"))?
     } else {
         resp.json::<Value>().await.map_err(|e| e.to_string())?
     };

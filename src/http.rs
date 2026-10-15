@@ -791,6 +791,22 @@ async fn capabilities_json(Query(params): Query<HashMap<String, String>>) -> Res
         .into_response()
 }
 
+/// PRD-mcphost-sse-frame-contract-generated requirement 3: `GET
+/// /protocol/frames.json`, the frames each request type may carry, rendered
+/// from `FRAME_SEQUENCES` by `scripts/protocol-frames-check.sh` and embedded
+/// at compile time like the other `www/` files.
+async fn protocol_frames_json() -> Response {
+    (
+        StatusCode::OK,
+        [
+            (CONTENT_TYPE, HeaderValue::from_static("application/json")),
+            (CACHE_CONTROL, HeaderValue::from_static("max-age=300")),
+        ],
+        include_str!("../www/frames.json"),
+    )
+        .into_response()
+}
+
 /// mcphost-polish-p0-20260930 (audit finding 1): README's own "Connect"
 /// checklist links `/status.html` and `/aup.html`, but neither was ever
 /// routed by this binary -- a comment on the `boa_engine` dev-dependency
@@ -1915,6 +1931,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         )
         .route("/.well-known/mcp/catalog.json", get(well_known_catalog))
         .route("/capabilities.json", get(capabilities_json))
+        .route("/protocol/frames.json", get(protocol_frames_json))
         .route(
             "/.well-known/oauth-protected-resource",
             get(well_known_oauth_protected_resource),

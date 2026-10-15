@@ -46,6 +46,10 @@ fn host_tools_doc_names_the_reason_beside_the_verb_and_the_check_script_catches_
     for rel in [
         "scripts/sandbox-api-doc-check.sh",
         "scripts/host-tools-doc-check.sh",
+        "scripts/protocol-frames-check.sh",
+        "src/protocol/frames.rs",
+        "docs/protocol/frames.md",
+        "www/frames.json",
         "src/write_verbs.rs",
         "src/kinds/python.rs",
         "docs/host-tools.md",
