@@ -720,6 +720,20 @@ mod tgraph_ac07_tenant_isolation_identically_named_tables;
 mod tgraph_ac08_description_annotation_node_attribute_and_question_text;
 #[path = "tgraph_ac10_fifty_tables_twenty_columns_under_500ms.rs"]
 mod tgraph_ac10_fifty_tables_twenty_columns_under_500ms;
+#[path = "thand_ac01_poster_wait_returns_completion.rs"]
+mod thand_ac01_poster_wait_returns_completion;
+#[path = "thand_ac02_status_enum_source_of_truth.rs"]
+mod thand_ac02_status_enum_source_of_truth;
+#[path = "thand_ac03_claim_is_recipient_only_and_once.rs"]
+mod thand_ac03_claim_is_recipient_only_and_once;
+#[path = "thand_ac04_deadline_sweep_dead_letters.rs"]
+mod thand_ac04_deadline_sweep_dead_letters;
+#[path = "thand_ac05_complete_is_idempotent.rs"]
+mod thand_ac05_complete_is_idempotent;
+#[path = "thand_ac06_open_task_quota_and_refusals.rs"]
+mod thand_ac06_open_task_quota_and_refusals;
+#[path = "thand_ac07_tenant_delete_cascade.rs"]
+mod thand_ac07_tenant_delete_cascade;
 #[path = "timp_ac01_export_lacks_tables_and_docs_baseline.rs"]
 mod timp_ac01_export_lacks_tables_and_docs_baseline;
 #[path = "timp_ac02_export_carries_tables_models_docs_manifest_v2.rs"]

@@ -309,6 +309,8 @@ const MIGRATION_0099: &str = include_str!("../migrations/0099_calls_error_summar
 const MIGRATION_0100: &str = include_str!("../migrations/0100_trigger_receipts.sql");
 /// PRD-mcphost-scheduled-job-receipts R3: the `trigger_streak_floor` table.
 const MIGRATION_0101: &str = include_str!("../migrations/0101_trigger_streak_floor.sql");
+/// PRD-mcphost-task-handoff-tool R2: the `tasks` table.
+const MIGRATION_0102: &str = include_str!("../migrations/0102_tasks.sql");
 
 /// Outcome of [`Db::reserve_draft`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1750,7 +1752,7 @@ pub struct ClaimsSummary {
     pub nudged_then_claimed: i64,
 }
 
-fn now_rfc3339() -> String {
+pub(crate) fn now_rfc3339() -> String {
     // No chrono dependency: a stable, sortable, human-readable stamp is all
     // any AC needs (`created_at`/`started_at` are opaque strings to callers).
     let dur = SystemTime::now()
@@ -2980,6 +2982,7 @@ impl Db {
         // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0100)?;
         conn.execute_batch(MIGRATION_0101)?;
+        conn.execute_batch(MIGRATION_0102)?;
         Ok(())
     }
 

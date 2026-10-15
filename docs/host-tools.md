@@ -61,6 +61,7 @@ Regenerate with `scripts/sandbox-api-doc-check.sh --write`.
 | `host.registry.publish` | publish | refused | `external_effect` |
 | `host.trigger.fire` | write | refused | `external_effect` |
 | `host.msg.send` | write | refused | `external_effect` |
+| `host.task.post` | write | refused | `external_effect` |
 | `host.channel.post` | write | refused | `external_effect` |
 | `host.uptime.create` | write | refused | `external_effect` |
 | `host.webhook_inbox.create` | write | refused | `external_effect` |

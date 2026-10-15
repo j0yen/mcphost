@@ -27,6 +27,19 @@ fn registry() -> &'static Registry {
     REGISTRY.get_or_init(|| {
         let parsed: BTreeMap<String, Map<String, Value>> =
             serde_json::from_str(RAW).expect("contracts/host-output-schemas.v1.json is valid JSON"); // allowlist: compile-time include_str! of a generated contract, not external input; the generated-contract test asserts it parses
+        let mut parsed = parsed;
+        // PRD-mcphost-task-handoff-tool R1: every `status` a host.task.*
+        // output declares is the `TaskStatus` set, never a typed copy.
+        for tool in crate::tasks::STATUS_TOOLS {
+            if let Some(status) = parsed
+                .get_mut(*tool)
+                .and_then(|schema| schema.get_mut("properties"))
+                .and_then(|props| props.get_mut("status"))
+                .and_then(Value::as_object_mut)
+            {
+                status.insert("enum".to_string(), crate::tasks::TaskStatus::schema_enum());
+            }
+        }
         parsed.into_iter().map(|(k, v)| (k, Arc::new(v))).collect()
     })
 }

@@ -1524,6 +1524,9 @@ async fn main() -> anyhow::Result<()> {
             // retention tick, started once here alongside the other
             // background tasks.
             mcphost::channels::spawn_channel_retention((*state).clone());
+            // PRD-mcphost-task-handoff-tool requirement 5: the deadline sweep,
+            // at most one cadence late.
+            mcphost::tasks::spawn_sweep((*state).clone());
             // PRD-mcphost-docs-semantic-search P0 requirement 2: the 10 s
             // docs index tick, started once here alongside the other
             // background tasks.
