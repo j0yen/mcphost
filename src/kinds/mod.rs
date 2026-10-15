@@ -14,10 +14,12 @@ use jsonschema::error::{TypeKind, ValidationErrorKind};
 use serde_json::{Map, Value, json};
 
 use crate::budget::Verdict;
+use contract::codes;
 
 pub mod aliases;
 pub mod chain;
 pub mod conformance;
+pub mod contract;
 pub mod docs;
 pub mod echo;
 pub mod example;
@@ -251,7 +253,7 @@ pub const TEST_TRACEBACK_CAP_BYTES: usize = 8 * 1024;
 /// `host.spec_test`'s per-invocation error detail (PRD-mcphost-tool-test
 /// AC2): exception class and a bounded traceback excerpt when the kind's
 /// own error carries them (today only `python`, via
-/// `KindError::Structured { code: "tool_exception", data, .. }` --
+/// `KindError::Structured { code: tool_exception, data, .. }` --
 /// `kinds::python::map_envelope_error`), else just the error's own code and
 /// message, so `echo`/`http` failures still report something rather than a
 /// missing field.
@@ -1667,7 +1669,7 @@ async fn compose_dispatch(
 ) -> Result<Value, KindError> {
     if ctx.tool_name.as_deref() == Some(target_name) {
         return Err(KindError::structured(
-            "compose_self_call",
+            codes::COMPOSE_SELF_CALL,
             format!("tool '{target_name}' cannot call itself"),
         ));
     }
@@ -1675,7 +1677,7 @@ async fn compose_dispatch(
     let next_depth = ctx.compose_depth + 1;
     if next_depth > COMPOSE_DEPTH_MAX {
         return Err(KindError::structured_with(
-            "compose_depth_exceeded",
+            codes::COMPOSE_DEPTH_EXCEEDED,
             format!("composition nesting exceeds the limit of {COMPOSE_DEPTH_MAX}"),
             json!({"limit": COMPOSE_DEPTH_MAX}),
         ));
@@ -1689,7 +1691,7 @@ async fn compose_dispatch(
     let used = children.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
     if used > COMPOSE_CHILDREN_MAX {
         return Err(KindError::structured_with(
-            "compose_children_exceeded",
+            codes::COMPOSE_CHILDREN_EXCEEDED,
             format!("this call tree has exceeded {COMPOSE_CHILDREN_MAX} child calls"),
             json!({"limit": COMPOSE_CHILDREN_MAX}),
         ));
@@ -1727,7 +1729,7 @@ async fn compose_dispatch(
         }
         None => {
             return Err(KindError::structured(
-                "tool_not_found",
+                codes::TOOL_NOT_FOUND,
                 format!("no such tool: {target_name}"),
             ));
         }
@@ -2240,6 +2242,11 @@ pub trait Kind: Send + Sync {
         }
     }
 
+    /// What this kind may return on failure and how the generated
+    /// conformance suite ([`conformance::run_contract`]) drives it. Required:
+    /// a kind without a contract does not compile.
+    fn contract(&self) -> &'static contract::KindContract;
+
     /// Execute a call. `args` have not yet been validated against the
     /// descriptor's input schema when this is invoked directly (the host's
     /// dispatch path validates first); implementations that are exercised
@@ -2261,7 +2268,7 @@ pub trait Kind: Send + Sync {
         _ctx: &CallCtx,
     ) -> Result<Value, KindError> {
         Err(KindError::structured(
-            "tool_run_unsupported",
+            codes::TOOL_RUN_UNSUPPORTED,
             "this tool's kind does not support host.tool_run",
         ))
     }
@@ -2411,6 +2418,31 @@ pub fn network_kinds(
     let own_domain = http::own_domain_from_url(public_url);
     let python_kind = python::PythonKind::new(data_dir).with_own_domain(own_domain.clone());
     Ok((http::HttpKind::new(own_domain)?, python_kind))
+}
+
+/// Registers the kinds that need no OS probe or domain first -- `chain`
+/// (host-side composition) and `wasm` (in-process Wasmtime). The one place
+/// `serve` and [`production_registry`] both take them from.
+pub fn register_host_side_kinds(registry: &mut KindRegistry) {
+    registry.register(Arc::new(chain::ChainKind));
+    registry.register(Arc::new(wasm::WasmKind::new()));
+}
+
+/// The kinds `serve` registers -- echo, http, python, chain, wasm -- built
+/// the way `main.rs` builds them (minus the python sandbox self-test and the
+/// deployment's own `public_url`/data dir), so a conformance test or
+/// `examples check` runs over exactly the production kind set.
+pub fn production_registry() -> KindRegistry {
+    let mut registry = KindRegistry::with_builtin();
+    let (http_kind, python_kind) = network_kinds(
+        "https://mcphost.dev",
+        &std::env::temp_dir().join("mcphost-production-registry"),
+    )
+    .expect("the production http kind builds from a fixed public_url");
+    registry.register(Arc::new(http_kind));
+    registry.register(Arc::new(python_kind));
+    register_host_side_kinds(&mut registry);
+    registry
 }
 
 impl KindRegistry {

@@ -18,6 +18,10 @@ struct DeclaredTimeoutKind;
 
 #[async_trait]
 impl Kind for DeclaredTimeoutKind {
+    fn contract(&self) -> &'static mcphost::kinds::contract::KindContract {
+        &mcphost::kinds::contract::EMPTY_CONTRACT
+    }
+
     fn name(&self) -> &'static str {
         "declared_timeout"
     }

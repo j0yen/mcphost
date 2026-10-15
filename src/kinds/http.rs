@@ -30,6 +30,9 @@ use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
+use super::contract::{
+    BudgetDim, CASE_BUDGET_EXCEEDED, CASE_CALL, CASE_ERROR_WITH_SOURCE_POSITION, CASE_SECRET_REDACTION, CONFORMANCE_SECRET_NAME, CaseSkip, ConformanceFixtures, KindContract, SourcePosition, UPSTREAM_FAMILY, codes, key,
+};
 use super::infer;
 use super::{CallCtx, Kind, KindError, KindExample, OutputDecl, ToolDescriptor};
 
@@ -75,7 +78,7 @@ struct HttpSpec {
     /// struct.
     outputs: Vec<OutputDecl>,
     /// PRD-mcphost-upstream-token-vault requirement 4: the vault provider
-    /// name this spec declares (`"upstream_provider": "slack"`), if any --
+    /// name this spec declares (`upstream_provider: "slack"`), if any --
     /// distinct from [`UpstreamSpec`]'s own `upstream` object field (a
     /// PRD-mcphost-rest-bridge concept, already using that name for an
     /// unrelated declarative-endpoint shape). At call time, `Kind::call`
@@ -373,7 +376,7 @@ fn http_field_hint(field: &str) -> Option<(&'static str, Value)> {
             "an object describing the upstream endpoint",
             json!({"url": "https://api.example.com/{id}", "method": "GET"}),
         ),
-        "upstream_provider" => (
+        key::UPSTREAM_PROVIDER => (
             "a string naming a host.vault.provider_set provider",
             json!("slack"),
         ),
@@ -609,27 +612,27 @@ pub const HINT_KEY: &str = "hint";
 #[allow(clippy::single_range_in_vec_init)]
 pub const UPSTREAM_REMEDIES: &[Remedy] = &[
     Remedy {
-        code: "upstream_auth",
+        code: codes::UPSTREAM_AUTH,
         statuses: &[401..=401, 403..=403],
         hint: "upstream rejected credentials; store the key with host.secret.set(name=...) and reference it as {{ secret.<name> }} in headers or url",
     },
     Remedy {
-        code: "upstream_rate_limited",
+        code: codes::UPSTREAM_RATE_LIMITED,
         statuses: &[429..=429],
         hint: "upstream is rate limiting this tool; wait retry_after_s seconds (when present) before calling again instead of retrying immediately",
     },
     Remedy {
-        code: "upstream_client_error",
+        code: codes::UPSTREAM_CLIENT_ERROR,
         statuses: &[400..=400, 402..=402, 404..=428, 430..=499],
         hint: "upstream rejected the request itself; check the spec's method, url path, query and body against the API's documentation",
     },
     Remedy {
-        code: "upstream_error",
+        code: codes::UPSTREAM_ERROR,
         statuses: &[500..=599],
         hint: "upstream failed on its own side; retry with backoff and raise budget.max_tool_latency_ms if calls are timing out",
     },
     Remedy {
-        code: "host_not_allowed",
+        code: codes::HOST_NOT_ALLOWED,
         statuses: &[],
         hint: "call your own tools with host.tool_call; the http kind targets third-party APIs",
     },
@@ -651,16 +654,16 @@ pub fn remedy_for(status: u16) -> &'static Remedy {
     UPSTREAM_REMEDIES
         .iter()
         .find(|r| r.statuses.iter().any(|range| range.contains(&status)))
-        .unwrap_or_else(|| remedy_by_code("upstream_error"))
+        .unwrap_or_else(|| remedy_by_code(codes::UPSTREAM_ERROR))
 }
 
 /// A `host_not_allowed` error for the spec's `url` field, carrying the
 /// remedy row's hint (call your own tools with `host.tool_call`).
 fn host_not_allowed_error(message: impl Into<String>) -> KindError {
     KindError::structured_with(
-        "host_not_allowed",
+        codes::HOST_NOT_ALLOWED,
         message.into(),
-        json!({"field": "url", (HINT_KEY): remedy_by_code("host_not_allowed").hint}),
+        json!({"field": "url", (HINT_KEY): remedy_by_code(codes::HOST_NOT_ALLOWED).hint}),
     )
 }
 
@@ -797,12 +800,12 @@ fn classify_reqwest_error(err: reqwest::Error) -> KindError {
     }
     if err.is_timeout() {
         KindError::structured(
-            "upstream_timeout",
+            codes::UPSTREAM_TIMEOUT,
             format!("upstream request timed out: {err}"),
         )
     } else {
         KindError::structured(
-            "upstream_unreachable",
+            codes::UPSTREAM_UNREACHABLE,
             format!("upstream unreachable: {err}"),
         )
     }
@@ -1063,8 +1066,62 @@ impl HttpKind {
     }
 }
 
+fn conformance_good_spec() -> Value {
+    json!({
+        "method": "GET",
+        "url": "https://api.example.com/v1/things/{{id}}",
+        "args_schema": {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]},
+    })
+}
+
+fn conformance_secret_spec() -> Value {
+    json!({
+        "method": "GET",
+        "url": "https://api.example.com/v1/things/1",
+        "headers": {"Authorization": format!("Bearer {{{{secret.{CONFORMANCE_SECRET_NAME}}}}}")},
+    })
+}
+
+static CONTRACT: KindContract = KindContract {
+    error_families: &[UPSTREAM_FAMILY],
+    budgets: &[BudgetDim { field: "timeout_s", min: 1, max: MAX_TIMEOUT_S, default: DEFAULT_TIMEOUT_S }],
+    source_position: SourcePosition::None,
+    bridges: &[],
+    secret_redaction: true,
+    fixtures: ConformanceFixtures {
+        good_spec: conformance_good_spec,
+        good_args: || json!({"id": "abc"}),
+        bad_args: || json!({"id": 5}),
+        erroring_spec: None,
+        slow_spec: None,
+        secret_spec: Some(conformance_secret_spec),
+        skips: &[
+            CaseSkip {
+                case: CASE_CALL,
+                reason: "http calls reach a real upstream and its SSRF policy refuses a loopback stub; covered by tests/http_ac01_secret_redaction.rs",
+            },
+            CaseSkip {
+                case: CASE_SECRET_REDACTION,
+                reason: "the secret reaches only a real upstream; covered by tests/http_ac01_secret_redaction.rs",
+            },
+            CaseSkip {
+                case: CASE_ERROR_WITH_SOURCE_POSITION,
+                reason: "http runs no tool code; its failures are upstream-family and carry no source position",
+            },
+            CaseSkip {
+                case: CASE_BUDGET_EXCEEDED,
+                reason: "http's timeout_s is an upstream deadline (upstream_timeout), not a tool_limit budget",
+            },
+        ],
+    },
+};
+
 #[async_trait::async_trait]
 impl Kind for HttpKind {
+    fn contract(&self) -> &'static KindContract {
+        &CONTRACT
+    }
+
     fn name(&self) -> &'static str {
         "http"
     }
@@ -1091,7 +1148,7 @@ impl Kind for HttpKind {
             "description",
             "outputs",
             "upstream",
-            "upstream_provider",
+            key::UPSTREAM_PROVIDER,
         ]
     }
 
@@ -1385,7 +1442,7 @@ impl Kind for HttpKind {
                 }
                 None => {
                     return Err(KindError::structured(
-                        "upstream_not_connected",
+                        codes::UPSTREAM_NOT_CONNECTED,
                         "no upstream token is available for this call",
                     ));
                 }
@@ -1499,7 +1556,7 @@ impl Kind for HttpKind {
         let duration_ms = start.elapsed().as_millis();
         let t_upstream_done = Instant::now();
         crate::calltrace::note_phases(
-            json!({"args_ms": args_ms, "upstream_ms": duration_ms as u64, "serialize_ms": 0}),
+            json!({"args_ms": args_ms, (key::UPSTREAM_MS): duration_ms as u64, "serialize_ms": 0}),
         );
 
         if too_large {
@@ -1540,7 +1597,7 @@ impl Kind for HttpKind {
         if let Some(excerpt) = error_excerpt {
             let remedy = remedy_for(status.as_u16());
             let mut data = json!({
-                "upstream_status": status.as_u16(),
+                (key::UPSTREAM_STATUS): status.as_u16(),
                 "body_excerpt": excerpt,
                 (HINT_KEY): remedy.hint,
             });
@@ -1620,7 +1677,7 @@ impl Kind for HttpKind {
 
         crate::calltrace::note_phases(json!({
             "args_ms": args_ms,
-            "upstream_ms": duration_ms as u64,
+            (key::UPSTREAM_MS): duration_ms as u64,
             "serialize_ms": t_upstream_done.elapsed().as_millis() as u64,
         }));
         if ctx.test_mode {

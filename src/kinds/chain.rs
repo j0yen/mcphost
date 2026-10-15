@@ -42,6 +42,9 @@
 
 use serde_json::{Map, Value, json};
 
+use super::contract::{
+    CASE_BUDGET_EXCEEDED, CASE_CALL, CaseSkip, COMPOSE_FAMILY, ConformanceFixtures, KindContract, SourcePosition, TOOL_STATE_FAMILY, codes,
+};
 use super::{
     CallCtx, HOST_STEPS_ALLOWED, Kind, KindError, KindExample, KindRegistry, Path, ToolDescriptor, compose_call,
     compose_call_ref,
@@ -967,7 +970,7 @@ fn parse_steps(spec: &Value) -> Result<Vec<ParsedStep>, KindError> {
             && let Some(raw) = args.values().find_map(|v| v.as_str().filter(|s| is_item_ref(s)))
         {
             return Err(KindError::structured_with(
-                "compose_item_outside_for_each",
+                codes::COMPOSE_ITEM_OUTSIDE_FOR_EACH,
                 format!("spec.steps[{i}]: '{raw}' is only available inside a step that declares for_each"),
                 json!({"step": i + 1, "path": raw}),
             ));
@@ -1058,7 +1061,7 @@ async fn run_fanout(
         Some(Value::Array(items)) => items,
         Some(other) => {
             return Err(KindError::structured_with(
-                "compose_mapping_type",
+                codes::COMPOSE_MAPPING_TYPE,
                 format!(
                     "step {step_no} ('{}'): for_each path '{path}' is {}, expected an array",
                     step.tool,
@@ -1069,7 +1072,7 @@ async fn run_fanout(
         }
         None => {
             return Err(KindError::structured_with(
-                "compose_mapping_missing",
+                codes::COMPOSE_MAPPING_MISSING,
                 format!("step {step_no} ('{}'): for_each path '{path}' resolved to nothing", step.tool),
                 base_data(json!({})),
             ));
@@ -1077,7 +1080,7 @@ async fn run_fanout(
     };
     if items.len() > ctx.chain_fanout_max {
         return Err(KindError::structured_with(
-            "compose_fanout_exceeded",
+            codes::COMPOSE_FANOUT_EXCEEDED,
             format!(
                 "step {step_no} ('{}'): {} items exceed this plan's chain_fanout_max of {}",
                 step.tool,
@@ -1113,7 +1116,7 @@ async fn run_fanout(
                 Ok(args) => args,
                 Err(bad) => {
                     return ItemEnd::Failed(
-                        "compose_mapping_missing".to_string(),
+                        codes::COMPOSE_MAPPING_MISSING.to_string(),
                         format!("mapping path '{bad}' resolved to nothing"),
                     );
                 }
@@ -1644,8 +1647,48 @@ fn insert_prev_fields(entry: &mut Value, prev_fields: &Option<Vec<String>>) {
     }
 }
 
+fn conformance_good_spec() -> Value {
+    let msg_path = format!("$.{}.msg", CONTEXT_KEYS.input);
+    json!({ (CONTEXT_KEYS.steps): [{"tool": "step_one", "args": {"msg": msg_path}}] })
+}
+
+/// Reads `$.input.msg` from a call that supplies no `msg`.
+fn conformance_erroring_spec() -> Value {
+    conformance_good_spec()
+}
+
+static CONTRACT: KindContract = KindContract {
+    error_families: &[COMPOSE_FAMILY, TOOL_STATE_FAMILY],
+    budgets: &[],
+    source_position: SourcePosition::Field("failed_step"),
+    bridges: &[],
+    secret_redaction: false,
+    fixtures: ConformanceFixtures {
+        good_spec: conformance_good_spec,
+        good_args: || json!({"msg": "hi"}),
+        bad_args: || json!("not an object"),
+        erroring_spec: Some(conformance_erroring_spec),
+        slow_spec: None,
+        secret_spec: None,
+        skips: &[
+            CaseSkip {
+                case: CASE_CALL,
+                reason: "a chain call dispatches each step through the tenant's tool table; the suite's CallCtx wires no composition",
+            },
+            CaseSkip {
+                case: CASE_BUDGET_EXCEEDED,
+                reason: "chain declares no budget dimension of its own; its children are budgeted by compose_call",
+            },
+        ],
+    },
+};
+
 #[async_trait::async_trait]
 impl Kind for ChainKind {
+    fn contract(&self) -> &'static KindContract {
+        &CONTRACT
+    }
+
     fn name(&self) -> &'static str {
         "chain"
     }
@@ -1732,7 +1775,7 @@ impl Kind for ChainKind {
         if let Some(first) = first_missing {
             let tool_name = ctx.tool_name.as_deref().unwrap_or("chain");
             return Err(KindError::structured_with(
-                "compose_input_missing",
+                codes::COMPOSE_INPUT_MISSING,
                 format!(
                     "chain '{tool_name}' needs input(s) [{}] (used by step {} '{}')",
                     missing.join(", "),
@@ -1762,7 +1805,7 @@ impl Kind for ChainKind {
                             && !step.continue_on_error
                         {
                             return Err(KindError::structured_with(
-                                "compose_fanout_item_failed",
+                                codes::COMPOSE_FANOUT_ITEM_FAILED,
                                 format!(
                                     "step {failed_step_no} ('{}'): item {index} failed with {code}: {message}",
                                     step.tool
@@ -1789,7 +1832,7 @@ impl Kind for ChainKind {
                         });
                         if failed_count > 0 {
                             failed_steps.push(failed_step_no);
-                            entry["error_class"] = json!("compose_fanout_item_failed");
+                            entry["error_class"] = json!(codes::COMPOSE_FANOUT_ITEM_FAILED);
                         }
                         steps_trace.push(entry);
                         step_results.push(join.clone());
@@ -1800,7 +1843,7 @@ impl Kind for ChainKind {
                         let (code, _, _) = kind_error_parts(&e);
                         // The plan ceiling is a refusal of the whole call,
                         // never something `on_error: continue` swallows.
-                        if step.continue_on_error && code != "compose_fanout_exceeded" {
+                        if step.continue_on_error && code != codes::COMPOSE_FANOUT_EXCEEDED {
                             failed_steps.push(failed_step_no);
                             steps_trace.push(json!({
                                 "step": failed_step_no,
@@ -1841,7 +1884,7 @@ impl Kind for ChainKind {
                         data.extend(evidence);
                     }
                     let err = KindError::structured_with(
-                        "compose_mapping_missing",
+                        codes::COMPOSE_MAPPING_MISSING,
                         format!(
                             "step {failed_step_no} ('{}'): mapping path '{path}' resolved to nothing{hint}",
                             step.tool
@@ -1854,7 +1897,7 @@ impl Kind for ChainKind {
                             "step": failed_step_no,
                             "tool": step.tool,
                             "status": "error",
-                            "error_class": "compose_mapping_missing",
+                            "error_class": codes::COMPOSE_MAPPING_MISSING,
                         }));
                         // Requirement 3: a step whose own mapping never
                         // resolved contributes no result downstream --

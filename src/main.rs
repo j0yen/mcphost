@@ -4,7 +4,6 @@ use std::sync::Arc;
 use clap::{Parser, Subcommand};
 use mcphost::db::Db;
 use mcphost::kinds::KindRegistry;
-use mcphost::kinds::chain::ChainKind;
 use mcphost::kinds::python::PythonKind;
 use mcphost::secrets::SecretBox;
 use mcphost::state::AppState;
@@ -1440,16 +1439,12 @@ async fn main() -> anyhow::Result<()> {
             // still runs below regardless (requirement 1).
             python_kind.run_startup_selftest().await;
             kinds.register(std::sync::Arc::new(python_kind));
-            // PRD-mcphost-composition requirement 3: host-side only, no
-            // sandbox/isolation concept of its own -- registered
-            // unconditionally, unlike `http`/`python` above which need a
-            // domain or a sandbox mechanism first.
-            kinds.register(std::sync::Arc::new(ChainKind));
-            // PRD-mcphost-wasm-kind requirement 5: registered unconditionally,
-            // like `ChainKind` above -- this kind has no OS dependency to
-            // probe first (no `bwrap`, no userns, no sandbox self-test), so
-            // there is no readiness gate to run before it goes live.
-            kinds.register(std::sync::Arc::new(mcphost::kinds::wasm::WasmKind::new()));
+            // PRD-mcphost-composition requirement 3 / PRD-mcphost-wasm-kind
+            // requirement 5: `chain` and `wasm` are host-side only, with no
+            // sandbox/isolation concept or OS dependency to probe first --
+            // registered unconditionally, unlike `http`/`python` above which
+            // need a domain or a sandbox mechanism first.
+            mcphost::kinds::register_host_side_kinds(&mut kinds);
 
             // PRD-mcphost-session-bound-tenant-key requirement 1: the two
             // new memories below must validate the SAME session ids

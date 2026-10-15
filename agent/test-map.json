@@ -1665,6 +1665,13 @@
       "AC5": "tests/creg_ac05_capabilities_docs_in_sync.rs",
       "AC6": "tests/creg_ac06_quickstart_names_capabilities.rs",
       "AC7": "tests/creg_ac07_probe_names_unique.rs"
+    },
+    "kcon": {
+      "_prd": "PRD-mcphost-kind-contract-conformance-generated.md (test_prefix: kcon)",
+      "AC1": "tests/kcon_ac01_planted_drift_fails_naming_kind_case_code.rs",
+      "AC2": "tests/kcon_ac02_every_registered_kind_passes.rs",
+      "AC3": "tests/kcon_ac03_no_error_code_literals_outside_contract.rs",
+      "AC4": "tests/kcon_ac04_error_families_and_source_line.rs"
     }
   }
 }
