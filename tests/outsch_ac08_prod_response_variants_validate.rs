@@ -67,7 +67,8 @@ fn verbatim_prod_responses_validate_against_their_own_schema() {
     // today with the value it carries when the optional is present (e.g. an
     // OAuth end user on a run): the case the schema inferred from null-only rows
     // rejected as "must be null".
-    let cases: Vec<(&str, Vec<(&str, Value)>)> = vec![
+    type Case<'a> = (&'a str, Vec<(&'a str, Value)>);
+    let cases: Vec<Case> = vec![
         ("host.catalog.get", vec![]),
         ("host.catalog.search", vec![("/tools/0/group", json!("team"))]),
         ("host.msg.wait", vec![]),

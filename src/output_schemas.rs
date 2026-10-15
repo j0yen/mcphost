@@ -107,10 +107,10 @@ fn allow_null(schema: &mut Map<String, Value>) {
         Some(Value::Array(types)) if !types.iter().any(|t| t == "null") => types.push(Value::from("null")),
         _ => return,
     }
-    if let Some(Value::Array(variants)) = schema.get_mut("enum") {
-        if !variants.contains(&Value::Null) {
-            variants.push(Value::Null);
-        }
+    if let Some(Value::Array(variants)) = schema.get_mut("enum")
+        && !variants.contains(&Value::Null)
+    {
+        variants.push(Value::Null);
     }
 }
 
