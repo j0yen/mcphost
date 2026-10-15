@@ -724,6 +724,101 @@ pub async fn redeem(state: &AppState, args: &Value) -> Result<Value, AppError> {
     }
 }
 
+/// `host.key.mint` (PRD-mcphost-key-scoped-to-tools R1/R2): a sub-key that
+/// authenticates as the tenant but may call only the named tools. Primary-key
+/// callers only -- the dispatcher refuses a sub-key before this runs
+/// (`handler::SUB_KEY_REFUSED_TOOLS`). Every name must be one of the tenant's
+/// own tools or a shared-in qualified name; the first miss is a
+/// `tool_not_found` naming it and nothing is written.
+pub async fn key_mint(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let tools_arg = args
+        .get("tools")
+        .and_then(Value::as_array)
+        .ok_or_else(|| AppError::InvalidArgs("tools must be an array of tool names".into()))?;
+    if tools_arg.is_empty() || tools_arg.len() > 64 {
+        return Err(AppError::InvalidArgs("tools must hold 1..64 names".into()));
+    }
+    let mut tools: Vec<String> = Vec::new();
+    for t in tools_arg {
+        let name = t
+            .as_str()
+            .ok_or_else(|| AppError::InvalidArgs("tools must be an array of tool names".into()))?;
+        if !tools.iter().any(|x| x == name) {
+            tools.push(name.to_string());
+        }
+    }
+    let label = args
+        .get("label")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && l.len() <= 64)
+        .ok_or_else(|| AppError::InvalidArgs("label must be 1..64 characters".into()))?
+        .to_string();
+    let ttl_s = match args.get("ttl_s") {
+        None | Some(Value::Null) => 2_592_000,
+        Some(v) => v
+            .as_i64()
+            .filter(|n| (60..=7_776_000).contains(n))
+            .ok_or_else(|| AppError::InvalidArgs("ttl_s must be an integer in 60..7776000".into()))?,
+    };
+    // Resolve every name before writing anything. A qualified own name
+    // normalizes to the local name the allowlist stores.
+    let shared: Vec<String> = state
+        .db
+        .shared_tools_for_caller(tenant.id, tenant.namespace.clone())
+        .await?
+        .into_iter()
+        .map(|(owner_ns, tool, _)| format!("{owner_ns}.{tool}"))
+        .collect();
+    let own_prefix = format!("{}.", tenant.namespace);
+    let mut resolved: Vec<String> = Vec::new();
+    for name in &tools {
+        let local = name.strip_prefix(&own_prefix).unwrap_or(name);
+        let stored = if state.db.get_tool(tenant.id, local.to_string()).await?.is_some() {
+            local.to_string()
+        } else if shared.iter().any(|q| q == name) {
+            name.clone()
+        } else {
+            return Err(AppError::ToolNotFound(name.clone()));
+        };
+        if !resolved.contains(&stored) {
+            resolved.push(stored);
+        }
+    }
+    let key = format!("mk_{}", generate_key());
+    let now = now_unix();
+    let expires_at = now + ttl_s;
+    state
+        .db
+        .insert_sub_key(tenant.id, hash_key(&key), label.clone(), resolved.clone(), now, expires_at)
+        .await?;
+    tracing::info!(tenant = %tenant.namespace, label = %label, "sub-key minted");
+    Ok(json!({
+        "key": key,
+        "label": label,
+        "tools": resolved,
+        "expires_at": expires_at,
+        "usage": "Shown once. Pass it as the tenant_key argument or Authorization: Bearer; \
+            it can call only the listed tools. host.key.rotate does not touch sub-keys.",
+    }))
+}
+
+/// `host.key.revoke {label}` (PRD-mcphost-key-scoped-to-tools R5): stamps
+/// `revoked_at`; the sub-key's very next request fails `key_revoked`.
+pub async fn key_revoke(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let label = args
+        .get("label")
+        .and_then(Value::as_str)
+        .ok_or_else(|| AppError::InvalidArgs("label is required".into()))?
+        .to_string();
+    let now = now_unix();
+    if !state.db.revoke_sub_key(tenant.id, label.clone(), now).await? {
+        return Err(AppError::InvalidParams(format!("no sub-key labelled '{label}'")));
+    }
+    tracing::info!(tenant = %tenant.namespace, label = %label, "sub-key revoked");
+    Ok(json!({"label": label, "revoked": true}))
+}
+
 /// `host.key_rotate` (PRD-mcphost-handoff-token requirement 3 / AC3):
 /// authenticated as the tenant (with its current key, header or
 /// `tenant_key` argument -- same as any other `host.*` call). Issues a

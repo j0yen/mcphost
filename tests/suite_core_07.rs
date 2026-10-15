@@ -1325,6 +1325,14 @@ mod kindroute_ac07_http_database_query_publish_carries_hint;
 mod kindroute_ac07_quickstart_no_kind_lists_kinds_aliases_recipes;
 #[path = "kindroute_ac08_full_suite_green_at_landing.rs"]
 mod kindroute_ac08_full_suite_green_at_landing;
+#[path = "kst_ac01_sub_key_authenticates_as_tenant.rs"]
+mod kst_ac01_sub_key_authenticates_as_tenant;
+#[path = "kst_ac02_sub_key_list_and_refusal.rs"]
+mod kst_ac02_sub_key_list_and_refusal;
+#[path = "kst_ac03_mint_validates_names_and_is_primary_only.rs"]
+mod kst_ac03_mint_validates_names_and_is_primary_only;
+#[path = "kst_ac04_expired_and_revoked_sub_keys_fail.rs"]
+mod kst_ac04_expired_and_revoked_sub_keys_fail;
 #[path = "lanecov_ac01_every_tracked_path_routes.rs"]
 mod lanecov_ac01_every_tracked_path_routes;
 #[path = "lanecov_ac02_coverage_test_is_actually_run.rs"]
@@ -1833,13 +1841,3 @@ mod oauthentry_ac04_entry_audience_is_enforced_both_ways;
 mod oauthentry_ac05_claude_chatgpt_profiles_reach_tools_list;
 #[path = "oauthentry_ac06_path_contract_docs_router_quickstart.rs"]
 mod oauthentry_ac06_path_contract_docs_router_quickstart;
-#[path = "oauthmeta_ac01_tenant_document_lists_hosted_as.rs"]
-mod oauthmeta_ac01_tenant_document_lists_hosted_as;
-#[path = "oauthmeta_ac02_registered_issuer_follows_hosted_as.rs"]
-mod oauthmeta_ac02_registered_issuer_follows_hosted_as;
-#[path = "oauthmeta_ac03_issuer_url_validator_gates_setters.rs"]
-mod oauthmeta_ac03_issuer_url_validator_gates_setters;
-#[path = "oauthmeta_ac04_stored_non_url_issuer_leaves_documents.rs"]
-mod oauthmeta_ac04_stored_non_url_issuer_leaves_documents;
-#[path = "oauthmeta_ac05_contract_walk_document_to_token.rs"]
-mod oauthmeta_ac05_contract_walk_document_to_token;

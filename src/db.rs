@@ -16,6 +16,48 @@ use sha2::{Digest, Sha256};
 use crate::errors::AppError;
 use crate::paged::{OrderEnum as _, Paged as _};
 
+tokio::task_local! {
+    /// PRD-mcphost-key-scoped-to-tools R3: the `tenant_keys.id` of the
+    /// sub-key authenticating the current `tools/call`, scoped around its
+    /// dispatch so every `calls` writer stamps `calls.key_id` without each
+    /// `record_call*` signature growing a parameter.
+    pub static CALL_KEY_ID: i64;
+}
+
+fn current_key_id() -> Option<i64> {
+    CALL_KEY_ID.try_with(|k| *k).ok()
+}
+
+/// One `tenant_keys` row (never carries the key itself).
+#[derive(Debug, Clone)]
+pub struct SubKey {
+    pub id: i64,
+    pub tenant_id: i64,
+    pub label: String,
+    pub tools: Vec<String>,
+    pub created_at: i64,
+    pub expires_at: i64,
+    pub revoked_at: Option<i64>,
+    pub last_used_at: Option<i64>,
+}
+
+const SUB_KEY_COLUMNS: &str =
+    "id, tenant_id, label, tools_json, created_at, expires_at, revoked_at, last_used_at";
+
+fn sub_key_from_row(r: &Row<'_>) -> rusqlite::Result<SubKey> {
+    let tools_json: String = r.get(3)?;
+    Ok(SubKey {
+        id: r.get(0)?,
+        tenant_id: r.get(1)?,
+        label: r.get(2)?,
+        tools: serde_json::from_str(&tools_json).unwrap_or_default(),
+        created_at: r.get(4)?,
+        expires_at: r.get(5)?,
+        revoked_at: r.get(6)?,
+        last_used_at: r.get(7)?,
+    })
+}
+
 fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
@@ -311,6 +353,8 @@ const MIGRATION_0100: &str = include_str!("../migrations/0100_trigger_receipts.s
 const MIGRATION_0101: &str = include_str!("../migrations/0101_trigger_streak_floor.sql");
 /// PRD-mcphost-task-handoff-tool R2: the `tasks` table.
 const MIGRATION_0102: &str = include_str!("../migrations/0102_tasks.sql");
+/// PRD-mcphost-key-scoped-to-tools R1: `tenant_keys` plus `calls.key_id`.
+const MIGRATION_0103: &str = include_str!("../migrations/0103_tenant_keys.sql");
 
 /// Outcome of [`Db::reserve_draft`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2983,6 +3027,19 @@ impl Db {
         conn.execute_batch(MIGRATION_0100)?;
         conn.execute_batch(MIGRATION_0101)?;
         conn.execute_batch(MIGRATION_0102)?;
+        Self::migrate_0103_tenant_keys(&conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-key-scoped-to-tools R1: `tenant_keys` plus `calls.key_id`.
+    /// The batch ends in an `ALTER`, so it is gated on the new column.
+    fn migrate_0103_tenant_keys(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('calls') WHERE name = 'key_id'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0103)?;
+        }
         Ok(())
     }
 
@@ -4801,6 +4858,104 @@ impl Db {
             conn.query_row(&sql, params![key_hash], tenant_from_row)
                 .optional()
                 .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-key-scoped-to-tools R3: the sub-key whose hash is
+    /// `key_hash`, with its tenant row, or `None`. Expiry and revocation are
+    /// the caller's to judge (they have distinct error codes).
+    pub async fn find_sub_key_by_hash(
+        &self,
+        key_hash: String,
+    ) -> Result<Option<(SubKey, Tenant)>, AppError> {
+        self.with_conn(move |conn| {
+            let Some(sk) = conn
+                .query_row(
+                    &format!("SELECT {SUB_KEY_COLUMNS} FROM tenant_keys WHERE key_hash = ?1"),
+                    params![key_hash],
+                    sub_key_from_row,
+                )
+                .optional()?
+            else {
+                return Ok(None);
+            };
+            let sql = format!("SELECT {TENANT_COLUMNS} FROM tenants WHERE id = ?1");
+            let tenant = conn
+                .query_row(&sql, params![sk.tenant_id], tenant_from_row)
+                .optional()?;
+            Ok(tenant.map(|t| (sk, t)))
+        })
+        .await
+    }
+
+    /// PRD-mcphost-key-scoped-to-tools R1/R2: stores a sub-key's hash.
+    /// `label` is unique per tenant; a repeat is an `InvalidParams`.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_sub_key(
+        &self,
+        tenant_id: i64,
+        key_hash: String,
+        label: String,
+        tools: Vec<String>,
+        created_at: i64,
+        expires_at: i64,
+    ) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            let exists: bool = conn
+                .prepare("SELECT 1 FROM tenant_keys WHERE tenant_id = ?1 AND label = ?2")?
+                .exists(params![tenant_id, label])?;
+            if exists {
+                return Err(AppError::InvalidParams(format!(
+                    "a sub-key labelled '{label}' already exists"
+                )));
+            }
+            conn.execute(
+                "INSERT INTO tenant_keys (tenant_id, key_hash, label, tools_json, created_at, expires_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![tenant_id, key_hash, label, json!(tools).to_string(), created_at, expires_at],
+            )?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-key-scoped-to-tools R5: every sub-key of a tenant, oldest first.
+    pub async fn list_sub_keys(&self, tenant_id: i64) -> Result<Vec<SubKey>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(&format!(
+                "SELECT {SUB_KEY_COLUMNS} FROM tenant_keys WHERE tenant_id = ?1 ORDER BY id"
+            ))?;
+            let rows = stmt
+                .query_map(params![tenant_id], sub_key_from_row)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-key-scoped-to-tools R5: stamps `revoked_at`; `false` when
+    /// no such label exists. Revoking twice keeps the first stamp.
+    pub async fn revoke_sub_key(&self, tenant_id: i64, label: String, now: i64) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "UPDATE tenant_keys SET revoked_at = COALESCE(revoked_at, ?3) WHERE tenant_id = ?1 AND label = ?2",
+                params![tenant_id, label, now],
+            )?;
+            Ok(n > 0)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-key-scoped-to-tools technical considerations:
+    /// `last_used_at` is written at most once per minute per key.
+    pub async fn touch_sub_key(&self, key_id: i64, now: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tenant_keys SET last_used_at = ?2 WHERE id = ?1 AND (last_used_at IS NULL OR last_used_at <= ?2 - 60)",
+                params![key_id, now],
+            )?;
+            Ok(())
         })
         .await
     }
@@ -10164,6 +10319,7 @@ impl Db {
         // land, or neither does). `calls` itself is untouched (unmodified
         // columns, unmodified insert above this comment).
         let run_id = run_id.unwrap_or_else(crate::state::new_ulid);
+        let key_id = current_key_id();
         let run_status = match (ok, outcome.as_str()) {
             (true, _) => "done",
             (false, "call_timeout") => "timeout",
@@ -10186,9 +10342,9 @@ impl Db {
         self.with_conn(move |conn| {
             let tx = conn.unchecked_transaction()?;
             tx.execute(
-                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id, auth_method, step_tool, error_summary) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
-                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone(), auth_method, step_tool, error_summary],
+                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id, auth_method, step_tool, error_summary, key_id) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone(), auth_method, step_tool, error_summary, key_id],
             )?;
             let call_id = tx.last_insert_rowid();
             tx.execute(
@@ -10413,11 +10569,12 @@ impl Db {
     ) -> Result<(), AppError> {
         let started_at = now_rfc3339();
         let started_unix = now_unix();
+        let key_id = current_key_id();
         self.with_conn(move |conn| {
             conn.execute(
-                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, outcome, origin, origin_detail, caller_tenant_id, auth_method, error_code) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, 0, 'refused', 'refused', ?6, ?7, ?8, ?9, ?10)",
-                params![tenant_id, tool_name, started_at, started_unix, duration_ms, origin, origin_detail, caller_tenant_id, auth_method, error_code],
+                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, outcome, origin, origin_detail, caller_tenant_id, auth_method, error_code, key_id) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, 0, 'refused', 'refused', ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![tenant_id, tool_name, started_at, started_unix, duration_ms, origin, origin_detail, caller_tenant_id, auth_method, error_code, key_id],
             )?;
             Ok(())
         })

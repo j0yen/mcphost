@@ -4010,6 +4010,141 @@
     ],
     "type": "object"
   },
+  "host.key.mint": {
+    "properties": {
+      "expires_at": {
+        "type": "integer"
+      },
+      "key": {
+        "type": "string"
+      },
+      "label": {
+        "type": "string"
+      },
+      "next": {
+        "properties": {
+          "tool": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "tools": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "usage": {
+        "type": "string"
+      },
+      "welcome_back": {
+        "properties": {
+          "last_note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_seen": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "integer"
+          },
+          "since_you_left": {
+            "properties": {
+              "calls": {
+                "type": "integer"
+              },
+              "days": {
+                "type": "integer"
+              },
+              "inbox": {
+                "type": "integer"
+              },
+              "runs": {
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "required": [
+      "expires_at",
+      "key",
+      "label",
+      "tools",
+      "usage"
+    ],
+    "type": "object"
+  },
+  "host.key.revoke": {
+    "properties": {
+      "label": {
+        "type": "string"
+      },
+      "next": {
+        "properties": {
+          "tool": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "revoked": {
+        "type": "boolean"
+      },
+      "welcome_back": {
+        "properties": {
+          "last_note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_seen": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "integer"
+          },
+          "since_you_left": {
+            "properties": {
+              "calls": {
+                "type": "integer"
+              },
+              "days": {
+                "type": "integer"
+              },
+              "inbox": {
+                "type": "integer"
+              },
+              "runs": {
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "required": [
+      "label",
+      "revoked"
+    ],
+    "type": "object"
+  },
   "host.key.rotate": {
     "properties": {
       "key": {

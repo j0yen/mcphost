@@ -661,9 +661,10 @@ impl AppError {
                 // signup path's own rate-limit refusal is the same
                 // caller-state gate as `rate_limited` right above it.
                 "rate_limited" | "signup_rate_limited" | "signup_paused" | "banned"
-                | "insufficient_scope" | "invite_invalid" | "invite_rate_limited" => {
-                    ErrorCode::INVALID_REQUEST
-                }
+                | "insufficient_scope" | "invite_invalid" | "invite_rate_limited"
+                // PRD-mcphost-key-scoped-to-tools R3: a sub-key calling
+                // outside its allowlist is the same caller-credential gate.
+                | "permission_denied" => ErrorCode::INVALID_REQUEST,
                 // PRD-mcphost-invite-links requirement 1 (AC7): the same
                 // caller-input-quota class as `state_quota_exceeded` above.
                 // PRD-mcphost-paged-trait-on-every-list-verb requirement 2: a
@@ -673,6 +674,8 @@ impl AppError {
                 // large destructive call without a (valid) `confirm` token
                 // is a caller-input problem the error itself explains.
                 "confirm_required" | "confirm_invalid" => ErrorCode::INVALID_PARAMS,
+                // PRD-mcphost-key-scoped-to-tools R3: -32602, both.
+                "key_expired" | "key_revoked" => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-spec-output-paths requirement 1: a structured
                 // `invalid_spec` (kinds::http/python's own `parse_spec` and
                 // `normalize_outputs`) is exactly the same caller-input

@@ -6399,6 +6399,197 @@
       "since": "0.83.0"
     },
     {
+      "description": "Mint a sub-key that authenticates as this tenant but can call only the named tools (own tools, or shared-in qualified names). tools/list under it shows only those plus host.whoami and host.quickstart. Returns the key once; it survives host.key.rotate. A sub-key cannot mint, list or revoke keys.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "description": "A name for this sub-key, unique per tenant.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "tools": {
+            "description": "1..64 tool names the sub-key may call: your own local names or shared-in <namespace>.<name>.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "ttl_s": {
+            "description": "Seconds until the sub-key expires, 60..7776000. Default 2592000 (30 days).",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tools",
+          "label"
+        ],
+        "type": "object"
+      },
+      "name": "host.key.mint",
+      "output_schema": {
+        "properties": {
+          "expires_at": {
+            "type": "integer"
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "next": {
+            "properties": {
+              "tool": {
+                "type": "string"
+              },
+              "why": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "tools": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "usage": {
+            "type": "string"
+          },
+          "welcome_back": {
+            "properties": {
+              "last_note": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "last_seen": {
+                "type": "string"
+              },
+              "notes": {
+                "type": "integer"
+              },
+              "since_you_left": {
+                "properties": {
+                  "calls": {
+                    "type": "integer"
+                  },
+                  "days": {
+                    "type": "integer"
+                  },
+                  "inbox": {
+                    "type": "integer"
+                  },
+                  "runs": {
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "expires_at",
+          "key",
+          "label",
+          "tools",
+          "usage"
+        ],
+        "type": "object"
+      },
+      "since": "0.107.89"
+    },
+    {
+      "description": "Revoke a sub-key by label: its next request fails key_revoked. The tenant key and other sub-keys are untouched.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "description": "The label host.key.mint was called with.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "type": "object"
+      },
+      "name": "host.key.revoke",
+      "output_schema": {
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "next": {
+            "properties": {
+              "tool": {
+                "type": "string"
+              },
+              "why": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "revoked": {
+            "type": "boolean"
+          },
+          "welcome_back": {
+            "properties": {
+              "last_note": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "last_seen": {
+                "type": "string"
+              },
+              "notes": {
+                "type": "integer"
+              },
+              "since_you_left": {
+                "properties": {
+                  "calls": {
+                    "type": "integer"
+                  },
+                  "days": {
+                    "type": "integer"
+                  },
+                  "inbox": {
+                    "type": "integer"
+                  },
+                  "runs": {
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "label",
+          "revoked"
+        ],
+        "type": "object"
+      },
+      "since": "0.107.89"
+    },
+    {
       "description": "Issue a new tenant key and invalidate the current one immediately: every other call using the old key fails as unauthenticated from this point on. Returns the new key exactly once -- use it (as tenant_key or Authorization) for every call after this one.",
       "input_schema": {
         "additionalProperties": false,
@@ -22727,6 +22918,64 @@
       },
       "name": "host_invite_revoke",
       "since": "0.103.1"
+    },
+    {
+      "alias_of": "host.key.mint",
+      "description": "Mint a sub-key that authenticates as this tenant but can call only the named tools (own tools, or shared-in qualified names). tools/list under it shows only those plus host.whoami and host.quickstart. Returns the key once; it survives host.key.rotate. A sub-key cannot mint, list or revoke keys.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "description": "A name for this sub-key, unique per tenant.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "tools": {
+            "description": "1..64 tool names the sub-key may call: your own local names or shared-in <namespace>.<name>.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "ttl_s": {
+            "description": "Seconds until the sub-key expires, 60..7776000. Default 2592000 (30 days).",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tools",
+          "label"
+        ],
+        "type": "object"
+      },
+      "name": "host_key_mint",
+      "since": "0.107.89"
+    },
+    {
+      "alias_of": "host.key.revoke",
+      "description": "Revoke a sub-key by label: its next request fails key_revoked. The tenant key and other sub-keys are untouched.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "description": "The label host.key.mint was called with.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "type": "object"
+      },
+      "name": "host_key_revoke",
+      "since": "0.107.89"
     },
     {
       "alias_of": "host.key.rotate",
