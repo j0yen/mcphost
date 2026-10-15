@@ -122,6 +122,12 @@ jobs:
           cargo build --locked --bin mcphost
           install -Dm755 target/debug/mcphost "$HOME/.local/bin/mcphost"
 
+      # PRD-mcphost-contract-suite-generated: the `//! contract:` suites first, so a
+      # drifted tree-derived set (CHANGELOG, migrations, tools/list shape, weights)
+      # fails in minutes with a short log. The list is derived from Cargo.toml.
+      - name: contract suites
+        run: ./scripts/pin-tests.sh
+
       - name: cargo test (core suites)
         # CI runners are shared 2-4 vCPU hosts: timing budgets are the gate's
         # truth (RedBaron, quiet box, var unset), not CI's. Same switch the gate

@@ -1,3 +1,4 @@
+//! contract: the pre-existing agent/proof-lanes.toml lanes are unchanged
 //! PRD-mcphost-proof-lane-loop-config, AC4 — the pre-existing lanes are not
 //! disturbed by this PRD's addition.
 //!

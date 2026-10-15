@@ -505,8 +505,6 @@ mod checkcompat_race_ac06_explicit_bind_still_enforces_token;
 mod checkcompat_race_ac07_suite_green_and_clippy_clean;
 #[path = "checkcompat_race_ac08_deferral_is_justified.rs"]
 mod checkcompat_race_ac08_deferral_is_justified;
-#[path = "chg_ac01_changelog_headings_parse.rs"]
-mod chg_ac01_changelog_headings_parse;
 #[path = "chg_ac02_contract_since_drift.rs"]
 mod chg_ac02_contract_since_drift;
 #[path = "chg_ac03_changelog_renamed_lists_every_alias.rs"]
@@ -525,10 +523,6 @@ mod ci_sandbox_ac01_workflow_executes_sandbox_suites;
 mod ci_sandbox_ac03_incapable_in_ci_skips_and_fails_job;
 #[path = "ci_sandbox_ac04_incapable_outside_ci_fails_loudly.rs"]
 mod ci_sandbox_ac04_incapable_outside_ci_fails_loudly;
-#[path = "ci_sandbox_ac06_sandbox_suites_run_as_a_parallel_job.rs"]
-mod ci_sandbox_ac06_sandbox_suites_run_as_a_parallel_job;
-#[path = "cishard_ac01_balanced_shards_from_recorded_weights.rs"]
-mod cishard_ac01_balanced_shards_from_recorded_weights;
 #[path = "cishard_ac02_one_shard_count_source.rs"]
 mod cishard_ac02_one_shard_count_source;
 #[path = "cishard_ac03_run_wall_budget_and_readout.rs"]
@@ -565,8 +559,6 @@ mod cnfm_ac06_scratch_tenant_is_never_gated;
 mod cnfm_ac07_plan_override_disables_the_gate;
 #[path = "compat_ac01_ac02_ac03_cache_fields.rs"]
 mod compat_ac01_ac02_ac03_cache_fields;
-#[path = "compat_ac04_ac05_admin_and_tenant_cache_fields.rs"]
-mod compat_ac04_ac05_admin_and_tenant_cache_fields;
 #[path = "compat_ac08_ac09_ac10_advertised_version.rs"]
 mod compat_ac08_ac09_ac10_advertised_version;
 #[path = "compat_ac11_ac12_claude_sdk_replay.rs"]
@@ -647,6 +639,20 @@ mod ctrace_ac06_sweep_keeps_newest_200_within_24h;
 mod ctraceb_ac01_trace_access_is_tenant_scoped;
 #[path = "ctraceb_ac02_sweep_keeps_newest_200_within_24h.rs"]
 mod ctraceb_ac02_sweep_keeps_newest_200_within_24h;
+#[path = "ctrs_ac01_marked_files_live_in_contract_suites.rs"]
+mod ctrs_ac01_marked_files_live_in_contract_suites;
+#[path = "ctrs_ac02_six_files_carry_marker_and_keep_tests.rs"]
+mod ctrs_ac02_six_files_carry_marker_and_keep_tests;
+#[path = "ctrs_ac03_pin_tests_derives_list_from_cargo_toml.rs"]
+mod ctrs_ac03_pin_tests_derives_list_from_cargo_toml;
+#[path = "ctrs_ac04_contract_lint_names_unmarked_contract_files.rs"]
+mod ctrs_ac04_contract_lint_names_unmarked_contract_files;
+#[path = "ctrs_ac05_contract_suite_check_matches_pin_tests_list.rs"]
+mod ctrs_ac05_contract_suite_check_matches_pin_tests_list;
+#[path = "ctrs_ac06_contract_suites_finish_within_budget.rs"]
+mod ctrs_ac06_contract_suites_finish_within_budget;
+#[path = "ctrs_ac07_ci_gate_runs_contract_suites_before_core_suites.rs"]
+mod ctrs_ac07_ci_gate_runs_contract_suites_before_core_suites;
 #[path = "ctrv_ac01_sha_stable_across_boot_requests_and_process.rs"]
 mod ctrv_ac01_sha_stable_across_boot_requests_and_process;
 #[path = "ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs"]

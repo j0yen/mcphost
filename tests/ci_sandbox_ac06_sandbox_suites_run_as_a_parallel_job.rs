@@ -1,3 +1,4 @@
+//! contract: the CI workflow's sandbox job runs the partition's sandbox suites
 //! PRD-mcphost-ci-sandbox-coverage
 //! AC6 (P1) -- Given the full workflow on a clean cache, When it completes,
 //! Then total added wall time for sandbox suites is <=5 minutes or the suites

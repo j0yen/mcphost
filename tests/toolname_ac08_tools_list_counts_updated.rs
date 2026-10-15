@@ -1,3 +1,4 @@
+//! contract: the exact tools/list counts match the registry
 //! PRD-mcphost-tool-naming-convention-and-aliases
 //! AC8 — Given the existing test suite, When any test asserted an exact
 //! `tools/list` count, Then it is updated to the new count with a

@@ -928,8 +928,6 @@ mod toolname_ac05_alias_metrics_counter;
 mod toolname_ac06_did_you_mean_suggests_canonical;
 #[path = "toolname_ac07_whoami_naming_rule_url_once_per_session.rs"]
 mod toolname_ac07_whoami_naming_rule_url_once_per_session;
-#[path = "toolname_ac08_tools_list_counts_updated.rs"]
-mod toolname_ac08_tools_list_counts_updated;
 #[path = "toolscope_ac01_scoped_consent_and_token.rs"]
 mod toolscope_ac01_scoped_consent_and_token;
 #[path = "toolscope_ac02_scoped_token_list_and_call.rs"]

@@ -39,6 +39,7 @@
 #
 # Usage:
 #   scripts/flake-lint.sh [DIR-or-FILE]   defaults to `tests`
+#   (also runs scripts/contract-lint.sh over a DIR target)
 set -uo pipefail
 
 # Deliberately no `cd` to a fixed repo root: ALLOW_FILE is resolved relative
@@ -141,6 +142,19 @@ if [ -d "$TARGET" ] && [ -f "$TIMING_LINT" ]; then
   printf '%s\n' "$timing_out"
   if [ "$timing_rc" -ne 0 ]; then
     blocking_count=$((blocking_count + $(printf '%s\n' "$timing_out" | grep -vc '^timing-lint:')))
+  fi
+fi
+
+# Contract-test marker (PRD-mcphost-contract-suite-generated): an unmarked
+# file that reads a tree-derived set must declare `//! contract:`. Blocking,
+# not allow-listable. Same alongside-the-script rule as the timing lint.
+CONTRACT_LINT="$(dirname "${BASH_SOURCE[0]}")/contract-lint.sh"
+if [ -d "$TARGET" ] && [ -f "$CONTRACT_LINT" ]; then
+  contract_out="$(bash "$CONTRACT_LINT" "$TARGET")"
+  contract_rc=$?
+  printf '%s\n' "$contract_out"
+  if [ "$contract_rc" -ne 0 ]; then
+    blocking_count=$((blocking_count + $(printf '%s\n' "$contract_out" | grep -vc '^contract-lint: FAILED')))
   fi
 fi
 

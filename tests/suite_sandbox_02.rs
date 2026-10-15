@@ -25,8 +25,6 @@ mod federation;
 #[path = "support/host.rs"]
 #[allow(dead_code)]
 mod host;
-#[path = "support/lanecov.rs"]
-mod lanecov;
 #[path = "support/oauth.rs"]
 mod oauth;
 #[path = "support/uptime_probes.rs"]
@@ -218,8 +216,6 @@ mod kindroute_ac04_unknown_kind_carries_recipe_hints;
 mod kindroute_ac05_sandbox_docs_help_names_write_path;
 #[path = "kindroute_ac05_startup_aliases_and_recipe_tools_are_registered.rs"]
 mod kindroute_ac05_startup_aliases_and_recipe_tools_are_registered;
-#[path = "lanecov_ac04_existing_lanes_unchanged.rs"]
-mod lanecov_ac04_existing_lanes_unchanged;
 #[path = "limits_ac01_declared_timeout_honored.rs"]
 mod limits_ac01_declared_timeout_honored;
 #[path = "limits_ac02_default_timeout_when_undeclared.rs"]

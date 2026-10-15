@@ -1,3 +1,4 @@
+//! contract: tools/list carries cache fields for admin and fresh tenants
 //! AC4 — Given a client authenticated with the admin key, When it calls
 //! `tools/list`, Then the result contains a numeric `ttlMs` and
 //! `cacheScope: "private"` and lists the `admin.*` tools.

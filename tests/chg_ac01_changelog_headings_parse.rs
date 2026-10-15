@@ -1,3 +1,4 @@
+//! contract: CHANGELOG.md headings parse and match the Cargo.toml version
 //! PRD-mcphost-host-changelog-since AC1 — Given the committed `CHANGELOG.md`,
 //! When `parse_changelog` runs, Then every `## ` heading yields
 //! `(semver, date)`, versions are strictly descending, the count equals the
