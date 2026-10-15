@@ -138,7 +138,10 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
         // PRD-mcphost-task-handoff-tool: host.task.post/claim/complete/get/
         // dead_letters, five dotted tools plus their flattened forms,
         // 408 + 10 = 418.
-        418,
+        // PRD-mcphost-index-create-from-sources: host.index.create and
+        // host.index.status, two dotted tools plus their flattened forms,
+        // 418 + 4 = 422.
+        422,
         "there must be exactly the sixteen host.* control-plane tools \
          (incl. host.quickstart, host.tool_run, host.bridge_test, host.spec_test -- \
          PRD-mcphost-tool-test, and host.redeem/host.key_rotate -- \

@@ -220,6 +220,14 @@ pub struct Plan {
     /// (10 000) when a hand-edited `plans.toml` predates this key, same
     /// tolerant-parse convention as every other field above.
     pub docs_chunks_max: i64,
+    /// PRD-mcphost-index-create-from-sources R5: how many named indexes
+    /// (`host.index.create`) a tenant may hold at once; a create past this
+    /// is refused `quota_index_max` (free 3, pro 50).
+    pub index_max: i64,
+    /// R5: how many `index_chunks` rows a tenant's indexes may hold across
+    /// every index; a build past this truncates the source and sets its
+    /// `last_error` to `quota_index_chunks_max` (free 20 000, pro 200 000).
+    pub index_chunks_max: i64,
     /// PRD-mcphost-blob-put-get-signed-url R4: how many blobs
     /// (`host.blob.put`) this plan's tenants may hold at once -- a put of a
     /// new name past this refuses with `quota_blobs`. Defaults to the `free`
@@ -562,6 +570,8 @@ impl PlanCatalog {
                     // PRD-mcphost-docs-semantic-search P0 requirement 5:
                     // "docs_chunks_max (free 10 000, pro 50 000)".
                     docs_chunks_max: 10_000,
+                    index_max: 3,
+                    index_chunks_max: 20_000,
                     // PRD-mcphost-blob-put-get-signed-url R4: "free 100 /
                     // 50 MiB / 20 MiB".
                     blobs_max: 100,
@@ -670,6 +680,8 @@ impl PlanCatalog {
                     // PRD-mcphost-docs-semantic-search P0 requirement 5:
                     // "docs_chunks_max (free 10 000, pro 50 000)".
                     docs_chunks_max: 50_000,
+                    index_max: 50,
+                    index_chunks_max: 200_000,
                     // R4: "pro 10 000 / 2 GiB / 200 MiB".
                     blobs_max: 10_000,
                     blob_bytes_max: 2 * 1024 * 1024 * 1024,
@@ -820,6 +832,8 @@ impl PlanCatalog {
             out.push_str(&format!("docs_max = {}\n", p.docs_max));
             out.push_str(&format!("docs_bytes_max = {}\n", p.docs_bytes_max));
             out.push_str(&format!("docs_chunks_max = {}\n", p.docs_chunks_max));
+            out.push_str(&format!("index_max = {}\n", p.index_max));
+            out.push_str(&format!("index_chunks_max = {}\n", p.index_chunks_max));
             out.push_str(&format!("blobs_max = {}\n", p.blobs_max));
             out.push_str(&format!("blob_bytes_max = {}\n", p.blob_bytes_max));
             out.push_str(&format!("blob_max_bytes = {}\n", p.blob_max_bytes));
@@ -933,6 +947,8 @@ impl PlanCatalog {
                 "docs_max" => builder.docs_max = Some(int_value()),
                 "docs_bytes_max" => builder.docs_bytes_max = Some(int_value()),
                 "docs_chunks_max" => builder.docs_chunks_max = Some(int_value()),
+                "index_max" => builder.index_max = Some(int_value()),
+                "index_chunks_max" => builder.index_chunks_max = Some(int_value()),
                 "blobs_max" => builder.blobs_max = Some(int_value()),
                 "blob_bytes_max" => builder.blob_bytes_max = Some(int_value()),
                 "blob_max_bytes" => builder.blob_max_bytes = Some(int_value()),
@@ -1026,6 +1042,8 @@ struct PlanBuilder {
     docs_max: Option<i64>,
     docs_bytes_max: Option<i64>,
     docs_chunks_max: Option<i64>,
+    index_max: Option<i64>,
+    index_chunks_max: Option<i64>,
     blobs_max: Option<i64>,
     blob_bytes_max: Option<i64>,
     blob_max_bytes: Option<i64>,
@@ -1104,6 +1122,8 @@ impl PlanBuilder {
             docs_max: quota!(docs_max),
             docs_bytes_max: quota!(docs_bytes_max),
             docs_chunks_max: quota!(docs_chunks_max),
+            index_max: quota!(index_max),
+            index_chunks_max: quota!(index_chunks_max),
             blobs_max: quota!(blobs_max),
             blob_bytes_max: quota!(blob_bytes_max),
             blob_max_bytes: quota!(blob_max_bytes),

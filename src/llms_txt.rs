@@ -167,6 +167,7 @@ pub fn render_tools_section(kinds: &KindRegistry) -> String {
         out.push_str(&format!("- `{name}`\n"));
     }
     out.push_str(&render_paging_section());
+    out.push_str(&render_index_section());
     out.push_str(TOOLS_SECTION_END);
     out
 }
@@ -188,6 +189,16 @@ pub fn render_paging_section() -> String {
         }
     }
     out
+}
+
+/// PRD-mcphost-index-create-from-sources R2: the `## Indexes` section, its
+/// source kinds generated from [`crate::index::IndexSourceKind`].
+pub fn render_index_section() -> String {
+    // Not a "- `name`" line: the tools parity test reads those as tool names.
+    format!(
+        "\n## Indexes\n\n- host.index.create sources[].kind is one of: {}.\n",
+        crate::index::kinds_list()
+    )
 }
 
 /// Replace the section between the markers in `content` with `section`, or

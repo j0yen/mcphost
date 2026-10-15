@@ -76,6 +76,7 @@ pub const WRITE_VERBS: &[WriteVerb] = &[
     sv("host.docs.put", Kind::Write),
     sv("host.docs.delete", Kind::Delete),
     sv("host.docs.purge", Kind::Delete),
+    sv("host.index.create", Kind::Write),
     sv("host.enduser.purge", Kind::Delete),
     sv("host.enduser.revoke", Kind::Revoke),
     sv("host.enduser.unrevoke", Kind::Revoke),

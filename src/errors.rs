@@ -768,7 +768,13 @@ impl AppError {
                 "docs_too_large" | "docs_mime_unsupported" | "quota_docs" | "quota_docs_bytes" => {
                     ErrorCode::INVALID_PARAMS
                 }
-                "docs_not_found" | "blob_not_found" | "blob_expired" => ErrorCode::RESOURCE_NOT_FOUND,
+                "docs_not_found" | "blob_not_found" | "blob_expired" | "index_not_found" => {
+                    ErrorCode::RESOURCE_NOT_FOUND
+                }
+                // PRD-mcphost-index-create-from-sources: a duplicate name or
+                // the `index_max` ceiling is a caller-input problem, same
+                // INVALID_PARAMS bucket as `quota_docs`.
+                "index_exists" | "quota_index_max" => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-blob-put-get-signed-url R3/R4: the blob quota
                 // and size refusals are the same caller-input class as the
                 // `quota_docs` group above.

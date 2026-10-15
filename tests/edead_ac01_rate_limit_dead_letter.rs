@@ -60,8 +60,16 @@ async fn thirty_first_delivery_is_a_dead_letter_with_its_body() {
             .await
             .expect("dead_letters"),
     );
-    let letters = listed["dead_letters"].as_array().expect("dead_letters array");
-    assert_eq!(letters.len(), 1, "exactly one letter: {letters:?}");
+    // Earlier in-limit deliveries may also dead-letter as `jobs_concurrent`
+    // when the free plan's single job slot is busy; only the rate-limit
+    // reason is this AC's subject.
+    let letters: Vec<&serde_json::Value> = listed["dead_letters"]
+        .as_array()
+        .expect("dead_letters array")
+        .iter()
+        .filter(|l| l["reason_code"] == json!("events_rate_limited"))
+        .collect();
+    assert_eq!(letters.len(), 1, "exactly one rate-limit letter: {letters:?}");
     assert_eq!(letters[0]["dead_letter_id"], json!(letter_id));
     assert_eq!(letters[0]["reason_code"], json!("events_rate_limited"));
     assert_eq!(letters[0]["body"], json!(thirty_first));

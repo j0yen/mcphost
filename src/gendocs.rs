@@ -56,6 +56,10 @@ pub const TOOLS_DOC_PATH: &str = "docs/tools.md";
 /// [`render_blob_types_doc`] over [`crate::blobs::BLOB_TYPES`].
 pub const BLOB_TYPES_DOC_PATH: &str = "docs/blob-types.md";
 
+/// PRD-mcphost-index-create-from-sources R2: the retrieval doc,
+/// [`crate::index::render_retrieval_doc`] over `IndexSourceKind`.
+pub const RETRIEVAL_DOC_PATH: &str = "docs/retrieval.md";
+
 /// PRD-mcphost-llms-install-doc: the committed repo-root copy of the document
 /// `GET /llms-install.md` serves, rendered against the production hostname.
 pub const INSTALL_DOC_PATH: &str = crate::install_links::INSTALL_DOC_FILE;
@@ -449,6 +453,7 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
         (Path::new(PLANS_HTML_PATH), render_plans_html()),
         (Path::new(TOOLS_DOC_PATH), render_tools_markdown(kinds)),
         (Path::new(BLOB_TYPES_DOC_PATH), render_blob_types_doc()),
+        (Path::new(RETRIEVAL_DOC_PATH), crate::index::render_retrieval_doc()),
         (
             Path::new(INSTALL_DOC_PATH),
             crate::install_links::render_install_doc(crate::install_links::CANONICAL_PUBLIC_URL),
@@ -520,6 +525,18 @@ mod tests {
     fn committed_blob_types_doc_matches_a_fresh_render() {
         let committed = include_str!("../docs/blob-types.md");
         assert_eq!(committed, render_blob_types_doc(), "docs/blob-types.md has drifted -- run `mcphost gen-docs`");
+    }
+
+    /// PRD-mcphost-index-create-from-sources R2: `docs/retrieval.md` is
+    /// byte-identical to a fresh render over `IndexSourceKind`.
+    #[test]
+    fn committed_retrieval_doc_matches_a_fresh_render() {
+        let committed = include_str!("../docs/retrieval.md");
+        assert_eq!(
+            committed,
+            crate::index::render_retrieval_doc(),
+            "docs/retrieval.md has drifted -- run `mcphost gen-docs`"
+        );
     }
 
     /// PRD-mcphost-tool-naming-convention-and-aliases AC4's own hermetic

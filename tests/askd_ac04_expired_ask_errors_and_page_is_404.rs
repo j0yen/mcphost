@@ -15,18 +15,28 @@ async fn wait_after_ttl_is_ask_expired_and_the_page_is_the_router_404() {
     let (_ns, key) = signup(&server.base_url, "askd ac04 tenant").await;
     let agent = McpClient::with_bearer(&server.base_url, &key);
 
-    let created = extract_structured(
-        &agent
-            .tools_call("host.ask.create", json!({"question": "Send it?", "options": ["yes", "no"], "ttl_s": 2}))
-            .await
-            .expect("ask.create"),
-    );
-    let ask_id = created["ask_id"].as_str().expect("ask_id").to_string();
-    let advertised = created["url"].as_str().expect("url");
-    let url = format!("{}/a/{}", server.base_url, advertised.split_once("/a/").expect("/a/ url").1);
-
+    // The 2 s ttl can lapse before the first GET on a loaded runner (full
+    // suite, ~1000 tests in parallel); retry with a fresh ask until the
+    // page is observed live, so the "answerable before the ttl" check
+    // still holds for the ask the rest of the test uses.
     let http = reqwest::Client::new();
-    assert_eq!(http.get(&url).send().await.expect("live page").status(), 200, "answerable before the ttl");
+    let mut live = None;
+    for _ in 0..5 {
+        let created = extract_structured(
+            &agent
+                .tools_call("host.ask.create", json!({"question": "Send it?", "options": ["yes", "no"], "ttl_s": 2}))
+                .await
+                .expect("ask.create"),
+        );
+        let ask_id = created["ask_id"].as_str().expect("ask_id").to_string();
+        let advertised = created["url"].as_str().expect("url");
+        let url = format!("{}/a/{}", server.base_url, advertised.split_once("/a/").expect("/a/ url").1);
+        if http.get(&url).send().await.expect("live page").status() == 200 {
+            live = Some((ask_id, url));
+            break;
+        }
+    }
+    let (ask_id, url) = live.expect("answerable before the ttl");
 
     tokio::time::sleep(Duration::from_secs(3)).await;
 

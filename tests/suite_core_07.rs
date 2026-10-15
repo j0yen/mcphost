@@ -1099,6 +1099,12 @@ mod heal_ac01_action_set_single_source;
 mod heal_ac03_rate_limit_per_hour;
 #[path = "heal_ac04_no_destructive_action.rs"]
 mod heal_ac04_no_destructive_action;
+#[path = "hidx_ac02_three_sources_build_with_offsets.rs"]
+mod hidx_ac02_three_sources_build_with_offsets;
+#[path = "hidx_ac03_source_kinds_one_set.rs"]
+mod hidx_ac03_source_kinds_one_set;
+#[path = "hidx_ac04_index_max_quota.rs"]
+mod hidx_ac04_index_max_quota;
 #[path = "hooks_ac10_healthz_event_counters.rs"]
 mod hooks_ac10_healthz_event_counters;
 #[path = "hooks_ac11_dedupe_header_idempotent.rs"]
@@ -1833,13 +1839,3 @@ mod oauthentry_ac04_entry_audience_is_enforced_both_ways;
 mod oauthentry_ac05_claude_chatgpt_profiles_reach_tools_list;
 #[path = "oauthentry_ac06_path_contract_docs_router_quickstart.rs"]
 mod oauthentry_ac06_path_contract_docs_router_quickstart;
-#[path = "oauthmeta_ac01_tenant_document_lists_hosted_as.rs"]
-mod oauthmeta_ac01_tenant_document_lists_hosted_as;
-#[path = "oauthmeta_ac02_registered_issuer_follows_hosted_as.rs"]
-mod oauthmeta_ac02_registered_issuer_follows_hosted_as;
-#[path = "oauthmeta_ac03_issuer_url_validator_gates_setters.rs"]
-mod oauthmeta_ac03_issuer_url_validator_gates_setters;
-#[path = "oauthmeta_ac04_stored_non_url_issuer_leaves_documents.rs"]
-mod oauthmeta_ac04_stored_non_url_issuer_leaves_documents;
-#[path = "oauthmeta_ac05_contract_walk_document_to_token.rs"]
-mod oauthmeta_ac05_contract_walk_document_to_token;

@@ -311,6 +311,8 @@ const MIGRATION_0100: &str = include_str!("../migrations/0100_trigger_receipts.s
 const MIGRATION_0101: &str = include_str!("../migrations/0101_trigger_streak_floor.sql");
 /// PRD-mcphost-task-handoff-tool R2: the `tasks` table.
 const MIGRATION_0102: &str = include_str!("../migrations/0102_tasks.sql");
+/// PRD-mcphost-index-create-from-sources R1/R3: the named-index tables.
+const MIGRATION_0103: &str = include_str!("../migrations/0103_indexes.sql");
 
 /// Outcome of [`Db::reserve_draft`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2983,6 +2985,7 @@ impl Db {
         conn.execute_batch(MIGRATION_0100)?;
         conn.execute_batch(MIGRATION_0101)?;
         conn.execute_batch(MIGRATION_0102)?;
+        conn.execute_batch(MIGRATION_0103)?;
         Ok(())
     }
 

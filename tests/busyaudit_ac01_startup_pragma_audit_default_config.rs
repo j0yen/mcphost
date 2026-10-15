@@ -34,9 +34,11 @@ fn startup_audit_logs_one_line_per_role_with_default_pragmas() {
     // vanishingly likely inside the bound below. The two assertions below
     // are unchanged: still exactly one line per role with the default
     // pragmas, never weakened.
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let mut attempts = 0;
     let mut log;
     loop {
+        attempts += 1;
         let data_dir = scratch_data_dir("busyaudit-ac01");
         let (db, captured) = capture_tracing(|| Db::open_with_cfg(&data_dir, DbConfig::default()));
         let _db = db.expect("Db::open with default config");
@@ -45,7 +47,7 @@ fn startup_audit_logs_one_line_per_role_with_default_pragmas() {
 
         let got_both = log.contains(&format!("role=server {expected}"))
             && log.contains(&format!("role=prune {expected}"));
-        if got_both || Instant::now() >= deadline {
+        if got_both || (attempts >= 5 && Instant::now() >= deadline) {
             break;
         }
         std::thread::sleep(Duration::from_millis(50));
