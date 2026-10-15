@@ -952,6 +952,13 @@ pub fn admin_audit_entry(
                 args.get("reason").or_else(|| args.get("pr_url")).and_then(Value::as_str).map(String::from),
             ))
         }
+        // PRD-mcphost-backup-restore-proof-nightly R3: a recorded restore
+        // verification is a mutation like every other admin.* write.
+        "admin.backup_verified" => Some((
+            "backup_verified".into(),
+            args.get("source").and_then(Value::as_str).map(String::from),
+            None,
+        )),
         "admin.alerts.ack" => Some((
             "alerts_ack".into(),
             args.get("id").and_then(Value::as_i64).map(|n| n.to_string()),
@@ -1492,6 +1499,46 @@ pub async fn alerts_ack(state: &AppState, args: &Value) -> Result<Value, AppErro
         return Err(AppError::ToolNotFound(format!("alert {id}")));
     }
     Ok(json!({ "id": id, "acked": true }))
+}
+
+/// Oldest `taken_at_unix` `admin.backup_verified` accepts (R3): 7 days.
+const BACKUP_MAX_AGE_S: i64 = 7 * 86_400;
+
+/// `admin.backup_verified {source, taken_at_unix, live_digest,
+/// restored_digest, restored_counts}` (PRD-mcphost-backup-restore-proof-
+/// nightly R3): records one `backup_verifications` row with
+/// `digest_match = (live_digest == restored_digest)`; refuses a
+/// `taken_at_unix` in the future or older than 7 d with `args_invalid`.
+pub async fn backup_verified(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let source = arg_str(args, "source")?;
+    let taken_at_unix = arg_i64(args, "taken_at_unix")?;
+    let live_digest = arg_str(args, "live_digest")?;
+    let restored_digest = arg_str(args, "restored_digest")?;
+    let restored_counts = args.get("restored_counts").cloned().unwrap_or_else(|| json!({}));
+    if !restored_counts.is_object() {
+        return Err(AppError::InvalidArgs("restored_counts must be an object".into()));
+    }
+    let now = crate::state::now_unix();
+    if taken_at_unix > now {
+        return Err(AppError::InvalidArgs(format!(
+            "taken_at_unix {taken_at_unix} is in the future"
+        )));
+    }
+    if now - taken_at_unix > BACKUP_MAX_AGE_S {
+        return Err(AppError::InvalidArgs(format!(
+            "taken_at_unix {taken_at_unix} is older than 7 days"
+        )));
+    }
+    state
+        .db
+        .record_backup_verification(crate::db::BackupVerificationInput {
+            source,
+            taken_at_unix,
+            live_digest,
+            restored_digest,
+            restored_counts,
+        })
+        .await
 }
 
 /// `admin.alerts.raise {key, severity, title, body}` (requirement 5 /

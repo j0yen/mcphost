@@ -233,6 +233,12 @@ mod billing_ac10_webhook_mode_mismatch;
 mod billing_ac11_healthz_paying_tenants;
 #[path = "billing_ac13_checkout_reuse.rs"]
 mod billing_ac13_checkout_reuse;
+#[path = "bkver_ac02_digest_covers_every_table.rs"]
+mod bkver_ac02_digest_covers_every_table;
+#[path = "bkver_ac03_compare_names_deleted_tools_row.rs"]
+mod bkver_ac03_compare_names_deleted_tools_row;
+#[path = "bkver_ac04_corrupt_page_exits_3_with_integrity_text.rs"]
+mod bkver_ac04_corrupt_page_exits_3_with_integrity_text;
 #[path = "blobgc_ac02_ttl_expiry_blob_expired_and_410.rs"]
 mod blobgc_ac02_ttl_expiry_blob_expired_and_410;
 #[path = "blobgc_ac03_keep_latest_versions_gc_dry_run.rs"]
