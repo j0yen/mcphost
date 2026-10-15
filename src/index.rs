@@ -468,6 +468,92 @@ pub async fn index_status(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     }))
 }
 
+// ---- host.index.list / host.index.delete -----------------------------------
+
+/// R6: `{indexes: [{name, chunks, sources, created_at, lag_seconds}]}`, oldest
+/// first. Wrapped in an object because MCP `structuredContent` must be one.
+pub async fn index_list(state: &AppState, tenant: &Tenant, _args: &Value) -> Result<Value, AppError> {
+    let tenant_id = tenant.id;
+    let rows = state
+        .db
+        .with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT i.name, i.created_at, \
+                        (SELECT COUNT(*) FROM index_chunks c WHERE c.index_id = i.id), \
+                        (SELECT COUNT(*) FROM index_sources s WHERE s.index_id = i.id), \
+                        (SELECT COUNT(*) FROM index_sources s WHERE s.index_id = i.id AND s.state = 'pending') \
+                 FROM indexes i WHERE i.tenant_id = ?1 ORDER BY i.id",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id], |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, i64>(1)?,
+                        r.get::<_, i64>(2)?,
+                        r.get::<_, i64>(3)?,
+                        r.get::<_, i64>(4)?,
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await?;
+    let now = crate::state::now_unix();
+    let indexes: Vec<Value> = rows
+        .into_iter()
+            .map(|(name, created_at, chunks, sources, pending)| {
+                json!({
+                    "name": name,
+                    "chunks": chunks,
+                    "sources": sources,
+                    "created_at": created_at,
+                    "lag_seconds": crate::docs::lag_seconds_since((pending > 0).then_some(created_at), now),
+                })
+            })
+        .collect();
+    Ok(json!({"indexes": indexes}))
+}
+
+/// R6: removes the index, its sources and every chunk (and so the FTS rows,
+/// by the delete trigger) in one transaction.
+pub async fn index_delete(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let name = args
+        .get("name")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid("missing required argument 'name'"))?
+        .to_string();
+    let tenant_id = tenant.id;
+    let name_c = name.clone();
+    let removed = state
+        .db
+        .with_conn(move |conn| {
+            conn.execute("BEGIN IMMEDIATE", [])?;
+            let outcome: Result<i64, AppError> = (|| {
+                let index_id: i64 = conn
+                    .query_row(
+                        "SELECT id FROM indexes WHERE tenant_id = ?1 AND name = ?2",
+                        params![tenant_id, name_c],
+                        |r| r.get(0),
+                    )
+                    .optional()?
+                    .ok_or_else(|| index_not_found(&name_c))?;
+                let chunks = conn.execute("DELETE FROM index_chunks WHERE index_id = ?1", params![index_id])?;
+                conn.execute("DELETE FROM index_sources WHERE index_id = ?1", params![index_id])?;
+                conn.execute("DELETE FROM indexes WHERE id = ?1", params![index_id])?;
+                Ok(chunks as i64)
+            })();
+            match outcome {
+                Ok(n) => conn.execute("COMMIT", []).map(|_| n).map_err(AppError::from),
+                Err(e) => {
+                    let _ = conn.execute("ROLLBACK", []);
+                    Err(e)
+                }
+            }
+        })
+        .await?;
+    Ok(json!({"name": name, "deleted": true, "chunks_removed": removed}))
+}
+
 // ---- the build pass -------------------------------------------------------
 
 /// One pending source, as the tick reads it.

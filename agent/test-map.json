@@ -1652,6 +1652,12 @@
       "AC3": "tests/hidx_ac03_source_kinds_one_set.rs",
       "AC4": "tests/hidx_ac04_index_max_quota.rs"
     },
+    "hidxb": {
+      "_prd": "PRD-mcphost-index-create-from-sources-b.md (test_prefix: hidxb)",
+      "AC1": "tests/hidxb_ac01_url_refusal_and_503.rs",
+      "AC2": "tests/hidxb_ac02_chunk_ceiling_truncates.rs",
+      "AC3": "tests/hidxb_ac03_delete_list_and_sandbox_status.rs"
+    },
     "creg": {
       "_prd": "PRD-mcphost-server-capabilities-from-registry.md (test_prefix: creg)",
       "AC1": "tests/creg_ac01_premise_two_truths_then_minus_32601.rs",

@@ -1,0 +1,14 @@
+[example]
+name = "retrieval"
+title = "One call builds a searchable index"
+summary = "Name documents, table columns and urls in one host.index.create call and poll host.index.status until the index has filled itself."
+use_case = ["docs-qa"]
+clients = ["any"]
+since = "0.107.97"
+secrets_needed = []
+proof = "proof.sh"
+
+[first_call]
+tool = "host.index.create"
+args = { name = "handbook", sources = [{ kind = "doc", prefix = "hb/" }] }
+expect = "result.status == building"

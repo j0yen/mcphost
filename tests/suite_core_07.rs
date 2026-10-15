@@ -1121,6 +1121,10 @@ mod hidx_ac02_three_sources_build_with_offsets;
 mod hidx_ac03_source_kinds_one_set;
 #[path = "hidx_ac04_index_max_quota.rs"]
 mod hidx_ac04_index_max_quota;
+#[path = "hidxb_ac01_url_refusal_and_503.rs"]
+mod hidxb_ac01_url_refusal_and_503;
+#[path = "hidxb_ac02_chunk_ceiling_truncates.rs"]
+mod hidxb_ac02_chunk_ceiling_truncates;
 #[path = "hooks_ac10_healthz_event_counters.rs"]
 mod hooks_ac10_healthz_event_counters;
 #[path = "hooks_ac11_dedupe_header_idempotent.rs"]
