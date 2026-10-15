@@ -2537,6 +2537,19 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
             ),
         ),
         Tool::new(
+            "host.index.list",
+            "List this tenant's named indexes: {indexes: [{name, chunks, sources, created_at, lag_seconds}]}.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "host.index.delete",
+            "Delete one named index with its sources and every chunk it holds.",
+            host_schema(
+                json!({"name": {"type": "string", "description": "The index name."}}),
+                &["name"],
+            ),
+        ),
+        Tool::new(
             "host.docs.status",
             "This tenant's document store counters: documents, bytes, text_bytes, the current \
              change watermark, this plan's document/byte quotas, and an index block (mode, \
@@ -5614,6 +5627,11 @@ impl DocsBackend for TenantDocsBridge {
             "search" => {
                 docs::doc_search(&self.state, &self.tenant, &args, self.end_user.as_ref()).await
             }
+            // PRD-mcphost-index-create-from-sources-b R6: `mcphost.index`
+            // rides this channel, calling the same functions the host verbs do.
+            "index_create" => crate::index::index_create(&self.state, &self.tenant, &args).await,
+            "index_status" => crate::index::index_status(&self.state, &self.tenant, &args).await,
+            "index_list" => crate::index::index_list(&self.state, &self.tenant, &args).await,
             "quota" => control::data_quota_for(&self.state, &self.tenant)
                 .await
                 .map(|q| q.unwrap_or(Value::Null)),
@@ -6670,6 +6688,8 @@ impl McpHostHandler {
             "host.docs.reindex" => docs::doc_reindex(&self.state, tenant, &args).await,
             "host.index.create" => crate::index::index_create(&self.state, tenant, &args).await,
             "host.index.status" => crate::index::index_status(&self.state, tenant, &args).await,
+            "host.index.list" => crate::index::index_list(&self.state, tenant, &args).await,
+            "host.index.delete" => crate::index::index_delete(&self.state, tenant, &args).await,
             "host.drift.reviews" => crate::drift::reviews(&self.state, tenant, &args).await,
             "host.drift.review" => crate::drift::review_item(&self.state, tenant, &args).await,
             "host.drift.resolve" => crate::drift::resolve(&self.state, tenant, &args).await,
@@ -10137,10 +10157,15 @@ impl ServerHandler for McpHostHandler {
         // fills once a sub-key resolves, read by the `calls` insert.
         let inner = crate::subkeys::CALL_KEY
             .scope(std::cell::Cell::new(None), self.call_tool_inner(request, ctx));
-        match channel {
+        let result = match channel {
             Some(channel) => crate::elicit::CLIENT_CHANNEL.scope(channel, inner).await,
             None => inner.await,
-        }
+        };
+        // PRD-mcphost-incident-banner-for-agents R3: every result feeds the
+        // 5-minute error-rate window.
+        let code = result.as_ref().err().and_then(|e| crate::incident_banner::error_code_of(&e.data));
+        crate::incident_banner::record_result(&self.state.public_url, crate::state::now_unix(), code.as_deref());
+        result
     }
 
     async fn on_initialized(&self, _context: NotificationContext<RoleServer>) {}

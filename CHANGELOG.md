@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.109.0 — 2026-10-15
+
+Released by wm-build land: train 9: mcphost-incident-banner-for-agents, mcphost-index-create-from-sources-b.
+
 ## v0.108.0 — 2026-10-15
 
 Released by wm-build land: train 8: mcphost-host-changelog-since-b.

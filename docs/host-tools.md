@@ -24,6 +24,7 @@ Regenerate with `scripts/sandbox-api-doc-check.sh --write`.
 | `host.docs.delete` | delete | supported | |
 | `host.docs.purge` | delete | supported | |
 | `host.index.create` | write | supported | |
+| `host.index.delete` | delete | supported | |
 | `host.enduser.purge` | delete | supported | |
 | `host.enduser.revoke` | revoke | supported | |
 | `host.enduser.unrevoke` | revoke | supported | |
@@ -82,6 +83,7 @@ Regenerate with `scripts/sandbox-api-doc-check.sh --write`.
 - `host.state.table_drop`: Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).
 - `host.docs.delete`: Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).
 - `host.docs.purge`: Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).
+- `host.index.delete`: Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).
 - `host.enduser.purge`: Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).
 - `host.enduser.revoke`: Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).
 - `host.enduser.unrevoke`: Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).

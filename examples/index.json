@@ -139,6 +139,35 @@
       }
     },
     {
+      "name": "retrieval",
+      "title": "One call builds a searchable index",
+      "summary": "Name documents, table columns and urls in one host.index.create call and poll host.index.status until the index has filled itself.",
+      "use_case": [
+        "docs-qa"
+      ],
+      "clients": [
+        "any"
+      ],
+      "since": "0.107.97",
+      "proof": "proof.sh",
+      "secrets_needed": [],
+      "manifest_sha256": "952130d69461981298ddace8808c6b6310b28bca464866b9a9c8d56ccd95c336",
+      "tools": [],
+      "first_call": {
+        "tool": "host.index.create",
+        "args": {
+          "name": "handbook",
+          "sources": [
+            {
+              "kind": "doc",
+              "prefix": "hb/"
+            }
+          ]
+        },
+        "expect": "result.status == building"
+      }
+    },
+    {
       "name": "share-a-tool",
       "title": "Share a tool, not a key",
       "summary": "Publish an http tool that injects a secret, share it to a group, and let a teammate call it without ever seeing the key.",
