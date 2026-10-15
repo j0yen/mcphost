@@ -271,6 +271,10 @@ mod blobput_ac04_quota_refusals_and_plan_ceilings;
 mod blobput_ac05_url_fetch_refusals_write_nothing;
 #[path = "blobput_ac07_tenant_isolation.rs"]
 mod blobput_ac07_tenant_isolation;
+#[path = "blobputb_ac01_url_fetch_refusals_write_nothing.rs"]
+mod blobputb_ac01_url_fetch_refusals_write_nothing;
+#[path = "blobputb_ac03_tenant_isolation.rs"]
+mod blobputb_ac03_tenant_isolation;
 #[path = "bridgedisc_ac07_sandbox_api_doc_check.rs"]
 mod bridgedisc_ac07_sandbox_api_doc_check;
 #[path = "budget_ac01_ported_ledger_seven_tests.rs"]
