@@ -44,6 +44,10 @@ impl SlotKind {
 
 #[async_trait]
 impl Kind for SlotKind {
+    fn contract(&self) -> &'static mcphost::kinds::contract::KindContract {
+        &mcphost::kinds::contract::EMPTY_CONTRACT
+    }
+
     fn name(&self) -> &'static str {
         "slot"
     }

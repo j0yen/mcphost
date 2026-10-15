@@ -7,7 +7,11 @@
 
 use serde_json::Value;
 
-use super::{CallCtx, Kind};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use super::contract::{self, KindContract, SourcePosition, codes, family};
+use super::{CallCtx, Kind, KindError, SecretResolver};
 
 /// What went wrong, and which `Kind` method is responsible — so a failure
 /// message can name the method, as AC17 requires ("the suite fails naming
@@ -213,4 +217,236 @@ pub fn check_sandbox_unavailable_shape(
         });
     }
     Ok(())
+}
+
+// ---- generated per-kind contract suite (PRD-mcphost-kind-contract-
+// conformance-generated) ---------------------------------------------------
+
+/// How one of the five contract cases ended.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CaseOutcome {
+    Pass,
+    /// Not run, with the reason the kind's contract states.
+    Skip(String),
+    Fail(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CaseReport {
+    pub case: &'static str,
+    pub outcome: CaseOutcome,
+}
+
+struct ConformanceSecrets;
+impl SecretResolver for ConformanceSecrets {
+    fn resolve(&self, name: &str) -> Option<String> {
+        (name == contract::CONFORMANCE_SECRET_NAME)
+            .then(|| contract::CONFORMANCE_SECRET_VALUE.to_string())
+    }
+}
+
+/// How long a call that answers `tool_building` is retried before the case
+/// fails.
+const BUILD_WAIT: Duration = Duration::from_secs(90);
+
+async fn call_when_built(
+    kind: &dyn Kind,
+    spec: &Value,
+    args: Value,
+    ctx: &CallCtx,
+) -> Result<Value, KindError> {
+    let deadline = Instant::now() + BUILD_WAIT;
+    loop {
+        match kind.call(spec, args.clone(), ctx).await {
+            Err(KindError::Structured { code: codes::TOOL_BUILDING, .. })
+                if Instant::now() < deadline =>
+            {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            other => return other,
+        }
+    }
+}
+
+fn contract_ctx() -> CallCtx {
+    let mut ctx = CallCtx::for_test(1, "t_conformance");
+    ctx.secrets = Arc::new(ConformanceSecrets);
+    ctx
+}
+
+fn with_smallest_budget(contract: &KindContract, mut spec: Value) -> Value {
+    if let (Some(dim), Some(obj)) = (
+        contract.budgets.iter().find(|b| b.field == "timeout_s"),
+        spec.as_object_mut(),
+    ) {
+        obj.insert(dim.field.to_string(), Value::from(dim.min));
+    }
+    spec
+}
+
+fn describe_failure(kind: &dyn Kind, case: &str, detail: impl std::fmt::Display) -> CaseOutcome {
+    CaseOutcome::Fail(format!("kind={} case={case} {detail}", kind.name()))
+}
+
+/// The failing call's code and data, or a failure naming `kind` and `case`
+/// when the call did not fail structurally with a code its contract lists.
+fn contracted_error(
+    kind: &dyn Kind,
+    case: &str,
+    result: Result<Value, KindError>,
+) -> Result<(&'static str, Value), CaseOutcome> {
+    match result {
+        Ok(v) => Err(describe_failure(kind, case, format!("call succeeded, expected an error: {v}"))),
+        Err(KindError::Structured { code, data, .. }) => {
+            if kind.contract().has_code(code) {
+                Ok((code, data))
+            } else {
+                Err(describe_failure(kind, case, format!("code={code} not in contract")))
+            }
+        }
+        Err(other) => Err(describe_failure(kind, case, format!("error is not structured: {other}"))),
+    }
+}
+
+async fn case_publish(kind: &dyn Kind, contract: &KindContract) -> CaseOutcome {
+    match check_schema(kind, &(contract.fixtures.good_spec)()) {
+        Ok(()) => CaseOutcome::Pass,
+        Err(e) => describe_failure(kind, contract::CASE_PUBLISH, e),
+    }
+}
+
+async fn case_call(kind: &dyn Kind, contract: &KindContract) -> CaseOutcome {
+    let case = contract::CASE_CALL;
+    let fx = &contract.fixtures;
+    let spec = (fx.good_spec)();
+    let ctx = contract_ctx();
+    let descriptor = kind.describe(&spec);
+    let validator = match jsonschema::validator_for(&descriptor.input_schema) {
+        Ok(v) => v,
+        Err(e) => return describe_failure(kind, case, format!("input_schema is not valid: {e}")),
+    };
+    let good = (fx.good_args)();
+    if !validator.is_valid(&good) {
+        return describe_failure(kind, case, "good_args does not satisfy describe's own schema");
+    }
+    if let Err(e) = call_when_built(kind, &spec, good, &ctx).await {
+        return describe_failure(kind, case, format!("call with schema-valid arguments failed: {e}"));
+    }
+    let bad = (fx.bad_args)();
+    if !validator.is_valid(&bad) && call_when_built(kind, &spec, bad, &ctx).await.is_ok() {
+        return describe_failure(kind, case, "call accepted arguments describe's schema rejects");
+    }
+    CaseOutcome::Pass
+}
+
+async fn case_error_with_source_position(kind: &dyn Kind, contract: &KindContract) -> CaseOutcome {
+    let case = contract::CASE_ERROR_WITH_SOURCE_POSITION;
+    let Some(erroring) = contract.fixtures.erroring_spec else {
+        return describe_failure(kind, case, "contract has no erroring_spec and no stated skip");
+    };
+    let ctx = contract_ctx();
+    let result = call_when_built(kind, &erroring(), serde_json::json!({}), &ctx).await;
+    let (code, data) = match contracted_error(kind, case, result) {
+        Ok(ok) => ok,
+        Err(outcome) => return outcome,
+    };
+    if contract.family_of(code) != Some(family::TOOL_CODE) {
+        return CaseOutcome::Pass;
+    }
+    let missing = match contract.source_position {
+        SourcePosition::None => None,
+        SourcePosition::Line => (data.get("source_line").is_none()).then_some("source_line"),
+        SourcePosition::LineColumn => ["source_line", "source_column"]
+            .into_iter()
+            .find(|k| data.get(*k).is_none()),
+        SourcePosition::Field(f) => data.get(f).is_none().then_some(f),
+    };
+    match missing {
+        Some(field) => describe_failure(kind, case, format!("code={code} carries no data.{field}")),
+        None => CaseOutcome::Pass,
+    }
+}
+
+async fn case_budget_exceeded(kind: &dyn Kind, contract: &KindContract) -> CaseOutcome {
+    let case = contract::CASE_BUDGET_EXCEEDED;
+    let Some(slow) = contract.fixtures.slow_spec else {
+        return describe_failure(kind, case, "contract has no slow_spec and no stated skip");
+    };
+    let spec = with_smallest_budget(contract, slow());
+    let ctx = contract_ctx();
+    let result = call_when_built(kind, &spec, serde_json::json!({}), &ctx).await;
+    match contracted_error(kind, case, result) {
+        Ok((code, _)) if contract.family_of(code) == Some(family::TOOL_LIMIT) => CaseOutcome::Pass,
+        Ok((code, _)) => describe_failure(kind, case, format!("code={code} is not in the tool_limit family")),
+        Err(outcome) => outcome,
+    }
+}
+
+async fn case_secret_redaction(kind: &dyn Kind, contract: &KindContract) -> CaseOutcome {
+    let case = contract::CASE_SECRET_REDACTION;
+    let Some(secret) = contract.fixtures.secret_spec else {
+        return describe_failure(kind, case, "contract.secret_redaction=true but no secret_spec");
+    };
+    let ctx = contract_ctx();
+    let rendered = match call_when_built(kind, &secret(), serde_json::json!({}), &ctx).await {
+        Ok(v) => v.to_string(),
+        Err(KindError::Structured { message, data, .. }) => format!("{message} {data}"),
+        Err(other) => other.to_string(),
+    };
+    if rendered.contains(contract::CONFORMANCE_SECRET_VALUE) {
+        describe_failure(kind, case, "the secret value appears in the call's output")
+    } else {
+        CaseOutcome::Pass
+    }
+}
+
+/// Runs the five contract cases against `kind` and reports each one.
+pub async fn run_contract_report(kind: &dyn Kind) -> Vec<CaseReport> {
+    let contract = kind.contract();
+    let stated_skip = |case: &str| {
+        contract
+            .fixtures
+            .skip_reason(case)
+            .map(|reason| CaseOutcome::Skip(reason.to_string()))
+    };
+    let mut reports = Vec::with_capacity(5);
+    for case in [
+        contract::CASE_PUBLISH,
+        contract::CASE_CALL,
+        contract::CASE_ERROR_WITH_SOURCE_POSITION,
+        contract::CASE_BUDGET_EXCEEDED,
+        contract::CASE_SECRET_REDACTION,
+    ] {
+        let outcome = if case == contract::CASE_SECRET_REDACTION && !contract.secret_redaction {
+            CaseOutcome::Skip("contract.secret_redaction=false".to_string())
+        } else if let Some(skip) = stated_skip(case) {
+            skip
+        } else {
+            match case {
+                contract::CASE_PUBLISH => case_publish(kind, contract).await,
+                contract::CASE_CALL => case_call(kind, contract).await,
+                contract::CASE_ERROR_WITH_SOURCE_POSITION => {
+                    case_error_with_source_position(kind, contract).await
+                }
+                contract::CASE_BUDGET_EXCEEDED => case_budget_exceeded(kind, contract).await,
+                _ => case_secret_redaction(kind, contract).await,
+            }
+        };
+        reports.push(CaseReport { case, outcome });
+    }
+    reports
+}
+
+/// The generated conformance suite: every failing case of
+/// [`run_contract_report`], as a [`ConformanceFailure`] whose reason names
+/// `kind=<name> case=<case>`.
+pub async fn run_contract(kind: &dyn Kind) -> Vec<ConformanceFailure> {
+    run_contract_report(kind)
+        .await
+        .into_iter()
+        .filter_map(|r| match r.outcome {
+            CaseOutcome::Fail(reason) => Some(ConformanceFailure { method: r.case, reason }),
+            _ => None,
+        })
+        .collect()
 }

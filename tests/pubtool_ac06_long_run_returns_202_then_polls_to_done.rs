@@ -32,6 +32,10 @@ struct SlowKind;
 
 #[async_trait]
 impl Kind for SlowKind {
+    fn contract(&self) -> &'static mcphost::kinds::contract::KindContract {
+        &mcphost::kinds::contract::EMPTY_CONTRACT
+    }
+
     fn name(&self) -> &'static str {
         "slow"
     }

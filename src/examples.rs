@@ -163,16 +163,7 @@ pub struct IndexFirstCall {
 /// echo, http, python, chain, wasm), so a kind removed from the registry
 /// fails `examples check`.
 pub fn registered_kinds() -> crate::kinds::KindRegistry {
-    let mut kinds = crate::kinds::KindRegistry::with_builtin();
-    if let Ok((http, python)) =
-        crate::kinds::network_kinds("https://mcphost.dev", &std::env::temp_dir().join("mcphost-examples-kinds"))
-    {
-        kinds.register(std::sync::Arc::new(http));
-        kinds.register(std::sync::Arc::new(python));
-    }
-    kinds.register(std::sync::Arc::new(crate::kinds::chain::ChainKind));
-    kinds.register(std::sync::Arc::new(crate::kinds::wasm::WasmKind::new()));
-    kinds
+    crate::kinds::production_registry()
 }
 
 pub fn registered_kind_names() -> Vec<&'static str> {

@@ -5,6 +5,10 @@
 
 use serde_json::{Value, json};
 
+use super::contract::{
+    CASE_BUDGET_EXCEEDED, CASE_ERROR_WITH_SOURCE_POSITION, CaseSkip, ConformanceFixtures, KindContract,
+    SourcePosition,
+};
 use super::{CallCtx, Kind, KindError, KindExample, ToolDescriptor};
 
 pub struct EchoKind;
@@ -15,8 +19,47 @@ fn schema_of(spec: &Value) -> Value {
         .unwrap_or_else(|| json!({"type": "object"}))
 }
 
+fn good_spec() -> Value {
+    json!({"schema": {"type": "object", "properties": {"msg": {"type": "string"}}, "required": ["msg"]}})
+}
+
+fn good_args() -> Value {
+    json!({"msg": "hi"})
+}
+
+fn bad_args() -> Value {
+    json!({"msg": 5})
+}
+
+static CONTRACT: KindContract = KindContract {
+    error_families: &[],
+    budgets: &[],
+    source_position: SourcePosition::None,
+    bridges: &[],
+    secret_redaction: false,
+    fixtures: ConformanceFixtures {
+        good_spec,
+        good_args,
+        bad_args,
+        erroring_spec: None,
+        slow_spec: None,
+        secret_spec: None,
+        skips: &[
+            CaseSkip {
+                case: CASE_ERROR_WITH_SOURCE_POSITION,
+                reason: "echo runs no tool code, so it has no tool_code failure to locate",
+            },
+            CaseSkip { case: CASE_BUDGET_EXCEEDED, reason: "echo declares no budget dimension" },
+        ],
+    },
+};
+
 #[async_trait::async_trait]
 impl Kind for EchoKind {
+    fn contract(&self) -> &'static KindContract {
+        &CONTRACT
+    }
+
     fn name(&self) -> &'static str {
         "echo"
     }

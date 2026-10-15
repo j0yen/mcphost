@@ -20,6 +20,10 @@ struct RaiseKind;
 
 #[async_trait]
 impl Kind for RaiseKind {
+    fn contract(&self) -> &'static mcphost::kinds::contract::KindContract {
+        &mcphost::kinds::contract::EMPTY_CONTRACT
+    }
+
     fn name(&self) -> &'static str {
         "raise"
     }

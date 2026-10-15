@@ -432,6 +432,10 @@ fn result_value(rows: Vec<Value>, checked_at: Option<i64>) -> Value {
 
 #[async_trait::async_trait]
 impl Kind for UptimeKind {
+    fn contract(&self) -> &'static crate::kinds::contract::KindContract {
+        &crate::kinds::contract::EMPTY_CONTRACT
+    }
+
     fn name(&self) -> &'static str {
         KIND_NAME
     }

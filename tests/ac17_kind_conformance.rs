@@ -230,6 +230,10 @@ struct BadDescribeKind;
 
 #[async_trait]
 impl Kind for BadDescribeKind {
+    fn contract(&self) -> &'static mcphost::kinds::contract::KindContract {
+        &mcphost::kinds::contract::EMPTY_CONTRACT
+    }
+
     fn name(&self) -> &'static str {
         "bad_describe"
     }

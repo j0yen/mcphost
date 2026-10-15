@@ -60,7 +60,20 @@ def known_fields(kind: str) -> list[str]:
     if not m:
         print(f"spec-fields-doc-check: no known_spec_fields() found in {src_path}", file=sys.stderr)
         sys.exit(1)
-    return FIELD_RE.findall(m.group(1))
+    body = m.group(1)
+    fields = FIELD_RE.findall(body)
+    # A field that shares a code prefix is spelled once, in
+    # `src/kinds/contract.rs`'s `key` module, and referenced as
+    # `key::NAME` (PRD-mcphost-kind-contract-conformance-generated AC3).
+    keys = {}
+    contract_path = os.path.join(kinds_dir, "contract.rs")
+    if os.path.exists(contract_path):
+        with open(contract_path, encoding="utf-8") as fh:
+            keys = dict(re.findall(r'pub const ([A-Z_]+): &str = "([a-z_]+)";', fh.read()))
+    for ref in re.findall(r"key::([A-Z_]+)", body):
+        if ref in keys:
+            fields.append(keys[ref])
+    return fields
 
 
 def first_json_block_keys(doc_text: str) -> list[str]:

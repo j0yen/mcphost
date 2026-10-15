@@ -57,6 +57,9 @@ use sha2::{Digest, Sha256};
 use wasmtime::component::{Component, Linker};
 use wasmtime::{Config, Engine, ResourceLimiter, Store};
 
+use super::contract::{
+    BudgetDim, ConformanceFixtures, ErrorFamily, KindContract, SourcePosition, codes,
+};
 use super::{CallCtx, Kind, KindError, KindExample, OutputDecl, ToolDescriptor};
 
 /// Recorded in `/healthz` beside `sandbox_mechanism` (P1 requirement 8 /
@@ -495,8 +498,62 @@ impl WasmKind {
     }
 }
 
+fn conformance_component_spec(bytes: &[u8]) -> Value {
+    json!({"component": base64::engine::general_purpose::STANDARD.encode(bytes)})
+}
+
+fn conformance_good_spec() -> Value {
+    let mut spec = conformance_component_spec(include_bytes!("../../tests/fixtures/wasm/echo.wasm"));
+    spec["args_schema"] =
+        json!({"type": "object", "properties": {"msg": {"type": "string"}}, "required": ["msg"]});
+    spec
+}
+
+/// A component that executes `unreachable`.
+fn conformance_erroring_spec() -> Value {
+    conformance_component_spec(include_bytes!("../../tests/fixtures/wasm/trap.wasm"))
+}
+
+/// A component that loops forever, outrunning its wall-time budget.
+fn conformance_slow_spec() -> Value {
+    conformance_component_spec(include_bytes!("../../tests/fixtures/wasm/loop_forever.wasm"))
+}
+
+const WASM_TOOL_CODE: ErrorFamily = ErrorFamily {
+    name: super::contract::family::TOOL_CODE,
+    codes: &[codes::TOOL_EXCEPTION, codes::TOOL_TRAPPED],
+};
+const WASM_TOOL_LIMIT: ErrorFamily = ErrorFamily {
+    name: super::contract::family::TOOL_LIMIT,
+    codes: &[codes::TOOL_TIMEOUT, codes::TOOL_OOM],
+};
+
+static CONTRACT: KindContract = KindContract {
+    error_families: &[WASM_TOOL_CODE, WASM_TOOL_LIMIT],
+    budgets: &[
+        BudgetDim { field: "timeout_s", min: 1, max: MAX_TIMEOUT_S, default: DEFAULT_TIMEOUT_S },
+        BudgetDim { field: "memory_mb", min: 1, max: MAX_MEMORY_MB, default: DEFAULT_MEMORY_MB },
+    ],
+    source_position: SourcePosition::None,
+    bridges: &[],
+    secret_redaction: false,
+    fixtures: ConformanceFixtures {
+        good_spec: conformance_good_spec,
+        good_args: || json!({"msg": "hi"}),
+        bad_args: || json!({"msg": 5}),
+        erroring_spec: Some(conformance_erroring_spec),
+        slow_spec: Some(conformance_slow_spec),
+        secret_spec: None,
+        skips: &[],
+    },
+};
+
 #[async_trait::async_trait]
 impl Kind for WasmKind {
+    fn contract(&self) -> &'static KindContract {
+        &CONTRACT
+    }
+
     fn name(&self) -> &'static str {
         "wasm"
     }
@@ -618,19 +675,19 @@ impl Kind for WasmKind {
             ctx.log.log(&format!("stderr: {}", stderr_text.trim_end()));
         }
 
-        match outcome {
+        let result = match outcome {
             Ok(RunOutcome::Ok(json_str)) => {
                 let value: Value =
                     serde_json::from_str(&json_str).unwrap_or(Value::String(json_str));
                 Ok(build_result(value, &parsed.outputs))
             }
-            Ok(RunOutcome::Err(message)) => Err(KindError::structured("tool_exception", message)),
+            Ok(RunOutcome::Err(message)) => Err(KindError::structured(codes::TOOL_EXCEPTION, message)),
             Err(RunError::Timeout) => Err(KindError::structured(
-                "tool_timeout",
+                codes::TOOL_TIMEOUT,
                 "the call exceeded its timeout",
             )),
             Err(RunError::Oom) => Err(KindError::structured(
-                "tool_oom",
+                codes::TOOL_OOM,
                 "the call exceeded its memory limit",
             )),
             Err(RunError::Trap(message)) => {
@@ -638,12 +695,13 @@ impl Kind for WasmKind {
                 // call error is structured (not a raw panic/exec error).
                 ctx.log.log(&format!("trap: {message}"));
                 Err(KindError::structured_with(
-                    "tool_trapped",
+                    codes::TOOL_TRAPPED,
                     "the component trapped",
                     json!({"trap": message}),
                 ))
             }
-        }
+        };
+        result.map_err(super::contract::tag_families)
     }
 
     /// AC3: a republish/remove evicts this tool's cached compiled

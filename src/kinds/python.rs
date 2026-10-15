@@ -101,6 +101,9 @@ use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use tokio::sync::Semaphore;
 
+use super::contract::{
+    BudgetDim, COMPOSE_FAMILY, CONFORMANCE_SECRET_NAME, ConformanceFixtures, ErrorFamily, KindContract, SourcePosition, TOOL_LIMIT_FAMILY, TOOL_STATE_FAMILY, UPSTREAM_FAMILY, codes, key,
+};
 use super::infer;
 use super::{
     CallCtx, DocsBackend, DriftBackend, Kind, KindError, KindExample, LineageBackend, OutputDecl,
@@ -2990,11 +2993,11 @@ def _mcphost_call(name, args=None, timeout_s=None):
     _real_stdout.flush()
     line = sys.stdin.readline()
     if not line:
-        raise McphostCallError("compose_unavailable", "the call channel closed")
+        raise McphostCallError('compose_unavailable', "the call channel closed")
     resp = json.loads(line)
     if not resp.get("ok"):
         raise McphostCallError(
-            resp.get("code", "compose_error"), resp.get("message", "call failed"), resp.get("data")
+            resp.get('code', 'compose_error'), resp.get("message", "call failed"), resp.get("data")
         )
     return resp.get("result")
 
@@ -3592,7 +3595,7 @@ def run_one(payload, t_start):
         t_ser = t_end
     obj["timings"] = {
         "args_ms": (t_args - t_start) * 1000.0,
-        "tool_code_ms": (t_done - t_main) * 1000.0,
+        'tool_code_ms': (t_done - t_main) * 1000.0,
         "serialize_ms": (t_ser - t_done) * 1000.0,
     }
     return obj
@@ -3660,16 +3663,20 @@ fn extract_tool_source_line(traceback: &str) -> (Option<i64>, Option<String>) {
 }
 
 fn map_envelope_error(envelope: &Value, stderr_tail: &str, own_domain: &str) -> KindError {
+    super::contract::tag_families(map_envelope_error_untagged(envelope, stderr_tail, own_domain))
+}
+
+fn map_envelope_error_untagged(envelope: &Value, stderr_tail: &str, own_domain: &str) -> KindError {
     let kind = envelope.get("kind").and_then(Value::as_str).unwrap_or("");
     match kind {
-        "oom" => KindError::structured("tool_oom", "the call exceeded its memory limit"),
+        "oom" => KindError::structured(codes::TOOL_OOM, "the call exceeded its memory limit"),
         // Requirement 6 (AC7): the sandbox's own RLIMIT_NPROC fired.
         "process_limit" => KindError::structured(
-            "tool_process_limit",
+            codes::TOOL_PROCESS_LIMIT,
             "the call exceeded its process limit",
         ),
         "output_invalid" => KindError::structured_with(
-            "tool_output_invalid",
+            codes::TOOL_OUTPUT_INVALID,
             envelope
                 .get("message")
                 .and_then(Value::as_str)
@@ -3712,7 +3719,7 @@ fn map_envelope_error(envelope: &Value, stderr_tail: &str, own_domain: &str) -> 
                 return KindError::structured_with(
                     code,
                     message.to_string(),
-                    json!({"phase": "tool_code", "exception_class": error}),
+                    json!({"phase": key::PHASE_TOOL_CODE, "exception_class": error}),
                 );
             }
             // Requirement 1/AC2: every exception that escapes the tool's
@@ -3728,7 +3735,7 @@ fn map_envelope_error(envelope: &Value, stderr_tail: &str, own_domain: &str) -> 
                 .map(|n| format!(" at tool.py:{n}"))
                 .unwrap_or_default();
             let mut data = json!({
-                "phase": "tool_code",
+                "phase": key::PHASE_TOOL_CODE,
                 "exception_class": error,
                 "traceback": traceback,
                 "stderr_tail": stderr_tail,
@@ -3741,7 +3748,7 @@ fn map_envelope_error(envelope: &Value, stderr_tail: &str, own_domain: &str) -> 
                     obj.insert("source_line".to_string(), json!(src));
                 }
             }
-            KindError::structured_with("tool_exception", format!("{error}: {message}{located}"), data)
+            KindError::structured_with(codes::TOOL_EXCEPTION, format!("{error}: {message}{located}"), data)
         }
     }
 }
@@ -3769,7 +3776,7 @@ fn map_envelope_line(line: &[u8], allow_oversized: bool, own_domain: &str) -> Re
     // rejecting exactly as before.
     if !allow_oversized && line.len() > crate::state::MAX_TOOL_OUTPUT_BYTES {
         return Err(KindError::structured_with(
-            "tool_output_too_large",
+            codes::TOOL_OUTPUT_TOO_LARGE,
             format!(
                 "tool output is {} bytes, over the {}-byte limit",
                 line.len(),
@@ -3793,7 +3800,7 @@ fn map_envelope_line(line: &[u8], allow_oversized: bool, own_domain: &str) -> Re
             }
         }
         Err(_) => Err(KindError::structured(
-            "tool_output_invalid",
+            codes::TOOL_OUTPUT_INVALID,
             "tool stdout was not valid JSON",
         )),
     }
@@ -4560,7 +4567,7 @@ fn map_sandbox_outcome(outcome: SandboxOutcome, allow_oversized: bool, own_domai
             match serde_json::from_str::<Value>(&stdout_tail) {
                 Ok(envelope) => Err(map_envelope_error(&envelope, &stderr_tail, own_domain)),
                 Err(_) => Err(KindError::structured_with(
-                    "tool_exception",
+                    codes::TOOL_EXCEPTION,
                     "the tool process exited with an error and produced no readable envelope",
                     json!({"stdout_tail": stdout_tail, "stderr_tail": stderr_tail}),
                 )),
@@ -4574,13 +4581,13 @@ fn map_sandbox_outcome(outcome: SandboxOutcome, allow_oversized: bool, own_domai
         } => {
             crate::calltrace::note_process_tails(&stdout_tail, &stderr_tail);
             Err(KindError::structured_with(
-                "tool_exception",
+                codes::TOOL_EXCEPTION,
                 format!("the tool process was killed by signal {signal}"),
                 json!({"stdout_tail": stdout_tail, "stderr_tail": stderr_tail}),
             ))
         }
         SandboxOutcome::TimedOut { .. } => Err(KindError::structured(
-            "tool_timeout",
+            codes::TOOL_TIMEOUT,
             "the call exceeded its timeout",
         )),
     }
@@ -4753,7 +4760,7 @@ fn redact_kind_error(err: KindError, secrets: &[String]) -> KindError {
 fn composition_unverifiable_detail(err: &KindError) -> Option<String> {
     match err {
         KindError::Structured { code, message, data }
-            if *code == "tool_exception"
+            if *code == codes::TOOL_EXCEPTION
                 && data.get("exception_class").and_then(Value::as_str) == Some("McphostCallError") =>
         {
             Some(message.clone())
@@ -5436,7 +5443,7 @@ impl PythonKind {
             Ok(PersistentCallOutcome::TimedOut) => {
                 kill_warm_entry(entry).await;
                 Some(Err(KindError::structured(
-                    "tool_timeout",
+                    codes::TOOL_TIMEOUT,
                     "the call exceeded its timeout",
                 )))
             }
@@ -5656,8 +5663,63 @@ fn classify_exit_status(
     }
 }
 
+fn conformance_good_spec() -> Value {
+    json!({
+        "source": "def main(args):\n    return {\"n\": args[\"n\"] * 2}\n",
+        "args_schema": {"type": "object", "properties": {"n": {"type": "integer"}}, "required": ["n"]},
+    })
+}
+
+/// Raises on line 3 of the tool source.
+fn conformance_erroring_spec() -> Value {
+    json!({"source": "def main(args):\n    x = 1\n    raise ValueError(\"boom\")\n"})
+}
+
+fn conformance_slow_spec() -> Value {
+    json!({"source": "import time\ndef main(args):\n    time.sleep(30)\n    return {}\n"})
+}
+
+fn conformance_secret_spec() -> Value {
+    json!({
+        "source": format!(
+            "import os\ndef main(args):\n    return {{\"v\": os.environ[\"SECRET_{}\"]}}\n",
+            CONFORMANCE_SECRET_NAME.to_ascii_uppercase()
+        ),
+        "secrets": [CONFORMANCE_SECRET_NAME],
+    })
+}
+
+const PYTHON_TOOL_CODE: ErrorFamily = ErrorFamily {
+    name: super::contract::family::TOOL_CODE,
+    codes: &[codes::TOOL_EXCEPTION, codes::TOOL_OUTPUT_INVALID],
+};
+
+static CONTRACT: KindContract = KindContract {
+    error_families: &[PYTHON_TOOL_CODE, TOOL_LIMIT_FAMILY, UPSTREAM_FAMILY, COMPOSE_FAMILY, TOOL_STATE_FAMILY],
+    budgets: &[
+        BudgetDim { field: "timeout_s", min: 1, max: MAX_TIMEOUT_S, default: DEFAULT_TIMEOUT_S },
+        BudgetDim { field: "memory_mb", min: 1, max: MAX_MEMORY_MB, default: DEFAULT_MEMORY_MB },
+    ],
+    source_position: SourcePosition::Line,
+    bridges: &["state", "table", "docs", "lineage", "channel", "msg"],
+    secret_redaction: true,
+    fixtures: ConformanceFixtures {
+        good_spec: conformance_good_spec,
+        good_args: || json!({"n": 3}),
+        bad_args: || json!({"n": "not-a-number"}),
+        erroring_spec: Some(conformance_erroring_spec),
+        slow_spec: Some(conformance_slow_spec),
+        secret_spec: Some(conformance_secret_spec),
+        skips: &[],
+    },
+};
+
 #[async_trait::async_trait]
 impl Kind for PythonKind {
+    fn contract(&self) -> &'static KindContract {
+        &CONTRACT
+    }
+
     fn name(&self) -> &'static str {
         "python"
     }
@@ -6736,7 +6798,7 @@ mod tests {
         loop {
             match kind.call(spec, args.clone(), ctx).await {
                 Err(KindError::Structured {
-                    code: "tool_building",
+                    code: codes::TOOL_BUILDING,
                     ..
                 }) if Instant::now() < deadline => {
                     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -6951,7 +7013,7 @@ mod tests {
         assert!(matches!(
             err,
             KindError::Structured {
-                code: "tool_timeout",
+                code: codes::TOOL_TIMEOUT,
                 ..
             }
         ));

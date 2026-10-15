@@ -198,6 +198,10 @@ mod infer_ac13_deterministic_schema;
 mod infer_ac15_tool_test_uses_inferred_schema;
 #[path = "infer_ac16_syntax_error_precedence.rs"]
 mod infer_ac16_syntax_error_precedence;
+#[path = "kcon_ac02_every_registered_kind_passes.rs"]
+mod kcon_ac02_every_registered_kind_passes;
+#[path = "kcon_ac04_error_families_and_source_line.rs"]
+mod kcon_ac04_error_families_and_source_line;
 #[path = "kindhonor_ac2_kind_mismatch_refused.rs"]
 mod kindhonor_ac2_kind_mismatch_refused;
 #[path = "kindroute_ac04_unknown_kind_carries_recipe_hints.rs"]
