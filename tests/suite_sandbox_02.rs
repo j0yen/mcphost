@@ -60,6 +60,12 @@ mod bridgedisc_ac05_network_public_plan_named;
 mod bridgedisc_ac06_tools_list_mentions_import_mcphost;
 #[path = "budget_ac11_five_recipe_proofs_stay_under_budget.rs"]
 mod budget_ac11_five_recipe_proofs_stay_under_budget;
+#[path = "ccv_ac02_whoami_concurrency.rs"]
+mod ccv_ac02_whoami_concurrency;
+#[path = "ccv_ac03_tenant_cap_is_concurrency_exceeded.rs"]
+mod ccv_ac03_tenant_cap_is_concurrency_exceeded;
+#[path = "ccv_ac04_host_cap_is_capacity.rs"]
+mod ccv_ac04_host_cap_is_capacity;
 #[path = "cfix_ac05_fixture_limits_and_applicability.rs"]
 mod cfix_ac05_fixture_limits_and_applicability;
 #[path = "chainhost_ac05_quickstart_chain_example_resolves.rs"]

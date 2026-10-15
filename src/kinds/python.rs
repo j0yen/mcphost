@@ -1318,7 +1318,16 @@ async fn run_build_steps(env_dir: &Path, source: &EnvSource) -> Result<String, S
         .map_err(|e| format!("mkdir env dir: {e}"))?;
 
     let mut venv_cmd = tokio::process::Command::new("uv");
-    venv_cmd.arg("venv").arg(env_dir);
+    venv_cmd.arg("venv");
+    // Pin the venv's interpreter to the system python the sandbox binds
+    // read-only (`system_python_dirs`): a uv-managed interpreter under
+    // `$HOME/.local/share/uv/python` is invisible inside the sandbox, so
+    // `bin/python` would be a dangling symlink there ("prlimit: failed to
+    // execute .../bin/python: No such file or directory").
+    if Path::new("/usr/bin/python3").is_file() {
+        venv_cmd.args(["--python", "/usr/bin/python3"]);
+    }
+    venv_cmd.arg(env_dir);
     run_command_tail(venv_cmd).await?;
 
     let python_bin = env_dir.join("bin").join("python");
@@ -4838,6 +4847,8 @@ pub struct PythonKind {
     isolation: IsolationMechanism,
     envs: Arc<EnvRegistry>,
     semaphore: Arc<Semaphore>,
+    /// Permit count `semaphore` was created with (the host-wide ceiling).
+    max_concurrent: usize,
     cpu_budget: CpuBudget,
     warm: Arc<WarmPool>,
     /// PRD-mcphost-sandbox-ready: this kind's sandbox self-test state.
@@ -5008,6 +5019,7 @@ impl PythonKind {
             isolation,
             envs: Arc::new(EnvRegistry::new()),
             semaphore: Arc::new(Semaphore::new(max_concurrent)),
+            max_concurrent,
             cpu_budget: CpuBudget::new(cpu_budget_ms),
             warm,
             selftest,
@@ -5028,6 +5040,22 @@ impl PythonKind {
             .queue_wait_estimate_s
             .write()
             .unwrap_or_else(|e| e.into_inner()) = secs;
+    }
+
+    /// Test-only (PRD-mcphost-call-concurrency-visible): holds `n` of
+    /// `tenant_id`'s admission slots AND `n` box-wide slots, exactly what
+    /// `n` calls in flight hold (see `call`), until the returned guard
+    /// drops -- so admission can be tested without a working sandbox.
+    /// Panics if `n` slots are not free.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn hold_admission_for_test(&self, tenant_id: i64, cap: usize, n: usize) -> Vec<tokio::sync::OwnedSemaphorePermit> {
+        let tenant_sem = self.tenant_semaphore(tenant_id, cap);
+        let mut held = Vec::with_capacity(n * 2);
+        for _ in 0..n {
+            held.push(tenant_sem.clone().try_acquire_owned().expect("tenant slot free"));
+            held.push(self.semaphore.clone().try_acquire_owned().expect("host slot free"));
+        }
+        held
     }
 
     /// Requirement 3: this tenant's own admission semaphore, sized from
@@ -5929,30 +5957,37 @@ impl Kind for PythonKind {
         // refused without ever contending for (or holding, even briefly) a
         // slot another tenant could have used.
         let tenant_sem = self.tenant_semaphore(ctx.tenant_id, ctx.concurrent_calls_per_tenant);
-        let Ok(_tenant_permit) = tenant_sem.try_acquire_owned() else {
+        let Ok(_tenant_permit) = tenant_sem.clone().try_acquire_owned() else {
             let retry_after_ms = self.estimate_retry_after_ms();
+            let limit = ctx.concurrent_calls_per_tenant.clamp(1, Semaphore::MAX_PERMITS);
+            let in_flight = limit.saturating_sub(tenant_sem.available_permits());
             if self.should_log_capacity_refusal(ctx.tenant_id) {
                 tracing::warn!(
                     tenant_id = ctx.tenant_id,
                     scope = "tenant",
+                    in_flight,
+                    limit,
                     retry_after_ms,
                     "python call refused: tenant at its concurrent-call limit"
                 );
             }
-            return Err(tenant_capacity_error(retry_after_ms));
+            return Err(tenant_capacity_error(in_flight, limit, retry_after_ms));
         };
 
         let Ok(_permit) = self.semaphore.clone().try_acquire_owned() else {
             let retry_after_ms = self.estimate_retry_after_ms();
+            let in_flight = self.max_concurrent.saturating_sub(self.semaphore.available_permits());
             if self.should_log_capacity_refusal(ctx.tenant_id) {
                 tracing::warn!(
                     tenant_id = ctx.tenant_id,
                     scope = "host",
+                    in_flight,
+                    limit = self.max_concurrent,
                     retry_after_ms,
                     "python call refused: host at the concurrent-call limit"
                 );
             }
-            return Err(host_capacity_error(retry_after_ms));
+            return Err(host_capacity_error(in_flight, self.max_concurrent, retry_after_ms));
         };
 
         // PRD-mcphost-golden-signals-self-probe: counted as in flight until
@@ -6406,36 +6441,67 @@ impl Kind for PythonKind {
             .unwrap_or_else(|e| e.into_inner())
     }
 
+    /// PRD-mcphost-call-concurrency-visible R1: live admission counts for
+    /// `tenant_id` -- `(tenant in_flight, host in_flight, host limit)` --
+    /// read off the same semaphores `call` acquires. A tenant that has not
+    /// called yet has no semaphore and reads 0 (never created here).
+    fn admission_snapshot(&self, tenant_id: i64, concurrent_calls_per_tenant: usize) -> Option<super::AdmissionSnapshot> {
+        let cap = concurrent_calls_per_tenant.clamp(1, Semaphore::MAX_PERMITS);
+        let tenant_in_flight = self
+            .tenant_admission
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&tenant_id)
+            .map(|sem| cap.saturating_sub(sem.available_permits()))
+            .unwrap_or(0);
+        Some(super::AdmissionSnapshot {
+            in_flight: tenant_in_flight,
+            host_in_flight: self.max_concurrent.saturating_sub(self.semaphore.available_permits()),
+            host_limit: self.max_concurrent,
+        })
+    }
+
     /// PRD-mcphost-call-cost-estimate: the same two refusals `call` makes
     /// (tenant cap first, then the box-wide one), read off the semaphores'
     /// free permits instead of acquired -- a dry run holds no slot.
     fn admission_capacity(&self, tenant_id: i64, concurrent_calls_per_tenant: usize) -> Option<KindError> {
-        if self.tenant_semaphore(tenant_id, concurrent_calls_per_tenant).available_permits() == 0 {
-            return Some(tenant_capacity_error(self.estimate_retry_after_ms()));
+        let tenant_sem = self.tenant_semaphore(tenant_id, concurrent_calls_per_tenant);
+        if tenant_sem.available_permits() == 0 {
+            let limit = concurrent_calls_per_tenant.clamp(1, Semaphore::MAX_PERMITS);
+            return Some(tenant_capacity_error(limit, limit, self.estimate_retry_after_ms()));
         }
         if self.semaphore.available_permits() == 0 {
-            return Some(host_capacity_error(self.estimate_retry_after_ms()));
+            return Some(host_capacity_error(self.max_concurrent, self.max_concurrent, self.estimate_retry_after_ms()));
         }
         None
     }
 }
 
-/// The `capacity` refusal for a tenant at its own concurrent-call limit --
-/// built here once for both the real acquire and the dry-run read.
-fn tenant_capacity_error(retry_after_ms: u64) -> KindError {
+/// The `concurrency_exceeded` refusal for a tenant at its own
+/// concurrent-call limit (PRD-mcphost-call-concurrency-visible R2) -- built
+/// here once for both the real acquire and the dry-run read. The handler
+/// adds `plan` to `data` and records `error_class = "concurrency"`.
+fn tenant_capacity_error(in_flight: usize, limit: usize, retry_after_ms: u64) -> KindError {
     KindError::structured_with(
-        "capacity",
-        "at this tenant's concurrent-call limit; try again shortly",
-        json!({"retry_after_ms": retry_after_ms, "scope": "tenant"}),
+        "concurrency_exceeded",
+        format!(
+            "{in_flight} of {limit} concurrent calls in flight on this tenant; retry in {retry_after_ms} ms"
+        ),
+        json!({
+            "in_flight": in_flight,
+            "limit": limit,
+            "retry_after_ms": retry_after_ms,
+            "scope": "tenant",
+        }),
     )
 }
 
 /// The `capacity` refusal for the box-wide concurrent-call limit.
-fn host_capacity_error(retry_after_ms: u64) -> KindError {
+fn host_capacity_error(in_flight: usize, limit: usize, retry_after_ms: u64) -> KindError {
     KindError::structured_with(
         "capacity",
         "at the concurrent-call limit; try again shortly",
-        json!({"retry_after_ms": retry_after_ms, "scope": "host"}),
+        json!({"in_flight": in_flight, "limit": limit, "retry_after_ms": retry_after_ms, "scope": "host"}),
     )
 }
 

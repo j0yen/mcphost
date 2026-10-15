@@ -57,6 +57,18 @@ enum Auth {
     Tenant(Box<Tenant>, Option<crate::oauth::OauthCaller>),
 }
 
+/// PRD-mcphost-call-concurrency-visible R3: the `calls.error_class` a failed
+/// call is recorded under -- its wire code, except that the tenant-scope
+/// `concurrency_exceeded` refusal is recorded as `concurrency` so a tenant
+/// hitting its own cap is told apart from the host hitting its ceiling
+/// (`capacity`).
+fn call_error_class(err: &AppError) -> &'static str {
+    match err.code() {
+        "concurrency_exceeded" => "concurrency",
+        other => other,
+    }
+}
+
 fn value_to_json_object(v: Value) -> Map<String, Value> {
     v.as_object().cloned().unwrap_or_default()
 }
@@ -7553,7 +7565,15 @@ impl McpHostHandler {
                 Ok(value)
             }
             Ok(Err(kind_err)) => {
-                let app_err = AppError::from(kind_err);
+                let mut app_err = AppError::from(kind_err);
+                // PRD-mcphost-call-concurrency-visible R2/R3: the tenant-scope
+                // refusal names the plan whose ceiling it hit, and is recorded
+                // as `error_class = "concurrency"` (the host-scope `capacity`
+                // keeps its own code).
+                if let AppError::Structured { code: "concurrency_exceeded", data: Value::Object(data), .. } = &mut app_err {
+                    data.insert("plan".to_string(), json!(tenant.plan));
+                }
+                let recorded_error_class = call_error_class(&app_err);
                 // PRD-mcphost-sandbox-egress-allowlist requirement 4 (AC7):
                 // a call refused for `network`'s sake counts toward admin
                 // healthz's `network_denied` -- `run_plan` (AC6: an
@@ -7578,7 +7598,7 @@ impl McpHostHandler {
                         local_name.to_string(),
                         duration_ms,
                         false,
-                        Some(app_err.code().to_string()),
+                        Some(recorded_error_class.to_string()),
                         cpu_ms,
                         peak_rss_kb,
                         "error",

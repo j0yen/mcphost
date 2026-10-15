@@ -1544,6 +1544,13 @@
       "AC2": "tests/chgb_ac02_out_of_order_heading_not_monotonic.rs",
       "AC3": "tests/chgb_ac03_since_banana_args_invalid.rs"
     },
+    "ccv": {
+      "_prd": "PRD-mcphost-call-concurrency-visible.md (test_prefix: ccv)",
+      "AC1": "deferred -- operator-provisioned: premise check against prod/orch (Live AC, see the PRD's Premise check).",
+      "AC2": "tests/ccv_ac02_whoami_concurrency.rs",
+      "AC3": "tests/ccv_ac03_tenant_cap_is_concurrency_exceeded.rs",
+      "AC4": "tests/ccv_ac04_host_cap_is_capacity.rs"
+    },
     "hostdoc": {
       "_prd": "PRD-mcphost-host-doctor-tool.md (test_prefix: hostdoc)",
       "AC1": "tests/hostdoc_ac01_five_families_five_concrete_next_lines.rs",

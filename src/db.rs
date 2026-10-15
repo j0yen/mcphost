@@ -11832,7 +11832,7 @@ impl Db {
             // column, just a new count over the one already there).
             let capacity_refusals = rows
                 .iter()
-                .filter(|(_, _, class)| class.as_deref() == Some("capacity"))
+                .filter(|(_, _, class)| matches!(class.as_deref(), Some("capacity" | "concurrency")))
                 .count() as i64;
             Ok(UsageStats {
                 calls: rows.len() as i64,
@@ -11916,7 +11916,7 @@ impl Db {
                 let errors = entries.iter().filter(|(_, ok, _)| !ok).count() as i64;
                 let capacity_refusals = entries
                     .iter()
-                    .filter(|(_, _, class)| class.as_deref() == Some("capacity"))
+                    .filter(|(_, _, class)| matches!(class.as_deref(), Some("capacity" | "concurrency")))
                     .count() as i64;
                 out.push(ToolUsage {
                     namespace,

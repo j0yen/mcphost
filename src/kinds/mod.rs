@@ -2051,6 +2051,15 @@ pub async fn compose_call_ref(
 /// What [`Kind::pool_signals`] reports: python cold-call durations
 /// `(unix ts, ms)` recent enough to be worth windowing, in-flight calls past
 /// `wedge_factor` x their wall-clock timeout, and the warm pool's size.
+/// PRD-mcphost-call-concurrency-visible R1: a tenant's live admission counts
+/// (see [`Kind::admission_snapshot`]).
+#[derive(Clone, Copy, Debug)]
+pub struct AdmissionSnapshot {
+    pub in_flight: usize,
+    pub host_in_flight: usize,
+    pub host_limit: usize,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct PoolSignals {
     pub cold_starts: Vec<(i64, u64)>,
@@ -2341,6 +2350,13 @@ pub trait Kind: Send + Sync {
     /// caller falls back to a fixed 5s in that case, same as a kind that
     /// never overrides this at all.
     fn queue_wait_estimate_s(&self) -> Option<u32> {
+        None
+    }
+
+    /// PRD-mcphost-call-concurrency-visible R1: this kind's live admission
+    /// counts for `tenant_id`, `None` (the default) for a kind with no
+    /// admission cap.
+    fn admission_snapshot(&self, _tenant_id: i64, _concurrent_calls_per_tenant: usize) -> Option<AdmissionSnapshot> {
         None
     }
 
