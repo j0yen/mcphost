@@ -251,7 +251,7 @@
   var btn = document.getElementById("snd");
   if (!btn) return;
   var ctx = null, master = null, delaySend = null, timer = null, on = false;
-  var droneLP = null, whiteBuf = null;
+  var droneLP = null, droneFade = null, whiteBuf = null;
   var blipAt = 0, clickAt = 0, swellAt = 0;
   /* retro ship terminal: hull drone, ventilation, air hiss, terminal blips, relay clicks, rare surge */
   var BLIPS = [1480, 1760, 2093, 2349];
@@ -278,9 +278,9 @@
   function drone() {
     /* hull drone: sine + detuned triangle at 52 Hz, sub sine an octave down at half gain, breathing slowly */
     var lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 180;
-    var breath = ctx.createGain(); breath.gain.value = 0.08;
+    var breath = ctx.createGain(); breath.gain.value = 0.12;
     var lfo = ctx.createOscillator(), lg = ctx.createGain();
-    lfo.type = "sine"; lfo.frequency.value = 1 / 40; lg.gain.value = 0.016;
+    lfo.type = "sine"; lfo.frequency.value = 1 / 20; lg.gain.value = 0.024;
     lfo.connect(lg); lg.connect(breath.gain);
     var specs = [["sine", 52, 0, 0.4], ["triangle", 52, 6, 0.4], ["sine", 26, 0, 0.2]], i;
     for (i = 0; i < specs.length; i++) {
@@ -289,15 +289,16 @@
       g.gain.value = specs[i][3];
       o.connect(g); g.connect(lp); o.start();
     }
-    lp.connect(breath); breath.connect(master);
+    var fade = ctx.createGain(); fade.gain.value = 0;
+    lp.connect(breath); breath.connect(fade); fade.connect(master);
     lfo.start();
-    droneLP = lp;
+    droneLP = lp; droneFade = fade;
   }
   function wash() {
     /* ventilation bed: brown noise through a bandpass swept by a slow LFO */
     var src = loopSrc(noiseBuf(true));
     var fl = ctx.createBiquadFilter(); fl.type = "bandpass"; fl.frequency.value = 300; fl.Q.value = 0.7;
-    var g = ctx.createGain(); g.gain.value = 0.02;
+    var g = ctx.createGain(); g.gain.value = 0.03;
     var lfo = ctx.createOscillator(), lg = ctx.createGain();
     lfo.type = "sine"; lfo.frequency.value = 1 / 25; lg.gain.value = 120;
     lfo.connect(lg); lg.connect(fl.frequency);
@@ -312,9 +313,9 @@
     src.connect(fl); fl.connect(g); g.connect(master);
     src.start();
   }
-  function beep(t, hz) {
+  function beep(t, hz, len) {
     /* square terminal beep, 40-70 ms, 3 ms attack, quick exponential release, faint echo */
-    var dur = rnd(0.04, 0.07);
+    var dur = len || rnd(0.04, 0.07);
     var o = ctx.createOscillator(), g = ctx.createGain(), send = ctx.createGain();
     o.type = "square"; o.frequency.value = hz;
     g.gain.setValueAtTime(0.0006, t);
@@ -326,10 +327,10 @@
     o.start(t); o.stop(t + dur + 0.05);
   }
   function blip(t) {
-    /* one beep, or one time in four a pair 110 ms apart on two different pitches */
+    /* one beep, or one time in three a pair 110 ms apart on two different pitches */
     var a = Math.floor(Math.random() * BLIPS.length);
     beep(t, BLIPS[a]);
-    if (Math.random() < 0.25) beep(t + 0.11, BLIPS[(a + 1 + Math.floor(Math.random() * (BLIPS.length - 1))) % BLIPS.length]);
+    if (Math.random() < 1 / 3) beep(t + 0.11, BLIPS[(a + 1 + Math.floor(Math.random() * (BLIPS.length - 1))) % BLIPS.length]);
   }
   function click(t) {
     /* relay click: 6 ms noise burst through a bandpass */
@@ -342,25 +343,25 @@
     src.start(t, rnd(0, 3), 0.006);
   }
   function swell(t) {
-    /* the ship surges: drone filter opens 180 -> 420 Hz over 6 s, closes over 10 s */
+    /* the ship surges: drone filter opens 180 -> 420 Hz over 4 s, closes over 6 s */
     var p = droneLP.frequency;
     p.setValueAtTime(180, t);
-    p.linearRampToValueAtTime(420, t + 6);
-    p.linearRampToValueAtTime(180, t + 16);
+    p.linearRampToValueAtTime(420, t + 4);
+    p.linearRampToValueAtTime(180, t + 10);
   }
   function schedule() {
     var now = ctx.currentTime;
     while (blipAt < now + 1) {
       if (blipAt > now) blip(blipAt);
-      blipAt += rnd(7, 15);
+      blipAt += rnd(3, 7);
     }
     while (clickAt < now + 1) {
       if (clickAt > now) click(clickAt);
-      clickAt += rnd(20, 45);
+      clickAt += rnd(8, 20);
     }
     while (swellAt < now + 1) {
       if (swellAt > now) swell(swellAt);
-      swellAt += rnd(90, 150);
+      swellAt += rnd(40, 70);
     }
   }
   function start() {
@@ -383,7 +384,13 @@
     }
     ctx.resume();
     var t0 = ctx.currentTime;
-    blipAt = t0 + 6; clickAt = t0 + 12; swellAt = t0 + rnd(60, 100);
+    /* boot sequence inside the first second, drone fades in over 0.4 s */
+    droneFade.gain.cancelScheduledValues(t0);
+    droneFade.gain.setValueAtTime(0, t0);
+    droneFade.gain.linearRampToValueAtTime(1, t0 + 0.4);
+    beep(t0 + 0.05, 1760, 0.05); beep(t0 + 0.20, 2093, 0.05); beep(t0 + 0.35, 2349, 0.05);
+    click(t0 + 0.6);
+    blipAt = t0 + 2.15; clickAt = t0 + 4; swellAt = t0 + 20;
     timer = setInterval(schedule, 250);
     on = true; btn.textContent = "[ sound: on ]"; btn.setAttribute("aria-pressed", "true");
   }
