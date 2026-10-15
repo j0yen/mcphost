@@ -14,6 +14,10 @@
 
 An unknown `kind` is refused `args_invalid` with the message `source kind must be one of: doc, table, url`.
 
+## Freshness
+
+Every source carries a change marker: the document watermark for `doc`, a per-table write counter for `table`, the `ETag` / `Last-Modified` for `url`. The background indexer re-chunks only what moved and keeps the vector of any chunk whose text is unchanged. `host.index.status` and `host.index.query` carry `stale_sources: [{ref, behind_by, since_s}]`, empty when the index is current. A `url` source is looked at every `refresh_s` seconds (default 3600; below the plan's schedule floor, free 300, is `args_invalid` with `data.minimum`); three failures in a row pause it until `host.index.refresh` names it.
+
 ## Limits
 
 `host.quickstart` `limits.plan` carries `index_max` (indexes per tenant, refused `quota_index_max`) and `index_chunks_max` (chunks per tenant; a build past it truncates the source and sets `last_error: "quota_index_chunks_max"`).

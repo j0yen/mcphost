@@ -62,6 +62,7 @@ Regenerate with `scripts/sandbox-api-doc-check.sh --write`.
 | `host.self.offboard` | delete | refused | `irreversible_by_design` |
 | `host.enduser.assertion_secret_rotate` | rotate | refused | `external_effect` |
 | `host.registry.publish` | publish | refused | `external_effect` |
+| `host.index.refresh` | write | refused | `external_effect` |
 | `host.trigger.fire` | write | refused | `external_effect` |
 | `host.msg.send` | write | refused | `external_effect` |
 | `host.task.post` | write | refused | `external_effect` |

@@ -115,6 +115,7 @@ pub const WRITE_VERBS: &[WriteVerb] = &[
     nd("host.self.offboard", Kind::Delete, "irreversible_by_design"),
     nd("host.enduser.assertion_secret_rotate", Kind::Rotate, "external_effect"),
     nd("host.registry.publish", Kind::Publish, "external_effect"),
+    nd("host.index.refresh", Kind::Write, "external_effect"),
     nd("host.trigger.fire", Kind::Write, "external_effect"),
     nd("host.msg.send", Kind::Write, "external_effect"),
     nd("host.task.post", Kind::Write, "external_effect"),

@@ -139,6 +139,30 @@
       }
     },
     {
+      "name": "retrieval",
+      "title": "Retrieval that follows its sources",
+      "summary": "Index documents, table columns and urls under one name; re-put a document and watch behind_by go 1 then 0 as the index follows.",
+      "use_case": [
+        "docs-qa"
+      ],
+      "clients": [
+        "any"
+      ],
+      "since": "0.107.99",
+      "proof": "proof.sh",
+      "secrets_needed": [],
+      "manifest_sha256": "d858715840fc6b26f16eabc07ff0bd8198ee9029788ae70b2ae1b78e18954882",
+      "tools": [],
+      "first_call": {
+        "tool": "host.index.query",
+        "args": {
+          "name": "hidx-probe",
+          "query": "hidx-probe"
+        },
+        "expect": "result.results contains hidx-probe"
+      }
+    },
+    {
       "name": "share-a-tool",
       "title": "Share a tool, not a key",
       "summary": "Publish an http tool that injects a secret, share it to a group, and let a teammate call it without ever seeing the key.",

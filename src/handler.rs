@@ -2542,10 +2542,40 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
             "host.index.status",
             "Build progress of one named index: chunks, pending (sources still being built), \
              lag_seconds, quota.index_chunks_max, and per-source {kind, ref, items, chunks, \
-             last_error?}.",
+             behind_by, last_error?, paused?}. stale_sources lists [{ref, behind_by, since_s}] \
+             for every source whose data moved since it was indexed; empty when current.",
             host_schema(
                 json!({"name": {"type": "string", "description": "The index name."}}),
                 &["name"],
+            ),
+        ),
+        Tool::new(
+            "host.index.refresh",
+            "Force a re-read of an index's sources on the next tick: {name, source?} -- source is \
+             one source's ref (a url, table name or document prefix), absent for all of them. \
+             Returns {queued: n}. A url source is fetched even if refresh_s has not elapsed, and a \
+             url source paused after three failures in a row resumes.",
+            host_schema(
+                json!({
+                    "name": {"type": "string", "description": "The index name."},
+                    "source": {"type": "string", "description": "One source's ref; omit for every source."},
+                }),
+                &["name"],
+            ),
+        ),
+        Tool::new(
+            "host.index.query",
+            "Lexical search over one named index: up to k hits (default 5, max 50) as {ref, \
+             byte_start, byte_end, text, score}. The index block carries name, chunks, pending, \
+             lag_seconds and stale_sources [{ref, behind_by, since_s}] -- the sources whose data \
+             moved since they were indexed, so the answer may not include it; empty when current.",
+            host_schema(
+                json!({
+                    "name": {"type": "string", "description": "The index name."},
+                    "query": {"type": "string", "description": "Words to look for."},
+                    "k": {"type": "integer", "description": "Hits to return, 1-50, default 5."},
+                }),
+                &["name", "query"],
             ),
         ),
         Tool::new(
@@ -6697,6 +6727,8 @@ impl McpHostHandler {
             "host.docs.reindex" => docs::doc_reindex(&self.state, tenant, &args).await,
             "host.index.create" => crate::index::index_create(&self.state, tenant, &args).await,
             "host.index.status" => crate::index::index_status(&self.state, tenant, &args).await,
+            "host.index.query" => crate::index::index_query(&self.state, tenant, &args).await,
+            "host.index.refresh" => crate::index::index_refresh(&self.state, tenant, &args).await,
             "host.drift.reviews" => crate::drift::reviews(&self.state, tenant, &args).await,
             "host.drift.review" => crate::drift::review_item(&self.state, tenant, &args).await,
             "host.drift.resolve" => crate::drift::resolve(&self.state, tenant, &args).await,

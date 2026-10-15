@@ -6215,6 +6215,10 @@
                   "description": "doc: document-name prefix.",
                   "type": "string"
                 },
+                "refresh_s": {
+                  "description": "url: seconds between looks at the page (default 3600; the plan's schedule floor is the minimum, free 300).",
+                  "type": "integer"
+                },
                 "table": {
                   "description": "table: a host.table table name.",
                   "type": "string"
@@ -6265,7 +6269,142 @@
       "since": "0.107.85"
     },
     {
-      "description": "Build progress of one named index: chunks, pending (sources still being built), lag_seconds, quota.index_chunks_max, and per-source {kind, ref, items, chunks, last_error?}.",
+      "description": "Lexical search over one named index: up to k hits (default 5, max 50) as {ref, byte_start, byte_end, text, score}. The index block carries name, chunks, pending, lag_seconds and stale_sources [{ref, behind_by, since_s}] -- the sources whose data moved since they were indexed, so the answer may not include it; empty when current.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "k": {
+            "description": "Hits to return, 1-50, default 5.",
+            "type": "integer"
+          },
+          "name": {
+            "description": "The index name.",
+            "type": "string"
+          },
+          "query": {
+            "description": "Words to look for.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "query"
+        ],
+        "type": "object"
+      },
+      "name": "host.index.query",
+      "output_schema": {
+        "properties": {
+          "index": {
+            "properties": {
+              "chunks": {
+                "type": "integer"
+              },
+              "lag_seconds": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              },
+              "pending": {
+                "type": "integer"
+              },
+              "stale_sources": {
+                "items": {
+                  "properties": {
+                    "behind_by": {
+                      "type": "integer"
+                    },
+                    "ref": {
+                      "type": "string"
+                    },
+                    "since_s": {
+                      "type": "integer"
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          },
+          "results": {
+            "items": {
+              "properties": {
+                "byte_end": {
+                  "type": "integer"
+                },
+                "byte_start": {
+                  "type": "integer"
+                },
+                "ref": {
+                  "type": "string"
+                },
+                "score": {
+                  "type": "number"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "index",
+          "results"
+        ],
+        "type": "object"
+      },
+      "since": "0.107.98",
+      "unpaged_reason": "relevance-ranked top-k result, not a keyset-ordered list, so there is no stable cursor"
+    },
+    {
+      "description": "Force a re-read of an index's sources on the next tick: {name, source?} -- source is one source's ref (a url, table name or document prefix), absent for all of them. Returns {queued: n}. A url source is fetched even if refresh_s has not elapsed, and a url source paused after three failures in a row resumes.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "The index name.",
+            "type": "string"
+          },
+          "source": {
+            "description": "One source's ref; omit for every source.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host.index.refresh",
+      "output_schema": {
+        "properties": {
+          "queued": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "queued"
+        ],
+        "type": "object"
+      },
+      "since": "0.107.98"
+    },
+    {
+      "description": "Build progress of one named index: chunks, pending (sources still being built), lag_seconds, quota.index_chunks_max, and per-source {kind, ref, items, chunks, behind_by, last_error?, paused?}. stale_sources lists [{ref, behind_by, since_s}] for every source whose data moved since it was indexed; empty when current.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -6309,6 +6448,9 @@
           "sources": {
             "items": {
               "properties": {
+                "behind_by": {
+                  "type": "integer"
+                },
                 "chunks": {
                   "type": "integer"
                 },
@@ -6321,8 +6463,28 @@
                 "last_error": {
                   "type": "string"
                 },
+                "paused": {
+                  "type": "boolean"
+                },
                 "ref": {
                   "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "stale_sources": {
+            "items": {
+              "properties": {
+                "behind_by": {
+                  "type": "integer"
+                },
+                "ref": {
+                  "type": "string"
+                },
+                "since_s": {
+                  "type": "integer"
                 }
               },
               "type": "object"
@@ -23268,6 +23430,10 @@
                   "description": "doc: document-name prefix.",
                   "type": "string"
                 },
+                "refresh_s": {
+                  "description": "url: seconds between looks at the page (default 3600; the plan's schedule floor is the minimum, free 300).",
+                  "type": "integer"
+                },
                 "table": {
                   "description": "table: a host.table table name.",
                   "type": "string"
@@ -23299,8 +23465,67 @@
       "since": "0.107.85"
     },
     {
+      "alias_of": "host.index.query",
+      "description": "Lexical search over one named index: up to k hits (default 5, max 50) as {ref, byte_start, byte_end, text, score}. The index block carries name, chunks, pending, lag_seconds and stale_sources [{ref, behind_by, since_s}] -- the sources whose data moved since they were indexed, so the answer may not include it; empty when current.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "k": {
+            "description": "Hits to return, 1-50, default 5.",
+            "type": "integer"
+          },
+          "name": {
+            "description": "The index name.",
+            "type": "string"
+          },
+          "query": {
+            "description": "Words to look for.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "query"
+        ],
+        "type": "object"
+      },
+      "name": "host_index_query",
+      "since": "0.107.98"
+    },
+    {
+      "alias_of": "host.index.refresh",
+      "description": "Force a re-read of an index's sources on the next tick: {name, source?} -- source is one source's ref (a url, table name or document prefix), absent for all of them. Returns {queued: n}. A url source is fetched even if refresh_s has not elapsed, and a url source paused after three failures in a row resumes.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "The index name.",
+            "type": "string"
+          },
+          "source": {
+            "description": "One source's ref; omit for every source.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host_index_refresh",
+      "since": "0.107.98"
+    },
+    {
       "alias_of": "host.index.status",
-      "description": "Build progress of one named index: chunks, pending (sources still being built), lag_seconds, quota.index_chunks_max, and per-source {kind, ref, items, chunks, last_error?}.",
+      "description": "Build progress of one named index: chunks, pending (sources still being built), lag_seconds, quota.index_chunks_max, and per-source {kind, ref, items, chunks, behind_by, last_error?, paused?}. stale_sources lists [{ref, behind_by, since_s}] for every source whose data moved since it was indexed; empty when current.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {

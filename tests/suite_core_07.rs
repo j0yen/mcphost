@@ -1191,6 +1191,18 @@ mod hpress_ac05_daily_rows_have_no_host;
 mod hpress_ac06_status_html_host_line;
 #[path = "hpress_ac07_metrics_doc_matches_struct.rs"]
 mod hpress_ac07_metrics_doc_matches_struct;
+#[path = "hrfr_ac02_incremental_refresh_after_appends_and_reput.rs"]
+mod hrfr_ac02_incremental_refresh_after_appends_and_reput;
+#[path = "hrfr_ac03_query_carries_stale_sources_while_ticking.rs"]
+mod hrfr_ac03_query_carries_stale_sources_while_ticking;
+#[path = "hrfr_ac04_url_conditional_refresh_and_floor.rs"]
+mod hrfr_ac04_url_conditional_refresh_and_floor;
+#[path = "hrfr_ac05_rechunk_keeps_vectors_of_unchanged_chunks.rs"]
+mod hrfr_ac05_rechunk_keeps_vectors_of_unchanged_chunks;
+#[path = "hrfr_ac06_table_write_verbs_bump_change_counter.rs"]
+mod hrfr_ac06_table_write_verbs_bump_change_counter;
+#[path = "hrfr_ac07_failing_url_pauses_until_refreshed.rs"]
+mod hrfr_ac07_failing_url_pauses_until_refreshed;
 #[path = "hsr_ac01_top10_errors_have_fix_anchor.rs"]
 mod hsr_ac01_top10_errors_have_fix_anchor;
 #[path = "hsr_ac02_import_mcphost_dev_finds_python_example.rs"]
