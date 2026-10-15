@@ -1149,6 +1149,12 @@ mod hostdoc_ac01_five_families_five_concrete_next_lines;
 mod hostdoc_ac03_every_next_template_renders_fully;
 #[path = "hostdoc_ac04_empty_window_and_no_tools.rs"]
 mod hostdoc_ac04_empty_window_and_no_tools;
+#[path = "hostdocb_ac01_admin_and_forbidden_tenant.rs"]
+mod hostdocb_ac01_admin_and_forbidden_tenant;
+#[path = "hostdocb_ac02_limit_window_and_group_order.rs"]
+mod hostdocb_ac02_limit_window_and_group_order;
+#[path = "hostdocb_ac03_args_invalid_refusal_is_a_row.rs"]
+mod hostdocb_ac03_args_invalid_refusal_is_a_row;
 #[path = "hostedas_ac01_well_known_metadata.rs"]
 mod hostedas_ac01_well_known_metadata;
 #[path = "hostedas_ac02_cimd_client_identification.rs"]

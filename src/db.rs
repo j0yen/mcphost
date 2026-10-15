@@ -10446,14 +10446,17 @@ impl Db {
         origin_detail: Option<String>,
         caller_tenant_id: Option<i64>,
         auth_method: String,
+        // PRD-mcphost-host-doctor-tool-b R8: `crate::doctor::error_summary_of`'s
+        // output, so `host.doctor` can say what the refusal was about.
+        error_summary: Option<String>,
     ) -> Result<(), AppError> {
         let started_at = now_rfc3339();
         let started_unix = now_unix();
         self.with_conn(move |conn| {
             conn.execute(
-                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, outcome, origin, origin_detail, caller_tenant_id, auth_method, error_code) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, 0, 'refused', 'refused', ?6, ?7, ?8, ?9, ?10)",
-                params![tenant_id, tool_name, started_at, started_unix, duration_ms, origin, origin_detail, caller_tenant_id, auth_method, error_code],
+                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, outcome, origin, origin_detail, caller_tenant_id, auth_method, error_code, error_summary) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, 0, 'refused', 'refused', ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![tenant_id, tool_name, started_at, started_unix, duration_ms, origin, origin_detail, caller_tenant_id, auth_method, error_code, error_summary],
             )?;
             Ok(())
         })
@@ -12345,7 +12348,10 @@ impl Db {
     ) -> Result<(Vec<crate::doctor::FailedCall>, i64), AppError> {
         self.with_conn(move |conn| {
             let mut stmt = conn.prepare(
-                "SELECT tool_name, COALESCE(error_class, 'unknown'), error_summary, started_at, started_unix \
+                "SELECT tool_name, \
+                 CASE WHEN error_class = 'refused' THEN COALESCE(error_code, 'refused') \
+                 ELSE COALESCE(error_class, 'unknown') END, \
+                 error_summary, started_at, started_unix, outcome \
                  FROM calls WHERE tenant_id = ?1 AND ok = 0 AND outcome <> 'test' \
                  AND (?2 IS NULL OR tool_name = ?2) AND started_unix >= COALESCE(?3, 0) \
                  ORDER BY started_unix DESC, id DESC LIMIT ?4",
@@ -12358,6 +12364,7 @@ impl Db {
                         tool: r.get(0)?,
                         error_class: r.get(1)?,
                         error_summary: r.get(2)?,
+                        outcome: r.get(5)?,
                         started_at: r.get(3)?,
                     })
                 })?
