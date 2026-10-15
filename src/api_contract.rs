@@ -861,7 +861,10 @@ pub fn changelog_at(
         .collect();
     let since_out = since.map(str::to_string);
     let since: &str = &effective;
-    let in_range = |v: &str| version_gt(v, since) && !version_gt(v, now);
+    // A never-seen tenant has no baseline: nothing is "new" to it, so
+    // `added`/`renamed` stay empty and only the recent releases are listed.
+    let never_seen = since_out.is_none();
+    let in_range = |v: &str| !never_seen && version_gt(v, since) && !version_gt(v, now);
 
     let mut tools = crate::handler::host_tool_descriptors(kinds);
     tools.sort_by(|a, b| a.name.cmp(&b.name));
