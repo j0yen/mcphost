@@ -12,6 +12,7 @@ pub mod asks;
 pub mod confirm;
 pub mod assertion;
 pub mod auth;
+pub mod backup;
 pub mod authz;
 pub mod bans;
 pub mod billing;

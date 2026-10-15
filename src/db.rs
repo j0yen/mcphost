@@ -317,6 +317,17 @@ const MIGRATION_0103: &str = include_str!("../migrations/0103_indexes.sql");
 const MIGRATION_0104: &str = include_str!("../migrations/0104_tenant_keys.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
+/// PRD-mcphost-backup-restore-proof-nightly R3: the `backup_verifications` table.
+const MIGRATION_0106: &str = include_str!("../migrations/0106_backup_verifications.sql");
+
+/// Arguments of [`Db::record_backup_verification`].
+pub struct BackupVerificationInput {
+    pub source: String,
+    pub taken_at_unix: i64,
+    pub live_digest: String,
+    pub restored_digest: String,
+    pub restored_counts: serde_json::Value,
+}
 
 /// Outcome of [`Db::reserve_draft`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2992,6 +3003,7 @@ impl Db {
         conn.execute_batch(MIGRATION_0103)?;
         Self::migrate_0104_tenant_keys(&conn)?;
         Self::migrate_0105_asks_channel(&conn)?;
+        conn.execute_batch(MIGRATION_0106)?;
         Ok(())
     }
 
@@ -18142,6 +18154,53 @@ impl Db {
                 params![now, acked_by, id],
             )?;
             Ok(n > 0)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-backup-restore-proof-nightly R3: record one restore
+    /// verification; `digest_match` is `live_digest == restored_digest` and
+    /// `age_s` is `now - taken_at_unix`. Returns the stored row as JSON.
+    pub async fn record_backup_verification(
+        &self,
+        input: BackupVerificationInput,
+    ) -> Result<serde_json::Value, AppError> {
+        let BackupVerificationInput {
+            source,
+            taken_at_unix,
+            live_digest,
+            restored_digest,
+            restored_counts,
+        } = input;
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            let digest_match = live_digest == restored_digest;
+            let age_s = now - taken_at_unix;
+            conn.execute(
+                "INSERT INTO backup_verifications \
+                 (verified_at, source, taken_at_unix, age_s, live_digest, restored_digest, digest_match, restored_counts) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    now,
+                    source,
+                    taken_at_unix,
+                    age_s,
+                    live_digest,
+                    restored_digest,
+                    digest_match,
+                    restored_counts.to_string()
+                ],
+            )?;
+            Ok(serde_json::json!({
+                "id": conn.last_insert_rowid(),
+                "source": source,
+                "taken_at_unix": taken_at_unix,
+                "age_s": age_s,
+                "digest_match": digest_match,
+                "live_digest": live_digest,
+                "restored_digest": restored_digest,
+                "restored_counts": restored_counts,
+            }))
         })
         .await
     }

@@ -5224,6 +5224,23 @@ fn admin_tools() -> Vec<Tool> {
             ),
         ),
         Tool::new(
+            "admin.backup_verified",
+            "Record one restore verification: the deploy tool's nightly job digested the live \
+             file (live_digest) and a restored copy (restored_digest, restored_counts). Stores \
+             digest_match = (live_digest == restored_digest) and age_s = now - taken_at_unix; \
+             taken_at_unix in the future or older than 7 days is args_invalid.",
+            schema(
+                json!({
+                    "source": {"type": "string"},
+                    "taken_at_unix": {"type": "integer"},
+                    "live_digest": {"type": "string"},
+                    "restored_digest": {"type": "string"},
+                    "restored_counts": {"type": "object"},
+                }),
+                &["source", "taken_at_unix", "live_digest", "restored_digest"],
+            ),
+        ),
+        Tool::new(
             "admin.alerts.ack",
             "Acknowledge one alert by id -- appears in admin_audit under the operator identity.",
             schema(json!({"id": {"type": "integer"}}), &["id"]),
@@ -7025,6 +7042,7 @@ impl McpHostHandler {
             // PRD-mcphost-alerting-webhook requirement 5.
             "admin.alerts.list" => admin::alerts_list(&self.state, &args).await,
             "admin.alerts.ack" => admin::alerts_ack(&self.state, &args).await,
+            "admin.backup_verified" => admin::backup_verified(&self.state, &args).await,
             "admin.example_proposals" => admin::example_proposals(&self.state, &args).await,
             "admin.alerts.raise" => admin::alerts_raise(&self.state, &args).await,
             // PRD-mcphost-status-feed requirement 4/8.

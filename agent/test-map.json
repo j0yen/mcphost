@@ -1665,6 +1665,13 @@
       "AC5": "tests/creg_ac05_capabilities_docs_in_sync.rs",
       "AC6": "tests/creg_ac06_quickstart_names_capabilities.rs",
       "AC7": "tests/creg_ac07_probe_names_unique.rs"
+    },
+    "bkver": {
+      "_prd": "PRD-mcphost-backup-restore-proof-nightly.md (test_prefix: bkver)",
+      "AC1": "deferred -- operator-provisioned: premise check against prod's newest backup and live file; result recorded in the PRD.",
+      "AC2": "tests/bkver_ac02_digest_covers_every_table.rs",
+      "AC3": "tests/bkver_ac03_compare_names_deleted_tools_row.rs",
+      "AC4": "tests/bkver_ac04_corrupt_page_exits_3_with_integrity_text.rs"
     }
   }
 }

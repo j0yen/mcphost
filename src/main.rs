@@ -80,6 +80,12 @@ enum Command {
     },
     /// Print the version and exit.
     Version,
+    /// PRD-mcphost-backup-restore-proof-nightly: digest tooling over any
+    /// copy of the database file.
+    Backup {
+        #[command(subcommand)]
+        action: BackupCommand,
+    },
     /// PRD-mcphost-sandbox-ready P2 requirement 9 / AC10: run the sandbox
     /// self-test in-process and exit 0 (ready) or 1 (unready), printing the
     /// same detail line `/healthz` would show -- for a shell on the host,
@@ -476,6 +482,26 @@ enum ProposalsCommand {
 }
 
 #[derive(Subcommand)]
+enum BackupCommand {
+    /// R1: open the file read-only, run `PRAGMA integrity_check`, and print
+    /// the canonical digest (tables, counts, sha256). Exit 0, or 3 with the
+    /// `integrity` text on corruption.
+    Digest {
+        /// The sqlite file to digest. Defaults to `$MCPHOST_DATA_DIR/mcphost.db`.
+        #[arg(long)]
+        db: Option<PathBuf>,
+        /// Print the full report as JSON (the default is a one-line summary).
+        #[arg(long)]
+        json: bool,
+        /// R6: instead of digesting, compare two saved `--json` reports.
+        /// Exit 0 on equal digests, 4 on mismatch, printing the first
+        /// differing table and both counts.
+        #[arg(long, num_args = 2, value_names = ["A_JSON", "B_JSON"])]
+        compare: Option<Vec<PathBuf>>,
+    },
+}
+
+#[derive(Subcommand)]
 enum MaintenanceCommand {
     /// Run the maintenance window now (`db_maintenance` then `log_rotate`),
     /// honouring the backup lock and the per-action rate limit.
@@ -619,6 +645,47 @@ async fn main() -> anyhow::Result<()> {
                 Ok(())
             }
         }
+        Command::Backup { action } => match action {
+            BackupCommand::Digest { db, json, compare } => {
+                // No `init_tracing()`: stdout is the contract, as for `Funnel`.
+                if let Some(files) = compare {
+                    let read = |p: &PathBuf| -> anyhow::Result<serde_json::Value> {
+                        let text = std::fs::read_to_string(p)
+                            .map_err(|e| anyhow::anyhow!("read {}: {e}", p.display()))?;
+                        serde_json::from_str(&text)
+                            .map_err(|e| anyhow::anyhow!("parse {}: {e}", p.display()))
+                    };
+                    let (a, b) = (read(&files[0])?, read(&files[1])?);
+                    return match mcphost::backup::compare_reports(&a, &b) {
+                        None => {
+                            println!("match: digest={}", a["digest"]);
+                            Ok(())
+                        }
+                        Some(line) => {
+                            println!("{line}");
+                            std::process::exit(mcphost::backup::EXIT_MISMATCH);
+                        }
+                    };
+                }
+                let path = db.unwrap_or_else(|| data_dir().join("mcphost.db"));
+                let report = mcphost::backup::digest_db(&path, mcphost::state::now_unix());
+                if json || !report.integrity_ok {
+                    println!("{}", report.value);
+                } else {
+                    println!(
+                        "digest={} integrity=ok tenants={} tools={} triggers={}",
+                        report.value["digest"].as_str().unwrap_or(""),
+                        report.value["counts"]["tenants"],
+                        report.value["counts"]["tools"],
+                        report.value["counts"]["triggers"],
+                    );
+                }
+                if !report.integrity_ok {
+                    std::process::exit(mcphost::backup::EXIT_INTEGRITY);
+                }
+                Ok(())
+            }
+        },
         Command::Maintenance { action } => match action {
             MaintenanceCommand::Run { dry_run } => {
                 init_tracing();
