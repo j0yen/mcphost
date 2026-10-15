@@ -30,6 +30,22 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "nexttool_ac01_anonymous_starter_set.rs"]
+mod nexttool_ac01_anonymous_starter_set;
+#[path = "nexttool_ac02_authenticated_listing_unchanged.rs"]
+mod nexttool_ac02_authenticated_listing_unchanged;
+#[path = "nexttool_ac03_signup_emits_list_changed.rs"]
+mod nexttool_ac03_signup_emits_list_changed;
+#[path = "nexttool_ac04_tool_publish_next_hint.rs"]
+mod nexttool_ac04_tool_publish_next_hint;
+#[path = "nexttool_ac05_five_distinct_tools_suppresses_hint.rs"]
+mod nexttool_ac05_five_distinct_tools_suppresses_hint;
+#[path = "nexttool_ac06_hints_false_suppresses_hint.rs"]
+mod nexttool_ac06_hints_false_suppresses_hint;
+#[path = "nexttool_ac07_header_authenticated_never_gets_hint.rs"]
+mod nexttool_ac07_header_authenticated_never_gets_hint;
+#[path = "nexttool_ac09_host_usage_hints_shown_and_followed.rs"]
+mod nexttool_ac09_host_usage_hints_shown_and_followed;
 #[path = "nudge_ac01_claimed_tenant_gets_one_return_email.rs"]
 mod nudge_ac01_claimed_tenant_gets_one_return_email;
 #[path = "nudge_ac02_second_sweep_sends_nothing_more.rs"]
