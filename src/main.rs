@@ -1166,6 +1166,13 @@ async fn main() -> anyhow::Result<()> {
                         std::process::exit(1);
                     }
                 } else {
+                    // An unparsable committed contract would make every
+                    // tool's `since` read as "new" (empty map): refuse and
+                    // write nothing.
+                    if let Err(msg) = mcphost::api_contract::dump_guard(&path) {
+                        eprintln!("{msg}");
+                        std::process::exit(2);
+                    }
                     std::fs::write(&path, &bytes)?;
                     println!(
                         "contract dump: wrote {} (contract_version {})",

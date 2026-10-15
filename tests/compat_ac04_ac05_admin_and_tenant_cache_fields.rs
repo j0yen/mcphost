@@ -14,6 +14,7 @@
 
 use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, signup};
+use mcphost::kinds::KindRegistry;
 
 #[tokio::test]
 async fn ac4_admin_tools_list_has_cache_fields() {
@@ -78,120 +79,53 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
             .all(|n| n.starts_with("host.") || n.starts_with("billing.") || n.starts_with("host_") || n.starts_with("billing_")),
         "a tenant with no published tools must see only host.*/billing.* tools: {names:?}"
     );
-    // PRD-mcphost-tool-naming-convention-and-aliases requirement 2/3: 147
-    // -> 167 (+20) -- every host.tool_*-family/host.key_rotate/
-    // host.self_offboard/host.secret_*/host.registry_publish/
-    // host.bridge_test/host.spec_test violator is now registered under
-    // its dotted canonical name AND kept working under its old name as a
-    // deprecated alias, so the control-plane surface this tenant sees
-    // gained 20 names (the aliases) with none removed.
+    // The expected host-tool count is DERIVED, never typed: the registry
+    // that builds `tools/list` is the one component that knows the set
+    // (`host_tool_descriptors` = `host_tools(kinds, authenticated: true)`,
+    // canonicals + deprecated aliases + flattened forms). A PRD that adds a
+    // tool changes this number by changing the registry, not this file;
+    // `committed_contract_names_equal_the_registry_names` below pins the
+    // registry to the committed contract so the derivation cannot drift.
+    let expected = mcphost::handler::host_tool_descriptors(&KindRegistry::with_builtin()).len();
     assert_eq!(
         names.len(),
-        // PRD-mcphost-tool-naming-convention-and-aliases rebase onto main
-        // (which had grown 147 -> 150 with host.table.graph/join_paths/
-        // next_questions, then 150 -> 151 with host.table.query_log from
-        // PRD-mcphost-table-context-and-sql-passthrough, then 151 -> 155
-        // with host.drift.reviews/review/resolve/check from
-        // PRD-mcphost-drift-review):
-        // 155 + 20 aliases = 175, then 175 -> 178 with host.invite.create/
-        // list/revoke from PRD-mcphost-invite-links, then 178 -> 180 with
-        // host.table.query_diagnose/query_stats (PRD-mcphost-query-diagnosis),
-        // then r368-prep rebase (2026-10-03) 180 -> 183 with this PRD's own
-        // three new host.table.handles/handle_drop/handle_export tools.
-        // PRD-mcphost-row-policy rebase onto main (run 353, 2026-10-04):
-        // this PRD's own five host.policy.set/list/attrs_set and
-        // host.audit.chain/verify tools join on top -- 183 + 5 = 188.
-        // PRD-mcphost-tools-list-alias-truth: +168 flattened `a_b_c` forms
-        // (one per dotted canonical), 188 + 168 = 356.
-        // PRD-mcphost-uptime-probe-recipe-green: host.uptime.create, one
-        // new dotted tool plus its flattened form, 356 + 2 = 358.
-        // PRD-mcphost-webhook-inbox-one-call: host.webhook_inbox.create,
-        // one new dotted tool plus its flattened form, 358 + 2 = 360.
-        // PRD-mcphost-call-cost-estimate: host.estimate (keyed tenants), one
-        // new dotted tool plus its flattened form, 360 + 2 = 362.
-        // PRD-mcphost-ask-user-decision: host.ask.create, wait, get and list,
-        // four new dotted tools plus their flattened forms, 362 + 8 = 370.
-        // PRD-mcphost-call-trace-replay: host.call_trace, one new dotted tool
-        // plus its flattened form, 370 + 2 = 372.
-        // PRD-mcphost-feedback-tool-and-ledger: host.feedback.send/list, two
-        // new dotted tools plus their flattened forms, 372 + 4 = 376;
-        // PRD-mcphost-event-trigger-from-webhook: host.trigger.dead_letters,
-        // one more dotted tool plus its flattened form, 376 + 2 = 378.
-        // PRD-mcphost-blob-put-get-signed-url: host.blob.put/get/list/
-        // delete/url, five dotted tools plus their flattened forms,
-        // 378 + 10 = 388.
-        // PRD-mcphost-blob-retention-and-quota: host.blob.touch/policy/gc,
-        // three new dotted tools plus their flattened forms, 388 + 6 = 394.
-        // PRD-mcphost-export-tables-and-import-restore: host.import, one new
-        // dotted tool plus its flattened form, 394 + 2 = 396.
-        // PRD-mcphost-example-from-published-tool: host.example.propose and
-        // host.example.proposal_status, two dotted tools plus their
-        // flattened forms, 396 + 4 = 400.
-        // PRD-mcphost-feedback-themes-nightly: host.feedback.get, one more
-        // dotted tool plus its flattened form, 400 + 2 = 402.
-        // PRD-mcphost-host-doctor-tool: host.doctor, one new dotted tool
-        // plus its flattened form, 402 + 2 = 404.
-        // PRD-mcphost-help-search-tool: host.help.search, one more dotted
-        // tool plus its flattened form, 404 + 2 = 406.
-        // PRD-mcphost-scheduled-job-receipts: host.schedule_receipts, one more
-        // dotted tool plus its flattened form, 406 + 2 = 408.
-        // PRD-mcphost-task-handoff-tool: host.task.post/claim/complete/get/
-        // dead_letters, five dotted tools plus their flattened forms,
-        // 408 + 10 = 418.
-        // PRD-mcphost-index-create-from-sources: host.index.create and
-        // host.index.status, two dotted tools plus their flattened forms,
-        // 418 + 4 = 422.
-        // PRD-mcphost-key-scoped-to-tools: host.key.mint, one new dotted tool
-        // plus its flattened form, 422 + 2 = 424; host.key.list and
-        // host.key.revoke, two more dotted tools plus their flattened forms,
-        // 424 + 4 = 428.
-        // PRD-mcphost-job-timeline-tool: host.job.timeline, its deprecated-style
-        // alias host.job_timeline and the shared flattened form, 428 + 3 = 431.
-        // PRD-mcphost-index-refresh-on-change: host.index.query, one dotted
-        // tool plus its flattened form, 431 + 2 = 433; host.index.refresh, one
-        // more dotted tool plus its flattened form, 433 + 2 = 435.
-        435,
-        "there must be exactly the sixteen host.* control-plane tools \
-         (incl. host.quickstart, host.tool_run, host.bridge_test, host.spec_test -- \
-         PRD-mcphost-tool-test, and host.redeem/host.key_rotate -- \
-         PRD-mcphost-handoff-token) plus host.tool_call plus the three \
-         host.tool_history/host.tool_rollback/host.tool_diff tools \
-         (PRD-mcphost-tool-versions) plus the nine host.state.* tools \
-         (PRD-mcphost-tenant-state) plus the eighteen host.table.* tools \
-         (PRD-mcphost-tenant-tables, PRD-mcphost-table-semantic-model, \
-         PRD-mcphost-chart-in-a-minute, PRD-mcphost-table-context-and-sql-passthrough, \
-         PRD-mcphost-result-handles) plus the nine \
-         host.tool_share/host.tool_spec_shared/host.tool_unshare/ \
-         host.group.*/host.catalog.* tools (PRD-mcphost-sharing, \
-         PRD-mcphost-shared-tool-spec-readback) plus the two \
-         host.share.caller_limit/caller_limit_remove tools \
-         (PRD-mcphost-shared-tool-caller-usage) plus the five \
-         host.runs.* tools (PRD-mcphost-runs-and-jobs) plus the two \
-         host.progress/host.runs.part tools (PRD-mcphost-run-result-overflow-to-state) \
-         plus the nine host.trigger.* \
-         tools (PRD-mcphost-schedules, PRD-mcphost-inbound-events) plus the three billing.* \
-         tools plus the four host.agent.* tools (PRD-mcphost-agent-directory) plus the \
-         eight host.msg.* tools (PRD-mcphost-agent-inbox, PRD-mcphost-agent-wake) plus the \
-         seven host.agent.contact_*/mute/unmute tools (PRD-mcphost-agent-consent) plus \
-         host.self_offboard (PRD-mcphost-tenant-self-offboard) + host.changelog (PRD-mcphost-host-tool-deprecation) plus \
-         host.export (PRD-mcphost-tenant-data-export) plus \
-         the six host.channel.* tools (PRD-mcphost-agent-mesh-ops, PRD-mcphost-agent-channels) + the six host.docs.* tools (PRD-mcphost-document-store) plus \
-         the five host.oauth.* tools (PRD-mcphost-oauth-resource-server, PRD-mcphost-hosted-authorization-server) plus \
-         the four host.oauth.provider_set/provider/provider_remove/doctor tools (PRD-mcphost-federated-end-user-login) plus \
-         the three host.oauth.trusted_issuer_set/trusted_issuer_remove/trusted_issuers tools (PRD-mcphost-enterprise-managed-auth) plus \
-         the three host.docs.search/index_config/reindex tools (PRD-mcphost-docs-semantic-search) plus \
-         the two host.enduser.* tools (PRD-mcphost-end-user-identity) plus \
-         the eight host.oauth.policy_set/policy/pending/client_approve/client_deny/revoke_all/ \
-         audit/audit_export tools (PRD-mcphost-oauth-client-policy) plus \
-         the three host.lineage.* tools (PRD-mcphost-lineage-blast-radius) plus \
-         the six host.vault.* tools (PRD-mcphost-upstream-token-vault, \
-         PRD-mcphost-upstream-token-vault-status) plus \
-         the three host.table.graph/join_paths/next_questions tools \
-         (PRD-mcphost-table-concept-graph) plus \
-         the four host.drift.reviews/review/resolve/check tools \
-         (PRD-mcphost-drift-review) plus the 20 deprecated-alias tools \
-         (PRD-mcphost-tool-naming-convention-and-aliases) plus \
-         host.table.query_diagnose/query_stats (PRD-mcphost-query-diagnosis) plus \
-         the five host.policy.*/host.audit.chain/host.audit.verify tools (PRD-mcphost-row-policy): {names:?}"
+        expected,
+        "a tenant with no published tools must see exactly the registry's host.*/billing.* \
+         control-plane tools ({expected}, derived from KindRegistry::with_builtin() + \
+         host_tool_descriptors): {names:?}"
+    );
+}
+
+/// Drift guard for the derived count above: the registry's host-tool name set
+/// must equal the name set in the committed `contracts/host-tools.v1.json`.
+/// A disagreement names the extra / missing tools. Fix by running
+/// `mcphost contract dump` (never by hand-editing the file or this test).
+#[test]
+fn committed_contract_names_equal_the_registry_names() {
+    use std::collections::BTreeSet;
+
+    let registry: BTreeSet<String> = mcphost::handler::host_tool_descriptors(&KindRegistry::with_builtin())
+        .iter()
+        .map(|t| t.name.to_string())
+        .collect();
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(mcphost::api_contract::DEFAULT_CONTRACT_PATH);
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let contract: serde_json::Value =
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("{} does not parse: {e}", path.display()));
+    let committed: BTreeSet<String> = contract["tools"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{} has no tools array", path.display()))
+        .iter()
+        .filter_map(|t| t["name"].as_str().map(str::to_string))
+        .collect();
+
+    let extra_in_registry: Vec<&String> = registry.difference(&committed).collect();
+    let missing_from_registry: Vec<&String> = committed.difference(&registry).collect();
+    assert!(
+        extra_in_registry.is_empty() && missing_from_registry.is_empty(),
+        "the registry and {} disagree (run `mcphost contract dump`): \
+         in the registry but not the contract: {extra_in_registry:?}; \
+         in the contract but not the registry: {missing_from_registry:?}",
+        mcphost::api_contract::DEFAULT_CONTRACT_PATH
     );
 }
