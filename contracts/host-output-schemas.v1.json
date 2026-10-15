@@ -670,6 +670,9 @@
       "ask_id": {
         "type": "string"
       },
+      "channel": {
+        "type": "string"
+      },
       "choice": {
         "type": "string"
       },
@@ -719,6 +722,7 @@
     "required": [
       "answered_unix",
       "ask_id",
+      "channel",
       "choice",
       "created_unix",
       "events",
@@ -739,6 +743,9 @@
               "type": "integer"
             },
             "ask_id": {
+              "type": "string"
+            },
+            "channel": {
               "type": "string"
             },
             "choice": {
@@ -769,6 +776,7 @@
           "required": [
             "answered_unix",
             "ask_id",
+            "channel",
             "choice",
             "created_unix",
             "expires_unix",

@@ -94,7 +94,7 @@ pub const CAPABILITIES: &[Capability] = &[
     Capability {
         name: "elicitation",
         methods: &["elicitation/create"],
-        implemented: false,
+        implemented: true,
         list_changed: false,
         subscribe: false,
         ceiling: None,
@@ -128,6 +128,11 @@ pub const CAPABILITIES: &[Capability] = &[
     },
 ];
 
+/// Rows that name a CLIENT capability this host consumes (it sends
+/// `elicitation/create` when the client advertised it): implemented, but
+/// never part of `ServerCapabilities`.
+pub const CLIENT_SIDE: &[&str] = &["elicitation"];
+
 /// The row that owns `method`, if any.
 pub fn capability_for_method(method: &str) -> Option<&'static Capability> {
     CAPABILITIES.iter().find(|c| c.methods.contains(&method))
@@ -160,7 +165,7 @@ pub fn unsupported_error(method: &str, base_url: Option<&str>) -> McpError {
 /// walks every row), so a new row cannot silently advertise nothing.
 pub fn server_capabilities() -> ServerCapabilities {
     let mut caps = ServerCapabilities::default();
-    for row in CAPABILITIES.iter().filter(|c| c.implemented) {
+    for row in CAPABILITIES.iter().filter(|c| c.implemented && !CLIENT_SIDE.contains(&c.name)) {
         match row.name {
             "tools" => {
                 let b = ServerCapabilities::builder().enable_tools();

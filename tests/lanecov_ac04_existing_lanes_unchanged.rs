@@ -208,6 +208,9 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // PRD-mcphost-heal-action-registry-and-ledger added its own "heal-docs"
     // lane (routes scripts/heal-doc-check.sh and docs/self-healing.md to the
     // script's check mode) -- an intended addition since the baseline.
+    // PRD-mcphost-elicitation-with-ask-fallback added its own "elicit-docs"
+    // lane (routes the elicitation docs to their check) -- an intended
+    // addition since the baseline (rb seat hand-fix 10-15 2:0x am, CI lanecov red on PR 280).
     assert_eq!(
         added,
         vec![
@@ -218,6 +221,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "contracts",
             "docs-links",
             "docsearch-fixtures",
+            "elicit-docs",
             "event-trigger-self-test-fixtures",
             "example-manifest",
             "examples",

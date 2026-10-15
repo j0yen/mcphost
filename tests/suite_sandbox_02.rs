@@ -16,6 +16,8 @@ mod chart_fixture;
 mod ctrace;
 #[path = "support/docs_qa.rs"]
 mod docs_qa;
+#[path = "support/elicit_session.rs"]
+mod elicit_session;
 #[path = "support/exprp.rs"]
 mod exprp;
 #[path = "support/federation.rs"]
@@ -284,6 +286,20 @@ mod mcphost_uptime_probes_ac05_target_cap_at_20;
 mod mcphost_uptime_probes_ac07_synthorg_task_five_completions;
 #[path = "mcphost_uptime_probes_ac09_down_since_flip_sends_inbox.rs"]
 mod mcphost_uptime_probes_ac09_down_since_flip_sends_inbox;
+#[path = "melc_ac01_typed_elicit_via_client_callback.rs"]
+mod melc_ac01_typed_elicit_via_client_callback;
+#[path = "melc_ac02_link_fallback_for_clients_without_elicitation.rs"]
+mod melc_ac02_link_fallback_for_clients_without_elicitation;
+#[path = "melc_ac03_invalid_schema_is_refused_before_any_ask.rs"]
+mod melc_ac03_invalid_schema_is_refused_before_any_ask;
+#[path = "melc_ac04_schema_subset_one_const_three_renderings.rs"]
+mod melc_ac04_schema_subset_one_const_three_renderings;
+#[path = "melc_ac05_decline_is_returned_and_silence_times_out.rs"]
+mod melc_ac05_decline_is_returned_and_silence_times_out;
+#[path = "melc_ac06_job_run_has_no_client_and_records_the_code.rs"]
+mod melc_ac06_job_run_has_no_client_and_records_the_code;
+#[path = "melc_ac07_fourth_elicit_in_one_call_is_refused.rs"]
+mod melc_ac07_fourth_elicit_in_one_call_is_refused;
 #[path = "plainenv_ac01_env_reaches_process.rs"]
 mod plainenv_ac01_env_reaches_process;
 #[path = "plainenv_ac02_invalid_names_refused.rs"]
