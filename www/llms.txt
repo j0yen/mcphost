@@ -141,7 +141,8 @@ retention an admin-disabled tenant gets today. If you want a copy of what
 you built before leaving, run `host.export()` first; `self_offboard`
 doesn't bundle one for you.
 
-Irreversibility: calling it twice is a no-op, not an error or a crash —
+Irreversibility: calling it twice returns `{disabled: true,
+already_offboarded: true}`, not an error or a crash —
 but there is no self-service undo. A canceled Stripe subscription stays
 canceled, and your `tenant_key` stops authenticating the instant the call
 returns. (An operator can flip the underlying tenant row back on with

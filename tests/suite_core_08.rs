@@ -636,6 +636,20 @@ mod sjrc_ac05_sweeper_drops_receipts_past_plan_retention;
 mod sjrc_ac06_manual_schedule_and_event_fires_all_leave_receipts;
 #[path = "sjrc_ac07_limit_ceiling_and_empty_tool.rs"]
 mod sjrc_ac07_limit_ceiling_and_empty_tool;
+#[path = "soff_ac01_header_and_arg_returns_success_envelope.rs"]
+mod soff_ac01_header_and_arg_returns_success_envelope;
+#[path = "soff_ac02_header_only_returns_success_and_whoami_disabled.rs"]
+mod soff_ac02_header_only_returns_success_and_whoami_disabled;
+#[path = "soff_ac03_arg_only_returns_success_envelope.rs"]
+mod soff_ac03_arg_only_returns_success_envelope;
+#[path = "soff_ac04_already_offboarded_idempotent_all_shapes.rs"]
+mod soff_ac04_already_offboarded_idempotent_all_shapes;
+#[path = "soff_ac05_matrix_exhaustive_auth_shapes.rs"]
+mod soff_ac05_matrix_exhaustive_auth_shapes;
+#[path = "soff_ac06_non_lifecycle_verb_still_refused.rs"]
+mod soff_ac06_non_lifecycle_verb_still_refused;
+#[path = "soff_ac07_docs_document_already_offboarded.rs"]
+mod soff_ac07_docs_document_already_offboarded;
 #[path = "specpath_ac01_map_form_normalizes_and_publishes.rs"]
 mod specpath_ac01_map_form_normalizes_and_publishes;
 #[path = "specpath_ac02_outputs_map_value_type_error.rs"]

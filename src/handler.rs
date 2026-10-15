@@ -137,10 +137,19 @@ async fn resolve_sub_key_tenant(
     Ok(Some(tenant))
 }
 
+/// A disabled tenant is refused at every resolver, except that a
+/// self-offboarded tenant may still reach its own lifecycle-terminal verb
+/// (`auth_shape::LIFECYCLE_TERMINAL_VERBS`) so that verb can answer
+/// idempotently instead of the auth layer turning success into an error.
+fn is_refused_disabled(t: &Tenant, verb: &str) -> bool {
+    t.disabled && !crate::auth_shape::lets_through_disabled(verb, t.disabled_reason.as_deref())
+}
+
 async fn resolve_auth(
     state: &AppState,
     parts: &http::request::Parts,
     sub: &mut Option<crate::subkeys::SubKey>,
+    verb: &str,
 ) -> Result<Auth, AppError> {
     let Some(key) = extract_bearer(&parts.headers) else {
         return Ok(Auth::Anonymous);
@@ -152,8 +161,8 @@ async fn resolve_auth(
     }
     let hash = hash_key(&key);
     if let Some(t) = resolve_sub_key_tenant(state, &key, sub).await? {
-        if t.disabled {
-            return Err(AppError::TenantDisabled);
+        if is_refused_disabled(&t, verb) {
+            return Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() });
         }
         if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
             tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
@@ -161,7 +170,7 @@ async fn resolve_auth(
         return Ok(Auth::Tenant(Box::new(t), None));
     }
     match state.db.find_tenant_by_key_hash(hash).await? {
-        Some(t) if t.disabled => Err(AppError::TenantDisabled),
+        Some(t) if is_refused_disabled(&t, verb) => Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() }),
         Some(t) => {
             // PRD-mcphost-agent-directory requirement 6: `last_seen` is the
             // tenant's most recent authenticated request -- bumped here,
@@ -184,7 +193,7 @@ async fn resolve_auth(
             let result = crate::oauth::validate_bearer(state, &key).await?;
             crate::oauth::check_entry_audience(&state.public_url, parts.uri.path(), &result)?;
             match state.db.find_tenant_by_id(result.tenant_id).await? {
-                Some(t) if t.disabled => Err(AppError::TenantDisabled),
+                Some(t) if is_refused_disabled(&t, verb) => Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() }),
                 Some(t) => {
                     if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
                         tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
@@ -212,13 +221,14 @@ async fn resolve_tenant_key_auth(
     state: &AppState,
     args: &Value,
     sub: &mut Option<crate::subkeys::SubKey>,
+    verb: &str,
 ) -> Result<Auth, AppError> {
     let Some(key) = args.get("tenant_key").and_then(Value::as_str) else {
         return Ok(Auth::Anonymous);
     };
     let hash = hash_key(key);
     if let Some(t) = resolve_sub_key_tenant(state, key, sub).await? {
-        if t.disabled {
+        if is_refused_disabled(&t, verb) {
             return Err(AppError::TenantKeyInvalid);
         }
         if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
@@ -235,7 +245,7 @@ async fn resolve_tenant_key_auth(
         // it never distinguishes "exists but disabled" from "doesn't
         // exist" for this path, so nothing about a guessed key's validity
         // leaks through it.
-        Some(t) if t.disabled => Err(AppError::TenantKeyInvalid),
+        Some(t) if is_refused_disabled(&t, verb) => Err(AppError::TenantKeyInvalid),
         Some(t) => {
             // See the mirrored comment in `resolve_auth` above.
             if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
@@ -269,13 +279,14 @@ fn url_path_secret(parts: &http::request::Parts) -> Option<&str> {
 async fn resolve_path_secret_auth(
     state: &AppState,
     parts: &http::request::Parts,
+    verb: &str,
 ) -> Result<Option<Auth>, AppError> {
     let Some(secret) = url_path_secret(parts) else {
         return Ok(None);
     };
     let hash = hash_key(secret);
     match state.db.find_tenant_by_url_secret_hash(hash).await? {
-        Some(t) if t.disabled => Err(AppError::TenantDisabled),
+        Some(t) if is_refused_disabled(&t, verb) => Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() }),
         Some(t) => {
             // See the mirrored comment in `resolve_auth` above.
             if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
@@ -467,14 +478,15 @@ async fn record_implicit_signup_memory(
 async fn resolve_session_binding(
     state: &AppState,
     session_id: &str,
+    verb: &str,
 ) -> Result<Option<Auth>, AppError> {
     let Some(tenant_id) = state.session_bindings.lookup(session_id, now_unix()) else {
         return Ok(None);
     };
     match state.db.find_tenant_by_id(tenant_id).await? {
-        Some(t) if t.disabled => {
+        Some(t) if is_refused_disabled(&t, verb) => {
             state.session_bindings.drop_binding(session_id);
-            Err(AppError::TenantDisabled)
+            Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() })
         }
         Some(t) => {
             // See the mirrored comment in `resolve_auth` above.
@@ -1305,9 +1317,9 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
             "host.self.offboard",
             "Permanently close your own account: disables the tenant, cancels any active \
              Stripe subscription (pro plan), and stops your key from authenticating anything \
-             further -- same as an admin-disabled tenant. Idempotent: an already-offboarded \
-             key gets the same tenant_disabled/tenant_key_invalid error every other host.*/ \
-             billing.* call already gets from it, not a crash. This does not scrub historical \
+             further -- same as an admin-disabled tenant. Idempotent: a repeat call by an \
+             already-offboarded key returns {disabled: true, already_offboarded: true}, not an \
+             error; every other host.*/billing.* call still gets tenant_disabled/tenant_key_invalid. This does not scrub historical \
              usage/signup records -- those stay for audit, same as today's admin-disabled \
              tenants.",
             host_schema(json!({}), &[]),
@@ -10093,13 +10105,13 @@ impl ServerHandler for McpHostHandler {
         // precedence path-secret step `call_tool` uses, so a `tools/list` on
         // a `/u/{secret}/mcp` connection sees that tenant's own tools too.
         let mut sub_key: Option<crate::subkeys::SubKey> = None;
-        let mut auth = match resolve_path_secret_auth(&self.state, parts)
+        let mut auth = match resolve_path_secret_auth(&self.state, parts, "")
             .await
             .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
         {
             Some(a) => a,
             None => {
-                resolve_auth(&self.state, parts, &mut sub_key)
+                resolve_auth(&self.state, parts, &mut sub_key, "")
                     .await
                     .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
             }
@@ -10114,7 +10126,7 @@ impl ServerHandler for McpHostHandler {
         // nothing at all).
         if matches!(auth, Auth::Anonymous)
             && let Some(session_id) = session_id(parts)
-            && let Some(bound) = resolve_session_binding(&self.state, &session_id)
+            && let Some(bound) = resolve_session_binding(&self.state, &session_id, "")
                 .await
                 .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
         {
@@ -10297,7 +10309,7 @@ impl McpHostHandler {
         // tenant_key argument at all (AC1). `None` for every other path, in
         // which case resolution falls through to the pre-existing header
         // path exactly as before this PRD.
-        let path_secret_auth = resolve_path_secret_auth(&self.state, parts)
+        let path_secret_auth = resolve_path_secret_auth(&self.state, parts, &body_name)
             .await
             .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
         let via_url_secret = path_secret_auth.is_some();
@@ -10305,7 +10317,7 @@ impl McpHostHandler {
         let mut auth = match path_secret_auth {
             Some(a) => a,
             None => {
-                resolve_auth(&self.state, parts, &mut sub_key)
+                resolve_auth(&self.state, parts, &mut sub_key, &body_name)
                     .await
                     .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
             }
@@ -10327,7 +10339,7 @@ impl McpHostHandler {
         // play for whatever `auth` becomes next.
         let via_tenant_key_arg = matches!(auth, Auth::Anonymous);
         if via_tenant_key_arg {
-            auth = resolve_tenant_key_auth(&self.state, &raw_args, &mut sub_key)
+            auth = resolve_tenant_key_auth(&self.state, &raw_args, &mut sub_key, &body_name)
                 .await
                 .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
             // PRD-mcphost-session-bound-tenant-key requirement 1: this is
@@ -10355,7 +10367,7 @@ impl McpHostHandler {
         if via_tenant_key_arg
             && matches!(auth, Auth::Anonymous)
             && let Some(session_id) = session_id.as_deref()
-            && let Some(bound) = resolve_session_binding(&self.state, session_id)
+            && let Some(bound) = resolve_session_binding(&self.state, session_id, &body_name)
                 .await
                 .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
         {
@@ -10396,10 +10408,17 @@ impl McpHostHandler {
                     .await
                     .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
                 {
-                    Some(t) if t.disabled => {
+                    Some(t) if is_refused_disabled(&t, &body_name) => {
                         self.state.implicit_signup_memory.drop_binding(sid);
                         self.state.tenant_key_arg_memory.drop_binding(sid);
-                        return Err(AppError::TenantDisabled.into_error_data_at(Some(&self.state.public_url)));
+                        return Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() }.into_error_data_at(Some(&self.state.public_url)));
+                    }
+                    // A self-offboarded tenant calling its own lifecycle verb
+                    // again (`auth_shape`): served, so the verb answers
+                    // idempotently.
+                    Some(t) if t.disabled => {
+                        auth = Auth::Tenant(Box::new(t), None);
+                        via_session_binding = true;
                     }
                     // Requirement 2's config escape hatch: serve the call as
                     // the remembered tenant instead of refusing it --
@@ -10472,9 +10491,9 @@ impl McpHostHandler {
                         return Err(AppError::TenantKeyMissing(Some(t.namespace))
                             .into_error_data_at(Some(&self.state.public_url)));
                     }
-                    Ok(Some(_)) => {
+                    Ok(Some(t)) => {
                         self.state.redeemed_peers.forget(&peer);
-                        return Err(AppError::TenantDisabled.into_error_data_at(Some(&self.state.public_url)));
+                        return Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() }.into_error_data_at(Some(&self.state.public_url)));
                     }
                     Ok(None) => self.state.redeemed_peers.forget(&peer),
                     Err(e) => return Err(e.into_error_data_at(Some(&self.state.public_url))),

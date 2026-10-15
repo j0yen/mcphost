@@ -7861,6 +7861,9 @@
   },
   "host.self.offboard": {
     "properties": {
+      "already_offboarded": {
+        "type": "boolean"
+      },
       "billing_canceled": {
         "items": {
           "type": "string"
