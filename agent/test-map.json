@@ -1679,6 +1679,15 @@
       "AC2": "tests/kcon_ac02_every_registered_kind_passes.rs",
       "AC3": "tests/kcon_ac03_no_error_code_literals_outside_contract.rs",
       "AC4": "tests/kcon_ac04_error_families_and_source_line.rs"
+    },
+    "thlive": {
+      "_prd": "PRD-mcphost-task-handoff-live-script.md (test_prefix: thlive)",
+      "AC1": "tests/thlive_ac01_script_usage_and_dependencies.rs",
+      "AC2": "tests/thlive_ac02_local_server_handoff_done.rs",
+      "AC4": "tests/thlive_ac04_closed_port_exits_1.rs",
+      "AC5": "tests/thlive_ac05_exit_trap_offboards_both_tenants.rs",
+      "AC6": "tests/thlive_ac06_json_flag_output.rs",
+      "AC3": "deferred -- operator-provisioned: Live check of prod via scripts/task-handoff-live.sh; evidence docs/receipts/mcphost-task-handoff-live-script.md"
     }
   }
 }
