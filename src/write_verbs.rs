@@ -114,6 +114,7 @@ pub const WRITE_VERBS: &[WriteVerb] = &[
     nd("host.registry.publish", Kind::Publish, "external_effect"),
     nd("host.trigger.fire", Kind::Write, "external_effect"),
     nd("host.msg.send", Kind::Write, "external_effect"),
+    nd("host.task.post", Kind::Write, "external_effect"),
     nd("host.channel.post", Kind::Write, "external_effect"),
     nd("host.uptime.create", Kind::Write, "external_effect"),
     nd("host.webhook_inbox.create", Kind::Write, "external_effect"),

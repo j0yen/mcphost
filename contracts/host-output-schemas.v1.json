@@ -4426,7 +4426,10 @@
               "type": "string"
             },
             "data": {
-              "type": "null"
+              "type": [
+                "object",
+                "null"
+              ]
             },
             "from_address": {
               "type": "string"
@@ -4447,7 +4450,10 @@
               "type": "string"
             },
             "synthetic": {
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "thread_id": {
               "type": "string"
@@ -10298,6 +10304,218 @@
       "columns",
       "rows",
       "table"
+    ],
+    "type": "object"
+  },
+  "host.task.claim": {
+    "properties": {
+      "deadline_unix": {
+        "type": "integer"
+      },
+      "payload": {
+        "type": "object"
+      },
+      "status": {
+        "type": "string"
+      },
+      "task_id": {
+        "type": "string"
+      },
+      "thread_id": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "required": [
+      "task_id",
+      "thread_id",
+      "status",
+      "payload",
+      "deadline_unix"
+    ],
+    "type": "object"
+  },
+  "host.task.complete": {
+    "properties": {
+      "already_complete": {
+        "type": "boolean"
+      },
+      "result": {
+        "type": [
+          "object",
+          "null"
+        ]
+      },
+      "status": {
+        "type": "string"
+      },
+      "task_id": {
+        "type": "string"
+      },
+      "thread_id": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "required": [
+      "task_id",
+      "thread_id",
+      "status",
+      "result",
+      "already_complete"
+    ],
+    "type": "object"
+  },
+  "host.task.dead_letters": {
+    "properties": {
+      "dead_letters": {
+        "items": {
+          "properties": {
+            "dead_unix": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "deadline_unix": {
+              "type": "integer"
+            },
+            "payload": {
+              "type": "object"
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "status": {
+              "type": "string"
+            },
+            "task_id": {
+              "type": "string"
+            },
+            "thread_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "limit": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "dead_letters",
+      "limit"
+    ],
+    "type": "object"
+  },
+  "host.task.get": {
+    "properties": {
+      "claimed_unix": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "created_unix": {
+        "type": "integer"
+      },
+      "dead_unix": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "deadline_unix": {
+        "type": "integer"
+      },
+      "done_unix": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "payload": {
+        "type": "object"
+      },
+      "reason": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "result": {
+        "type": [
+          "object",
+          "null"
+        ]
+      },
+      "role": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "task_id": {
+        "type": "string"
+      },
+      "thread_id": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "required": [
+      "task_id",
+      "thread_id",
+      "status",
+      "role",
+      "payload",
+      "result",
+      "reason",
+      "created_unix",
+      "deadline_unix",
+      "claimed_unix",
+      "done_unix",
+      "dead_unix"
+    ],
+    "type": "object"
+  },
+  "host.task.post": {
+    "properties": {
+      "deadline_unix": {
+        "type": "integer"
+      },
+      "status": {
+        "type": "string"
+      },
+      "task_id": {
+        "type": "string"
+      },
+      "thread_id": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "required": [
+      "task_id",
+      "thread_id",
+      "status",
+      "deadline_unix"
     ],
     "type": "object"
   },

@@ -192,6 +192,11 @@ pub struct Plan {
     /// the `free` plan's own default (7) when a hand-edited `plans.toml`
     /// predates this key.
     pub receipts_retention_days: i64,
+    /// PRD-mcphost-task-handoff-tool R6: how many `host.task.*` tasks a
+    /// poster may have `posted|claimed` at once (`quota_exceeded` naming
+    /// `tasks_open_max`; free 20, pro 200). Defaults to the `free` plan's
+    /// own default (20) when a hand-edited `plans.toml` predates this key.
+    pub tasks_open_max: i64,
     /// PRD-mcphost-document-store P0 requirement 5: how many live documents
     /// this plan's tenants may hold at once (`host.docs.put` on a name that
     /// doesn't already exist refuses past this with `quota_docs`). Defaults
@@ -549,6 +554,7 @@ impl PlanCatalog {
                     channel_posts_per_hour: 120,
                     channel_retention_days: 14,
                     receipts_retention_days: 7,
+                    tasks_open_max: 20,
                     // PRD-mcphost-document-store P0 requirement 5: "free
                     // 200" documents, "free 50 MiB".
                     docs_max: 200,
@@ -656,6 +662,7 @@ impl PlanCatalog {
                     channel_posts_per_hour: 2_000,
                     channel_retention_days: 90,
                     receipts_retention_days: 30,
+                    tasks_open_max: 200,
                     // PRD-mcphost-document-store P0 requirement 5: "pro
                     // 20,000" documents, "pro 5 GiB".
                     docs_max: 20_000,
@@ -809,6 +816,7 @@ impl PlanCatalog {
                 "receipts_retention_days = {}\n",
                 p.receipts_retention_days
             ));
+            out.push_str(&format!("tasks_open_max = {}\n", p.tasks_open_max));
             out.push_str(&format!("docs_max = {}\n", p.docs_max));
             out.push_str(&format!("docs_bytes_max = {}\n", p.docs_bytes_max));
             out.push_str(&format!("docs_chunks_max = {}\n", p.docs_chunks_max));
@@ -921,6 +929,7 @@ impl PlanCatalog {
                 "channel_posts_per_hour" => builder.channel_posts_per_hour = Some(int_value()),
                 "channel_retention_days" => builder.channel_retention_days = Some(int_value()),
                 "receipts_retention_days" => builder.receipts_retention_days = Some(int_value()),
+                "tasks_open_max" => builder.tasks_open_max = Some(int_value()),
                 "docs_max" => builder.docs_max = Some(int_value()),
                 "docs_bytes_max" => builder.docs_bytes_max = Some(int_value()),
                 "docs_chunks_max" => builder.docs_chunks_max = Some(int_value()),
@@ -1013,6 +1022,7 @@ struct PlanBuilder {
     channel_posts_per_hour: Option<i64>,
     channel_retention_days: Option<i64>,
     receipts_retention_days: Option<i64>,
+    tasks_open_max: Option<i64>,
     docs_max: Option<i64>,
     docs_bytes_max: Option<i64>,
     docs_chunks_max: Option<i64>,
@@ -1090,6 +1100,7 @@ impl PlanBuilder {
             channel_posts_per_hour: quota!(channel_posts_per_hour),
             channel_retention_days: quota!(channel_retention_days),
             receipts_retention_days: quota!(receipts_retention_days),
+            tasks_open_max: quota!(tasks_open_max),
             docs_max: quota!(docs_max),
             docs_bytes_max: quota!(docs_bytes_max),
             docs_chunks_max: quota!(docs_chunks_max),

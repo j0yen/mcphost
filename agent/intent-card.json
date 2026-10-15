@@ -1,50 +1,74 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-migration-refusal-contract.md",
-  "intent_slug": "mcphost-migration-refusal-contract",
-  "root_motivation": "**Who:** the deploy tool at 2 am on the deploy-on-land path; Joe reading its refusal; the agent whose tenant is behind a release that never lands because every retry refuses the same way (32 refusals in a row on 09-10, PRD-mcphost-deploy-incompatible-migration). **What:** a refusal that names what changed, why the old binary cannot run it, and the exact single lift. **Why not today:** `CompatCheckFailure` carries `step` and a free-text `detail` (`compat_check.rs:80-83`); the migration that caused the failure, its `-- compat:` header, and the tables it touched are known to the scratch run (it migrated a copy, `ScratchDir`) and thrown away. The bypass value's shape lives in the private deploy repo; the binary cannot tell the operator what to set. Prose at the boundary drifted once already: the deploy tool's parser keys on the `FAILED at step` string. **Consequence:** every refusal is a research task; the standing rule (10-07) says generate the contract.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-task-handoff-tool.md",
+  "intent_slug": "mcphost-task-handoff-tool",
+  "root_motivation": "**Who:** an agent that needs another agent to do one unit of work and report back. **What:** post the work, learn when it is claimed, receive the result on its existing wait, and see a dead letter when the deadline passes. **Why not today:** `host.msg.send` carries body, data and dedupe_key and `host.msg.wait` long-polls the inbox, but nothing says a message is a task: no claim, no completion, no deadline, no state. **Premise (creative):** a task is a thread with a state machine the host owns. **Falsifier:** tenant A posts a task to B, B claims and completes it, and A's `host.msg.wait` returns the completion within 2 s; if it cannot ride the existing thread/inbox path, the handoff is two messages and a convention, and the PRD dies at AC 1.",
   "user_persona": "An agent that calls host.state.delete_rows with an empty filter on a 5 000-row table, reads confirm_required.dry_run_first, runs the dry run, notices the empty filter and fixes it; a Claude Code user who sees a destructive marker on host.table.drop.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 6
+    "target": 7
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a temp db migrated by a fixture `-- compat: breaking` migration that drops a column and a stub previous binary failing `tools_call`, When `--check-compat --report r.json` runs, Then exit is 3 and `r.json` validates against `docs/compat-report.schema.json` with `migrations[0].compat == \"breaking\"`, `tables_changed[0].change == \"columns_dropped\"`, `bypass.value == \"<from>..<to>\"`.",
-      "test": "tests/mrefu_ac01_breaking_migration_refuses_with_report.rs"
+      "description": "Given tenants A and B, When A posts a task to B, B claims and completes it with `result: {\"n\": 1}`, Then A's `host.msg.wait` (cursor from before the post) returns within 2 s a message whose `data.task` has `status: \"done\"` and `result.n == 1`.",
+      "test": "tests/thand_ac01_poster_wait_returns_completion.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a compatible migration (`-- compat: previous`, one nullable column), When the check runs, Then exit 0, `ok: true`, `tables_changed[0].change == \"columns_added\"`, and `bypass` is absent.",
-      "test": "tests/mrefu_ac02_compatible_migration_reports_ok.rs"
+      "description": "Given `host_tools()`, When the drift test runs, Then `host.task.get`'s `status` enum equals `TaskStatus::ALL` and llms.txt lists the same five words.",
+      "test": "tests/thand_ac02_status_enum_source_of_truth.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given `--print-report-schema`, When compared to the committed `docs/compat-report.schema.json`, Then they are byte-equal, and renaming one field in a test copy of the struct makes the comparison fail.",
-      "test": "tests/mrefu_ac03_schema_is_generated_and_drift_tested.rs"
+      "description": "Given a posted task, When B and a third tenant C both call `claim`, Then B gets `status: \"claimed\"` and C gets `task_not_found`; a second `claim` by B returns `task_already_claimed`.",
+      "test": "tests/thand_ac03_claim_is_recipient_only_and_once.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a previous binary that exits 1 on start, When the check runs, Then exit 4, `step == \"previous-up\"`, and `tables_changed` is still populated.",
-      "test": "tests/mrefu_ac04_previous_up_failure_exits_4_with_tables_changed.rs"
+      "description": "Given `deadline_s: 60` and no claim, When the housekeeping tick runs at deadline + 60 s, Then the task is `dead`, A's `dead_letters` lists it with `reason: \"deadline\"`, and the thread's last message is from `host` with `data.task.status: \"dead\"`.",
+      "test": "tests/thand_ac04_deadline_sweep_dead_letters.rs"
+    },
+    {
+      "id": "AC5",
+      "level": "MUST",
+      "description": "Given a completed task, When `complete` is called again with a different result, Then the stored result is returned with `already_complete: true` and no new thread message is posted.",
+      "test": "tests/thand_ac05_complete_is_idempotent.rs"
+    },
+    {
+      "id": "AC6",
+      "level": "MUST",
+      "description": "Given a free tenant with 20 open tasks, When it posts a 21st, Then `quota_exceeded` names `tasks_open_max`; Given a `to` address that blocked A, Then `agent_not_found`.",
+      "test": "tests/thand_ac06_open_task_quota_and_refusals.rs"
+    },
+    {
+      "id": "AC7",
+      "level": "MUST",
+      "description": "Given tenant B is deleted, When `host.task.get` and `host.msg.thread` are called by A, Then the task row is gone and the thread no longer lists B as a participant.",
+      "test": "tests/thand_ac07_tenant_delete_cascade.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given prod after deploy, When the live script runs two implicit tenants through post \u2192 wait \u2192 claim \u2192 complete \u2192 wait, Then it prints `status: done` and a latency under 3,000 ms (Live; evidence: `ssh orch 'bash ~/wintermute/mcphost/scripts/task-handoff-live.sh https://mcphost.dev'`)",
+      "test": "deferred -- operator-provisioned: Live check of prod via scripts/task-handoff-live.sh."
     }
   ],
   "scope": [
-    "src/confirm.rs (new): the gated set derived from WRITE_VERBS, token mint/hash, canonical args hash, confirm_required/confirm_invalid errors.",
-    "src/handler.rs: dispatch gate (dry-run measure, token check, scratch bypass), destructiveHint annotations and description suffix in host_tools.",
-    "src/db.rs + migrations/0092_confirm_tokens.sql: confirm_tokens table, tenants.scratch_of.",
-    "src/plans.rs: Plan.confirm_rows_min (free 100, paid 1000, 0 disables).",
-    "docs/host-tools.md, docs/plans.md, www/llms-full.txt: generated."
+    "src/tasks.rs (new): TaskStatus (the one status enum), post/claim/complete/get/dead_letters, the deadline sweep.",
+    "src/messaging.rs: send_outcome/reply_outcome so a task rides the existing send/reply path.",
+    "src/handler.rs, src/output_schemas.rs, src/plans.rs, src/paged.rs, src/main.rs: descriptors and dispatch, generated status enum, tasks_open_max, unpaged entry, sweep task.",
+    "migrations/0102_tasks.sql: the tasks table.",
+    "contracts/, docs/, www/llms.txt: regenerated contract, tools doc, plans and the task section."
   ],
   "non_goals": [
-    "Human approval; gating scratch tenants; gating host.key.rotate and host.self.offboard; changing what any verb does once confirmed."
+    "Fan-out to many claimers; retries by the host; payment or wallets; a new transport; host.task.cancel (R8, P1, not in this build's AC list)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -53,35 +77,27 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "token_never_stored": "only sha256(token) is stored; the token is shown once by the dry run."
+      "status_single_source": "TaskStatus::ALL feeds the output schemas, the get description and llms.txt",
+      "delivery": "a task is a thread; no second inbox"
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can an agent delete 5 000 rows by accident?",
-      "a": "dry_run is optional and nobody is required to read it."
+      "q": "Why can't an agent hand work to another agent with a receipt?",
+      "a": "Messages carry no task state: no claim, completion or deadline."
     },
     {
       "why": 2,
-      "q": "Why not a prose warning?",
-      "a": "Prose at a boundary is skipped; a refusal carrying the exact dry-run call cannot be."
-    },
-    {
-      "why": 3,
-      "q": "Why bind the token to args and diff?",
-      "a": "A token for another filter or another state would authorise a different delete."
+      "q": "Why is there no state?",
+      "a": "threads and messages were built for conversation, not work items."
     }
   ],
-  "created_at": "2026-10-12T00:00:00Z",
+  "created_at": "2026-10-14T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Which diffs are gated?",
-      "resolution": "A dry-run diff with a measurable row count (rows[].delete, tables[].rows) at or above plan confirm_rows_min; verbs that report no count are not gated yet."
-    },
-    {
-      "question": "Token bound to key or session?",
-      "resolution": "Tenant (key hash), per the PRD default."
+      "question": "Does claim post a thread message?",
+      "resolution": "Yes, a best-effort claimed notice from the claimer; a failed notice never undoes the claim."
     }
   ]
 }

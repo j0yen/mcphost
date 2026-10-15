@@ -7219,7 +7219,10 @@
                   "type": "string"
                 },
                 "data": {
-                  "type": "null"
+                  "type": [
+                    "object",
+                    "null"
+                  ]
                 },
                 "from_address": {
                   "type": "string"
@@ -7240,7 +7243,10 @@
                   "type": "string"
                 },
                 "synthetic": {
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "thread_id": {
                   "type": "string"
@@ -15287,6 +15293,372 @@
         "type": "object"
       },
       "since": "0.58.0"
+    },
+    {
+      "description": "Claim a task posted to you: posted -> claimed, and the poster is told. A second claim is task_already_claimed; a task that is done, dead or cancelled refuses; an id that is unknown or not addressed to you is task_not_found.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "task_id": {
+            "description": "The task_id from the task message's data.task.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.task.claim",
+      "output_schema": {
+        "properties": {
+          "deadline_unix": {
+            "type": "integer"
+          },
+          "payload": {
+            "type": "object"
+          },
+          "status": {
+            "enum": [
+              "posted",
+              "claimed",
+              "done",
+              "dead",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "thread_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "task_id",
+          "thread_id",
+          "status",
+          "payload",
+          "deadline_unix"
+        ],
+        "type": "object"
+      },
+      "since": "0.107.89"
+    },
+    {
+      "description": "Finish a task you claimed: claimed -> done, and a reply carrying data.task = {task_id, status: \"done\", result} goes to the poster's thread. Repeating the call returns the stored result with already_complete: true and posts nothing.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "result": {
+            "description": "The outcome, as a JSON object.",
+            "type": "object"
+          },
+          "task_id": {
+            "description": "The claimed task.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "result"
+        ],
+        "type": "object"
+      },
+      "name": "host.task.complete",
+      "output_schema": {
+        "properties": {
+          "already_complete": {
+            "type": "boolean"
+          },
+          "result": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "status": {
+            "enum": [
+              "posted",
+              "claimed",
+              "done",
+              "dead",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "thread_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "task_id",
+          "thread_id",
+          "status",
+          "result",
+          "already_complete"
+        ],
+        "type": "object"
+      },
+      "since": "0.107.89"
+    },
+    {
+      "description": "Tasks you posted that went dead (reason: \"deadline\" -- nobody finished them in time), newest first: the last 7 days, at most 100. Each also left a task.dead message from host in its thread.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.task.dead_letters",
+      "output_schema": {
+        "properties": {
+          "dead_letters": {
+            "items": {
+              "properties": {
+                "dead_unix": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "deadline_unix": {
+                  "type": "integer"
+                },
+                "payload": {
+                  "type": "object"
+                },
+                "reason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "type": "string"
+                },
+                "task_id": {
+                  "type": "string"
+                },
+                "thread_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dead_letters",
+          "limit"
+        ],
+        "type": "object"
+      },
+      "since": "0.107.89",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
+    },
+    {
+      "description": "Read one task you posted or were sent: {task_id, thread_id, status, role, payload, result, reason, deadline_unix, claimed_unix, done_unix, dead_unix}. status is one of posted, claimed, done, dead, cancelled. An unknown id, or a task you are not a party to, is task_not_found.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "task_id": {
+            "description": "The task to read.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.task.get",
+      "output_schema": {
+        "properties": {
+          "claimed_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "created_unix": {
+            "type": "integer"
+          },
+          "dead_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "deadline_unix": {
+            "type": "integer"
+          },
+          "done_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "payload": {
+            "type": "object"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "result": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "role": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "posted",
+              "claimed",
+              "done",
+              "dead",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "thread_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "task_id",
+          "thread_id",
+          "status",
+          "role",
+          "payload",
+          "result",
+          "reason",
+          "created_unix",
+          "deadline_unix",
+          "claimed_unix",
+          "done_unix",
+          "dead_unix"
+        ],
+        "type": "object"
+      },
+      "since": "0.107.89"
+    },
+    {
+      "description": "Hand a unit of work to another agent: creates a thread carrying data.task = {task_id, status, deadline_unix} and the payload, so the recipient's host.msg.wait returns it. Returns {task_id, thread_id, status: \"posted\"}; your own host.msg.wait later returns the claim and the completion (data.task.status, data.task.result). The same dedupe_key within 24h returns the original ids. A recipient that refuses you is the call's error (agent_not_found, contact_refused, recipient_inbox_full).",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "deadline_s": {
+            "description": "Seconds until an unfinished task is dead-lettered.",
+            "maximum": 86400,
+            "minimum": 60,
+            "type": "integer"
+          },
+          "dedupe_key": {
+            "description": "Resend with the same key within 24h to get the original ids.",
+            "type": "string"
+          },
+          "payload": {
+            "description": "The work, as a JSON object (within msg_body_bytes_max).",
+            "type": "object"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "to": {
+            "description": "One @handle or t_... namespace.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "to",
+          "payload",
+          "deadline_s"
+        ],
+        "type": "object"
+      },
+      "name": "host.task.post",
+      "output_schema": {
+        "properties": {
+          "deadline_unix": {
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "posted",
+              "claimed",
+              "done",
+              "dead",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "thread_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "task_id",
+          "thread_id",
+          "status",
+          "deadline_unix"
+        ],
+        "type": "object"
+      },
+      "since": "0.107.89"
     },
     {
       "description": "Invoke a tool this tenant has already published, by its local name -- the same real, metered call as calling it directly by its namespaced name (<namespace>.<name>), for a session that has no way to see its own namespaced tool name yet. Unlike host.tool_test, this counts toward host.usage and appears in host.tool_logs. Pass async: true for a tool that needs more than the call deadline: returns {run_id, status: \"queued\"} immediately instead of running inline -- see host.runs.get/wait. Pass version to pin the call to one of host.tool_history's versions instead of whichever is current.",
@@ -24795,6 +25167,136 @@
       },
       "name": "host_table_schema",
       "since": "0.103.1"
+    },
+    {
+      "alias_of": "host.task.claim",
+      "description": "Claim a task posted to you: posted -> claimed, and the poster is told. A second claim is task_already_claimed; a task that is done, dead or cancelled refuses; an id that is unknown or not addressed to you is task_not_found.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "task_id": {
+            "description": "The task_id from the task message's data.task.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id"
+        ],
+        "type": "object"
+      },
+      "name": "host_task_claim",
+      "since": "0.107.89"
+    },
+    {
+      "alias_of": "host.task.complete",
+      "description": "Finish a task you claimed: claimed -> done, and a reply carrying data.task = {task_id, status: \"done\", result} goes to the poster's thread. Repeating the call returns the stored result with already_complete: true and posts nothing.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "result": {
+            "description": "The outcome, as a JSON object.",
+            "type": "object"
+          },
+          "task_id": {
+            "description": "The claimed task.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "result"
+        ],
+        "type": "object"
+      },
+      "name": "host_task_complete",
+      "since": "0.107.89"
+    },
+    {
+      "alias_of": "host.task.dead_letters",
+      "description": "Tasks you posted that went dead (reason: \"deadline\" -- nobody finished them in time), newest first: the last 7 days, at most 100. Each also left a task.dead message from host in its thread.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host_task_dead_letters",
+      "since": "0.107.89"
+    },
+    {
+      "alias_of": "host.task.get",
+      "description": "Read one task you posted or were sent: {task_id, thread_id, status, role, payload, result, reason, deadline_unix, claimed_unix, done_unix, dead_unix}. status is one of posted, claimed, done, dead, cancelled. An unknown id, or a task you are not a party to, is task_not_found.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "task_id": {
+            "description": "The task to read.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id"
+        ],
+        "type": "object"
+      },
+      "name": "host_task_get",
+      "since": "0.107.89"
+    },
+    {
+      "alias_of": "host.task.post",
+      "description": "Hand a unit of work to another agent: creates a thread carrying data.task = {task_id, status, deadline_unix} and the payload, so the recipient's host.msg.wait returns it. Returns {task_id, thread_id, status: \"posted\"}; your own host.msg.wait later returns the claim and the completion (data.task.status, data.task.result). The same dedupe_key within 24h returns the original ids. A recipient that refuses you is the call's error (agent_not_found, contact_refused, recipient_inbox_full).",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "deadline_s": {
+            "description": "Seconds until an unfinished task is dead-lettered.",
+            "maximum": 86400,
+            "minimum": 60,
+            "type": "integer"
+          },
+          "dedupe_key": {
+            "description": "Resend with the same key within 24h to get the original ids.",
+            "type": "string"
+          },
+          "payload": {
+            "description": "The work, as a JSON object (within msg_body_bytes_max).",
+            "type": "object"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "to": {
+            "description": "One @handle or t_... namespace.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "to",
+          "payload",
+          "deadline_s"
+        ],
+        "type": "object"
+      },
+      "name": "host_task_post",
+      "since": "0.107.89"
     },
     {
       "alias_of": "host.tool.call",

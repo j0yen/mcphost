@@ -3463,6 +3463,74 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &[],
             ),
         ),
+        // PRD-mcphost-task-handoff-tool: a task is a thread with a state
+        // machine the host owns; delivery rides host.msg.* unchanged.
+        Tool::new(
+            "host.task.post",
+            "Hand a unit of work to another agent: creates a thread carrying data.task = \
+             {task_id, status, deadline_unix} and the payload, so the recipient's host.msg.wait \
+             returns it. Returns {task_id, thread_id, status: \"posted\"}; your own host.msg.wait \
+             later returns the claim and the completion (data.task.status, data.task.result). \
+             The same dedupe_key within 24h returns the original ids. A recipient that refuses \
+             you is the call's error (agent_not_found, contact_refused, recipient_inbox_full).",
+            host_schema(
+                json!({
+                    "to": {"type": "string", "description": "One @handle or t_... namespace."},
+                    "payload": {"type": "object", "description": "The work, as a JSON object (within msg_body_bytes_max)."},
+                    "deadline_s": {
+                        "type": "integer",
+                        "minimum": crate::tasks::DEADLINE_S_MIN,
+                        "maximum": crate::tasks::DEADLINE_S_MAX,
+                        "description": "Seconds until an unfinished task is dead-lettered.",
+                    },
+                    "dedupe_key": {"type": "string", "description": "Resend with the same key within 24h to get the original ids."},
+                }),
+                &["to", "payload", "deadline_s"],
+            ),
+        ),
+        Tool::new(
+            "host.task.claim",
+            "Claim a task posted to you: posted -> claimed, and the poster is told. A second claim \
+             is task_already_claimed; a task that is done, dead or cancelled refuses; an id that \
+             is unknown or not addressed to you is task_not_found.",
+            host_schema(
+                json!({"task_id": {"type": "string", "description": "The task_id from the task message's data.task."}}),
+                &["task_id"],
+            ),
+        ),
+        Tool::new(
+            "host.task.complete",
+            "Finish a task you claimed: claimed -> done, and a reply carrying data.task = \
+             {task_id, status: \"done\", result} goes to the poster's thread. Repeating the call \
+             returns the stored result with already_complete: true and posts nothing.",
+            host_schema(
+                json!({
+                    "task_id": {"type": "string", "description": "The claimed task."},
+                    "result": {"type": "object", "description": "The outcome, as a JSON object."},
+                }),
+                &["task_id", "result"],
+            ),
+        ),
+        Tool::new(
+            "host.task.get",
+            format!(
+                "Read one task you posted or were sent: {{task_id, thread_id, status, role, payload, \
+                 result, reason, deadline_unix, claimed_unix, done_unix, dead_unix}}. status is one \
+                 of {}. An unknown id, or a task you are not a party to, is task_not_found.",
+                crate::tasks::TaskStatus::ALL.map(|s| s.as_str()).join(", ")
+            ),
+            host_schema(
+                json!({"task_id": {"type": "string", "description": "The task to read."}}),
+                &["task_id"],
+            ),
+        ),
+        Tool::new(
+            "host.task.dead_letters",
+            "Tasks you posted that went dead (reason: \"deadline\" -- nobody finished them in time), \
+             newest first: the last 7 days, at most 100. Each also left a task.dead message from host \
+             in its thread.",
+            host_schema(json!({}), &[]),
+        ),
         // PRD-mcphost-ask-user-decision: a question for the user, answered
         // from a signed link, blocking the agent until it is.
         Tool::new(
@@ -6495,6 +6563,11 @@ impl McpHostHandler {
             "host.ask.wait" => crate::asks::wait(&self.state, tenant, &args).await,
             "host.ask.get" => crate::asks::get(&self.state, tenant, &args).await,
             "host.ask.list" => crate::asks::list(&self.state, tenant, &args).await,
+            "host.task.post" => crate::tasks::post(&self.state, tenant, &args).await,
+            "host.task.claim" => crate::tasks::claim(&self.state, tenant, &args).await,
+            "host.task.complete" => crate::tasks::complete(&self.state, tenant, &args).await,
+            "host.task.get" => crate::tasks::get(&self.state, tenant, &args).await,
+            "host.task.dead_letters" => crate::tasks::dead_letters(&self.state, tenant, &args).await,
             "host.msg.block" => messaging::block(&self.state, tenant, &args).await,
             "host.msg.unblock" => messaging::unblock(&self.state, tenant, &args).await,
             // PRD-mcphost-agent-consent requirements 2, 3, 5, 10.

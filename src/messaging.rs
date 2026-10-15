@@ -112,6 +112,20 @@ fn send_outcome_json(outcome: SendOutcome) -> Value {
 /// `host.msg.send(to, body, data?, dedupe_key?, thread_id?)` (requirements
 /// 2, 6, 8, 11 / AC1, AC4, AC5, AC7, AC9, AC10, AC14).
 pub async fn send(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    send_outcome(state, tenant, args, None).await.map(send_outcome_json)
+}
+
+/// [`send`]'s body, returning the raw [`SendOutcome`] (recipient tenant ids
+/// included) for `host.task.post`. `task_link`, when set, names a task row
+/// whose `thread_id` is filled in after the message has committed and
+/// strictly before any message trigger fires, so a bound tool that claims
+/// the task from its trigger already finds the thread.
+pub(crate) async fn send_outcome(
+    state: &AppState,
+    tenant: &Tenant,
+    args: &Value,
+    task_link: Option<&str>,
+) -> Result<SendOutcome, AppError> {
     reject_forged_from(args)?;
     // PRD-mcphost-agent-mesh-ops requirement 4 / AC4: checked before
     // anything else runs (same "stores nothing" posture as the quota
@@ -184,6 +198,10 @@ pub async fn send(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         )
         .await?;
 
+    if let Some(task_id) = task_link {
+        crate::tasks::link_thread(state, task_id, &outcome.thread_id).await?;
+    }
+
     // PRD-mcphost-agent-wake requirement 4: strictly after the message's
     // own insert has committed above, never inside that transaction.
     fire_message_triggers(
@@ -200,12 +218,17 @@ pub async fn send(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     )
     .await;
 
-    Ok(send_outcome_json(outcome))
+    Ok(outcome)
 }
 
 /// `host.msg.reply(thread_id, body, data?, in_reply_to?, dedupe_key?)`
 /// (requirement 3 / AC2, AC3).
 pub async fn reply(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    reply_outcome(state, tenant, args).await.map(send_outcome_json)
+}
+
+/// [`reply`]'s body, returning the raw [`SendOutcome`].
+pub(crate) async fn reply_outcome(state: &AppState, tenant: &Tenant, args: &Value) -> Result<SendOutcome, AppError> {
     reject_forged_from(args)?;
     // PRD-mcphost-agent-mesh-ops requirement 4 / AC4: see the mirrored
     // check in `send` above.
@@ -258,7 +281,7 @@ pub async fn reply(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
     )
     .await;
 
-    Ok(send_outcome_json(outcome))
+    Ok(outcome)
 }
 
 /// PRD-mcphost-agent-wake requirements 2/3/4: after [`send`]/[`reply`]'s
