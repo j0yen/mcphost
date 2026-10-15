@@ -20,3 +20,59 @@ Result envelope contract: an optional `outputs` array of field names (`"outputs"
 `outputs` also accepts an object mapping each field name to the exact path to read it from, when the upstream buries it somewhere the wrapper search above won't find (`"outputs": {"ingestion_status": "$.json.ingestion_status"}` reads that field from `result.body.json.ingestion_status`). A path is `$` followed by dotted keys and bracketed integer indices only (`$.a.b[0].c`) -- no wildcards, filters, or recursive descent; an unsupported or malformed path is refused at publish, naming the field (`outputs.<name>`) and the accepted grammar.
 
 Other spec fields: `headers`/`query` (objects of header/query-parameter names to `{{ jinja }}`-templated values, the same templating `url`/`body` use), `timeout_s` (a positive integer number of seconds, default 10), `description` (a human-readable string shown in `tools/list`), and `upstream_provider` (a string naming a `host.vault.provider_set` provider whose connected end-user token this call uses, instead of a hand-templated `secret.<name>` header).
+
+## Spec fields
+
+<!-- kind-fields:start -->
+| field | type | required | meaning |
+|---|---|---|---|
+| `method` | string | no | HTTP method of the upstream request |
+| `url` | string | no | upstream URL; `{name}` placeholders are filled from call arguments |
+| `headers` | object | no | request headers; values may reference secrets |
+| `query` | object | no | query-string parameters |
+| `body` | object | no | request body template |
+| `args_schema` | object | no | JSON Schema for the tool's call arguments |
+| `timeout_s` | integer | no | seconds the upstream call may take |
+| `response` | object | no | how to shape the upstream response into the tool result |
+| `description` | string | no | human-readable text shown in `tools/list` |
+| `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each |
+| `upstream` | string | no | name of a connected upstream provider to call instead of `method` + `url` |
+| `upstream_provider` | string | no | provider the `upstream` connection belongs to |
+| `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
+| `ui` | object | no | optional presentation hints for clients that render a tool's result |
+<!-- kind-fields:end -->
+
+## Kind ceilings
+
+<!-- kind-ceilings:start -->
+| ceiling | free | pro |
+|---|---|---|
+| `budget.max_tool_latency_ms` | 30000 | 120000 |
+| `budget.max_wall_ms` | 60000 | 600000 |
+<!-- kind-ceilings:end -->
+
+## Error codes
+
+<!-- kind-errors:start -->
+| code | when |
+|---|---|
+| `upstream_auth` | the upstream refused the credentials (401/403) |
+| `upstream_rate_limited` | the upstream answered 429 |
+| `upstream_client_error` | the upstream answered another 4xx |
+| `upstream_error` | the upstream answered 5xx |
+| `upstream_timeout` | the upstream did not answer within the call's timeout |
+| `upstream_unreachable` | the upstream could not be reached |
+| `upstream_not_connected` | the named upstream provider is not connected for this tenant |
+| `host_not_allowed` | the target host is not on the allowed list or resolves to a private address |
+<!-- kind-errors:end -->
+
+## Canonical example
+
+<!-- kind-example:start -->
+```json
+{
+  "method": "GET",
+  "url": "https://api.example.com/items/{{id}}"
+}
+```
+<!-- kind-example:end -->

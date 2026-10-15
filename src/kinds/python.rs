@@ -5744,6 +5744,30 @@ static CONTRACT: KindContract = KindContract {
 
 #[async_trait::async_trait]
 impl Kind for PythonKind {
+    fn field_docs(&self) -> &'static [super::kinddoc::FieldDoc] {
+        use super::kinddoc::FieldDoc;
+        &[
+        FieldDoc { name: "source", ty: "string", meaning: "Python source defining `main(args)`" },
+        FieldDoc { name: "requirements", ty: "array of string", meaning: "pip requirements, inferred from imports when omitted" },
+        FieldDoc { name: "args_schema", ty: "object", meaning: "JSON Schema for the call arguments, inferred from `source` when omitted" },
+        FieldDoc { name: "timeout_s", ty: "integer", meaning: "seconds the sandboxed call may run" },
+        FieldDoc { name: "memory_mb", ty: "integer", meaning: "megabytes the sandbox may use" },
+        FieldDoc { name: "network", ty: "string", meaning: "`none`, `public` or `egress`: what the process may reach beyond the `mcphost.*` bridges" },
+        FieldDoc { name: "secrets", ty: "array of string", meaning: "`host.secret_set` names injected as `SECRET_<NAME>` environment variables" },
+        FieldDoc { name: "env", ty: "object", meaning: "plain, non-secret environment variables" },
+        FieldDoc { name: "description", ty: "string", meaning: "human-readable text shown in `tools/list`" },
+        FieldDoc { name: "outputs", ty: "array or object", meaning: "fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each" },
+        ]
+    }
+
+    fn ceiling_fields(&self) -> &'static [&'static str] {
+        &["budget.max_tool_latency_ms", "budget.max_wall_ms"]
+    }
+
+    fn bridge_modules(&self) -> Option<&'static [BridgeModule]> {
+        Some(BRIDGE_MODULES)
+    }
+
     fn contract(&self) -> &'static KindContract {
         &CONTRACT
     }

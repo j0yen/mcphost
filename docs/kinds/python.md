@@ -135,3 +135,74 @@ See the `chain` kind for the declarative form of the same idea: an ordered list 
 Bounds, enforced at publish: at most 16 entries, at most 4 KiB total across every name and value combined, and a value must be valid UTF-8 with no NUL byte -- each violation is a structured error naming the key and the bound it broke. A name must match `^[A-Z][A-Z0-9_]{0,63}$`; `MCPHOST_*`, `PATH`, `HOME`, `PYTHON*`, `LD_*`, and `SECRET_*` (this kind's own prefix for injecting a resolved secret) are reserved and refused by name or prefix. An `env` name may never collide with a secret name already set for this tenant, in either direction: publishing `env` that collides with an existing secret is refused, and so is `host.secret_set`ing a secret whose name collides with an already-published tool's `env` entry.
 
 The distinction is visible, not doctrinal: `host.tool_test` renders both in one listing, `env` values shown verbatim and secret values redacted, each labeled `"kind": "env"` or `"kind": "secret"`. `host.tool_list` returns a tool's `env` map to its owner; `admin.tool_list` reports env names and total size to an operator, never values. Updating `env` alone (no source change) takes effect on the tool's next call -- the warm pool re-fingerprints on an env change exactly as it does on a secret change, so a stale pooled process never serves old values.
+
+## Spec fields
+
+<!-- kind-fields:start -->
+| field | type | required | meaning |
+|---|---|---|---|
+| `source` | string | yes | Python source defining `main(args)` |
+| `requirements` | array of string | no | pip requirements, inferred from imports when omitted |
+| `args_schema` | object | no | JSON Schema for the call arguments, inferred from `source` when omitted |
+| `timeout_s` | integer | no | seconds the sandboxed call may run |
+| `memory_mb` | integer | no | megabytes the sandbox may use |
+| `network` | string | no | `none`, `public` or `egress`: what the process may reach beyond the `mcphost.*` bridges |
+| `secrets` | array of string | no | `host.secret_set` names injected as `SECRET_<NAME>` environment variables |
+| `env` | object | no | plain, non-secret environment variables |
+| `description` | string | no | human-readable text shown in `tools/list` |
+| `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each |
+| `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
+| `ui` | object | no | optional presentation hints for clients that render a tool's result |
+<!-- kind-fields:end -->
+
+## Kind ceilings
+
+<!-- kind-ceilings:start -->
+| ceiling | free | pro |
+|---|---|---|
+| `budget.max_tool_latency_ms` | 30000 | 120000 |
+| `budget.max_wall_ms` | 60000 | 600000 |
+<!-- kind-ceilings:end -->
+
+## Error codes
+
+<!-- kind-errors:start -->
+| code | when |
+|---|---|
+| `tool_exception` | the tool's code raised an uncaught exception |
+| `tool_output_invalid` | the tool's return value did not satisfy its declared outputs |
+| `tool_timeout` | the call ran past its `timeout_s` |
+| `tool_oom` | the call exceeded its `memory_mb` |
+| `tool_process_limit` | the sandboxed process hit its process or file limit |
+| `tool_output_too_large` | the tool's output exceeded the result size cap |
+| `upstream_auth` | the upstream refused the credentials (401/403) |
+| `upstream_rate_limited` | the upstream answered 429 |
+| `upstream_client_error` | the upstream answered another 4xx |
+| `upstream_error` | the upstream answered 5xx |
+| `upstream_timeout` | the upstream did not answer within the call's timeout |
+| `upstream_unreachable` | the upstream could not be reached |
+| `upstream_not_connected` | the named upstream provider is not connected for this tenant |
+| `host_not_allowed` | the target host is not on the allowed list or resolves to a private address |
+| `compose_self_call` | a tool named itself as one of its own children |
+| `compose_depth_exceeded` | composition nested deeper than 4 levels |
+| `compose_children_exceeded` | one top-level call's tree exceeded 50 child calls |
+| `compose_item_outside_for_each` | `$.item` or `$.index` used in a step with no `for_each` |
+| `compose_mapping_type` | a mapping resolved to the wrong type (for example a non-array `for_each`) |
+| `compose_mapping_missing` | a mapping path resolved to nothing |
+| `compose_fanout_exceeded` | a `for_each` array was longer than the plan's `chain_fanout_max` |
+| `compose_fanout_item_failed` | an item of a `for_each` step failed |
+| `compose_input_missing` | a `$.input.<name>` mapping named an argument the call did not carry |
+| `tool_building` | the tool's dependencies are still building |
+| `tool_not_found` | a named tool does not exist for this tenant |
+| `tool_run_unsupported` | the tool cannot be run this way (for example a dry run) |
+<!-- kind-errors:end -->
+
+## Canonical example
+
+<!-- kind-example:start -->
+```json
+{
+  "source": "def main(args):\n    return {\"doubled\": args[\"n\"] * 2}\n"
+}
+```
+<!-- kind-example:end -->

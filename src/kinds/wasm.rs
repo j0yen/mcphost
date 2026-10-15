@@ -550,6 +550,21 @@ static CONTRACT: KindContract = KindContract {
 
 #[async_trait::async_trait]
 impl Kind for WasmKind {
+    fn field_docs(&self) -> &'static [super::kinddoc::FieldDoc] {
+        use super::kinddoc::FieldDoc;
+        &[
+        FieldDoc { name: "component", ty: "string", meaning: "the compiled WebAssembly component to call" },
+        FieldDoc { name: "args_schema", ty: "object", meaning: "JSON Schema for the call arguments" },
+        FieldDoc { name: "outputs", ty: "array or object", meaning: "fields a caller can rely on in `result.payload`" },
+        FieldDoc { name: "timeout_s", ty: "integer", meaning: "seconds the call may run" },
+        FieldDoc { name: "memory_mb", ty: "integer", meaning: "megabytes the component may use" },
+        ]
+    }
+
+    fn ceiling_fields(&self) -> &'static [&'static str] {
+        &["budget.max_tool_latency_ms", "budget.max_wall_ms"]
+    }
+
     fn contract(&self) -> &'static KindContract {
         &CONTRACT
     }

@@ -1690,6 +1690,13 @@
       "AC5": "tests/thlive_ac05_exit_trap_offboards_both_tenants.rs",
       "AC6": "tests/thlive_ac06_json_flag_output.rs",
       "AC3": "deferred -- operator-provisioned: Live check of prod via scripts/task-handoff-live.sh; evidence docs/receipts/mcphost-task-handoff-live-script.md"
+    },
+    "kdr": {
+      "_prd": "PRD-mcphost-kind-docs-from-registry.md (test_prefix: kdr)",
+      "AC1": "tests/kdr_ac01_kind_doc_from_data.rs",
+      "AC2": "tests/kdr_ac02_python_page_tables_generated.rs",
+      "AC3": "tests/kdr_ac03_check_names_stale_block.rs",
+      "AC4": "tests/kdr_ac04_page_set_matches_registry.rs"
     }
   }
 }

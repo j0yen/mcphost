@@ -24,6 +24,7 @@ pub mod docs;
 pub mod echo;
 pub mod example;
 pub mod http;
+pub mod kinddoc;
 pub mod outcomes;
 pub mod infer;
 pub mod python;
@@ -2296,6 +2297,41 @@ pub trait Kind: Send + Sync {
             call_args: serde_json::json!({}),
             blurb: String::new(),
         }
+    }
+
+    /// PRD-mcphost-kind-docs-from-registry R1: the type and meaning of each
+    /// of this kind's `known_spec_fields()`, one row per field, beside the
+    /// field list itself. [`kinddoc::UNIVERSAL_FIELD_DOCS`] covers the
+    /// universal fields.
+    fn field_docs(&self) -> &'static [kinddoc::FieldDoc] {
+        &[]
+    }
+
+    /// The plan ceilings (`Plan::ceilings_flat` names) that bound a call to
+    /// this kind, rendered with their free and pro values on its page.
+    fn ceiling_fields(&self) -> &'static [&'static str] {
+        &[]
+    }
+
+    /// The `mcphost.*` bridge modules a tool of this kind can import, for
+    /// the one kind that has any (`python`).
+    fn bridge_modules(&self) -> Option<&'static [python::BridgeModule]> {
+        None
+    }
+
+    /// Everything this kind's page tables are generated from.
+    fn doc(&self, plans: &crate::plans::PlanCatalog) -> kinddoc::KindDoc {
+        kinddoc::assemble(
+            self.name(),
+            self.example(),
+            self.known_spec_fields(),
+            self.required_spec_field(),
+            self.field_docs(),
+            self.ceiling_fields(),
+            self.contract(),
+            self.bridge_modules(),
+            plans,
+        )
     }
 
     /// What this kind may return on failure and how the generated

@@ -443,7 +443,10 @@ fn match_expr(q: &str) -> Option<String> {
 /// reference for their kind; receipts, benchmark dumps and launch notes are
 /// history that merely quotes the reference.
 fn authority(anchor: &str) -> f64 {
-    if anchor.starts_with("docs/kinds/") {
+    if anchor.starts_with("docs/kinds/") && anchor.ends_with("#kind-ceilings") {
+        // A kind page's ceilings table only restates `docs/plans.md`'s numbers.
+        0.5
+    } else if anchor.starts_with("docs/kinds/") {
         1.5
     } else if anchor.starts_with("docs/receipts/")
         || anchor.starts_with("docs/benchmarks/")
