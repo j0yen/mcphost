@@ -7209,6 +7209,14 @@ impl McpHostHandler {
                 state: self.state.clone(),
                 tenant: tenant.clone(),
             }),
+            // PRD-mcphost-elicitation-with-ask-fallback: one per call, so the
+            // 3-elicit cap is per call; the client channel is the one
+            // `call_tool` set around this dispatch (none for a job).
+            elicit: Arc::new(crate::elicit::TenantElicit::new(
+                self.state.clone(),
+                tenant.clone(),
+                crate::elicit::current_channel(),
+            )),
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             sidecar_ops_max: self.sidecar_ops_cap(tenant),
             // PRD-mcphost-composition requirement 1/2: every real
@@ -7731,6 +7739,7 @@ impl McpHostHandler {
             drift: drift_backend.clone(),
             channel: channel_backend.clone(),
             msg: msg_backend.clone(),
+            elicit: Arc::new(crate::elicit::NoClientElicit),
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             sidecar_ops_max: self.sidecar_ops_cap(tenant),
             // PRD-mcphost-composition requirement 3/AC8: `chain`'s dry run
@@ -8245,6 +8254,7 @@ impl McpHostHandler {
             // `NoState` above.
             channel: Arc::new(NoChannel),
             msg: Arc::new(NoMsg),
+            elicit: Arc::new(crate::elicit::NoClientElicit),
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             sidecar_ops_max: i64::MAX,
             compose_depth: 0,
@@ -8516,6 +8526,7 @@ impl McpHostHandler {
             drift: drift_backend.clone(),
             channel: channel_backend.clone(),
             msg: msg_backend.clone(),
+            elicit: Arc::new(crate::elicit::NoClientElicit),
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             sidecar_ops_max,
             compose_depth: 0,
@@ -8946,6 +8957,7 @@ impl McpHostHandler {
             drift: drift_backend.clone(),
             channel: channel_backend.clone(),
             msg: msg_backend.clone(),
+            elicit: Arc::new(crate::elicit::NoClientElicit),
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             sidecar_ops_max: self.sidecar_ops_cap(tenant),
             // PRD-mcphost-composition: `host.tool_run` has no notion of a
@@ -9987,6 +9999,34 @@ impl ServerHandler for McpHostHandler {
     }
 
     async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<CallToolResponse, McpError> {
+        // PRD-mcphost-elicitation-with-ask-fallback: the typed path needs a
+        // peer that can carry a server-to-client request AND whose client
+        // advertised form elicitation at `initialize` (a session peer).
+        // A stateless peer's per-request `_meta` capabilities cannot be
+        // answered (the transport drops client responses), so it stays on
+        // the link channel.
+        let channel = (ctx.meta.client_capabilities().is_none()
+            && ctx.peer.peer_info().is_some_and(|info| {
+                info.capabilities.elicitation.as_ref().is_some_and(|e| e.form.is_some())
+            }))
+        .then(|| crate::elicit::ClientChannel { peer: ctx.peer.clone() });
+        match channel {
+            Some(channel) => {
+                crate::elicit::CLIENT_CHANNEL.scope(channel, self.call_tool_inner(request, ctx)).await
+            }
+            None => self.call_tool_inner(request, ctx).await,
+        }
+    }
+
+    async fn on_initialized(&self, _context: NotificationContext<RoleServer>) {}
+}
+
+impl McpHostHandler {
+    async fn call_tool_inner(
         &self,
         request: CallToolRequestParams,
         ctx: RequestContext<RoleServer>,
@@ -11057,8 +11097,6 @@ impl ServerHandler for McpHostHandler {
             }
         }
     }
-
-    async fn on_initialized(&self, _context: NotificationContext<RoleServer>) {}
 }
 
 /// PRD-mcphost-tool-test-examples-from-schema R2 (AC4): the generated example

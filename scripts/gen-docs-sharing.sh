@@ -50,7 +50,7 @@ apply() {
   fi
 
   local tmp
-  tmp="$(mktemp)"
+  tmp="$(mktemp "$TARGET.XXXXXX")"
   python3 - "$TARGET" "$SOURCE" "$START" "$END" > "$tmp" <<'PY'
 import sys
 target_path, source_path, start_marker, end_marker = sys.argv[1:5]
@@ -67,6 +67,7 @@ new_text = text[:start_idx] + block + text[end_idx:]
 sys.stdout.write(new_text)
 PY
   if [ -s "$tmp" ]; then
+    chmod 644 "$tmp"
     mv "$tmp" "$TARGET"
   else
     rm -f "$tmp"
