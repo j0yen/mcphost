@@ -670,7 +670,7 @@ def classify(path):
 # selftests are named tests/suite_ac<N>_*.rs (verified-completed.sh's
 # `prefix:<p>` rule needs that exact shape) and must never be mistaken for
 # generated output, or a regen would silently delete them as "stray".
-GENERATED_SUITE_RE = re.compile(r'^suite_(?:core|sandbox|env_core|env_sandbox)_[0-9]+\.rs$')
+GENERATED_SUITE_RE = re.compile(r'^suite_(?:core|sandbox|env_core|env_sandbox|contracts_core|contracts_sandbox)_[0-9]+\.rs$')
 
 AC_PREFIX_RE = re.compile(r'^(ac[0-9]+)_')
 PREFIX_RE = re.compile(r'^([a-z0-9]+)_')
@@ -714,6 +714,20 @@ ENV_GUARD_RE = re.compile(r'EnvGuard|AdvisoryModeGuard')
 
 def is_env_guarded(content):
     return bool(ENV_GUARD_RE.search(content))
+
+
+# PRD-mcphost-contract-suite-generated: a test file declares itself a CONTRACT
+# test (it asserts a set the repository derives from itself -- the CHANGELOG
+# headings, the migration count, the suite partition, the live `tools/list`
+# shape) with a `//! contract: <what it asserts>` line in its first 10 lines.
+# Marked files are routed into `suite_contracts_<core|sandbox>_NN.rs`
+# (capability-partitioned like every other suite), which scripts/pin-tests.sh
+# derives its run list from, so the inner, the gate and CI run one set.
+CONTRACT_RE = re.compile(r'^//!\s*contract:')
+
+
+def is_contract(content):
+    return any(CONTRACT_RE.match(l) for l in content.split("\n")[:10])
 
 
 def distribute_exclusive(buckets, exclusive_stems):
@@ -909,6 +923,8 @@ def suite_content(members_meta):
 # each partition's env-guarded files in a single suite_env_<part>_01.rs
 # until that stops being true.
 ENV_MAX_PER_SUITE = {"core": 500, "sandbox": 500}
+# Contract suites are a handful of files; one generous cap, never retuned.
+CONTRACT_MAX_PER_SUITE = {"core": 500, "sandbox": 500}
 
 
 def build_suites(name_prefix, cap_by_partition, stems_by_partition, exclusive_by_partition, migrations, suite_files):
@@ -955,6 +971,8 @@ def compute_plan():
     exclusive_by_partition = {"core": [], "sandbox": []}
     env_by_partition = {"core": [], "sandbox": []}
     env_exclusive_by_partition = {"core": [], "sandbox": []}
+    contract_by_partition = {"core": [], "sandbox": []}
+    contract_exclusive_by_partition = {"core": [], "sandbox": []}
     for f in all_files:
         with open(f, encoding="utf-8") as fh:
             content = fh.read()
@@ -964,7 +982,9 @@ def compute_plan():
         stem = os.path.basename(f)[:-3]
         env = is_env_guarded(content)
         exclusive = is_exclusive_global(content)
-        if env and exclusive:
+        if is_contract(content):
+            (contract_exclusive_by_partition if exclusive else contract_by_partition)[part].append(stem)
+        elif env and exclusive:
             env_exclusive_by_partition[part].append(stem)
         elif env:
             env_by_partition[part].append(stem)
@@ -978,7 +998,8 @@ def compute_plan():
     # SANDBOX_SUITES check at the bottom), so the plain sandbox partition may
     # shrink to SHARDS minus however many env sandbox suites exist.
     env_names = build_suites("suite_env", ENV_MAX_PER_SUITE, env_by_partition, env_exclusive_by_partition, migrations, {})
-    min_buckets = {"core": 1, "sandbox": max(1, sandbox_shard_count() - len(env_names["sandbox"]))}
+    contract_names = build_suites("suite_contracts", CONTRACT_MAX_PER_SUITE, contract_by_partition, contract_exclusive_by_partition, migrations, {})
+    min_buckets = {"core": 1, "sandbox": max(1, sandbox_shard_count() - len(env_names["sandbox"]) - len(contract_names["sandbox"]))}
     for _ in range(5000):
         scratch = {}
         names = build_suites("suite", caps, by_partition, exclusive_by_partition, migrations, scratch)
@@ -999,8 +1020,13 @@ def compute_plan():
         "suite_env", ENV_MAX_PER_SUITE, env_by_partition, env_exclusive_by_partition, migrations, suite_files
     )
 
+    contract_suite_names_by_partition = build_suites(
+        "suite_contracts", CONTRACT_MAX_PER_SUITE, contract_by_partition, contract_exclusive_by_partition, migrations, suite_files
+    )
+
     all_suite_names = sorted(
         suite_names_by_partition["core"] + suite_names_by_partition["sandbox"]
+        + contract_suite_names_by_partition["core"] + contract_suite_names_by_partition["sandbox"]
         + env_suite_names_by_partition["core"] + env_suite_names_by_partition["sandbox"]
     )
 
@@ -1119,6 +1145,27 @@ def check_plan(migrations, suite_files, new_cargo_toml, all_files):
         if base not in referenced:
             problems.append(f"{f} is not included in any suite (run gen-test-suites.sh)")
 
+    # Contract axis: a marked file must live in exactly one contract suite,
+    # and a contract suite may hold only marked files.
+    marked = {}
+    for path in all_files:
+        with open(path, encoding="utf-8") as fh:
+            marked[os.path.basename(path)] = is_contract(fh.read())
+    for suite_path in sorted(glob.glob("tests/suite_*.rs")):
+        sbase = os.path.basename(suite_path)
+        if not GENERATED_SUITE_RE.match(sbase):
+            continue
+        is_contract_suite = sbase.startswith("suite_contracts_")
+        with open(suite_path, encoding="utf-8") as fh:
+            members = re.findall(r'#\[path\s*=\s*"([^"]+\.rs)"\]', fh.read())
+        for m in members:
+            if "/" in m:
+                continue  # shared support module, not a test file
+            if is_contract_suite and not marked.get(m, False):
+                problems.append(f"tests/{m} is in {sbase} but has no `//! contract:` line in its first 10 lines")
+            if not is_contract_suite and marked.get(m, False):
+                problems.append(f"tests/{m} carries `//! contract:` but is included by {sbase}, not a suite_contracts_<core|sandbox>_NN.rs (run gen-test-suites.sh)")
+
     for path, (new_content, _c, _s, _h) in migrations.items():
         if not os.path.exists(path):
             problems.append(f"{path} missing")
@@ -1165,7 +1212,7 @@ def sandbox_shard_count():
 
 migrations, suite_files, new_cargo_toml, all_files = compute_plan()
 SHARDS = sandbox_shard_count()
-SANDBOX_SUITES = [n for n in suite_files if re.match(r"suite(_env)?_sandbox_\d+\.rs$", os.path.basename(n))]
+SANDBOX_SUITES = [n for n in suite_files if re.match(r"suite(_env|_contracts)?_sandbox_\d+\.rs$", os.path.basename(n))]
 if len(SANDBOX_SUITES) < SHARDS:
     die(f"{len(SANDBOX_SUITES)} sandbox suites cannot fill {SHARDS} shards "
         "(SANDBOX_SHARDS in scripts/ci-test-partition.sh): lower it")

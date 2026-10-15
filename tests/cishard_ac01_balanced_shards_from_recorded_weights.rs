@@ -1,3 +1,4 @@
+//! contract: sandbox shards balance the recorded scripts/ci-suite-weights.json
 //! PRD-mcphost-ci-sandbox-shards-balanced AC1 -- sandbox suites are split into
 //! shards by recorded cost (`scripts/ci-suite-weights.json`), heaviest first
 //! into the lightest shard, and a suite without a weight fails `check`.
@@ -75,7 +76,13 @@ fn the_committed_weights_split_into_three_total_disjoint_shards() {
 
     let with_lib: Vec<&String> = shards.iter().filter(|s| s.contains("--lib")).collect();
     assert_eq!(with_lib.len(), 1, "--lib runs exactly once");
-    assert_eq!(suites_of(with_lib[0]), vec!["suite_env_sandbox_01".to_string()]);
+    // The two light suites (env + the generated contract suite) share the --lib shard.
+    let mut light = suites_of(with_lib[0]);
+    light.sort();
+    assert_eq!(
+        light,
+        vec!["suite_contracts_sandbox_01".to_string(), "suite_env_sandbox_01".to_string()]
+    );
 }
 
 #[test]

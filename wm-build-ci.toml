@@ -46,6 +46,16 @@ cmd = "./scripts/pin-tests.sh --cargo-free"
 where = "host"
 wall_minutes = 5
 
+# PRD-mcphost-contract-suite-generated: the contract tests (`//! contract:`-marked files,
+# routed by gen-test-suites.sh into tests/suite_contracts_*.rs) run in the inner and the gate
+# before CI. The run list is derived from Cargo.toml by the script itself (`--list`), so this
+# check and CI's `contract suites` step cannot drift from the tree.
+[[check]]
+name = "contract-suite"
+cmd = "./scripts/pin-tests.sh"
+where = "host"
+wall_minutes = 10
+
 [[check]]
 name = "bad-rust-audit"
 cmd = "./scripts/audit.sh"
