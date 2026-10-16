@@ -338,6 +338,9 @@ const MIGRATION_0108: &str = include_str!("../migrations/0108_calls_audit.sql");
 /// PRD-mcphost-email-attachments-as-blobs R1: mail provenance on `blobs`.
 const MIGRATION_0112: &str = include_str!("../migrations/0112_email_attachments.sql");
 
+/// PRD-mcphost-notify-user-channel: `notify_channels`, `notifies`, `notify_receipts`.
+const MIGRATION_0114: &str = include_str!("../migrations/0114_notify_channels.sql");
+
 /// `(plan name, calls_retention_days)` per plan, once loaded.
 type PlanCallsDays = Option<Vec<(String, i64)>>;
 
@@ -3037,6 +3040,18 @@ impl Db {
         Self::migrate_0110_call_results(&conn)?;
         Self::migrate_0111_key_binding(&conn)?;
         Self::migrate_0112_email_attachments(&conn)?;
+        Self::migrate_0114_notify_channels(&conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-notify-user-channel: gated on the `notify_channels` table.
+    fn migrate_0114_notify_channels(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'notify_channels'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0114)?;
+        }
         Ok(())
     }
 

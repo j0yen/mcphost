@@ -42,6 +42,7 @@ pub const HELP_CODES: &[&str] = &[
     "choice_invalid",
     "asks_limit",
     "capability_unsupported",
+    "notify_kind_unknown",
 ];
 
 /// One `/help/<code>` page's content: meaning, likely cause, fix, and which
@@ -209,6 +210,13 @@ pub const HELP_ENTRIES: &[HelpEntry] = &[
         fix: "Do not retry. Use the tool named in the error's data.alternative (when present), or read /capabilities.json to see which primitives this host speaks.",
         doc_link: DocAnchor::DocsProtocolCapabilitiesCapabilities,
     },
+    HelpEntry {
+        code: "notify_kind_unknown",
+        meaning: "host.notify.channel_add was refused because kind is not a channel kind this host delivers to. The kinds are: {notify_kinds}.",
+        cause: "A misspelled or unsupported kind (for example sms or discord); the levels host.notify.send accepts are {notify_levels}.",
+        fix: "Call host.notify.channel_add again with kind set to one of: {notify_kinds}. The error's data.kinds lists the same names.",
+        doc_link: DocAnchor::DocsToolsTools,
+    },
 ];
 
 /// AC2's own test obligation, factored out so both `errors.rs`'s unit test
@@ -368,9 +376,9 @@ pub fn render_help_page(e: &HelpEntry, support_url: Option<&str>) -> String {
         head = PAGE_HEAD,
         style = PAGE_STYLE,
         code = html_escape(e.code),
-        meaning = html_escape(e.meaning),
-        cause = html_escape(e.cause),
-        fix = html_escape(e.fix),
+        meaning = html_escape(&crate::notify::expand_placeholders(e.meaning)),
+        cause = html_escape(&crate::notify::expand_placeholders(e.cause)),
+        fix = html_escape(&crate::notify::expand_placeholders(e.fix)),
         doc_href = doc_href(e.doc_link.as_str()),
         doc_link = html_escape(e.doc_link.as_str()),
         support = html_escape(&support_line(support_url)),

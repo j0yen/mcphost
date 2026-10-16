@@ -55,6 +55,8 @@ Every numeric ceiling in the plan table, as `host.quickstart` `limits.plan` repo
 | `msg_body_bytes_max` | 16384 | 16384 |
 | `msgs_per_hour` | 60 | 2000 |
 | `notes_max` | 200 | 5000 |
+| `notifies_per_day` | 20 | 1000 |
+| `notify_channels_max` | 2 | 10 |
 | `receipts_retention_days` | 7 | 30 |
 | `recipients_per_msg_max` | 5 | 20 |
 | `schedule_min_interval_s` | 300 | 60 |

@@ -10218,6 +10218,275 @@
       "since": "0.108.62"
     },
     {
+      "description": "Register where your user lives, once: kind is one of email, webhook, slack (email only to the claim-verified owner address; webhook and slack take an https URL). Returns {channel_id}. A kind outside that list fails notify_kind_unknown; an unverified owner fails owner_unverified, whose data.next_call names the claim step.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "description": "Where this channel delivers.",
+            "enum": [
+              "email",
+              "webhook",
+              "slack"
+            ],
+            "type": "string"
+          },
+          "target": {
+            "description": "email: the verified owner address; webhook/slack: an https URL.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "target"
+        ],
+        "type": "object"
+      },
+      "name": "host.notify.channel_add",
+      "output_schema": {
+        "properties": {
+          "channel_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "target_hint": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id",
+          "kind",
+          "target_hint"
+        ],
+        "type": "object"
+      },
+      "since": "0.108.71"
+    },
+    {
+      "description": "List this tenant's notify channels: {channels: [{channel_id, kind, target_hint, created_unix}]}. A webhook or slack target is never echoed in full.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.notify.channel_list",
+      "output_schema": {
+        "properties": {
+          "channels": {
+            "items": {
+              "properties": {
+                "channel_id": {
+                  "type": "string"
+                },
+                "created_unix": {
+                  "type": "integer"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "target_hint": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "channel_id",
+                "created_unix",
+                "kind",
+                "target_hint"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "channels"
+        ],
+        "type": "object"
+      },
+      "since": "0.108.71",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
+    },
+    {
+      "description": "Remove one notify channel by channel_id.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "channel_id": {
+            "description": "A channel_id host.notify.channel_add returned.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.notify.channel_remove",
+      "output_schema": {
+        "properties": {
+          "channel_id": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "channel_id",
+          "removed"
+        ],
+        "type": "object"
+      },
+      "since": "0.108.71"
+    },
+    {
+      "description": "List per-channel delivery receipts: {receipts: [{notify_id, channel_id, kind, status, upstream_status, attempts, delivered_unix}]}, status one of queued, delivered, failed, rate_limited.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "notify_id": {
+            "description": "Only this send.",
+            "type": "string"
+          },
+          "since_unix": {
+            "description": "Only receipts created at or after this time.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.notify.receipts",
+      "output_schema": {
+        "properties": {
+          "receipts": {
+            "items": {
+              "properties": {
+                "attempts": {
+                  "type": "integer"
+                },
+                "channel_id": {
+                  "type": "string"
+                },
+                "created_unix": {
+                  "type": "integer"
+                },
+                "delivered_unix": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "notify_id": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "upstream_status": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "attempts",
+                "channel_id",
+                "created_unix",
+                "kind",
+                "notify_id",
+                "status"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "receipts"
+        ],
+        "type": "object"
+      },
+      "since": "0.108.71",
+      "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
+    },
+    {
+      "description": "Tell your user something on every registered channel: {text (at most 1024 bytes), level (info|warn|action), link?} returns {notify_id, channels} at once and delivers in the background. No channel fails no_channel with next_call host.notify.channel_add; past the plan's notifies_per_day fails notify_limit with resets_unix. Read the outcome with host.notify.receipts.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "level": {
+            "description": "How urgent.",
+            "enum": [
+              "info",
+              "warn",
+              "action"
+            ],
+            "type": "string"
+          },
+          "link": {
+            "description": "Optional https URL appended to the message.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "text": {
+            "description": "The message, at most 1024 bytes.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "level"
+        ],
+        "type": "object"
+      },
+      "name": "host.notify.send",
+      "output_schema": {
+        "properties": {
+          "channels": {
+            "type": "integer"
+          },
+          "notify_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "channels",
+          "notify_id"
+        ],
+        "type": "object"
+      },
+      "since": "0.108.71"
+    },
+    {
       "description": "Page this tenant's OAuth auth audit log (authorize/consent/token/refresh/revoke/ policy_change/approved/denied/refused events), newest additions last. Optional since/until (unix seconds) and event filters; limit defaults to 50, max 500; cursor resumes from a previous page's cursor field.",
       "input_schema": {
         "additionalProperties": false,
@@ -30669,6 +30938,141 @@
       },
       "name": "host_note_put",
       "since": "0.108.62"
+    },
+    {
+      "alias_of": "host.notify.channel_add",
+      "description": "Register where your user lives, once: kind is one of email, webhook, slack (email only to the claim-verified owner address; webhook and slack take an https URL). Returns {channel_id}. A kind outside that list fails notify_kind_unknown; an unverified owner fails owner_unverified, whose data.next_call names the claim step.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "description": "Where this channel delivers.",
+            "enum": [
+              "email",
+              "webhook",
+              "slack"
+            ],
+            "type": "string"
+          },
+          "target": {
+            "description": "email: the verified owner address; webhook/slack: an https URL.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "target"
+        ],
+        "type": "object"
+      },
+      "name": "host_notify_channel_add",
+      "since": "0.108.71"
+    },
+    {
+      "alias_of": "host.notify.channel_list",
+      "description": "List this tenant's notify channels: {channels: [{channel_id, kind, target_hint, created_unix}]}. A webhook or slack target is never echoed in full.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host_notify_channel_list",
+      "since": "0.108.71"
+    },
+    {
+      "alias_of": "host.notify.channel_remove",
+      "description": "Remove one notify channel by channel_id.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "channel_id": {
+            "description": "A channel_id host.notify.channel_add returned.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id"
+        ],
+        "type": "object"
+      },
+      "name": "host_notify_channel_remove",
+      "since": "0.108.71"
+    },
+    {
+      "alias_of": "host.notify.receipts",
+      "description": "List per-channel delivery receipts: {receipts: [{notify_id, channel_id, kind, status, upstream_status, attempts, delivered_unix}]}, status one of queued, delivered, failed, rate_limited.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "notify_id": {
+            "description": "Only this send.",
+            "type": "string"
+          },
+          "since_unix": {
+            "description": "Only receipts created at or after this time.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host_notify_receipts",
+      "since": "0.108.71"
+    },
+    {
+      "alias_of": "host.notify.send",
+      "description": "Tell your user something on every registered channel: {text (at most 1024 bytes), level (info|warn|action), link?} returns {notify_id, channels} at once and delivers in the background. No channel fails no_channel with next_call host.notify.channel_add; past the plan's notifies_per_day fails notify_limit with resets_unix. Read the outcome with host.notify.receipts.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "level": {
+            "description": "How urgent.",
+            "enum": [
+              "info",
+              "warn",
+              "action"
+            ],
+            "type": "string"
+          },
+          "link": {
+            "description": "Optional https URL appended to the message.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "text": {
+            "description": "The message, at most 1024 bytes.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "level"
+        ],
+        "type": "object"
+      },
+      "name": "host_notify_send",
+      "since": "0.108.71"
     },
     {
       "alias_of": "host.oauth.audit",

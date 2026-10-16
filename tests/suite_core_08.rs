@@ -198,6 +198,14 @@ mod nfs_ac02_suffix_cut_to_120_chars;
 mod nfs_ac03_quota_and_unknown_tool;
 #[path = "nfs_ac04_ttl_expiry.rs"]
 mod nfs_ac04_ttl_expiry;
+#[path = "ntfy_ac01_no_tenant_settable_alert_sink.rs"]
+mod ntfy_ac01_no_tenant_settable_alert_sink;
+#[path = "ntfy_ac02_enums_generated_into_every_surface.rs"]
+mod ntfy_ac02_enums_generated_into_every_surface;
+#[path = "ntfy_ac03_webhook_send_receipt.rs"]
+mod ntfy_ac03_webhook_send_receipt;
+#[path = "ntfy_ac04_email_channel_owner_only.rs"]
+mod ntfy_ac04_email_channel_owner_only;
 #[path = "nudge_ac01_claimed_tenant_gets_one_return_email.rs"]
 mod nudge_ac01_claimed_tenant_gets_one_return_email;
 #[path = "nudge_ac02_second_sweep_sends_nothing_more.rs"]
