@@ -1249,6 +1249,12 @@
       "AC6": "tests/xlinks_ac06_default_set_resolves_and_dead_urls_replaced.rs",
       "AC7": "tests/xlinks_ac07_ci_docs_job_fails_on_a_404_and_stays_fast.rs"
     },
+    "lchk": {
+      "AC1": "tests/lchk_ac01_items_toml_shape.rs",
+      "AC2": "tests/lchk_ac02_text_run.rs",
+      "AC3": "tests/lchk_ac03_json_shape.rs",
+      "AC4": "tests/lchk_ac04_render_check_drift.rs"
+    },
     "upfam": {
       "AC1": "tests/upfam_ac01_auth_family_401_403.rs",
       "AC2": "tests/upfam_ac02_rate_limited_retry_after.rs",

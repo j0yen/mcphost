@@ -301,6 +301,38 @@ enum Command {
         #[arg(long)]
         path: Option<PathBuf>,
     },
+    /// PRD-mcphost-launch-check-generated: run the `host` probes in
+    /// `launch/items.toml` and print one green/red line per item (`joe`
+    /// items print as `manual:`). Exits 0 whatever the probes say; 2 when
+    /// the TOML is unreadable.
+    LaunchCheck {
+        /// Items file. Defaults to `launch/items.toml`.
+        #[arg(long)]
+        items: Option<PathBuf>,
+        /// Only items of this wave.
+        #[arg(long)]
+        wave: Option<u8>,
+        /// Only the item with this id.
+        #[arg(long)]
+        only: Option<String>,
+        /// Print `{items, green, total, wave, checked_at}` instead of lines.
+        #[arg(long)]
+        json: bool,
+        /// README whose external links become `readme-link-<host>` rows.
+        /// Defaults to `README.md`; a missing file adds no rows.
+        #[arg(long)]
+        readme: Option<PathBuf>,
+        /// Write the checklist markdown from the rows instead of probing.
+        #[arg(long)]
+        render: bool,
+        /// With `--render`: write nothing; exit 1 naming the checklist when
+        /// it differs from a fresh render.
+        #[arg(long, requires = "render")]
+        check: bool,
+        /// The checklist file. Defaults to `docs/launch/wave1-checklist.md`.
+        #[arg(long)]
+        checklist: Option<PathBuf>,
+    },
     /// PRD-mcphost-help-search-tool-b R6: the `host.help.search` hits for a
     /// query, from the same embedded index the tool reads.
     HelpSearch {
@@ -949,6 +981,57 @@ async fn main() -> anyhow::Result<()> {
                 print!("{rendered}");
                 Ok(())
             }
+        }
+        Command::LaunchCheck { items, wave, only, json, readme, render, check, checklist } => {
+            // Plain stdout + exit code, no tracing line (same contract as
+            // `RegistryManifest`).
+            let path = items.unwrap_or_else(|| PathBuf::from(mcphost::launch_check::ITEMS_PATH));
+            let items = match mcphost::launch_check::load_items_file(&path) {
+                Ok(items) => items,
+                Err(e) => {
+                    eprintln!("launch-check: {e}");
+                    std::process::exit(2);
+                }
+            };
+            let readme_path = readme.unwrap_or_else(|| PathBuf::from(mcphost::launch_check::README_PATH));
+            let readme_text = std::fs::read_to_string(&readme_path).ok();
+            let items = mcphost::launch_check::effective_items(items, readme_text.as_deref());
+            if render {
+                let rendered = mcphost::launch_check::render_checklist(&items);
+                let target = checklist
+                    .unwrap_or_else(|| PathBuf::from(mcphost::launch_check::CHECKLIST_PATH));
+                if check {
+                    let committed = std::fs::read_to_string(&target).unwrap_or_default();
+                    if committed == rendered {
+                        println!("launch-check --render --check: {} is up to date", target.display());
+                        return Ok(());
+                    }
+                    let diff = mcphost::difftext::unified_diff(
+                        &committed,
+                        &rendered,
+                        &target.display().to_string(),
+                        "generated",
+                    );
+                    eprintln!(
+                        "launch-check --render --check: {} is stale (run `mcphost launch-check --render`)\n{diff}",
+                        target.display()
+                    );
+                    std::process::exit(1);
+                }
+                if let Some(parent) = target.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(&target, &rendered)?;
+                println!("launch-check: wrote {}", target.display());
+                return Ok(());
+            }
+            let results = mcphost::launch_check::run_items(&items, wave, only.as_deref());
+            if json {
+                print!("{}", mcphost::launch_check::render_json(&results, wave));
+            } else {
+                print!("{}", mcphost::launch_check::render_text(&results));
+            }
+            Ok(())
         }
         Command::SubmissionPack { chatgpt, check } => {
             // Plain stdout/stderr + exit code, no tracing line: same

@@ -121,7 +121,7 @@ required_commands = [
 [[lane]]
 id = "launch-docs"
 description = "docs/launch/** (chore/listings-wave1, PRD-mcphost-agent-findability): the wave-1 directory-listing checklist and any sibling launch-prep docs. Given its own lane rather than folded into the pre-existing docs lane above, since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane's required_commands as an immutable baseline (same reasoning as the sharing-docs lane above). No markdown linter exists in this repo (no node/npm, no markdownlint on the build host), so proof is scripts/launch-docs-check.sh: a minimal Python-stdlib check that each docs/launch/*.md file is valid, non-empty UTF-8 text. Not a style/prose linter -- an honest floor, not a fake pass."
-globs = ["docs/launch/**", "scripts/launch-docs-check.sh"]
+globs = ["docs/launch/**", "launch/**", "scripts/launch-docs-check.sh"]
 required_commands = [
   "scripts/launch-docs-check.sh",
 ]

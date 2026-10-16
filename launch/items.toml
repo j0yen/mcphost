@@ -1,0 +1,114 @@
+# launch/items.toml -- PRD-mcphost-launch-check-generated R1.
+# Every launch claim is one [[item]]: `mcphost launch-check` runs the `host`
+# probes and prints green/red; `joe` rows are manual instructions.
+# docs/launch/wave1-checklist.md is rendered from this file
+# (`mcphost launch-check --render`); `--render --check` fails on drift.
+# The `readme-link-<host>` rows are NOT listed here: they are generated from
+# README.md's external links at render/run time.
+#
+# Pending sibling rows (added as one [[item]] each when the PRD lands):
+#   slo-present          curl .../status.json | jq -e .slo
+#   registry-live-drift  mcphost registry-manifest --live
+#   funnel-probe-seen    mcphost funnel --json --days 1 | jq -e '.probe|length>=1'
+#
+# Probes run via `sh -c` with a clean env (PATH, MCPHOST_PUBLIC_URL only).
+# A probe that needs a credential cannot be written: it becomes owner = "joe".
+
+[[item]]
+id = "status-json-ok"
+wave = 1
+owner = "host"
+probe = 'curl -fsS -m 10 "${MCPHOST_PUBLIC_URL:-https://mcphost.dev}/status.json"'
+expect = "exit0"
+doc = "The public status feed answers with JSON."
+
+[[item]]
+id = "status-html-renders"
+wave = 1
+owner = "host"
+probe = 'curl -fsS -m 10 "${MCPHOST_PUBLIC_URL:-https://mcphost.dev}/status.html"'
+expect = "<html"
+doc = "The human status page renders as HTML."
+
+[[item]]
+id = "healthz-ok"
+wave = 1
+owner = "host"
+probe = 'curl -fsS -m 10 "${MCPHOST_PUBLIC_URL:-https://mcphost.dev}/healthz"'
+expect = "exit0"
+doc = "The health endpoint answers 200."
+
+[[item]]
+id = "llms-txt-tool-names"
+wave = 1
+owner = "host"
+probe = "mcphost llms-txt --check"
+expect = "exit0"
+doc = "www/llms.txt lists exactly the tool names tools/list serves."
+
+[[item]]
+id = "www-check"
+wave = 1
+owner = "host"
+probe = "scripts/www-check.sh"
+expect = "exit0"
+doc = "The static site under www/ parses and llms.txt is valid UTF-8."
+
+[[item]]
+id = "registry-manifest-check"
+wave = 1
+owner = "host"
+probe = "mcphost registry-manifest --check"
+expect = "up to date"
+doc = "registry/server.json matches a fresh render (version-tolerant)."
+
+[[item]]
+id = "listings-check"
+wave = 1
+owner = "host"
+probe = "scripts/listings-check.sh"
+expect = "exit0"
+doc = "No directory listing is stale against the current version."
+
+[[item]]
+id = "submission-pack-check"
+wave = 1
+owner = "host"
+probe = "mcphost submission-pack --chatgpt submission/chatgpt --check"
+expect = "exit0"
+doc = "The committed ChatGPT Apps submission pack matches a fresh render."
+
+[[item]]
+id = "registry-publish"
+wave = 1
+owner = "joe"
+doc = "Publish the current server.json to the official MCP Registry by pasting the printed publish command; the registry entry must read the current version."
+url = "https://registry.modelcontextprotocol.io/v0/servers?search=mcphost"
+
+[[item]]
+id = "show-hn-submit"
+wave = 1
+owner = "joe"
+doc = "Submit the Show HN post by hand once the traffic gate reads 3/3."
+url = "https://news.ycombinator.com/submit"
+
+[[item]]
+id = "directory-forms"
+wave = 1
+owner = "joe"
+doc = "Submit the glama, smithery, mcp.so and pulsemcp forms with the payloads in deploy/listings/forms/ (needs Joe's logins); verify each listing resolves afterwards."
+url = "https://glama.ai/mcp/servers"
+
+[[item]]
+id = "chatgpt-apps-review"
+wave = 2
+owner = "joe"
+doc = "Submit the ChatGPT Apps review form with the pack in submission/chatgpt/."
+url = "https://platform.openai.com/apps-manage"
+
+[[item]]
+id = "oauth-login-check"
+wave = 2
+owner = "joe"
+doc = "Sign in through the OAuth flow from a fresh browser profile and confirm the first-entry URL lands on the key page."
+url = "https://mcphost.dev"
