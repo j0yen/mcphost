@@ -1630,6 +1630,9 @@ async fn main() -> anyhow::Result<()> {
             // PRD-mcphost-task-handoff-tool requirement 5: the deadline sweep,
             // at most one cadence late.
             mcphost::tasks::spawn_sweep((*state).clone());
+            // PRD-mcphost-delegation-bound-to-run-or-session requirement 5:
+            // the 60 s idle sweep for session-bound delegated keys.
+            mcphost::subkeys::spawn_bound_session_sweep((*state).clone());
             // PRD-mcphost-docs-semantic-search P0 requirement 2: the 10 s
             // docs index tick, started once here alongside the other
             // background tasks.
