@@ -246,6 +246,14 @@ pub fn python_kind_registry_with_domain(data_dir: &Path, own_domain: &str) -> Ki
     kinds
 }
 
+/// PRD-mcphost-js-kind: `echo` (base) + a `js` kind whose scratch dirs live
+/// under `data_dir` -- the js-kind AC suite's usual entry point.
+pub fn js_kind_registry(data_dir: &Path) -> KindRegistry {
+    let mut kinds = KindRegistry::with_builtin();
+    kinds.register(Arc::new(mcphost::kinds::js::JsKind::new(data_dir)));
+    kinds
+}
+
 /// `echo` (base) + a test-relaxed `http` + a `python` kind rooted at
 /// `data_dir` -- every kind `main.rs` registers in production, for tests
 /// (PRD-mcphost-publish-first-try) that need to see the full

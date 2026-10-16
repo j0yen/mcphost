@@ -8,7 +8,7 @@ use mcphost::plans::PlanCatalog;
 fn kdr_ac01_kind_doc_from_data() {
     let registry = production_registry();
     let plans = PlanCatalog::default_catalog();
-    assert_eq!(registry.names(), ["chain", "echo", "http", "python", "wasm"]);
+    assert_eq!(registry.names(), ["chain", "echo", "http", "js", "python", "wasm"]);
     for name in registry.names() {
         let kind = registry.get(name).expect("registered");
         let doc = kind.doc(&plans);
@@ -33,8 +33,8 @@ fn kdr_ac01_kind_doc_from_data() {
         }
         let has_required = doc.spec_fields.iter().any(|f| f.required);
         assert_eq!(has_required, kind.required_spec_field().is_some(), "kind={name}: required flag");
-        // Only python carries bridge modules.
-        assert_eq!(doc.bridge_modules.is_some(), name == "python", "kind={name}: bridge_modules");
+        // Only the source kinds (python, js) carry bridge modules.
+        assert_eq!(doc.bridge_modules.is_some(), name == "python" || name == "js", "kind={name}: bridge_modules");
         if name != "echo" {
             assert!(!doc.ceilings.is_empty(), "kind={name}: field `ceilings` is empty");
         }

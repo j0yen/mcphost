@@ -70,6 +70,7 @@ const KIND_DOCS: &[(&str, &str)] = &[
     ("echo", include_str!("../../docs/kinds/echo.md")),
     ("http", include_str!("../../docs/kinds/http.md")),
     ("python", include_str!("../../docs/kinds/python.md")),
+    ("js", include_str!("../../docs/kinds/js.md")),
     ("wasm", include_str!("../../docs/kinds/wasm.md")),
 ];
 

@@ -30,7 +30,7 @@ fn sandbox_unavailable() -> bool {
 async fn kcon_ac02_every_registered_kind_passes() {
     let registry = production_registry();
     let names = registry.names();
-    assert_eq!(names, ["chain", "echo", "http", "python", "wasm"]);
+    assert_eq!(names, ["chain", "echo", "http", "js", "python", "wasm"]);
 
     let skip_python = sandbox_unavailable();
     for name in names {

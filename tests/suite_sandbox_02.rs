@@ -210,6 +210,20 @@ mod infer_ac13_deterministic_schema;
 mod infer_ac15_tool_test_uses_inferred_schema;
 #[path = "infer_ac16_syntax_error_precedence.rs"]
 mod infer_ac16_syntax_error_precedence;
+#[path = "jsk_ac01_cold_start_bench.rs"]
+mod jsk_ac01_cold_start_bench;
+#[path = "jsk_ac02_syntax_error_position.rs"]
+mod jsk_ac02_syntax_error_position;
+#[path = "jsk_ac03_bridge_parity.rs"]
+mod jsk_ac03_bridge_parity;
+#[path = "jsk_ac04_exception_position.rs"]
+mod jsk_ac04_exception_position;
+#[path = "jsk_ac05_timeout_and_oom.rs"]
+mod jsk_ac05_timeout_and_oom;
+#[path = "jsk_ac06_network_none_blocks_fetch.rs"]
+mod jsk_ac06_network_none_blocks_fetch;
+#[path = "jsk_ac07_secret_redaction.rs"]
+mod jsk_ac07_secret_redaction;
 #[path = "kcon_ac02_every_registered_kind_passes.rs"]
 mod kcon_ac02_every_registered_kind_passes;
 #[path = "kcon_ac04_error_families_and_source_line.rs"]

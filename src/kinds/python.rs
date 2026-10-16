@@ -105,6 +105,7 @@ use super::contract::{
     BudgetDim, COMPOSE_FAMILY, CONFORMANCE_SECRET_NAME, ConformanceFixtures, ErrorFamily, KindContract, SourcePosition, TOOL_LIMIT_FAMILY, TOOL_STATE_FAMILY, UPSTREAM_FAMILY, codes, key,
 };
 use super::infer;
+use super::secretenv::{environment_report, merge_env, redact_kind_error, redact_value, secret_env};
 use super::{
     CallCtx, DocsBackend, DriftBackend, Kind, KindError, KindExample, LineageBackend, OutputDecl,
     StateBackend, TableBackend, ToolDescriptor,
@@ -585,7 +586,7 @@ fn env_name_reason_if_reserved(name: &str) -> Option<&'static str> {
 /// not checked here: `env`'s values are plain Rust `String`s, decoded from
 /// the wire's JSON by `serde`, which already guarantees valid UTF-8 or the
 /// whole spec fails to parse before this function is ever reached.
-fn validate_env_all(env: &BTreeMap<String, String>) -> Vec<KindError> {
+pub(crate) fn validate_env_all(env: &BTreeMap<String, String>) -> Vec<KindError> {
     let mut errors = Vec::new();
     if env.len() > MAX_ENV_ENTRIES {
         errors.push(KindError::structured_with(
@@ -924,7 +925,7 @@ async fn ast_check(source: &str, isolation: IsolationMechanism) -> Result<(), Ki
     }
 }
 
-fn system_python_dirs() -> Vec<PathBuf> {
+pub(crate) fn system_python_dirs() -> Vec<PathBuf> {
     ["/usr", "/lib", "/lib64", "/bin"]
         .into_iter()
         .map(PathBuf::from)
@@ -1996,26 +1997,6 @@ fn call_fingerprint(
     }
     let digest = hasher.finalize();
     digest.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-/// PRD-mcphost-python-kind-plain-env requirement 1 (AC1/AC6): `secret_env`
-/// (already `SECRET_<NAME>`-prefixed) plus this spec's own plain `env`
-/// entries (verbatim names), the exact set of extra environment variables
-/// every sandbox spawn site (`call`'s cold path, `maybe_promote_to_warm`,
-/// `tool_run`) hands to `sandbox::RunSpec::extra_env`.
-fn merge_env(secret_env: &[(String, String)], env: &[(String, String)]) -> Vec<(String, String)> {
-    let mut combined = secret_env.to_vec();
-    combined.extend(env.iter().cloned());
-    // PRD-mcphost-document-store P1 requirement 6: every sandboxed call
-    // carries this so a tool can `os.environ["MCPHOST_DOCS_ENDPOINT"]` to
-    // detect it's running inside mcphost before calling `mcphost.docs.get`
-    // -- the value itself names no reachable network address (the real
-    // channel is the same in-process stdin/stdout bridge `mcphost.state`
-    // uses, see `DocsSidecarBridge`), same as this crate's other
-    // `MCPHOST_*`-reserved, host-injected (never tool-declared -- see
-    // `env_name_reason_if_reserved`) environment entries.
-    combined.push(("MCPHOST_DOCS_ENDPOINT".to_string(), "stdio://mcphost.docs".to_string()));
-    combined
 }
 
 // ---- sandbox bridge registration (PRD-mcphost-sandbox-bridge-discoverability) --
@@ -3912,7 +3893,7 @@ fn map_envelope_line(line: &[u8], allow_oversized: bool, own_domain: &str) -> Re
 /// means absent variables ... never empty strings", so `run_one` in
 /// [`PY_RUNNER_SCRIPT`] must see a clear "none" rather than empty strings
 /// to distinguish).
-fn payload_end_user(ctx: &CallCtx) -> Value {
+pub(crate) fn payload_end_user(ctx: &CallCtx) -> Value {
     match &ctx.end_user {
         Some(eu) => json!({
             "id": eu.subject,
@@ -4450,8 +4431,8 @@ impl SidecarBridge for ProgressSidecarBridge<'_> {
 /// line isn't its own). `state`'s check runs first, matching the plain
 /// `StateSidecarBridge` callers this replaced; the three markers are
 /// mutually exclusive so the order has no other effect.
-struct HostSidecarBridge<'a> {
-    ctx: &'a CallCtx,
+pub(crate) struct HostSidecarBridge<'a> {
+    pub(crate) ctx: &'a CallCtx,
 }
 
 #[async_trait::async_trait]
@@ -4731,50 +4712,6 @@ fn tool_run_payload(result: Value, declared: &[OutputDecl]) -> Value {
 // result (a tool may legitimately echo a secret it was handed) and an
 // error's message/traceback/output tails.
 
-fn redact_str(input: &str, secrets: &[String]) -> String {
-    let mut ordered: Vec<&String> = secrets.iter().filter(|s| !s.is_empty()).collect();
-    ordered.sort_by_key(|s| std::cmp::Reverse(s.len()));
-    let mut out = input.to_string();
-    for secret in ordered {
-        out = out.replace(secret.as_str(), "***");
-    }
-    out
-}
-
-fn redact_value(value: &Value, secrets: &[String]) -> Value {
-    if secrets.is_empty() {
-        return value.clone();
-    }
-    match value {
-        Value::String(s) => Value::String(redact_str(s, secrets)),
-        Value::Object(map) => Value::Object(
-            map.iter()
-                .map(|(k, v)| (k.clone(), redact_value(v, secrets)))
-                .collect(),
-        ),
-        Value::Array(arr) => Value::Array(arr.iter().map(|v| redact_value(v, secrets)).collect()),
-        other => other.clone(),
-    }
-}
-
-fn redact_kind_error(err: KindError, secrets: &[String]) -> KindError {
-    if secrets.is_empty() {
-        return err;
-    }
-    match err {
-        KindError::Structured {
-            code,
-            message,
-            data,
-        } => KindError::Structured {
-            code,
-            message: redact_str(&message, secrets),
-            data: redact_value(&data, secrets),
-        },
-        other => other,
-    }
-}
-
 /// PRD-mcphost-tool-test-truth P0 requirement 3 (AC4): `err`'s own message,
 /// IF it's this tool's `mcphost.call` raising `McphostCallError` -- matched
 /// by `data.exception_class` (the python exception's own stable class
@@ -4814,30 +4751,7 @@ fn composition_unverifiable_value(detail: String) -> Value {
     })
 }
 
-/// PRD-mcphost-python-kind-plain-env requirement 5 (AC5): `host.tool_test`'s
-/// one rendered-environment listing -- every plain `env` entry shown
-/// verbatim (`kind: "env"`), every declared secret name shown redacted
-/// (`kind: "secret"`, value always `"***"`, regardless of whether this
-/// tenant has actually set it -- a missing secret is still a secret, not
-/// something to reveal the absence of by omission). Sorted by name
-/// (`env` is a `BTreeMap`; `secrets` is sorted here) so the listing's order
-/// is deterministic and independent of publish-time field order.
-fn environment_report(env: &BTreeMap<String, String>, secrets: &[String]) -> Value {
-    let mut entries: Vec<Value> = env
-        .iter()
-        .map(|(name, value)| json!({"name": name, "kind": "env", "value": value}))
-        .collect();
-    let mut sorted_secrets = secrets.to_vec();
-    sorted_secrets.sort();
-    entries.extend(
-        sorted_secrets
-            .iter()
-            .map(|name| json!({"name": name, "kind": "secret", "value": "***"})),
-    );
-    json!(entries)
-}
-
-fn outcome_usage(outcome: &SandboxOutcome) -> (i64, i64) {
+pub(crate) fn outcome_usage(outcome: &SandboxOutcome) -> (i64, i64) {
     match outcome {
         SandboxOutcome::Exited {
             cpu_ms,
@@ -5361,33 +5275,11 @@ impl PythonKind {
         spec: &PythonSpec,
         egress_allowed: bool,
     ) -> Result<NetworkMode, KindError> {
-        if !crate::network_policy::wants_egress(Some(spec.effective_network())) {
-            return Ok(NetworkMode::None);
-        }
-        if !egress_allowed {
-            let (message, data) = crate::network_policy::plan_required_fields("network", crate::network_policy::EGRESS_PLAN);
-            return Err(KindError::structured_with("plan_required", message, data));
-        }
-        match std::env::var("MCPHOST_EGRESS_PROXY").ok() {
-            Some(proxy) => Ok(NetworkMode::Public {
-                http_proxy: Some(proxy),
-            }),
-            None => Err(KindError::structured(
-                "egress_unavailable",
-                "network: \"egress\" requires $MCPHOST_EGRESS_PROXY to be configured",
-            )),
-        }
+        sandbox_network_mode(spec.effective_network(), egress_allowed)
     }
 
     fn secret_env(&self, spec: &PythonSpec, ctx: &CallCtx) -> Vec<(String, String)> {
-        spec.secrets
-            .iter()
-            .filter_map(|name| {
-                ctx.secrets
-                    .resolve(name)
-                    .map(|value| (format!("SECRET_{}", name.to_ascii_uppercase()), value))
-            })
-            .collect()
+        secret_env(&spec.secrets, ctx.secrets.as_ref())
     }
 
     /// Requirement 1 (AC1/AC4): attempts a warm reuse for `key`. `Some(_)`
@@ -5605,7 +5497,7 @@ impl PythonKind {
 /// call never keeps this particular process alive; `maybe_promote_to_warm`
 /// spawns its own fresh one for the pool, exactly as it did before this
 /// function existed.
-async fn run_cold_interactive(
+pub(crate) async fn run_cold_interactive(
     run_spec: &sandbox::RunSpec,
     payload: &[u8],
     bridge: &dyn SidecarBridge,
@@ -6541,7 +6433,28 @@ fn tenant_capacity_error(in_flight: usize, limit: usize, retry_after_ms: u64) ->
 }
 
 /// The `capacity` refusal for the box-wide concurrent-call limit.
-fn host_capacity_error(in_flight: usize, limit: usize, retry_after_ms: u64) -> KindError {
+/// The one place a spec's `network` field becomes a sandbox grant, shared by
+/// `python` and `js` (see [`PythonKind`]'s `network_mode`).
+pub(crate) fn sandbox_network_mode(network: &str, egress_allowed: bool) -> Result<NetworkMode, KindError> {
+    if !crate::network_policy::wants_egress(Some(network)) {
+        return Ok(NetworkMode::None);
+    }
+    if !egress_allowed {
+        let (message, data) = crate::network_policy::plan_required_fields("network", crate::network_policy::EGRESS_PLAN);
+        return Err(KindError::structured_with("plan_required", message, data));
+    }
+    match std::env::var("MCPHOST_EGRESS_PROXY").ok() {
+        Some(proxy) => Ok(NetworkMode::Public {
+            http_proxy: Some(proxy),
+        }),
+        None => Err(KindError::structured(
+            "egress_unavailable",
+            "network: \"egress\" requires $MCPHOST_EGRESS_PROXY to be configured",
+        )),
+    }
+}
+
+pub(crate) fn host_capacity_error(in_flight: usize, limit: usize, retry_after_ms: u64) -> KindError {
     KindError::structured_with(
         "capacity",
         "at the concurrent-call limit; try again shortly",

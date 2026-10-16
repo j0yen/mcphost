@@ -27,8 +27,10 @@ pub mod http;
 pub mod kinddoc;
 pub mod outcomes;
 pub mod infer;
+pub mod js;
 pub mod python;
 pub mod python_lint;
+pub mod secretenv;
 pub mod wasm;
 
 /// Error returned by a [`Kind`]'s methods. Distinct from the JSON-RPC error
@@ -2658,6 +2660,7 @@ pub fn production_registry() -> KindRegistry {
     .expect("the production http kind builds from a fixed public_url");
     registry.register(Arc::new(http_kind));
     registry.register(Arc::new(python_kind));
+    registry.register(Arc::new(js::JsKind::new(&std::env::temp_dir().join("mcphost-production-registry"))));
     register_host_side_kinds(&mut registry);
     registry
 }
