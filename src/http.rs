@@ -17,13 +17,15 @@ use axum::http::{
 };
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::get;
 use axum::{Json, Router};
 use rmcp::model::ProtocolVersion;
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
 use serde_json::{Value, json};
+
+pub mod routes;
 
 use crate::handler::McpHostHandler;
 use crate::state::{AppState, MAX_REQUEST_BODY_BYTES};
@@ -1897,50 +1899,45 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id))
         .route_layer(middleware::from_fn_with_state(state.clone(), enrich_unsupported_errors));
 
-    // PRD-mcphost-public-tool-url requirement 11 (AC10): its own sub-router
-    // so `add_cors_header` (`route_layer`, not `.layer()`, same rationale
-    // as `tenant_mcp_router`/`root_mcp_router` above) applies only to the
-    // `/x/...` family, never the router's own default-NotFound fallback or
-    // any other route.
-    let public_tool_router = Router::new()
-        .route(
-            "/x/{token}/{tool}",
-            get(crate::public_tool::x_get)
-                .post(crate::public_tool::x_post)
-                .options(crate::public_tool::x_options),
-        )
-        .route("/x/{token}/{tool}/runs/{run_id}", get(crate::public_tool::x_poll))
-        .route_layer(middleware::from_fn(crate::public_tool::add_cors_header));
-
-    // PRD-mcphost-form-tool: the argument form for a url-shared tool with
-    // `ui.form`; no CORS header (a form page is for a browser tab, not a
-    // cross-origin `fetch`).
-    let form_router = Router::new().route("/f/{token}/{tool}", get(crate::form_page::form_get).post(crate::form_page::form_post));
+    crate::statusfeed::mark_process_start();
+    // R1: every spec'd route is registered from `routes::ROUTES` (handlers
+    // included), so a route cannot be served without a spec entry. Routes
+    // sharing a path (one entry per method) are merged first. A `cors` path
+    // gets its own sub-router with `route_layer` (not `.layer()`), so
+    // `add_cors_header` (PRD-mcphost-public-tool-url requirement 11, AC10)
+    // never wraps the router's default-NotFound fallback or any other route.
+    type PathEntry = (&'static str, bool, axum::routing::MethodRouter<Arc<AppState>>);
+    let mut by_path: Vec<PathEntry> = Vec::new();
+    for spec in routes::ROUTES {
+        let mounted = (spec.mount)();
+        match by_path.iter_mut().find(|(path, _, _)| *path == spec.path) {
+            Some((_, _, merged)) => *merged = std::mem::take(merged).merge(mounted),
+            None => by_path.push((spec.path, spec.cors, mounted)),
+        }
+    }
+    let mut table_router: Router<Arc<AppState>> = Router::new();
+    for (path, cors, method_router) in by_path {
+        let one = Router::new().route(path, method_router);
+        table_router = table_router.merge(if cors {
+            one.route_layer(middleware::from_fn(crate::public_tool::add_cors_header))
+        } else {
+            one
+        });
+    }
 
     crate::statusfeed::mark_process_start();
     Router::new()
-        .merge(form_router)
-        .route("/d/{namespace}/{tool}", get(crate::demo_page::demo_get))
-        .route("/healthz", get(healthz))
-        // PRD-mcphost-reachability-alt-host requirement 3 / AC3: a human
-        // or an agent (or an ISP's own classifier) can probe any public
-        // hostname for an unauthenticated, content-free ok -- same no-
-        // side-effects contract `/healthz`'s anonymous body already has.
-        .route("/reach", get(crate::reach::reach))
-        .route("/status.json", get(status_json_route))
-        .route("/incidents.json", get(incidents_json_route))
-        .route("/contract.json", get(contract_json_route))
+        .merge(table_router)
         // mcphost-polish-p0-20260930 (audit finding 1), generalized by
         // PRD-mcphost-first-hour-support-surface: see `static_page`'s own
         // doc comment -- same compile-time-embedded `www/*.html` pattern,
         // one shared helper instead of one named `async fn` per page.
+        // These static pages are `routes::UNSPECCED`.
         .route("/status.html", get(|| async { static_page(include_str!("../www/status.html")) }))
         .route("/aup.html", get(|| async { static_page(include_str!("../www/aup.html")) }))
         // requirement 3 (AC4): a static shell that fetches the live
         // `/plans.json` client-side -- see `www/plans.html`'s own comment.
         .route("/plans.html", get(|| async { static_page(include_str!("../www/plans.html")) }))
-        .route("/plans.json", get(plans_json_route))
-        .route("/events.json", get(events_json_route))
         // requirement 5/8 (AC6, AC8): README/llms.txt already link
         // `/llms.txt` (absolute, as `https://mcphost.dev/llms.txt`) and
         // `/llms-full.txt` -- routed here for the same reason status/aup
@@ -1969,130 +1966,12 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
                     .into_response()
             }),
         )
-        // requirement 2/4 (AC1, AC2, AC7): request-time-rendered, not
-        // embedded -- see `help_page`'s doc comment.
-        .route("/help/{code}", get(help_page))
-        .route("/help", get(help_index))
         .route("/support.html", get(support_page))
-        .route(
-            "/.well-known/mcp/{namespace}/server.json",
-            get(well_known_server_json),
-        )
-        .route("/.well-known/mcp/catalog.json", get(well_known_catalog))
-        .route("/capabilities.json", get(capabilities_json))
-        .route("/protocol/frames.json", get(protocol_frames_json))
-        .route(
-            "/.well-known/oauth-protected-resource",
-            get(well_known_oauth_protected_resource),
-        )
-        .route(&crate::oauth::entry_metadata_path(), get(well_known_oauth_protected_resource_entry))
-        .route(
-            "/.well-known/oauth-authorization-server",
-            get(well_known_authorization_server),
-        )
-        .route(
-            "/.well-known/openid-configuration",
-            get(well_known_authorization_server),
-        )
-        .route("/.well-known/jwks.json", get(well_known_authz_jwks))
-        // PRD-mcphost-enterprise-managed-auth requirement 2 (AC5): per-tenant
-        // twin of the root metadata document above, registered at both
-        // well-known paths for the same reason the root pair is.
-        .route(
-            "/.well-known/oauth-authorization-server/t/{namespace}/mcp",
-            get(well_known_authorization_server_tenant),
-        )
-        .route(
-            "/.well-known/openid-configuration/t/{namespace}/mcp",
-            get(well_known_authorization_server_tenant),
-        )
-        .route(
-            "/oauth/authorize",
-            get(crate::authz::get_authorize).post(crate::authz::post_authorize),
-        )
-        // PRD-mcphost-oauth-unverified-client-consent-warning AC7: the
-        // unverified-caution's own explainer link -- static, no tenant/
-        // client context, so registered alongside every other `/oauth/*`
-        // route rather than needing `AppState` at all.
-        .route(
-            "/oauth/unverified-app",
-            get(crate::authz::get_unverified_app_explainer),
-        )
-        .route("/oauth/register", post(crate::authz::post_register))
-        .route("/oauth/token", post(crate::authz::post_token))
-        .route("/oauth/revoke", post(crate::authz::post_revoke))
-        .route(
-            "/.well-known/oauth-protected-resource/t/{namespace}/mcp",
-            get(well_known_oauth_protected_resource_tenant),
-        )
-        // PRD-mcphost-federated-end-user-login requirement 2: the
-        // identity provider redirects here with the upstream code (`GET`);
-        // the browser's own consent approval posts back to the same path
-        // (`POST`).
-        .route(
-            "/oauth/federation/callback",
-            get(crate::federation::get_callback).post(crate::federation::post_callback),
-        )
-        .route("/billing/webhook", post(billing_webhook))
-        .route("/billing/done", get(billing_done))
-        .route("/billing/cancel", get(billing_cancel))
-        // PRD-mcphost-inbound-events P0 requirement 1: the Caddy catch-all
-        // in mcphost-deploy already proxies any unmatched path to this
-        // backend, so `/hooks/...` needs no deploy-side change -- only this
-        // route.
-        .route("/hooks/{namespace}/{tool}", post(crate::hooks::hook_receive))
-        // PRD-mcphost-webhook-inbox P0 requirement 2: the opaque-id
-        // webhook-trigger route, alongside `/hooks/...` above -- distinct
-        // path (`/hook/`, singular, no namespace/tool segments) since a
-        // webhook trigger is addressed by its own `hook_id`, not
-        // `(namespace, tool)`.
-        .route("/hook/{id}", post(crate::webhooks::hook_receive))
-        // PRD-mcphost-email-inbound-route: where a provider (or
-        // `scripts/email-probe.sh`) delivers a received mail.
-        .route("/email/inbound/{namespace}", post(crate::email_inbound::http_inbound))
-        // PRD-mcphost-tenant-data-export P0 requirement 2: the signed
-        // download URL a completed `host.export` run's result carries --
-        // see `export::download`.
-        .route("/exports/{run_id}", get(crate::export::download))
-        // PRD-mcphost-chart-in-a-minute P1 requirement 6: the signed share
-        // link a `host.table.chart {share: true}` call's result carries --
-        // see `chart::download`.
-        .route("/charts/{id}", get(crate::chart::download))
-        // PRD-mcphost-ask-user-decision: the signed, keyless answer page a
-        // `host.ask.create` call's `url` points at -- see `asks::get_page`.
-        .route("/a/{id}", get(crate::asks::get_page).post(crate::asks::post_answer))
-        // PRD-mcphost-blob-put-get-signed-url R1: the signed link a
-        // `host.blob.put` result carries -- see `blobs::download`.
-        .route("/blobs/{id}", get(crate::blobs::download))
-        // PRD-mcphost-human-claim-magic-link requirements 2-3: the claim
-        // flow's own three plain-HTML routes -- `/claim/verify/{code}` is
-        // registered alongside `/claim/{token}` without ambiguity since
-        // matchit resolves by segment count/literal-first, same as
-        // `/exports/{run_id}` alongside every other top-level route here.
-        .route("/claim/{token}", get(crate::claim::get_claim).post(crate::claim::post_claim))
-        .route("/claim/verify/{code}", get(crate::claim::get_verify))
-        // PRD-mcphost-upstream-token-vault requirement 3: the handoff
-        // route family's own two plain routes -- `/vault/connect/{token}`
-        // redeems the one-time link and redirects to the provider,
-        // `/vault/callback` completes the code exchange server-side.
-        .route("/vault/connect/{token}", get(crate::vault::get_connect))
-        .route("/vault/callback", get(crate::vault::get_callback))
-        // PRD-mcphost-url-bound-tenants requirement 4: the one-button
-        // signup page -- `GET` renders it, `POST` mints the tenant and its
-        // first URL.
-        .route("/u/new", get(get_new_url).post(post_new_url))
-        // PRD-mcphost-client-install-links P0 requirement 2 (AC2): the
-        // one-click-install landing page -- see `connect_page`'s own doc
-        // comment.
-        .route("/connect", get(connect_page))
-        // P1 requirement 5 (AC5): see `connect_go`'s own doc comment.
-        .route("/connect/go/{client}", get(connect_go))
         .merge(root_mcp_router)
         .merge(tenant_mcp_router)
         .merge(url_mcp_router)
         .merge(invite_mcp_router)
         .merge(entry_mcp_router)
-        .merge(public_tool_router)
         // PRD-mcphost-session-bound-tenant-after-signup requirement 7
         // (AC10): `oauth_401_upgrade` must run INSIDE (closer to the
         // router than) `protocol_version_and_log` -- axum's `.layer(L)`

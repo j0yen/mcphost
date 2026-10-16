@@ -496,6 +496,14 @@ mod nudge_ac05_provider_failure_retries_then_abandons;
 mod nudge_ac06_welcome_back_since_you_left;
 #[path = "nudge_ac07_funnel_reports_nudged_and_return_rate.rs"]
 mod nudge_ac07_funnel_reports_nudged_and_return_rate;
+#[path = "oapi_ac01_pinned_response_schemas.rs"]
+mod oapi_ac01_pinned_response_schemas;
+#[path = "oapi_ac02_route_table_drift.rs"]
+mod oapi_ac02_route_table_drift;
+#[path = "oapi_ac03_openapi_json_validates.rs"]
+mod oapi_ac03_openapi_json_validates;
+#[path = "oapi_ac04_x_responses_match_documented_schemas.rs"]
+mod oapi_ac04_x_responses_match_documented_schemas;
 #[path = "oauthconf_ac01_gate_verdict_table_matches_gold.rs"]
 mod oauthconf_ac01_gate_verdict_table_matches_gold;
 #[path = "oauthconf_ac02_cimd_preferred_over_dcr_and_unsupported_without_either.rs"]

@@ -94,6 +94,7 @@ pub mod metering;
 pub mod network_policy;
 pub mod notes;
 pub mod oauth;
+pub mod openapi;
 pub mod oauth_policy;
 pub mod oauth_stats;
 pub mod oauthclient;
