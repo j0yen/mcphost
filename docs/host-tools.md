@@ -11,6 +11,7 @@ Regenerate with `scripts/sandbox-api-doc-check.sh --write`.
 |---|---|---|---|
 | `host.table.create` | write | supported | |
 | `host.table.append` | write | supported | |
+| `host.table.from_blob` | write | supported | |
 | `host.table.drop` | drop | supported | |
 | `host.table.handle_drop` | drop | supported | |
 | `host.table.model_set` | write | supported | |

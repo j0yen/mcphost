@@ -433,6 +433,22 @@ pub async fn doc_get(state: &AppState, tenant: &Tenant, args: &Value) -> Result<
     Ok(out)
 }
 
+/// The current bytes of one of THIS tenant's documents, by id or name
+/// (`host.table.from_blob`'s `doc` argument).
+pub async fn doc_bytes(state: &AppState, tenant: &Tenant, reference: &str) -> Result<Vec<u8>, AppError> {
+    let by_id = json!({"id": reference});
+    let doc = match lookup(state, tenant, &by_id).await {
+        Ok(d) => d,
+        Err(_) => lookup(state, tenant, &json!({"name": reference})).await?,
+    };
+    let (content, _) = state
+        .db
+        .document_blob_get(tenant.id, doc.id.clone(), doc.version)
+        .await?
+        .ok_or_else(|| doc_not_found(&format!("id '{}' version {}", doc.id, doc.version)))?;
+    Ok(content)
+}
+
 // ---- host.docs.list -------------------------------------------------------
 
 /// requirement 4/AC5: without `since`, the current live snapshot (no

@@ -627,6 +627,12 @@ mod creg_ac05_capabilities_docs_in_sync;
 mod creg_ac06_quickstart_names_capabilities;
 #[path = "creg_ac07_probe_names_unique.rs"]
 mod creg_ac07_probe_names_unique;
+#[path = "csvtab_ac02_fixture_corpus_types_and_skips.rs"]
+mod csvtab_ac02_fixture_corpus_types_and_skips;
+#[path = "csvtab_ac03_bad_cell_skipped_or_abort_leaves_no_table.rs"]
+mod csvtab_ac03_bad_cell_skipped_or_abort_leaves_no_table;
+#[path = "csvtab_ac04_types_override_keeps_leading_zeros.rs"]
+mod csvtab_ac04_types_override_keeps_leading_zeros;
 #[path = "ctrace_ac05_trace_access_is_tenant_scoped.rs"]
 mod ctrace_ac05_trace_access_is_tenant_scoped;
 #[path = "ctrace_ac06_sweep_keeps_newest_200_within_24h.rs"]

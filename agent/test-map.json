@@ -1776,6 +1776,12 @@
       "_prd": "PRD-mcphost-host-doctor-next-names-envelope-key.md (test_prefix: hdnext)",
       "AC1": "tests/hdnext_ac01_next_names_envelope_keys.rs",
       "AC5": "deferred -- operator-provisioned: Live AC against prod after deploy."
+    },
+    "csvtab": {
+      "_prd": "PRD-mcphost-csv-to-table-one-call.md (test_prefix: csvtab)",
+      "AC2": "tests/csvtab_ac02_fixture_corpus_types_and_skips.rs",
+      "AC3": "tests/csvtab_ac03_bad_cell_skipped_or_abort_leaves_no_table.rs",
+      "AC4": "tests/csvtab_ac04_types_override_keeps_leading_zeros.rs"
     }
   }
 }

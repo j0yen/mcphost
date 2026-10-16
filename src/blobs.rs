@@ -1155,6 +1155,15 @@ async fn read_bytes(state: &AppState, row: &BlobRow) -> Result<Vec<u8>, AppError
         .map_err(|e| AppError::Storage(format!("read blob: {e}")))
 }
 
+/// The current bytes of one of THIS tenant's live blobs, by id or name
+/// (`host.table.from_blob`'s `blob` argument).
+pub async fn blob_bytes(state: &AppState, tenant: &Tenant, reference: &str) -> Result<Vec<u8>, AppError> {
+    let by_id = state.db.blob_find_by_id(tenant.id, reference.to_string()).await?;
+    let (id, name) = if by_id.is_some() { (Some(reference.to_string()), None) } else { (None, Some(reference.to_string())) };
+    let row = lookup_live(state, tenant, id, name).await?;
+    read_bytes(state, &row).await
+}
+
 /// `mcphost.blob.get/put` (R6): `blob_get {ref}` returns the exact bytes
 /// base64-framed; `blob_put {name, data_base64, mime?}` is `host.blob.put`.
 pub async fn bridge(state: &AppState, tenant: &Tenant, op: &str, args: &Value) -> Result<Value, AppError> {
