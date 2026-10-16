@@ -318,6 +318,10 @@ enum Command {
         /// Print `{items, green, total, wave, checked_at}` instead of lines.
         #[arg(long)]
         json: bool,
+        /// Also write the `--json` body to `<dir>/launch-check-<UTC date>.json`
+        /// (an earlier run that day is kept as `…-<date>.1.json`).
+        #[arg(long)]
+        out: Option<PathBuf>,
         /// README whose external links become `readme-link-<host>` rows.
         /// Defaults to `README.md`; a missing file adds no rows.
         #[arg(long)]
@@ -982,7 +986,7 @@ async fn main() -> anyhow::Result<()> {
                 Ok(())
             }
         }
-        Command::LaunchCheck { items, wave, only, json, readme, render, check, checklist } => {
+        Command::LaunchCheck { items, wave, only, json, out, readme, render, check, checklist } => {
             // Plain stdout + exit code, no tracing line (same contract as
             // `RegistryManifest`).
             let path = items.unwrap_or_else(|| PathBuf::from(mcphost::launch_check::ITEMS_PATH));
@@ -1026,7 +1030,15 @@ async fn main() -> anyhow::Result<()> {
                 return Ok(());
             }
             let results = mcphost::launch_check::run_items(&items, wave, only.as_deref());
-            if json {
+            if let Some(dir) = out {
+                let body = mcphost::launch_check::render_json(&results, wave);
+                mcphost::launch_check::write_run_json(&dir, &body)?;
+                if json {
+                    print!("{body}");
+                } else {
+                    print!("{}", mcphost::launch_check::render_text(&results));
+                }
+            } else if json {
                 print!("{}", mcphost::launch_check::render_json(&results, wave));
             } else {
                 print!("{}", mcphost::launch_check::render_text(&results));

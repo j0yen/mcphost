@@ -1255,6 +1255,12 @@
       "AC3": "tests/lchk_ac03_json_shape.rs",
       "AC4": "tests/lchk_ac04_render_check_drift.rs"
     },
+    "lchkb": {
+      "_prd": "PRD-mcphost-launch-check-generated-b.md (test_prefix: lchkb)",
+      "AC1": "tests/lchkb_ac01_readme_link_rows.rs",
+      "AC2": "tests/lchkb_ac02_malformed_toml_exits_two.rs",
+      "AC3": "tests/lchkb_ac03_out_dir_rotation.rs"
+    },
     "upfam": {
       "AC1": "tests/upfam_ac01_auth_family_401_403.rs",
       "AC2": "tests/upfam_ac02_rate_limited_retry_after.rs",
