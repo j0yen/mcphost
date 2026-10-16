@@ -72,6 +72,87 @@
         "source_position": "none"
       }
     },
+    "js": {
+      "contract": {
+        "bridges": [
+          "state",
+          "table",
+          "docs",
+          "lineage",
+          "channel",
+          "msg"
+        ],
+        "budgets": [
+          {
+            "default": 10,
+            "field": "timeout_s",
+            "max": 60,
+            "min": 1
+          },
+          {
+            "default": 256,
+            "field": "memory_mb",
+            "max": 1024,
+            "min": 1
+          }
+        ],
+        "error_families": [
+          {
+            "codes": [
+              "tool_exception",
+              "tool_output_invalid"
+            ],
+            "name": "tool_code"
+          },
+          {
+            "codes": [
+              "tool_timeout",
+              "tool_oom",
+              "tool_process_limit",
+              "tool_output_too_large"
+            ],
+            "name": "tool_limit"
+          },
+          {
+            "codes": [
+              "upstream_auth",
+              "upstream_rate_limited",
+              "upstream_client_error",
+              "upstream_error",
+              "upstream_timeout",
+              "upstream_unreachable",
+              "upstream_not_connected",
+              "host_not_allowed"
+            ],
+            "name": "upstream"
+          },
+          {
+            "codes": [
+              "compose_self_call",
+              "compose_depth_exceeded",
+              "compose_children_exceeded",
+              "compose_item_outside_for_each",
+              "compose_mapping_type",
+              "compose_mapping_missing",
+              "compose_fanout_exceeded",
+              "compose_fanout_item_failed",
+              "compose_input_missing"
+            ],
+            "name": "compose"
+          },
+          {
+            "codes": [
+              "tool_building",
+              "tool_not_found",
+              "tool_run_unsupported"
+            ],
+            "name": "tool_state"
+          }
+        ],
+        "secret_redaction": true,
+        "source_position": "line"
+      }
+    },
     "python": {
       "contract": {
         "bridges": [
