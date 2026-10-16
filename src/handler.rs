@@ -3736,6 +3736,30 @@ fn host_tools_part_09() -> Vec<Tool> {
                 &["tool", "proof_call", "title", "use_case"],
             ),
         ),
+        // PRD-mcphost-example-proof-nightly-and-hide R3: the examples a
+        // nightly proof has not hidden, and the fork call that refuses one.
+        Tool::new(
+            "host.example.list",
+            "List the worked examples whose proof last passed. Each row names the example, its \
+             tools and secrets, and the host.example.fork call that uses it.",
+            host_schema(
+                json!({
+                    "use_case": {"type": "string", "enum": crate::examples::EXAMPLE_USE_CASES, "description": "Only examples with this use-case tag."},
+                    "client": {"type": "string", "enum": crate::examples::CLIENT_TAGS, "description": "Only examples that suit this client."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.example.fork",
+            "Take one worked example by name: its tools and the first call to try. An example whose \
+             nightly proof failed is refused with example_hidden and the reason; pick another \
+             from host.example.list.",
+            host_schema(
+                json!({"name": {"type": "string", "description": "An example name from host.example.list."}}),
+                &["name"],
+            ),
+        ),
         Tool::new(
             "host.example.proposal_status",
             "Read the status of one of your own example proposals: pending, approved, rejected \
@@ -5640,6 +5664,23 @@ fn admin_tools() -> Vec<Tool> {
                 &["action"],
             ),
         ),
+        // PRD-mcphost-example-proof-nightly-and-hide R2/R9.
+        Tool::new(
+            "admin.example_proof_report",
+            "Record one example's nightly proof verdict (posted by `mcphost examples prove --report`). \
+             ok false hides the example from host.example.list and host.example.fork; ok true clears it.",
+            schema(
+                json!({
+                    "name": {"type": "string", "description": "An embedded example name."},
+                    "ok": {"type": "boolean"},
+                    "duration_s": {"type": "number"},
+                    "log_excerpt": {"type": "string", "description": "Last lines of the proof's output."},
+                    "runner": {"type": "string"},
+                    "at": {"type": "integer", "description": "Unix seconds the proof ran; default now."},
+                }),
+                &["name", "ok"],
+            ),
+        ),
         Tool::new(
             "admin.alerts.ack",
             "Acknowledge one alert by id -- appears in admin_audit under the operator identity.",
@@ -7140,6 +7181,8 @@ impl McpHostHandler {
             // PRD-mcphost-agent-inbox requirements 2-5, 9.
             "host.example.propose" => self.example_propose(tenant, args).await,
             "host.example.proposal_status" => crate::example_propose::proposal_status(&self.state, tenant, &args).await,
+            "host.example.list" => crate::example_proofs::list(&self.state, &args).await,
+            "host.example.fork" => crate::example_proofs::fork(&self.state, &args).await,
             "host.msg.send" => messaging::send(&self.state, tenant, &args).await,
             "host.msg.reply" => messaging::reply(&self.state, tenant, &args).await,
             "host.msg.inbox" => messaging::inbox(&self.state, tenant, &args).await,
@@ -7477,6 +7520,7 @@ impl McpHostHandler {
             "admin.alerts.list" => admin::alerts_list(&self.state, &args).await,
             "admin.alerts.ack" => admin::alerts_ack(&self.state, &args).await,
             "admin.example_proposals" => admin::example_proposals(&self.state, &args).await,
+            "admin.example_proof_report" => crate::example_proofs::report(&self.state, &args).await,
             "admin.alerts.raise" => admin::alerts_raise(&self.state, &args).await,
             // PRD-mcphost-status-feed requirement 4/8.
             "admin.incident.open" => admin::incident_open(&self.state, &args).await,

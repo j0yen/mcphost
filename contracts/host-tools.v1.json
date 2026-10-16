@@ -6445,6 +6445,131 @@
       "since": "0.107.33"
     },
     {
+      "description": "Take one worked example by name: its tools and the first call to try. An example whose nightly proof failed is refused with example_hidden and the reason; pick another from host.example.list.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "An example name from host.example.list.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host.example.fork",
+      "output_schema": {
+        "properties": {
+          "first_call": {
+            "type": "object"
+          },
+          "forked": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "next": {
+            "type": "string"
+          },
+          "secrets_needed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tools": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "forked",
+          "tools",
+          "secrets_needed",
+          "first_call",
+          "next"
+        ],
+        "type": "object"
+      },
+      "since": "0.108.42"
+    },
+    {
+      "description": "List the worked examples whose proof last passed. Each row names the example, its tools and secrets, and the host.example.fork call that uses it.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "client": {
+            "description": "Only examples that suit this client.",
+            "enum": [
+              "claude_code",
+              "claude_ai",
+              "chatgpt",
+              "cursor",
+              "copilot_vscode",
+              "codex",
+              "gemini_cli",
+              "any"
+            ],
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "use_case": {
+            "description": "Only examples with this use-case tag.",
+            "enum": [
+              "uptime",
+              "database",
+              "docs-qa",
+              "webhook",
+              "chart",
+              "memory",
+              "share",
+              "first-run"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.example.list",
+      "output_schema": {
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "examples": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "examples"
+        ],
+        "type": "object"
+      },
+      "since": "0.108.42",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
+    },
+    {
       "description": "Read the status of one of your own example proposals: pending, approved, rejected or merged, with decided_by, reason and the PR URL once known.",
       "input_schema": {
         "additionalProperties": false,
@@ -29553,6 +29678,74 @@
       },
       "name": "host_estimate",
       "since": "0.107.33"
+    },
+    {
+      "alias_of": "host.example.fork",
+      "description": "Take one worked example by name: its tools and the first call to try. An example whose nightly proof failed is refused with example_hidden and the reason; pick another from host.example.list.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "An example name from host.example.list.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host_example_fork",
+      "since": "0.108.42"
+    },
+    {
+      "alias_of": "host.example.list",
+      "description": "List the worked examples whose proof last passed. Each row names the example, its tools and secrets, and the host.example.fork call that uses it.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "client": {
+            "description": "Only examples that suit this client.",
+            "enum": [
+              "claude_code",
+              "claude_ai",
+              "chatgpt",
+              "cursor",
+              "copilot_vscode",
+              "codex",
+              "gemini_cli",
+              "any"
+            ],
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "use_case": {
+            "description": "Only examples with this use-case tag.",
+            "enum": [
+              "uptime",
+              "database",
+              "docs-qa",
+              "webhook",
+              "chart",
+              "memory",
+              "share",
+              "first-run"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host_example_list",
+      "since": "0.108.42"
     },
     {
       "alias_of": "host.example.proposal_status",

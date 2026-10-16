@@ -383,6 +383,9 @@ pub struct Example {
     pub proof: &'static str,
     pub secrets_needed: &'static [&'static str],
     pub tools: &'static [ExampleTool],
+    /// Every file in the example's directory, `(relative path, bytes)`,
+    /// so `mcphost examples prove` can run the proof from the binary alone.
+    pub files: &'static [(&'static str, &'static [u8])],
     pub first_call: ExampleFirstCall,
 }
 

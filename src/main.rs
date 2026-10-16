@@ -467,6 +467,24 @@ enum ExamplesCommand {
     /// Print the JSON schema of `example.toml`, with the use-case and
     /// client vocabularies inlined, to stdout.
     Schema,
+    /// PRD-mcphost-example-proof-nightly-and-hide R1: run every embedded
+    /// example's proof against a live host. With `--report`, post each
+    /// verdict through `admin.example_proof_report` (needs
+    /// `$MCPHOST_ADMIN_KEY`). Exit 0 iff every proof passed.
+    Prove {
+        /// The MCP endpoint the proofs run against, e.g. https://mcphost.dev/mcp.
+        #[arg(long)]
+        live: String,
+        /// Run one example only.
+        #[arg(long)]
+        only: Option<String>,
+        /// Post each verdict to the host.
+        #[arg(long)]
+        report: bool,
+        /// Print the names that would run and execute nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// PRD-mcphost-example-from-published-tool R5: work with tenant example
     /// proposals. Needs `$MCPHOST_ADMIN_KEY` and `gh` on PATH.
     Proposals {
@@ -956,6 +974,22 @@ async fn main() -> anyhow::Result<()> {
                     }
                 },
                 ExamplesCommand::Schema => print!("{}", mcphost::examples::render_schema()),
+                ExamplesCommand::Prove { live, only, report, dry_run } => {
+                    let admin_key = std::env::var("MCPHOST_ADMIN_KEY").ok().filter(|k| !k.is_empty());
+                    if report && admin_key.is_none() {
+                        eprintln!("examples prove: --report needs MCPHOST_ADMIN_KEY");
+                        std::process::exit(2);
+                    }
+                    let opts = mcphost::example_proofs::RunOpts { url: live, only, report, dry_run, admin_key, files_dir: None };
+                    match mcphost::example_proofs::run(&opts, &mut std::io::stdout()).await {
+                        Ok((_, true)) => {}
+                        Ok((_, false)) => std::process::exit(1),
+                        Err(e) => {
+                            eprintln!("examples prove: {e}");
+                            std::process::exit(2);
+                        }
+                    }
+                }
                 ExamplesCommand::Proposals { action: ProposalsCommand::Pull { repo, url, approve_branch: _ } } => {
                     let Some(admin_key) = std::env::var("MCPHOST_ADMIN_KEY").ok().filter(|k| !k.is_empty()) else {
                         eprintln!("examples proposals pull: MCPHOST_ADMIN_KEY is unset");
