@@ -48,10 +48,13 @@ async fn real_previous_binary_answers_healthz_with_matching_token() {
 
     let listener = mcphost::compat_check::test_support::bind_loopback_listener()
         .expect("bind loopback listener");
-    let port = listener.local_addr().expect("listener local_addr").port();
+    // The ACTUAL bound address of the listener the child inherits: the
+    // ephemeral port is read off the live socket, never chosen up front.
+    let addr = listener.local_addr().expect("listener local_addr");
+    let port = addr.port();
     let token = mcphost::compat_check::test_support::generate_compat_token();
 
-    let mut child = mcphost::compat_check::test_support::spawn_previous_inherited(
+    let (mut child, tail) = mcphost::compat_check::test_support::spawn_previous_inherited_with_tail(
         &mcphost_bin(),
         &data_dir,
         listener,
@@ -59,14 +62,20 @@ async fn real_previous_binary_answers_healthz_with_matching_token() {
     )
     .expect("spawn the previous release with the inherited listener");
 
-    let base_url = format!("http://127.0.0.1:{port}");
+    let base_url = format!("http://{addr}");
 
-    // "check_compat reports ready".
-    mcphost::compat_check::test_support::wait_ready(&base_url, port, &token, &mut child)
-        .await
-        .expect(
-            "wait_ready should report ready against a real previous release carrying the matching token",
+    // "check_compat reports ready". Bounded (60s, 50ms backoff) rather than
+    // a fixed sleep, and handed the child's stderr tail so a failure names
+    // what the previous release said instead of just "did not answer".
+    if let Err(e) = mcphost::compat_check::test_support::wait_ready_with_tail(
+        &base_url, port, &token, &mut child, &tail,
+    )
+    .await
+    {
+        panic!(
+            "wait_ready should report ready against a real previous release carrying the matching token: {e}"
         );
+    }
 
     // "/healthz carries X-Mcphost-Compat-Token matching".
     let resp = reqwest::Client::new()
