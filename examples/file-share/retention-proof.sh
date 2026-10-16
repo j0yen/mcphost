@@ -19,6 +19,8 @@ if [[ $# -ge 1 && -n "${1:-}" ]]; then
   esac
 fi
 MCPHOST_URL="${MCPHOST_URL:-https://mcphost.dev/mcp}"
+# MCPHOST_PROVE_DRY=1: print the plan and exit 0 before any network call (the runner-contract test sets it).
+[[ -n "${MCPHOST_PROVE_DRY:-}" ]] && { echo "plan: file-share proof against $MCPHOST_URL"; exit 0; }
 SYNTHETIC_HEADER="${SYNTHETIC_HEADER:-retention-proof}"
 FAILURES=0
 

@@ -529,8 +529,11 @@ enum ExamplesCommand {
     /// `$MCPHOST_ADMIN_KEY`). Exit 0 iff every proof passed.
     Prove {
         /// The MCP endpoint the proofs run against, e.g. https://mcphost.dev/mcp.
+        #[arg(long, required_unless_present = "list_contract")]
+        live: Option<String>,
+        /// Print the spawn contract every proof must accept and exit.
         #[arg(long)]
-        live: String,
+        list_contract: bool,
         /// Run one example only.
         #[arg(long)]
         only: Option<String>,
@@ -1129,7 +1132,12 @@ async fn main() -> anyhow::Result<()> {
                     }
                 },
                 ExamplesCommand::Schema => print!("{}", mcphost::examples::render_schema()),
-                ExamplesCommand::Prove { live, only, report, dry_run } => {
+                ExamplesCommand::Prove { live, list_contract, only, report, dry_run } => {
+                    if list_contract {
+                        print!("{}", mcphost::example_proofs::contract_text());
+                        return Ok(());
+                    }
+                    let live = live.unwrap_or_default();
                     let admin_key = std::env::var("MCPHOST_ADMIN_KEY").ok().filter(|k| !k.is_empty());
                     if report && admin_key.is_none() {
                         eprintln!("examples prove: --report needs MCPHOST_ADMIN_KEY");

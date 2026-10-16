@@ -43,7 +43,7 @@ async fn exprf_ac06() {
     let after = status_examples(&f.server.base_url).await;
     assert_eq!(after["total"], total);
     assert_eq!(after["visible"], total - 1, "{after}");
-    assert_eq!(after["hidden"], serde_json::json!([{"name": names[0], "red_since": red_since}]));
+    assert_eq!(after["hidden"], serde_json::json!([{"name": names[0], "red_since": red_since, "runner": "orch"}]));
     assert!(after["last_run"].as_i64().is_some_and(|t| t > 0), "{after}");
     let obj = after.as_object().expect("object");
     assert_eq!(obj.len(), 4, "exactly total, visible, hidden, last_run: {after}");

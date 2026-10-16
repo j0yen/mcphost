@@ -22,6 +22,25 @@ pub const PROOF_TIMEOUT: Duration = Duration::from_secs(300);
 /// Trailing log lines kept as the excerpt (R1).
 pub const EXCERPT_LINES: usize = 20;
 
+/// The spawn contract (R1, R5): every proof is run as `bash <proof> <url>`
+/// with these env vars. `run_proof` and `contract_text` both read them.
+pub const URL_ENV: &str = "MCPHOST_URL";
+/// Set to `1` by the contract test: the proof prints `plan: ...` and exits 0
+/// before any network call.
+pub const DRY_ENV: &str = "MCPHOST_PROVE_DRY";
+/// argv shape of the spawn, `$0` being the proof script and `$1` the endpoint.
+pub const ARGV_SHAPE: &str = "bash <proof> <url>";
+
+/// What `mcphost examples prove --list-contract` prints.
+pub fn contract_text() -> String {
+    format!(
+        "argv: {ARGV_SHAPE}\n\
+         env {URL_ENV}: the endpoint, same value as $1\n\
+         env {DRY_ENV}: when set, print a line starting `plan:` and exit 0 without network\n\
+         env {RUNNER_ENV}: host name recorded on the result row (default: hostname)\n"
+    )
+}
+
 fn find_example(name: &str) -> Option<&'static Example> {
     EXAMPLES.iter().find(|e| e.name == name)
 }
@@ -153,7 +172,7 @@ pub async fn status_block(state: &AppState) -> Result<Value, AppError> {
     let hidden: Vec<Value> = rows
         .iter()
         .filter(|r| r.hidden_reason.is_some() && find_example(&r.name).is_some())
-        .map(|r| json!({"name": r.name, "red_since": r.red_since}))
+        .map(|r| json!({"name": r.name, "red_since": r.red_since, "runner": r.runner}))
         .collect();
     let total = EXAMPLES.len();
     Ok(json!({
@@ -295,8 +314,9 @@ async fn run_proof(example: &Example, opts: &RunOpts) -> ProofRun {
     }
     let child = tokio::process::Command::new("bash")
         .arg(example.proof)
+        .arg(&opts.url)
         .current_dir(&dir)
-        .env("MCPHOST_URL", &opts.url)
+        .env(URL_ENV, &opts.url)
         .stdin(std::process::Stdio::null())
         .kill_on_drop(true)
         .output();
@@ -318,11 +338,26 @@ async fn run_proof(example: &Example, opts: &RunOpts) -> ProofRun {
     }
 }
 
+/// Env var that overrides the host name recorded on a result row.
+pub const RUNNER_ENV: &str = "MCPHOST_PROVE_RUNNER";
+
+/// The host this run executes on: `$MCPHOST_PROVE_RUNNER`, else the machine's
+/// hostname, else `unknown`.
+pub fn runner_name() -> String {
+    let from_env = std::env::var(RUNNER_ENV).ok().map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+    let from_file = || std::fs::read_to_string("/etc/hostname").ok().map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+    let from_cmd = || {
+        let out = std::process::Command::new("hostname").output().ok()?;
+        Some(String::from_utf8_lossy(&out.stdout).trim().to_string()).filter(|v| !v.is_empty())
+    };
+    from_env.or_else(from_file).or_else(from_cmd).unwrap_or_else(|| "unknown".to_string())
+}
+
 async fn post_report(client: &reqwest::Client, opts: &RunOpts, run: &ProofRun) -> Result<(), String> {
     let key = opts.admin_key.as_deref().ok_or("MCPHOST_ADMIN_KEY is unset")?;
     let params = json!({"name": "admin.example_proof_report", "arguments": {
         "name": run.name, "ok": run.ok, "duration_s": run.duration_s,
-        "log_excerpt": run.log_excerpt, "runner": "orch", "at": now_unix(),
+        "log_excerpt": run.log_excerpt, "runner": runner_name(), "at": now_unix(),
     }});
     let req = RpcRequest { method: "tools/call", params, id: 1, bearer: Some(key) };
     let result = rpc_call(client, opts.url.trim_end_matches('/'), req).await.map_err(|e| e.to_string())?;
@@ -352,6 +387,11 @@ pub async fn run(opts: &RunOpts, out: &mut dyn Write) -> Result<(Vec<ProofRun>, 
     for example in selected {
         let proof = run_proof(example, opts).await;
         let _ = writeln!(out, "{} {} {:.1}s", proof.name, if proof.ok { "PASS" } else { "FAIL" }, proof.duration_s);
+        if !proof.ok {
+            for line in proof.log_excerpt.lines() {
+                let _ = writeln!(out, "  {line}");
+            }
+        }
         all_ok &= proof.ok;
         if opts.report
             && let Err(e) = post_report(&client, opts, &proof).await

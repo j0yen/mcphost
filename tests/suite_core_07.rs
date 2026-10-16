@@ -943,6 +943,14 @@ mod enduserctl_ac10_list_100k_pages_under_50ms_stable_cursor;
 mod envelope_ac1_http_declared_output_promoted;
 #[path = "envelope_ac4_tool_test_reports_missing_declared_output.rs"]
 mod envelope_ac4_tool_test_reports_missing_declared_output;
+#[path = "eprc_ac01_runner_passes_url_as_argv.rs"]
+mod eprc_ac01_runner_passes_url_as_argv;
+#[path = "eprc_ac02_every_embedded_proof_accepts_the_runner_spawn.rs"]
+mod eprc_ac02_every_embedded_proof_accepts_the_runner_spawn;
+#[path = "eprc_ac03_fail_prints_indented_excerpt.rs"]
+mod eprc_ac03_fail_prints_indented_excerpt;
+#[path = "eprc_ac05_list_contract_prints_runner_constants.rs"]
+mod eprc_ac05_list_contract_prints_runner_constants;
 #[path = "evkr_ac01_no_second_spelling.rs"]
 mod evkr_ac01_no_second_spelling;
 #[path = "evkr_ac02_renderings_equal_enum.rs"]
