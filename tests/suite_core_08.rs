@@ -102,6 +102,10 @@ mod mrefu_ac02_compatible_migration_reports_ok;
 mod mrefu_ac03_schema_is_generated_and_drift_tested;
 #[path = "mrefu_ac04_previous_up_failure_exits_4_with_tables_changed.rs"]
 mod mrefu_ac04_previous_up_failure_exits_4_with_tables_changed;
+#[path = "mrefub_ac01_unwritable_report_exits_5.rs"]
+mod mrefub_ac01_unwritable_report_exits_5;
+#[path = "mrefub_ac02_remedy_table_contract.rs"]
+mod mrefub_ac02_remedy_table_contract;
 #[path = "msg_ac01_send_reaches_inbox.rs"]
 mod msg_ac01_send_reaches_inbox;
 #[path = "msg_ac02_reply_appends_next_seq.rs"]

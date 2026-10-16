@@ -1666,6 +1666,12 @@
       "AC3": "tests/mrefu_ac03_schema_is_generated_and_drift_tested.rs",
       "AC4": "tests/mrefu_ac04_previous_up_failure_exits_4_with_tables_changed.rs"
     },
+    "mrefub": {
+      "_prd": "PRD-mcphost-migration-refusal-contract-b.md (test_prefix: mrefub)",
+      "AC1": "tests/mrefub_ac01_unwritable_report_exits_5.rs",
+      "AC2": "tests/mrefub_ac02_remedy_table_contract.rs",
+      "AC3": "tests/mrefub_ac03_status_json_last_refusal.rs"
+    },
     "thand": {
       "_prd": "PRD-mcphost-task-handoff-tool.md (test_prefix: thand)",
       "AC1": "tests/thand_ac01_poster_wait_returns_completion.rs",

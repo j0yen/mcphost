@@ -1897,6 +1897,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
     // cross-origin `fetch`).
     let form_router = Router::new().route("/f/{token}/{tool}", get(crate::form_page::form_get).post(crate::form_page::form_post));
 
+    crate::statusfeed::mark_process_start();
     Router::new()
         .merge(form_router)
         .route("/d/{namespace}/{tool}", get(crate::demo_page::demo_get))
