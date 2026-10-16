@@ -1223,6 +1223,9 @@ async fn main() -> anyhow::Result<()> {
                     println!("llms-txt{}: {} is up to date", if check { " --check" } else { "" }, p.display());
                 } else if check {
                     eprintln!("llms-txt --check: {} is stale (run `mcphost llms-txt`)", p.display());
+                    if mcphost::llms_txt::events_block(existing) != mcphost::llms_txt::events_block(updated) {
+                        eprintln!("llms-txt --check: section `## Events` differs from src/events.rs");
+                    }
                     stale = true;
                 } else {
                     std::fs::write(p, updated)?;

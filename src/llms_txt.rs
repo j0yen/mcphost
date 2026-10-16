@@ -131,6 +131,13 @@ pub fn render_events_section() -> String {
     out
 }
 
+/// The marked events block of `content` (markers included), if both exist.
+pub fn events_block(content: &str) -> Option<&str> {
+    let start = content.find(EVENTS_SECTION_START)?;
+    let end = content.find(EVENTS_SECTION_END)? + EVENTS_SECTION_END.len();
+    content.get(start..end)
+}
+
 /// Replace the marked events section in `content`, or -- before any marker
 /// exists -- insert it just before `## Full documentation` (else append).
 pub fn splice_events(content: &str, section: &str) -> String {

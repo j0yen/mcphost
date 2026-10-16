@@ -938,6 +938,12 @@ pub fn quickstart(
                 "unsupported": crate::capabilities::unsupported_names(),
             }),
         );
+        // PRD-mcphost-event-kinds-registry-generated-b R6: the registry
+        // pointer, counted from `EventKind::ALL`.
+        map.insert(
+            "events".to_string(),
+            json!({"kinds": crate::events::EventKind::ALL.len(), "url": "/events.json"}),
+        );
     }
     Ok(response)
 }

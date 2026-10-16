@@ -1513,6 +1513,13 @@
       "AC3": "tests/evkr_ac03_description_and_fields.rs",
       "AC4": "tests/evkr_ac04_bad_kind_args_invalid.rs"
     },
+    "evkrb": {
+      "_prd": "PRD-mcphost-event-kinds-registry-generated-b.md (test_prefix: evkrb)",
+      "AC1": "tests/evkrb_ac01_llms_txt_events_section_checked.rs",
+      "AC2": "tests/evkrb_ac02_quickstart_events_pointer.rs",
+      "AC3": "tests/evkrb_ac03_events_json_stable_and_cached.rs",
+      "AC4": "deferred -- operator-provisioned: live prod curl after deploy."
+    },
     "fbeh": {
       "_prd": "PRD-mcphost-error-responses-invite-feedback.md (test_prefix: fbeh)",
       "AC1": "deferred -- live premise check run by the operator after land (see the PRD's Premise check section).",
