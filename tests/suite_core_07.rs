@@ -1447,6 +1447,10 @@ mod kbind_ac07_run_deadline_caps_child_expiry;
 mod kcon_ac01_planted_drift_fails_naming_kind_case_code;
 #[path = "kcon_ac03_no_error_code_literals_outside_contract.rs"]
 mod kcon_ac03_no_error_code_literals_outside_contract;
+#[path = "kconb_ac01_contract_doc_drift_check.rs"]
+mod kconb_ac01_contract_doc_drift_check;
+#[path = "kconb_ac02_host_tools_contract_carries_kind_contracts.rs"]
+mod kconb_ac02_host_tools_contract_carries_kind_contracts;
 #[path = "kdr_ac04_page_set_matches_registry.rs"]
 mod kdr_ac04_page_set_matches_registry;
 #[path = "kindhonor_ac1_http_kind_honored.rs"]
@@ -1549,10 +1553,6 @@ mod mcphost_install_links_more_clients_ac03_connect_page_groups_every_surface;
 mod mcphost_install_links_more_clients_ac04_connect_go_every_id;
 #[path = "mcphost-install-links-more-clients_ac05_quickstart_twelve_personal_surfaces.rs"]
 mod mcphost_install_links_more_clients_ac05_quickstart_twelve_personal_surfaces;
-#[path = "mcphost-install-links-more-clients_ac06_docs_block_regenerates_from_table.rs"]
-mod mcphost_install_links_more_clients_ac06_docs_block_regenerates_from_table;
-#[path = "mcphost-install-links-more-clients_ac07_prior_prd_tests_still_apply.rs"]
-mod mcphost_install_links_more_clients_ac07_prior_prd_tests_still_apply;
 #[path = "mcphost_admin_schema_contract_ac01_tenants_schema_version.rs"]
 mod mcphost_admin_schema_contract_ac01_tenants_schema_version;
 #[path = "mcphost_admin_schema_contract_ac02_listings_validate_v1_schema.rs"]
