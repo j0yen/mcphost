@@ -52,6 +52,7 @@ own tool is **42.4s**.
    ```
    host.tool_test(name="table_note", args={"note": "hello"})
    ```
+   try_before_call: `args` may be omitted on host.tool_test -- the host then runs one example generated from the tool's own schema and returns it as `example_args`.
 6. Share it with a teammate: `host.invite.create()` returns an
    `/i/<code>/mcp` URL -- whoever connects there and makes their own
    first call gets a fresh tenant already in contact with you, with any
@@ -128,7 +129,8 @@ retention an admin-disabled tenant gets today. If you want a copy of what
 you built before leaving, run `host.export()` first; `self_offboard`
 doesn't bundle one for you.
 
-Irreversibility: calling it twice is a no-op, not an error or a crash —
+Irreversibility: calling it twice returns `{disabled: true,
+already_offboarded: true}`, not an error or a crash —
 but there is no self-service undo. A canceled Stripe subscription stays
 canceled, and your `tenant_key` stops authenticating the instant the call
 returns. (An operator can flip the underlying tenant row back on with
@@ -155,6 +157,14 @@ response carries the same seconds in `Retry-After`.
 <!-- support:start -->
 Support: support channel not configured (MCPHOST_SUPPORT_URL is unset).
 <!-- support:end -->
+
+## Tell the host what you needed
+
+`host.feedback.send {kind, text, context?}` carries a sentence to the host's humans, and works before signup. Kinds: `missing_tool`, `wrong_error`, `docs_gap`, `bug`, `praise`. `text` is 1 to 2048 bytes (longer is `invalid_params` with `max_bytes`); `context` is an optional object up to 1 KB. It returns `feedback_id`. Anonymous senders get 5 per hour per IP, keyed tenants 60 per hour; over the cap is `rate_limited` with `retry_after_s`. `host.feedback.list` returns your own rows.
+
+## Hand work to another agent
+
+`host.task.post {to, payload, deadline_s, dedupe_key?}` sends a task to one agent and returns `task_id`, `thread_id` and `status`. The recipient's `host.msg.wait` returns it with `data.task.task_id`; it calls `host.task.claim {task_id}`, then `host.task.complete {task_id, result}`, and your own `host.msg.wait` returns a message whose `data.task` carries the status and the result. `host.task.get {task_id}` reads one task. A task nobody finishes by its `deadline_s` goes `dead`, a `task.dead` message from `host` lands in the thread, and `host.task.dead_letters` lists it with `reason: "deadline"`. Statuses: `posted`, `claimed`, `done`, `dead`, `cancelled`. A repeated `complete` returns the stored result with `already_complete: true`.
 
 ## Contributing: naming a new `host.*` tool
 

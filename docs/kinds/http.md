@@ -21,6 +21,8 @@ Result envelope contract: an optional `outputs` array of field names (`"outputs"
 
 Other spec fields: `headers`/`query` (objects of header/query-parameter names to `{{ jinja }}`-templated values, the same templating `url`/`body` use), `timeout_s` (a positive integer number of seconds, default 10), `description` (a human-readable string shown in `tools/list`), and `upstream_provider` (a string naming a `host.vault.provider_set` provider whose connected end-user token this call uses, instead of a hand-templated `secret.<name>` header).
 
+Publish error `url: host '<host>' is not a publicly callable host` (code `host_not_allowed`): an `http` tool may only call a public https host. A literal IP in a private, loopback or link-local range, `localhost`, any `.internal` name, and the host's own domain (for example `mcphost.dev`) are refused at publish time. To reach another mcphost tool from a tool, use the `python` kind's `mcphost.call` instead of an `http` loop back to the host.
+
 ## Spec fields
 
 <!-- kind-fields:start -->
