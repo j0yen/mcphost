@@ -7778,69 +7778,11 @@ impl McpHostHandler {
         let capture = trace_on.then(crate::calltrace::new_capture);
         let trace_args = trace_on.then(|| args.clone());
         let call = tokio::time::timeout(resolved_timeout, kind.call(&spec, args, &ctx));
-        // PRD-mcphost-graceful-drain-contract R1/R3: counted while it runs;
-        // when the drain bound expires first, the call is dropped and
-        // answered `interrupted`.
-        let drain = crate::drain::global();
-        let _in_flight = drain.enter();
-        let call = async {
-            tokio::select! {
-                o = call => Some(o),
-                _ = drain.cancelled() => None,
-            }
-        };
         let outcome = match &capture {
             Some(cap) => crate::calltrace::scope(cap.clone(), call).await,
             None => call.await,
         };
         let duration_ms = start.elapsed().as_millis() as i64;
-        let Some(outcome) = outcome else {
-            drain.note_interrupted();
-            let app_err = AppError::Structured {
-                code: "interrupted",
-                message: "the server restarted before this call finished; retry it".to_string(),
-                data: json!({
-                    "restart_id": drain.restart_id(),
-                    "drained_ms": drain.info().map(|i| i.at.elapsed().as_millis() as i64),
-                }),
-            };
-            let (cpu_ms, peak_rss_kb) = resources.0.lock().map(|g| *g).unwrap_or_default().unzip();
-            let step_tool = step_tool_cell.lock().ok().and_then(|g| g.clone());
-            if let Ok(call_id) = self
-                .state
-                .db
-                .record_call_traced(
-                    tenant.id,
-                    local_name.to_string(),
-                    duration_ms,
-                    false,
-                    Some(call_error_class(&app_err).to_string()),
-                    cpu_ms,
-                    peak_rss_kb,
-                    "error",
-                    tenant.origin.clone(),
-                    tenant.origin_detail.clone(),
-                    caller.map(|c| c.id),
-                    end_user_subject.clone(),
-                    end_user_issuer.clone(),
-                    end_user_method.clone(),
-                    shared_owner_namespace.clone(),
-                    auth_method.to_string(),
-                    Some(run_id.clone()),
-                    step_tool,
-                    None,
-                    Some(crate::doctor::error_summary_of(&app_err)),
-                )
-                .await
-            {
-                crate::calltrace::publish_call_id(call_id);
-            }
-            tracing::info!(
-                tenant = %tenant.namespace, method = "tools/call", tool = %local_name,
-                duration_ms, status = "error", error_class = "interrupted", mcp_name_mismatch,
-            );
-            return Err(app_err.with_tool(local_name));
-        };
         // Built once, moved into whichever branch below writes the `calls`
         // row, so the trace commits in that row's own transaction.
         let trace = trace_args.map(|trace_args| {
