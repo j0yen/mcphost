@@ -58,8 +58,19 @@ async fn publish_slot(client: &McpClient, name: &str) {
         .expect("publish slot tool");
 }
 
-#[tokio::test]
-async fn dry_run_verdict_equals_real_admission_in_200_of_200() {
+// Not `#[tokio::test]`: this drives 200 real `host.tool_call`s, including a
+// forwarded host verb (`host.usage`) whose nested dispatch needs ~1.9 MiB of
+// stack in an unoptimized build -- within a few percent of the libtest
+// thread's 2 MiB, and over it once an unrelated change grew a handler frame
+// (CI SIGABRT "has overflowed its stack" in `suite_core_07`, three branches
+// rebased onto 5cfa2fad). `block_on_big_stack` runs the same body on a
+// 64 MiB-stack thread, so the test no longer depends on the default.
+#[test]
+fn dry_run_verdict_equals_real_admission_in_200_of_200() {
+    common::block_on_big_stack(run_200_fixtures);
+}
+
+async fn run_200_fixtures() {
     let slot = SlotKind::new(4);
     let server = TestServer::start_with_kinds(slot.registry()).await;
 

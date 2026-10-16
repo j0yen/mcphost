@@ -7,7 +7,7 @@
 //! for `tools/list`, and execute a call against it.
 
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use jsonschema::error::{TypeKind, ValidationErrorKind};
@@ -1603,7 +1603,7 @@ pub struct CallCtx {
     /// it just stays `None` for the whole call, and `host.runs.cancel`
     /// degrades to "mark cancelled in the ledger, nothing to kill" (still
     /// correct: an `http` call has no process to leave running either).
-    pub cancel_pid: Arc<Mutex<Option<i32>>>,
+    pub cancel_pid: Arc<crate::runs::CancelSlot>,
     /// PRD-mcphost-sandbox-egress-allowlist requirement 1/2/3: whether this
     /// call's tenant may be granted `network: "public"`/`"egress"` at all --
     /// resolved by `handler.rs`/`runs.rs` from the tenant's plan
@@ -1736,7 +1736,7 @@ impl CallCtx {
             chain_fanout_max: usize::MAX,
             run_id: None,
             progress: Arc::new(NullProgress),
-            cancel_pid: Arc::new(Mutex::new(None)),
+            cancel_pid: Arc::new(crate::runs::CancelSlot::default()),
             egress_allowed: true,
             end_user: None,
             vault_token: None,

@@ -416,6 +416,75 @@ impl Drop for TempDataDir {
     }
 }
 
+/// Builds `jsonschema`'s process-wide meta-schema validators on a thread with
+/// a large stack, once, before any test server answers a call.
+///
+/// `jsonschema::validator_for` validates the schema it is given against its
+/// draft's meta-schema, and the first such call in a process lazily compiles
+/// ALL FIVE draft meta-schema validators (`META_SCHEMA_VALIDATORS`, a
+/// `once_cell::Lazy`) -- a deeply recursive `$ref`/`$dynamicRef` walk that
+/// needs on the order of 1.5 MiB of stack in an unoptimized build. Whichever
+/// thread happens to validate first pays for it. In a `#[tokio::test]` that
+/// thread is the test thread itself (the current-thread runtime polls the
+/// server's handler tasks on it), whose stack is 2 MiB by default and already
+/// holds the runtime, the rmcp/handler async frames and the call being made:
+/// `cest_ac01_dry_run_verdict_matches_real_call` overflowed it (SIGABRT, "has
+/// overflowed its stack") as soon as test ordering in `suite_core_07` made it
+/// the first validator. Doing the one-time compile here makes every later
+/// validation a shallow lookup, whichever test runs first.
+pub fn prewarm_jsonschema_meta() {
+    static WARMED: std::sync::Once = std::sync::Once::new();
+    WARMED.call_once(|| {
+        std::thread::Builder::new()
+            .name("jsonschema-prewarm".to_string())
+            .stack_size(64 * 1024 * 1024)
+            .spawn(|| {
+                jsonschema::validator_for(&serde_json::json!({"type": "object"}))
+                    .expect("trivial schema compiles");
+            })
+            .expect("spawn prewarm thread")
+            .join()
+            .expect("jsonschema meta-schema prewarm");
+    });
+}
+
+/// Runs `body` to completion on a current-thread tokio runtime that lives on
+/// a dedicated thread with a 64 MiB stack, instead of on the libtest thread
+/// (2 MiB unless `RUST_MIN_STACK` says otherwise). The semantics are those of
+/// `#[tokio::test]` (current-thread runtime, `enable_all`); only the stack
+/// differs, and a panic in `body` is re-raised on the caller so the test
+/// fails normally.
+///
+/// For a test that drives the real `host.tool_call` path in an unoptimized
+/// build. That runtime polls the server's handler tasks on the test's own
+/// thread, and the handler's dispatch `async fn`s have enormous debug poll
+/// frames (`McpHostHandler`'s dispatch in `src/handler.rs` is ~420 KB per
+/// frame and a forwarded host verb nests it twice), so a call can need most
+/// of 2 MiB before the test itself has run a line. Such a test then fails
+/// with SIGABRT ("has overflowed its stack") the day an unrelated change
+/// grows a frame by a few percent. Box::pin-ing the test future does not
+/// help (measured): the depth is in the handler's frames, not the test's.
+pub fn block_on_big_stack<F, Fut>(body: F)
+where
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = ()>,
+{
+    let handle = std::thread::Builder::new()
+        .name("big-stack-test".to_string())
+        .stack_size(64 * 1024 * 1024)
+        .spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("build runtime")
+                .block_on(body())
+        })
+        .expect("spawn big-stack thread");
+    if let Err(panic) = handle.join() {
+        std::panic::resume_unwind(panic);
+    }
+}
+
 /// A bare `AppState` -- no HTTP listener, no `runs::spawn_executor`/
 /// `triggers::spawn_scheduler` -- for tests that drive `mcphost::runs`/
 /// `mcphost::triggers` functions directly and need the background
@@ -425,6 +494,7 @@ impl Drop for TempDataDir {
 /// instead of duplicating the field list themselves so a new `AppState`
 /// field is added here once, not in every bare-state test).
 pub async fn bare_app_state() -> (AppState, TempDataDir) {
+    prewarm_jsonschema_meta();
     let data_dir = TempDataDir::new();
     let db = Db::open(&data_dir.0).expect("open db");
     db.migrate().await.expect("migrate");
@@ -1108,6 +1178,7 @@ impl TestServer {
         alt_public_urls: Vec<String>,
         public_scheme: &str,
     ) -> Self {
+        prewarm_jsonschema_meta();
         let data_dir = TempDataDir::new();
         let db = Db::open_with_cfg(&data_dir.0, db_cfg).expect("open db");
         db.migrate().await.expect("migrate");
@@ -1941,6 +2012,7 @@ pub fn wasm_fixture_b64(name: &str) -> String {
 /// `AppState.plans` (an `Arc<AppState>`, which `TestServer` hands back,
 /// can't be mutated after construction).
 pub async fn bare_state(dir: &std::path::Path) -> AppState {
+    prewarm_jsonschema_meta();
     let db = mcphost::db::Db::open(dir).expect("open db");
     db.migrate().await.expect("migrate");
     let session_bindings = mcphost::session_bind::SessionBindings::new();

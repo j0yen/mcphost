@@ -5440,16 +5440,15 @@ impl PythonKind {
         // -- a warm sandbox that survives this call (the `Responded` arm)
         // must not be left registered under a run id that's about to
         // finalize.
-        {
-            let mut slot = ctx.cancel_pid.lock().unwrap_or_else(|e| e.into_inner());
-            *slot = Some(entry.sandbox.pid());
+        // A cancel that landed before this sandbox was registered has
+        // already killed it (`CancelSlot::set_live`); do not use it.
+        if !ctx.cancel_pid.set_live(entry.sandbox.pid()) {
+            kill_warm_entry(entry).await;
+            return Some(Err(KindError::Exec("run cancelled".to_string())));
         }
         crate::calltrace::mark_dispatch();
         let outcome = entry.sandbox.call(&payload, timeout, &bridge).await;
-        {
-            let mut slot = ctx.cancel_pid.lock().unwrap_or_else(|e| e.into_inner());
-            *slot = None;
-        }
+        ctx.cancel_pid.clear();
         match outcome {
             Ok(PersistentCallOutcome::Responded {
                 line,
@@ -5612,20 +5611,19 @@ async fn run_cold_interactive(
     // PRD-mcphost-runs-and-jobs requirement 4 / AC4: same pid-registration
     // contract as `try_warm`'s inline block above, for the cold path's own
     // freshly-spawned sandbox.
-    cancel_pid: &Arc<Mutex<Option<i32>>>,
+    cancel_pid: &Arc<crate::runs::CancelSlot>,
 ) -> std::io::Result<SandboxOutcome> {
     let wall_clock_timeout = run_spec.wall_clock_timeout;
     let mut sandbox = sandbox::spawn_persistent(run_spec).await?;
-    {
-        let mut slot = cancel_pid.lock().unwrap_or_else(|e| e.into_inner());
-        *slot = Some(sandbox.pid());
+    // A cancel that landed while this child was being spawned has already
+    // killed it (`CancelSlot::set_live`); reap it and stop.
+    if !cancel_pid.set_live(sandbox.pid()) {
+        sandbox.kill().await;
+        return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "run cancelled"));
     }
     crate::calltrace::mark_dispatch();
     let call_outcome = sandbox.call(payload, wall_clock_timeout, bridge).await?;
-    {
-        let mut slot = cancel_pid.lock().unwrap_or_else(|e| e.into_inner());
-        *slot = None;
-    }
+    cancel_pid.clear();
     match call_outcome {
         PersistentCallOutcome::Responded {
             line,
@@ -6862,7 +6860,7 @@ mod tests {
             chain_fanout_max: usize::MAX,
             run_id: None,
             progress: Arc::new(crate::kinds::NullProgress),
-            cancel_pid: Arc::new(Mutex::new(None)),
+            cancel_pid: Arc::new(crate::runs::CancelSlot::default()),
             egress_allowed: true,
             end_user: None,
             vault_token: None,
@@ -7179,7 +7177,7 @@ mod tests {
             chain_fanout_max: usize::MAX,
             run_id: None,
             progress: Arc::new(crate::kinds::NullProgress),
-            cancel_pid: Arc::new(Mutex::new(None)),
+            cancel_pid: Arc::new(crate::runs::CancelSlot::default()),
             egress_allowed: true,
             end_user: None,
             vault_token: None,
