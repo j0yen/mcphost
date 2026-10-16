@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-job-timeline-tool.md",
-  "intent_slug": "mcphost-job-timeline-tool",
-  "root_motivation": "**Who:** the agent asked \"why did last night's job fail?\" with no shell and a few turns. **What:** a per-step account; the chain result trace has no timing or size, and host.runs.get's child rows must be joined by hand. **Why not today:** the rows exist but nothing joins them into one view.",
-  "user_persona": "An agent that calls host.job.timeline(run_id) and reads which step ran how long, failed with which error class and family, or is still running.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-idempotency-key-on-call.md",
+  "intent_slug": "mcphost-idempotency-key-on-call",
+  "root_motivation": "**Who:** an autonomous coding agent calling a side-effecting tool on mcphost. **What:** a way to say 'this is the same request as before' so a retry after a timeout cannot execute the side effect twice.",
+  "user_persona": "An agent whose tool call timed out; the error names _meta.idempotency_key, it retries with the same key and receives the stored result.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,35 +14,35 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a completed 3-step chain run, When host.job_timeline(run_id) is called, Then steps has 3 entries in step order, each done with started_unix <= finished_unix, duration_ms >= 0, bytes_out > 0, and totals.wall_ms >= every step's duration_ms.",
-      "test": "tests/jtl_ac01_three_step_chain_timeline.rs"
+      "description": "Given 20 fake-mode persona sessions whose planted tool answers `tool_timeout` with the R6 hint, When each persona retries, Then >= 10 retries carry the same `idempotency_key` (falsifier).",
+      "test": "tests/idkey_ac01_timeout_hint_carries_key.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a chain whose step 2 fails with compose_mapping_missing under on_error: continue, When the timeline is read, Then steps[1] is error with error_class compose_mapping_missing and error_family compose, steps[2] is done, and totals.error is 1.",
-      "test": "tests/jtl_ac02_mapping_miss_step_is_error_family_compose.rs"
+      "description": "Given a keyed call that succeeded, When the same key and args arrive 1 s later, Then the response equals the first byte-for-byte except `_meta.replayed: true` and the kind's call counter is unchanged.",
+      "test": "tests/idkey_ac02_replay_same_key_same_args.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a scheduled run of a tool, When the timeline is read, Then steps has one entry whose tool is the run's tool, run.trigger is schedule, and totals.steps is 1.",
-      "test": "tests/jtl_ac03_scheduled_run_is_one_entry.rs"
+      "description": "Given a keyed call, When the same key arrives with different args, Then the code is `idempotency_conflict` and `data` carries both hashes.",
+      "test": "tests/idkey_ac03_same_key_different_args_conflicts.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a chain run still executing step 3, When the timeline is read, Then run.status is running, steps[2].status is running with finished_unix null, and totals.running is 1.",
-      "test": "tests/jtl_ac04_running_chain_shows_in_flight_step.rs"
+      "description": "Given two concurrent calls with the same key, When both complete, Then the tool ran exactly once and both responses carry the same result.",
+      "test": "tests/idkey_ac04_concurrent_same_key_runs_once.rs"
     }
   ],
   "scope": [
-    "src/timeline.rs (new): TIMELINE_FIELDS, error_family(), job_timeline().",
-    "src/handler.rs, src/tool_aliases.rs: host.job.timeline and alias host.job_timeline.",
-    "src/kinds/mod.rs, src/db.rs: a composed child row exists from step start (in_flight) and for an undispatched mapping-miss step."
+    "src/idempotency.rs (new): key extraction, args hash, call_results claim/finish, ClaimGuard.",
+    "src/handler.rs: call_tool claims the key before dispatch, replays, stores, annotates tool_timeout.",
+    "migrations/0110_call_results.sql."
   ],
   "non_goals": [
-    "A web page; timelines across runs; storing anything new; fan-out items and the text format (P1)."
+    "Declaring which tools are idempotent; caching by args alone; polling a running call; docs/llms.txt Idempotency paragraph (R7) and plan-ceiling accounting (R8)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -57,15 +57,10 @@
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can a client not trust what this host speaks?",
-      "a": "initialize advertises tools only, but rmcp's default hooks answer empty results for resources and prompts."
+      "q": "Why can a retry after a timeout run a side effect twice?",
+      "a": "No request identity reaches dispatch and no result is stored; the timeout error offers no next step."
     }
   ],
-  "created_at": "2026-10-12T00:00:00Z",
-  "ambiguities_resolved": [
-    {
-      "question": "How does a step that never dispatched or is still running get a row?",
-      "resolution": "Chain writes an error row for a mapping-miss step under on_error continue, and every composed child is inserted as in_flight at start and settled at finish; in_flight is never running/queued so executor counts and leases ignore it."
-    }
-  ]
+  "created_at": "2026-10-15T00:00:00Z",
+  "ambiguities_resolved": []
 }

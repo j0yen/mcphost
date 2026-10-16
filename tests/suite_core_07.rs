@@ -1341,6 +1341,14 @@ mod hzver_ac03_one_build_info;
 mod hzver_ac04_no_git_sha_null;
 #[path = "hzver_ac05_component_rollup_unchanged.rs"]
 mod hzver_ac05_component_rollup_unchanged;
+#[path = "idkey_ac01_timeout_hint_carries_key.rs"]
+mod idkey_ac01_timeout_hint_carries_key;
+#[path = "idkey_ac02_replay_same_key_same_args.rs"]
+mod idkey_ac02_replay_same_key_same_args;
+#[path = "idkey_ac03_same_key_different_args_conflicts.rs"]
+mod idkey_ac03_same_key_different_args_conflicts;
+#[path = "idkey_ac04_concurrent_same_key_runs_once.rs"]
+mod idkey_ac04_concurrent_same_key_runs_once;
 #[path = "implsign_ac01_bare_call_creates_implicit_tenant_with_onboarding.rs"]
 mod implsign_ac01_bare_call_creates_implicit_tenant_with_onboarding;
 #[path = "implsign_ac02_second_call_carries_no_onboarding.rs"]

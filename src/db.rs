@@ -323,6 +323,8 @@ const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql")
 const MIGRATION_0106: &str = include_str!("../migrations/0106_index_refresh.sql");
 /// PRD-mcphost-docs-telemetry-failed-after-search R1: `help_search_events`.
 const MIGRATION_0107: &str = include_str!("../migrations/0107_help_search_events.sql");
+/// PRD-mcphost-idempotency-key-on-call R2: the `call_results` table.
+const MIGRATION_0110: &str = include_str!("../migrations/0110_call_results.sql");
 
 /// PRD-mcphost-docs-telemetry-failed-after-search R3: how long after a
 /// `host.help.search` the same tenant's first failed call still joins it.
@@ -3027,6 +3029,7 @@ impl Db {
         conn.execute_batch(MIGRATION_0107)?;
         Self::migrate_0108_calls_audit(&conn)?;
         Self::migrate_0109_key_delegation(&conn)?;
+        Self::migrate_0110_call_results(&conn)?;
         Ok(())
     }
 
@@ -3087,6 +3090,12 @@ impl Db {
         if !has_column {
             conn.execute_batch(MIGRATION_0105)?;
         }
+        Ok(())
+    }
+
+    /// PRD-mcphost-idempotency-key-on-call R2: wholly new table, `IF NOT EXISTS`.
+    fn migrate_0110_call_results(conn: &Connection) -> Result<(), AppError> {
+        conn.execute_batch(MIGRATION_0110)?;
         Ok(())
     }
 
@@ -14955,6 +14964,11 @@ impl Db {
             }
         })
         .await?;
+        // PRD-mcphost-idempotency-key-on-call R2: expired stored call results
+        // are purged on the same tick (best-effort, like the rollup below).
+        if let Err(e) = self.idem_purge_expired(crate::state::now_unix()).await {
+            tracing::warn!(error = %e, "call_results purge failed");
+        }
         // PRD-mcphost-shared-tool-caller-usage requirement 6: the daily
         // rollup runs "alongside the existing prune jobs" -- best-effort
         // (a rollup failure must not turn an otherwise-successful nightly
