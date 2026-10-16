@@ -191,10 +191,11 @@ pub async fn set_webhook_trigger(
     existing: Option<TriggerRow>,
 ) -> Result<Value, AppError> {
     let verify = args.get("verify").and_then(Value::as_str).unwrap_or("hmac").to_string();
-    if !matches!(verify.as_str(), "hmac" | "none" | "stripe" | "github") {
+    if scheme_named(&verify).is_none() {
+        let names: Vec<&str> = SCHEMES.iter().map(|s| s.name).collect();
         return Err(trigger_invalid(
             "verify",
-            format!("verify: '{verify}' must be one of hmac, none, stripe, github"),
+            format!("verify: '{verify}' must be one of {}", names.join(", ")),
         ));
     }
     // PRD-mcphost-webhook-inbox-one-call: only `host.webhook_inbox.create`
@@ -392,46 +393,77 @@ fn parse_body_value(body: &[u8]) -> Value {
         .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(body).to_string()))
 }
 
-fn verify_delivery(scheme: &str, secret: &str, body: &[u8], headers: &HeaderMap) -> Result<(), AppError> {
-    match scheme {
-        "none" => Ok(()),
-        "hmac" => {
-            let got = headers
-                .get("X-Mcphost-Signature")
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("");
-            let sig = got.strip_prefix("sha256=").unwrap_or(got);
-            let expected = to_hex(&crate::billing::hmac_sha256(secret.as_bytes(), body));
-            if !sig.is_empty() && constant_time_eq(sig.as_bytes(), expected.as_bytes()) {
-                Ok(())
-            } else {
-                Err(webhook_signature_invalid())
-            }
-        }
-        // PRD-mcphost-webhook-inbox-one-call R1: GitHub's own scheme --
-        // `X-Hub-Signature-256: sha256=<hex hmac of the body>`.
-        "github" => {
-            let got = headers
-                .get("X-Hub-Signature-256")
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("");
-            let sig = got.strip_prefix("sha256=").unwrap_or(got);
-            let expected = to_hex(&crate::billing::hmac_sha256(secret.as_bytes(), body));
-            if !sig.is_empty() && constant_time_eq(sig.as_bytes(), expected.as_bytes()) {
-                Ok(())
-            } else {
-                Err(webhook_signature_invalid())
-            }
-        }
-        "stripe" => {
-            let header_value = headers
-                .get("Stripe-Signature")
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("");
-            crate::billing::verify_stripe_signature(body, header_value, secret, STRIPE_TOLERANCE_S, now_unix())
-                .map_err(|_| webhook_signature_invalid())
-        }
-        _ => Err(webhook_signature_invalid()),
+/// PRD-mcphost-chain-friction-fixes-20261016 requirement 4: one webhook
+/// verification scheme. `header` is the request header the scheme's
+/// signature travels in (`None` = the scheme signs nothing); `sign` builds
+/// that header's value for `(secret, body, now_unix)`; `check` decides
+/// whether a received header value is acceptable. [`verify_delivery`]
+/// (the receiving side) and [`test_webhook_trigger`] (the self-signing
+/// side) both read this table, so a scheme the verifier accepts is a scheme
+/// the test endpoint signs; `tests/cdft_ac04_*` iterates it.
+pub struct Scheme {
+    pub name: &'static str,
+    pub header: Option<&'static str>,
+    pub sign: fn(secret: &str, body: &[u8], now: i64) -> String,
+    pub check: fn(secret: &str, body: &[u8], header_value: &str, now: i64) -> bool,
+}
+
+fn sign_sha256_hex(secret: &str, body: &[u8], _now: i64) -> String {
+    format!("sha256={}", to_hex(&crate::billing::hmac_sha256(secret.as_bytes(), body)))
+}
+
+fn check_sha256_hex(secret: &str, body: &[u8], header_value: &str, _now: i64) -> bool {
+    let sig = header_value.strip_prefix("sha256=").unwrap_or(header_value);
+    let expected = to_hex(&crate::billing::hmac_sha256(secret.as_bytes(), body));
+    !sig.is_empty() && constant_time_eq(sig.as_bytes(), expected.as_bytes())
+}
+
+fn sign_stripe(secret: &str, body: &[u8], now: i64) -> String {
+    let signed_payload = [now.to_string().as_bytes(), b".", body].concat();
+    let sig = to_hex(&crate::billing::hmac_sha256(secret.as_bytes(), &signed_payload));
+    format!("t={now},v1={sig}")
+}
+
+fn check_stripe(secret: &str, body: &[u8], header_value: &str, now: i64) -> bool {
+    crate::billing::verify_stripe_signature(body, header_value, secret, STRIPE_TOLERANCE_S, now).is_ok()
+}
+
+fn sign_nothing(_secret: &str, _body: &[u8], _now: i64) -> String {
+    String::new()
+}
+
+fn check_anything(_secret: &str, _body: &[u8], _header_value: &str, _now: i64) -> bool {
+    true
+}
+
+/// Every `verify` value a webhook trigger accepts, in the order the
+/// `verify: '<x>' must be one of …` message lists them.
+pub const SCHEMES: &[Scheme] = &[
+    Scheme { name: "hmac", header: Some("X-Mcphost-Signature"), sign: sign_sha256_hex, check: check_sha256_hex },
+    Scheme { name: "none", header: None, sign: sign_nothing, check: check_anything },
+    Scheme { name: "stripe", header: Some("Stripe-Signature"), sign: sign_stripe, check: check_stripe },
+    // PRD-mcphost-webhook-inbox-one-call R1: GitHub's own scheme --
+    // `X-Hub-Signature-256: sha256=<hex hmac of the body>`.
+    Scheme { name: "github", header: Some("X-Hub-Signature-256"), sign: sign_sha256_hex, check: check_sha256_hex },
+];
+
+fn scheme_named(name: &str) -> Option<&'static Scheme> {
+    SCHEMES.iter().find(|s| s.name == name)
+}
+
+pub fn verify_delivery(scheme: &str, secret: &str, body: &[u8], headers: &HeaderMap) -> Result<(), AppError> {
+    let Some(scheme) = scheme_named(scheme) else {
+        return Err(webhook_signature_invalid());
+    };
+    let got = scheme
+        .header
+        .and_then(|h| headers.get(h))
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if scheme.header.is_none() || (scheme.check)(secret, body, got, now_unix()) {
+        Ok(())
+    } else {
+        Err(webhook_signature_invalid())
     }
 }
 
@@ -647,18 +679,11 @@ pub async fn test_webhook_trigger(state: &AppState, tenant: &Tenant, row: &Trigg
         "x-mcphost-delivery-id",
         format!("test-{}", new_ulid()).parse().unwrap(),
     );
-    match config.verify.as_str() {
-        "hmac" => {
-            let sig = to_hex(&crate::billing::hmac_sha256(secret_plain.as_bytes(), &body_bytes));
-            headers.insert("x-mcphost-signature", format!("sha256={sig}").parse().unwrap());
-        }
-        "stripe" => {
-            let t = now_unix();
-            let signed_payload = [t.to_string().as_bytes(), b".", body_bytes.as_slice()].concat();
-            let sig = to_hex(&crate::billing::hmac_sha256(secret_plain.as_bytes(), &signed_payload));
-            headers.insert("stripe-signature", format!("t={t},v1={sig}").parse().unwrap());
-        }
-        _ => {}
+    if let Some(scheme) = scheme_named(&config.verify)
+        && let Some(header) = scheme.header
+    {
+        let value = (scheme.sign)(&secret_plain, &body_bytes, now_unix());
+        headers.insert(axum::http::HeaderName::from_bytes(header.as_bytes()).unwrap(), value.parse().unwrap());
     }
 
     let outcome = accept_delivery(state, tenant, row, &config, &body_bytes, &headers, true).await?;

@@ -69,7 +69,7 @@ async fn type_mismatch_names_type_accepted_shape_and_got() {
     assert_eq!(err.data["got"], json!("number"));
 
     let err = client
-        .tools_call("host.table.append", json!({"table": "events", "rows": [{"amount": "3"}]}))
+        .tools_call("host.table.append", json!({"table": "events", "rows": [{"amount": "abc"}]}))
         .await
         .expect_err("string into a real column must be rejected");
     assert!(

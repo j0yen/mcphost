@@ -151,6 +151,7 @@ The distinction is visible, not doctrinal: `host.tool_test` renders both in one 
 | `secrets` | array of string | no | `host.secret_set` names injected as `SECRET_<NAME>` environment variables |
 | `env` | object | no | plain, non-secret environment variables |
 | `description` | string | no | human-readable text shown in `tools/list` |
+| `description` | string | no | human-readable text shown in `tools/list` |
 | `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind) |
 | `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
 | `ui` | object | no | optional presentation hints for clients that render a tool's result |

@@ -25,6 +25,11 @@ pub struct FieldDoc {
 /// [`UNIVERSAL_SPEC_FIELDS`]' meaning rows, shared by every kind.
 pub const UNIVERSAL_FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {
+        name: "description",
+        ty: "string",
+        meaning: "the tool's description in `tools/list` (every kind)",
+    },
+    FieldDoc {
         name: "outputs",
         ty: "array or object",
         meaning: "fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind)",

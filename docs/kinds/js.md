@@ -63,6 +63,8 @@ A js tool reaches this tenant's data through the global `mcphost` object. Its me
 | `env` | object | no | plain, non-secret environment variables (`process.env`) |
 | `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each |
 | `description` | string | no | human-readable text shown in `tools/list` |
+| `description` | string | no | human-readable text shown in `tools/list` |
+| `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each |
 | `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
 | `ui` | object | no | optional presentation hints for clients that render a tool's result |
 <!-- kind-fields:end -->

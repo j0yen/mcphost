@@ -33,6 +33,7 @@ Result envelope contract: a call's output always lands at `result.payload`; an o
 | `args_schema` | object | no | JSON Schema for the call arguments |
 | `timeout_s` | integer | no | seconds the call may run |
 | `memory_mb` | integer | no | megabytes the component may use |
+| `description` | string | no | the tool's description in `tools/list` (every kind) |
 | `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind) |
 | `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
 | `ui` | object | no | optional presentation hints for clients that render a tool's result |

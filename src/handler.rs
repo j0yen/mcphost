@@ -10561,6 +10561,7 @@ impl ServerHandler for McpHostHandler {
                 for row in rows {
                     if let Some(kind) = self.state.kinds.get(&row.kind) {
                         let mut descriptor = kind.describe(&row.spec);
+                        crate::kinds::apply_spec_description(kind.as_ref(), &row.spec, &mut descriptor);
                         if let Some(note) = tool_notes.get(&row.name) {
                             descriptor.description = crate::notes::describe_with_note(&descriptor.description, note);
                         }

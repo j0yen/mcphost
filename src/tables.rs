@@ -973,15 +973,65 @@ fn sql_param_for(ty: ColumnType, value: &Value) -> Box<dyn rusqlite::ToSql> {
     }
 }
 
+/// PRD-mcphost-chain-friction-fixes-20261016 requirement 3: the ONE
+/// coercion `validate_rows` and `tenant_state::validate_row` both call. A
+/// string that parses canonically as the column type named `ty` (`integer`:
+/// optional sign + ASCII digits; `real`: a JSON number lexeme; `boolean`:
+/// `true`/`false`) becomes that type's JSON value; anything else (padded,
+/// grouped, exponent-on-integer, non-string input) is `None` and the caller
+/// reports the unchanged schema violation. Keyed on the type NAME because
+/// the two modules each own a `ColumnType` enum with the same names.
+pub fn coerce_canonical_numeral(ty: &str, value: &Value) -> Option<Value> {
+    let text = value.as_str()?;
+    match ty {
+        "integer" => {
+            let digits = text.strip_prefix(['+', '-']).unwrap_or(text);
+            if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+                return None;
+            }
+            let signed = text.strip_prefix('+').unwrap_or(text);
+            signed
+                .parse::<i64>()
+                .map(Value::from)
+                .or_else(|_| signed.parse::<u64>().map(Value::from))
+                .ok()
+        }
+        "real" => {
+            if !text.starts_with(|c: char| c == '-' || c.is_ascii_digit()) {
+                return None;
+            }
+            match serde_json::from_str::<Value>(text) {
+                Ok(n @ Value::Number(_)) if !text.ends_with(char::is_whitespace) => Some(n),
+                _ => None,
+            }
+        }
+        "boolean" => match text {
+            "true" => Some(Value::Bool(true)),
+            "false" => Some(Value::Bool(false)),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// One `coerced` response entry: `{row, field, from: "string", to: "<type>"}`.
+pub(crate) fn coerced_entry(row: usize, field: &str, ty: &str) -> Value {
+    json!({"row": row, "field": field, "from": "string", "to": ty})
+}
+
 /// requirement 2/AC2: every row is validated against the table's declared
 /// schema before anything is written -- a type mismatch or unknown column
 /// fails the whole call with `table_schema_violation` and writes nothing
 /// (the transaction below is never opened on a validation failure).
+///
+/// A canonical numeral string in a numeric/boolean column is coerced in
+/// place ([`coerce_canonical_numeral`]) and reported in the returned
+/// `coerced` list.
 fn validate_rows(
     table: &str,
     schema: &LoadedSchema,
-    rows: &[Map<String, Value>],
-) -> Result<(), AppError> {
+    rows: &mut [Map<String, Value>],
+) -> Result<Vec<Value>, AppError> {
     let violation = |field: &str, mismatch: Option<(ColumnType, &Value)>| {
         schema_violation_error(
             "table_schema_violation",
@@ -991,17 +1041,22 @@ fn validate_rows(
             &declared_pairs(&schema.columns),
         )
     };
-    for row in rows {
-        for (field, value) in row {
+    let mut coerced = Vec::new();
+    for (i, row) in rows.iter_mut().enumerate() {
+        for (field, value) in row.iter_mut() {
             let Some(ty) = schema.columns.get(field) else {
                 return Err(violation(field, None));
             };
             if !ty.matches(value) {
-                return Err(violation(field, Some((*ty, value))));
+                let Some(fixed) = coerce_canonical_numeral(ty.as_str(), value) else {
+                    return Err(violation(field, Some((*ty, value))));
+                };
+                *value = fixed;
+                coerced.push(coerced_entry(i, field, ty.as_str()));
             }
         }
     }
-    Ok(())
+    Ok(coerced)
 }
 
 fn insert_rows_sync(
@@ -1081,7 +1136,7 @@ fn insert_rows_sync(
 /// the write can never race against a second call to this same tenant.
 pub async fn table_append(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let table = arg_str(args, "table")?;
-    let rows = parse_rows_arg(args)?;
+    let mut rows = parse_rows_arg(args)?;
 
     let plan = plan_of(state, &tenant.plan)?;
     let rows_max = plan.table_rows_max;
@@ -1099,9 +1154,9 @@ pub async fn table_append(state: &AppState, tenant: &Tenant, args: &Value) -> Re
 
     let path = tenant_db_path(state, tenant.id);
     let table_for_conn = table.clone();
-    let ids = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+    let (ids, coerced) = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
         let schema = load_schema_sync(conn, &table_for_conn)?;
-        validate_rows(&table_for_conn, &schema, &rows)?;
+        let coerced = validate_rows(&table_for_conn, &schema, &mut rows)?;
 
         let existing_rows = row_count_sync(conn, &table_for_conn)?;
         if existing_rows + rows.len() as i64 > rows_max {
@@ -1132,7 +1187,7 @@ pub async fn table_append(state: &AppState, tenant: &Tenant, args: &Value) -> Re
             ));
         }
 
-        insert_rows_sync(conn, &table_for_conn, &schema, &rows)
+        insert_rows_sync(conn, &table_for_conn, &schema, &rows).map(|ids| (ids, coerced))
     })
     .await?;
 
@@ -1155,7 +1210,11 @@ pub async fn table_append(state: &AppState, tenant: &Tenant, args: &Value) -> Re
 
     bump_change_counter(state, tenant.id, &table, false).await;
 
-    Ok(json!({"table": table, "appended": ids.len(), "ids": ids}))
+    let mut response = json!({"table": table, "appended": ids.len(), "ids": ids});
+    if !coerced.is_empty() {
+        response["coerced"] = json!(coerced);
+    }
+    Ok(response)
 }
 
 // ---- host.table.query ---------------------------------------------------
