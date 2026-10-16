@@ -58,8 +58,6 @@ mod metering_ac11_admin_meter_status;
 mod metering_ac12_billing_status_stripe_reported_usage;
 #[path = "metering_billing_status_emitted_this_month.rs"]
 mod metering_billing_status_emitted_this_month;
-#[path = "migration_compat_headers.rs"]
-mod migration_compat_headers;
 #[path = "minimal_ac2_admin_full_document.rs"]
 mod minimal_ac2_admin_full_document;
 #[path = "minimal_ac3_wrong_bearer_matches_anonymous.rs"]
@@ -166,8 +164,6 @@ mod oauthentry_ac03_new_workspace_on_entry_resource;
 mod oauthentry_ac04_entry_audience_is_enforced_both_ways;
 #[path = "oauthentry_ac05_claude_chatgpt_profiles_reach_tools_list.rs"]
 mod oauthentry_ac05_claude_chatgpt_profiles_reach_tools_list;
-#[path = "oauthentry_ac06_path_contract_docs_router_quickstart.rs"]
-mod oauthentry_ac06_path_contract_docs_router_quickstart;
 #[path = "oauthmeta_ac01_tenant_document_lists_hosted_as.rs"]
 mod oauthmeta_ac01_tenant_document_lists_hosted_as;
 #[path = "oauthmeta_ac02_registered_issuer_follows_hosted_as.rs"]
@@ -436,8 +432,6 @@ mod reglist_ac03_schema_validates_committed_entry_and_rejects_missing_remotes;
 mod reglist_ac04_workflow_checks_manifest_and_schema_on_every_push;
 #[path = "reglist_ac06_readme_registry_and_quickstart_links_resolve.rs"]
 mod reglist_ac06_readme_registry_and_quickstart_links_resolve;
-#[path = "revdebt_ac1_intent_card_pointers_resolve.rs"]
-mod revdebt_ac1_intent_card_pointers_resolve;
 #[path = "rowpol_ac01_sql_predicate_scopes_to_end_user_attribute.rs"]
 mod rowpol_ac01_sql_predicate_scopes_to_end_user_attribute;
 #[path = "rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0.rs"]
@@ -590,8 +584,6 @@ mod sfc_ac01_keyless_call_frames_are_stable;
 mod sfc_ac02_wire_frames_match_table;
 #[path = "sfc_ac03_keyed_call_is_one_json_frame.rs"]
 mod sfc_ac03_keyed_call_is_one_json_frame;
-#[path = "sfc_ac04_stray_notify_panics_in_debug.rs"]
-mod sfc_ac04_stray_notify_panics_in_debug;
 #[path = "sfc_ac05_frames_check_script_names_drift.rs"]
 mod sfc_ac05_frames_check_script_names_drift;
 #[path = "sfc_ac06_select_result_rejects_wrong_order.rs"]
@@ -748,16 +740,10 @@ mod statusfeed_ac07_prune_keeps_rollup;
 mod statusfeed_ac08_status_html_renders;
 #[path = "statusfeed_ac10_component_days_query.rs"]
 mod statusfeed_ac10_component_days_query;
-#[path = "statusfeed_ac11_deferral_is_justified.rs"]
-mod statusfeed_ac11_deferral_is_justified;
 #[path = "suite_ac1_ten_binaries_and_names_preserved.rs"]
 mod suite_ac1_ten_binaries_and_names_preserved;
-#[path = "suite_ac2_check_catches_unregistered_file.rs"]
-mod suite_ac2_check_catches_unregistered_file;
 #[path = "suite_ac3_mod_common_declared_once.rs"]
 mod suite_ac3_mod_common_declared_once;
-#[path = "suite_ac4_archived_prd_pointers_resolve.rs"]
-mod suite_ac4_archived_prd_pointers_resolve;
 #[path = "suite_ac5_disk_size_budget.rs"]
 mod suite_ac5_disk_size_budget;
 #[path = "suite_ac6_wall_time_budget.rs"]
@@ -1142,8 +1128,6 @@ mod vaultst_ac06_provider_remove_revokes_all_tokens;
 mod vaultst_ac07_provider_set_presets_fill_urls;
 #[path = "vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green.rs"]
 mod vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green;
-#[path = "vaultst_ac09_deferral_is_justified.rs"]
-mod vaultst_ac09_deferral_is_justified;
 #[path = "vaultst_ac09_live_vault_status_trailer.rs"]
 mod vaultst_ac09_live_vault_status_trailer;
 #[path = "verbfwd_ac01_trigger_set_dotted_forwards.rs"]

@@ -1,4 +1,5 @@
 //! PRD-mcphost-test-suite-consolidation
+//! contract: every archived PRD test pointer in agent/intent-card.json resolves to a file compiled into a suite
 //! AC4 (P0) -- Given the archived mcphost PRDs' test pointers (for example
 //! `tests/hooks_ac1_*.rs`), When the verified-completed pairing classifier
 //! runs against them, Then every pairing that resolved before resolves now.

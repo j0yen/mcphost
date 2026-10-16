@@ -1,4 +1,5 @@
 //! PRD-mcphost-sse-frame-contract-generated AC4 (P0) -- Given a handler that
+//! contract: frames::emit panics in debug on a frame kind the request type disallows
 //! pushes a `list_changed` notification inside a `tools/list` handler, When
 //! it runs in debug, Then `frames::emit` panics with the request type and the
 //! disallowed frame kind.

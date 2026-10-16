@@ -1,4 +1,5 @@
 //! PRD-mcphost-args-invalid-message-from-data
+//! contract: every args_invalid site in src/ renders through one ArgsError
 //! AC6 — Given the source tree, When the test scans `src/` for
 //! `"args_invalid"` sites, Then each builds message and data from one
 //! `ArgsError` and none calls `e.to_string()` for the message.

@@ -1,4 +1,5 @@
 //! AC1 (PRD-mcphost-gate-debt-c627803): proves the actual claim AC1 makes --
+//! contract: reads agent/intent-card.json
 //! that this repo's extended-receipts paper trail (`extended-gates.toml`'s
 //! `prd_path`) resolves to a real file that names the SAME PRD as
 //! `agent/intent-card.json`'s `prd_source`. This is the exact invariant

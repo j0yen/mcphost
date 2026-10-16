@@ -1,4 +1,5 @@
 //! PRD-mcphost-upstream-token-vault-status AC9 (P0, Live) -- the prod-after-
+//! contract: reads agent/intent-card.json
 //! deploy leg of AC9 (the operator hand-registering the operator tenant's
 //! placeholder `slack` provider on mcphost-1, then reading `host.vault.status`
 //! / `admin.vault.stats` over `https://mcphost.dev/mcp`) is not something

@@ -1,4 +1,5 @@
 //! PRD-mcphost-call-audit-export
+//! contract: walks src/
 //! AC1 (P0) — Given calls made with the primary key, a sub-key, an OAuth
 //! token, a trigger fire, a cron tick, a webhook and a shared-caller sync
 //! call, When `host.calls.list` runs, Then each row's `credential` is the

@@ -1,4 +1,5 @@
 //! AC3: the committed `examples/index.json` is byte-identical to a fresh
+//! contract: walks examples/
 //! regeneration, and the embedded `EXAMPLES` has one entry per directory. A
 //! copy of the tree with one extra directory and no manifest fails the check
 //! naming that directory.

@@ -1,4 +1,5 @@
 //! PRD-mcphost-test-suite-consolidation
+//! contract: reads scripts/ci-test-partition.sh
 //! AC2 (P0) -- Given a new file `tests/zzz_ac1_probe.rs` that is not in any
 //! suite, When `gen-test-suites.sh --check` runs, Then it exits non-zero
 //! naming `tests/zzz_ac1_probe.rs`; after regenerating, it exits 0 and the

@@ -1,4 +1,5 @@
 //! PRD-mcphost-migration-safety requirement 1 / AC1: every migration file
+//! contract: reads CHANGELOG.md
 //! must declare `-- compat: previous` or `-- compat: breaking` in its
 //! header, and a `breaking` migration must have a sibling `RESTORE.md` note
 //! plus a mention in the top `CHANGELOG.md` entry naming it. Enforced here
