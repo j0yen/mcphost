@@ -71,7 +71,7 @@ note = "cargo test line added by PRD-mcphost-reviewer-debt-paydown (AC6/AC7, req
 [[lane]]
 id = "deploy"
 description = "Operator-facing systemd unit files shipped alongside the crate (PRD-mcphost-metered-overage AC9: deploy/mcphost-emit-meter.{service,timer}). Added project-locally: the shipped scaffold template's proof-lanes.toml has no lane for deploy/** either (same gap class as db-migrations and infer-data above). Proof is `systemd-analyze verify`, matching the PRD's own acceptance criterion, not a cargo command."
-globs = ["deploy/**"]
+globs = ["scripts/email-probe.sh", "deploy/**"]
 required_commands = [
   "systemd-analyze verify deploy/mcphost-emit-meter.service deploy/mcphost-emit-meter.timer",
 ]

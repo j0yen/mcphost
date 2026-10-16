@@ -148,6 +148,8 @@ mod dryrun_ac03_trigger_test_channel_post_short_circuited;
 mod dryrun_ac04_tool_run_test_state_write;
 #[path = "dryrun_ac07_quota_real_error_table_unchanged.rs"]
 mod dryrun_ac07_quota_real_error_table_unchanged;
+#[path = "ematt_ac02_attachments_become_blobs_a_tool_reads.rs"]
+mod ematt_ac02_attachments_become_blobs_a_tool_reads;
 #[path = "enduser_ac01_oauth_python_env_and_calls_row.rs"]
 mod enduser_ac01_oauth_python_env_and_calls_row;
 #[path = "enduser_ac04_no_identity_env_unset_and_calls_row_null.rs"]

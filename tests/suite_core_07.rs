@@ -873,6 +873,16 @@ mod edp_ac02_no_literal_anchors_outside_doc_anchors;
 mod edp_ac03_help_get_returns_the_section;
 #[path = "edp_ac04_error_anchor_beside_help_url.rs"]
 mod edp_ac04_error_anchor_beside_help_url;
+#[path = "ematt_ac03_too_large_part_is_refused_others_stored.rs"]
+mod ematt_ac03_too_large_part_is_refused_others_stored;
+#[path = "ematt_ac04_tenant_at_blob_bytes_max_refuses_the_part.rs"]
+mod ematt_ac04_tenant_at_blob_bytes_max_refuses_the_part;
+#[path = "ematt_ac05_pe_named_csv_is_refused_declared_mime_recorded.rs"]
+mod ematt_ac05_pe_named_csv_is_refused_declared_mime_recorded;
+#[path = "ematt_ac06_part_cap_and_corrupt_base64.rs"]
+mod ematt_ac06_part_cap_and_corrupt_base64;
+#[path = "ematt_ac07_redelivery_is_idempotent_and_reasons_are_rendered.rs"]
+mod ematt_ac07_redelivery_is_idempotent_and_reasons_are_rendered;
 #[path = "enduser_ac02_assertion_http_headers_and_calls_row.rs"]
 mod enduser_ac02_assertion_http_headers_and_calls_row;
 #[path = "enduser_ac03_invalid_assertion_rejected.rs"]
@@ -1543,10 +1553,6 @@ mod mcphost_llms_install_doc_ac01_generator_sections;
 mod mcphost_llms_install_doc_ac02_served_unauthenticated;
 #[path = "mcphost-llms-install-doc_ac03_committed_copy_drift.rs"]
 mod mcphost_llms_install_doc_ac03_committed_copy_drift;
-#[path = "mcphost-llms-install-doc_ac04_linked_from_every_entry_point.rs"]
-mod mcphost_llms_install_doc_ac04_linked_from_every_entry_point;
-#[path = "mcphost-llms-install-doc_ac06_install_doc_funnel_event.rs"]
-mod mcphost_llms_install_doc_ac06_install_doc_funnel_event;
 #[path = "mcphost_admin_schema_contract_ac01_tenants_schema_version.rs"]
 mod mcphost_admin_schema_contract_ac01_tenants_schema_version;
 #[path = "mcphost_admin_schema_contract_ac02_listings_validate_v1_schema.rs"]

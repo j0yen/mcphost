@@ -335,6 +335,9 @@ pub const HELP_SEARCH_JOIN_WINDOW_S: i64 = 120;
 /// PRD-mcphost-call-audit-export R1/R2: `calls.credential`, `bytes_in/out`.
 const MIGRATION_0108: &str = include_str!("../migrations/0108_calls_audit.sql");
 
+/// PRD-mcphost-email-attachments-as-blobs R1: mail provenance on `blobs`.
+const MIGRATION_0112: &str = include_str!("../migrations/0112_email_attachments.sql");
+
 /// `(plan name, calls_retention_days)` per plan, once loaded.
 type PlanCallsDays = Option<Vec<(String, i64)>>;
 
@@ -3033,6 +3036,19 @@ impl Db {
         Self::migrate_0109_key_delegation(&conn)?;
         Self::migrate_0110_call_results(&conn)?;
         Self::migrate_0111_key_binding(&conn)?;
+        Self::migrate_0112_email_attachments(&conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-email-attachments-as-blobs R1: gated on `blobs.message_id`
+    /// (the batch is `ALTER`s, so a rerun must skip it).
+    fn migrate_0112_email_attachments(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('blobs') WHERE name = 'message_id'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0112)?;
+        }
         Ok(())
     }
 
@@ -16734,6 +16750,69 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-email-attachments-as-blobs R1: tag a stored blob with the
+    /// mail part it came from. The unique `(tenant, message_id, part_index)`
+    /// index is what keeps a redelivered mail from storing a part twice.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn blob_tag_email(
+        &self,
+        tenant_id: i64,
+        id: String,
+        message_key: String,
+        part_index: i64,
+        declared_mime: Option<String>,
+        inline: bool,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE blobs SET source = 'email', message_id = ?1, part_index = ?2, declared_mime = ?3, \
+                     inline = ?4 WHERE tenant_id = ?5 AND id = ?6",
+                params![message_key, part_index, declared_mime, inline, tenant_id, id],
+            )
+            .map(|_| ())
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// The blob already stored for one part of one mail, if any:
+    /// `(row, declared_mime, inline)`.
+    pub async fn blob_find_email_part(
+        &self,
+        tenant_id: i64,
+        message_key: String,
+        part_index: i64,
+    ) -> Result<Option<(BlobRow, Option<String>, bool)>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                &format!(
+                    "SELECT {BLOB_COLS}, declared_mime, inline FROM blobs \
+                     WHERE tenant_id = ?1 AND message_id = ?2 AND part_index = ?3"
+                ),
+                params![tenant_id, message_key, part_index],
+                |r| Ok((blob_row_from(r)?, r.get::<_, Option<String>>(11)?, r.get::<_, i64>(12)? != 0)),
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// How many blobs this tenant holds from mail (`source = 'email'`),
+    /// optionally for one message key.
+    pub async fn email_blob_count(&self, tenant_id: i64, message_key: Option<String>) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM blobs WHERE tenant_id = ?1 AND source = 'email' \
+                     AND (?2 IS NULL OR message_id = ?2)",
+                params![tenant_id, message_key],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
     pub async fn blob_find_by_id(&self, tenant_id: i64, id: String) -> Result<Option<BlobRow>, AppError> {
         self.with_conn(move |conn| {
             conn.query_row(
@@ -18556,6 +18635,68 @@ impl Db {
                 params![message_id, tenant_id],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-email-attachments-as-blobs R2: the `email_received` inbox
+    /// message, a host-authored row (`from_tenant_id` NULL) on one per-tenant
+    /// synthetic thread. `dedupe_key` is the provider's message key: a second
+    /// delivery of the same mail returns the first message's id (`false`)
+    /// and writes nothing.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_email_notice(
+        &self,
+        tenant_id: i64,
+        from_address: String,
+        body: String,
+        data_json: String,
+        dedupe_key: String,
+    ) -> Result<(String, bool), AppError> {
+        let now = now_rfc3339();
+        let now_ms = crate::state::now_unix_ms();
+        self.with_conn(move |conn| {
+            let thread_id = format!("email-inbox-{tenant_id}");
+            let existing: Option<String> = conn
+                .query_row(
+                    "SELECT id FROM messages WHERE thread_id = ?1 AND dedupe_key = ?2",
+                    params![thread_id, dedupe_key],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if let Some(id) = existing {
+                return Ok((id, false));
+            }
+            let thread_exists: bool =
+                conn.prepare("SELECT 1 FROM threads WHERE id = ?1")?.exists(params![thread_id])?;
+            if !thread_exists {
+                conn.execute(
+                    "INSERT INTO threads (id, created_by, created_at, created_unix_ms) VALUES (?1, NULL, ?2, ?3)",
+                    params![thread_id, now, now_ms],
+                )?;
+            }
+            conn.execute(
+                "INSERT OR IGNORE INTO thread_participants (thread_id, tenant_id, joined_at) VALUES (?1, ?2, ?3)",
+                params![thread_id, tenant_id, now],
+            )?;
+            let seq: i64 = conn.query_row(
+                "SELECT COALESCE(MAX(seq), 0) + 1 FROM messages WHERE thread_id = ?1",
+                params![thread_id],
+                |r| r.get(0),
+            )?;
+            let message_id = crate::state::new_ulid();
+            conn.execute(
+                "INSERT INTO messages \
+                     (id, thread_id, seq, from_tenant_id, from_address, body, data_json, in_reply_to, \
+                      dedupe_key, synthetic, source_class, created_at, created_unix_ms, refused_json, urgent) \
+                 VALUES (?1, ?2, ?3, NULL, ?4, ?5, ?6, NULL, ?7, NULL, 'host', ?8, ?9, NULL, 0)",
+                params![message_id, thread_id, seq, from_address, body, data_json, dedupe_key, now, now_ms],
+            )?;
+            conn.execute(
+                "INSERT INTO message_receipts (message_id, tenant_id, read_at) VALUES (?1, ?2, NULL)",
+                params![message_id, tenant_id],
+            )?;
+            Ok((message_id, true))
         })
         .await
     }
