@@ -9975,6 +9975,249 @@
       "unpaged_reason": "long-poll batch of at most 50 rows that advances the shared cursor; wait semantics, not page-through"
     },
     {
+      "description": "Delete one note by its key (from host.note.list). Deleting a tool-attached note removes its tools/list suffix and sends tools/list_changed.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "description": "The note's notes/ key.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "type": "object"
+      },
+      "name": "host.note.delete",
+      "output_schema": {
+        "properties": {
+          "attach_to": {
+            "properties": {
+              "run": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tool": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "deleted": {
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deleted",
+          "key"
+        ],
+        "type": "object"
+      },
+      "since": "0.108.62"
+    },
+    {
+      "description": "List your live notes, newest first: {notes: [{key, text, attach_to, created_unix, expires_unix}], next_cursor}. Text is returned in full.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "attach_to": {
+            "description": "Only notes attached to this: {tool: name} or {run: id}.",
+            "properties": {
+              "run": {
+                "type": "string"
+              },
+              "tool": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "cursor": {
+            "description": "next_cursor from the previous page.",
+            "type": "string"
+          },
+          "limit": {
+            "description": "Max notes to return; default 100.",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.note.list",
+      "output_schema": {
+        "properties": {
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notes": {
+            "items": {
+              "properties": {
+                "attach_to": {
+                  "properties": {
+                    "run": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "tool": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [],
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                },
+                "created_unix": {
+                  "type": "integer"
+                },
+                "expires_unix": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "key": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "created_unix",
+                "key",
+                "text"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "notes"
+        ],
+        "type": "object"
+      },
+      "since": "0.108.62",
+      "unpaged_reason": "newest-first window; its cursor is the previous page's last note key, not a signed keyset cursor"
+    },
+    {
+      "description": "Leave a note for your next session. With attach_to: {tool: name} the note shows up on that tool's description in every later tools/list (\" — note to self: <text>\", cut to 120 chars), on any client; the server sends tools/list_changed now. Returns {key, attach_to, expires_at, visible_in}. Over the plan's notes_max it fails quota_exceeded {limit, used}; an unknown tool or run fails not_found.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "attach_to": {
+            "description": "What the note is about: {tool: <your tool's local name>} or {run: <run id>}.",
+            "properties": {
+              "run": {
+                "type": "string"
+              },
+              "tool": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "text": {
+            "description": "The note (at most 4096 bytes).",
+            "maxLength": 4096,
+            "type": "string"
+          },
+          "ttl_s": {
+            "description": "Seconds until the note expires; default: never.",
+            "maximum": 7776000,
+            "minimum": 60,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "name": "host.note.put",
+      "output_schema": {
+        "properties": {
+          "attach_to": {
+            "properties": {
+              "run": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tool": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "visible_in": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "visible_in"
+        ],
+        "type": "object"
+      },
+      "since": "0.108.62"
+    },
+    {
       "description": "Page this tenant's OAuth auth audit log (authorize/consent/token/refresh/revoke/ policy_change/approved/denied/refused events), newest additions last. Optional since/until (unix seconds) and event filters; limit defaults to 50, max 500; cursor resumes from a previous page's cursor field.",
       "input_schema": {
         "additionalProperties": false,
@@ -30322,6 +30565,110 @@
       },
       "name": "host_msg_wait",
       "since": "0.103.1"
+    },
+    {
+      "alias_of": "host.note.delete",
+      "description": "Delete one note by its key (from host.note.list). Deleting a tool-attached note removes its tools/list suffix and sends tools/list_changed.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "description": "The note's notes/ key.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "type": "object"
+      },
+      "name": "host_note_delete",
+      "since": "0.108.62"
+    },
+    {
+      "alias_of": "host.note.list",
+      "description": "List your live notes, newest first: {notes: [{key, text, attach_to, created_unix, expires_unix}], next_cursor}. Text is returned in full.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "attach_to": {
+            "description": "Only notes attached to this: {tool: name} or {run: id}.",
+            "properties": {
+              "run": {
+                "type": "string"
+              },
+              "tool": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "cursor": {
+            "description": "next_cursor from the previous page.",
+            "type": "string"
+          },
+          "limit": {
+            "description": "Max notes to return; default 100.",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host_note_list",
+      "since": "0.108.62"
+    },
+    {
+      "alias_of": "host.note.put",
+      "description": "Leave a note for your next session. With attach_to: {tool: name} the note shows up on that tool's description in every later tools/list (\" — note to self: <text>\", cut to 120 chars), on any client; the server sends tools/list_changed now. Returns {key, attach_to, expires_at, visible_in}. Over the plan's notes_max it fails quota_exceeded {limit, used}; an unknown tool or run fails not_found.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "attach_to": {
+            "description": "What the note is about: {tool: <your tool's local name>} or {run: <run id>}.",
+            "properties": {
+              "run": {
+                "type": "string"
+              },
+              "tool": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "text": {
+            "description": "The note (at most 4096 bytes).",
+            "maxLength": 4096,
+            "type": "string"
+          },
+          "ttl_s": {
+            "description": "Seconds until the note expires; default: never.",
+            "maximum": 7776000,
+            "minimum": 60,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "name": "host_note_put",
+      "since": "0.108.62"
     },
     {
       "alias_of": "host.oauth.audit",

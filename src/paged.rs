@@ -556,6 +556,8 @@ const UNPAGED_LEGACY: &str =
     "keeps its own pre-Paged cursor encoding; converges onto paged::Cursor in a follow-up migration";
 const UNPAGED_WINDOW: &str =
     "limit-only window over a bounded recent set; no keyset cursor is offered yet";
+const UNPAGED_NOTES: &str =
+    "newest-first window; its cursor is the previous page's last note key, not a signed keyset cursor";
 const UNPAGED_EXPORT: &str =
     "export or arbitrary-query semantics: the caller bounds the result, so no page cursor applies";
 const UNPAGED_BOUNDED: &str =
@@ -595,6 +597,7 @@ pub const UNPAGED_VERBS: &[(&str, &str)] = &[
     ("host.invite.list", UNPAGED_BOUNDED),
     ("host.key.list", UNPAGED_BOUNDED),
     ("host.msg.wait", UNPAGED_WAIT),
+    ("host.note.list", UNPAGED_NOTES),
     ("host.oauth.audit", UNPAGED_LEGACY),
     ("host.oauth.audit_export", UNPAGED_EXPORT),
     ("host.oauth.grants", UNPAGED_BOUNDED),

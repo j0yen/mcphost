@@ -473,6 +473,21 @@ pub(crate) fn prune_blobs(
     Ok(out)
 }
 
+/// PRD-mcphost-notes-to-future-self R4: deletes the `notes/` rows of
+/// `tenant_state_kv` whose JSON `expires_unix` is at or before `now_unix`
+/// (every reader already ignores them before this runs); rows with no
+/// `expires_unix`, and first-contact notes, are untouched.
+pub(crate) fn prune_expired_notes(conn: &Connection, now_unix: i64) -> rusqlite::Result<i64> {
+    let n = conn.execute(
+        "DELETE FROM tenant_state_kv WHERE key LIKE 'notes/%' AND json_valid(value_json) \
+         AND json_type(value_json) = 'object' \
+         AND json_extract(value_json, '$.expires_unix') IS NOT NULL \
+         AND json_extract(value_json, '$.expires_unix') <= ?1",
+        params![now_unix],
+    )?;
+    Ok(n as i64)
+}
+
 /// One prune cycle's outcome: per-physical-table deleted counts, and the
 /// first error encountered (if any) naming which table it happened on.
 /// `deleted` keeps every table pruned before the failure, so a partial
@@ -584,6 +599,16 @@ fn prune_sync_inner(
         Err(e) => {
             crate::db::note_rusqlite_error(&e);
             return PruneOutcome { deleted, error: Some(format!("blobs: {e}")) };
+        }
+    }
+    // PRD-mcphost-notes-to-future-self R4: notes past their `expires_unix`.
+    match prune_expired_notes(&conn, now_unix) {
+        Ok(n) => {
+            deleted.insert("notes".to_string(), n);
+        }
+        Err(e) => {
+            crate::db::note_rusqlite_error(&e);
+            return PruneOutcome { deleted, error: Some(format!("notes: {e}")) };
         }
     }
     // Requirement 2: only meaningful once migration 0026 has switched the

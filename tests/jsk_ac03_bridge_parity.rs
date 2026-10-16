@@ -12,7 +12,7 @@ use mcphost::kinds::js::{self, CallParams};
 use mcphost::kinds::python::runner_script_registered_modules;
 use mcphost::sandbox::{self, NetworkMode, NoSidecar, SandboxOutcome};
 use serde_json::{Value, json};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 async fn run_tool(source: &str) -> Value {
     let dir = common::TempDataDir::new();
@@ -24,7 +24,7 @@ async fn run_tool(source: &str) -> Value {
         extra_env: Vec::new(),
         isolation: sandbox::detect_mechanism(),
     };
-    let cancel = Arc::new(Mutex::new(None));
+    let cancel = Arc::new(mcphost::runs::CancelSlot::default());
     let outcome = js::cold_call(&dir.0, &params, &json!({"args": {}}), &NoSidecar, &cancel)
         .await
         .expect("cold call");

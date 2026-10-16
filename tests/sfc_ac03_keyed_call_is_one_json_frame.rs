@@ -1,7 +1,8 @@
 //! PRD-mcphost-sse-frame-contract-generated AC3 (P0) -- Given a keyed
 //! `tools/call` of `host.whoami`, When the response is read, Then it is
 //! `application/json` with exactly one frame carrying `result`, and the row
-//! for `tools/call:keyed` says `[Result{1}]`.
+//! for `tools/call:keyed` allows exactly one `result` (and an optional
+//! leading `list_changed`).
 
 use crate::common;
 use common::{McpClient, TestServer, signup};
@@ -42,5 +43,11 @@ async fn keyed_whoami_answers_one_json_result_frame_and_the_row_says_so() {
     assert!(body.get("method").is_none(), "the single frame must not be a notification: {body}");
 
     let row = row_for("tools/call:keyed").expect("row for tools/call:keyed");
-    assert_eq!(row.frames, &[(FrameKind::Result, Card::ExactlyOne)], "the row must say [Result{{1}}]");
+    // PRD-mcphost-notes-to-future-self: `host.note.put`/`delete` on a tool may
+    // precede the result with `list_changed`; `host.whoami` never does.
+    assert_eq!(
+        row.frames,
+        &[(FrameKind::ListChanged, Card::AtMostOne), (FrameKind::Result, Card::ExactlyOne)],
+        "the row must say [ListChanged{{0,1}}, Result{{1}}]"
+    );
 }

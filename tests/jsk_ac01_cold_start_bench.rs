@@ -11,7 +11,7 @@ use crate::common;
 use mcphost::kinds::js::{self, CallParams, COLD_P95_BUDGET_MS};
 use mcphost::sandbox::{self, NetworkMode, SidecarBridge};
 use serde_json::{Value, json};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Instant;
 
 const RUNS: usize = 50;
@@ -64,7 +64,7 @@ async fn fifty_cold_calls_report_p95_under_budget() {
         isolation: sandbox::detect_mechanism(),
     };
     let payload = json!({"args": {"items": [{"price": 2, "qty": 3}, {"price": 5}]}});
-    let cancel = Arc::new(Mutex::new(None));
+    let cancel = Arc::new(mcphost::runs::CancelSlot::default());
 
     let mut ms = Vec::with_capacity(RUNS);
     for _ in 0..RUNS {

@@ -1,68 +1,49 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-js-kind.md",
-  "intent_slug": "mcphost-js-kind",
-  "root_motivation": "**Who:** the agent on the chatgpt and codex_cli surfaces whose project is JavaScript. **What:** publish the function it already has as a tool, with the same data bridges python gets. **Why not today:** the only source-taking kind is python, so a Node project rewrites its tool in Python or compiles a wasm component by hand.",
-  "user_persona": "An agent on a Node project that publishes `kind: js` with `function main(args)` and reads `tool.js:N` errors with the offending line, the same way it would for python.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-notes-to-future-self.md",
+  "intent_slug": "mcphost-notes-to-future-self",
+  "root_motivation": "**Who:** the agent at the end of a session that knows something its next self will not. **What:** leave a note where the next reader will trip over it -- pinned to a tool's description in tools/list, on any client, with no extra call.",
+  "user_persona": "An agent that runs host.note.put {text, attach_to: {tool}} once and reads the note on that tool's description in every later session; the same user's second client sees it too.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 7
+    "target": 4
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the python bwrap profile and a 20-line js tool, When 50 cold calls run, Then the bench prints cold_p95_ms=<n> and the PR records the number and the engine form chosen; n > 300 fails the test.",
-      "test": "tests/jsk_ac01_cold_start_bench.rs"
+      "description": "Given a live keyed connection to a test server, When `host.note.put {text, attach_to: {tool: \"cleaner\"}}` succeeds, Then the server sent `notifications/tools/list_changed` on that connection and the next `tools/list` describes `cleaner` with the ` — note to self: ` suffix (the falsifier).",
+      "test": "tests/nfs_ac01_put_emits_list_changed_and_suffix.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given spec.source with a syntax error on line 2, When published, Then InvalidSpec carries line: 2, column, and source_line with that line's text.",
-      "test": "tests/jsk_ac02_syntax_error_position.rs"
+      "description": "Given a 300-char note attached to a tool, When `tools/list` renders, Then the suffix text is exactly 120 chars ending in `…`, cut at a char boundary, and `host.note.list` still returns the full text.",
+      "test": "tests/nfs_ac02_suffix_cut_to_120_chars.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the js runtime, When its mcphost object's keys are listed, Then they equal runner_script_registered_modules() plus call and progress.",
-      "test": "tests/jsk_ac03_bridge_parity.rs"
+      "description": "Given a tenant at `notes_max`, When `host.note.put` is called, Then `quota_exceeded` with `{limit, used}` and no row is written; Given `attach_to: {tool: \"nope\"}`, Then `not_found`.",
+      "test": "tests/nfs_ac03_quota_and_unknown_tool.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a tool that throws on line 3, When called, Then error_code: tool_exception, message ends at tool.js:3, data.source_line is that line, data.families is [tool_code].",
-      "test": "tests/jsk_ac04_exception_position.rs"
-    },
-    {
-      "id": "AC5",
-      "level": "MUST",
-      "description": "Given timeout_s: 1 and while(true){}, When called, Then tool_timeout within 2 s and the next call succeeds; Given memory_mb: 16 and an unbounded array, Then tool_oom.",
-      "test": "tests/jsk_ac05_timeout_and_oom.rs"
-    },
-    {
-      "id": "AC6",
-      "level": "MUST",
-      "description": "Given network: none and fetch(\"https://example.com\"), When called, Then the error names the network grant and no socket opens.",
-      "test": "tests/jsk_ac06_network_none_blocks_fetch.rs"
-    },
-    {
-      "id": "AC7",
-      "level": "MUST",
-      "description": "Given a spec with secrets: [\"API_KEY\"] whose tool returns the secret, When host.tool_test runs, Then the value is redacted in result and host.tool_logs.",
-      "test": "tests/jsk_ac07_secret_redaction.rs"
+      "description": "Given a note with `ttl_s: 60` and the clock advanced 61 s, When `host.note.list` and `tools/list` run before the sweep, Then neither shows it; When the sweep runs, Then the row is gone.",
+      "test": "tests/nfs_ac04_ttl_expiry.rs"
     }
   ],
   "scope": [
-    "src/kinds/js.rs (new): JsKind, bridge prelude generated from BRIDGE_MODULES.",
-    "src/bin/mcphost-qjs.rs (new): the rquickjs runner run inside the python bwrap profile.",
-    "src/kinds/secretenv.rs (new): secret redaction and env injection shared with python.",
-    "src/main.rs, src/kinds/mod.rs, src/kinds/docs.rs: register js beside python.",
-    "docs/kinds/js.md (new), README.md, www/llms.txt: the js page and the kind list."
+    "src/notes.rs: host.note.put/list/delete over the notes/ prefix of tenant_state_kv; the tools/list description suffix.",
+    "src/handler.rs, src/protocol/frames.rs: tools, dispatch, list_changed on a tool-attached put/delete (keyed row allows list_changed).",
+    "src/plans.rs, src/retention.rs, src/db.rs: notes_max plan field; expired-note sweep.",
+    "contracts/, docs/, www/: regenerated tool contract, output schemas, docs."
   ],
   "non_goals": [
-    "TypeScript (refused with a hint), npm packages, a warm pool, the live-prod AC8 (operator-provisioned)."
+    "Notes attached to runs surfaced in host.runs.get (R6), attached_to in host.resume/welcome_back (R5), pin (R7); shared notebooks across tenants."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -77,15 +58,10 @@
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does a Node project not publish its own JavaScript?",
-      "a": "the only source-taking kind is python; wasm needs a hand-compiled component."
+      "q": "Why does the next session repeat a mistake the last one learned from?",
+      "a": "The only write path is remember at signup; nothing pins a note to the tool it is about."
     }
   ],
-  "created_at": "2026-10-15T00:00:00Z",
-  "ambiguities_resolved": [
-    {
-      "question": "Subprocess qjs in bwrap or in-process rquickjs?",
-      "resolution": "Subprocess: AC1 measured cold p95 well under the 300 ms budget, so kernel-level isolation is kept."
-    }
-  ]
+  "created_at": "2026-10-16T00:00:00Z",
+  "ambiguities_resolved": []
 }

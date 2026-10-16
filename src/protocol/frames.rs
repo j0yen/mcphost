@@ -139,7 +139,7 @@ pub const FRAME_SEQUENCES: &[FrameRow] = &[
     },
     FrameRow {
         request_type: "tools/call:keyed",
-        frames: &[(FrameKind::Result, Card::ExactlyOne)],
+        frames: &[(FrameKind::ListChanged, Card::AtMostOne), (FrameKind::Result, Card::ExactlyOne)],
         content_type_rule: ContentTypeRule::JsonWhenSingleFrame,
     },
     FrameRow {
