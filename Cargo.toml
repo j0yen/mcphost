@@ -40,7 +40,16 @@ path = "src/lib.rs"
 name = "mcphost"
 path = "src/main.rs"
 
+# PRD-mcphost-js-kind: the QuickJS runner the `js` kind runs inside the
+# sandbox (one subprocess per call, bwrap profile shared with python).
+[[bin]]
+name = "mcphost-qjs"
+path = "src/bin/mcphost-qjs.rs"
+
 [dependencies]
+# PRD-mcphost-js-kind: QuickJS engine for the `mcphost-qjs` sandbox runner
+# (bundled C source, no system library). Only src/bin/mcphost-qjs.rs uses it.
+rquickjs = { version = "0.14" }
 rmcp = { version = "3.2.0", features = ["server", "transport-streamable-http-server", "macros", "elicitation"] }
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }

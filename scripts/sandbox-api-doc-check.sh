@@ -19,7 +19,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 
 SOURCE="src/kinds/python.rs"
-TARGETS=("docs/kinds/python.md" "www/llms.txt" "plugin/skills/mcphost/SKILL.md")
+TARGETS=("docs/kinds/python.md" "docs/kinds/js.md" "www/llms.txt" "plugin/skills/mcphost/SKILL.md")
 START="<!-- mcphost-sandbox-api:start -->"
 END="<!-- mcphost-sandbox-api:end -->"
 MODE="${1:-check}"

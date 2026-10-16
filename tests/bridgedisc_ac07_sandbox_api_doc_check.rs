@@ -29,6 +29,7 @@ const TOUCHED: &[&str] = &[
     "docs/host-tools.md",
     "src/kinds/python.rs",
     "docs/kinds/python.md",
+    "docs/kinds/js.md",
     "www/llms.txt",
     "docs/protocol/capabilities.md",
     "plugin/skills/mcphost/SKILL.md",
@@ -76,8 +77,8 @@ fn landing_commit_passes_reporting_modules_and_docs_in_sync() {
         "sandbox-api-doc-check.sh must exit 0 on the committed files, stderr:\n{stderr}"
     );
     assert!(
-        stdout.contains("docs_in_sync=3"),
-        "must report docs_in_sync=3 for the three target docs: {stdout}"
+        stdout.contains("docs_in_sync=4"),
+        "must report docs_in_sync=4 for the four target docs: {stdout}"
     );
     let modules_line = stdout
         .lines()

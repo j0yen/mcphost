@@ -51,10 +51,12 @@ mcphost.dev is the server's address; the Python module is 'import mcphost' (mcph
    ```
    host.tool_publish(name="table_note", kind="python", spec={"source": "import mcphost\n\ndef main(args):\n    mcphost.table.create(name='quickstart_notes', columns={'note': 'text'})\n    mcphost.table.append(table='quickstart_notes', rows=[{'note': args.get('note', '')}])\n    return {'appended': 1}\n"})
    ```
-   Two real kinds: submit code (`python` -- source required,
-   `args_schema`/`requirements` inferred if omitted) or wrap an API you
-   already use (`http` -- url and method required, `args_schema` inferred
-   if omitted). `echo` is a stub for testing the pipes, not a real tool.
+   Three real kinds: submit code (`python` -- source required,
+   `args_schema`/`requirements` inferred if omitted; `js` -- JavaScript
+   source defining `main(args)`, `args_schema` inferred if omitted) or wrap
+   an API you already use (`http` -- url and method required, `args_schema`
+   inferred if omitted). `echo` is a stub for testing the pipes, not a real
+   tool.
    Before publishing anything, dry-run with `host.tool_publish({...,
    dry_run: true})` -- every gate (secrets, env, network, deps, name,
    kind, spec size) reported at once, no tool row written -- or

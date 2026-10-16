@@ -56,6 +56,7 @@ pub fn doc_check_scratch(label: &str) -> PathBuf {
         "src/oauth.rs",
         "docs/host-tools.md",
         "docs/kinds/python.md",
+        "docs/kinds/js.md",
         "docs/oauth-connect.md",
         "www/llms.txt",
         "docs/protocol/capabilities.md",
@@ -243,6 +244,14 @@ pub fn python_kind_registry(data_dir: &Path) -> KindRegistry {
 pub fn python_kind_registry_with_domain(data_dir: &Path, own_domain: &str) -> KindRegistry {
     let mut kinds = KindRegistry::with_builtin();
     kinds.register(Arc::new(PythonKind::new(data_dir).with_own_domain(own_domain)));
+    kinds
+}
+
+/// PRD-mcphost-js-kind: `echo` (base) + a `js` kind whose scratch dirs live
+/// under `data_dir` -- the js-kind AC suite's usual entry point.
+pub fn js_kind_registry(data_dir: &Path) -> KindRegistry {
+    let mut kinds = KindRegistry::with_builtin();
+    kinds.register(Arc::new(mcphost::kinds::js::JsKind::new(data_dir)));
     kinds
 }
 

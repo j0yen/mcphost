@@ -1510,6 +1510,8 @@ async fn main() -> anyhow::Result<()> {
             // still runs below regardless (requirement 1).
             python_kind.run_startup_selftest().await;
             kinds.register(std::sync::Arc::new(python_kind));
+            // PRD-mcphost-js-kind: the QuickJS source kind, beside python.
+            kinds.register(std::sync::Arc::new(mcphost::kinds::js::JsKind::new(&data_dir())));
             // PRD-mcphost-composition requirement 3 / PRD-mcphost-wasm-kind
             // requirement 5: `chain` and `wasm` are host-side only, with no
             // sandbox/isolation concept or OS dependency to probe first --

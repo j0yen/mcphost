@@ -31,7 +31,7 @@ fn run_script(repo_root: Option<&std::path::Path>) -> (bool, String, String) {
 fn landing_commit_is_in_sync_for_every_kind() {
     let (ok, stdout, stderr) = run_script(None);
     assert!(ok, "script must exit 0 at the landing commit; stderr: {stderr}");
-    for kind in ["echo", "http", "python", "wasm"] {
+    for kind in ["echo", "http", "js", "python", "wasm"] {
         let needle = format!("kind={kind} ");
         let line = stdout
             .lines()

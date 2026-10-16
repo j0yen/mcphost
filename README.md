@@ -44,10 +44,12 @@ own tool is **42.4s**.
    ```
    host.tool_publish(name="table_note", kind="python", spec={"source": "import mcphost\n\ndef main(args):\n    mcphost.table.create(name='quickstart_notes', columns={'note': 'text'})\n    mcphost.table.append(table='quickstart_notes', rows=[{'note': args.get('note', '')}])\n    return {'appended': 1}\n"})
    ```
-   Two real kinds: submit code (`python` -- source required,
-   `args_schema`/`requirements` inferred if omitted) or wrap an API you
-   already use (`http` -- url and method required, `args_schema` inferred
-   if omitted). `echo` is a stub for testing the pipes, not a real tool.
+   Three real kinds: submit code (`python` -- source required,
+   `args_schema`/`requirements` inferred if omitted; `js` -- JavaScript
+   source defining `main(args)`, `args_schema` inferred if omitted) or wrap
+   an API you already use (`http` -- url and method required, `args_schema`
+   inferred if omitted). `echo` is a stub for testing the pipes, not a real
+   tool.
    Before publishing anything, dry-run with `host.tool_publish({...,
    dry_run: true})` -- every gate (secrets, env, network, deps, name,
    kind, spec size) reported at once, no tool row written -- or
@@ -588,6 +590,33 @@ Example call arguments:
 ```json
 {
   "n": 3
+}
+```
+
+### `js`
+
+only source is required -- args_schema is inferred from the `args.<name>` reads (and any JSDoc `@param {type} args.<name>`) in it; source must define `function main(args)` (or `export default`) and is plain JavaScript (ES2020) run by QuickJS in the same sandbox `python` uses.
+
+Example spec:
+
+```json
+{
+  "source": "function main(args) {\n  return { total: args.items.reduce((a, b) => a + b.price, 0) };\n}\n"
+}
+```
+
+Example call arguments:
+
+```json
+{
+  "items": [
+    {
+      "price": 2
+    },
+    {
+      "price": 5
+    }
+  ]
 }
 ```
 

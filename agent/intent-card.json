@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-delegation-bound-to-run-or-session.md",
-  "intent_slug": "mcphost-delegation-bound-to-run-or-session",
-  "root_motivation": "**Who:** the lead agent that hands a helper a key for one job and wants it gone when the job is. **What:** a credential whose lifetime is a unit of work (one run or one MCP session), not a clock.",
-  "user_persona": "A lead agent that delegates a watcher key bound to an async run (or to its own session) and never has to remember to revoke it; a copied key is refused anywhere else.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-js-kind.md",
+  "intent_slug": "mcphost-js-kind",
+  "root_motivation": "**Who:** the agent on the chatgpt and codex_cli surfaces whose project is JavaScript. **What:** publish the function it already has as a tool, with the same data bridges python gets. **Why not today:** the only source-taking kind is python, so a Node project rewrites its tool in Python or compiles a wasm component by hand.",
+  "user_persona": "An agent on a Node project that publishes `kind: js` with `function main(args)` and reads `tool.js:N` errors with the offending line, the same way it would for python.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,54 +14,55 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given two MCP connections with the same tenant key, When each calls `host.whoami`, Then `_meta.session_id` is non-empty and distinct, and a `bind: {session: \"current\"}` key from A is refused `key_bound_elsewhere` on B with `data.seen.ref` equal to B's id.",
-      "test": "tests/kbind_ac01_session_ids_distinct_and_bound_key_refused_elsewhere.rs"
+      "description": "Given the python bwrap profile and a 20-line js tool, When 50 cold calls run, Then the bench prints cold_p95_ms=<n> and the PR records the number and the engine form chosen; n > 300 fails the test.",
+      "test": "tests/jsk_ac01_cold_start_bench.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given an open async run R, When the primary delegates `{bind: {run_id: R}}`, Then the child's `host.runs.get` succeeds and `host.tool.list` with no run id is `key_bound_elsewhere` with `data.seen.ref == null` and no `calls` row.",
-      "test": "tests/kbind_ac02_run_bound_key_needs_its_run_id.rs"
+      "description": "Given spec.source with a syntax error on line 2, When published, Then InvalidSpec carries line: 2, column, and source_line with that line's text.",
+      "test": "tests/jsk_ac02_syntax_error_position.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the watcher key, When run R reaches `done`, Then `revoked_at` is set in the same transaction, a `revoke_bound`/`run_done` audit row exists, and the next call fails `key_revoked` with `data.reason == \"run_done\"`.",
-      "test": "tests/kbind_ac03_run_done_revokes_bound_key.rs"
+      "description": "Given the js runtime, When its mcphost object's keys are listed, Then they equal runner_script_registered_modules() plus call and progress.",
+      "test": "tests/jsk_ac03_bridge_parity.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given an unknown or foreign run id, Then `not_found` and no row; Given another connection's session id, Then `permission_denied`.",
-      "test": "tests/kbind_ac04_bind_target_must_be_yours.rs"
+      "description": "Given a tool that throws on line 3, When called, Then error_code: tool_exception, message ends at tool.js:3, data.source_line is that line, data.families is [tool_code].",
+      "test": "tests/jsk_ac04_exception_position.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a session-bound key idle 31 min, Then the sweep revokes it `session_idle`; Given the session is closed, Then it is revoked on the close `session_closed`.",
-      "test": "tests/kbind_ac05_session_idle_and_close_revoke.rs"
+      "description": "Given timeout_s: 1 and while(true){}, When called, Then tool_timeout within 2 s and the next call succeeds; Given memory_mb: 16 and an unbounded array, Then tool_oom.",
+      "test": "tests/jsk_ac05_timeout_and_oom.rs"
     },
     {
       "id": "AC6",
-      "level": "SHOULD",
-      "description": "Given the watcher key, Then `host.key.list` and `host.whoami` show `bound {kind, ref, last_seen_unix}` and, after the run ends, `revoked_reason == \"run_done\"`.",
-      "test": "tests/kbind_ac06_list_and_whoami_show_bound.rs"
+      "level": "MUST",
+      "description": "Given network: none and fetch(\"https://example.com\"), When called, Then the error names the network grant and no socket opens.",
+      "test": "tests/jsk_ac06_network_none_blocks_fetch.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given a run with a 300 s deadline, When delegating `{bind: {run_id}, ttl_s: 900}`, Then the child's `expires_at` equals the run's deadline.",
-      "test": "tests/kbind_ac07_run_deadline_caps_child_expiry.rs"
+      "description": "Given a spec with secrets: [\"API_KEY\"] whose tool returns the secret, When host.tool_test runs, Then the value is redacted in result and host.tool_logs.",
+      "test": "tests/jsk_ac07_secret_redaction.rs"
     }
   ],
   "scope": [
-    "src/subkeys.rs: bind parsing, check_bound, revoke_bound_on, idle sweep.",
-    "src/db.rs: finalize_run/cancel_run/reap revoke bound keys in-transaction.",
-    "src/handler.rs, src/http.rs: bound check, whoami _meta.session_id, DELETE closes session.",
-    "migrations/0111_key_binding.sql."
+    "src/kinds/js.rs (new): JsKind, bridge prelude generated from BRIDGE_MODULES.",
+    "src/bin/mcphost-qjs.rs (new): the rquickjs runner run inside the python bwrap profile.",
+    "src/kinds/secretenv.rs (new): secret redaction and env injection shared with python.",
+    "src/main.rs, src/kinds/mod.rs, src/kinds/docs.rs: register js beside python.",
+    "docs/kinds/js.md (new), README.md, www/llms.txt: the js page and the kind list."
   ],
   "non_goals": [
-    "Binding OAuth tokens or the primary key; a session registry visible to agents; host.runs.get bound_keys (R7) and admin.tenants counts (R8); the live prod probe (AC8)."
+    "TypeScript (refused with a hint), npm packages, a warm pool, the live-prod AC8 (operator-provisioned)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -69,15 +70,22 @@
     "deny_unsafe": false,
     "max_deps": null,
     "msrv": null,
-    "additional": {}
+    "additional": {
+      "engine_form": "mcphost-qjs subprocess in the python bwrap profile; cold_p95_ms measured by jsk_ac01"
+    }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can a delegated key outlive its job?",
-      "a": "It ends only by TTL or an explicit revoke the lead must remember."
+      "q": "Why does a Node project not publish its own JavaScript?",
+      "a": "the only source-taking kind is python; wasm needs a hand-compiled component."
     }
   ],
   "created_at": "2026-10-15T00:00:00Z",
-  "ambiguities_resolved": []
+  "ambiguities_resolved": [
+    {
+      "question": "Subprocess qjs in bwrap or in-process rquickjs?",
+      "resolution": "Subprocess: AC1 measured cold p95 well under the 300 ms budget, so kernel-level isolation is kept."
+    }
+  ]
 }
