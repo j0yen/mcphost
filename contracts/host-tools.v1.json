@@ -7151,7 +7151,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Return the documentation section an anchor points at: its text (at most 4 KB) and its first fenced example. Pass an anchor exactly as an error, hint or help entry printed it, e.g. a rate_limited error's `anchor`. Read-only, anonymous, no tenant data. An unknown anchor is anchor_not_found with the nearest anchors in did_you_mean.",
+      "description": "Return the documentation section an anchor points at: its text (at most 4 KB, cut at a paragraph boundary with truncated: true when longer) and its first fenced example. Pass an anchor exactly as an error, hint or help entry printed it, e.g. a rate_limited error's `anchor`. Read-only, anonymous, no tenant data. An unknown anchor is anchor_not_found with the nearest anchors in did_you_mean.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -7204,6 +7204,9 @@
           },
           "title": {
             "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -7211,7 +7214,8 @@
           "line",
           "path",
           "text",
-          "title"
+          "title",
+          "truncated"
         ],
         "type": "object"
       },
@@ -29606,7 +29610,7 @@
     },
     {
       "alias_of": "host.help.get",
-      "description": "Return the documentation section an anchor points at: its text (at most 4 KB) and its first fenced example. Pass an anchor exactly as an error, hint or help entry printed it, e.g. a rate_limited error's `anchor`. Read-only, anonymous, no tenant data. An unknown anchor is anchor_not_found with the nearest anchors in did_you_mean.",
+      "description": "Return the documentation section an anchor points at: its text (at most 4 KB, cut at a paragraph boundary with truncated: true when longer) and its first fenced example. Pass an anchor exactly as an error, hint or help entry printed it, e.g. a rate_limited error's `anchor`. Read-only, anonymous, no tenant data. An unknown anchor is anchor_not_found with the nearest anchors in did_you_mean.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {

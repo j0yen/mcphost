@@ -241,22 +241,7 @@ fn embed_doc_anchors() {
     println!("cargo:rerun-if-changed=src/doc_scan.rs");
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
     let root = std::path::Path::new(&manifest_dir);
-    let mut paths = vec!["README.md".to_string(), "www/llms.txt".to_string(), "www/llms-install.md".to_string()];
-    let mut stack = vec![root.join("docs")];
-    while let Some(dir) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
-        for entry in rd.filter_map(|e| e.ok()) {
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.extension().is_some_and(|e| e == "md")
-                && let Ok(rel) = path.strip_prefix(root)
-            {
-                paths.push(rel.to_string_lossy().replace('\\', "/"));
-            }
-        }
-    }
-    paths.sort();
+    let paths = doc_scan::doc_paths(root);
     let mut names: Vec<String> = Vec::new();
     let mut rows = String::new();
     for rel in &paths {
@@ -274,12 +259,13 @@ fn embed_doc_anchors() {
                 None => "None".to_string(),
             };
             rows.push_str(&format!(
-                "AnchorEntry {{ anchor: {:?}, path: {rel:?}, title: {:?}, level: {}, line: {}, text: {:?}, example: {example} }},\n",
+                "AnchorEntry {{ anchor: {:?}, path: {rel:?}, title: {:?}, level: {}, line: {}, text: {:?}, truncated: {}, example: {example} }},\n",
                 format!("{rel}#{}", h.slug),
                 h.title,
                 h.level,
                 h.line,
                 h.text,
+                h.truncated,
             ));
             names.push(name);
         }

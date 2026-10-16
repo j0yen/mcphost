@@ -368,6 +368,9 @@ jobs:
       - name: mcphost llms-txt --check
         run: cargo run --quiet --bin mcphost -- llms-txt --check
 
+      - name: mcphost doc-anchors --check
+        run: cargo run --quiet --bin mcphost -- doc-anchors --check
+
   # Defect (10-03): a dependency bump (wasmtime 48 / cranelift 0.135, needing
   # rustc 1.95) landed on main while `rust-version` in Cargo.toml stayed at
   # 1.94. `gate` and `sandbox` both build with the toolchain pinned in
