@@ -883,6 +883,14 @@ mod ematt_ac05_pe_named_csv_is_refused_declared_mime_recorded;
 mod ematt_ac06_part_cap_and_corrupt_base64;
 #[path = "ematt_ac07_redelivery_is_idempotent_and_reasons_are_rendered.rs"]
 mod ematt_ac07_redelivery_is_idempotent_and_reasons_are_rendered;
+#[path = "emin_ac01_unknown_namespace_is_404.rs"]
+mod emin_ac01_unknown_namespace_is_404;
+#[path = "emin_ac03_csv_part_becomes_a_blob_and_redelivery_is_idempotent.rs"]
+mod emin_ac03_csv_part_becomes_a_blob_and_redelivery_is_idempotent;
+#[path = "emin_ac04_invalid_payload_is_400.rs"]
+mod emin_ac04_invalid_payload_is_400;
+#[path = "emin_ac07_status_json_counts_inbound.rs"]
+mod emin_ac07_status_json_counts_inbound;
 #[path = "enduser_ac02_assertion_http_headers_and_calls_row.rs"]
 mod enduser_ac02_assertion_http_headers_and_calls_row;
 #[path = "enduser_ac03_invalid_assertion_rejected.rs"]
@@ -1545,14 +1553,6 @@ mod mcphost_chatgpt_submission_pack_ac02_check_detects_drift;
 mod mcphost_chatgpt_submission_pack_ac03_descriptions_identical;
 #[path = "mcphost-chatgpt-submission-pack_ac04_chatgpt_surface_everywhere.rs"]
 mod mcphost_chatgpt_submission_pack_ac04_chatgpt_surface_everywhere;
-#[path = "mcphost-chatgpt-submission-pack_ac05_chatgpt_profile_empty_tenant_table.rs"]
-mod mcphost_chatgpt_submission_pack_ac05_chatgpt_profile_empty_tenant_table;
-#[path = "mcphost-chatgpt-submission-pack_ac06_reviewer_notes_first_call.rs"]
-mod mcphost_chatgpt_submission_pack_ac06_reviewer_notes_first_call;
-#[path = "mcphost-install-links-more-clients_ac01_twelve_surfaces.rs"]
-mod mcphost_install_links_more_clients_ac01_twelve_surfaces;
-#[path = "mcphost-install-links-more-clients_ac02_command_artefacts_carry_url_once.rs"]
-mod mcphost_install_links_more_clients_ac02_command_artefacts_carry_url_once;
 #[path = "mcphost_admin_schema_contract_ac01_tenants_schema_version.rs"]
 mod mcphost_admin_schema_contract_ac01_tenants_schema_version;
 #[path = "mcphost_admin_schema_contract_ac02_listings_validate_v1_schema.rs"]

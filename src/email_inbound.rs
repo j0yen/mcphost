@@ -7,7 +7,14 @@
 //! one. The message is written once, after every part is decided, and always
 //! lands.
 
+use axum::Json;
+use axum::body::Bytes;
+use axum::extract::{ConnectInfo, Path, State};
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
 use serde_json::{Value, json};
+use std::net::SocketAddr;
+use std::sync::Arc;
 
 use crate::blobs;
 use crate::db::Tenant;
@@ -93,10 +100,12 @@ pub struct InboundMail {
     pub parts: Vec<InboundPart>,
 }
 
-/// Resend (`attachments[{filename, content_type, content}]`) and Postmark
-/// (`Attachments[{Name, ContentType, Content, ContentID}]`) payload parts.
+/// Resend (`attachments[{filename, content_type, content}]`), Postmark
+/// (`Attachments[{Name, ContentType, Content, ContentID}]`) and the probe's
+/// own (`parts[{filename, content_type, content_base64, inline}]`) payload
+/// parts.
 pub fn parts_from_payload(payload: &Value) -> Vec<InboundPart> {
-    let list = payload.get("attachments").or_else(|| payload.get("Attachments"));
+    let list = payload.get("attachments").or_else(|| payload.get("Attachments")).or_else(|| payload.get("parts"));
     let Some(items) = list.and_then(Value::as_array) else {
         return Vec::new();
     };
@@ -108,7 +117,7 @@ pub fn parts_from_payload(payload: &Value) -> Vec<InboundPart> {
         .map(|v| InboundPart {
             filename: s(v, &["filename", "Name"]),
             content_type: s(v, &["content_type", "ContentType"]),
-            content_base64: s(v, &["content", "Content"]),
+            content_base64: s(v, &["content", "Content", "content_base64"]),
             inline: v.get("inline").and_then(Value::as_bool).unwrap_or(false)
                 || !s(v, &["content_id", "ContentID"]).is_empty(),
         })
@@ -322,4 +331,92 @@ pub async fn receive(state: &AppState, tenant: &Tenant, mail: &InboundMail) -> R
         )
         .await?;
     Ok(json!({"message_id": message_id, "created": created, "data": data}))
+}
+
+/// `{error_code, error: {code, message}}`: the envelope `/hooks/...` answers
+/// with, so a sender reads one shape from both inbound routes.
+fn refusal(status: StatusCode, code: &'static str, message: &str) -> Response {
+    (status, Json(json!({"error_code": code, "error": {"code": code, "message": message}}))).into_response()
+}
+
+/// The header a caller outside the fleet proves itself with.
+pub const SECRET_HEADER: &str = "x-mcphost-inbound-secret";
+/// The operator's shared secret; unset or blank means only fleet IPs pass.
+pub const SECRET_ENV: &str = "MCPHOST_EMAIL_INBOUND_SECRET";
+
+/// Fleet source address (the list signup's rate-limit exemption reads), or
+/// the shared-secret header equal to [`SECRET_ENV`].
+fn authorized(state: &AppState, headers: &HeaderMap, peer: SocketAddr) -> bool {
+    if state.fleet_ips.contains(&crate::claim::source_ip(headers, peer)) {
+        return true;
+    }
+    let Ok(secret) = std::env::var(SECRET_ENV) else {
+        return false;
+    };
+    let given = headers.get(SECRET_HEADER).map(|v| v.as_bytes()).unwrap_or_default();
+    // Compare every byte so the time taken does not reveal the match length.
+    !secret.is_empty()
+        && given.len() == secret.len()
+        && given.iter().zip(secret.as_bytes()).fold(0u8, |acc, (a, b)| acc | (a ^ b)) == 0
+}
+
+/// PRD-mcphost-email-inbound-route: `POST /email/inbound/{namespace}`.
+/// Every outcome lands in `/status.json`'s received/rejected counters.
+pub async fn http_inbound(
+    State(state): State<Arc<AppState>>,
+    Path(namespace): Path<String>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let response = inbound(&state, namespace, peer, &headers, &body).await;
+    if response.status() == StatusCode::OK {
+        state.event_counters.record_email_received();
+    } else {
+        state.event_counters.record_email_rejected();
+    }
+    response
+}
+
+async fn inbound(state: &AppState, namespace: String, peer: SocketAddr, headers: &HeaderMap, body: &[u8]) -> Response {
+    let tenant = match state.db.find_tenant_by_namespace(namespace).await {
+        Ok(Some(t)) if !t.disabled => t,
+        Ok(_) => return refusal(StatusCode::NOT_FOUND, "tenant_not_found", "no such tenant"),
+        Err(_) => return refusal(StatusCode::INTERNAL_SERVER_ERROR, "storage", "storage error"),
+    };
+    if !authorized(state, headers, peer) {
+        return refusal(
+            StatusCode::UNAUTHORIZED,
+            "inbound_unauthorized",
+            "inbound mail needs a fleet source address or a valid X-Mcphost-Inbound-Secret",
+        );
+    }
+    let payload: Value = serde_json::from_slice(body).unwrap_or(Value::Null);
+    let text = |keys: &[&str]| -> String {
+        keys.iter().find_map(|k| payload.get(*k).and_then(Value::as_str)).unwrap_or("").to_string()
+    };
+    let provider_message_id = text(&["provider_message_id"]);
+    if provider_message_id.is_empty() {
+        return refusal(
+            StatusCode::BAD_REQUEST,
+            "invalid_payload",
+            "the body must be a JSON object with a provider_message_id",
+        );
+    }
+    let mail = InboundMail {
+        provider_message_id,
+        from: text(&["from", "From"]),
+        subject: text(&["subject", "Subject"]),
+        parts: parts_from_payload(&payload),
+    };
+    match receive(state, &tenant, &mail).await {
+        Ok(mut message) => {
+            message["attachments"] = message["data"]["attachments"].clone();
+            (StatusCode::OK, Json(message)).into_response()
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "inbound mail was not stored");
+            refusal(StatusCode::INTERNAL_SERVER_ERROR, "storage", "storage error")
+        }
+    }
 }

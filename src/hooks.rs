@@ -112,6 +112,11 @@ fn run_not_found(run_id: &str) -> AppError {
 pub struct EventCounters {
     received: Arc<Mutex<VecDeque<Instant>>>,
     rejected: Arc<Mutex<VecDeque<Instant>>>,
+    /// PRD-mcphost-email-inbound-route: `/status.json`'s
+    /// `email_inbound_received_1h`/`email_inbound_rejected_1h` -- the same
+    /// sliding window, counting `POST /email/inbound/...` outcomes.
+    email_received: Arc<Mutex<VecDeque<Instant>>>,
+    email_rejected: Arc<Mutex<VecDeque<Instant>>>,
     /// P1 requirement 7 / AC10: `/healthz`'s `triggers.event_self_tests_total`
     /// -- every `host.trigger.test` call against a `kind="event"` trigger,
     /// whatever its outcome. Cumulative since process start (not a sliding
@@ -164,6 +169,24 @@ impl EventCounters {
     /// Every non-`202` outcome (404/401/413/429).
     pub fn record_rejected(&self) {
         Self::record(&self.rejected);
+    }
+
+    /// A mail `POST /email/inbound/...` accepted.
+    pub fn record_email_received(&self) {
+        Self::record(&self.email_received);
+    }
+
+    /// A `POST /email/inbound/...` answered with anything but 200.
+    pub fn record_email_rejected(&self) {
+        Self::record(&self.email_rejected);
+    }
+
+    pub fn email_received_1h(&self) -> i64 {
+        Self::count(&self.email_received)
+    }
+
+    pub fn email_rejected_1h(&self) -> i64 {
+        Self::count(&self.email_rejected)
     }
 
     pub fn received_1h(&self) -> i64 {

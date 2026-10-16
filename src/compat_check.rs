@@ -737,7 +737,14 @@ fn spawn_previous(
             // SAFETY: this closure runs strictly between fork and exec in the freshly forked, single-threaded child; `dup2` and `setenv` (inside `set_listen_pid_to_self`) are the same primitives systemd's own service manager uses to implement this exact convention. `listener` is moved in so its fd stays open (and thus reserved) across the fork.
             unsafe {
                 cmd.pre_exec(move || {
-                    if libc::dup2(listener.as_raw_fd(), LISTEN_FDS_START) < 0 {
+                    let src = listener.as_raw_fd();
+                    if src == LISTEN_FDS_START {
+                        // dup2(fd, fd) is a no-op and would leave CLOEXEC set, so exec would close the listener; clear the flag explicitly.
+                        let flags = libc::fcntl(src, libc::F_GETFD);
+                        if flags < 0 || libc::fcntl(src, libc::F_SETFD, flags & !libc::FD_CLOEXEC) < 0 {
+                            return Err(std::io::Error::last_os_error());
+                        }
+                    } else if libc::dup2(src, LISTEN_FDS_START) < 0 {
                         return Err(std::io::Error::last_os_error());
                     }
                     set_listen_pid_to_self()?;

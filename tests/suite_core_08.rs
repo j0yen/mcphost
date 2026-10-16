@@ -34,6 +34,14 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "mcphost-chatgpt-submission-pack_ac05_chatgpt_profile_empty_tenant_table.rs"]
+mod mcphost_chatgpt_submission_pack_ac05_chatgpt_profile_empty_tenant_table;
+#[path = "mcphost-chatgpt-submission-pack_ac06_reviewer_notes_first_call.rs"]
+mod mcphost_chatgpt_submission_pack_ac06_reviewer_notes_first_call;
+#[path = "mcphost-install-links-more-clients_ac01_twelve_surfaces.rs"]
+mod mcphost_install_links_more_clients_ac01_twelve_surfaces;
+#[path = "mcphost-install-links-more-clients_ac02_command_artefacts_carry_url_once.rs"]
+mod mcphost_install_links_more_clients_ac02_command_artefacts_carry_url_once;
 #[path = "mcphost-install-links-more-clients_ac03_connect_page_groups_every_surface.rs"]
 mod mcphost_install_links_more_clients_ac03_connect_page_groups_every_surface;
 #[path = "mcphost-install-links-more-clients_ac04_connect_go_every_id.rs"]
