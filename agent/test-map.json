@@ -1866,6 +1866,12 @@
       "AC2": "tests/oapi_ac02_route_table_drift.rs",
       "AC3": "tests/oapi_ac03_openapi_json_validates.rs",
       "AC4": "tests/oapi_ac04_x_responses_match_documented_schemas.rs"
+    },
+    "ntfyb": {
+      "_prd": "PRD-mcphost-notify-user-channel-b.md (test_prefix: ntfyb)",
+      "AC1": "tests/ntfyb_ac01_no_channel_writes_nothing.rs",
+      "AC2": "tests/ntfyb_ac02_free_tenant_21st_notify_is_notify_limit.rs",
+      "AC3": "tests/ntfyb_ac03_webhook_retries_to_delivered_or_failed.rs"
     }
   }
 }
