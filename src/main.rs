@@ -165,6 +165,21 @@ enum Command {
         #[arg(long)]
         clients: Option<PathBuf>,
     },
+    /// PRD-mcphost-llms-full-generated-from-schemas: splice one generated
+    /// section per tool (schema table, ceilings, executed example) into
+    /// `www/llms-full.txt`; `--check` exits 1 naming the first stale section
+    /// or the `file:line` of a tool mention missing from
+    /// `docs/llms-full.prose.toml`.
+    LlmsFull {
+        #[arg(long)]
+        check: bool,
+        /// Repo root holding `docs/` and `www/`. Defaults to `.`.
+        #[arg(long)]
+        root: Option<PathBuf>,
+        /// File to splice into. Defaults to `<root>/www/llms-full.txt`.
+        #[arg(long)]
+        file: Option<PathBuf>,
+    },
     /// PRD-mcphost-server-capabilities-from-registry requirement 4: print
     /// the generated `## Capabilities` section (`--doc`: the whole
     /// `docs/protocol/capabilities.md`) for `scripts/sandbox-api-doc-check.sh`.
@@ -1060,6 +1075,15 @@ async fn main() -> anyhow::Result<()> {
             }
             if stale {
                 std::process::exit(1);
+            }
+            Ok(())
+        }
+        Command::LlmsFull { check, root, file } => {
+            let root = root.unwrap_or_else(|| PathBuf::from("."));
+            let file = file.unwrap_or_else(|| root.join("www/llms-full.txt"));
+            let code = mcphost::llms_full::run(&root, &file, check);
+            if code != 0 {
+                std::process::exit(code);
             }
             Ok(())
         }

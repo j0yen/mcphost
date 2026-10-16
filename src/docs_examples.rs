@@ -317,6 +317,18 @@ pub struct Entry {
     pub attrs: BTreeMap<String, String>,
     pub body: String,
     pub expect: Option<String>,
+    /// PRD-mcphost-llms-full-generated-from-schemas R1: the last executed
+    /// status, when a nightly run recorded one in the corpus. Absent from
+    /// extracted entries; `corpus_drift` ignores it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executed: Option<Executed>,
+}
+
+/// `status` (`pass`/`fail`/`skip`) and `date` of an example's last run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Executed {
+    pub status: String,
+    pub date: String,
 }
 
 /// Default corpus location, relative to the repo root.
@@ -395,7 +407,7 @@ pub fn extract_page(path: &str, text: &str, errors: &mut Vec<String>) -> Vec<Ent
         if tag == TAG_TOOL && !info.attrs.contains_key("kind") {
             bad("mcphost-tool requires kind=<kind>".to_string());
         }
-        out.push(Entry { id, tag, expect: info.attrs.get("expect").cloned(), attrs: info.attrs, body: f.body });
+        out.push(Entry { id, tag, expect: info.attrs.get("expect").cloned(), attrs: info.attrs, body: f.body, executed: None });
     }
     out
 }
@@ -524,7 +536,8 @@ pub fn corpus_drift(committed: &[Entry], fresh: &[Entry]) -> Vec<String> {
     let new: BTreeMap<&str, &Entry> = fresh.iter().map(|e| (e.id.as_str(), e)).collect();
     let mut ids: Vec<String> = Vec::new();
     for (id, e) in &new {
-        if old.get(id) != Some(e) {
+        let same = old.get(id).is_some_and(|o| Entry { executed: None, ..(*o).clone() } == Entry { executed: None, ..(*e).clone() });
+        if !same {
             ids.push((*id).to_string());
         }
     }

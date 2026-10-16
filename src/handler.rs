@@ -887,6 +887,20 @@ pub(crate) fn self_check_tools_list(state: &AppState) -> usize {
     starter_tools(&state.kinds).len()
 }
 
+/// Names in the anonymous `tools/list` ([`starter_tools`]), for the generated
+/// per-tool docs' `anonymous: yes|no` line.
+pub fn anonymous_tool_names(kinds: &KindRegistry) -> Vec<String> {
+    starter_tools(kinds).into_iter().map(|t| t.name.to_string()).collect()
+}
+
+/// Every tenant-visible descriptor (schema included): `signup` plus the
+/// authenticated `host_tools` superset, as `tools/list` serves them.
+pub fn tenant_tool_descriptors(kinds: &KindRegistry) -> Vec<Tool> {
+    let mut tools = host_tools(kinds, true);
+    tools.push(signup_tool());
+    tools
+}
+
 /// PRD-mcphost-feedback-tool-and-ledger: the two verbs an anonymous caller
 /// may use without being implicitly signed up.
 fn is_feedback_tool(name: &str) -> bool {
