@@ -200,12 +200,49 @@ done
 check "www/skill.md matches the plugin SKILL.md contract" skill_md_check
 
 # --- pricing.html content (AC2) ---
-check "pricing.html names \$19" grep_has www/pricing.html '$19'
-check "pricing.html names 500 calls" grep_has www/pricing.html '500 calls'
-check "pricing.html names 50,000" grep_has www/pricing.html '50,000'
-check "pricing.html names \$0.001" grep_has www/pricing.html '$0.001'
-check "pricing.html names billing.checkout" grep_has www/pricing.html 'billing.checkout'
-check "pricing.html names the exit phrase 'change the endpoint'" grep_has www/pricing.html 'change the endpoint'
+# PRD-mcphost-pricing-page-from-plan-table R4: the expected price strings
+# come from /plans.json, never from a literal in this script. Source, in
+# order: WWW_PAGES_PLANS_JSON (a file), WWW_PAGES_BASE_URL (a running host),
+# else the built-in catalog via `mcphost billing plans`. WWW_PAGES_PRICING
+# names the page under test (default www/pricing.html).
+PRICING="${WWW_PAGES_PRICING:-www/pricing.html}"
+
+plans_json() {
+  if [ -n "${WWW_PAGES_PLANS_JSON:-}" ]; then
+    cat -- "$WWW_PAGES_PLANS_JSON"
+  elif [ -n "${WWW_PAGES_BASE_URL:-}" ]; then
+    curl -fsS "$WWW_PAGES_BASE_URL/plans.json"
+  elif [ -n "${MCPHOST_BIN:-}" ]; then
+    "$MCPHOST_BIN" billing plans
+  else
+    cargo run -q --bin mcphost -- billing plans
+  fi
+}
+
+# Prints one expected phrase per line for the pricing page; fails when the
+# JSON lacks a plan or a field.
+pricing_expectations() {
+  plans_json | python3 -c '
+import json, sys
+plans = {p["name"]: p for p in json.load(sys.stdin)["plans"]}
+free, pro = plans["free"], plans["pro"]
+per_call = pro["overage_usd_per_1000_calls"] / 1000
+print("$%d" % pro["price_usd_month"])
+print("%d calls" % free["calls_per_day"])
+print("{:,}".format(pro["calls_included_month"]))
+print("$" + ("%.3f" % per_call).rstrip("0").rstrip("."))
+'
+}
+
+if EXPECTED="$(pricing_expectations)" && [ "$(printf '%s\n' "$EXPECTED" | wc -l)" -eq 4 ]; then
+  while IFS= read -r phrase; do
+    check "pricing page names '$phrase' (from /plans.json)" grep_has "$PRICING" "$phrase"
+  done <<<"$EXPECTED"
+else
+  check "/plans.json yields the pricing expectations" false
+fi
+check "pricing.html names billing.checkout" grep_has "$PRICING" 'billing.checkout'
+check "pricing.html names the exit phrase 'change the endpoint'" grep_has "$PRICING" 'change the endpoint'
 
 # --- use-cases.html structure (AC3) ---
 check "use-cases.html has three workflows with all five part labels" use_cases_structure

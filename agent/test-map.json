@@ -1872,6 +1872,17 @@
       "AC1": "tests/ntfyb_ac01_no_channel_writes_nothing.rs",
       "AC2": "tests/ntfyb_ac02_free_tenant_21st_notify_is_notify_limit.rs",
       "AC3": "tests/ntfyb_ac03_webhook_retries_to_delivered_or_failed.rs"
+    },
+    "ppage": {
+      "_prd": "PRD-mcphost-pricing-page-from-plan-table.md (test_prefix: ppage)",
+      "AC1": "tests/ppage_ac01_plan_carries_included_and_overage.rs",
+      "AC2": "tests/ppage_ac02_plans_json_carries_fields_no_digits.rs",
+      "AC3": "tests/ppage_ac03_pricing_html_rendered_from_catalog.rs",
+      "AC4": "tests/ppage_ac04_www_pages_checks_derive_from_plans_json.rs",
+      "AC5": "tests/ppage_ac05_docs_carry_included_and_overage_rows.rs",
+      "AC6": "tests/ppage_ac06_billing_price_check.rs",
+      "AC7": "tests/ppage_ac07_old_plans_toml_defaults_both_fields.rs",
+      "AC8": "deferred -- operator-provisioned: live curl of prod /plans.json and /pricing after deploy"
     }
   }
 }

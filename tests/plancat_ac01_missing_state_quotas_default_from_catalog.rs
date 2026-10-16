@@ -15,7 +15,7 @@ price_usd_month = 0
 tools_max = 50
 calls_per_day = 500
 secrets_max = 2
-description = \"Free: 50 tools, 500 calls/day, 2 secrets. No card required.\"
+description = \"Free early access. No card required.\"
 
 [[plan]]
 name = \"pro\"
@@ -23,7 +23,7 @@ price_usd_month = 19
 tools_max = 50
 calls_per_day = 100000
 secrets_max = 20
-description = \"Pro: 50 tools, 100,000 calls/day, 20 secrets. $19/month, 50,000 calls included per month, then usage-billed.\"
+description = \"Pro: a monthly price with calls included, then usage-billed.\"
 ";
 
 #[test]

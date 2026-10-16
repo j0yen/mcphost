@@ -79,11 +79,8 @@
 <ul>
   <li>50 tools per tenant; names match <code>^[a-z][a-z0-9_]{1,40}$</code></li>
   <li>Spec at most 64 KiB; a synchronous call's request and result at most 1 MiB each</li>
-  <!-- source: www/llms-full.txt:425 -->
   <li>Call timeout: 30 s by default, up to 60 s if you declare <code>timeout_s</code></li>
-  <!-- source: www/llms-full.txt:235 -->
   <li>Signup: 5 per source IP per hour (an operator's own fleet IPs are exempt)</li>
-  <!-- source: www/llms-full.txt:436 -->
   <li>Concurrent calls: 4 per tenant on free, 10 on pro; 20 host-wide</li>
 </ul>
 

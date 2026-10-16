@@ -19,6 +19,14 @@ pub struct Plan {
     pub calls_per_day: i64,
     pub secrets_max: i64,
     pub description: String,
+    /// PRD-mcphost-pricing-page-from-plan-table R1: calls included in the
+    /// monthly price before usage billing starts (free 0, pro 50 000). A
+    /// price field, not a ceiling -- see [`NON_CEILING_FIELDS`].
+    pub calls_included_month: i64,
+    /// R1: whole USD charged per 1 000 calls past `calls_included_month`
+    /// (pro 1, i.e. $0.001 a call). Integer so neither the struct nor
+    /// `plans.toml` carries a float.
+    pub overage_usd_per_1000_calls: i64,
     /// PRD-mcphost-tenant-state requirement 4: total stored bytes across a
     /// tenant's whole state (KV namespace + every declared table's rows).
     pub state_bytes_max: i64,
@@ -336,7 +344,8 @@ pub struct Plan {
 }
 
 /// Numeric [`Plan`] fields that are not ceilings an agent can hit.
-pub const NON_CEILING_FIELDS: &[&str] = &["price_usd_month"];
+pub const NON_CEILING_FIELDS: &[&str] =
+    &["price_usd_month", "calls_included_month", "overage_usd_per_1000_calls"];
 
 /// PRD-mcphost-data-quota-in-every-response R1: a ceiling is a *data*
 /// ceiling when its [`Plan::ceilings_flat`] key starts with one of these.
@@ -543,8 +552,9 @@ impl PlanCatalog {
                     tools_max: 50,
                     calls_per_day: 500,
                     secrets_max: 2,
-                    description: "Free: 50 tools, 500 calls/day, 2 secrets. No card required."
-                        .to_string(),
+                    description: "Free early access. No card required.".to_string(),
+                    calls_included_month: 0,
+                    overage_usd_per_1000_calls: 0,
                     // PRD-mcphost-tenant-state requirement 4: "free 5 MiB".
                     state_bytes_max: 5 * 1024 * 1024,
                     state_rows_max: 10_000,
@@ -651,9 +661,10 @@ impl PlanCatalog {
                     tools_max: 50,
                     calls_per_day: 100_000,
                     secrets_max: 20,
-                    description: "Pro: 50 tools, 100,000 calls/day, 20 secrets. $19/month, \
-                        50,000 calls included per month, then usage-billed."
+                    description: "Pro: a monthly price with calls included, then usage-billed."
                         .to_string(),
+                    calls_included_month: 50_000,
+                    overage_usd_per_1000_calls: 1,
                     // PRD-mcphost-tenant-state requirement 4: "pro 200 MiB".
                     state_bytes_max: 200 * 1024 * 1024,
                     state_rows_max: 100_000,
@@ -824,6 +835,11 @@ impl PlanCatalog {
             out.push_str(&format!("calls_per_day = {}\n", p.calls_per_day));
             out.push_str(&format!("secrets_max = {}\n", p.secrets_max));
             out.push_str(&format!("description = {:?}\n", p.description));
+            out.push_str(&format!("calls_included_month = {}\n", p.calls_included_month));
+            out.push_str(&format!(
+                "overage_usd_per_1000_calls = {}\n",
+                p.overage_usd_per_1000_calls
+            ));
             out.push_str(&format!("state_bytes_max = {}\n", p.state_bytes_max));
             out.push_str(&format!("state_rows_max = {}\n", p.state_rows_max));
             out.push_str(&format!(
@@ -969,6 +985,10 @@ impl PlanCatalog {
                 "calls_per_day" => builder.calls_per_day = Some(int_value()),
                 "secrets_max" => builder.secrets_max = Some(int_value()),
                 "description" => builder.description = Some(str_value()),
+                "calls_included_month" => builder.calls_included_month = Some(int_value()),
+                "overage_usd_per_1000_calls" => {
+                    builder.overage_usd_per_1000_calls = Some(int_value())
+                }
                 "state_bytes_max" => builder.state_bytes_max = Some(int_value()),
                 "state_rows_max" => builder.state_rows_max = Some(int_value()),
                 "state_ops_per_call_max" => builder.state_ops_per_call_max = Some(int_value()),
@@ -1075,6 +1095,8 @@ struct PlanBuilder {
     calls_per_day: Option<i64>,
     secrets_max: Option<i64>,
     description: Option<String>,
+    calls_included_month: Option<i64>,
+    overage_usd_per_1000_calls: Option<i64>,
     state_bytes_max: Option<i64>,
     state_rows_max: Option<i64>,
     state_ops_per_call_max: Option<i64>,
@@ -1162,6 +1184,8 @@ impl PlanBuilder {
             calls_per_day: quota!(calls_per_day),
             secrets_max: quota!(secrets_max),
             description: self.description.unwrap_or_else(|| defaults.description.clone()),
+            calls_included_month: quota!(calls_included_month),
+            overage_usd_per_1000_calls: quota!(overage_usd_per_1000_calls),
             state_bytes_max: quota!(state_bytes_max),
             state_rows_max: quota!(state_rows_max),
             state_ops_per_call_max: quota!(state_ops_per_call_max),
@@ -1242,11 +1266,8 @@ mod tests {
         assert_eq!(pro.tools_max, 50);
         assert_eq!(pro.calls_per_day, 100_000);
         assert_eq!(pro.secrets_max, 20);
-        assert!(
-            pro.description.contains("50,000"),
-            "pro's description must name the included monthly call volume: {}",
-            pro.description
-        );
+        assert_eq!(pro.calls_included_month, 50_000);
+        assert_eq!(pro.overage_usd_per_1000_calls, 1);
     }
 
     /// PRD-mcphost-tenant-state requirement 4: "free 5 MiB, pro 200 MiB
