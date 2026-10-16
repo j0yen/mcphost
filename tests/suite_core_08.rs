@@ -34,6 +34,8 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "mcphost-install-links-more-clients_ac02_command_artefacts_carry_url_once.rs"]
+mod mcphost_install_links_more_clients_ac02_command_artefacts_carry_url_once;
 #[path = "mcphost-install-links-more-clients_ac03_connect_page_groups_every_surface.rs"]
 mod mcphost_install_links_more_clients_ac03_connect_page_groups_every_surface;
 #[path = "mcphost-install-links-more-clients_ac04_connect_go_every_id.rs"]

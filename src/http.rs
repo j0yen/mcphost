@@ -2035,6 +2035,9 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         // webhook trigger is addressed by its own `hook_id`, not
         // `(namespace, tool)`.
         .route("/hook/{id}", post(crate::webhooks::hook_receive))
+        // PRD-mcphost-email-inbound-route: where a provider (or
+        // `scripts/email-probe.sh`) delivers a received mail.
+        .route("/email/inbound/{namespace}", post(crate::email_inbound::http_inbound))
         // PRD-mcphost-tenant-data-export P0 requirement 2: the signed
         // download URL a completed `host.export` run's result carries --
         // see `export::download`.

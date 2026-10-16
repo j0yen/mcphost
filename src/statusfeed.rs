@@ -518,6 +518,9 @@ pub async fn status_json(state: &AppState) -> Result<Value, AppError> {
         "onboarding_7d": onboarding_block(state).await?,
         "docs_gaps": crate::help_search::status_block(&state.db, now_unix()).await?,
         "deploy": {"last_refusal": last_refusal(state.db.data_dir())},
+        // PRD-mcphost-email-inbound-route requirement 5: counts only.
+        "email_inbound_received_1h": state.event_counters.email_received_1h(),
+        "email_inbound_rejected_1h": state.event_counters.email_rejected_1h(),
     });
     // PRD-mcphost-healthz-version-field requirement 3: whole-feed only; the
     // per-component rollup (`daily_rows`) stays unchanged.

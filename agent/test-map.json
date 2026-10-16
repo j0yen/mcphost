@@ -606,6 +606,16 @@
       "AC7": "tests/ematt_ac07_redelivery_is_idempotent_and_reasons_are_rendered.rs",
       "AC8": "DEFERRED -- operator-provisioned: Live; evidence: ssh orch run of scripts/email-probe.sh attach lines.csv after the email inbound HTTP route PRD lands; no pairable in-repo test."
     },
+    "emin": {
+      "_prd": "PRD-mcphost-email-inbound-route.md",
+      "AC1": "tests/emin_ac01_unknown_namespace_is_404.rs",
+      "AC2": "tests/emin_ac02_non_fleet_needs_secret_header.rs",
+      "AC3": "tests/emin_ac03_csv_part_becomes_a_blob_and_redelivery_is_idempotent.rs",
+      "AC4": "tests/emin_ac04_invalid_payload_is_400.rs",
+      "AC5": "tests/emin_ac05_probe_script_hits_route.rs",
+      "AC7": "tests/emin_ac07_status_json_counts_inbound.rs",
+      "AC6": "DEFERRED -- operator-provisioned: Live; evidence: ssh orch run of scripts/email-probe.sh attach lines.csv against prod joe-test after landing; no pairable in-repo test."
+    },
     "cae": {
       "_prd": "PRD-mcphost-call-audit-export.md",
       "AC1": "tests/cae_ac01_credential_on_every_call_row.rs",

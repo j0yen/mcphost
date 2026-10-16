@@ -12,6 +12,10 @@
 #   MCPHOST_API_KEY    bearer token for the tenant
 #   MCPHOST_NAMESPACE  tenant namespace used as the inbound path segment
 #
+# Environment (optional):
+#   MCPHOST_EMAIL_INBOUND_SECRET  sent as X-Mcphost-Inbound-Secret; a caller
+#                      outside the fleet's source addresses needs it
+#
 # Example (Live AC8 evidence):
 #   set -a; . ~/.config/mcphost/joe-test.env; set +a
 #   bash ~/wintermute/mcphost/scripts/email-probe.sh attach lines.csv
@@ -65,59 +69,70 @@ EOF
 )"
 
 # POST to the inbound endpoint
-http_status="$(curl -s -o /tmp/email-probe-inbound.json -w "%{http_code}" \
+inbound_out="$(mktemp)"
+trap 'rm -f "$inbound_out"' EXIT
+secret_args=()
+if [[ -n "${MCPHOST_EMAIL_INBOUND_SECRET:-}" ]]; then
+    secret_args=(-H "X-Mcphost-Inbound-Secret: ${MCPHOST_EMAIL_INBOUND_SECRET}")
+fi
+http_status="$(curl -s -o "$inbound_out" -w "%{http_code}" \
     -X POST \
     -H "Content-Type: application/json" \
+    ${secret_args[@]+"${secret_args[@]}"} \
     -d "$payload" \
     "${MCPHOST_URL}/email/inbound/${MCPHOST_NAMESPACE}")"
 
 if [[ "$http_status" != "200" ]]; then
     echo "inbound POST failed: HTTP $http_status" >&2
-    cat /tmp/email-probe-inbound.json >&2
+    cat "$inbound_out" >&2
     exit 1
 fi
 
-# Read the inbox via MCP tools call
-inbox_json="$(curl -s -X POST \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer ${MCPHOST_API_KEY}" \
-    -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"host.msg.inbox","arguments":{}}}' \
-    "${MCPHOST_URL}/mcp")"
-
-blob_id="$(echo "$inbox_json" | python3 -c "
+# One MCP tools/call over streamable HTTP: the reply is JSON or an SSE
+# `data:` line; prints the tool's structured result as JSON.
+mcp_call() {
+    local name="$1" args="$2" id="$3"
+    curl -s -X POST \
+        -H "Content-Type: application/json" \
+        -H "Accept: application/json, text/event-stream" \
+        -H "Authorization: Bearer ${MCPHOST_API_KEY}" \
+        -d "{\"jsonrpc\":\"2.0\",\"id\":${id},\"method\":\"tools/call\",\"params\":{\"name\":\"${name}\",\"arguments\":${args}}}" \
+        "${MCPHOST_URL}/mcp" |
+        python3 -c '
 import sys, json
-resp = json.load(sys.stdin)
-msgs = resp['result']['content'][0]['text']
-data = json.loads(msgs)
-for m in data.get('messages', []):
-    for att in m.get('data', {}).get('attachments', []):
-        bid = att.get('blob_id')
-        if bid:
-            print(bid)
+raw = sys.stdin.read()
+lines = [l[5:].strip() for l in raw.splitlines() if l.startswith("data:")]
+resp = json.loads(lines[-1] if lines else raw)
+result = resp["result"]
+print(json.dumps(result.get("structuredContent") or json.loads(result["content"][0]["text"])))
+'
+}
+
+# Read the inbox, then the first attachment's bytes
+inbox_json="$(mcp_call host.msg.inbox '{}' 1)" || { echo "inbox read failed" >&2; exit 1; }
+
+blob_id="$(echo "$inbox_json" | python3 -c '
+import sys, json
+for m in json.load(sys.stdin).get("messages", []):
+    for att in m.get("data", {}).get("attachments", []):
+        if att.get("blob_id"):
+            print(att["blob_id"])
             sys.exit(0)
-print('')
-" 2>/dev/null)"
+')"
 
 if [[ -z "$blob_id" ]]; then
     echo "no blob_id found in inbox" >&2
-    echo "$inbox_json" | python3 -m json.tool >&2
+    echo "$inbox_json" >&2
     exit 1
 fi
 
-# Fetch the blob bytes
-blob_json="$(curl -s -X POST \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer ${MCPHOST_API_KEY}" \
-    -d "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"mcphost.blob.get\",\"arguments\":{\"blob_id\":\"${blob_id}\"}}}" \
-    "${MCPHOST_URL}/mcp")"
+blob_json="$(mcp_call host.blob.get "{\"id\":\"${blob_id}\",\"as\":\"base64\"}" 2)" ||
+    { echo "blob read failed" >&2; exit 1; }
 
-byte_count="$(echo "$blob_json" | python3 -c "
+byte_count="$(echo "$blob_json" | python3 -c '
 import sys, json, base64
-resp = json.load(sys.stdin)
-text = resp['result']['content'][0]['text']
-data = json.loads(text)
-b64 = data.get('content_base64', '')
-print(len(base64.b64decode(b64)))
-" 2>/dev/null)"
+print(len(base64.b64decode(json.load(sys.stdin)["content_base64"])))
+')"
 
-echo "blob_id=${blob_id} bytes=${byte_count}"
+# The id is printed as a `blob_` reference; the part after it is the id.
+echo "blob_id=blob_${blob_id#blob_} bytes=${byte_count}"
