@@ -482,6 +482,10 @@ mod ntfy_ac02_enums_generated_into_every_surface;
 mod ntfy_ac03_webhook_send_receipt;
 #[path = "ntfy_ac04_email_channel_owner_only.rs"]
 mod ntfy_ac04_email_channel_owner_only;
+#[path = "ntfyb_ac01_no_channel_writes_nothing.rs"]
+mod ntfyb_ac01_no_channel_writes_nothing;
+#[path = "ntfyb_ac02_free_tenant_21st_notify_is_notify_limit.rs"]
+mod ntfyb_ac02_free_tenant_21st_notify_is_notify_limit;
 #[path = "nudge_ac01_claimed_tenant_gets_one_return_email.rs"]
 mod nudge_ac01_claimed_tenant_gets_one_return_email;
 #[path = "nudge_ac02_second_sweep_sends_nothing_more.rs"]

@@ -182,6 +182,16 @@ pub const TEXT_MAX_BYTES: usize = 1024;
 pub const ATTEMPTS_MAX: usize = 3;
 pub const RETRY_BACKOFF: [Duration; 2] = [Duration::from_secs(10), Duration::from_secs(60)];
 
+/// `MCPHOST_NOTIFY_RETRY_BACKOFF_MS=a,b` replaces [`RETRY_BACKOFF`] (a fixture
+/// cannot wait 70 s); unset or malformed keeps the default.
+fn retry_backoff() -> [Duration; 2] {
+    let parsed = std::env::var("MCPHOST_NOTIFY_RETRY_BACKOFF_MS").ok().and_then(|v| {
+        let (a, b) = v.split_once(',')?;
+        Some([Duration::from_millis(a.trim().parse().ok()?), Duration::from_millis(b.trim().parse().ok()?)])
+    });
+    parsed.unwrap_or(RETRY_BACKOFF)
+}
+
 /// Each outbound request's ceiling.
 const DELIVERY_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -609,10 +619,11 @@ async fn deliver(state: &AppState, tenant_id: i64, ch: LiveChannel, envelope: En
         }
     };
     let transport = route(ch.kind).1;
+    let backoff = retry_backoff();
     let mut last: Option<i64> = None;
     for n in 0..ATTEMPTS_MAX {
         if n > 0 {
-            tokio::time::sleep(RETRY_BACKOFF[(n - 1).min(RETRY_BACKOFF.len() - 1)]).await;
+            tokio::time::sleep(backoff[(n - 1).min(backoff.len() - 1)]).await;
         }
         match attempt(state, transport, &target, &envelope).await {
             Ok(status) => {
