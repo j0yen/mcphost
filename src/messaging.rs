@@ -484,8 +484,7 @@ pub async fn inbox(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
 /// empty list with `cursor` unchanged (AC6). Never errors past argument
 /// validation -- a bad `cursor` still fails fast, same as `inbox` itself.
 pub async fn wait(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    let started = Instant::now();
-    let timeout_s = crate::longpoll::clamp_timeout_s(arg_i64_opt(args, "timeout_s"));
+    let timeout_s = arg_i64_opt(args, "timeout_s").unwrap_or(crate::asks::WAIT_DEFAULT_S).clamp(1, crate::asks::WAIT_MAX_S);
     let unread_only = arg_bool(args, "unread_only");
     let cursor_arg = arg_str_opt(args, "cursor");
     let after = match &cursor_arg {
@@ -497,24 +496,18 @@ pub async fn wait(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         let rows = state.db.msg_inbox(tenant.id, after.clone(), 50, unread_only).await?;
         if !rows.is_empty() {
             let next_cursor = rows.last().map(|r| encode_inbox_cursor(state, tenant, r));
-            return Ok(crate::longpoll::wait_response(
-                json!({
-                    "messages": rows.iter().map(message_row_json).collect::<Vec<_>>(),
-                    "next_cursor": next_cursor,
-                }),
-                false,
-                started,
-                timeout_s,
-            ));
+            return Ok(json!({
+                "messages": rows.iter().map(message_row_json).collect::<Vec<_>>(),
+                "next_cursor": next_cursor,
+            }));
         }
         if Instant::now() >= deadline {
             // Unchanged cursor on timeout; the key is omitted when the
             // caller sent none (paged.rs: absent, never null).
-            let body = match cursor_arg {
+            return Ok(match cursor_arg {
                 Some(c) => json!({"messages": [], "next_cursor": c}),
                 None => json!({"messages": []}),
-            };
-            return Ok(crate::longpoll::wait_response(body, true, started, timeout_s));
+            });
         }
         tokio::time::sleep(Duration::from_millis(500)).await;
     }

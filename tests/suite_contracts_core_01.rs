@@ -51,8 +51,6 @@ mod mcphost_chain_run_lineage_ac13_deferral_is_justified;
 mod mcphost_event_trigger_self_test_ac11_deferral_is_justified;
 #[path = "migration_compat_headers.rs"]
 mod migration_compat_headers;
-#[path = "mwlp_ac02_wait_ceiling_drift.rs"]
-mod mwlp_ac02_wait_ceiling_drift;
 #[path = "oauthentry_ac06_path_contract_docs_router_quickstart.rs"]
 mod oauthentry_ac06_path_contract_docs_router_quickstart;
 #[path = "revdebt_ac1_intent_card_pointers_resolve.rs"]

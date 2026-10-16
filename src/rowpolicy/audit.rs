@@ -27,6 +27,10 @@ pub struct RetrievalAuditRecord {
     pub request_id: String,
     pub prior_record_hash: String,
     pub record_hash: String,
+    /// PRD-mcphost-acting-for-in-ledger-and-audit: absent on pre-PRD records.
+    pub action: Option<String>,
+    pub detail: Option<String>,
+    pub acting_for: Option<String>,
 }
 
 impl From<crate::db::AuditRecordRow> for RetrievalAuditRecord {
@@ -44,6 +48,9 @@ impl From<crate::db::AuditRecordRow> for RetrievalAuditRecord {
             request_id: r.request_id,
             prior_record_hash: r.prior_record_hash,
             record_hash: r.record_hash,
+            action: r.action,
+            detail: r.detail,
+            acting_for: r.acting_for,
         }
     }
 }
@@ -64,7 +71,33 @@ pub fn compute_record_hash(
     request_id: &str,
     prior_record_hash: &str,
 ) -> String {
-    let canonical = json!({
+    compute_record_hash_ext(
+        subject, tenant_id, plane, policy_hash, applied, returned_count, withheld_count, timestamp, request_id,
+        prior_record_hash, None, None, None,
+    )
+}
+
+/// [`compute_record_hash`] plus the optional PRD-mcphost-acting-for-in-
+/// ledger-and-audit fields. An absent field is left OUT of the payload (not
+/// `null`), so a pre-PRD record keeps the hash it was written with; a
+/// delegated key's `acting_for.key_id` and `label` are committed to.
+#[allow(clippy::too_many_arguments)]
+pub fn compute_record_hash_ext(
+    subject: &str,
+    tenant_id: i64,
+    plane: &str,
+    policy_hash: &str,
+    applied: &str,
+    returned_count: i64,
+    withheld_count: Option<i64>,
+    timestamp: i64,
+    request_id: &str,
+    prior_record_hash: &str,
+    action: Option<&str>,
+    detail: Option<&str>,
+    acting_for: Option<&str>,
+) -> String {
+    let mut canonical = json!({
         "subject": subject,
         "tenant_id": tenant_id,
         "plane": plane,
@@ -76,6 +109,18 @@ pub fn compute_record_hash(
         "request_id": request_id,
         "prior_record_hash": prior_record_hash,
     });
+    if let Some(obj) = canonical.as_object_mut() {
+        if let Some(a) = action {
+            obj.insert("action".to_string(), json!(a));
+        }
+        if let Some(d) = detail {
+            let parsed = serde_json::from_str::<serde_json::Value>(d).unwrap_or_else(|_| json!(d));
+            obj.insert("detail".to_string(), parsed);
+        }
+        if let Some(af) = acting_for.and_then(|a| serde_json::from_str::<serde_json::Value>(a).ok()) {
+            obj.insert("acting_for".to_string(), json!({"key_id": af["key_id"], "label": af["label"]}));
+        }
+    }
     crate::billing::sha256_hex(
         &serde_json::to_vec(&canonical).expect("record hash input is always serializable"),
     )
@@ -100,7 +145,7 @@ pub fn verify_chain(records: &[RetrievalAuditRecord]) -> ChainVerifyResult {
         {
             return ChainVerifyResult { intact: false, first_broken_id: Some(record.id) };
         }
-        let recomputed = compute_record_hash(
+        let recomputed = compute_record_hash_ext(
             &record.subject,
             record.tenant_id,
             &record.plane,
@@ -111,6 +156,9 @@ pub fn verify_chain(records: &[RetrievalAuditRecord]) -> ChainVerifyResult {
             record.timestamp,
             &record.request_id,
             &record.prior_record_hash,
+            record.action.as_deref(),
+            record.detail.as_deref(),
+            record.acting_for.as_deref(),
         );
         if recomputed != record.record_hash {
             return ChainVerifyResult { intact: false, first_broken_id: Some(record.id) };
@@ -139,6 +187,9 @@ mod tests {
             request_id: "req1".to_string(),
             prior_record_hash: prior.to_string(),
             record_hash,
+            action: None,
+            detail: None,
+            acting_for: None,
         }
     }
 

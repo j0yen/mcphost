@@ -113,8 +113,7 @@ fn quickstart_limits(state: &AppState, plan_name: &str) -> Value {
         // PRD-mcphost-ask-user-decision: the longest one host.msg.wait /
         // host.runs.wait / host.ask.wait call blocks -- the same constant
         // their clamps and descriptors read.
-        "wait_max_s": crate::longpoll::WAIT_MAX_S,
-        "wait_default_s": crate::longpoll::WAIT_DEFAULT_S,
+        "wait_max_s": crate::asks::WAIT_MAX_S,
         "call_timeout_default_s": CALL_TIMEOUT.as_secs(),
         "call_timeout_max_s": crate::kinds::python::MAX_TIMEOUT_S,
         "output_bytes_max": MAX_TOOL_OUTPUT_BYTES,
@@ -2456,9 +2455,9 @@ pub async fn tool_logs(state: &AppState, tenant: &Tenant, args: &Value) -> Resul
 /// criterion names day-granular windows and this is a wholly new response
 /// shape with no pre-existing default to preserve.
 async fn usage_breakdown(state: &AppState, tenant: &Tenant, args: &Value, by: String) -> Result<Value, AppError> {
-    if !matches!(by.as_str(), "tool" | "caller" | "end_user") {
+    if !matches!(by.as_str(), "tool" | "caller" | "end_user" | "key") {
         return Err(AppError::InvalidArgs(format!(
-            "by must be 'tool', 'caller', or 'end_user', got '{by}'"
+            "by must be 'tool', 'caller', 'end_user', or 'key', got '{by}'"
         )));
     }
     let tool = arg_str_opt(args, "tool");
@@ -2466,6 +2465,24 @@ async fn usage_breakdown(state: &AppState, tenant: &Tenant, args: &Value, by: St
     let secs = crate::state::parse_window_secs(&window);
     let limit = args.get("limit").and_then(Value::as_i64).unwrap_or(1000).clamp(1, 1000);
     let cursor = arg_str_opt(args, "cursor");
+
+    // PRD-mcphost-acting-for-in-ledger-and-audit R4: per delegated key.
+    if by == "key" {
+        let rows = state.db.usage_by_key(tenant.id, tool, secs).await?;
+        return Ok(json!({
+            "window": window,
+            "by": by,
+            "rows": rows.iter().take(limit as usize).map(|r| json!({
+                "key": r.label,
+                "label": r.label,
+                "calls": r.calls,
+                "errors": r.errors,
+                "duration_ms": r.duration_ms,
+                "bytes": r.bytes,
+            })).collect::<Vec<_>>(),
+            "cursor": Value::Null,
+        }));
+    }
 
     // Requirement 2: "by: 'caller' is valid only for shared tools" (AC4) --
     // checked here, before any aggregation runs, so a validation mistake
