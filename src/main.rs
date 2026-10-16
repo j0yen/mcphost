@@ -139,6 +139,19 @@ enum Command {
         #[command(subcommand)]
         action: ExamplesCommand,
     },
+    /// PRD-mcphost-emitted-doc-pointers-resolve-b R5: check that every
+    /// documentation pointer `src/` emits names a heading that exists in
+    /// README.md, `docs/**`, `www/llms.txt` or `www/llms-install.md` on
+    /// disk. Prints `anchors=<n> emitted=<m> unresolved=<k>`; exits 1
+    /// naming each unresolved pointer and the `file:line` that emits it.
+    DocAnchors {
+        /// Required: the check is the only mode.
+        #[arg(long)]
+        check: bool,
+        /// Repo root to check. Defaults to the current directory.
+        #[arg(long)]
+        root: Option<PathBuf>,
+    },
     /// PRD-mcphost-surface-fluidity requirement 4 (AC5): regenerate
     /// `www/llms.txt`'s generated `## Tools` section from the same
     /// descriptors `tools/list` serves, so the two can never drift the way
@@ -998,6 +1011,23 @@ async fn main() -> anyhow::Result<()> {
             }
             Ok(())
         }
+        Command::DocAnchors { check: _, root } => {
+            let root = root.unwrap_or_else(|| PathBuf::from("."));
+            let report = mcphost::doc_anchors::check_repo(&root);
+            for p in &report.unresolved {
+                eprintln!("doc-anchors: unresolved pointer {} emitted at {}:{}", p.anchor, p.file, p.line);
+            }
+            println!(
+                "anchors={} emitted={} unresolved={}",
+                report.anchors,
+                report.emitted.len(),
+                report.unresolved.len()
+            );
+            if !report.unresolved.is_empty() {
+                std::process::exit(1);
+            }
+            Ok(())
+        }
         Command::LlmsTxt { check, path, readme, clients } => {
             // Deliberately no `init_tracing()`: same rationale as
             // `SandboxCheck`/`Funnel` above -- this subcommand's contract is
@@ -1031,6 +1061,8 @@ async fn main() -> anyhow::Result<()> {
             );
             let with_tools =
                 mcphost::llms_txt::splice_events(&with_tools, &mcphost::llms_txt::render_events_section());
+            let with_tools =
+                mcphost::llms_txt::splice_anchors(&with_tools, &mcphost::llms_txt::render_anchors_section());
             let with_clients = mcphost::clients::render_into(&with_tools, &clients_file).unwrap_or_else(|why| {
                 eprintln!("llms-txt: {}: {why}", path.display());
                 std::process::exit(2);

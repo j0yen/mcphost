@@ -327,6 +327,8 @@ const MIGRATION_0107: &str = include_str!("../migrations/0107_help_search_events
 const MIGRATION_0110: &str = include_str!("../migrations/0110_call_results.sql");
 /// PRD-mcphost-delegation-bound-to-run-or-session R1: binding columns on `tenant_keys`.
 const MIGRATION_0111: &str = include_str!("../migrations/0111_key_binding.sql");
+/// PRD-mcphost-graceful-drain-contract R2: the `restarts` table.
+const MIGRATION_0113: &str = include_str!("../migrations/0113_restarts.sql");
 
 /// PRD-mcphost-docs-telemetry-failed-after-search R3: how long after a
 /// `host.help.search` the same tenant's first failed call still joins it.
@@ -2713,6 +2715,19 @@ fn is_5xx_class_error(error_class: &str) -> bool {
     )
 }
 
+/// One `restarts` row (PRD-mcphost-graceful-drain-contract R2).
+#[derive(Debug, Clone)]
+pub struct RestartRow {
+    pub restart_id: String,
+    pub signal_at_unix: i64,
+    pub in_flight_at_signal: i64,
+    pub finished: i64,
+    pub dropped: i64,
+    pub drain_ms: i64,
+    pub bound_s: i64,
+    pub version: String,
+}
+
 pub struct Db {
     conn: Arc<Mutex<Connection>>,
     path: PathBuf,
@@ -3037,6 +3052,7 @@ impl Db {
         Self::migrate_0110_call_results(&conn)?;
         Self::migrate_0111_key_binding(&conn)?;
         Self::migrate_0112_email_attachments(&conn)?;
+        Self::migrate_0113_restarts(&conn)?;
         Ok(())
     }
 
@@ -3127,6 +3143,12 @@ impl Db {
     /// PRD-mcphost-idempotency-key-on-call R2: wholly new table, `IF NOT EXISTS`.
     fn migrate_0110_call_results(conn: &Connection) -> Result<(), AppError> {
         conn.execute_batch(MIGRATION_0110)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-graceful-drain-contract R2: wholly new table, `IF NOT EXISTS`.
+    fn migrate_0113_restarts(conn: &Connection) -> Result<(), AppError> {
+        conn.execute_batch(MIGRATION_0113)?;
         Ok(())
     }
 
@@ -4472,6 +4494,31 @@ impl Db {
         tokio::task::spawn_blocking(move || this.migrate_sync())
             .await
             .map_err(|e| AppError::Internal(e.to_string()))?
+    }
+
+    /// PRD-mcphost-graceful-drain-contract R2: the one `restarts` row of a
+    /// shutdown. `dropped = in_flight_at_signal - finished` is the caller's
+    /// arithmetic; this stores what it is given.
+    pub async fn record_restart(&self, row: RestartRow) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO restarts (restart_id, signal_at_unix, in_flight_at_signal, \
+                 finished, dropped, drain_ms, bound_s, version) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    row.restart_id,
+                    row.signal_at_unix,
+                    row.in_flight_at_signal,
+                    row.finished,
+                    row.dropped,
+                    row.drain_ms,
+                    row.bound_s,
+                    row.version
+                ],
+            )?;
+            Ok(())
+        })
+        .await
     }
 
     /// PRD-mcphost-dry-run-side-effects requirement 2: inside a

@@ -3910,6 +3910,9 @@
       },
       "title": {
         "type": "string"
+      },
+      "truncated": {
+        "type": "boolean"
       }
     },
     "required": [
@@ -3917,7 +3920,8 @@
       "line",
       "path",
       "text",
-      "title"
+      "title",
+      "truncated"
     ],
     "type": "object"
   },

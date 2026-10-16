@@ -22,11 +22,15 @@ mod elicit_session;
 mod exprp;
 #[path = "support/federation.rs"]
 mod federation;
+#[path = "support/gdrain.rs"]
+mod gdrain;
 #[path = "support/host.rs"]
 #[allow(dead_code)]
 mod host;
 #[path = "support/oauth.rs"]
 mod oauth;
+#[path = "support/serve.rs"]
+mod serve;
 #[path = "support/uptime_probes.rs"]
 mod uptime_probes;
 #[path = "support/whin.rs"]
@@ -180,6 +184,12 @@ mod firstpub_ac05_stub_flag_in_tools_list;
 mod firstpub_ac06_get_info_no_echo_steering;
 #[path = "firstpub_ac07_llms_txt_first_run_executes.rs"]
 mod firstpub_ac07_llms_txt_first_run_executes;
+#[path = "gdrain_ac02_sigterm_finishes_inflight_calls.rs"]
+mod gdrain_ac02_sigterm_finishes_inflight_calls;
+#[path = "gdrain_ac03_bound_interrupts_stragglers.rs"]
+mod gdrain_ac03_bound_interrupts_stragglers;
+#[path = "gdrain_ac04_draining_refuses_new_requests.rs"]
+mod gdrain_ac04_draining_refuses_new_requests;
 #[path = "gsigb_ac03_wedged_child_in_pool_signal.rs"]
 mod gsigb_ac03_wedged_child_in_pool_signal;
 #[path = "handle_ac09_python_sandbox_materialize_then_query.rs"]
@@ -228,8 +238,6 @@ mod jsk_ac07_secret_redaction;
 mod kcon_ac02_every_registered_kind_passes;
 #[path = "kcon_ac04_error_families_and_source_line.rs"]
 mod kcon_ac04_error_families_and_source_line;
-#[path = "kcon_live_ac01_prod_error_families.rs"]
-mod kcon_live_ac01_prod_error_families;
 #[path = "kconb_ac03_spec_test_carries_contract.rs"]
 mod kconb_ac03_spec_test_carries_contract;
 #[path = "kdr_ac01_kind_doc_from_data.rs"]
