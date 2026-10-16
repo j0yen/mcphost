@@ -474,6 +474,12 @@ mod nfs_ac02_suffix_cut_to_120_chars;
 mod nfs_ac03_quota_and_unknown_tool;
 #[path = "nfs_ac04_ttl_expiry.rs"]
 mod nfs_ac04_ttl_expiry;
+#[path = "nfsb_ac01_first_contact_note_in_list_and_welcome_back.rs"]
+mod nfsb_ac01_first_contact_note_in_list_and_welcome_back;
+#[path = "nfsb_ac02_shared_tool_and_tenants_isolated.rs"]
+mod nfsb_ac02_shared_tool_and_tenants_isolated;
+#[path = "nfsb_ac03_quickstart_notes_max_drift.rs"]
+mod nfsb_ac03_quickstart_notes_max_drift;
 #[path = "ntfy_ac01_no_tenant_settable_alert_sink.rs"]
 mod ntfy_ac01_no_tenant_settable_alert_sink;
 #[path = "ntfy_ac02_enums_generated_into_every_surface.rs"]
