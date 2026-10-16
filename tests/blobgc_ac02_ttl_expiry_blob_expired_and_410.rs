@@ -29,9 +29,15 @@ async fn ttl_60_lapses_after_61_seconds() {
     let url = put["url"].as_str().unwrap().to_string();
     let expires_at = put["expires_at"].as_i64().expect("put reports expires_at");
 
-    // Before 60 s: both work.
-    advance(&server, 59);
-    let got = extract_structured(&client.tools_call("host.blob.get", json!({"id": id})).await.expect("get at 59 s"));
+    // Before 60 s: both work. The injected offset rides on the real wall
+    // clock and `expires_at` was truncated to whole seconds at put time, so an
+    // offset of 59 leaves under one second of slack and a second-boundary
+    // crossing under CI load flipped the blob to expired (the signed-URL
+    // read answered 410, not 200). Test mid-window instead: the slack is
+    // ~29 s of real time and no longer depends on scheduler latency. The
+    // lapsed side below only gets later with real time, so it is monotone-safe.
+    advance(&server, 30);
+    let got = extract_structured(&client.tools_call("host.blob.get", json!({"id": id})).await.expect("get at 30 s"));
     assert_eq!(got["id"], json!(id));
     assert_eq!(reqwest::get(&url).await.unwrap().status(), StatusCode::OK);
 
