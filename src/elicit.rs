@@ -436,7 +436,7 @@ impl TenantElicit {
         };
         // Leave room to answer before the tool's own deadline.
         let budget_s = (remaining.as_secs().saturating_sub(1)).max(1);
-        let wait_s = (crate::longpoll::WAIT_MAX_S as u64).min(budget_s).min(timeout_s.unwrap_or(u64::MAX)).max(1);
+        let wait_s = (asks::WAIT_MAX_S as u64).min(budget_s).min(timeout_s.unwrap_or(u64::MAX)).max(1);
         let waited = asks::wait(&self.state, &self.tenant, &json!({"ask_id": ask_id, "timeout_s": wait_s}))
             .await
             .map_err(app)?;

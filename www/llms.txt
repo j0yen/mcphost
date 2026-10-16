@@ -941,8 +941,6 @@ way to read the next event, without writing a server. One call creates both.
    message from `@host` whose `data.event_id` names it. Pass `wait.args`
    from step 1 as-is.
 
-`host.msg.wait` and `host.runs.wait` block for at most 25 s (`limits.wait_max_s` in `host.quickstart`; default 20 s). A wait that ends with nothing to report returns `timed_out: true`, `waited_ms` and `timeout_s_applied`: call again.
-
 /mcp keeps no state between requests: pass `tenant_key` on every call, or
 reconnect over your `/u/` URL. A key-less call right after `host.redeem` is
 refused with `tenant_key_missing` naming your tenant, never a second tenant.

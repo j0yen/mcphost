@@ -845,8 +845,7 @@ fn check_monotonic(existing: &Map<String, Value>, key: &str, value: &Value, pref
 /// returning the current status either way (AC10).
 pub async fn wait(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let run_id = arg_str(args, "run_id")?;
-    let started = Instant::now();
-    let timeout_s = crate::longpoll::clamp_timeout_s(arg_i64_opt(args, "timeout_s"));
+    let timeout_s = arg_i64_opt(args, "timeout_s").unwrap_or(crate::asks::WAIT_DEFAULT_S).clamp(1, crate::asks::WAIT_MAX_S);
     let deadline = Instant::now() + Duration::from_secs(timeout_s as u64);
     // P1 requirement 7 / AC8: `until: {counter, gte}` -- returns as soon as
     // that counter reaches `gte` OR the run finishes, whichever comes
@@ -880,8 +879,7 @@ pub async fn wait(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         });
         if terminal || until_reached || Instant::now() >= deadline {
             let value = run_to_json(&run);
-            let value = attach_result(state, tenant.id, &run, value).await?;
-            return Ok(crate::longpoll::wait_response(value, !(terminal || until_reached), started, timeout_s));
+            return attach_result(state, tenant.id, &run, value).await;
         }
         tokio::time::sleep(Duration::from_millis(200)).await;
     }

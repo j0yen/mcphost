@@ -1180,6 +1180,28 @@ fn confirm_stripped(args: &Value) -> Value {
     args
 }
 
+/// PRD-mcphost-acting-for-in-ledger-and-audit R1: `_meta.acting_for` on a
+/// completed call, `data.acting_for` on a failed one.
+fn attach_acting_for(
+    result: Result<CallToolResponse, McpError>,
+    af: &crate::subkeys::ActingFor,
+) -> Result<CallToolResponse, McpError> {
+    match result {
+        Ok(CallToolResponse::Complete(mut r)) => {
+            r.meta.get_or_insert_with(Default::default).0.insert("acting_for".to_string(), af.to_json());
+            Ok(CallToolResponse::Complete(r))
+        }
+        Err(mut e) => {
+            let data = e.data.get_or_insert_with(|| json!({}));
+            if let Some(obj) = data.as_object_mut() {
+                obj.insert("acting_for".to_string(), af.to_json());
+            }
+            Err(e)
+        }
+        other => other,
+    }
+}
+
 /// R5: marks a scratch tenant's response `_meta.scratch: true`.
 fn mark_scratch(value: &mut Value) {
     if let Some(obj) = value.as_object_mut() {
@@ -3241,14 +3263,14 @@ fn host_tools_part_07() -> Vec<Tool> {
                 "Long-poll one run until it finalizes, until: {{counter, gte}} is reached, or \
                  timeout_s elapses (max {}s), returning its current status either way -- for a \
                  client with no polling loop of its own.",
-                crate::longpoll::WAIT_MAX_S
+                crate::asks::WAIT_MAX_S
             ),
             host_schema(
                 json!({
                     "run_id": {"type": "string", "description": "The run id to wait on."},
                     "timeout_s": {
                         "type": "integer",
-                        "description": format!("Max seconds to wait, capped at {}; default {}.", crate::longpoll::WAIT_MAX_S, crate::longpoll::WAIT_DEFAULT_S),
+                        "description": format!("Max seconds to wait, capped at {}; default {}.", crate::asks::WAIT_MAX_S, crate::asks::WAIT_DEFAULT_S),
                     },
                     "until": {
                         "type": "object",
@@ -3887,8 +3909,8 @@ fn host_tools_part_09() -> Vec<Tool> {
             format!(
                 "Long-poll for a new message until one past cursor arrives or timeout_s elapses (max \
                  {}s), returning the same shape as host.msg.inbox either way -- for a client with no \
-                 polling loop of its own. On timeout, messages is empty, timed_out is true and next_cursor is unchanged. {}",
-                crate::longpoll::WAIT_MAX_S,
+                 polling loop of its own. On timeout, messages is empty and next_cursor is unchanged. {}",
+                crate::asks::WAIT_MAX_S,
                 crate::email_inbound::rejected_reason_help()
             ),
             host_schema(
@@ -3896,7 +3918,7 @@ fn host_tools_part_09() -> Vec<Tool> {
                     "cursor": {"type": "string", "description": "Opaque; omit to wait for the next message from now."},
                     "timeout_s": {
                         "type": "integer",
-                        "description": format!("Max seconds to wait, capped at {}; default {}.", crate::longpoll::WAIT_MAX_S, crate::longpoll::WAIT_DEFAULT_S),
+                        "description": format!("Max seconds to wait, capped at {}; default {}.", crate::asks::WAIT_MAX_S, crate::asks::WAIT_DEFAULT_S),
                     },
                     "unread_only": {"type": "boolean", "description": "Filter to messages not yet acked."},
                 }),
@@ -4010,14 +4032,14 @@ fn host_tools_part_10() -> Vec<Tool> {
                  returns {{status: answered|pending, choice, answered_unix, waited_ms, next_call}}. \
                  pending means call host.ask.wait again; an expired ask fails ask_expired with \
                  next_call host.ask.create. Needs a tenant_key: it never signs a tenant up.",
-                crate::longpoll::WAIT_MAX_S
+                crate::asks::WAIT_MAX_S
             ),
             host_schema(
                 json!({
                     "ask_id": {"type": "string", "description": "The ask_id host.ask.create returned."},
                     "timeout_s": {
                         "type": "integer",
-                        "description": format!("Max seconds to wait, capped at {}; default {}.", crate::longpoll::WAIT_MAX_S, crate::longpoll::WAIT_DEFAULT_S),
+                        "description": format!("Max seconds to wait, capped at {}; default {}.", crate::asks::WAIT_MAX_S, crate::asks::WAIT_DEFAULT_S),
                     },
                 }),
                 &["ask_id"],
@@ -7249,15 +7271,9 @@ impl McpHostHandler {
             "implicit tenant created for anonymous call"
         );
 
-        // PRD-mcphost-msg-wait-long-poll-contract R5: a just-created tenant's
-        // inbox cannot hold anything, so its `host.msg.wait` times out at
-        // once instead of sleeping out the full default wait.
-        let mut value = if name == "host.msg.wait" {
-            crate::longpoll::wait_response(json!({"messages": []}), true, Instant::now(), crate::longpoll::clamp_timeout_s(args.get("timeout_s").and_then(Value::as_i64)))
-        } else {
-            self.dispatch_tenant_tool(&tenant, None, "key", "session", None, session_id, name, args)
-                .await?
-        };
+        let mut value = self
+            .dispatch_tenant_tool(&tenant, None, "key", "session", None, session_id, name, args)
+            .await?;
         // Requirement 2 (AC1): the first response's result envelope gains
         // `onboarding`; requirement 2's second half (AC2) holds by
         // construction -- this function only ever runs on the call that
@@ -10542,6 +10558,15 @@ impl ServerHandler for McpHostHandler {
         // fills once a sub-key resolves, read by the `calls` insert.
         let inner = crate::subkeys::CALL_KEY
             .scope(std::cell::Cell::new(None), self.call_tool_inner(request, ctx));
+        // PRD-mcphost-acting-for-in-ledger-and-audit: a sub-key's call says
+        // who it acted for on its response `_meta` and its error `data`.
+        let inner = crate::subkeys::CALL_ACTING_FOR.scope(std::cell::RefCell::new(None), async move {
+            let result = inner.await;
+            match crate::subkeys::current_acting_for() {
+                Some(af) => attach_acting_for(result, &af),
+                None => result,
+            }
+        });
         let result = match channel {
             Some(channel) => crate::elicit::CLIENT_CHANNEL.scope(channel, inner).await,
             None => inner.await,
@@ -10900,6 +10925,11 @@ impl McpHostHandler {
         // dispatch below runs.
         if let (Some(sk), Auth::Tenant(tenant, _)) = (&sub_key, &auth) {
             let _ = crate::subkeys::CALL_KEY.try_with(|c| c.set(Some(sk.id)));
+            // PRD-mcphost-acting-for-in-ledger-and-audit R1: the lineage is
+            // rendered once here and read by every decorator below.
+            if let Some(af) = self.state.db.acting_for_for_key(sk.id).await.map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))? {
+                let _ = crate::subkeys::CALL_ACTING_FOR.try_with(|c| *c.borrow_mut() = Some(af));
+            }
             let canonical = crate::tool_aliases::resolve(&body_name).unwrap_or(&body_name);
             // `host.key.delegate` skips the allowlist: it answers
             // `permission_denied can_delegate=false` itself.
