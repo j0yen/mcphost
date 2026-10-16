@@ -1768,6 +1768,12 @@
       "AC2": "tests/incban_ac02_tenant_faults_carry_no_incident.rs",
       "AC3": "tests/incban_ac03_http_500_retry_after_and_incident.rs",
       "AC4": "tests/incban_ac04_host_fault_codes_drift.rs"
+    },
+    "csvtab": {
+      "_prd": "PRD-mcphost-csv-to-table-one-call.md (test_prefix: csvtab)",
+      "AC2": "tests/csvtab_ac02_fixture_corpus_types_and_skips.rs",
+      "AC3": "tests/csvtab_ac03_bad_cell_skipped_or_abort_leaves_no_table.rs",
+      "AC4": "tests/csvtab_ac04_types_override_keeps_leading_zeros.rs"
     }
   }
 }

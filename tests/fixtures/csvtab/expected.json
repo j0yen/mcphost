@@ -1,0 +1,194 @@
+{
+ "all_empty_column.csv": {
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "id": "integer",
+   "notes": "text"
+  }
+ },
+ "bom_utf8.csv": {
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "active": "bool",
+   "amount": "real",
+   "id": "integer",
+   "joined": "date",
+   "name": "text"
+  }
+ },
+ "bool_words.csv": {
+  "rows": 4,
+  "rows_skipped": 0,
+  "types": {
+   "flag": "bool"
+  }
+ },
+ "comma.csv": {
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "active": "bool",
+   "amount": "real",
+   "id": "integer",
+   "joined": "date",
+   "name": "text"
+  }
+ },
+ "crlf.csv": {
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "active": "bool",
+   "amount": "real",
+   "id": "integer",
+   "joined": "date",
+   "name": "text"
+  }
+ },
+ "empty_trailing_line.csv": {
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "active": "bool",
+   "amount": "real",
+   "id": "integer",
+   "joined": "date",
+   "name": "text"
+  }
+ },
+ "export_1000.csv": {
+  "rows": 1000,
+  "rows_skipped": 0,
+  "types": {
+   "order_id": "integer",
+   "ordered_at": "date",
+   "qty": "integer",
+   "shipped": "bool",
+   "sku": "text",
+   "unit_price": "real"
+  }
+ },
+ "header_sanitise.csv": {
+  "rows": 2,
+  "rows_skipped": 0,
+  "types": {
+   "Order_ID": "integer",
+   "Unit_Price____": "real",
+   "_2nd_col": "text"
+  }
+ },
+ "latin1.csv": {
+  "rows": 2,
+  "rows_skipped": 0,
+  "types": {
+   "city": "text",
+   "pop": "integer"
+  }
+ },
+ "nulls_mixed.csv": {
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "id": "integer",
+   "score": "real",
+   "seen": "date"
+  }
+ },
+ "pipe.csv": {
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "active": "bool",
+   "amount": "real",
+   "id": "integer",
+   "joined": "date",
+   "name": "text"
+  }
+ },
+ "quoted_newlines.csv": {
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "id": "integer",
+   "note": "text",
+   "score": "integer"
+  }
+ },
+ "ragged_row.csv": {
+  "rows": 2,
+  "rows_skipped": 1,
+  "types": {
+   "a": "integer",
+   "b": "text"
+  }
+ },
+ "reals_exp.csv": {
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "k": "text",
+   "v": "real"
+  }
+ },
+ "semicolon.csv": {
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "active": "bool",
+   "amount": "real",
+   "id": "integer",
+   "joined": "date",
+   "name": "text"
+  }
+ },
+ "tab.tsv": {
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "active": "bool",
+   "amount": "real",
+   "id": "integer",
+   "joined": "date",
+   "name": "text"
+  }
+ },
+ "utf16be_bom.csv": {
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "active": "bool",
+   "amount": "real",
+   "id": "integer",
+   "joined": "date",
+   "name": "text"
+  }
+ },
+ "utf16le_bom.csv": {
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "active": "bool",
+   "amount": "real",
+   "id": "integer",
+   "joined": "date",
+   "name": "text"
+  }
+ },
+ "zero_one_integer.csv": {
+  "rows": 4,
+  "rows_skipped": 0,
+  "types": {
+   "bit": "integer"
+  }
+ },
+ "zip_leading_zero.csv": {
+  "rows": 3,
+  "rows_skipped": 0,
+  "types": {
+   "city": "text",
+   "zip": "text"
+  }
+ }
+}

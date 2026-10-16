@@ -2221,6 +2221,28 @@ fn host_tools_part_04() -> Vec<Tool> {
             ),
         ),
         Tool::new(
+            "host.table.from_blob",
+            "Load a CSV or TSV already stored on the host (a blob or a document) into a new \
+             typed table in one call: delimiter and encoding are sniffed, each column's type \
+             (integer|real|text|date|bool) is inferred from the first 1,000 rows, every row \
+             that parses is loaded, and the response carries the type report, a 5-row preview, \
+             and the rows left out as {row, column, reason}.",
+            host_schema(
+                json!({
+                    "blob": {"type": "string", "description": "Blob id or name; pass exactly one of blob or doc."},
+                    "doc": {"type": "string", "description": "Document id or name (text/csv); pass exactly one of blob or doc."},
+                    "name": {"type": "string", "description": "Name of the table to create."},
+                    "header": {"type": "boolean", "description": "First row holds column names. Default true."},
+                    "delimiter": {"type": "string", "description": "auto (default), ',', ';', 'tab' or '|'."},
+                    "types": {"type": "object", "description": "Override a column's inferred type: {column: integer|real|text|date|bool}."},
+                    "mode": {"type": "string", "description": "create (default) or replace."},
+                    "on_error": {"type": "string", "description": "skip (default) leaves out a row with a bad cell and reports it; abort fails the whole load and creates no table."},
+                    "infer_rows": {"type": "integer", "description": "Rows sampled for type inference. Default 1000, maximum 50000."},
+                }),
+                &["name"],
+            ),
+        ),
+        Tool::new(
             "host.table.query",
             "Run a single read-only SQL SELECT (CTEs allowed) against this tenant's own \
              tables. Structurally rejected (not by string matching): anything but exactly one \
@@ -6933,6 +6955,7 @@ impl McpHostHandler {
             "host.enduser.export" => crate::export::enduser_export(&self.state, tenant, &args).await,
             "host.table.create" => tables::table_create(&self.state, tenant, &args).await,
             "host.table.append" => tables::table_append(&self.state, tenant, &args).await,
+            "host.table.from_blob" => crate::csvtab::table_from_blob(&self.state, tenant, &args).await,
             "host.table.query" => tables::table_query(&self.state, tenant, &args, end_user).await,
             "host.table.query_diagnose" => tables::table_query_diagnose(&self.state, tenant, &args).await,
             "host.table.query_stats" => tables::table_query_stats(&self.state, tenant, &args).await,

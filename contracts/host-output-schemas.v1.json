@@ -10185,6 +10185,57 @@
     "required": [],
     "type": "object"
   },
+  "host.table.from_blob": {
+    "properties": {
+      "columns": {
+        "items": {
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "delimiter": {
+        "type": "string"
+      },
+      "dry_run": {
+        "type": "boolean"
+      },
+      "preview": {
+        "items": {
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "rows_loaded": {
+        "type": "integer"
+      },
+      "rows_skipped": {
+        "type": "integer"
+      },
+      "sample_query": {
+        "type": "string"
+      },
+      "skipped": {
+        "items": {
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "table": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "columns",
+      "dry_run",
+      "preview",
+      "rows_loaded",
+      "rows_skipped",
+      "sample_query",
+      "skipped",
+      "table"
+    ],
+    "type": "object"
+  },
   "host.table.graph": {
     "properties": {
       "computed_at": {

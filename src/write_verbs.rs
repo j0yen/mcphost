@@ -64,6 +64,7 @@ const fn nd(name: &'static str, kind: Kind, reason: &'static str) -> WriteVerb {
 pub const WRITE_VERBS: &[WriteVerb] = &[
     sv("host.table.create", Kind::Write),
     sv("host.table.append", Kind::Write),
+    sv("host.table.from_blob", Kind::Write),
     sv("host.table.drop", Kind::Drop),
     sv("host.table.handle_drop", Kind::Drop),
     sv("host.table.model_set", Kind::Write),
