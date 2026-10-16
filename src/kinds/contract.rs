@@ -269,3 +269,118 @@ pub static EMPTY_CONTRACT: KindContract = KindContract {
         ],
     },
 };
+
+pub const CONTRACT_START: &str = "<!-- kind-contract:start -->";
+pub const CONTRACT_END: &str = "<!-- kind-contract:end -->";
+
+impl SourcePosition {
+    /// The wire word for this capability (`contracts/host-tools.v1.json`
+    /// and the docs table).
+    pub fn as_word(&self) -> String {
+        match self {
+            SourcePosition::Line => "line".to_string(),
+            SourcePosition::LineColumn => "line_column".to_string(),
+            SourcePosition::Field(f) => format!("field:{f}"),
+            SourcePosition::None => "none".to_string(),
+        }
+    }
+}
+
+impl KindContract {
+    /// `families: tool_code, tool_limit; source_line: yes` -- the one-line
+    /// summary `host.tool_publish`'s kind description and
+    /// `host.quickstart`/`host.spec_test` carry.
+    pub fn summary_line(&self) -> String {
+        let names: Vec<&str> = self.error_families.iter().map(|f| f.name).collect();
+        format!(
+            "families: {}; source_line: {}",
+            if names.is_empty() { "none".to_string() } else { names.join(", ") },
+            if self.source_position == SourcePosition::Line { "yes" } else { "no" }
+        )
+    }
+
+    /// `{families, source_line}` for `host.quickstart`/`host.spec_test`.
+    pub fn response_block(&self) -> Value {
+        json!({
+            "families": self.error_families.iter().map(|f| f.name).collect::<Vec<_>>(),
+            "source_line": self.source_position == SourcePosition::Line,
+        })
+    }
+
+    /// The contract as `contracts/host-tools.v1.json` carries it: fixtures
+    /// omitted.
+    pub fn contract_json(&self) -> Value {
+        json!({
+            "error_families": self.error_families.iter()
+                .map(|f| json!({"name": f.name, "codes": f.codes}))
+                .collect::<Vec<_>>(),
+            "budgets": self.budgets.iter()
+                .map(|b| json!({"field": b.field, "min": b.min, "max": b.max, "default": b.default}))
+                .collect::<Vec<_>>(),
+            "source_position": self.source_position.as_word(),
+            "bridges": self.bridges,
+            "secret_redaction": self.secret_redaction,
+        })
+    }
+
+    /// The table rows of the `## Contract` block, one per fact, so a
+    /// drift check can name the row.
+    pub fn doc_rows(&self) -> Vec<String> {
+        let mut rows = Vec::new();
+        for b in self.budgets {
+            rows.push(format!("| budget `{}` | {}-{} (default {}) |", b.field, b.min, b.max, b.default));
+        }
+        for f in self.error_families {
+            rows.push(format!("| family `{}` | {} |", f.name, f.codes.join(", ")));
+        }
+        let pos = match self.source_position {
+            SourcePosition::Line => "yes (`data.source_line`)".to_string(),
+            SourcePosition::LineColumn => "yes (line and column)".to_string(),
+            SourcePosition::Field(f) => format!("field `{f}`"),
+            SourcePosition::None => "no".to_string(),
+        };
+        rows.push(format!("| source_line | {pos} |"));
+        rows.push(format!(
+            "| bridges | {} |",
+            if self.bridges.is_empty() { "none".to_string() } else { self.bridges.join(", ") }
+        ));
+        let redaction = if self.secret_redaction {
+            "yes".to_string()
+        } else {
+            match self.fixtures.skip_reason(CASE_SECRET_REDACTION) {
+                Some(r) => format!("no (skipped: {r})"),
+                None => "no".to_string(),
+            }
+        };
+        rows.push(format!("| secret redaction | {redaction} |"));
+        rows
+    }
+
+    /// The generated `## Contract` section, markers included.
+    pub fn render_doc_block(&self) -> String {
+        let mut out = format!("{CONTRACT_START}\n## Contract\n\n| Field | Value |\n|---|---|\n");
+        for row in self.doc_rows() {
+            out.push_str(&row);
+            out.push('\n');
+        }
+        out.push_str(CONTRACT_END);
+        out.push('\n');
+        out
+    }
+}
+
+/// Replaces the marked block in `doc` with `block`, or appends it when the
+/// page has no markers yet.
+pub fn splice_doc_block(doc: &str, block: &str) -> String {
+    if let (Some(start), Some(end)) = (doc.find(CONTRACT_START), doc.find(CONTRACT_END))
+        && start < end
+    {
+        let after = &doc[end + CONTRACT_END.len()..];
+        let after = after.strip_prefix('\n').unwrap_or(after);
+        return format!("{}{}{}", &doc[..start], block, after);
+    }
+    let mut out = doc.trim_end_matches('\n').to_string();
+    out.push_str("\n\n");
+    out.push_str(block);
+    out
+}

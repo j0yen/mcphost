@@ -233,6 +233,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "heal-config",
             "heal-docs",
             "host-pressure-doc-check",
+            "kind-contract-doc-check",
             "launch-docs",
             "live-scripts",
             "loop-config",
@@ -246,7 +247,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "spec-fields-doc-check",
             "tool-naming",
             "vendor",
-            "wasm-fixtures"
+            "wasm-fixtures",
         ],
         "only admin-schemas, blobguard-fixtures, checkcompat-race-soak, child-proc-lint, contracts, docs-links, docsearch-fixtures, \
          event-trigger-self-test-fixtures, example-manifest, examples, flake-lint, heal-config, heal-docs, host-pressure-doc-check, launch-docs, \

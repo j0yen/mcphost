@@ -716,11 +716,19 @@ fn tool_publish_props(kinds: &KindRegistry) -> Value {
             // enum is the registry's own set (names, aliases, outcome
             // words), never a literal list.
             "enum": kinds.publish_kind_enum(),
-            "description": "Which registered kind to publish under: one of this field's `enum` \
+            "description": format!(
+                "Which registered kind to publish under: one of this field's `enum` \
                 (host.quickstart with no kind lists every kind, alias and recipe). A job-word \
                 alias in the enum also resolves here -- webhook-style words for an inbound \
                 webhook, cron-style words for a timed run -- both resolve to kind http and the \
-                descriptor comes back with resolved_from naming the alias you asked for.",
+                descriptor comes back with resolved_from naming the alias you asked for. \
+                Error contract per kind: {}.",
+                kinds
+                    .all()
+                    .map(|k| format!("{} ({})", k.name(), k.contract().summary_line()))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            ),
         },
         "spec": {
             "type": "object",
@@ -9071,6 +9079,7 @@ impl McpHostHandler {
             "args_schema": descriptor.input_schema,
             "requirements": requirements,
             "invocations": results,
+            "contract": kind.contract().response_block(),
         });
         if kind_name == "python" {
             report["tool_lint"] = json!(crate::kinds::python_lint::lint_spec(&spec));

@@ -430,6 +430,7 @@ pub const ARCHIVE_LAYOUT_HEADING: &str = "\n## Archive layout\n";
 /// anything was stale (meaningful only under `check`; under write it
 /// always returns `Ok(false)`, nothing left for the caller to act on).
 pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
+    let mut stale = run_kind_contracts(check)?;
     let catalog = PlanCatalog::default_catalog();
     let support_url = std::env::var("MCPHOST_SUPPORT_URL").ok();
     let mut support_docs = support_spliced_docs(support_url.as_deref())?;
@@ -447,7 +448,6 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
             );
         }
     }
-    let mut stale = false;
 
     for (path, rendered) in [
         (Path::new(PLANS_DOC_PATH), render_plans_markdown(&catalog)),
@@ -614,6 +614,43 @@ pub fn run_kinds(
         }
         if write && next != current {
             std::fs::write(&path, next)?;
+        }
+    }
+    Ok(stale)
+}
+
+/// PRD-mcphost-kind-contract-conformance-generated-b R5: the `## Contract`
+/// block of every `docs/kinds/<kind>.md`, rendered from the kind's
+/// [`crate::kinds::contract::KindContract`] over the production kind set.
+/// Under `check` it names every stale kind and the rows that differ, and
+/// returns `Ok(true)`; otherwise it rewrites the pages.
+pub fn run_kind_contracts(check: bool) -> std::io::Result<bool> {
+    let registry = crate::kinds::production_registry();
+    let mut stale = false;
+    for name in registry.names() {
+        let Some(kind) = registry.get(name) else { continue };
+        let path = std::path::PathBuf::from(format!("docs/kinds/{name}.md"));
+        let Ok(current) = std::fs::read_to_string(&path) else { continue };
+        let contract = kind.contract();
+        let spliced = crate::kinds::contract::splice_doc_block(&current, &contract.render_doc_block());
+        if current == spliced {
+            continue;
+        }
+        if check {
+            stale = true;
+            let committed: HashSet<&str> = current.lines().collect();
+            let mut named = false;
+            for row in contract.doc_rows() {
+                if !committed.contains(row.as_str()) {
+                    eprintln!("kind-contract-doc-check: kind={name}: row differs or is missing: {row}");
+                    named = true;
+                }
+            }
+            if !named {
+                eprintln!("kind-contract-doc-check: kind={name}: ## Contract block is stale ({})", path.display());
+            }
+        } else {
+            std::fs::write(&path, spliced)?;
         }
     }
     Ok(stale)

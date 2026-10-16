@@ -1027,6 +1027,18 @@ A step may fan out: add `"for_each": "$.prev.result.items"` (any mapping path to
 ```
 <!-- kind-example:end -->
 
+<!-- kind-contract:start -->
+## Contract
+
+| Field | Value |
+|---|---|
+| family `compose` | compose_self_call, compose_depth_exceeded, compose_children_exceeded, compose_item_outside_for_each, compose_mapping_type, compose_mapping_missing, compose_fanout_exceeded, compose_fanout_item_failed, compose_input_missing |
+| family `tool_state` | tool_building, tool_not_found, tool_run_unsupported |
+| source_line | field `failed_step` |
+| bridges | none |
+| secret redaction | no |
+<!-- kind-contract:end -->
+
 ## Kind: echo
 
 spec.schema is any JSON Schema; a call echoes back the arguments it was given, validated against it.
@@ -1091,6 +1103,16 @@ This kind returns no kind-specific error codes.
 }
 ```
 <!-- kind-example:end -->
+
+<!-- kind-contract:start -->
+## Contract
+
+| Field | Value |
+|---|---|
+| source_line | no |
+| bridges | none |
+| secret redaction | no |
+<!-- kind-contract:end -->
 
 ## Kind: http
 
@@ -1174,6 +1196,18 @@ Publish error `url: host '<host>' is not a publicly callable host` (code `host_n
 }
 ```
 <!-- kind-example:end -->
+
+<!-- kind-contract:start -->
+## Contract
+
+| Field | Value |
+|---|---|
+| budget `timeout_s` | 1-30 (default 10) |
+| family `upstream` | upstream_auth, upstream_rate_limited, upstream_client_error, upstream_error, upstream_timeout, upstream_unreachable, upstream_not_connected, host_not_allowed |
+| source_line | no |
+| bridges | none |
+| secret redaction | yes |
+<!-- kind-contract:end -->
 
 ## Kind: python
 
@@ -1387,6 +1421,23 @@ The distinction is visible, not doctrinal: `host.tool_test` renders both in one 
 ```
 <!-- kind-example:end -->
 
+<!-- kind-contract:start -->
+## Contract
+
+| Field | Value |
+|---|---|
+| budget `timeout_s` | 1-60 (default 30) |
+| budget `memory_mb` | 1-1024 (default 256) |
+| family `tool_code` | tool_exception, tool_output_invalid |
+| family `tool_limit` | tool_timeout, tool_oom, tool_process_limit, tool_output_too_large |
+| family `upstream` | upstream_auth, upstream_rate_limited, upstream_client_error, upstream_error, upstream_timeout, upstream_unreachable, upstream_not_connected, host_not_allowed |
+| family `compose` | compose_self_call, compose_depth_exceeded, compose_children_exceeded, compose_item_outside_for_each, compose_mapping_type, compose_mapping_missing, compose_fanout_exceeded, compose_fanout_item_failed, compose_input_missing |
+| family `tool_state` | tool_building, tool_not_found, tool_run_unsupported |
+| source_line | yes (`data.source_line`) |
+| bridges | state, table, docs, lineage, channel, msg |
+| secret redaction | yes |
+<!-- kind-contract:end -->
+
 ## Kind: wasm
 
 component is a base64-encoded WebAssembly component (component-model, not a core module) exporting `call: func(args: string) -> result<string, string>`; args_schema is optional (defaults to accepting any object).
@@ -1458,6 +1509,20 @@ Result envelope contract: a call's output always lands at `result.payload`; an o
 }
 ```
 <!-- kind-example:end -->
+
+<!-- kind-contract:start -->
+## Contract
+
+| Field | Value |
+|---|---|
+| budget `timeout_s` | 1-30 (default 5) |
+| budget `memory_mb` | 1-256 (default 64) |
+| family `tool_code` | tool_exception, tool_trapped |
+| family `tool_limit` | tool_timeout, tool_oom |
+| source_line | no |
+| bridges | none |
+| secret redaction | no |
+<!-- kind-contract:end -->
 
 ## Benchmark: measure-0.26.3-20260908T085001Z.md
 

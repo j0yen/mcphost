@@ -6388,6 +6388,21 @@
         },
         "type": "object"
       },
+      "contract": {
+        "description": "The asked kind's KindContract summary: the error families its failures carry and whether they carry data.source_line.",
+        "properties": {
+          "families": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "source_line": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
       "endpoint": {
         "type": "string"
       },
@@ -8133,6 +8148,21 @@
           },
           "type": {
             "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "contract": {
+        "description": "The asked kind's KindContract summary: the error families its failures carry and whether they carry data.source_line.",
+        "properties": {
+          "families": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "source_line": {
+            "type": "boolean"
           }
         },
         "type": "object"

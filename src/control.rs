@@ -1103,6 +1103,7 @@ fn quickstart_inner(
         "authenticated": true,
         "namespace": tenant.namespace,
         "kind": kind_name,
+        "contract": kind.contract().response_block(),
         // Requirement 6 / AC7: lists what's pickable without guessing --
         // present on every authenticated response (additive), not only
         // when `kind` was omitted, since a caller already mid-flow with

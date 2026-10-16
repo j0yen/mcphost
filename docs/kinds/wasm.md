@@ -67,3 +67,17 @@ Result envelope contract: a call's output always lands at `result.payload`; an o
 }
 ```
 <!-- kind-example:end -->
+
+<!-- kind-contract:start -->
+## Contract
+
+| Field | Value |
+|---|---|
+| budget `timeout_s` | 1-30 (default 5) |
+| budget `memory_mb` | 1-256 (default 64) |
+| family `tool_code` | tool_exception, tool_trapped |
+| family `tool_limit` | tool_timeout, tool_oom |
+| source_line | no |
+| bridges | none |
+| secret redaction | no |
+<!-- kind-contract:end -->

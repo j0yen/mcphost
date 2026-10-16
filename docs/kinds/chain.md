@@ -95,3 +95,15 @@ A step may fan out: add `"for_each": "$.prev.result.items"` (any mapping path to
 }
 ```
 <!-- kind-example:end -->
+
+<!-- kind-contract:start -->
+## Contract
+
+| Field | Value |
+|---|---|
+| family `compose` | compose_self_call, compose_depth_exceeded, compose_children_exceeded, compose_item_outside_for_each, compose_mapping_type, compose_mapping_missing, compose_fanout_exceeded, compose_fanout_item_failed, compose_input_missing |
+| family `tool_state` | tool_building, tool_not_found, tool_run_unsupported |
+| source_line | field `failed_step` |
+| bridges | none |
+| secret redaction | no |
+<!-- kind-contract:end -->

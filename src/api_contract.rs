@@ -403,8 +403,17 @@ pub fn dump_contract(kinds: &KindRegistry) -> Value {
             entry
         })
         .collect();
+    // PRD-mcphost-kind-contract-conformance-generated-b R6: every production
+    // kind's `KindContract` (fixtures omitted), whatever registry this dump
+    // was handed -- the committed contract names all five kinds.
+    let production = crate::kinds::production_registry();
+    let kind_contracts: serde_json::Map<String, Value> = production
+        .all()
+        .map(|k| (k.name().to_string(), json!({"contract": k.contract().contract_json()})))
+        .collect();
     sort_keys(&json!({
         "contract_version": CONTRACT_VERSION,
+        "kinds": kind_contracts,
         "output_envelope_fields": OUTPUT_ENVELOPE_FIELDS,
         "tools": entries,
     }))
