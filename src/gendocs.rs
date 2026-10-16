@@ -124,6 +124,42 @@ pub fn render_plans_markdown(catalog: &PlanCatalog) -> String {
     );
     out.push_str("\nMachine-readable: [`/plans.json`](/plans.json).\n");
     out.push_str(&render_ceilings_table(catalog));
+    out.push_str(&render_pricing_table(catalog));
+    out
+}
+
+/// PRD-mcphost-pricing-page-from-plan-table R5: the price fields of the
+/// plan table (`NON_CEILING_FIELDS`, so absent from the ceilings table
+/// above), one row per field and one column per plan.
+pub fn render_pricing_table(catalog: &PlanCatalog) -> String {
+    let mut out = String::from("\n## Plan pricing\n\n");
+    out.push_str(
+        "Price and included volume, as `/plans.json` and `billing.plans` \
+         report them. `overage_usd_per_1000_calls` is whole USD per 1000 \
+         calls past `calls_included_month`.\n\n",
+    );
+    out.push_str("| field |");
+    for plan in &catalog.plans {
+        out.push_str(&format!(" {} |", plan.name));
+    }
+    out.push_str("\n|---|");
+    for _ in &catalog.plans {
+        out.push_str("---|");
+    }
+    out.push('\n');
+    type Field = (&'static str, fn(&Plan) -> i64);
+    let fields: [Field; 3] = [
+        ("price_usd_month", |p| p.price_usd_month),
+        ("calls_included_month", |p| p.calls_included_month),
+        ("overage_usd_per_1000_calls", |p| p.overage_usd_per_1000_calls),
+    ];
+    for (name, get) in fields {
+        out.push_str(&format!("| `{name}` |"));
+        for plan in &catalog.plans {
+            out.push_str(&format!(" {} |", get(plan)));
+        }
+        out.push('\n');
+    }
     out
 }
 
@@ -261,6 +297,266 @@ const PLANS_HTML_TEMPLATE: &str = r###"<!doctype html>
 </body>
 </html>
 "###;
+
+// ---- `www/pricing.html` (PRD-mcphost-pricing-page-from-plan-table) ----
+
+/// Where the generated pricing page lives, relative to the repo root.
+pub const PRICING_HTML_PATH: &str = "www/pricing.html";
+
+/// Page chrome with no prose: doctype, charset, viewport. Not a template.
+const PRICING_HEAD_CHROME: &str = r###"<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+"###;
+
+/// Title and meta descriptions: a template, every number a `{slot}`.
+const PRICING_HEAD_TEMPLATE: &str = r###"<title>mcphost pricing — free early access, then ${price_usd_month}/month</title>
+<meta name="description" content="mcphost's free plan: {free_tools_max} tools, {free_calls_per_day} calls a day, no card. Pro is ${price_usd_month} a month: {calls_included_month_fmt} calls, then ${overage_usd_per_call} a call. Calls are the only meter; logs, secrets, schedules, and status are free.">
+<meta property="og:title" content="mcphost pricing — free early access, then ${price_usd_month}/month">
+<meta property="og:description" content="mcphost's free plan: {free_tools_max} tools, {free_calls_per_day} calls a day, no card. Pro is ${price_usd_month} a month: {calls_included_month_fmt} calls, then ${overage_usd_per_call} a call. Calls are the only meter; logs, secrets, schedules, and status are free.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://mcphost.dev/pricing">
+<meta property="og:site_name" content="mcphost">
+"###;
+
+/// The committed single look (CSS) plus `<body>`. Not a template: styling
+/// constants are not page numbers.
+const PRICING_STYLE: &str = r###"<style>
+  /* Committed single look: simple modern terminal. Deliberately no light theme. */
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0b0d0e; color: #c9cdd1;
+         font-family: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+         font-size: 15px; line-height: 1.65; }
+  .wrap { max-width: 44rem; margin: 0 auto; padding: 3.5rem 1.4rem 4rem; }
+  pre { margin: 0 0 1.2rem; overflow-x: auto; color: #c9cdd1; }
+  .prompt { color: #8b949e; }
+  .prompt .path { color: #e6edf3; }
+  .cursor { display: inline-block; width: .55em; height: 1.1em; vertical-align: text-bottom;
+            background: #c9cdd1; animation: blink 1.2s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .cursor { animation: none; } }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden;
+        clip-path: inset(50%); white-space: nowrap; margin: 0; }
+  .banner { color: #e6edf3; margin: 1.6rem 0 .4rem; line-height: 1.25;
+            font-size: clamp(9px, 2.9vw, 15px); }
+  h2 { font-size: .95rem; font-weight: 600; color: #e6edf3; margin: 2.4rem 0 .6rem; }
+  h2::before { content: "## "; color: #484f58; font-weight: 400; }
+  .tag { color: #8b949e; margin: 0 0 .9rem; }
+  .proof { color: #3fb950; margin: 0 0 2.2rem; font-size: .92em; }
+  .proof a { color: #3fb950; text-decoration: underline; text-underline-offset: 3px; }
+  p, ul { margin: 0 0 1rem; }
+  code { color: #e6edf3; background: #161b22; padding: .1em .35em; border-radius: 4px; }
+  pre code { background: none; padding: 0; }
+  .listing { border: 1px solid #21262d; border-radius: 6px; padding: 1rem 1.1rem;
+             background: #0d1117; }
+  .listing .c { color: #8b949e; }
+  a { color: #58a6ff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ul { list-style: none; padding-left: 1.3rem; }
+  li::before { content: "- "; color: #484f58; margin-left: -1.3rem; }
+  footer { margin-top: 3.5rem; padding-top: 1.2rem; border-top: 1px solid #21262d;
+           color: #8b949e; font-size: .9em; }
+  .snd { background: none; border: 1px solid #21262d; border-radius: 6px;
+         padding: .35rem .8rem; margin: 1.6rem 0 0; font: inherit; color: #8b949e;
+         cursor: pointer; }
+  .snd:hover { color: #e6edf3; border-color: #484f58; }
+  .connect { margin: 0 0 1.6rem; }
+  .snip { margin: 0 0 .8rem; position: relative; }
+  .snip-label { color: #e6edf3; font-size: .85em; margin: 0 0 .3rem; }
+  .snip .listing { margin: 0; padding-right: 4.5rem; }
+  .copy { position: absolute; top: .6rem; right: .6rem; background: none;
+          border: 1px solid #21262d; border-radius: 6px; padding: .2rem .6rem;
+          font: inherit; font-size: .8em; color: #8b949e; cursor: pointer; }
+  .copy:hover { color: #e6edf3; border-color: #484f58; }
+  .cap { color: #8b949e; font-size: .85em; margin: -.3rem 0 1.2rem; }
+  .faq dt { color: #e6edf3; font-weight: 600; margin: 0 0 .3rem; }
+  .faq dd { margin: 0 0 1.1rem; }
+  .faq dd:last-child { margin-bottom: 0; }
+</style>
+</head>
+<body>
+"###;
+
+/// The prose of the page: a template, every number a `{slot}`.
+const PRICING_BODY_TEMPLATE: &str = r###"<main class="wrap">
+
+<pre class="prompt" aria-hidden="true">$ <span class="path">mcphost</span> --pricing<span class="cursor"></span></pre>
+
+<h1 class="sr">mcphost pricing</h1>
+<p class="tag">what a call costs, and how you leave</p>
+
+<p>mcphost has two plans. Free early access: {free_tools_max} tools per tenant, {free_calls_per_day} calls a day, no card required. Pro: ${price_usd_month} a month, {calls_included_month_fmt} calls included, then ${overage_usd_per_call} a call past that. Early tenants keep the free tier when early access ends.</p>
+
+<h2>quotas</h2>
+<p>The same limits apply on every tenant, free or pro, unless noted:</p>
+<ul>
+  <li>{free_tools_max} tools per tenant; names match <code>{name_pattern}</code></li>
+  <li>Spec at most {spec_kib} KiB; a synchronous call's request and result at most {body_mib} MiB each</li>
+  <li>Call timeout: {call_timeout_s} s by default, up to {call_timeout_max_s} s if you declare <code>timeout_s</code></li>
+  <li>Signup: {signup_per_hour} per source IP per hour (an operator's own fleet IPs are exempt)</li>
+  <li>Concurrent calls: {free_concurrent} per tenant on free, {pro_concurrent} on pro; {host_concurrent} host-wide</li>
+</ul>
+
+<h2>what is metered</h2>
+<p>Calls are the only meter. A call past your plan's daily or monthly limit fails with <code>quota_exceeded</code>, the limit, your usage, and <code>next: "billing.checkout"</code>; it does not retry itself. Logs, secrets, schedules, and status are free: reading <code>host.tool_logs</code>, storing a secret, setting a <code>host.trigger.set</code> schedule, or checking <code>/status</code> never counts against your quota.</p>
+
+<h2>billing is a tool call</h2>
+<p>There is no separate billing page to log into. <code>billing.plans()</code> lists the catalog and works without a key. <code>billing.status()</code> reports your tenant's plan and usage against each quota, with <code>resets_at</code> for the daily call count. <code>billing.checkout(plan="pro")</code> returns a Stripe Checkout URL good for about {checkout_ttl_hours} hours; hand it to the human who authorized the upgrade, and the plan flips within seconds of payment.</p>
+
+<h2>the exit path</h2>
+<p>mcphost speaks plain MCP over streamable HTTP, nothing proprietary on the wire. If the hosted service stops working for you, change the endpoint to a compatible server, or run the source yourself: the source is open under <code>{license}</code> and builds the same binary that serves <a href="https://mcphost.dev">mcphost.dev</a>.</p>
+
+<h2>connect</h2>
+<p>Paste one line and your agent has mcphost. No key needed to sign up.</p>
+<div class="connect">
+  <div class="snip">
+    <p class="snip-label">Claude Code</p>
+    <pre class="listing"><code id="snip-claude-code">claude mcp add --transport http mcphost https://mcphost.dev/mcp</code></pre>
+    <button class="copy" type="button" data-copy-target="snip-claude-code">copy</button>
+  </div>
+</div>
+
+<footer>mcphost · <a href="/llms.txt">llms.txt</a> · <a href="/status">status</a> · <a href="{repo_url}">github</a><br>
+<a href="/pricing">pricing</a> · <a href="/use-cases">use cases</a> · <a href="/compare">compare</a> · <a href="/skill.md">skill.md</a><br>
+<a href="/terms">terms</a> · <a href="/privacy">privacy</a> · <a href="/aup">acceptable use</a></footer>
+</main>
+"###;
+
+/// The copy-button script and closing tags. Not a template.
+const PRICING_SCRIPT: &str = r###"<script>
+(function () {
+  "use strict";
+  document.querySelectorAll(".copy").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var target = document.getElementById(btn.getAttribute("data-copy-target"));
+      if (!target) return;
+      var text = target.textContent;
+      var done = function () {
+        var was = btn.textContent;
+        btn.textContent = "copied";
+        setTimeout(function () { btn.textContent = was; }, 1200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+      } else {
+        var ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand("copy"); } catch (e) { /* no-op */ }
+        document.body.removeChild(ta);
+        done();
+      }
+    });
+  });
+})();
+</script>
+<!-- mcphost-deploy: static site marker, do not remove -->
+</body>
+</html>
+"###;
+
+/// `{1500}` -> `1,500`.
+fn group_thousands(n: i64) -> String {
+    let digits = n.unsigned_abs().to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    if n < 0 {
+        out.insert(0, '-');
+    }
+    out
+}
+
+/// Whole USD per 1 000 calls -> USD a call as a decimal string (`1` ->
+/// `0.001`, `0` -> `0`), integer arithmetic only.
+fn usd_per_call(per_1000: i64) -> String {
+    let (whole, frac) = (per_1000 / 1000, per_1000 % 1000);
+    if frac == 0 {
+        return whole.to_string();
+    }
+    let frac = format!("{frac:03}");
+    format!("{whole}.{}", frac.trim_end_matches('0'))
+}
+
+/// Every `{slot}` of the pricing page templates with its value, read from
+/// `catalog` and the constants the host enforces. The template sources
+/// carry no digit outside these names (`ppage_ac03`).
+pub fn pricing_slots(catalog: &PlanCatalog) -> Vec<(&'static str, String)> {
+    let fallback = PlanCatalog::default_catalog();
+    let plan = |name: &str| {
+        catalog
+            .get(name)
+            .or_else(|| fallback.get(name))
+            .cloned()
+            .expect("default_catalog carries free and pro") // allowlist: default_catalog() always names both
+    };
+    let (free, pro) = (plan("free"), plan("pro"));
+    vec![
+        ("price_usd_month", pro.price_usd_month.to_string()),
+        ("calls_included_month_fmt", group_thousands(pro.calls_included_month)),
+        ("overage_usd_per_call", usd_per_call(pro.overage_usd_per_1000_calls)),
+        ("free_tools_max", free.tools_max.to_string()),
+        ("free_calls_per_day", free.calls_per_day.to_string()),
+        ("name_pattern", crate::drafter::TOOL_NAME_REGEX.to_string()),
+        ("spec_kib", (crate::state::MAX_SPEC_BYTES / 1024).to_string()),
+        ("body_mib", (crate::state::MAX_REQUEST_BODY_BYTES / (1024 * 1024)).to_string()),
+        ("call_timeout_s", crate::state::CALL_TIMEOUT.as_secs().to_string()),
+        ("call_timeout_max_s", crate::kinds::python::MAX_TIMEOUT_S.to_string()),
+        ("signup_per_hour", crate::state::SIGNUP_RATE_LIMIT_PER_HOUR.to_string()),
+        ("free_concurrent", free.concurrent_calls_per_tenant.to_string()),
+        ("pro_concurrent", pro.concurrent_calls_per_tenant.to_string()),
+        ("host_concurrent", crate::kinds::python::DEFAULT_MAX_CONCURRENT_CALLS.to_string()),
+        ("checkout_ttl_hours", (crate::billing::CHECKOUT_SESSION_TTL_SECS / 3600).to_string()),
+        ("license", env!("CARGO_PKG_LICENSE").to_string()),
+        ("repo_url", crate::registry_manifest::REPOSITORY_URL.to_string()),
+    ]
+}
+
+fn fill_pricing_template(template: &str, slots: &[(&'static str, String)]) -> String {
+    let mut out = template.to_string();
+    for (name, value) in slots {
+        out = out.replace(&format!("{{{name}}}"), value);
+    }
+    out
+}
+
+/// `www/pricing.html`, rendered from the plan catalog and the enforced
+/// constants. The one function [`run`] writes and the byte-identity test
+/// compares the committed file with.
+pub fn render_pricing_html(catalog: &PlanCatalog) -> String {
+    let slots = pricing_slots(catalog);
+    let mut out = String::from(PRICING_HEAD_CHROME);
+    out.push_str(&fill_pricing_template(PRICING_HEAD_TEMPLATE, &slots));
+    out.push_str(PRICING_STYLE);
+    out.push_str(&fill_pricing_template(PRICING_BODY_TEMPLATE, &slots));
+    out.push_str(PRICING_SCRIPT);
+    out
+}
+
+/// The two template sources, for the "no digit outside a slot name" test.
+pub fn pricing_template_sources() -> [&'static str; 2] {
+    [PRICING_HEAD_TEMPLATE, PRICING_BODY_TEMPLATE]
+}
+
+/// The prose parts of a rendered page (everything but the style and script
+/// blocks), for the "every digit traces to a slot" test.
+pub fn pricing_prose_parts(catalog: &PlanCatalog) -> [String; 2] {
+    let slots = pricing_slots(catalog);
+    [
+        fill_pricing_template(PRICING_HEAD_TEMPLATE, &slots),
+        fill_pricing_template(PRICING_BODY_TEMPLATE, &slots),
+    ]
+}
 
 /// Every [`SUPPORT_SPLICED_DOCS`] path, read from disk, paired with what it
 /// would become after splicing `support_url` into its `<!-- support:
@@ -452,6 +748,7 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
     for (path, rendered) in [
         (Path::new(PLANS_DOC_PATH), render_plans_markdown(&catalog)),
         (Path::new(PLANS_HTML_PATH), render_plans_html()),
+        (Path::new(PRICING_HTML_PATH), render_pricing_html(&catalog)),
         (Path::new(TOOLS_DOC_PATH), render_tools_markdown(kinds)),
         (Path::new(BLOB_TYPES_DOC_PATH), render_blob_types_doc()),
         (Path::new(crate::events::EVENTS_DOC_PATH), crate::events::render_events_doc()),

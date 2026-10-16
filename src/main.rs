@@ -545,6 +545,15 @@ enum BillingCommand {
     /// every five minutes; exits non-zero (leaving state untouched) on any
     /// POST failure.
     EmitMeter,
+    /// PRD-mcphost-pricing-page-from-plan-table: print the built-in plan
+    /// catalog as `/plans.json` would serve it (billing mode `off`), so
+    /// `tests/www_pages.sh` can derive its pricing checks without a server.
+    Plans,
+    /// PRD-mcphost-pricing-page-from-plan-table R6: read Stripe's pro base
+    /// price and metered price, print them beside the catalog's numbers,
+    /// and exit 1 naming each field that differs. `skipped` (exit 0) when
+    /// billing mode is off.
+    PriceCheck,
 }
 
 fn env_or(name: &str, default: &str) -> String {
@@ -689,6 +698,37 @@ async fn main() -> anyhow::Result<()> {
             }
         },
         Command::Billing { action } => match action {
+            BillingCommand::PriceCheck => {
+                let billing_config = mcphost::billing::BillingConfig::from_env();
+                let Some(secret_key) = billing_config.secret_key.clone() else {
+                    println!("price-check: skipped (billing mode off: MCPHOST_STRIPE_SECRET_KEY is not set)");
+                    return Ok(());
+                };
+                let http_client = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(10))
+                    .build()?;
+                let client = mcphost::billing::StripeClient::new(http_client, secret_key);
+                let catalog = mcphost::plans::PlanCatalog::load_or_init(
+                    &mcphost::plans::PlanCatalog::path_from_env(&data_dir()),
+                )?;
+                match mcphost::billing::price_check(&client, &billing_config, &catalog).await {
+                    Ok(report) => {
+                        for line in &report.lines {
+                            println!("{line}");
+                        }
+                        std::process::exit(report.exit_code());
+                    }
+                    Err(e) => {
+                        eprintln!("price-check: {e}");
+                        std::process::exit(2);
+                    }
+                }
+            }
+            BillingCommand::Plans => {
+                let catalog = mcphost::plans::PlanCatalog::default_catalog();
+                println!("{}", mcphost::billing::plans_from_catalog(&catalog, "off"));
+                Ok(())
+            }
             BillingCommand::EmitMeter => {
                 init_tracing();
                 let dir = data_dir();

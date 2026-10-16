@@ -34,6 +34,9 @@
       "plans": {
         "items": {
           "properties": {
+            "calls_included_month": {
+              "type": "integer"
+            },
             "calls_per_day": {
               "type": "integer"
             },
@@ -42,6 +45,9 @@
             },
             "name": {
               "type": "string"
+            },
+            "overage_usd_per_1000_calls": {
+              "type": "integer"
             },
             "price_usd_month": {
               "type": "integer"

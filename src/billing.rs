@@ -335,6 +335,147 @@ pub trait BillingClient: Send + Sync {
         &self,
         stripe_customer_id: &str,
     ) -> Result<Vec<String>, AppError>;
+
+    /// PRD-mcphost-pricing-page-from-plan-table R6: read one Stripe price
+    /// object (`GET /v1/prices/{id}?expand[]=tiers`) so `mcphost billing
+    /// price-check` can compare it with the plan catalog.
+    async fn retrieve_price(&self, price_id: &str) -> Result<StripePrice, AppError>;
+}
+
+/// The slice of a Stripe price object `billing price-check` compares.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct StripePrice {
+    /// Flat `unit_amount` in cents (the monthly base price); `None` for a
+    /// tiered price.
+    pub unit_amount: Option<i64>,
+    pub tiers: Vec<StripePriceTier>,
+}
+
+/// One graduated tier: `up_to` calls (`None` = the open last tier) at
+/// `unit_amount_cents` cents a call (decimal: `0.1` = $1 per 1000).
+#[derive(Debug, Clone, PartialEq)]
+pub struct StripePriceTier {
+    pub up_to: Option<i64>,
+    pub unit_amount_cents: f64,
+}
+
+impl StripePrice {
+    fn from_json(body: &Value) -> Self {
+        let tiers = body
+            .get("tiers")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .map(|t| StripePriceTier {
+                up_to: t.get("up_to").and_then(Value::as_i64),
+                unit_amount_cents: t
+                    .get("unit_amount_decimal")
+                    .and_then(Value::as_str)
+                    .and_then(|d| d.parse::<f64>().ok())
+                    .or_else(|| t.get("unit_amount").and_then(Value::as_i64).map(|c| c as f64))
+                    .unwrap_or(0.0),
+            })
+            .collect();
+        Self { unit_amount: body.get("unit_amount").and_then(Value::as_i64), tiers }
+    }
+
+    /// Calls included before the paid tier: the first tier's `up_to`.
+    fn included(&self) -> Option<i64> {
+        self.tiers.iter().find_map(|t| t.up_to)
+    }
+
+    /// Cents per 1000 calls in the open last tier.
+    fn overage_cents_per_1000(&self) -> Option<i64> {
+        self.tiers
+            .iter()
+            .find(|t| t.up_to.is_none())
+            .map(|t| (t.unit_amount_cents * 1000.0).round() as i64)
+    }
+}
+
+/// What `mcphost billing price-check` prints and exits with.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PriceCheckReport {
+    pub lines: Vec<String>,
+    /// One entry per differing field, each naming the field.
+    pub mismatches: Vec<String>,
+}
+
+impl PriceCheckReport {
+    pub fn exit_code(&self) -> i32 {
+        i32::from(!self.mismatches.is_empty())
+    }
+}
+
+/// R6: compare Stripe's `price_for("pro")` and `metered_price_id` with the
+/// catalog's pro row: `unit_amount` against `price_usd_month * 100`, the
+/// graduated tiers against `calls_included_month` and
+/// `overage_usd_per_1000_calls * 100`. Prints both sides; a differing
+/// field is named in `mismatches`.
+pub async fn price_check(
+    client: &dyn BillingClient,
+    config: &BillingConfig,
+    catalog: &crate::plans::PlanCatalog,
+) -> Result<PriceCheckReport, AppError> {
+    let pro = catalog
+        .get("pro")
+        .ok_or_else(|| AppError::Internal("plan catalog has no pro plan".into()))?;
+    let base_id = config
+        .price_for("pro")
+        .ok_or_else(|| AppError::Internal("MCPHOST_STRIPE_PRICE_PRO is not set".into()))?;
+    let want_cents = pro.price_usd_month * 100;
+    let want_overage = pro.overage_usd_per_1000_calls * 100;
+    let mut lines = vec![format!(
+        "catalog pro: {want_cents} c/month, {} included, {want_overage} c/1000",
+        pro.calls_included_month
+    )];
+    let mut mismatches = Vec::new();
+
+    let base = client.retrieve_price(base_id).await?;
+    let mut stripe_line = format!("stripe  pro: {} c/month", base.unit_amount.map_or("-".to_string(), |c| c.to_string()));
+    if base.unit_amount != Some(want_cents) {
+        mismatches.push(format!(
+            "price_usd_month: catalog {want_cents} c/month, stripe {} c/month",
+            base.unit_amount.map_or("none".to_string(), |c| c.to_string())
+        ));
+    }
+    match config.metered_price_id.as_deref() {
+        Some(metered_id) => {
+            let metered = client.retrieve_price(metered_id).await?;
+            let included = metered.included();
+            let overage = metered.overage_cents_per_1000();
+            stripe_line.push_str(&format!(
+                ", {} included, {} c/1000",
+                included.map_or("-".to_string(), |n| n.to_string()),
+                overage.map_or("-".to_string(), |n| n.to_string())
+            ));
+            if included != Some(pro.calls_included_month) {
+                mismatches.push(format!(
+                    "calls_included_month: catalog {}, stripe {}",
+                    pro.calls_included_month,
+                    included.map_or("none".to_string(), |n| n.to_string())
+                ));
+            }
+            if overage != Some(want_overage) {
+                mismatches.push(format!(
+                    "overage_usd_per_1000_calls: catalog {want_overage} c/1000, stripe {} c/1000",
+                    overage.map_or("none".to_string(), |n| n.to_string())
+                ));
+            }
+            lines.push(stripe_line);
+        }
+        None => {
+            lines.push(stripe_line);
+            lines.push("skipped metered tiers: MCPHOST_STRIPE_METERED_PRICE_ID is not set".to_string());
+        }
+    }
+    for m in &mismatches {
+        lines.push(format!("MISMATCH {m}"));
+    }
+    if mismatches.is_empty() {
+        lines.push("ok: Stripe matches the catalog".to_string());
+    }
+    Ok(PriceCheckReport { lines, mismatches })
 }
 
 /// The real implementation: `POST https://api.stripe.com/v1/checkout/sessions`,
@@ -457,6 +598,28 @@ impl BillingClient for StripeClient {
     /// aggregated value over the period. Summed across whatever windows
     /// the summary endpoint returns -- `billing.status` only wants one
     /// number for the period, not Stripe's own bucketing.
+    async fn retrieve_price(&self, price_id: &str) -> Result<StripePrice, AppError> {
+        let resp = self
+            .http
+            .get(format!("https://api.stripe.com/v1/prices/{price_id}"))
+            .bearer_auth(&self.secret_key)
+            .query(&[("expand[]", "tiers")])
+            .send()
+            .await
+            .map_err(|e| AppError::Internal(format!("Stripe price request: {e}")))?;
+        let status = resp.status();
+        let body: Value = resp
+            .json()
+            .await
+            .map_err(|e| AppError::Internal(format!("Stripe price response: {e}")))?;
+        if !status.is_success() {
+            return Err(AppError::Internal(format!(
+                "Stripe rejected the price request: HTTP {status}: {body}"
+            )));
+        }
+        Ok(StripePrice::from_json(&body))
+    }
+
     async fn accepted_usage(
         &self,
         stripe_customer_id: &str,
@@ -627,6 +790,10 @@ pub struct FakeBillingClient {
     /// has actually canceled so far, across every customer -- AC4's
     /// assertion target.
     canceled_subscriptions: std::sync::Mutex<Vec<String>>,
+    /// PRD-mcphost-pricing-page-from-plan-table AC6: the price objects
+    /// [`BillingClient::retrieve_price`] answers with, keyed by price id --
+    /// seeded via [`Self::set_price`].
+    prices: std::sync::Mutex<std::collections::HashMap<String, StripePrice>>,
 }
 
 /// An owned, `Clone`/inspectable copy of a [`CheckoutSessionRequest`] (the
@@ -670,6 +837,7 @@ impl FakeBillingClient {
             accepted_usage: std::sync::Mutex::new(None),
             active_subscriptions: std::sync::Mutex::new(std::collections::HashMap::new()),
             canceled_subscriptions: std::sync::Mutex::new(Vec::new()),
+            prices: std::sync::Mutex::new(std::collections::HashMap::new()),
         }
     }
 
@@ -730,6 +898,13 @@ impl FakeBillingClient {
             *guard = Some(value);
         }
     }
+
+    /// AC6: seed the price object `retrieve_price(price_id)` answers with.
+    pub fn set_price(&self, price_id: &str, price: StripePrice) {
+        if let Ok(mut guard) = self.prices.lock() {
+            guard.insert(price_id.to_string(), price);
+        }
+    }
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -786,6 +961,14 @@ impl BillingClient for FakeBillingClient {
             .lock()
             .map(|g| g.unwrap_or(0))
             .unwrap_or(0))
+    }
+
+    async fn retrieve_price(&self, price_id: &str) -> Result<StripePrice, AppError> {
+        self.prices
+            .lock()
+            .ok()
+            .and_then(|g| g.get(price_id).cloned())
+            .ok_or_else(|| AppError::Internal(format!("fake: no price seeded for {price_id}")))
     }
 
     async fn cancel_active_subscriptions(
@@ -966,6 +1149,8 @@ pub fn plans_from_catalog(catalog: &crate::plans::PlanCatalog, billing_mode: &st
                 "tools_max": p.tools_max,
                 "calls_per_day": p.calls_per_day,
                 "secrets_max": p.secrets_max,
+                "calls_included_month": p.calls_included_month,
+                "overage_usd_per_1000_calls": p.overage_usd_per_1000_calls,
                 "wait_max_s": crate::longpoll::WAIT_MAX_S,
                 "wait_default_s": crate::longpoll::WAIT_DEFAULT_S,
                 "description": p.description,

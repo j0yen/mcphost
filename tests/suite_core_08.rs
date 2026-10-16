@@ -680,6 +680,20 @@ mod planlim_ac05_publish_network_description_lists_gated_values;
 mod planlim_ac06_tool_test_warns_timeout_above_latency_ceiling;
 #[path = "planlim_ac07_contract_drift_with_deprecation_entry.rs"]
 mod planlim_ac07_contract_drift_with_deprecation_entry;
+#[path = "ppage_ac01_plan_carries_included_and_overage.rs"]
+mod ppage_ac01_plan_carries_included_and_overage;
+#[path = "ppage_ac02_plans_json_carries_fields_no_digits.rs"]
+mod ppage_ac02_plans_json_carries_fields_no_digits;
+#[path = "ppage_ac03_pricing_html_rendered_from_catalog.rs"]
+mod ppage_ac03_pricing_html_rendered_from_catalog;
+#[path = "ppage_ac04_www_pages_checks_derive_from_plans_json.rs"]
+mod ppage_ac04_www_pages_checks_derive_from_plans_json;
+#[path = "ppage_ac05_docs_carry_included_and_overage_rows.rs"]
+mod ppage_ac05_docs_carry_included_and_overage_rows;
+#[path = "ppage_ac06_billing_price_check.rs"]
+mod ppage_ac06_billing_price_check;
+#[path = "ppage_ac07_old_plans_toml_defaults_both_fields.rs"]
+mod ppage_ac07_old_plans_toml_defaults_both_fields;
 #[path = "proptest_invariants.rs"]
 mod proptest_invariants;
 #[path = "provaudit_ac01_synthetic_signup_stamped.rs"]
