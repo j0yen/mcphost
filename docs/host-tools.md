@@ -75,6 +75,8 @@ Regenerate with `scripts/sandbox-api-doc-check.sh --write`.
 | `host.vault.provider_remove` | remove | refused | `external_effect` |
 | `host.oauth.provider_set` | write | refused | `external_effect` |
 | `host.oauth.provider_remove` | remove | refused | `external_effect` |
+| `host.note.put` | write | refused | `external_effect` |
+| `host.note.delete` | delete | refused | `external_effect` |
 
 ### Confirm rule
 

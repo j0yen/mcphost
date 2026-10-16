@@ -5295,6 +5295,111 @@
     ],
     "type": "object"
   },
+  "host.note.delete": {
+    "properties": {
+      "attach_to": {
+        "properties": {
+          "run": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "deleted": {
+        "type": "boolean"
+      },
+      "key": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "deleted",
+      "key"
+    ],
+    "type": "object"
+  },
+  "host.note.list": {
+    "properties": {
+      "next_cursor": {
+        "type": "string"
+      },
+      "notes": {
+        "type": "array",
+        "items": {
+          "properties": {
+            "attach_to": {
+              "properties": {
+                "run": {
+                  "type": "string"
+                },
+                "tool": {
+                  "type": "string"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "created_unix": {
+              "type": "integer"
+            },
+            "expires_unix": {
+              "type": "integer"
+            },
+            "key": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "created_unix",
+            "key",
+            "text"
+          ],
+          "type": "object"
+        }
+      }
+    },
+    "required": [
+      "notes"
+    ],
+    "type": "object"
+  },
+  "host.note.put": {
+    "properties": {
+      "attach_to": {
+        "properties": {
+          "run": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "expires_at": {
+        "type": "string"
+      },
+      "key": {
+        "type": "string"
+      },
+      "visible_in": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "key",
+      "visible_in"
+    ],
+    "type": "object"
+  },
   "host.oauth.audit": {
     "properties": {
       "cursor": {

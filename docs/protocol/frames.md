@@ -8,7 +8,7 @@ Protocol version: `2026-07-28`. A response is one JSON-RPC document unless a fra
 |---|---|---|
 | `initialize` | `result` {1} | `application/json` with one frame, `text/event-stream` with more (`json_when_single_frame`) |
 | `tools/list` | `result` {1} | `application/json` with one frame, `text/event-stream` with more (`json_when_single_frame`) |
-| `tools/call:keyed` | `result` {1} | `application/json` with one frame, `text/event-stream` with more (`json_when_single_frame`) |
+| `tools/call:keyed` | `notifications/tools/list_changed` {0,1}, `result` {1} | `application/json` with one frame, `text/event-stream` with more (`json_when_single_frame`) |
 | `tools/call:keyless_signup` | `notifications/tools/list_changed` {0,1}, `result` {1} | `application/json` with one frame, `text/event-stream` with more (`json_when_single_frame`) |
 | `tools/call:error` | `error` {1} | `application/json` with one frame, `text/event-stream` with more (`json_when_single_frame`) |
 | `ping` | `error` {1} | `application/json` with one frame, `text/event-stream` with more (`json_when_single_frame`) |

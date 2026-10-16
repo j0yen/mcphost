@@ -34,6 +34,10 @@
       "request_type": "tools/call:keyed",
       "frames": [
         {
+          "method": "notifications/tools/list_changed",
+          "card": "{0,1}"
+        },
+        {
           "method": "result",
           "card": "{1}"
         }

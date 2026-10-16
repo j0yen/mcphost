@@ -184,6 +184,14 @@ mod nexttool_ac06_hints_false_suppresses_hint;
 mod nexttool_ac07_header_authenticated_never_gets_hint;
 #[path = "nexttool_ac09_host_usage_hints_shown_and_followed.rs"]
 mod nexttool_ac09_host_usage_hints_shown_and_followed;
+#[path = "nfs_ac01_put_emits_list_changed_and_suffix.rs"]
+mod nfs_ac01_put_emits_list_changed_and_suffix;
+#[path = "nfs_ac02_suffix_cut_to_120_chars.rs"]
+mod nfs_ac02_suffix_cut_to_120_chars;
+#[path = "nfs_ac03_quota_and_unknown_tool.rs"]
+mod nfs_ac03_quota_and_unknown_tool;
+#[path = "nfs_ac04_ttl_expiry.rs"]
+mod nfs_ac04_ttl_expiry;
 #[path = "nudge_ac01_claimed_tenant_gets_one_return_email.rs"]
 mod nudge_ac01_claimed_tenant_gets_one_return_email;
 #[path = "nudge_ac02_second_sweep_sends_nothing_more.rs"]

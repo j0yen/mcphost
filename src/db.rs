@@ -9592,6 +9592,13 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-notes-to-future-self R4: the notes sweep on its own --
+    /// the same delete the nightly prune runs, at a caller-chosen `now`.
+    pub async fn prune_expired_notes(&self, now_unix: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| crate::retention::prune_expired_notes(conn, now_unix).map_err(AppError::from))
+            .await
+    }
+
     /// Sum of stored byte lengths across a tenant's whole state (both the
     /// KV namespace and every declared table's rows) -- the quota-check
     /// input requirement 4 / the technical considerations pin to "stored

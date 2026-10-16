@@ -90,6 +90,7 @@ pub mod subkeys;
 pub mod calllog;
 pub mod metering;
 pub mod network_policy;
+pub mod notes;
 pub mod oauth;
 pub mod oauth_policy;
 pub mod oauth_stats;

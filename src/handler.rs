@@ -2078,6 +2078,53 @@ fn host_tools_part_03() -> Vec<Tool> {
                 &[],
             ),
         ),
+        // PRD-mcphost-notes-to-future-self R1/R2.
+        Tool::new(
+            "host.note.put",
+            "Leave a note for your next session. With attach_to: {tool: name} the note shows up \
+             on that tool's description in every later tools/list (\" — note to self: <text>\", \
+             cut to 120 chars), on any client; the server sends tools/list_changed now. \
+             Returns {key, attach_to, expires_at, visible_in}. Over the plan's notes_max it \
+             fails quota_exceeded {limit, used}; an unknown tool or run fails not_found.",
+            host_schema(
+                json!({
+                    "text": {"type": "string", "maxLength": 4096, "description": "The note (at most 4096 bytes)."},
+                    "attach_to": {
+                        "type": "object",
+                        "description": "What the note is about: {tool: <your tool's local name>} or {run: <run id>}.",
+                        "properties": {"tool": {"type": "string"}, "run": {"type": "string"}},
+                    },
+                    "ttl_s": {"type": "integer", "minimum": 60, "maximum": 7776000, "description": "Seconds until the note expires; default: never."},
+                }),
+                &["text"],
+            ),
+        ),
+        Tool::new(
+            "host.note.list",
+            "List your live notes, newest first: {notes: [{key, text, attach_to, created_unix, \
+             expires_unix}], next_cursor}. Text is returned in full.",
+            host_schema(
+                json!({
+                    "attach_to": {
+                        "type": "object",
+                        "description": "Only notes attached to this: {tool: name} or {run: id}.",
+                        "properties": {"tool": {"type": "string"}, "run": {"type": "string"}},
+                    },
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 100, "description": "Max notes to return; default 100."},
+                    "cursor": {"type": "string", "description": "next_cursor from the previous page."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.note.delete",
+            "Delete one note by its key (from host.note.list). Deleting a tool-attached note \
+             removes its tools/list suffix and sends tools/list_changed.",
+            host_schema(
+                json!({"key": {"type": "string", "description": "The note's notes/ key."}}),
+                &["key"],
+            ),
+        ),
     ]
 }
 
@@ -6899,6 +6946,9 @@ impl McpHostHandler {
                 tenant_state::state_delete(&self.state, tenant, &args, end_user).await
             }
             "host.state.list" => tenant_state::state_list(&self.state, tenant, &args, end_user).await,
+            "host.note.put" => crate::notes::put(&self.state, tenant, &args).await,
+            "host.note.list" => crate::notes::list(&self.state, tenant, &args).await,
+            "host.note.delete" => crate::notes::delete(&self.state, tenant, &args).await,
             "host.state.table_create" => {
                 tenant_state::state_table_create(&self.state, tenant, &args).await
             }
@@ -10384,9 +10434,18 @@ impl ServerHandler for McpHostHandler {
                     .into_iter()
                     .filter(|row| crate::oauth::scope_satisfied(token_scope, &row.scopes))
                     .collect();
+                // PRD-mcphost-notes-to-future-self R3: the newest live note
+                // attached to each tool this tenant owns rides on its
+                // description; a failed read lists the tools unannotated.
+                let tool_notes = crate::notes::tool_note_texts(&self.state, tenant.id, crate::notes::now(&self.state))
+                    .await
+                    .unwrap_or_default();
                 for row in rows {
                     if let Some(kind) = self.state.kinds.get(&row.kind) {
-                        let descriptor = kind.describe(&row.spec);
+                        let mut descriptor = kind.describe(&row.spec);
+                        if let Some(note) = tool_notes.get(&row.name) {
+                            descriptor.description = crate::notes::describe_with_note(&descriptor.description, note);
+                        }
                         // PRD-mcphost-tool-kind-honor requirement 5 (AC6):
                         // additive `_meta.kind` on the wire `Tool` -- the
                         // same value `host.tool_list` already reports for
@@ -11405,17 +11464,32 @@ impl McpHostHandler {
                 // `alias_canonical` is `Some` iff `name` is a registered
                 // alias of it.
                 let dispatch_name = alias_canonical.unwrap_or(name);
-                self.dispatch_tenant_tool(
-                    tenant,
-                    subject,
-                    auth_method,
-                    calls_method,
-                    end_user.as_ref(),
-                    session_id.as_deref(),
-                    dispatch_name,
-                    args,
-                )
-                .await
+                let result = self
+                    .dispatch_tenant_tool(
+                        tenant,
+                        subject,
+                        auth_method,
+                        calls_method,
+                        end_user.as_ref(),
+                        session_id.as_deref(),
+                        dispatch_name,
+                        args,
+                    )
+                    .await;
+                // PRD-mcphost-notes-to-future-self R3: a tool-attached note
+                // put or deleted changes that tool's `tools/list` text.
+                if let Ok(value) = &result
+                    && crate::notes::changes_tool_list(dispatch_name, value)
+                    && let Err(e) = crate::protocol::frames::emit(
+                        &ctx.peer,
+                        crate::protocol::frames::FrameKind::ListChanged,
+                        crate::protocol::frames::request_type_of("tools/call", true),
+                    )
+                    .await
+                {
+                    tracing::warn!(tenant = %tenant.namespace, error = %e, "notify_tool_list_changed failed");
+                }
+                result
             }
             (Auth::Tenant(tenant, oauth_caller), name) => match name.split_once('.') {
                 Some((ns, local)) if ns == tenant.namespace => {

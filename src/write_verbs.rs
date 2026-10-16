@@ -128,6 +128,8 @@ pub const WRITE_VERBS: &[WriteVerb] = &[
     nd("host.vault.provider_remove", Kind::Remove, "external_effect"),
     nd("host.oauth.provider_set", Kind::Write, "external_effect"),
     nd("host.oauth.provider_remove", Kind::Remove, "external_effect"),
+    nd("host.note.put", Kind::Write, "external_effect"),
+    nd("host.note.delete", Kind::Delete, "external_effect"),
 ];
 
 const fn count_where(supported: bool) -> usize {
