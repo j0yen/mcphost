@@ -1,4 +1,5 @@
 //! PRD-mcphost-oauth-first-entry-url
+//! contract: walks src/
 //! AC6 (P0) — Given the router, the metadata route, `www/` client pages,
 //! `llms-install.md`, and `host.quickstart`, When the `oauthentry`
 //! path-contract test runs, Then every occurrence of the entry path equals

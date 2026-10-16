@@ -1,4 +1,5 @@
 //! PRD-mcphost-checkcompat-port-race AC3 (P0) — Given a real previous
+//! contract: a spawned previous binary serves the compat token on the inherited listener
 //! mcphost binary, When it is spawned with the inherited listener and the
 //! token env, Then `/healthz` carries `X-Mcphost-Compat-Token` matching
 //! and `check_compat` reports ready.

@@ -1,4 +1,5 @@
 //! AC5 (PRD-mcphost-llms-install-doc) — Given `www/sitemap.xml`, When
+//! contract: walks www/
 //! fetched, Then it lists `/llms-install.md`, and `mcphost-deploy
 //! vendor-www` succeeds with the new page.
 //!

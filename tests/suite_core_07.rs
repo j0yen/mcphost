@@ -35,8 +35,6 @@ mod slotkind;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
-#[path = "ac01_extended_gates_prd_path_resolves_and_matches_card.rs"]
-mod ac01_extended_gates_prd_path_resolves_and_matches_card;
 #[path = "ac01_unauthenticated_lists_signup.rs"]
 mod ac01_unauthenticated_lists_signup;
 #[path = "ac02_signup_creates_hashed_tenant.rs"]
@@ -133,14 +131,10 @@ mod argmsg_ac03_non_type_failures;
 mod argmsg_ac04_got_excerpt_cap;
 #[path = "argmsg_ac05_message_data_drift.rs"]
 mod argmsg_ac05_message_data_drift;
-#[path = "argmsg_ac06_sites_render_from_one_args_error.rs"]
-mod argmsg_ac06_sites_render_from_one_args_error;
 #[path = "argmsg_ac07_tool_test_equals_tools_call.rs"]
 mod argmsg_ac07_tool_test_equals_tools_call;
 #[path = "askd_ac02_keyless_answer_unblocks_wait_second_post_409.rs"]
 mod askd_ac02_keyless_answer_unblocks_wait_second_post_409;
-#[path = "askd_ac03_wait_ceiling_single_source.rs"]
-mod askd_ac03_wait_ceiling_single_source;
 #[path = "askd_ac04_expired_ask_errors_and_page_is_404.rs"]
 mod askd_ac04_expired_ask_errors_and_page_is_404;
 #[path = "askd_ac05_keyless_wait_is_tenant_key_missing_and_signs_nobody_up.rs"]
@@ -311,8 +305,6 @@ mod busyaudit_ac08_healthz_db_fields;
 mod busyaudit_ac09_contention_alert;
 #[path = "busyaudit_ac10_wal_checkpoint_cron.rs"]
 mod busyaudit_ac10_wal_checkpoint_cron;
-#[path = "cae_ac01_credential_on_every_call_row.rs"]
-mod cae_ac01_credential_on_every_call_row;
 #[path = "cae_ac02_cursor_pages_every_row_once.rs"]
 mod cae_ac02_cursor_pages_every_row_once;
 #[path = "cae_ac03_export_is_es256_signed_over_the_csv_bytes.rs"]
@@ -505,8 +497,6 @@ mod chart_ac14_ten_concurrent_calls_p95_under_250ms;
 mod checkcompat_ac02_ac03;
 #[path = "checkcompat_race_ac01_previous_up_within_1s.rs"]
 mod checkcompat_race_ac01_previous_up_within_1s;
-#[path = "checkcompat_race_ac03_inherited_listener_token_matches.rs"]
-mod checkcompat_race_ac03_inherited_listener_token_matches;
 #[path = "checkcompat_race_ac04_no_token_header_when_unset.rs"]
 mod checkcompat_race_ac04_no_token_header_when_unset;
 #[path = "checkcompat_race_ac05_stress_no_port_collisions.rs"]
@@ -515,8 +505,6 @@ mod checkcompat_race_ac05_stress_no_port_collisions;
 mod checkcompat_race_ac06_explicit_bind_still_enforces_token;
 #[path = "checkcompat_race_ac07_suite_green_and_clippy_clean.rs"]
 mod checkcompat_race_ac07_suite_green_and_clippy_clean;
-#[path = "checkcompat_race_ac08_deferral_is_justified.rs"]
-mod checkcompat_race_ac08_deferral_is_justified;
 #[path = "chg_ac02_contract_since_drift.rs"]
 mod chg_ac02_contract_since_drift;
 #[path = "chg_ac03_changelog_renamed_lists_every_alias.rs"]
@@ -535,8 +523,6 @@ mod ci_sandbox_ac01_workflow_executes_sandbox_suites;
 mod ci_sandbox_ac03_incapable_in_ci_skips_and_fails_job;
 #[path = "ci_sandbox_ac04_incapable_outside_ci_fails_loudly.rs"]
 mod ci_sandbox_ac04_incapable_outside_ci_fails_loudly;
-#[path = "cishard_ac02_one_shard_count_source.rs"]
-mod cishard_ac02_one_shard_count_source;
 #[path = "cishard_ac03_run_wall_budget_and_readout.rs"]
 mod cishard_ac03_run_wall_budget_and_readout;
 #[path = "classify_ac9_is_within_proptest.rs"]
@@ -631,8 +617,6 @@ mod cprocb_ac02_real_tree_clean_and_six_files_use_helper;
 mod cprocb_ac03_flake_lint_job_fails_on_raw_spawn_before_toolchain;
 #[path = "creg_ac01_premise_two_truths_then_minus_32601.rs"]
 mod creg_ac01_premise_two_truths_then_minus_32601;
-#[path = "creg_ac02_initialize_capabilities_from_registry.rs"]
-mod creg_ac02_initialize_capabilities_from_registry;
 #[path = "creg_ac03_every_method_matches_its_row.rs"]
 mod creg_ac03_every_method_matches_its_row;
 #[path = "creg_ac04_capabilities_json_keyless.rs"]
@@ -651,6 +635,20 @@ mod ctrace_ac06_sweep_keeps_newest_200_within_24h;
 mod ctraceb_ac01_trace_access_is_tenant_scoped;
 #[path = "ctraceb_ac02_sweep_keeps_newest_200_within_24h.rs"]
 mod ctraceb_ac02_sweep_keeps_newest_200_within_24h;
+#[path = "ctrm_ac01_literal_lint_misses_the_two_unmarked_files.rs"]
+mod ctrm_ac01_literal_lint_misses_the_two_unmarked_files;
+#[path = "ctrm_ac02_four_files_marked_and_in_one_contract_suite.rs"]
+mod ctrm_ac02_four_files_marked_and_in_one_contract_suite;
+#[path = "ctrm_ac03_unmarked_reader_of_a_marked_artifact_fails.rs"]
+mod ctrm_ac03_unmarked_reader_of_a_marked_artifact_fails;
+#[path = "ctrm_ac04_unmarked_tree_walk_fails_the_lint.rs"]
+mod ctrm_ac04_unmarked_tree_walk_fails_the_lint;
+#[path = "ctrm_ac05_artifacts_printed_and_derived_not_listed.rs"]
+mod ctrm_ac05_artifacts_printed_and_derived_not_listed;
+#[path = "ctrm_ac06_lint_clean_on_committed_tree_prints_marked_count.rs"]
+mod ctrm_ac06_lint_clean_on_committed_tree_prints_marked_count;
+#[path = "ctrm_ac07_fix_prints_the_marker_line_and_edits_nothing.rs"]
+mod ctrm_ac07_fix_prints_the_marker_line_and_edits_nothing;
 #[path = "ctrs_ac01_marked_files_live_in_contract_suites.rs"]
 mod ctrs_ac01_marked_files_live_in_contract_suites;
 #[path = "ctrs_ac02_six_files_carry_marker_and_keep_tests.rs"]
@@ -743,8 +741,6 @@ mod docsearch_ac10_reindex_forces_all_documents;
 mod docsearch_ac11_lexical_search_p95_latency;
 #[path = "docsqa_ac06_synthorg_task_matches_gold_question_3.rs"]
 mod docsqa_ac06_synthorg_task_matches_gold_question_3;
-#[path = "docsqa_ac10_deferral_is_justified.rs"]
-mod docsqa_ac10_deferral_is_justified;
 #[path = "docsqa_ac10_truth_tier_panel_satisfaction_recorded.rs"]
 mod docsqa_ac10_truth_tier_panel_satisfaction_recorded;
 #[path = "docstore_ac01_first_put_returns_version1_seq1.rs"]
@@ -933,8 +929,6 @@ mod exargs_ac06_depth_limit;
 mod exmf_ac01_seven_manifests_check_green;
 #[path = "exmf_ac02_bad_manifest_exits_two_index_untouched.rs"]
 mod exmf_ac02_bad_manifest_exits_two_index_untouched;
-#[path = "exmf_ac03_index_matches_directories.rs"]
-mod exmf_ac03_index_matches_directories;
 #[path = "exmf_ac04_stale_index_fails_the_build.rs"]
 mod exmf_ac04_stale_index_fails_the_build;
 #[path = "exmf_ac05_schema_matches_committed_file.rs"]
@@ -1407,10 +1401,6 @@ mod jtl_ac04_running_chain_shows_in_flight_step;
 mod kcon_ac01_planted_drift_fails_naming_kind_case_code;
 #[path = "kcon_ac03_no_error_code_literals_outside_contract.rs"]
 mod kcon_ac03_no_error_code_literals_outside_contract;
-#[path = "kdr_ac02_python_page_tables_generated.rs"]
-mod kdr_ac02_python_page_tables_generated;
-#[path = "kdr_ac03_check_names_stale_block.rs"]
-mod kdr_ac03_check_names_stale_block;
 #[path = "kdr_ac04_page_set_matches_registry.rs"]
 mod kdr_ac04_page_set_matches_registry;
 #[path = "kindhonor_ac1_http_kind_honored.rs"]
@@ -1469,8 +1459,6 @@ mod lanecov_ac02_coverage_test_is_actually_run;
 mod lanecov_ac03_unrouted_path_is_named;
 #[path = "lanecov_ac06_malformed_lane_fails_naming_it.rs"]
 mod lanecov_ac06_malformed_lane_fails_naming_it;
-#[path = "lanecov_ac07_docs_document_adding_a_lane.rs"]
-mod lanecov_ac07_docs_document_adding_a_lane;
 #[path = "limits_ac05_signup_burst_atomic.rs"]
 mod limits_ac05_signup_burst_atomic;
 #[path = "lineage_ac02_drop_with_no_consumers_is_unrefused.rs"]
@@ -1527,8 +1515,6 @@ mod mcphost_llms_install_doc_ac02_served_unauthenticated;
 mod mcphost_llms_install_doc_ac03_committed_copy_drift;
 #[path = "mcphost-llms-install-doc_ac04_linked_from_every_entry_point.rs"]
 mod mcphost_llms_install_doc_ac04_linked_from_every_entry_point;
-#[path = "mcphost-llms-install-doc_ac05_sitemap_lists_the_page.rs"]
-mod mcphost_llms_install_doc_ac05_sitemap_lists_the_page;
 #[path = "mcphost-llms-install-doc_ac06_install_doc_funnel_event.rs"]
 mod mcphost_llms_install_doc_ac06_install_doc_funnel_event;
 #[path = "mcphost_admin_schema_contract_ac01_tenants_schema_version.rs"]
@@ -1571,8 +1557,6 @@ mod mcphost_chain_run_lineage_ac11_failed_child_carries_step_no_and_parent_tool;
 mod mcphost_chain_run_lineage_ac12_healthz_composition_counters;
 #[path = "mcphost_chain_run_lineage_ac13_daily_pipeline_persona_trailer.rs"]
 mod mcphost_chain_run_lineage_ac13_daily_pipeline_persona_trailer;
-#[path = "mcphost_chain_run_lineage_ac13_deferral_is_justified.rs"]
-mod mcphost_chain_run_lineage_ac13_deferral_is_justified;
 #[path = "mcphost_claude_code_plugin_and_snippets_ac01_plugin_assets_script.rs"]
 mod mcphost_claude_code_plugin_and_snippets_ac01_plugin_assets_script;
 #[path = "mcphost_claude_code_plugin_and_snippets_ac02_plugin_json_and_mcp_json_version.rs"]
@@ -1633,8 +1617,6 @@ mod mcphost_event_trigger_self_test_ac08_quickstart_and_llms_txt_name_triggers;
 mod mcphost_event_trigger_self_test_ac09_string_body_signed_byte_for_byte;
 #[path = "mcphost_event_trigger_self_test_ac10_healthz_self_test_counters.rs"]
 mod mcphost_event_trigger_self_test_ac10_healthz_self_test_counters;
-#[path = "mcphost_event_trigger_self_test_ac11_deferral_is_justified.rs"]
-mod mcphost_event_trigger_self_test_ac11_deferral_is_justified;
 #[path = "mcphost_host_tool_deprecation_ac01_contract_dump_deterministic.rs"]
 mod mcphost_host_tool_deprecation_ac01_contract_dump_deterministic;
 #[path = "mcphost_host_tool_deprecation_ac02_removed_field_without_deprecation_fails.rs"]
@@ -1829,8 +1811,36 @@ mod meshops_ac07_tenant_delete_cascade_across_mesh_tables;
 mod meshops_ac08_healthz_mesh_counters;
 #[path = "meshops_ac09_stats_refusals_by_code_per_sender.rs"]
 mod meshops_ac09_stats_refusals_by_code_per_sender;
+#[path = "metering_ac01_stripe_customer_id_null_default.rs"]
+mod metering_ac01_stripe_customer_id_null_default;
+#[path = "metering_ac02_webhook_stores_stripe_customer_id.rs"]
+mod metering_ac02_webhook_stores_stripe_customer_id;
+#[path = "metering_ac03_checkout_metered_line_item.rs"]
+mod metering_ac03_checkout_metered_line_item;
+#[path = "metering_ac04_emits_pro_calls_only.rs"]
+mod metering_ac04_emits_pro_calls_only;
+#[path = "metering_ac05_crash_replay.rs"]
+mod metering_ac05_crash_replay;
+#[path = "metering_ac06_failure_leaves_state_unmoved.rs"]
+mod metering_ac06_failure_leaves_state_unmoved;
+#[path = "metering_ac07_batches_cap_at_100.rs"]
+mod metering_ac07_batches_cap_at_100;
+#[path = "metering_ac08_healthz_meter_lag.rs"]
+mod metering_ac08_healthz_meter_lag;
+#[path = "metering_ac09_deploy_units_verify.rs"]
+mod metering_ac09_deploy_units_verify;
+#[path = "metering_ac11_admin_meter_status.rs"]
+mod metering_ac11_admin_meter_status;
+#[path = "metering_ac12_billing_status_stripe_reported_usage.rs"]
+mod metering_ac12_billing_status_stripe_reported_usage;
+#[path = "metering_billing_status_emitted_this_month.rs"]
+mod metering_billing_status_emitted_this_month;
 #[path = "minimal_ac1_anonymous_ok_only.rs"]
 mod minimal_ac1_anonymous_ok_only;
+#[path = "minimal_ac2_admin_full_document.rs"]
+mod minimal_ac2_admin_full_document;
+#[path = "minimal_ac3_wrong_bearer_matches_anonymous.rs"]
+mod minimal_ac3_wrong_bearer_matches_anonymous;
 #[path = "minimal_ac4_liveness_failure_returns_5xx.rs"]
 mod minimal_ac4_liveness_failure_returns_5xx;
 #[path = "minimal_ac5_tenant_bearer_gets_anonymous_body.rs"]

@@ -1,4 +1,5 @@
 //! PRD-mcphost-proof-lane-loop-config, AC7 (P2) — the docs explain how to
+//! contract: reads agent/proof-lanes.toml
 //! add a lane when adding a new top-level path, and name `loop-config` as
 //! the worked example.
 //!

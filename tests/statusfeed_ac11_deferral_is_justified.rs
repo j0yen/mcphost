@@ -1,4 +1,5 @@
 //! PRD-mcphost-status-feed AC11 (P0, Live) -- the prod-after-land leg of
+//! contract: reads agent/intent-card.json
 //! AC11 (a live deploy to `https://mcphost.dev`) is not something this
 //! coding sandbox can execute; deploying is an operator action. The AC's
 //! own always-on mechanism proof lives in

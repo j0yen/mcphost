@@ -1,4 +1,5 @@
 //! P1 (PRD-mcphost-reviewer-debt-paydown Requirement 5 / AC6 / AC7) — a
+//! contract: reads agent/intent-card.json
 //! meta-lane proof that reads `agent/intent-card.json` and fails, naming
 //! the criterion and the path, when any acceptance criterion's `test`
 //! field names a file that does not exist under `tests/`, or when the

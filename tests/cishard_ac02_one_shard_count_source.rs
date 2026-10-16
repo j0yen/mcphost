@@ -1,4 +1,5 @@
 //! PRD-mcphost-ci-sandbox-shards-balanced AC2 -- the sandbox shard count is
+//! contract: reads scripts/ci-test-partition.sh
 //! defined once (`SANDBOX_SHARDS` in scripts/ci-test-partition.sh); `shards`
 //! prints it, ci.yml derives its matrix and job names from that command,
 //! gen-test-suites.sh reads it, and no literal count reappears in either file.

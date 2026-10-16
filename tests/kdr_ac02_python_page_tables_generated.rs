@@ -1,4 +1,5 @@
 //! PRD-mcphost-kind-docs-from-registry AC2: `mcphost gen-docs kinds`
+//! contract: walks docs/kinds/
 //! renders `docs/kinds/python.md`'s `kind-fields` and `kind-ceilings`
 //! blocks from the registry.
 

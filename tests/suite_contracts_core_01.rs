@@ -9,13 +9,61 @@
 mod common;
 mod ci_sandbox_support;
 
+#[path = "ac01_extended_gates_prd_path_resolves_and_matches_card.rs"]
+mod ac01_extended_gates_prd_path_resolves_and_matches_card;
+#[path = "argmsg_ac06_sites_render_from_one_args_error.rs"]
+mod argmsg_ac06_sites_render_from_one_args_error;
+#[path = "askd_ac03_wait_ceiling_single_source.rs"]
+mod askd_ac03_wait_ceiling_single_source;
+#[path = "cae_ac01_credential_on_every_call_row.rs"]
+mod cae_ac01_credential_on_every_call_row;
+#[path = "checkcompat_race_ac03_inherited_listener_token_matches.rs"]
+mod checkcompat_race_ac03_inherited_listener_token_matches;
+#[path = "checkcompat_race_ac08_deferral_is_justified.rs"]
+mod checkcompat_race_ac08_deferral_is_justified;
 #[path = "chg_ac01_changelog_headings_parse.rs"]
 mod chg_ac01_changelog_headings_parse;
 #[path = "ci_sandbox_ac06_sandbox_suites_run_as_a_parallel_job.rs"]
 mod ci_sandbox_ac06_sandbox_suites_run_as_a_parallel_job;
 #[path = "cishard_ac01_balanced_shards_from_recorded_weights.rs"]
 mod cishard_ac01_balanced_shards_from_recorded_weights;
+#[path = "cishard_ac02_one_shard_count_source.rs"]
+mod cishard_ac02_one_shard_count_source;
 #[path = "compat_ac04_ac05_admin_and_tenant_cache_fields.rs"]
 mod compat_ac04_ac05_admin_and_tenant_cache_fields;
+#[path = "creg_ac02_initialize_capabilities_from_registry.rs"]
+mod creg_ac02_initialize_capabilities_from_registry;
+#[path = "docsqa_ac10_deferral_is_justified.rs"]
+mod docsqa_ac10_deferral_is_justified;
+#[path = "exmf_ac03_index_matches_directories.rs"]
+mod exmf_ac03_index_matches_directories;
+#[path = "kdr_ac02_python_page_tables_generated.rs"]
+mod kdr_ac02_python_page_tables_generated;
+#[path = "kdr_ac03_check_names_stale_block.rs"]
+mod kdr_ac03_check_names_stale_block;
+#[path = "lanecov_ac07_docs_document_adding_a_lane.rs"]
+mod lanecov_ac07_docs_document_adding_a_lane;
+#[path = "mcphost-llms-install-doc_ac05_sitemap_lists_the_page.rs"]
+mod mcphost_llms_install_doc_ac05_sitemap_lists_the_page;
+#[path = "mcphost_chain_run_lineage_ac13_deferral_is_justified.rs"]
+mod mcphost_chain_run_lineage_ac13_deferral_is_justified;
+#[path = "mcphost_event_trigger_self_test_ac11_deferral_is_justified.rs"]
+mod mcphost_event_trigger_self_test_ac11_deferral_is_justified;
+#[path = "migration_compat_headers.rs"]
+mod migration_compat_headers;
+#[path = "oauthentry_ac06_path_contract_docs_router_quickstart.rs"]
+mod oauthentry_ac06_path_contract_docs_router_quickstart;
+#[path = "revdebt_ac1_intent_card_pointers_resolve.rs"]
+mod revdebt_ac1_intent_card_pointers_resolve;
+#[path = "sfc_ac04_stray_notify_panics_in_debug.rs"]
+mod sfc_ac04_stray_notify_panics_in_debug;
+#[path = "statusfeed_ac11_deferral_is_justified.rs"]
+mod statusfeed_ac11_deferral_is_justified;
+#[path = "suite_ac2_check_catches_unregistered_file.rs"]
+mod suite_ac2_check_catches_unregistered_file;
+#[path = "suite_ac4_archived_prd_pointers_resolve.rs"]
+mod suite_ac4_archived_prd_pointers_resolve;
 #[path = "toolname_ac08_tools_list_counts_updated.rs"]
 mod toolname_ac08_tools_list_counts_updated;
+#[path = "vaultst_ac09_deferral_is_justified.rs"]
+mod vaultst_ac09_deferral_is_justified;

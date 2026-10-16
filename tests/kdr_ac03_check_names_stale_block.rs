@@ -1,4 +1,5 @@
 //! PRD-mcphost-kind-docs-from-registry AC3: a hand-edited `kind-errors`
+//! contract: walks docs/kinds/
 //! block fails `gen-docs kinds --check` naming page and block; `--write`
 //! repairs it and is idempotent.
 

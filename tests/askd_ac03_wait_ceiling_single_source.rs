@@ -1,4 +1,5 @@
 //! PRD-mcphost-ask-user-decision
+//! contract: walks src/
 //! AC3 -- Given `WAIT_MAX_S`, When the `host.msg.wait` descriptor, the
 //! `host.ask.wait` descriptor and `host.quickstart.limits.wait_max_s` are
 //! rendered, Then all three carry the constant's value and

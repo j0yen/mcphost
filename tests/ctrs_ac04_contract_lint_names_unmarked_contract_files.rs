@@ -15,11 +15,15 @@ fn root() -> PathBuf {
 }
 
 // Built from pieces so this file's own source never trips the lint it tests.
+// Each body reads a tree-derived source the way the derived lint recognises it
+// (PRD-mcphost-contract-suite-markers): an include_str of a marked test's
+// artifact, a CARGO_MANIFEST_DIR join of one, and a tree walk of migrations/.
 fn triggers() -> Vec<(&'static str, String)> {
+    let manifest = "env!(\"CARGO_MANIFEST_DIR\")";
     vec![
         ("changelog", format!("const C: &str = include_str!(\"../{}.md\");\n", "CHANGE".to_string() + "LOG")),
-        ("migrations", format!("fn f() {{ std::fs::{}(\"{}\"); }}\n", "read".to_string() + "_dir", "migra".to_string() + "tions")),
-        ("weights", format!("const W: &str = \"{}\";\n", "ci-suite-".to_string() + "weights.json")),
+        ("migrations", format!("fn f() {{ std::fs::{}(std::path::Path::new({manifest}).join(\"{}\")); }}\n", "read".to_string() + "_dir", "migra".to_string() + "tions")),
+        ("weights", format!("fn f() {{ let _ = std::path::Path::new({manifest}).join(\"scripts/{}\"); }}\n", "ci-suite-".to_string() + "weights.json")),
     ]
 }
 
@@ -48,7 +52,7 @@ fn ctrs_ac04_unmarked_file_fails_naming_file_and_line_to_add() {
         let stdout = String::from_utf8_lossy(&out.stdout);
         assert_eq!(out.status.code(), Some(1), "{name}: {stdout}");
         assert!(stdout.contains("zz_probe.rs"), "{name}: {stdout}");
-        assert!(stdout.contains("//! contract: <what it asserts>"), "{name}: {stdout}");
+        assert!(stdout.contains("//! contract:"), "{name}: {stdout}");
         let _ = fs::remove_dir_all(&dir);
     }
 }

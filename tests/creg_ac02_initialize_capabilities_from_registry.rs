@@ -1,4 +1,5 @@
 //! AC2 (P0) -- PRD-mcphost-server-capabilities-from-registry. `initialize`
+//! contract: walks src/
 //! answers exactly the `implemented: true` rows rendered through
 //! `server_capabilities()`, and no source file but `capabilities.rs` names a
 //! capability by hand.

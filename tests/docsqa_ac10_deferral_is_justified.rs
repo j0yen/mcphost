@@ -1,4 +1,5 @@
 //! PRD-mcphost-docs-qa-recipe AC10 (P0, Live) -- AC10's Then is a truth-tier
+//! contract: reads agent/intent-card.json
 //! `synthorg consume` run against prod after land: ~$5 and ~40 min of real
 //! frontier calls billed to the operator's Anthropic key, driven from another
 //! repository by a timer on a live host, against a deployment this branch

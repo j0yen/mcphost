@@ -1,4 +1,5 @@
 //! PRD-mcphost-event-trigger-self-test AC11 (P0, Live) -- AC11's Then is a
+//! contract: reads agent/intent-card.json
 //! nightly `synthorg consume --tier truth` run on orch against prod after
 //! deploy: real frontier calls billed to the operator's Anthropic key,
 //! driven from another repository by a timer on a live host, against a

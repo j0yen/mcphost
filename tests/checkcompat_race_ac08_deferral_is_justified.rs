@@ -1,4 +1,5 @@
 //! PRD-mcphost-checkcompat-port-race AC8 (P0) — Given a real ccx53 burst
+//! contract: reads agent/intent-card.json
 //! box (deferrable only with a justification naming why no box was
 //! reachable; `mock_justifications` required), When `burst-lane prove`
 //! runs on this PRD's HEAD, Then `prove done routed=true` and the run log

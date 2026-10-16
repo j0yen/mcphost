@@ -1,4 +1,5 @@
 //! PRD-mcphost-chain-run-lineage AC13 (P0, Live) -- AC13's Then is a
+//! contract: reads agent/intent-card.json
 //! truth-tier `synthorg consume` run against prod after this PRD lands,
 //! scoring `data-pipeline-builder-daily-pipeline-chain` >= 0.75: ~$5 and
 //! ~40 min of real frontier calls billed to the operator's Anthropic key,
