@@ -93,11 +93,13 @@ async fn census_counts_list_verbs_cursors_and_end_of_list_conventions() {
     // windowed `{asks: [...]}` audit list registered unpaged in
     // `paged::UNPAGED_VERBS`), plus host.key.list
     // (PRD-mcphost-key-scoped-to-tools, bounded by the plan's `sub_keys_max`),
-    // plus host.calls.list (PRD-mcphost-call-audit-export, a cursored verb).
+    // plus host.calls.list (PRD-mcphost-call-audit-export, a cursored verb),
+    // plus host.index.list (PRD-mcphost-index-create-from-sources-b, bounded by
+    // the tenant's index count, registered unpaged in `paged::UNPAGED_VERBS`).
     assert_eq!(
         list_shaped.len(),
-        35,
-        "list-shaped verbs drifted from the PRD baseline 32 + host.ask.list + host.key.list + host.calls.list: {list_shaped:?}"
+        36,
+        "list-shaped verbs drifted from the PRD baseline 32 + host.ask.list + host.key.list + host.calls.list + host.index.list: {list_shaped:?}"
     );
     assert_eq!(
         conventions,

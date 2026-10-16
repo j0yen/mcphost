@@ -1685,6 +1685,12 @@
       "AC6": "tests/hrfr_ac06_table_write_verbs_bump_change_counter.rs",
       "AC7": "tests/hrfr_ac07_failing_url_pauses_until_refreshed.rs"
     },
+    "hidxb": {
+      "_prd": "PRD-mcphost-index-create-from-sources-b.md (test_prefix: hidxb)",
+      "AC1": "tests/hidxb_ac01_url_refusal_and_503.rs",
+      "AC2": "tests/hidxb_ac02_chunk_ceiling_truncates.rs",
+      "AC3": "tests/hidxb_ac03_delete_list_and_sandbox_status.rs"
+    },
     "creg": {
       "_prd": "PRD-mcphost-server-capabilities-from-registry.md (test_prefix: creg)",
       "AC1": "tests/creg_ac01_premise_two_truths_then_minus_32601.rs",

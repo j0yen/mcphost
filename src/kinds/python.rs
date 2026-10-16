@@ -2082,6 +2082,15 @@ pub const BRIDGE_MODULES: &[BridgeModule] = &[
         ],
     },
     BridgeModule {
+        name: "index",
+        purpose: "create, poll and list named indexes (same verbs host.index.* uses)",
+        signatures: &[
+            "mcphost.index.create(name, sources, chunking=None) -- register a named index over documents, table columns and urls",
+            "mcphost.index.status(name) -- build progress of one index",
+            "mcphost.index.list() -- list this tenant's indexes",
+        ],
+    },
+    BridgeModule {
         name: "blob",
         purpose: "read or store files of any type under this tenant (same store host.blob.* uses)",
         signatures: &[
@@ -2242,6 +2251,23 @@ pub const BRIDGE_RETURNS: &[BridgeReturn] = &[
         function: "mcphost.docs.search",
         shape: Envelope(&[("results", "list"), ("index", "dict")]),
     },
+    BridgeReturn {
+        function: "mcphost.index.create",
+        shape: Envelope(&[("name", "str"), ("sources", "int"), ("status", "str")]),
+    },
+    BridgeReturn {
+        function: "mcphost.index.status",
+        shape: Envelope(&[
+            ("name", "str"),
+            ("chunks", "int"),
+            ("pending", "int"),
+            ("lag_seconds", "int"),
+            ("quota", "dict"),
+            ("sources", "list"),
+            ("stale_sources", "list"),
+        ]),
+    },
+    BridgeReturn { function: "mcphost.index.list", shape: Envelope(&[("indexes", "list")]) },
     BridgeReturn { function: "mcphost.blob.get", shape: Plain("bytes (the file's exact content)") },
     BridgeReturn {
         function: "mcphost.blob.put",
@@ -3089,6 +3115,37 @@ _mcphost_docs_mod.get = _docs_get
 _mcphost_docs_mod.search = _docs_search
 _mcphost_docs_mod.DocsError = McphostDocsError
 
+# ---- mcphost.index (PRD-mcphost-index-create-from-sources-b R6) ------------
+#
+# Rides the docs channel (ops `index_create`/`index_status`/`index_list`): the
+# host answers with exactly the JSON the `host.index.*` verbs return.
+def _index_create(name, sources, chunking=None):
+    """Register a named index over documents, table columns and urls.
+
+    writes: host.index.create (control plane).
+    """
+    kwargs = {"name": name, "sources": sources}
+    if chunking is not None:
+        kwargs["chunking"] = chunking
+    return _docs_call("index_create", **kwargs)
+
+def _index_status(name):
+    """Build progress of one index; the host.index.status object."""
+    return _docs_call("index_status", name=name)
+
+def _index_list():
+    """This tenant's indexes; the host.index.list object."""
+    return _docs_call("index_list")
+
+_mcphost_index_mod = _mcphost_types.ModuleType(
+    "mcphost.index",
+    "Create, poll and list named indexes (create, status, list).",
+)
+_mcphost_index_mod.create = _index_create
+_mcphost_index_mod.status = _index_status
+_mcphost_index_mod.list = _index_list
+_mcphost_index_mod.IndexOpError = McphostDocsError
+
 # ---- mcphost.blob (PRD-mcphost-blob-put-get-signed-url R6) -----------------
 #
 # Rides the docs channel above (`__mcphost_docs__`, ops `blob_get`/`blob_put`):
@@ -3365,6 +3422,7 @@ _mcphost_mod.state = _mcphost_state_mod
 _mcphost_mod.table = _mcphost_table_mod
 _mcphost_mod.docs = _mcphost_docs_mod
 _mcphost_mod.blob = _mcphost_blob_mod
+_mcphost_mod.index = _mcphost_index_mod
 _mcphost_mod.lineage = _mcphost_lineage_mod
 _mcphost_mod.drift = _mcphost_drift_mod
 _mcphost_mod.channel = _mcphost_channel_mod
@@ -3404,6 +3462,7 @@ sys.modules["mcphost.state"] = _mcphost_state_mod
 sys.modules["mcphost.table"] = _mcphost_table_mod
 sys.modules["mcphost.docs"] = _mcphost_docs_mod
 sys.modules["mcphost.blob"] = _mcphost_blob_mod
+sys.modules["mcphost.index"] = _mcphost_index_mod
 sys.modules["mcphost.lineage"] = _mcphost_lineage_mod
 sys.modules["mcphost.drift"] = _mcphost_drift_mod
 sys.modules["mcphost.channel"] = _mcphost_channel_mod
