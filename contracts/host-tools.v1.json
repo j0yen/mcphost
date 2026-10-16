@@ -8147,10 +8147,6 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
-          "bind": {
-            "description": "Tie the child to one unit of work: {run_id} (an open run of yours; the key dies with it and expires no later than its deadline) or {session: \"current\"} / {session_id} (this connection; the key dies when it closes or sits idle 30 min). Refused key_bound_elsewhere anywhere else.",
-            "type": "object"
-          },
           "can_delegate": {
             "description": "Whether the child may itself delegate (default false).",
             "type": "boolean"
@@ -8160,7 +8156,7 @@
             "type": "string"
           },
           "scopes": {
-            "description": "Scopes the child holds; each must be implied by yours (required unless bind is given; then default mcp).",
+            "description": "Scopes the child holds; each must be implied by yours.",
             "items": {
               "enum": [
                 "mcp",
@@ -8186,12 +8182,15 @@
             "type": "array"
           },
           "ttl_s": {
-            "description": "Lifetime in seconds; at most your own remaining lifetime and the plan's delegated_ttl_max_s (required unless bind is given; then the run's deadline or the plan ceiling).",
+            "description": "Lifetime in seconds; at most your own remaining lifetime and the plan's delegated_ttl_max_s.",
             "minimum": 60,
             "type": "integer"
           }
         },
-        "required": [],
+        "required": [
+          "scopes",
+          "ttl_s"
+        ],
         "type": "object"
       },
       "name": "host.key.delegate",
@@ -29452,10 +29451,6 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
-          "bind": {
-            "description": "Tie the child to one unit of work: {run_id} (an open run of yours; the key dies with it and expires no later than its deadline) or {session: \"current\"} / {session_id} (this connection; the key dies when it closes or sits idle 30 min). Refused key_bound_elsewhere anywhere else.",
-            "type": "object"
-          },
           "can_delegate": {
             "description": "Whether the child may itself delegate (default false).",
             "type": "boolean"
@@ -29465,7 +29460,7 @@
             "type": "string"
           },
           "scopes": {
-            "description": "Scopes the child holds; each must be implied by yours (required unless bind is given; then default mcp).",
+            "description": "Scopes the child holds; each must be implied by yours.",
             "items": {
               "enum": [
                 "mcp",
@@ -29491,12 +29486,15 @@
             "type": "array"
           },
           "ttl_s": {
-            "description": "Lifetime in seconds; at most your own remaining lifetime and the plan's delegated_ttl_max_s (required unless bind is given; then the run's deadline or the plan ceiling).",
+            "description": "Lifetime in seconds; at most your own remaining lifetime and the plan's delegated_ttl_max_s.",
             "minimum": 60,
             "type": "integer"
           }
         },
-        "required": [],
+        "required": [
+          "scopes",
+          "ttl_s"
+        ],
         "type": "object"
       },
       "name": "host_key_delegate",

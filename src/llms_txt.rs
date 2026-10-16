@@ -18,7 +18,7 @@ pub const CAPABILITIES_SECTION_END: &str = "<!-- capabilities:end -->";
 
 /// PRD-mcphost-server-capabilities-from-registry requirement 4: the
 /// `## Capabilities` section, generated from [`crate::capabilities::CAPABILITIES`]
-/// and bracketed by markers so `scripts/sandbox-api-doc-check.sh` can compare
+/// and bracketed by markers so `scripts/ref-docs-check.sh` can compare
 /// it byte-for-byte in `www/llms.txt` and `docs/protocol/capabilities.md`.
 /// Table rows (not `- ` bullets): the tools parity test reads bullets as
 /// tool names.

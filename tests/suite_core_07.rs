@@ -265,8 +265,6 @@ mod blobput_ac07_tenant_isolation;
 mod blobputb_ac01_url_fetch_refusals_write_nothing;
 #[path = "blobputb_ac03_tenant_isolation.rs"]
 mod blobputb_ac03_tenant_isolation;
-#[path = "bridgedisc_ac07_sandbox_api_doc_check.rs"]
-mod bridgedisc_ac07_sandbox_api_doc_check;
 #[path = "budget_ac01_ported_ledger_seven_tests.rs"]
 mod budget_ac01_ported_ledger_seven_tests;
 #[path = "budget_ac02_chain_child_calls_halts_at_ten.rs"]
@@ -1413,26 +1411,16 @@ mod jtl_ac02_mapping_miss_step_is_error_family_compose;
 mod jtl_ac03_scheduled_run_is_one_entry;
 #[path = "jtl_ac04_running_chain_shows_in_flight_step.rs"]
 mod jtl_ac04_running_chain_shows_in_flight_step;
-#[path = "kbind_ac01_session_ids_distinct_and_bound_key_refused_elsewhere.rs"]
-mod kbind_ac01_session_ids_distinct_and_bound_key_refused_elsewhere;
-#[path = "kbind_ac02_run_bound_key_needs_its_run_id.rs"]
-mod kbind_ac02_run_bound_key_needs_its_run_id;
-#[path = "kbind_ac03_run_done_revokes_bound_key.rs"]
-mod kbind_ac03_run_done_revokes_bound_key;
-#[path = "kbind_ac04_bind_target_must_be_yours.rs"]
-mod kbind_ac04_bind_target_must_be_yours;
-#[path = "kbind_ac05_session_idle_and_close_revoke.rs"]
-mod kbind_ac05_session_idle_and_close_revoke;
-#[path = "kbind_ac06_list_and_whoami_show_bound.rs"]
-mod kbind_ac06_list_and_whoami_show_bound;
-#[path = "kbind_ac07_run_deadline_caps_child_expiry.rs"]
-mod kbind_ac07_run_deadline_caps_child_expiry;
 #[path = "kcon_ac01_planted_drift_fails_naming_kind_case_code.rs"]
 mod kcon_ac01_planted_drift_fails_naming_kind_case_code;
 #[path = "kcon_ac03_no_error_code_literals_outside_contract.rs"]
 mod kcon_ac03_no_error_code_literals_outside_contract;
 #[path = "kdr_ac04_page_set_matches_registry.rs"]
 mod kdr_ac04_page_set_matches_registry;
+#[path = "kdrb_ac01_error_code_scan.rs"]
+mod kdrb_ac01_error_code_scan;
+#[path = "kdrb_ac03_quickstart_doc_anchor.rs"]
+mod kdrb_ac03_quickstart_doc_anchor;
 #[path = "kindhonor_ac1_http_kind_honored.rs"]
 mod kindhonor_ac1_http_kind_honored;
 #[path = "kindhonor_ac3_spec_test_reports_kind.rs"]
@@ -1823,6 +1811,24 @@ mod mcphost_webhook_inbox_ac09_concurrent_deliveries_all_land;
 mod mcphost_webhook_inbox_ac11_trigger_test_stores_and_fires_synthetic_delivery;
 #[path = "mcphost_webhook_inbox_ac12_stripe_verify_scheme_accepted.rs"]
 mod mcphost_webhook_inbox_ac12_stripe_verify_scheme_accepted;
+#[path = "meshops_ac01_stats_real_vs_synthetic_volume.rs"]
+mod meshops_ac01_stats_real_vs_synthetic_volume;
+#[path = "meshops_ac02_threads_no_bodies.rs"]
+mod meshops_ac02_threads_no_bodies;
+#[path = "meshops_ac03_thread_read_bodies_and_audit.rs"]
+mod meshops_ac03_thread_read_bodies_and_audit;
+#[path = "meshops_ac04_freeze_blocks_sends_not_reads_or_tools.rs"]
+mod meshops_ac04_freeze_blocks_sends_not_reads_or_tools;
+#[path = "meshops_ac05_unfreeze_restores_sending.rs"]
+mod meshops_ac05_unfreeze_restores_sending;
+#[path = "meshops_ac06_purge_dry_run_then_real.rs"]
+mod meshops_ac06_purge_dry_run_then_real;
+#[path = "meshops_ac07_tenant_delete_cascade_across_mesh_tables.rs"]
+mod meshops_ac07_tenant_delete_cascade_across_mesh_tables;
+#[path = "meshops_ac08_healthz_mesh_counters.rs"]
+mod meshops_ac08_healthz_mesh_counters;
+#[path = "meshops_ac09_stats_refusals_by_code_per_sender.rs"]
+mod meshops_ac09_stats_refusals_by_code_per_sender;
 #[path = "minimal_ac1_anonymous_ok_only.rs"]
 mod minimal_ac1_anonymous_ok_only;
 #[path = "minimal_ac4_liveness_failure_returns_5xx.rs"]

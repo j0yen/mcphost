@@ -757,7 +757,7 @@ impl AppError {
                 "not_found" => ErrorCode::RESOURCE_NOT_FOUND,
                 // PRD-mcphost-key-scoped-to-tools R3: a revoked or expired
                 // sub-key is a bad credential parameter (-32602).
-                "key_expired" | "key_revoked" | "key_bound_elsewhere" => ErrorCode::INVALID_PARAMS,
+                "key_expired" | "key_revoked" => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-call-audit-export R3: an export window over the
                 // row cap is a caller-input problem (narrow the window).
                 "too_many_rows" => ErrorCode::INVALID_PARAMS,

@@ -131,7 +131,8 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // same required_commands-immutability reason the sharing-docs lane
     // above gives) -- a thirteenth, intended addition since the baseline,
     // not drift.
-    // PRD-mcphost-spec-unknown-field-rejection added its own
+    // (PRD-mcphost-kind-docs-from-registry-b removed that lane again with the
+    // script.) PRD-mcphost-spec-unknown-field-rejection added its own
     // "spec-fields-doc-check" lane (routes the new
     // scripts/spec-fields-doc-check.sh to its own --run, duplicated from
     // the pre-existing docs lane rather than folded into it, for the same
@@ -243,7 +244,6 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "required-checks",
             "sandbox-api-docs",
             "sharing-docs",
-            "spec-fields-doc-check",
             "tool-naming",
             "vendor",
             "wasm-fixtures"
@@ -251,7 +251,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
         "only admin-schemas, blobguard-fixtures, checkcompat-race-soak, child-proc-lint, contracts, docs-links, docsearch-fixtures, \
          event-trigger-self-test-fixtures, example-manifest, examples, flake-lint, heal-config, heal-docs, host-pressure-doc-check, launch-docs, \
          loop-config, oauthconf-data, output-schemas, plugin, registry-manifest, required-checks, sandbox-api-docs, sharing-docs, \
-         spec-fields-doc-check, tool-naming, vendor, and wasm-fixtures may have been added since \
+         tool-naming, vendor, and wasm-fixtures may have been added since \
          {BASELINE_REV}"
     );
 }

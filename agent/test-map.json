@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-delegation-bound-to-run-or-session.md (test_prefix: kbind)",
+  "ac_test_map_prd": "PRD-mcphost-idempotency-key-on-call.md (test_prefix: idkey)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,13 +28,10 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/kbind_ac01_session_ids_distinct_and_bound_key_refused_elsewhere.rs",
-    "AC2": "tests/kbind_ac02_run_bound_key_needs_its_run_id.rs",
-    "AC3": "tests/kbind_ac03_run_done_revokes_bound_key.rs",
-    "AC4": "tests/kbind_ac04_bind_target_must_be_yours.rs",
-    "AC5": "tests/kbind_ac05_session_idle_and_close_revoke.rs",
-    "AC6": "tests/kbind_ac06_list_and_whoami_show_bound.rs",
-    "AC7": "tests/kbind_ac07_run_deadline_caps_child_expiry.rs"
+    "AC1": "tests/idkey_ac01_timeout_hint_carries_key.rs",
+    "AC2": "tests/idkey_ac02_replay_same_key_same_args.rs",
+    "AC3": "tests/idkey_ac03_same_key_different_args_conflicts.rs",
+    "AC4": "tests/idkey_ac04_concurrent_same_key_runs_once.rs"
   },
   "ac_test_map_by_prefix": {
     "ccli": {
@@ -385,7 +382,6 @@
       "AC4": "tests/bridgedisc_ac04_runtime_unknown_import_no_traceback.rs",
       "AC5": "tests/bridgedisc_ac05_network_public_plan_named.rs",
       "AC6": "tests/bridgedisc_ac06_tools_list_mentions_import_mcphost.rs",
-      "AC7": "tests/bridgedisc_ac07_sandbox_api_doc_check.rs",
       "AC8": "deferred -- operator-provisioned; AC8 is the Live/production-only requirement (a fresh tenant created by the synthorg explore persona on a real deploy, host.usage evidence pasted into the PRD's evidence block) and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
     },
     "chainhost": {
@@ -484,7 +480,6 @@
       "AC4": "tests/unkfield_ac04_trigger_set_unknown_argument.rs",
       "AC5": "tests/unkfield_ac05_tools_list_additional_properties_false.rs",
       "AC6": "tests/unkfield_ac06_doc_examples_never_rejected.rs",
-      "AC7": "tests/unkfield_ac07_spec_fields_doc_check_script.rs",
       "AC8": "deferred -- operator-provisioned: Live, prod tenant joe-test; needs a real deploy this coding sandbox cannot drive. See the coder dispatch's own deferred list."
     },
     "oauthfirstgrantsignup": {
@@ -1741,6 +1736,12 @@
       "AC7": "tests/ctrs_ac07_ci_gate_runs_contract_suites_before_core_suites.rs",
       "AC8": "deferred -- operator-provisioned: live evidence is the wm-build journal inner-repo-check row for repo:contract-suite on this PRD's own land."
     },
+    "kdrb": {
+      "_prd": "PRD-mcphost-kind-docs-from-registry-b.md (test_prefix: kdrb)",
+      "AC1": "tests/kdrb_ac01_error_code_scan.rs",
+      "AC2": "tests/kdrb_ac02_regex_scripts_folded.rs",
+      "AC3": "tests/kdrb_ac03_quickstart_doc_anchor.rs"
+    },
     "melc": {
       "_prd": "PRD-mcphost-elicitation-with-ask-fallback.md (test_prefix: melc)",
       "AC1": "tests/melc_ac01_typed_elicit_via_client_callback.rs",
@@ -1779,13 +1780,6 @@
       "_prd": "PRD-mcphost-host-doctor-next-names-envelope-key.md (test_prefix: hdnext)",
       "AC1": "tests/hdnext_ac01_next_names_envelope_keys.rs",
       "AC5": "deferred -- operator-provisioned: Live AC against prod after deploy."
-    },
-    "idkey": {
-      "_prd": "PRD-mcphost-idempotency-key-on-call.md (test_prefix: idkey)",
-      "AC1": "tests/idkey_ac01_timeout_hint_carries_key.rs",
-      "AC2": "tests/idkey_ac02_replay_same_key_same_args.rs",
-      "AC3": "tests/idkey_ac03_same_key_different_args_conflicts.rs",
-      "AC4": "tests/idkey_ac04_concurrent_same_key_runs_once.rs"
     }
   }
 }

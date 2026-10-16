@@ -1741,7 +1741,7 @@ impl Kind for ChainKind {
     /// the only top-level field [`parse_steps`] reads today -- per-step key
     /// checking (`tool`/`args`/`on_error`, requirement 7) is a deferred P1
     /// follow-up, not this field list's concern. Kept a plain literal:
-    /// `scripts/spec-fields-doc-check.sh` parses it straight out of this
+    /// `the spec-field parity test` parses it straight out of this
     /// file (the chain SPEC's field, not a context key).
     fn known_spec_fields(&self) -> &'static [&'static str] {
         &["steps"]

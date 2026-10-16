@@ -426,7 +426,7 @@ jobs:
       - name: install rust toolchain (pinned by rust-toolchain.toml)
         uses: actions-rust-lang/setup-rust-toolchain@9d7e65c320fdb52dcd45ffaa68deb6c02c8754d9 # v1.10.1
 
-      # Several checks (sandbox-api-doc-check, gen-llms-full) run the binary;
+      # Several checks (ref-docs-check, gen-llms-full) run the binary;
       # build it once so they use target/debug/mcphost instead of `cargo run`.
       - name: build mcphost binary for the generator checks
         run: cargo build --locked --bin mcphost
@@ -452,8 +452,7 @@ jobs:
           check ./scripts/protocol-frames-check.sh --check
           check ./scripts/heal-doc-check.sh
           check ./scripts/host-pressure-doc-check.sh
-          check ./scripts/spec-fields-doc-check.sh
-          check ./scripts/sandbox-api-doc-check.sh
+          check ./scripts/ref-docs-check.sh
           check ./scripts/gen-llms-full.sh --check
           # .github/required-checks.toml is the render of the workflow files.
           check bash -c 'diff <(./scripts/required-checks.sh --print) .github/required-checks.toml'

@@ -1,67 +1,48 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-delegation-bound-to-run-or-session.md",
-  "intent_slug": "mcphost-delegation-bound-to-run-or-session",
-  "root_motivation": "**Who:** the lead agent that hands a helper a key for one job and wants it gone when the job is. **What:** a credential whose lifetime is a unit of work (one run or one MCP session), not a clock.",
-  "user_persona": "A lead agent that delegates a watcher key bound to an async run (or to its own session) and never has to remember to revoke it; a copied key is refused anywhere else.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-idempotency-key-on-call.md",
+  "intent_slug": "mcphost-idempotency-key-on-call",
+  "root_motivation": "**Who:** an autonomous coding agent calling a side-effecting tool on mcphost. **What:** a way to say 'this is the same request as before' so a retry after a timeout cannot execute the side effect twice.",
+  "user_persona": "An agent whose tool call timed out; the error names _meta.idempotency_key, it retries with the same key and receives the stored result.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 7
+    "target": 4
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given two MCP connections with the same tenant key, When each calls `host.whoami`, Then `_meta.session_id` is non-empty and distinct, and a `bind: {session: \"current\"}` key from A is refused `key_bound_elsewhere` on B with `data.seen.ref` equal to B's id.",
-      "test": "tests/kbind_ac01_session_ids_distinct_and_bound_key_refused_elsewhere.rs"
+      "description": "Given 20 fake-mode persona sessions whose planted tool answers `tool_timeout` with the R6 hint, When each persona retries, Then >= 10 retries carry the same `idempotency_key` (falsifier).",
+      "test": "tests/idkey_ac01_timeout_hint_carries_key.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given an open async run R, When the primary delegates `{bind: {run_id: R}}`, Then the child's `host.runs.get` succeeds and `host.tool.list` with no run id is `key_bound_elsewhere` with `data.seen.ref == null` and no `calls` row.",
-      "test": "tests/kbind_ac02_run_bound_key_needs_its_run_id.rs"
+      "description": "Given a keyed call that succeeded, When the same key and args arrive 1 s later, Then the response equals the first byte-for-byte except `_meta.replayed: true` and the kind's call counter is unchanged.",
+      "test": "tests/idkey_ac02_replay_same_key_same_args.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the watcher key, When run R reaches `done`, Then `revoked_at` is set in the same transaction, a `revoke_bound`/`run_done` audit row exists, and the next call fails `key_revoked` with `data.reason == \"run_done\"`.",
-      "test": "tests/kbind_ac03_run_done_revokes_bound_key.rs"
+      "description": "Given a keyed call, When the same key arrives with different args, Then the code is `idempotency_conflict` and `data` carries both hashes.",
+      "test": "tests/idkey_ac03_same_key_different_args_conflicts.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given an unknown or foreign run id, Then `not_found` and no row; Given another connection's session id, Then `permission_denied`.",
-      "test": "tests/kbind_ac04_bind_target_must_be_yours.rs"
-    },
-    {
-      "id": "AC5",
-      "level": "MUST",
-      "description": "Given a session-bound key idle 31 min, Then the sweep revokes it `session_idle`; Given the session is closed, Then it is revoked on the close `session_closed`.",
-      "test": "tests/kbind_ac05_session_idle_and_close_revoke.rs"
-    },
-    {
-      "id": "AC6",
-      "level": "SHOULD",
-      "description": "Given the watcher key, Then `host.key.list` and `host.whoami` show `bound {kind, ref, last_seen_unix}` and, after the run ends, `revoked_reason == \"run_done\"`.",
-      "test": "tests/kbind_ac06_list_and_whoami_show_bound.rs"
-    },
-    {
-      "id": "AC7",
-      "level": "MUST",
-      "description": "Given a run with a 300 s deadline, When delegating `{bind: {run_id}, ttl_s: 900}`, Then the child's `expires_at` equals the run's deadline.",
-      "test": "tests/kbind_ac07_run_deadline_caps_child_expiry.rs"
+      "description": "Given two concurrent calls with the same key, When both complete, Then the tool ran exactly once and both responses carry the same result.",
+      "test": "tests/idkey_ac04_concurrent_same_key_runs_once.rs"
     }
   ],
   "scope": [
-    "src/subkeys.rs: bind parsing, check_bound, revoke_bound_on, idle sweep.",
-    "src/db.rs: finalize_run/cancel_run/reap revoke bound keys in-transaction.",
-    "src/handler.rs, src/http.rs: bound check, whoami _meta.session_id, DELETE closes session.",
-    "migrations/0111_key_binding.sql."
+    "src/idempotency.rs (new): key extraction, args hash, call_results claim/finish, ClaimGuard.",
+    "src/handler.rs: call_tool claims the key before dispatch, replays, stores, annotates tool_timeout.",
+    "migrations/0110_call_results.sql."
   ],
   "non_goals": [
-    "Binding OAuth tokens or the primary key; a session registry visible to agents; host.runs.get bound_keys (R7) and admin.tenants counts (R8); the live prod probe (AC8)."
+    "Declaring which tools are idempotent; caching by args alone; polling a running call; docs/llms.txt Idempotency paragraph (R7) and plan-ceiling accounting (R8)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -69,13 +50,15 @@
     "deny_unsafe": false,
     "max_deps": null,
     "msrv": null,
-    "additional": {}
+    "additional": {
+      "token_never_stored": "only sha256(token) is stored; the token is shown once by the dry run."
+    }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can a delegated key outlive its job?",
-      "a": "It ends only by TTL or an explicit revoke the lead must remember."
+      "q": "Why can a retry after a timeout run a side effect twice?",
+      "a": "No request identity reaches dispatch and no result is stored; the timeout error offers no next step."
     }
   ],
   "created_at": "2026-10-15T00:00:00Z",

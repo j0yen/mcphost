@@ -72,6 +72,31 @@ pub const ERROR_WHEN: &[(&str, &str)] = &[
     (codes::COMPOSE_INPUT_MISSING, "a `$.input.<name>` mapping named an argument the call did not carry"),
 ];
 
+/// Codes a kind spells in its own source rather than in its contract's
+/// families: `(kind, code, when)`. The AC1 scan test fails on any
+/// `structured(..)` literal that is in neither this table nor a family.
+pub const KIND_EXTRA_ERRORS: &[(&str, &str, &str)] = &[
+    ("http", "args_invalid", "the call's arguments did not satisfy the tool's input schema"),
+    ("http", "rate_limited", "the tool's own `rate_limit` was exceeded"),
+    ("http", "response_too_large", "the upstream response exceeded the result size cap"),
+    ("http", "template_error", "a request template referenced an undefined variable or failed to render"),
+    ("chain", "fixture_step_unknown", "a dry-run fixture key named a step the chain does not have"),
+    ("chain", "fixture_step_ambiguous", "a dry-run fixture key matched more than one step"),
+    ("chain", "fixture_shape_mismatch", "a dry-run fixture did not have the shape the step expects"),
+    ("python", "args_invalid", "the call's arguments did not satisfy the tool's input schema"),
+    ("python", "plan_required", "the call needs a plan the tenant is not on"),
+    ("python", "build_failed", "installing the tool's `requirements` failed"),
+    ("python", "capacity", "the sandbox pool had no free slot for the call"),
+    ("python", "concurrency_exceeded", "the tenant has too many calls running at once"),
+    ("python", "egress_unavailable", "the tool needs network access the host cannot provide"),
+    ("python", "invalid_spec", "the spec failed validation at publish"),
+    ("python", "rate_limited", "the tool's own `rate_limit` was exceeded"),
+    ("python", "requirement_not_allowed", "a `requirements` entry is not on the allowed package list"),
+    ("python", "state_quota_exceeded", "the tool's persisted state grew past its quota"),
+    ("python", "unknown_import", "the code imports a module the sandbox does not provide"),
+    ("wasm", "args_invalid", "the call's arguments did not satisfy the tool's input schema"),
+];
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct SpecFieldDoc {
     pub name: String,
@@ -176,6 +201,12 @@ pub fn assemble(
                 .unwrap_or_default()
                 .to_string(),
         });
+    }
+
+    for (_, code, when) in KIND_EXTRA_ERRORS.iter().filter(|(k, _, _)| *k == name) {
+        if !error_codes.iter().any(|e| e.code == *code) {
+            error_codes.push(ErrorDoc { code: (*code).to_string(), when: (*when).to_string() });
+        }
     }
 
     KindDoc {

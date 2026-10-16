@@ -587,6 +587,39 @@ impl std::fmt::Display for StaleBlock {
     }
 }
 
+/// Files that carry the python kind's sandbox-API block, relative to the
+/// repo root (the deleted sandbox-api-doc-check.sh's targets).
+pub const SANDBOX_API_TARGETS: [&str; 3] = ["docs/kinds/python.md", "www/llms.txt", "plugin/skills/mcphost/SKILL.md"];
+pub const SANDBOX_API_BLOCK: &str = "mcphost-sandbox-api";
+
+/// The sandbox-API block (markers included) rendered from `BRIDGE_MODULES`.
+pub fn render_sandbox_api_block() -> String {
+    let (start, end) = block_markers(SANDBOX_API_BLOCK);
+    let mut out = format!(
+        "{start}\nA python tool's own code does `import mcphost` to reach this tenant's data without a second tool call:\n\n"
+    );
+    for m in crate::kinds::python::BRIDGE_MODULES {
+        out.push_str(&format!("- `mcphost.{}` -- {}\n", m.name, m.purpose));
+    }
+    out.push_str(&end);
+    out
+}
+
+/// `text` with its one sandbox-API marker pair replaced by `rendered`, or an
+/// error naming the marker count when the pair is not exactly one.
+fn splice_sandbox_api(text: &str, rendered: &str) -> Result<String, String> {
+    let (start, end) = block_markers(SANDBOX_API_BLOCK);
+    let (n_start, n_end) = (text.matches(&start).count(), text.matches(&end).count());
+    if n_start != 1 || n_end != 1 {
+        return Err(format!("must have exactly one {start} / {end} pair (found start={n_start} end={n_end})"));
+    }
+    let (s, e) = (text.find(&start).unwrap_or(0), text.find(&end).unwrap_or(0) + end.len());
+    if s >= e {
+        return Err(format!("{end} comes before {start}"));
+    }
+    Ok(format!("{}{rendered}{}", &text[..s], &text[e..]))
+}
+
 /// Renders every registered kind's generated blocks into
 /// `<root>/docs/kinds/<kind>.md`. Under `write` the pages are rewritten;
 /// either way the stale blocks (as found, before any write) are returned.
@@ -614,6 +647,19 @@ pub fn run_kinds(
         }
         if write && next != current {
             std::fs::write(&path, next)?;
+        }
+    }
+    let rendered = render_sandbox_api_block();
+    for rel in SANDBOX_API_TARGETS {
+        let path = root.join(rel);
+        let current = std::fs::read_to_string(&path)?;
+        let next = splice_sandbox_api(&current, &rendered)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{rel} {e}")))?;
+        if next != current {
+            stale.push(StaleBlock { page: rel.to_string(), block: SANDBOX_API_BLOCK });
+            if write {
+                std::fs::write(&path, next)?;
+            }
         }
     }
     Ok(stale)
