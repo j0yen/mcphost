@@ -81,6 +81,8 @@ pub mod messaging;
 pub mod paged;
 pub mod preflight;
 pub mod protocol;
+pub mod delegation;
+pub mod scopes;
 pub mod subkeys;
 pub mod calllog;
 pub mod metering;

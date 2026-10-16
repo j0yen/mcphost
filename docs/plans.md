@@ -35,6 +35,8 @@ Every numeric ceiling in the plan table, as `host.quickstart` `limits.plan` repo
 | `confirm_rows_min` | 100 | 1000 |
 | `contact_requests_per_day` | 20 | 500 |
 | `dead_letters_max` | 100 | 1000 |
+| `delegated_keys_max` | 10 | 200 |
+| `delegated_ttl_max_s` | 86400 | 2592000 |
 | `docs_bytes_max` | 52428800 | 5368709120 |
 | `docs_chunks_max` | 10000 | 50000 |
 | `docs_max` | 200 | 20000 |

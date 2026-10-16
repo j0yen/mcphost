@@ -125,6 +125,15 @@ pub struct Plan {
     /// `free` plan's own default (7) when a hand-edited `plans.toml`
     /// predates this key.
     pub calls_retention_days: i64,
+    /// PRD-mcphost-key-delegate-child-keys R5: live delegated keys per
+    /// tenant across all depths (`host.key.delegate` refuses a further one
+    /// with `plan_required` naming this). Defaults to the `free` plan's own
+    /// default (10) when a hand-edited `plans.toml` predates this key.
+    pub delegated_keys_max: i64,
+    /// R5: the longest `ttl_s` a delegated key may be minted with. Defaults
+    /// to the `free` plan's own default (86 400) when a hand-edited
+    /// `plans.toml` predates this key.
+    pub delegated_ttl_max_s: i64,
     /// PRD-mcphost-agent-inbox requirement 7: how many `host.msg.send`/
     /// `reply` calls this plan's tenants may make in a sliding hour
     /// (`quota_exceeded` naming `msgs_per_hour`). Defaults to the `free`
@@ -550,6 +559,10 @@ impl PlanCatalog {
                     dead_letters_max: 100,
                     // PRD-mcphost-call-audit-export R4: "Free 7, Pro 90".
                     calls_retention_days: 7,
+                    // PRD-mcphost-key-delegate-child-keys R5: "Free 10,
+                    // Pro 200" keys; "Free 86400, Pro 2592000" seconds.
+                    delegated_keys_max: 10,
+                    delegated_ttl_max_s: 86_400,
                     // PRD-mcphost-agent-inbox requirement 7: "free plan's
                     // msgs_per_hour is 60"; "free 2 000" inbox rows; "5"
                     // recipients per message.
@@ -654,6 +667,8 @@ impl PlanCatalog {
                     event_body_bytes_max: 256 * 1024,
                     dead_letters_max: 1_000,
                     calls_retention_days: 90,
+                    delegated_keys_max: 200,
+                    delegated_ttl_max_s: 2_592_000,
                     // PRD-mcphost-agent-inbox: pro gets a higher hourly
                     // send rate, inbox capacity and recipient cap than
                     // free, same free/pro scaling shape as every other
@@ -818,6 +833,8 @@ impl PlanCatalog {
             ));
             out.push_str(&format!("dead_letters_max = {}\n", p.dead_letters_max));
             out.push_str(&format!("calls_retention_days = {}\n", p.calls_retention_days));
+            out.push_str(&format!("delegated_keys_max = {}\n", p.delegated_keys_max));
+            out.push_str(&format!("delegated_ttl_max_s = {}\n", p.delegated_ttl_max_s));
             out.push_str(&format!("msgs_per_hour = {}\n", p.msgs_per_hour));
             out.push_str(&format!("msg_body_bytes_max = {}\n", p.msg_body_bytes_max));
             out.push_str(&format!("inbox_rows_max = {}\n", p.inbox_rows_max));
@@ -950,6 +967,8 @@ impl PlanCatalog {
                 "event_body_bytes_max" => builder.event_body_bytes_max = Some(int_value()),
                 "dead_letters_max" => builder.dead_letters_max = Some(int_value()),
                 "calls_retention_days" => builder.calls_retention_days = Some(int_value()),
+                "delegated_keys_max" => builder.delegated_keys_max = Some(int_value()),
+                "delegated_ttl_max_s" => builder.delegated_ttl_max_s = Some(int_value()),
                 "msgs_per_hour" => builder.msgs_per_hour = Some(int_value()),
                 "msg_body_bytes_max" => builder.msg_body_bytes_max = Some(int_value()),
                 "inbox_rows_max" => builder.inbox_rows_max = Some(int_value()),
@@ -1047,6 +1066,8 @@ struct PlanBuilder {
     event_body_bytes_max: Option<i64>,
     dead_letters_max: Option<i64>,
     calls_retention_days: Option<i64>,
+    delegated_keys_max: Option<i64>,
+    delegated_ttl_max_s: Option<i64>,
     msgs_per_hour: Option<i64>,
     msg_body_bytes_max: Option<i64>,
     inbox_rows_max: Option<i64>,
@@ -1129,6 +1150,8 @@ impl PlanBuilder {
             event_body_bytes_max: quota!(event_body_bytes_max),
             dead_letters_max: quota!(dead_letters_max),
             calls_retention_days: quota!(calls_retention_days),
+            delegated_keys_max: quota!(delegated_keys_max),
+            delegated_ttl_max_s: quota!(delegated_ttl_max_s),
             msgs_per_hour: quota!(msgs_per_hour),
             msg_body_bytes_max: quota!(msg_body_bytes_max),
             inbox_rows_max: quota!(inbox_rows_max),

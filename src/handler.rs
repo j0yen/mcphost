@@ -130,6 +130,16 @@ async fn resolve_sub_key_tenant(
     if let Some(dead) = found.dead_reason(now_unix()) {
         return Err(dead);
     }
+    // R4: a revoked or expired ancestor makes the descendant invalid even if
+    // a cascade raced this lookup (depth <= 3, so at most two reads).
+    let mut up = found.parent_key_id;
+    while let Some(pid) = up {
+        let Some(ancestor) = state.db.find_sub_key_by_id(pid).await? else { break };
+        if let Some(dead) = ancestor.dead_reason(now_unix()) {
+            return Err(dead);
+        }
+        up = ancestor.parent_key_id;
+    }
     if let Err(e) = state.db.touch_sub_key(found.id, now_unix()).await {
         tracing::warn!(error = %e, tenant = %tenant.namespace, "failed to bump sub-key last_used_at");
     }
@@ -1270,19 +1280,26 @@ fn host_tools_part_01(kinds: &KindRegistry) -> Vec<Tool> {
         // PRD-mcphost-key-scoped-to-tools R5.
         Tool::new(
             "host.key.list",
-            "List this tenant's sub-keys: label, tools, created_at, expires_at, revoked_at, \
-             last_used_at. Never returns a key. Primary key only.",
+            "List this tenant's sub-keys as a delegation tree: label, depth, parent, scopes, \
+             tools, created_at, expires_at, revoked_at, last_used_at, children. Never returns a \
+             key. Primary key only.",
             host_schema(json!({}), &[]),
         ),
         Tool::new(
             "host.key.revoke",
-            "Revoke the sub-key with this label: its very next call fails key_revoked. Does \
-             not touch the primary key. Primary key only.",
+            "Revoke the sub-key with this label: its very next call fails key_revoked. With \
+             cascade: true the whole subtree under it is revoked in one transaction and returns \
+             {revoked, labels}; without it a key that still has live descendants fails \
+             has_children {count}. Does not touch the primary key. Primary key only.",
             host_schema(
                 json!({
                     "label": {
                         "type": "string",
-                        "description": "The label host.key.mint returned (see host.key.list).",
+                        "description": "The label host.key.mint / host.key.delegate returned (see host.key.list).",
+                    },
+                    "cascade": {
+                        "type": "boolean",
+                        "description": "Also revoke every key delegated beneath it (default false).",
                     },
                 }),
                 &["label"],
@@ -1319,6 +1336,45 @@ fn host_tools_part_01(kinds: &KindRegistry) -> Vec<Tool> {
                     "until": {"type": "string", "description": "Window end, same forms (default now)."},
                 }),
                 &[],
+            ),
+        ),
+        // PRD-mcphost-key-delegate-child-keys R2.
+        Tool::new(
+            "host.key.delegate",
+            "Mint a child key that can do strictly less than yours: scopes, tools and lifetime are \
+             subsets of your own, depth at most 3. Asking for more fails scope_escalation naming \
+             the first excess item. Needs can_delegate (the primary always has it). Returns the \
+             key once.",
+            host_schema(
+                json!({
+                    "scopes": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": ["mcp", "tools:call", "tools:write"]},
+                        "minItems": 1,
+                        "description": "Scopes the child holds; each must be implied by yours.",
+                    },
+                    "tools": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "maxItems": 64,
+                        "description": "Tool allowlist, a subset of yours (default: yours).",
+                    },
+                    "ttl_s": {
+                        "type": "integer",
+                        "minimum": 60,
+                        "description": "Lifetime in seconds; at most your own remaining lifetime and the plan's delegated_ttl_max_s.",
+                    },
+                    "label": {
+                        "type": "string",
+                        "description": "Name for host.key.revoke / host.key.list; unique per tenant (default: generated).",
+                    },
+                    "can_delegate": {
+                        "type": "boolean",
+                        "description": "Whether the child may itself delegate (default false).",
+                    },
+                }),
+                &["scopes", "ttl_s"],
             ),
         ),
         // PRD-mcphost-tenant-self-offboard P0 requirement 1 / AC1-4:
@@ -6736,12 +6792,18 @@ impl McpHostHandler {
         match name {
             "host.whoami" => {
                 let session_tenant = self.session_tenant_namespace(session_id).await;
-                control::whoami(&self.state, tenant, subject, auth_method, session_tenant.as_deref()).await
+                let mut me =
+                    control::whoami(&self.state, tenant, subject, auth_method, session_tenant.as_deref()).await?;
+                if let (Some(key), Some(obj)) = (crate::subkeys::whoami_key(&self.state).await?, me.as_object_mut()) {
+                    obj.insert("key".to_string(), key);
+                }
+                Ok(me)
             }
             "host.key.rotate" => control::key_rotate(&self.state, tenant).await,
             "host.calls.list" => crate::calllog::list(&self.state, tenant, &args).await,
             "host.calls.export" => crate::calllog::export(&self.state, tenant, &args).await,
             "host.key.mint" => crate::subkeys::mint(&self.state, tenant, &args).await,
+            "host.key.delegate" => crate::subkeys::delegate(&self.state, tenant, &args).await,
             "host.key.list" => crate::subkeys::list(&self.state, tenant).await,
             "host.key.revoke" => crate::subkeys::revoke(&self.state, tenant, &args).await,
             "host.self.offboard" => control::self_offboard(&self.state, tenant).await,
@@ -10347,7 +10409,10 @@ impl ServerHandler for McpHostHandler {
         // allowlist plus `subkeys::ALWAYS_LISTED`, applied after the scope
         // filter and every push above.
         if let (Some(sk), Some(ns)) = (&sub_key, tenant_ns.as_deref()) {
-            tools.retain(|t| sk.permits(ns, &t.name));
+            tools.retain(|t| {
+                (sk.permits(ns, &t.name) && sk.scope_ok(&t.name))
+                    || (sk.can_delegate && t.name == "host.key.delegate")
+            });
         }
         annotate_deprecated_tools(&mut tools, &self.state.deprecations);
         Ok(ListToolsResult::with_all_items(tools)
@@ -10734,8 +10799,13 @@ impl McpHostHandler {
         if let (Some(sk), Auth::Tenant(tenant, _)) = (&sub_key, &auth) {
             let _ = crate::subkeys::CALL_KEY.try_with(|c| c.set(Some(sk.id)));
             let canonical = crate::tool_aliases::resolve(&body_name).unwrap_or(&body_name);
-            if !sk.permits(&tenant.namespace, canonical) {
+            // `host.key.delegate` skips the allowlist: it answers
+            // `permission_denied can_delegate=false` itself.
+            if canonical != "host.key.delegate" && !sk.permits(&tenant.namespace, canonical) {
                 return Err(sk.denied(canonical).into_error_data_at(Some(&self.state.public_url)));
+            }
+            if !sk.scope_ok(canonical) {
+                return Err(sk.scope_denied(canonical).into_error_data_at(Some(&self.state.public_url)));
             }
         }
         // PRD-mcphost-abuse-guard-ban-list requirement 2 / AC2: every

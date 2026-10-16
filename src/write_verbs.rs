@@ -107,6 +107,7 @@ pub const WRITE_VERBS: &[WriteVerb] = &[
     sv("host.share.caller_limit_remove", Kind::Remove),
     nd("host.key.rotate", Kind::Rotate, "external_effect"),
     nd("host.key.mint", Kind::Write, "external_effect"),
+    nd("host.key.delegate", Kind::Write, "external_effect"),
     nd("host.key.revoke", Kind::Revoke, "irreversible_by_design"),
     nd("host.blob.put", Kind::Write, "external_effect"),
     nd("host.blob.delete", Kind::Delete, "external_effect"),
