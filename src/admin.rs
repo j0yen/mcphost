@@ -977,6 +977,12 @@ pub fn admin_audit_entry(
                 args.get("reason").or_else(|| args.get("pr_url")).and_then(Value::as_str).map(String::from),
             ))
         }
+        // PRD-mcphost-example-proof-nightly-and-hide R2: a verdict write.
+        "admin.example_proof_report" => Some((
+            "example_proof_report".into(),
+            args.get("name").and_then(Value::as_str).map(String::from),
+            args.get("ok").and_then(Value::as_bool).map(|ok| ok.to_string()),
+        )),
         "admin.alerts.ack" => Some((
             "alerts_ack".into(),
             args.get("id").and_then(Value::as_i64).map(|n| n.to_string()),

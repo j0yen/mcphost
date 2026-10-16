@@ -66,6 +66,22 @@ fn stale_reason(root: &std::path::Path, index: &serde_json::Value) -> Option<Str
     dirs.into_iter().find(|d| !indexed.contains(d)).map(|d| format!("examples/{d}"))
 }
 
+/// Every file under `dir`, as `(relative path with '/', absolute path)`,
+/// sorted, so the runner can extract a whole example (proof, fixtures).
+fn walk_files(dir: &std::path::Path, prefix: &str, out: &mut Vec<(String, std::path::PathBuf)>) {
+    let mut entries: Vec<_> = std::fs::read_dir(dir).map(|rd| rd.filter_map(|e| e.ok()).collect()).unwrap_or_default();
+    entries.sort_by_key(|e| e.file_name());
+    for e in entries {
+        let name = e.file_name().to_string_lossy().into_owned();
+        let rel = if prefix.is_empty() { name } else { format!("{prefix}/{name}") };
+        if e.path().is_dir() {
+            walk_files(&e.path(), &rel, out);
+        } else {
+            out.push((rel, e.path()));
+        }
+    }
+}
+
 fn embed_examples() {
     println!("cargo:rerun-if-changed=examples");
     println!("cargo:rerun-if-env-changed={REGEN_ENV}");
@@ -99,9 +115,16 @@ fn embed_examples() {
                 path.to_string_lossy()
             ));
         }
+        let mut found = Vec::new();
+        walk_files(&root.join(name), "", &mut found);
+        let files: Vec<String> = found
+            .iter()
+            .map(|(rel, abs)| format!("({rel:?}, include_bytes!({:?}) as &[u8])", abs.to_string_lossy()))
+            .collect();
+        let files = format!("&[{}]", files.join(", "));
         let fc = &ex["first_call"];
         out.push_str(&format!(
-            "Example {{ name: {}, title: {}, summary: {}, use_case: {}, clients: {}, since: {}, proof: {}, secrets_needed: {}, tools: &[{tools}], first_call: ExampleFirstCall {{ tool: {}, args_json: {:?}, expect: {} }} }},\n",
+            "Example {{ name: {}, title: {}, summary: {}, use_case: {}, clients: {}, since: {}, proof: {}, secrets_needed: {}, tools: &[{tools}], files: {files}, first_call: ExampleFirstCall {{ tool: {}, args_json: {:?}, expect: {} }} }},\n",
             s(&ex, "name"),
             s(&ex, "title"),
             s(&ex, "summary"),

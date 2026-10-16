@@ -521,6 +521,8 @@ pub async fn status_json(state: &AppState) -> Result<Value, AppError> {
         // PRD-mcphost-email-inbound-route requirement 5: counts only.
         "email_inbound_received_1h": state.event_counters.email_received_1h(),
         "email_inbound_rejected_1h": state.event_counters.email_rejected_1h(),
+        // PRD-mcphost-example-proof-nightly-and-hide R5.
+        "examples": crate::example_proofs::status_block(state).await?,
     });
     // PRD-mcphost-healthz-version-field requirement 3: whole-feed only; the
     // per-component rollup (`daily_rows`) stays unchanged.

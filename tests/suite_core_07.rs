@@ -20,6 +20,8 @@ mod child_proc_lint;
 mod ctrace;
 #[path = "support/docs_qa.rs"]
 mod docs_qa;
+#[path = "support/exprf.rs"]
+mod exprf;
 #[path = "support/exprp.rs"]
 mod exprp;
 #[path = "support/federation.rs"]
@@ -961,6 +963,18 @@ mod exmf_ac04_stale_index_fails_the_build;
 mod exmf_ac05_schema_matches_committed_file;
 #[path = "exmf_ac06_zero_manifests_exits_two.rs"]
 mod exmf_ac06_zero_manifests_exits_two;
+#[path = "exprf_ac02_failing_proof_hides_the_example.rs"]
+mod exprf_ac02_failing_proof_hides_the_example;
+#[path = "exprf_ac03_green_report_unhides_and_resolves.rs"]
+mod exprf_ac03_green_report_unhides_and_resolves;
+#[path = "exprf_ac04_second_red_appends_to_one_incident.rs"]
+mod exprf_ac04_second_red_appends_to_one_incident;
+#[path = "exprf_ac05_unknown_name_and_non_admin_refused.rs"]
+mod exprf_ac05_unknown_name_and_non_admin_refused;
+#[path = "exprf_ac06_status_json_examples_block.rs"]
+mod exprf_ac06_status_json_examples_block;
+#[path = "exprf_ac07_only_dry_run_prints_and_executes_nothing.rs"]
+mod exprf_ac07_only_dry_run_prints_and_executes_nothing;
 #[path = "exprp_ac02_literal_secret_value_is_refused.rs"]
 mod exprp_ac02_literal_secret_value_is_refused;
 #[path = "exprp_ac03_non_portable_and_failing_proof_are_refused.rs"]

@@ -14618,5 +14618,63 @@
       "notify_id"
     ],
     "type": "object"
+  },
+  "host.example.list": {
+    "type": "object",
+    "properties": {
+      "count": {
+        "type": "integer"
+      },
+      "examples": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
+      }
+    },
+    "required": [
+      "count",
+      "examples"
+    ]
+  },
+  "host.example.fork": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string"
+      },
+      "forked": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
+      },
+      "tools": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
+      },
+      "secrets_needed": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "first_call": {
+        "type": "object"
+      },
+      "next": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name",
+      "forked",
+      "tools",
+      "secrets_needed",
+      "first_call",
+      "next"
+    ]
   }
 }

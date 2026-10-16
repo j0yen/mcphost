@@ -213,6 +213,34 @@ pub enum FeedbackCap {
 const FEEDBACK_COLS: &str = "feedback_id, tenant_id, kind, text, context_json, client_name, \
      client_version, last_call_ids, created_unix";
 
+/// One `example_proofs` row (PRD-mcphost-example-proof-nightly-and-hide R2).
+#[derive(Debug, Clone)]
+pub struct ExampleProofRow {
+    pub name: String,
+    pub ok: bool,
+    pub at: i64,
+    pub duration_s: f64,
+    pub log_excerpt: String,
+    pub runner: String,
+    pub hidden_reason: Option<String>,
+    pub red_since: Option<i64>,
+}
+
+const EXAMPLE_PROOF_COLS: &str = "name, ok, at, duration_s, log_excerpt, runner, hidden_reason, red_since";
+
+fn example_proof_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<ExampleProofRow> {
+    Ok(ExampleProofRow {
+        name: r.get(0)?,
+        ok: r.get(1)?,
+        at: r.get(2)?,
+        duration_s: r.get(3)?,
+        log_excerpt: r.get(4)?,
+        runner: r.get(5)?,
+        hidden_reason: r.get(6)?,
+        red_since: r.get(7)?,
+    })
+}
+
 /// One `example_proposals` row without its `rendered_tar` blob.
 #[derive(Debug, Clone)]
 pub struct ExampleProposalRow {
@@ -327,6 +355,9 @@ const MIGRATION_0107: &str = include_str!("../migrations/0107_help_search_events
 const MIGRATION_0110: &str = include_str!("../migrations/0110_call_results.sql");
 /// PRD-mcphost-delegation-bound-to-run-or-session R1: binding columns on `tenant_keys`.
 const MIGRATION_0111: &str = include_str!("../migrations/0111_key_binding.sql");
+
+/// PRD-mcphost-example-proof-nightly-and-hide R2: the `example_proofs` table.
+const MIGRATION_0115: &str = include_str!("../migrations/0115_example_proofs.sql");
 
 /// PRD-mcphost-docs-telemetry-failed-after-search R3: how long after a
 /// `host.help.search` the same tenant's first failed call still joins it.
@@ -3041,6 +3072,8 @@ impl Db {
         Self::migrate_0111_key_binding(&conn)?;
         Self::migrate_0112_email_attachments(&conn)?;
         Self::migrate_0114_notify_channels(&conn)?;
+        // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
+        conn.execute_batch(MIGRATION_0115)?;
         Ok(())
     }
 
@@ -5630,6 +5663,47 @@ impl Db {
     pub async fn delete_example_proposal(&self, id: i64) -> Result<(), AppError> {
         self.with_conn(move |conn| {
             conn.execute("DELETE FROM example_proposals WHERE id = ?1", params![id])?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-example-proof-nightly-and-hide R2: the stored verdict for
+    /// one example, `None` when no report ever named it.
+    pub async fn get_example_proof(&self, name: String) -> Result<Option<ExampleProofRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                &format!("SELECT {EXAMPLE_PROOF_COLS} FROM example_proofs WHERE name = ?1"),
+                params![name],
+                example_proof_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Every stored verdict, sorted by name.
+    pub async fn list_example_proofs(&self) -> Result<Vec<ExampleProofRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(&format!("SELECT {EXAMPLE_PROOF_COLS} FROM example_proofs ORDER BY name"))?;
+            let rows = stmt.query_map([], example_proof_row)?.collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// Insert or replace one example's verdict row.
+    pub async fn upsert_example_proof(&self, row: ExampleProofRow) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO example_proofs (name, ok, at, duration_s, log_excerpt, runner, hidden_reason, red_since) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
+                 ON CONFLICT(name) DO UPDATE SET ok = excluded.ok, at = excluded.at, duration_s = excluded.duration_s, \
+                 log_excerpt = excluded.log_excerpt, runner = excluded.runner, \
+                 hidden_reason = excluded.hidden_reason, red_since = excluded.red_since",
+                params![row.name, row.ok, row.at, row.duration_s, row.log_excerpt, row.runner, row.hidden_reason, row.red_since],
+            )?;
             Ok(())
         })
         .await
