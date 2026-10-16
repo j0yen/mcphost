@@ -4,6 +4,15 @@
 
 Released by wm-build land: train 8: mcphost-host-changelog-since-b.
 
+`outputs` is now a spec field of every kind (hotfix outputs-field-generated-from-kind-registry): `host.tool_publish`
+with `kind=echo` or `kind=chain` and `spec.outputs` used to be refused (`'outputs' is not a echo spec field; known:
+reads, schema, ui`) while the server's MCP instructions promised `result.payload.<field>` "for every kind". The field
+now lives in `kinds::UNIVERSAL_SPEC_FIELDS` (one place; http/python/wasm no longer list it themselves), `echo` and `chain`
+project declared names into `result.payload` like the other kinds (a chain's paths resolve against its own
+`$.input`/`$.prev`/`$.steps[i]` context), and the instructions sentence is generated from the registry by
+`kinds::outputs_envelope_instruction`, with a test that every spec field the served text names is accepted by every kind
+it claims.
+
 ## v0.107.72 — 2026-10-13
 
 `host.changelog` (PRD-mcphost-host-changelog-since) now answers `{since, now, releases, added, renamed,

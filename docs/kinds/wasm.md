@@ -31,9 +31,9 @@ Result envelope contract: a call's output always lands at `result.payload`; an o
 |---|---|---|---|
 | `component` | string | yes | the compiled WebAssembly component to call |
 | `args_schema` | object | no | JSON Schema for the call arguments |
-| `outputs` | array or object | no | fields a caller can rely on in `result.payload` |
 | `timeout_s` | integer | no | seconds the call may run |
 | `memory_mb` | integer | no | megabytes the component may use |
+| `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind) |
 | `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
 | `ui` | object | no | optional presentation hints for clients that render a tool's result |
 <!-- kind-fields:end -->

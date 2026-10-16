@@ -653,6 +653,67 @@ impl Path {
     }
 }
 
+// ---- result envelope: declared outputs (shared by every kind) -------------
+
+/// Requirement 3: promotes `declared` output fields into `result.payload`
+/// for a python tool's own returned value -- the same contract `http`'s
+/// `call` applies to its response body (requirement 2), but starting from a
+/// value that (unlike `http`'s always-object body) may be a bare
+/// scalar/list/string. A no-op (returns `value` unchanged) when `declared`
+/// is empty, so a tool with no declared outputs sees no envelope changes at
+/// all (Migration/compatibility: additive).
+///
+/// AC2: an object return gets `payload` alongside its existing top-level
+/// fields, mirroring the whole value plus any promoted (nested-one-level)
+/// field -- same shape `http`'s `body`+`payload` pair already has.
+///
+/// AC3: a bare scalar/list has no object keys to search, so the whole
+/// value is promoted to the *first* declared field, with a structured
+/// `_envelope_warning` naming the scalar promotion rather than silently
+/// guessing which declared field the raw value represents.
+///
+/// PRD-mcphost-surface-fluidity requirement 5 (Goal 4, AC6): `declared`'s
+/// own `path` (when an entry came from the map form) is now read here, not
+/// just parsed -- [`apply_output_decls`] resolves it directly against
+/// the tool's return value, the same grammar and the same envelope report
+/// (`host.tool_test`'s `found_at_contract_path`/`missing`) `http`'s `call`
+/// already gets from it (closes mcphost-spec-output-paths requirement 7,
+/// whose non-goal 3 deferred exactly this). A bare-name entry (`path: None`)
+/// is unaffected -- it still falls through to the same any-wrapper search
+/// `apply_output_decls` runs for a path-less declaration, identical to
+/// [`super::promote_declared_outputs_any_wrapper`]'s old behavior.
+pub fn apply_declared_outputs(value: Value, declared: &[OutputDecl]) -> Value {
+    if declared.is_empty() {
+        return value;
+    }
+    let names: Vec<String> = declared.iter().map(|d| d.name.clone()).collect();
+    match value {
+        Value::Object(obj) => {
+            let source = Value::Object(obj.clone());
+            let mut payload_map = obj.clone();
+            apply_output_decls(&mut payload_map, &source, declared, None);
+            let mut out = obj;
+            out.insert("payload".to_string(), Value::Object(payload_map));
+            Value::Object(out)
+        }
+        other => {
+            let first = names[0].clone();
+            let type_name = plain_json_type_name(&other);
+            let mut payload_map = Map::new();
+            payload_map.insert(first.clone(), other.clone());
+            payload_map.insert(
+                "_envelope_warning".to_string(),
+                json!(format!(
+                    "tool returned a bare {type_name} but declares outputs {names:?}; the \
+                     whole value was promoted to '{first}' since there are no object keys to \
+                     match the rest against -- return an object with matching keys instead"
+                )),
+            );
+            json!({"value": other, "payload": Value::Object(payload_map)})
+        }
+    }
+}
+
 // ---- unknown spec field rejection (PRD-mcphost-spec-unknown-field-rejection) ---
 //
 // `host.tool_publish`/`host.spec_test` both call [`check_unknown_spec_field`]
@@ -665,7 +726,64 @@ impl Path {
 /// (`lineage::register_tool_publish`) is read directly off the raw spec by
 /// every kind, not owned by any one kind's own parser, so it would
 /// otherwise look "unknown" on every kind it's used with.
-pub const UNIVERSAL_SPEC_FIELDS: &[&str] = &["reads", "ui"];
+///
+/// `outputs` is universal because the result-envelope projection
+/// ([`apply_declared_outputs`]) is kind-independent: every kind's call
+/// result carries `result.payload.<field>` for each declared field. The
+/// server's MCP `instructions` sentence about it is rendered from this list
+/// by [`outputs_envelope_instruction`], never hand-written, so the text
+/// cannot name a spec field a kind refuses.
+pub const UNIVERSAL_SPEC_FIELDS: &[&str] = &[OUTPUTS_FIELD, "reads", "ui"];
+
+/// The spec field that declares a tool's `result.payload.<field>` names.
+pub const OUTPUTS_FIELD: &str = "outputs";
+
+/// Every registered kind (sorted by name) whose accepted spec-field set --
+/// [`Kind::known_spec_fields`] plus [`UNIVERSAL_SPEC_FIELDS`], exactly what
+/// [`check_unknown_spec_field`] accepts -- contains `field`.
+pub fn kinds_accepting_spec_field(registry: &KindRegistry, field: &str) -> Vec<&'static str> {
+    let universal = UNIVERSAL_SPEC_FIELDS.contains(&field);
+    registry
+        .all()
+        .filter(|k| universal || k.known_spec_fields().contains(&field))
+        .map(|k| k.name())
+        .collect()
+}
+
+/// The `outputs` entry of `spec`, normalized: empty when absent, the
+/// [`normalize_outputs`] shape error when malformed. Shared by every kind
+/// that has no spec struct of its own to carry the field (`echo`, `chain`).
+pub fn spec_declared_outputs(spec: &Value) -> Result<Vec<OutputDecl>, KindError> {
+    match spec.get(OUTPUTS_FIELD) {
+        None => Ok(Vec::new()),
+        Some(value) => normalize_outputs(value),
+    }
+}
+
+/// The "Result envelope contract" sentence of the server's MCP
+/// `instructions`, GENERATED from the kind registry: the spec field name is
+/// [`OUTPUTS_FIELD`] and the claimed scope ("for every kind", or the exact
+/// kind list when a kind refuses the field) is computed from
+/// [`kinds_accepting_spec_field`] (when it is not every kind, the exact kind
+/// list is named), so the text and the registry cannot disagree (the `outputs`-rejected-on-echo incident).
+pub fn outputs_envelope_instruction(registry: &KindRegistry) -> String {
+    let accepting = kinds_accepting_spec_field(registry, OUTPUTS_FIELD);
+    let every = accepting.len() == registry.all().count();
+    let scope = if every {
+        // No kind list on the happy path: instructions must never steer to
+        // `echo` (tests/firstpub_ac06), and "every" is what the registry says.
+        "for every kind".to_string()
+    } else {
+        format!("for these kinds only ({})", accepting.join(", "))
+    };
+    format!(
+        "Result envelope contract: when a spec declares `{OUTPUTS_FIELD}` (field names its tool \
+         emits, or a map from field name to the exact `$.a.b[0].c`-style path to read it from), \
+         each is readable at `result.payload.<field>` {scope}, regardless of how deep the \
+         tool's own response nests it -- run `host.tool_test` before publishing to see which \
+         declared fields your implementation buries. "
+    )
+}
 
 /// Requirement 1's Levenshtein `did_you_mean`: the single nearest field in
 /// `known` within [`MAX_DID_YOU_MEAN_SPEC_FIELD_DISTANCE`] edits, nearest
