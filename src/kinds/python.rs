@@ -2395,6 +2395,25 @@ pub fn bridge_return_text(function: &str) -> Option<String> {
     BRIDGE_RETURNS.iter().find(|r| r.function == function).map(|r| render_return_shape(&r.shape))
 }
 
+/// Keep only the top-level keys `function`'s [`BRIDGE_RETURNS`] row declares.
+/// The sandbox bridge shares its handlers with the MCP tool surface, which
+/// carries more keys (`host.table.query`'s `total`/`total_estimate`/`exact`);
+/// a fixed-key row cannot express "total XOR total_estimate", so the bridge
+/// returns exactly the row's keys and the totals stay on the tool surface.
+/// A non-object value, or a function with no envelope row, passes through.
+pub fn project_to_bridge_envelope(function: &str, value: Value) -> Value {
+    let Some(BridgeReturn { shape: Envelope(keys), .. }) = BRIDGE_RETURNS.iter().find(|r| r.function == function) else {
+        return value;
+    };
+    match value {
+        Value::Object(mut map) => {
+            map.retain(|k, _| keys.iter().any(|(declared, _)| declared == k));
+            Value::Object(map)
+        }
+        other => other,
+    }
+}
+
 /// `mcphost.<module>.<fn>` for one [`BridgeModule`] signature line
 /// (`"mcphost.state.get(key, default=None) -- read a value ..."`).
 pub fn signature_function(signature: &str) -> &str {
@@ -3993,8 +4012,16 @@ impl SidecarBridge for TableSidecarBridge<'_> {
         }
         let op = request.get("op").and_then(Value::as_str).unwrap_or("");
         let args = request.get("args").cloned().unwrap_or(Value::Null);
+        // `mcphost.table.query(sql)` returns its BRIDGE_RETURNS envelope, not the
+        // MCP tool's page (`total` / `total_estimate` / `exact`); `handle=True`
+        // has its own row and is left as the handler built it.
+        let project_query = op == "query" && args.get("handle").and_then(Value::as_bool) != Some(true);
         let response = match self.table.call(op, args).await {
-            Ok(result) => json!({"ok": true, "result": result}),
+            Ok(result) => {
+                let result =
+                    if project_query { project_to_bridge_envelope("mcphost.table.query", result) } else { result };
+                json!({"ok": true, "result": result})
+            }
             Err(e) => {
                 let (code, message, data) = match e {
                     KindError::Structured {

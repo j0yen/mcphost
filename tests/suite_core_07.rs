@@ -637,6 +637,12 @@ mod creg_ac05_capabilities_docs_in_sync;
 mod creg_ac06_quickstart_names_capabilities;
 #[path = "creg_ac07_probe_names_unique.rs"]
 mod creg_ac07_probe_names_unique;
+#[path = "ctot_ac02_page_total_exact_then_estimate.rs"]
+mod ctot_ac02_page_total_exact_then_estimate;
+#[path = "ctot_ac03_runs_list_verdict_total.rs"]
+mod ctot_ac03_runs_list_verdict_total;
+#[path = "ctot_ac04_one_counter.rs"]
+mod ctot_ac04_one_counter;
 #[path = "ctrace_ac05_trace_access_is_tenant_scoped.rs"]
 mod ctrace_ac05_trace_access_is_tenant_scoped;
 #[path = "ctrace_ac06_sweep_keeps_newest_200_within_24h.rs"]

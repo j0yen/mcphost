@@ -1477,6 +1477,36 @@ pub struct RunsPageQuery {
     pub verdict: Option<String>,
 }
 
+/// The `WHERE` (leading space included) and binds shared by
+/// [`Db::list_runs_page`] and [`Db::count_runs_page`].
+fn runs_page_where(tenant_id: i64, query: RunsPageQuery) -> (String, Vec<rusqlite::types::Value>) {
+    let mut sql = String::from(" WHERE tenant_id = ?1");
+    let mut binds: Vec<rusqlite::types::Value> = vec![tenant_id.into()];
+    let is_composition = query.trigger.as_deref() == Some("composition");
+    let mut push = |sql: &mut String, column: &str, value: Option<String>| {
+        if let Some(v) = value {
+            binds.push(v.into());
+            sql.push_str(&format!(" AND {column} = ?{}", binds.len()));
+        }
+    };
+    push(&mut sql, "tool_name", query.tool_name);
+    push(&mut sql, "status", query.status);
+    push(&mut sql, "trigger", query.trigger);
+    push(&mut sql, "end_user_subject", query.end_user_subject);
+    push(
+        &mut sql,
+        "CASE WHEN json_valid(progress_json) THEN json_extract(progress_json, '$.budget.verdict') END",
+        query.verdict,
+    );
+    if let Some(pr) = query.parent_run_id {
+        binds.push(pr.into());
+        sql.push_str(&format!(" AND parent_run_id = ?{}", binds.len()));
+    } else if !query.include_children && !is_composition {
+        sql.push_str(" AND parent_run_id IS NULL");
+    }
+    (sql, binds)
+}
+
 /// One `host.runs.list` row with its keyset position (`runs` is a rowid
 /// table; `id` is a ulid that is not insertion-ordered within a millisecond).
 #[derive(Debug, Clone)]
@@ -11948,30 +11978,8 @@ impl Db {
     ) -> Result<Vec<RunPageRow>, AppError> {
         use crate::paged::{RunsList, keyset_clause};
         self.with_conn(move |conn| {
-            let mut sql = format!("SELECT {RUN_COLUMNS}, rowid FROM runs WHERE tenant_id = ?1");
-            let mut binds: Vec<rusqlite::types::Value> = vec![tenant_id.into()];
-            let is_composition = query.trigger.as_deref() == Some("composition");
-            let mut push = |sql: &mut String, column: &str, value: Option<String>| {
-                if let Some(v) = value {
-                    binds.push(v.into());
-                    sql.push_str(&format!(" AND {column} = ?{}", binds.len()));
-                }
-            };
-            push(&mut sql, "tool_name", query.tool_name);
-            push(&mut sql, "status", query.status);
-            push(&mut sql, "trigger", query.trigger);
-            push(&mut sql, "end_user_subject", query.end_user_subject);
-            push(
-                &mut sql,
-                "CASE WHEN json_valid(progress_json) THEN json_extract(progress_json, '$.budget.verdict') END",
-                query.verdict,
-            );
-            if let Some(pr) = query.parent_run_id {
-                binds.push(pr.into());
-                sql.push_str(&format!(" AND parent_run_id = ?{}", binds.len()));
-            } else if !query.include_children && !is_composition {
-                sql.push_str(" AND parent_run_id IS NULL");
-            }
+            let (where_sql, mut binds) = runs_page_where(tenant_id, query);
+            let mut sql = format!("SELECT {RUN_COLUMNS}, rowid FROM runs{where_sql}");
             if let Some(c) = &after {
                 let (clause, values) = keyset_clause(order, c, binds.len() + 1);
                 sql.push_str(&format!(" AND {clause}"));
@@ -11986,6 +11994,25 @@ impl Db {
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-count-and-total-semantics: the one bounded counter
+    /// ([`crate::paged::Count`]) over exactly the `WHERE` [`Self::list_runs_page`]
+    /// filters by, so `total` describes the filtered set.
+    pub async fn count_runs_page(&self, tenant_id: i64, query: RunsPageQuery) -> Result<crate::paged::Count, AppError> {
+        self.with_conn(move |conn| {
+            let (where_sql, binds) = runs_page_where(tenant_id, query);
+            let sql = format!(
+                "SELECT count(*) FROM (SELECT 1 FROM runs{where_sql} LIMIT {})",
+                crate::paged::EXACT_TOTAL_MAX + 1
+            );
+            let bounded: i64 =
+                conn.query_row(&sql, rusqlite::params_from_iter(binds.iter()), |r| r.get(0))?;
+            Ok(crate::paged::Count::from_bounded(bounded.max(0) as u64, || {
+                crate::paged::estimate_rows_sync(conn, "runs")
+            }))
         })
         .await
     }

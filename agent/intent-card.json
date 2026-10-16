@@ -1,49 +1,49 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-notes-to-future-self.md",
-  "intent_slug": "mcphost-notes-to-future-self",
-  "root_motivation": "**Who:** the agent at the end of a session that knows something its next self will not. **What:** leave a note where the next reader will trip over it -- pinned to a tool's description in tools/list, on any client, with no extra call.",
-  "user_persona": "An agent that runs host.note.put {text, attach_to: {tool}} once and reads the note on that tool's description in every later session; the same user's second client sees it too.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-count-and-total-semantics.md",
+  "intent_slug": "mcphost-count-and-total-semantics",
+  "root_motivation": "**Who:** the agent on a size budget choosing between paging and host.table.export; the agent asserting \"all 143 runs succeeded\". **What:** a `total` on every page with declared exactness, and a count verb that costs one indexed query. **Why not today:** `Paged` output reserves `total` and emits nothing; `host.table.query` returns rows with no count. **Consequence:** the 10-08 explore session walked 4 pages to decide there were 61 runs, then reported \"about 60\" (completion 0.0).",
+  "user_persona": "An agent that pages host.runs.list(verdict=\"fail\") and reads total: 7 from page 1, never walking to the end.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 4
+    "target": 3
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a live keyed connection to a test server, When `host.note.put {text, attach_to: {tool: \"cleaner\"}}` succeeds, Then the server sent `notifications/tools/list_changed` on that connection and the next `tools/list` describes `cleaner` with the ` — note to self: ` suffix (the falsifier).",
-      "test": "tests/nfs_ac01_put_emits_list_changed_and_suffix.rs"
+      "description": "Given this PRD has landed, When the operator runs the premise check recorded under \"## Premise check (operator)\", Then its result is written into this PRD and a failed premise parks the PRD (Live; evidence: operator premise check — pass, 2026-10-15)",
+      "test": "deferred -- Live: operator-provisioned premise check on prod."
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a 300-char note attached to a tool, When `tools/list` renders, Then the suffix text is exactly 120 chars ending in `…`, cut at a char boundary, and `host.note.list` still returns the full text.",
-      "test": "tests/nfs_ac02_suffix_cut_to_120_chars.rs"
+      "description": "Given 9 999 fixture rows, When `host.table.query(limit=50)` returns page 1, Then `total: 9999` and no `total_estimate`; Given 10 001 rows, Then `total_estimate` is present, `exact: false`, and no `total` key.",
+      "test": "tests/ctot_ac02_page_total_exact_then_estimate.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a tenant at `notes_max`, When `host.note.put` is called, Then `quota_exceeded` with `{limit, used}` and no row is written; Given `attach_to: {tool: \"nope\"}`, Then `not_found`.",
-      "test": "tests/nfs_ac03_quota_and_unknown_tool.rs"
+      "description": "Given `host.runs.list(verdict=\"fail\")` over 60 runs with 7 failures, When page 1 returns, Then `total: 7`.",
+      "test": "tests/ctot_ac03_runs_list_verdict_total.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a note with `ttl_s: 60` and the clock advanced 61 s, When `host.note.list` and `tools/list` run before the sweep, Then neither shows it; When the sweep runs, Then the row is gone.",
-      "test": "tests/nfs_ac04_ttl_expiry.rs"
+      "description": "Given the two fixture tables, When `ctot_ac04_one_counter` compares the page total, `host.table.count` and `host.table.list.rows`, Then all three agree at 9 999 and all three say `exact: false` at 10 001.",
+      "test": "tests/ctot_ac04_one_counter.rs"
     }
   ],
   "scope": [
-    "src/notes.rs: host.note.put/list/delete over the notes/ prefix of tenant_state_kv; the tools/list description suffix.",
-    "src/handler.rs, src/protocol/frames.rs: tools, dispatch, list_changed on a tool-attached put/delete (keyed row allows list_changed).",
-    "src/plans.rs, src/retention.rs, src/db.rs: notes_max plan field; expired-note sweep.",
-    "contracts/, docs/, www/: regenerated tool contract, output schemas, docs."
+    "src/paged.rs: Count { exact, n }, EXACT_TOTAL_MAX, Count::from_bounded, Count::insert_into.",
+    "src/tables.rs: count_filtered_sync, rows_with_total, table_query, runs_list, table_list (bounded counter), table_count (new).",
+    "src/handler.rs: TenantTableBridge::call \"count\" arm, dispatch_control_tool \"host.table.count\" arm.",
+    "contracts/host-tools.v1.json: host.table.count + host_table_count entries; host.table.list exact field."
   ],
   "non_goals": [
-    "Notes attached to runs surfaced in host.runs.get (R6), attached_to in host.resume/welcome_back (R5), pin (R7); shared notebooks across tenants."
+    "Counts on python tool output; materialized counters per table; total for host.table.query with aggregates."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -51,17 +51,25 @@
     "deny_unsafe": false,
     "max_deps": null,
     "msrv": null,
-    "additional": {
-      "engine_form": "mcphost-qjs subprocess in the python bwrap profile; cold_p95_ms measured by jsk_ac01"
-    }
+    "additional": {}
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does the next session repeat a mistake the last one learned from?",
-      "a": "The only write path is remember at signup; nothing pins a note to the tool it is about."
+      "q": "Why did the explore session report 'about 60' runs?",
+      "a": "host.runs.list returned no total on each page, so the agent had to walk all pages to count."
+    },
+    {
+      "why": 2,
+      "q": "Why was there no total?",
+      "a": "The Paged output struct reserved the total field but emitted nothing."
+    },
+    {
+      "why": 3,
+      "q": "Why is an exact count feasible?",
+      "a": "SELECT count(*) LIMIT 10001 is bounded regardless of table size; under 10k rows it is exact and fast."
     }
   ],
-  "created_at": "2026-10-16T00:00:00Z",
+  "created_at": "2026-10-15T00:00:00Z",
   "ambiguities_resolved": []
 }

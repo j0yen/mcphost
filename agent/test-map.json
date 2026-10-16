@@ -1631,6 +1631,12 @@
       "AC3": "tests/hsr_ac03_kind_filter_and_unknown_kind.rs",
       "AC4": "tests/hsr_ac04_response_under_2kb_truncation_marked.rs"
     },
+    "ctot": {
+      "_prd": "PRD-mcphost-count-and-total-semantics.md (test_prefix: ctot)",
+      "AC2": "tests/ctot_ac02_page_total_exact_then_estimate.rs",
+      "AC3": "tests/ctot_ac03_runs_list_verdict_total.rs",
+      "AC4": "tests/ctot_ac04_one_counter.rs"
+    },
     "hsrb": {
       "_prd": "PRD-mcphost-help-search-tool-b.md (test_prefix: hsrb)",
       "AC1": "tests/hsrb_ac01_empty_and_symbol_queries_return_hint.rs",

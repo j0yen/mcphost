@@ -2364,6 +2364,13 @@ fn host_tools_part_04() -> Vec<Tool> {
                         "description": "Only with handle: true -- seconds until the handle \
                             expires; default 3600, maximum 86400.",
                     },
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Return at most this many rows of the result. The \
+                            response carries total (exact when the result has at most 10000 \
+                            rows) or total_estimate with exact: false.",
+                    },
                 }),
                 &["sql"],
             ),
@@ -2411,6 +2418,20 @@ fn host_tools_part_04() -> Vec<Tool> {
             "List this tenant's declared tables, each with its current row count, plus the \
              tenant's whole table-store byte usage.",
             host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "host.table.count",
+            "Count the rows in a declared table, optionally filtered by a WHERE expression. \
+             Returns count (exact integer) when the filtered set has at most 10000 rows; \
+             otherwise returns an estimate from sqlite_stat1 with exact: false. Never fetches \
+             a row. Respects row policies the same way host.table.query does.",
+            host_schema(
+                json!({
+                    "table": {"type": "string", "description": "Name of the declared table to count."},
+                    "where": {"type": "string", "description": "Optional single boolean SQL expression to filter rows (e.g. \"status = 'active'\"). Refused if it contains multiple statements."},
+                }),
+                &["table"],
+            ),
         ),
         Tool::new(
             "host.table.drop",
@@ -6046,6 +6067,7 @@ impl TableBackend for TenantTableBridge {
             "graph" => crate::tables_graph::table_graph(&self.state, &self.tenant, &args).await,
             "join_paths" => crate::tables_graph::join_paths(&self.state, &self.tenant, &args).await,
             "next_questions" => crate::tables_graph::next_questions(&self.state, &self.tenant, &args).await,
+            "count" => tables::table_count(&self.state, &self.tenant, &args).await,
             "handles" => tables::table_handles(&self.state, &self.tenant, &args).await,
             "handle_drop" => tables::table_handle_drop(&self.state, &self.tenant, &args).await,
             other => Err(AppError::InvalidArgs(format!("unknown table op '{other}'"))),
@@ -7179,6 +7201,7 @@ impl McpHostHandler {
             }
             "host.table.charts" => crate::chart::table_charts_list(&self.state, tenant, &args).await,
             "host.table.query_log" => tables::table_query_log(&self.state, tenant, &args).await,
+            "host.table.count" => tables::table_count(&self.state, tenant, &args).await,
             "host.table.handles" => tables::table_handles(&self.state, tenant, &args).await,
             "host.table.handle_drop" => tables::table_handle_drop(&self.state, tenant, &args).await,
             "host.table.handle_export" => crate::export::handle_export(&self.state, tenant, &args).await,

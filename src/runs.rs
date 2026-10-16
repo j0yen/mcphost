@@ -644,6 +644,7 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         include_children,
         verdict,
     };
+    let count = state.db.count_runs_page(tenant.id, query.clone()).await?;
     let mut page = state.db.list_runs_page(tenant.id, query, after, order, limit + 1).await?;
     let next = crate::paged::split_page(&mut page, limit, |r| RunsList::cursor_at(r, order));
     let rows: Vec<RunRow> = page.into_iter().map(|r| r.run).collect();
@@ -677,6 +678,7 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     let mut page_out = serde_json::Map::new();
     page_out.insert(RunsList::KEY.to_string(), Value::Array(runs));
     crate::paged::finish_page(&mut page_out, next.as_ref(), &state.session_bindings, tenant.id);
+    count.insert_into(&mut page_out);
     let mut out = Value::Object(page_out);
     if let Some(fields) = &fields {
         crate::paged::project_page(&mut out, "runs", fields);

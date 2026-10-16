@@ -27,14 +27,18 @@ fn end_of_list_convention(response: &Value) -> Option<&'static str> {
     }
 }
 
-/// A pure list response: exactly one array payload, plus at most a cursor.
+/// A pure list response: exactly one array payload, plus at most a cursor and
+/// the page-count fields (total, total_estimate, exact; PRD-mcphost-count-and-
+/// total-semantics), which are paging metadata, not payload.
 /// Records that merely carry an incidental array (`tags`, `shared_tools`,
 /// `allowlist`) beside scalar fields are not list verbs.
 fn is_pure_list(response: &Value) -> bool {
     let Some(obj) = response.as_object() else {
         return false;
     };
-    let payload = obj.iter().filter(|(k, _)| !matches!(k.as_str(), "cursor" | "next_cursor" | "data"));
+    let payload = obj.iter().filter(|(k, _)| {
+        !matches!(k.as_str(), "cursor" | "next_cursor" | "data" | "total" | "total_estimate" | "exact")
+    });
     let (arrays, others): (Vec<_>, Vec<_>) = payload.partition(|(_, v)| v.is_array());
     arrays.len() == 1 && others.is_empty()
 }

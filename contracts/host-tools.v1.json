@@ -18143,6 +18143,54 @@
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
+      "description": "Count the rows in a declared table, optionally filtered by a WHERE expression. Returns count (exact integer) when the filtered set has at most 10000 rows; otherwise returns an estimate from sqlite_stat1 with exact: false. Never fetches a row. Respects row policies the same way host.table.query does.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "table": {
+            "description": "Name of the declared table to count.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "where": {
+            "description": "Optional single boolean SQL expression to filter rows (e.g. \"status = 'active'\"). Refused if it contains multiple statements.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "table"
+        ],
+        "type": "object"
+      },
+      "name": "host.table.count",
+      "output_schema": {
+        "properties": {
+          "count": {
+            "description": "Row count; exact when exact: true, estimate otherwise.",
+            "type": "integer"
+          },
+          "exact": {
+            "description": "True when count is the precise number of matching rows (at most 10000); false when it is a sqlite_stat1 estimate.",
+            "type": "boolean"
+          },
+          "ms": {
+            "description": "Wall-clock time of the count query in milliseconds.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "exact",
+          "ms"
+        ],
+        "type": "object"
+      },
+      "since": "0.108.6"
+    },
+    {
       "description": "Declare a table in this tenant's SQL table store -- a different store from host.state.*'s key-value namespace and its own tables: use host.state.* for a handful of small values, host.table.* when you want real SQL (joins, aggregates, read-only queries) over rows. columns is {\"column\": \"text\"|\"integer\"|\"real\"| \"timestamp\"|\"boolean\"|\"json\"}; primary_key, if given, must name one of columns's own entries.",
       "input_schema": {
         "additionalProperties": false,
@@ -20081,19 +20129,21 @@
           "tables": {
             "items": {
               "properties": {
+                "exact": {
+                  "type": "boolean"
+                },
                 "name": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
+                  "type": "string"
                 },
                 "rows": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
+                  "type": "integer"
                 }
               },
+              "required": [
+                "name",
+                "rows",
+                "exact"
+              ],
               "type": "object"
             },
             "type": "array"
@@ -20359,6 +20409,11 @@
           "handle": {
             "description": "Materialise the result as a hdl_<id> table instead of returning its rows; returns a dataset-summary.v1. Default false.",
             "type": "boolean"
+          },
+          "limit": {
+            "description": "Return at most this many rows of the result. The response carries total (exact when the result has at most 10000 rows) or total_estimate with exact: false.",
+            "minimum": 1,
+            "type": "integer"
           },
           "sql": {
             "description": "A single read-only SELECT statement (CTEs allowed) over this tenant's own declared tables (or, once materialised, its own hdl_<id> handles).",
@@ -33242,6 +33297,33 @@
       "since": "0.103.1"
     },
     {
+      "alias_of": "host.table.count",
+      "description": "Count the rows in a declared table, optionally filtered by a WHERE expression. Returns count (exact integer) when the filtered set has at most 10000 rows; otherwise returns an estimate from sqlite_stat1 with exact: false. Never fetches a row. Respects row policies the same way host.table.query does.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "table": {
+            "description": "Name of the declared table to count.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "where": {
+            "description": "Optional single boolean SQL expression to filter rows (e.g. \"status = 'active'\"). Refused if it contains multiple statements.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "table"
+        ],
+        "type": "object"
+      },
+      "name": "host_table_count",
+      "since": "0.108.6"
+    },
+    {
       "alias_of": "host.table.create",
       "description": "Declare a table in this tenant's SQL table store -- a different store from host.state.*'s key-value namespace and its own tables: use host.state.* for a handful of small values, host.table.* when you want real SQL (joins, aggregates, read-only queries) over rows. columns is {\"column\": \"text\"|\"integer\"|\"real\"| \"timestamp\"|\"boolean\"|\"json\"}; primary_key, if given, must name one of columns's own entries.",
       "input_schema": {
@@ -33561,6 +33643,11 @@
           "handle": {
             "description": "Materialise the result as a hdl_<id> table instead of returning its rows; returns a dataset-summary.v1. Default false.",
             "type": "boolean"
+          },
+          "limit": {
+            "description": "Return at most this many rows of the result. The response carries total (exact when the result has at most 10000 rows) or total_estimate with exact: false.",
+            "minimum": 1,
+            "type": "integer"
           },
           "sql": {
             "description": "A single read-only SELECT statement (CTEs allowed) over this tenant's own declared tables (or, once materialised, its own hdl_<id> handles).",

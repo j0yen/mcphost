@@ -55,6 +55,71 @@ pub const NEXT_CURSOR_DESCRIPTION: &str =
 pub const TRUNCATED_DESCRIPTION: &str = "true when more rows exist past this page.";
 pub const FIELDS_DESCRIPTION: &str = "Return only these row fields; default all.";
 
+/// PRD-mcphost-count-and-total-semantics R1: a filtered set of at most this
+/// many rows is counted exactly; a larger one gets a labelled estimate.
+pub const EXACT_TOTAL_MAX: u64 = 10_000;
+
+/// R2: the two sentences every page's `total`/`total_estimate` schema
+/// properties (and `llms.txt`) carry, generated from [`EXACT_TOTAL_MAX`].
+pub fn total_description() -> String {
+    format!("Exact row count of the filtered set; present only when the set has at most {EXACT_TOTAL_MAX} rows.")
+}
+pub fn total_estimate_description() -> String {
+    format!(
+        "Estimated row count (exact: false); present instead of total when the set has more than {EXACT_TOTAL_MAX} rows."
+    )
+}
+
+/// The one counter behind a page's `total`, `host.table.count` and
+/// `host.table.list.rows`: `n` is exact iff `exact`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Count {
+    pub exact: bool,
+    pub n: u64,
+}
+
+impl Count {
+    /// `bounded` is `SELECT count(*) FROM (<filtered> LIMIT EXACT_TOTAL_MAX+1)`.
+    /// At most [`EXACT_TOTAL_MAX`] is exact; above it `estimate` supplies `n`.
+    pub fn from_bounded(bounded: u64, estimate: impl FnOnce() -> u64) -> Count {
+        if bounded <= EXACT_TOTAL_MAX {
+            Count { exact: true, n: bounded }
+        } else {
+            Count { exact: false, n: estimate().max(bounded) }
+        }
+    }
+
+    /// `total: n` when exact, else `total_estimate: n, exact: false`; never both.
+    pub fn insert_into(&self, out: &mut Map<String, Value>) {
+        if self.exact {
+            out.insert("total".to_string(), json!(self.n));
+        } else {
+            out.insert("total_estimate".to_string(), json!(self.n));
+            out.insert("exact".to_string(), json!(false));
+        }
+    }
+}
+
+/// Row estimate for `table`: `sqlite_stat1` when `ANALYZE` has run, else
+/// `max(rowid)`.
+pub fn estimate_rows_sync(conn: &rusqlite::Connection, table: &str) -> u64 {
+    let from_stat: Option<i64> = conn
+        .query_row(
+            "SELECT CAST(substr(stat, 1, instr(stat || ' ', ' ') - 1) AS INTEGER) FROM sqlite_stat1 \
+             WHERE tbl = ?1 AND stat IS NOT NULL ORDER BY 1 DESC LIMIT 1",
+            [table],
+            |r| r.get(0),
+        )
+        .ok();
+    if let Some(n) = from_stat.filter(|n| *n > 0) {
+        return n as u64;
+    }
+    let quoted = table.replace('"', "\"\"");
+    conn.query_row(&format!("SELECT COALESCE(max(rowid), 0) FROM \"{quoted}\""), [], |r| r.get::<_, i64>(0))
+        .map(|n| n.max(0) as u64)
+        .unwrap_or(0)
+}
+
 /// The keyset position of one row: `(seq, id)`, minted under one `order`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cursor {
@@ -466,6 +531,9 @@ pub trait Paged {
         m.insert(Self::KEY.into(), json!({"type": "array"}));
         m.insert("next_cursor".into(), json!({"type": "string", "description": NEXT_CURSOR_DESCRIPTION}));
         m.insert("truncated".into(), json!({"type": "boolean", "description": TRUNCATED_DESCRIPTION}));
+        m.insert("total".into(), json!({"type": "integer", "description": total_description()}));
+        m.insert("total_estimate".into(), json!({"type": "integer", "description": total_estimate_description()}));
+        m.insert("exact".into(), json!({"type": "boolean", "description": "false when only total_estimate is given."}));
         m
     }
 }
