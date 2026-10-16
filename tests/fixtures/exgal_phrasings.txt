@@ -1,0 +1,9 @@
+# tag<TAB>phrasing<TAB>intended example name -- one line per use-case tag
+uptime	know when my service is down	uptime-probes
+database	store my data in a database	database-in-a-minute
+docs-qa	answer questions from my docs	docs-qa
+webhook	receive a webhook callback from stripe	webhook-inbox
+chart	get a chart of my expenses	chart-in-a-minute
+memory	give my agents a shared memory	team-memory
+share	share a file with a teammate for a day	file-share
+first-run	publish my first tool and call it	first-run

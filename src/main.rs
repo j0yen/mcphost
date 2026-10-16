@@ -971,7 +971,27 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
                 ExamplesCommand::Index => match mcphost::examples::write_index(&dir, &kinds) {
-                    Ok(n) => println!("examples index: wrote {} ({n} examples)", dir.join(mcphost::examples::INDEX_FILE).display()),
+                    Ok(n) => {
+                        println!("examples index: wrote {} ({n} examples)", dir.join(mcphost::examples::INDEX_FILE).display());
+                        // The llms.txt section and sitemap block are generated from the same
+                        // manifests; `www/` sits next to the examples dir.
+                        let llms = dir.parent().unwrap_or(std::path::Path::new("")).join("www/llms.txt");
+                        let entries = mcphost::examples::collect(&dir, &kinds).unwrap_or_default();
+                        let sitemap = llms.with_file_name("sitemap.xml");
+                        for (path, res) in [
+                            (&llms, mcphost::examples_page::write_llms_section(&llms, &entries)),
+                            (&sitemap, mcphost::examples_page::write_sitemap_section(&sitemap, &entries)),
+                        ] {
+                            match res {
+                                Ok(true) => println!("examples index: updated {}", path.display()),
+                                Ok(false) => {}
+                                Err(e) => {
+                                    eprintln!("examples index: write {}: {e}", path.display());
+                                    std::process::exit(2);
+                                }
+                            }
+                        }
+                    }
                     Err(errs) => {
                         for e in &errs {
                             eprintln!("{e}");

@@ -53,6 +53,7 @@ pub mod errors;
 pub mod example_propose;
 pub mod example_pull;
 pub mod examples;
+pub mod examples_page;
 pub mod export;
 pub mod feedback;
 pub mod import;

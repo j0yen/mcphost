@@ -15,4 +15,17 @@
   <url><loc>https://mcphost.dev/skill.md</loc></url>
   <url><loc>https://mcphost.dev/llms-install.md</loc></url>
   <url><loc>https://mcphost.dev/frames.json</loc></url>
+  <!-- examples begin -->
+  <url><loc>https://mcphost.dev/examples</loc></url>
+  <url><loc>https://mcphost.dev/examples/chart-in-a-minute</loc></url>
+  <url><loc>https://mcphost.dev/examples/database-in-a-minute</loc></url>
+  <url><loc>https://mcphost.dev/examples/docs-qa</loc></url>
+  <url><loc>https://mcphost.dev/examples/file-share</loc></url>
+  <url><loc>https://mcphost.dev/examples/first-run</loc></url>
+  <url><loc>https://mcphost.dev/examples/retrieval</loc></url>
+  <url><loc>https://mcphost.dev/examples/share-a-tool</loc></url>
+  <url><loc>https://mcphost.dev/examples/team-memory</loc></url>
+  <url><loc>https://mcphost.dev/examples/uptime-probes</loc></url>
+  <url><loc>https://mcphost.dev/examples/webhook-inbox</loc></url>
+  <!-- examples end -->
 </urlset>

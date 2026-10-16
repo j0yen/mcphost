@@ -925,6 +925,18 @@ mod exargs_ac04_unsatisfiable_schema_is_refused;
 mod exargs_ac05_publish_dry_run_and_spec_test_run_one_example;
 #[path = "exargs_ac06_depth_limit.rs"]
 mod exargs_ac06_depth_limit;
+#[path = "exgal_ac01_llms_section_resolves_phrasings.rs"]
+mod exgal_ac01_llms_section_resolves_phrasings;
+#[path = "exgal_ac02_examples_page_unproven_cards.rs"]
+mod exgal_ac02_examples_page_unproven_cards;
+#[path = "exgal_ac03_hidden_example_is_absent_everywhere.rs"]
+mod exgal_ac03_hidden_example_is_absent_everywhere;
+#[path = "exgal_ac04_llms_section_drift.rs"]
+mod exgal_ac04_llms_section_drift;
+#[path = "exgal_ac05_filters.rs"]
+mod exgal_ac05_filters;
+#[path = "exgal_ac06_www_check_fetches_the_routes.rs"]
+mod exgal_ac06_www_check_fetches_the_routes;
 #[path = "exmf_ac01_seven_manifests_check_green.rs"]
 mod exmf_ac01_seven_manifests_check_green;
 #[path = "exmf_ac02_bad_manifest_exits_two_index_untouched.rs"]
