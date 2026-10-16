@@ -52,12 +52,103 @@ const EXECUTOR_TICK: Duration = Duration::from_millis(250);
 /// At most one progress write per second per run (P0 requirement 5).
 const PROGRESS_WRITE_MIN_INTERVAL: Duration = Duration::from_millis(1000);
 
-/// One run's cancel-pid slot -- `None` when queued or between sandbox
-/// round trips, `Some(pid)` while a sandboxed subprocess is actually live.
-/// The SAME `Arc` a job's own `CallCtx.cancel_pid` holds, so a pid
-/// `kinds::python` sets mid-call is visible here without any extra
-/// plumbing.
-type CancelPidSlot = Arc<Mutex<Option<i32>>>;
+/// One run's cancel slot -- the SAME `Arc` a job's own `CallCtx.cancel_pid`
+/// holds, so a pid `kinds::python` registers mid-call is visible here
+/// without any extra plumbing. See [`CancelSlot`].
+type CancelPidSlot = Arc<CancelSlot>;
+
+#[derive(Default)]
+struct CancelState {
+    /// `Some(pid)` while a sandboxed subprocess is actually live.
+    pid: Option<i32>,
+    /// `host.runs.cancel` has been asked for this run. Sticky: a sandbox
+    /// that does not exist yet (the run is leased `running` but its child
+    /// is still being set up) is killed the instant it is registered, and so
+    /// is any later one of the same job (a chain's next step).
+    cancel_requested: bool,
+    /// A cancel actually killed a process group.
+    killed: bool,
+}
+
+/// One run's cancel-pid slot -- `pid` is `None` when queued, between
+/// sandbox round trips, or while the sandbox child is still being spawned
+/// (the run row already reads `running` from the moment it is leased).
+/// `host.runs.cancel` and the spawner meet here under one lock, so
+/// whichever comes second does the kill: a cancel that finds a live pid
+/// kills it; a cancel that arrives before the child exists leaves
+/// `cancel_requested` set and [`CancelSlot::set_live`] kills the child as
+/// soon as it is registered.
+#[derive(Default)]
+pub struct CancelSlot {
+    state: Mutex<CancelState>,
+}
+
+fn killpg_sigkill(pid: i32) {
+    // `pid` is a process-group leader `kinds::python` itself set up via
+    // `setsid` (see `sandbox.rs`'s `pre_exec_setup`); killing it is the same
+    // operation `PersistentSandbox::kill` performs.
+    // SAFETY: killpg's only precondition is a valid pid; `pid` is one by construction.
+    unsafe {
+        libc::killpg(pid, libc::SIGKILL);
+    }
+}
+
+impl CancelSlot {
+    fn lock(&self) -> std::sync::MutexGuard<'_, CancelState> {
+        self.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// The pid of the sandbox serving this run right now, if any.
+    pub fn live_pid(&self) -> Option<i32> {
+        self.lock().pid
+    }
+
+    /// Registers a freshly spawned (or just taken warm) sandbox's pid.
+    /// Returns `false` -- after killing that process group itself -- when a
+    /// cancel was requested before the child existed; the caller must then
+    /// stop and not use the sandbox.
+    pub fn set_live(&self, pid: i32) -> bool {
+        let mut st = self.lock();
+        if st.cancel_requested {
+            killpg_sigkill(pid);
+            st.killed = true;
+            return false;
+        }
+        st.pid = Some(pid);
+        true
+    }
+
+    /// The sandbox round trip is over; nothing is live any more.
+    pub fn clear(&self) {
+        self.lock().pid = None;
+    }
+
+    /// Marks the run cancelled. Kills the live sandbox now if there is one
+    /// and returns `true`; otherwise leaves the request for
+    /// [`CancelSlot::set_live`] to honour and returns `false`.
+    fn request_cancel(&self) -> bool {
+        let mut st = self.lock();
+        st.cancel_requested = true;
+        match st.pid {
+            Some(pid) => {
+                killpg_sigkill(pid);
+                st.killed = true;
+                true
+            }
+            None => false,
+        }
+    }
+
+    fn killed(&self) -> bool {
+        self.lock().killed
+    }
+}
+
+/// How long `host.runs.cancel` waits for a run that is leased `running` but
+/// has no sandbox child yet to produce one (and be killed), so `killed`
+/// reports what happened rather than what is merely scheduled. A cancel of a
+/// run that never spawns a sandbox (an `http` job) pays at most this.
+const CANCEL_SPAWN_GRACE: Duration = Duration::from_millis(1500);
 
 /// PRD-mcphost-runs-and-jobs requirement 4 / AC4: the live run-id ->
 /// cancel-pid registry `host.runs.cancel` reaches through. Registered by
@@ -75,7 +166,7 @@ impl RunsRegistry {
     }
 
     fn register(&self, run_id: &str) -> CancelPidSlot {
-        let slot = Arc::new(Mutex::new(None));
+        let slot = Arc::new(CancelSlot::default());
         self.running
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -90,15 +181,40 @@ impl RunsRegistry {
             .remove(run_id);
     }
 
-    /// `host.runs.cancel`'s own kill switch: `Some(pid)` only when this run
-    /// is both currently dispatched AND mid-sandbox-round-trip right now
-    /// (a job between two sandbox calls, or one whose kind has no
-    /// subprocess at all, reports `None` here -- nothing to `killpg`,
-    /// correctly).
-    fn live_pid(&self, run_id: &str) -> Option<i32> {
-        let map = self.running.lock().unwrap_or_else(|e| e.into_inner());
-        let slot = map.get(run_id)?;
-        *slot.lock().unwrap_or_else(|e| e.into_inner())
+    fn slot(&self, run_id: &str) -> Option<CancelPidSlot> {
+        self.running
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(run_id)
+            .cloned()
+    }
+
+    /// `host.runs.cancel`'s own kill switch for a run the ledger had
+    /// `running`. Returns whether a sandbox process group was killed.
+    /// A dispatched run with a live pid is killed at once; one whose child
+    /// does not exist yet (leased, still being set up) is flagged so the
+    /// spawner kills the child the moment it registers, and this waits up to
+    /// [`CANCEL_SPAWN_GRACE`] for that to happen. A run absent from the
+    /// registry is never a bug, only "not currently executing".
+    async fn cancel(&self, run_id: &str) -> bool {
+        let Some(slot) = self.slot(run_id) else {
+            return false;
+        };
+        if slot.request_cancel() {
+            return true;
+        }
+        let deadline = Instant::now() + CANCEL_SPAWN_GRACE;
+        while Instant::now() < deadline {
+            if slot.killed() {
+                return true;
+            }
+            // The job finished (or errored out) without ever spawning one.
+            if self.slot(run_id).is_none() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        slot.killed()
     }
 }
 
@@ -586,7 +702,6 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
 /// though `Kind::call` has no cooperative-cancellation contract of its own.
 pub async fn cancel(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let run_id = arg_str(args, "run_id")?;
-    let pid = state.runs.live_pid(&run_id);
     let before = state
         .db
         .cancel_run(run_id.clone(), tenant.id)
@@ -597,19 +712,7 @@ pub async fn cancel(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
             data: json!({"run_id": run_id}),
         })?;
     let killed = if before.status == "running" {
-        if let Some(pid) = pid {
-            // `pid` is a process-group leader `kinds::python` itself set
-            // up via `setsid` (see `sandbox.rs`'s `pre_exec_setup`); killing
-            // it is the same operation `PersistentSandbox::kill` performs.
-            // SAFETY: killpg's only precondition is a valid pid; `pid` is
-            // SAFETY: one by construction above.
-            unsafe {
-                libc::killpg(pid, libc::SIGKILL);
-            }
-            true
-        } else {
-            false
-        }
+        state.runs.cancel(&run_id).await
     } else {
         false
     };
@@ -1392,14 +1495,10 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
             // AC2: the deadline passed without a response -- kill the
             // sandbox directly (the same pid `host.runs.cancel` would use)
             // rather than leaving it running unattended past its budget.
-            if let Some(pid) = *cancel_pid.lock().unwrap_or_else(|e| e.into_inner()) {
+            if let Some(pid) = cancel_pid.live_pid() {
                 // `pid` is the same process-group leader pid
-                // `host.runs.cancel` kills via `killpg` above.
-                // SAFETY: killpg's only precondition is a valid pid; `pid`
-                // SAFETY: is one by construction above.
-                unsafe {
-                    libc::killpg(pid, libc::SIGKILL);
-                }
+                // `host.runs.cancel` kills via `killpg`.
+                killpg_sigkill(pid);
             }
             JobOutcome::Timeout
         }
@@ -1657,6 +1756,94 @@ pub fn spawn_executor(state: AppState) -> tokio::task::JoinHandle<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A real process-group leader standing in for a sandbox child.
+    fn spawn_group_leader() -> std::process::Child {
+        use std::os::unix::process::CommandExt as _;
+        std::process::Command::new("sleep")
+            .arg("30")
+            .process_group(0)
+            .spawn()
+            .expect("spawn sleep")
+    }
+
+    fn exits_within(child: &mut std::process::Child, limit: Duration) -> bool {
+        let deadline = Instant::now() + limit;
+        while Instant::now() < deadline {
+            if child.try_wait().expect("try_wait").is_some() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        false
+    }
+
+    /// The `runs_ac04` flake: a run is `running` in the ledger from the
+    /// moment it is leased, but its sandbox child does not exist until later.
+    /// A cancel in that window must still end in a kill: the spawner's
+    /// `set_live` kills the child it is registering and refuses to proceed.
+    #[test]
+    fn cancel_before_the_child_exists_kills_it_on_registration() {
+        let slot = CancelSlot::default();
+        assert!(!slot.request_cancel(), "no pid yet: nothing to kill now");
+        assert!(!slot.killed());
+        let mut child = spawn_group_leader();
+        assert!(!slot.set_live(child.id() as i32), "a cancelled run must not register a live sandbox");
+        assert!(slot.killed());
+        assert!(exits_within(&mut child, Duration::from_secs(2)), "the child must be killed");
+        assert_eq!(slot.live_pid(), None);
+    }
+
+    /// The cancel flag is sticky: a later sandbox of the same job (a chain's
+    /// next step) is killed too.
+    #[test]
+    fn cancel_flag_is_sticky_across_sandbox_round_trips() {
+        let slot = CancelSlot::default();
+        let mut first = spawn_group_leader();
+        assert!(slot.set_live(first.id() as i32));
+        assert_eq!(slot.live_pid(), Some(first.id() as i32));
+        slot.clear();
+        assert!(!slot.request_cancel(), "between round trips: nothing live to kill");
+        assert!(slot.set_live(first.id() as i32) == false, "the next registration is killed");
+        assert!(exits_within(&mut first, Duration::from_secs(2)));
+    }
+
+    /// Registry-level reproduction with a delayed spawner: `cancel` lands
+    /// while the run is dispatched but its child is still 150 ms from
+    /// existing. It must report `killed: true`, not `false`.
+    #[tokio::test]
+    async fn registry_cancel_waits_for_a_late_spawn_and_reports_killed() {
+        let reg = RunsRegistry::new();
+        let slot = reg.register("run_late");
+        let mut child = spawn_group_leader();
+        let pid = child.id() as i32;
+        let spawner = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            slot.set_live(pid)
+        });
+        assert!(reg.cancel("run_late").await, "cancel must report the kill the spawner performed");
+        assert!(!spawner.await.expect("spawner task"), "spawner saw the cancel and was told to stop");
+        assert!(exits_within(&mut child, Duration::from_secs(2)));
+        reg.unregister("run_late");
+    }
+
+    /// A dispatched run that finishes without ever spawning a sandbox
+    /// (`http`, `echo`) reports `killed: false` as soon as it unregisters,
+    /// not after the full grace period; an unknown run is `false` at once.
+    #[tokio::test]
+    async fn registry_cancel_without_a_sandbox_reports_not_killed() {
+        let reg = RunsRegistry::new();
+        assert!(!reg.cancel("never_registered").await);
+        let _slot = reg.register("run_http");
+        let reg2 = reg.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            reg2.unregister("run_http");
+        });
+        let started = Instant::now();
+        assert!(!reg.cancel("run_http").await);
+        assert!(started.elapsed() < CANCEL_SPAWN_GRACE, "must stop waiting once the run is gone");
+    }
 
     /// `run_to_json`'s `purged` derivation (AC7): `purged_unix` present ->
     /// `purged: true`, regardless of whether `result_ref` is still set (it

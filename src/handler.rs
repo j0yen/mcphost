@@ -7677,7 +7677,7 @@ impl McpHostHandler {
             // slot `host.runs.cancel` would ever look up.
             run_id: None,
             progress: Arc::new(crate::kinds::NullProgress),
-            cancel_pid: Arc::new(std::sync::Mutex::new(None)),
+            cancel_pid: Arc::new(crate::runs::CancelSlot::default()),
             end_user: end_user.cloned(),
             vault_token,
             // PRD-mcphost-chain-host-steps requirement 1/3: every real
@@ -8218,7 +8218,7 @@ impl McpHostHandler {
             // slot `host.runs.cancel` would ever look up.
             run_id: None,
             progress: Arc::new(crate::kinds::NullProgress),
-            cancel_pid: Arc::new(std::sync::Mutex::new(None)),
+            cancel_pid: Arc::new(crate::runs::CancelSlot::default()),
             // PRD-mcphost-end-user-identity: `host.tool_test` is a dry run
             // against the real upstream, not a metered call -- no end user
             // to thread through.
@@ -8717,7 +8717,7 @@ impl McpHostHandler {
             // slot `host.runs.cancel` would ever look up.
             run_id: None,
             progress: Arc::new(crate::kinds::NullProgress),
-            cancel_pid: Arc::new(std::sync::Mutex::new(None)),
+            cancel_pid: Arc::new(crate::runs::CancelSlot::default()),
             // PRD-mcphost-end-user-identity: `host.bridge_test` is a dry
             // run, not a metered call -- no end user to thread through.
             end_user: None,
@@ -8982,7 +8982,7 @@ impl McpHostHandler {
             chain_fanout_max: usize::MAX,
             run_id: None,
             progress: Arc::new(crate::kinds::NullProgress),
-            cancel_pid: Arc::new(std::sync::Mutex::new(None)),
+            cancel_pid: Arc::new(crate::runs::CancelSlot::default()),
             egress_allowed: tenant.plan == "pro",
             // PRD-mcphost-end-user-identity: `host.spec_test` runs a pre-
             // publish spec, not a real caller's identity-carrying call.
@@ -9425,7 +9425,7 @@ impl McpHostHandler {
             // slot `host.runs.cancel` would ever look up.
             run_id: None,
             progress: Arc::new(crate::kinds::NullProgress),
-            cancel_pid: Arc::new(std::sync::Mutex::new(None)),
+            cancel_pid: Arc::new(crate::runs::CancelSlot::default()),
             // PRD-mcphost-end-user-identity: `host.tool_run`'s own
             // `record_call` (below) carries no end-user columns either --
             // out of this PRD's tested scope (AC1/AC2 exercise the plain
