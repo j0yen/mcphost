@@ -908,6 +908,47 @@ async fn help_page(Path(code): Path<String>) -> Response {
     }
 }
 
+/// `GET /examples` (PRD-mcphost-examples-gallery-page R1): one card per
+/// example in the embedded index, the proof badge read from `example_proofs`.
+async fn examples_index_route(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Response {
+    let filter = crate::examples_page::Filter {
+        use_case: params.get("use_case").cloned(),
+        client: params.get("client").cloned(),
+    };
+    let proofs = crate::examples_page::load_proofs(&state.db).await;
+    let shown = crate::examples_page::visible(crate::examples::EXAMPLES, &proofs);
+    crate::claim::html_response(StatusCode::OK, crate::examples_page::render_index_page(&shown, &proofs, &filter))
+}
+
+/// `GET /examples/{name}` (R2): the example's tools, sources, secrets, first
+/// call and latest proof; an unknown or hidden name is a 404 naming the three
+/// nearest visible examples.
+async fn examples_detail_route(State(state): State<Arc<AppState>>, Path(name): Path<String>) -> Response {
+    let proofs = crate::examples_page::load_proofs(&state.db).await;
+    let shown = crate::examples_page::visible(crate::examples::EXAMPLES, &proofs);
+    match shown.iter().find(|e| e.name == name) {
+        Some(ex) => crate::claim::html_response(StatusCode::OK, crate::examples_page::render_detail_page(ex, proofs.get(ex.name))),
+        None => crate::claim::html_response(StatusCode::NOT_FOUND, crate::examples_page::render_not_found(&name, &shown)),
+    }
+}
+
+/// `GET /examples.json` (R3): the index plus proof status. Hidden examples
+/// are omitted unless `?include_hidden=1` arrives with the admin bearer.
+async fn examples_json_route(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+) -> Response {
+    let proofs = crate::examples_page::load_proofs(&state.db).await;
+    let admin_all = params.get("include_hidden").is_some_and(|v| v == "1") && is_admin_request(&state, &headers);
+    let body = crate::examples_page::examples_json(crate::examples::EXAMPLES, &proofs, admin_all);
+    let cache = if admin_all { "no-store" } else { "max-age=300" };
+    (StatusCode::OK, [("cache-control", cache)], Json(body)).into_response()
+}
+
 /// `GET /help` (requirement 7's `links.help`): an index of every code, so
 /// that link resolves to something readable rather than a 404.
 async fn help_index() -> Response {
@@ -1940,6 +1981,9 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         )
         // requirement 2/4 (AC1, AC2, AC7): request-time-rendered, not
         // embedded -- see `help_page`'s doc comment.
+        .route("/examples", get(examples_index_route))
+        .route("/examples/{name}", get(examples_detail_route))
+        .route("/examples.json", get(examples_json_route))
         .route("/help/{code}", get(help_page))
         .route("/help", get(help_index))
         .route("/support.html", get(support_page))

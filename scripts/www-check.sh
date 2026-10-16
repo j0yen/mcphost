@@ -75,4 +75,65 @@ if [ -f scripts/gen-llms-full.sh ]; then
   scripts/gen-llms-full.sh --check || status=1
 fi
 
+# PRD-mcphost-examples-gallery-page R6: when WWW_CHECK_HOST names a running
+# host (e.g. http://127.0.0.1:8080), fetch /examples, /examples/<first> and
+# /examples.json from it and fail on a non-200 or an empty card list. Unset,
+# there is no host to fetch from and this step is skipped.
+if [ -n "${WWW_CHECK_HOST:-}" ]; then
+  python3 - "$WWW_CHECK_HOST" <<'PY' || status=1
+import json
+import sys
+import urllib.error
+import urllib.request
+
+base = sys.argv[1].rstrip("/")
+
+
+def fetch(path):
+    try:
+        with urllib.request.urlopen(base + path, timeout=15) as r:
+            return r.status, r.read().decode("utf-8")
+    except urllib.error.HTTPError as e:
+        return e.code, ""
+    except OSError as e:
+        print(f"{base}{path}: {e}", file=sys.stderr)
+        return 0, ""
+
+
+failed = False
+code, html = fetch("/examples")
+cards = html.count('class="card"')
+if code != 200:
+    print(f"/examples: HTTP {code}", file=sys.stderr)
+    failed = True
+elif cards == 0:
+    print("/examples: zero cards", file=sys.stderr)
+    failed = True
+
+code, body = fetch("/examples.json")
+first = None
+if code != 200:
+    print(f"/examples.json: HTTP {code}", file=sys.stderr)
+    failed = True
+else:
+    try:
+        rows = json.loads(body)["examples"]
+    except (ValueError, KeyError, TypeError):
+        rows = []
+    if not rows:
+        print("/examples.json: no examples", file=sys.stderr)
+        failed = True
+    else:
+        first = rows[0]["name"]
+
+if first is not None:
+    code, _ = fetch("/examples/" + first)
+    if code != 200:
+        print(f"/examples/{first}: HTTP {code}", file=sys.stderr)
+        failed = True
+
+sys.exit(1 if failed else 0)
+PY
+fi
+
 exit "$status"

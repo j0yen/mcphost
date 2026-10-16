@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-incident-banner-for-agents.md (test_prefix: incban)",
+  "ac_test_map_prd": "PRD-mcphost-examples-gallery-page.md (test_prefix: exgal)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,10 +28,13 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/incban_ac01_error_rate_opens_incident.rs",
-    "AC2": "tests/incban_ac02_tenant_faults_carry_no_incident.rs",
-    "AC3": "tests/incban_ac03_http_500_retry_after_and_incident.rs",
-    "AC4": "tests/incban_ac04_host_fault_codes_drift.rs"
+    "AC1": "tests/exgal_ac01_llms_section_resolves_phrasings.rs",
+    "AC2": "tests/exgal_ac02_examples_page_unproven_cards.rs",
+    "AC3": "tests/exgal_ac03_hidden_example_is_absent_everywhere.rs",
+    "AC4": "tests/exgal_ac04_llms_section_drift.rs",
+    "AC5": "tests/exgal_ac05_filters.rs",
+    "AC6": "tests/exgal_ac06_www_check_fetches_the_routes.rs",
+    "AC7": "deferred -- operator-provisioned: live evidence is curl of https://mcphost.dev/examples.json after deploy."
   },
   "ac_test_map_by_prefix": {
     "ccli": {
@@ -1761,6 +1764,34 @@
       "AC2": "tests/edp_ac02_no_literal_anchors_outside_doc_anchors.rs",
       "AC3": "tests/edp_ac03_help_get_returns_the_section.rs",
       "AC4": "tests/edp_ac04_error_anchor_beside_help_url.rs"
+    },
+    "ctrs": {
+      "_prd": "PRD-mcphost-contract-suite-generated.md (test_prefix: ctrs)",
+      "AC1": "tests/ctrs_ac01_marked_files_live_in_contract_suites.rs",
+      "AC2": "tests/ctrs_ac02_six_files_carry_marker_and_keep_tests.rs",
+      "AC3": "tests/ctrs_ac03_pin_tests_derives_list_from_cargo_toml.rs",
+      "AC4": "tests/ctrs_ac04_contract_lint_names_unmarked_contract_files.rs",
+      "AC5": "tests/ctrs_ac05_contract_suite_check_matches_pin_tests_list.rs",
+      "AC6": "tests/ctrs_ac06_contract_suites_finish_within_budget.rs",
+      "AC7": "tests/ctrs_ac07_ci_gate_runs_contract_suites_before_core_suites.rs",
+      "AC8": "deferred -- operator-provisioned: live evidence is the wm-build journal inner-repo-check row for repo:contract-suite on this PRD's own land."
+    },
+    "exgal": {
+      "_prd": "PRD-mcphost-examples-gallery-page.md (test_prefix: exgal)",
+      "AC1": "tests/exgal_ac01_llms_section_resolves_phrasings.rs",
+      "AC2": "tests/exgal_ac02_examples_page_unproven_cards.rs",
+      "AC3": "tests/exgal_ac03_hidden_example_is_absent_everywhere.rs",
+      "AC4": "tests/exgal_ac04_llms_section_drift.rs",
+      "AC5": "tests/exgal_ac05_filters.rs",
+      "AC6": "tests/exgal_ac06_www_check_fetches_the_routes.rs",
+      "AC7": "deferred -- operator-provisioned: live evidence is curl of https://mcphost.dev/examples.json after deploy."
+    },
+    "incban": {
+      "_prd": "PRD-mcphost-incident-banner-for-agents.md (test_prefix: incban)",
+      "AC1": "tests/incban_ac01_error_rate_opens_incident.rs",
+      "AC2": "tests/incban_ac02_tenant_faults_carry_no_incident.rs",
+      "AC3": "tests/incban_ac03_http_500_retry_after_and_incident.rs",
+      "AC4": "tests/incban_ac04_host_fault_codes_drift.rs"
     }
   }
 }
