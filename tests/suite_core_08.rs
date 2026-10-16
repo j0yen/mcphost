@@ -34,6 +34,34 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "metering_ac01_stripe_customer_id_null_default.rs"]
+mod metering_ac01_stripe_customer_id_null_default;
+#[path = "metering_ac02_webhook_stores_stripe_customer_id.rs"]
+mod metering_ac02_webhook_stores_stripe_customer_id;
+#[path = "metering_ac03_checkout_metered_line_item.rs"]
+mod metering_ac03_checkout_metered_line_item;
+#[path = "metering_ac04_emits_pro_calls_only.rs"]
+mod metering_ac04_emits_pro_calls_only;
+#[path = "metering_ac05_crash_replay.rs"]
+mod metering_ac05_crash_replay;
+#[path = "metering_ac06_failure_leaves_state_unmoved.rs"]
+mod metering_ac06_failure_leaves_state_unmoved;
+#[path = "metering_ac07_batches_cap_at_100.rs"]
+mod metering_ac07_batches_cap_at_100;
+#[path = "metering_ac08_healthz_meter_lag.rs"]
+mod metering_ac08_healthz_meter_lag;
+#[path = "metering_ac09_deploy_units_verify.rs"]
+mod metering_ac09_deploy_units_verify;
+#[path = "metering_ac11_admin_meter_status.rs"]
+mod metering_ac11_admin_meter_status;
+#[path = "metering_ac12_billing_status_stripe_reported_usage.rs"]
+mod metering_ac12_billing_status_stripe_reported_usage;
+#[path = "metering_billing_status_emitted_this_month.rs"]
+mod metering_billing_status_emitted_this_month;
+#[path = "minimal_ac2_admin_full_document.rs"]
+mod minimal_ac2_admin_full_document;
+#[path = "minimal_ac3_wrong_bearer_matches_anonymous.rs"]
+mod minimal_ac3_wrong_bearer_matches_anonymous;
 #[path = "mrefu_ac01_breaking_migration_refuses_with_report.rs"]
 mod mrefu_ac01_breaking_migration_refuses_with_report;
 #[path = "mrefu_ac02_compatible_migration_reports_ok.rs"]
