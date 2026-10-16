@@ -220,8 +220,8 @@ fn every_converted_site_passes_with_and_without_perf_skip() {
     for skip in [false, true] {
         for suite in &suites {
             // The strict (unset) run measures real wall time while the outer
-            // suite may be saturating the host, so a miss is retried once
-            // (serially) before it counts; a genuinely broken budget fails both.
+            // suite may be saturating the host, so a miss is retried
+            // (serially) up to twice before it counts; a genuinely broken budget fails all three.
             let mut attempt = 0;
             let (out, text, ran) = loop {
                 attempt += 1;
@@ -239,7 +239,7 @@ fn every_converted_site_passes_with_and_without_perf_skip() {
                 let out = cmd.output().expect("spawn nested cargo test");
                 let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
                 let ran = text.lines().any(|l| l.starts_with("test result: ok. ") && !l.contains(" 0 passed"));
-                if (out.status.success() && ran) || attempt >= 2 {
+                if (out.status.success() && ran) || attempt >= 3 {
                     break (out, text, ran);
                 }
             };

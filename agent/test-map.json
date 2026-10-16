@@ -785,6 +785,9 @@
       "AC2": "tests/runenvelope_ac2_no_declared_outputs_raw_payload.rs",
       "AC3": "tests/runenvelope_ac3_descriptor_and_decision_table_name_envelope.rs",
       "AC4": "tests/runenvelope_ac4_no_calls_row_with_payload.rs",
+      "AC2": "tests/hdnext_ac02_runner_envelope_error_carries_keys.rs",
+      "AC3": "tests/hdnext_ac03_envelope_keys_drift.rs",
+      "AC4": "tests/hdnext_ac04_doctor_group_names_envelope_keys.rs",
       "AC5": "deferred -- no branch-local test possible; version bump + CHANGELOG.md prepend happen at worktree-extend.sh integrate time, not in this branch's worktree. See PRD frontmatter mock_justifications."
     },
     "runsubject": {
@@ -1768,6 +1771,11 @@
       "AC2": "tests/incban_ac02_tenant_faults_carry_no_incident.rs",
       "AC3": "tests/incban_ac03_http_500_retry_after_and_incident.rs",
       "AC4": "tests/incban_ac04_host_fault_codes_drift.rs"
+    },
+    "hdnext": {
+      "_prd": "PRD-mcphost-host-doctor-next-names-envelope-key.md (test_prefix: hdnext)",
+      "AC1": "tests/hdnext_ac01_next_names_envelope_keys.rs",
+      "AC5": "deferred -- operator-provisioned: Live AC against prod after deploy."
     }
   }
 }

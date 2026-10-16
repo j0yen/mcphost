@@ -48,7 +48,7 @@ fn query_help_documents_both_shapes_and_the_handle_variant_has_its_own_error() {
     let mut script = runner_script_module_prelude().to_string();
     script.push_str(
         "\nm = sys.modules['mcphost.table']\nprint('DOC ' + json.dumps(m.query.__doc__))\n\
-         env = _Envelope({'handle': 'h'}, 'x')\n\
+         env = _Envelope({'handle': 'h'}, 'x', 'mcphost.table.query')\n\
          import mcphost\n",
     );
     let mut child = Command::new("python3")

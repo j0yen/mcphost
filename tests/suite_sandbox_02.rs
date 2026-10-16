@@ -182,6 +182,10 @@ mod firstpub_ac07_llms_txt_first_run_executes;
 mod gsigb_ac03_wedged_child_in_pool_signal;
 #[path = "handle_ac09_python_sandbox_materialize_then_query.rs"]
 mod handle_ac09_python_sandbox_materialize_then_query;
+#[path = "hdnext_ac02_runner_envelope_error_carries_keys.rs"]
+mod hdnext_ac02_runner_envelope_error_carries_keys;
+#[path = "hdnext_ac03_envelope_keys_drift.rs"]
+mod hdnext_ac03_envelope_keys_drift;
 #[path = "hidxb_ac03_delete_list_and_sandbox_status.rs"]
 mod hidxb_ac03_delete_list_and_sandbox_status;
 #[path = "hostdoc_ac02_error_summary_has_exception_line_and_source.rs"]

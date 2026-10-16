@@ -1149,6 +1149,10 @@ mod handoff_ac06_errors_never_echo_token_or_key;
 mod handoff_ac07_docs_recommend_handoff_flow;
 #[path = "handoff_ac08_whoami_reports_key_age_and_rotation.rs"]
 mod handoff_ac08_whoami_reports_key_age_and_rotation;
+#[path = "hdnext_ac01_next_names_envelope_keys.rs"]
+mod hdnext_ac01_next_names_envelope_keys;
+#[path = "hdnext_ac04_doctor_group_names_envelope_keys.rs"]
+mod hdnext_ac04_doctor_group_names_envelope_keys;
 #[path = "heal_ac01_action_set_single_source.rs"]
 mod heal_ac01_action_set_single_source;
 #[path = "heal_ac03_rate_limit_per_hour.rs"]
