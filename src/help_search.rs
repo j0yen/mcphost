@@ -299,7 +299,15 @@ pub struct HelpIndex {
 
 impl HelpIndex {
     pub fn build(kinds: &KindRegistry) -> Self {
-        let mut chunks = doc_chunks();
+        Self::build_from_docs(HELP_DOCS, kinds)
+    }
+
+    /// An index over `docs` (`(repo-relative path, markdown)` pairs, as in
+    /// [`HELP_DOCS`]) plus the tool descriptions. `tests/hsr_ac01_*` builds
+    /// one over a frozen copy of the docs so its top-3 score cannot move when
+    /// a branch edits `docs/`.
+    pub fn build_from_docs(docs: &[(&str, &str)], kinds: &KindRegistry) -> Self {
+        let mut chunks: Vec<Chunk> = docs.iter().flat_map(|(path, text)| chunk_markdown(path, text)).collect();
         chunks.extend(tool_chunks(kinds));
         let conn = rusqlite::Connection::open_in_memory().expect("in-memory sqlite");
         conn.execute_batch("CREATE VIRTUAL TABLE h USING fts5(title, body, tokenize = 'porter unicode61')")
@@ -328,13 +336,18 @@ impl HelpIndex {
         &self.version
     }
 
+    /// Whether some chunk carries `anchor` (`<path>#<slug>` or `tool:<name>`).
+    pub fn has_anchor(&self, anchor: &str) -> bool {
+        self.chunks.iter().any(|c| c.anchor == anchor)
+    }
+
     /// Ranked, de-duplicated (one per anchor) chunk indexes with their
     /// scores (higher is better), best first.
     fn ranked(&self, q: &str) -> Vec<(usize, f64)> {
         let Some(m) = match_expr(q) else { return Vec::new() };
         let conn = self.conn.lock().expect("help index lock");
         let Ok(mut stmt) = conn
-            .prepare("SELECT rowid, bm25(h, 3.0, 1.0) FROM h WHERE h MATCH ?1 ORDER BY bm25(h, 3.0, 1.0) LIMIT ?2")
+            .prepare("SELECT rowid, bm25(h, 3.0, 1.0) FROM h WHERE h MATCH ?1 ORDER BY bm25(h, 3.0, 1.0), rowid LIMIT ?2")
         else {
             return Vec::new();
         };
@@ -344,7 +357,17 @@ impl HelpIndex {
             .unwrap_or_default();
         let mut rows: Vec<(usize, f64)> =
             rows.into_iter().map(|(i, s)| (i, s * authority(&self.chunks[i].anchor))).collect();
-        rows.sort_by(|a, b| b.1.total_cmp(&a.1));
+        // A total order: equal scores (the same section mirrored in the
+        // README and `www/llms.txt`, or `tool:host.x.y` / `tool:host.x_y`)
+        // fall to the canonical page, then the anchor, then chunk order, so
+        // the ranking never depends on the order SQLite returns ties in.
+        rows.sort_by(|a, b| {
+            let (ca, cb) = (&self.chunks[a.0], &self.chunks[b.0]);
+            b.1.total_cmp(&a.1)
+                .then_with(|| mirror_tier(&ca.anchor).cmp(&mirror_tier(&cb.anchor)))
+                .then_with(|| ca.anchor.cmp(&cb.anchor))
+                .then_with(|| a.0.cmp(&b.0))
+        });
         let mut seen = std::collections::HashSet::new();
         rows.into_iter().filter(|(i, _)| seen.insert(self.chunks[*i].anchor.clone())).collect()
     }
@@ -444,6 +467,18 @@ fn authority(anchor: &str) -> f64 {
         0.4
     } else {
         1.0
+    }
+}
+
+/// Tie-break between pages that restate one another: `docs/` (and tools) is
+/// canonical, the README and `www/llms.txt` summarise it. Lower sorts first.
+fn mirror_tier(anchor: &str) -> u8 {
+    if anchor.starts_with("README.md#") {
+        1
+    } else if anchor.starts_with("www/") {
+        2
+    } else {
+        0
     }
 }
 

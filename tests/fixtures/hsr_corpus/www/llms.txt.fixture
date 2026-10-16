@@ -1,0 +1,1514 @@
+# mcphost
+
+Agent skill: fetch [/skill.md](/skill.md) before you call anything -- it
+walks you through signup in handoff mode, publishing one tool, setting a
+schedule, and relaying the claim link to your human.
+
+Installing mcphost from inside an MCP client: fetch
+[https://mcphost.dev/llms-install.md](https://mcphost.dev/llms-install.md) -- it lists the exact
+install step for every supported client; apply yours, then make the first call.
+
+<!-- agent-quickstart:start -->
+Ship an MCP tool, not a deployment project.
+
+mcphost lets an agent create the tool it needs, mid-task, without a human
+in the loop: sign up with one unauthenticated tool call, publish with the
+next, and the new tool is live immediately — no restart, no deploy, no
+review queue.
+
+**Measured** (panel run `0.26.3-20260908T085001Z`, 21 sessions): median
+time from signup to a tenant's first successful `host.tool.publish` is
+**30.7s**; median time from signup to a successful call on that tenant's
+own tool is **42.4s**.
+<!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
+
+## Quickstart for agents
+
+1. Connect to `https://mcphost.dev/mcp` -- paste that URL into your MCP
+   client's config. No signup call, no credentials, nothing to paste into
+   a header.
+2. Make your first call. `host.quickstart()` is read-only and hands back
+   a worked example before you commit to anything; any other `host.*`/
+   `billing.*` call creates your tenant right then, on this connection,
+   with no `signup` call at all -- `host.whoami()` is the simplest:
+   ```
+   host.whoami()
+   ```
+3. Read `onboarding.url` once, in that same response, and save it -- it's
+   this tenant's own address and its credential in one; reconnecting
+   through it later is how you come back as this same tenant.
+   `onboarding.memory_hint` names where agents conventionally keep it.
+   Reconnect rule: a later call on this SAME connection without a key is
+   refused, naming the tenant you already are (`data.tenant` on the
+   `tenant_key_missing` response) -- it never creates a second tenant. Use
+   `onboarding.url` for every call from here on.
+<!-- domain-hint:start -->
+mcphost.dev is the server's address; the Python module is 'import mcphost' (mcphost.state, mcphost.table, mcphost.docs, mcphost.index, mcphost.blob, mcphost.lineage, mcphost.drift, mcphost.channel, mcphost.msg, mcphost.elicit).
+<!-- domain-hint:end -->
+4. Publish a tool, reconnected through `onboarding.url`. `host.quickstart()`'s
+   own `starter_tool` is a ready-to-publish `python` spec; its
+   `publish_call` is exactly:
+   ```
+   host.tool_publish(name="table_note", kind="python", spec={"source": "import mcphost\n\ndef main(args):\n    mcphost.table.create(name='quickstart_notes', columns={'note': 'text'})\n    mcphost.table.append(table='quickstart_notes', rows=[{'note': args.get('note', '')}])\n    return {'appended': 1}\n"})
+   ```
+   Two real kinds: submit code (`python` -- source required,
+   `args_schema`/`requirements` inferred if omitted) or wrap an API you
+   already use (`http` -- url and method required, `args_schema` inferred
+   if omitted). `echo` is a stub for testing the pipes, not a real tool.
+   Before publishing anything, dry-run with `host.tool_publish({...,
+   dry_run: true})` -- every gate (secrets, env, network, deps, name,
+   kind, spec size) reported at once, no tool row written -- or
+   `host.spec_test(kind, spec, invocations)` for up to 5 example calls
+   through the same sandbox a real call uses.
+5. Call it -- `host.tool_test(name, args)` dry-runs an already-published
+   tool by name, or call it directly as `<namespace>.<tool_name>` (its
+   own entry in your `tools/list`):
+   ```
+   host.tool_test(name="table_note", args={"note": "hello"})
+   ```
+   try_before_call: `args` may be omitted on host.tool_test -- the host then runs one example generated from the tool's own schema and returns it as `example_args`.
+6. Share it with a teammate: `host.invite.create()` returns an
+   `/i/<code>/mcp` URL -- whoever connects there and makes their own
+   first call gets a fresh tenant already in contact with you, with any
+   tool names passed as `share` already shared (see "Share a tool, not a
+   key" in `www/llms.txt` for sharing one tool while keeping its own key
+   hidden):
+   ```
+   host.invite.create()
+   ```
+7. Relay the claim link to your human: hand them `onboarding.url` and the
+   sentence "Claim this backend so it belongs to you: `<url>`." Never
+   print the personal URL or the key anywhere but that one handoff.
+
+Also useful once you're past the first call: `billing.plans()`/
+`billing.status()` for plan and quota; `host.tool.list()`/
+`host.tool.logs(name)`/`host.tool.remove(name)`/`host.usage(window)` to
+inspect and manage; `host.secret.set`/`host.secret.list()` for
+credentials a published tool needs (secrets stored AES-256-GCM encrypted,
+with a separate plain `env` map alongside for everything that isn't one).
+Pass `expose_spec: true` on `host.tool.share` (or `share` names on
+`host.invite.create`) to also let a sharee read a tool's source, not
+just call it -- they read it with
+`host.tool.spec_shared(tool="<owner_namespace>.<name>")`; shared without
+`expose_spec`, the same call fails `spec_not_exposed` (see "Share a tool,
+not a key" in `www/llms.txt` for the full worked example).
+
+<!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
+
+## Explicit signup (clients that cannot keep a session)
+
+A client that can't hold a persistent connection across calls -- so there
+is no session for mcphost to implicitly bind a tenant to -- signs up
+directly instead of relying on its first call to create one:
+
+1. Connect to the endpoint and call `tools/list` with no credentials. The
+   only tool offered is `signup`.
+2. Call `signup(name)`. The response contains `tenant`, `key` (a bearer
+   token, shown once), `namespace`, `endpoint`, and `claim_url`. Signup is
+   rate-limited to 5 per IP per hour. Pass `source` (e.g.
+   `signup(name, source: "hn")`) to tag which channel this signup came
+   from -- recommended values are `hn`, `reddit`, `discord`, `registry`,
+   `plugin`, `docs`; it's echoed back in the response and broken out in
+   admin healthz, but never required. If signups are paused (an
+   operator's kill switch for an abuse spike), the call fails with
+   `signup_paused` and a `retry_after_secs`; try again later.
+   Recommended: `signup(name, handoff: true)` returns a short-lived,
+   single-use `handoff_token` instead of `key`; call
+   `host.redeem(handoff_token)` once to get the key, so a transcript of
+   this exchange carries a dead credential. `host.key.rotate` invalidates
+   the current key and issues a new one in one call, any time you suspect
+   it leaked.
+3. Pass `key` as the `tenant_key` argument on every `host.*` call from
+   here on -- e.g. `host.tool.publish`, `host.tool.call`. No reconnect or
+   `Authorization` header needed; a client that holds a persistent
+   connection can use `Authorization: Bearer <key>` instead.
+
+## Leaving
+
+`host.self.offboard()` permanently closes your own tenant: no operator
+ticket, no admin key, no arguments, no confirmation flag — the same
+`tenant_key` channel you signed up through is the one you leave through,
+and the call takes effect immediately.
+
+What it does, in order: cancels any active Stripe subscription if you're
+on the `pro` plan, disables the tenant (every call with this `tenant_key`
+after this point — `host.*` or `billing.*` — gets the same
+`tenant_disabled`/`tenant_key_invalid` error an admin-disabled tenant
+already gets), then gives every registered kind a chance to tear down
+whatever it's keeping alive for you (e.g. a `python` sandbox's warm pool).
+
+What it does NOT do: scrub your data. `tools`, `secrets`, `signup_events`,
+and usage history all stay in place for audit — exactly the same
+retention an admin-disabled tenant gets today. If you want a copy of what
+you built before leaving, run `host.export()` first; `self_offboard`
+doesn't bundle one for you.
+
+Irreversibility: calling it twice returns `{disabled: true,
+already_offboarded: true}`, not an error or a crash —
+but there is no self-service undo. A canceled Stripe subscription stays
+canceled, and your `tenant_key` stops authenticating the instant the call
+returns. (An operator can flip the underlying tenant row back on with
+`admin.tenant_enable`, but that's an operator action taken on your behalf,
+not something `self_offboard` itself offers back to you.)
+
+## Getting help
+
+Every error payload carries `code`, a clean `message`, a `request_id`, and
+(for every code in the table below) a `help_url` pointing at a generated
+`/help/<code>` page -- meaning, likely cause, fix, no internal text.
+`host.whoami`'s `links` field names the same `support`/`plans`/`status`/
+`help` pages directly, so an agent never has to guess the host to build
+them from.
+
+While an incident is open, every host-fault error (`storage`, `internal`,
+`exec_unavailable`, `timeout`, `rate_limited_host`) also carries
+`data.incident {id, since, status_url, impact, retry_after_s}`: the failure
+is the host's, not yours, so wait `retry_after_s`, then retry once, and
+report `status_url` instead of repeating the call. Errors that are your
+own (`tool_exception`, `args_invalid`) never carry it. A 5xx HTTP
+response carries the same seconds in `Retry-After`.
+
+<!-- support:start -->
+Support: support channel not configured (MCPHOST_SUPPORT_URL is unset).
+<!-- support:end -->
+
+## Tell the host what you needed
+
+`host.feedback.send {kind, text, context?}` carries a sentence to the host's humans, and works before signup. Kinds: `missing_tool`, `wrong_error`, `docs_gap`, `bug`, `praise`. `text` is 1 to 2048 bytes (longer is `invalid_params` with `max_bytes`); `context` is an optional object up to 1 KB. It returns `feedback_id`. Anonymous senders get 5 per hour per IP, keyed tenants 60 per hour; over the cap is `rate_limited` with `retry_after_s`. `host.feedback.list` returns your own rows.
+
+## Hand work to another agent
+
+`host.task.post {to, payload, deadline_s, dedupe_key?}` sends a task to one agent and returns `task_id`, `thread_id` and `status`. The recipient's `host.msg.wait` returns it with `data.task.task_id`; it calls `host.task.claim {task_id}`, then `host.task.complete {task_id, result}`, and your own `host.msg.wait` returns a message whose `data.task` carries the status and the result. `host.task.get {task_id}` reads one task. A task nobody finishes by its `deadline_s` goes `dead`, a `task.dead` message from `host` lands in the thread, and `host.task.dead_letters` lists it with `reason: "deadline"`. Statuses: `posted`, `claimed`, `done`, `dead`, `cancelled`. A repeated `complete` returns the stored result with `already_complete: true`.
+
+## Contributing: naming a new `host.*` tool
+
+One rule now, written down and enforced by CI: `host.<family>.<verb>` --
+see [`docs/tool-naming.md`](tool-naming.md) for the rule, its exceptions
+(`signup`/`billing.*`, and singleton nouns like `host.whoami`), and how
+aliases work. `host.tool.call`/`host.tool.share`/`host.tool.list`/
+`host.tool.remove`/`host.tool.logs`/`host.tool.rollback`/`host.tool.diff`/
+`host.tool.history`/`host.tool.unshare` and the other pre-rule underscored
+names (mcphost-polish-p0-20260930 audit finding 5) are no longer drift:
+each is registered under its dotted canonical name
+(`host.tool.call`/`host.tool.share`/...) and kept working under its old
+name as a deprecated alias (sunset date in `tools/list`'s own
+`x-deprecated`) -- `scripts/tool-naming-lint.sh` fails CI on any *new*
+name that doesn't follow the rule.
+
+## Contributing: routing a new top-level path
+
+Adding a new top-level directory or file to this repo (like `www/`,
+`deploy/`, or `.buildloop/`) needs a matching `[[lane]]` entry in
+`agent/proof-lanes.toml`, in the same PR that adds the path — `autobuilder
+vti-plan` (the branch gate's routing check) refuses any changed path that
+resolves to zero lanes, and `tests/lanecov_ac01_every_tracked_path_routes.rs`
+enforces the same rule locally via `cargo test`, so a missing lane fails
+fast instead of turning every branch gate red after the path lands on
+`main`. Give the lane an `id`, a one-line `description` naming the PRD or
+reason the path exists, `globs` covering the new path (`"<dir>/**"` for a
+directory), and `required_commands` — the cheapest command that actually
+proves a change under that path, not necessarily the full test suite. The
+`loop-config` lane (routing `.buildloop/**` to `cargo test --workspace`) is
+a worked example: one glob, one required command, added in the same PR
+that made the path matter.
+
+## Docs Q&A in a minute
+
+Turn a folder of markdown into a checkable Q&A tool, end to end, in one
+script:
+
+1. `signup(name)` — one fresh tenant.
+2. `host.docs.put(name, content)` — once per document (this recipe's own
+   corpus: 8 documents, ~22 KiB total, well under the 2 MiB per-document
+   cap).
+3. `host.docs.status()` — poll until `index.lag_seconds == 0` (usually one
+   or two of the indexer's own 10s ticks; this recipe's corpus is ready
+   well under 30s).
+4. `host.tool_publish(name="ask_docs", kind="python", spec={"source": ...})`
+   — the one published tool. Its `main` calls `mcphost.docs.search(query,
+   k)` over the same zero-network sandbox loopback `mcphost.docs.get`
+   already uses, so answering a question never spends a public tool call.
+5. `<namespace>.ask_docs(query="...")` — ask it. Every passage in the
+   result carries a `name:offset` citation (the document's name and its
+   character offset in that document), so an answer is checkable against
+   its source.
+
+Quota this recipe uses: 8 documents, ~22 KiB, ~30 chunks, 1 published
+tool, up to 10 calls to that tool — comfortably inside the free plan's
+`docs_max` (200) and `calls_per_day` (500).
+
+`examples/docs-qa/docs-qa.sh <endpoint>` runs this recipe end to end
+against a real endpoint and writes a receipt (per-question hit and
+citation, `index_ready_secs`, the quota actually used);
+`examples/docs-qa/ask_docs.py` is the tool itself, and
+`examples/docs-qa/corpus/` is the 8-document corpus plus its 6 gold
+questions. `docs-qa.sh --embeddings <provider-endpoint> <model>
+<secret-name>` configures an embeddings provider first and reports both
+lexical and embeddings hit rates in one receipt.
+<!-- agent-quickstart:end -->
+
+mcphost implements the 2026-07-28 streamable-HTTP MCP specification, stateless, at a single endpoint: `POST /mcp`. Health is unauthenticated at `GET /healthz`.
+
+## First run: plugin walk-through
+
+The Claude Code plugin's `/mcphost` skill and this section walk the same
+first-run story, so an agent reading only this file (no plugin installed)
+reaches the same outcome.
+
+### Signup
+
+Call `signup(name, handoff: true, source: "plugin")` against
+`https://mcphost.dev/mcp`. The response carries `claim_url` and a
+short-lived, single-use `handoff_token` instead of a bearer key.
+
+### Redeem
+
+Call `host.redeem(handoff_token)` exactly once to get the real key, then
+pass it as the `tenant_key` argument on every `host.*` call -- no
+reconnect needed.
+
+### The sandbox API
+
+<!-- mcphost-sandbox-api:start -->
+A python tool's own code does `import mcphost` to reach this tenant's data without a second tool call:
+
+- `mcphost.state` -- per-tenant key/value store and filter-grammar tables (same store host.state.* uses)
+- `mcphost.table` -- per-tenant SQL tables (same store host.table.* uses)
+- `mcphost.docs` -- read or search this tenant's stored documents (same store host.docs.* uses)
+- `mcphost.index` -- create, poll and list named indexes (same verbs host.index.* uses)
+- `mcphost.blob` -- read or store files of any type under this tenant (same store host.blob.* uses)
+- `mcphost.lineage` -- trace an artifact's lineage or estimate a change's blast radius (same report host.lineage.* uses)
+- `mcphost.drift` -- list drift review items (same list host.drift.reviews returns)
+- `mcphost.channel` -- post to or read a tenant channel (same store host.channel.* uses)
+- `mcphost.msg` -- send or read direct messages (same store host.msg.* uses)
+- `mcphost.elicit` -- ask the user a typed question mid-call: the client's form when it can, the ask-user link otherwise
+<!-- mcphost-sandbox-api:end -->
+
+### Publish
+
+The documented first publish is a real `python` tool, not a stub --
+`host.quickstart`'s own `starter_tool` hands back this exact spec plus the
+`publish_call`/`test_call` below:
+
+```
+host.tool_publish(name="table_note", kind="python", spec={"source": "import mcphost\n\nNOTES_TABLE = \"quickstart_notes\"\n\n\ndef main(args):\n    note = args.get(\"note\", \"\")\n    if not isinstance(note, str) or not note:\n        return {\"error\": \"note must be a non-empty string\"}\n    try:\n        mcphost.table.create(name=NOTES_TABLE, columns={\"note\": \"text\"})\n    except mcphost.table.TableError as e:\n        if e.code != \"table_already_exists\":\n            raise\n    result = mcphost.table.append(table=NOTES_TABLE, rows=[{\"note\": note}])\n    return {\"appended\": result[\"appended\"], \"table\": NOTES_TABLE}\n"})
+```
+
+### Test
+
+```
+host.tool_test(name="table_note", args={"note": "hello"})
+```
+
+Returns `result.appended == 1` and `result.table == "quickstart_notes"` --
+a real write through the sandbox API (`import mcphost`, `mcphost.table`),
+not an echo of the input.
+
+### Schedule
+
+```
+host.trigger.set(tool="table_note", kind="schedule", schedule="0 * * * *")
+```
+
+Triggers (schedule, event, message, webhook) are set with
+`host.trigger.set(tool, kind=...)`, not a tool kind -- see
+`host.trigger.set`.
+
+### Claim
+
+Relay this sentence to your human, verbatim except for the URL itself:
+"Claim this backend so it belongs to you: `<claim_url>` (link expires in
+7 days)." Never print the key -- it stays inside your own tool calls
+only.
+
+Runnable end-to-end proof: `examples/first-run/proof.sh`.
+
+## Install in your client
+
+One line per client; the same table `/connect` and `host.quickstart` render.
+
+<!-- clients:start -->
+<!-- install-links:start -->
+**Claude Code**
+
+```
+claude mcp add --transport http mcphost https://mcphost.dev/mcp
+```
+
+Docs: <https://code.claude.com/docs/en/mcp> (checked 2026-10-09)
+
+**Cursor**
+
+[Add to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=mcphost&config=eyJ1cmwiOiJodHRwczovL21jcGhvc3QuZGV2L21jcCJ9), or add `https://mcphost.dev/mcp` to your MCP config directly.
+
+Docs: <https://docs.cursor.com/en/tools/mcp> (checked 2026-10-09)
+
+**VS Code**
+
+[Add to VS Code](vscode:mcp/install?%7B%22name%22%3A%22mcphost%22%2C%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fmcphost%2Edev%2Fmcp%22%7D), or add `https://mcphost.dev/mcp` to your MCP config directly.
+
+Docs: <https://code.visualstudio.com/api/extension-guides/ai/mcp> (checked 2026-10-09)
+
+**Claude.ai**
+
+1. Open Settings, then Connectors, then Add custom connector.
+2. Name: mcphost
+3. Remote MCP server URL: https://mcphost.dev/login/mcp
+4. Save, then enable the connector in a chat to connect.
+
+Docs: <https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp> (checked 2026-10-09)
+
+**ChatGPT**
+
+1. Open ChatGPT, then Plugins, then Add.
+2. Choose Create custom MCP server.
+3. Name: mcphost
+4. MCP server URL: https://mcphost.dev/login/mcp
+5. Choose OAuth, then Create. On the consent page press Create a new workspace.
+
+Docs: <https://platform.openai.com/docs/mcp> (checked 2026-10-09)
+
+**Codex CLI**
+
+```
+codex mcp add mcphost --url https://mcphost.dev/mcp
+```
+
+Docs: <https://developers.openai.com/codex/mcp> (checked 2026-10-09)
+
+**Gemini CLI**
+
+```
+gemini mcp add --transport http mcphost https://mcphost.dev/mcp
+```
+
+Docs: <https://geminicli.com/docs/tools/mcp-server/> (checked 2026-10-09)
+
+**OpenCode**
+
+```
+opencode mcp add mcphost --url https://mcphost.dev/mcp
+```
+
+Docs: <https://opencode.ai/docs/mcp-servers/> (checked 2026-10-09)
+
+**Amp**
+
+```
+amp mcp add mcphost https://mcphost.dev/mcp
+```
+
+Docs: <https://ampcode.com/manual#mcp> (checked 2026-10-09)
+
+**Goose**
+
+1. In a Goose session, type /extension.
+2. Choose Add Remote Extension (Streamable HTTP).
+3. Name: mcphost
+4. Endpoint URL: https://mcphost.dev/mcp
+
+Docs: <https://goose-docs.ai/docs/getting-started/using-extensions/> (checked 2026-10-09)
+
+**Warp**
+
+1. In a Warp agent session, type /agent-add-mcp.
+2. Paste this server config: {"mcphost":{"url":"https://mcphost.dev/mcp"}}
+3. Save; Warp starts the server and lists its tools.
+
+Docs: <https://docs.warp.dev/agents/capabilities/mcp/> (checked 2026-10-09)
+
+**Windsurf**
+
+```json
+{
+  "mcpServers": {
+    "mcphost": {
+      "url": "https://mcphost.dev/mcp"
+    }
+  }
+}
+```
+
+Docs: <https://docs.windsurf.com/windsurf/cascade/mcp> (checked 2026-10-09)
+
+**Cline / Roo**
+
+```json
+{
+  "mcpServers": {
+    "mcphost": {
+      "type": "streamableHttp",
+      "url": "https://mcphost.dev/mcp"
+    }
+  }
+}
+```
+
+Docs: <https://docs.cline.bot/mcp/configuring-mcp-servers> (checked 2026-10-09)
+<!-- install-links:end -->
+<!-- clients:end -->
+
+## Connect over OAuth, no pasted key
+
+An OAuth-only client (claude.ai custom connectors, ChatGPT connectors) can
+connect to `https://mcphost.dev/mcp` without ever seeing a bearer key:
+mcphost hosts its own OAuth 2.1 authorization server (PKCE, S256 only).
+
+- **claude.ai custom connector**: add `https://mcphost.dev/mcp` as the
+  connector URL; claude.ai discovers the metadata, registers itself, and
+  opens mcphost's consent page.
+- **Claude Code**: `claude mcp add --transport http mcphost https://mcphost.dev/mcp`
+  drives the same discovery -> register -> authorize -> token exchange
+  automatically.
+- **Cursor**: add an MCP server (transport `http`) pointing at
+  `https://mcphost.dev/mcp`; Cursor follows the same OAuth discovery.
+
+The consent page names the connecting client and the resource it wants,
+then asks you to prove you own the tenant with exactly one of: your
+tenant key, or a claim code from the claim email. Full walkthrough:
+`docs/oauth-connect.md`.
+
+By default any client may connect. `host.oauth.policy_set` narrows this
+per tenant: `clients: allowlist` (by client id or CIMD host) refuses an
+unlisted client with `client_not_allowed`; `clients: approve` holds a new
+client's consent until `host.oauth.client_approve` (or
+`host.oauth.client_deny`, which refuses it for good). The same call sets
+`access_ttl_s`/`refresh_ttl_s`, `max_grant_age_s` (a refresh past it fails
+`grant_expired`) and `reconsent_after_s` (past it, `reconsent_required` and
+the next authorize shows consent again). `host.oauth.revoke_all` kills
+every live grant, refresh token and pending client at once.
+`host.oauth.audit`/`host.oauth.audit_export` page and export (JSON lines,
+50 MiB cap) every authorize/consent/token/refresh/revoke/approval/refusal,
+each with a salted `ip_hash`, never the raw address.
+
+## Ship your MCP server to your own users
+
+A SaaS product with its own login (Auth0, Cognito, a generic OIDC
+provider) can let its users connect their own MCP clients through that
+same login, in four steps -- full walkthrough: `docs/ship-your-mcp-server.md`.
+
+1. `host.oauth.provider_set(issuer, client_id, client_secret, scopes?)` --
+   registers your provider; mcphost fetches its discovery document once
+   (https only) and stores its endpoints. `host.oauth.provider` shows
+   them back with no secret; `host.oauth.provider_remove` revokes every
+   federated grant and falls back to key/claim login.
+2. Allow mcphost's callback URL at your provider:
+   `https://mcphost.dev/oauth/federation/callback`.
+3. Give your users your per-tenant URL:
+   `https://mcphost.dev/t/<your-namespace>/mcp`.
+4. Point any OAuth MCP client (claude.ai, Claude Code, etc.) at that
+   per-tenant URL -- it discovers the rest, redirects through your login,
+   then mcphost's own consent page, then back with a working token.
+
+Your tools see the logged-in user as `MCPHOST_END_USER_ID` (namespaced by
+your issuer), `MCPHOST_END_USER_EMAIL`, and `MCPHOST_END_USER_NAME`;
+`host.enduser.whoami` reports the same. `host.oauth.doctor` diagnoses a
+misconfigured step.
+
+## Stubs and placeholders
+
+`echo` is the "test the pipes" kind: spec is a JSON Schema, and a call
+returns its own arguments verbatim -- no code, no sandbox. Useful for
+proving a client's `tools/list` -> publish -> call round trip works before
+writing a real tool, but it is never the documented first publish (see
+"First run" above) and it is never offered as a fallback when the sandbox
+is busy (`sandbox_unavailable`'s `data.alternatives` names `http` only).
+Every echo-kind tool carries `stub: true` in `tools/list` and
+`host.tool_list`, absent (not `false`) for every other kind, so a client or
+a judge can tell a demo stub from a real published tool at a glance:
+
+```
+host.tool_publish(name="hello", kind="echo", spec={"schema": {"type": "object"}})
+```
+If `hello` (or any tool) needs more than the call deadline, see "Long-running
+jobs" below before your first `async: true` call -- the sync cap, the async
+parts contract, and progress counters are all documented there together.
+
+## Upstream token vault
+
+An end user's Slack/GitHub/Google token lives in the host, never in the
+model. Register an upstream OAuth application once with
+`host.vault.provider_set(name, preset?, auth_url?, token_url?, client_id,
+client_secret, scopes)` -- `preset: "slack" | "github" | "google"` fills
+`auth_url`/`token_url` from a built-in table; an explicit `auth_url:`/
+`token_url:` always overrides the matching preset value. Mint a one-time
+handoff link for an end user with `host.vault.connect_link(provider,
+end_user: "self")`; their browser completes it. `host.vault.status
+(end_user)` reports, per registered provider, whether that end user is
+connected, when the token expires, its granted scopes, and (if
+disconnected) when and why it was revoked. `host.vault.disconnect
+(provider, end_user: "self")` revokes one end user's token;
+`host.vault.provider_remove(name)` removes the provider and revokes every
+end user's token for it at once.
+
+An http-kind tool spec declares which provider it needs with the
+`upstream_provider:` field (short-hand: an `upstream:` provider name) --
+at call time the host resolves and injects that end user's token as
+`Authorization: Bearer <token>`, overriding any `Authorization` the spec's
+own headers set. A caller with no connected token for that provider gets
+`upstream_not_connected`, carrying a fresh `connect_link` in its error
+data instead of a partial request.
+## Connect an OAuth client to your tenant
+
+Every tenant has its own canonical resource URI:
+`<public-url>/t/<your-namespace>/mcp` (your namespace is the `namespace`
+`signup` returned, and the same value `host.whoami`'s `resource`/
+`metadata_url` fields report). Point an OAuth client at that URI, not the
+bare `<public-url>/mcp`, so it discovers only your identity provider:
+
+- `GET <public-url>/.well-known/oauth-protected-resource/t/<your-namespace>/mcp`
+  lists, under `authorization_servers`, mcphost's own authorization server
+  (`<public-url>`) first, then the issuer(s) you registered with
+  `host.oauth.issuer_set`, in that order and deduplicated -- never another
+  tenant's. A client that reads `authorization_servers[0]` always lands on
+  an authorization server that can issue a token for your tenant. Issuers
+  must be absolute `https://` URLs (`host.oauth.issuer_set`,
+  `host.oauth.trusted_issuer_set` and `host.oauth.provider_set` refuse
+  anything else with `issuer_url_invalid`).
+- Register your identity provider with `host.oauth.issuer_set(issuer,
+  jwks_url)`. `audience` is optional and defaults to your own canonical
+  resource URI above; set it explicitly only if your identity provider
+  requires a different value in `aud`. Either way, every access token your
+  users' clients present must carry that same value in `aud` -- a token
+  audienced for the bare `/mcp` root document is rejected `wrong_audience`
+  on your tenant path.
+- Scope: request `mcp` (or omit `scope` entirely). A token whose `scope`
+  claim is present but doesn't include `mcp` is refused
+  `insufficient_scope`.
+- `/mcp` itself stays key-based -- nothing about your existing
+  `Authorization: Bearer <key>` agents changes; the tenant URI above is
+  only for OAuth end users.
+
+## Scope your tools for OAuth clients
+
+By default every tool is reachable by any token that carries `mcp`
+(the root scope, implying everything). Declare narrower scopes when you
+want a client's consent screen -- and its token -- limited to a subset:
+
+1. Add a scope to your catalog, with the description shown on the
+   consent page:
+   ```
+   host.oauth.scope_set(name="read", description="Search your records")
+   ```
+   `read` and `write` are always valid even with no catalog; add your own
+   names (letters, digits, `_:.-`, max 41 chars) the same way. See what's
+   declared with `host.oauth.scopes()`.
+2. Tag a tool with the scopes that should unlock it:
+   ```
+   host.tool_publish(name="search", kind="echo", scopes=["read"],
+     spec={"schema": {"type": "object"}})
+   ```
+   A tool with no `scopes` stays reachable only by a full `mcp` token.
+   Changing a tool's scopes takes effect on its very next call -- no token
+   reissue needed.
+3. When a client requests `scope=read` at `/oauth/authorize`, the consent
+   page lists exactly the tools that scope unlocks (by name and
+   description) before the user approves. The issued token's `scope`
+   claim carries what was granted, and `tools/list` on that token shows
+   only the tools whose scopes intersect it (plus every `host.*`/
+   `billing.*` tool, always visible).
+4. A call to a tool outside the token's scope gets the spec's 403
+   `insufficient_scope`, naming the union of scopes that would satisfy
+   every tool the client has touched so far -- have the client
+   re-`/oauth/authorize` with that value to step up, no need to guess.
+
+`mcp` keeps meaning full access: tenant keys, tokens that request `mcp`
+(or omit `scope`), and tokens minted before this existed all keep calling
+every tool, scoped or not.
+
+<!-- sharing:start -->
+## Share a tool, not a key
+
+A team lead's agent wraps one paid API; teammates' agents call it by name.
+None of them ever sees the key, and one call revokes any of them.
+
+1. Store the key once, encrypted, never returned by any tool:
+   ```
+   host.secret.set(name="stripe", value="sk_live_...")
+   ```
+2. Publish the wrapper. The header references the secret by name; the host
+   interpolates it at call time, and callers' `tools/list` entry never
+   shows a `secret.*` parameter:
+   ```
+   host.tool.publish(name="stripe_balance", kind="http", spec={
+     "method": "GET", "url": "https://api.stripe.com/v1/balance",
+     "headers": {"Authorization": "Bearer {{ secret.stripe }}"}
+   })
+   ```
+3. Create a group for the team:
+   ```
+   host.group.create(name="finance")
+   ```
+4. Share the tool to that group:
+   ```
+   host.tool.share(name="stripe_balance", visibility="group", group="finance")
+   ```
+5. Add each teammate's tenant by namespace:
+   ```
+   host.group.add(name="finance", namespace="<teammate_namespace>")
+   ```
+6. A teammate's agent calls it like any other tool -- no key, ever:
+   ```
+   host.tool.call(name="<owner_namespace>.stripe_balance", args={})
+   ```
+
+Revoke one teammate any time with `host.group.remove(name, namespace)` --
+their next call fails, the rest keep working, no republish needed. Runnable
+end-to-end proof: `examples/share-a-tool/proof.sh`.
+
+### Share a tool, not a key: public variant
+
+Step 4 can instead be `host.tool.share(name="stripe_balance",
+visibility="public")` -- discoverable by anyone via `host.catalog.search`,
+no group or step 5 needed. `group` is the default above because a tool
+built around `{{ secret.<name> }}` almost always wraps a paid, rate-limited,
+or ToS-restricted upstream account: `public` invites call volume from
+strangers against that same account, with no allowlist standing between
+them and your key's rate limit or bill. Reach for `public` when the tool
+has no paid or limited upstream behind it -- a free API, or a tool with no
+secrets at all.
+<!-- sharing:end -->
+
+### Share a tool, and let them read it
+
+Step 4 above only lets a teammate *call* the tool. Pass `expose_spec: true`
+on the same call to also let them read it -- the difference between handing
+someone a paid API and letting them fork your code:
+```
+host.tool_share(name="stripe_balance", visibility="group", group="finance",
+                 expose_spec=true)
+```
+A group member now reads the tool's kind and (redacted) spec with:
+```
+host.tool_spec_shared(tool="<owner_namespace>.stripe_balance")
+-> {"tool": "<owner_namespace>.stripe_balance", "kind": "http",
+    "spec": {"url": "...", "method": "GET"}, "exposed_at": "2026-09-26T..."}
+```
+`env`, `secrets`, and any `{{ secret.<name> }}` reference never appear in
+that response, regardless of `expose_spec` -- the owner's key stays exactly
+as hidden as it was under "Share a tool, not a key" above. Default is
+`expose_spec: false`: an already-shared tool stays call-only until the
+owner opts in. Reading it counts against the reader's own call quota, same
+as `host.tool_call` does -- no separate quota to track. Shared without the
+flag, `host.tool_spec_shared` fails with `spec_not_exposed`; not shared at
+all, it fails exactly like `host.tool_call` does on an unshared tool --
+`tool_not_found`, never revealing whether the tool exists.
+
+## Give your agents one memory
+
+A team's agents write to and search one shared log instead of each keeping
+its own. Every row remembers who wrote it.
+
+1. Create the table once, on the owner's tenant:
+   ```
+   host.table.create(name="memory", columns={
+     "key": "text", "text": "text", "tags": "json",
+     "writer": "text", "at": "real"
+   })
+   ```
+2. Publish the two tools (`python` kind, source omitted below for space --
+   `writer` holds the caller's tenant namespace, `at` an epoch timestamp):
+   ```
+   host.tool_publish(name="remember", kind="python", spec={"source": "..."})
+   host.tool_publish(name="recall", kind="python", spec={"source": "..."})
+   ```
+   mcphost does not yet expose a caller's own tenant id inside a shared
+   `python` tool (open question, this recipe's own load-bearing check), so
+   `remember` takes a `who` argument and trusts it: state your own tenant
+   namespace when you call it. That is what `writer` holds today; the day
+   the host exposes the real caller id to a shared tool, `who` becomes
+   optional and `writer` stops trusting it.
+3. Create a group for the team:
+   ```
+   host.group.create(name="team")
+   ```
+4. Share both tools to it:
+   ```
+   host.tool_share(name="remember", visibility="group", group="team")
+   host.tool_share(name="recall", visibility="group", group="team")
+   ```
+5. Add each teammate's tenant by namespace:
+   ```
+   host.group.add(name="team", namespace="<teammate_namespace>")
+   ```
+6. Any teammate remembers and recalls like any shared tool:
+   ```
+   host.tool_call(name="<owner_namespace>.remember", args={
+     "key": "deploy", "text": "deploy window is Tuesday 9pm",
+     "who": "<my_own_namespace>"})
+   host.tool_call(name="<owner_namespace>.recall", args={"query": "deploy"})
+   ```
+
+`recall` matches key/text/tags by substring, newest first, capped at 50
+rows even if you ask for more. The table is the owner's: shared tools run
+in the owner's tenant (`src/sharing.rs`), so rows count against the
+owner's `table_rows_max`/`table_bytes_max`, and
+`host.group.remove(name, namespace)` cuts a teammate off on their next
+call, no republish needed. Runnable end-to-end proof:
+`examples/team-memory/proof.sh`.
+
+## Limits and pricing
+
+- 50 tools per tenant; tool names match `^[a-z][a-z0-9_]{1,40}$`
+- Spec at most 64 KiB; request body at most 1 MiB; a **synchronous** tool output at most 1 MiB (over either returns a structured error naming the cap and the size received, never a bare parse failure) -- an **async** job's own result has no such cap, see "Long-running jobs" below
+- Call timeout: 30 s by default, or your own `timeout_s` up to 60 s max -- declare it and the host holds to it, not a hidden shorter deadline
+- Concurrent calls: 20 concurrent calls host-wide; per tenant, 4 per tenant on the free plan (10 on pro) -- a refusal past your own cap is `concurrency_exceeded`/`scope: "tenant"` with `in_flight`, `limit` and `retry_after_ms`; past the host cap it's `scope: "host"`
+- Keys are 32-byte random bearer tokens, stored as SHA-256 hashes
+- Free plan (early access, default at signup): 500 calls per day, no card required
+- Pro plan: $19/month, 50,000 calls per month included, then $0.001 per call
+- A tool that needs more than the call deadline runs as a job instead:
+  `host.tool_call(name, args, async=true)` returns `{run_id, status: "queued"}`
+  within ~50 ms; the job runs under the plan's `job_max_s` deadline (free
+  300 s, pro 900 s), up to `jobs_concurrent` at once per tenant (free 1, pro
+  3), reporting progress and a result through `host.runs.get`/`list`/
+  `cancel`/`purge`/`wait`. `host.usage`'s `jobs` block and `host.quickstart`'s
+  `limits.plan` both report the same two numbers. A big result, structured
+  counters, and the quota/retention story for both: see "Long-running jobs"
+  below.
+- Machine-readable catalog, the same numbers `billing.plans` returns:
+  [`/plans.json`](/plans.json), rendered at [`/plans.html`](/plans.html) and
+  `docs/plans.md`.
+
+## Long-running jobs
+
+The sync cap above, the async job flow, structured progress, and retention
+all in one place -- the two were documented separately before this section
+existed, so an agent found out about the cap only after a five-minute job
+finished.
+
+- **Sync cap, unchanged:** a synchronous call's own output over
+  `MAX_TOOL_OUTPUT_BYTES` (1 MiB) fails `tool_output_too_large` (`python`
+  kind) or `response_too_large` (`http` kind), naming the limit and the
+  size received -- exactly as today, whether the tool ran async before or
+  not.
+- **Async results never fail for size:** an async job's result over 1 MiB
+  is chunked into 256 KiB parts and stored in your tenant's own state, not
+  rejected. `host.runs.get`/`host.runs.wait` inline part 0 as `result` and
+  report `result_ref: {parts, bytes, content_type}`; read any part
+  (including the tail) with `host.runs.part(run_id, n)` -- a result that
+  fit inline reads back `parts: 1, n: 0` with the whole result, so there's
+  one read path either way.
+- **Structured counters:** `host.progress(run_id, counters={"items_processed":
+  n, "items_total"?: n, "bytes_out"?: n, "custom"?: {...}})` reports a
+  count readable mid-run (not just at the end) via `host.runs.get`/`wait`/
+  `list`'s `counters` field -- each counter is monotonic on its own, a
+  lower value than what's already stored fails `validation` with nothing
+  written. `host.runs.wait(run_id, until={"counter": "items_processed",
+  "gte": n})` returns as soon as that counter reaches `n`, or the run
+  finishes, whichever comes first.
+- **Quota, not silent truncation:** if storing the parts would exceed your
+  plan's `state_bytes_max`, no part is written and the run finalizes
+  `status: "error", error: {kind: "state_quota", data: {needed_bytes,
+  available_bytes}}` -- counters reported before the failure are still
+  there.
+- **Retention:** `host.runs.purge(before_unix)` deletes a done run's parts
+  the same way it always cleared a plain result; `host.usage`'s
+  `run_results_bytes` reports how much of your state quota run parts hold,
+  separately from your own `host.state.*` writes.
+
+Walk-through (the tool itself omitted for space -- any python tool that
+calls `progress`/returns a large result works; substitute your own
+`<run_id>` for the one `host.tool_call` returns):
+
+```
+host.tool_publish(name="bulk_enrich", kind="python", spec={"source": "..."})
+host.tool_call(name="bulk_enrich", args={"n": 1468006}, async=true)
+host.progress(run_id="<run_id>", counters={"items_processed": 1000})
+host.runs.wait(run_id="<run_id>")
+host.runs.part(run_id="<run_id>", n=5)
+```
+  `limits.plan` both report the same two numbers.
+- Every run row names the end user it ran as, when any: `host.runs.get`/
+  `list`/`wait` carry `end_user: {subject, issuer, method} | null`.
+  `host.runs.list(end_user_subject="...")` filters to just that end user's
+  runs.
+
+## Give Claude a database in one minute
+
+A CSV becomes a table your own Claude Desktop can query -- in plain SQL,
+no query grammar to learn, no tool to publish. No server, no Airtable
+account. Free-plan fit: 1 table, up to 1,000 rows of the 5,000-row
+`table_rows_max` quota, append batches sized to stay under
+`table_bytes_max`.
+
+1. Declare the table (typed columns: text, integer, real, timestamp, boolean, json):
+   ```
+   host.table.create(name="expenses", columns={
+     "id": "integer", "category": "text", "amount": "real", "day": "integer"
+   }, primary_key="id")
+   ```
+2. Append your rows in batches of 200 -- five calls covers 1,000 rows:
+   ```
+   host.table.append(table="expenses", rows=[
+     {"id": 1, "category": "produce", "amount": 11.10, "day": 1}, ...
+   ])
+   ```
+3. Leave a note so any agent reading the schema knows what a column means:
+   ```
+   host.table.model_set(table="expenses", key="description",
+     value="Household spending, one row per purchase.")
+   ```
+4. Ask questions straight in SQL -- CTEs, GROUP BY, LIKE, all of it:
+   ```
+   host.table.query(sql="SELECT category, SUM(amount) AS total \
+     FROM expenses GROUP BY category")
+   host.table.query(sql="SELECT * FROM expenses WHERE category LIKE '%prod%'")
+   ```
+5. Review what was asked: `host.table.query_log(limit=10)` lists the last
+   calls newest first, each with its `sql`, `row_count` (or a refusal's
+   `error_code`), and `duration_ms`.
+6. Connect Claude Desktop: add the tenant's endpoint and bearer key as an
+   MCP server in `claude_desktop_config.json`:
+   ```
+   {"mcpServers": {"my-data": {"url": "<endpoint>/mcp",
+     "headers": {"Authorization": "Bearer <key>"}}}}
+   ```
+
+Writing your own `python` tool against this same table instead?
+`mcphost.table.query(sql)` is the bridge to it -- `mcphost.state.query`
+reaches the separate key-value store, not this one.
+
+Runnable end-to-end proof, 1,000-row fixture included:
+`examples/database-in-a-minute/proof.sh`.
+
+## Chart in a minute
+
+One SQL call turns a question into a chart spec, a data-computed caption,
+and a link -- no chart grammar, you name the data with `sql`.
+
+1. Reuse the `expenses` table, through `host.table.*` (the real-SQL store
+   `host.table.query` already reads, not `host.state.*` above):
+   ```
+   host.table.create(name="expenses", columns={
+     "id": "integer", "category": "text", "amount": "real", "day": "integer"
+   })
+   host.table.append(table="expenses", rows=[
+     {"id": 1, "category": "produce", "amount": 11.10, "day": 1}, ...
+   ])
+   ```
+2. Ask for the picture:
+   ```
+   host.table.chart(
+     sql="SELECT category, SUM(amount) AS total FROM expenses GROUP BY category",
+     share=true)
+   ```
+   Returns `{schema: "chart.v1", profile, recommendation: {mark, encoding,
+   rationale, alternatives}, vega_lite, caption: {headline, facts},
+   share_url}`. The mark is picked from the columns' types, not guessed by
+   a model; every caption number is recomputed from the rows that came
+   back.
+3. Paste `share_url` to a teammate -- it opens with no login, for 24 hours:
+   ```
+   https://<host>/charts/<id>?exp=<unix>&sig=<hex>
+   ```
+
+Runnable end-to-end proof, 1,000-row fixture included:
+`examples/chart-in-a-minute/proof.sh`.
+
+## Webhook inbox in one call
+
+An agent that must show its user a webhook arriving needs a public URL and a
+way to read the next event, without writing a server. One call creates both.
+
+1. Create the inbox (works on the free plan):
+   ```
+   host.webhook_inbox.create(name="inbox")
+   ```
+   Returns `{url, secret, tool: "inbox", trigger_id, wait: {tool: "host.msg.wait", args}, next}`.
+   `url` is `https://<host>/hook/<id>`; `secret` is shown once. Calling it
+   again with the same `name` returns the same `url` and no `secret`
+   (`rotate: true` mints a new one). `verify` is `hmac` (default), `github` or
+   `stripe`. A tenant at its plan's trigger ceiling gets `plan_limit` with
+   `data.limit`, and nothing is created.
+2. Point the sender at `url` and sign the raw body with HMAC-SHA256 under
+   `secret`: `X-Mcphost-Signature: sha256=<hex>` (GitHub: `X-Hub-Signature-256`).
+   An unsigned or wrongly signed POST is `401` and stores nothing.
+3. Read the event, either way:
+   ```
+   host.tool_call(name="inbox")
+   host.msg.wait(timeout_s=25, unread_only=true)
+   ```
+   The first returns the last 50 stored events as `rows` (`id` is the body's
+   own `id`); the second blocks until a delivery arrives and returns a
+   message from `@host` whose `data.event_id` names it. Pass `wait.args`
+   from step 1 as-is.
+
+/mcp keeps no state between requests: pass `tenant_key` on every call, or
+reconnect over your `/u/` URL. A key-less call right after `host.redeem` is
+refused with `tenant_key_missing` naming your tenant, never a second tenant.
+
+Runnable end-to-end proof: `examples/webhook-inbox/proof.sh`.
+
+## Audit what your key did
+
+`host.calls.list {since: "-24h", key_label?, tool?, outcome?, credential?, limit, cursor}` returns every
+call made with your keys, newest first: `ts`, `credential` (`primary`, `sub_key`, `oauth`, `trigger`,
+`cron`, `webhook`, `shared_caller`), `key_label` for a sub-key's rows, `tool`, `outcome`, `duration_ms`,
+`bytes_in`, `bytes_out`. A sub-key sees only its own rows. A window older than your plan's
+`calls_retention_days` (`host.quickstart` `limits.plan`; Free 7, Pro 90) comes back with
+`truncated_before`.
+
+`host.calls.export {since, until}` returns the same rows as `csv` plus `rows`, `sha256`, an ES256
+`signature` over the CSV bytes, and the `kid` of the key in `/.well-known/jwks.json` that verifies it
+(over 50 000 rows is `too_many_rows`: narrow the window). Verify without an mcphost account:
+
+```
+# save csv to calls.csv and signature_der (base64) to sig.b64, then:
+base64 -d sig.b64 > sig.bin
+# turn the JWK with that kid into jwks-key.pem (EC P-256, x and y), then:
+openssl dgst -sha256 -verify jwks-key.pem -signature sig.bin calls.csv
+```
+
+## Billing (tool calls, no dashboard)
+
+- `billing.plans()`: the plan catalog and `billing_mode` (`test` or `live`). Works anonymously.
+- `billing.status()`: this tenant's plan and usage against each quota, with `resets_at` for the daily call quota.
+- `billing.checkout(plan="pro")`: returns a Stripe Checkout `url` (valid about 24 hours). Hand it to the human who authorized you; when they pay, a webhook flips the tenant to `pro` within seconds. Call `billing.status` to confirm.
+- A call past a quota fails with `error_code: quota_exceeded`, `plan`, `limit {name, value}`, `used`, and `next: "billing.checkout"`. Do not retry; upgrade or wait for `resets_at`.
+
+## Measured performance
+
+- 200 concurrent `echo` calls: p95 34.20 ms, 0 errors, 37.3 MiB RSS (acceptance test AC11, Hetzner CPX21-class box) <!-- cite: docs/benchmarks/ac11-load-smoke.txt -->
+- Published tools appear in `tools/list` immediately; no cache layer
+
+## Operator notes
+
+- Admin runs through `admin.*` tools on the same endpoint with an admin key; there is no web UI by design.
+- Per-tenant metering (p50/p95 durations, call counts) via `host.usage` and `admin.usage`.
+- An old `plans.toml` missing a quota (e.g. one written before `state_bytes_max` existed) is filled from `default_catalog()`'s value for that plan name, never zeroed; startup logs `plans.toml: plan=<name> defaulted=[<field>, ...]` naming exactly what it filled in.
+- OAuth conformance: `mcphost oauth-probe --url <mcp-url> --json` runs the same scenario table the gate runs in-process; every scenario, its family, owning PRD and expected verdict are listed in [docs/oauth-scenarios.md](../docs/oauth-scenarios.md).
+- `oauth.tenants_7d.issuer_jwt + oauth.tenants_7d.hosted_token` on `admin healthz` (distinct non-synthetic tenants, both credential kinds) is the `oauth_tenants_7d` loop metric, documented in [docs/metrics.md](../docs/metrics.md) -- `admin.oauth.demand_stats` has the same counts plus the per-tenant breakdown and the registration/consent/token funnel.
+- `scripts/oauth-conformance.sh <mcp-url>` runs the MCP OAuth conformance suite (`npx @modelcontextprotocol/conformance`, scenarios `auth/basic-metadata-var1` and `auth/basic-dcr`, requirements `2026-07-28`) against a running host and writes `docs/receipts/oauth-conformance-<date>.md`; exits non-zero on any failed scenario, or `2` with a one-line reason when `npx` isn't installed.
+- `help_url_served` on `admin healthz` -- a `{code: count}` object of how many times each `/help/<code>` page has been served since this process started, documented in [docs/metrics.md](../docs/metrics.md); `/status.json`'s readiness carries a warning when `MCPHOST_SUPPORT_URL` is unset, never a silent blank.
+
+<!-- capabilities:start -->
+## Capabilities
+
+Generated by `mcphost capabilities-section` from the `CAPABILITIES` registry -- the same rows `initialize.capabilities` and `GET /capabilities.json` are built from; do not hand-edit. A method of a primitive marked `no` answers `-32601` with `data.help_url` (`/help/capability_unsupported`) and `data.alternative`.
+
+| primitive | implemented | list_changed | probe | alternative | methods |
+|---|---|---|---|---|---|
+| `tools` | yes | yes | `tools` | - | `tools/list`, `tools/call` |
+| `resources` | no | no | `resources` | `host.table.list` | `resources/list`, `resources/read`, `resources/templates/list`, `resources/subscribe`, `resources/unsubscribe` |
+| `prompts` | no | no | `prompts` | `host.quickstart` | `prompts/list`, `prompts/get` |
+| `completions` | no | no | `completions` | `host.help.search` | `completion/complete` |
+| `sampling` | no | no | `sampling` | - | `sampling/createMessage` |
+| `elicitation` | yes | no | `elicitation` | `host.ask.create` | `elicitation/create` |
+| `logging` | no | no | `logging` | - | `logging/setLevel` |
+| `roots` | no | no | `roots` | - | `roots/list` |
+<!-- capabilities:end -->
+
+<!-- frames:start -->
+## Transport
+
+Generated by `scripts/protocol-frames-check.sh` from `FRAME_SEQUENCES`; do not hand-edit. A response is `application/json` when it is one frame and `text/event-stream` when more than one frame is sent (`{1}` exactly one, `{0,1}` optional, `{0,n}` any number). Take the last `result` or `error` frame. Per request type, in order: `initialize` = `result` {1}; `tools/list` = `result` {1}; `tools/call:keyed` = `result` {1}; `tools/call:keyless_signup` = `notifications/tools/list_changed` {0,1}, `result` {1}; `tools/call:error` = `error` {1}; `ping` = `error` {1}. Machine-readable: [/protocol/frames.json](/protocol/frames.json).
+<!-- frames:end -->
+
+## Contract
+
+The `host.*`/`billing.*` tool surface below is a versioned, committed contract: [contracts/host-tools.v1.json](../contracts/host-tools.v1.json) (`host.whoami`'s `contract_version`). Removing or narrowing a field fails the build unless it was announced first (`x-deprecated` on the affected tool/field in `tools/list`, a `deprecations` note on any call that uses it) with at least 60 days' notice. Call `host.changelog({since})` for what's changed since a given release.
+
+<!-- tools:start -->
+## Tools
+
+Generated by `mcphost llms-txt` from the same descriptors `tools/list` serves -- do not hand-edit; every name below is also in a live `tools/list` (anonymous or authenticated).
+
+- `billing.checkout`
+- `billing.plans`
+- `billing.status`
+- `billing_checkout`
+- `billing_plans`
+- `billing_status`
+- `host.agent.contact_accept`
+- `host.agent.contact_deny`
+- `host.agent.contact_request`
+- `host.agent.contacts`
+- `host.agent.contacts_import`
+- `host.agent.lookup`
+- `host.agent.mute`
+- `host.agent.profile_set`
+- `host.agent.search`
+- `host.agent.unmute`
+- `host.agent.whoami`
+- `host.ask.create`
+- `host.ask.get`
+- `host.ask.list`
+- `host.ask.wait`
+- `host.audit.chain`
+- `host.audit.verify`
+- `host.blob.delete`
+- `host.blob.gc`
+- `host.blob.get`
+- `host.blob.list`
+- `host.blob.policy`
+- `host.blob.put`
+- `host.blob.touch`
+- `host.blob.url`
+- `host.bridge.test`
+- `host.bridge_test`
+- `host.call_trace`
+- `host.calls.export`
+- `host.calls.list`
+- `host.catalog.get`
+- `host.catalog.search`
+- `host.changelog`
+- `host.channel.close`
+- `host.channel.freeze`
+- `host.channel.open`
+- `host.channel.post`
+- `host.channel.read`
+- `host.channel.unfreeze`
+- `host.docs.delete`
+- `host.docs.get`
+- `host.docs.index_config`
+- `host.docs.list`
+- `host.docs.purge`
+- `host.docs.put`
+- `host.docs.reindex`
+- `host.docs.search`
+- `host.docs.status`
+- `host.doctor`
+- `host.drift.check`
+- `host.drift.resolve`
+- `host.drift.review`
+- `host.drift.reviews`
+- `host.enduser.assertion_secret_rotate`
+- `host.enduser.audit`
+- `host.enduser.export`
+- `host.enduser.get`
+- `host.enduser.list`
+- `host.enduser.purge`
+- `host.enduser.revoke`
+- `host.enduser.unrevoke`
+- `host.enduser.whoami`
+- `host.estimate`
+- `host.example.proposal_status`
+- `host.example.propose`
+- `host.export`
+- `host.feedback.get`
+- `host.feedback.list`
+- `host.feedback.send`
+- `host.group.add`
+- `host.group.create`
+- `host.group.list`
+- `host.group.remove`
+- `host.help.get`
+- `host.help.search`
+- `host.import`
+- `host.index.create`
+- `host.index.delete`
+- `host.index.list`
+- `host.index.query`
+- `host.index.refresh`
+- `host.index.status`
+- `host.invite.create`
+- `host.invite.list`
+- `host.invite.revoke`
+- `host.job.timeline`
+- `host.job_timeline`
+- `host.key.delegate`
+- `host.key.list`
+- `host.key.mint`
+- `host.key.revoke`
+- `host.key.rotate`
+- `host.key_rotate`
+- `host.lineage.blast_radius`
+- `host.lineage.trace`
+- `host.lineage.trace_page`
+- `host.msg.ack`
+- `host.msg.block`
+- `host.msg.inbox`
+- `host.msg.reply`
+- `host.msg.send`
+- `host.msg.thread`
+- `host.msg.unblock`
+- `host.msg.wait`
+- `host.oauth.audit`
+- `host.oauth.audit_export`
+- `host.oauth.client_approve`
+- `host.oauth.client_deny`
+- `host.oauth.doctor`
+- `host.oauth.grant_revoke`
+- `host.oauth.grants`
+- `host.oauth.issuer_remove`
+- `host.oauth.issuer_set`
+- `host.oauth.issuers`
+- `host.oauth.pending`
+- `host.oauth.policy`
+- `host.oauth.policy_set`
+- `host.oauth.provider`
+- `host.oauth.provider_remove`
+- `host.oauth.provider_set`
+- `host.oauth.revoke_all`
+- `host.oauth.scope_set`
+- `host.oauth.scopes`
+- `host.oauth.trusted_issuer_remove`
+- `host.oauth.trusted_issuer_set`
+- `host.oauth.trusted_issuers`
+- `host.policy.attrs_set`
+- `host.policy.list`
+- `host.policy.set`
+- `host.progress`
+- `host.quickstart`
+- `host.redeem`
+- `host.registry.publish`
+- `host.registry_publish`
+- `host.runs.cancel`
+- `host.runs.get`
+- `host.runs.list`
+- `host.runs.part`
+- `host.runs.purge`
+- `host.runs.wait`
+- `host.schedule_receipts`
+- `host.secret.list`
+- `host.secret.set`
+- `host.secret_list`
+- `host.secret_set`
+- `host.self.offboard`
+- `host.self_offboard`
+- `host.share.caller_limit`
+- `host.share.caller_limit_remove`
+- `host.spec.test`
+- `host.spec_test`
+- `host.state.delete`
+- `host.state.delete_rows`
+- `host.state.get`
+- `host.state.insert`
+- `host.state.list`
+- `host.state.query`
+- `host.state.set`
+- `host.state.table_create`
+- `host.state.table_drop`
+- `host.table.append`
+- `host.table.chart`
+- `host.table.charts`
+- `host.table.create`
+- `host.table.describe`
+- `host.table.drop`
+- `host.table.graph`
+- `host.table.handle_drop`
+- `host.table.handle_export`
+- `host.table.handles`
+- `host.table.join_paths`
+- `host.table.list`
+- `host.table.model_set`
+- `host.table.models`
+- `host.table.next_questions`
+- `host.table.query`
+- `host.table.query_diagnose`
+- `host.table.query_log`
+- `host.table.query_stats`
+- `host.table.schema`
+- `host.task.claim`
+- `host.task.complete`
+- `host.task.dead_letters`
+- `host.task.get`
+- `host.task.post`
+- `host.tool.call`
+- `host.tool.diff`
+- `host.tool.history`
+- `host.tool.list`
+- `host.tool.logs`
+- `host.tool.publish`
+- `host.tool.remove`
+- `host.tool.rollback`
+- `host.tool.run`
+- `host.tool.share`
+- `host.tool.spec_shared`
+- `host.tool.test`
+- `host.tool.unshare`
+- `host.tool_call`
+- `host.tool_diff`
+- `host.tool_history`
+- `host.tool_list`
+- `host.tool_logs`
+- `host.tool_publish`
+- `host.tool_remove`
+- `host.tool_rollback`
+- `host.tool_run`
+- `host.tool_share`
+- `host.tool_spec_shared`
+- `host.tool_test`
+- `host.tool_unshare`
+- `host.trigger.dead_letters`
+- `host.trigger.fire`
+- `host.trigger.get`
+- `host.trigger.list`
+- `host.trigger.pause`
+- `host.trigger.remove`
+- `host.trigger.replay`
+- `host.trigger.resume`
+- `host.trigger.set`
+- `host.trigger.test`
+- `host.uptime.create`
+- `host.usage`
+- `host.vault.connect_link`
+- `host.vault.disconnect`
+- `host.vault.provider_remove`
+- `host.vault.provider_set`
+- `host.vault.providers`
+- `host.vault.status`
+- `host.webhook_inbox.create`
+- `host.whoami`
+- `host_agent_contact_accept`
+- `host_agent_contact_deny`
+- `host_agent_contact_request`
+- `host_agent_contacts`
+- `host_agent_contacts_import`
+- `host_agent_lookup`
+- `host_agent_mute`
+- `host_agent_profile_set`
+- `host_agent_search`
+- `host_agent_unmute`
+- `host_agent_whoami`
+- `host_ask_create`
+- `host_ask_get`
+- `host_ask_list`
+- `host_ask_wait`
+- `host_audit_chain`
+- `host_audit_verify`
+- `host_blob_delete`
+- `host_blob_gc`
+- `host_blob_get`
+- `host_blob_list`
+- `host_blob_policy`
+- `host_blob_put`
+- `host_blob_touch`
+- `host_blob_url`
+- `host_bridge_test`
+- `host_call_trace`
+- `host_calls_export`
+- `host_calls_list`
+- `host_catalog_get`
+- `host_catalog_search`
+- `host_changelog`
+- `host_channel_close`
+- `host_channel_freeze`
+- `host_channel_open`
+- `host_channel_post`
+- `host_channel_read`
+- `host_channel_unfreeze`
+- `host_docs_delete`
+- `host_docs_get`
+- `host_docs_index_config`
+- `host_docs_list`
+- `host_docs_purge`
+- `host_docs_put`
+- `host_docs_reindex`
+- `host_docs_search`
+- `host_docs_status`
+- `host_doctor`
+- `host_drift_check`
+- `host_drift_resolve`
+- `host_drift_review`
+- `host_drift_reviews`
+- `host_enduser_assertion_secret_rotate`
+- `host_enduser_audit`
+- `host_enduser_export`
+- `host_enduser_get`
+- `host_enduser_list`
+- `host_enduser_purge`
+- `host_enduser_revoke`
+- `host_enduser_unrevoke`
+- `host_enduser_whoami`
+- `host_estimate`
+- `host_example_proposal_status`
+- `host_example_propose`
+- `host_export`
+- `host_feedback_get`
+- `host_feedback_list`
+- `host_feedback_send`
+- `host_group_add`
+- `host_group_create`
+- `host_group_list`
+- `host_group_remove`
+- `host_help_get`
+- `host_help_search`
+- `host_import`
+- `host_index_create`
+- `host_index_delete`
+- `host_index_list`
+- `host_index_query`
+- `host_index_refresh`
+- `host_index_status`
+- `host_invite_create`
+- `host_invite_list`
+- `host_invite_revoke`
+- `host_job_timeline`
+- `host_key_delegate`
+- `host_key_list`
+- `host_key_mint`
+- `host_key_revoke`
+- `host_key_rotate`
+- `host_lineage_blast_radius`
+- `host_lineage_trace`
+- `host_lineage_trace_page`
+- `host_msg_ack`
+- `host_msg_block`
+- `host_msg_inbox`
+- `host_msg_reply`
+- `host_msg_send`
+- `host_msg_thread`
+- `host_msg_unblock`
+- `host_msg_wait`
+- `host_oauth_audit`
+- `host_oauth_audit_export`
+- `host_oauth_client_approve`
+- `host_oauth_client_deny`
+- `host_oauth_doctor`
+- `host_oauth_grant_revoke`
+- `host_oauth_grants`
+- `host_oauth_issuer_remove`
+- `host_oauth_issuer_set`
+- `host_oauth_issuers`
+- `host_oauth_pending`
+- `host_oauth_policy`
+- `host_oauth_policy_set`
+- `host_oauth_provider`
+- `host_oauth_provider_remove`
+- `host_oauth_provider_set`
+- `host_oauth_revoke_all`
+- `host_oauth_scope_set`
+- `host_oauth_scopes`
+- `host_oauth_trusted_issuer_remove`
+- `host_oauth_trusted_issuer_set`
+- `host_oauth_trusted_issuers`
+- `host_policy_attrs_set`
+- `host_policy_list`
+- `host_policy_set`
+- `host_progress`
+- `host_quickstart`
+- `host_redeem`
+- `host_registry_publish`
+- `host_runs_cancel`
+- `host_runs_get`
+- `host_runs_list`
+- `host_runs_part`
+- `host_runs_purge`
+- `host_runs_wait`
+- `host_schedule_receipts`
+- `host_secret_list`
+- `host_secret_set`
+- `host_self_offboard`
+- `host_share_caller_limit`
+- `host_share_caller_limit_remove`
+- `host_spec_test`
+- `host_state_delete`
+- `host_state_delete_rows`
+- `host_state_get`
+- `host_state_insert`
+- `host_state_list`
+- `host_state_query`
+- `host_state_set`
+- `host_state_table_create`
+- `host_state_table_drop`
+- `host_table_append`
+- `host_table_chart`
+- `host_table_charts`
+- `host_table_create`
+- `host_table_describe`
+- `host_table_drop`
+- `host_table_graph`
+- `host_table_handle_drop`
+- `host_table_handle_export`
+- `host_table_handles`
+- `host_table_join_paths`
+- `host_table_list`
+- `host_table_model_set`
+- `host_table_models`
+- `host_table_next_questions`
+- `host_table_query`
+- `host_table_query_diagnose`
+- `host_table_query_log`
+- `host_table_query_stats`
+- `host_table_schema`
+- `host_task_claim`
+- `host_task_complete`
+- `host_task_dead_letters`
+- `host_task_get`
+- `host_task_post`
+- `host_tool_call`
+- `host_tool_diff`
+- `host_tool_history`
+- `host_tool_list`
+- `host_tool_logs`
+- `host_tool_publish`
+- `host_tool_remove`
+- `host_tool_rollback`
+- `host_tool_run`
+- `host_tool_share`
+- `host_tool_spec_shared`
+- `host_tool_test`
+- `host_tool_unshare`
+- `host_trigger_dead_letters`
+- `host_trigger_fire`
+- `host_trigger_get`
+- `host_trigger_list`
+- `host_trigger_pause`
+- `host_trigger_remove`
+- `host_trigger_replay`
+- `host_trigger_resume`
+- `host_trigger_set`
+- `host_trigger_test`
+- `host_uptime_create`
+- `host_usage`
+- `host_vault_connect_link`
+- `host_vault_disconnect`
+- `host_vault_provider_remove`
+- `host_vault_provider_set`
+- `host_vault_providers`
+- `host_vault_status`
+- `host_webhook_inbox_create`
+- `host_whoami`
+- `signup`
+
+## Paging
+
+These verbs take `limit` and `cursor` and offer an `order` (pass `next_cursor` back with the same `order`; a cursor minted under another order is `cursor_invalid`):
+
+- host.channel.read: orders `seq_asc`; default `seq_asc`.
+- host.msg.inbox: orders `created_asc`; default `created_asc`.
+- host.msg.thread: orders `seq_asc`; default `seq_asc`.
+- host.runs.list: orders `created_desc`, `created_asc`; default `created_desc`.
+- host.calls.list: orders `newest_first`; default `newest_first`.
+- host.docs.list: orders `created_desc`, `created_asc`, `name_asc`; default `created_desc`.
+
+## Indexes
+
+- host.index.create sources[].kind is one of: doc, table, url.
+<!-- tools:end -->
+## Full documentation
+
+- [llms-full.txt](/llms-full.txt) — this file's content plus every tool kind
+  (echo, http, python, wasm, chain), all measured benchmarks, and supporting
+  receipts, concatenated into one markdown file per the llms.txt convention.
+
+## Uptime probes with no server
+
+An agent that runs its own small services wants to know when one is down,
+without a monitoring SaaS account, a server of its own, or a plan upgrade.
+One call; the host does the probing, so no sandbox network is involved.
+
+1. Create the probe set (works on the free plan):
+   ```
+   host.uptime.create(name="status", urls=["https://api.example.com/health", "https://example.com"])
+   ```
+   Takes 1 to 20 URLs and creates the `status_targets` table, a host-side
+   probe (3 s per URL, same host rules as the `http` kind), a `status` tool
+   and one schedule. It runs the probe once before answering:
+   `{status_tool, schedule_id, every_s, next_fire_unix, first_result: {columns, rows, text}}`.
+   An `every_s` below your plan's floor is raised to it and the response
+   carries `data.clamped_to`.
+2. Show the table any time -- reads the last stored result, never fetches live:
+   ```
+   host.tool_call(name="status")
+   ```
+   returns `{columns, rows, text}`; `text` is an aligned table under 2 KB to
+   paste to your user. A target that did not answer in 3 s is `status: "timeout"`.
+
+Plan numbers (generated from `src/plans.rs` by `mcphost llms-txt`; do not hand-edit):
+- free: <!-- uprg:free.schedules_max -->3<!-- /uprg:free.schedules_max --> schedules, a floor of <!-- uprg:free.schedule_min_interval_s -->300<!-- /uprg:free.schedule_min_interval_s --> s between probes, so <!-- uprg:free.calls_per_day_at_floor -->288<!-- /uprg:free.calls_per_day_at_floor --> probe calls a day at the floor.
+- pro: <!-- uprg:pro.schedules_max -->25<!-- /uprg:pro.schedules_max --> schedules, a floor of <!-- uprg:pro.schedule_min_interval_s -->60<!-- /uprg:pro.schedule_min_interval_s --> s, <!-- uprg:pro.calls_per_day_at_floor -->1440<!-- /uprg:pro.calls_per_day_at_floor --> probe calls a day at the floor.
+
+Asking `host.tool_publish` for a python tool with `network: "public"` on the
+free plan is refused with `data.alternative: "host.uptime.create"`.
