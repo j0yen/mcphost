@@ -933,6 +933,14 @@ mod enduserctl_ac10_list_100k_pages_under_50ms_stable_cursor;
 mod envelope_ac1_http_declared_output_promoted;
 #[path = "envelope_ac4_tool_test_reports_missing_declared_output.rs"]
 mod envelope_ac4_tool_test_reports_missing_declared_output;
+#[path = "evkr_ac01_no_second_spelling.rs"]
+mod evkr_ac01_no_second_spelling;
+#[path = "evkr_ac02_renderings_equal_enum.rs"]
+mod evkr_ac02_renderings_equal_enum;
+#[path = "evkr_ac03_description_and_fields.rs"]
+mod evkr_ac03_description_and_fields;
+#[path = "evkr_ac04_bad_kind_args_invalid.rs"]
+mod evkr_ac04_bad_kind_args_invalid;
 #[path = "exargs_ac02_generator_values.rs"]
 mod exargs_ac02_generator_values;
 #[path = "exargs_ac03_tool_test_runs_the_example.rs"]

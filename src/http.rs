@@ -935,6 +935,17 @@ async fn plans_json_route(State(state): State<Arc<AppState>>) -> Response {
     (StatusCode::OK, Json(crate::billing::plans(&state))).into_response()
 }
 
+/// `GET /events.json` (PRD-mcphost-event-kinds-registry-generated R3): the
+/// event-kind registry rendered by `events::events_json`.
+async fn events_json_route() -> Response {
+    (
+        StatusCode::OK,
+        [(CACHE_CONTROL, HeaderValue::from_static("public, max-age=300"))],
+        Json(crate::events::events_json()),
+    )
+        .into_response()
+}
+
 /// PRD-mcphost-contract-version-reported R5: `GET /contract.json`,
 /// anonymous. The body is pre-serialized at boot; `ETag` is the quoted
 /// contract sha and a matching `If-None-Match` gets an empty 304.
@@ -1929,6 +1940,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         // `/plans.json` client-side -- see `www/plans.html`'s own comment.
         .route("/plans.html", get(|| async { static_page(include_str!("../www/plans.html")) }))
         .route("/plans.json", get(plans_json_route))
+        .route("/events.json", get(events_json_route))
         // requirement 5/8 (AC6, AC8): README/llms.txt already link
         // `/llms.txt` (absolute, as `https://mcphost.dev/llms.txt`) and
         // `/llms-full.txt` -- routed here for the same reason status/aup

@@ -1490,6 +1490,13 @@
       "AC7": "tests/timp_ac07_archive_layout_one_enum.rs",
       "AC8": "deferred -- operator-provisioned: live prod export + tar -tzf of the joe-test tenant after deploy."
     },
+    "evkr": {
+      "_prd": "PRD-mcphost-event-kinds-registry-generated.md (test_prefix: evkr)",
+      "AC1": "tests/evkr_ac01_no_second_spelling.rs",
+      "AC2": "tests/evkr_ac02_renderings_equal_enum.rs",
+      "AC3": "tests/evkr_ac03_description_and_fields.rs",
+      "AC4": "tests/evkr_ac04_bad_kind_args_invalid.rs"
+    },
     "fbeh": {
       "_prd": "PRD-mcphost-error-responses-invite-feedback.md (test_prefix: fbeh)",
       "AC1": "deferred -- live premise check run by the operator after land (see the PRD's Premise check section).",

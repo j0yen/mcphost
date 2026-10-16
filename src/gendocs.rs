@@ -454,6 +454,8 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
         (Path::new(PLANS_HTML_PATH), render_plans_html()),
         (Path::new(TOOLS_DOC_PATH), render_tools_markdown(kinds)),
         (Path::new(BLOB_TYPES_DOC_PATH), render_blob_types_doc()),
+        (Path::new(crate::events::EVENTS_DOC_PATH), crate::events::render_events_doc()),
+        (Path::new(crate::events::EVENTS_JSON_PATH), crate::events::render_event_kinds_json()),
         (Path::new(RETRIEVAL_DOC_PATH), crate::index::render_retrieval_doc()),
         (
             Path::new(INSTALL_DOC_PATH),

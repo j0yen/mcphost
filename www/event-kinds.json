@@ -1,0 +1,20 @@
+{
+  "kinds": [
+    "run.done",
+    "run.failed",
+    "run.progress",
+    "inbox.message",
+    "table.changed",
+    "state.changed",
+    "queue.drained",
+    "queue.dead_letter",
+    "trigger.fired",
+    "tool.published"
+  ],
+  "queue_states": [
+    "active",
+    "paused",
+    "draining",
+    "drained"
+  ]
+}
