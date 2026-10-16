@@ -1721,6 +1721,15 @@ async fn issue_session_id(
         .and_then(|v| v.to_str().ok())
         .filter(|id| state.session_bindings.is_server_issued(id))
         .map(str::to_string);
+    // PRD-mcphost-delegation-bound-to-run-or-session R5: the client ending its
+    // session (DELETE, with the id this process minted) kills every key
+    // bound to it, immediately.
+    if req.method() == http::Method::DELETE
+        && let Some(ended) = &presented
+        && let Err(e) = state.db.revoke_session_bound(ended.clone(), crate::state::now_unix()).await
+    {
+        tracing::warn!(error = %e, "failed to revoke session-bound keys on session close");
+    }
     let session_id = presented.unwrap_or_else(|| state.session_bindings.issue());
     req.extensions_mut()
         .insert(crate::session_bind::RequestSessionId(session_id.clone()));

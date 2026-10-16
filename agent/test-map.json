@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-idempotency-key-on-call.md (test_prefix: idkey)",
+  "ac_test_map_prd": "PRD-mcphost-delegation-bound-to-run-or-session.md (test_prefix: kbind)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,10 +28,13 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/idkey_ac01_timeout_hint_carries_key.rs",
-    "AC2": "tests/idkey_ac02_replay_same_key_same_args.rs",
-    "AC3": "tests/idkey_ac03_same_key_different_args_conflicts.rs",
-    "AC4": "tests/idkey_ac04_concurrent_same_key_runs_once.rs"
+    "AC1": "tests/kbind_ac01_session_ids_distinct_and_bound_key_refused_elsewhere.rs",
+    "AC2": "tests/kbind_ac02_run_bound_key_needs_its_run_id.rs",
+    "AC3": "tests/kbind_ac03_run_done_revokes_bound_key.rs",
+    "AC4": "tests/kbind_ac04_bind_target_must_be_yours.rs",
+    "AC5": "tests/kbind_ac05_session_idle_and_close_revoke.rs",
+    "AC6": "tests/kbind_ac06_list_and_whoami_show_bound.rs",
+    "AC7": "tests/kbind_ac07_run_deadline_caps_child_expiry.rs"
   },
   "ac_test_map_by_prefix": {
     "ccli": {
@@ -1776,6 +1779,13 @@
       "_prd": "PRD-mcphost-host-doctor-next-names-envelope-key.md (test_prefix: hdnext)",
       "AC1": "tests/hdnext_ac01_next_names_envelope_keys.rs",
       "AC5": "deferred -- operator-provisioned: Live AC against prod after deploy."
+    },
+    "idkey": {
+      "_prd": "PRD-mcphost-idempotency-key-on-call.md (test_prefix: idkey)",
+      "AC1": "tests/idkey_ac01_timeout_hint_carries_key.rs",
+      "AC2": "tests/idkey_ac02_replay_same_key_same_args.rs",
+      "AC3": "tests/idkey_ac03_same_key_different_args_conflicts.rs",
+      "AC4": "tests/idkey_ac04_concurrent_same_key_runs_once.rs"
     }
   }
 }
