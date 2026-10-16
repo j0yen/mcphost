@@ -28,6 +28,13 @@ async fn a_busy_loop_is_tool_timeout_within_two_seconds_and_the_next_call_succee
         .await
         .expect("publish ok");
 
+    // Warm the sandbox path (page cache, scratch dirs) so the 2 s budget measures the
+    // timeout, not a cold first spawn on a loaded host.
+    client
+        .tools_call(&format!("{ns}.spinner"), json!({"spin": false}))
+        .await
+        .expect("warm-up call ok");
+
     let err = crate::deadline_budget!(2000, {
         client
             .tools_call(&format!("{ns}.spinner"), json!({"spin": true}))
