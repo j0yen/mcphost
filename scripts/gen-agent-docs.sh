@@ -76,24 +76,31 @@ PY
 
 check_file() {
   local file="$1"
-  local before after status
+  local before after orig status
   before="$(mktemp)"
   after="$(mktemp)"
   cp "$file" "$before"
+  orig="$(mktemp)"
+  cp "$file" "$orig"
   if ! apply_to_file "$file"; then
     rm -f "$before" "$after"
     return 1
   fi
   cp "$file" "$after"
+  # `mcphost llms-txt` injects a generated domain-hint block into the quickstart
+  # region of www/llms.txt (PRD-mcphost-unknown-import-domain-hint); it is not
+  # part of docs/agent-quickstart.md, so it must not count as drift.
+  sed -i "/<!-- domain-hint:start -->/,/<!-- domain-hint:end -->/d" "$before"
   if diff -q "$before" "$after" > /dev/null; then
     status=0
   else
     echo "gen-agent-docs.sh --check: $file is stale against $SOURCE" >&2
     # restore the file: check mode must not leave a write behind
-    cp "$before" "$file"
     status=1
   fi
-  rm -f "$before" "$after"
+  # check mode must not leave a write behind (even when equal modulo the hint)
+  cp "$orig" "$file"
+  rm -f "$before" "$after" "$orig"
   return "$status"
 }
 
