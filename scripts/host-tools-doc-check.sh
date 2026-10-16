@@ -4,7 +4,7 @@
 # whether it honours `dry_run`, with the `no_dry_run_reason` beside every
 # opt-out -- generated from the WRITE_VERBS table in src/write_verbs.rs
 # (parsed back out of the Rust source text, never a second hand-kept list).
-# sandbox-api-doc-check.sh calls this in both of its modes.
+# ref-docs-check.sh calls this in both of its modes.
 #
 # Usage:
 #   scripts/host-tools-doc-check.sh          check: exit 0 or exit 1 naming
@@ -73,7 +73,7 @@ if [ "$MODE" = "write" ]; then
     echo "\`src/write_verbs.rs\`. A \`supported\` verb called with \`dry_run: true\` runs inside a"
     echo "rolled-back savepoint and answers \`{would: {...}, _meta: {dry_run: true}}\`; a \`refused\`"
     echo "verb fails with \`args_invalid\` and \`data.no_dry_run_reason\` set to the reason beside it."
-    echo "Regenerate with \`scripts/sandbox-api-doc-check.sh --write\`."
+    echo "Regenerate with \`scripts/ref-docs-check.sh --write\`."
     echo
     printf '%s\n' "$RENDERED"
   } > "$TARGET"
@@ -87,7 +87,7 @@ if [ ! -f "$TARGET" ]; then
 fi
 ACTUAL="$(sed -n '/<!-- mcphost-write-verbs:start -->/,/<!-- mcphost-write-verbs:end -->/p' "$TARGET")"
 if [ "$ACTUAL" != "$RENDERED" ]; then
-  echo "host-tools-doc-check.sh: $TARGET is out of sync with $SOURCE (run scripts/sandbox-api-doc-check.sh --write)" >&2
+  echo "host-tools-doc-check.sh: $TARGET is out of sync with $SOURCE (run scripts/ref-docs-check.sh --write)" >&2
   diff <(printf '%s\n' "$RENDERED") <(printf '%s\n' "$ACTUAL") >&2 || true
   exit 1
 fi

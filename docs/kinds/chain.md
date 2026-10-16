@@ -63,6 +63,9 @@ A step may fan out: add `"for_each": "$.prev.result.items"` (any mapping path to
 | `tool_building` | the tool's dependencies are still building |
 | `tool_not_found` | a named tool does not exist for this tenant |
 | `tool_run_unsupported` | the tool cannot be run this way (for example a dry run) |
+| `fixture_step_unknown` | a dry-run fixture key named a step the chain does not have |
+| `fixture_step_ambiguous` | a dry-run fixture key matched more than one step |
+| `fixture_shape_mismatch` | a dry-run fixture did not have the shape the step expects |
 <!-- kind-errors:end -->
 
 ## Canonical example

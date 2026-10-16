@@ -2,7 +2,7 @@
 //! AC6 -- Given `host.key.rotate {dry_run: true}`, When called, Then it fails
 //! with `args_invalid` and `data.no_dry_run_reason == "external_effect"`, and
 //! `docs/host-tools.md` contains that reason beside `host.key.rotate`
-//! (generated, checked by `scripts/sandbox-api-doc-check.sh`).
+//! (generated, checked by `scripts/ref-docs-check.sh`).
 
 use crate::common;
 use common::{McpClient, TestServer, signup};
@@ -44,7 +44,7 @@ fn host_tools_doc_names_the_reason_beside_the_verb_and_the_check_script_catches_
     let dir = std::env::temp_dir().join(format!("mcphost-dryv-ac06-{}-{}", std::process::id(), mcphost::state::now_unix_ms()));
     let doc_files = common::DOC_CHECK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     for rel in [
-        "scripts/sandbox-api-doc-check.sh",
+        "scripts/ref-docs-check.sh",
         "scripts/host-tools-doc-check.sh",
         "scripts/protocol-frames-check.sh",
         "src/protocol/frames.rs",
@@ -74,7 +74,7 @@ fn host_tools_doc_names_the_reason_beside_the_verb_and_the_check_script_catches_
     drop(doc_files);
     let run = |args: &[&str]| {
         Command::new("bash")
-            .arg(dir.join("scripts/sandbox-api-doc-check.sh"))
+            .arg(dir.join("scripts/ref-docs-check.sh"))
             .args(args)
             .output()
             .expect("run script")

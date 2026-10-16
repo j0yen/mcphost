@@ -26,11 +26,11 @@ use mcphost::state::AppState;
 use serde_json::{Value, json};
 
 /// Serializes the tests that read or rewrite the doc files
-/// `scripts/sandbox-api-doc-check.sh` owns: `--write` rewrites them in place
+/// `scripts/ref-docs-check.sh` owns: `--write` rewrites them in place
 /// and a concurrent copy or check can see a half-written file.
 pub static DOC_CHECK_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-/// A scratch copy of every file `scripts/sandbox-api-doc-check.sh` reads or
+/// A scratch copy of every file `scripts/ref-docs-check.sh` reads or
 /// regenerates, laid out at the same relative paths. A test that needs to run
 /// the script in `--write` mode does it here, never on the repo's own tree: a
 /// `--write` on the real tree is visible, half-finished, to every concurrently
@@ -45,7 +45,7 @@ pub fn doc_check_scratch(label: &str) -> PathBuf {
     ));
     let _guard = DOC_CHECK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     for rel in [
-        "scripts/sandbox-api-doc-check.sh",
+        "scripts/ref-docs-check.sh",
         "scripts/host-tools-doc-check.sh",
         "scripts/protocol-frames-check.sh",
         "src/protocol/frames.rs",

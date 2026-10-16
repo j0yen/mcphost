@@ -3,7 +3,7 @@
 //! AC6 (P0) — Given the router, the metadata route, `www/` client pages,
 //! `llms-install.md`, and `host.quickstart`, When the `oauthentry`
 //! path-contract test runs, Then every occurrence of the entry path equals
-//! `OAUTH_ENTRY_PATH` and `sandbox-api-doc-check.sh` passes.
+//! `OAUTH_ENTRY_PATH` and `ref-docs-check.sh` passes.
 
 use crate::common;
 use common::TestServer;
@@ -133,13 +133,13 @@ fn the_install_table_gives_claude_ai_and_chatgpt_the_entry_url_and_a_personal_ba
 fn sandbox_api_doc_check_passes() {
     let _doc_files = common::DOC_CHECK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let out = std::process::Command::new("bash")
-        .arg("scripts/sandbox-api-doc-check.sh")
+        .arg("scripts/ref-docs-check.sh")
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
-        .expect("run sandbox-api-doc-check.sh");
+        .expect("run ref-docs-check.sh");
     assert!(
         out.status.success(),
-        "sandbox-api-doc-check.sh failed: {}{}",
+        "ref-docs-check.sh failed: {}{}",
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );

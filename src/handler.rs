@@ -1351,7 +1351,7 @@ fn host_tools_part_01(kinds: &KindRegistry) -> Vec<Tool> {
                         "type": "array",
                         "items": {"type": "string", "enum": ["mcp", "tools:call", "tools:write"]},
                         "minItems": 1,
-                        "description": "Scopes the child holds; each must be implied by yours (required unless bind is given; then default mcp).",
+                        "description": "Scopes the child holds; each must be implied by yours.",
                     },
                     "tools": {
                         "type": "array",
@@ -1363,7 +1363,7 @@ fn host_tools_part_01(kinds: &KindRegistry) -> Vec<Tool> {
                     "ttl_s": {
                         "type": "integer",
                         "minimum": 60,
-                        "description": "Lifetime in seconds; at most your own remaining lifetime and the plan's delegated_ttl_max_s (required unless bind is given; then the run's deadline or the plan ceiling).",
+                        "description": "Lifetime in seconds; at most your own remaining lifetime and the plan's delegated_ttl_max_s.",
                     },
                     "label": {
                         "type": "string",
@@ -1373,12 +1373,8 @@ fn host_tools_part_01(kinds: &KindRegistry) -> Vec<Tool> {
                         "type": "boolean",
                         "description": "Whether the child may itself delegate (default false).",
                     },
-                    "bind": {
-                        "type": "object",
-                        "description": "Tie the child to one unit of work: {run_id} (an open run of yours; the key dies with it and expires no later than its deadline) or {session: \"current\"} / {session_id} (this connection; the key dies when it closes or sits idle 30 min). Refused key_bound_elsewhere anywhere else.",
-                    },
                 }),
-                &[],
+                &["scopes", "ttl_s"],
             ),
         ),
         // PRD-mcphost-tenant-self-offboard P0 requirement 1 / AC1-4:
@@ -6825,7 +6821,7 @@ impl McpHostHandler {
             "host.calls.list" => crate::calllog::list(&self.state, tenant, &args).await,
             "host.calls.export" => crate::calllog::export(&self.state, tenant, &args).await,
             "host.key.mint" => crate::subkeys::mint(&self.state, tenant, &args).await,
-            "host.key.delegate" => crate::subkeys::delegate(&self.state, tenant, &args, session_id).await,
+            "host.key.delegate" => crate::subkeys::delegate(&self.state, tenant, &args).await,
             "host.key.list" => crate::subkeys::list(&self.state, tenant).await,
             "host.key.revoke" => crate::subkeys::revoke(&self.state, tenant, &args).await,
             "host.self.offboard" => control::self_offboard(&self.state, tenant).await,
@@ -10831,19 +10827,6 @@ impl McpHostHandler {
             if !sk.scope_ok(canonical) {
                 return Err(sk.scope_denied(canonical).into_error_data_at(Some(&self.state.public_url)));
             }
-            // PRD-mcphost-delegation-bound-to-run-or-session R3: a bound key
-            // is refused anywhere but its run / session, before any call row.
-            // `host.whoami` stays open so a helper can read its own binding.
-            if canonical != "host.whoami" {
-                let seen_run = crate::subkeys::seen_run_id(canonical, &raw_args, request.meta.as_ref().map(|m| &m.0.0));
-                sk.check_bound(session_id.as_deref(), seen_run.as_deref())
-                    .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
-                if sk.bound.as_ref().is_some_and(|(kind, _)| kind == "session")
-                    && let Err(e) = self.state.db.touch_bound_session(sk.id, now_unix()).await
-                {
-                    tracing::warn!(error = %e, "failed to bump bound session last_seen");
-                }
-            }
         }
         // PRD-mcphost-abuse-guard-ban-list requirement 2 / AC2: every
         // authenticated tool call (header or tenant_key-argument alike)
@@ -11677,14 +11660,6 @@ impl McpHostHandler {
                 }
                 if let Some(url) = invite_hint_url {
                     meta.0.insert("invite_url".to_string(), json!(url));
-                }
-                // PRD-mcphost-delegation-bound-to-run-or-session AC1: the
-                // connection's own id, so a lead can see what `bind:
-                // {session: "current"}` would tie a key to.
-                if body_name == "host.whoami"
-                    && let Some(sid) = session_id.as_deref()
-                {
-                    meta.0.insert("session_id".to_string(), json!(sid));
                 }
                 if let Some(nudge) = claim_nudge {
                     meta.0.insert("next".to_string(), nudge);

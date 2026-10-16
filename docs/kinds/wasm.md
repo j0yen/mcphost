@@ -56,6 +56,7 @@ Result envelope contract: a call's output always lands at `result.payload`; an o
 | `tool_trapped` | the tool trapped (a WebAssembly trap) |
 | `tool_timeout` | the call ran past its `timeout_s` |
 | `tool_oom` | the call exceeded its `memory_mb` |
+| `args_invalid` | the call's arguments did not satisfy the tool's input schema |
 <!-- kind-errors:end -->
 
 ## Canonical example

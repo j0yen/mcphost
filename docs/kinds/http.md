@@ -66,6 +66,10 @@ Publish error `url: host '<host>' is not a publicly callable host` (code `host_n
 | `upstream_unreachable` | the upstream could not be reached |
 | `upstream_not_connected` | the named upstream provider is not connected for this tenant |
 | `host_not_allowed` | the target host is not on the allowed list or resolves to a private address |
+| `args_invalid` | the call's arguments did not satisfy the tool's input schema |
+| `rate_limited` | the tool's own `rate_limit` was exceeded |
+| `response_too_large` | the upstream response exceeded the result size cap |
+| `template_error` | a request template referenced an undefined variable or failed to render |
 <!-- kind-errors:end -->
 
 ## Canonical example

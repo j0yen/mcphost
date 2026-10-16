@@ -6,7 +6,7 @@
 //! gets its `dry_run` property from it (`handler::host_tools`), the
 //! `dry_run` dispatch wrapper (`handler::dispatch_tenant_tool`) reads it, and
 //! `docs/host-tools.md` is rendered from the source text of this very table
-//! by `scripts/sandbox-api-doc-check.sh`. A write verb that is in none of
+//! by `scripts/ref-docs-check.sh`. A write verb that is in none of
 //! those fails `tests/dryv_ac02_*` with its name -- prose at a boundary
 //! drifts, a derived list cannot.
 
@@ -60,7 +60,7 @@ const fn nd(name: &'static str, kind: Kind, reason: &'static str) -> WriteVerb {
 }
 
 // One row per line, `sv("<verb>", Kind::X)` / `nd("<verb>", Kind::X, "<reason>")`:
-// scripts/sandbox-api-doc-check.sh parses these lines to render docs/host-tools.md.
+// scripts/ref-docs-check.sh parses these lines to render docs/host-tools.md.
 pub const WRITE_VERBS: &[WriteVerb] = &[
     sv("host.table.create", Kind::Write),
     sv("host.table.append", Kind::Write),

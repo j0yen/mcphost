@@ -214,6 +214,8 @@ mod kcon_ac02_every_registered_kind_passes;
 mod kcon_ac04_error_families_and_source_line;
 #[path = "kdr_ac01_kind_doc_from_data.rs"]
 mod kdr_ac01_kind_doc_from_data;
+#[path = "kdrb_ac02_regex_scripts_folded.rs"]
+mod kdrb_ac02_regex_scripts_folded;
 #[path = "kindhonor_ac2_kind_mismatch_refused.rs"]
 mod kindhonor_ac2_kind_mismatch_refused;
 #[path = "kindroute_ac04_unknown_kind_carries_recipe_hints.rs"]

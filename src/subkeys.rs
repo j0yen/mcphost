@@ -54,20 +54,13 @@ pub struct SubKey {
     pub can_delegate: bool,
     pub depth: i64,
     pub revoked_by: Option<String>,
-    /// PRD-mcphost-delegation-bound-to-run-or-session R1: `Some(("run" |
-    /// "session", id))` ties the key to one run or one MCP connection.
-    pub bound: Option<(String, String)>,
-    pub bound_last_seen_unix: Option<i64>,
-    /// Why a bound key died: `run_<state>`, `session_idle`, `session_closed`.
-    pub revoked_reason: Option<String>,
     /// `tools_json` is `null`: no allowlist (a delegation that named no
     /// tools under a parent with none).
     pub unrestricted: bool,
 }
 
 const SUB_KEY_COLUMNS: &str = "id, tenant_id, key_hash, label, tools_json, created_at, expires_at, \
-     revoked_at, last_used_at, parent_key_id, scopes_json, can_delegate, depth, revoked_by, \
-     bound_kind, bound_ref, bound_last_seen_unix, revoked_reason";
+     revoked_at, last_used_at, parent_key_id, scopes_json, can_delegate, depth, revoked_by";
 
 fn sub_key_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<SubKey> {
     let tools_json: String = r.get(4)?;
@@ -87,144 +80,7 @@ fn sub_key_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<SubKey> {
         can_delegate: r.get::<_, i64>(11)? != 0,
         depth: r.get(12)?,
         revoked_by: r.get(13)?,
-        bound: match (r.get::<_, Option<String>>(14)?, r.get::<_, Option<String>>(15)?) {
-            (Some(kind), Some(id)) => Some((kind, id)),
-            _ => None,
-        },
-        bound_last_seen_unix: r.get(16)?,
-        revoked_reason: r.get(17)?,
         unrestricted: tools_json.trim() == "null",
-    })
-}
-
-/// Stamp one bound key revoked with `reason` and write its `revoke_bound`
-/// audit row, on the caller's connection (so inside the caller's
-/// transaction).
-fn revoke_bound_key(
-    conn: &rusqlite::Connection,
-    (tenant_id, label): (i64, &str),
-    (kind, bound_ref): (&str, &str),
-    reason: &str,
-    now: i64,
-) -> rusqlite::Result<()> {
-    conn.execute(
-        "UPDATE tenant_keys SET revoked_at = ?4, revoked_by = label, revoked_reason = ?5 \
-         WHERE tenant_id = ?1 AND label = ?2 AND bound_kind = ?3 AND revoked_at IS NULL",
-        params![tenant_id, label, kind, now, reason],
-    )?;
-    conn.execute(
-        "INSERT INTO tenant_audit (tenant_id, subject, action, detail, created_unix) \
-         VALUES (?1, ?2, 'revoke_bound', ?3, ?4)",
-        params![
-            tenant_id,
-            format!("key:{label}"),
-            json!({"label": label, "bound": {"kind": kind, "ref": bound_ref}, "reason": reason}).to_string(),
-            now
-        ],
-    )?;
-    Ok(())
-}
-
-/// R4/R5: revoke every live key of `tenant_id` bound to `(kind, bound_ref)`
-/// with `reason`, one `revoke_bound` audit row each. Runs inside the
-/// caller's transaction so the run's terminal write and the revocation
-/// commit together. Returns how many keys it revoked.
-pub(crate) fn revoke_bound_on(
-    conn: &rusqlite::Connection,
-    tenant_id: i64,
-    bound: (&str, &str),
-    reason: &str,
-    now: i64,
-) -> rusqlite::Result<usize> {
-    let labels: Vec<String> = {
-        let mut stmt = conn.prepare(
-            "SELECT label FROM tenant_keys WHERE tenant_id = ?1 AND bound_kind = ?2 AND bound_ref = ?3 \
-             AND revoked_at IS NULL ORDER BY id",
-        )?;
-        stmt.query_map(params![tenant_id, bound.0, bound.1], |r| r.get(0))?.collect::<Result<_, _>>()?
-    };
-    for label in &labels {
-        revoke_bound_key(conn, (tenant_id, label), bound, reason, now)?;
-    }
-    Ok(labels.len())
-}
-
-/// R5: a session-bound key idle this long is swept.
-pub const SESSION_IDLE_S: i64 = 30 * 60;
-/// R5: `bound_last_seen_unix` is written at most this often, and the idle
-/// sweep runs this often.
-pub const SESSION_TOUCH_S: i64 = 60;
-
-impl Db {
-    /// R5: `bound_last_seen_unix`, written at most once per minute.
-    pub async fn touch_bound_session(&self, id: i64, now: i64) -> Result<(), AppError> {
-        self.with_conn(move |conn| {
-            conn.execute(
-                "UPDATE tenant_keys SET bound_last_seen_unix = ?2 WHERE id = ?1 AND bound_kind = 'session' \
-                 AND revoked_at IS NULL AND (bound_last_seen_unix IS NULL OR bound_last_seen_unix <= ?2 - ?3)",
-                params![id, now, SESSION_TOUCH_S],
-            )?;
-            Ok(())
-        })
-        .await
-    }
-
-    /// R5: the MCP session `session_id` ended -- every key bound to it dies
-    /// now (`session_closed`). Returns how many.
-    pub async fn revoke_session_bound(&self, session_id: String, now: i64) -> Result<usize, AppError> {
-        self.with_conn(move |conn| {
-            let tx = conn.unchecked_transaction()?;
-            let tenants: Vec<i64> = {
-                let mut stmt = tx.prepare(
-                    "SELECT DISTINCT tenant_id FROM tenant_keys WHERE bound_kind = 'session' AND bound_ref = ?1 \
-                     AND revoked_at IS NULL",
-                )?;
-                stmt.query_map(params![session_id], |r| r.get(0))?.collect::<Result<_, _>>()?
-            };
-            let mut n = 0;
-            for tenant_id in tenants {
-                n += revoke_bound_on(&tx, tenant_id, ("session", &session_id), "session_closed", now)?;
-            }
-            tx.commit()?;
-            Ok(n)
-        })
-        .await
-    }
-
-    /// R5: revoke every session-bound key whose session has been silent for
-    /// more than [`SESSION_IDLE_S`] as of `now` (`session_idle`). One query
-    /// per tick. Returns how many.
-    pub async fn sweep_idle_bound_sessions(&self, now: i64) -> Result<usize, AppError> {
-        self.with_conn(move |conn| {
-            let tx = conn.unchecked_transaction()?;
-            let idle: Vec<(i64, String, String)> = {
-                let mut stmt = tx.prepare(
-                    "SELECT tenant_id, label, bound_ref FROM tenant_keys WHERE bound_kind = 'session' \
-                     AND revoked_at IS NULL AND COALESCE(bound_last_seen_unix, created_at) < ?1 - ?2",
-                )?;
-                stmt.query_map(params![now, SESSION_IDLE_S], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
-                    .collect::<Result<_, _>>()?
-            };
-            for (tenant_id, label, session_id) in &idle {
-                revoke_bound_key(&tx, (*tenant_id, label), ("session", session_id), "session_idle", now)?;
-            }
-            tx.commit()?;
-            Ok(idle.len())
-        })
-        .await
-    }
-}
-
-/// R5: the idle sweep, every [`SESSION_TOUCH_S`]; started once at `serve`
-/// startup like the other background ticks, never joined.
-pub fn spawn_bound_session_sweep(state: AppState) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(std::time::Duration::from_secs(SESSION_TOUCH_S as u64)).await;
-            if let Err(e) = state.db.sweep_idle_bound_sessions(now_unix()).await {
-                tracing::warn!(error = %e, "bound-session idle sweep failed");
-            }
-        }
     })
 }
 
@@ -247,18 +103,14 @@ pub struct NewSubKey {
     pub depth: i64,
     /// `None` stores `null`: no allowlist.
     pub unrestricted: bool,
-    /// `(kind, ref)` of a run- or session-bound key.
-    pub bound: Option<(String, String)>,
 }
 
 impl Db {
     /// Insert one sub-key; a label already used by this tenant is
     /// `label_taken`.
     pub async fn insert_sub_key(&self, tenant_id: i64, new: NewSubKey) -> Result<i64, AppError> {
-        let NewSubKey { key_hash, label, tools, created_at, expires_at, parent_key_id, scopes, can_delegate, depth, unrestricted, bound } =
+        let NewSubKey { key_hash, label, tools, created_at, expires_at, parent_key_id, scopes, can_delegate, depth, unrestricted } =
             new;
-        let (bound_kind, bound_ref) = bound.unzip();
-        let bound_seen = bound_kind.as_ref().map(|_| created_at);
         let tools_json = if unrestricted { "null".to_string() } else { json!(tools).to_string() };
         let scopes_json = crate::delegation::scopes_json(&scopes).to_string();
         self.with_conn(move |conn| {
@@ -274,11 +126,10 @@ impl Db {
             }
             conn.execute(
                 "INSERT INTO tenant_keys (tenant_id, key_hash, label, tools_json, created_at, expires_at, \
-                 parent_key_id, scopes_json, can_delegate, depth, bound_kind, bound_ref, bound_last_seen_unix) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                 parent_key_id, scopes_json, can_delegate, depth) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                 params![
                     tenant_id, key_hash, label, tools_json, created_at, expires_at, parent_key_id, scopes_json,
-                    can_delegate as i64, depth, bound_kind, bound_ref, bound_seen
+                    can_delegate as i64, depth
                 ],
             )?;
             Ok(conn.last_insert_rowid())
@@ -527,7 +378,6 @@ pub async fn mint(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         can_delegate: false,
         depth: 1,
         unrestricted: false,
-        bound: None,
     };
     state.db.insert_sub_key(tenant.id, new).await?;
     Ok(json!({
@@ -585,35 +435,6 @@ impl SubKey {
 }
 
 impl SubKey {
-    /// R6: `{kind, ref, last_seen_unix}` for a bound key, `null` otherwise.
-    pub fn bound_json(&self) -> Value {
-        match &self.bound {
-            Some((kind, id)) => json!({"kind": kind, "ref": id, "last_seen_unix": self.bound_last_seen_unix}),
-            None => Value::Null,
-        }
-    }
-
-    /// R3: a session-bound key is valid only on the connection whose
-    /// `Mcp-Session-Id` equals `bound_ref`, a run-bound one only on a call
-    /// that carries that `run_id`; anywhere else it is
-    /// `key_bound_elsewhere {bound, seen}`.
-    pub fn check_bound(&self, session_id: Option<&str>, run_id: Option<&str>) -> Result<(), AppError> {
-        let Some((kind, id)) = &self.bound else { return Ok(()) };
-        let seen = if kind == "run" { run_id } else { session_id };
-        if seen == Some(id.as_str()) {
-            return Ok(());
-        }
-        Err(AppError::Structured {
-            code: "key_bound_elsewhere",
-            message: format!("sub-key '{}' is bound to {kind} {id} and cannot be used here", self.label),
-            data: json!({
-                "bound": {"kind": kind, "ref": id},
-                "seen": {"kind": kind, "ref": seen},
-                "key_label": self.label,
-            }),
-        })
-    }
-
     /// The refusal for a sub-key that can no longer authenticate, `None`
     /// while it is live (R3). Revocation wins over expiry.
     pub fn dead_reason(&self, now: i64) -> Option<AppError> {
@@ -625,7 +446,6 @@ impl SubKey {
                     "key_label": self.label,
                     "revoked_at": at,
                     "revoked_by": self.revoked_by.as_deref().unwrap_or(&self.label),
-                    "reason": self.revoked_reason,
                 }),
             });
         }
@@ -653,8 +473,6 @@ fn node_json(k: &SubKey, parent_label: Option<&str>) -> Value {
         "expires_at": k.expires_at,
         "revoked_at": k.revoked_at,
         "last_used_at": k.last_used_at,
-        "bound": k.bound_json(),
-        "revoked_reason": k.revoked_reason,
         "children": [],
     })
 }
@@ -782,85 +600,9 @@ fn plan_required(field: &str, limit: i64, requested: i64, plan: &str) -> AppErro
     }
 }
 
-/// What `bind` resolved to: the binding, plus the run's own deadline when
-/// the key is run-bound (R2: the child never outlives it).
-struct Bind {
-    kind: &'static str,
-    id: String,
-    deadline: Option<i64>,
-}
-
-/// R2: `bind: {run_id} | {session_id} | {session: "current"}`. A run must be
-/// open and the tenant's own (`not_found` otherwise); a session must be the
-/// caller's own connection (a foreign id is `permission_denied`).
-async fn parse_bind(
-    state: &AppState,
-    tenant: &Tenant,
-    bind: Option<&Value>,
-    session_id: Option<&str>,
-    now: i64,
-) -> Result<Option<Bind>, AppError> {
-    let bind = match bind {
-        None | Some(Value::Null) => return Ok(None),
-        Some(Value::Object(m)) => m,
-        Some(_) => return Err(AppError::InvalidParams("bind: an object".into())),
-    };
-    let one_of = || {
-        AppError::InvalidParams("bind: exactly one of run_id, session_id, session (\"current\")".into())
-    };
-    if bind.len() != 1 {
-        return Err(one_of());
-    }
-    let current = || {
-        session_id
-            .map(|s| Bind { kind: "session", id: s.to_string(), deadline: None })
-            .ok_or_else(|| AppError::InvalidParams("bind: this call carries no MCP session id to bind to".into()))
-    };
-    match bind.iter().next() {
-        Some((k, v)) if k == "session" && v.as_str() == Some("current") => current().map(Some),
-        Some((k, v)) if k == "session_id" => {
-            let want = v
-                .as_str()
-                .filter(|s| !s.is_empty())
-                .ok_or_else(|| AppError::InvalidParams("bind.session_id: a non-empty string".into()))?;
-            if session_id != Some(want) {
-                return Err(AppError::Structured {
-                    code: "permission_denied",
-                    message: "bind.session_id must be this connection's own session id".into(),
-                    data: json!({"reason": "foreign_session"}),
-                });
-            }
-            current().map(Some)
-        }
-        Some((k, v)) if k == "run_id" => {
-            let id = v
-                .as_str()
-                .filter(|s| !s.is_empty())
-                .ok_or_else(|| AppError::InvalidParams("bind.run_id: a non-empty string".into()))?;
-            let not_found = || AppError::Structured {
-                code: "not_found",
-                message: format!("bind.run_id: no open run '{id}' of yours; no key was minted"),
-                data: json!({"run_id": id}),
-            };
-            let run = state.db.get_run(id.to_string(), tenant.id).await?.ok_or_else(not_found)?;
-            if !matches!(run.status.as_str(), "queued" | "running") {
-                return Err(not_found());
-            }
-            let deadline = run.deadline_s.map(|d| run.started_unix.unwrap_or(now) + d);
-            Ok(Some(Bind { kind: "run", id: id.to_string(), deadline }))
-        }
-        _ => Err(one_of()),
-    }
-}
-
 /// `host.key.delegate {scopes, tools?, ttl_s, label?, can_delegate?}` (R2):
 /// callable by the primary and by a delegated key with `can_delegate`.
-pub async fn delegate(
-    state: &AppState,
-    tenant: &Tenant,
-    args: &Value,
-    session_id: Option<&str>,
-) -> Result<Value, AppError> {
+pub async fn delegate(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let caller = match current_key_id() {
         Some(id) => state.db.find_sub_key_by_id(id).await?,
         None => None,
@@ -873,14 +615,7 @@ pub async fn delegate(
             data: json!({"reason": "can_delegate=false", "key_label": caller.as_ref().map(|c| c.label.clone())}),
         });
     }
-    let now = now_unix();
-    let bound = parse_bind(state, tenant, args.get("bind"), session_id, now).await?;
-    // A bound key is a whole unit of work, so scopes default to `mcp`; an
-    // unbound one still has to say what it may do.
     let scopes: Vec<crate::scopes::Scope> = match args.get("scopes").and_then(Value::as_array) {
-        None if bound.is_some() && !matches!(args.get("scopes"), Some(v) if !v.is_null()) => {
-            vec![crate::scopes::Scope::Mcp]
-        }
         Some(a) if !a.is_empty() => a
             .iter()
             .map(|v| v.as_str().and_then(crate::scopes::Scope::parse))
@@ -904,29 +639,11 @@ pub async fn delegate(
             return Err(AppError::InvalidParams(format!("tools: an array of 1..{TOOLS_MAX} tool names")));
         }
     };
-    let ttl_s = match (args.get("ttl_s"), &bound) {
-        // The key lives as long as its run (or the plan / parent allow).
-        (None | Some(Value::Null), Some(b)) => {
-            let plan_max = state.plans.get(&tenant.plan).map(|p| p.delegated_ttl_max_s);
-            [
-                Some(TTL_DEFAULT_S),
-                plan_max,
-                b.deadline.map(|d| d - now),
-                parent.expires_at.map(|e| e - now),
-            ]
-            .into_iter()
-            .flatten()
-            .min()
-            .unwrap_or(TTL_DEFAULT_S)
-            .max(TTL_MIN_S)
-        }
-        (v, _) => v
-            .and_then(Value::as_i64)
-            .filter(|t| *t >= TTL_MIN_S)
-            .ok_or_else(|| {
-                AppError::InvalidParams(format!("ttl_s: an integer of at least {TTL_MIN_S} seconds is required"))
-            })?,
-    };
+    let ttl_s = args
+        .get("ttl_s")
+        .and_then(Value::as_i64)
+        .filter(|t| *t >= TTL_MIN_S)
+        .ok_or_else(|| AppError::InvalidParams(format!("ttl_s: an integer of at least {TTL_MIN_S} seconds is required")))?;
     let key = generate_sub_key();
     let label = match args.get("label") {
         None | Some(Value::Null) => format!("key-{}", &key[3..11]),
@@ -941,13 +658,10 @@ pub async fn delegate(
         Some(Value::Bool(b)) => *b,
         Some(_) => return Err(AppError::InvalidParams("can_delegate: a boolean".into())),
     };
+    let now = now_unix();
     let req = crate::delegation::DelegateReq { scopes, tools, ttl_s, now, can_delegate };
     let child = crate::delegation::narrow(&parent, &req).map_err(crate::delegation::Excess::into_error)?;
-    let mut expires_at = child.expires_at.unwrap_or(now + ttl_s);
-    // R2: a run-bound key never outlives the run's own deadline.
-    if let Some(deadline) = bound.as_ref().and_then(|b| b.deadline) {
-        expires_at = expires_at.min(deadline);
-    }
+    let expires_at = child.expires_at.unwrap_or(now + ttl_s);
     // R5: the plan's ceilings, after the subset rule so a child that merely
     // outlives its parent is still `scope_escalation`.
     let plan = state
@@ -972,7 +686,6 @@ pub async fn delegate(
         can_delegate,
         depth: child.depth,
         unrestricted: child.tools.is_none(),
-        bound: bound.as_ref().map(|b| (b.kind.to_string(), b.id.clone())),
     };
     state.db.insert_sub_key(tenant.id, new).await?;
     let detail = json!({
@@ -994,23 +707,8 @@ pub async fn delegate(
         "expires_at": expires_at,
         "depth": child.depth,
         "can_delegate": can_delegate,
-        "bound": bound.as_ref().map(|b| json!({"kind": b.kind, "ref": b.id})),
         "usage": "Hand this key to the other agent: pass it as the tenant_key argument or an \
             Authorization: Bearer header. It is shown once. It can do no more than the key that \
             minted it, and revoking that key (cascade) revokes it.",
     }))
-}
-
-/// R3: the run id a request names -- the `run_id` argument of a `host.runs.*`
-/// call, else `_meta.run_id` (`calls.run_id` propagation inside
-/// `host.tool_call` stamps the same id on its children).
-pub fn seen_run_id(
-    tool: &str,
-    args: &Value,
-    meta: Option<&serde_json::Map<String, Value>>,
-) -> Option<String> {
-    let from_args = if tool.starts_with("host.runs.") { args.get("run_id").and_then(Value::as_str) } else { None };
-    from_args
-        .or_else(|| meta.and_then(|m| m.get("run_id")).and_then(Value::as_str))
-        .map(str::to_string)
 }

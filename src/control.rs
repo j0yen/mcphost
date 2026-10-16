@@ -1134,6 +1134,19 @@ fn quickstart_inner(
         "steps": steps,
         "limits": quickstart_limits(state, &tenant.plan),
     });
+    // PRD-mcphost-kind-docs-from-registry-b R6: `spec_fields` and
+    // `doc_anchor` come from the same `KindDoc` the kind page's `kind-fields`
+    // block is rendered from, so quickstart and the page cannot differ.
+    if let Value::Object(map) = &mut response {
+        let doc = kind.doc(&state.plans);
+        let page = format!("docs/kinds/{kind_name}.md");
+        let anchor = crate::doc_anchors::DocAnchor::ALL
+            .iter()
+            .map(|a| a.as_str())
+            .find(|a| a.strip_prefix(page.as_str()) == Some("#spec-fields"));
+        map.insert("spec_fields".to_string(), json!(doc.spec_fields.iter().map(|f| &f.name).collect::<Vec<_>>()));
+        map.insert("doc_anchor".to_string(), json!(anchor));
+    }
     // PRD-mcphost-reachability-alt-host requirement 2 / AC1: `endpoint` is
     // additive (every other field above is unchanged); `alt_endpoint` and
     // `reachability` (the shared three-line template, requirement 5) are

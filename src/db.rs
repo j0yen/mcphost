@@ -325,8 +325,6 @@ const MIGRATION_0106: &str = include_str!("../migrations/0106_index_refresh.sql"
 const MIGRATION_0107: &str = include_str!("../migrations/0107_help_search_events.sql");
 /// PRD-mcphost-idempotency-key-on-call R2: the `call_results` table.
 const MIGRATION_0110: &str = include_str!("../migrations/0110_call_results.sql");
-/// PRD-mcphost-delegation-bound-to-run-or-session R1: binding columns on `tenant_keys`.
-const MIGRATION_0111: &str = include_str!("../migrations/0111_key_binding.sql");
 
 /// PRD-mcphost-docs-telemetry-failed-after-search R3: how long after a
 /// `host.help.search` the same tenant's first failed call still joins it.
@@ -3032,7 +3030,6 @@ impl Db {
         Self::migrate_0108_calls_audit(&conn)?;
         Self::migrate_0109_key_delegation(&conn)?;
         Self::migrate_0110_call_results(&conn)?;
-        Self::migrate_0111_key_binding(&conn)?;
         Ok(())
     }
 
@@ -3080,18 +3077,6 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0109)?;
-        }
-        Ok(())
-    }
-
-    /// PRD-mcphost-delegation-bound-to-run-or-session R1: gated on the first
-    /// new column (the batch is `ALTER`s, so a rerun must skip it).
-    fn migrate_0111_key_binding(conn: &Connection) -> Result<(), AppError> {
-        let has_column: bool = conn
-            .prepare("SELECT 1 FROM pragma_table_info('tenant_keys') WHERE name = 'bound_kind'")?
-            .exists([])?;
-        if !has_column {
-            conn.execute_batch(MIGRATION_0111)?;
         }
         Ok(())
     }
@@ -11567,10 +11552,7 @@ impl Db {
         duration_ms: i64,
     ) -> Result<bool, AppError> {
         self.with_conn(move |conn| {
-            // PRD-mcphost-delegation-bound-to-run-or-session R4: the run's
-            // terminal write and its bound keys' revocation are one commit.
-            let tx = conn.unchecked_transaction()?;
-            let affected = tx.execute(
+            let affected = conn.execute(
                 "UPDATE runs SET status = ?1, result_ref = ?2, error_class = ?3, \
                  error_data_json = ?4, finished_unix = ?5, duration_ms = ?6 \
                  WHERE id = ?7 AND tenant_id = ?8 AND status IN ('running', 'queued')",
@@ -11579,10 +11561,6 @@ impl Db {
                     run_id, tenant_id
                 ],
             )?;
-            if affected > 0 {
-                crate::subkeys::revoke_bound_on(&tx, tenant_id, ("run", &run_id), &format!("run_{status}"), finished_unix)?;
-            }
-            tx.commit()?;
             Ok(affected > 0)
         })
         .await
@@ -11610,8 +11588,7 @@ impl Db {
             if before.status != "queued" && before.status != "running" {
                 return Ok(None);
             }
-            let tx = conn.unchecked_transaction()?;
-            let affected = tx.execute(
+            let affected = conn.execute(
                 "UPDATE runs SET status = 'cancelled', finished_unix = ?1 \
                  WHERE id = ?2 AND tenant_id = ?3 AND status IN ('queued', 'running')",
                 params![now, run_id, tenant_id],
@@ -11619,8 +11596,6 @@ impl Db {
             if affected == 0 {
                 return Ok(None); // lost a race with the executor's own finalize.
             }
-            crate::subkeys::revoke_bound_on(&tx, tenant_id, ("run", &run_id), "run_cancelled", now)?;
-            tx.commit()?;
             Ok(Some(before))
         })
         .await
@@ -11901,28 +11876,13 @@ impl Db {
     pub async fn reap_expired_runs(&self) -> Result<i64, AppError> {
         let now = now_unix();
         self.with_conn(move |conn| {
-            let tx = conn.unchecked_transaction()?;
-            let reaped: Vec<(i64, String)> = {
-                let mut stmt = tx.prepare(
-                    "SELECT tenant_id, id FROM runs \
-                     WHERE status = 'running' AND deadline_s IS NOT NULL AND started_unix IS NOT NULL \
-                     AND (started_unix + deadline_s) < ?1",
-                )?;
-                stmt.query_map(params![now], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?
-            };
-            let affected = tx.execute(
+            let affected = conn.execute(
                 "UPDATE runs SET status = 'error', error_class = 'interrupted', \
                  finished_unix = ?1, duration_ms = (?1 - started_unix) * 1000 \
                  WHERE status = 'running' AND deadline_s IS NOT NULL AND started_unix IS NOT NULL \
                  AND (started_unix + deadline_s) < ?1",
                 params![now],
             )?;
-            // PRD-mcphost-delegation-bound-to-run-or-session R4: a reaped run is
-            // terminal too, so its bound keys die with it.
-            for (tenant_id, run_id) in &reaped {
-                crate::subkeys::revoke_bound_on(&tx, *tenant_id, ("run", run_id), "run_error", now)?;
-            }
-            tx.commit()?;
             Ok(affected as i64)
         })
         .await

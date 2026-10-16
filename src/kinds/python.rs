@@ -2024,7 +2024,7 @@ fn merge_env(secret_env: &[(String, String)], env: &[(String, String)]) -> Vec<(
 // [`PY_RUNNER_SCRIPT`] below registers in `sys.modules` -- `host.quickstart`'s
 // `sandbox_api` field (`control::quickstart`, via [`build_sandbox_api`]), the
 // static unknown-import scan ([`scan_unknown_imports`]), the `unknown_import`
-// hint text ([`unknown_import_hint`]), and `scripts/sandbox-api-doc-check.sh`
+// hint text ([`unknown_import_hint`]), and `mcphost gen-docs kinds`
 // all read this list instead of a second, hand-copied one. `signatures` are
 // one-line, pre-formatted call + short doc strings -- exactly what
 // `sandbox_api.modules` hands back, not a (call, doc) tuple `build_sandbox_api`
