@@ -168,6 +168,12 @@ mod msrvlock_ac03_generate_lists_nine_contexts;
 mod msrvlock_ac04_check_compares_live_protection;
 #[path = "msrvlock_ac05_toml_equals_generate.rs"]
 mod msrvlock_ac05_toml_equals_generate;
+#[path = "mwlp_ac01_keyless_wait_returns_at_once.rs"]
+mod mwlp_ac01_keyless_wait_returns_at_once;
+#[path = "mwlp_ac03_timeout_reports_timed_out.rs"]
+mod mwlp_ac03_timeout_reports_timed_out;
+#[path = "mwlp_ac04_arrival_wakes_wait.rs"]
+mod mwlp_ac04_arrival_wakes_wait;
 #[path = "nexttool_ac01_anonymous_starter_set.rs"]
 mod nexttool_ac01_anonymous_starter_set;
 #[path = "nexttool_ac02_authenticated_listing_unchanged.rs"]

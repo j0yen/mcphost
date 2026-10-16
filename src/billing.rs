@@ -966,6 +966,8 @@ pub fn plans_from_catalog(catalog: &crate::plans::PlanCatalog, billing_mode: &st
                 "tools_max": p.tools_max,
                 "calls_per_day": p.calls_per_day,
                 "secrets_max": p.secrets_max,
+                "wait_max_s": crate::longpoll::WAIT_MAX_S,
+                "wait_default_s": crate::longpoll::WAIT_DEFAULT_S,
                 "description": p.description,
             })
         })
