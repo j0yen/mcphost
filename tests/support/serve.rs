@@ -142,28 +142,6 @@ impl ServeChild {
         self.child.id()
     }
 
-    /// Send the child a real SIGTERM.
-    pub fn terminate(&self) {
-        // SAFETY: kill(2) with a pid this struct owns and a valid signal.
-        let rc = unsafe { libc::kill(self.child.id() as libc::pid_t, libc::SIGTERM) };
-        assert_eq!(rc, 0, "kill(SIGTERM) failed");
-    }
-
-    /// Wait up to `timeout` for the child to exit; `None` if it is still
-    /// running at the deadline.
-    pub fn wait_exit(&mut self, timeout: Duration) -> Option<std::process::ExitStatus> {
-        let deadline = Instant::now() + timeout;
-        loop {
-            if let Ok(Some(status)) = self.child.try_wait() {
-                return Some(status);
-            }
-            if Instant::now() >= deadline {
-                return None;
-            }
-            std::thread::sleep(Duration::from_millis(10));
-        }
-    }
-
     /// The readiness budget the last [`ServeChild::wait_ready`] used (`None`
     /// before the first call).
     pub fn ready_budget(&self) -> Option<Duration> {

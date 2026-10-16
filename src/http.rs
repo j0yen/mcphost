@@ -83,15 +83,6 @@ fn is_admin_request(state: &AppState, headers: &HeaderMap) -> bool {
 /// body (requirement 3/AC3) since [`is_admin_request`] doesn't distinguish
 /// "no header" from "wrong header".
 async fn healthz(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl IntoResponse {
-    // PRD-mcphost-graceful-drain-contract R1: a draining process answers 503
-    // `{"state":"draining","restart_id":…}` to everyone.
-    if let Some(restart_id) = crate::drain::global().restart_id() {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"ok": false, "state": "draining", "restart_id": restart_id})),
-        )
-            .into_response();
-    }
     let mut response = healthz_response(&state, &headers).await;
     // PRD-mcphost-checkcompat-port-race requirement 5: the token header is
     // added only when `$MCPHOST_COMPAT_TOKEN` was set in this process's own
@@ -2123,30 +2114,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         // literally every response this router produces, including the
         // default 404 fallback.
         .layer(middleware::from_fn_with_state(state.clone(), hsts))
-        // PRD-mcphost-graceful-drain-contract R1: outermost, so a draining
-        // process refuses a new `/mcp` POST on a still-open keep-alive
-        // connection the same way the closed listener refuses a new socket.
-        .layer(middleware::from_fn(drain_gate))
         .with_state(state)
-}
-
-/// 503 for a new `/mcp` POST (any of the MCP route families) once the drain
-/// has begun; every other request passes.
-async fn drain_gate(req: Request<Body>, next: Next) -> Response {
-    if let Some(restart_id) = crate::drain::global().restart_id()
-        && req.method() == Method::POST
-        && req.uri().path().ends_with("/mcp")
-    {
-        // Read the body out first: closing a connection on an unread request
-        // body resets it, and the client would see a reset, not the 503.
-        let _ = axum::body::to_bytes(req.into_body(), MAX_REQUEST_BODY_BYTES).await;
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"state": "draining", "restart_id": restart_id})),
-        )
-            .into_response();
-    }
-    next.run(req).await
 }
 
 /// Serve on an already-bound listener. Split out from [`serve`] so
@@ -2156,18 +2124,6 @@ pub async fn serve_on_listener(
     listener: tokio::net::TcpListener,
     state: Arc<AppState>,
 ) -> anyhow::Result<()> {
-    serve_on_listener_until(listener, state, std::future::pending()).await.map(|_| ())
-}
-
-/// [`serve_on_listener`] with a shutdown `signal`. When it fires the drain
-/// of PRD-mcphost-graceful-drain-contract runs: refuse new `/mcp` POSTs, let
-/// accepted calls finish up to `MCPHOST_DRAIN_S`, interrupt the rest, write one
-/// `restarts` row. `Ok(true)` means a drain ran (the caller exits 0).
-pub async fn serve_on_listener_until(
-    listener: tokio::net::TcpListener,
-    state: Arc<AppState>,
-    signal: impl std::future::Future<Output = ()> + Send + 'static,
-) -> anyhow::Result<bool> {
     // PRD-mcphost-tools-list-alias-truth AC4: two tools whose flattened
     // names collide stop the server before it accepts a connection.
     crate::handler::validate_tool_registry(&state.kinds)?;
@@ -2176,79 +2132,14 @@ pub async fn serve_on_listener_until(
     if let Err(e) = crate::oauth::warn_invalid_stored_issuers(&state).await {
         tracing::warn!(error = %e, "could not scan stored OAuth issuers at startup");
     }
-    let db = state.db.clone();
     let app = build_router(state);
     tracing::info!(addr = ?listener.local_addr().ok(), "mcphost listening");
-    let drain = crate::drain::global();
-    let bound_s = crate::drain::bound_s_from_env();
-    tokio::spawn(async move {
-        signal.await;
-        let info = drain.begin(bound_s);
-        tracing::info!(restart_id = %info.restart_id, in_flight = info.in_flight_at_signal, bound_s, "drain: signal received");
-    });
-    let serve = axum::serve(
+    axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
-    );
-    // The listener keeps answering during the drain (the accept loop is
-    // polled alongside the drain below) so `/healthz` can say `draining` and
-    // a new `/mcp` POST gets an explicit 503 from `drain_gate`; only the exit
-    // after the drain ends it.
-    let drain_flow = async {
-        drain.wait_draining().await;
-        let Some(info) = drain.info() else { return Ok(true) };
-        let bound = std::time::Duration::from_secs(info.bound_s);
-        let poll = std::time::Duration::from_millis(10);
-        // Accepted calls run on until none is left or the bound expires.
-        while drain.in_flight() > 0 && info.at.elapsed() < bound {
-            tokio::time::sleep(poll).await;
-        }
-        if drain.in_flight() > 0 {
-            drain.cancel();
-            // Interrupted calls unwind straight away; allow them a moment to
-            // record their `calls` row and answer.
-            let unwind = std::time::Duration::from_secs(2);
-            let t = Instant::now();
-            while drain.in_flight() > 0 && t.elapsed() < unwind {
-                tokio::time::sleep(poll).await;
-            }
-        }
-        let drain_ms = info.at.elapsed().as_millis() as i64;
-        // Let the finished and interrupted responses reach their sockets
-        // before the process exits.
-        if info.in_flight_at_signal > 0 {
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        }
-        let dropped = drain.interrupted() as i64;
-        let in_flight_at_signal = info.in_flight_at_signal as i64;
-        let row = crate::db::RestartRow {
-            restart_id: info.restart_id.clone(),
-            signal_at_unix: info.signal_at_unix,
-            in_flight_at_signal,
-            finished: (in_flight_at_signal - dropped).max(0),
-            dropped,
-            drain_ms,
-            bound_s: info.bound_s as i64,
-            version: env!("CARGO_PKG_VERSION").to_string(),
-        };
-        tracing::info!(
-            restart_id = %row.restart_id, in_flight_at_signal = row.in_flight_at_signal,
-            finished = row.finished, dropped = row.dropped, drain_ms = row.drain_ms,
-            bound_s = row.bound_s, version = %row.version, "restart"
-        );
-        // Never block shutdown on storage: a failed write logs and we still exit.
-        if let Err(e) = db.record_restart(row).await {
-            tracing::error!(error = %e, "restart row write failed");
-        }
-        Ok::<bool, anyhow::Error>(true)
-    };
-    tokio::select! {
-        r = serve.into_future() => {
-            r?;
-            Ok(false)
-        }
-        r = drain_flow => r,
-    }
+    )
+    .await?;
+    Ok(())
 }
 
 pub async fn serve(bind: SocketAddr, state: Arc<AppState>) -> anyhow::Result<()> {
@@ -2293,34 +2184,10 @@ pub async fn serve_configured(bind: SocketAddr, state: Arc<AppState>) -> anyhow:
             addr = ?listener.local_addr().ok(),
             "mcphost: socket inherited via LISTEN_FDS"
         );
-        return serve_until_signal(listener, state).await;
+        return serve_on_listener(listener, state).await;
     }
     tracing::info!(%bind, "mcphost: binding by address");
-    let listener = tokio::net::TcpListener::bind(bind).await?;
-    serve_until_signal(listener, state).await
-}
-
-/// PRD-mcphost-graceful-drain-contract R1: serve until SIGTERM/SIGINT, drain,
-/// then exit 0 (a drained process does not wait on the runtime's background
-/// tasks).
-async fn serve_until_signal(
-    listener: tokio::net::TcpListener,
-    state: Arc<AppState>,
-) -> anyhow::Result<()> {
-    use tokio::signal::unix::{SignalKind, signal};
-    // Installed before the first accept so a signal can never fall in a gap.
-    let mut term = signal(SignalKind::terminate())?;
-    let mut int = signal(SignalKind::interrupt())?;
-    let shutdown = async move {
-        tokio::select! {
-            _ = term.recv() => {}
-            _ = int.recv() => {}
-        }
-    };
-    if serve_on_listener_until(listener, state, shutdown).await? {
-        std::process::exit(0);
-    }
-    Ok(())
+    serve(bind, state).await
 }
 
 #[cfg(test)]
