@@ -10897,6 +10897,12 @@ impl McpHostHandler {
             }
             other => other,
         };
+        // PRD-mcphost-idempotency-key-on-call R1: the key rides in `_meta`
+        // or `args.__idempotency_key` (stripped here, before schema
+        // validation and the args hash).
+        let mut raw_args = raw_args;
+        let idem_key = crate::idempotency::extract_key(request.meta.as_ref().map(|m| &m.0.0), &mut raw_args)
+            .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
 
         // Requirements 16/17: redacted by key name, recursively, exactly
         // once here, so every dispatch branch below -- a `host.*` tool, an
@@ -10956,7 +10962,74 @@ impl McpHostHandler {
         if !is_feedback_tool(&body_name) {
             self.state.feedback_calls.push(&feedback_ring_key);
         }
-        let outcome: Result<Value, AppError> = if let Some(err) = end_user_err {
+        // PRD-mcphost-idempotency-key-on-call R2-R5: claim the key before
+        // dispatch; a finished row with the same args replays instead of
+        // running the tool.
+        let mut idem_guard: Option<crate::idempotency::ClaimGuard> = None;
+        let mut replayed_at: Option<i64> = None;
+        let mut replay_outcome: Option<Result<Value, AppError>> = None;
+        if let (Some(key), Auth::Tenant(tenant, _)) = (idem_key.as_deref(), &auth) {
+            let sha = crate::idempotency::args_sha256(&args);
+            // R5: a second concurrent caller polls the first's pending row
+            // (30 s max; `idem_claim` takes over a claim older than that).
+            let wait_started = Instant::now();
+            let claim = loop {
+                let claim = self
+                    .state
+                    .db
+                    .idem_claim(tenant.id, &body_name, key, &sha)
+                    .await
+                    .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
+                if matches!(claim, crate::idempotency::Claim::Pending)
+                    && wait_started.elapsed() < Duration::from_secs(crate::idempotency::WAIT_MAX_SECS as u64 + 1)
+                {
+                    tokio::time::sleep(Duration::from_millis(25)).await;
+                    continue;
+                }
+                break claim;
+            };
+            match claim {
+                crate::idempotency::Claim::Run => {
+                    idem_guard = Some(crate::idempotency::ClaimGuard::new(
+                        self.state.db.clone(),
+                        tenant.id,
+                        &body_name,
+                        key,
+                    ));
+                }
+                crate::idempotency::Claim::Replay(stored) => {
+                    replayed_at = Some(stored.first_seen_unix);
+                    // R3: a `calls` row marks the replay for the digest.
+                    if let Err(e) = self
+                        .state
+                        .db
+                        .record_call(
+                            tenant.id,
+                            body_name.clone(),
+                            0,
+                            stored.outcome.is_ok(),
+                            Some("replayed".to_string()),
+                            None,
+                            None,
+                            "ok",
+                            tenant.origin.clone(),
+                            tenant.origin_detail.clone(),
+                        )
+                        .await
+                    {
+                        tracing::warn!(error = %e, tool = %body_name, "failed to record replayed call");
+                    }
+                    replay_outcome = Some(stored.outcome);
+                }
+                crate::idempotency::Claim::Conflict { stored_args_sha256 } => {
+                    replay_outcome = Some(Err(crate::idempotency::conflict_error(key, &stored_args_sha256, &sha)));
+                }
+                _ => {}
+            }
+        }
+        let outcome: Result<Value, AppError> = if let Some(replayed) = replay_outcome {
+            replayed
+        } else if let Some(err) = end_user_err {
             Err(err)
         } else {
             match (&auth, body_name.as_str()) {
@@ -11347,6 +11420,12 @@ impl McpHostHandler {
             }
         };
 
+        // PRD-mcphost-idempotency-key-on-call R6: a `tool_timeout` names the
+        // key (or null) and the retry hint.
+        let outcome = outcome.map_err(|e| crate::idempotency::annotate_timeout(e, idem_key.as_deref()));
+        if let Some(guard) = idem_guard.take() {
+            guard.finish(&outcome).await;
+        }
         match outcome {
             Ok(mut value) => {
                 // PRD-mcphost-invite-links requirement 2 (AC2): this
@@ -11567,6 +11646,10 @@ impl McpHostHandler {
                 }
                 if let Some(clamped) = limit_clamped {
                     meta.0.insert("mcphost".to_string(), json!({"limit_clamped": clamped}));
+                }
+                if let Some(first_seen) = replayed_at {
+                    meta.0.insert("replayed".to_string(), json!(true));
+                    meta.0.insert("first_seen_unix".to_string(), json!(first_seen));
                 }
                 let result = if meta.0.is_empty() { result } else { result.with_meta(Some(meta)) };
                 Ok(CallToolResponse::from(result))

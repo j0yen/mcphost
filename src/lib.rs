@@ -68,6 +68,7 @@ pub mod doc_anchors;
 pub mod doc_scan;
 pub mod help_search;
 pub mod hooks;
+pub mod idempotency;
 pub mod hostpressure;
 pub mod maintenance;
 pub mod http;
