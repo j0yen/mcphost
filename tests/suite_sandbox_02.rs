@@ -182,6 +182,8 @@ mod firstpub_ac07_llms_txt_first_run_executes;
 mod gsigb_ac03_wedged_child_in_pool_signal;
 #[path = "handle_ac09_python_sandbox_materialize_then_query.rs"]
 mod handle_ac09_python_sandbox_materialize_then_query;
+#[path = "hidxb_ac03_delete_list_and_sandbox_status.rs"]
+mod hidxb_ac03_delete_list_and_sandbox_status;
 #[path = "hostdoc_ac02_error_summary_has_exception_line_and_source.rs"]
 mod hostdoc_ac02_error_summary_has_exception_line_and_source;
 #[path = "hsrb_ac03_cli_help_search_json_equals_tool_json.rs"]

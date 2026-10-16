@@ -4025,6 +4025,63 @@
     ],
     "type": "object"
   },
+  "host.index.list": {
+    "properties": {
+      "indexes": {
+        "items": {
+          "properties": {
+            "chunks": {
+              "type": "integer"
+            },
+            "created_at": {
+              "type": "integer"
+            },
+            "lag_seconds": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            },
+            "sources": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "chunks",
+            "created_at",
+            "lag_seconds",
+            "name",
+            "sources"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "indexes"
+    ],
+    "type": "object"
+  },
+  "host.index.delete": {
+    "properties": {
+      "chunks_removed": {
+        "type": "integer"
+      },
+      "deleted": {
+        "type": "boolean"
+      },
+      "name": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "chunks_removed",
+      "deleted",
+      "name"
+    ],
+    "type": "object"
+  },
   "host.index.query": {
     "properties": {
       "index": {

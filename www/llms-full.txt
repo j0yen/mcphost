@@ -1207,6 +1207,7 @@ A python tool's own code does `import mcphost` to reach this tenant's data witho
 - `mcphost.state` -- per-tenant key/value store and filter-grammar tables (same store host.state.* uses)
 - `mcphost.table` -- per-tenant SQL tables (same store host.table.* uses)
 - `mcphost.docs` -- read or search this tenant's stored documents (same store host.docs.* uses)
+- `mcphost.index` -- create, poll and list named indexes (same verbs host.index.* uses)
 - `mcphost.blob` -- read or store files of any type under this tenant (same store host.blob.* uses)
 - `mcphost.lineage` -- trace an artifact's lineage or estimate a change's blast radius (same report host.lineage.* uses)
 - `mcphost.drift` -- list drift review items (same list host.drift.reviews returns)

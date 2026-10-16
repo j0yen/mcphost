@@ -2700,6 +2700,19 @@ fn host_tools_part_06() -> Vec<Tool> {
             ),
         ),
         Tool::new(
+            "host.index.list",
+            "List this tenant's named indexes: {indexes: [{name, chunks, sources, created_at, lag_seconds}]}.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "host.index.delete",
+            "Delete one named index with its sources and every chunk it holds.",
+            host_schema(
+                json!({"name": {"type": "string", "description": "The index name."}}),
+                &["name"],
+            ),
+        ),
+        Tool::new(
             "host.index.refresh",
             "Force a re-read of an index's sources on the next tick: {name, source?} -- source is \
              one source's ref (a url, table name or document prefix), absent for all of them. \
@@ -5893,6 +5906,11 @@ impl DocsBackend for TenantDocsBridge {
             "search" => {
                 docs::doc_search(&self.state, &self.tenant, &args, self.end_user.as_ref()).await
             }
+            // PRD-mcphost-index-create-from-sources-b R6: `mcphost.index`
+            // rides this channel, calling the same functions the host verbs do.
+            "index_create" => crate::index::index_create(&self.state, &self.tenant, &args).await,
+            "index_status" => crate::index::index_status(&self.state, &self.tenant, &args).await,
+            "index_list" => crate::index::index_list(&self.state, &self.tenant, &args).await,
             "quota" => control::data_quota_for(&self.state, &self.tenant)
                 .await
                 .map(|q| q.unwrap_or(Value::Null)),
@@ -6957,6 +6975,8 @@ impl McpHostHandler {
             "host.docs.reindex" => docs::doc_reindex(&self.state, tenant, &args).await,
             "host.index.create" => crate::index::index_create(&self.state, tenant, &args).await,
             "host.index.status" => crate::index::index_status(&self.state, tenant, &args).await,
+            "host.index.list" => crate::index::index_list(&self.state, tenant, &args).await,
+            "host.index.delete" => crate::index::index_delete(&self.state, tenant, &args).await,
             "host.index.query" => crate::index::index_query(&self.state, tenant, &args).await,
             "host.index.refresh" => crate::index::index_refresh(&self.state, tenant, &args).await,
             "host.drift.reviews" => crate::drift::reviews(&self.state, tenant, &args).await,
