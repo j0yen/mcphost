@@ -3764,9 +3764,12 @@ fn host_tools_part_09() -> Vec<Tool> {
         ),
         Tool::new(
             "host.msg.inbox",
-            "Every unread-or-read message across every thread you participate in, excluding \
-             your own sends, ordered oldest first; page with cursor from the previous \
-             response's next_cursor.",
+            format!(
+                "Every unread-or-read message across every thread you participate in, excluding \
+                 your own sends, ordered oldest first; page with cursor from the previous \
+                 response's next_cursor. {}",
+                crate::email_inbound::rejected_reason_help()
+            ),
             host_schema(
                 json!({
                     "cursor": {"type": "string", "description": "Opaque; omit for the first page."},
@@ -3829,8 +3832,9 @@ fn host_tools_part_09() -> Vec<Tool> {
             format!(
                 "Long-poll for a new message until one past cursor arrives or timeout_s elapses (max \
                  {}s), returning the same shape as host.msg.inbox either way -- for a client with no \
-                 polling loop of its own. On timeout, messages is empty and next_cursor is unchanged.",
-                crate::asks::WAIT_MAX_S
+                 polling loop of its own. On timeout, messages is empty and next_cursor is unchanged. {}",
+                crate::asks::WAIT_MAX_S,
+                crate::email_inbound::rejected_reason_help()
             ),
             host_schema(
                 json!({
