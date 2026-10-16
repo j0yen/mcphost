@@ -9,6 +9,9 @@ name: registry
 # below narrows to tags itself via `if:`.
 on:
   push:
+  # Merge queue: the required `registry-manifest --check` context must report
+  # on the queue's gh-readonly-queue/* commit too (no branch filter, see above).
+  merge_group:
 
 permissions:
   contents: read
