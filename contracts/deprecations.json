@@ -119,5 +119,2210 @@
     "since": "2026-10-11",
     "sunset": "2026-12-10",
     "replacement": "PRD-mcphost-fields-projection-on-list-verbs: include_result is now sugar for naming `result` in `fields`; the response carries _meta.deprecated naming include_result"
+  },
+  {
+    "path": "billing.status.output.metered_usage",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "billing.status.output.onboarding",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "billing.status.output.receipt",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.agent.contacts.output.next",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.agent.lookup.output.invitees_count",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.agent.profile_set.output.next",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.agent.search.output.cursor",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.agent.whoami.output.next",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.blob.gc.output.bytes_freed",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.blob.gc.output.bytes_total",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.blob.gc.output.count",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.blob.gc.output.deleted",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.blob.gc.output.expiring",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.blob.get.output.content_base64",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.calls.list.output.next_cursor",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.calls.list.output.truncated",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.call_trace.output.delivered",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.call_trace.output.error_code",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.call_trace.output.message",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.call_trace.output.replay",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.catalog.get.output.next",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.catalog.get.output.onboarding",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.catalog.search.output.next",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.catalog.search.output.onboarding",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.changelog.output.onboarding",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.changelog.output.releases_error",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.channel.open.output.group",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.channel.open.output.name",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.channel.post.output.from_address",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.channel.read.output.next_cursor",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.docs.index_config.output.rebuilding",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.docs.list.output.next_cursor",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.doctor.output.hint",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.doctor.output.next",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.enduser.audit.output.cursor",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.enduser.list.output.cursor",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.estimate.output.onboarding",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.export.output.onboarding",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.feedback.list.output.note",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.group.list.output.onboarding",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.help.get.output.example",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.help.search.output.hint",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.index.status.output.stale_sources",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.invite.create.output.alt_url",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.invite.create.output.code",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.invite.create.output.expires_at",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.invite.create.output.max_uses",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.invite.create.output._meta",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.invite.create.output.share",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.invite.create.output.url",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.invite.create.output.welcome_back",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.invite.create.output.would",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.invite.revoke.output.invite_url",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.key.rotate.output.next",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.key.rotate.output.welcome_back",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.lineage.trace.output.downstream",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.lineage.trace.output.downstream_handle",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.lineage.trace.output.kind",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.lineage.trace.output.label",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.lineage.trace.output.orphaned",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.lineage.trace.output.uses",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.msg.inbox.output.next_cursor",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.msg.wait.output.next_cursor",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.oauth.audit.output.cursor",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.oauth.audit.output.onboarding",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.oauth.policy_set.output.access_ttl_s",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.oauth.policy_set.output.allowlist",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.oauth.policy_set.output.clients",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.oauth.policy_set.output._meta",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.oauth.policy_set.output.refresh_ttl_s",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.oauth.policy_set.output.would",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.aliases",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.alt_endpoint",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.authenticated",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.bridge_returns",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.endpoint",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.example",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.hint",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.host_steps_allowed",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.install_doc_url",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.install_links",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.kind",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.kinds",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.limits",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.namespace",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.next",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.outcome",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.reachability",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.recipe",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.recipes",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.recipes_nearby",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.resolved_from",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.sandbox_api",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.starter_tool",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.steps",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.triggers",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.try_before_call",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.verbs",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.verdict",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.quickstart.output.welcome_back",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.secret.list.output.next",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.secret.list.output.onboarding",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.self.offboard.output.already_offboarded",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.self.offboard.output.next",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.spec.test.output.tool_lint",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.state.delete_rows.output.bytes_delta",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.state.delete_rows.output.data",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.state.delete_rows.output.deleted",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.state.delete_rows.output._meta",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.state.delete_rows.output.table",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.state.delete_rows.output.would",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.state.get.output.impersonated",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.state.get.output.updated_unix",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.state.insert.output.next",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.state.list.output.data",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.state.set.output.impersonated",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.state.table_create.output.next",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.state.table_create.output.onboarding",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.state.table_drop.output.bytes_delta",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.chart.output.chart_id",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.chart.output.share_url",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.create.output.created",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.create.output.data",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.create.output._meta",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.create.output.name",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.create.output.would",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.drop.output.data",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.drop.output.dropped",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.drop.output._meta",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.drop.output.name",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.drop.output.would",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.join_paths.output.candidates",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.join_paths.output.no_path",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.model_set.output.lineage_notes",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.query.output.bytes",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.query.output.columns",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.query.output.derived_from",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.query.output.expires_unix",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.query.output.handle",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.query.output.row_count",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.query.output.rows",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.query.output.sample",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.query.output.sample_cap",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.query.output.stats",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.query.output.table",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.table.schema.output.description",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.args",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.body",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.changed",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.checked_at",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.client_tool",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.columns",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.count",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.created",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.created_unix",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.doubled",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.enabled",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.failed_steps",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.forwarded_to",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.headers",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.https_proxy",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.id",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.kind",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.msg",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.name",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.next",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.next_unix",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.ok",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.onboarding",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.payload",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.result",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.rows",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.run_id",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.schedule",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.status",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.steps",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.text",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.tool",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.unverified",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.url",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.v1",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.verify",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.call.output.welcome_back",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.list.output.next",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.list.output.onboarding",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.list.output.welcome_back",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.publish.output.call_line",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.publish.output.deprecations",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.publish.output.evidence",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.publish.output.failures",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.publish.output.gates",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.publish.output.hint",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.publish.output.kind",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.publish.output.lock",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.publish.output.name",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.publish.output.next",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.publish.output.ok",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.publish.output.onboarding",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.publish.output.reason",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.publish.output.resolved_from",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.publish.output.steps",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.publish.output.tool_lint",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.publish.output.verdict",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.publish.output.version",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.publish.output.welcome_back",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.run.output.dry_run",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.run.output.schema",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.share.output.next",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.share.output.url",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.share.output.welcome_back",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.args",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.chain_dry_run",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.changed",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.created",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.created_unix",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.detail",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.enabled",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.envelope",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.environment",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.error",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.evidence",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.exception_class",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.failures",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.forwarded_to",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.id",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.inputs_required",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.kind",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.line",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.msg",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.name",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.next",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.next_unix",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.ok",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.outer",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.payload",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.reason",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.request",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.response",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.result",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.schedule",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.schema",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.source_line",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.state",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.steps",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.tool",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.verdict",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.warnings",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.test.output.welcome_back",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.trigger.get.output.args",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.trigger.get.output.dead_letters",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.trigger.get.output.next_unix",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.trigger.get.output.schedule",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.trigger.get.output.unverified",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.trigger.get.output.url",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.trigger.get.output.verify",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.trigger.replay.output.replay_of",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.trigger.replay.output.replay_of_row",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.trigger.set.output.args",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.trigger.set.output.schedule",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.trigger.set.output.secret",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.trigger.set.output.unverified",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.trigger.set.output.url",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.trigger.set.output.verify",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.trigger.set.output.welcome_back",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.trigger.test.output.row_id",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.trigger.test.output.signed",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.trigger.test.output.status",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.uptime.create.output.clamped_to",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.uptime.create.output.data",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.usage.output.by",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.usage.output.calls",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.usage.output.calls_by_others",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.usage.output.calls_to_shared",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.usage.output.capacity_refusals",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.usage.output.errors",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.usage.output.first_contact",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.usage.output.hints",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.usage.output.invites",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.usage.output.jobs",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.usage.output.next",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.usage.output.onboarding",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.usage.output.p50_ms",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.usage.output.p95_ms",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.usage.output.refused",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.usage.output.retention_days",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.usage.output.rows",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.usage.output.run_results_bytes",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.usage.output.scheduled",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.usage.output.state_bytes",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.webhook_inbox.create.output.secret",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.webhook_inbox.create.output.signing",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.activation",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.admin",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.admin_schema_version",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.auth_method",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.claim_url",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.created_at",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.disabled",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.display_name",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.invite_url",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.key_age_s",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.links",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.metadata_url",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.namespace",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.naming_rule_url",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.next",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.onboarding",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.owner",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.owner_verified",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.plan",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.resource",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.session_tenant",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.shared_tools",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.tenant",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.whoami.output.welcome_back",
+    "since": "2026-10-15",
+    "sunset": "2026-12-15",
+    "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
+    "narrowing_only": true
   }
 ]
