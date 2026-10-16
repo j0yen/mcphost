@@ -1024,7 +1024,7 @@ async fn status_json_route(
 /// too. That is deliberate: it keeps one middleware as the single source
 /// of the request log, and an unauthenticated health/discovery endpoint
 /// carrying an accurate protocol-version header is harmless.
-async fn protocol_version_and_log(req: Request<Body>, next: Next) -> Response {
+pub async fn protocol_version_and_log(req: Request<Body>, next: Next) -> Response {
     let start = Instant::now();
     let method = req.method().clone();
     let path = req.uri().path().to_string();
@@ -1034,7 +1034,15 @@ async fn protocol_version_and_log(req: Request<Body>, next: Next) -> Response {
         .and_then(|v| v.to_str().ok())
         .map(str::to_string);
 
-    let mut response = next.run(req).await;
+    // PRD-mcphost-incident-banner-for-agents R7: whoever attaches a banner
+    // to this request's response records its id in this cell.
+    let attached = std::cell::Cell::new(None);
+    let (mut response, attached) = crate::incident_banner::ATTACHED
+        .scope(attached, async {
+            let response = next.run(req).await;
+            (response, crate::incident_banner::ATTACHED.with(std::cell::Cell::get))
+        })
+        .await;
 
     if !response.headers().contains_key("MCP-Protocol-Version")
         && let Some(value) = advertised_protocol_version()
@@ -1051,6 +1059,7 @@ async fn protocol_version_and_log(req: Request<Body>, next: Next) -> Response {
         mcp_name = mcp_name.as_deref().unwrap_or(""),
         duration_ms,
         status = response.status().as_u16(),
+        incident = attached,
         "http request"
     );
 

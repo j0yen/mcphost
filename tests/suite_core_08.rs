@@ -34,6 +34,12 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "mcphost-install-links-more-clients_ac03_connect_page_groups_every_surface.rs"]
+mod mcphost_install_links_more_clients_ac03_connect_page_groups_every_surface;
+#[path = "mcphost-install-links-more-clients_ac04_connect_go_every_id.rs"]
+mod mcphost_install_links_more_clients_ac04_connect_go_every_id;
+#[path = "mcphost-install-links-more-clients_ac05_quickstart_twelve_personal_surfaces.rs"]
+mod mcphost_install_links_more_clients_ac05_quickstart_twelve_personal_surfaces;
 #[path = "mcphost-install-links-more-clients_ac06_docs_block_regenerates_from_table.rs"]
 mod mcphost_install_links_more_clients_ac06_docs_block_regenerates_from_table;
 #[path = "mcphost-install-links-more-clients_ac07_prior_prd_tests_still_apply.rs"]

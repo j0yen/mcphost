@@ -506,6 +506,9 @@ pub async fn status_json(state: &AppState) -> Result<Value, AppError> {
         "generated_at": now_unix(),
         "components": components,
         "incidents_open": open_incidents.iter().map(incident_json).collect::<Vec<_>>(),
+        // PRD-mcphost-incident-banner-for-agents R4: always present, `null`
+        // when nothing is open, else the newest open incident.
+        "banner": crate::incident_banner::banner_json(&state.public_url, open_incidents.first()),
         "incidents_recent_30d": recent_closed.iter().map(incident_json).collect::<Vec<_>>(),
         "warnings": warnings,
         "signals": state.signals.status_json(now_unix()),

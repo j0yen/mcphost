@@ -55,6 +55,19 @@ impl Banner {
     }
 }
 
+/// R4: the `/status.json` `banner` value for the newest open incident.
+pub fn banner_json(public_url: &str, newest: Option<&crate::db::Incident>) -> Value {
+    match newest {
+        Some(i) => json!({
+            "id": i.id,
+            "since": rfc3339_from_unix(i.opened_at),
+            "impact": i.impact,
+            "status_url": format!("{}/status.html#{}", public_url.trim_end_matches('/'), i.id),
+        }),
+        None => Value::Null,
+    }
+}
+
 static BANNERS: LazyLock<RwLock<HashMap<String, Banner>>> = LazyLock::new(Default::default);
 
 /// The open-incident banner for the host serving `base_url`, if any.
@@ -201,7 +214,7 @@ pub async fn evaluate_error_rate(state: &AppState, now: i64) -> Result<(), AppEr
             crate::statusfeed::close_auto_incident_with(
                 state,
                 &incident,
-                "auto-resolved: host-fault share under 1% for 10 minutes",
+                "auto-resolved: auto:error_rate trigger closed it, host-fault share under 1% for 10 minutes",
             )
             .await?;
         }
@@ -220,12 +233,24 @@ pub fn error_code_of(data: &Option<Value>) -> Option<String> {
     data.as_ref()?.get("error_code")?.as_str().map(str::to_string)
 }
 
+tokio::task_local! {
+    /// R7: the id of the incident a response of this request carried; set
+    /// by [`attach`]/[`decorate_http_body`], read by the request-log
+    /// middleware that scopes it.
+    pub static ATTACHED: std::cell::Cell<Option<i64>>;
+}
+
+fn note_attached(id: i64) {
+    let _ = ATTACHED.try_with(|c| c.set(Some(id)));
+}
+
 /// Attaches the banner (if any) to an error `obj` whose code is host-fault.
 pub fn attach(obj: &mut serde_json::Map<String, Value>, code: &str, base_url: Option<&str>) {
     if !HOST_FAULT_CODES.contains(&code) {
         return;
     }
     if let Some(banner) = base_url.and_then(banner_for) {
+        note_attached(banner.id);
         obj.insert(INCIDENT_FIELD.to_string(), banner.to_error_json());
     }
 }
@@ -241,6 +266,7 @@ pub fn decorate_http_body(base_url: &str, status: u16, code: &str, body: &mut Va
     if HOST_FAULT_CODES.contains(&code)
         && let Some(obj) = body.as_object_mut()
     {
+        note_attached(banner.id);
         obj.insert("data".to_string(), json!({ INCIDENT_FIELD: banner.to_error_json() }));
     }
     Some(banner.retry_after_s)

@@ -1391,6 +1391,12 @@ mod incban_ac02_tenant_faults_carry_no_incident;
 mod incban_ac03_http_500_retry_after_and_incident;
 #[path = "incban_ac04_host_fault_codes_drift.rs"]
 mod incban_ac04_host_fault_codes_drift;
+#[path = "incbanb_ac01_banner_in_status_json.rs"]
+mod incbanb_ac01_banner_in_status_json;
+#[path = "incbanb_ac02_error_rate_auto_close.rs"]
+mod incbanb_ac02_error_rate_auto_close;
+#[path = "incbanb_ac03_request_log_carries_incident.rs"]
+mod incbanb_ac03_request_log_carries_incident;
 #[path = "infer_ac05_ac06_ac07_http_schema.rs"]
 mod infer_ac05_ac06_ac07_http_schema;
 #[path = "infer_ac14_latency_budget.rs"]
@@ -1547,12 +1553,6 @@ mod mcphost_chatgpt_submission_pack_ac06_reviewer_notes_first_call;
 mod mcphost_install_links_more_clients_ac01_twelve_surfaces;
 #[path = "mcphost-install-links-more-clients_ac02_command_artefacts_carry_url_once.rs"]
 mod mcphost_install_links_more_clients_ac02_command_artefacts_carry_url_once;
-#[path = "mcphost-install-links-more-clients_ac03_connect_page_groups_every_surface.rs"]
-mod mcphost_install_links_more_clients_ac03_connect_page_groups_every_surface;
-#[path = "mcphost-install-links-more-clients_ac04_connect_go_every_id.rs"]
-mod mcphost_install_links_more_clients_ac04_connect_go_every_id;
-#[path = "mcphost-install-links-more-clients_ac05_quickstart_twelve_personal_surfaces.rs"]
-mod mcphost_install_links_more_clients_ac05_quickstart_twelve_personal_surfaces;
 #[path = "mcphost_admin_schema_contract_ac01_tenants_schema_version.rs"]
 mod mcphost_admin_schema_contract_ac01_tenants_schema_version;
 #[path = "mcphost_admin_schema_contract_ac02_listings_validate_v1_schema.rs"]
