@@ -51,6 +51,7 @@ pub mod email_inbound;
 pub mod enduser;
 pub mod enduserctl;
 pub mod errors;
+pub mod events;
 pub mod example_propose;
 pub mod example_pull;
 pub mod examples;
