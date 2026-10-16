@@ -289,6 +289,14 @@ pub struct Plan {
     /// tenant may have pending (unanswered, unexpired) at once -- a further
     /// create refuses with `asks_limit`. "free 5, pro 100".
     pub asks_open_max: i64,
+    /// PRD-mcphost-notify-user-channel R4: how many `host.notify.channel_add`
+    /// channels a tenant may hold ("free 2, pro 10"); one more refuses with
+    /// `notify_channel_limit`.
+    pub notify_channels_max: i64,
+    /// PRD-mcphost-notify-user-channel R4: how many `host.notify.send` calls
+    /// a tenant may make per rolling day ("free 20, pro 1000"); one more
+    /// refuses with `notify_limit` and `resets_unix`.
+    pub notifies_per_day: i64,
     /// PRD-mcphost-first-tool-from-description R5: `host.tool_from_description`
     /// calls a tenant may make per UTC day (`plan_limit` naming
     /// `drafts_per_day`). "free 5, pro 100".
@@ -621,6 +629,8 @@ impl PlanCatalog {
                     // allows 3 live".
                     invites_max: 3,
                     asks_open_max: 5,
+                    notify_channels_max: 2,
+                    notifies_per_day: 20,
                     drafts_per_day: 5,
                     chain_fanout_max: 20,
                     // PRD-mcphost-result-handles Open Questions: "free 64
@@ -736,6 +746,8 @@ impl PlanCatalog {
                     // the ~8x free/pro ratio `channels_max` already uses.
                     invites_max: 25,
                     asks_open_max: 100,
+                    notify_channels_max: 10,
+                    notifies_per_day: 1000,
                     drafts_per_day: 100,
                     chain_fanout_max: 50,
                     // PRD-mcphost-result-handles: no published pro number
@@ -888,6 +900,8 @@ impl PlanCatalog {
             ));
             out.push_str(&format!("invites_max = {}\n", p.invites_max));
             out.push_str(&format!("asks_open_max = {}\n", p.asks_open_max));
+            out.push_str(&format!("notify_channels_max = {}\n", p.notify_channels_max));
+            out.push_str(&format!("notifies_per_day = {}\n", p.notifies_per_day));
             out.push_str(&format!("drafts_per_day = {}\n", p.drafts_per_day));
             out.push_str(&format!("chain_fanout_max = {}\n", p.chain_fanout_max));
             out.push_str(&format!(
@@ -1005,6 +1019,8 @@ impl PlanCatalog {
                 "vault_providers_max" => builder.vault_providers_max = Some(int_value()),
                 "invites_max" => builder.invites_max = Some(int_value()),
                 "asks_open_max" => builder.asks_open_max = Some(int_value()),
+                "notify_channels_max" => builder.notify_channels_max = Some(int_value()),
+                "notifies_per_day" => builder.notifies_per_day = Some(int_value()),
                 "drafts_per_day" => builder.drafts_per_day = Some(int_value()),
                 "chain_fanout_max" => builder.chain_fanout_max = Some(int_value()),
                 "table_handle_bytes_max" => builder.table_handle_bytes_max = Some(int_value()),
@@ -1105,6 +1121,8 @@ struct PlanBuilder {
     vault_providers_max: Option<i64>,
     invites_max: Option<i64>,
     asks_open_max: Option<i64>,
+    notify_channels_max: Option<i64>,
+    notifies_per_day: Option<i64>,
     drafts_per_day: Option<i64>,
     chain_fanout_max: Option<i64>,
     table_handle_bytes_max: Option<i64>,
@@ -1190,6 +1208,8 @@ impl PlanBuilder {
             vault_providers_max: quota!(vault_providers_max),
             invites_max: quota!(invites_max),
             asks_open_max: quota!(asks_open_max),
+            notify_channels_max: quota!(notify_channels_max),
+            notifies_per_day: quota!(notifies_per_day),
             drafts_per_day: quota!(drafts_per_day),
             chain_fanout_max: quota!(chain_fanout_max),
             table_handle_bytes_max: quota!(table_handle_bytes_max),

@@ -67,6 +67,9 @@ Regenerate with `scripts/sandbox-api-doc-check.sh --write`.
 | `host.index.refresh` | write | refused | `external_effect` |
 | `host.trigger.fire` | write | refused | `external_effect` |
 | `host.msg.send` | write | refused | `external_effect` |
+| `host.notify.channel_add` | write | refused | `external_effect` |
+| `host.notify.channel_remove` | remove | refused | `external_effect` |
+| `host.notify.send` | write | refused | `external_effect` |
 | `host.task.post` | write | refused | `external_effect` |
 | `host.channel.post` | write | refused | `external_effect` |
 | `host.uptime.create` | write | refused | `external_effect` |

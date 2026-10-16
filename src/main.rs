@@ -1031,6 +1031,8 @@ async fn main() -> anyhow::Result<()> {
             );
             let with_tools =
                 mcphost::llms_txt::splice_events(&with_tools, &mcphost::llms_txt::render_events_section());
+            let with_tools =
+                mcphost::notify::splice_section(&with_tools, &mcphost::notify::render_section());
             let with_clients = mcphost::clients::render_into(&with_tools, &clients_file).unwrap_or_else(|why| {
                 eprintln!("llms-txt: {}: {why}", path.display());
                 std::process::exit(2);

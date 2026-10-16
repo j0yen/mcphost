@@ -4045,6 +4045,68 @@ fn host_tools_part_10() -> Vec<Tool> {
                 &[],
             ),
         ),
+        // PRD-mcphost-notify-user-channel: tell the user where they live.
+        Tool::new(
+            "host.notify.channel_add",
+            format!(
+                "Register where your user lives, once: kind is one of {} (email only to the \
+                 claim-verified owner address; webhook and slack take an https URL). Returns \
+                 {{channel_id}}. A kind outside that list fails notify_kind_unknown; an unverified \
+                 owner fails owner_unverified, whose data.next_call names the claim step.",
+                crate::notify::ChannelKind::names().join(", ")
+            ),
+            host_schema(
+                json!({
+                    "kind": {"type": "string", "enum": crate::notify::ChannelKind::names(), "description": "Where this channel delivers."},
+                    "target": {"type": "string", "description": "email: the verified owner address; webhook/slack: an https URL."},
+                }),
+                &["kind", "target"],
+            ),
+        ),
+        Tool::new(
+            "host.notify.channel_list",
+            "List this tenant's notify channels: {channels: [{channel_id, kind, target_hint, created_unix}]}. A webhook or slack target is never echoed in full.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "host.notify.channel_remove",
+            "Remove one notify channel by channel_id.",
+            host_schema(
+                json!({"channel_id": {"type": "string", "description": "A channel_id host.notify.channel_add returned."}}),
+                &["channel_id"],
+            ),
+        ),
+        Tool::new(
+            "host.notify.send",
+            format!(
+                "Tell your user something on every registered channel: {{text (at most {} bytes), \
+                 level ({}), link?}} returns {{notify_id, channels}} at once and delivers in the \
+                 background. No channel fails no_channel with next_call host.notify.channel_add; \
+                 past the plan's notifies_per_day fails notify_limit with resets_unix. Read the \
+                 outcome with host.notify.receipts.",
+                crate::notify::TEXT_MAX_BYTES,
+                crate::notify::Level::names().join("|")
+            ),
+            host_schema(
+                json!({
+                    "text": {"type": "string", "description": format!("The message, at most {} bytes.", crate::notify::TEXT_MAX_BYTES)},
+                    "level": {"type": "string", "enum": crate::notify::Level::names(), "description": "How urgent."},
+                    "link": {"type": "string", "description": "Optional https URL appended to the message."},
+                }),
+                &["text", "level"],
+            ),
+        ),
+        Tool::new(
+            "host.notify.receipts",
+            "List per-channel delivery receipts: {receipts: [{notify_id, channel_id, kind, status, upstream_status, attempts, delivered_unix}]}, status one of queued, delivered, failed, rate_limited.",
+            host_schema(
+                json!({
+                    "notify_id": {"type": "string", "description": "Only this send."},
+                    "since_unix": {"type": "integer", "description": "Only receipts created at or after this time."},
+                }),
+                &[],
+            ),
+        ),
         // PRD-mcphost-agent-consent: contacts and mutes layered on top of
         // agent-directory contact_policy -- a contacts-mode recipient now
         // distinguishes "no relationship yet" from "mutual, accepted"
@@ -7089,6 +7151,12 @@ impl McpHostHandler {
             "host.ask.wait" => crate::asks::wait(&self.state, tenant, &args).await,
             "host.ask.get" => crate::asks::get(&self.state, tenant, &args).await,
             "host.ask.list" => crate::asks::list(&self.state, tenant, &args).await,
+            // PRD-mcphost-notify-user-channel.
+            "host.notify.channel_add" => crate::notify::channel_add(&self.state, tenant, &args).await,
+            "host.notify.channel_list" => crate::notify::channel_list(&self.state, tenant, &args).await,
+            "host.notify.channel_remove" => crate::notify::channel_remove(&self.state, tenant, &args).await,
+            "host.notify.send" => crate::notify::send(&self.state, tenant, &args).await,
+            "host.notify.receipts" => crate::notify::receipts(&self.state, tenant, &args).await,
             "host.task.post" => crate::tasks::post(&self.state, tenant, &args).await,
             "host.task.claim" => crate::tasks::claim(&self.state, tenant, &args).await,
             "host.task.complete" => crate::tasks::complete(&self.state, tenant, &args).await,

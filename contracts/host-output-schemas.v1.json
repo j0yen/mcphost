@@ -14487,5 +14487,136 @@
       "contract_version"
     ],
     "type": "object"
+  },
+  "host.notify.channel_add": {
+    "properties": {
+      "channel_id": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "target_hint": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "channel_id",
+      "kind",
+      "target_hint"
+    ],
+    "type": "object"
+  },
+  "host.notify.channel_list": {
+    "properties": {
+      "channels": {
+        "items": {
+          "properties": {
+            "channel_id": {
+              "type": "string"
+            },
+            "created_unix": {
+              "type": "integer"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "target_hint": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "channel_id",
+            "created_unix",
+            "kind",
+            "target_hint"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "channels"
+    ],
+    "type": "object"
+  },
+  "host.notify.channel_remove": {
+    "properties": {
+      "channel_id": {
+        "type": "string"
+      },
+      "removed": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "channel_id",
+      "removed"
+    ],
+    "type": "object"
+  },
+  "host.notify.receipts": {
+    "properties": {
+      "receipts": {
+        "items": {
+          "properties": {
+            "attempts": {
+              "type": "integer"
+            },
+            "channel_id": {
+              "type": "string"
+            },
+            "created_unix": {
+              "type": "integer"
+            },
+            "delivered_unix": {
+              "type": "integer"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "notify_id": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "upstream_status": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "attempts",
+            "channel_id",
+            "created_unix",
+            "kind",
+            "notify_id",
+            "status"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "receipts"
+    ],
+    "type": "object"
+  },
+  "host.notify.send": {
+    "properties": {
+      "channels": {
+        "type": "integer"
+      },
+      "notify_id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "channels",
+      "notify_id"
+    ],
+    "type": "object"
   }
 }
