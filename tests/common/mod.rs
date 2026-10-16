@@ -56,6 +56,7 @@ pub fn doc_check_scratch(label: &str) -> PathBuf {
         "src/oauth.rs",
         "docs/host-tools.md",
         "docs/kinds/python.md",
+        "docs/kinds/js.md",
         "docs/oauth-connect.md",
         "www/llms.txt",
         "docs/protocol/capabilities.md",

@@ -54,6 +54,7 @@ fn host_tools_doc_names_the_reason_beside_the_verb_and_the_check_script_catches_
         "src/kinds/python.rs",
         "docs/host-tools.md",
         "docs/kinds/python.md",
+        "docs/kinds/js.md",
         "www/llms.txt",
         "docs/protocol/capabilities.md",
         "plugin/skills/mcphost/SKILL.md",
