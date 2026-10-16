@@ -73,6 +73,38 @@ pub fn splice_capabilities(content: &str, section: &str) -> String {
     }
 }
 
+pub const IDEMPOTENCY_START: &str = "<!-- idempotency:start -->";
+pub const IDEMPOTENCY_END: &str = "<!-- idempotency:end -->";
+
+/// PRD-mcphost-idempotency-key-on-call R7: the `## Idempotency` paragraph,
+/// rendered from the `const` strings the dispatch and the `tool_timeout`
+/// error use, so the docs cannot drift from the behavior.
+pub fn render_idempotency_section() -> String {
+    use crate::idempotency::{ARG_KEY, CONFLICT_CODE, CONFLICT_HINT, META_KEY, TIMEOUT_HINT, TTL_SECS};
+    format!(
+        "{IDEMPOTENCY_START}\n## Idempotency\n\n\
+         Any `tools/call` may carry `_meta.{META_KEY}` (or `args.{ARG_KEY}` for clients that drop `_meta`); \
+         the host stores the first result for {} h and a repeat with the same key and args returns it with \
+         `_meta.replayed: true` without running the tool. The same key with different args answers \
+         `{CONFLICT_CODE}` ({CONFLICT_HINT}). A `tool_timeout` error says: {TIMEOUT_HINT}.\n{IDEMPOTENCY_END}",
+        TTL_SECS / 3600
+    )
+}
+
+/// Replace the idempotency block in `content`, or -- on a first run --
+/// insert it just before `## Limits and pricing` (else append).
+pub fn splice_idempotency(content: &str, section: &str) -> String {
+    let section = section.trim_end();
+    if let (Some(start), Some(end_pos)) = (content.find(IDEMPOTENCY_START), content.find(IDEMPOTENCY_END)) {
+        let end = end_pos + IDEMPOTENCY_END.len();
+        format!("{}{}{}", &content[..start], section, &content[end..])
+    } else if let Some(idx) = content.find("## Limits and pricing") {
+        format!("{}{}\n\n{}", &content[..idx], section, &content[idx..])
+    } else {
+        format!("{}\n\n{}\n", content.trim_end(), section)
+    }
+}
+
 pub const DOMAIN_HINT_START: &str = "<!-- domain-hint:start -->";
 pub const DOMAIN_HINT_END: &str = "<!-- domain-hint:end -->";
 

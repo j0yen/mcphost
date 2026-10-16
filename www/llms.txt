@@ -747,6 +747,12 @@ owner's `table_rows_max`/`table_bytes_max`, and
 call, no republish needed. Runnable end-to-end proof:
 `examples/team-memory/proof.sh`.
 
+<!-- idempotency:start -->
+## Idempotency
+
+Any `tools/call` may carry `_meta.idempotency_key` (or `args.__idempotency_key` for clients that drop `_meta`); the host stores the first result for 24 h and a repeat with the same key and args returns it with `_meta.replayed: true` without running the tool. The same key with different args answers `idempotency_conflict` (use a new key for a different request). A `tool_timeout` error says: retry with the same _meta.idempotency_key to get the stored result.
+<!-- idempotency:end -->
+
 ## Limits and pricing
 
 - 50 tools per tenant; tool names match `^[a-z][a-z0-9_]{1,40}$`

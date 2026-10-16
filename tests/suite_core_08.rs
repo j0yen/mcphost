@@ -34,6 +34,12 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "mcphost-install-links-more-clients_ac06_docs_block_regenerates_from_table.rs"]
+mod mcphost_install_links_more_clients_ac06_docs_block_regenerates_from_table;
+#[path = "mcphost-install-links-more-clients_ac07_prior_prd_tests_still_apply.rs"]
+mod mcphost_install_links_more_clients_ac07_prior_prd_tests_still_apply;
+#[path = "mcphost-llms-install-doc_ac01_generator_sections.rs"]
+mod mcphost_llms_install_doc_ac01_generator_sections;
 #[path = "mcphost-llms-install-doc_ac02_served_unauthenticated.rs"]
 mod mcphost_llms_install_doc_ac02_served_unauthenticated;
 #[path = "mcphost-llms-install-doc_ac03_committed_copy_drift.rs"]
