@@ -7868,6 +7868,7 @@ impl McpHostHandler {
             // dispatch (`runs::execute_job`) -- an ordinary synchronous call
             // carries no ledger to check or record against.
             budget: None,
+            prev_result: None,
         };
         // requirement 4 (AC1/AC2): the three `calls` columns every branch
         // below's `record_call_attributed_with_end_user` writes.
@@ -8412,6 +8413,7 @@ impl McpHostHandler {
             // a composed child to attribute to, same as `compose_db` above.
             parent_run_id: None,
             budget: None,
+            prev_result: None,
         };
 
         // PRD-mcphost-call-trace-replay requirement 1: a dry run writes a
@@ -8898,6 +8900,7 @@ impl McpHostHandler {
             // composed child from.
             parent_run_id: None,
             budget: None,
+            prev_result: None,
         };
 
         match tokio::time::timeout(resolved_timeout, kind.call(&spec, call_args, &ctx)).await {
@@ -9166,6 +9169,7 @@ impl McpHostHandler {
             // run row of its own" reasoning as `end_user` above.
             parent_run_id: None,
             budget: None,
+            prev_result: None,
         })
         .await;
 
@@ -9609,6 +9613,7 @@ impl McpHostHandler {
             // no run row" reasoning as `compose_db`/`end_user` above.
             parent_run_id: None,
             budget: None,
+            prev_result: None,
         };
 
         let start = Instant::now();

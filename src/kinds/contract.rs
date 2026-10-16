@@ -22,6 +22,7 @@ pub mod codes {
     pub const TOOL_OOM: &str = "tool_oom";
     pub const TOOL_PROCESS_LIMIT: &str = "tool_process_limit";
     pub const TOOL_OUTPUT_TOO_LARGE: &str = "tool_output_too_large";
+    pub const JQ_BUILTIN_UNSUPPORTED: &str = "jq_builtin_unsupported";
     pub const TOOL_BUILDING: &str = "tool_building";
     pub const TOOL_NOT_FOUND: &str = "tool_not_found";
     pub const TOOL_RUN_UNSUPPORTED: &str = "tool_run_unsupported";

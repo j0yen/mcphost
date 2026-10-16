@@ -28,7 +28,7 @@
 //!
 //! PRD-mcphost-chain-run-lineage (requirements 1-3): real child-run rows
 //! (`host.runs.get` inlining children, `trigger: "composition"`) are now
-//! written by [`compose_call`] itself for every step dispatch below -- this
+//! written by [`super::compose_call`] itself for every step dispatch below -- this
 //! kind's own `steps` trace stays (existing callers of the chain's result
 //! shape are unaffected), it's no longer the only record of what ran.
 //! `describe()` now derives `input_schema.required` from every step's
@@ -45,7 +45,7 @@ use super::contract::{
 };
 use super::{
     CallCtx, HOST_STEPS_ALLOWED, Kind, KindError, KindExample, KindRegistry, OutputDecl, Path, ToolDescriptor,
-    apply_output_decls, compose_call, compose_call_ref, spec_declared_outputs,
+    apply_output_decls, compose_call_ref, spec_declared_outputs,
 };
 use crate::errors::AppError;
 
@@ -121,7 +121,7 @@ fn nearest_sibling_names(name: &str, tenant_names: &[String]) -> Vec<String> {
 
 /// Requirement 4: resolves every step's `tool` against `tenant_id`'s own
 /// tools, then [`HOST_STEPS_ALLOWED`] -- called once at `host.tool_publish`
-/// and `host.spec_test` time (never from [`compose_call`]'s own, narrower,
+/// and `host.spec_test` time (never from [`super::compose_call`]'s own, narrower,
 /// runtime-only resolution), so an unresolvable step is refused before
 /// anything is published rather than discovered the first time a trigger
 /// fires (this PRD's own grounding incident: a chain with a bare
@@ -908,6 +908,9 @@ fn chain_input_schema(steps: &[ParsedStep]) -> Value {
 struct ParsedStep {
     tool: String,
     args: Map<String, Value>,
+    /// PRD-mcphost-jq-kind R5: `"args": "$.prev"` (a string, not an object)
+    /// passes the previous step's result whole as this step's arguments.
+    prev_whole: bool,
     continue_on_error: bool,
     /// PRD-mcphost-chain-fanout-and-join R1: the `$.<path>` of the array this
     /// step runs once per element of.
@@ -948,12 +951,17 @@ fn parse_steps(spec: &Value) -> Result<Vec<ParsedStep>, KindError> {
             .and_then(Value::as_str)
             .ok_or_else(|| invalid_spec(format!("spec.steps[{i}].tool: is required")))?
             .to_string();
+        let mut prev_whole = false;
         let args = match step_obj.get("args") {
             None => Map::new(),
             Some(Value::Object(m)) => m.clone(),
+            Some(Value::String(s)) if s == "$.prev" && i > 0 => {
+                prev_whole = true;
+                Map::new()
+            }
             Some(_) => {
                 return Err(invalid_spec(format!(
-                    "spec.steps[{i}].args: must be a JSON object"
+                    "spec.steps[{i}].args: must be a JSON object, or the string \"$.prev\" on a step after the first"
                 )));
             }
         };
@@ -999,9 +1007,15 @@ fn parse_steps(spec: &Value) -> Result<Vec<ParsedStep>, KindError> {
                 json!({"step": i + 1, "path": raw}),
             ));
         }
+        if prev_whole && for_each.is_some() {
+            return Err(invalid_spec(format!(
+                "spec.steps[{i}].args: \"$.prev\" cannot be combined with for_each"
+            )));
+        }
         steps.push(ParsedStep {
             tool,
             args,
+            prev_whole,
             continue_on_error,
             for_each,
             concurrency,
@@ -1153,6 +1167,7 @@ async fn run_fanout(
                 None,
                 Some(step_no as i64),
                 Some(index as i64),
+                context.get(CONTEXT_KEYS.prev).and_then(|p| p.get(CONTEXT_KEYS.result)).cloned(),
             )
             .await
             {
@@ -1410,6 +1425,9 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
     // static check could not already settle from declared `outputs`.
     let mut needed: std::collections::HashSet<usize> = std::collections::HashSet::new();
     for (i, step) in steps.iter().enumerate() {
+        if step.prev_whole {
+            needed.insert(i);
+        }
         for raw in step.args.values().filter_map(Value::as_str).chain(step.for_each.as_deref()) {
             if let Some(r) = StepRef::parse(raw, i + 1)
                 && !r.tokens.is_empty()
@@ -1433,7 +1451,7 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
     for (i, step) in steps.iter().enumerate() {
         let step_no = i + 1;
         let context = step_context(call_args, prev.as_ref(), &step_results);
-        let mut resolved = Map::with_capacity(step.args.len());
+        let mut resolved_map = Map::with_capacity(step.args.len());
         let mut unresolved = false;
         // PRD-mcphost-chain-fanout-and-join R7: a `for_each` step is reported
         // once, its args resolved for the first item only; no item executes.
@@ -1482,8 +1500,17 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
                 }
                 other => other.clone(),
             };
-            resolved.insert(k.clone(), value);
+            resolved_map.insert(k.clone(), value);
         }
+        let resolved = if step.prev_whole {
+            prev.clone().unwrap_or_else(|| {
+                unresolved = true;
+                any_unresolved.get_or_insert((step_no, "$.prev".to_string()));
+                json!({"unresolved_path": "$.prev"})
+            })
+        } else {
+            Value::Object(resolved_map)
+        };
         let mut prev_fields = None;
         if i > 0
             && let Some(Value::Object(m)) = prev.as_ref()
@@ -1528,7 +1555,7 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
             && !unresolved
             && let Some(host) = ctx.host_dispatch.as_ref()
         {
-            match host.call(&step.tool, Value::Object(resolved.clone())).await {
+            match host.call(&step.tool, resolved.clone()).await {
                 Ok(result) => {
                     let mut entry = json!({
                         "step": step_no,
@@ -1586,7 +1613,7 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
             let outcome = if unresolved {
                 Err("its own arguments did not resolve".to_string())
             } else {
-                dry_run_predecessor(ctx, &step.tool, Value::Object(resolved.clone())).await
+                dry_run_predecessor(ctx, &step.tool, resolved.clone()).await
             };
             match outcome {
                 Ok(result) => {
@@ -1901,7 +1928,11 @@ impl Kind for ChainKind {
                 continue;
             }
 
-            let resolved_args = match resolve_args(&step.args, &context) {
+            let resolved_args = match if step.prev_whole {
+                prev.clone().ok_or_else(|| "$.prev".to_string())
+            } else {
+                resolve_args(&step.args, &context)
+            } {
                 Ok(v) => v,
                 Err(path) => {
                     // PRD-mcphost-chain-prev-contract P0 requirement 5: a
@@ -1960,7 +1991,7 @@ impl Kind for ChainKind {
                 }
             };
 
-            match compose_call(
+            match compose_call_ref(
                 ctx,
                 ctx.tenant_id,
                 &step.tool,
@@ -1970,6 +2001,9 @@ impl Kind for ChainKind {
                 // step's own 1-based position, so a composed child run row
                 // (if lineage is active) carries `step_no`.
                 Some(failed_step_no as i64),
+                None,
+                // PRD-mcphost-jq-kind R3: the child reads this as `$prev`.
+                prev.clone(),
             )
             .await
             {

@@ -27,6 +27,7 @@ pub mod http;
 pub mod kinddoc;
 pub mod outcomes;
 pub mod infer;
+pub mod jq;
 pub mod js;
 pub mod python;
 pub mod python_lint;
@@ -1730,6 +1731,10 @@ pub struct CallCtx {
     /// child and records that child's cost after -- see
     /// [`crate::budget::BudgetTracker`].
     pub budget: Option<Arc<crate::budget::BudgetTracker>>,
+    /// PRD-mcphost-jq-kind R3: the previous chain step's result, set by
+    /// [`compose_call_ref`] for a call dispatched as a chain step (what a
+    /// `jq` program reads as `$prev`); `None` for every other call.
+    pub prev_result: Option<Value>,
 }
 
 impl CallCtx {
@@ -1769,6 +1774,7 @@ impl CallCtx {
             host_dispatch: None,
             parent_run_id: None,
             budget: None,
+            prev_result: None,
         }
     }
 
@@ -1806,6 +1812,7 @@ async fn compose_dispatch(
     args: Value,
     timeout_s: Option<u64>,
     child_run_id: &str,
+    prev: Option<Value>,
 ) -> Result<Value, KindError> {
     if ctx.tool_name.as_deref() == Some(target_name) {
         return Err(KindError::structured(
@@ -2012,6 +2019,7 @@ async fn compose_dispatch(
         // tree shares one ledger, same propagation shape as
         // `compose_children` above.
         budget: ctx.budget.clone(),
+        prev_result: prev,
     };
 
     // PRD-mcphost-run-budget-governor requirement 4: "records the previous
@@ -2096,7 +2104,7 @@ pub async fn compose_call(
     timeout_s: Option<u64>,
     step_no: Option<i64>,
 ) -> Result<Value, KindError> {
-    compose_call_ref(ctx, tenant_id, target_name, args, timeout_s, step_no, None).await
+    compose_call_ref(ctx, tenant_id, target_name, args, timeout_s, step_no, None, None).await
 }
 
 /// [`compose_call`] with `item_index`: PRD-mcphost-chain-fanout-and-join
@@ -2104,6 +2112,8 @@ pub async fn compose_call(
 /// `<parent_run_id>#<step_no>:<item_index>` (a log convention) instead of the
 /// bare parent id, and (PRD-mcphost-chain-fanout-children-excludes-
 /// composition-child R1) the index itself in the `item_index` column.
+/// `prev` is the previous chain step's result, handed to the child as
+/// [`CallCtx::prev_result`] (PRD-mcphost-jq-kind R3/R5).
 #[allow(clippy::too_many_arguments)]
 pub async fn compose_call_ref(
     ctx: &CallCtx,
@@ -2113,6 +2123,7 @@ pub async fn compose_call_ref(
     timeout_s: Option<u64>,
     step_no: Option<i64>,
     item_index: Option<i64>,
+    prev: Option<Value>,
 ) -> Result<Value, KindError> {
     let child_run_id = crate::state::new_ulid();
     let started_unix = crate::state::now_unix();
@@ -2148,7 +2159,7 @@ pub async fn compose_call_ref(
     if let (Some(parent_run_id), Some(db)) = (ctx.parent_run_id.as_ref(), ctx.compose_db.as_ref()) {
         let _ = db.insert_composed_run(row_for(parent_run_id)).await;
     }
-    let result = compose_dispatch(ctx, tenant_id, target_name, args, timeout_s, &child_run_id).await;
+    let result = compose_dispatch(ctx, tenant_id, target_name, args, timeout_s, &child_run_id, prev).await;
 
     if let (Some(parent_run_id), Some(db)) = (ctx.parent_run_id.clone(), ctx.compose_db.as_ref()) {
         let duration_ms = start.elapsed().as_millis() as i64;
@@ -2664,6 +2675,7 @@ pub fn network_kinds(
 pub fn register_host_side_kinds(registry: &mut KindRegistry) {
     registry.register(Arc::new(chain::ChainKind));
     registry.register(Arc::new(wasm::WasmKind::new()));
+    registry.register(Arc::new(jq::JqKind));
 }
 
 /// The kinds `serve` registers -- echo, http, python, chain, wasm -- built
