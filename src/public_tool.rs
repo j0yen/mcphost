@@ -182,7 +182,7 @@ pub(crate) fn rate_limited_response() -> Response {
 /// logging/`help_url`-attaching machinery the JSON-RPC error path already
 /// uses), re-shaped into this route's plain `{ok, error}` envelope instead
 /// of a JSON-RPC error object.
-fn app_error_response(state: &AppState, err: AppError) -> Response {
+pub fn app_error_response(state: &AppState, err: AppError) -> Response {
     let status = match err.code() {
         "args_invalid" => StatusCode::BAD_REQUEST,
         "tool_not_found" => StatusCode::NOT_FOUND,
@@ -203,7 +203,15 @@ fn app_error_response(state: &AppState, err: AppError) -> Response {
     {
         obj.insert("help_url".to_string(), help_url);
     }
-    (status, Json(json!({"ok": false, "error": obj}))).into_response()
+    let mut body = json!({"ok": false, "error": obj});
+    // PRD-mcphost-incident-banner-for-agents R2/R5: the same pointer the
+    // JSON-RPC envelope carries, plus `Retry-After` on every 5xx.
+    let retry_after = crate::incident_banner::decorate_http_body(&state.public_url, status.as_u16(), &error_code, &mut body);
+    let mut response = (status, Json(body)).into_response();
+    if let Some(secs) = retry_after {
+        response.headers_mut().insert("Retry-After", HeaderValue::from(secs));
+    }
+    response
 }
 
 pub(crate) const TERMINAL_STATUSES: &[&str] = &["done", "error", "timeout", "cancelled"];

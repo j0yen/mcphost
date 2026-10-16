@@ -144,6 +144,14 @@ Every error payload carries `code`, a clean `message`, a `request_id`, and
 `help` pages directly, so an agent never has to guess the host to build
 them from.
 
+While an incident is open, every host-fault error (`storage`, `internal`,
+`exec_unavailable`, `timeout`, `rate_limited_host`) also carries
+`data.incident {id, since, status_url, impact, retry_after_s}`: the failure
+is the host's, not yours, so wait `retry_after_s`, then retry once, and
+report `status_url` instead of repeating the call. Errors that are your
+own (`tool_exception`, `args_invalid`) never carry it. A 5xx HTTP
+response carries the same seconds in `Retry-After`.
+
 <!-- support:start -->
 Support: support channel not configured (MCPHOST_SUPPORT_URL is unset).
 <!-- support:end -->

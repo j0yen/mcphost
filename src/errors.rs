@@ -175,6 +175,17 @@ pub fn check_unknown_argument(args: &Value, tool: &str, known: &[String]) -> Res
     Ok(())
 }
 
+/// PRD-mcphost-incident-banner-for-agents R1: the `data` key a host-fault
+/// error carries its open-incident pointer under. The one place the name is
+/// spelled; `www/llms.txt` and the quickstart error guide are scanned for it
+/// by the drift test.
+pub const INCIDENT_FIELD: &str = "incident";
+
+/// R1: the error codes that mean "this is the host, not the caller". While an
+/// incident is open, exactly these carry `data.<INCIDENT_FIELD>`; a test
+/// asserts each is produced as `data.error_code` by a real [`AppError`].
+pub const HOST_FAULT_CODES: &[&str] = &["storage", "internal", "exec_unavailable", "timeout", "rate_limited_host"];
+
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum AppError {
     #[error("missing or invalid Authorization: Bearer key")]
@@ -1193,6 +1204,7 @@ impl AppError {
                 obj.insert("anchor".to_string(), json!(entry.doc_link.as_str()));
             }
         }
+        crate::incident_banner::attach(&mut obj, code, base_url);
         ErrorData::new(jsonrpc_code, message, Some(Value::Object(obj)))
     }
 
@@ -1233,6 +1245,27 @@ impl AppError {
                 "retry_after_s": retry_after_s,
                 "alternatives": ["http"],
             }),
+        }
+    }
+
+    /// PRD-mcphost-incident-banner-for-agents R1: the sandbox/exec backend is
+    /// down -- a host fault, listed in [`HOST_FAULT_CODES`].
+    pub fn exec_unavailable(detail: &str) -> Self {
+        AppError::Structured { code: "exec_unavailable", message: format!("execution is unavailable: {detail}"), data: json!({}) }
+    }
+
+    /// R1: the host (not the caller's spec) ran out of time.
+    pub fn host_timeout(detail: &str) -> Self {
+        AppError::Structured { code: "timeout", message: format!("the host timed out: {detail}"), data: json!({}) }
+    }
+
+    /// R1: the host as a whole is shedding load, as opposed to the per-tenant
+    /// `rate_limited`.
+    pub fn rate_limited_host() -> Self {
+        AppError::Structured {
+            code: "rate_limited_host",
+            message: "the host is shedding load; retry shortly".to_string(),
+            data: json!({}),
         }
     }
 
