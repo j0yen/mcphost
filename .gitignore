@@ -8,3 +8,6 @@ Cargo.lock.bk
 # subagent isolation worktrees (Claude Code Agent --isolation=worktree
 # creates these inside the slice; never part of the slice artifact)
 .claude/worktrees/
+
+# gate producers write their receipts into the worktree root; the post-rebase regen commit must never stage them (vti-plan unrouted, wm-build runs 847/858, 2026-10-15)
+gate-receipts/
