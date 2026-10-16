@@ -514,6 +514,7 @@ pub async fn status_json(state: &AppState) -> Result<Value, AppError> {
         "feedback": {"rows_24h": rows_24h, "themes_open": themes_open},
         "onboarding_7d": onboarding_block(state).await?,
         "docs_gaps": crate::help_search::status_block(&state.db, now_unix()).await?,
+        "deploy": {"last_refusal": last_refusal(state.db.data_dir())},
     });
     // PRD-mcphost-healthz-version-field requirement 3: whole-feed only; the
     // per-component rollup (`daily_rows`) stays unchanged.
@@ -529,6 +530,47 @@ pub async fn status_json(state: &AppState) -> Result<Value, AppError> {
         }
     }
     Ok(body)
+}
+
+/// File name the deploy tool leaves a `check-compat --report` document under
+/// in the data dir (PRD-mcphost-migration-refusal-contract R6).
+pub const COMPAT_REPORT_FILE: &str = "compat-report.json";
+
+static PROCESS_START: std::sync::OnceLock<std::time::SystemTime> = std::sync::OnceLock::new();
+
+/// Pin this process's start time (first call wins); the router calls it at
+/// startup so a report written before it reads as stale.
+pub fn mark_process_start() -> std::time::SystemTime {
+    *PROCESS_START.get_or_init(std::time::SystemTime::now)
+}
+
+/// R6: `{at, from, to, step}` from `<data_dir>/compat-report.json` when it
+/// says `ok: false` and was modified after this process started; `null`
+/// otherwise. No detail text -- the feed is public.
+pub fn last_refusal(data_dir: &std::path::Path) -> Value {
+    let path = data_dir.join(COMPAT_REPORT_FILE);
+    let fresh = std::fs::metadata(&path)
+        .and_then(|m| m.modified())
+        .map(|m| m > mark_process_start())
+        .unwrap_or(false);
+    if !fresh {
+        return Value::Null;
+    }
+    let Ok(doc) = std::fs::read_to_string(&path)
+        .map_err(|_| ())
+        .and_then(|t| serde_json::from_str::<Value>(&t).map_err(|_| ()))
+    else {
+        return Value::Null;
+    };
+    if doc.get("ok") != Some(&Value::Bool(false)) {
+        return Value::Null;
+    }
+    json!({
+        "at": doc.get("checked_at_unix").cloned().unwrap_or(Value::Null),
+        "from": doc.get("from").cloned().unwrap_or(Value::Null),
+        "to": doc.get("to").cloned().unwrap_or(Value::Null),
+        "step": doc.get("step").cloned().unwrap_or(Value::Null),
+    })
 }
 
 /// AC10: `GET /status.json?component=<name>&days=<n>` -- the daily rows
