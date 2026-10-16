@@ -2522,6 +2522,51 @@
     ],
     "type": "object"
   },
+  "host.connect.providers": {
+    "properties": {
+      "providers": {
+        "items": {
+          "properties": {
+            "available": {
+              "type": "boolean"
+            },
+            "docs_url": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "refresh": {
+              "type": "string"
+            },
+            "scopes": {
+              "items": {
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "purpose": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "providers"
+    ],
+    "type": "object"
+  },
   "host.docs.delete": {
     "properties": {
       "deleted": {

@@ -1021,6 +1021,10 @@ async fn main() -> anyhow::Result<()> {
                 &mcphost::registry_manifest::public_url_from_env(),
             );
             let with_tools = mcphost::llms_txt::splice_domain_hint(&with_tools, &domain_hint);
+            let with_tools = mcphost::connect::splice_llms_section(
+                &with_tools,
+                &mcphost::connect::render_llms_section(&mcphost::connect::Provider::public().collect::<Vec<_>>()),
+            );
             let with_clients = mcphost::clients::render_into(&with_tools, &clients_file).unwrap_or_else(|why| {
                 eprintln!("llms-txt: {}: {why}", path.display());
                 std::process::exit(2);

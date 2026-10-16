@@ -151,7 +151,83 @@ fn embed_migrations_index() {
     std::fs::write(dest, out).expect("write migrations_index.rs");
 }
 
+/// PRD-mcphost-connection-provider-registry R2: `providers.toml` -> the
+/// `Provider` table `src/connect/mod.rs` `include!`s. A `test_only` row is
+/// compiled in only under the `test-support` feature.
+fn embed_providers() {
+    println!("cargo:rerun-if-changed=providers.toml");
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
+    let text = std::fs::read_to_string(std::path::Path::new(&manifest_dir).join("providers.toml"))
+        .expect("providers.toml is missing");
+    let table: toml::Table = text.parse().expect("providers.toml is not valid TOML");
+    let field = |name: &str, t: &toml::Table, key: &str| -> String {
+        t.get(key)
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| panic!("providers.toml [{name}] needs a string `{key}`"))
+            .to_string()
+    };
+    let mut out = String::new();
+    let mut all = String::new();
+    for (name, row) in &table {
+        let row = row.as_table().unwrap_or_else(|| panic!("providers.toml [{name}] is not a table"));
+        assert!(
+            name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) && !name.is_empty(),
+            "providers.toml [{name}]: names are lowercase alphanumerics"
+        );
+        let refresh = match field(name, row, "refresh").as_str() {
+            "rotating" => "Refresh::Rotating",
+            "offline_access" => "Refresh::OfflineAccess",
+            "none" => "Refresh::None",
+            other => panic!("providers.toml [{name}]: unknown refresh '{other}'"),
+        };
+        let scopes: Vec<String> = row
+            .get("scopes")
+            .and_then(|v| v.as_array())
+            .unwrap_or_else(|| panic!("providers.toml [{name}] needs a `scopes` array"))
+            .iter()
+            .map(|sc| {
+                let sc = sc.as_table().expect("scope is a {name, purpose} table");
+                format!(
+                    "Scope {{ name: {:?}, purpose: {:?} }}",
+                    field(name, sc, "name"),
+                    field(name, sc, "purpose")
+                )
+            })
+            .collect();
+        let params: Vec<String> = row
+            .get("extra_authorize_params")
+            .and_then(|v| v.as_table())
+            .map(|t| {
+                t.iter()
+                    .map(|(k, v)| format!("({:?}, {:?})", k, v.as_str().expect("extra_authorize_params values are strings")))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let test_only = row.get("test_only").and_then(|v| v.as_bool()).unwrap_or(false);
+        let cfg = if test_only { "#[cfg(feature = \"test-support\")]\n" } else { "" };
+        let konst = name.to_uppercase();
+        out.push_str(&format!(
+            "{cfg}static SPEC_{konst}: ProviderSpec = ProviderSpec {{ name: {name:?}, auth_url: {:?}, token_url: {:?}, \
+             scopes: &[{}], refresh: {refresh}, client_id_env: {:?}, client_secret_env: {:?}, \
+             extra_authorize_params: &[{}], docs_url: {:?}, test_only: {test_only} }};\n\
+             {cfg}impl Provider {{ pub const {konst}: Provider = Provider(&SPEC_{konst}); }}\n",
+            field(name, row, "auth_url"),
+            field(name, row, "token_url"),
+            scopes.join(", "),
+            field(name, row, "client_id_env"),
+            field(name, row, "client_secret_env"),
+            params.join(", "),
+            field(name, row, "docs_url"),
+        ));
+        all.push_str(&format!("    {cfg}Provider::{konst},\n"));
+    }
+    out.push_str(&format!("impl Provider {{ pub const ALL: &'static [Provider] = &[\n{all}]; }}\n"));
+    let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR");
+    std::fs::write(std::path::Path::new(&out_dir).join("providers_gen.rs"), out).expect("write providers_gen.rs");
+}
+
 fn main() {
+    embed_providers();
     embed_examples();
     embed_help_docs();
     embed_doc_anchors();

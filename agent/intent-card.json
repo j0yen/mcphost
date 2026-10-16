@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-job-timeline-tool.md",
-  "intent_slug": "mcphost-job-timeline-tool",
-  "root_motivation": "**Who:** the agent asked \"why did last night's job fail?\" with no shell and a few turns. **What:** a per-step account; the chain result trace has no timing or size, and host.runs.get's child rows must be joined by hand. **Why not today:** the rows exist but nothing joins them into one view.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-connection-provider-registry.md",
+  "intent_slug": "mcphost-connection-provider-registry",
+  "root_motivation": "**Who:** the agent asking \"which providers can I connect, with which scope names?\"; Joe adding a provider; the builder of every later connection PRD. **What:** one place a provider is described, every surface derived from it. **Why not today:** `vault.rs:71-90` knows three presets; `host.vault.provider_set`'s schema has no enum (`handler.rs:3589`); `llms.txt:504` repeats the three names by hand; no surface says which scopes a provider accepts, whether its tokens expire, or whether the host has a client id for it. Creative premise: one TOML table is enough shape for every provider (GitHub tokens never expire, Google needs `access_type=offline`, Slack rotates by opt-in). Falsifier above.",
   "user_persona": "An agent that calls host.job.timeline(run_id) and reads which step ran how long, failed with which error class and family, or is still running.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,26 +14,26 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a completed 3-step chain run, When host.job_timeline(run_id) is called, Then steps has 3 entries in step order, each done with started_unix <= finished_unix, duration_ms >= 0, bytes_out > 0, and totals.wall_ms >= every step's duration_ms.",
-      "test": "tests/jtl_ac01_three_step_chain_timeline.rs"
+      "description": "Given `providers.toml` with `testprov` added under `test-support`, When the crate builds and the five surfaces are read, Then `host.connect.providers`, the `provider` enum, `docs/connections.md`, `www/llms.txt` and the callback route table all contain `testprov` with no edit outside `providers.toml`.",
+      "test": "tests/cprov_ac01_one_row_reaches_all_five_surfaces.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a chain whose step 2 fails with compose_mapping_missing under on_error: continue, When the timeline is read, Then steps[1] is error with error_class compose_mapping_missing and error_family compose, steps[2] is done, and totals.error is 1.",
-      "test": "tests/jtl_ac02_mapping_miss_step_is_error_family_compose.rs"
+      "description": "Given a hand edit that adds `\"fakeprov\"` to any one of the five surfaces, When `tests/cprov_ac02_provider_surfaces_cannot_drift.rs` runs, Then it fails naming the surface and the extra name.",
+      "test": "tests/cprov_ac02_provider_surfaces_cannot_drift.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a scheduled run of a tool, When the timeline is read, Then steps has one entry whose tool is the run's tool, run.trigger is schedule, and totals.steps is 1.",
-      "test": "tests/jtl_ac03_scheduled_run_is_one_entry.rs"
+      "description": "Given `MCPHOST_CONNECT_GITHUB_CLIENT_ID` set and `MCPHOST_CONNECT_GITHUB_CLIENT_SECRET` unset, When `host.connect.providers` runs, Then `github` has `available: false, reason: \"client_secret_not_configured\"` and the response contains neither env value.",
+      "test": "tests/cprov_ac03_unconfigured_secret_is_unavailable.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a chain run still executing step 3, When the timeline is read, Then run.status is running, steps[2].status is running with finished_unix null, and totals.running is 1.",
-      "test": "tests/jtl_ac04_running_chain_shows_in_flight_step.rs"
+      "description": "Given `Provider::GOOGLE`, When `validate_scopes([\"https://www.googleapis.com/auth/spreadsheets.readonly\", \"bogus\"])` runs, Then it returns `Err([\"bogus\"])`.",
+      "test": "tests/cprov_ac04_validate_scopes_names_the_unknown.rs"
     }
   ],
   "scope": [

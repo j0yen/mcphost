@@ -4258,6 +4258,77 @@
       "since": "0.60.1"
     },
     {
+      "description": "List the upstream OAuth providers this host can connect: name, scopes ({name, purpose}), refresh (rotating | offline_access | none), docs_url, and available -- false with a reason (client_id_not_configured | client_secret_not_configured) until the host has registered the app. Never returns a client id or secret.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "description": "Only this provider's row.",
+            "enum": [
+              "github",
+              "google",
+              "notion",
+              "slack"
+            ],
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.connect.providers",
+      "output_schema": {
+        "properties": {
+          "providers": {
+            "items": {
+              "properties": {
+                "available": {
+                  "type": "boolean"
+                },
+                "docs_url": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "refresh": {
+                  "type": "string"
+                },
+                "scopes": {
+                  "items": {
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "purpose": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "providers"
+        ],
+        "type": "object"
+      },
+      "since": "0.108.21"
+    },
+    {
       "description": "Soft-delete a document by id or name; still visible via host.docs.list {since} with deleted: true. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
@@ -27863,6 +27934,33 @@
       },
       "name": "host_channel_unfreeze",
       "since": "0.103.1"
+    },
+    {
+      "alias_of": "host.connect.providers",
+      "description": "List the upstream OAuth providers this host can connect: name, scopes ({name, purpose}), refresh (rotating | offline_access | none), docs_url, and available -- false with a reason (client_id_not_configured | client_secret_not_configured) until the host has registered the app. Never returns a client id or secret.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "description": "Only this provider's row.",
+            "enum": [
+              "github",
+              "google",
+              "notion",
+              "slack"
+            ],
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host_connect_providers",
+      "since": "0.108.21"
     },
     {
       "alias_of": "host.docs.delete",

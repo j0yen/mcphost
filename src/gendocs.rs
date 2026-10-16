@@ -52,6 +52,7 @@ pub const SUPPORT_SPLICED_DOCS: &[&str] =
 /// tool the registry doesn't have (AC4's own docs-names test checks the
 /// reverse direction: every name docs/plugin mention exists here).
 pub const TOOLS_DOC_PATH: &str = "docs/tools.md";
+pub const CONNECTIONS_DOC_PATH: &str = "docs/connections.md";
 
 /// PRD-mcphost-blob-virus-and-type-guard R8: the accepted-types doc,
 /// [`render_blob_types_doc`] over [`crate::blobs::BLOB_TYPES`].
@@ -440,6 +441,14 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
     // this function's one write to README.md below carries both splices'
     // effects rather than one clobbering the other.
     for (path, _current, spliced) in &mut support_docs {
+        // PRD-mcphost-connection-provider-registry R4: the llms.txt
+        // `## Upstream connections` section, from the provider table.
+        if *path == "www/llms.txt" {
+            *spliced = crate::connect::splice_llms_section(
+                spliced.as_str(),
+                &crate::connect::render_llms_section(&crate::connect::Provider::public().collect::<Vec<_>>()),
+            );
+        }
         if *path == "README.md" || *path == "www/llms.txt" {
             *spliced = crate::install_links::splice_install_links_section(
                 spliced.as_str(),
@@ -453,6 +462,10 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
         (Path::new(PLANS_DOC_PATH), render_plans_markdown(&catalog)),
         (Path::new(PLANS_HTML_PATH), render_plans_html()),
         (Path::new(TOOLS_DOC_PATH), render_tools_markdown(kinds)),
+        (
+            Path::new(CONNECTIONS_DOC_PATH),
+            crate::connect::render_connections_doc(&crate::connect::Provider::public().collect::<Vec<_>>()),
+        ),
         (Path::new(BLOB_TYPES_DOC_PATH), render_blob_types_doc()),
         (Path::new(RETRIEVAL_DOC_PATH), crate::index::render_retrieval_doc()),
         (

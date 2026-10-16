@@ -371,7 +371,7 @@ pub fn dump_contract(kinds: &KindRegistry) -> Value {
                 "name": t.name,
                 "description": t.description.clone().unwrap_or_default(),
                 "since": since_for_tool(&t.name),
-                "input_schema": Value::Object((*t.input_schema).clone()),
+                "input_schema": without_test_only_providers(Value::Object((*t.input_schema).clone())),
             });
             let alias_of = crate::tool_aliases::resolve(&t.name)
                 .or_else(|| flattened.get(t.name.as_ref()).copied());
@@ -418,6 +418,36 @@ pub fn dump_contract_bytes(kinds: &KindRegistry) -> Vec<u8> {
         serde_json::to_string_pretty(&dump_contract(kinds)).expect("contract dump serializes");
     s.push('\n');
     s.into_bytes()
+}
+
+/// A `test_only` provider row (`providers.toml`, `test-support` builds) is
+/// never part of the contract: drop its name from every `enum` so the dumped
+/// contract, and its sha, are the same with or without the feature.
+fn without_test_only_providers(mut v: Value) -> Value {
+    match &mut v {
+        Value::Object(m) => {
+            for (k, child) in m.iter_mut() {
+                if k == "enum" {
+                    if let Value::Array(a) = child {
+                        a.retain(|n| {
+                            !n.as_str().is_some_and(|n| {
+                                crate::connect::Provider::ALL.iter().any(|p| p.test_only && p.name == n)
+                            })
+                        });
+                    }
+                } else {
+                    *child = without_test_only_providers(std::mem::take(child));
+                }
+            }
+        }
+        Value::Array(a) => {
+            for child in a.iter_mut() {
+                *child = without_test_only_providers(std::mem::take(child));
+            }
+        }
+        _ => {}
+    }
+    v
 }
 
 /// PRD-mcphost-contract-version-reported R1: lowercase hex sha256 of
