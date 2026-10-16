@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-graceful-drain-contract.md (test_prefix: gdrain)",
+  "ac_test_map_prd": "PRD-mcphost-onboarding-dead-ends-zero.md (test_prefix: ndead)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,11 +28,25 @@
     }
   ],
   "ac_test_map": {
-    "AC2": "tests/gdrain_ac02_sigterm_finishes_inflight_calls.rs",
-    "AC3": "tests/gdrain_ac03_bound_interrupts_stragglers.rs",
-    "AC4": "tests/gdrain_ac04_draining_refuses_new_requests.rs"
+    "AC1": "tests/ndead_ac01_next_call_table_total.rs",
+    "AC2": "tests/ndead_ac02_journey10_zero_dead_ends.rs",
+    "AC3": "tests/ndead_ac03_unknown_kind_names_registry_kind.rs",
+    "AC4": "tests/ndead_ac04_args_invalid_next_call_coerces_value.rs"
   },
   "ac_test_map_by_prefix": {
+    "nfs": {
+      "_prd": "PRD-mcphost-notes-to-future-self.md (test_prefix: nfs)",
+      "AC1": "tests/nfs_ac01_put_emits_list_changed_and_suffix.rs",
+      "AC2": "tests/nfs_ac02_suffix_cut_to_120_chars.rs",
+      "AC3": "tests/nfs_ac03_quota_and_unknown_tool.rs",
+      "AC4": "tests/nfs_ac04_ttl_expiry.rs"
+    },
+    "incbanb": {
+      "_prd": "PRD-mcphost-incident-banner-for-agents-b.md (test_prefix: incbanb)",
+      "AC1": "tests/incbanb_ac01_banner_in_status_json.rs",
+      "AC2": "tests/incbanb_ac02_error_rate_auto_close.rs",
+      "AC3": "tests/incbanb_ac03_request_log_carries_incident.rs"
+    },
     "ccli": {
       "_prd": "PRD-mcphost-call-cli-from-contract.md (test_prefix: ccli)",
       "AC1": "tests/ccli_ac01_tree_builds_from_contract.rs",

@@ -9838,7 +9838,9 @@ impl McpHostHandler {
                     None => Err(err),
                 }
             }
-            Err(err) => Err(err),
+            // PRD-mcphost-onboarding-dead-ends-zero AC4: `data.tool` names the
+            // tool the caller was running, so `next_call` can re-issue it.
+            Err(err) => Err(err.with_tool(&name)),
         }
     }
 
@@ -11570,6 +11572,7 @@ impl McpHostHandler {
                         token_scope,
                     )
                     .await
+                    .map_err(|e| e.with_tool(name))
                 }
                 // PRD-mcphost-sharing P0 requirement 2: `<ns>.<name>` for
                 // another tenant's namespace no longer falls straight to
@@ -11602,6 +11605,7 @@ impl McpHostHandler {
                         calls_auth_method(oauth_caller.as_ref(), via_session_binding, via_url_secret),
                     )
                     .await
+                    .map_err(|e| e.with_tool(name))
                 }
                 None => Err(AppError::ToolNotFound(name.to_string())),
             },
