@@ -174,6 +174,12 @@ mod mwlp_ac01_keyless_wait_returns_at_once;
 mod mwlp_ac03_timeout_reports_timed_out;
 #[path = "mwlp_ac04_arrival_wakes_wait.rs"]
 mod mwlp_ac04_arrival_wakes_wait;
+#[path = "ndead_ac01_next_call_table_total.rs"]
+mod ndead_ac01_next_call_table_total;
+#[path = "ndead_ac02_journey10_zero_dead_ends.rs"]
+mod ndead_ac02_journey10_zero_dead_ends;
+#[path = "ndead_ac03_unknown_kind_names_registry_kind.rs"]
+mod ndead_ac03_unknown_kind_names_registry_kind;
 #[path = "nexttool_ac01_anonymous_starter_set.rs"]
 mod nexttool_ac01_anonymous_starter_set;
 #[path = "nexttool_ac02_authenticated_listing_unchanged.rs"]

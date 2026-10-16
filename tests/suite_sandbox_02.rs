@@ -348,6 +348,8 @@ mod melc_ac06_job_run_has_no_client_and_records_the_code;
 mod melc_ac07_fourth_elicit_in_one_call_is_refused;
 #[path = "mrefub_ac03_status_json_last_refusal.rs"]
 mod mrefub_ac03_status_json_last_refusal;
+#[path = "ndead_ac04_args_invalid_next_call_coerces_value.rs"]
+mod ndead_ac04_args_invalid_next_call_coerces_value;
 #[path = "plainenv_ac01_env_reaches_process.rs"]
 mod plainenv_ac01_env_reaches_process;
 #[path = "plainenv_ac02_invalid_names_refused.rs"]

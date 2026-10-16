@@ -1,0 +1,17 @@
+{
+  "note": "PRD-mcphost-onboarding-dead-ends-zero R5: ten calls of a first-hour journey, each wrong once. `wrong` is the bad variant, `right` the call that advances the journey. Step shape follows synthorg's journey.py: {step, tool, auth, args}.",
+  "steps": [
+    {"step": "quickstart", "tool": "host.quickstart", "auth": "bound", "wrong": {"kind": "nope"}, "right": {"kind": "echo"}},
+    {"step": "whoami", "tool": "host.whoami", "auth": "anonymous", "right_auth": "bound", "wrong": {"tenant_key": "mk_not_a_key"}, "right": {}},
+    {"step": "publish_a", "tool": "host.tool_publish", "auth": "bound", "wrong": {"name": "hello", "kind": "nope", "spec": {}},
+      "right": {"name": "hello", "kind": "echo", "spec": {"schema": {"type": "object", "properties": {"n": {"type": "integer"}}, "required": ["n"]}}}},
+    {"step": "publish_b", "tool": "host.tool_publish", "auth": "bound", "wrong": {"name": "Bad Name!", "kind": "echo", "spec": {}},
+      "right": {"name": "other", "kind": "echo", "spec": {"schema": {"type": "object"}}}},
+    {"step": "tool_test", "tool": "host.tool_test", "auth": "bound", "wrong": {"name": "no_such_tool", "args": {}}, "right": {"name": "hello", "args": {"n": 1}}},
+    {"step": "tool_call", "tool": "host.tool_call", "auth": "bound", "wrong": {"name": "hello", "args": {"n": 4.78}}, "right": {"name": "hello", "args": {"n": 4}}},
+    {"step": "state_set", "tool": "host.state.set", "auth": "bound", "wrong": {"key": "k"}, "right": {"key": "k", "value": "v"}},
+    {"step": "state_get", "tool": "host.state.get", "auth": "bound", "wrong": {"key": 7}, "right": {"key": "k"}},
+    {"step": "tool_share", "tool": "host.tool_share", "auth": "bound", "wrong": {"name": "no_such_tool", "visibility": "url"}, "right": {"name": "hello", "visibility": "url"}},
+    {"step": "key_rotate", "tool": "host.key.rotate", "auth": "anonymous", "right_auth": "bound", "wrong": {"tenant_key": "mk_not_a_key"}, "right": {}}
+  ]
+}

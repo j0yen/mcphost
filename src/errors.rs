@@ -521,6 +521,251 @@ pub fn all_variants_for_test() -> Vec<AppError> {
     all
 }
 
+/// PRD-mcphost-onboarding-dead-ends-zero R1: the tool and arguments a caller
+/// should try after an error. The wire shape is `{tool, args}`
+/// (+ `retry_after_s` when the error says to wait first).
+#[derive(Debug, Clone, PartialEq)]
+pub struct NextCall {
+    pub tool: &'static str,
+    pub args: Value,
+    pub retry_after_s: Option<u64>,
+}
+
+impl NextCall {
+    fn new(tool: &'static str, args: Value) -> Self {
+        Self { tool, args, retry_after_s: None }
+    }
+
+    pub fn to_json(&self) -> Value {
+        let mut out = json!({"tool": self.tool, "args": self.args});
+        if let Some(wait) = self.retry_after_s {
+            out["retry_after_s"] = json!(wait);
+        }
+        out
+    }
+}
+
+/// What a [`AppError::next_call`] arm may need beyond the error itself. Every
+/// field is optional: an arm raised without context uses its context-free
+/// call, never none (R1).
+#[derive(Debug, Clone, Default)]
+pub struct ErrorCtx {
+    pub tool: Option<String>,
+    pub kind: Option<String>,
+    /// The offending top-level argument of an `args_invalid`.
+    pub argument: Option<String>,
+    pub expected_type: Option<String>,
+    /// The offending value, as the caller sent it.
+    pub got: Option<Value>,
+    /// Secret names the failing spec references.
+    pub secret_names: Vec<String>,
+    /// Registered kind names, registry order.
+    pub registered_kinds: Vec<String>,
+    pub retry_after_s: Option<u64>,
+}
+
+impl ErrorCtx {
+    /// The context the envelope can recover from an error's own `data`.
+    fn from_data(data: &Map<String, Value>) -> Self {
+        let text = |k: &str| data.get(k).and_then(Value::as_str).map(str::to_string);
+        Self {
+            tool: text("tool"),
+            kind: text("kind"),
+            argument: text("argument"),
+            expected_type: text("expected_type"),
+            got: data
+                .get("got")
+                .and_then(Value::as_str)
+                .map(|g| serde_json::from_str(g).unwrap_or_else(|_| json!(g))),
+            secret_names: data
+                .get("secrets")
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                .unwrap_or_default(),
+            registered_kinds: data
+                .get("registered")
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                .unwrap_or_default(),
+            retry_after_s: data.get("retry_after_s").and_then(Value::as_u64),
+        }
+    }
+}
+
+/// Coerces `got` to the JSON-Schema type the tool expected, so the example
+/// call is valid. `None` when no coercion applies.
+fn coerce_to(expected: &str, got: &Value) -> Option<Value> {
+    let text = match got {
+        Value::String(s) => Some(s.trim().to_string()),
+        Value::Number(n) => Some(n.to_string()),
+        Value::Bool(b) => Some(b.to_string()),
+        _ => None,
+    };
+    match expected {
+        "integer" => match got {
+            Value::Number(n) => n.as_f64().map(|f| json!(f.trunc() as i64)),
+            _ => text.and_then(|t| t.parse::<f64>().ok()).map(|f| json!(f.trunc() as i64)),
+        },
+        "number" => text.and_then(|t| t.parse::<f64>().ok()).map(|f| json!(f)),
+        "string" => match got {
+            Value::Null | Value::Array(_) | Value::Object(_) => Some(json!(got.to_string())),
+            _ => text.map(Value::String),
+        },
+        "boolean" => text.and_then(|t| t.parse::<bool>().ok()).map(Value::Bool),
+        _ => None,
+    }
+}
+
+/// The one table keyed by error code (R2): `AppError` variants and every
+/// `Structured` code route here. A code with no row gets the generic
+/// `host.help.search` for that code, never no call.
+fn next_call_for_code(code: &str, ctx: &ErrorCtx) -> NextCall {
+    match code {
+        "unknown_kind" => {
+            let args = match ctx.registered_kinds.first() {
+                Some(kind) => json!({"kind": kind}),
+                None => json!({}),
+            };
+            NextCall::new("host.quickstart", args)
+        }
+        "args_invalid" => {
+            let coerced = match (&ctx.argument, &ctx.expected_type, &ctx.got) {
+                (Some(arg), Some(expected), Some(got)) => {
+                    coerce_to(expected, got).map(|v| (arg.clone(), v))
+                }
+                _ => None,
+            };
+            match (&ctx.tool, coerced) {
+                (Some(tool), Some((arg, value))) => {
+                    NextCall::new("host.tool_call", json!({"name": tool, "args": {arg: value}}))
+                }
+                // No coercion applies (a missing or out-of-range argument): the
+                // tool's own schema is what the caller needs, and re-calling
+                // would repeat this error.
+                (Some(_), None) => NextCall::new("host.tool_list", json!({})),
+                // A control-plane verb: its help entry names the arguments.
+                _ => NextCall::new("host.help.search", json!({"q": "args_invalid"})),
+            }
+        }
+        "tool_exception" | "call_timeout" | "timeout" => match &ctx.tool {
+            Some(tool) => NextCall::new("host.tool_logs", json!({"name": tool})),
+            None => NextCall::new("host.tool_list", json!({})),
+        },
+        "upstream_status" | "upstream_auth" | "upstream_client_error" => {
+            match (ctx.secret_names.first(), &ctx.tool) {
+                (Some(secret), _) => NextCall::new("host.secret_set", json!({"name": secret})),
+                (None, Some(tool)) => NextCall::new("host.tool_test", json!({"name": tool})),
+                (None, None) => NextCall::new("host.tool_test", json!({})),
+            }
+        }
+        "upstream_error" | "upstream_timeout" | "upstream_unreachable" | "upstream_rate_limited"
+        | "upstream_not_connected" => match &ctx.tool {
+            Some(tool) => NextCall::new("host.tool_test", json!({"name": tool})),
+            None => NextCall::new("host.tool_test", json!({})),
+        },
+        "plan_limit" | "plan_required" | "share_quota_exceeded" | "quota_trusted_issuers"
+        | "issuer_quota_exceeded" | "state_quota_exceeded" | "trigger_quota_exceeded"
+        | "invites_quota_exceeded" | "asks_limit" | "budget_ceiling" => {
+            NextCall::new("billing.plans", json!({}))
+        }
+        "rate_limited" | "rate_limited_host" | "signup_rate_limited" | "invite_rate_limited" => {
+            let mut next = NextCall::new("host.whoami", json!({}));
+            next.retry_after_s = ctx.retry_after_s;
+            next
+        }
+        "storage" | "internal" | "service_unavailable" | "sandbox_unavailable" | "exec_unavailable" => {
+            let mut next = NextCall::new("host.whoami", json!({}));
+            next.retry_after_s = Some(ctx.retry_after_s.unwrap_or(5));
+            next
+        }
+        "secret_missing" => match ctx.secret_names.first() {
+            Some(secret) => NextCall::new("host.secret_set", json!({"name": secret})),
+            None => NextCall::new("host.secret_list", json!({})),
+        },
+        "tool_not_found" | "group_not_found" | "not_found" => NextCall::new("host.tool_list", json!({})),
+        "forbidden" | "tenant_disabled" | "insufficient_scope" | "permission_denied" | "wrong_tenant"
+        | "issuer_already_registered" | "issuer_not_found" | "registry_disabled"
+        | "namespace_unverified" | "key_expired" | "key_revoked" | "key_bound_elsewhere" => {
+            NextCall::new("host.whoami", json!({}))
+        }
+        "bearer_invalid" | "tenant_key_missing" | "tenant_key_invalid" | "tenant_not_found"
+        | "handoff_token_invalid" | "handoff_token_redeemed" | "handoff_token_expired"
+        | "invalid_token" | "conflicting_credentials" | "auth_conflict" | "invalid_tool_name"
+        | "spec_too_large" | "too_many_tools" | "invalid_spec" => {
+            NextCall::new("host.quickstart", json!({}))
+        }
+        other => NextCall::new("host.help.search", json!({"q": other})),
+    }
+}
+
+impl AppError {
+    /// R1: the next call for this error. Exhaustive over every variant (no
+    /// `_` arm), so a new variant without a row does not compile.
+    pub fn next_call(&self, ctx: &ErrorCtx) -> NextCall {
+        match self {
+            AppError::UnknownKind { registered, .. } => {
+                let mut ctx = ctx.clone();
+                if ctx.registered_kinds.is_empty() {
+                    ctx.registered_kinds = registered.iter().map(|k| k.to_string()).collect();
+                }
+                next_call_for_code("unknown_kind", &ctx)
+            }
+            AppError::SecretMissing(name) => {
+                let mut ctx = ctx.clone();
+                ctx.secret_names.insert(0, name.clone());
+                next_call_for_code("secret_missing", &ctx)
+            }
+            AppError::MultiInvalid { errors, .. } => match errors.first() {
+                Some(first) => first.next_call(ctx),
+                None => next_call_for_code("invalid_spec", ctx),
+            },
+            AppError::Structured { code, .. } => next_call_for_code(code, ctx),
+            AppError::RateLimited => {
+                let mut next = next_call_for_code("rate_limited", ctx);
+                next.retry_after_s.get_or_insert(60);
+                next
+            }
+            AppError::Unauthorized
+            | AppError::TenantKeyMissing(_)
+            | AppError::TenantKeyInvalid
+            | AppError::Forbidden
+            | AppError::TenantDisabled { .. }
+            | AppError::ToolNotFound(_)
+            | AppError::TenantNotFound(_)
+            | AppError::InvalidToolName(_)
+            | AppError::SpecTooLarge(_)
+            | AppError::TooManyTools(_)
+            | AppError::InvalidSpec(_)
+            | AppError::InvalidArgs(_)
+            | AppError::CallTimeout(_)
+            | AppError::Storage(_)
+            | AppError::Internal(_)
+            | AppError::RegistryDisabled
+            | AppError::NamespaceUnverified
+            | AppError::ShareQuotaExceeded { .. }
+            | AppError::GroupNotFound(_)
+            | AppError::HandoffTokenInvalid
+            | AppError::HandoffTokenRedeemed
+            | AppError::HandoffTokenExpired
+            | AppError::VersionNotFound { .. }
+            | AppError::IssuerAlreadyRegistered
+            | AppError::IssuerQuotaExceeded { .. }
+            | AppError::IssuerNotFound(_)
+            | AppError::InvalidToken(_)
+            | AppError::ConflictingCredentials
+            | AppError::WrongTenant
+            | AppError::InsufficientScope
+            | AppError::AuthConflict
+            | AppError::TrustedIssuerQuotaExceeded { .. } => next_call_for_code(self.code(), ctx),
+            AppError::InvalidParams(_) => match &ctx.tool {
+                Some(tool) => NextCall::new("host.tool_test", json!({"name": tool})),
+                None => NextCall::new("host.quickstart", json!({})),
+            },
+            AppError::RegistryRejected(_) => NextCall::new("host.help.search", json!({"q": self.code()})),
+        }
+    }
+}
+
 impl AppError {
     /// PRD-mcphost-error-responses-invite-feedback R4: a kind-level error
     /// that does not know which tool it ran for (`tool_exception`,
@@ -1173,6 +1418,11 @@ impl AppError {
         // A payload that already names its own `docs` (`args_invalid` ->
         // `host.tool_test`) keeps it.
         obj.entry("docs".to_string()).or_insert(json!("host.quickstart"));
+        // PRD-mcphost-onboarding-dead-ends-zero R3: the one place every error
+        // gets its `next_call`, beside `docs`. `entry`: a handler that already
+        // built a richer one (`tool_from_description`'s draft) keeps it.
+        let next_call = self.next_call(&ErrorCtx::from_data(&obj)).to_json();
+        obj.entry("next_call".to_string()).or_insert(next_call);
         // PRD-mcphost-first-hour-support-surface requirement 1 (AC1):
         // every payload carries its own correlation id, not just
         // `Internal`'s (which also folds it into `message` above, unchanged
