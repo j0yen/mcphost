@@ -65,8 +65,20 @@ mod ac16_request_body_too_large;
 mod ac18_tools_list_ttl;
 #[path = "ac19_registry_publish.rs"]
 mod ac19_registry_publish;
-#[path = "adisp_ac01_admin_dispatch_arms_equal_descriptors.rs"]
-mod adisp_ac01_admin_dispatch_arms_equal_descriptors;
+#[path = "actfor_ac01_acting_for_on_row_and_meta.rs"]
+mod actfor_ac01_acting_for_on_row_and_meta;
+#[path = "actfor_ac02_acting_for_on_structured_errors.rs"]
+mod actfor_ac02_acting_for_on_structured_errors;
+#[path = "actfor_ac03_cascade_revoke_chain_records.rs"]
+mod actfor_ac03_cascade_revoke_chain_records;
+#[path = "actfor_ac04_usage_by_key.rs"]
+mod actfor_ac04_usage_by_key;
+#[path = "actfor_ac05_audit_chain_hash_differs_for_child.rs"]
+mod actfor_ac05_audit_chain_hash_differs_for_child;
+#[path = "actfor_ac06_tool_logs_prefix.rs"]
+mod actfor_ac06_tool_logs_prefix;
+#[path = "actfor_ac07_acting_for_keys_and_redaction.rs"]
+mod actfor_ac07_acting_for_keys_and_redaction;
 #[path = "agentdir_ac01_ac02_ac03_ac04_identity_and_lookup.rs"]
 mod agentdir_ac01_ac02_ac03_ac04_identity_and_lookup;
 #[path = "agentdir_ac05_ac06_search.rs"]
@@ -155,20 +167,6 @@ mod attrib_ac6_whoami_source_class;
 mod attribdefault_ac1_bare_signup_client_info_is_null;
 #[path = "attribdefault_ac2_real_clientinfo_still_captured.rs"]
 mod attribdefault_ac2_real_clientinfo_still_captured;
-#[path = "audx_ac01_chain_is_real_coverage_is_one_of_three.rs"]
-mod audx_ac01_chain_is_real_coverage_is_one_of_three;
-#[path = "audx_ac02_export_nine_rows_three_tables.rs"]
-mod audx_ac02_export_nine_rows_three_tables;
-#[path = "audx_ac03_offline_verifier_ok_and_fail_lines.rs"]
-mod audx_ac03_offline_verifier_ok_and_fail_lines;
-#[path = "audx_ac04_vectors_generated_from_rust.rs"]
-mod audx_ac04_vectors_generated_from_rust;
-#[path = "audx_ac05_verify_by_root_and_zero_rows.rs"]
-mod audx_ac05_verify_by_root_and_zero_rows;
-#[path = "audx_ac06_export_cap_and_read_scope.rs"]
-mod audx_ac06_export_cap_and_read_scope;
-#[path = "audx_ac07_csv_format_matches_jsonl.rs"]
-mod audx_ac07_csv_format_matches_jsonl;
 #[path = "autherr_ac1_tenant_key_missing.rs"]
 mod autherr_ac1_tenant_key_missing;
 #[path = "autherr_ac2_tenant_key_invalid.rs"]

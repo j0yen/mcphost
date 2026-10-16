@@ -1327,6 +1327,28 @@ fn confirm_stripped(args: &Value) -> Value {
     args
 }
 
+/// PRD-mcphost-acting-for-in-ledger-and-audit R1: `_meta.acting_for` on a
+/// completed call, `data.acting_for` on a failed one.
+fn attach_acting_for(
+    result: Result<CallToolResponse, McpError>,
+    af: &crate::subkeys::ActingFor,
+) -> Result<CallToolResponse, McpError> {
+    match result {
+        Ok(CallToolResponse::Complete(mut r)) => {
+            r.meta.get_or_insert_with(Default::default).0.insert("acting_for".to_string(), af.to_json());
+            Ok(CallToolResponse::Complete(r))
+        }
+        Err(mut e) => {
+            let data = e.data.get_or_insert_with(|| json!({}));
+            if let Some(obj) = data.as_object_mut() {
+                obj.insert("acting_for".to_string(), af.to_json());
+            }
+            Err(e)
+        }
+        other => other,
+    }
+}
+
 /// R5: marks a scratch tenant's response `_meta.scratch: true`.
 fn mark_scratch(value: &mut Value) {
     if let Some(obj) = value.as_object_mut() {
@@ -11852,6 +11874,15 @@ impl ServerHandler for McpHostHandler {
             crate::subkeys::CALL_KEY
                 .scope(std::cell::Cell::new(None), Box::pin(self.call_tool_inner(request, ctx))),
         );
+        // PRD-mcphost-acting-for-in-ledger-and-audit: a sub-key's call says
+        // who it acted for on its response `_meta` and its error `data`.
+        let inner = crate::subkeys::CALL_ACTING_FOR.scope(std::cell::RefCell::new(None), async move {
+            let result = inner.await;
+            match crate::subkeys::current_acting_for() {
+                Some(af) => attach_acting_for(result, &af),
+                None => result,
+            }
+        });
         let inner = crate::sampling::SAMPLING_CLIENT
             .scope(crate::sampling::SamplingClient { peer: sampling_peer, session_id: gate.session_id.clone() }, inner);
         let inner = crate::inband::CALL_GATE.scope(gate, inner);
@@ -12304,6 +12335,11 @@ impl McpHostHandler {
         // dispatch below runs.
         if let (Some(sk), Auth::Tenant(tenant, _)) = (&sub_key, &auth) {
             let _ = crate::subkeys::CALL_KEY.try_with(|c| c.set(Some(sk.id)));
+            // PRD-mcphost-acting-for-in-ledger-and-audit R1: the lineage is
+            // rendered once here and read by every decorator below.
+            if let Some(af) = self.state.db.acting_for_for_key(sk.id).await.map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))? {
+                let _ = crate::subkeys::CALL_ACTING_FOR.try_with(|c| *c.borrow_mut() = Some(af));
+            }
             let canonical = crate::tool_aliases::resolve(&body_name).unwrap_or(&body_name);
             // `host.key.delegate` skips the allowlist: it answers
             // `permission_denied can_delegate=false` itself.

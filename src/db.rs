@@ -345,6 +345,10 @@ const MIGRATION_0103: &str = include_str!("../migrations/0103_indexes.sql");
 const MIGRATION_0104: &str = include_str!("../migrations/0104_tenant_keys.sql");
 /// PRD-mcphost-key-delegate-child-keys R1: delegation columns on `tenant_keys`.
 const MIGRATION_0109: &str = include_str!("../migrations/0109_key_delegation.sql");
+/// PRD-mcphost-acting-for-in-ledger-and-audit R2/R3: `audit_chain` event + lineage columns.
+const MIGRATION_0127: &str = include_str!("../migrations/0127_audit_chain_acting_for.sql");
+/// PRD-mcphost-acting-for-in-ledger-and-audit R5: `logs.key_id`.
+const MIGRATION_0128: &str = include_str!("../migrations/0128_logs_key_id.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
@@ -1272,6 +1276,16 @@ pub struct UsageByRow {
     pub errors: i64,
     pub p95_ms: f64,
     pub bytes_out: i64,
+}
+
+/// PRD-mcphost-acting-for-in-ledger-and-audit R4: one `host.usage {by: "key"}` row.
+#[derive(Debug, Clone)]
+pub struct UsageByKeyRow {
+    pub label: String,
+    pub calls: i64,
+    pub errors: i64,
+    pub duration_ms: i64,
+    pub bytes: i64,
 }
 
 /// Requirement 2: `host.usage {by}` caps at 1 000 keys per page (AC5) and
@@ -3247,6 +3261,8 @@ impl Db {
         Self::migrate_0125_owner_method_admin(&conn)?;
         // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0126)?;
+        Self::migrate_0127_audit_chain_acting_for(&conn)?;
+        Self::migrate_0128_logs_key_id(&conn)?;
         Ok(())
     }
 
@@ -3410,6 +3426,30 @@ impl Db {
             .exists([])?;
         if !has_table {
             conn.execute_batch(MIGRATION_0104)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-acting-for-in-ledger-and-audit R5: gated on the column
+    /// (the batch is a single `ALTER`, so a rerun must skip it).
+    fn migrate_0128_logs_key_id(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('logs') WHERE name = 'key_id'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0128)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-acting-for-in-ledger-and-audit R2/R3: gated on the first
+    /// new column (the batch is `ALTER`s, so a rerun must skip it).
+    fn migrate_0127_audit_chain_acting_for(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('audit_chain') WHERE name = 'acting_for'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0127)?;
         }
         Ok(())
     }
@@ -13136,6 +13176,47 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-acting-for-in-ledger-and-audit R4: `host.usage {by: "key"}`
+    /// -- one row per `tenant_keys.label` (revoked keys included) plus the
+    /// `(primary)` row for calls with no `key_id`, grouped by
+    /// `calls.key_id` with a left join for the label. `(primary)` first,
+    /// then busiest first. Always read from `calls` (the daily rollup has
+    /// no key dimension).
+    pub async fn usage_by_key(
+        &self,
+        tenant_id: i64,
+        tool_filter: Option<String>,
+        window_secs: i64,
+    ) -> Result<Vec<UsageByKeyRow>, AppError> {
+        let since = now_unix() - window_secs;
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT COALESCE(k.label, '(primary)') AS label, COUNT(*), \
+                        SUM(CASE WHEN c.ok = 0 THEN 1 ELSE 0 END), \
+                        COALESCE(SUM(c.duration_ms), 0), COALESCE(SUM(c.bytes_in + c.bytes_out), 0) \
+                 FROM calls c LEFT JOIN tenant_keys k ON k.id = c.key_id \
+                 WHERE c.tenant_id = ?1 AND c.started_unix >= ?2 \
+                       AND COALESCE(c.error_class, '') <> 'refused' \
+                       AND (?3 IS NULL OR c.tool_name = ?3) \
+                 GROUP BY c.key_id \
+                 ORDER BY (c.key_id IS NOT NULL), COUNT(*) DESC, label",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id, since, tool_filter], |r| {
+                    Ok(UsageByKeyRow {
+                        label: r.get(0)?,
+                        calls: r.get(1)?,
+                        errors: r.get(2)?,
+                        duration_ms: r.get(3)?,
+                        bytes: r.get(4)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
     /// `host.share.caller_limit` (AC3): upsert one `(tenant_id, tool_name,
     /// caller_tenant_id)` cap, replacing whatever `calls_per_day` an
     /// earlier call set.
@@ -13356,10 +13437,13 @@ impl Db {
         line: String,
     ) -> Result<(), AppError> {
         let ts = now_rfc3339();
+        // R5: remember which delegated key's call wrote the line; the line
+        // itself is stored unchanged.
+        let key_id = crate::subkeys::current_key_id();
         self.with_conn(move |conn| {
             conn.execute(
-                "INSERT INTO logs (tenant_id, tool_name, ts, line) VALUES (?1, ?2, ?3, ?4)",
-                params![tenant_id, tool_name, ts, line],
+                "INSERT INTO logs (tenant_id, tool_name, ts, line, key_id) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![tenant_id, tool_name, ts, line, key_id],
             )?;
             Ok(())
         })
@@ -13420,16 +13504,40 @@ impl Db {
     ) -> Result<Vec<String>, AppError> {
         self.with_conn(move |conn| {
             let mut stmt = conn.prepare(
-                "SELECT line FROM logs WHERE tenant_id = ?1 AND tool_name = ?2 \
+                "SELECT line, key_id FROM logs WHERE tenant_id = ?1 AND tool_name = ?2 \
                  ORDER BY id DESC LIMIT ?3",
             )?;
             let mut rows = stmt
                 .query_map(params![tenant_id, tool_name, limit], |r| {
-                    r.get::<_, String>(0)
+                    Ok((r.get::<_, String>(0)?, r.get::<_, Option<i64>>(1)?))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
             rows.reverse();
-            Ok(rows)
+            // PRD-mcphost-acting-for-in-ledger-and-audit R5: lines a delegated
+            // key's call wrote read `[acting_for=<label><<root_label>] <line>`;
+            // the stored line is unchanged.
+            let mut prefixes: HashMap<i64, Option<String>> = HashMap::new();
+            let mut out = Vec::with_capacity(rows.len());
+            for (line, key_id) in rows {
+                let Some(id) = key_id else {
+                    out.push(line);
+                    continue;
+                };
+                let prefix = match prefixes.get(&id) {
+                    Some(p) => p.clone(),
+                    None => {
+                        let p = crate::subkeys::acting_for_sync(conn, id)?
+                            .map(|a| format!("[acting_for={}<{}]", a.label, a.root_label));
+                        prefixes.insert(id, p.clone());
+                        p
+                    }
+                };
+                out.push(match prefix {
+                    Some(p) => format!("{p} {line}"),
+                    None => line,
+                });
+            }
+            Ok(out)
         })
         .await
     }
@@ -21144,6 +21252,25 @@ impl Db {
         detail: Option<String>,
     ) -> Result<(), AppError> {
         let created_unix = now_unix();
+        // PRD-mcphost-acting-for-in-ledger-and-audit R2: a row written during
+        // a delegated key's call names the key it acted for.
+        let detail = match crate::subkeys::current_acting_for() {
+            Some(af) => {
+                let mut obj = match detail.as_deref().map(serde_json::from_str::<Value>) {
+                    None => Some(serde_json::Map::new()),
+                    Some(Ok(Value::Object(o))) => Some(o),
+                    Some(_) => None,
+                };
+                match obj.as_mut() {
+                    Some(o) => {
+                        o.insert("acting_for".to_string(), af.to_json());
+                        Some(Value::Object(o.clone()).to_string())
+                    }
+                    None => detail,
+                }
+            }
+            None => detail,
+        };
         self.with_conn(move |conn| {
             conn.execute(
                 "INSERT INTO tenant_audit (tenant_id, subject, action, detail, created_unix) \
@@ -24480,6 +24607,12 @@ pub struct AuditRecordRow {
     pub request_id: String,
     pub prior_record_hash: String,
     pub record_hash: String,
+    /// R2/R3: a control-plane event name (`revoke_cascade`), `None` for a read.
+    pub action: Option<String>,
+    /// R2: the event's JSON detail.
+    pub detail: Option<String>,
+    /// R3: JSON lineage of the delegated key that made the call, if any.
+    pub acting_for: Option<String>,
 }
 
 fn audit_record_row_from_row(r: &Row) -> rusqlite::Result<AuditRecordRow> {
@@ -24496,11 +24629,15 @@ fn audit_record_row_from_row(r: &Row) -> rusqlite::Result<AuditRecordRow> {
         request_id: r.get(9)?,
         prior_record_hash: r.get(10)?,
         record_hash: r.get(11)?,
+        action: r.get(12)?,
+        detail: r.get(13)?,
+        acting_for: r.get(14)?,
     })
 }
 
 const AUDIT_RECORD_COLS: &str = "id, tenant_id, subject, plane, policy_hash, applied, \
-    returned_count, withheld_count, timestamp_unix, request_id, prior_record_hash, record_hash";
+    returned_count, withheld_count, timestamp_unix, request_id, prior_record_hash, record_hash, \
+    action, detail, acting_for";
 
 impl Db {
     /// requirement 1: the current policy for one `(target_kind,
@@ -24648,6 +24785,34 @@ impl Db {
         timestamp_unix: i64,
         request_id: String,
     ) -> Result<AuditRecordRow, AppError> {
+        self.audit_chain_append_event(
+            tenant_id, subject, plane, policy_hash, applied, returned_count, withheld_count, timestamp_unix,
+            request_id, None, None,
+        )
+        .await
+    }
+
+    /// [`Self::audit_chain_append`] plus the PRD-mcphost-acting-for-in-
+    /// ledger-and-audit fields: `action`/`detail` for a control-plane event,
+    /// and the calling delegated key's `acting_for` (read from the call's
+    /// task-local) hashed into the record so the root's and a child's
+    /// otherwise identical records differ.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn audit_chain_append_event(
+        &self,
+        tenant_id: i64,
+        subject: String,
+        plane: String,
+        policy_hash: String,
+        applied: String,
+        returned_count: i64,
+        withheld_count: Option<i64>,
+        timestamp_unix: i64,
+        request_id: String,
+        action: Option<String>,
+        detail: Option<String>,
+    ) -> Result<AuditRecordRow, AppError> {
+        let acting_for = crate::subkeys::current_acting_for().map(|a| a.to_json().to_string());
         self.with_conn(move |conn| {
             let prior_record_hash: String = conn
                 .query_row(
@@ -24658,7 +24823,7 @@ impl Db {
                 .optional()?
                 .unwrap_or_else(|| crate::rowpolicy::audit::GENESIS_HASH.to_string());
 
-            let record_hash = crate::rowpolicy::audit::compute_record_hash(
+            let record_hash = crate::rowpolicy::audit::compute_record_hash_ext(
                 &subject,
                 tenant_id,
                 &plane,
@@ -24669,21 +24834,27 @@ impl Db {
                 timestamp_unix,
                 &request_id,
                 &prior_record_hash,
+                action.as_deref(),
+                detail.as_deref(),
+                acting_for.as_deref(),
             );
 
             conn.execute(
                 "INSERT INTO audit_chain (tenant_id, subject, plane, policy_hash, applied, returned_count, \
-                    withheld_count, timestamp_unix, request_id, prior_record_hash, record_hash) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                    withheld_count, timestamp_unix, request_id, prior_record_hash, record_hash, \
+                    action, detail, acting_for) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                 params![
                     tenant_id, subject, plane, policy_hash, applied, returned_count,
-                    withheld_count, timestamp_unix, request_id, prior_record_hash, record_hash
+                    withheld_count, timestamp_unix, request_id, prior_record_hash, record_hash,
+                    action, detail, acting_for
                 ],
             )?;
             let id = conn.last_insert_rowid();
             Ok(AuditRecordRow {
                 id, tenant_id, subject, plane, policy_hash, applied, returned_count,
                 withheld_count, timestamp_unix, request_id, prior_record_hash, record_hash,
+                action, detail, acting_for,
             })
         })
         .await
