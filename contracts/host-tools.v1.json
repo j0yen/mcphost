@@ -8133,7 +8133,10 @@
             ]
           },
           "usage": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -8168,7 +8171,10 @@
             "items": {
               "properties": {
                 "can_delegate": {
-                  "type": "boolean"
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
                 },
                 "children": {
                   "items": {
@@ -8177,7 +8183,10 @@
                   "type": "array"
                 },
                 "created_at": {
-                  "type": "integer"
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
                 },
                 "depth": {
                   "type": "integer"
@@ -8342,10 +8351,16 @@
             "items": {
               "type": "string"
             },
-            "type": "array"
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "revoked": {
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "revoked_at": {
             "type": "integer"
@@ -26353,16 +26368,28 @@
           "key": {
             "properties": {
               "can_delegate": {
-                "type": "boolean"
+                "type": [
+                  "boolean",
+                  "null"
+                ]
               },
               "depth": {
-                "type": "integer"
+                "type": [
+                  "integer",
+                  "null"
+                ]
               },
               "kind": {
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "label": {
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "parent": {
                 "type": [
@@ -26374,10 +26401,16 @@
                 "items": {
                   "type": "string"
                 },
-                "type": "array"
+                "type": [
+                  "array",
+                  "null"
+                ]
               }
             },
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           },
           "key_age_s": {
             "type": [
