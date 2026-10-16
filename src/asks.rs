@@ -27,13 +27,9 @@ use crate::db::Tenant;
 use crate::errors::AppError;
 use crate::state::{AppState, new_ulid, now_unix};
 
-/// The longest one `host.msg.wait` / `host.runs.wait` / `host.ask.wait` call
-/// blocks, in seconds: the one constant every clamp and every rendering of
-/// the ceiling reads.
-pub const WAIT_MAX_S: i64 = 25;
-
-/// `host.ask.wait`'s default `timeout_s`.
-pub const WAIT_DEFAULT_S: i64 = 20;
+/// The wait ceiling and default live in [`crate::longpoll`]; re-exported so
+/// the ask verbs and their callers keep one path.
+pub use crate::longpoll::{WAIT_DEFAULT_S, WAIT_MAX_S};
 
 pub const QUESTION_MAX_CHARS: usize = 500;
 pub const OPTIONS_MIN: usize = 2;

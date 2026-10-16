@@ -3241,14 +3241,14 @@ fn host_tools_part_07() -> Vec<Tool> {
                 "Long-poll one run until it finalizes, until: {{counter, gte}} is reached, or \
                  timeout_s elapses (max {}s), returning its current status either way -- for a \
                  client with no polling loop of its own.",
-                crate::asks::WAIT_MAX_S
+                crate::longpoll::WAIT_MAX_S
             ),
             host_schema(
                 json!({
                     "run_id": {"type": "string", "description": "The run id to wait on."},
                     "timeout_s": {
                         "type": "integer",
-                        "description": format!("Max seconds to wait, capped at {}; default {}.", crate::asks::WAIT_MAX_S, crate::asks::WAIT_DEFAULT_S),
+                        "description": format!("Max seconds to wait, capped at {}; default {}.", crate::longpoll::WAIT_MAX_S, crate::longpoll::WAIT_DEFAULT_S),
                     },
                     "until": {
                         "type": "object",
@@ -3887,8 +3887,8 @@ fn host_tools_part_09() -> Vec<Tool> {
             format!(
                 "Long-poll for a new message until one past cursor arrives or timeout_s elapses (max \
                  {}s), returning the same shape as host.msg.inbox either way -- for a client with no \
-                 polling loop of its own. On timeout, messages is empty and next_cursor is unchanged. {}",
-                crate::asks::WAIT_MAX_S,
+                 polling loop of its own. On timeout, messages is empty, timed_out is true and next_cursor is unchanged. {}",
+                crate::longpoll::WAIT_MAX_S,
                 crate::email_inbound::rejected_reason_help()
             ),
             host_schema(
@@ -3896,7 +3896,7 @@ fn host_tools_part_09() -> Vec<Tool> {
                     "cursor": {"type": "string", "description": "Opaque; omit to wait for the next message from now."},
                     "timeout_s": {
                         "type": "integer",
-                        "description": format!("Max seconds to wait, capped at {}; default {}.", crate::asks::WAIT_MAX_S, crate::asks::WAIT_DEFAULT_S),
+                        "description": format!("Max seconds to wait, capped at {}; default {}.", crate::longpoll::WAIT_MAX_S, crate::longpoll::WAIT_DEFAULT_S),
                     },
                     "unread_only": {"type": "boolean", "description": "Filter to messages not yet acked."},
                 }),
@@ -4010,14 +4010,14 @@ fn host_tools_part_10() -> Vec<Tool> {
                  returns {{status: answered|pending, choice, answered_unix, waited_ms, next_call}}. \
                  pending means call host.ask.wait again; an expired ask fails ask_expired with \
                  next_call host.ask.create. Needs a tenant_key: it never signs a tenant up.",
-                crate::asks::WAIT_MAX_S
+                crate::longpoll::WAIT_MAX_S
             ),
             host_schema(
                 json!({
                     "ask_id": {"type": "string", "description": "The ask_id host.ask.create returned."},
                     "timeout_s": {
                         "type": "integer",
-                        "description": format!("Max seconds to wait, capped at {}; default {}.", crate::asks::WAIT_MAX_S, crate::asks::WAIT_DEFAULT_S),
+                        "description": format!("Max seconds to wait, capped at {}; default {}.", crate::longpoll::WAIT_MAX_S, crate::longpoll::WAIT_DEFAULT_S),
                     },
                 }),
                 &["ask_id"],
@@ -7249,9 +7249,15 @@ impl McpHostHandler {
             "implicit tenant created for anonymous call"
         );
 
-        let mut value = self
-            .dispatch_tenant_tool(&tenant, None, "key", "session", None, session_id, name, args)
-            .await?;
+        // PRD-mcphost-msg-wait-long-poll-contract R5: a just-created tenant's
+        // inbox cannot hold anything, so its `host.msg.wait` times out at
+        // once instead of sleeping out the full default wait.
+        let mut value = if name == "host.msg.wait" {
+            crate::longpoll::wait_response(json!({"messages": []}), true, Instant::now(), crate::longpoll::clamp_timeout_s(args.get("timeout_s").and_then(Value::as_i64)))
+        } else {
+            self.dispatch_tenant_tool(&tenant, None, "key", "session", None, session_id, name, args)
+                .await?
+        };
         // Requirement 2 (AC1): the first response's result envelope gains
         // `onboarding`; requirement 2's second half (AC2) holds by
         // construction -- this function only ever runs on the call that
