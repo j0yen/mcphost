@@ -770,8 +770,22 @@ async fn stop(child: &mut Child) {
     let _ = child.wait().await;
 }
 
-const READY_TIMEOUT: Duration = Duration::from_secs(10);
-const POLL_INTERVAL: Duration = Duration::from_millis(100);
+/// Total budget for the previous release to answer `/healthz` with our
+/// token. A healthy child still answers in well under a second on an idle
+/// host, but booting a full `mcphost serve` (open the DB, run its startup
+/// work, bind-adopt the inherited fd) is CPU-bound and stretches many-fold
+/// when several cargo builds share the machine (CI runners and the build
+/// hosts at load 15+): a 10s budget flaked there. A child that can never
+/// come up is still caught in one poll interval by the `try_wait` check
+/// at the top of every iteration, so the larger budget only costs time in
+/// the genuinely-hung case.
+const READY_TIMEOUT: Duration = Duration::from_secs(60);
+const POLL_INTERVAL: Duration = Duration::from_millis(50);
+/// Per-request cap on a single `/healthz` probe, so one connection that is
+/// accepted by the kernel (the inherited listener is already listening
+/// before the child ever calls `accept`) but not yet served cannot hold
+/// the poll loop past `READY_TIMEOUT`.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// `port` (for the foreign-server log line) and `stderr_tail` bundled so
 /// [`wait_ready`] stays under this repo's `too-many-arguments-threshold =
@@ -825,7 +839,12 @@ async fn wait_ready(
             });
         }
 
-        if let Ok(resp) = client.get(format!("{base_url}/healthz")).send().await
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if let Ok(resp) = client
+            .get(format!("{base_url}/healthz"))
+            .timeout(REQUEST_TIMEOUT.min(remaining.max(POLL_INTERVAL)))
+            .send()
+            .await
             && resp.status().is_success()
         {
             let has_our_token = resp
@@ -844,11 +863,15 @@ async fn wait_ready(
         if Instant::now() >= deadline {
             let tail = stderr_tail_text(stderr_tail);
             let detail = if tail.is_empty() {
-                "previous release did not answer /healthz with our token within 10s".to_string()
+                format!(
+                    "previous release did not answer /healthz with our token within {}s",
+                    READY_TIMEOUT.as_secs()
+                )
             } else {
                 format!(
-                    "previous release did not answer /healthz with our token within 10s; \
-                     stderr: {tail}"
+                    "previous release did not answer /healthz with our token within {}s; \
+                     stderr: {tail}",
+                    READY_TIMEOUT.as_secs()
                 )
             };
             return Err(CompatCheckFailure {
