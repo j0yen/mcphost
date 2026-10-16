@@ -312,7 +312,7 @@ pub async fn cold_call(
     params: &CallParams<'_>,
     payload: &Value,
     bridge: &dyn sandbox::SidecarBridge,
-    cancel_pid: &Arc<std::sync::Mutex<Option<i32>>>,
+    cancel_pid: &Arc<crate::runs::CancelSlot>,
 ) -> Result<sandbox::SandboxOutcome, super::KindError> {
     let qjs = qjs_binary()?;
     let scratch = prepare_scratch(scratch_root, params.source)
