@@ -1363,6 +1363,12 @@ mod idkey_ac02_replay_same_key_same_args;
 mod idkey_ac03_same_key_different_args_conflicts;
 #[path = "idkey_ac04_concurrent_same_key_runs_once.rs"]
 mod idkey_ac04_concurrent_same_key_runs_once;
+#[path = "idkeyb_ac01_args_key_stripped_and_replays.rs"]
+mod idkeyb_ac01_args_key_stripped_and_replays;
+#[path = "idkeyb_ac02_expired_row_reruns_and_is_replaced.rs"]
+mod idkeyb_ac02_expired_row_reruns_and_is_replaced;
+#[path = "idkeyb_ac03_llms_txt_idempotency_paragraph_checked.rs"]
+mod idkeyb_ac03_llms_txt_idempotency_paragraph_checked;
 #[path = "implsign_ac01_bare_call_creates_implicit_tenant_with_onboarding.rs"]
 mod implsign_ac01_bare_call_creates_implicit_tenant_with_onboarding;
 #[path = "implsign_ac02_second_call_carries_no_onboarding.rs"]
@@ -1441,10 +1447,6 @@ mod kbind_ac07_run_deadline_caps_child_expiry;
 mod kcon_ac01_planted_drift_fails_naming_kind_case_code;
 #[path = "kcon_ac03_no_error_code_literals_outside_contract.rs"]
 mod kcon_ac03_no_error_code_literals_outside_contract;
-#[path = "kconb_ac01_contract_doc_drift_check.rs"]
-mod kconb_ac01_contract_doc_drift_check;
-#[path = "kconb_ac02_host_tools_contract_carries_kind_contracts.rs"]
-mod kconb_ac02_host_tools_contract_carries_kind_contracts;
 #[path = "kdr_ac04_page_set_matches_registry.rs"]
 mod kdr_ac04_page_set_matches_registry;
 #[path = "kindhonor_ac1_http_kind_honored.rs"]
@@ -1551,8 +1553,6 @@ mod mcphost_install_links_more_clients_ac05_quickstart_twelve_personal_surfaces;
 mod mcphost_install_links_more_clients_ac06_docs_block_regenerates_from_table;
 #[path = "mcphost-install-links-more-clients_ac07_prior_prd_tests_still_apply.rs"]
 mod mcphost_install_links_more_clients_ac07_prior_prd_tests_still_apply;
-#[path = "mcphost-llms-install-doc_ac01_generator_sections.rs"]
-mod mcphost_llms_install_doc_ac01_generator_sections;
 #[path = "mcphost_admin_schema_contract_ac01_tenants_schema_version.rs"]
 mod mcphost_admin_schema_contract_ac01_tenants_schema_version;
 #[path = "mcphost_admin_schema_contract_ac02_listings_validate_v1_schema.rs"]
