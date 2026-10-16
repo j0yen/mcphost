@@ -18435,6 +18435,118 @@
       "since": "0.58.0"
     },
     {
+      "description": "Load a CSV or TSV already stored on the host (a blob or a document) into a new typed table in one call: delimiter and encoding are sniffed, each column's type (integer|real|text|date|bool) is inferred from the first 1,000 rows, every row that parses is loaded, and the response carries the type report, a 5-row preview, and the rows left out as {row, column, reason}.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "blob": {
+            "description": "Blob id or name; pass exactly one of blob or doc.",
+            "type": "string"
+          },
+          "delimiter": {
+            "description": "auto (default), ',', ';', 'tab' or '|'.",
+            "type": "string"
+          },
+          "doc": {
+            "description": "Document id or name (text/csv); pass exactly one of blob or doc.",
+            "type": "string"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "header": {
+            "description": "First row holds column names. Default true.",
+            "type": "boolean"
+          },
+          "infer_rows": {
+            "description": "Rows sampled for type inference. Default 1000, maximum 50000.",
+            "type": "integer"
+          },
+          "mode": {
+            "description": "create (default) or replace.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Name of the table to create.",
+            "type": "string"
+          },
+          "on_error": {
+            "description": "skip (default) leaves out a row with a bad cell and reports it; abort fails the whole load and creates no table.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "types": {
+            "description": "Override a column's inferred type: {column: integer|real|text|date|bool}.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host.table.from_blob",
+      "output_schema": {
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "delimiter": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "preview": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "rows_loaded": {
+            "type": "integer"
+          },
+          "rows_skipped": {
+            "type": "integer"
+          },
+          "sample_query": {
+            "type": "string"
+          },
+          "skipped": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "table": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "columns",
+          "dry_run",
+          "preview",
+          "rows_loaded",
+          "rows_skipped",
+          "sample_query",
+          "skipped",
+          "table"
+        ],
+        "type": "object"
+      },
+      "since": "0.108.4"
+    },
+    {
       "description": "Return this tenant's table concept graph: nodes are tables and columns, edges are column_of/foreign_key/same_name with evidence. Omit table for the whole graph, or give one to get the k_hop_neighbors subgraph around it (hops 1-3, default 1). stale is true between a write and the next tick's rebuild.",
       "input_schema": {
         "additionalProperties": false,
@@ -31677,6 +31789,65 @@
       },
       "name": "host_table_drop",
       "since": "0.103.1"
+    },
+    {
+      "alias_of": "host.table.from_blob",
+      "description": "Load a CSV or TSV already stored on the host (a blob or a document) into a new typed table in one call: delimiter and encoding are sniffed, each column's type (integer|real|text|date|bool) is inferred from the first 1,000 rows, every row that parses is loaded, and the response carries the type report, a 5-row preview, and the rows left out as {row, column, reason}.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "blob": {
+            "description": "Blob id or name; pass exactly one of blob or doc.",
+            "type": "string"
+          },
+          "delimiter": {
+            "description": "auto (default), ',', ';', 'tab' or '|'.",
+            "type": "string"
+          },
+          "doc": {
+            "description": "Document id or name (text/csv); pass exactly one of blob or doc.",
+            "type": "string"
+          },
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "header": {
+            "description": "First row holds column names. Default true.",
+            "type": "boolean"
+          },
+          "infer_rows": {
+            "description": "Rows sampled for type inference. Default 1000, maximum 50000.",
+            "type": "integer"
+          },
+          "mode": {
+            "description": "create (default) or replace.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Name of the table to create.",
+            "type": "string"
+          },
+          "on_error": {
+            "description": "skip (default) leaves out a row with a bad cell and reports it; abort fails the whole load and creates no table.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "types": {
+            "description": "Override a column's inferred type: {column: integer|real|text|date|bool}.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host_table_from_blob",
+      "since": "0.108.4"
     },
     {
       "alias_of": "host.table.graph",

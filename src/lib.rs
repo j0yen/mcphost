@@ -115,6 +115,7 @@ pub mod state;
 pub mod signals;
 pub mod statusfeed;
 pub mod submission_pack;
+pub mod csvtab;
 pub mod tables;
 pub mod tables_graph;
 pub mod tables_model;
