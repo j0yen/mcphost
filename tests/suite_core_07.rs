@@ -1547,6 +1547,14 @@ mod lanecov_ac02_coverage_test_is_actually_run;
 mod lanecov_ac03_unrouted_path_is_named;
 #[path = "lanecov_ac06_malformed_lane_fails_naming_it.rs"]
 mod lanecov_ac06_malformed_lane_fails_naming_it;
+#[path = "lchk_ac01_items_toml_shape.rs"]
+mod lchk_ac01_items_toml_shape;
+#[path = "lchk_ac02_text_run.rs"]
+mod lchk_ac02_text_run;
+#[path = "lchk_ac03_json_shape.rs"]
+mod lchk_ac03_json_shape;
+#[path = "lchk_ac04_render_check_drift.rs"]
+mod lchk_ac04_render_check_drift;
 #[path = "limits_ac05_signup_burst_atomic.rs"]
 mod limits_ac05_signup_burst_atomic;
 #[path = "lineage_ac02_drop_with_no_consumers_is_unrefused.rs"]
