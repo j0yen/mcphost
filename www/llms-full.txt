@@ -154,6 +154,14 @@ Every error payload carries `code`, a clean `message`, a `request_id`, and
 `help` pages directly, so an agent never has to guess the host to build
 them from.
 
+While an incident is open, every host-fault error (`storage`, `internal`,
+`exec_unavailable`, `timeout`, `rate_limited_host`) also carries
+`data.incident {id, since, status_url, impact, retry_after_s}`: the failure
+is the host's, not yours, so wait `retry_after_s`, then retry once, and
+report `status_url` instead of repeating the call. Errors that are your
+own (`tool_exception`, `args_invalid`) never carry it. A 5xx HTTP
+response carries the same seconds in `Retry-After`.
+
 <!-- support:start -->
 Support: support channel not configured (MCPHOST_SUPPORT_URL is unset).
 <!-- support:end -->
@@ -937,6 +945,7 @@ A step may fan out: add `"for_each": "$.prev.result.items"` (any mapping path to
 | field | type | required | meaning |
 |---|---|---|---|
 | `steps` | array of object | yes | ordered steps, each naming a `tool` and an `args` mapping (`$.input`, `$.prev.result`, `$.steps[i].result` paths or literals) |
+| `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind) |
 | `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
 | `ui` | object | no | optional presentation hints for clients that render a tool's result |
 <!-- kind-fields:end -->
@@ -1029,6 +1038,7 @@ Dry-run before publishing: `host.spec_test("echo", spec, invocations)` runs the 
 | field | type | required | meaning |
 |---|---|---|---|
 | `schema` | object | yes | JSON Schema the call arguments are validated against; a call echoes them back |
+| `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind) |
 | `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
 | `ui` | object | no | optional presentation hints for clients that render a tool's result |
 <!-- kind-fields:end -->
@@ -1104,9 +1114,9 @@ Other spec fields: `headers`/`query` (objects of header/query-parameter names to
 | `timeout_s` | integer | no | seconds the upstream call may take |
 | `response` | object | no | how to shape the upstream response into the tool result |
 | `description` | string | no | human-readable text shown in `tools/list` |
-| `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each |
 | `upstream` | string | no | name of a connected upstream provider to call instead of `method` + `url` |
 | `upstream_provider` | string | no | provider the `upstream` connection belongs to |
+| `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind) |
 | `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
 | `ui` | object | no | optional presentation hints for clients that render a tool's result |
 <!-- kind-fields:end -->
@@ -1300,7 +1310,7 @@ The distinction is visible, not doctrinal: `host.tool_test` renders both in one 
 | `secrets` | array of string | no | `host.secret_set` names injected as `SECRET_<NAME>` environment variables |
 | `env` | object | no | plain, non-secret environment variables |
 | `description` | string | no | human-readable text shown in `tools/list` |
-| `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each |
+| `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind) |
 | `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
 | `ui` | object | no | optional presentation hints for clients that render a tool's result |
 <!-- kind-fields:end -->
@@ -1392,9 +1402,9 @@ Result envelope contract: a call's output always lands at `result.payload`; an o
 |---|---|---|---|
 | `component` | string | yes | the compiled WebAssembly component to call |
 | `args_schema` | object | no | JSON Schema for the call arguments |
-| `outputs` | array or object | no | fields a caller can rely on in `result.payload` |
 | `timeout_s` | integer | no | seconds the call may run |
 | `memory_mb` | integer | no | megabytes the component may use |
+| `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind) |
 | `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
 | `ui` | object | no | optional presentation hints for clients that render a tool's result |
 <!-- kind-fields:end -->

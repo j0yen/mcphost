@@ -82,9 +82,16 @@ apply_to_file() {
     echo "sandbox-api-doc-check.sh: $file must have exactly one $START / $END pair (found start=$n_start end=$n_end)" >&2
     return 2
   fi
+  case "$rendered" in
+    "$START"*"$END") ;;
+    *)
+      echo "sandbox-api-doc-check.sh: refusing to write $file: the rendered block is empty or lacks its $START / $END markers" >&2
+      return 2
+      ;;
+  esac
   local tmp
   tmp="$(mktemp "$file.XXXXXX")"  # same dir: mv is an atomic rename, no unlink window
-  python3 - "$file" "$START" "$END" "$rendered" > "$tmp" <<'PY'
+  if ! python3 - "$file" "$START" "$END" "$rendered" > "$tmp" <<'PY'
 import sys
 
 file_path, start_marker, end_marker, rendered = sys.argv[1:5]
@@ -92,8 +99,20 @@ with open(file_path, encoding="utf-8") as f:
     text = f.read()
 start_idx = text.index(start_marker)
 end_idx = text.index(end_marker) + len(end_marker)
+if end_idx <= start_idx:
+    sys.exit("end marker precedes start marker")
 sys.stdout.write(text[:start_idx] + rendered + text[end_idx:])
 PY
+  then
+    rm -f "$tmp"
+    echo "sandbox-api-doc-check.sh: refusing to write $file: the marker splice failed; file left untouched" >&2
+    return 2
+  fi
+  if [ ! -s "$tmp" ]; then
+    rm -f "$tmp"
+    echo "sandbox-api-doc-check.sh: refusing to write $file: the splice produced an empty file; file left untouched" >&2
+    return 2
+  fi
   chmod 644 "$tmp"
   mv "$tmp" "$file"
 }
@@ -104,7 +123,9 @@ PY
 # byte-for-byte, so the CAPABILITIES registry stays the only place a
 # primitive is named. Binary: $MCPHOST_BIN, else $CARGO_BIN_EXE_mcphost (set
 # under `cargo test`), else a prebuilt target/{debug,release}/mcphost newer
-# than src/, else `cargo run`.
+# than src/ (under ./target, else under $CARGO_TARGET_DIR when set -- the
+# daemon's worktrees build into a warm target dir outside the tree), else
+# `cargo run`.
 CAP_START="<!-- capabilities:start -->"
 CAP_END="<!-- capabilities:end -->"
 CAP_TARGETS=("www/llms.txt" "docs/protocol/capabilities.md")
@@ -115,12 +136,14 @@ mcphost_bin() {
     "$bin" "$@"
     return $?
   fi
-  local cand
-  for cand in target/release/mcphost target/debug/mcphost; do
-    if [ -x "$cand" ] && [ -z "$(find src Cargo.toml Cargo.lock -newer "$cand" -print -quit 2>/dev/null)" ]; then
-      "$cand" "$@"
-      return $?
-    fi
+  local cand dir
+  for dir in target ${CARGO_TARGET_DIR:+"$CARGO_TARGET_DIR"}; do
+    for cand in "$dir/release/mcphost" "$dir/debug/mcphost"; do
+      if [ -x "$cand" ] && [ -z "$(find src Cargo.toml Cargo.lock -newer "$cand" -print -quit 2>/dev/null)" ]; then
+        "$cand" "$@"
+        return $?
+      fi
+    done
   done
   cargo run -q --bin mcphost -- "$@"
 }
@@ -139,19 +162,66 @@ sys.stdout.write(text[text.index(start) : text.index(end) + len(end)])
 PY
 }
 
+# A rendered capabilities block is usable only if it is non-empty, wrapped in
+# its own markers, and carries at least one capability row. Anything else
+# (cargo output, a compile error, an empty render) must never reach a file.
+validate_cap_block() {
+  local label="$1" block="$2" rows
+  case "$block" in
+    "$CAP_START"*"$CAP_END") ;;
+    *)
+      echo "sandbox-api-doc-check.sh: $label output is empty or lacks its $CAP_START / $CAP_END markers; writing nothing" >&2
+      return 2
+      ;;
+  esac
+  rows=$(grep -cE '^\| `[a-z_]+` \| (yes|no) \|' <<<"$block" || true)
+  if [ "${rows:-0}" -lt 1 ]; then
+    echo "sandbox-api-doc-check.sh: $label output has no capability rows; writing nothing" >&2
+    return 2
+  fi
+}
+
+# Everything is rendered into a temp file OUTSIDE the tree and validated
+# before any target is touched. Never `mcphost_bin ... > docs/protocol/capabilities.md`:
+# the shell truncates the redirect target before the command runs, and with no
+# prebuilt binary `cargo run` re-runs build.rs (rerun-if-changed=docs), which
+# derives `enum DocAnchor` from the docs/ headings -- so the truncation deleted
+# `## Capabilities`, the build failed (E0599, help.rs), and the file stayed
+# empty (runs 847/830, 2026-10-15 21:01Z).
 write_capabilities() {
-  local section doc
+  local section tmp_doc
   section="$(mcphost_bin capabilities-section)" || return $?
+  validate_cap_block "capabilities-section" "$section" || return $?
+  tmp_doc="$(mktemp "${TMPDIR:-/tmp}/capabilities-doc.XXXXXX")" || return $?
+  local rc=0
+  mcphost_bin capabilities-section --doc > "$tmp_doc" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    rm -f "$tmp_doc"
+    return "$rc"
+  fi
+  local doc_block
+  doc_block="$(cap_block_of "$tmp_doc")" || doc_block=""
+  if ! validate_cap_block "capabilities-section --doc" "$doc_block"; then
+    rm -f "$tmp_doc"
+    return 2
+  fi
+  if [ "$doc_block" != "$section" ] || [ "$(head -c2 "$tmp_doc")" != "# " ]; then
+    rm -f "$tmp_doc"
+    echo "sandbox-api-doc-check.sh: capabilities-section --doc disagrees with capabilities-section or lacks its title heading; writing nothing" >&2
+    return 2
+  fi
   mkdir -p docs/protocol
-  mcphost_bin capabilities-section --doc > docs/protocol/capabilities.md || return $?
-  python3 - www/llms.txt "$CAP_START" "$CAP_END" "$section" <<'PY'
+  if ! python3 - www/llms.txt "$CAP_START" "$CAP_END" "$section" <<'PY'
 import sys
 
 path, start, end, section = sys.argv[1:5]
 with open(path, encoding="utf-8") as f:
     text = f.read()
 if start in text and end in text:
-    text = text[: text.index(start)] + section + text[text.index(end) + len(end) :]
+    s, e = text.index(start), text.index(end) + len(end)
+    if e <= s:
+        sys.exit("end marker precedes start marker")
+    text = text[:s] + section + text[e:]
 elif "\n## Contract\n" in text:
     i = text.index("\n## Contract\n")
     text = text[:i] + "\n" + section + "\n" + text[i:]
@@ -160,6 +230,14 @@ else:
 with open(path, "w", encoding="utf-8") as f:
     f.write(text)
 PY
+  then
+    rm -f "$tmp_doc"
+    echo "sandbox-api-doc-check.sh: refusing to write www/llms.txt: the capabilities splice failed; file left untouched" >&2
+    return 2
+  fi
+  cat "$tmp_doc" > docs/protocol/capabilities.md || rc=$?
+  rm -f "$tmp_doc"
+  return "$rc"
 }
 
 RENDERED="$(render_block)" || exit $?

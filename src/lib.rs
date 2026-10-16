@@ -101,6 +101,7 @@ pub mod retention;
 pub mod returns;
 pub mod rowpolicy;
 pub mod receipts;
+pub mod incident_banner;
 pub mod runs;
 pub mod sandbox;
 pub mod secrets;

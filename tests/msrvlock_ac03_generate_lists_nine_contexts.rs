@@ -18,7 +18,7 @@ fn msrvlock_ac03_generate_writes_exactly_nine_contexts() {
     let got = support::toml_contexts(&std::fs::read_to_string(&out_toml).expect("read toml"));
     let mut want: Vec<String> = support::CONTEXTS.iter().map(|s| s.to_string()).collect();
     want.sort();
-    assert_eq!(got, want, "generated contexts differ from the 11 expected (the 9 PR contexts + the sandbox plan job + the third shard)");
+    assert_eq!(got, want, "generated contexts differ from the 12 expected (the 9 PR contexts + the sandbox plan job + the third shard + regen-check)");
     assert!(
         !got.iter().any(|c| c.contains("publish to the MCP registry")),
         "tag-only `publish` job must be omitted: {got:?}"

@@ -1604,6 +1604,7 @@ pub async fn incident_open(state: &AppState, args: &Value) -> Result<Value, AppE
         .insert_incident(title, impact, components_json, now, timeline, false)
         .await?;
     let incident = incident_or_not_found(state, id).await?;
+    crate::incident_banner::refresh(state).await?;
     Ok(crate::statusfeed::incident_json(&incident))
 }
 
@@ -1619,6 +1620,7 @@ pub async fn incident_update(state: &AppState, args: &Value) -> Result<Value, Ap
         return Err(AppError::ToolNotFound(format!("incident {id}")));
     }
     let incident = incident_or_not_found(state, id).await?;
+    crate::incident_banner::refresh(state).await?;
     Ok(crate::statusfeed::incident_json(&incident))
 }
 
@@ -1635,6 +1637,7 @@ pub async fn incident_close(state: &AppState, args: &Value) -> Result<Value, App
         return Err(AppError::ToolNotFound(format!("incident {id}")));
     }
     let incident = incident_or_not_found(state, id).await?;
+    crate::incident_banner::refresh(state).await?;
     Ok(crate::statusfeed::incident_json(&incident))
 }
 

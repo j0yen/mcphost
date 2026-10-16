@@ -9,7 +9,7 @@ use super::contract::{
     CASE_BUDGET_EXCEEDED, CASE_ERROR_WITH_SOURCE_POSITION, CaseSkip, ConformanceFixtures, KindContract,
     SourcePosition,
 };
-use super::{CallCtx, Kind, KindError, KindExample, ToolDescriptor};
+use super::{CallCtx, Kind, KindError, KindExample, OutputDecl, ToolDescriptor, apply_declared_outputs, spec_declared_outputs};
 
 pub struct EchoKind;
 
@@ -99,7 +99,7 @@ impl Kind for EchoKind {
         if !spec.is_object() {
             return vec![KindError::InvalidSpec("spec: must be a JSON object".into())];
         }
-        match spec.get("schema") {
+        let mut errors = match spec.get("schema") {
             None => vec![KindError::InvalidSpec("spec.schema: is required".into())],
             Some(schema) => jsonschema::validator_for(schema)
                 .err()
@@ -109,7 +109,15 @@ impl Kind for EchoKind {
                     ))]
                 })
                 .unwrap_or_default(),
+        };
+        if let Err(e) = spec_declared_outputs(spec) {
+            errors.push(e);
         }
+        errors
+    }
+
+    fn declared_outputs(&self, spec: &Value) -> Vec<OutputDecl> {
+        spec_declared_outputs(spec).unwrap_or_default()
     }
 
     fn describe(&self, spec: &Value) -> ToolDescriptor {
@@ -127,7 +135,12 @@ impl Kind for EchoKind {
         validator
             .validate(&args)
             .map_err(|e| KindError::InvalidArgs(e.to_string()))?;
-        Ok(args)
+        // `outputs` is a universal spec field: the echoed arguments are the
+        // tool's whole return value, so declared names land at
+        // `result.payload.<field>` exactly as for python/http/wasm. A no-op
+        // (the bare arguments, unchanged) when the spec declares none.
+        let declared = spec_declared_outputs(spec)?;
+        Ok(apply_declared_outputs(args, &declared))
     }
 
     fn example(&self) -> KindExample {

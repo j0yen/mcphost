@@ -35,9 +35,9 @@ Other spec fields: `headers`/`query` (objects of header/query-parameter names to
 | `timeout_s` | integer | no | seconds the upstream call may take |
 | `response` | object | no | how to shape the upstream response into the tool result |
 | `description` | string | no | human-readable text shown in `tools/list` |
-| `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each |
 | `upstream` | string | no | name of a connected upstream provider to call instead of `method` + `url` |
 | `upstream_provider` | string | no | provider the `upstream` connection belongs to |
+| `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind) |
 | `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
 | `ui` | object | no | optional presentation hints for clients that render a tool's result |
 <!-- kind-fields:end -->

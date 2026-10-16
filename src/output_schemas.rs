@@ -40,8 +40,77 @@ fn registry() -> &'static Registry {
                 status.insert("enum".to_string(), crate::tasks::TaskStatus::schema_enum());
             }
         }
-        parsed.into_iter().map(|(k, v)| (k, Arc::new(v))).collect()
+        parsed
+            .into_iter()
+            .map(|(k, mut v)| {
+                relax_object_schema(&mut v);
+                (k, Arc::new(v))
+            })
+            .collect()
     })
+}
+
+/// The corpus the schemas are drafted from cannot tell an `Option<T>` (the
+/// handlers build responses with `json!`, so an absent Option is a `null`)
+/// from a `T`, cannot see a type behind a field that was only ever `null`, and
+/// cannot see that a pagination cursor is omitted on the last page. Prod
+/// rejected its own responses for all three ("data/description must be null",
+/// "data/end_user must be null", "data must have required property
+/// 'next_cursor'"). So the rules are applied here, once, to every schema the
+/// registry hands out -- never as a per-tool edit of the contract file -- and
+/// `outsch_ac08` asserts they hold for every registered tool:
+///
+/// 1. a property declared `{"type": "null"}` (only ever observed null) is
+///    unconstrained: a null observation carries no type information;
+/// 2. every property that is not `required` also accepts `null` (the type
+///    gains `"null"`; a closed `enum` stays closed);
+/// 3. a `*cursor` key is never `required`.
+fn relax_object_schema(schema: &mut Map<String, Value>) {
+    let mut required: Vec<String> = schema
+        .get("required")
+        .and_then(Value::as_array)
+        .map(|r| r.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+        .unwrap_or_default();
+    if required.iter().any(|k| k.ends_with("cursor")) {
+        required.retain(|k| !k.ends_with("cursor"));
+        if required.is_empty() {
+            schema.remove("required");
+        } else {
+            schema.insert("required".to_string(), Value::from(required.clone()));
+        }
+    }
+    if let Some(props) = schema.get_mut("properties").and_then(Value::as_object_mut) {
+        for (name, sub) in props.iter_mut() {
+            let Some(sub) = sub.as_object_mut() else { continue };
+            relax_object_schema(sub);
+            if sub.get("type").and_then(Value::as_str) == Some("null") {
+                sub.remove("type");
+            } else if !required.contains(name) {
+                allow_null(sub);
+            }
+        }
+    }
+    if let Some(items) = schema.get_mut("items").and_then(Value::as_object_mut) {
+        relax_object_schema(items);
+    }
+}
+
+/// `schema` also accepts `null`: `type: T` becomes `type: [T, "null"]`. A schema
+/// with no `type` (unconstrained, or a union) is left alone, and so is an
+/// `enum`: those are closed sets generated from Rust (`RUN_ROLES`,
+/// `TaskStatus`), where an `Option` is not invisible.
+fn allow_null(schema: &mut Map<String, Value>) {
+    if schema.contains_key("enum") {
+        return;
+    }
+    match schema.get_mut("type") {
+        Some(Value::String(t)) => {
+            let t = std::mem::take(t);
+            schema.insert("type".to_string(), Value::from(vec![t, "null".to_string()]));
+        }
+        Some(Value::Array(types)) if !types.iter().any(|t| t == "null") => types.push(Value::from("null")),
+        _ => {}
+    }
 }
 
 /// `canonical`'s output schema, `None` when none is registered.

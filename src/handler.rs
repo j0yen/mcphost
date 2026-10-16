@@ -763,7 +763,10 @@ fn tool_publish_spec_branches(kinds: &KindRegistry) -> Value {
                     let schema = match kind.spec_field_description(field) {
                         _ if field == "ui" => crate::form_page::ui_field_schema(),
                         Some(description) => json!({"description": description}),
-                        None => json!({}),
+                        None => match crate::kinds::kinddoc::UNIVERSAL_FIELD_DOCS.iter().find(|d| d.name == field) {
+                            Some(doc) => json!({"description": doc.meaning}),
+                            None => json!({}),
+                        },
                     };
                     (field.to_string(), schema)
                 })
@@ -1183,7 +1186,17 @@ fn mark_scratch(value: &mut Value) {
 /// and `host.spec_test.invocations`, which previously had none -- see
 /// `tests/surface_ac04_required_field_descriptions.rs`.
 pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
-    let mut tools = vec![
+/// The `host_tools` descriptor table, built in `host_tools_part_NN` chunks of 16
+/// descriptors each. One `vec![...]` of ~200 `json!` schemas in a single
+/// function made `host_tools` a ~275 KB debug-build stack frame (every `json!`
+/// temporary gets its own slot) -- enough to overflow a 2 MiB test-thread stack
+/// when `host.trigger.set` reaches it through `known_control_plane_args` from
+/// inside the forwarded `host.tool_call` async chain (verbfwd_ac01). Each chunk is
+/// `#[inline(never)]`, so only the largest chunk is live at once; the table and
+/// its order are unchanged.
+#[inline(never)]
+fn host_tools_part_01(kinds: &KindRegistry) -> Vec<Tool> {
+    vec![
         Tool::new(
             "host.whoami",
             "Return the calling tenant's identity, including key_age_s and key_rotated_at \
@@ -1402,6 +1415,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &["name"],
             ),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_02() -> Vec<Tool> {
+    vec![
         Tool::new(
             "host.tool.test",
             TOOL_TEST_DESC,
@@ -1772,6 +1791,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &["tool", "caller_tenant"],
             ),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_03() -> Vec<Tool> {
+    vec![
         Tool::new(
             "host.group.create",
             "Create a named group this tenant owns, for host.tool_share(visibility: \"group\").",
@@ -1985,6 +2010,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &[],
             ),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_04() -> Vec<Tool> {
+    vec![
         Tool::new(
             "host.state.table_create",
             "Declare (or replace the schema of) a table in this tenant's state store. \
@@ -2299,6 +2330,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
              each with id, title, created_unix, and expires_unix.",
             host_schema(json!({}), &[]),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_05() -> Vec<Tool> {
+    vec![
         // PRD-mcphost-lineage-blast-radius requirements 6/8: "what breaks
         // if this table changes, before it changes" -- a small dependency
         // graph (table/column/tool/chain/document/chart/handle/run nodes)
@@ -2538,6 +2575,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &[],
             ),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_06() -> Vec<Tool> {
+    vec![
         Tool::new(
             "host.docs.list",
             "List documents in this tenant's document store. Without since, returns the current \
@@ -2787,6 +2830,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &["table"],
             ),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_07() -> Vec<Tool> {
+    vec![
         // PRD-mcphost-table-semantic-model requirement 6: an agent
         // annotation that survives refresh -- `describe` merges it back
         // in (annotation wins over inference for `role`) on every call.
@@ -3124,6 +3173,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &["run_id"],
             ),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_08() -> Vec<Tool> {
+    vec![
         // PRD-mcphost-job-timeline-tool R1.
         Tool::new(
             "host.job.timeline",
@@ -3405,6 +3460,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
              display name, contact_policy and plan. Never a key hash, billing field, or call log.",
             host_schema(json!({}), &[]),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_09() -> Vec<Tool> {
+    vec![
         Tool::new(
             "host.agent.profile_set",
             "Claim or update this tenant's agent-directory card: an optional unique @handle \
@@ -3710,6 +3771,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &[],
             ),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_10() -> Vec<Tool> {
+    vec![
         // PRD-mcphost-task-handoff-tool: a task is a thread with a state
         // machine the host owns; delivery rides host.msg.* unchanged.
         Tool::new(
@@ -3937,6 +4004,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &["addresses"],
             ),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_11() -> Vec<Tool> {
+    vec![
         // PRD-mcphost-agent-mesh-ops: the minimal `host.channel.*` vertical
         // slice this PRD's own AC4/AC7 need to exist against -- no
         // dependency PRD has built channels yet (see `channels.rs`'s
@@ -4131,6 +4204,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
             "List clients awaiting approval under this tenant's clients: approve policy.",
             host_schema(json!({}), &[]),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_12() -> Vec<Tool> {
+    vec![
         Tool::new(
             "host.oauth.client_approve",
             "Approve a pending client (from host.oauth.pending): its next /oauth/authorize \
@@ -4313,6 +4392,12 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
             "List this tenant's row/docs policies.",
             host_schema(json!({}), &[]),
         ),
+    ]
+}
+
+#[inline(never)]
+fn host_tools_part_13() -> Vec<Tool> {
+    vec![
         Tool::new(
             "host.policy.attrs_set",
             "Set (merge) attributes on an end-user subject -- the values a policy's Attr(name) \
@@ -4570,7 +4655,23 @@ pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool>
                 &["name"],
             ),
         ),
-    ];
+    ]
+}
+
+    let mut tools: Vec<Tool> = Vec::new();
+    tools.extend(host_tools_part_01(kinds));
+    tools.extend(host_tools_part_02());
+    tools.extend(host_tools_part_03());
+    tools.extend(host_tools_part_04());
+    tools.extend(host_tools_part_05());
+    tools.extend(host_tools_part_06());
+    tools.extend(host_tools_part_07());
+    tools.extend(host_tools_part_08());
+    tools.extend(host_tools_part_09());
+    tools.extend(host_tools_part_10());
+    tools.extend(host_tools_part_11());
+    tools.extend(host_tools_part_12());
+    tools.extend(host_tools_part_13());
     if authenticated {
         tools.push(Tool::new(
             "host.spec.test",
@@ -9949,14 +10050,13 @@ impl ServerHandler for McpHostHandler {
                  A `host.*` call with no `tenant_key` and no Authorization header, on a \
                  connection that never ran signup, no longer fails `tenant_key_missing` -- it \
                  implicitly signs that connection up as a new tenant instead; a `tenant_key` \
-                 that doesn't match any tenant still fails `tenant_key_invalid`. \
-                 Result envelope contract: \
-                 when a spec declares `outputs` (field names its tool emits, or a map from \
-                 field name to the exact `$.a.b[0].c`-style path to read it from), each is \
-                 readable at `result.payload.<field>` for every kind, regardless of how deep \
-                 the tool's own response nests it -- run `host.tool_test` before publishing to \
-                 see which declared fields your implementation buries. \
-                 host.tool_publish's `kind` argument is honored exactly as given -- an inline \
+                 that doesn't match any tenant still fails `tenant_key_invalid`. ",
+        );
+        // The spec-field sentence is generated from the kind registry, never
+        // hand-written: it cannot promise `outputs` on a kind that refuses it.
+        instructions.push_str(&crate::kinds::outputs_envelope_instruction(&self.state.kinds));
+        instructions.push_str(
+            "host.tool_publish's `kind` argument is honored exactly as given -- an inline \
                  `source` field only publishes as `python` and `upstream`/`method`+`url` fields \
                  only publish as `http` -- so request the kind your task needs and a mismatch \
                  returns a `kind_mismatch` error naming the disagreeing spec element instead of \
@@ -10275,10 +10375,15 @@ impl ServerHandler for McpHostHandler {
         // fills once a sub-key resolves, read by the `calls` insert.
         let inner = crate::subkeys::CALL_KEY
             .scope(std::cell::Cell::new(None), self.call_tool_inner(request, ctx));
-        match channel {
+        let result = match channel {
             Some(channel) => crate::elicit::CLIENT_CHANNEL.scope(channel, inner).await,
             None => inner.await,
-        }
+        };
+        // PRD-mcphost-incident-banner-for-agents R3: every result feeds the
+        // 5-minute error-rate window.
+        let code = result.as_ref().err().and_then(|e| crate::incident_banner::error_code_of(&e.data));
+        crate::incident_banner::record_result(&self.state.public_url, crate::state::now_unix(), code.as_deref());
+        result
     }
 
     async fn on_initialized(&self, _context: NotificationContext<RoleServer>) {}
@@ -11444,5 +11549,32 @@ fn add_example_fields(map: &mut serde_json::Map<String, Value>, ex: &crate::kind
             "schema_hint".to_string(),
             json!(format!("add defaults to untyped keys: {}", ex.untyped.join(", "))),
         );
+    }
+}
+
+#[cfg(test)]
+mod host_tools_stack_tests {
+    use super::*;
+
+    /// verbfwd_ac01 overflowed CI's 2 MiB test-thread stack (SIGABRT). Not a
+    /// recursion: `host.trigger.set` -> `known_control_plane_args` ->
+    /// `host_tools` runs at the bottom of the already-deep forwarded
+    /// `host.tool_call` async chain (~1.8 MiB in a debug build), and
+    /// `host_tools` was one ~275 KB debug frame. Build the descriptor table
+    /// (the exact call `known_control_plane_args` makes) on a stack far below
+    /// that frame's old size so it cannot grow back into one.
+    #[test]
+    fn known_control_plane_args_fits_a_small_stack() {
+        const STACK: usize = 128 * 1024;
+        let args = std::thread::Builder::new()
+            .stack_size(STACK)
+            .spawn(|| known_control_plane_args("host.trigger.set", &KindRegistry::with_builtin()))
+            .expect("spawn")
+            .join()
+            .expect("known_control_plane_args overflowed a 128 KiB stack");
+        let Some(args) = args else {
+            panic!("host.trigger.set is a control-plane tool");
+        };
+        assert!(args.iter().any(|a| a == "tool"), "host.trigger.set args: {args:?}");
     }
 }

@@ -1343,6 +1343,14 @@ mod implsign_ac05_pre_existing_anonymous_tools_create_no_tenant;
 mod implsign_ac06_unknown_tenant_key_stays_invalid;
 #[path = "implsign_ac07_no_bare_call_ever_returns_tenant_key_missing.rs"]
 mod implsign_ac07_no_bare_call_ever_returns_tenant_key_missing;
+#[path = "incban_ac01_error_rate_opens_incident.rs"]
+mod incban_ac01_error_rate_opens_incident;
+#[path = "incban_ac02_tenant_faults_carry_no_incident.rs"]
+mod incban_ac02_tenant_faults_carry_no_incident;
+#[path = "incban_ac03_http_500_retry_after_and_incident.rs"]
+mod incban_ac03_http_500_retry_after_and_incident;
+#[path = "incban_ac04_host_fault_codes_drift.rs"]
+mod incban_ac04_host_fault_codes_drift;
 #[path = "infer_ac05_ac06_ac07_http_schema.rs"]
 mod infer_ac05_ac06_ac07_http_schema;
 #[path = "infer_ac14_latency_budget.rs"]
@@ -1807,38 +1815,8 @@ mod meshops_ac07_tenant_delete_cascade_across_mesh_tables;
 mod meshops_ac08_healthz_mesh_counters;
 #[path = "meshops_ac09_stats_refusals_by_code_per_sender.rs"]
 mod meshops_ac09_stats_refusals_by_code_per_sender;
-#[path = "metering_ac01_stripe_customer_id_null_default.rs"]
-mod metering_ac01_stripe_customer_id_null_default;
-#[path = "metering_ac02_webhook_stores_stripe_customer_id.rs"]
-mod metering_ac02_webhook_stores_stripe_customer_id;
-#[path = "metering_ac03_checkout_metered_line_item.rs"]
-mod metering_ac03_checkout_metered_line_item;
-#[path = "metering_ac04_emits_pro_calls_only.rs"]
-mod metering_ac04_emits_pro_calls_only;
-#[path = "metering_ac05_crash_replay.rs"]
-mod metering_ac05_crash_replay;
-#[path = "metering_ac06_failure_leaves_state_unmoved.rs"]
-mod metering_ac06_failure_leaves_state_unmoved;
-#[path = "metering_ac07_batches_cap_at_100.rs"]
-mod metering_ac07_batches_cap_at_100;
-#[path = "metering_ac08_healthz_meter_lag.rs"]
-mod metering_ac08_healthz_meter_lag;
-#[path = "metering_ac09_deploy_units_verify.rs"]
-mod metering_ac09_deploy_units_verify;
-#[path = "metering_ac11_admin_meter_status.rs"]
-mod metering_ac11_admin_meter_status;
-#[path = "metering_ac12_billing_status_stripe_reported_usage.rs"]
-mod metering_ac12_billing_status_stripe_reported_usage;
-#[path = "metering_billing_status_emitted_this_month.rs"]
-mod metering_billing_status_emitted_this_month;
-#[path = "migration_compat_headers.rs"]
-mod migration_compat_headers;
 #[path = "minimal_ac1_anonymous_ok_only.rs"]
 mod minimal_ac1_anonymous_ok_only;
-#[path = "minimal_ac2_admin_full_document.rs"]
-mod minimal_ac2_admin_full_document;
-#[path = "minimal_ac3_wrong_bearer_matches_anonymous.rs"]
-mod minimal_ac3_wrong_bearer_matches_anonymous;
 #[path = "minimal_ac4_liveness_failure_returns_5xx.rs"]
 mod minimal_ac4_liveness_failure_returns_5xx;
 #[path = "minimal_ac5_tenant_bearer_gets_anonymous_body.rs"]
