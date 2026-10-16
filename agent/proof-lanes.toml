@@ -381,3 +381,11 @@ globs = ["docs/openapi.json"]
 required_commands = [
   "cargo test --workspace oapib_ac",
 ]
+
+[[lane]]
+id = "skill-gen"
+description = "PRD-mcphost-plugin-skill-generated-from-tools-list requirement 6: scripts/skill-gen-check.sh, the drift check that the marked sections of plugin/skills/mcphost/SKILL.md and www/skill.md equal `mcphost skill-gen` output. Added project-locally, same gap class and reasoning as the sandbox-api-docs lane above (its own lane so tests/lanecov_ac04_existing_lanes_unchanged.rs's pinned baseline stays green). Proof is the script's check mode (bare invocation), matching tests/skgn_ac03_*.rs."
+globs = ["scripts/skill-gen-check.sh"]
+required_commands = [
+  "scripts/skill-gen-check.sh",
+]

@@ -1,49 +1,62 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-notes-to-future-self.md",
-  "intent_slug": "mcphost-notes-to-future-self",
-  "root_motivation": "**Who:** the agent at the end of a session that knows something its next self will not. **What:** leave a note where the next reader will trip over it -- pinned to a tool's description in tools/list, on any client, with no extra call.",
-  "user_persona": "An agent that runs host.note.put {text, attach_to: {tool}} once and reads the note on that tool's description in every later session; the same user's second client sees it too.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-plugin-skill-generated-from-tools-list.md",
+  "intent_slug": "mcphost-plugin-skill-generated-from-tools-list",
+  "root_motivation": "**Who:** the coding agent in Claude Code and the maintainer who ships a verb and forgets the skill. **What:** a skill that states every verb the host serves, every plan ceiling and every error code with its next step. **Why:** the plugin skill is hand-written and names six verbs, no ceiling and no error code; every hand-written boundary in this repo drifted within a week, so the sections are rendered from the host.",
+  "user_persona": "A coding agent that reads `## Verbs`, `## Limits`, `## Errors` and `## Dev loop` in the plugin skill and makes the call the host accepts; a maintainer whose `cargo test` fails until `mcphost skill-gen --write` is run.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 4
+    "target": 6
   },
   "acceptance_criteria": [
     {
-      "id": "AC1",
-      "level": "MUST",
-      "description": "Given a live keyed connection to a test server, When `host.note.put {text, attach_to: {tool: \"cleaner\"}}` succeeds, Then the server sent `notifications/tools/list_changed` on that connection and the next `tools/list` describes `cleaner` with the ` — note to self: ` suffix (the falsifier).",
-      "test": "tests/nfs_ac01_put_emits_list_changed_and_suffix.rs"
-    },
-    {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a 300-char note attached to a tool, When `tools/list` renders, Then the suffix text is exactly 120 chars ending in `…`, cut at a char boundary, and `host.note.list` still returns the full text.",
-      "test": "tests/nfs_ac02_suffix_cut_to_120_chars.rs"
+      "description": "Given the checked-in files, When `mcphost skill-gen` runs without `--write`, Then it exits 0; Given one verb description edited by hand inside a marked section, Then it exits 1 and names the line.",
+      "test": "tests/skgn_ac02_check_exits_zero_and_names_the_drifted_line.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a tenant at `notes_max`, When `host.note.put` is called, Then `quota_exceeded` with `{limit, used}` and no row is written; Given `attach_to: {tool: \"nope\"}`, Then `not_found`.",
-      "test": "tests/nfs_ac03_quota_and_unknown_tool.rs"
+      "description": "Given a new `Tool::new(\"host.example\")` added to `host_tools`, When `cargo test` runs, Then the drift test fails until `skill-gen --write` regenerates and the new verb appears under its family.",
+      "test": "tests/skgn_ac03_drift_test_fails_until_regenerated.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a note with `ttl_s: 60` and the clock advanced 61 s, When `host.note.list` and `tools/list` run before the sweep, Then neither shows it; When the sweep runs, Then the row is gone.",
-      "test": "tests/nfs_ac04_ttl_expiry.rs"
+      "description": "Given `AppError` gains a variant with a new `code`, When `cargo test` runs, Then the remedy test fails naming the code until `remedy()` covers it, and every remedy's named verb exists in `host_tools`.",
+      "test": "tests/skgn_ac04_every_error_code_has_a_remedy_naming_a_real_verb.rs"
+    },
+    {
+      "id": "AC5",
+      "level": "MUST",
+      "description": "Given the `limits` section, When rendered, Then every key of `plan.ceilings_json()` for `free` appears with its value and no number in the section is typed outside the generator.",
+      "test": "tests/skgn_ac05_limits_numbers_equal_ceilings_json.rs"
+    },
+    {
+      "id": "AC6",
+      "level": "MUST",
+      "description": "Given a binary built without the `dev`/`push`/`repo` subcommands, When `skill-gen` renders `devloop`, Then the section says `no local verbs in this build` and names no absent verb.",
+      "test": "tests/skgn_ac06_devloop_names_only_verbs_the_build_has.rs"
+    },
+    {
+      "id": "AC7",
+      "level": "MUST",
+      "description": "Given `--url <mcp url> --section verbs`, When rendered, Then the output is derived from that host's `tools/list` and differs from the registry render only by verbs not yet deployed.",
+      "test": "tests/skgn_ac07_url_renders_verbs_from_a_live_tools_list.rs"
     }
   ],
   "scope": [
-    "src/notes.rs: host.note.put/list/delete over the notes/ prefix of tenant_state_kv; the tools/list description suffix.",
-    "src/handler.rs, src/protocol/frames.rs: tools, dispatch, list_changed on a tool-attached put/delete (keyed row allows list_changed).",
-    "src/plans.rs, src/retention.rs, src/db.rs: notes_max plan field; expired-note sweep.",
-    "contracts/, docs/, www/: regenerated tool contract, output schemas, docs."
+    "src/skill_gen.rs: section rendering, splice, first-diff line, live tools/list fetch.",
+    "src/main.rs: the `skill-gen` subcommand.",
+    "src/errors.rs: `error_codes()` and `remedy(code)`.",
+    "plugin/skills/mcphost/SKILL.md, www/skill.md: marked verbs/limits/errors/devloop sections.",
+    "scripts/skill-gen-check.sh and its CI line."
   ],
   "non_goals": [
-    "Notes attached to runs surfaced in host.runs.get (R6), attached_to in host.resume/welcome_back (R5), pin (R7); shared notebooks across tenants."
+    "Rewriting the hand-written narrative; generating README.md or llms.txt; per-client skills; the Recipes section (R9); the plugin.json version bump (wm-build land bumps)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -58,8 +71,8 @@
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does the next session repeat a mistake the last one learned from?",
-      "a": "The only write path is remember at signup; nothing pins a note to the tool it is about."
+      "q": "Why do agents miss verbs, ceilings and error codes?",
+      "a": "The plugin skill is hand-written and states none of them; only its sandbox-API block is generated."
     }
   ],
   "created_at": "2026-10-16T00:00:00Z",

@@ -172,6 +172,32 @@ enum Command {
         #[arg(long)]
         doc: bool,
     },
+    /// PRD-mcphost-plugin-skill-generated-from-tools-list requirement 1:
+    /// render the plugin skill's marked reference sections (`verbs`,
+    /// `limits`, `errors`, `devloop`) into `plugin/skills/mcphost/SKILL.md`
+    /// and `www/skill.md`. Without `--write` it prints the rendered plugin
+    /// file and exits 1, naming the first differing line, when either
+    /// checked-in file is stale. Needs no DB and no sandbox.
+    SkillGen {
+        /// Rewrite the marked sections in both files instead of checking.
+        #[arg(long)]
+        write: bool,
+        /// Only this section: verbs, limits, errors, devloop.
+        #[arg(long)]
+        section: Option<String>,
+        /// The plugin skill file. Defaults to `plugin/skills/mcphost/SKILL.md`
+        /// relative to the current directory (run from the repo root).
+        #[arg(long)]
+        plugin: Option<PathBuf>,
+        /// The served skill file. Defaults to `www/skill.md`.
+        #[arg(long)]
+        www: Option<PathBuf>,
+        /// Render `verbs` from this MCP endpoint's live `tools/list`
+        /// (`$MCPHOST_KEY` is presented when set) instead of the registry,
+        /// and print the plugin file; never combined with `--write`.
+        #[arg(long)]
+        url: Option<String>,
+    },
     /// PRD-mcphost-first-hour-support-surface requirement 3 (AC4):
     /// regenerate `docs/plans.md` from `billing::plans_from_catalog` over
     /// `PlanCatalog::default_catalog()` -- the exact data `billing.plans`
@@ -1192,6 +1218,72 @@ async fn main() -> anyhow::Result<()> {
             print!("{text}");
             if !doc {
                 println!();
+            }
+            Ok(())
+        }
+        Command::SkillGen { write, section, plugin, www, url } => {
+            // Deliberately no `init_tracing()`: plain stdout/exit-code, same
+            // as `LlmsTxt` above.
+            use mcphost::skill_gen::{self, Section};
+            let sections = match section.as_deref() {
+                None => Section::ALL.to_vec(),
+                Some(name) => vec![Section::parse(name).unwrap_or_else(|| {
+                    eprintln!("skill-gen: unknown --section {name} (verbs, limits, errors, devloop)");
+                    std::process::exit(2);
+                })],
+            };
+            let mut sources = skill_gen::Sources::from_registry(&KindRegistry::with_builtin());
+            sources.cli = <Cli as clap::CommandFactory>::command();
+            if let Some(url) = &url {
+                if write {
+                    eprintln!("skill-gen: --url renders from a live host and cannot be combined with --write");
+                    std::process::exit(2);
+                }
+                sources.verbs = skill_gen::fetch_tools_list(url, std::env::var("MCPHOST_KEY").ok().as_deref())
+                    .await
+                    .unwrap_or_else(|why| {
+                        eprintln!("skill-gen: {why}");
+                        std::process::exit(2);
+                    });
+            }
+            let paths = [
+                plugin.unwrap_or_else(|| PathBuf::from(skill_gen::SKILL_PATH)),
+                www.unwrap_or_else(|| PathBuf::from(skill_gen::WWW_SKILL_PATH)),
+            ];
+            let mut stale = false;
+            for (i, path) in paths.iter().enumerate() {
+                let existing = std::fs::read_to_string(path).unwrap_or_else(|e| {
+                    eprintln!("skill-gen: failed to read {}: {e}", path.display());
+                    std::process::exit(2);
+                });
+                let rendered = skill_gen::render_file(&existing, &sections, &sources).unwrap_or_else(|why| {
+                    eprintln!("skill-gen: {}: {why}", path.display());
+                    std::process::exit(2);
+                });
+                if write {
+                    if rendered != existing {
+                        std::fs::write(path, &rendered)?;
+                        println!("skill-gen: wrote {}", path.display());
+                    }
+                    continue;
+                }
+                if i == 0 {
+                    print!("{rendered}");
+                }
+                if url.is_some() {
+                    // Rendered from another host: printed, never compared.
+                    break;
+                }
+                if let Some(line) = skill_gen::first_diff_line(&existing, &rendered) {
+                    eprintln!(
+                        "skill-gen: {}:{line} differs from the generated render (run `mcphost skill-gen --write`)",
+                        path.display()
+                    );
+                    stale = true;
+                }
+            }
+            if stale {
+                std::process::exit(1);
             }
             Ok(())
         }

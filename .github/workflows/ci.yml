@@ -454,6 +454,7 @@ jobs:
           check ./scripts/host-pressure-doc-check.sh
           check ./scripts/spec-fields-doc-check.sh
           check ./scripts/sandbox-api-doc-check.sh
+          check ./scripts/skill-gen-check.sh
           check ./scripts/gen-llms-full.sh --check
           # .github/required-checks.toml is the render of the workflow files.
           check bash -c 'diff <(./scripts/required-checks.sh --print) .github/required-checks.toml'

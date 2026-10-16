@@ -1946,6 +1946,15 @@
       "AC2": "tests/orgm_ac02_org_url_mints_member_tenant.rs",
       "AC3": "tests/orgm_ac03_roles_one_source_drift.rs",
       "AC4": "tests/orgm_ac04_org_at_cap_refuses_third_join.rs"
+    },
+    "skgn": {
+      "_prd": "PRD-mcphost-plugin-skill-generated-from-tools-list.md (test_prefix: skgn)",
+      "AC2": "tests/skgn_ac02_check_exits_zero_and_names_the_drifted_line.rs",
+      "AC3": "tests/skgn_ac03_drift_test_fails_until_regenerated.rs",
+      "AC4": "tests/skgn_ac04_every_error_code_has_a_remedy_naming_a_real_verb.rs",
+      "AC5": "tests/skgn_ac05_limits_numbers_equal_ceilings_json.rs",
+      "AC6": "tests/skgn_ac06_devloop_names_only_verbs_the_build_has.rs",
+      "AC7": "tests/skgn_ac07_url_renders_verbs_from_a_live_tools_list.rs"
     }
   }
 }
