@@ -34,6 +34,10 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "mcphost-llms-install-doc_ac02_served_unauthenticated.rs"]
+mod mcphost_llms_install_doc_ac02_served_unauthenticated;
+#[path = "mcphost-llms-install-doc_ac03_committed_copy_drift.rs"]
+mod mcphost_llms_install_doc_ac03_committed_copy_drift;
 #[path = "mcphost-llms-install-doc_ac04_linked_from_every_entry_point.rs"]
 mod mcphost_llms_install_doc_ac04_linked_from_every_entry_point;
 #[path = "mcphost-llms-install-doc_ac06_install_doc_funnel_event.rs"]

@@ -1425,6 +1425,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `alt_endpoint`: string | null
 - `authenticated`: boolean | null
 - `bridge_returns`: object | null
+- `contract`: object | null
 - `endpoint`: string | null
 - `example`: object | null
 - `hint`: string | null
@@ -1610,6 +1611,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Returns**
 
 - `args_schema`: object (always)
+- `contract`: object | null
 - `invocations`: array<object> (always)
 - `kind`: object (always)
 - `requirements`: array (always)

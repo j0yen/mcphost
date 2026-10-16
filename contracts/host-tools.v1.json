@@ -1,5 +1,196 @@
 {
   "contract_version": 1,
+  "kinds": {
+    "chain": {
+      "contract": {
+        "bridges": [],
+        "budgets": [],
+        "error_families": [
+          {
+            "codes": [
+              "compose_self_call",
+              "compose_depth_exceeded",
+              "compose_children_exceeded",
+              "compose_item_outside_for_each",
+              "compose_mapping_type",
+              "compose_mapping_missing",
+              "compose_fanout_exceeded",
+              "compose_fanout_item_failed",
+              "compose_input_missing"
+            ],
+            "name": "compose"
+          },
+          {
+            "codes": [
+              "tool_building",
+              "tool_not_found",
+              "tool_run_unsupported"
+            ],
+            "name": "tool_state"
+          }
+        ],
+        "secret_redaction": false,
+        "source_position": "field:failed_step"
+      }
+    },
+    "echo": {
+      "contract": {
+        "bridges": [],
+        "budgets": [],
+        "error_families": [],
+        "secret_redaction": false,
+        "source_position": "none"
+      }
+    },
+    "http": {
+      "contract": {
+        "bridges": [],
+        "budgets": [
+          {
+            "default": 10,
+            "field": "timeout_s",
+            "max": 30,
+            "min": 1
+          }
+        ],
+        "error_families": [
+          {
+            "codes": [
+              "upstream_auth",
+              "upstream_rate_limited",
+              "upstream_client_error",
+              "upstream_error",
+              "upstream_timeout",
+              "upstream_unreachable",
+              "upstream_not_connected",
+              "host_not_allowed"
+            ],
+            "name": "upstream"
+          }
+        ],
+        "secret_redaction": true,
+        "source_position": "none"
+      }
+    },
+    "python": {
+      "contract": {
+        "bridges": [
+          "state",
+          "table",
+          "docs",
+          "lineage",
+          "channel",
+          "msg"
+        ],
+        "budgets": [
+          {
+            "default": 30,
+            "field": "timeout_s",
+            "max": 60,
+            "min": 1
+          },
+          {
+            "default": 256,
+            "field": "memory_mb",
+            "max": 1024,
+            "min": 1
+          }
+        ],
+        "error_families": [
+          {
+            "codes": [
+              "tool_exception",
+              "tool_output_invalid"
+            ],
+            "name": "tool_code"
+          },
+          {
+            "codes": [
+              "tool_timeout",
+              "tool_oom",
+              "tool_process_limit",
+              "tool_output_too_large"
+            ],
+            "name": "tool_limit"
+          },
+          {
+            "codes": [
+              "upstream_auth",
+              "upstream_rate_limited",
+              "upstream_client_error",
+              "upstream_error",
+              "upstream_timeout",
+              "upstream_unreachable",
+              "upstream_not_connected",
+              "host_not_allowed"
+            ],
+            "name": "upstream"
+          },
+          {
+            "codes": [
+              "compose_self_call",
+              "compose_depth_exceeded",
+              "compose_children_exceeded",
+              "compose_item_outside_for_each",
+              "compose_mapping_type",
+              "compose_mapping_missing",
+              "compose_fanout_exceeded",
+              "compose_fanout_item_failed",
+              "compose_input_missing"
+            ],
+            "name": "compose"
+          },
+          {
+            "codes": [
+              "tool_building",
+              "tool_not_found",
+              "tool_run_unsupported"
+            ],
+            "name": "tool_state"
+          }
+        ],
+        "secret_redaction": true,
+        "source_position": "line"
+      }
+    },
+    "wasm": {
+      "contract": {
+        "bridges": [],
+        "budgets": [
+          {
+            "default": 5,
+            "field": "timeout_s",
+            "max": 30,
+            "min": 1
+          },
+          {
+            "default": 64,
+            "field": "memory_mb",
+            "max": 256,
+            "min": 1
+          }
+        ],
+        "error_families": [
+          {
+            "codes": [
+              "tool_exception",
+              "tool_trapped"
+            ],
+            "name": "tool_code"
+          },
+          {
+            "codes": [
+              "tool_timeout",
+              "tool_oom"
+            ],
+            "name": "tool_limit"
+          }
+        ],
+        "secret_redaction": false,
+        "source_position": "none"
+      }
+    }
+  },
   "output_envelope_fields": [
     "deprecations"
   ],
@@ -11935,6 +12126,30 @@
               "null"
             ]
           },
+          "contract": {
+            "description": "The asked kind's KindContract summary: the error families its failures carry and whether they carry data.source_line.",
+            "properties": {
+              "families": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "source_line": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              }
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
           "endpoint": {
             "type": [
               "string",
@@ -15032,6 +15247,30 @@
               }
             },
             "type": "object"
+          },
+          "contract": {
+            "description": "The asked kind's KindContract summary: the error families its failures carry and whether they carry data.source_line.",
+            "properties": {
+              "families": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "source_line": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              }
+            },
+            "type": [
+              "object",
+              "null"
+            ]
           },
           "invocations": {
             "items": {
@@ -21447,7 +21686,7 @@
             "type": "boolean"
           },
           "kind": {
-            "description": "Which registered kind to publish under: one of this field's `enum` (host.quickstart with no kind lists every kind, alias and recipe). A job-word alias in the enum also resolves here -- webhook-style words for an inbound webhook, cron-style words for a timed run -- both resolve to kind http and the descriptor comes back with resolved_from naming the alias you asked for.",
+            "description": "Which registered kind to publish under: one of this field's `enum` (host.quickstart with no kind lists every kind, alias and recipe). A job-word alias in the enum also resolves here -- webhook-style words for an inbound webhook, cron-style words for a timed run -- both resolve to kind http and the descriptor comes back with resolved_from naming the alias you asked for. Error contract per kind: echo (families: none; source_line: no).",
             "enum": [
               "echo",
               "event",
@@ -23906,7 +24145,7 @@
             "type": "boolean"
           },
           "kind": {
-            "description": "Which registered kind to publish under: one of this field's `enum` (host.quickstart with no kind lists every kind, alias and recipe). A job-word alias in the enum also resolves here -- webhook-style words for an inbound webhook, cron-style words for a timed run -- both resolve to kind http and the descriptor comes back with resolved_from naming the alias you asked for.",
+            "description": "Which registered kind to publish under: one of this field's `enum` (host.quickstart with no kind lists every kind, alias and recipe). A job-word alias in the enum also resolves here -- webhook-style words for an inbound webhook, cron-style words for a timed run -- both resolve to kind http and the descriptor comes back with resolved_from naming the alias you asked for. Error contract per kind: echo (families: none; source_line: no).",
             "enum": [
               "echo",
               "event",
@@ -32417,7 +32656,7 @@
             "type": "boolean"
           },
           "kind": {
-            "description": "Which registered kind to publish under: one of this field's `enum` (host.quickstart with no kind lists every kind, alias and recipe). A job-word alias in the enum also resolves here -- webhook-style words for an inbound webhook, cron-style words for a timed run -- both resolve to kind http and the descriptor comes back with resolved_from naming the alias you asked for.",
+            "description": "Which registered kind to publish under: one of this field's `enum` (host.quickstart with no kind lists every kind, alias and recipe). A job-word alias in the enum also resolves here -- webhook-style words for an inbound webhook, cron-style words for a timed run -- both resolve to kind http and the descriptor comes back with resolved_from naming the alias you asked for. Error contract per kind: echo (families: none; source_line: no).",
             "enum": [
               "echo",
               "event",

@@ -184,6 +184,10 @@ enum Command {
         check: bool,
         #[command(subcommand)]
         target: Option<GenDocsTarget>,
+        /// Only the `## Contract` blocks of `docs/kinds/*.md`
+        /// (`scripts/kind-contract-doc-check.sh`).
+        #[arg(long)]
+        kinds_only: bool,
     },
     /// PRD-mcphost-call-cli-from-contract: call a host tool from the shell.
     /// The subcommands and flags come from the embedded contract
@@ -1083,6 +1087,14 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
+        Command::GenDocs { check, kinds_only: true, .. } => match mcphost::gendocs::run_kind_contracts(check) {
+            Ok(true) => std::process::exit(1),
+            Ok(false) => Ok(()),
+            Err(e) => {
+                eprintln!("gen-docs: {e}");
+                std::process::exit(2);
+            }
+        },
         Command::GenDocs { check, .. } => {
             // Deliberately no `init_tracing()`: same rationale as `LlmsTxt`
             // above -- plain stdout/exit-code, no JSON log line.

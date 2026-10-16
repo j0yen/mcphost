@@ -78,3 +78,15 @@ Publish error `url: host '<host>' is not a publicly callable host` (code `host_n
 }
 ```
 <!-- kind-example:end -->
+
+<!-- kind-contract:start -->
+## Contract
+
+| Field | Value |
+|---|---|
+| budget `timeout_s` | 1-30 (default 10) |
+| family `upstream` | upstream_auth, upstream_rate_limited, upstream_client_error, upstream_error, upstream_timeout, upstream_unreachable, upstream_not_connected, host_not_allowed |
+| source_line | no |
+| bridges | none |
+| secret redaction | yes |
+<!-- kind-contract:end -->

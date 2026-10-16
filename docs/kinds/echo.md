@@ -60,3 +60,13 @@ This kind returns no kind-specific error codes.
 }
 ```
 <!-- kind-example:end -->
+
+<!-- kind-contract:start -->
+## Contract
+
+| Field | Value |
+|---|---|
+| source_line | no |
+| bridges | none |
+| secret redaction | no |
+<!-- kind-contract:end -->
