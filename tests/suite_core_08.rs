@@ -34,24 +34,6 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
-#[path = "meshops_ac01_stats_real_vs_synthetic_volume.rs"]
-mod meshops_ac01_stats_real_vs_synthetic_volume;
-#[path = "meshops_ac02_threads_no_bodies.rs"]
-mod meshops_ac02_threads_no_bodies;
-#[path = "meshops_ac03_thread_read_bodies_and_audit.rs"]
-mod meshops_ac03_thread_read_bodies_and_audit;
-#[path = "meshops_ac04_freeze_blocks_sends_not_reads_or_tools.rs"]
-mod meshops_ac04_freeze_blocks_sends_not_reads_or_tools;
-#[path = "meshops_ac05_unfreeze_restores_sending.rs"]
-mod meshops_ac05_unfreeze_restores_sending;
-#[path = "meshops_ac06_purge_dry_run_then_real.rs"]
-mod meshops_ac06_purge_dry_run_then_real;
-#[path = "meshops_ac07_tenant_delete_cascade_across_mesh_tables.rs"]
-mod meshops_ac07_tenant_delete_cascade_across_mesh_tables;
-#[path = "meshops_ac08_healthz_mesh_counters.rs"]
-mod meshops_ac08_healthz_mesh_counters;
-#[path = "meshops_ac09_stats_refusals_by_code_per_sender.rs"]
-mod meshops_ac09_stats_refusals_by_code_per_sender;
 #[path = "metering_ac01_stripe_customer_id_null_default.rs"]
 mod metering_ac01_stripe_customer_id_null_default;
 #[path = "metering_ac02_webhook_stores_stripe_customer_id.rs"]
