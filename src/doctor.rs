@@ -18,7 +18,8 @@ pub const MAX_NEXT_CHARS: usize = 240;
 const MAX_VALUE_CHARS: usize = 80;
 
 /// One next-step template per error family. Placeholders: `{tool}`,
-/// `{line}`, `{argument}`, `{expected_type}`, `{ceiling}`, `{upstream_status}`.
+/// `{line}`, `{argument}`, `{expected_type}`, `{ceiling}`, `{upstream_status}`,
+/// `{envelope_fn}`, `{envelope_keys}`.
 pub const DOCTOR_NEXT: &[(&str, &str)] = &[
     (
         "budget_ceiling",
@@ -57,6 +58,11 @@ pub const DOCTOR_NEXT: &[(&str, &str)] = &[
     ),
 ];
 
+/// The `tool_exception` sentence used instead of its [`DOCTOR_NEXT`] row when
+/// the summary names the bridge envelope the tool indexed.
+pub const DOCTOR_NEXT_ENVELOPE: &str = "`{tool}` indexed `{envelope_fn}`'s envelope at tool.py:{line}: it is a dict \
+     with keys {envelope_keys}; read those keys, then host.tool_test it";
+
 /// `(family, tool, summary)`: one realistic summary per [`DOCTOR_NEXT`] row.
 pub const DOCTOR_FIXTURES: &[(&str, &str, &str)] = &[
     (
@@ -74,11 +80,20 @@ pub const DOCTOR_FIXTURES: &[(&str, &str, &str)] = &[
         "report",
         "tool_exception: NameError: name 'mcphost' is not defined at tool.py:7\nrows = mcphost.state.query(table=T)",
     ),
+    (
+        "tool_exception",
+        "envidx",
+        "tool_exception: KeyError: 0 at tool.py:3\nenvelope: mcphost.state.query [\"rows\"]\nreturn {\"first\": env[0][\"name\"]}",
+    ),
     ("args_invalid", "count_rows", "args_invalid: args.limit: expected integer, got number"),
     ("upstream_status", "fetch_issue", "upstream_status: upstream returned HTTP 403 (upstream_status)"),
     ("call_timeout", "slow_report", "call_timeout: the call ran past its 30 s deadline"),
     ("other", "mystery", "storage: the database is busy"),
 ];
+
+/// Prefix of the optional summary line naming the bridge envelope a
+/// `tool_exception` indexed: `envelope: <fqn> <json array of key names>`.
+const ENVELOPE_PREFIX: &str = "envelope: ";
 
 /// `calls.error_summary` for a failed call, from the error's `code`,
 /// `message` and `data.line` / `data.source_line` only -- never an argument
@@ -96,6 +111,12 @@ pub fn error_summary(code: &str, message: &str, data: &Value) -> String {
         && !out.contains(" at tool.py:")
     {
         out.push_str(&format!(" at tool.py:{n}"));
+    }
+    if let Some(f) = data.get("envelope_fn").and_then(Value::as_str)
+        && let Some(keys) = data.get("envelope_keys").and_then(Value::as_array)
+    {
+        let names: Vec<&str> = keys.iter().filter_map(Value::as_str).collect();
+        out.push_str(&format!("\n{ENVELOPE_PREFIX}{} {}", redact(f), json!(names)));
     }
     if let Some(src) = data.get("source_line").and_then(Value::as_str) {
         let src = src.lines().next().unwrap_or("").trim();
@@ -174,6 +195,10 @@ pub struct Parsed {
     pub expected_type: Option<String>,
     pub ceiling: Option<String>,
     pub upstream_status: Option<String>,
+    /// The bridge function whose envelope a `tool_exception` indexed.
+    pub envelope_fn: Option<String>,
+    /// That envelope's keys, as a JSON array (`["rows"]`).
+    pub envelope_keys: Option<String>,
 }
 
 fn number_after(text: &str, marker: &str) -> Option<String> {
@@ -188,10 +213,16 @@ pub fn parse_summary(summary: Option<&str>, error_class: &str) -> Parsed {
     let Some(summary) = summary else {
         return Parsed { code: error_class.to_string(), ..Parsed::default() };
     };
-    let (head, source) = match summary.split_once('\n') {
-        Some((h, s)) => (h, Some(s.trim().to_string()).filter(|s| !s.is_empty())),
-        None => (summary, None),
-    };
+    let (head, rest) = summary.split_once('\n').unwrap_or((summary, ""));
+    let mut envelope = None;
+    let mut source = None;
+    for line in rest.lines() {
+        if let Some(env) = line.strip_prefix(ENVELOPE_PREFIX) {
+            envelope = env.split_once(' ').map(|(f, k)| (f.to_string(), k.trim().to_string()));
+        } else if source.is_none() && !line.trim().is_empty() {
+            source = Some(line.trim().to_string());
+        }
+    }
     let (code, message) = head.split_once(": ").unwrap_or((error_class, head));
     let mut parsed = Parsed {
         code: code.to_string(),
@@ -199,6 +230,8 @@ pub fn parse_summary(summary: Option<&str>, error_class: &str) -> Parsed {
         line: number_after(message, " at tool.py:").and_then(|n| n.parse().ok()),
         ceiling: number_after(message, "ceiling of "),
         upstream_status: number_after(message, "HTTP "),
+        envelope_fn: envelope.as_ref().map(|(f, _)| f.clone()),
+        envelope_keys: envelope.map(|(_, k)| k),
         ..Parsed::default()
     };
     if code == "tool_exception"
@@ -243,14 +276,21 @@ pub fn render_next(family: &str, tool: &str, parsed: &Parsed) -> String {
         .find(|(f, _)| *f == family)
         .or_else(|| DOCTOR_NEXT.iter().find(|(f, _)| *f == "other"))
         .map_or("", |(_, t)| *t);
+    let template = if family == "tool_exception" && parsed.envelope_keys.is_some() {
+        DOCTOR_NEXT_ENVELOPE
+    } else {
+        template
+    };
     let unknown = || "unknown".to_string();
-    let values: [(&str, String); 6] = [
+    let values: [(&str, String); 8] = [
         ("{tool}", tool.to_string()),
         ("{line}", parsed.line.map_or_else(unknown, |n| n.to_string())),
         ("{argument}", parsed.argument.clone().unwrap_or_else(unknown)),
         ("{expected_type}", parsed.expected_type.clone().unwrap_or_else(unknown)),
         ("{ceiling}", parsed.ceiling.clone().unwrap_or_else(unknown)),
         ("{upstream_status}", parsed.upstream_status.clone().unwrap_or_else(unknown)),
+        ("{envelope_fn}", parsed.envelope_fn.clone().unwrap_or_else(unknown)),
+        ("{envelope_keys}", parsed.envelope_keys.clone().unwrap_or_else(unknown)),
     ];
     let mut out = template.to_string();
     for (placeholder, value) in values {

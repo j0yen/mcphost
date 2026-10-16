@@ -1,6 +1,7 @@
 //! PRD-mcphost-sandbox-return-shape-contract
 //! AC3 (P0) -- Given a sandbox tool that runs `for r in
-//! mcphost.state.query(table="t")` or `mcphost.table.query(...)[0]`, When
+//! mcphost.state.query(table="t")` or `[r for r in mcphost.table.query(...)]` (integer indexing is a
+//! `KeyError` naming the keys since PRD-mcphost-host-doctor-next-names-envelope-key), When
 //! dry-run, Then the verdict is `will_fail` with `BridgeShapeError: …
 //! returns {…}; iterate result["rows"]` and the user's line number.
 
@@ -52,12 +53,12 @@ def main(args):
 }
 
 #[tokio::test]
-async fn indexing_table_query_with_an_integer_is_will_fail_naming_rows_and_the_users_line() {
+async fn iterating_table_query_in_a_comprehension_is_will_fail_naming_rows_and_the_users_line() {
     let source = r#"import mcphost
 def main(args):
     mcphost.table.create('t', {'n': 'integer'})
     mcphost.table.append('t', [{'n': 1}])
-    first = mcphost.table.query('SELECT n FROM t')[0]
+    first = [r for r in mcphost.table.query('SELECT n FROM t')]
     return first
 "#;
     let Some(v) = dry_run(source).await else { return };

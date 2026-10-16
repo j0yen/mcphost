@@ -3484,31 +3484,59 @@ def _bridge_target(fqn):
 def _attach_returns_doc(fn, line):
     fn.__doc__ = (fn.__doc__.rstrip() + "\n\n" if fn.__doc__ else "") + line
 
-# An envelope result is a plain `dict` in every respect except two: treating
-# it as a list (`env[0]`, `for r in env`) raises `BridgeShapeError` naming the
-# correct access. `.get`, `in`, `len`, `==`, `.items()`, `json.dumps` and
-# `copy.deepcopy` are untouched `dict` behaviour. The error is raised inside
-# the caller's frame, so the traceback's `tool.py` line is the user's own.
+# An envelope result is a plain `dict` in every respect except two: iterating
+# it as a list (`for r in env`) raises `BridgeShapeError` naming the correct
+# access, and indexing it with a key it does not have (`env[0]`) raises the
+# `KeyError` Python would, tagged with the bridge function's fqn and the
+# envelope's own keys so the runner's escape handler can name them in the
+# error. `.get`, `in`, `len`, `==`, `.items()`, `json.dumps` and
+# `copy.deepcopy` are untouched `dict` behaviour. Both errors are raised
+# inside the caller's frame, so the traceback's `tool.py` line is the user's.
 class BridgeShapeError(Exception):
     pass
 
 class _Envelope(dict):
-    def __init__(self, data, message):
+    def __init__(self, data, message, fqn):
         dict.__init__(self, data)
         self._shape_message = message
+        self._fqn = fqn
 
     def __getitem__(self, key):
-        if isinstance(key, (int, slice)):
-            raise BridgeShapeError(self._shape_message)
-        return dict.__getitem__(self, key)
+        try:
+            return dict.__getitem__(self, key)
+        except KeyError as e:
+            e._envelope_fn = self._fqn
+            e._envelope_keys = list(self.keys())
+            raise
 
     def __iter__(self):
         raise BridgeShapeError(self._shape_message)
 
+_ENVELOPE_CLAUSE_MAX = 160
+
+# The ` -- <fqn> returns a dict with keys [...]` clause appended to the
+# message of an exception that carries an envelope tag; key NAMES only.
+def _envelope_clause(e):
+    fqn = getattr(e, "_envelope_fn", None)
+    if fqn is None:
+        return ""
+    clause = " -- " + fqn + " returns a dict with keys " + json.dumps(e._envelope_keys)
+    if len(clause) > _ENVELOPE_CLAUSE_MAX:
+        clause = clause[:_ENVELOPE_CLAUSE_MAX - 1] + "\u2026"
+    return clause
+
+def _exception_obj(e):
+    obj = {"ok": False, "kind": "exception", "error": type(e).__name__,
+           "message": str(e) + _envelope_clause(e), "traceback": traceback.format_exc()}
+    if getattr(e, "_envelope_fn", None) is not None:
+        obj["envelope_fn"] = e._envelope_fn
+        obj["envelope_keys"] = [str(k) for k in e._envelope_keys]
+    return obj
+
 # `variants` is `[(argument_name, message), ...]`: a call made with that
 # argument truthy (`mcphost.table.query(sql, handle=True)`) returns a
 # different envelope, so it gets its own message.
-def _wrap_envelope(fn, message, variants):
+def _wrap_envelope(fn, fqn, message, variants):
     signature = _inspect.signature(fn)
     @_functools.wraps(fn)
     def wrapper(*args, **kwargs):
@@ -3524,7 +3552,7 @@ def _wrap_envelope(fn, message, variants):
             for arg_name, variant_message in variants:
                 if bound.get(arg_name):
                     shown = variant_message
-        return _Envelope(result, shown)
+        return _Envelope(result, shown, fqn)
     return wrapper
 
 def _shape_message(fqn, info):
@@ -3549,6 +3577,7 @@ for _fqn, _info in _BRIDGE_RETURNS.items():
     if _info["envelope"]:
         _fn = _wrap_envelope(
             _fn,
+            _fqn,
             _shape_message(_fqn, _info),
             [(_arg, _shape_message(_vfqn, _vinfo)) for _arg, _vfqn, _vinfo in _variants],
         )
@@ -3629,11 +3658,9 @@ def run_one(payload, t_start):
                         # unavailable" OSError.
                         obj = {"ok": False, "kind": "process_limit"}
                     else:
-                        obj = {"ok": False, "kind": "exception", "error": type(e).__name__,
-                               "message": str(e), "traceback": traceback.format_exc()}
+                        obj = _exception_obj(e)
                 except Exception as e:
-                    obj = {"ok": False, "kind": "exception", "error": type(e).__name__,
-                           "message": str(e), "traceback": traceback.format_exc()}
+                    obj = _exception_obj(e)
                 else:
                     try:
                         json.dumps(result)
@@ -3814,6 +3841,11 @@ fn map_envelope_error_untagged(envelope: &Value, stderr_tail: &str, own_domain: 
                 }
                 if let Some(src) = source_line {
                     obj.insert("source_line".to_string(), json!(src));
+                }
+                for k in ["envelope_fn", "envelope_keys"] {
+                    if let Some(v) = envelope.get(k) {
+                        obj.insert(k.to_string(), v.clone());
+                    }
                 }
             }
             KindError::structured_with(codes::TOOL_EXCEPTION, format!("{error}: {message}{located}"), data)
