@@ -7,8 +7,14 @@
 //! `tests/surface_ac05_llms_txt_tool_parity.rs`, so neither needs a running
 //! server or a DB to exercise it.
 
+use std::collections::{BTreeMap, BTreeSet};
+
+use serde_json::{Map, Value};
+
+use crate::docs_examples::Entry;
 use crate::handler::llms_txt_tool_names;
 use crate::kinds::KindRegistry;
+use crate::plans::PlanCatalog;
 
 pub const TOOLS_SECTION_START: &str = "<!-- tools:start -->";
 pub const TOOLS_SECTION_END: &str = "<!-- tools:end -->";
@@ -294,6 +300,290 @@ pub fn splice_into(content: &str, section: &str) -> String {
     } else {
         format!("{}\n\n{}\n", content.trim_end(), section)
     }
+}
+
+pub const TOOL_SECTIONS_START: &str = "<!-- tool-sections:start -->";
+pub const TOOL_SECTIONS_END: &str = "<!-- tool-sections:end -->";
+
+/// Heading of the section collecting ceilings no tool argument names.
+pub const PLAN_CEILINGS_HEADING: &str = "### plan ceilings";
+/// Heading of the count section the digest reads.
+pub const NO_EXAMPLE_HEADING: &str = "## Tools without an executed example";
+
+/// One tool as the per-tool section renderer sees it.
+pub struct ToolView<'a> {
+    pub name: &'a str,
+    pub description: &'a str,
+    pub schema: &'a Map<String, Value>,
+    pub anonymous: bool,
+    pub aliases: Vec<String>,
+}
+
+/// The GitHub-style anchor of a `### <name>` heading.
+pub fn anchor_slug(name: &str) -> String {
+    name.to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '_'))
+        .map(|c| if c == ' ' { '-' } else { c })
+        .collect()
+}
+
+fn cell(text: &str) -> String {
+    text.replace('|', "\\|").replace('\n', " ")
+}
+
+fn type_label(schema: &Value) -> String {
+    match schema.get("type") {
+        Some(Value::String(t)) if t == "array" => match schema.pointer("/items/type").and_then(Value::as_str) {
+            Some(item) => format!("array<{item}>"),
+            None => "array".to_string(),
+        },
+        Some(Value::String(t)) => t.clone(),
+        Some(Value::Array(ts)) => ts.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("|"),
+        _ => "any".to_string(),
+    }
+}
+
+fn json_scalar(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
+/// `enum` values, bounds and `format` of one property, `; `-joined.
+fn schema_constraint(schema: &Value, skip_maximum: bool) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(values) = schema.get("enum").and_then(Value::as_array) {
+        parts.push(format!("one of: {}", values.iter().map(json_scalar).collect::<Vec<_>>().join(", ")));
+    }
+    for (key, label) in [("minimum", "≥"), ("maximum", "≤"), ("minLength", "length ≥"), ("maxLength", "length ≤"), ("minItems", "items ≥"), ("maxItems", "items ≤")] {
+        if key == "maximum" && skip_maximum {
+            continue;
+        }
+        if let Some(v) = schema.get(key) {
+            parts.push(format!("{label} {}", json_scalar(v)));
+        }
+    }
+    if let Some(f) = schema.get("format").and_then(Value::as_str) {
+        parts.push(format!("format: {f}"));
+    }
+    if let Some(p) = schema.get("pattern").and_then(Value::as_str) {
+        parts.push(format!("pattern: {p}"));
+    }
+    parts.join("; ")
+}
+
+/// `(path, type, required, schema)` rows: top-level properties, and the
+/// properties of a top-level object one level down; anything deeper is the
+/// parent's `object` row and nothing more.
+fn schema_rows(schema: &Map<String, Value>) -> Vec<(String, String, bool, Value)> {
+    let required: BTreeSet<&str> = schema
+        .get("required")
+        .and_then(Value::as_array)
+        .map(|r| r.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    let mut rows = Vec::new();
+    let Some(props) = schema.get("properties").and_then(Value::as_object) else { return rows };
+    for (name, prop) in props {
+        rows.push((name.clone(), type_label(prop), required.contains(name.as_str()), prop.clone()));
+        let child_required: BTreeSet<&str> = prop
+            .get("required")
+            .and_then(Value::as_array)
+            .map(|r| r.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        if let Some(children) = prop.get("properties").and_then(Value::as_object) {
+            for (child, cs) in children {
+                rows.push((format!("{name}.{child}"), type_label(cs), child_required.contains(child.as_str()), cs.clone()));
+            }
+        }
+    }
+    rows
+}
+
+/// Dotted ceiling name -> `(plan, value)` per plan, in catalog order.
+fn plan_ceilings(plans: &PlanCatalog) -> BTreeMap<String, Vec<(String, i64)>> {
+    let mut out: BTreeMap<String, Vec<(String, i64)>> = BTreeMap::new();
+    for plan in &plans.plans {
+        for (name, value) in plan.ceilings_flat() {
+            out.entry(name).or_default().push((plan.name.clone(), value));
+        }
+    }
+    out
+}
+
+fn ceiling_text(values: &[(String, i64)]) -> String {
+    values.iter().map(|(plan, v)| format!("≤ {v} ({plan})")).collect::<Vec<_>>().join(", ")
+}
+
+fn fence_for(body: &str) -> String {
+    let mut longest = 0;
+    let mut run = 0;
+    for c in body.chars() {
+        run = if c == '`' { run + 1 } else { 0 };
+        longest = longest.max(run);
+    }
+    "`".repeat((longest + 1).max(3))
+}
+
+/// The corpus entry for `tool`: `attrs.name`, or the callee of a call body.
+fn corpus_example<'a>(corpus: &'a [Entry], tool: &str) -> Option<&'a Entry> {
+    corpus.iter().find(|e| {
+        e.attrs.get("name").is_some_and(|n| n == tool)
+            || crate::docs_examples::parse_call(&e.body)
+                .ok()
+                .and_then(|(_, params)| params.get("name").and_then(Value::as_str).map(|n| n == tool))
+                .unwrap_or(false)
+    })
+}
+
+/// R1: one `### <name>` section per tool, then `### plan ceilings` (every
+/// ceiling no argument names) and the examples count section.
+pub fn render_sections(views: &[ToolView<'_>], plans: &PlanCatalog, corpus: &[Entry]) -> String {
+    render_sections_with_prose(views, plans, corpus, &BTreeMap::new())
+}
+
+/// [`render_sections`] with R3's hand prose (`tool name -> markdown`)
+/// inlined after the tool's own section lines.
+pub fn render_sections_with_prose(
+    views: &[ToolView<'_>],
+    plans: &PlanCatalog,
+    corpus: &[Entry],
+    prose: &BTreeMap<String, String>,
+) -> String {
+    let ceilings = plan_ceilings(plans);
+    let mut matched: BTreeSet<String> = BTreeSet::new();
+    let mut without_example: Vec<&str> = Vec::new();
+    let mut out = String::new();
+    out.push_str(TOOL_SECTIONS_START);
+    out.push_str("\n## Tool reference\n\n");
+    out.push_str(
+        "Generated by `mcphost llms-full` from the same descriptors `tools/list` serves and the \
+         plan catalog's `ceilings_json()` -- do not hand-edit.\n\n",
+    );
+    for v in views {
+        out.push_str(&format!("### {}\n\n", v.name));
+        out.push_str(&format!("{}\n\n", v.description.replace('\n', " ")));
+        let aliases = if v.aliases.is_empty() { "none".to_string() } else { v.aliases.join(", ") };
+        out.push_str(&format!("aliases: {aliases}\n"));
+        out.push_str(&format!("anonymous: {}\n", if v.anonymous { "yes" } else { "no" }));
+        let required: Vec<&str> = v
+            .schema
+            .get("required")
+            .and_then(Value::as_array)
+            .map(|r| r.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        let required_text = if required.is_empty() { "none".to_string() } else { required.join(", ") };
+        out.push_str(&format!("required: {required_text}\n\n"));
+        out.push_str("| arg | type | required | constraint |\n|---|---|---|---|\n");
+        let mut section_ceilings: Vec<(String, String)> = Vec::new();
+        for (path, ty, req, prop) in schema_rows(v.schema) {
+            let constraint = match ceilings.get(&path) {
+                Some(values) => {
+                    matched.insert(path.clone());
+                    let text = ceiling_text(values);
+                    section_ceilings.push((path.clone(), text.clone()));
+                    text
+                }
+                None => schema_constraint(&prop, false),
+            };
+            out.push_str(&format!(
+                "| `{}` | {} | {} | {} |\n",
+                path,
+                cell(&ty),
+                if req { "yes" } else { "no" },
+                cell(&constraint)
+            ));
+        }
+        if !section_ceilings.is_empty() {
+            out.push_str("\nceilings:\n");
+            for (path, text) in &section_ceilings {
+                out.push_str(&format!("- `{path}`: {text}\n"));
+            }
+        }
+        let raw = serde_json::to_string_pretty(&Value::Object(v.schema.clone())).unwrap_or_default();
+        let fence = fence_for(&raw);
+        out.push_str(&format!("\n{fence}json\n{raw}\n{fence}\n\n"));
+        match corpus_example(corpus, v.name) {
+            Some(e) => {
+                let fence = fence_for(&e.body);
+                out.push_str(&format!("example:\n\n{fence}\n{}\n{fence}\n", e.body.trim_end()));
+                match &e.executed {
+                    Some(x) => out.push_str(&format!("executed: {} {}\n", x.status, x.date)),
+                    None => {
+                        out.push_str("executed: never\n");
+                        without_example.push(v.name);
+                    }
+                }
+            }
+            None => {
+                out.push_str("example: none\n");
+                without_example.push(v.name);
+            }
+        }
+        out.push_str(&format!(
+            "anchor: www/llms-full.txt#{}\nsearch: host.help.search {{q: \"{}\"}}\n\n",
+            anchor_slug(v.name),
+            v.name
+        ));
+        if let Some(text) = prose.get(v.name) {
+            out.push_str(text.trim_end());
+            out.push_str("\n\n");
+        }
+    }
+    out.push_str(PLAN_CEILINGS_HEADING);
+    out.push_str("\n\nCeilings from `ceilings_json()` that no tool argument above names.\n\n");
+    let mut any = false;
+    for (name, values) in &ceilings {
+        if !matched.contains(name) {
+            any = true;
+            out.push_str(&format!("- `{name}`: {}\n", ceiling_text(values)));
+        }
+    }
+    if !any {
+        out.push_str("none\n");
+    }
+    out.push_str(&format!("\n{NO_EXAMPLE_HEADING}\n\ncount: {}\n\n", without_example.len()));
+    for name in &without_example {
+        out.push_str(&format!("- `{name}`\n"));
+    }
+    out.push_str(TOOL_SECTIONS_END);
+    out
+}
+
+/// R1: the per-tool sections for `kinds`' whole tenant-visible tool set, in
+/// [`tenant_tool_names`] order.
+pub fn render_tool_sections(kinds: &KindRegistry, plans: &PlanCatalog, corpus: &[Entry]) -> String {
+    render_tool_sections_with_prose(kinds, plans, corpus, &BTreeMap::new())
+}
+
+/// [`render_tool_sections`] with R3's hand prose inlined.
+pub fn render_tool_sections_with_prose(
+    kinds: &KindRegistry,
+    plans: &PlanCatalog,
+    corpus: &[Entry],
+    prose: &BTreeMap<String, String>,
+) -> String {
+    let tools = crate::handler::tenant_tool_descriptors(kinds);
+    let anonymous: BTreeSet<String> = crate::handler::anonymous_tool_names(kinds).into_iter().collect();
+    let mut views = Vec::new();
+    for name in tenant_tool_names(kinds) {
+        let Some(tool) = tools.iter().find(|t| t.name == name.as_str()) else { continue };
+        let mut aliases: Vec<String> = crate::tool_aliases::aliases_of(&name).into_iter().map(String::from).collect();
+        aliases.extend(crate::tool_aliases::flattened_form(&name));
+        views.push((tool, anonymous.contains(&name), aliases));
+    }
+    let views: Vec<ToolView<'_>> = views
+        .iter()
+        .map(|(tool, anonymous, aliases)| ToolView {
+            name: tool.name.as_ref(),
+            description: tool.description.as_deref().unwrap_or(""),
+            schema: tool.input_schema.as_ref(),
+            anonymous: *anonymous,
+            aliases: aliases.clone(),
+        })
+        .collect();
+    render_sections_with_prose(&views, plans, corpus, prose)
 }
 
 #[cfg(test)]
