@@ -87,8 +87,7 @@ fn killpg_sigkill(pid: i32) {
     // `pid` is a process-group leader `kinds::python` itself set up via
     // `setsid` (see `sandbox.rs`'s `pre_exec_setup`); killing it is the same
     // operation `PersistentSandbox::kill` performs.
-    // SAFETY: killpg's only precondition is a valid pid; `pid` is one by
-    // construction (a freshly spawned or currently registered child).
+    // SAFETY: killpg's only precondition is a valid pid; `pid` is one by construction.
     unsafe {
         libc::killpg(pid, libc::SIGKILL);
     }
