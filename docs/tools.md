@@ -2177,6 +2177,13 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `tools`: array<object> (always)
 - `welcome_back`: object | null
 
+### `host.tool.list_shared`
+
+**Returns**
+
+- `tools`: array<object> (always)
+- `truncated`: boolean (always)
+
 ### `host.tool.logs`
 
 **Returns**
