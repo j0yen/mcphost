@@ -1,0 +1,2479 @@
+{
+  "components": {
+    "schemas": {
+      "AuthorizationServerMetadata": {
+        "properties": {
+          "authorization_endpoint": {
+            "type": "string"
+          },
+          "code_challenge_methods_supported": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "grant_types_supported": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "issuer": {
+            "type": "string"
+          },
+          "jwks_uri": {
+            "type": "string"
+          },
+          "response_types_supported": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "token_endpoint": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "issuer",
+          "authorization_endpoint",
+          "token_endpoint",
+          "jwks_uri",
+          "response_types_supported",
+          "grant_types_supported",
+          "code_challenge_methods_supported"
+        ],
+        "type": "object"
+      },
+      "Capabilities": {
+        "properties": {
+          "primitives": {
+            "additionalProperties": true,
+            "description": "Keyed by primitive name; each row carries `implemented`, `methods`, ...",
+            "type": "object"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "primitives"
+        ],
+        "type": "object"
+      },
+      "Catalog": {
+        "properties": {
+          "tools": {
+            "items": true,
+            "type": "array"
+          }
+        },
+        "required": [
+          "tools"
+        ],
+        "type": "object"
+      },
+      "ContractDocument": {
+        "properties": {
+          "contract_sha": {
+            "type": "string"
+          },
+          "contract_version": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tools": {
+            "items": true,
+            "type": "array"
+          }
+        },
+        "required": [
+          "contract_version",
+          "contract_sha",
+          "tools"
+        ],
+        "type": "object"
+      },
+      "Error": {
+        "description": "The error object inside every façade error envelope. `code` and `message`\nare the only required keys; `help_url` and the incident-banner fields ride\nalong when present.",
+        "properties": {
+          "code": {
+            "description": "Stable machine-readable code (`args_invalid`, `rate_limited`, ...).",
+            "type": "string"
+          },
+          "help_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "ErrorEnvelope": {
+        "properties": {
+          "error": {
+            "description": "The error object inside every façade error envelope. `code` and `message`\nare the only required keys; `help_url` and the incident-banner fields ride\nalong when present.",
+            "properties": {
+              "code": {
+                "description": "Stable machine-readable code (`args_invalid`, `rate_limited`, ...).",
+                "type": "string"
+              },
+              "help_url": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "ok": {
+            "const": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "error"
+        ],
+        "type": "object"
+      },
+      "EventKinds": {
+        "properties": {
+          "generated_from": {
+            "type": "string"
+          },
+          "kinds": {
+            "items": {
+              "properties": {
+                "data_fields": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "description",
+                "data_fields"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "generated_from",
+          "kinds"
+        ],
+        "type": "object"
+      },
+      "FramesDocument": {
+        "type": "object"
+      },
+      "Healthz": {
+        "properties": {
+          "git_sha": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "version",
+          "git_sha"
+        ],
+        "type": "object"
+      },
+      "Incidents": {
+        "items": {
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "Jwks": {
+        "properties": {
+          "keys": {
+            "items": {
+              "properties": {
+                "alg": {
+                  "type": "string"
+                },
+                "crv": {
+                  "type": "string"
+                },
+                "kid": {
+                  "type": "string"
+                },
+                "kty": {
+                  "type": "string"
+                },
+                "x": {
+                  "type": "string"
+                },
+                "y": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kty",
+                "kid",
+                "alg",
+                "crv",
+                "x",
+                "y"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "keys"
+        ],
+        "type": "object"
+      },
+      "LegacyError": {
+        "description": "The older `{error_code, error}` body some JSON routes answer 4xx/5xx with.",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "error_code": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error_code",
+          "error"
+        ],
+        "type": "object"
+      },
+      "OpenApiDocument": {
+        "properties": {
+          "openapi": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "openapi",
+          "info",
+          "paths"
+        ],
+        "type": "object"
+      },
+      "OpenObject": {
+        "type": "object"
+      },
+      "Plans": {
+        "properties": {
+          "billing_mode": {
+            "type": "string"
+          },
+          "plans": {
+            "items": {
+              "properties": {
+                "calls_per_day": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "price_usd_month": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "secrets_max": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "tools_max": {
+                  "format": "int64",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "name",
+                "description",
+                "price_usd_month",
+                "calls_per_day",
+                "tools_max",
+                "secrets_max"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "billing_mode",
+          "plans"
+        ],
+        "type": "object"
+      },
+      "ProtectedResourceMetadata": {
+        "properties": {
+          "authorization_servers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "bearer_methods_supported": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "resource": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource",
+          "authorization_servers",
+          "bearer_methods_supported"
+        ],
+        "type": "object"
+      },
+      "Reach": {
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "served_at": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "host",
+          "ok",
+          "served_at"
+        ],
+        "type": "object"
+      },
+      "RunAccepted": {
+        "properties": {
+          "ok": {
+            "const": true,
+            "type": "boolean"
+          },
+          "poll": {
+            "description": "Absolute URL to `GET` until the run is terminal.",
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "run_id",
+          "poll"
+        ],
+        "type": "object"
+      },
+      "RunResult": {
+        "properties": {
+          "ok": {
+            "const": true,
+            "type": "boolean"
+          },
+          "result": {
+            "description": "The tool's own result; shape is the tool's."
+          },
+          "run_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "run_id",
+          "result"
+        ],
+        "type": "object"
+      },
+      "ServerCard": {
+        "type": "object"
+      },
+      "StatusFeed": {
+        "properties": {
+          "components": {
+            "items": {
+              "properties": {
+                "last_sample": true,
+                "name": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "state",
+                "last_sample"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "contract_sha": {
+            "type": "string"
+          },
+          "contract_version": {
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "state": {
+            "description": "`operational` | `degraded` | ...",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "components",
+          "generated_at",
+          "contract_version",
+          "contract_sha"
+        ],
+        "type": "object"
+      },
+      "ToolArgs": {
+        "description": "Arguments to pass, validated against the tool's own args_schema.",
+        "type": "object",
+        "x-mcphost-tool-schema": "/contract.json"
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "Every non-MCP HTTP route mcphost serves, generated from the router's own route table.",
+    "title": "mcphost HTTP API",
+    "version": "0.108.120",
+    "x-contract-version": "1.4a3a82c84d4d"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/.well-known/jwks.json": {
+      "get": {
+        "operationId": "get__well_known_jwks_json",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Jwks"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Signing keys for hosted access tokens",
+        "tags": [
+          "well-known"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/.well-known/mcp/catalog.json": {
+      "get": {
+        "operationId": "get__well_known_mcp_catalog_json",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Catalog"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyError"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Public tool catalog",
+        "tags": [
+          "well-known"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/.well-known/mcp/{namespace}/server.json": {
+      "get": {
+        "operationId": "get__well_known_mcp_namespace_server_json",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerCard"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        },
+        "summary": "Per-tenant MCP server card",
+        "tags": [
+          "well-known"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/.well-known/oauth-authorization-server": {
+      "get": {
+        "operationId": "get__well_known_oauth_authorization_server",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationServerMetadata"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "RFC 8414 authorization-server metadata",
+        "tags": [
+          "well-known"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/.well-known/oauth-authorization-server/t/{namespace}/mcp": {
+      "get": {
+        "operationId": "get__well_known_oauth_authorization_server_t_namespace_mcp",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationServerMetadata"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyError"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Per-tenant authorization-server metadata",
+        "tags": [
+          "well-known"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/.well-known/oauth-protected-resource": {
+      "get": {
+        "operationId": "get__well_known_oauth_protected_resource",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProtectedResourceMetadata"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyError"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "RFC 9728 protected-resource metadata",
+        "tags": [
+          "well-known"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/.well-known/oauth-protected-resource/login/mcp": {
+      "get": {
+        "operationId": "get__well_known_oauth_protected_resource_login_mcp",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProtectedResourceMetadata"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Protected-resource metadata for the OAuth entry URL",
+        "tags": [
+          "well-known"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/.well-known/oauth-protected-resource/t/{namespace}/mcp": {
+      "get": {
+        "operationId": "get__well_known_oauth_protected_resource_t_namespace_mcp",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProtectedResourceMetadata"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyError"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Per-tenant protected-resource metadata",
+        "tags": [
+          "well-known"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/.well-known/openid-configuration": {
+      "get": {
+        "operationId": "get__well_known_openid_configuration",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationServerMetadata"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Same document as oauth-authorization-server",
+        "tags": [
+          "well-known"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/.well-known/openid-configuration/t/{namespace}/mcp": {
+      "get": {
+        "operationId": "get__well_known_openid_configuration_t_namespace_mcp",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationServerMetadata"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyError"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Same document as the per-tenant oauth-authorization-server",
+        "tags": [
+          "well-known"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/a/{id}": {
+      "get": {
+        "operationId": "get_a_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        },
+        "summary": "Signed answer page for host.ask.create",
+        "tags": [
+          "assets"
+        ],
+        "x-mcphost-auth": "token"
+      },
+      "post": {
+        "operationId": "post_a_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        },
+        "summary": "Submit an answer",
+        "tags": [
+          "assets"
+        ],
+        "x-mcphost-auth": "token"
+      }
+    },
+    "/billing/cancel": {
+      "get": {
+        "operationId": "get_billing_cancel",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Checkout cancel landing page",
+        "tags": [
+          "billing"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/billing/done": {
+      "get": {
+        "operationId": "get_billing_done",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Checkout success landing page",
+        "tags": [
+          "billing"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/billing/webhook": {
+      "post": {
+        "operationId": "post_billing_webhook",
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request"
+          }
+        },
+        "summary": "Stripe-signed billing webhook",
+        "tags": [
+          "billing"
+        ],
+        "x-mcphost-auth": "signature"
+      }
+    },
+    "/blobs/{id}": {
+      "get": {
+        "operationId": "get_blobs_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        },
+        "summary": "Signed blob download",
+        "tags": [
+          "assets"
+        ],
+        "x-mcphost-auth": "token"
+      }
+    },
+    "/capabilities.json": {
+      "get": {
+        "operationId": "get_capabilities_json",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "implemented",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Capabilities"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "MCP capability matrix; implemented=1 keeps implemented rows",
+        "tags": [
+          "status"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/charts/{id}": {
+      "get": {
+        "operationId": "get_charts_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        },
+        "summary": "Signed chart share link",
+        "tags": [
+          "assets"
+        ],
+        "x-mcphost-auth": "token"
+      }
+    },
+    "/claim/verify/{code}": {
+      "get": {
+        "operationId": "get_claim_verify_code",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Magic-link verification",
+        "tags": [
+          "claim"
+        ],
+        "x-mcphost-auth": "token"
+      }
+    },
+    "/claim/{token}": {
+      "get": {
+        "operationId": "get_claim_token",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Human claim page",
+        "tags": [
+          "claim"
+        ],
+        "x-mcphost-auth": "token"
+      },
+      "post": {
+        "operationId": "post_claim_token",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Submit the claim form",
+        "tags": [
+          "claim"
+        ],
+        "x-mcphost-auth": "token"
+      }
+    },
+    "/connect": {
+      "get": {
+        "operationId": "get_connect",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "One-click client install page",
+        "tags": [
+          "onboarding"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/connect/go/{client}": {
+      "get": {
+        "operationId": "get_connect_go_client",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "client",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Found"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        },
+        "summary": "Client deep-link redirect",
+        "tags": [
+          "onboarding"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/contract.json": {
+      "get": {
+        "operationId": "get_contract_json",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractDocument"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "304": {
+            "description": "Not Modified"
+          }
+        },
+        "summary": "The host.* tool contract; ETag is the contract sha",
+        "tags": [
+          "status"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/d/{namespace}/{tool}": {
+      "get": {
+        "operationId": "get_d_namespace_tool",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tool",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        },
+        "summary": "Try-it demo page for a catalog tool",
+        "tags": [
+          "public-tool"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/docs": {
+      "get": {
+        "operationId": "get_docs",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Redoc rendering of /openapi.json",
+        "tags": [
+          "status"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/email/inbound/{namespace}": {
+      "post": {
+        "operationId": "post_email_inbound_namespace",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenObject"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        },
+        "summary": "Inbound mail delivery",
+        "tags": [
+          "webhooks"
+        ],
+        "x-mcphost-auth": "signature"
+      }
+    },
+    "/events.json": {
+      "get": {
+        "operationId": "get_events_json",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventKinds"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Event-kind registry",
+        "tags": [
+          "status"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/exports/{run_id}": {
+      "get": {
+        "operationId": "get_exports_run_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        },
+        "summary": "Signed tenant-export download",
+        "tags": [
+          "assets"
+        ],
+        "x-mcphost-auth": "token"
+      }
+    },
+    "/f/{token}/{tool}": {
+      "get": {
+        "operationId": "get_f_token_tool",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tool",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        },
+        "summary": "Argument form for a url-shared tool with ui.form",
+        "tags": [
+          "public-tool"
+        ],
+        "x-mcphost-auth": "token"
+      },
+      "post": {
+        "operationId": "post_f_token_tool",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tool",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        },
+        "summary": "Submit the argument form",
+        "tags": [
+          "public-tool"
+        ],
+        "x-mcphost-auth": "token"
+      }
+    },
+    "/healthz": {
+      "get": {
+        "operationId": "get_healthz",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Healthz"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Healthz"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Liveness probe",
+        "tags": [
+          "status"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/help": {
+      "get": {
+        "operationId": "get_help",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Help index",
+        "tags": [
+          "help"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/help/{code}": {
+      "get": {
+        "operationId": "get_help_code",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Help page for an error code",
+        "tags": [
+          "help"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/hook/{id}": {
+      "post": {
+        "operationId": "post_hook_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenObject"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        },
+        "summary": "Opaque-id webhook trigger",
+        "tags": [
+          "webhooks"
+        ],
+        "x-mcphost-auth": "token"
+      }
+    },
+    "/hooks/{namespace}/{tool}": {
+      "post": {
+        "operationId": "post_hooks_namespace_tool",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tool",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenObject"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        },
+        "summary": "Inbound event for a tenant tool",
+        "tags": [
+          "webhooks"
+        ],
+        "x-mcphost-auth": "token"
+      }
+    },
+    "/incidents.json": {
+      "get": {
+        "operationId": "get_incidents_json",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Incidents"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyError"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Last 24 h of heal actions, anonymised",
+        "tags": [
+          "status"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/oauth/authorize": {
+      "get": {
+        "operationId": "get_oauth_authorize",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Authorization endpoint (consent page)",
+        "tags": [
+          "oauth"
+        ],
+        "x-mcphost-auth": "anonymous"
+      },
+      "post": {
+        "operationId": "post_oauth_authorize",
+        "responses": {
+          "302": {
+            "description": "Found"
+          }
+        },
+        "summary": "Consent approval",
+        "tags": [
+          "oauth"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/oauth/federation/callback": {
+      "get": {
+        "operationId": "get_oauth_federation_callback",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Upstream identity-provider redirect target",
+        "tags": [
+          "oauth"
+        ],
+        "x-mcphost-auth": "anonymous"
+      },
+      "post": {
+        "operationId": "post_oauth_federation_callback",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Consent approval after upstream login",
+        "tags": [
+          "oauth"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/oauth/register": {
+      "post": {
+        "operationId": "post_oauth_register",
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenObject"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenObject"
+                }
+              }
+            },
+            "description": "Bad Request"
+          }
+        },
+        "summary": "Dynamic client registration",
+        "tags": [
+          "oauth"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/oauth/revoke": {
+      "post": {
+        "operationId": "post_oauth_revoke",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Token revocation",
+        "tags": [
+          "oauth"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/oauth/token": {
+      "post": {
+        "operationId": "post_oauth_token",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenObject"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenObject"
+                }
+              }
+            },
+            "description": "Bad Request"
+          }
+        },
+        "summary": "Token endpoint",
+        "tags": [
+          "oauth"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/oauth/unverified-app": {
+      "get": {
+        "operationId": "get_oauth_unverified_app",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Explainer for the unverified-app caution",
+        "tags": [
+          "oauth"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "operationId": "get_openapi_json",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenApiDocument"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "304": {
+            "description": "Not Modified"
+          }
+        },
+        "summary": "This document: OpenAPI 3.1, ETag is the sha256 of the body",
+        "tags": [
+          "status"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/plans.json": {
+      "get": {
+        "operationId": "get_plans_json",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plans"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Plan catalog",
+        "tags": [
+          "billing"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/protocol/frames.json": {
+      "get": {
+        "operationId": "get_protocol_frames_json",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FramesDocument"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Frames each request type may carry",
+        "tags": [
+          "status"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/reach": {
+      "get": {
+        "operationId": "get_reach",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Reach"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Content-free reachability probe for any public hostname",
+        "tags": [
+          "status"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/status.json": {
+      "get": {
+        "operationId": "get_status_json",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "component",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusFeed"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LegacyError"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Status feed; component and days select one component's daily rollup",
+        "tags": [
+          "status"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/u/new": {
+      "get": {
+        "operationId": "get_u_new",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "One-button signup page",
+        "tags": [
+          "onboarding"
+        ],
+        "x-mcphost-auth": "anonymous"
+      },
+      "post": {
+        "operationId": "post_u_new",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "429": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Mint a tenant and its first URL",
+        "tags": [
+          "onboarding"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/vault/callback": {
+      "get": {
+        "operationId": "get_vault_callback",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Upstream-token code exchange",
+        "tags": [
+          "claim"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/vault/connect/{token}": {
+      "get": {
+        "operationId": "get_vault_connect_token",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Found"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        },
+        "summary": "Redeem a one-time upstream-token handoff link",
+        "tags": [
+          "claim"
+        ],
+        "x-mcphost-auth": "token"
+      }
+    },
+    "/x/{token}/{tool}": {
+      "get": {
+        "operationId": "get_x_token_tool",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tool",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunAccepted"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Run a url-shared tool; the query string is the arguments",
+        "tags": [
+          "public-tool"
+        ],
+        "x-mcphost-auth": "token"
+      },
+      "options": {
+        "operationId": "options_x_token_tool",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tool",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        },
+        "summary": "CORS preflight",
+        "tags": [
+          "public-tool"
+        ],
+        "x-mcphost-auth": "anonymous"
+      },
+      "post": {
+        "operationId": "post_x_token_tool",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tool",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolArgs"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunAccepted"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Run a url-shared tool; the JSON body is the arguments",
+        "tags": [
+          "public-tool"
+        ],
+        "x-mcphost-auth": "token"
+      }
+    },
+    "/x/{token}/{tool}/runs/{run_id}": {
+      "get": {
+        "operationId": "get_x_token_tool_runs_run_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tool",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunAccepted"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Poll a run started through this token",
+        "tags": [
+          "public-tool"
+        ],
+        "x-mcphost-auth": "token"
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "https://mcphost.dev"
+    }
+  ],
+  "tags": [
+    {
+      "name": "assets"
+    },
+    {
+      "name": "billing"
+    },
+    {
+      "name": "claim"
+    },
+    {
+      "name": "help"
+    },
+    {
+      "name": "oauth"
+    },
+    {
+      "name": "onboarding"
+    },
+    {
+      "name": "public-tool"
+    },
+    {
+      "name": "status"
+    },
+    {
+      "name": "webhooks"
+    },
+    {
+      "name": "well-known"
+    }
+  ]
+}

@@ -514,6 +514,12 @@ mod oapi_ac02_route_table_drift;
 mod oapi_ac03_openapi_json_validates;
 #[path = "oapi_ac04_x_responses_match_documented_schemas.rs"]
 mod oapi_ac04_x_responses_match_documented_schemas;
+#[path = "oapib_ac01_docs_page_single_cdn_host.rs"]
+mod oapib_ac01_docs_page_single_cdn_host;
+#[path = "oapib_ac02_gen_openapi_matches_committed.rs"]
+mod oapib_ac02_gen_openapi_matches_committed;
+#[path = "oapib_ac03_llms_txt_rest_section.rs"]
+mod oapib_ac03_llms_txt_rest_section;
 #[path = "oauthconf_ac01_gate_verdict_table_matches_gold.rs"]
 mod oauthconf_ac01_gate_verdict_table_matches_gold;
 #[path = "oauthconf_ac02_cimd_preferred_over_dcr_and_unsupported_without_either.rs"]

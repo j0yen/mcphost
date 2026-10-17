@@ -371,6 +371,53 @@ pub fn document(contract: &ContractSnapshot) -> Value {
     })
 }
 
+/// Where the committed copy of the document lives (`mcphost gen openapi`).
+pub const DEFAULT_PATH: &str = "docs/openapi.json";
+
+/// The committed form of the document: pretty JSON plus a trailing newline.
+pub fn render_committed() -> Vec<u8> {
+    let mut bytes = serde_json::to_vec_pretty(&document(&ContractSnapshot::builtin())).expect("openapi document serializes");
+    bytes.push(b'\n');
+    bytes
+}
+
+/// `info.version` is the crate version, which `wm-build land` bumps after the
+/// document was committed, so the drift check compares everything but it.
+fn without_version(mut doc: Value) -> Value {
+    if let Some(info) = doc.get_mut("info").and_then(Value::as_object_mut) {
+        info.remove("version");
+    }
+    doc
+}
+
+/// Drift check: `Ok` when the file at `path` is the live document (ignoring
+/// `info.version`), else an error naming the file and the first differing path.
+pub fn check_committed(path: &std::path::Path) -> Result<(), String> {
+    let name = path.display();
+    let raw = std::fs::read_to_string(path).map_err(|e| format!("{name}: cannot read: {e}"))?;
+    let committed: Value = serde_json::from_str(&raw).map_err(|e| format!("{name}: not JSON: {e}"))?;
+    let live = without_version(document(&ContractSnapshot::builtin()));
+    let committed = without_version(committed);
+    if committed == live {
+        return Ok(());
+    }
+    let differs = |a: &Value, b: &Value| a != b;
+    let paths_a = committed.get("paths").and_then(Value::as_object);
+    let paths_b = live.get("paths").and_then(Value::as_object);
+    let first = match (paths_a, paths_b) {
+        (Some(a), Some(b)) => a
+            .keys()
+            .chain(b.keys())
+            .find(|k| differs(a.get(*k).unwrap_or(&Value::Null), b.get(*k).unwrap_or(&Value::Null)))
+            .map(|k| format!("paths[{k}]")),
+        _ => None,
+    };
+    Err(format!(
+        "{name} is stale ({}); run `mcphost gen openapi`",
+        first.unwrap_or_else(|| "components or info differ".to_string())
+    ))
+}
+
 /// The document's serialized bytes and quoted-sha256 `ETag`, built once.
 fn served(contract: &ContractSnapshot) -> &'static (Vec<u8>, String) {
     static SERVED: OnceLock<(Vec<u8>, String)> = OnceLock::new();

@@ -373,3 +373,11 @@ globs = ["scripts/task-handoff-live.sh"]
 required_commands = [
   "cargo test --workspace thlive_ac",
 ]
+
+[[lane]]
+id = "openapi-doc"
+description = "PRD-mcphost-openapi-for-rest-facade-b AC2: docs/openapi.json, the committed render of the document GET /openapi.json serves (`mcphost gen openapi`). Given its own lane so the pinned lane baselines stay unchanged; oapib_ac02 diffs it against the live document (ignoring info.version, which landing bumps) and proves a stale copy fails naming the file."
+globs = ["docs/openapi.json"]
+required_commands = [
+  "cargo test --workspace oapib_ac",
+]

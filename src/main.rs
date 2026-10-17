@@ -196,6 +196,12 @@ enum Command {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
+    /// PRD-mcphost-openapi-for-rest-facade requirement 6: generated REST
+    /// artifacts (`mcphost gen openapi`).
+    Gen {
+        #[command(subcommand)]
+        target: GenTarget,
+    },
     /// PRD-mcphost-host-tool-deprecation requirement 1 (P0, AC1): the
     /// `host.*`/`billing.*` tool surface as a versioned contract.
     Contract {
@@ -469,6 +475,20 @@ enum GenDocsTarget {
         check: bool,
         #[arg(long, conflicts_with = "check")]
         write: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum GenTarget {
+    /// Write the OpenAPI 3.1 document `GET /openapi.json` serves to `--out`
+    /// (default `docs/openapi.json`). With `--check`, write nothing and exit 1
+    /// naming the file if it differs from the live document (`info.version`
+    /// excepted: landing bumps it).
+    Openapi {
+        #[arg(long)]
+        out: Option<PathBuf>,
+        #[arg(long)]
+        check: bool,
     },
 }
 
@@ -1201,6 +1221,8 @@ async fn main() -> anyhow::Result<()> {
             let with_tools =
                 mcphost::llms_txt::splice_events(&with_tools, &mcphost::llms_txt::render_events_section());
             let with_tools =
+                mcphost::llms_txt::splice_rest(&with_tools, &mcphost::llms_txt::render_rest_section());
+            let with_tools =
                 mcphost::notify::splice_section(&with_tools, &mcphost::notify::render_section());
             let with_clients = mcphost::clients::render_into(&with_tools, &clients_file).unwrap_or_else(|why| {
                 eprintln!("llms-txt: {}: {why}", path.display());
@@ -1306,6 +1328,23 @@ async fn main() -> anyhow::Result<()> {
                     std::process::exit(2);
                 }
             }
+        }
+        Command::Gen { target: GenTarget::Openapi { out, check } } => {
+            // No `init_tracing()`: plain stdout/exit-code, like `LlmsTxt`.
+            let out = out.unwrap_or_else(|| PathBuf::from(mcphost::openapi::DEFAULT_PATH));
+            if check {
+                match mcphost::openapi::check_committed(&out) {
+                    Ok(()) => println!("gen openapi --check: {} is up to date", out.display()),
+                    Err(why) => {
+                        eprintln!("gen openapi --check: {why}");
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                std::fs::write(&out, mcphost::openapi::render_committed())?;
+                println!("gen openapi: wrote {}", out.display());
+            }
+            Ok(())
         }
         Command::Contract { action } => match action {
             ContractCommand::Dump { check, path } => {

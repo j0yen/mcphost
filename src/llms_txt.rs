@@ -152,6 +152,33 @@ pub fn splice_events(content: &str, section: &str) -> String {
     }
 }
 
+pub const REST_SECTION_START: &str = "<!-- rest:start -->";
+pub const REST_SECTION_END: &str = "<!-- rest:end -->";
+
+/// PRD-mcphost-openapi-for-rest-facade-b R7: the one-line pointer from
+/// `llms.txt` to the REST façade's machine-readable description.
+pub fn render_rest_section() -> String {
+    format!(
+        "{REST_SECTION_START}\n## REST façade\n\n\
+         No MCP client? Every plain-HTTP route is described by OpenAPI 3.1 at `/openapi.json` \
+         and rendered at `/docs`.\n{REST_SECTION_END}"
+    )
+}
+
+/// Replace the marked REST block in `content`, or -- before any marker
+/// exists -- insert it just before `## Full documentation` (else append).
+pub fn splice_rest(content: &str, section: &str) -> String {
+    let section = section.trim_end();
+    if let (Some(start), Some(end_pos)) = (content.find(REST_SECTION_START), content.find(REST_SECTION_END)) {
+        let end = end_pos + REST_SECTION_END.len();
+        format!("{}{}{}", &content[..start], section, &content[end..])
+    } else if let Some(idx) = content.find("## Full documentation") {
+        format!("{}{}\n\n{}", &content[..idx], section, &content[idx..])
+    } else {
+        format!("{}\n\n{}\n", content.trim_end(), section)
+    }
+}
+
 pub const DOMAIN_HINT_START: &str = "<!-- domain-hint:start -->";
 pub const DOMAIN_HINT_END: &str = "<!-- domain-hint:end -->";
 

@@ -238,6 +238,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "live-scripts",
             "loop-config",
             "oauthconf-data",
+            "openapi-doc",
             "output-schemas",
             "plugin",
             "registry-manifest",
