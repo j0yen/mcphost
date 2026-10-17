@@ -73,7 +73,7 @@ impl OrgCaps {
 
 fn org_members_max_error(limit: i64, plan: &str, upgrade: &str) -> AppError {
     AppError::Structured {
-        code: "org_members_max",
+        code: ORG_MEMBERS_MAX,
         message: format!("this org already has {limit} members, the {plan} plan maximum"),
         data: json!({"limit": limit, "plan": plan, "upgrade": upgrade}),
     }
@@ -135,7 +135,7 @@ pub(crate) fn insert_member_sync(
     let org_id = org_id.ok_or_else(AppError::invite_invalid)?;
     if let Some((_, name, _, _)) = membership_sync(conn, tenant_id)? {
         return Err(AppError::Structured {
-            code: "org_member_already",
+            code: ORG_MEMBER_ALREADY,
             message: format!("this tenant already belongs to org '{name}'"),
             data: json!({"org": name}),
         });
@@ -174,7 +174,7 @@ impl Db {
             let outcome: Result<(), AppError> = (|| {
                 if let Some((_, current, _, _)) = membership_sync(conn, owner_tenant_id)? {
                     return Err(AppError::Structured {
-                        code: "org_member_already",
+                        code: ORG_MEMBER_ALREADY,
                         message: format!("this tenant already belongs to org '{current}'"),
                         data: json!({"org": current}),
                     });
@@ -184,7 +184,7 @@ impl Db {
                     .exists(params![name])?;
                 if taken {
                     return Err(AppError::Structured {
-                        code: "org_name_taken",
+                        code: ORG_NAME_TAKEN,
                         message: format!("org name '{name}' is already taken"),
                         data: json!({"name": name}),
                     });
@@ -316,14 +316,14 @@ impl Db {
                     .optional()?;
                 let Some(target) = target else {
                     return Err(AppError::Structured {
-                        code: "not_a_member",
+                        code: NOT_A_MEMBER,
                         message: format!("'{member_ns}' is not a live member of this org"),
                         data: json!({"member": member_ns}),
                     });
                 };
                 if target == owner_tenant_id {
                     return Err(AppError::Structured {
-                        code: "owner_cannot_leave",
+                        code: OWNER_CANNOT_LEAVE,
                         message: "the owner cannot be removed from its own org".to_string(),
                         data: json!({}),
                     });
@@ -362,7 +362,7 @@ impl Db {
                 };
                 if role == "owner" {
                     return Err(AppError::Structured {
-                        code: "owner_cannot_leave",
+                        code: OWNER_CANNOT_LEAVE,
                         message: "the owner cannot leave its own org".to_string(),
                         data: json!({"org": name}),
                     });
@@ -413,7 +413,7 @@ impl Db {
 
 fn not_in_org_error() -> AppError {
     AppError::Structured {
-        code: "not_in_org",
+        code: NOT_IN_ORG,
         message: "this tenant does not belong to an org".to_string(),
         data: json!({}),
     }
@@ -421,7 +421,7 @@ fn not_in_org_error() -> AppError {
 
 fn not_owner_error() -> AppError {
     AppError::Structured {
-        code: "not_owner",
+        code: NOT_OWNER,
         message: "only the org owner can do this".to_string(),
         data: json!({}),
     }
@@ -475,7 +475,7 @@ pub async fn join(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
 pub async fn members(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let Some((org_id, name, role, _)) = state.db.org_membership(tenant.id).await? else {
         return Err(AppError::Structured {
-            code: "not_in_org",
+            code: NOT_IN_ORG,
             message: "this tenant does not belong to an org".to_string(),
             data: json!({}),
         });
@@ -537,3 +537,46 @@ pub async fn whoami_org(state: &AppState, tenant_id: i64) -> Result<Value, AppEr
         None => Value::Null,
     })
 }
+
+crate::err_code! {
+    pub NOT_A_MEMBER,
+    code: "not_a_member", family: Share, class: AgentFault, retryable: false,
+    remedy: "Call host.org_members for the live member list; this namespace is not one of them.",
+}
+
+crate::err_code! {
+    pub NOT_IN_ORG,
+    code: "not_in_org", family: Share, class: AgentFault, retryable: false,
+    remedy: "Call host.org_create or host.org_join first; this tenant belongs to no org.",
+}
+
+crate::err_code! {
+    pub NOT_OWNER,
+    code: "not_owner", family: Share, class: HostRefusal, retryable: false,
+    remedy: "Only the org owner can do this; ask the owner listed by host.org_members.",
+}
+
+crate::err_code! {
+    pub ORG_MEMBER_ALREADY,
+    code: "org_member_already", family: Share, class: AgentFault, retryable: false,
+    remedy: "This tenant is already in an org; call host.org_members to see it.",
+}
+
+crate::err_code! {
+    pub ORG_MEMBERS_MAX,
+    code: "org_members_max", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Upgrade to the plan named in data.upgrade, or remove a member first.",
+}
+
+crate::err_code! {
+    pub ORG_NAME_TAKEN,
+    code: "org_name_taken", family: Share, class: AgentFault, retryable: false,
+    remedy: "Choose a different org name; this one is already taken.",
+}
+
+crate::err_code! {
+    pub OWNER_CANNOT_LEAVE,
+    code: "owner_cannot_leave", family: Share, class: AgentFault, retryable: false,
+    remedy: "The owner cannot be removed from its own org; remove other members or delete the org instead.",
+}
+

@@ -37,7 +37,14 @@ async fn fresh_lock_refuses_both_actions_and_retries_in_an_hour() {
         assert_eq!(stored.outcome, HealOutcome::Refused);
         assert_eq!(stored.after["reason"], "backup in progress");
     }
-    assert_eq!(report.next_unix, now + 3600);
+    // `run_window` re-reads the clock for its second row, so `next_unix` is
+    // that read + 3600; tolerate the two reads straddling a second boundary.
+    assert!(
+        (report.next_unix - (now + 3600)).abs() <= 2,
+        "next_unix {} not within 2 s of now+3600 = {}",
+        report.next_unix,
+        now + 3600
+    );
 
     // Nothing was checkpointed or vacuumed: the WAL file is not truncated and
     // the freelist is intact.

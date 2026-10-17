@@ -62,7 +62,7 @@ fn arg_str(args: &Value, name: &str) -> Result<String, AppError> {
 
 fn trigger_invalid(field: &'static str, message: String) -> AppError {
     AppError::Structured {
-        code: "trigger_invalid",
+        code: crate::triggers::TRIGGER_INVALID,
         message,
         data: json!({"field": field}),
     }
@@ -70,7 +70,7 @@ fn trigger_invalid(field: &'static str, message: String) -> AppError {
 
 fn hook_not_found() -> AppError {
     AppError::Structured {
-        code: "hook_not_found",
+        code: crate::deadletters::HOOK_NOT_FOUND,
         message: "no enabled event trigger for this tool".to_string(),
         data: json!({}),
     }
@@ -78,7 +78,7 @@ fn hook_not_found() -> AppError {
 
 fn signature_invalid(header: &str) -> AppError {
     AppError::Structured {
-        code: "signature_invalid",
+        code: SIGNATURE_INVALID,
         message: format!("signature in '{header}' did not match"),
         data: json!({"header": header}),
     }
@@ -88,7 +88,7 @@ fn signature_invalid(header: &str) -> AppError {
 /// "timestamp"` specifically, distinct from an ordinary mismatch.
 fn signature_invalid_reason(reason: &'static str) -> AppError {
     AppError::Structured {
-        code: "signature_invalid",
+        code: SIGNATURE_INVALID,
         message: format!("signature check failed: {reason}"),
         data: json!({"reason": reason}),
     }
@@ -96,7 +96,7 @@ fn signature_invalid_reason(reason: &'static str) -> AppError {
 
 fn run_not_found(run_id: &str) -> AppError {
     AppError::Structured {
-        code: "run_not_found",
+        code: crate::runs::RUN_NOT_FOUND,
         message: format!("no run '{run_id}' for this tenant"),
         data: json!({"run_id": run_id}),
     }
@@ -724,7 +724,7 @@ pub async fn set_event_trigger(
     let existing_count = state.db.count_event_triggers_for_tenant(tenant.id).await?;
     if existing_count >= plan.event_triggers_max {
         return Err(AppError::Structured {
-            code: "trigger_quota_exceeded",
+            code: crate::triggers::TRIGGER_QUOTA_EXCEEDED,
             message: format!(
                 "tenant already holds {existing_count} event triggers, the plan maximum of {}",
                 plan.event_triggers_max
@@ -1012,7 +1012,7 @@ async fn handle_hook(
     if body.len() > plan.event_body_bytes_max as usize {
         return Err(letter
             .refuse(AppError::Structured {
-                code: "event_body_too_large",
+                code: crate::deadletters::EVENT_BODY_TOO_LARGE,
                 message: format!(
                     "body is {} bytes, over the plan's {} byte limit",
                     body.len(),
@@ -1026,7 +1026,7 @@ async fn handle_hook(
     if !state.event_rate_limiter.allow(&trigger.id, plan.events_per_minute) {
         return Err(letter
             .refuse(AppError::Structured {
-                code: "events_rate_limited",
+                code: crate::deadletters::EVENTS_RATE_LIMITED,
                 message: "too many events for this trigger in the last minute".to_string(),
                 data: json!({"events_per_minute": plan.events_per_minute}),
             })
@@ -1077,7 +1077,7 @@ async fn handle_hook(
             plan,
             &trigger,
             crate::deadletters::LetterSource {
-                reason_code: "jobs_concurrent",
+                reason_code: crate::deadletters::JOBS_CONCURRENT,
                 headers: letter.headers.clone(),
                 body,
                 run_id: Some(&run_id),
@@ -1570,7 +1570,7 @@ async fn replay_dead_letter(
         .get_dead_letter(tenant.id, letter_id.to_string())
         .await?
         .ok_or_else(|| AppError::Structured {
-            code: "dead_letter_not_found",
+            code: DEAD_LETTER_NOT_FOUND,
             message: format!("no dead letter '{letter_id}' for this tenant"),
             data: json!({"dead_letter_id": letter_id}),
         })?;
@@ -1621,6 +1621,19 @@ async fn replay_dead_letter(
     let status = if rejected { "rejected" } else { "queued" };
     Ok(json!({"run_id": run_id, "status": status, "replay_of": letter.id, "dead_letter_id": letter.id}))
 }
+
+crate::err_code! {
+    pub DEAD_LETTER_NOT_FOUND,
+    code: "dead_letter_not_found", family: Storage, class: AgentFault, retryable: false,
+    remedy: "List dead letters and use an id that exists for this tenant.",
+}
+
+crate::err_code! {
+    pub SIGNATURE_INVALID,
+    code: "signature_invalid", family: Auth, class: AgentFault, retryable: false,
+    remedy: "Re-send with a valid signature, token and timestamp for the verify config.",
+}
+
 
 #[cfg(test)]
 mod tests {

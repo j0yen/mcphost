@@ -64,154 +64,154 @@ pub(crate) const REPO_DOCS_BASE: &str = "https://github.com/j0yen/mcphost/blob/m
 /// Requirement 2's table, one row per [`HELP_CODES`] entry, same order.
 pub const HELP_ENTRIES: &[HelpEntry] = &[
     HelpEntry {
-        code: "bearer_invalid",
+        code: crate::errors::BEARER_INVALID,
         meaning: "The call carried no usable credential: no Authorization: Bearer header, and (for host.tool_publish and friends) no tenant_key argument either.",
         cause: "A fresh connection before signup, or a connection whose key never got attached after signup returned one.",
         fix: "Call signup first if you haven't; it returns a key. Then either send Authorization: Bearer <key> on the connection, or pass tenant_key as a call argument.",
         doc_link: DocAnchor::DocsAgentQuickstartQuickstartForAgents,
     },
     HelpEntry {
-        code: "tenant_key_missing",
+        code: crate::errors::TENANT_KEY_MISSING,
         meaning: "A tenant_key argument was required for this call (no Authorization header was sent on this connection) and none was given, or it wasn't a string.",
         cause: "Usually a direct namespaced call (<namespace>.<tool>) or a /t/{namespace}/mcp request made with no credential at all -- no key is needed on the bare /mcp endpoint: your first host.*/billing.* call there creates a tenant implicitly and returns its own onboarding.url, no tenant_key required. PRD-mcphost-session-bound-tenant-key reconnect rule: that's only true for the FIRST call on a connection -- once this connection already named a tenant (data.tenant on this very response), a LATER key-less call is refused the same way, naming that tenant again, never a second implicit signup.",
         fix: "On /mcp, just make a host.*/billing.* call -- the response's onboarding.url is this tenant's own address from then on. If data.tenant is present on this error, this connection already is that tenant: reconnect through its own onboarding.url (or pass tenant_key again) rather than retrying bare. On a direct namespaced or /t/{namespace}/mcp call, pass tenant_key: \"<the key signup returned>\" as a call argument, or attach Authorization: Bearer <key> to the connection instead.",
         doc_link: DocAnchor::DocsAgentQuickstartQuickstartForAgents,
     },
     HelpEntry {
-        code: "tenant_key_invalid",
+        code: crate::errors::TENANT_KEY_INVALID,
         meaning: "A tenant_key argument was present but matched no tenant.",
         cause: "A typo'd or truncated key, a key from a different host/environment, or a tenant that was deleted.",
         fix: "Call signup again for a new key, or double-check the value against what signup originally returned.",
         doc_link: DocAnchor::DocsAgentQuickstartQuickstartForAgents,
     },
     HelpEntry {
-        code: "rate_limited",
+        code: crate::errors::RATE_LIMITED,
         meaning: "signup's own per-source rate limit was exceeded.",
         cause: "More than the configured number of signups from the same source in the last hour -- usually a retry loop, not a real new user.",
         fix: "Wait and retry later (see retry_after_secs in the payload when present); if you're running a fleet of agents from one IP, ask the operator about the fleet-IP exemption.",
         doc_link: DocAnchor::ReadmeGettingHelp,
     },
     HelpEntry {
-        code: "signup_paused",
+        code: crate::errors::SIGNUP_PAUSED,
         meaning: "The operator has paused new signups host-wide.",
         cause: "An abuse spike, a maintenance window, or a deliberate kill-switch flip.",
         fix: "Retry after retry_after_secs. An existing tenant's key keeps working; this only blocks new signups.",
         doc_link: DocAnchor::ReadmeGettingHelp,
     },
     HelpEntry {
-        code: "tool_not_found",
+        code: crate::errors::TOOL_NOT_FOUND,
         meaning: "The named tool doesn't exist for this tenant (or, for a shared/cross-tenant call, doesn't exist, isn't shared with you, or your group isn't in its sharing list).",
         cause: "A typo'd name, a tool that was removed, or a shared-tool call missing the owner namespace prefix.",
         fix: "Call host.tool_list() to see what you actually have; shared tools are called as <owner_namespace>.<tool> -- ask the owner to host.tool_share it with you or your group.",
         doc_link: DocAnchor::DocsAgentQuickstartQuickstartForAgents,
     },
     HelpEntry {
-        code: "unknown_kind",
+        code: crate::errors::UNKNOWN_KIND,
         meaning: "host.tool_publish's kind argument named a kind this host doesn't register.",
         cause: "A typo (\"pytho\", \"htpp\"), or a word from another platform's vocabulary (\"lambda\", \"function\") that doesn't map onto this host's kinds.",
         fix: "Check data.registered and data.did_you_mean in the error payload; two real kinds exist today, python and http (echo is a stub, not a real tool).",
         doc_link: DocAnchor::ReadmeKinds,
     },
     HelpEntry {
-        code: "spec_too_large",
+        code: crate::errors::SPEC_TOO_LARGE,
         meaning: "The spec argument serializes to more bytes than this host allows for one tool.",
         cause: "An oversized source file, an embedded data blob, or a schema that grew past the 64 KiB spec cap.",
         fix: "Shrink the spec -- move large constant data into host.state or host.docs.put and read it at call time instead of inlining it in the spec.",
         doc_link: DocAnchor::ReadmeCallLimits,
     },
     HelpEntry {
-        code: "invalid_spec",
+        code: crate::errors::INVALID_SPEC,
         meaning: "The kind rejected the spec's shape -- a required field missing, or a field that doesn't parse the way that kind expects.",
         cause: "See data.field/data.expected in the payload: it names exactly which field and what was expected, in the same \"<field>: <expected>\" convention every kind uses.",
         fix: "Fix the named field (data.example in the payload, when present, is a working value for it) and republish, or dry-run first with host.tool_publish(..., dry_run: true).",
         doc_link: DocAnchor::DocsAgentQuickstartQuickstartForAgents,
     },
     HelpEntry {
-        code: "invalid_params",
+        code: crate::errors::INVALID_PARAMS,
         meaning: "A control-plane call argument was missing, the wrong type, or otherwise malformed -- distinct from invalid_spec, which is about a tool's own spec.",
         cause: "A required argument omitted, or the wrong JSON type for one that was given.",
         fix: "Check data.field/data.expected when present, or re-read the tool's own schema from tools/list.",
         doc_link: DocAnchor::DocsAgentQuickstartQuickstartForAgents,
     },
     HelpEntry {
-        code: "host_not_allowed",
+        code: crate::uptime::HOST_NOT_ALLOWED,
         meaning: "An http-kind spec (or call) named a URL whose host this host's egress policy refuses to reach.",
         cause: "A private/internal address, or a public host your plan isn't allowed to reach (network: \"public\"/\"egress\" needs a paid plan).",
         fix: "Point the spec at a publicly routable host, or upgrade via billing.checkout if the policy is the actual blocker.",
         doc_link: DocAnchor::ReadmeEgressProxyNetworkPublicEgress,
     },
     HelpEntry {
-        code: "handle_taken",
+        code: crate::errors::HANDLE_TAKEN,
         meaning: "The agent-directory handle you tried to claim is already held by someone else.",
         cause: "Two agents picking the same obvious handle, or a handle you used before on a different tenant.",
         fix: "Pick a different handle.",
         doc_link: DocAnchor::DocsAgentQuickstartQuickstartForAgents,
     },
     HelpEntry {
-        code: "handle_reserved",
+        code: crate::errors::HANDLE_RESERVED,
         meaning: "The agent-directory handle you tried to claim is reserved by the operator (e.g. admin, host, mcphost, system).",
         cause: "A handle this host keeps for its own control-plane identity.",
         fix: "Pick a different handle; reserved handles are released only by an operator action, not by claiming around them.",
         doc_link: DocAnchor::DocsAgentQuickstartQuickstartForAgents,
     },
     HelpEntry {
-        code: "spec_not_exposed",
+        code: crate::errors::SPEC_NOT_EXPOSED,
         meaning: "A tool was shared with you, but not with expose_spec: true, so host.tool_spec_shared can't read its source.",
         cause: "The owner shared it for calling only (the default), not for forking.",
         fix: "You can still call it with host.tool_call; ask the owner to re-share with expose_spec: true if you need to read the spec.",
         doc_link: DocAnchor::DocsAgentQuickstartQuickstartForAgents,
     },
     HelpEntry {
-        code: "service_unavailable",
+        code: crate::errors::SERVICE_UNAVAILABLE,
         meaning: "The host refused the call because a resource it depends on (most commonly disk headroom) is below its safety floor.",
         cause: "The operator's own capacity, not anything about your call -- the payload deliberately carries no host numbers (request_id identifies the exact event in the server's own log for the operator).",
         fix: "Retry later; if it persists, report the request_id to the support channel below.",
         doc_link: DocAnchor::ReadmeGettingHelp,
     },
     HelpEntry {
-        code: "internal",
+        code: crate::errors::INTERNAL,
         meaning: "Something failed on this host's side that isn't one of the named error codes above.",
         cause: "Could be almost anything server-side; the real detail is logged under this response's request_id and deliberately not sent to you.",
         fix: "Retry; if it keeps happening, report the request_id (from the payload) to the support channel below so an operator can look it up.",
         doc_link: DocAnchor::ReadmeGettingHelp,
     },
     HelpEntry {
-        code: "ask_expired",
+        code: crate::asks::ASK_EXPIRED,
         meaning: "The ask's link lapsed (its ttl_s ran out) before the user answered, so host.ask.wait will never return an answer for it.",
         cause: "The user did not open the link in time, or ttl_s was shorter than the user's reply time.",
         fix: "Do not act on a missing answer. Call host.ask.create again with a longer ttl_s, hand the user the new url, and host.ask.wait on the new ask_id.",
         doc_link: DocAnchor::DocsToolsTools,
     },
     HelpEntry {
-        code: "ask_answered",
+        code: ASK_ANSWERED,
         meaning: "A POST to an ask link was refused 409 because the ask already has a recorded answer; the first answer wins and the body names it.",
         cause: "The user (or a second device or a double tap) answered once already, or two answers raced and this one lost.",
         fix: "Nothing to retry: read the choice in the 409 body, or host.ask.get / host.ask.wait for the agent side. To ask again, call host.ask.create.",
         doc_link: DocAnchor::DocsToolsTools,
     },
     HelpEntry {
-        code: "choice_invalid",
+        code: CHOICE_INVALID,
         meaning: "A POST to an ask link was refused 400 because its choice is not one of the ask's options.",
         cause: "A hand-built request or a stale page whose options differ from the ask's; the buttons on the page always send a valid choice.",
         fix: "POST one of the options listed in the response's error.options (the same labels host.ask.create was given).",
         doc_link: DocAnchor::DocsToolsTools,
     },
     HelpEntry {
-        code: "asks_limit",
+        code: crate::asks::ASKS_LIMIT,
         meaning: "host.ask.create was refused because this tenant already has its plan's asks_open_max asks pending (unanswered and unexpired).",
         cause: "Asks were created faster than the user answered them, or old asks were never answered and have not yet expired.",
         fix: "Call host.ask.list {status: \"pending\"} to see the open asks and wait on or reuse one; a pending ask frees its slot when answered or expired. host.quickstart limits.plan.asks_open_max names the ceiling.",
         doc_link: DocAnchor::DocsPlansPlanCeilings,
     },
     HelpEntry {
-        code: "capability_unsupported",
+        code: CAPABILITY_UNSUPPORTED,
         meaning: "The method belongs to an MCP primitive this host does not implement (resources, prompts, completions, sampling, elicitation, logging or roots), so it answers -32601 as the MCP spec requires for an unadvertised capability.",
         cause: "The client probed a method of a capability that initialize.capabilities does not advertise; GET /capabilities.json lists every primitive and whether it is implemented.",
         fix: "Do not retry. Use the tool named in the error's data.alternative (when present), or read /capabilities.json to see which primitives this host speaks.",
         doc_link: DocAnchor::DocsProtocolCapabilitiesCapabilities,
     },
     HelpEntry {
-        code: "notify_kind_unknown",
+        code: NOTIFY_KIND_UNKNOWN,
         meaning: "host.notify.channel_add was refused because kind is not a channel kind this host delivers to. The kinds are: {notify_kinds}.",
         cause: "A misspelled or unsupported kind (for example sms or discord); the levels host.notify.send accepts are {notify_levels}.",
         fix: "Call host.notify.channel_add again with kind set to one of: {notify_kinds}. The error's data.kinds lists the same names.",
@@ -522,6 +522,31 @@ pub fn help_hits_snapshot() -> Value {
             .collect::<std::collections::HashMap<String, u64>>()
     )
 }
+
+crate::err_code! {
+    pub ASK_ANSWERED,
+    code: "ask_answered", family: Share, class: AgentFault, retryable: false,
+    remedy: "Read the recorded answer in the response body; the first answer wins and cannot be changed.",
+}
+
+crate::err_code! {
+    pub CAPABILITY_UNSUPPORTED,
+    code: "capability_unsupported", family: Spec, class: HostRefusal, retryable: false,
+    remedy: "Do not retry; use data.alternative when present or read /capabilities.json for implemented primitives.",
+}
+
+crate::err_code! {
+    pub CHOICE_INVALID,
+    code: "choice_invalid", family: Share, class: AgentFault, retryable: false,
+    remedy: "Choose one of the ask's listed options and answer again.",
+}
+
+crate::err_code! {
+    pub NOTIFY_KIND_UNKNOWN,
+    code: "notify_kind_unknown", family: Args, class: AgentFault, retryable: false,
+    remedy: "Call host.notify.channel_add with a supported kind; data.kinds lists the kinds this host delivers to.",
+}
+
 
 #[cfg(test)]
 mod tests {

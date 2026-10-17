@@ -74,6 +74,17 @@ for entry in entries:
         pass
 
     if check_kind == "registry-json":
+        # The registry row compares against the artifact's own `version`
+        # (the one committed server.json, registry_manifest::MANIFEST_PATH),
+        # falling back to Cargo.toml's when the artifact is unreadable.
+        expected = current_version
+        artifact = entry.get("artifact")
+        if artifact:
+            try:
+                with open(artifact, encoding="utf-8") as af:
+                    expected = json.load(af).get("version") or current_version
+            except (OSError, ValueError, AttributeError):
+                pass
         version = None
         if status_code == 200:
             try:
@@ -85,10 +96,10 @@ for entry in entries:
                 version = None
         if version is None:
             print(f"{entry_id}: missing")
-        elif version == current_version:
+        elif version == expected:
             print(f"{entry_id}: listed {version}")
         else:
-            print(f"{entry_id}: listed (stale {version}, current is {current_version})")
+            print(f"{entry_id}: listed (stale {version}, current is {expected})")
             any_stale = True
 
     elif check_kind == "text-search":

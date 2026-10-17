@@ -83,7 +83,7 @@ id = "registry-publish"
 wave = 1
 owner = "joe"
 doc = "Publish the current server.json to the official MCP Registry by pasting the printed publish command; the registry entry must read the current version."
-url = "https://registry.modelcontextprotocol.io/v0/servers?search=mcphost"
+url = "https://registry.modelcontextprotocol.io/v0.1/servers/dev.mcphost%2Fmcphost/versions/latest"
 
 [[item]]
 id = "show-hn-submit"

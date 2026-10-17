@@ -32,8 +32,8 @@
   name: Official MCP Registry
   method: api
   check_kind: registry-json
-  check_url: https://registry.modelcontextprotocol.io/v0/servers?search=mcphost
-  artifact: server.json
+  check_url: https://registry.modelcontextprotocol.io/v0.1/servers/dev.mcphost%2Fmcphost/versions/latest
+  artifact: registry/server.json
   submitted: "2026-09-06"
   notes: >
     Published as dev.mcphost/mcphost under the grand-loop PUBLISH-OK grant

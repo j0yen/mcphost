@@ -24,14 +24,14 @@ fn rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
 /// plain-message rejections) carry no jsonschema error and are not sites.
 fn is_site(lines: &[&str], i: usize) -> bool {
     let l = lines[i];
-    if l.contains("code: \"args_invalid\"") {
+    if l.contains("code: \"args_invalid\"") || l.contains("code: crate::errors::ARGS_INVALID") {
         return true;
     }
     let trimmed = l.trim();
-    if l.contains("structured_with(\"args_invalid\"") {
+    if l.contains("structured_with(\"args_invalid\"") || l.contains("structured_with(crate::errors::ARGS_INVALID") {
         return true;
     }
-    trimmed == "\"args_invalid\"," && i > 0 && lines[i - 1].trim_end().ends_with("structured_with(")
+    (trimmed == "\"args_invalid\"," || trimmed == "crate::errors::ARGS_INVALID,") && i > 0 && lines[i - 1].trim_end().ends_with("structured_with(")
 }
 
 #[test]

@@ -60,10 +60,22 @@ impl ShareScope {
     }
 }
 
+crate::err_code! {
+    pub SCOPE_MISSING,
+    code: "scope_missing", family: Share, class: HostRefusal, retryable: false,
+    remedy: "The share does not grant this scope; data.granted lists what it does, ask the owner to re-share with data.required.",
+}
+
+crate::err_code! {
+    pub SHARE_REVOKED,
+    code: "share_revoked", family: Share, class: HostRefusal, retryable: false,
+    remedy: "The owner stopped sharing this tool; ask the owner to share it again.",
+}
+
 /// R3: `scope_missing {required, granted}`.
 pub fn scope_missing(required: ShareScope, granted: &[String]) -> AppError {
     AppError::Structured {
-        code: "scope_missing",
+        code: SCOPE_MISSING,
         message: format!(
             "this share does not grant '{}' (granted: {})",
             required.as_str(),
@@ -76,7 +88,7 @@ pub fn scope_missing(required: ShareScope, granted: &[String]) -> AppError {
 /// R5: `share_revoked {tool, revoked_at}`.
 pub fn share_revoked(tool: &str, revoked_at: i64) -> AppError {
     AppError::Structured {
-        code: "share_revoked",
+        code: SHARE_REVOKED,
         message: format!("the owner revoked the share of '{tool}'"),
         data: json!({"tool": tool, "revoked_at": crate::state::rfc3339_from_unix(revoked_at)}),
     }
@@ -772,7 +784,7 @@ pub async fn catalog_document(state: &AppState) -> Result<Value, AppError> {
 /// leaving it to guess.
 pub fn quota_caller(caller_namespace: &str, tool: &str, limit: i64, used: i64, reset_at: String) -> AppError {
     AppError::Structured {
-        code: "quota_caller",
+        code: QUOTA_CALLER,
         message: format!(
             "caller '{caller_namespace}' exceeded its calls_per_day limit ({limit}) for tool '{tool}'"
         ),
@@ -850,3 +862,10 @@ pub async fn caller_limit_remove(state: &AppState, tenant: &Tenant, args: &Value
         .await?;
     Ok(json!({ "tool": name, "caller_tenant": caller_tenant, "removed": removed }))
 }
+
+crate::err_code! {
+    pub QUOTA_CALLER,
+    code: "quota_caller", family: Plan, class: PlanLimit, retryable: true,
+    remedy: "The caller exceeded its calls_per_day limit for this shared tool; retry after the daily reset.",
+}
+

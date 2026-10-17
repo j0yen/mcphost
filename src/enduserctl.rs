@@ -185,7 +185,7 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
 
 fn end_user_not_found(subject: &str) -> AppError {
     AppError::Structured {
-        code: "end_user_not_found",
+        code: END_USER_NOT_FOUND,
         message: format!("no end user '{subject}' for this tenant"),
         data: json!({"subject": subject}),
     }
@@ -363,7 +363,7 @@ pub async fn purge(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
         .ok_or_else(|| end_user_not_found(&subject))?;
     if row.revoked_at.is_none() {
         return Err(AppError::Structured {
-            code: "revoke_required",
+            code: REVOKE_REQUIRED,
             message: format!("end user '{subject}' must be revoked before it can be purged"),
             data: json!({"subject": subject}),
         });
@@ -372,3 +372,16 @@ pub async fn purge(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
     let (state_rows, vault_tokens) = state.db.purge_end_user(tenant.id, subject.clone()).await?;
     Ok(json!({"subject": subject, "state_rows": state_rows, "vault_tokens": vault_tokens}))
 }
+
+crate::err_code! {
+    pub END_USER_NOT_FOUND,
+    code: "end_user_not_found", family: Storage, class: AgentFault, retryable: false,
+    remedy: "List end users and use a subject that exists for this tenant.",
+}
+
+crate::err_code! {
+    pub REVOKE_REQUIRED,
+    code: "revoke_required", family: Auth, class: AgentFault, retryable: false,
+    remedy: "Revoke the end user first, then purge.",
+}
+

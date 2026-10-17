@@ -1,5 +1,6 @@
 //! PRD-mcphost-msrv-locked-required-check AC2 -- every `cargo` command in the
-//! `run:` steps of CI jobs `gate` (required) and `msrv` carries `--locked`, so
+//! `run:` steps of CI jobs `core-static` and `core` (covered by the required
+//! `gate` aggregator) and `msrv` carries `--locked`, so
 //! a stale `Cargo.lock` fails the job instead of being silently repaired in
 //! the runner's checkout (leg 20: `cargo check --workspace` repaired #178's
 //! lock and passed).
@@ -7,7 +8,7 @@
 use crate::msrvlock;
 use msrvlock as support;
 
-const JOBS: [&str; 2] = ["gate", "msrv"];
+const JOBS: [&str; 3] = ["core-static", "core", "msrv"];
 
 fn indent(line: &str) -> usize {
     line.len() - line.trim_start().len()
@@ -77,7 +78,7 @@ fn msrvlock_ac02_gate_and_msrv_cargo_lines_all_carry_locked() {
 fn msrvlock_ac02_fixture_with_one_unlocked_cargo_test_is_named() {
     let fixture = "\
 jobs:
-  gate:
+  core-static:
     name: g
     steps:
       - name: a
@@ -98,7 +99,7 @@ jobs:
     let bad = unlocked_cargo_lines(fixture, &JOBS);
     assert_eq!(
         bad,
-        vec![("gate".to_string(), 10, "cargo test --workspace".to_string())],
-        "exactly the unlocked `cargo test` line in `gate` must be named"
+        vec![("core-static".to_string(), 10, "cargo test --workspace".to_string())],
+        "exactly the unlocked `cargo test` line in `core-static` must be named"
     );
 }

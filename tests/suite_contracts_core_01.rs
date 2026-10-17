@@ -27,14 +27,24 @@ mod chg_ac01_changelog_headings_parse;
 mod ci_sandbox_ac06_sandbox_suites_run_as_a_parallel_job;
 #[path = "cishard_ac01_balanced_shards_from_recorded_weights.rs"]
 mod cishard_ac01_balanced_shards_from_recorded_weights;
+#[path = "cishard_ac01_core_partition_total_disjoint_weighted.rs"]
+mod cishard_ac01_core_partition_total_disjoint_weighted;
+#[path = "cishard_ac02_core_count_one_source_and_aggregator.rs"]
+mod cishard_ac02_core_count_one_source_and_aggregator;
 #[path = "cishard_ac02_one_shard_count_source.rs"]
 mod cishard_ac02_one_shard_count_source;
+#[path = "cishard_ac05_core_timeouts_and_cache_key.rs"]
+mod cishard_ac05_core_timeouts_and_cache_key;
+#[path = "cishard_ac06_core_predicted_shard_under_limit.rs"]
+mod cishard_ac06_core_predicted_shard_under_limit;
 #[path = "compat_ac04_ac05_admin_and_tenant_cache_fields.rs"]
 mod compat_ac04_ac05_admin_and_tenant_cache_fields;
 #[path = "creg_ac02_initialize_capabilities_from_registry.rs"]
 mod creg_ac02_initialize_capabilities_from_registry;
 #[path = "docsqa_ac10_deferral_is_justified.rs"]
 mod docsqa_ac10_deferral_is_justified;
+#[path = "edead_ac07_reason_table_cannot_drift.rs"]
+mod edead_ac07_reason_table_cannot_drift;
 #[path = "exmf_ac03_index_matches_directories.rs"]
 mod exmf_ac03_index_matches_directories;
 #[path = "kdr_ac02_python_page_tables_generated.rs"]

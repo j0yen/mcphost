@@ -650,7 +650,7 @@ impl Kind for WasmKind {
             if let Some(obj) = data.as_object_mut() {
                 obj.insert("schema_path".to_string(), json!(e.schema_path.to_string()));
             }
-            return Err(KindError::structured_with("args_invalid", args_err.message(), data));
+            return Err(KindError::structured_with(crate::errors::ARGS_INVALID, args_err.message(), data));
         }
 
         let component =

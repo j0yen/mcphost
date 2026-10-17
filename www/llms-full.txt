@@ -480,7 +480,7 @@ rendered request URL:
 ### Registry publish (P1)
 
 Off by default. Once `--registry-url` / `$MCPHOST_REGISTRY_URL` names a
-registry API base (e.g. `https://registry.modelcontextprotocol.io`):
+registry API base (the registry's own base URL):
 
 1. The operator verifies a tenant's domain namespace by whatever method
    they trust (the PRD leaves the verification METHOD itself — DNS vs
@@ -796,8 +796,10 @@ comment for the full contract, and `.github/workflows/ci.yml` for how the
 hosted CI runner grants the same capability (PRD-mcphost-ci-sandbox-coverage)
 instead of silently skipping.
 
-CI runs these suites as their own `sandbox` job, in parallel with the `gate`
-job that carries static analysis and everything else — once the suites stopped
+CI runs these suites as their own `sandbox` job, in parallel with the core jobs
+(`core-static` for static analysis, a `core` shard matrix for the rest, and a
+`gate` aggregator named "static analysis + core suites"; see "The core suites
+are sharded too" below) — once the suites stopped
 skipping, a single `cargo test --workspace` step measured 313–336 s against a
 300 s budget <!-- cite: .github/workflows/ci.yml -->. Which SUITE BINARIES go
 where is derived, not hand-listed: `scripts/ci-test-partition.sh core|sandbox`
@@ -823,6 +825,24 @@ sandbox suite with no weight, or a predicted heaviest shard above 240 s, fails
 it naming the suite and the file. Each shard reports `build wall` and `run
 wall` in the step summary; only the run wall is budgeted (warn at 240 s, fail
 above 300 s).
+
+The core suites are sharded too (PRD-mcphost-ci-core-suites-sharded): the
+required check "static analysis + core suites" was one serial job whose core
+step alone ran 13 to 16 minutes, so main's runs sat at 20 to 30 minutes against
+a 30-minute cap. `core-static` now holds the static steps (check, clippy,
+contract suites, doctests, deny, audit), `core` is a matrix of weight-balanced
+shards (`ci-test-partition.sh core-shard <n> <of>`, the same
+`scripts/ci-suite-weights.json` and heaviest-first placement as the sandbox
+shards), and the job `gate` keeps the old name as a small aggregator that fails
+unless both succeeded, so branch protection and
+`.github/required-checks.toml` did not change (the static and shard jobs carry
+the `# required-checks: exclude` marker). The core count is defined once
+(`CORE_SHARDS`, printed by `ci-test-partition.sh shards core`); `check` fails
+naming a core suite with no weight or a predicted heaviest core shard above
+420 s. Each shard prints `build wall`, `run wall` and one
+`suite=<name> measured=<s>s recorded=<s>s` line per suite to the step summary
+(warn at 540 s of run wall, fail above 720 s; slow hosted runners on 10-17 measured `suite_core_08` at 559 s against 375 s recorded), and a failing test is named in a
+`core shard N/M FAILED <test>` line so `gh run view --log-failed` shows it.
 
 ### Adding a test
 

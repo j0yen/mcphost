@@ -85,7 +85,7 @@ impl EndUser {
 
 fn assertion_invalid(reason: &str) -> AppError {
     AppError::Structured {
-        code: "end_user_assertion_invalid",
+        code: END_USER_ASSERTION_INVALID,
         message: format!("end_user_assertion is invalid: {reason}"),
         data: json!({"reason": reason}),
     }
@@ -196,7 +196,7 @@ pub fn resolve_end_user(args: &Value, call_end_user: Option<&EndUser>) -> Result
         None | Some(Value::Null) => Ok((String::new(), false)),
         Some(Value::String(s)) if s == "self" => {
             let eu = call_end_user.ok_or_else(|| AppError::Structured {
-                code: "end_user_required",
+                code: END_USER_REQUIRED,
                 message: "end_user: \"self\" requires a verified end-user identity on this call"
                     .to_string(),
                 data: json!({}),
@@ -206,7 +206,7 @@ pub fn resolve_end_user(args: &Value, call_end_user: Option<&EndUser>) -> Result
         Some(Value::String(s)) => {
             if call_end_user.is_some() {
                 return Err(AppError::Structured {
-                    code: "end_user_explicit_forbidden",
+                    code: END_USER_EXPLICIT_FORBIDDEN,
                     message: "an explicit end_user subject is only allowed when the call carries \
                         no end-user identity of its own"
                         .to_string(),
@@ -249,7 +249,7 @@ pub async fn check_end_user_quota(state: &AppState, tenant: &Tenant, end_user_no
     let used = state.db.count_distinct_end_users_since(tenant.id, since).await?;
     if used >= plan.end_users_max {
         return Err(AppError::Structured {
-            code: "quota_end_users",
+            code: QUOTA_END_USERS,
             message: format!(
                 "distinct end users writing state in the trailing 30 days: {used}, plan maximum {}",
                 plan.end_users_max
@@ -258,6 +258,30 @@ pub async fn check_end_user_quota(state: &AppState, tenant: &Tenant, end_user_no
         });
     }
     Ok(())
+}
+
+crate::err_code! {
+    pub END_USER_ASSERTION_INVALID,
+    code: "end_user_assertion_invalid", family: Auth, class: AgentFault, retryable: false,
+    remedy: "Send a fresh end_user_assertion; data.reason names what was wrong.",
+}
+
+crate::err_code! {
+    pub END_USER_EXPLICIT_FORBIDDEN,
+    code: "end_user_explicit_forbidden", family: Auth, class: AgentFault, retryable: false,
+    remedy: "Drop the explicit end_user subject; this call already carries an end-user identity.",
+}
+
+crate::err_code! {
+    pub END_USER_REQUIRED,
+    code: "end_user_required", family: Auth, class: AgentFault, retryable: false,
+    remedy: "Connect with a verified end-user identity, or pass an explicit end_user subject.",
+}
+
+crate::err_code! {
+    pub QUOTA_END_USERS,
+    code: "quota_end_users", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Revoke unused end users or move to a plan with a higher end_users_max.",
 }
 
 /// Not directly exercised by any test here -- kept only so

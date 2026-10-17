@@ -551,7 +551,7 @@ fn annotated_params(line: &str, is_ident: &dyn Fn(&str) -> bool) -> bool {
 
 fn typescript_error(line: usize, text: &str) -> KindError {
     KindError::structured_with(
-        "typescript_not_supported",
+        TYPESCRIPT_NOT_SUPPORTED,
         format!("source: line {line} uses TypeScript syntax; the js kind runs plain JavaScript (ES2020)"),
         json!({
             "field": "source",
@@ -650,7 +650,7 @@ async fn engine_check(scratch_root: &Path, source: &str, isolation: IsolationMec
             }
         }
     }
-    Err(KindError::structured_with("invalid_spec", text, data))
+    Err(KindError::structured_with(crate::errors::INVALID_SPEC, text, data))
 }
 
 // ---- envelope -> result / error ---------------------------------------------------
@@ -983,7 +983,7 @@ impl Kind for JsKind {
             .map_err(|e| KindError::InvalidSpec(format!("args_schema: {e}")))?;
         if let Err(e) = validator.validate(&args) {
             let args_err = super::describe_args_error(&e);
-            return Err(KindError::structured_with("args_invalid", args_err.message(), args_err.data()));
+            return Err(KindError::structured_with(crate::errors::ARGS_INVALID, args_err.message(), args_err.data()));
         }
 
         let Ok(_permit) = self.semaphore.clone().try_acquire_owned() else {
@@ -1028,6 +1028,13 @@ impl Kind for JsKind {
         }
     }
 }
+
+crate::err_code! {
+    pub TYPESCRIPT_NOT_SUPPORTED,
+    code: "typescript_not_supported", family: Spec, class: AgentFault, retryable: false,
+    remedy: "Strip the types and publish plain JavaScript (ES2020); data.line is the first line with TypeScript syntax.",
+}
+
 
 #[cfg(test)]
 mod tests {

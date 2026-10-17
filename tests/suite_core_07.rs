@@ -533,8 +533,12 @@ mod ci_sandbox_ac01_workflow_executes_sandbox_suites;
 mod ci_sandbox_ac03_incapable_in_ci_skips_and_fails_job;
 #[path = "ci_sandbox_ac04_incapable_outside_ci_fails_loudly.rs"]
 mod ci_sandbox_ac04_incapable_outside_ci_fails_loudly;
+#[path = "cishard_ac03_core_required_checks_toml_unchanged.rs"]
+mod cishard_ac03_core_required_checks_toml_unchanged;
 #[path = "cishard_ac03_run_wall_budget_and_readout.rs"]
 mod cishard_ac03_run_wall_budget_and_readout;
+#[path = "cishard_ac04_core_shard_report_names_failed_test.rs"]
+mod cishard_ac04_core_shard_report_names_failed_test;
 #[path = "classify_ac9_is_within_proptest.rs"]
 mod classify_ac9_is_within_proptest;
 #[path = "clink_ac01_for_url_pinned_fixtures.rs"]
@@ -893,8 +897,6 @@ mod edead_ac04_replay_dead_letter;
 mod edead_ac05_ring_and_plan_ceiling;
 #[path = "edead_ac06_event_in_chain_context.rs"]
 mod edead_ac06_event_in_chain_context;
-#[path = "edead_ac07_reason_table_cannot_drift.rs"]
-mod edead_ac07_reason_table_cannot_drift;
 #[path = "edp_ac01_pointers_resolve_against_headings.rs"]
 mod edp_ac01_pointers_resolve_against_headings;
 #[path = "edp_ac02_no_literal_anchors_outside_doc_anchors.rs"]
@@ -985,6 +987,18 @@ mod errjson_ac02_error_data_carries_the_registry_row;
 mod errjson_ac03_errors_json_route;
 #[path = "errjson_ac04_host_errors_tool.rs"]
 mod errjson_ac04_host_errors_tool;
+#[path = "errreg_ac01_err_code_declares_and_registers.rs"]
+mod errreg_ac01_err_code_declares_and_registers;
+#[path = "errreg_ac02_registry_surfaces_byte_identical_snapshot.rs"]
+mod errreg_ac02_registry_surfaces_byte_identical_snapshot;
+#[path = "errreg_ac03_scanner_fails_bare_literal_names_site.rs"]
+mod errreg_ac03_scanner_fails_bare_literal_names_site;
+#[path = "errreg_ac04_scanner_fails_duplicate_and_format_codes.rs"]
+mod errreg_ac04_scanner_fails_duplicate_and_format_codes;
+#[path = "errreg_ac05_hand_table_empty_and_backstop_passes.rs"]
+mod errreg_ac05_hand_table_empty_and_backstop_passes;
+#[path = "errreg_ac06_five_10_17_codes_declared_at_emit_site.rs"]
+mod errreg_ac06_five_10_17_codes_declared_at_emit_site;
 #[path = "evkr_ac01_no_second_spelling.rs"]
 mod evkr_ac01_no_second_spelling;
 #[path = "evkr_ac02_renderings_equal_enum.rs"]

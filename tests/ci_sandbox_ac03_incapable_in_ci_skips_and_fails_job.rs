@@ -74,8 +74,16 @@ fn the_workflow_greps_for_the_marker_the_rust_side_actually_prints() {
     // capability reasons; a job like `sandbox-required` that merely gates on
     // another job's aggregate matrix result (see AC6's shard split) has no
     // per-test skip to detect and is exempt from this invariant.
+    // `core-static` (PRD-mcphost-ci-core-suites-sharded) only runs doctests and
+    // the contract suites through scripts/pin-tests.sh -- no partitioned
+    // suite whose capability-skips a log assertion could count -- so a job
+    // whose only `cargo test` is `--doc` is exempt as well.
     for (name, body) in support::jobs(&workflow) {
-        if !body.contains("cargo test") {
+        if !body
+            .replace("cargo test --locked --doc", "")
+            .replace("cargo test --doc", "")
+            .contains("cargo test")
+        {
             continue;
         }
         assert!(

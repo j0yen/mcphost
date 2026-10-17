@@ -27,7 +27,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-FILES=(README.md www/index.html www/llms.txt server.json)
+FILES=(README.md www/index.html www/llms.txt registry/server.json)
 status=0
 
 for f in "${FILES[@]}"; do

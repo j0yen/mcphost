@@ -188,7 +188,7 @@ impl Cursor {
 /// `cursor_invalid {reason}` with the remedy in `data`.
 pub fn cursor_invalid(reason: &'static str) -> AppError {
     AppError::Structured {
-        code: "cursor_invalid",
+        code: CURSOR_INVALID,
         message: format!("cursor is not valid ({reason})"),
         data: json!({"reason": reason, "remedy": CURSOR_REMEDY}),
     }
@@ -783,7 +783,7 @@ pub fn nearest_field(field: &str, valid: &[&str]) -> Option<String> {
 /// `field_unknown {field, nearest, valid}`.
 pub fn field_unknown(verb: &str, field: &str, valid: &[&str]) -> AppError {
     AppError::Structured {
-        code: "field_unknown",
+        code: FIELD_UNKNOWN,
         message: format!("unknown field '{field}' for {verb}"),
         data: json!({"field": field, "nearest": nearest_field(field, valid), "valid": valid}),
     }
@@ -876,3 +876,16 @@ pub fn drift_violations(contract_tools: &[Value], recorded: &[(String, Value)]) 
 pub fn has_top_level_array(response: &Value) -> bool {
     response.as_object().is_some_and(|o| o.values().any(Value::is_array))
 }
+
+crate::err_code! {
+    pub CURSOR_INVALID,
+    code: "cursor_invalid", family: Args, class: AgentFault, retryable: false,
+    remedy: crate::paged::CURSOR_REMEDY,
+}
+
+crate::err_code! {
+    pub FIELD_UNKNOWN,
+    code: "field_unknown", family: Args, class: AgentFault, retryable: false,
+    remedy: "Use a field from data.valid; data.nearest is the closest match.",
+}
+

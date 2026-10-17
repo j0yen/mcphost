@@ -17,8 +17,9 @@ producer = "flake-audit"
 workflow = "ci.yml"
 jobs = [
   "static analysis + core suites",
-  "sandbox suites (user namespaces, shard 1/2)",
-  "sandbox suites (user namespaces, shard 2/2)",
+  "sandbox suites (user namespaces, shard 1/3)",
+  "sandbox suites (user namespaces, shard 2/3)",
+  "sandbox suites (user namespaces, shard 3/3)",
 ]
 
 [[ci_covers]]

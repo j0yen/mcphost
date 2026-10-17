@@ -147,9 +147,9 @@ pub async fn resolve(
     if !crate::oauth::scope_satisfied(token_scope, &row.scopes) {
         let scope = crate::oauth::union_scope_challenge(state, owner.id, token_scope, &row.scopes).await;
         return Err(always(AppError::Structured {
-            code: "insufficient_scope",
+            code: crate::errors::INSUFFICIENT_SCOPE,
             message: format!("'{local_name}' requires a scope this token does not carry"),
-            data: json!({"error_code": "insufficient_scope", "tool": local_name, "scope": scope}),
+            data: json!({"error_code": crate::errors::INSUFFICIENT_SCOPE, "tool": local_name, "scope": scope}),
         }));
     }
     let (kind_name, spec): (String, Value) = match version {
@@ -203,7 +203,7 @@ fn args_schema<'a>(ctx: &'a Ctx<'a>) -> CheckFuture<'a> {
             // `args_invalid`, phase `args_coercion` (see `describe_args_error`).
             let args_err = describe_args_error(&e);
             return Err(AppError::Structured {
-                code: "args_invalid",
+                code: crate::errors::ARGS_INVALID,
                 message: args_err.message(),
                 data: args_err.data(),
             });

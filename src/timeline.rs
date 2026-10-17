@@ -100,7 +100,7 @@ pub async fn job_timeline(state: &AppState, tenant: &Tenant, args: &Value) -> Re
         .map(str::to_string)
         .ok_or_else(|| AppError::InvalidArgs("missing required argument 'run_id'".to_string()))?;
     let run = state.db.get_run(run_id.clone(), tenant.id).await?.ok_or_else(|| AppError::Structured {
-        code: "run_not_found",
+        code: crate::runs::RUN_NOT_FOUND,
         message: format!("no run '{run_id}' for this tenant"),
         data: json!({"run_id": run_id}),
     })?;
