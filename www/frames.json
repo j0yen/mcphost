@@ -38,6 +38,10 @@
           "card": "{0,1}"
         },
         {
+          "method": "notifications/prompts/list_changed",
+          "card": "{0,1}"
+        },
+        {
           "method": "result",
           "card": "{1}"
         }

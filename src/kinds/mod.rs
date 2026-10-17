@@ -2347,6 +2347,14 @@ pub trait Kind: Send + Sync {
     /// only ever used as a hint (e.g. in error messages).
     fn describe(&self, spec: &Value) -> ToolDescriptor;
 
+    /// PRD-mcphost-prompts-from-published-tools R2: a prompt-style kind
+    /// renders its template from `args` here -- the dry-run path behind
+    /// `prompts/get`, which never calls the provider and is never metered.
+    /// `None` (the default) means this kind is not a prompt kind.
+    fn render_prompt(&self, _spec: &Value, _args: &serde_json::Map<String, Value>) -> Option<Result<String, KindError>> {
+        None
+    }
+
     /// Names of `secret.<name>` references this `spec` would need at call
     /// time, so `host.tool_publish` can reject an unknown secret before the
     /// tool is ever called (requirement 3 / AC3: `secret_missing` naming

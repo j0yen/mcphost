@@ -32,6 +32,9 @@ const TOUCHED: &[&str] = &[
     "docs/kinds/js.md",
     "www/llms.txt",
     "docs/protocol/capabilities.md",
+    // PRD-mcphost-prompts-from-published-tools req 5: the script also checks
+    // docs/protocol/prompts.md.
+    "docs/protocol/prompts.md",
     "plugin/skills/mcphost/SKILL.md",
     "src/oauth.rs",
     // PRD-mcphost-oauth-first-entry-url: the script also checks that every

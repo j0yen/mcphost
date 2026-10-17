@@ -10420,6 +10420,89 @@ impl McpHostHandler {
     }
 }
 
+impl McpHostHandler {
+    /// The auth a listing request (`tools/list`, `prompts/list`) is served
+    /// under: path secret, then header, then the session's bound tenant,
+    /// refusing a tenant whose namespace is not the `/t/{ns}/mcp` path's.
+    async fn resolve_listing_auth(
+        &self,
+        parts: &http::request::Parts,
+    ) -> Result<(Auth, Option<crate::subkeys::SubKey>), McpError> {
+        // PRD-mcphost-url-bound-tenants requirement 1: same highest-
+        // precedence path-secret step `call_tool` uses, so a `tools/list` on
+        // a `/u/{secret}/mcp` connection sees that tenant's own tools too.
+        let mut sub_key: Option<crate::subkeys::SubKey> = None;
+        let mut auth = match resolve_path_secret_auth(&self.state, parts, "")
+            .await
+            .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
+        {
+            Some(a) => a,
+            None => {
+                resolve_auth(&self.state, parts, &mut sub_key, "")
+                    .await
+                    .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
+            }
+        };
+        // PRD-mcphost-one-next-tool requirement 2/3 (AC2, AC3): `tools/list`
+        // carries no `tenant_key` argument of its own, but a session this
+        // PRD's starter set would otherwise narrow may already be bound to a
+        // tenant (`signup`/`host.redeem` on this same session -- see
+        // `bind_session_to_created_tenant`) -- that session must keep seeing
+        // the full listing with no reconnect, same precedence `call_tool`
+        // already gives the binding (only consulted when the header found
+        // nothing at all).
+        if matches!(auth, Auth::Anonymous)
+            && let Some(session_id) = session_id(parts)
+            && let Some(bound) = resolve_session_binding(&self.state, &session_id, "")
+                .await
+                .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
+        {
+            auth = bound;
+        }
+        // PRD-mcphost-tenant-resource-metadata requirement 1 (AC3): a real
+        // tenant whose namespace doesn't match a `/t/{ns}/mcp` path's own
+        // `<ns>` never gets even a tool listing for it.
+        if let Auth::Tenant(tenant, _) = &auth
+            && let Some(ns) = tenant_path_namespace(parts)
+            && tenant.namespace != ns
+        {
+            return Err(AppError::WrongTenant.into_error_data_at(Some(&self.state.public_url)));
+        }
+        Ok((auth, sub_key))
+    }
+
+    /// The tenant's prompt-kind tools as `(prompt, spec, kind)` rows, under
+    /// the exact scope filter `list_tools` applies.
+    async fn tenant_prompt_rows(
+        &self,
+        tenant: &Tenant,
+        oauth_caller: &Option<crate::oauth::OauthCaller>,
+        sub_key: &Option<crate::subkeys::SubKey>,
+    ) -> Result<Vec<ToolRow>, McpError> {
+        if self.state.kinds.get(crate::prompts::PROMPT_KIND).is_none() {
+            return Ok(Vec::new());
+        }
+        let rows = self
+            .state
+            .db
+            .list_tools(tenant.id)
+            .await
+            .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
+        let token_scope = oauth_caller.as_ref().and_then(|o| o.scope.as_deref());
+        Ok(rows
+            .into_iter()
+            .filter(|row| row.kind == crate::prompts::PROMPT_KIND)
+            .filter(|row| crate::oauth::scope_satisfied(token_scope, &row.scopes))
+            .filter(|row| {
+                sub_key.as_ref().is_none_or(|sk| {
+                    let full = format!("{}.{}", tenant.namespace, row.name);
+                    sk.permits(&tenant.namespace, &full) && sk.scope_ok(&full)
+                })
+            })
+            .collect())
+    }
+}
+
 impl ServerHandler for McpHostHandler {
     /// PRD-mcphost-implicit-signup requirement 5: `instructions` used to
     /// claim a key-less `host.*` call fails `tenant_key_missing` outright.
@@ -10558,17 +10641,68 @@ impl ServerHandler for McpHostHandler {
     async fn list_prompts(
         &self,
         _request: Option<PaginatedRequestParams>,
-        _ctx: RequestContext<RoleServer>,
+        ctx: RequestContext<RoleServer>,
     ) -> Result<rmcp::model::ListPromptsResult, McpError> {
-        Err(self.capability_unsupported("prompts/list"))
+        let parts = get_parts(&ctx)?;
+        let (auth, sub_key) = self.resolve_listing_auth(parts).await?;
+        // Recipes for everyone; a keyed tenant's prompt-kind tools too.
+        let Auth::Tenant(tenant, oauth_caller) = &auth else {
+            return Ok(rmcp::model::ListPromptsResult::with_all_items(crate::prompts::recipe_prompts()));
+        };
+        let rows = self.tenant_prompt_rows(tenant, oauth_caller, &sub_key).await?;
+        let taken: Vec<String> = rows.iter().map(|r| r.name.clone()).collect();
+        let mut prompts = crate::prompts::recipe_prompts_avoiding(&taken);
+        for row in &rows {
+            let Some(kind) = self.state.kinds.get(&row.kind) else { continue };
+            let descriptor = kind.describe(&row.spec);
+            let args = crate::prompts::prompt_arguments_from_schema(&descriptor.input_schema);
+            prompts.push(rmcp::model::Prompt::new(row.name.clone(), Some(descriptor.description), Some(args)));
+        }
+        Ok(rmcp::model::ListPromptsResult::with_all_items(prompts))
     }
 
     async fn get_prompt(
         &self,
-        _request: rmcp::model::GetPromptRequestParams,
-        _ctx: RequestContext<RoleServer>,
+        request: rmcp::model::GetPromptRequestParams,
+        ctx: RequestContext<RoleServer>,
     ) -> Result<rmcp::model::GetPromptResponse, McpError> {
-        Err(self.capability_unsupported("prompts/get"))
+        let parts = get_parts(&ctx)?;
+        let (auth, sub_key) = self.resolve_listing_auth(parts).await?;
+        let args = request.arguments.unwrap_or_default();
+        let mut taken: Vec<String> = Vec::new();
+        if let Auth::Tenant(tenant, oauth_caller) = &auth {
+            let rows = self.tenant_prompt_rows(tenant, oauth_caller, &sub_key).await?;
+            taken = rows.iter().map(|r| r.name.clone()).collect();
+            if let Some(row) = rows.iter().find(|r| r.name == request.name)
+                && let Some(kind) = self.state.kinds.get(&row.kind)
+            {
+                let descriptor = kind.describe(&row.spec);
+                let required = crate::prompts::prompt_arguments_from_schema(&descriptor.input_schema);
+                for a in required.iter().filter(|a| a.required == Some(true)) {
+                    if !matches!(args.get(&a.name), Some(v) if !v.is_null()) {
+                        return Err(crate::prompts::PromptError::MissingArgument {
+                            prompt: request.name.clone(),
+                            argument: a.name.clone(),
+                        }
+                        .into_mcp());
+                    }
+                }
+                let rendered = kind
+                    .render_prompt(&row.spec, &args)
+                    .unwrap_or_else(|| Err(KindError::InvalidSpec(format!("kind `{}` cannot render a prompt", row.kind))))
+                    .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+                let result = rmcp::model::GetPromptResult::new(vec![rmcp::model::PromptMessage::new_text(
+                    rmcp::model::Role::User,
+                    rendered,
+                )])
+                .with_description(descriptor.description);
+                return Ok(result.into());
+            }
+        }
+        let name = crate::prompts::recipe_name_for(&request.name, &taken);
+        crate::prompts::render_recipe(name, &args)
+            .map(rmcp::model::GetPromptResponse::from)
+            .map_err(crate::prompts::PromptError::into_mcp)
     }
 
     async fn complete(
@@ -10594,46 +10728,7 @@ impl ServerHandler for McpHostHandler {
         ctx: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
         let parts = get_parts(&ctx)?;
-        // PRD-mcphost-url-bound-tenants requirement 1: same highest-
-        // precedence path-secret step `call_tool` uses, so a `tools/list` on
-        // a `/u/{secret}/mcp` connection sees that tenant's own tools too.
-        let mut sub_key: Option<crate::subkeys::SubKey> = None;
-        let mut auth = match resolve_path_secret_auth(&self.state, parts, "")
-            .await
-            .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
-        {
-            Some(a) => a,
-            None => {
-                resolve_auth(&self.state, parts, &mut sub_key, "")
-                    .await
-                    .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
-            }
-        };
-        // PRD-mcphost-one-next-tool requirement 2/3 (AC2, AC3): `tools/list`
-        // carries no `tenant_key` argument of its own, but a session this
-        // PRD's starter set would otherwise narrow may already be bound to a
-        // tenant (`signup`/`host.redeem` on this same session -- see
-        // `bind_session_to_created_tenant`) -- that session must keep seeing
-        // the full listing with no reconnect, same precedence `call_tool`
-        // already gives the binding (only consulted when the header found
-        // nothing at all).
-        if matches!(auth, Auth::Anonymous)
-            && let Some(session_id) = session_id(parts)
-            && let Some(bound) = resolve_session_binding(&self.state, &session_id, "")
-                .await
-                .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
-        {
-            auth = bound;
-        }
-        // PRD-mcphost-tenant-resource-metadata requirement 1 (AC3): a real
-        // tenant whose namespace doesn't match a `/t/{ns}/mcp` path's own
-        // `<ns>` never gets even a tool listing for it.
-        if let Auth::Tenant(tenant, _) = &auth
-            && let Some(ns) = tenant_path_namespace(parts)
-            && tenant.namespace != ns
-        {
-            return Err(AppError::WrongTenant.into_error_data_at(Some(&self.state.public_url)));
-        }
+        let (auth, sub_key) = self.resolve_listing_auth(parts).await?;
 
         // PRD-mcphost-protocol-compat requirement 5: every branch resolves
         // to a (tools, ttl_ms) pair here, and the cache fields are applied
@@ -11709,6 +11804,20 @@ impl McpHostHandler {
                 // `alias_canonical` is `Some` iff `name` is a registered
                 // alias of it.
                 let dispatch_name = alias_canonical.unwrap_or(name);
+                // PRD-mcphost-prompts-from-published-tools R4: the kind a
+                // publish replaces / a remove deletes, read before the call.
+                let kind_before = match (dispatch_name, args.get("name").and_then(Value::as_str)) {
+                    ("host.tool.publish" | "host.tool.remove", Some(tool)) => self
+                        .state
+                        .db
+                        .get_tool(tenant.id, tool.to_string())
+                        .await
+                        .ok()
+                        .flatten()
+                        .map(|row| row.kind),
+                    _ => None,
+                };
+                let call_args = matches!(dispatch_name, "host.tool.publish" | "host.tool.remove").then(|| args.clone());
                 let result = self
                     .dispatch_tenant_tool(
                         tenant,
@@ -11733,6 +11842,17 @@ impl McpHostHandler {
                     .await
                 {
                     tracing::warn!(tenant = %tenant.namespace, error = %e, "notify_tool_list_changed failed");
+                }
+                if let (Ok(value), Some(call_args)) = (&result, &call_args)
+                    && crate::prompts::changes_prompt_list(dispatch_name, call_args, kind_before.as_deref(), value)
+                    && let Err(e) = crate::protocol::frames::emit(
+                        &ctx.peer,
+                        crate::protocol::frames::FrameKind::PromptsListChanged,
+                        crate::protocol::frames::request_type_of("tools/call", true),
+                    )
+                    .await
+                {
+                    tracing::warn!(tenant = %tenant.namespace, error = %e, "notify_prompt_list_changed failed");
                 }
                 result
             }

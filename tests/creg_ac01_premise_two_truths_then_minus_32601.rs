@@ -2,7 +2,7 @@
 //! 0.107.0-shaped server (no registry, rmcp defaults) advertises only
 //! `tools` yet answers `resources/list`, `prompts/list` and
 //! `resources/templates/list` with a `result`. With the registry wired the
-//! same three answer `-32601` with `data.capability` naming the row.
+//! same unimplemented rows answer `-32601` with `data.capability` naming the row.
 
 use crate::common;
 use common::{McpClient, TestServer};
@@ -66,8 +66,10 @@ async fn premise_holds_on_a_stock_server_and_the_registry_closes_it() {
     let client = McpClient::new(&server.base_url);
     let init = client.initialize().await;
     let caps = &init["result"]["capabilities"];
-    assert!(caps.get("resources").is_none() && caps.get("prompts").is_none(), "{caps}");
-    for (method, row) in METHODS {
+    assert!(caps.get("resources").is_none(), "{caps}");
+    // `prompts` is implemented since PRD-mcphost-prompts-from-published-tools,
+    // so only the still-unimplemented rows answer -32601.
+    for (method, row) in METHODS.into_iter().filter(|(_, row)| *row != "prompts") {
         let reply = client.rpc(method, json!({})).await;
         assert_eq!(reply["error"]["code"], -32601, "{method}: {reply}");
         assert_eq!(reply["error"]["data"]["capability"], row, "{method}: {reply}");

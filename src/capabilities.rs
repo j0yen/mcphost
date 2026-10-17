@@ -61,8 +61,8 @@ pub const CAPABILITIES: &[Capability] = &[
     Capability {
         name: "prompts",
         methods: &["prompts/list", "prompts/get"],
-        implemented: false,
-        list_changed: false,
+        implemented: true,
+        list_changed: true,
         subscribe: false,
         ceiling: None,
         probe: "prompts",
@@ -238,9 +238,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tools_row_renders_tools_with_list_changed() {
+    fn implemented_rows_render_tools_and_prompts_with_list_changed() {
         let v = serde_json::to_value(server_capabilities()).unwrap();
-        assert_eq!(v, json!({"tools": {"listChanged": true}}));
+        assert_eq!(v, json!({"tools": {"listChanged": true}, "prompts": {"listChanged": true}}));
     }
 
     #[test]

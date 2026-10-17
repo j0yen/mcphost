@@ -29,6 +29,8 @@ mod gdrain;
 mod host;
 #[path = "support/oauth.rs"]
 mod oauth;
+#[path = "support/promptkind.rs"]
+mod promptkind;
 #[path = "support/serve.rs"]
 mod serve;
 #[path = "support/uptime_probes.rs"]
@@ -348,6 +350,8 @@ mod melc_ac05_decline_is_returned_and_silence_times_out;
 mod melc_ac06_job_run_has_no_client_and_records_the_code;
 #[path = "melc_ac07_fourth_elicit_in_one_call_is_refused.rs"]
 mod melc_ac07_fourth_elicit_in_one_call_is_refused;
+#[path = "mprm_ac05_list_changed_on_prompt_publish_and_remove.rs"]
+mod mprm_ac05_list_changed_on_prompt_publish_and_remove;
 #[path = "mrefub_ac03_status_json_last_refusal.rs"]
 mod mrefub_ac03_status_json_last_refusal;
 #[path = "plainenv_ac01_env_reaches_process.rs"]
