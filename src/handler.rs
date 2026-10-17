@@ -1958,6 +1958,17 @@ fn host_tools_part_02() -> Vec<Tool> {
                         "description": "Default false. When true, any tenant this tool is shared \
                             with may call host.tool_spec_shared to read its (redacted) spec.",
                     },
+                    "scopes": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": crate::sharing::ShareScope::names()},
+                        "description": "What the grantee may do: call, read_source, fork. Default \
+                            [\"call\"] ([\"call\",\"read_source\"] with expose_spec: true). url \
+                            shares allow only call.",
+                    },
+                    "rate_per_hour_per_caller": {
+                        "type": "integer",
+                        "description": "Optional cap (1..10000) on calls per hour from any one grantee.",
+                    },
                 }),
                 &["name", "visibility"],
             ),
@@ -1978,6 +1989,21 @@ fn host_tools_part_02() -> Vec<Tool> {
                     },
                 }),
                 &["tool"],
+            ),
+        ),
+        // PRD-mcphost-scoped-tool-share R6: copy a fork-scoped shared tool.
+        Tool::new(
+            "host.tool.fork",
+            "Copy a tool shared with you (scope fork) into your own tenant as a private tool you \
+             can edit. The copy records forked_from and counts toward tools_max; the owner's env \
+             values are not copied.",
+            host_schema(
+                json!({
+                    "owner": {"type": "string", "description": "The owner's namespace, e.g. t_ab12."},
+                    "tool": {"type": "string", "description": "The owner's local tool name."},
+                    "as": {"type": "string", "description": "Name for your private copy."},
+                }),
+                &["owner", "tool", "as"],
             ),
         ),
         Tool::new(
@@ -7660,6 +7686,7 @@ impl McpHostHandler {
             "host.tool.share" => self.tool_share_tested(tenant, args).await,
             "host.tool.spec_shared" => self.tool_spec_shared(tenant, args).await,
             "host.tool.list_shared" => crate::sharing::list_shared(&self.state, tenant, &args).await,
+            "host.tool.fork" => crate::sharing::tool_fork(&self.state, tenant, &args).await,
             "host.tool.unshare" => crate::sharing::tool_unshare(&self.state, tenant, &args).await,
             "host.share.caller_limit" => {
                 crate::sharing::caller_limit(&self.state, tenant, &args).await
@@ -7672,7 +7699,7 @@ impl McpHostHandler {
             "host.group.remove" => crate::sharing::group_remove(&self.state, tenant, &args).await,
             "host.group.list" => crate::sharing::group_list(&self.state, tenant).await,
             "host.catalog.search" => crate::sharing::catalog_search(&self.state, &args).await,
-            "host.catalog.get" => crate::sharing::catalog_get(&self.state, &args).await,
+            "host.catalog.get" => crate::sharing::catalog_get(&self.state, Some(tenant), &args).await,
             "host.invite.create" => crate::invites::create(&self.state, tenant, &args).await,
             "host.invite.list" => crate::invites::list(&self.state, tenant).await,
             "host.invite.revoke" => crate::invites::revoke(&self.state, tenant, &args).await,
@@ -10925,7 +10952,7 @@ impl McpHostHandler {
             let (owner, caller, local): (Tenant, Option<&Tenant>, &str) = match name.split_once('.') {
                 Some((ns, local)) if ns == tenant.namespace => (tenant.clone(), None, local),
                 Some((ns, local)) => {
-                    match crate::sharing::resolve_shared_tool(&self.state, tenant, ns, local).await {
+                    match crate::sharing::resolve_shared_tool(&self.state, tenant, ns, local, crate::sharing::ShareScope::Call).await {
                         Ok((owner, _row)) => (owner, Some(tenant), local),
                         Err(err) => return self.dry_run_unresolved(name, &call_args, err),
                     }
@@ -11135,7 +11162,7 @@ impl McpHostHandler {
         auth_method: &str,
     ) -> Result<Value, AppError> {
         let (owner, _row) =
-            crate::sharing::resolve_shared_tool(&self.state, caller, owner_ns, local_name).await?;
+            crate::sharing::resolve_shared_tool(&self.state, caller, owner_ns, local_name, crate::sharing::ShareScope::Call).await?;
 
         self.call_published_tool(
             &owner,
@@ -11225,6 +11252,18 @@ impl McpHostHandler {
         }
         if !row.expose_spec {
             return Err(AppError::spec_not_exposed(&owner_ns, &local_name));
+        }
+        // PRD-mcphost-scoped-tool-share R3: the spec readback needs the
+        // `read_source` scope (`fork` implies it).
+        let granted = self
+            .state
+            .db
+            .get_share_meta(owner_id, local_name.clone())
+            .await?
+            .and_then(|m| m.scopes)
+            .unwrap_or_else(crate::sharing::ShareScope::legacy_default);
+        if !crate::sharing::ShareScope::ReadSource.granted_in(&granted) {
+            return Err(crate::sharing::scope_missing(crate::sharing::ShareScope::ReadSource, &granted));
         }
 
         let started = Instant::now();
@@ -11820,11 +11859,13 @@ impl ServerHandler for McpHostHandler {
                         tools.push(published);
                     }
                 }
-                // PRD-mcphost-shared-tools-in-grantee-list R2: group-shared
-                // tools the caller may call, listed as `<owner ns>.<name>`
-                // through the same accessor the call path uses. Public
-                // shares are never injected. A sub-key's `permits` filter
-                // below applies to them like any other entry (R5).
+                // PRD-mcphost-shared-tools-in-grantee-list R2 + PRD-mcphost-
+                // scoped-tool-share R7: group-shared tools the caller may call,
+                // listed as `<owner ns>.<name>` through the same accessor the
+                // call path uses, each carrying `_meta.share_scopes` (and the
+                // per-caller hourly rate). Public shares are never injected. A
+                // sub-key's `permits` filter below applies to them like any
+                // other entry (R5).
                 let shared = crate::sharing::visible_shared_tools(&self.state, &tenant)
                     .await
                     .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
@@ -11833,11 +11874,26 @@ impl ServerHandler for McpHostHandler {
                         continue;
                     }
                     let Some(kind) = self.state.kinds.get(&row.kind) else { continue };
-                    let descriptor = kind.describe(&row.spec);
+                    let share = self
+                        .state
+                        .db
+                        .get_share_meta(owner.id, row.name.clone())
+                        .await
+                        .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
+                        .unwrap_or_default();
+                    let mut descriptor = kind.describe(&row.spec);
+                    crate::kinds::apply_spec_description(kind.as_ref(), &row.spec, &mut descriptor);
                     let mut meta = rmcp::model::MetaObject::new();
                     meta.0.insert("kind".to_string(), json!(row.kind));
                     meta.0.insert("shared_by".to_string(), json!(owner.namespace));
                     meta.0.insert("shared_visibility".to_string(), json!("group"));
+                    meta.0.insert(
+                        "share_scopes".to_string(),
+                        json!(share.scopes.unwrap_or_else(crate::sharing::ShareScope::legacy_default)),
+                    );
+                    if let Some(rate) = share.rate_per_hour {
+                        meta.0.insert("share_rate_per_hour".to_string(), json!(rate));
+                    }
                     let mut shared_tool = Tool::new(
                         format!("{}.{}", owner.namespace, row.name),
                         descriptor.description,

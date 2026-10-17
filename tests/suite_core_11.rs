@@ -28,6 +28,22 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "statusfeed_ac02_exec_disabled_degrades.rs"]
+mod statusfeed_ac02_exec_disabled_degrades;
+#[path = "statusfeed_ac03_major_incident_outage.rs"]
+mod statusfeed_ac03_major_incident_outage;
+#[path = "statusfeed_ac04_incident_timeline_and_close.rs"]
+mod statusfeed_ac04_incident_timeline_and_close;
+#[path = "statusfeed_ac05_daily_rollup_uptime.rs"]
+mod statusfeed_ac05_daily_rollup_uptime;
+#[path = "statusfeed_ac06_external_sample_source_preserved.rs"]
+mod statusfeed_ac06_external_sample_source_preserved;
+#[path = "statusfeed_ac07_prune_keeps_rollup.rs"]
+mod statusfeed_ac07_prune_keeps_rollup;
+#[path = "statusfeed_ac08_status_html_renders.rs"]
+mod statusfeed_ac08_status_html_renders;
+#[path = "statusfeed_ac10_component_days_query.rs"]
+mod statusfeed_ac10_component_days_query;
 #[path = "stgl_ac01_grantee_list_names_group_share.rs"]
 mod stgl_ac01_grantee_list_names_group_share;
 #[path = "stgl_ac02_one_accessor_for_list_and_call.rs"]

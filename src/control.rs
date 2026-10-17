@@ -2418,6 +2418,7 @@ pub async fn tool_list(state: &AppState, tenant: &Tenant, args: &Value) -> Resul
         .db
         .current_tool_lock_advisory_counts_for_tenant(tenant.id)
         .await?;
+    let forked = state.db.forked_from_map(tenant.id).await?;
     let tools: Vec<Value> = rows
         .into_iter()
         .map(|row| {
@@ -2463,6 +2464,10 @@ pub async fn tool_list(state: &AppState, tenant: &Tenant, args: &Value) -> Resul
                 // PRD-mcphost-tool-scopes-and-consent requirement 1: empty
                 // means the tool requires only `mcp`, never omitted.
                 "scopes": row.scopes,
+                // PRD-mcphost-scoped-tool-share R6: the `<owner>.<tool>` a fork
+                // was copied from, `null` on a tool that is not a fork (never
+                // omitted: the row keys and FIELDS are one set).
+                "forked_from": forked.get(&row.name),
             });
             // PRD-mcphost-first-publish-real-kind requirement 5 (AC5):
             // `stub: true` on an echo-kind tool, absent (not `false`) for

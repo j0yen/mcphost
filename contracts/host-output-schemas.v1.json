@@ -12035,6 +12035,29 @@
     ],
     "type": "object"
   },
+  "host.tool.fork": {
+    "properties": {
+      "forked_from": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "visibility": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "forked_from",
+      "kind",
+      "name",
+      "visibility"
+    ],
+    "type": "object"
+  },
   "host.tool.history": {
     "properties": {
       "name": {
