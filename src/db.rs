@@ -364,6 +364,9 @@ const MIGRATION_0115: &str = include_str!("../migrations/0115_example_proofs.sql
 /// PRD-mcphost-org-model R1/R4: `orgs`, `org_members`, `invites.kind = 'org'`.
 const MIGRATION_0116: &str = include_str!("../migrations/0116_orgs.sql");
 
+/// PRD-mcphost-same-user-second-agent R1/R3: `tenant_clients` + `join_codes`.
+const MIGRATION_0117: &str = include_str!("../migrations/0117_tenant_clients.sql");
+
 /// PRD-mcphost-docs-telemetry-failed-after-search R3: how long after a
 /// `host.help.search` the same tenant's first failed call still joins it.
 pub const HELP_SEARCH_JOIN_WINDOW_S: i64 = 120;
@@ -3124,6 +3127,19 @@ impl Db {
         // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0115)?;
         Self::migrate_0116_orgs(&conn)?;
+        Self::migrate_0117_tenant_clients(&conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-same-user-second-agent R1: gated on the `tenant_clients`
+    /// table (the backfill inserts client 0 for every tenant once).
+    fn migrate_0117_tenant_clients(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tenant_clients'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0117)?;
+        }
         Ok(())
     }
 

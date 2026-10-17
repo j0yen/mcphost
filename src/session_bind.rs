@@ -88,6 +88,10 @@ struct Inner {
     /// `recency.first_key_value()` in O(log n) with no extra crate.
     recency: BTreeMap<u64, String>,
     next_seq: u64,
+    /// PRD-mcphost-same-user-second-agent R2: which sibling client of the
+    /// bound tenant this session is (`session -> (tenant id, client id)`).
+    /// Dropped with the binding it rides on.
+    clients: HashMap<String, (i64, String)>,
 }
 
 impl Inner {
@@ -103,6 +107,7 @@ impl Inner {
     }
 
     fn remove(&mut self, session_id: &str) {
+        self.clients.remove(session_id);
         if let Some(binding) = self.bindings.remove(session_id) {
             self.recency.remove(&binding.seq);
         }
@@ -117,6 +122,7 @@ impl Inner {
             };
             let victim = victim.clone();
             self.recency.remove(&seq);
+            self.clients.remove(&victim);
             self.bindings.remove(&victim);
         }
     }
@@ -258,6 +264,29 @@ impl SessionBindings {
         }
         inner.touch(session_id, now_unix);
         Some(binding.tenant_id)
+    }
+
+    /// PRD-mcphost-same-user-second-agent R2: record which sibling client
+    /// of `tenant_id` this (already bound) session is, so `host.whoami.this`
+    /// is right under concurrent siblings.
+    pub fn bind_client(&self, session_id: &str, tenant_id: i64, client_id: &str) {
+        if let Ok(mut inner) = self.inner.lock()
+            && inner.bindings.contains_key(session_id)
+        {
+            inner.clients.insert(session_id.to_string(), (tenant_id, client_id.to_string()));
+        }
+    }
+
+    /// The client id [`Self::bind_client`] recorded for this session, only
+    /// while the session is still bound to the same tenant.
+    pub fn client_lookup(&self, session_id: &str, tenant_id: i64) -> Option<String> {
+        let inner = self.inner.lock().ok()?;
+        match inner.clients.get(session_id) {
+            Some((t, c)) if *t == tenant_id && inner.bindings.get(session_id).is_some_and(|b| b.tenant_id == tenant_id) => {
+                Some(c.clone())
+            }
+            _ => None,
+        }
     }
 
     /// Requirement 5: "if the bound tenant is disabled or deleted later ...

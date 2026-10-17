@@ -2531,6 +2531,21 @@
     ],
     "type": "object"
   },
+  "host.client.revoke": {
+    "properties": {
+      "clients_remaining": {
+        "type": "integer"
+      },
+      "revoked": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "clients_remaining",
+      "revoked"
+    ],
+    "type": "object"
+  },
   "host.docs.delete": {
     "properties": {
       "deleted": {
@@ -4911,6 +4926,18 @@
   },
   "host.key.rotate": {
     "properties": {
+      "changed": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
+      },
+      "client_id": {
+        "type": "string"
+      },
+      "join_url": {
+        "type": "string"
+      },
       "key": {
         "type": "string"
       },
@@ -14446,6 +14473,9 @@
       "claim_url": {
         "type": "string"
       },
+      "client_id": {
+        "type": "string"
+      },
       "client_name": {
         "type": [
           "string",
@@ -14457,6 +14487,35 @@
           "string",
           "null"
         ]
+      },
+      "clients": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "client_id": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "client_name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "last_seen": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "this": {
+              "type": "boolean"
+            }
+          }
+        }
       },
       "contract_sha": {
         "type": "string"
@@ -14471,6 +14530,12 @@
         "type": "boolean"
       },
       "display_name": {
+        "type": "string"
+      },
+      "invite_url": {
+        "type": "string"
+      },
+      "join_url": {
         "type": "string"
       },
       "key": {
@@ -14501,9 +14566,6 @@
           }
         },
         "type": "object"
-      },
-      "invite_url": {
-        "type": "string"
       },
       "key_age_s": {
         "type": "integer"

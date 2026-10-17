@@ -676,7 +676,7 @@ impl AppError {
                 // outside its allowlist is the same caller-credential
                 // problem as `insufficient_scope`.
                 | "permission_denied"
-                | "insufficient_scope" | "invite_invalid" | "invite_rate_limited" => {
+                | "insufficient_scope" | "invite_invalid" | "invite_rate_limited" | "join_code_invalid" => {
                     ErrorCode::INVALID_REQUEST
                 }
                 // PRD-mcphost-invite-links requirement 1 (AC7): the same
@@ -684,7 +684,7 @@ impl AppError {
                 // PRD-mcphost-paged-trait-on-every-list-verb requirement 2: a
                 // cursor this process did not mint is a bad parameter.
                 "invites_quota_exceeded" | "org_members_max" | "org_member_already" | "org_name_taken"
-                | "not_in_org" | "cursor_invalid" | "field_unknown" | "idempotency_conflict" => {
+                | "not_in_org" | "last_client" | "client_not_found" | "cursor_invalid" | "field_unknown" | "idempotency_conflict" => {
                     ErrorCode::INVALID_PARAMS
                 }
                 // PRD-mcphost-destructive-verb-confirmation-token R1/R3: a
@@ -1765,6 +1765,40 @@ impl AppError {
             code: "invite_invalid",
             message: "this invite link is no longer valid".to_string(),
             data: json!({}),
+        }
+    }
+
+    /// PRD-mcphost-same-user-second-agent R3 (AC2): a join code that is
+    /// unknown, revoked, expired or used up. `next_call` points the caller
+    /// at `host.whoami` on any sibling, which prints the live code.
+    pub fn join_code_invalid() -> Self {
+        AppError::Structured {
+            code: "join_code_invalid",
+            message: "this join link is no longer valid; ask a client already in the workspace \
+                      for a fresh one (host.whoami prints the live join_url)"
+                .to_string(),
+            data: json!({"next_call": {"tool": "host.whoami", "args": {}}}),
+        }
+    }
+
+    /// PRD-mcphost-same-user-second-agent R4 (AC4): `host.client.revoke` on
+    /// the only live client would leave the tenant with no credential.
+    pub fn last_client() -> Self {
+        AppError::Structured {
+            code: "last_client",
+            message: "this is the only client of the workspace; revoking it would lock everyone out"
+                .to_string(),
+            data: json!({"next_call": {"tool": "host.whoami", "args": {}}}),
+        }
+    }
+
+    /// `host.client.revoke` for a `client_id` that is not a live client of
+    /// the caller's tenant.
+    pub fn client_not_found(client_id: &str) -> Self {
+        AppError::Structured {
+            code: "client_not_found",
+            message: format!("no live client '{client_id}' in this workspace"),
+            data: json!({"client_id": client_id, "next_call": {"tool": "host.whoami", "args": {}}}),
         }
     }
 

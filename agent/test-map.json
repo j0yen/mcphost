@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-errors-json-contract.md (test_prefix: errjson)",
+  "ac_test_map_prd": "PRD-mcphost-same-user-second-agent.md (test_prefix: sibl)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,10 +28,13 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/errjson_ac01_every_emitted_code_is_a_registry_row.rs",
-    "AC2": "tests/errjson_ac02_error_data_carries_the_registry_row.rs",
-    "AC3": "tests/errjson_ac03_errors_json_route.rs",
-    "AC4": "tests/errjson_ac04_host_errors_tool.rs"
+    "AC1": "tests/sibl_ac01_second_connection_joins_same_namespace.rs",
+    "AC2": "tests/sibl_ac02_used_up_join_code_is_refused.rs",
+    "AC3": "tests/sibl_ac03_rotate_is_scoped_to_the_calling_client.rs",
+    "AC4": "tests/sibl_ac04_revoke_removes_one_client.rs",
+    "AC5": "tests/sibl_ac05_labels_derive_from_client_info_names.rs",
+    "AC6": "tests/sibl_ac06_returning_browser_is_offered_join.rs",
+    "AC7": "tests/sibl_ac07_concurrent_joins_land_exactly_max_uses.rs"
   },
   "ac_test_map_by_prefix": {
     "nfs": {
@@ -1976,6 +1979,16 @@
       "AC1": "tests/orgmb_ac01_owner_removes_member.rs",
       "AC2": "tests/orgmb_ac02_concurrent_create_one_winner.rs",
       "AC3": "tests/orgmb_ac03_llms_txt_and_quickstart_name_org_verbs.rs"
+    },
+    "sibl": {
+      "_prd": "PRD-mcphost-same-user-second-agent.md (test_prefix: sibl)",
+      "AC1": "tests/sibl_ac01_second_connection_joins_same_namespace.rs",
+      "AC2": "tests/sibl_ac02_used_up_join_code_is_refused.rs",
+      "AC3": "tests/sibl_ac03_rotate_is_scoped_to_the_calling_client.rs",
+      "AC4": "tests/sibl_ac04_revoke_removes_one_client.rs",
+      "AC5": "tests/sibl_ac05_labels_derive_from_client_info_names.rs",
+      "AC6": "tests/sibl_ac06_returning_browser_is_offered_join.rs",
+      "AC7": "tests/sibl_ac07_concurrent_joins_land_exactly_max_uses.rs"
     }
   }
 }

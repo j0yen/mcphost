@@ -746,6 +746,14 @@ pub async fn key_rotate(state: &AppState, tenant: &Tenant) -> Result<Value, AppE
     let new_key_hash = hash_key(&new_key);
     state.db.rotate_tenant_key(tenant.id, new_key_hash).await?;
     let url_secret = crate::auth::generate_url_secret();
+    // PRD-mcphost-same-user-second-agent R5 (AC3): with siblings present the
+    // client-0 URL being replaced is kept as a tombstone, so it answers
+    // `tenant_key_invalid` rather than an anonymous 404.
+    if let Some(old) = &tenant.url_secret_hash
+        && state.db.tenant_has_siblings(tenant.id).await?
+    {
+        state.db.retire_first_client_secret(tenant.id, old.clone()).await?;
+    }
     state
         .db
         .rotate_tenant_url_secret(tenant.id, hash_key(&url_secret))
@@ -756,6 +764,8 @@ pub async fn key_rotate(state: &AppState, tenant: &Tenant) -> Result<Value, AppE
         "tenant": tenant.namespace,
         "key": new_key,
         "url": url,
+        "client_id": crate::tenant_clients::first_client_id(tenant.id),
+        "changed": [{"client_id": crate::tenant_clients::first_client_id(tenant.id), "key": true, "url": url}],
         "usage": "This replaces your previous tenant key immediately -- pass this new key as \
             the tenant_key argument (or Authorization header) on every call from here on; \
             the old key now fails as unauthenticated. It also replaces your previous URL: the \

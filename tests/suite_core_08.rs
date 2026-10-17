@@ -1078,6 +1078,20 @@ mod sharedrunscope_ac06_raw_tools_call_shares_the_path;
 mod sharedrunscope_ac07_migration_backfills_legacy_rows;
 #[path = "sharedrunscope_ac08_proof_script_owner_ledger_check.rs"]
 mod sharedrunscope_ac08_proof_script_owner_ledger_check;
+#[path = "sibl_ac01_second_connection_joins_same_namespace.rs"]
+mod sibl_ac01_second_connection_joins_same_namespace;
+#[path = "sibl_ac02_used_up_join_code_is_refused.rs"]
+mod sibl_ac02_used_up_join_code_is_refused;
+#[path = "sibl_ac03_rotate_is_scoped_to_the_calling_client.rs"]
+mod sibl_ac03_rotate_is_scoped_to_the_calling_client;
+#[path = "sibl_ac04_revoke_removes_one_client.rs"]
+mod sibl_ac04_revoke_removes_one_client;
+#[path = "sibl_ac05_labels_derive_from_client_info_names.rs"]
+mod sibl_ac05_labels_derive_from_client_info_names;
+#[path = "sibl_ac06_returning_browser_is_offered_join.rs"]
+mod sibl_ac06_returning_browser_is_offered_join;
+#[path = "sibl_ac07_concurrent_joins_land_exactly_max_uses.rs"]
+mod sibl_ac07_concurrent_joins_land_exactly_max_uses;
 #[path = "signupfleet_ac01_fleet_ips_bypass_signup_rate_limit.rs"]
 mod signupfleet_ac01_fleet_ips_bypass_signup_rate_limit;
 #[path = "sjrc_ac01_one_call_summarizes_five_fires.rs"]

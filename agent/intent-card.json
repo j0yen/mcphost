@@ -1,48 +1,67 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-errors-json-contract.md",
-  "intent_slug": "mcphost-errors-json-contract",
-  "root_motivation": "**Who:** the agent building on mcphost. **What:** one machine-readable list of every error code with class, family and remedy. **Why not today:** codes live in four hand-written places that disagree; /help covers 21 of ~250.",
-  "user_persona": "An agent that reads /errors.json or host.errors once, then branches on class and remedy instead of matching error messages.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-same-user-second-agent.md",
+  "intent_slug": "mcphost-same-user-second-agent",
+  "root_motivation": "**Who:** a user with two agents (Claude Code and Cursor, or a laptop and a server) and the second agent itself. **What:** land in the tenant the first agent built, with a credential of its own, in one paste. **Why not today:** identity is one hashed key per tenant; `/u/<secret>/mcp` resolves to it (`src/http.rs:1554`), so sharing it means one secret for both clients and `host.key.rotate` kills both. `/i/<code>/mcp` (`:1567`, `src/invites.rs`) mints a fresh tenant: tools are *shared*, state and notes are not. The consent page (`src/authz.rs:969` `resolve_consent_tenant`) accepts a key, a claim code, or \"Create a new workspace\"; a human who consented once has no \"join what I made\" option and sets no cookie. **Premise (agent viewpoint):** the second agent only needs a URL the first agent can print. **Falsifier:** the join cannot be made without a key or claim code in the second agent's hands.",
+  "user_persona": "An agent that pages host.runs.list(verdict=\"fail\") and reads total: 7 from page 1, never walking to the end.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 7
+    "target": 3
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given src/**/*.rs, When the scan collects every code literal and AppError::code() arm, Then each is a row of ERROR_CODES and a format!-built code fails the test.",
-      "test": "tests/errjson_ac01_every_emitted_code_is_a_registry_row.rs"
+      "description": "Given a fresh tenant and its `host.whoami.join_url`, When a second connection on that URL calls `host.whoami` with no key, header, or claim code, Then `namespace` equals the first tenant's, `client_id` differs from client 0, and `clients` has 2 rows (the falsifier as a test).",
+      "test": "tests/sibl_ac01_second_connection_joins_same_namespace.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given an error of any registry code raised through into_error_data, When the client reads data, Then it carries class, family, remedy and help_url equal to the registry row.",
-      "test": "tests/errjson_ac02_error_data_carries_the_registry_row.rs"
+      "description": "Given a join code with `max_uses: 1` already used, When a third connection uses it, Then the error is `join_code_invalid` with `next_call.tool == \"host.whoami\"` and no `tenant_clients` row is inserted.",
+      "test": "tests/sibl_ac02_used_up_join_code_is_refused.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given an anonymous GET /errors.json, When parsed, Then codes is sorted, every row has the seven fields, classes lists the enum's variant names, and version equals the crate version.",
-      "test": "tests/errjson_ac03_errors_json_route.rs"
+      "description": "Given two siblings, When client 0 calls `host.key.rotate`, Then client 0's old URL answers `tenant_key_invalid`, the sibling's URL still works, and the join code is unchanged; with `all: true` all three change.",
+      "test": "tests/sibl_ac03_rotate_is_scoped_to_the_calling_client.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given host.errors with no code from an anonymous connection and a keyed tenant, When called, Then both equal /errors.json; Given code tool_excepton, Then tool_not_found with did_you_mean tool_exception.",
-      "test": "tests/errjson_ac04_host_errors_tool.rs"
+      "description": "Given two siblings, When one is revoked via `host.client.revoke`, Then its next call fails `tenant_key_invalid`, `clients` lists one row, and revoking the last remaining client is refused with `last_client`.",
+      "test": "tests/sibl_ac04_revoke_removes_one_client.rs"
+    },
+    {
+      "id": "AC5",
+      "level": "MUST",
+      "description": "Given `CLIENT_INFO_NAMES`, When a join arrives with each table entry as `clientInfo.name`, Then the new client's `label` starts with that entry's surface id, and an unknown name yields `client-<n>`.",
+      "test": "tests/sibl_ac05_labels_derive_from_client_info_names.rs"
+    },
+    {
+      "id": "AC6",
+      "level": "MUST",
+      "description": "Given a browser that consented once (cookie set), When it opens a new authorize request, Then the consent page's first option is \"Join <display_name>\" and choosing it issues tokens for that tenant with a new `tenant_clients` row and sends zero emails.",
+      "test": "tests/sibl_ac06_returning_browser_is_offered_join.rs"
+    },
+    {
+      "id": "AC7",
+      "level": "MUST",
+      "description": "Given ten concurrent first calls on one join URL with `max_uses: 5`, When they complete, Then exactly 5 client rows exist and 5 calls got `join_code_invalid`.",
+      "test": "tests/sibl_ac07_concurrent_joins_land_exactly_max_uses.rs"
     }
   ],
   "scope": [
-    "src/error_registry.rs (new): ERROR_CODES, ErrorClass, Family, catalog_json(), call().",
-    "src/errors.rs, src/help.rs, src/http.rs: class/family/remedy/help_url in error data, /help/<code> and GET /errors.json from the registry.",
-    "src/handler.rs: host.errors (starter set, anonymous)."
+    "src/paged.rs: Count { exact, n }, EXACT_TOTAL_MAX, Count::from_bounded, Count::insert_into.",
+    "src/tables.rs: count_filtered_sync, rows_with_total, table_query, runs_list, table_list (bounded counter), table_count (new).",
+    "src/handler.rs: TenantTableBridge::call \"count\" arm, dispatch_control_tool \"host.table.count\" arm.",
+    "contracts/host-tools.v1.json: host.table.count + host_table_count entries; host.table.list exact field."
   ],
   "non_goals": [
-    "Renaming any code; changing JSON-RPC numeric codes; a per-tenant error log; retiring HELP_CODES (P0 R5 beyond AC2), is_5xx_class_error (R6), docs_anchor resolution test (R7), llms.txt line (R8)."
+    "Counts on python tool output; materialized counters per table; total for host.table.query with aggregates."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -50,22 +69,25 @@
     "deny_unsafe": false,
     "max_deps": null,
     "msrv": null,
-    "additional": {
-      "engine_form": "mcphost-qjs subprocess in the python bwrap profile; cold_p95_ms measured by jsk_ac01"
-    }
+    "additional": {}
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can an agent not list the host's error codes?",
-      "a": "They are spread over AppError::code(), 119 literals, 16 HELP_CODES and a 7-code allowlist."
+      "q": "Why did the explore session report 'about 60' runs?",
+      "a": "host.runs.list returned no total on each page, so the agent had to walk all pages to count."
+    },
+    {
+      "why": 2,
+      "q": "Why was there no total?",
+      "a": "The Paged output struct reserved the total field but emitted nothing."
+    },
+    {
+      "why": 3,
+      "q": "Why is an exact count feasible?",
+      "a": "SELECT count(*) LIMIT 10001 is bounded regardless of table size; under 10k rows it is exact and fast."
     }
   ],
   "created_at": "2026-10-15T00:00:00Z",
-  "ambiguities_resolved": [
-    {
-      "question": "did_you_mean for a near-miss code: string or list?",
-      "resolution": "A string (the nearest code), per the AC's literal did_you_mean: \"tool_exception\"; nearest[] carries up to three."
-    }
-  ]
+  "ambiguities_resolved": []
 }

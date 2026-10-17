@@ -4584,6 +4584,43 @@
       "since": "0.60.1"
     },
     {
+      "description": "Revoke one client of this workspace (a sibling that joined through join_url, listed in the clients field of host.whoami): its URL answers tenant_key_invalid from the next call. The last remaining client cannot be revoked (last_client).",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "client_id": {
+            "description": "The client_id of the client to revoke, from the clients field of host.whoami.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.client.revoke",
+      "output_schema": {
+        "properties": {
+          "clients_remaining": {
+            "type": "integer"
+          },
+          "revoked": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "clients_remaining",
+          "revoked"
+        ],
+        "type": "object"
+      },
+      "since": "0.108.131"
+    },
+    {
       "description": "Soft-delete a document by id or name; still visible via host.docs.list {since} with deleted: true. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
@@ -9051,10 +9088,14 @@
       "since": "0.107.93"
     },
     {
-      "description": "Issue a new tenant key and invalidate the current one immediately: every other call using the old key fails as unauthenticated from this point on. Returns the new key exactly once -- use it (as tenant_key or Authorization) for every call after this one.",
+      "description": "Issue a new tenant key and invalidate the current one immediately: every other call using the old key fails as unauthenticated from this point on. Returns the new key exactly once -- use it (as tenant_key or Authorization) for every call after this one. When other clients have joined (see the clients field of host.whoami), a client rotates only its own credential; all: true rotates every client and the join code.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "all": {
+            "description": "Rotate every client of the workspace (each sibling's URL, your key and URL) and the join code. Default false: only the calling client's credential changes.",
+            "type": "boolean"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
@@ -9066,6 +9107,27 @@
       "name": "host.key.rotate",
       "output_schema": {
         "properties": {
+          "changed": {
+            "items": {
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "client_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "join_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "key": {
             "type": "string"
           },
@@ -9169,10 +9231,14 @@
     },
     {
       "alias_of": "host.key.rotate",
-      "description": "Issue a new tenant key and invalidate the current one immediately: every other call using the old key fails as unauthenticated from this point on. Returns the new key exactly once -- use it (as tenant_key or Authorization) for every call after this one.",
+      "description": "Issue a new tenant key and invalidate the current one immediately: every other call using the old key fails as unauthenticated from this point on. Returns the new key exactly once -- use it (as tenant_key or Authorization) for every call after this one. When other clients have joined (see the clients field of host.whoami), a client rotates only its own credential; all: true rotates every client and the join code.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "all": {
+            "description": "Rotate every client of the workspace (each sibling's URL, your key and URL) and the join code. Default false: only the calling client's credential changes.",
+            "type": "boolean"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
@@ -27836,6 +27902,12 @@
               "null"
             ]
           },
+          "client_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "client_name": {
             "type": [
               "string",
@@ -27845,6 +27917,47 @@
           "client_version": {
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "clients": {
+            "items": {
+              "properties": {
+                "client_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "client_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "label": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "last_seen": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "this": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                }
+              },
+              "type": "object"
+            },
+            "type": [
+              "array",
               "null"
             ]
           },
@@ -27873,6 +27986,12 @@
             ]
           },
           "invite_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "join_url": {
             "type": [
               "string",
               "null"
@@ -29376,6 +29495,29 @@
       },
       "name": "host_channel_unfreeze",
       "since": "0.103.1"
+    },
+    {
+      "alias_of": "host.client.revoke",
+      "description": "Revoke one client of this workspace (a sibling that joined through join_url, listed in the clients field of host.whoami): its URL answers tenant_key_invalid from the next call. The last remaining client cannot be revoked (last_client).",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "client_id": {
+            "description": "The client_id of the client to revoke, from the clients field of host.whoami.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_id"
+        ],
+        "type": "object"
+      },
+      "name": "host_client_revoke",
+      "since": "0.108.131"
     },
     {
       "alias_of": "host.docs.delete",
@@ -31087,10 +31229,14 @@
     },
     {
       "alias_of": "host.key.rotate",
-      "description": "Issue a new tenant key and invalidate the current one immediately: every other call using the old key fails as unauthenticated from this point on. Returns the new key exactly once -- use it (as tenant_key or Authorization) for every call after this one.",
+      "description": "Issue a new tenant key and invalidate the current one immediately: every other call using the old key fails as unauthenticated from this point on. Returns the new key exactly once -- use it (as tenant_key or Authorization) for every call after this one. When other clients have joined (see the clients field of host.whoami), a client rotates only its own credential; all: true rotates every client and the join code.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "all": {
+            "description": "Rotate every client of the workspace (each sibling's URL, your key and URL) and the join code. Default false: only the calling client's credential changes.",
+            "type": "boolean"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
