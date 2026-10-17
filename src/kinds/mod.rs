@@ -2399,6 +2399,14 @@ pub trait Kind: Send + Sync {
         BTreeMap::new()
     }
 
+    /// PRD-mcphost-sandbox-file-processing-libs R2: extra `host.tool_publish`
+    /// response fields describing how this spec's runtime env is provided
+    /// (`{env: "preinstalled", build_ms: 0}` for a python spec on the shared
+    /// base env). `None` (the default) adds nothing.
+    fn publish_env_report(&self, _spec: &Value) -> Option<Value> {
+        None
+    }
+
     /// PRD-mcphost-call-limits-honest requirement 1: the per-call deadline
     /// this `spec` itself declares (already bounded by the kind's own
     /// maximum, e.g. `python`'s `MAX_TIMEOUT_S`), if any. Every real

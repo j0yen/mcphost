@@ -743,6 +743,25 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
                 crate::install_links::CANONICAL_PUBLIC_URL,
             );
         }
+        if *path == "www/llms.txt" {
+            *spliced = splice_sandbox_libs(spliced.as_str(), crate::sandbox_libs::SANDBOX_LIBS_TOML);
+        }
+    }
+
+    // R3: the sandbox-libs region of docs/kinds/python.md and www/llms.txt.
+    // (www/llms.txt is chained onto the support splice above instead, so one
+    // write carries both.)
+    for path in SANDBOX_LIBS_DOCS.iter().filter(|p| **p != "www/llms.txt") {
+        let current = std::fs::read_to_string(path)?;
+        let spliced = splice_sandbox_libs(&current, crate::sandbox_libs::SANDBOX_LIBS_TOML);
+        if check {
+            if current != spliced {
+                eprintln!("gen-docs --check: {path} sandbox-libs table is stale (run `mcphost gen-docs`)");
+                stale = true;
+            }
+        } else if current != spliced {
+            std::fs::write(path, spliced)?;
+        }
     }
 
     for (path, rendered) in [
@@ -787,6 +806,45 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
         }
     }
     Ok(stale)
+}
+
+// ---- sandbox-libs table (PRD-mcphost-sandbox-file-processing-libs R3) ----
+
+pub const SANDBOX_LIBS_START: &str = "<!-- sandbox-libs:start -->";
+pub const SANDBOX_LIBS_END: &str = "<!-- sandbox-libs:end -->";
+/// Files carrying a `sandbox-libs:start/end` region, relative to the repo root.
+pub const SANDBOX_LIBS_DOCS: &[&str] = &["docs/kinds/python.md", "www/llms.txt"];
+
+/// One markdown table (markers included) of the libs in `toml_text`
+/// (`sandbox-libs.toml`'s content). Rows start with `| <name>` right after
+/// the header so a short `grep -A` over the start marker sees them all.
+pub fn render_sandbox_libs(toml_text: &str) -> String {
+    let libs = crate::sandbox_libs::parse_libs(toml_text).unwrap_or_default();
+    let mut out = format!("{SANDBOX_LIBS_START}\n| name | version | import | purpose |\n|---|---|---|---|\n");
+    for l in &libs {
+        out.push_str(&format!(
+            "| {} | {} | `import {}` | {} |\n",
+            escape_cell(&l.name),
+            escape_cell(&l.version),
+            l.import,
+            escape_cell(&l.purpose)
+        ));
+    }
+    out.push_str(SANDBOX_LIBS_END);
+    out
+}
+
+/// Replaces every `sandbox-libs:start..end` region of `content` with
+/// [`render_sandbox_libs`]`(toml_text)`; content without the markers is
+/// returned unchanged.
+pub fn splice_sandbox_libs(content: &str, toml_text: &str) -> String {
+    let region = render_sandbox_libs(toml_text);
+    match (content.find(SANDBOX_LIBS_START), content.find(SANDBOX_LIBS_END)) {
+        (Some(start), Some(end)) if end > start => {
+            format!("{}{region}{}", &content[..start], &content[end + SANDBOX_LIBS_END.len()..])
+        }
+        _ => content.to_string(),
+    }
 }
 
 // ---- `gen-docs kinds` (PRD-mcphost-kind-docs-from-registry) ----

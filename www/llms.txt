@@ -321,6 +321,20 @@ A python tool's own code does `import mcphost` to reach this tenant's data witho
 - `mcphost.elicit` -- ask the user a typed question mid-call: the client's form when it can, the ask-user link otherwise
 <!-- mcphost-sandbox-api:end -->
 
+### Preinstalled libraries
+
+These libraries are importable in any python tool with no `requirements` line (a tool whose `requirements` are a subset of this list runs on a shared, prebuilt env: `env: preinstalled`, `build_ms: 0`). Anything else needs `requirements`. Generated from `sandbox-libs.toml` by `mcphost gen-docs`.
+
+<!-- sandbox-libs:start -->
+| name | version | import | purpose |
+|---|---|---|---|
+| pypdf | 6.21.0 | `import pypdf` | read PDFs: page count, text extraction, metadata |
+| openpyxl | 3.1.5 | `import openpyxl` | read and write xlsx workbooks |
+| Pillow | 13.0.0 | `import PIL` | open, resize and convert images |
+| python-dateutil | 2.9.0.post0 | `import dateutil` | parse and shift dates in any common format |
+| chardet | 7.6.0 | `import chardet` | detect the text encoding of a csv or other bytes |
+<!-- sandbox-libs:end -->
+
 ### Publish
 
 The documented first publish is a real `python` tool, not a stub --

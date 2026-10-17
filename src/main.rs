@@ -1741,6 +1741,9 @@ async fn main() -> anyhow::Result<()> {
             // (goal 1). A failed self-test does not fail startup: `serve`
             // still runs below regardless (requirement 1).
             python_kind.run_startup_selftest().await;
+            // PRD-mcphost-sandbox-file-processing-libs R2: build the shared
+            // base env of `sandbox-libs.toml` in the background.
+            python_kind.ensure_base_env().await;
             kinds.register(std::sync::Arc::new(python_kind));
             // PRD-mcphost-js-kind: the QuickJS source kind, beside python.
             kinds.register(std::sync::Arc::new(mcphost::kinds::js::JsKind::new(&data_dir())));
