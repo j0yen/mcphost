@@ -49,7 +49,7 @@ pub struct Excess {
 impl Excess {
     pub fn into_error(self) -> AppError {
         AppError::Structured {
-            code: "scope_escalation",
+            code: crate::scopes::SCOPE_ESCALATION,
             message: format!(
                 "the requested {} '{}' exceeds the delegating key's own authority; nothing was minted",
                 self.kind, self.value
@@ -106,9 +106,9 @@ mod tests {
 
     #[test]
     fn every_scope_pair_is_allowed_exactly_when_it_implies() {
-        for parent_scope in Scope::ALL {
+        for &parent_scope in Scope::ALL {
             let parent = Authority { scopes: vec![parent_scope], ..Authority::primary() };
-            for want in Scope::ALL {
+            for &want in Scope::ALL {
                 let got = narrow(&parent, &req(vec![want]));
                 assert_eq!(got.is_ok(), parent_scope.implies(want), "{parent_scope:?} -> {want:?}");
                 if let Err(e) = got {

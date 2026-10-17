@@ -1234,6 +1234,8 @@ async fn main() -> anyhow::Result<()> {
             let with_tools =
                 mcphost::llms_txt::splice_events(&with_tools, &mcphost::llms_txt::render_events_section());
             let with_tools =
+                mcphost::llms_txt::splice_scopes(&with_tools, &mcphost::llms_txt::render_scopes_section(&kinds));
+            let with_tools =
                 mcphost::llms_txt::splice_rest(&with_tools, &mcphost::llms_txt::render_rest_section());
             let with_tools =
                 mcphost::notify::splice_section(&with_tools, &mcphost::notify::render_section());

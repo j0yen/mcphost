@@ -1185,7 +1185,7 @@ async fn run_step_up_probe(http: &reqwest::Client, mcp_url: &str) -> (Verdict, V
         return (Verdict::Unsupported, records);
     }
     let error_code = body["error"]["data"]["error_code"].as_str().unwrap_or_default();
-    if error_code != "insufficient_scope" {
+    if error_code != crate::scopes::INSUFFICIENT_SCOPE {
         records.push(StepRecord::fail("step_up", "403 did not carry an insufficient_scope error").with_status(status));
         return (Verdict::Fail, records);
     }
