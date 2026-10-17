@@ -2027,6 +2027,17 @@
       "AC5": "tests/sibl_ac05_labels_derive_from_client_info_names.rs",
       "AC6": "tests/sibl_ac06_returning_browser_is_offered_join.rs",
       "AC7": "tests/sibl_ac07_concurrent_joins_land_exactly_max_uses.rs"
+    },
+    "srlp": {
+      "_prd": "PRD-mcphost-sandbox-resource-limits-from-plan.md (test_prefix: srlp)",
+      "AC1": "deferred -- operator-provisioned: premise check against prod after land.",
+      "AC2": "tests/srlp_ac02_plan_ceilings_published.rs",
+      "AC3": "tests/srlp_ac03_publish_over_plan_refused.rs",
+      "AC4": "tests/srlp_ac04_free_pids_ceiling_and_peak.rs",
+      "AC5": "tests/srlp_ac05_python_result_carries_resources_used.rs",
+      "AC6": "tests/srlp_ac06_warm_hit_keeps_plan_pids.rs",
+      "AC7": "tests/srlp_ac07_tool_run_reports_resources_used.rs",
+      "AC8": "deferred -- operator-provisioned: live curl of prod plans.json after deploy"
     }
   }
 }

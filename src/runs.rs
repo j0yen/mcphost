@@ -1272,7 +1272,7 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
         };
     };
     let log = Arc::new(BufferedLog(std::sync::Mutex::new(Vec::new())));
-    let resources = Arc::new(CellResourceSink(std::sync::Mutex::new(None)));
+    let resources = Arc::new(CellResourceSink::new());
     let progress: Arc<dyn ProgressSink> = Arc::new(DbProgressSink {
         state: state.clone(),
         run_id: run.id.clone(),
@@ -1397,6 +1397,7 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
         // resolved the same way `handler.rs`'s synchronous dispatch paths
         // do.
         egress_allowed: tenant.plan == "pro",
+        sandbox_ceilings: state.plans.sandbox_ceilings(&tenant.plan),
         // PRD-mcphost-end-user-identity: an async/scheduled job has no live
         // request to carry an end user from -- `None`, same as every other
         // job-executor call.

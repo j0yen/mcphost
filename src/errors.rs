@@ -1605,6 +1605,32 @@ impl AppError {
         }
     }
 
+    /// PRD-mcphost-sandbox-resource-limits-from-plan R3: a spec value
+    /// (`spec_field`, e.g. `memory_mb`) above the tenant's plan ceiling
+    /// (`ceiling_field`, e.g. `sandbox_memory_mb_max`). Same `plan_required`
+    /// code as the network refusal; `data` names the ceiling and its value.
+    pub fn plan_ceiling_exceeded(
+        spec_field: &str,
+        requested: i64,
+        ceiling_field: &str,
+        ceiling: i64,
+        plan: &str,
+    ) -> Self {
+        AppError::Structured {
+            code: "plan_required",
+            message: format!(
+                "{spec_field}: {requested} exceeds {ceiling_field} {ceiling} on the {plan} plan -- lower {spec_field} to {ceiling} or less, or upgrade"
+            ),
+            data: json!({
+                "plan": plan,
+                "field": ceiling_field,
+                "spec_field": spec_field,
+                "limit": ceiling,
+                "requested": requested,
+            }),
+        }
+    }
+
     /// requirement 1: `uv pip compile --generate-hashes` failed, or a
     /// caller-supplied lock (requirement 5) failed hash validation -- `tail`
     /// is the resolver's own capped tail, same convention

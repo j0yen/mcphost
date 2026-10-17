@@ -6026,12 +6026,49 @@ impl CallLog for BufferedLog {
 /// read back after the call to fill in the `calls` row (PRD-mcphost-code-tools
 /// requirement 8). `None` (the default) means the kind never reported any --
 /// exactly what happens for `echo`/`http`.
-pub(crate) struct CellResourceSink(pub(crate) std::sync::Mutex<Option<(i64, i64)>>);
+///
+/// PRD-mcphost-sandbox-resource-limits-from-plan R4: the second slot holds
+/// the call's `pids_max_seen` (`-1` until the sandbox samples it).
+pub(crate) struct CellResourceSink(
+    pub(crate) std::sync::Mutex<Option<(i64, i64)>>,
+    std::sync::atomic::AtomicI64,
+);
+/// PRD-mcphost-sandbox-resource-limits-from-plan R4/R5: the in-flight marker
+/// key the three python-call paths leave `resources_used` under. It is taken
+/// off the result object at the wire (`call_tool_inner`) and rides out as
+/// `_meta.resources_used`, so a tool's own returned JSON (a bridge call's
+/// host-verb JSON, `host.tool_run`'s `payload`) stays byte-for-byte what it
+/// returned -- the same marker-key pattern as `paged::LIMIT_CLAMPED_KEY`.
+pub(crate) const RESOURCES_USED_KEY: &str = "__resources_used";
+
+impl CellResourceSink {
+    pub(crate) fn new() -> Self {
+        Self(std::sync::Mutex::new(None), std::sync::atomic::AtomicI64::new(-1))
+    }
+
+    /// R4: `{cpu_ms, peak_rss_mb, wall_ms, pids_max_seen}` for the call this
+    /// sink observed -- `None` when the kind never reported usage (a
+    /// non-sandboxed kind). `pids_max_seen` is `null` when unsampled.
+    pub(crate) fn resources_used(&self, wall_ms: i64) -> Option<Value> {
+        let (cpu_ms, peak_rss_kb) = (*self.0.lock().ok()?)?;
+        let pids = self.1.load(std::sync::atomic::Ordering::Relaxed);
+        Some(json!({
+            "cpu_ms": cpu_ms,
+            "peak_rss_mb": (peak_rss_kb.max(0) + 1023) / 1024,
+            "wall_ms": wall_ms,
+            "pids_max_seen": (pids >= 0).then_some(pids),
+        }))
+    }
+}
 impl ResourceSink for CellResourceSink {
     fn record(&self, cpu_ms: i64, peak_rss_kb: i64) {
         if let Ok(mut guard) = self.0.lock() {
             *guard = Some((cpu_ms, peak_rss_kb));
         }
+    }
+
+    fn record_pids(&self, pids_max_seen: i64) {
+        self.1.store(pids_max_seen, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -6416,6 +6453,15 @@ impl crate::kinds::HostDispatch for TenantHostStepBridge {
                 args,
             )
             .await
+            .map(|mut value| {
+                // A nested python tool call's in-flight `resources_used`
+                // marker is wire-only (`_meta`): a bridge call's returned JSON
+                // stays exactly what the callee produced.
+                if let Some(obj) = value.as_object_mut() {
+                    obj.remove(RESOURCES_USED_KEY);
+                }
+                value
+            })
             .map_err(app_error_to_kind_error)
     }
 }
@@ -7975,7 +8021,7 @@ impl McpHostHandler {
         let secret_map = build_secret_map(&self.state, tenant.id).await?;
         let secrets: Arc<dyn SecretResolver> = Arc::new(MapSecretResolver(secret_map.clone()));
         let log = Arc::new(BufferedLog(std::sync::Mutex::new(Vec::new())));
-        let resources = Arc::new(CellResourceSink(std::sync::Mutex::new(None)));
+        let resources = Arc::new(CellResourceSink::new());
         // PRD-mcphost-chain-host-steps P1 requirement 6 (AC6): see
         // `TenantHostStepBridge::step_tool`'s own doc comment.
         let step_tool_cell: Arc<std::sync::Mutex<Option<String>>> = Arc::new(std::sync::Mutex::new(None));
@@ -8067,6 +8113,7 @@ impl McpHostHandler {
             // from the tenant's plan here, once, same convention as
             // `concurrent_calls_per_tenant` just above.
             egress_allowed: tenant.plan == "pro",
+            sandbox_ceilings: self.state.plans.sandbox_ceilings(&tenant.plan),
             // PRD-mcphost-runs-and-jobs: an ordinary synchronous dispatch is
             // never a job -- no run id to report progress against, no pid
             // slot `host.runs.cancel` would ever look up.
@@ -8314,6 +8361,15 @@ impl McpHostHandler {
                 // requirement's own "a shared tool's unpinned caller"
                 // wording.
                 let mut value = value;
+                // PRD-mcphost-sandbox-resource-limits-from-plan R4: a python
+                // result reports what the call used, beside the plan
+                // ceilings `host.quickstart` publishes.
+                if kind.name() == "python"
+                    && let Some(used) = resources.resources_used(duration_ms)
+                    && let Some(obj) = value.as_object_mut()
+                {
+                    obj.insert(RESOURCES_USED_KEY.to_string(), used);
+                }
                 if version.is_none()
                     && let Some(caller) = caller
                     && let Ok(Some(prev)) = self
@@ -8618,6 +8674,7 @@ impl McpHostHandler {
             state: self.state.clone(),
             tenant: tenant.clone(),
         });
+        let resources = Arc::new(CellResourceSink::new());
         let resolved_timeout = self.resolve_call_timeout(&kind, &row.spec);
         let ctx = CallCtx {
             tenant_id: tenant.id,
@@ -8626,7 +8683,7 @@ impl McpHostHandler {
             deadline: Instant::now() + resolved_timeout,
             log: Arc::new(NullLog) as Arc<dyn CallLog>,
             test_mode: true,
-            resources: Arc::new(NullResourceSink),
+            resources: resources.clone() as Arc<dyn ResourceSink>,
             tool_name: Some(local_name.clone()),
             // requirement 5 / AC7: `host.tool_test` persists no logs (`log`
             // above is `NullLog`), but its *result* carries a `state` tally
@@ -8667,6 +8724,7 @@ impl McpHostHandler {
             // from the tenant's plan here, once, same convention as
             // `concurrent_calls_per_tenant` just above.
             egress_allowed: tenant.plan == "pro",
+            sandbox_ceilings: self.state.plans.sandbox_ceilings(&tenant.plan),
             // PRD-mcphost-runs-and-jobs: an ordinary synchronous dispatch is
             // never a job -- no run id to report progress against, no pid
             // slot `host.runs.cancel` would ever look up.
@@ -8766,6 +8824,13 @@ impl McpHostHandler {
                         add_example_fields(map, ex);
                     }
                     map.insert("state".to_string(), state_backend.snapshot().to_json());
+                    // PRD-mcphost-sandbox-resource-limits-from-plan R5: a
+                    // dry run measures before publishing too.
+                    if kind.name() == "python"
+                        && let Some(used) = resources.resources_used(duration_ms)
+                    {
+                        map.insert(RESOURCES_USED_KEY.to_string(), used);
+                    }
                     // PRD-mcphost-dry-run-side-effects requirement 3: `.entry`
                     // (not a plain `insert`) so `chain`'s own pre-existing
                     // top-level `dry_run: true` boolean (its requirement 3 /
@@ -9173,6 +9238,7 @@ impl McpHostHandler {
             // from the tenant's plan here, once, same convention as
             // `concurrent_calls_per_tenant` just above.
             egress_allowed: tenant.plan == "pro",
+            sandbox_ceilings: self.state.plans.sandbox_ceilings(&tenant.plan),
             // PRD-mcphost-runs-and-jobs: an ordinary synchronous dispatch is
             // never a job -- no run id to report progress against, no pid
             // slot `host.runs.cancel` would ever look up.
@@ -9556,6 +9622,7 @@ impl McpHostHandler {
             progress: Arc::new(crate::kinds::NullProgress),
             cancel_pid: Arc::new(crate::runs::CancelSlot::default()),
             egress_allowed: tenant.plan == "pro",
+            sandbox_ceilings: self.state.plans.sandbox_ceilings(&tenant.plan),
             // PRD-mcphost-end-user-identity: `host.spec_test` runs a pre-
             // publish spec, not a real caller's identity-carrying call.
             end_user: None,
@@ -9959,6 +10026,7 @@ impl McpHostHandler {
             state: self.state.clone(),
             tenant: tenant.clone(),
         });
+        let resources = Arc::new(CellResourceSink::new());
         let resolved_timeout = self.resolve_call_timeout(&kind, &row.spec);
         let ctx = CallCtx {
             tenant_id: tenant.id,
@@ -9967,7 +10035,7 @@ impl McpHostHandler {
             deadline: Instant::now() + resolved_timeout,
             log: Arc::new(NullLog) as Arc<dyn CallLog>,
             test_mode: test,
-            resources: Arc::new(NullResourceSink),
+            resources: resources.clone() as Arc<dyn ResourceSink>,
             tool_name: Some(local_name.clone()),
             state: state_backend.clone() as Arc<dyn StateBackend>,
             table: table_backend.clone(),
@@ -9993,6 +10061,7 @@ impl McpHostHandler {
             // from the tenant's plan here, once, same convention as
             // `concurrent_calls_per_tenant` just above.
             egress_allowed: tenant.plan == "pro",
+            sandbox_ceilings: self.state.plans.sandbox_ceilings(&tenant.plan),
             // PRD-mcphost-runs-and-jobs: an ordinary synchronous dispatch is
             // never a job -- no run id to report progress against, no pid
             // slot `host.runs.cancel` would ever look up.
@@ -10051,6 +10120,12 @@ impl McpHostHandler {
             Ok(Ok(mut value)) => {
                 if let Some(obj) = value.as_object_mut() {
                     obj.insert("duration_ms".to_string(), json!(duration_ms));
+                    // PRD-mcphost-sandbox-resource-limits-from-plan R5.
+                    if kind.name() == "python"
+                        && let Some(used) = resources.resources_used(duration_ms)
+                    {
+                        obj.insert(RESOURCES_USED_KEY.to_string(), used);
+                    }
                     obj.insert("state".to_string(), state_backend.snapshot().to_json());
                     if let Some(dry_run) = &dry_run {
                         obj.insert(
@@ -12318,6 +12393,7 @@ impl McpHostHandler {
                 // a clamped `limit` rides out as `_meta.mcphost.limit_clamped`.
                 let limit_clamped = crate::paged::take_clamp(&mut value);
                 let deprecated_arg = crate::paged::take_deprecated_arg(&mut value);
+                let resources_used = value.as_object_mut().and_then(|obj| obj.remove(RESOURCES_USED_KEY));
                 let result = CallToolResult::structured(value);
                 // requirement 2: an alias call's response carries the
                 // deprecation hint in `_meta.deprecated` (the MCP field
@@ -12400,6 +12476,10 @@ impl McpHostHandler {
                 }
                 if let Some(clamped) = limit_clamped {
                     meta.0.insert("mcphost".to_string(), json!({"limit_clamped": clamped}));
+                }
+                // PRD-mcphost-sandbox-resource-limits-from-plan R4/R5/R7.
+                if let Some(used) = resources_used {
+                    meta.0.insert("resources_used".to_string(), used);
                 }
                 if let Some(first_seen) = replayed_at {
                     meta.0.insert("replayed".to_string(), json!(true));
