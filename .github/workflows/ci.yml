@@ -305,6 +305,66 @@ jobs:
   # adding to the workflow's wall time. `scripts/risk-gate.sh` runs this
   # same script for wm-build's own gate (that invocation lives in the
   # harness-readonly skill script risk-gate.sh execs, not in this repo).
+  # PRD-mcphost-recipe-golden-path-tests R7 (AC7). Every recipe's exact calls
+  # (recipes/<name>.toml -> tests/rgpt_<name>_golden_path.rs) run in order
+  # against an in-process TestServer on every PR, so a recipe the host no
+  # longer accepts fails HERE, naming its own test, instead of showing up as a
+  # 0.0 in the nightly recipe row. Only the suites that hold an rgpt_ module
+  # are built (derived from tests/suite_*.rs, never listed here), and the
+  # job's own cap is the PRD's 6 minutes. Independent of `gate`/`sandbox`, so
+  # it runs concurrently with them. Python-kind recipes need the userns grant
+  # the sandbox job gives itself; the non-vacuous check below turns a runner
+  # that cannot do it into a red job, not a silent skip.
+  recipes-golden-path:
+    name: recipes-golden-path
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: install rust toolchain (pinned by rust-toolchain.toml)
+        uses: actions-rust-lang/setup-rust-toolchain@9d7e65c320fdb52dcd45ffaa68deb6c02c8754d9 # v1.10.1
+
+      - name: install bubblewrap and uv
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: enable unprivileged user namespaces for the python-kind recipes
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+
+      - name: verify test partition is total and disjoint
+        run: ./scripts/ci-test-partition.sh check
+
+      - name: generated recipe files match recipes/*.toml
+        run: cargo run --locked --quiet --package xtask -- recipes --check
+
+      - name: cargo test (golden paths)
+        env:
+          MCPHOST_PERF_SKIP: "1"
+        run: |
+          set -o pipefail
+          flags=$(grep -l 'mod rgpt_' tests/suite_*.rs | sed 's#tests/\(.*\)\.rs#--test \1#' | tr '\n' ' ')
+          echo "suites holding rgpt_ tests: $flags"
+          cargo test --locked $flags rgpt_ -- --nocapture 2>&1 | tee /tmp/cargo-test.log
+
+      - name: assert the golden paths executed for real (non-vacuous)
+        run: |
+          skipped=$(grep -c "skipped: no user namespaces" /tmp/cargo-test.log || true)
+          executed=$(grep -c '^test rgpt_.* \.\.\. ok$' /tmp/cargo-test.log || true)
+          echo "golden-path non-vacuous check: skipped=$skipped executed-ok=$executed"
+          if [ "$skipped" -gt 0 ]; then
+            echo "::error::$skipped golden path(s) skipped for user-namespace reasons on a runner this job just granted them to."
+            exit 1
+          fi
+          if [ "$executed" -lt 8 ]; then
+            echo "::error::only $executed rgpt_ tests passed; expected a golden path per recipe."
+            exit 1
+          fi
+
   flake-lint:
     name: flake-lint (env-mutation, single-shot-perf, receipt-read)
     runs-on: ubuntu-latest

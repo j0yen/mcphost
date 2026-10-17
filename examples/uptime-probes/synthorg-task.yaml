@@ -28,3 +28,5 @@ tasks:
       tool_name: probe
       call_check: "result.probed == 1"
       kind: python
+    recipe: uptime-probes
+    wall_budget_s: 60

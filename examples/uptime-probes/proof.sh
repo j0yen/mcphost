@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# GENERATED from recipes/uptime-probes.toml by `cargo xtask recipes` -- do not hand-edit.
+# Recipe calls (budget: 3 calls, within 60 s):
+#   1. host.uptime.create
+#   2. host.tool_call
 # proof.sh -- runnable end-to-end proof of "Uptime probes with no server"
 # (see www/llms.txt). One fresh tenant against $MCPHOST_URL: two tables,
 # two targets (one healthy URL, one that returns 503), `probe` published

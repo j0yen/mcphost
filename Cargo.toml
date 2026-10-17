@@ -14,6 +14,7 @@ members = [
     "vendor/mqo-chart-recommender",
     "vendor/mqo-vega-emitter",
     "vendor/mqo-chart-caption",
+    "xtask",
 ]
 
 [profile.dev]

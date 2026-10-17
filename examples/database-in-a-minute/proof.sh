@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+# GENERATED from recipes/database-in-a-minute.toml by `cargo xtask recipes` -- do not hand-edit.
+# Recipe calls (budget: 7 calls, within 60 s):
+#   1. host.table.create
+#   2. host.table.append
+#   3. host.table.model_set
+#   4. host.table.query
+#   5. host.table.query
+#   6. host.table.query_log
 # proof.sh -- runnable end-to-end proof of "Give Claude a database in one
 # minute" (see www/llms.txt). One fresh tenant against $MCPHOST_URL:
 # creates the `expenses` table with `host.table.create`, loads

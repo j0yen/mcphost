@@ -381,3 +381,12 @@ globs = ["docs/openapi.json"]
 required_commands = [
   "cargo test --workspace oapib_ac",
 ]
+
+[[lane]]
+id = "recipes"
+description = "PRD-mcphost-recipe-golden-path-tests: recipes/<name>.toml (the one source of each recipe), the xtask bin that runs `cargo xtask recipes` over src/recipes.rs, its cargo alias, and scripts/recipe-task-sync-check.sh. Their outputs are not in this lane: www/llms.txt routes to www, examples/** to examples and tests/rgpt_*.rs to rust-tests. Given its own lane so the pinned lanes stay byte-identical (tests/lanecov_ac04). Proof is the drift check plus the rgpt_ tests (name-filtered across --workspace, same suite-bucketing reasoning as the intent-card lane)."
+globs = ["recipes/**", "xtask/**", ".cargo/config.toml", "scripts/recipe-task-sync-check.sh"]
+required_commands = [
+  "cargo xtask recipes --check",
+  "cargo test --workspace rgpt_",
+]

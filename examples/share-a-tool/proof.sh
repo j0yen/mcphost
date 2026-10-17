@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+# GENERATED from recipes/share-a-tool.toml by `cargo xtask recipes` -- do not hand-edit.
+# Recipe calls (budget: 8 calls, within 60 s):
+#   1. host.secret_set
+#   2. host.tool_publish
+#   3. host.group.create
+#   4. host.tool_share
+#   5. host.group.add
+#   6. host.tool_call
 # proof.sh -- runnable end-to-end proof of "Share a tool, not a key"
 # (see www/llms.txt). Two fresh tenants against $MCPHOST_URL: the owner
 # publishes an http-kind tool that injects a secret into a request header

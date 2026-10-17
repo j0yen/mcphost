@@ -33,3 +33,5 @@ tasks:
       tool_name: host.table.query
       call_check: "result.rows.0.total == 57165.0"
       kind: host
+    recipe: database-in-a-minute
+    wall_budget_s: 60

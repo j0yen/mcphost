@@ -21,6 +21,8 @@ mod msrvlock;
 mod oauth;
 #[path = "support/oauthclient.rs"]
 mod oauthclient;
+#[path = "support/rgpt.rs"]
+mod rgpt;
 #[path = "support/serve.rs"]
 mod serve;
 #[path = "support/sjrc.rs"]
@@ -840,6 +842,26 @@ mod reglist_ac03_schema_validates_committed_entry_and_rejects_missing_remotes;
 mod reglist_ac04_workflow_checks_manifest_and_schema_on_every_push;
 #[path = "reglist_ac06_readme_registry_and_quickstart_links_resolve.rs"]
 mod reglist_ac06_readme_registry_and_quickstart_links_resolve;
+#[path = "rgpt_ac01_recipes_generator_idempotent.rs"]
+mod rgpt_ac01_recipes_generator_idempotent;
+#[path = "rgpt_ac02_drift_names_file_recipe_and_line.rs"]
+mod rgpt_ac02_drift_names_file_recipe_and_line;
+#[path = "rgpt_ac03_unknown_tool_or_arg_exits_2.rs"]
+mod rgpt_ac03_unknown_tool_or_arg_exits_2;
+#[path = "rgpt_ac05_every_golden_test_runs_its_calls_in_order.rs"]
+mod rgpt_ac05_every_golden_test_runs_its_calls_in_order;
+#[path = "rgpt_ac06_task_sync_check_flags_wall_budget_drift.rs"]
+mod rgpt_ac06_task_sync_check_flags_wall_budget_drift;
+#[path = "rgpt_ac07_ci_job_fails_on_the_broken_recipe_only.rs"]
+mod rgpt_ac07_ci_job_fails_on_the_broken_recipe_only;
+#[path = "rgpt_chart_in_a_minute_golden_path.rs"]
+mod rgpt_chart_in_a_minute_golden_path;
+#[path = "rgpt_database_in_a_minute_golden_path.rs"]
+mod rgpt_database_in_a_minute_golden_path;
+#[path = "rgpt_share_a_tool_golden_path.rs"]
+mod rgpt_share_a_tool_golden_path;
+#[path = "rgpt_uptime_probes_golden_path.rs"]
+mod rgpt_uptime_probes_golden_path;
 #[path = "rowpol_ac01_sql_predicate_scopes_to_end_user_attribute.rs"]
 mod rowpol_ac01_sql_predicate_scopes_to_end_user_attribute;
 #[path = "rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0.rs"]

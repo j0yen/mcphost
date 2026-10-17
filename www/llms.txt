@@ -251,6 +251,41 @@ lexical and embeddings hit rates in one receipt.
 
 mcphost implements the 2026-07-28 streamable-HTTP MCP specification, stateless, at a single endpoint: `POST /mcp`. Health is unauthenticated at `GET /healthz`.
 
+<!-- recipe:docs-qa begin -->
+## Recipe calls: Docs Q&A in a minute
+
+The exact calls, in order (generated from `recipes/docs-qa.toml`; do not hand-edit -- run `cargo xtask recipes`). Plan fit: free.
+
+Sign up first (`signup`), once per tenant: `owner`.
+
+1. `host.docs.put(content="# VPN setup\n\nThe VPN client connects on port 1194 over UDP.\n", name="vpn-setup.md")`
+2. `host.docs.put(content="# Onboarding\n\nOn day one you receive a laptop and a badge.\n", name="onboarding.md")`
+3. `host.docs.status()` -- poll until index.lag_seconds == 0
+   expect `$.index.lag_seconds` = 0
+4. `host.tool_publish(kind="python", name="ask_docs", spec={"source":"<contents of examples/docs-qa/ask_docs.py>"})`
+5. `host.tool_call(args={"k":5,"query":"What port does the VPN client connect on?"}, name="ask_docs")` -- every passage carries a name:offset citation
+   expect `$.passages[0].name` = "vpn-setup.md"
+
+Expected cost: 6 calls (the 1 signup included), within 90 s.
+<!-- recipe:docs-qa end -->
+
+<!-- recipe:first-run begin -->
+## Recipe calls: First run: plugin walk-through
+
+The exact calls, in order (generated from `recipes/first-run.toml`; do not hand-edit -- run `cargo xtask recipes`). Plan fit: free.
+
+Sign up first (`signup`), once per tenant: `owner`.
+
+1. `host.tool_publish(kind="python", name="table_note", spec={"source":"<contents of examples/first-run/tools/table_note.py>"})` -- a real python tool, not a stub
+   expect `$.kind` = "python"
+2. `host.tool_test(args={"note":"hello"}, name="table_note")` -- a real write through the sandbox API
+   expect `$.result.appended` = 1
+   expect `$.result.table` = "quickstart_notes"
+3. `host.trigger.set(kind="schedule", schedule="0 * * * *", tool="table_note")`
+
+Expected cost: 4 calls (the 1 signup included), within 90 s.
+<!-- recipe:first-run end -->
+
 ## First run: plugin walk-through
 
 The Claude Code plugin's `/mcphost` skill and this section walk the same
@@ -618,6 +653,24 @@ want a client's consent screen -- and its token -- limited to a subset:
 (or omit `scope`), and tokens minted before this existed all keep calling
 every tool, scoped or not.
 
+<!-- recipe:share-a-tool begin -->
+## Recipe calls: Share a tool, not a key
+
+The exact calls, in order (generated from `recipes/share-a-tool.toml`; do not hand-edit -- run `cargo xtask recipes`). Plan fit: free.
+
+Sign up first (`signup`), once per tenant: `owner`, `teammate`.
+
+1. `host.secret_set(name="upstream_key", value="sk_live_fixture_not_a_real_key")` [owner]
+2. `host.tool_publish(kind="http", name="paid_api", spec={"headers":{"Authorization":"Bearer {{ secret.upstream_key }}"},"method":"GET","response":"json","url":"<fixture_base>/v1/balance"})` [owner]
+3. `host.group.create(name="finance")` [owner]
+4. `host.tool_share(group="finance", name="paid_api", visibility="group")` [owner]
+5. `host.group.add(name="finance", namespace="<teammate_namespace>")` [owner]
+6. `host.tool_call(args={}, name="<owner_namespace>.paid_api")` [teammate] -- the teammate calls it by name -- no key, ever
+   expect `$.payload.object` = "balance"
+
+Expected cost: 8 calls (the 2 signups included), within 60 s.
+<!-- recipe:share-a-tool end -->
+
 <!-- sharing:start -->
 ## Share a tool, not a key
 
@@ -695,6 +748,27 @@ as `host.tool_call` does -- no separate quota to track. Shared without the
 flag, `host.tool_spec_shared` fails with `spec_not_exposed`; not shared at
 all, it fails exactly like `host.tool_call` does on an unshared tool --
 `tool_not_found`, never revealing whether the tool exists.
+
+<!-- recipe:team-memory begin -->
+## Recipe calls: Give your agents one memory
+
+The exact calls, in order (generated from `recipes/team-memory.toml`; do not hand-edit -- run `cargo xtask recipes`). Plan fit: free.
+
+Sign up first (`signup`), once per tenant: `owner`, `teammate`.
+
+1. `host.table.create(columns={"at":"real","key":"text","tags":"json","text":"text","writer":"text"}, name="memory")` [owner]
+2. `host.tool_publish(kind="python", name="remember", spec={"source":"<contents of examples/team-memory/tools/remember.py>"})` [owner]
+3. `host.tool_publish(kind="python", name="recall", spec={"source":"<contents of examples/team-memory/tools/recall.py>"})` [owner]
+4. `host.group.create(name="team")` [owner]
+5. `host.tool_share(group="team", name="remember", visibility="group")` [owner]
+6. `host.tool_share(group="team", name="recall", visibility="group")` [owner]
+7. `host.group.add(name="team", namespace="<teammate_namespace>")` [owner]
+8. `host.tool_call(args={"key":"deploy","text":"deploy window is Tuesday 9pm","who":"<teammate_namespace>"}, name="<owner_namespace>.remember")` [teammate] -- writer holds the caller's own namespace
+9. `host.tool_call(args={"query":"deploy"}, name="<owner_namespace>.recall")` [teammate]
+   expect `$.rows[0].key` = "deploy"
+
+Expected cost: 11 calls (the 2 signups included), within 90 s.
+<!-- recipe:team-memory end -->
 
 ## Give your agents one memory
 
@@ -837,6 +911,27 @@ host.runs.part(run_id="<run_id>", n=5)
   `host.runs.list(end_user_subject="...")` filters to just that end user's
   runs.
 
+<!-- recipe:database-in-a-minute begin -->
+## Recipe calls: Give Claude a database in one minute
+
+The exact calls, in order (generated from `recipes/database-in-a-minute.toml`; do not hand-edit -- run `cargo xtask recipes`). Plan fit: free.
+
+Sign up first (`signup`), once per tenant: `owner`.
+
+1. `host.table.create(columns={"amount":"real","category":"text","day":"integer","id":"integer"}, name="expenses", primary_key="id")`
+2. `host.table.append(rows=[{"amount":11.1,"category":"produce","day":1,"id":1},{"amount":7.25,"category":"produce","day":2,"id":2},{"amount":900.0,"category":"rent","day":3,"id":3},{"amount":32.5,"category":"transit","day":4,"id":4}], table="expenses")`
+   expect `$.appended` = 4
+3. `host.table.model_set(key="description", table="expenses", value="Household spending, one row per purchase.")`
+4. `host.table.query(sql="SELECT category, SUM(amount) AS total FROM expenses GROUP BY category ORDER BY category")`
+   expect `$.rows[0].category` = "produce"
+5. `host.table.query(sql="SELECT COUNT(*) AS n FROM expenses WHERE category LIKE '%prod%'")`
+   expect `$.rows[0].n` = 2
+6. `host.table.query_log(limit=10)` -- the last calls newest first, each with its sql and row_count
+   expect `$.rows[0].row_count` = 1
+
+Expected cost: 7 calls (the 1 signup included), within 60 s.
+<!-- recipe:database-in-a-minute end -->
+
 ## Give Claude a database in one minute
 
 A CSV becomes a table your own Claude Desktop can query -- in plain SQL,
@@ -885,6 +980,24 @@ reaches the separate key-value store, not this one.
 Runnable end-to-end proof, 1,000-row fixture included:
 `examples/database-in-a-minute/proof.sh`.
 
+<!-- recipe:chart-in-a-minute begin -->
+## Recipe calls: Chart in a minute
+
+The exact calls, in order (generated from `recipes/chart-in-a-minute.toml`; do not hand-edit -- run `cargo xtask recipes`). Plan fit: free.
+
+Sign up first (`signup`), once per tenant: `owner`.
+
+1. `host.table.create(columns={"amount":"real","category":"text","day":"integer","id":"integer"}, name="expenses", primary_key="id")`
+2. `host.table.append(rows=[{"amount":11.1,"category":"produce","day":1,"id":1},{"amount":7.25,"category":"produce","day":2,"id":2},{"amount":900.0,"category":"rent","day":3,"id":3},{"amount":32.5,"category":"transit","day":4,"id":4}], table="expenses")`
+   expect `$.appended` = 4
+3. `host.table.chart(share=true, sql="SELECT category, SUM(amount) AS total FROM expenses GROUP BY category")` -- the mark is picked from the columns' types; share_url opens with no login
+   expect `$.schema` = "chart.v1"
+   expect `$.share_url` is present
+   expect `$.vega_lite` is present
+
+Expected cost: 4 calls (the 1 signup included), within 60 s.
+<!-- recipe:chart-in-a-minute end -->
+
 ## Chart in a minute
 
 One SQL call turns a question into a chart spec, a data-computed caption,
@@ -918,6 +1031,27 @@ and a link -- no chart grammar, you name the data with `sql`.
 
 Runnable end-to-end proof, 1,000-row fixture included:
 `examples/chart-in-a-minute/proof.sh`.
+
+<!-- recipe:webhook-inbox begin -->
+## Recipe calls: Webhook inbox in one call
+
+The exact calls, in order (generated from `recipes/webhook-inbox.toml`; do not hand-edit -- run `cargo xtask recipes`). Plan fit: free.
+
+Sign up first (`signup`), once per tenant: `owner`.
+
+1. `host.webhook_inbox.create(name="inbox")` -- returns url, secret and wait in one call
+   expect `$.url` contains "/hook/"
+   expect `$.secret` is present
+   expect `$.wait.tool` = "host.msg.wait"
+2. POST `{"id":"evt-fixture-1"}` to `<step1.url>`, signed (HMAC-SHA256 under the secret, `X-Mcphost-Signature: sha256=<hex>`), expect HTTP 200 -- a signed POST, exactly as a sender would
+3. POST `{"id":"evt-fixture-1"}` to `<step1.url>`, unsigned, expect HTTP 401 -- an unsigned POST is refused and stores nothing
+4. `host.tool_call(args={}, name="inbox")` -- the last 50 stored events as rows
+   expect `$.rows[0].id` = "evt-fixture-1"
+5. `host.msg.wait()` -- pass wait.args from step 1 as-is
+   expect `$.messages[0].data.event_id` = "evt-fixture-1"
+
+Expected cost: 4 calls (the 1 signup included), within 90 s.
+<!-- recipe:webhook-inbox end -->
 
 ## Webhook inbox in one call
 
@@ -1553,6 +1687,22 @@ No MCP client? Every plain-HTTP route is described by OpenAPI 3.1 at `/openapi.j
 - [llms-full.txt](/llms-full.txt) — this file's content plus every tool kind
   (echo, http, python, wasm, chain), all measured benchmarks, and supporting
   receipts, concatenated into one markdown file per the llms.txt convention.
+
+<!-- recipe:uptime-probes begin -->
+## Recipe calls: Uptime probes with no server
+
+The exact calls, in order (generated from `recipes/uptime-probes.toml`; do not hand-edit -- run `cargo xtask recipes`). Plan fit: free.
+
+Sign up first (`signup`), once per tenant: `owner`.
+
+1. `host.uptime.create(name="status", urls=["<fixture_base>/health","<fixture_base>/health?second=1"])` -- creates the probe set, a status tool and one schedule, and probes once
+   expect `$.status_tool` = "status"
+   expect `$.schedule_id` is present
+   expect `$.first_result.rows[0].ok` = true
+2. `host.tool_call(args={}, name="status")` -- reads the last stored result, never fetches live
+
+Expected cost: 3 calls (the 1 signup included), within 60 s.
+<!-- recipe:uptime-probes end -->
 
 ## Uptime probes with no server
 

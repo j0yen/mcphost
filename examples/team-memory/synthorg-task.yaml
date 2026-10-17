@@ -32,3 +32,5 @@ tasks:
       tool_name: recall
       call_check: "result.found == true"
       kind: python
+    recipe: team-memory
+    wall_budget_s: 90

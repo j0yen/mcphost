@@ -30,3 +30,5 @@ tasks:
       tool_name: chart_it
       call_check: "result.recommendation.mark == bar"
       kind: python
+    recipe: chart-in-a-minute
+    wall_budget_s: 60

@@ -1,0 +1,11 @@
+# PRD-mcphost-recipe-golden-path-tests R2: `cargo xtask recipes` (alias in
+# .cargo/config.toml). A thin bin over `mcphost::recipes`, so the generator
+# and the `rgpt_*` drift tests share one implementation.
+[package]
+name = "xtask"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+mcphost = { path = ".." }

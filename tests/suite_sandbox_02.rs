@@ -29,6 +29,8 @@ mod gdrain;
 mod host;
 #[path = "support/oauth.rs"]
 mod oauth;
+#[path = "support/rgpt.rs"]
+mod rgpt;
 #[path = "support/serve.rs"]
 mod serve;
 #[path = "support/uptime_probes.rs"]
@@ -416,6 +418,16 @@ mod retshape_ac05_starter_example_shows_rows_access;
 mod retshape_ac06_quickstart_carries_bridge_returns;
 #[path = "retshape_ac07_handle_query_shape_in_table.rs"]
 mod retshape_ac07_handle_query_shape_in_table;
+#[path = "rgpt_ac04_webhook_inbox_generated_and_passes.rs"]
+mod rgpt_ac04_webhook_inbox_generated_and_passes;
+#[path = "rgpt_docs_qa_golden_path.rs"]
+mod rgpt_docs_qa_golden_path;
+#[path = "rgpt_first_run_golden_path.rs"]
+mod rgpt_first_run_golden_path;
+#[path = "rgpt_team_memory_golden_path.rs"]
+mod rgpt_team_memory_golden_path;
+#[path = "rgpt_webhook_inbox_golden_path.rs"]
+mod rgpt_webhook_inbox_golden_path;
 #[path = "rowpol_ac12_python_bridge_threads_end_user_through_table_query.rs"]
 mod rowpol_ac12_python_bridge_threads_end_user_through_table_query;
 #[path = "runenvelope_ac1_call_and_tool_run_parity.rs"]
