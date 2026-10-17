@@ -724,11 +724,12 @@ pub fn splice_input_schema(verb: &str, properties: &mut Map<String, Value>) {
 // PRD-mcphost-fields-projection-on-list-verbs.
 
 /// Row keys of `host.tool.list` (`control::tool_list`). `stub` is present
-/// only on an echo-kind tool, the rest always.
+/// only on an echo-kind tool, the rest always (`forked_from` is `null` on a
+/// tool that is not a fork).
 pub const TOOL_LIST_FIELDS: &[&str] = &[
     "name", "kind", "created_at", "visibility", "share_description", "unshared_by", "env",
     "advisories", "expose_spec", "exposed_at", "spec_reads", "scopes", "stub", "tags", "tested_version",
-    "stale_test",
+    "stale_test", "forked_from",
 ];
 
 /// List verbs that are not [`Paged`] (no keyset cursor yet) but still accept

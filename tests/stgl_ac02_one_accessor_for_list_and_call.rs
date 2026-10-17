@@ -30,12 +30,12 @@ async fn stgl_ac02() {
     let c = db.find_tenant_by_namespace(ns_c).await.unwrap().expect("C");
 
     let listed_b = visible_shared_tools(&server.state, &b).await.expect("visible B");
-    let resolved_b = resolve_shared_tool(&server.state, &b, &ns_a, "shx").await;
+    let resolved_b = resolve_shared_tool(&server.state, &b, &ns_a, "shx", mcphost::sharing::ShareScope::Call).await;
     assert!(resolved_b.is_ok());
     assert!(listed_b.iter().any(|(o, r)| o.namespace == ns_a && r.name == "shx"));
 
     let listed_c = visible_shared_tools(&server.state, &c).await.expect("visible C");
-    let resolved_c = resolve_shared_tool(&server.state, &c, &ns_a, "shx").await;
+    let resolved_c = resolve_shared_tool(&server.state, &c, &ns_a, "shx", mcphost::sharing::ShareScope::Call).await;
     assert!(resolved_c.is_err());
     assert!(listed_c.is_empty());
 }

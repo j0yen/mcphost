@@ -12,6 +12,76 @@ use crate::db::{Tenant, ToolRow};
 use crate::errors::AppError;
 use crate::state::AppState;
 
+/// PRD-mcphost-scoped-tool-share R1: what a share lets its grantee do. The
+/// ONE source of the scope set: `host.tool_share`'s `scopes.items.enum`,
+/// `_meta.share_scopes`, the `host.catalog.get` `scopes` field and the
+/// llms.txt line all render [`ShareScope::ALL`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShareScope {
+    /// Call the shared tool.
+    Call,
+    /// Read the (redacted) spec through `host.tool_spec_shared`.
+    ReadSource,
+    /// Copy the tool into the grantee's own tenant with `host.tool_fork`.
+    Fork,
+}
+
+impl ShareScope {
+    pub const ALL: [ShareScope; 3] = [ShareScope::Call, ShareScope::ReadSource, ShareScope::Fork];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ShareScope::Call => "call",
+            ShareScope::ReadSource => "read_source",
+            ShareScope::Fork => "fork",
+        }
+    }
+
+    pub fn parse(name: &str) -> Option<ShareScope> {
+        Self::ALL.into_iter().find(|s| s.as_str() == name)
+    }
+
+    /// The wire names of [`Self::ALL`], in order.
+    pub fn names() -> Vec<&'static str> {
+        Self::ALL.iter().map(|s| s.as_str()).collect()
+    }
+
+    /// Scopes a share with no recorded set grants: what every share predating
+    /// the scopes column had (migration 0120's backfill).
+    pub fn legacy_default() -> Vec<String> {
+        vec!["call".to_string(), "read_source".to_string()]
+    }
+
+    /// Does `granted` allow `self`? `fork` implies `read_source` (a copy
+    /// carries the source).
+    pub fn granted_in(self, granted: &[String]) -> bool {
+        let has = |s: ShareScope| granted.iter().any(|g| g == s.as_str());
+        has(self) || (self == ShareScope::ReadSource && has(ShareScope::Fork))
+    }
+}
+
+/// R3: `scope_missing {required, granted}`.
+pub fn scope_missing(required: ShareScope, granted: &[String]) -> AppError {
+    AppError::Structured {
+        code: "scope_missing",
+        message: format!(
+            "this share does not grant '{}' (granted: {})",
+            required.as_str(),
+            granted.join(", ")
+        ),
+        data: json!({"required": required.as_str(), "granted": granted}),
+    }
+}
+
+/// R5: `share_revoked {tool, revoked_at}`.
+pub fn share_revoked(tool: &str, revoked_at: i64) -> AppError {
+    AppError::Structured {
+        code: "share_revoked",
+        message: format!("the owner revoked the share of '{tool}'"),
+        data: json!({"tool": tool, "revoked_at": crate::state::rfc3339_from_unix(revoked_at)}),
+    }
+}
+
 fn arg_str(args: &Value, name: &str) -> Result<String, AppError> {
     args.get(name)
         .and_then(Value::as_str)
@@ -142,6 +212,46 @@ fn tool_json(namespace: &str, tool: &crate::db::ToolRow) -> Value {
     })
 }
 
+/// R2: the `scopes` argument. Absent: `["call"]`, or `["call","read_source"]`
+/// for an `expose_spec: true` share (that flag already granted the readback).
+/// `url` shares allow only `call`.
+fn parse_scopes(args: &Value, visibility: &str, expose_spec: bool) -> Result<Vec<String>, AppError> {
+    let valid = ShareScope::names().join(", ");
+    let Some(raw) = args.get("scopes") else {
+        return Ok(if expose_spec { ShareScope::legacy_default() } else { vec!["call".to_string()] });
+    };
+    let items = raw
+        .as_array()
+        .filter(|a| !a.is_empty())
+        .ok_or_else(|| AppError::InvalidArgs(format!("scopes must be a non-empty array of: {valid}")))?;
+    let mut picked = Vec::new();
+    for item in items {
+        let scope = item.as_str().and_then(ShareScope::parse).ok_or_else(|| {
+            AppError::InvalidArgs(format!("unknown scope {item}; valid scopes are: {valid}"))
+        })?;
+        picked.push(scope);
+    }
+    if visibility == "url" && picked.iter().any(|s| *s != ShareScope::Call) {
+        return Err(AppError::InvalidArgs("url shares allow only the 'call' scope".into()));
+    }
+    Ok(ShareScope::ALL
+        .into_iter()
+        .filter(|s| picked.contains(s))
+        .map(|s| s.as_str().to_string())
+        .collect())
+}
+
+/// R2: `rate_per_hour_per_caller`, 1..=10000, optional.
+fn parse_rate(args: &Value) -> Result<Option<i64>, AppError> {
+    match args.get("rate_per_hour_per_caller") {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => match v.as_i64() {
+            Some(n) if (1..=10_000).contains(&n) => Ok(Some(n)),
+            _ => Err(AppError::InvalidArgs("rate_per_hour_per_caller must be an integer 1..10000".into())),
+        },
+    }
+}
+
 /// `host.tool_share(name, visibility, group?, description?)` (AC1, AC6):
 /// `visibility` must be `"public"`, `"group"`, or (PRD-mcphost-public-tool-url
 /// requirement 1) `"url"` (a tenant shares a tool INTO one of those
@@ -156,6 +266,9 @@ pub async fn tool_share(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
     // PRD-mcphost-shared-tool-spec-readback requirement 1: owner opt-in,
     // default closed.
     let expose_spec = args.get("expose_spec").and_then(Value::as_bool).unwrap_or(false);
+
+    let scopes = parse_scopes(args, &visibility, expose_spec)?;
+    let rate_per_hour = parse_rate(args)?;
 
     let vis = Visibility::parse_shareable(&visibility)?;
     let new_tags = parse_tags(args)?;
@@ -242,6 +355,10 @@ pub async fn tool_share(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
             expose_spec,
         )
         .await?;
+    state
+        .db
+        .set_share_scopes(tenant.id, name.clone(), scopes.clone(), rate_per_hour)
+        .await?;
 
     let after = state.db.get_tool(tenant.id, name.clone()).await?.unwrap_or(row.clone());
     // R2/R4: the tenants whose `tools/list` this share changes -- the new
@@ -269,6 +386,8 @@ pub async fn tool_share(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
         "description": description,
         "expose_spec": expose_spec,
         "listed_for": {"visibility": visibility, "grantees_notified": grantees.len()},
+        "scopes": scopes,
+        "rate_per_hour_per_caller": rate_per_hour,
     });
     if let Some(token) = token
         && let Some(obj) = result.as_object_mut()
@@ -309,6 +428,49 @@ pub async fn tool_unshare(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     // this tool never had a public URL token.
     crate::public_tool::revoke_url_share(state, tenant.id, &name).await?;
     Ok(json!({ "name": name, "visibility": "private" }))
+}
+
+/// PRD-mcphost-scoped-tool-share R6: `host.tool_fork(owner, tool, as)` copies a
+/// shared tool's `kind` + `spec` into the caller's tenant as a private tool
+/// named `as`. Needs the `fork` scope ([`resolve_shared_tool`]); counts toward
+/// `tools_max`; records `forked_from` (`<owner>.<tool>`). The owner's `env`
+/// map is dropped from the copy -- a fork never carries the owner's values.
+pub async fn tool_fork(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let owner_ns = arg_str(args, "owner")?;
+    let tool = arg_str(args, "tool")?;
+    let new_name = arg_str(args, "as")?;
+    crate::state::validate_tool_name(&new_name)?;
+
+    let (_owner, row) = resolve_shared_tool(state, tenant, &owner_ns, &tool, ShareScope::Fork).await?;
+
+    if state.db.get_tool(tenant.id, new_name.clone()).await?.is_some() {
+        return Err(AppError::InvalidArgs(format!("a tool named '{new_name}' already exists in your tenant")));
+    }
+    let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
+        AppError::Internal(format!("tenant's plan '{}' is not in the loaded plan catalog", tenant.plan))
+    })?;
+    let count = state.db.count_tools(tenant.id).await?;
+    let effective_max = plan.tools_max.min(crate::state::MAX_TOOLS_PER_TENANT);
+    if count >= effective_max {
+        return Err(crate::billing::quota_exceeded(state, &tenant.plan, "tools_max", effective_max, count, None));
+    }
+
+    let mut spec = row.spec.clone();
+    if let Some(obj) = spec.as_object_mut() {
+        obj.remove("env");
+    }
+    state
+        .db
+        .upsert_tool(tenant.id, new_name.clone(), row.kind.clone(), spec, plan.versions_max, Vec::new())
+        .await?;
+    let forked_from = format!("{owner_ns}.{tool}");
+    state.db.set_forked_from(tenant.id, new_name.clone(), forked_from.clone()).await?;
+    Ok(json!({
+        "name": format!("{}.{new_name}", tenant.namespace),
+        "kind": row.kind,
+        "forked_from": forked_from,
+        "visibility": "private",
+    }))
 }
 
 /// `host.group.create(name)` (requirement 1): idempotent.
@@ -480,6 +642,28 @@ pub async fn resolve_shared_tool(
     caller: &Tenant,
     owner_ns: &str,
     local_name: &str,
+    required: ShareScope,
+) -> Result<(Tenant, ToolRow), AppError> {
+    let (owner, row) = resolve_visible(state, caller, owner_ns, local_name).await?;
+    let granted = state
+        .db
+        .get_share_meta(owner.id, local_name.to_string())
+        .await?
+        .and_then(|m| m.scopes)
+        .unwrap_or_else(ShareScope::legacy_default);
+    if !required.granted_in(&granted) {
+        return Err(scope_missing(required, &granted));
+    }
+    Ok((owner, row))
+}
+
+/// The scope-free half of [`resolve_shared_tool`]: visible to `caller` (or the
+/// not-found / `share_revoked` refusal).
+async fn resolve_visible(
+    state: &AppState,
+    caller: &Tenant,
+    owner_ns: &str,
+    local_name: &str,
 ) -> Result<(Tenant, ToolRow), AppError> {
     let not_found = || AppError::shared_tool_not_found(owner_ns, local_name);
     let (owner, row) = state
@@ -489,10 +673,36 @@ pub async fn resolve_shared_tool(
         .ok_or_else(not_found)?;
 
     if shared_visibility(state, caller, &owner, &row).await?.is_none() {
+        // R5: a caller that ran this tool in the last 7 days learns the share
+        // was revoked; anyone else gets the identical not-found. The
+        // `current_key_id().is_none()` carve-out below reconciles two ACs:
+        // - PRD-mcphost-key-scoped-to-tools-b AC2: a sub-key call after an
+        //   unshare is a plain `not_found`;
+        // - PRD-mcphost-scoped-tool-share R5 / shsc_ac04: a primary-key caller
+        //   gets `share_revoked`.
+        // Why: `share_revoked` must not leak share history across a sub-key
+        // scope boundary.
+        if row.visibility == "private"
+            && crate::subkeys::current_key_id().is_none()
+            && let Some(meta) = state.db.get_share_meta(owner.id, local_name.to_string()).await?
+            && let Some(revoked_at) = meta.unshared_unix
+        {
+            let since = crate::state::now_unix() - REVOKED_WINDOW_SECS;
+            if state
+                .db
+                .caller_called_since(owner.id, local_name.to_string(), caller.id, since)
+                .await?
+            {
+                return Err(share_revoked(&format!("{owner_ns}.{local_name}"), revoked_at));
+            }
+        }
         return Err(not_found());
     }
     Ok((owner, row))
 }
+
+/// How long after an unshare a past caller still gets `share_revoked`.
+const REVOKED_WINDOW_SECS: i64 = 7 * 86_400;
 
 /// `host.catalog.search(q?, limit?)` (AC7): a `LIKE` over name/description
 /// among every `visibility = 'public'` tool, regardless of caller.
@@ -507,23 +717,41 @@ pub async fn catalog_search(state: &AppState, args: &Value) -> Result<Value, App
 /// `host.catalog.get(full_name)` (AC7): `full_name` is `<namespace>.<name>`;
 /// 404-shaped `tool_not_found` (never revealing whether a private tool of
 /// that name exists -- same non-leaking contract as the cross-tenant call
-/// path) for anything that isn't a currently-public tool.
-pub async fn catalog_get(state: &AppState, args: &Value) -> Result<Value, AppError> {
+/// path) for anything that isn't a currently-public tool, or a group-shared
+/// one `caller` is a member of. PRD-mcphost-scoped-tool-share R1: the entry
+/// carries `scopes` (what the share grants); it never carries a `spec`.
+pub async fn catalog_get(state: &AppState, caller: Option<&Tenant>, args: &Value) -> Result<Value, AppError> {
     let full_name = arg_str(args, "full_name")?;
     let (namespace, local_name) = full_name
         .split_once('.')
         .ok_or_else(|| AppError::ToolNotFound(full_name.clone()))?;
-    let tool = state
+    let public = state
         .db
         .get_public_tool(namespace.to_string(), local_name.to_string())
-        .await?
-        .ok_or_else(|| AppError::ToolNotFound(full_name.clone()))?;
+        .await?;
+    let tool = match (public, caller) {
+        (Some(tool), _) => tool,
+        (None, Some(caller)) => {
+            resolve_visible(state, caller, namespace, local_name)
+                .await
+                .map(|(_, row)| row)
+                .map_err(|_| AppError::ToolNotFound(full_name.clone()))?
+        }
+        (None, None) => return Err(AppError::ToolNotFound(full_name.clone())),
+    };
     let kind = state.kinds.get(&tool.kind);
     let args_schema = kind.map(|k| k.describe(&tool.spec).input_schema);
     let mut value = tool_json(namespace, &tool);
     if let Some(schema) = args_schema {
         value["args_schema"] = schema;
     }
+    let scopes = match state.db.find_tenant_by_namespace(namespace.to_string()).await? {
+        Some(owner) => state.db.get_share_meta(owner.id, local_name.to_string()).await?,
+        None => None,
+    }
+    .and_then(|m| m.scopes)
+    .unwrap_or_else(ShareScope::legacy_default);
+    value["scopes"] = json!(scopes);
     Ok(value)
 }
 
