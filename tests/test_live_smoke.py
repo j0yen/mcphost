@@ -1,0 +1,1 @@
+../sdk/python/tests/test_live_smoke.py

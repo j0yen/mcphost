@@ -13,5 +13,6 @@ contexts = [
   "sandbox suites (user namespaces, shard 1/3)",
   "sandbox suites (user namespaces, shard 2/3)",
   "sandbox suites (user namespaces, shard 3/3)",
+  "sdk-python (generated SDK matches the contract)",
   "static analysis + core suites",
 ]
