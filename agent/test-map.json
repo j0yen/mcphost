@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-publish-visibility-and-tags",
+  "ac_test_map_prd": "PRD-mcphost-scope-registry-generated.md (test_prefix: sreg)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,13 +28,13 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/pubvis_ac01_starters_publish_public_tested.rs",
-    "AC2": "tests/pubvis_ac02_visibility_enum_single_source.rs",
-    "AC3": "tests/pubvis_ac03_untested_tool_cannot_be_public.rs",
-    "AC4": "tests/pubvis_ac04_unlisted_not_listed_but_callable.rs",
-    "AC5": "tests/pubvis_ac05_tags_validated_normalised_capped.rs",
-    "AC6": "tests/pubvis_ac06_new_version_marks_stale_until_retested.rs",
-    "AC7": "tests/pubvis_ac07_concurrent_public_share_stamps_once.rs"
+    "AC1": "tests/sreg_ac01_registry_single_source.rs",
+    "AC2": "tests/sreg_ac02_every_host_tool_declares_a_scope.rs",
+    "AC3": "tests/sreg_ac03_implied_scopes_gate_tool_calls.rs",
+    "AC4": "tests/sreg_ac04_llms_txt_scopes_table_generated.rs",
+    "AC5": "tests/sreg_ac05_whoami_scopes_all_and_effective.rs",
+    "AC6": "tests/sreg_ac06_oauth_scopes_registry_first.rs",
+    "AC7": "tests/sreg_ac07_unknown_scope_word_not_effective.rs"
   },
   "ac_test_map_by_prefix": {
     "nfs": {
@@ -2000,6 +2000,16 @@
       "AC5": "tests/sibl_ac05_labels_derive_from_client_info_names.rs",
       "AC6": "tests/sibl_ac06_returning_browser_is_offered_join.rs",
       "AC7": "tests/sibl_ac07_concurrent_joins_land_exactly_max_uses.rs"
+    },
+    "sreg": {
+      "_prd": "PRD-mcphost-scope-registry-generated.md (test_prefix: sreg)",
+      "AC1": "tests/sreg_ac01_registry_single_source.rs",
+      "AC2": "tests/sreg_ac02_every_host_tool_declares_a_scope.rs",
+      "AC3": "tests/sreg_ac03_implied_scopes_gate_tool_calls.rs",
+      "AC4": "tests/sreg_ac04_llms_txt_scopes_table_generated.rs",
+      "AC5": "tests/sreg_ac05_whoami_scopes_all_and_effective.rs",
+      "AC6": "tests/sreg_ac06_oauth_scopes_registry_first.rs",
+      "AC7": "tests/sreg_ac07_unknown_scope_word_not_effective.rs"
     }
   }
 }

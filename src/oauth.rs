@@ -828,12 +828,6 @@ pub async fn issuers_list(state: &AppState, tenant: &Tenant) -> Result<Value, Ap
 // ---- oauth_scopes: a tenant's own scope catalog (PRD-mcphost-tool-scopes-
 // and-consent requirement 1) ------------------------------------------------
 
-/// requirement 1: "a tool may reference only catalogued scopes or the
-/// built-ins `read`, `write`" -- these two need no `oauth_scopes` row to be
-/// valid on a tool's own `scopes`; a catalog entry only ever adds a
-/// consent-page description for them (or names an entirely custom scope).
-pub const BUILTIN_SCOPES: [&str; 2] = ["read", "write"];
-
 /// requirement 1: 32 catalog entries per tenant.
 pub const MAX_SCOPES_PER_TENANT: i64 = 32;
 
@@ -843,7 +837,7 @@ pub const MAX_SCOPES_PER_TENANT: i64 = 32;
 /// the two built-ins, and this tenant's own catalog names.
 pub fn known_scope_names(catalog: &[crate::db::OauthScopeRow]) -> std::collections::HashSet<String> {
     let mut set: std::collections::HashSet<String> =
-        std::iter::once("mcp".to_string()).chain(BUILTIN_SCOPES.iter().map(|s| s.to_string())).collect();
+        crate::scopes::Scope::ALL.iter().map(|s| s.as_str().to_string()).collect();
     set.extend(catalog.iter().map(|s| s.name.clone()));
     set
 }
@@ -863,14 +857,7 @@ fn required_or_mcp(scopes: &[String]) -> Vec<String> {
 /// share, so a scope change on republish (AC6) is read fresh by whichever
 /// runs next, no cache to invalidate.
 pub fn scope_satisfied(token_scope: Option<&str>, required: &[String]) -> bool {
-    let Some(scope) = token_scope else {
-        return true;
-    };
-    let words: std::collections::HashSet<&str> = scope.split_whitespace().collect();
-    if words.contains("mcp") {
-        return true;
-    }
-    required_or_mcp(required).iter().all(|r| words.contains(r.as_str()))
+    crate::scopes::check(token_scope, required)
 }
 
 /// requirement 4 (AC2): the `insufficient_scope` challenge's own `scope`
@@ -921,13 +908,26 @@ pub async fn scope_set(state: &AppState, tenant: &Tenant, args: &Value) -> Resul
     Ok(json!({"name": name, "description": description}))
 }
 
-/// `host.oauth.scopes`: this tenant's own scope catalog.
+/// `host.oauth.scopes`: the registry entries (`builtin: true`, a tenant's
+/// own catalog description overriding the default for a same-named word)
+/// first, then this tenant's catalog entries beyond them (`builtin: false`).
 pub async fn scopes_list(state: &AppState, tenant: &Tenant) -> Result<Value, AppError> {
     let rows = state.db.list_oauth_scopes(tenant.id).await?;
-    let scopes: Vec<Value> = rows
+    let mut scopes: Vec<Value> = crate::scopes::Scope::ALL
         .iter()
-        .map(|r| json!({"name": r.name, "description": r.description}))
+        .map(|s| {
+            let description = rows
+                .iter()
+                .find(|r| r.name == s.as_str())
+                .map_or_else(|| s.description().to_string(), |r| r.description.clone());
+            json!({"name": s.as_str(), "description": description, "builtin": true})
+        })
         .collect();
+    scopes.extend(
+        rows.iter()
+            .filter(|r| crate::scopes::Scope::parse(&r.name).is_none())
+            .map(|r| json!({"name": r.name, "description": r.description, "builtin": false})),
+    );
     Ok(json!({"scopes": scopes}))
 }
 
@@ -1220,8 +1220,7 @@ pub async fn protected_resource_metadata_for_tenant(state: &AppState, tenant: &T
     let scopes_supported: Vec<String> = if catalog.is_empty() {
         vec!["mcp".to_string()]
     } else {
-        let mut scopes: Vec<String> =
-            std::iter::once("mcp".to_string()).chain(BUILTIN_SCOPES.iter().map(|s| s.to_string())).collect();
+        let mut scopes: Vec<String> = crate::scopes::Scope::ADVERTISED.iter().map(|s| s.as_str().to_string()).collect();
         let mut extra: Vec<String> = catalog
             .into_iter()
             .map(|s| s.name)

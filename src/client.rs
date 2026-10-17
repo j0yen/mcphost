@@ -206,7 +206,7 @@ pub const EXIT_CODE_TABLE: &[(&str, i32)] = &[
     ("invalid_token", 4),
     ("conflicting_credentials", 4),
     ("wrong_tenant", 4),
-    ("insufficient_scope", 4),
+    (crate::scopes::INSUFFICIENT_SCOPE, 4),
     ("auth_conflict", 4),
     ("handoff_token_invalid", 4),
     ("handoff_token_redeemed", 4),
