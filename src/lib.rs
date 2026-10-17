@@ -81,6 +81,7 @@ pub mod http;
 pub mod install_links;
 pub mod invites;
 pub mod org;
+pub mod tenant_clients;
 pub mod kinds;
 pub mod lineage;
 pub mod clients;

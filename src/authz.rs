@@ -584,7 +584,19 @@ fn render_consent_page(
     scope_groups: &str,
     error: Option<&str>,
     offer_new_workspace: bool,
+    join_workspace: Option<&str>,
 ) -> String {
+    // PRD-mcphost-same-user-second-agent R6: a browser that consented before
+    // is offered its workspace first -- one click, no key, no email.
+    let join_html = join_workspace
+        .map(|name| {
+            format!(
+                "<button type=\"submit\" name=\"join_workspace\" value=\"1\">Join {}</button>\
+                 <p>...or prove you own a workspace:</p>",
+                html_escape(name)
+            )
+        })
+        .unwrap_or_default();
     // PRD-mcphost-oauth-first-grant-signup requirement 1: the third form,
     // only where a brand-new tenant could actually own the grant (never a
     // per-tenant resource, whose consent must prove THAT tenant).
@@ -633,6 +645,7 @@ fn render_consent_page(
              <input type=\"hidden\" name=\"state\" value=\"{state}\">\
              <input type=\"hidden\" name=\"scope\" value=\"{scope}\">\
              <input type=\"hidden\" name=\"resource\" value=\"{resource_attr}\">\
+             {join_html}\
              <p>Prove you own this tenant, with its key:</p>\
              <input type=\"password\" name=\"tenant_key\" placeholder=\"tenant key\">\
              <p>...or with a claim code from your email:</p>\
@@ -930,6 +943,7 @@ pub async fn get_authorize(
         return crate::federation::start(&state, tenant, &provider, &identity, &redirect_uri, &resource, &params).await;
     }
     let scope_groups = scope_groups_html(&state, resource_tenant.as_ref(), &resolved_scope).await;
+    let cookie_tenant = consent_cookie_tenant(&state, &headers, resource_tenant.as_ref()).await;
     html_response(
         StatusCode::OK,
         render_consent_page(
@@ -941,8 +955,62 @@ pub async fn get_authorize(
             &scope_groups,
             None,
             resource_tenant.is_none(),
+            cookie_tenant.as_ref().map(|t| t.display_name.as_str()),
         ),
     )
+}
+
+// ---- consent cookie (PRD-mcphost-same-user-second-agent R6) ----------------
+
+/// The cookie that remembers which workspace this browser consented to.
+const CONSENT_COOKIE: &str = "mcphost_consent";
+/// 30 days.
+const CONSENT_COOKIE_TTL_SECS: i64 = 30 * 86_400;
+
+fn consent_cookie_token(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get_all(axum::http::header::COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|v| v.split(';'))
+        .find_map(|pair| {
+            let (k, v) = pair.trim().split_once('=')?;
+            (k == CONSENT_COOKIE && !v.is_empty()).then(|| v.to_string())
+        })
+}
+
+/// The live, enabled tenant this browser's consent cookie names -- and, for
+/// a per-tenant `resource`, only when that is the same tenant.
+async fn consent_cookie_tenant(
+    state: &AppState,
+    headers: &HeaderMap,
+    resource_tenant: Option<&crate::db::Tenant>,
+) -> Option<crate::db::Tenant> {
+    let token = consent_cookie_token(headers)?;
+    let tenant_id = state.db.consent_cookie_tenant_id(crate::auth::hash_key(&token)).await.ok().flatten()?;
+    let tenant = state.db.find_tenant_by_id(tenant_id).await.ok().flatten()?;
+    (!tenant.disabled && resource_tenant.is_none_or(|rt| rt.id == tenant.id)).then_some(tenant)
+}
+
+/// Remember `tenant` on this browser: `HttpOnly; Secure; SameSite=Lax`, 30
+/// days. Best-effort -- a failed write never fails the consent that
+/// triggered it.
+async fn remember_consent(state: &AppState, tenant: &crate::db::Tenant, response: &mut Response) {
+    let token = crate::auth::generate_key();
+    if state
+        .db
+        .insert_consent_cookie(crate::auth::hash_key(&token), tenant.id, CONSENT_COOKIE_TTL_SECS)
+        .await
+        .is_err()
+    {
+        return;
+    }
+    let cookie = format!(
+        "{CONSENT_COOKIE}={token}; Max-Age={CONSENT_COOKIE_TTL_SECS}; Path=/oauth; HttpOnly; Secure; SameSite=Lax"
+    );
+    if let Ok(value) = axum::http::HeaderValue::from_str(&cookie) {
+        response.headers_mut().append(axum::http::header::SET_COOKIE, value);
+    }
 }
 
 // ---- consent: POST /oauth/authorize ---------------------------------------
@@ -970,6 +1038,9 @@ pub struct ConsentForm {
     /// new workspace" submit button's own value.
     #[serde(default)]
     pub new_workspace: Option<String>,
+    /// PRD-mcphost-same-user-second-agent R6: the "Join <workspace>" button.
+    #[serde(default)]
+    pub join_workspace: Option<String>,
 }
 
 fn consent_form_params(form: &ConsentForm) -> AuthorizeParams {
@@ -1155,7 +1226,18 @@ pub async fn post_authorize(
         && blank(&form.tenant_key)
         && blank(&form.claim_code)
         && resource_tenant.is_none();
-    let proven_tenant = if first_grant_signup {
+    // PRD-mcphost-same-user-second-agent R6 (AC6): "Join <workspace>" on a
+    // browser whose cookie names a tenant binds this grant to that tenant
+    // with a new `tenant_clients` row -- no key, no claim code, no email.
+    let join_requested = !blank(&form.join_workspace);
+    let cookie_join = if join_requested {
+        consent_cookie_tenant(&state, &headers, resource_tenant.as_ref()).await
+    } else {
+        None
+    };
+    let proven_tenant = if let Some(tenant) = cookie_join.clone() {
+        Some(tenant)
+    } else if first_grant_signup {
         match create_first_grant_tenant(&state, &headers, &ip).await {
             Ok(tenant) => Some(tenant),
             Err(resp) => return *resp,
@@ -1224,7 +1306,13 @@ pub async fn post_authorize(
                             )
                             .await;
                     }
-                    mint_code_and_redirect(
+                    if cookie_join.is_some()
+                        && let Err(e) = state.db.add_oauth_client(tenant.id, identity.client_name.clone()).await
+                    {
+                        tracing::warn!(error = %e, tenant = %tenant.namespace, "failed to record the joined client");
+                        return render_inline_error("server_error", "could not join the workspace");
+                    }
+                    let mut response = mint_code_and_redirect(
                         &state,
                         &tenant,
                         &identity,
@@ -1235,7 +1323,11 @@ pub async fn post_authorize(
                         &state_param,
                         funnel_origin,
                     )
-                    .await
+                    .await;
+                    if response.status().is_redirection() {
+                        remember_consent(&state, &tenant, &mut response).await;
+                    }
+                    response
                 }
                 Ok(crate::oauth_policy::ClientDecision::Pending) => {
                     let _ = crate::oauth_policy::record_audit(
@@ -1288,6 +1380,7 @@ pub async fn post_authorize(
                     &scope_groups,
                     Some("that key or claim code did not verify -- try again"),
                     resource_tenant.is_none(),
+                    None,
                 ),
             )
         }

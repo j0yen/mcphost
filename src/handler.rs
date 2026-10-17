@@ -295,7 +295,7 @@ async fn resolve_path_secret_auth(
         return Ok(None);
     };
     let hash = hash_key(secret);
-    match state.db.find_tenant_by_url_secret_hash(hash).await? {
+    match state.db.find_tenant_by_url_secret_hash(hash.clone()).await? {
         Some(t) if is_refused_disabled(&t, verb) => Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() }),
         Some(t) => {
             // See the mirrored comment in `resolve_auth` above.
@@ -309,7 +309,33 @@ async fn resolve_path_secret_auth(
             maybe_stamp_second_session(state, &t, session_id(parts).as_deref()).await;
             Ok(Some(Auth::Tenant(Box::new(t), None)))
         }
-        None => Ok(None),
+        // PRD-mcphost-same-user-second-agent R2: not a tenant's own URL
+        // secret -- a sibling client's? A revoked client, or a secret a
+        // client has since rotated away from, is `tenant_key_invalid`.
+        None => {
+            if let Some(client) = state.db.find_client_by_secret_hash(hash.clone()).await? {
+                if client.revoked_unix.is_some() {
+                    return Err(AppError::TenantKeyInvalid);
+                }
+                let Some(t) = state.db.find_tenant_by_id(client.tenant_id).await? else {
+                    return Ok(None);
+                };
+                if is_refused_disabled(&t, verb) {
+                    return Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() });
+                }
+                if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
+                    tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
+                }
+                if let Err(e) = state.db.touch_client(client.id.clone()).await {
+                    tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump client last_seen_unix");
+                }
+                return Ok(Some(Auth::Tenant(Box::new(t), None)));
+            }
+            if state.db.is_retired_client_secret(hash).await? {
+                return Err(AppError::TenantKeyInvalid);
+            }
+            Ok(None)
+        }
     }
 }
 
@@ -499,6 +525,16 @@ async fn resolve_session_binding(
             Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() })
         }
         Some(t) => {
+            // PRD-mcphost-same-user-second-agent R4: a session that joined
+            // as a sibling dies with that client -- a revoke lands on its
+            // very next call. Only join sessions carry a client binding, so
+            // every other session pays no extra read.
+            if let Some(client_id) = state.session_bindings.client_lookup(session_id, t.id)
+                && state.db.client_is_revoked(client_id).await?
+            {
+                state.session_bindings.drop_binding(session_id);
+                return Err(AppError::TenantKeyInvalid);
+            }
             // See the mirrored comment in `resolve_auth` above.
             if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
                 tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
@@ -1254,8 +1290,32 @@ fn host_tools_part_01(kinds: &KindRegistry) -> Vec<Tool> {
             "Issue a new tenant key and invalidate the current one immediately: every other \
              call using the old key fails as unauthenticated from this point on. Returns the \
              new key exactly once -- use it (as tenant_key or Authorization) for every call \
-             after this one.",
-            host_schema(json!({}), &[]),
+             after this one. When other clients have joined (see the clients field of host.whoami), a client rotates only its own \
+             credential; all: true rotates every client and the join code.",
+            host_schema(
+                json!({
+                    "all": {
+                        "type": "boolean",
+                        "description": "Rotate every client of the workspace (each sibling's URL, your key and URL) and the join code. Default false: only the calling client's credential changes.",
+                    },
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.client.revoke",
+            "Revoke one client of this workspace (a sibling that joined through join_url, listed in the \
+             clients field of host.whoami): its URL answers tenant_key_invalid from the next call. The last \
+             remaining client cannot be revoked (last_client).",
+            host_schema(
+                json!({
+                    "client_id": {
+                        "type": "string",
+                        "description": "The client_id of the client to revoke, from the clients field of host.whoami.",
+                    },
+                }),
+                &["client_id"],
+            ),
         ),
         // PRD-mcphost-key-scoped-to-tools R2: primary key only.
         Tool::new(
@@ -7064,12 +7124,36 @@ impl McpHostHandler {
                 let session_tenant = self.session_tenant_namespace(session_id).await;
                 let mut me =
                     control::whoami(&self.state, tenant, subject, auth_method, session_tenant.as_deref()).await?;
+                let siblings = crate::tenant_clients::whoami_fields(
+                    &self.state,
+                    tenant,
+                    crate::tenant_clients::current_client().as_deref(),
+                )
+                .await?;
+                if let (Some(obj), Some(extra)) = (me.as_object_mut(), siblings.as_object()) {
+                    for (k, v) in extra {
+                        obj.insert(k.clone(), v.clone());
+                    }
+                }
                 if let (Some(key), Some(obj)) = (crate::subkeys::whoami_key(&self.state).await?, me.as_object_mut()) {
                     obj.insert("key".to_string(), key);
                 }
                 Ok(me)
             }
-            "host.key.rotate" => control::key_rotate(&self.state, tenant).await,
+            "host.key.rotate" => {
+                // PRD-mcphost-same-user-second-agent R5: a sibling rotates
+                // only its own secret; `all: true` rotates every sibling and
+                // the join code. Client 0 alone keeps today's shape.
+                let all = args.get("all").and_then(Value::as_bool).unwrap_or(false);
+                let first = crate::tenant_clients::first_client_id(tenant.id);
+                let client = crate::tenant_clients::current_client().unwrap_or_else(|| first.clone());
+                if all || client != first {
+                    crate::tenant_clients::rotate(&self.state, tenant, &client, all).await
+                } else {
+                    control::key_rotate(&self.state, tenant).await
+                }
+            }
+            "host.client.revoke" => crate::tenant_clients::revoke(&self.state, tenant, &args).await,
             "host.calls.list" => crate::calllog::list(&self.state, tenant, &args).await,
             "host.calls.export" => crate::calllog::export(&self.state, tenant, &args).await,
             "host.key.mint" => crate::subkeys::mint(&self.state, tenant, &args).await,
@@ -10825,6 +10909,34 @@ impl ServerHandler for McpHostHandler {
 }
 
 impl McpHostHandler {
+    /// PRD-mcphost-same-user-second-agent R2: which client of `tenant` is
+    /// calling -- the sibling the join just created, else the sibling whose
+    /// `/u/` secret is on the path, else the one this session joined as,
+    /// else client 0 (key, `tenant_key`, OAuth grant, client 0's own URL).
+    async fn calling_client_id(
+        &self,
+        parts: &http::request::Parts,
+        tenant: &Tenant,
+        session_id: Option<&str>,
+        joined: Option<&str>,
+    ) -> Result<String, AppError> {
+        if let Some(id) = joined {
+            return Ok(id.to_string());
+        }
+        if let Some(secret) = url_path_secret(parts)
+            && let Some(client) = self.state.db.find_client_by_secret_hash(hash_key(secret)).await?
+            && client.tenant_id == tenant.id
+        {
+            return Ok(client.id);
+        }
+        if let Some(sid) = session_id
+            && let Some(id) = self.state.session_bindings.client_lookup(sid, tenant.id)
+        {
+            return Ok(id);
+        }
+        self.state.db.ensure_first_client(tenant.id).await
+    }
+
     pub(crate) async fn call_tool_inner(
         &self,
         request: CallToolRequestParams,
@@ -11018,6 +11130,7 @@ impl McpHostHandler {
             && !is_feedback_tool(&body_name)
             && tenant_path_namespace(parts).is_none()
             && crate::invites::invite_path_code(parts).is_none()
+            && crate::tenant_clients::join_path_code(parts).is_none()
         {
             let peer = request_peer_key(parts);
             if let Some(namespace) = self.state.redeemed_peers.lookup(&peer, now_unix()) {
@@ -11077,6 +11190,29 @@ impl McpHostHandler {
             .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
             auth = Auth::Tenant(Box::new(tenant), None);
             invite_onboarding = Some(onboarding);
+        }
+        // PRD-mcphost-same-user-second-agent R3 (AC1, AC2, AC7): a fresh
+        // session on `/j/{code}/mcp` -- nothing resolved above -- becomes a
+        // sibling client of the code's tenant right here. The join binds the
+        // session (tenant + client), so every later call on it resolves
+        // through the ordinary session binding and never reaches here again.
+        let mut joined_client_id: Option<String> = None;
+        if matches!(auth, Auth::Anonymous)
+            && body_name != "signup"
+            && body_name != "host.redeem"
+            && let Some(code) = crate::tenant_clients::join_path_code(parts)
+        {
+            let (tenant, client, onboarding) = crate::tenant_clients::join_on_first_call(
+                &self.state,
+                code,
+                session_id.as_deref(),
+                peer_client_info(&ctx),
+            )
+            .await
+            .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
+            auth = Auth::Tenant(Box::new(tenant), None);
+            invite_onboarding = Some(onboarding);
+            joined_client_id = Some(client.id);
         }
         // PRD-mcphost-url-bound-tenants requirement 1 (AC7): a request on
         // `/u/{secret}/mcp` that ALSO carries an `Authorization: Bearer` for
@@ -11742,16 +11878,30 @@ impl McpHostHandler {
                 // `alias_canonical` is `Some` iff `name` is a registered
                 // alias of it.
                 let dispatch_name = alias_canonical.unwrap_or(name);
-                let result = self
-                    .dispatch_tenant_tool(
-                        tenant,
-                        subject,
-                        auth_method,
-                        calls_method,
-                        end_user.as_ref(),
-                        session_id.as_deref(),
-                        dispatch_name,
-                        args,
+                // PRD-mcphost-same-user-second-agent R2: the calling
+                // client, for the verbs that act on "this" client.
+                let call_client = if matches!(dispatch_name, "host.whoami" | "host.key.rotate" | "host.client.revoke") {
+                    Some(
+                        self.calling_client_id(parts, tenant, session_id.as_deref(), joined_client_id.as_deref())
+                            .await
+                            .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?,
+                    )
+                } else {
+                    None
+                };
+                let result = crate::tenant_clients::CALL_CLIENT
+                    .scope(
+                        call_client,
+                        self.dispatch_tenant_tool(
+                            tenant,
+                            subject,
+                            auth_method,
+                            calls_method,
+                            end_user.as_ref(),
+                            session_id.as_deref(),
+                            dispatch_name,
+                            args,
+                        ),
                     )
                     .await;
                 // PRD-mcphost-notes-to-future-self R3: a tool-attached note

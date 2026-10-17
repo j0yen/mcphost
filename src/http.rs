@@ -1532,9 +1532,19 @@ async fn require_known_url_secret(
     next: Next,
 ) -> Response {
     let hash = crate::auth::hash_key(&secret);
-    match state.db.find_tenant_by_url_secret_hash(hash).await {
+    match state.db.find_tenant_by_url_secret_hash(hash.clone()).await {
         Ok(Some(_)) => {}
-        _ => return StatusCode::NOT_FOUND.into_response(),
+        // PRD-mcphost-same-user-second-agent R2/R4: a sibling client's
+        // secret (live, revoked, or rotated away from) reaches dispatch,
+        // where a dead one answers `tenant_key_invalid`.
+        Ok(None) => {
+            let known = state.db.find_client_by_secret_hash(hash.clone()).await.is_ok_and(|c| c.is_some())
+                || state.db.is_retired_client_secret(hash).await.unwrap_or(false);
+            if !known {
+                return StatusCode::NOT_FOUND.into_response();
+            }
+        }
+        Err(_) => return StatusCode::NOT_FOUND.into_response(),
     }
     let wants_html = req
         .headers()
@@ -1590,6 +1600,48 @@ async fn require_live_invite_code(
                  <p>Add this URL as an MCP server in your client, then ask your agent to call \
                  any tool -- that first call creates your own tenant and accepts the \
                  connection, no signup step needed.</p>",
+            ),
+        );
+    }
+    next.run(req).await
+}
+
+/// PRD-mcphost-same-user-second-agent R3: `/j/{code}/mcp` for a code that
+/// is unknown, revoked or expired is 404 before the MCP service sees the
+/// request (an exhausted code reaches dispatch, where the call that loses
+/// the race answers `join_code_invalid` with its `next_call`). A browser's
+/// `GET` on a live code gets a short explainer that names no tenant.
+async fn require_live_join_code(
+    State(state): State<Arc<AppState>>,
+    Path(code): Path<String>,
+    req: Request<Body>,
+    next: Next,
+) -> Response {
+    if !state.db.join_code_connectable(crate::auth::hash_key(&code)).await.unwrap_or(false) {
+        return crate::claim::html_response(
+            StatusCode::NOT_FOUND,
+            crate::claim::page(
+                "mcphost — join link not valid",
+                "<h1>This join link is no longer valid</h1>\
+                 <p>It may have expired or been replaced. Ask your other client to call \
+                 <code>host.whoami</code> for the current <code>join_url</code>.</p>",
+            ),
+        );
+    }
+    let wants_html = req
+        .headers()
+        .get(axum::http::header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.contains("text/html"));
+    if req.method() == Method::GET && wants_html {
+        return crate::claim::html_response(
+            StatusCode::OK,
+            crate::claim::page(
+                "mcphost — join your workspace",
+                "<h1>Join your mcphost workspace</h1>\
+                 <p>Add this URL as an MCP server in your other client and ask it to call any \
+                 tool -- that first call gives it its own URL in the same workspace, no key and \
+                 no email.</p>",
             ),
         );
     }
@@ -1923,6 +1975,15 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id))
         .route_layer(middleware::from_fn_with_state(state.clone(), enrich_unsupported_errors));
 
+    // PRD-mcphost-same-user-second-agent R3: `/j/{code}/mcp` serves the
+    // identical service; the first `host.*` call on it mints a sibling
+    // client of the code's tenant (`handler::call_tool`'s join step).
+    let join_mcp_router = Router::new()
+        .route_service("/j/{code}/mcp", service.clone())
+        .route_layer(middleware::from_fn_with_state(state.clone(), require_live_join_code))
+        .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id))
+        .route_layer(middleware::from_fn_with_state(state.clone(), enrich_unsupported_errors));
+
     // PRD-mcphost-session-bound-tenant-after-signup requirement 1: only the
     // streamable-HTTP routes get a session identity, so `/healthz`, the
     // OAuth endpoints and the router's own 404 fallback are untouched. Its
@@ -2017,6 +2078,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         .merge(url_mcp_router)
         .merge(invite_mcp_router)
         .merge(org_mcp_router)
+        .merge(join_mcp_router)
         .merge(entry_mcp_router)
         // PRD-mcphost-session-bound-tenant-after-signup requirement 7
         // (AC10): `oauth_401_upgrade` must run INSIDE (closer to the

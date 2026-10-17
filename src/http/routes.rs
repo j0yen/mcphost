@@ -70,6 +70,7 @@ pub const UNSPECCED: &[&str] = &[
     "/u/{secret}/mcp",
     "/i/{code}/mcp",
     "/o/{code}/mcp",
+    "/j/{code}/mcp",
     crate::oauth::OAUTH_ENTRY_PATH,
     "/status.html",
     "/aup.html",
