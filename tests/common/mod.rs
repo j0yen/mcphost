@@ -60,6 +60,8 @@ pub fn doc_check_scratch(label: &str) -> PathBuf {
         "docs/oauth-connect.md",
         "www/llms.txt",
         "docs/protocol/capabilities.md",
+        "docs/protocol/prompts.md",
+        "src/prompts.rs",
         "www/llms-install.md",
         "www/llms-full.txt",
         "www/index.html",

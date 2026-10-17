@@ -47,7 +47,11 @@ async fn keyed_whoami_answers_one_json_result_frame_and_the_row_says_so() {
     // precede the result with `list_changed`; `host.whoami` never does.
     assert_eq!(
         row.frames,
-        &[(FrameKind::ListChanged, Card::AtMostOne), (FrameKind::Result, Card::ExactlyOne)],
-        "the row must say [ListChanged{{0,1}}, Result{{1}}]"
+        &[
+            (FrameKind::ListChanged, Card::AtMostOne),
+            (FrameKind::PromptsListChanged, Card::AtMostOne),
+            (FrameKind::Result, Card::ExactlyOne)
+        ],
+        "the row must say [ListChanged{{0,1}}, PromptsListChanged{{0,1}}, Result{{1}}]"
     );
 }
