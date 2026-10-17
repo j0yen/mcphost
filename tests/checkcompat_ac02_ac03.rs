@@ -52,6 +52,29 @@ fn seed_live_db(data_dir: &std::path::Path) {
     assert!(status.success(), "seeding migrate should succeed");
 }
 
+/// One line per entry under `path` (itself included): `path size`, or the
+/// io error reading it. Diagnostic only -- used in the leak assertion's message.
+fn describe_tree(path: &std::path::Path) -> String {
+    let mut lines = Vec::new();
+    let mut stack = vec![path.to_path_buf()];
+    while let Some(p) = stack.pop() {
+        match fs::symlink_metadata(&p) {
+            Ok(meta) => {
+                lines.push(format!("  {} {} bytes", p.display(), meta.len()));
+                if meta.is_dir() {
+                    match fs::read_dir(&p) {
+                        Ok(rd) => stack.extend(rd.filter_map(|e| e.ok()).map(|e| e.path())),
+                        Err(e) => lines.push(format!("  {} read_dir error: {e}", p.display())),
+                    }
+                }
+            }
+            Err(e) => lines.push(format!("  {} metadata error: {e}", p.display())),
+        }
+    }
+    lines.sort();
+    lines.join("\n")
+}
+
 #[test]
 fn check_compat_passes_against_a_compatible_previous_binary_and_leaves_live_db_untouched() {
     let data_dir = scratch_data_dir("ac02");
@@ -97,9 +120,15 @@ fn check_compat_passes_against_a_compatible_previous_binary_and_leaves_live_db_u
         .filter_map(|e| e.ok())
         .filter(|e| e.file_name().to_string_lossy().starts_with(&prefix))
         .collect();
+    // On a leak, show what is still inside (paths + sizes) and what the
+    // check-compat process itself said, so the cause is readable from the
+    // CI log. The assertion itself is unchanged.
+    let tree: Vec<String> = leftovers.iter().map(|e| describe_tree(&e.path())).collect();
     assert!(
         leftovers.is_empty(),
-        "scratch dir(s) left behind: {leftovers:?}"
+        "scratch dir(s) left behind: {leftovers:?}\nremaining tree:\n{}\ncheck-compat stderr: {}",
+        tree.join("\n"),
+        String::from_utf8_lossy(&output.stderr)
     );
 
     let _ = fs::remove_dir_all(&data_dir);

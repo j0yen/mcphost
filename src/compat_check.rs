@@ -115,9 +115,58 @@ impl ScratchDir {
     }
 }
 
+/// `remove_dir_all` attempts [`ScratchDir`]'s `Drop` makes before giving up.
+const SCRATCH_REMOVE_ATTEMPTS: u32 = 5;
+/// Pause between those attempts: a helper process the previous release
+/// spawned can still be writing into the scratch dir for a moment after
+/// the release itself is gone, which makes one `remove_dir_all` fail with
+/// `ENOTEMPTY` (flake 306 a7 / 936 a3: the dir survived an exit-0 check).
+const SCRATCH_REMOVE_BACKOFF: Duration = Duration::from_millis(100);
+
+/// Run `remove` against `path` up to `attempts` times (at least once),
+/// sleeping `backoff` between failures. An already-missing path counts as
+/// removed. Returns the last error when every attempt failed, so the caller
+/// can report it instead of leaking the directory silently.
+fn remove_dir_all_retry(
+    path: &Path,
+    attempts: u32,
+    backoff: Duration,
+    mut remove: impl FnMut(&Path) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    let attempts = attempts.max(1);
+    let mut last: std::io::Result<()> = Ok(());
+    for attempt in 1..=attempts {
+        match remove(path) {
+            Ok(()) => return Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => last = Err(e),
+        }
+        if attempt < attempts {
+            std::thread::sleep(backoff);
+        }
+    }
+    last
+}
+
+/// Named fn (not the generic `std::fs::remove_dir_all` item) so it satisfies the
+/// higher-ranked `FnMut(&Path)` bound of [`remove_dir_all_retry`].
+fn remove_tree(path: &Path) -> std::io::Result<()> {
+    std::fs::remove_dir_all(path)
+}
+
 impl Drop for ScratchDir {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        if let Err(e) = remove_dir_all_retry(
+            &self.0,
+            SCRATCH_REMOVE_ATTEMPTS,
+            SCRATCH_REMOVE_BACKOFF,
+            remove_tree,
+        ) {
+            eprintln!(
+                "check-compat: cannot remove scratch dir {} after {SCRATCH_REMOVE_ATTEMPTS} attempts: {e}",
+                self.0.display()
+            );
+        }
     }
 }
 
@@ -726,6 +775,9 @@ fn spawn_previous(
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
+        // Own process group (pgid == the child's pid) so `stop` can signal the
+        // whole group and reap helpers the previous release spawned.
+        .process_group(0)
         .kill_on_drop(true);
 
     match bind_plan {
@@ -773,6 +825,17 @@ fn spawn_previous(
 }
 
 async fn stop(child: &mut Child) {
+    // The child leads its own process group (see `spawn_previous`), so
+    // signalling `-pgid` also kills any helper it spawned; killing only the
+    // direct child left such grandchildren running and writing into the
+    // scratch dir while it was being removed. `id()` is `None` once the
+    // child was already reaped, in which case there is no group to name.
+    if let Some(pgid) = child.id().and_then(|pid| i32::try_from(pid).ok()) {
+        // SAFETY: kill(2) takes two plain integers and touches no memory.
+        unsafe {
+            libc::kill(-pgid, libc::SIGKILL);
+        }
+    }
     let _ = child.start_kill();
     let _ = child.wait().await;
 }
@@ -1150,5 +1213,66 @@ mod compatfix_run_as_tests {
         // default before calling this), but the seam itself must not
         // invent a uid/gid out of thin air.
         assert_eq!(decide_run_as(0, None), None);
+    }
+}
+
+#[cfg(test)]
+mod scratch_remove_retry_tests {
+    use super::{remove_dir_all_retry, remove_tree};
+    use std::cell::Cell;
+    use std::io::{Error, ErrorKind};
+    use std::path::Path;
+    use std::time::Duration;
+
+    const TICK: Duration = Duration::from_millis(1);
+
+    #[test]
+    fn retry_succeeds_once_a_transient_failure_clears() {
+        let calls = Cell::new(0u32);
+        let result = remove_dir_all_retry(Path::new("/nonexistent/x"), 5, TICK, |_| {
+            calls.set(calls.get() + 1);
+            if calls.get() < 3 { Err(Error::from(ErrorKind::DirectoryNotEmpty)) } else { Ok(()) }
+        });
+        assert!(result.is_ok(), "a failure that clears within the budget must succeed: {result:?}");
+        assert_eq!(calls.get(), 3, "stops retrying at the first success");
+    }
+
+    #[test]
+    fn retry_gives_up_after_the_budget_and_returns_the_last_error() {
+        let calls = Cell::new(0u32);
+        let result = remove_dir_all_retry(Path::new("/nonexistent/x"), 5, TICK, |_| {
+            calls.set(calls.get() + 1);
+            Err(Error::from(ErrorKind::DirectoryNotEmpty))
+        });
+        assert_eq!(calls.get(), 5, "exactly the attempt budget, no more");
+        assert_eq!(result.unwrap_err().kind(), ErrorKind::DirectoryNotEmpty);
+    }
+
+    #[test]
+    fn retry_treats_an_already_missing_path_as_removed() {
+        let calls = Cell::new(0u32);
+        let result = remove_dir_all_retry(Path::new("/nonexistent/x"), 5, TICK, |_| {
+            calls.set(calls.get() + 1);
+            Err(Error::from(ErrorKind::NotFound))
+        });
+        assert!(result.is_ok());
+        assert_eq!(calls.get(), 1, "NotFound is success on the first attempt");
+    }
+
+    #[test]
+    fn retry_really_removes_a_populated_directory() -> std::io::Result<()> {
+        let dir = std::env::temp_dir().join(format!(
+            "mcphost-scratch-retry-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(dir.join("sub"))?;
+        std::fs::write(dir.join("sub").join("f"), b"x")?;
+        remove_dir_all_retry(&dir, 5, TICK, remove_tree)?;
+        assert!(!dir.exists(), "directory must be gone");
+        Ok(())
     }
 }
