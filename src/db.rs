@@ -8542,6 +8542,20 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-shared-tools-in-grantee-list R2: stamp
+    /// `last_tool_change_unix` on every tenant in `tenant_ids`, so their next
+    /// `tools/list` carries `ttlMs: 0` after a share/unshare changed what
+    /// they are shown.
+    pub async fn touch_tool_change_for(&self, tenant_ids: Vec<i64>) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            for id in tenant_ids {
+                touch_tenant_tool_change(conn, id)?;
+            }
+            Ok(())
+        })
+        .await
+    }
+
     /// `admin.tool_unshare` (AC9): same effect as [`Self::unshare_tool`],
     /// keyed by the owner's namespace (an operator names a tenant, not an
     /// id) and stamping `unshared_by = 'admin'` so the owner's own

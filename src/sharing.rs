@@ -126,12 +126,28 @@ pub async fn tool_share(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
         )
         .await?;
 
+    // R2/R4: the tenants whose `tools/list` this share changes -- the new
+    // group's members (the grantees) plus any previous group's members who
+    // just lost the entry. `grantees_notified` counts the former, through
+    // the same membership `shared_visibility` evaluates.
+    let grantees = if visibility == "group" {
+        group_grantee_ids(state, tenant, group.as_deref()).await?
+    } else {
+        Vec::new()
+    };
+    let mut touched = grantees.clone();
+    if row.visibility == "group" && row.shared_group != group {
+        touched.extend(group_grantee_ids(state, tenant, row.shared_group.as_deref()).await?);
+    }
+    state.db.touch_tool_change_for(touched).await?;
+
     let mut result = json!({
         "name": format!("{}.{}", tenant.namespace, name),
         "visibility": visibility,
         "group": group,
         "description": description,
         "expose_spec": expose_spec,
+        "listed_for": {"visibility": visibility, "grantees_notified": grantees.len()},
     });
     if let Some(token) = token
         && let Some(obj) = result.as_object_mut()
@@ -156,10 +172,18 @@ pub async fn tool_share(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
 /// when `name` isn't one of this tenant's tools.
 pub async fn tool_unshare(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let name = arg_str(args, "name")?;
+    // R2/R6: former group grantees must see the entry go on their next list.
+    let former = match state.db.get_tool(tenant.id, name.clone()).await? {
+        Some(row) if row.visibility == "group" => {
+            group_grantee_ids(state, tenant, row.shared_group.as_deref()).await?
+        }
+        _ => Vec::new(),
+    };
     let removed = state.db.unshare_tool(tenant.id, name.clone()).await?;
     if !removed {
         return Err(AppError::ToolNotFound(name));
     }
+    state.db.touch_tool_change_for(former).await?;
     // PRD-mcphost-public-tool-url requirement 8 (AC4/AC8): a no-op when
     // this tool never had a public URL token.
     crate::public_tool::revoke_url_share(state, tenant.id, &name).await?;
@@ -224,6 +248,102 @@ pub async fn group_list(state: &AppState, tenant: &Tenant) -> Result<Value, AppE
     Ok(json!({ "groups": groups }))
 }
 
+/// Tenant ids that are members of `owner`'s group `group` (the owner itself
+/// excluded) -- exactly the callers [`shared_visibility`] answers `"group"`
+/// for when a tool is shared to that group.
+async fn group_grantee_ids(state: &AppState, owner: &Tenant, group: Option<&str>) -> Result<Vec<i64>, AppError> {
+    let Some(group) = group else { return Ok(Vec::new()) };
+    let mut ids = state.db.group_member_ids(owner.id, group.to_string()).await?;
+    ids.retain(|id| *id != owner.id);
+    Ok(ids)
+}
+
+/// PRD-mcphost-shared-tools-in-grantee-list R1: the ONE visibility rule for
+/// a tool owned by `owner` and seen by `caller` -- `Some("public")`,
+/// `Some("group")` when `caller` is a member of the share's group, else
+/// `None`. [`resolve_shared_tool`] (call side) and [`visible_shared_tools`]
+/// (list side) both go through it, so list and call cannot drift.
+pub async fn shared_visibility(
+    state: &AppState,
+    caller: &Tenant,
+    owner: &Tenant,
+    row: &ToolRow,
+) -> Result<Option<&'static str>, AppError> {
+    Ok(match row.visibility.as_str() {
+        "public" => Some("public"),
+        "group" => match &row.shared_group {
+            Some(group) if state.db.is_group_member(owner.id, group.clone(), caller.id).await? => {
+                Some("group")
+            }
+            _ => None,
+        },
+        _ => None,
+    })
+}
+
+/// R1: every group-shared tool `caller` may call (public shares are
+/// discoverable via `host.tool.list_shared`, never listed). Candidates come
+/// from the share table; each is confirmed by [`shared_visibility`].
+pub async fn visible_shared_tools(
+    state: &AppState,
+    caller: &Tenant,
+) -> Result<Vec<(Tenant, ToolRow)>, AppError> {
+    let candidates = state
+        .db
+        .shared_tools_for_caller(caller.id, caller.namespace.clone())
+        .await?;
+    let mut out = Vec::new();
+    for (owner_ns, name, via) in candidates {
+        if !via.starts_with("group:") {
+            continue;
+        }
+        let Some((owner, row)) = state.db.get_tool_by_owner_namespace(owner_ns, name).await? else {
+            continue;
+        };
+        if shared_visibility(state, caller, &owner, &row).await? == Some("group") {
+            out.push((owner, row));
+        }
+    }
+    Ok(out)
+}
+
+/// PRD-mcphost-shared-tools-in-grantee-list R3: `host.tool.list_shared
+/// {q?, limit?}` -- public shares plus the group shares `caller` can call,
+/// with the `_meta` fields `tools/list` uses for group entries.
+pub async fn list_shared(state: &AppState, caller: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let q = arg_str_opt(args, "q");
+    let limit = args.get("limit").and_then(Value::as_i64).unwrap_or(50).clamp(1, 200) as usize;
+    let needle = q.as_ref().map(|q| q.to_lowercase());
+    let matches = |ns: &str, row: &ToolRow| match &needle {
+        None => true,
+        Some(n) => {
+            format!("{ns}.{}", row.name).to_lowercase().contains(n)
+                || row.share_description.as_deref().is_some_and(|d| d.to_lowercase().contains(n))
+        }
+    };
+    let entry = |ns: &str, row: &ToolRow, vis: &str| {
+        json!({
+            "name": format!("{ns}.{}", row.name),
+            "description": row.share_description,
+            "_meta": {"kind": row.kind, "shared_by": ns, "shared_visibility": vis},
+        })
+    };
+    let mut all: Vec<Value> = visible_shared_tools(state, caller)
+        .await?
+        .iter()
+        .filter(|(o, r)| matches(&o.namespace, r))
+        .map(|(o, r)| entry(&o.namespace, r, "group"))
+        .collect();
+    for (ns, row) in state.db.search_catalog(q.clone(), 1000).await? {
+        if ns != caller.namespace {
+            all.push(entry(&ns, &row, "public"));
+        }
+    }
+    let truncated = all.len() > limit;
+    all.truncate(limit);
+    Ok(json!({ "tools": all, "truncated": truncated }))
+}
+
 /// PRD-mcphost-shared-tool-call-path requirement 1/2 (AC1-3, AC9): the
 /// cross-tenant resolution primitive `handler.rs`'s raw `tools/call`
 /// dispatch and `host.tool_call`'s qualified-name branch both call --
@@ -246,15 +366,7 @@ pub async fn resolve_shared_tool(
         .await?
         .ok_or_else(not_found)?;
 
-    let visible = match row.visibility.as_str() {
-        "public" => true,
-        "group" => match &row.shared_group {
-            Some(group) => state.db.is_group_member(owner.id, group.clone(), caller.id).await?,
-            None => false,
-        },
-        _ => false,
-    };
-    if !visible {
+    if shared_visibility(state, caller, &owner, &row).await?.is_none() {
         return Err(not_found());
     }
     Ok((owner, row))

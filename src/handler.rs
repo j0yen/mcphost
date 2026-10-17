@@ -1879,6 +1879,18 @@ fn host_tools_part_02() -> Vec<Tool> {
             ),
         ),
         Tool::new(
+            "host.tool.list_shared",
+            "List tools other tenants shared with you: public shares plus group shares you are a \
+             member of (group shares also appear in tools/list; public ones never do).",
+            host_schema(
+                json!({
+                    "q": {"type": "string", "description": "Optional substring filter on name/description."},
+                    "limit": {"type": "integer", "description": "Max entries (default 50, max 200)."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
             "host.tool.unshare",
             "Take a shared tool back to private.",
             host_schema(
@@ -7194,6 +7206,7 @@ impl McpHostHandler {
             "host.import" => crate::import::import(&self.state, tenant, &args).await,
             "host.tool.share" => crate::sharing::tool_share(&self.state, tenant, &args).await,
             "host.tool.spec_shared" => self.tool_spec_shared(tenant, args).await,
+            "host.tool.list_shared" => crate::sharing::list_shared(&self.state, tenant, &args).await,
             "host.tool.unshare" => crate::sharing::tool_unshare(&self.state, tenant, &args).await,
             "host.share.caller_limit" => {
                 crate::sharing::caller_limit(&self.state, tenant, &args).await
@@ -10835,6 +10848,33 @@ impl ServerHandler for McpHostHandler {
                             declared_outputs_schema(&kind.declared_outputs(&row.spec));
                         tools.push(published);
                     }
+                }
+                // PRD-mcphost-shared-tools-in-grantee-list R2: group-shared
+                // tools the caller may call, listed as `<owner ns>.<name>`
+                // through the same accessor the call path uses. Public
+                // shares are never injected. A sub-key's `permits` filter
+                // below applies to them like any other entry (R5).
+                let shared = crate::sharing::visible_shared_tools(&self.state, &tenant)
+                    .await
+                    .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
+                for (owner, row) in shared {
+                    if !crate::oauth::scope_satisfied(token_scope, &row.scopes) {
+                        continue;
+                    }
+                    let Some(kind) = self.state.kinds.get(&row.kind) else { continue };
+                    let descriptor = kind.describe(&row.spec);
+                    let mut meta = rmcp::model::MetaObject::new();
+                    meta.0.insert("kind".to_string(), json!(row.kind));
+                    meta.0.insert("shared_by".to_string(), json!(owner.namespace));
+                    meta.0.insert("shared_visibility".to_string(), json!("group"));
+                    let mut shared_tool = Tool::new(
+                        format!("{}.{}", owner.namespace, row.name),
+                        descriptor.description,
+                        value_to_json_object(descriptor.input_schema),
+                    )
+                    .with_meta(meta);
+                    shared_tool.output_schema = declared_outputs_schema(&kind.declared_outputs(&row.spec));
+                    tools.push(shared_tool);
                 }
                 // AC18 / PRD requirement 14: ttlMs must go to 0 for the 60s
                 // after a publish OR a remove. `tenant.last_tool_change_unix`
