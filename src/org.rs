@@ -19,7 +19,13 @@ pub const ROLES: &[&str] = &["owner", "member"];
 
 /// The `host.org.*` tool names, shared by the dispatcher, the descriptors
 /// and the drift test.
-pub const TOOLS: &[&str] = &["host.org.create", "host.org.join", "host.org.members"];
+pub const TOOLS: &[&str] = &[
+    "host.org.create",
+    "host.org.join",
+    "host.org.members",
+    "host.org.remove",
+    "host.org.leave",
+];
 
 /// `ROLES` as a SQL `IN (...)` list body: `'owner', 'member'`.
 pub fn roles_sql_list() -> String {
@@ -282,6 +288,112 @@ impl Db {
         .await
     }
 
+    /// `host.org.remove`: end `member_ns`'s live membership in the org
+    /// `owner_tenant_id` owns. Only `removed_unix` is written; the removed
+    /// tenant keeps its key, tools and URL.
+    pub async fn remove_org_member(
+        &self,
+        owner_tenant_id: i64,
+        member_ns: String,
+    ) -> Result<(), AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute("BEGIN IMMEDIATE", [])?;
+            let outcome: Result<(), AppError> = (|| {
+                let Some((org_id, _, role, _)) = membership_sync(conn, owner_tenant_id)? else {
+                    return Err(not_owner_error());
+                };
+                if role != "owner" {
+                    return Err(not_owner_error());
+                }
+                let target: Option<i64> = conn
+                    .query_row(
+                        "SELECT m.tenant_id FROM org_members m JOIN tenants t ON t.id = m.tenant_id \
+                         WHERE m.org_id = ?1 AND t.namespace = ?2 AND m.removed_unix IS NULL",
+                        params![org_id, member_ns],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                let Some(target) = target else {
+                    return Err(AppError::Structured {
+                        code: "not_a_member",
+                        message: format!("'{member_ns}' is not a live member of this org"),
+                        data: json!({"member": member_ns}),
+                    });
+                };
+                if target == owner_tenant_id {
+                    return Err(AppError::Structured {
+                        code: "owner_cannot_leave",
+                        message: "the owner cannot be removed from its own org".to_string(),
+                        data: json!({}),
+                    });
+                }
+                conn.execute(
+                    "UPDATE org_members SET removed_unix = ?1 WHERE tenant_id = ?2",
+                    params![now, target],
+                )?;
+                conn.execute(
+                    "INSERT INTO tenant_audit (tenant_id, subject, action, detail, created_unix) \
+                     VALUES (?1, ?2, 'org.remove', NULL, ?3)",
+                    params![owner_tenant_id, member_ns, now],
+                )?;
+                Ok(())
+            })();
+            match outcome {
+                Ok(()) => conn.execute("COMMIT", []).map(|_| ()).map_err(AppError::from),
+                Err(e) => {
+                    let _ = conn.execute("ROLLBACK", []);
+                    Err(e)
+                }
+            }
+        })
+        .await
+    }
+
+    /// `host.org.leave`: the caller ends its own live membership; the owner
+    /// is refused. The audit row lands on the owner's tenant.
+    pub async fn leave_org(&self, tenant_id: i64, namespace: String) -> Result<String, AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute("BEGIN IMMEDIATE", [])?;
+            let outcome: Result<String, AppError> = (|| {
+                let Some((org_id, name, role, _)) = membership_sync(conn, tenant_id)? else {
+                    return Err(not_in_org_error());
+                };
+                if role == "owner" {
+                    return Err(AppError::Structured {
+                        code: "owner_cannot_leave",
+                        message: "the owner cannot leave its own org".to_string(),
+                        data: json!({"org": name}),
+                    });
+                }
+                conn.execute(
+                    "UPDATE org_members SET removed_unix = ?1 WHERE tenant_id = ?2",
+                    params![now, tenant_id],
+                )?;
+                let owner_tenant_id: i64 = conn.query_row(
+                    "SELECT owner_tenant_id FROM orgs WHERE id = ?1",
+                    params![org_id],
+                    |r| r.get(0),
+                )?;
+                conn.execute(
+                    "INSERT INTO tenant_audit (tenant_id, subject, action, detail, created_unix) \
+                     VALUES (?1, ?2, 'org.leave', NULL, ?3)",
+                    params![owner_tenant_id, namespace, now],
+                )?;
+                Ok(name)
+            })();
+            match outcome {
+                Ok(name) => conn.execute("COMMIT", []).map(|_| name).map_err(AppError::from),
+                Err(e) => {
+                    let _ = conn.execute("ROLLBACK", []);
+                    Err(e)
+                }
+            }
+        })
+        .await
+    }
+
     /// The plaintext org invite code, `None` when no live org invite exists.
     pub async fn org_invite_code(&self, org_id: i64) -> Result<Option<String>, AppError> {
         self.with_conn(move |conn| {
@@ -296,6 +408,22 @@ impl Db {
             .map_err(AppError::from)
         })
         .await
+    }
+}
+
+fn not_in_org_error() -> AppError {
+    AppError::Structured {
+        code: "not_in_org",
+        message: "this tenant does not belong to an org".to_string(),
+        data: json!({}),
+    }
+}
+
+fn not_owner_error() -> AppError {
+    AppError::Structured {
+        code: "not_owner",
+        message: "only the org owner can do this".to_string(),
+        data: json!({}),
     }
 }
 
@@ -382,6 +510,24 @@ pub async fn members(state: &AppState, tenant: &Tenant, args: &Value) -> Result<
         obj.insert("invite_url".to_string(), json!(org_url(state, &code)));
     }
     Ok(out)
+}
+
+/// `host.org.remove {member}`: owner only; ends one membership.
+pub async fn remove(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let member = arg_str(args, "member")?;
+    state.db.remove_org_member(tenant.id, member.clone()).await?;
+    Ok(json!({"removed": member}))
+}
+
+/// `host.org.leave`: a member ends its own membership.
+pub async fn leave(state: &AppState, tenant: &Tenant, _args: &Value) -> Result<Value, AppError> {
+    let org = state.db.leave_org(tenant.id, tenant.namespace.clone()).await?;
+    Ok(json!({"left": org}))
+}
+
+/// `host.quickstart`'s `org` block: the verb names, generated from [`TOOLS`].
+pub fn quickstart_json() -> Value {
+    json!({"tools": TOOLS, "roles": ROLES})
 }
 
 /// `host.whoami`'s `org` value: `{name, role, joined_at}` or null.

@@ -14770,5 +14770,27 @@
       "first_call",
       "next"
     ]
+  },
+  "host.org.remove": {
+    "properties": {
+      "removed": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "removed"
+    ],
+    "type": "object"
+  },
+  "host.org.leave": {
+    "properties": {
+      "left": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "left"
+    ],
+    "type": "object"
   }
 }

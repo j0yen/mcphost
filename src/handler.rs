@@ -2021,6 +2021,24 @@ fn host_tools_part_03() -> Vec<Tool> {
             ),
         ),
         Tool::new(
+            "host.org.remove",
+            "Owner only: end one member's membership in your org. The member keeps its own \
+             tenant, key, url and tools; its host.whoami shows org: null from then on.",
+            host_schema(
+                json!({
+                    "member": {"type": "string", "description": "The member's namespace, \
+                        from host.org.members."},
+                }),
+                &["member"],
+            ),
+        ),
+        Tool::new(
+            "host.org.leave",
+            "Leave your org (members only; the owner gets owner_cannot_leave). You keep \
+             your own tenant, key, url and tools; host.whoami shows org: null afterwards.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
             "host.secret.set",
             "Store an encrypted secret value under this tenant's namespace.",
             host_schema(
@@ -7083,6 +7101,8 @@ impl McpHostHandler {
             "host.org.create" => crate::org::create(&self.state, tenant, &args).await,
             "host.org.join" => crate::org::join(&self.state, tenant, &args).await,
             "host.org.members" => crate::org::members(&self.state, tenant, &args).await,
+            "host.org.remove" => crate::org::remove(&self.state, tenant, &args).await,
+            "host.org.leave" => crate::org::leave(&self.state, tenant, &args).await,
             "host.secret.set" => control::secret_set(&self.state, tenant, &args).await,
             "host.secret.list" => control::secret_list(&self.state, tenant).await,
             "host.registry.publish" => control::registry_publish(&self.state, tenant, &args).await,

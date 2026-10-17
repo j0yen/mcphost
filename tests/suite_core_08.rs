@@ -614,6 +614,12 @@ mod orgm_ac02_org_url_mints_member_tenant;
 mod orgm_ac03_roles_one_source_drift;
 #[path = "orgm_ac04_org_at_cap_refuses_third_join.rs"]
 mod orgm_ac04_org_at_cap_refuses_third_join;
+#[path = "orgmb_ac01_owner_removes_member.rs"]
+mod orgmb_ac01_owner_removes_member;
+#[path = "orgmb_ac02_concurrent_create_one_winner.rs"]
+mod orgmb_ac02_concurrent_create_one_winner;
+#[path = "orgmb_ac03_llms_txt_and_quickstart_name_org_verbs.rs"]
+mod orgmb_ac03_llms_txt_and_quickstart_name_org_verbs;
 #[path = "outsch_ac01_oneof_budget_falsifier.rs"]
 mod outsch_ac01_oneof_budget_falsifier;
 #[path = "outsch_ac02_every_canonical_declares_an_object_output_schema.rs"]
