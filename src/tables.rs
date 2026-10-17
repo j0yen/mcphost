@@ -2269,6 +2269,7 @@ async fn table_query_select(
     state: &AppState,
     tenant: &Tenant,
     sql: &str,
+    limit: Option<i64>,
     end_user: Option<&EndUser>,
 ) -> Result<Value, AppError> {
     // PRD-mcphost-query-diagnosis requirement 1/2: the AST parse is pure
@@ -2341,7 +2342,7 @@ async fn table_query_select(
     match access {
         rowpolicy::Access::Unrestricted => {
             let sql_owned = sql.to_string();
-            let rows = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+            let (rows, count) = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
                 let started = std::time::Instant::now();
                 let mut referenced_handles: Vec<String> = Vec::new();
                 let result: Result<Vec<Value>, AppError> = (|| {
@@ -2362,7 +2363,7 @@ async fn table_query_select(
                             _ => return Err(handle_not_found(h)),
                         }
                     }
-                    run_query_sync(conn, &sql_owned)
+                    run_query_sync(conn, &limit_wrap(&sql_owned, limit))
                 })();
                 let duration_ms = started.elapsed().as_millis() as i64;
                 // `run_query_sync` leaves this connection's own `query_only`
@@ -2427,6 +2428,7 @@ async fn table_query_select(
                     ),
                 }
                 let out = result?;
+                let count = count_filtered_sync(conn, &sql_owned, &[], ctx.from_table.as_deref()).ok();
                 if !referenced_handles.is_empty() {
                     for h in &referenced_handles {
                         conn.execute(
@@ -2435,10 +2437,10 @@ async fn table_query_select(
                         )?;
                     }
                 }
-                Ok(out)
+                Ok((out, count))
             })
             .await?;
-            Ok(json!({"rows": rows}))
+            Ok(rows_with_total(rows, count))
         }
         rowpolicy::Access::Restricted(rctx) => {
             // PRD-mcphost-row-policy requirement 4: rewritten via the AST
@@ -2463,13 +2465,13 @@ async fn table_query_select(
                 table_names.first().and_then(|name| compiled.get(name).map(|c| (name.clone(), c.clone())));
 
             let sql_owned = sql.to_string();
-            let (rows, withheld_count) = with_tenant_conn(
+            let (rows, withheld_count, count) = with_tenant_conn(
                 path,
                 state.db.cfg(),
                 state.db.counters_handle(),
                 move |conn| {
                     let started = std::time::Instant::now();
-                    let result = run_query_sync_with_bindings(conn, &rewritten_sql, &bindings);
+                    let result = run_query_sync_with_bindings(conn, &limit_wrap(&rewritten_sql, limit), &bindings);
                     let duration_ms = started.elapsed().as_millis() as i64;
                     // same "turn query_only back off before the log write"
                     // reasoning as the Unrestricted branch above.
@@ -2522,7 +2524,8 @@ async fn table_query_select(
                             est_tokens: Some(est_tokens),
                         },
                     );
-                    Ok((rows, withheld))
+                    let count = count_filtered_sync(conn, &rewritten_sql, &bindings, ctx.from_table.as_deref()).ok();
+                    Ok((rows, withheld, count))
                 },
             )
             .await?;
@@ -2546,9 +2549,56 @@ async fn table_query_select(
                     .await?;
             }
 
-            Ok(json!({"rows": rows}))
+            Ok(rows_with_total(rows, count))
         }
     }
+}
+
+/// PRD-mcphost-count-and-total-semantics: `{rows}` plus `total` /
+/// `total_estimate` from the one counter.
+fn rows_with_total(rows: Vec<Value>, count: Option<crate::paged::Count>) -> Value {
+    let mut out = Map::new();
+    out.insert("rows".to_string(), Value::Array(rows));
+    if let Some(c) = count {
+        c.insert_into(&mut out);
+    }
+    Value::Object(out)
+}
+
+/// `SELECT * FROM (<sql>) LIMIT n` when the caller passed `limit`.
+fn limit_wrap(sql: &str, limit: Option<i64>) -> String {
+    match limit {
+        Some(n) => format!("SELECT * FROM ({}) LIMIT {n}", sql.trim().trim_end_matches(';')),
+        None => sql.to_string(),
+    }
+}
+
+/// The one counter (`paged::Count`): `SELECT count(*) FROM (<filtered> LIMIT
+/// EXACT_TOTAL_MAX+1)`; above the bound the estimate comes from
+/// `sqlite_stat1`/`max(rowid)` of `estimate_table` (the bound itself if none).
+pub(crate) fn count_filtered_sync(
+    conn: &Connection,
+    filtered_sql: &str,
+    bindings: &[(String, Value)],
+    estimate_table: Option<&str>,
+) -> Result<crate::paged::Count, AppError> {
+    let sql = format!(
+        "SELECT count(*) FROM (SELECT 1 FROM ({}) LIMIT {})",
+        filtered_sql.trim().trim_end_matches(';'),
+        crate::paged::EXACT_TOTAL_MAX + 1
+    );
+    let sql_values: Vec<(String, rusqlite::types::Value)> =
+        bindings.iter().map(|(k, v)| (k.clone(), json_to_sql_value(v))).collect();
+    let param_refs: Vec<(&str, &dyn rusqlite::ToSql)> =
+        sql_values.iter().map(|(k, v)| (k.as_str(), v as &dyn rusqlite::ToSql)).collect();
+    let bounded: i64 = if param_refs.is_empty() {
+        conn.query_row(&sql, [], |r| r.get(0))?
+    } else {
+        conn.query_row(&sql, &param_refs[..], |r| r.get(0))?
+    };
+    Ok(crate::paged::Count::from_bounded(bounded.max(0) as u64, || {
+        estimate_table.map(|t| crate::paged::estimate_rows_sync(conn, t)).unwrap_or(0)
+    }))
 }
 
 pub async fn table_query(
@@ -2563,7 +2613,84 @@ pub async fn table_query(
         let ttl_s = args.get("ttl_s").and_then(Value::as_i64);
         return table_query_materialize(state, tenant, &sql, ttl_s).await;
     }
-    table_query_select(state, tenant, &sql, end_user).await
+    let limit = match args.get("limit") {
+        None | Some(Value::Null) => None,
+        Some(v) => match v.as_i64() {
+            Some(n) if n >= 1 => Some(n),
+            _ => return Err(AppError::InvalidArgs("limit: must be an integer >= 1".to_string())),
+        },
+    };
+    table_query_select(state, tenant, &sql, limit, end_user).await
+}
+
+/// PRD-mcphost-count-and-total-semantics R3: `host.table.count {table, where?}`
+/// → `{count, exact, ms}`. Uses the same bounded counter as `host.table.query`'s
+/// page total; respects row policies; logged as a read-only query with `kind:
+/// "count"`.
+pub async fn table_count(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let table = arg_str(args, "table")?;
+    let where_clause = arg_str_opt(args, "where");
+
+    // Refuse `where` that is not a single boolean expression: wrap in a
+    // synthetic SELECT so sqlparser can check structure without executing.
+    if let Some(ref w) = where_clause {
+        let test = format!("SELECT 1 WHERE {w}");
+        let ok = sqlparser::parser::Parser::parse_sql(&sqlparser::dialect::GenericDialect {}, &test)
+            .map(|s| s.len() == 1)
+            .unwrap_or(false);
+        if !ok {
+            return Err(AppError::InvalidArgs(format!(
+                "where: must be a single boolean expression, got: {w:?}"
+            )));
+        }
+    }
+
+    let base_sql = match &where_clause {
+        Some(w) => format!("SELECT * FROM {} WHERE {w}", quote_ident(&table)),
+        None => format!("SELECT * FROM {}", quote_ident(&table)),
+    };
+
+    let path = tenant_db_path(state, tenant.id);
+    let access = rowpolicy::resolve_access(state, tenant.id, None).await?;
+    let started = std::time::Instant::now();
+
+    let count = match access {
+        rowpolicy::Access::Unrestricted => {
+            let sql_owned = base_sql.clone();
+            let table_owned = table.clone();
+            with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+                load_schema_sync(conn, &table_owned)?;
+                count_filtered_sync(conn, &sql_owned, &[], Some(&table_owned))
+            })
+            .await?
+        }
+        rowpolicy::Access::Restricted(rctx) => {
+            let mut query = validate_query_structure(&base_sql)?;
+            let mut table_names = rowpolicy::rewrite::referenced_table_names(&query);
+            table_names.sort();
+            let mut compiled = std::collections::HashMap::new();
+            for name in &table_names {
+                let policy = rowpolicy::load_table_policy(state, tenant.id, name).await?;
+                compiled.insert(name.clone(), rowpolicy::policy::compile(&policy, &rctx));
+            }
+            let outcome = rowpolicy::rewrite::apply(&mut query, &compiled)?;
+            let rewritten_sql = outcome.sql;
+            let bindings = outcome.bindings;
+            let table_owned = table.clone();
+            with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+                load_schema_sync(conn, &table_owned)?;
+                count_filtered_sync(conn, &rewritten_sql, &bindings, Some(&table_owned))
+            })
+            .await?
+        }
+    };
+
+    let ms = started.elapsed().as_millis() as i64;
+    Ok(json!({
+        "count": count.n,
+        "exact": count.exact,
+        "ms": ms,
+    }))
 }
 
 /// requirement 5: `host.table.handles()` -- every live handle, newest
@@ -2731,8 +2858,9 @@ pub async fn table_list(state: &AppState, tenant: &Tenant, _args: &Value) -> Res
             .collect::<Result<_, rusqlite::Error>>()?;
         let mut out = Vec::with_capacity(names.len());
         for name in names {
-            let rows = row_count_sync(conn, &name)?;
-            out.push(json!({"name": name, "rows": rows}));
+            let sql = format!("SELECT * FROM {}", quote_ident(&name));
+            let count = count_filtered_sync(conn, &sql, &[], Some(&name))?;
+            out.push(json!({"name": name, "rows": count.n, "exact": count.exact}));
         }
         Ok(out)
     })

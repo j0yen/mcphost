@@ -9399,6 +9399,28 @@
     ],
     "type": "object"
   },
+  "host.table.count": {
+    "properties": {
+      "count": {
+        "description": "Row count; exact when exact: true, estimate otherwise.",
+        "type": "integer"
+      },
+      "exact": {
+        "description": "True when count is the precise number of matching rows (at most 10000); false when it is a sqlite_stat1 estimate.",
+        "type": "boolean"
+      },
+      "ms": {
+        "description": "Wall-clock time of the count query in milliseconds.",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "count",
+      "exact",
+      "ms"
+    ],
+    "type": "object"
+  },
   "host.table.create": {
     "properties": {
       "_meta": {
@@ -10629,9 +10651,17 @@
             },
             "rows": {
               "type": "integer"
+            },
+            "exact": {
+              "type": "boolean"
             }
           },
-          "type": "object"
+          "type": "object",
+          "required": [
+            "name",
+            "rows",
+            "exact"
+          ]
         },
         "type": "array"
       }
