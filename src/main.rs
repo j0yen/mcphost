@@ -31,6 +31,11 @@ enum Command {
         /// `$MCPHOST_REGISTRY_URL`; this flag takes precedence.
         #[arg(long)]
         registry_url: Option<String>,
+        /// PRD-mcphost-graceful-drain-contract R6: print `MCPHOST_DRAIN_S`
+        /// resolved (default 20, capped at 55) and exit 0, so the deploy
+        /// tool derives `TimeoutStopSec` from the binary.
+        #[arg(long)]
+        print_drain_bound: bool,
     },
     /// Apply pending database migrations and exit.
     Migrate {
@@ -1590,7 +1595,11 @@ async fn main() -> anyhow::Result<()> {
                 std::process::exit(1);
             }
         }
-        Command::Serve { registry_url } => {
+        Command::Serve { registry_url, print_drain_bound } => {
+            if print_drain_bound {
+                println!("{}", mcphost::drain::bound_s_from_env());
+                return Ok(());
+            }
             init_tracing();
 
             // PRD-mcphost-call-limits-honest five-whys: RLIMIT_NPROC (the

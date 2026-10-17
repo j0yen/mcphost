@@ -128,6 +128,14 @@ rss      37.3 MiB</code></pre>
       " s (n=" + num(o.n) + ", 7 d)";
   }
 
+  // PRD-mcphost-graceful-drain-contract-b R4: one line, nothing at all when
+  // the server predates the key or has never restarted.
+  function restartLine(r) {
+    if (!r || typeof r !== "object" || !r.last) { return ""; }
+    return "last restart " + new Date(r.last.at * 1000).toISOString().replace(/\.\d+Z$/, "Z") +
+      " \u00b7 dropped " + num(r.last.dropped);
+  }
+
   function renderIncidents(data) {
     var open = data.incidents_open || [];
     var recent = data.incidents_recent_30d || [];
@@ -163,6 +171,8 @@ rss      37.3 MiB</code></pre>
       if (hl) { rows.push('<span class="dim">' + hl + '</span>'); }
       var ol = onboardingLine(data.onboarding_7d);
       if (ol) { rows.push('<span class="dim">' + ol + '</span>'); }
+      var rl = restartLine(data.restart);
+      if (rl) { rows.push('<span class="dim">' + rl + '</span>'); }
       componentsEl.innerHTML = rows.join("\n");
 
       renderIncidents(data);
