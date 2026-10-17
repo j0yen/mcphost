@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.108.1 — 2026-10-17
+
+ci-cache HIT probe: a new top release section only.
+
 ## v0.108.0 — 2026-10-15
 
 Released by wm-build land: train 8: mcphost-host-changelog-since-b.
