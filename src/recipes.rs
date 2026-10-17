@@ -515,7 +515,30 @@ pub fn render_proof(r: &Recipe) -> String {
         let what = s.tool.clone().unwrap_or_else(|| "signed POST to the returned url".to_string());
         out.push_str(&format!("#   {}. {what}\n", i + 1));
     }
-    out.push_str(&r.proof.body);
+    out.push_str(&with_prove_dry(&r.name, &r.proof.body));
+    out
+}
+
+/// The PRD-mcphost-example-proof-runner-contract dry-run block: every proof
+/// prints `plan: <recipe> proof against $MCPHOST_URL` and exits 0 before any
+/// network call when `MCPHOST_PROVE_DRY` is set (the runner-contract test,
+/// `eprc_ac02`, sets it). Rendered once here, directly after the proof
+/// body's `MCPHOST_URL=` default line, so no recipe toml carries a copy.
+fn with_prove_dry(name: &str, body: &str) -> String {
+    let mut out = String::with_capacity(body.len() + 320);
+    let mut done = false;
+    for line in body.split_inclusive('\n') {
+        out.push_str(line);
+        if !done && line.starts_with("MCPHOST_URL=") {
+            out.push_str(
+                "# MCPHOST_PROVE_DRY=1: print the plan and exit 0 before any network call (the runner-contract test sets it).\n",
+            );
+            out.push_str(&format!(
+                "[[ -n \"${{MCPHOST_PROVE_DRY:-}}\" ]] && {{ echo \"plan: {name} proof against $MCPHOST_URL\"; exit 0; }}\n"
+            ));
+            done = true;
+        }
+    }
     out
 }
 
