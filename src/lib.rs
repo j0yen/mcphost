@@ -88,6 +88,7 @@ pub mod lineage;
 pub mod clients;
 pub mod launch_check;
 pub mod llms_txt;
+pub mod retry_policy;
 pub mod messaging;
 pub mod notify;
 pub mod paged;
