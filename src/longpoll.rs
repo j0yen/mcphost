@@ -17,6 +17,34 @@ pub fn clamp_timeout_s(requested: Option<i64>) -> i64 {
     requested.unwrap_or(WAIT_DEFAULT_S).clamp(1, WAIT_MAX_S)
 }
 
+/// Read `timeout_s` from a wait call's args: absent or null is the default,
+/// an integer is clamped, anything else is `args_invalid`.
+pub fn timeout_s_arg(args: &Value) -> Result<i64, crate::errors::AppError> {
+    match args.get("timeout_s") {
+        None | Some(Value::Null) => Ok(clamp_timeout_s(None)),
+        Some(v) => v.as_i64().map(|n| clamp_timeout_s(Some(n))).ok_or_else(|| {
+            let args_err = crate::kinds::ArgsError {
+                phase: "args_coercion",
+                instance_path: "/timeout_s".to_string(),
+                argument: Some("timeout_s".to_string()),
+                field: Some("timeout_s".to_string()),
+                expected_type: Some("integer".to_string()),
+                actual_type: None,
+                got: v.to_string(),
+                docs: "host.msg.wait",
+                raw: v.to_string(),
+            };
+            let mut data = args_err.data();
+            data["max"] = json!(WAIT_MAX_S);
+            crate::errors::AppError::Structured {
+                code: "args_invalid",
+                message: args_err.message(),
+                data,
+            }
+        }),
+    }
+}
+
 /// The field set every wait response carries: `timed_out`, `waited_ms`,
 /// `timeout_s_applied`, merged into `body`.
 pub fn wait_response(mut body: Value, timed_out: bool, started: Instant, timeout_s_applied: i64) -> Value {

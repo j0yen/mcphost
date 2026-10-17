@@ -38,10 +38,6 @@ fn arg_str_opt(args: &Value, name: &str) -> Option<String> {
     args.get(name).and_then(Value::as_str).map(str::to_string)
 }
 
-fn arg_i64_opt(args: &Value, name: &str) -> Option<i64> {
-    args.get(name).and_then(Value::as_i64)
-}
-
 fn arg_bool(args: &Value, name: &str) -> bool {
     args.get(name).and_then(Value::as_bool).unwrap_or(false)
 }
@@ -485,7 +481,7 @@ pub async fn inbox(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
 /// validation -- a bad `cursor` still fails fast, same as `inbox` itself.
 pub async fn wait(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let started = Instant::now();
-    let timeout_s = crate::longpoll::clamp_timeout_s(arg_i64_opt(args, "timeout_s"));
+    let timeout_s = crate::longpoll::timeout_s_arg(args)?;
     let unread_only = arg_bool(args, "unread_only");
     let cursor_arg = arg_str_opt(args, "cursor");
     let after = match &cursor_arg {

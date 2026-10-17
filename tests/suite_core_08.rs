@@ -452,6 +452,12 @@ mod mwlp_ac01_keyless_wait_returns_at_once;
 mod mwlp_ac03_timeout_reports_timed_out;
 #[path = "mwlp_ac04_arrival_wakes_wait.rs"]
 mod mwlp_ac04_arrival_wakes_wait;
+#[path = "mwlpb_ac01_timeout_clamp_and_args_invalid.rs"]
+mod mwlpb_ac01_timeout_clamp_and_args_invalid;
+#[path = "mwlpb_ac02_final_run_wait_returns_fast.rs"]
+mod mwlpb_ac02_final_run_wait_returns_fast;
+#[path = "mwlpb_ac03_plans_json_carries_wait_limits.rs"]
+mod mwlpb_ac03_plans_json_carries_wait_limits;
 #[path = "nexttool_ac01_anonymous_starter_set.rs"]
 mod nexttool_ac01_anonymous_starter_set;
 #[path = "nexttool_ac02_authenticated_listing_unchanged.rs"]
