@@ -1196,6 +1196,8 @@ mod sqlpass_ac11_concurrent_queries_produce_ten_log_rows;
 mod sqlpass_ac12_empty_table_zero_rows_null_error_code;
 #[path = "sqlpass_ac13_long_sql_truncated_in_log_not_refused.rs"]
 mod sqlpass_ac13_long_sql_truncated_in_log_not_refused;
+#[path = "srlp_ac02_plan_ceilings_published.rs"]
+mod srlp_ac02_plan_ceilings_published;
 #[path = "state_ac01_kv_roundtrip.rs"]
 mod state_ac01_kv_roundtrip;
 #[path = "state_ac04_table_query.rs"]

@@ -482,6 +482,48 @@ fn sample_usage(root_pid: i32) -> UsageSample {
     }
 }
 
+/// Isolation-wrapper process names whose presence in the tree does not count
+/// against the sandboxed uid's `RLIMIT_NPROC` budget in any way a tool can
+/// see (the wrapper supervising it, not the workload).
+const WRAPPER_COMMS: &[&str] = &["bwrap", "unshare", "setpriv", "prlimit"];
+
+/// PRD-mcphost-sandbox-resource-limits-from-plan: how many workload
+/// processes (the interpreter plus everything it forked, wrappers excluded)
+/// live under `root_pid` right now -- the number a `sandbox_pids_max` ceiling
+/// bounds. Best-effort like [`sample_usage`].
+fn count_sandbox_pids(root_pid: i32) -> i64 {
+    let mut stack = vec![root_pid];
+    let mut seen = HashSet::new();
+    let mut count = 0;
+    while let Some(pid) = stack.pop() {
+        if !seen.insert(pid) {
+            continue;
+        }
+        let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
+        if !comm.is_empty() && !WRAPPER_COMMS.contains(&comm.trim()) {
+            count += 1;
+        }
+        stack.extend(read_proc_children(pid));
+    }
+    count
+}
+
+/// Polls [`count_sandbox_pids`] until told to stop, keeping the peak in
+/// `peak` -- the source of a call's `resources_used.pids_max_seen`.
+async fn poll_pids(
+    root_pid: i32,
+    peak: Arc<std::sync::atomic::AtomicI64>,
+    mut stop: tokio::sync::oneshot::Receiver<()>,
+) {
+    loop {
+        peak.fetch_max(count_sandbox_pids(root_pid), std::sync::atomic::Ordering::Relaxed);
+        tokio::select! {
+            _ = &mut stop => break,
+            _ = tokio::time::sleep(Duration::from_millis(5)) => {}
+        }
+    }
+}
+
 /// `setsid()` + the rlimits, run in the forked child before `execve` of the
 /// isolation wrapper (or, with [`IsolationMechanism::None`], the interpreter
 /// itself). `setsid` makes this process its own session and process-group
@@ -906,6 +948,9 @@ pub struct PersistentSandbox {
     /// since `RLIMIT_CPU`-style accounting is itself cumulative for the
     /// process's whole life, not per call.
     baseline_cpu_ms: i64,
+    /// The most workload processes [`count_sandbox_pids`] saw alive during
+    /// the last [`PersistentSandbox::call`].
+    last_call_pids_peak: i64,
 }
 
 /// Drains `reader` into `buf` continuously (not just once): a persistent
@@ -979,6 +1024,7 @@ pub async fn spawn_persistent(spec: &RunSpec) -> std::io::Result<PersistentSandb
         stderr_tail,
         _stderr_task: stderr_task,
         baseline_cpu_ms: 0,
+        last_call_pids_peak: 0,
     })
 }
 
@@ -1010,6 +1056,28 @@ impl PersistentSandbox {
     /// [`PersistentCallOutcome`] variants the caller (the warm pool) is
     /// expected to handle by evicting this sandbox.
     pub async fn call(
+        &mut self,
+        payload: &[u8],
+        timeout: Duration,
+        bridge: &dyn SidecarBridge,
+    ) -> std::io::Result<PersistentCallOutcome> {
+        let peak = Arc::new(std::sync::atomic::AtomicI64::new(0));
+        let (stop_tx, stop_rx) = tokio::sync::oneshot::channel();
+        let poller = tokio::spawn(poll_pids(self.pid, peak.clone(), stop_rx));
+        let outcome = self.call_inner(payload, timeout, bridge).await;
+        let _ = stop_tx.send(());
+        let _ = poller.await;
+        self.last_call_pids_peak = peak.load(std::sync::atomic::Ordering::Relaxed);
+        outcome
+    }
+
+    /// The most workload processes alive at once during the last
+    /// [`Self::call`] (`resources_used.pids_max_seen`); `0` before any call.
+    pub fn last_call_pids_peak(&self) -> i64 {
+        self.last_call_pids_peak
+    }
+
+    async fn call_inner(
         &mut self,
         payload: &[u8],
         timeout: Duration,

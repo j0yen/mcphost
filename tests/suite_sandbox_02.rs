@@ -504,6 +504,18 @@ mod sblibs_ac05_import_hints_name_preinstalled_libs;
 mod sblibs_ac06_requirements_beyond_base_build_own_env;
 #[path = "sblibs_ac07_probe_tool_via_spec_test.rs"]
 mod sblibs_ac07_probe_tool_via_spec_test;
+#[path = "srlp_ac03_publish_over_plan_refused.rs"]
+mod srlp_ac03_publish_over_plan_refused;
+#[path = "srlp_ac04_free_pids_ceiling_and_peak.rs"]
+mod srlp_ac04_free_pids_ceiling_and_peak;
+#[path = "srlp_ac05_python_result_carries_resources_used.rs"]
+mod srlp_ac05_python_result_carries_resources_used;
+#[path = "srlp_ac05b_passthrough_result_equals_host_verb_with_meta.rs"]
+mod srlp_ac05b_passthrough_result_equals_host_verb_with_meta;
+#[path = "srlp_ac06_warm_hit_keeps_plan_pids.rs"]
+mod srlp_ac06_warm_hit_keeps_plan_pids;
+#[path = "srlp_ac07_tool_run_reports_resources_used.rs"]
+mod srlp_ac07_tool_run_reports_resources_used;
 #[path = "state_ac02_ac03_python_sandbox.rs"]
 mod state_ac02_ac03_python_sandbox;
 #[path = "state_ac03_network_none_default.rs"]
