@@ -698,6 +698,7 @@ impl AppError {
                 // `_ => INTERNAL_ERROR` default just because it arrives via
                 // `KindError::Structured` instead of `KindError::InvalidSpec`.
                 "host_not_allowed" | "args_invalid" | "template_error" | "kind_mismatch"
+                | "jq_builtin_unsupported"
                 | "invalid_spec"
                 // PRD-mcphost-spec-unknown-field-rejection requirement 1/2: a
                 // spec or control-plane call carrying a key the server

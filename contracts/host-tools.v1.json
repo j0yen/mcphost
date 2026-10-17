@@ -72,6 +72,42 @@
         "source_position": "none"
       }
     },
+    "jq": {
+      "contract": {
+        "bridges": [],
+        "budgets": [
+          {
+            "default": 2,
+            "field": "timeout_s",
+            "max": 10,
+            "min": 1
+          },
+          {
+            "default": 262144,
+            "field": "max_output_bytes",
+            "max": 1048576,
+            "min": 1024
+          }
+        ],
+        "error_families": [
+          {
+            "codes": [
+              "tool_exception"
+            ],
+            "name": "tool_code"
+          },
+          {
+            "codes": [
+              "tool_timeout",
+              "tool_output_too_large"
+            ],
+            "name": "tool_limit"
+          }
+        ],
+        "secret_redaction": false,
+        "source_position": "line_column"
+      }
+    },
     "js": {
       "contract": {
         "bridges": [

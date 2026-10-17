@@ -1,0 +1,667 @@
+[
+ {
+  "section": "Identity: .",
+  "program": ".",
+  "input": "Hello, world!",
+  "expected": [
+   "Hello, world!"
+  ]
+ },
+ {
+  "section": "Object Identifier-Index: .foo",
+  "program": ".foo",
+  "input": {
+   "foo": 42,
+   "bar": "less interesting data"
+  },
+  "expected": [
+   42
+  ]
+ },
+ {
+  "section": "Object Identifier-Index: .foo",
+  "program": ".foo",
+  "input": {
+   "notfoo": true,
+   "alsofoo": false
+  },
+  "expected": [
+   null
+  ]
+ },
+ {
+  "section": "Object Identifier-Index: .[<string>]",
+  "program": ".[\"foo\"]",
+  "input": {
+   "foo": 42
+  },
+  "expected": [
+   42
+  ]
+ },
+ {
+  "section": "Array Index: .[<number>]",
+  "program": ".[0]",
+  "input": [
+   {
+    "name": "JSON",
+    "good": true
+   },
+   {
+    "name": "XML",
+    "good": false
+   }
+  ],
+  "expected": [
+   {
+    "name": "JSON",
+    "good": true
+   }
+  ]
+ },
+ {
+  "section": "Array Index: .[<number>]",
+  "program": ".[-2]",
+  "input": [
+   1,
+   2,
+   3
+  ],
+  "expected": [
+   2
+  ]
+ },
+ {
+  "section": "Array/String Slice: .[<number>:<number>]",
+  "program": ".[2:4]",
+  "input": [
+   "a",
+   "b",
+   "c",
+   "d",
+   "e"
+  ],
+  "expected": [
+   [
+    "c",
+    "d"
+   ]
+  ]
+ },
+ {
+  "section": "Array/Object Value Iterator: .[]",
+  "program": ".[]",
+  "input": [
+   {
+    "name": "JSON",
+    "good": true
+   },
+   {
+    "name": "XML",
+    "good": false
+   }
+  ],
+  "expected": [
+   {
+    "name": "JSON",
+    "good": true
+   },
+   {
+    "name": "XML",
+    "good": false
+   }
+  ]
+ },
+ {
+  "section": "Comma: ,",
+  "program": ".foo, .bar",
+  "input": {
+   "foo": 42,
+   "bar": "something else",
+   "baz": true
+  },
+  "expected": [
+   42,
+   "something else"
+  ]
+ },
+ {
+  "section": "Comma: ,",
+  "program": ".user, .projects[]",
+  "input": {
+   "user": "stedolan",
+   "projects": [
+    "jq",
+    "wikiflow"
+   ]
+  },
+  "expected": [
+   "stedolan",
+   "jq",
+   "wikiflow"
+  ]
+ },
+ {
+  "section": "Pipe: |",
+  "program": ".[] | .name",
+  "input": [
+   {
+    "name": "JSON",
+    "good": true
+   },
+   {
+    "name": "XML",
+    "good": false
+   }
+  ],
+  "expected": [
+   "JSON",
+   "XML"
+  ]
+ },
+ {
+  "section": "Parentheses: ()",
+  "program": "(. + 2) * 5",
+  "input": 1,
+  "expected": [
+   15
+  ]
+ },
+ {
+  "section": "Array construction: []",
+  "program": "[.user, .projects[]]",
+  "input": {
+   "user": "stedolan",
+   "projects": [
+    "jq",
+    "wikiflow"
+   ]
+  },
+  "expected": [
+   [
+    "stedolan",
+    "jq",
+    "wikiflow"
+   ]
+  ]
+ },
+ {
+  "section": "Object construction: {}",
+  "program": "{user, title: .titles[]}",
+  "input": {
+   "user": "stedolan",
+   "titles": [
+    "JQ Primer",
+    "More JQ"
+   ]
+  },
+  "expected": [
+   {
+    "user": "stedolan",
+    "title": "JQ Primer"
+   },
+   {
+    "user": "stedolan",
+    "title": "More JQ"
+   }
+  ]
+ },
+ {
+  "section": "Recursive Descent: ..",
+  "program": "..|.a?",
+  "input": [
+   [
+    {
+     "a": 1
+    }
+   ]
+  ],
+  "expected": [
+   1
+  ]
+ },
+ {
+  "section": "length",
+  "program": "[.[]|length]",
+  "input": [
+   [
+    1,
+    2
+   ],
+   "string",
+   {
+    "a": 2
+   },
+   null,
+   -5
+  ],
+  "expected": [
+   [
+    2,
+    6,
+    1,
+    0,
+    5
+   ]
+  ]
+ },
+ {
+  "section": "map(x)",
+  "program": "map(.+1)",
+  "input": [
+   1,
+   2,
+   3
+  ],
+  "expected": [
+   [
+    2,
+    3,
+    4
+   ]
+  ]
+ },
+ {
+  "section": "map_values(f)",
+  "program": "map_values(.+1)",
+  "input": {
+   "a": 1,
+   "b": 2,
+   "c": 3
+  },
+  "expected": [
+   {
+    "a": 2,
+    "b": 3,
+    "c": 4
+   }
+  ]
+ },
+ {
+  "section": "paths",
+  "program": "[paths]",
+  "input": [
+   1,
+   [
+    [],
+    {
+     "a": 2
+    }
+   ]
+  ],
+  "expected": [
+   [
+    [
+     0
+    ],
+    [
+     1
+    ],
+    [
+     1,
+     0
+    ],
+    [
+     1,
+     1
+    ],
+    [
+     1,
+     1,
+     "a"
+    ]
+   ]
+  ]
+ },
+ {
+  "section": "add",
+  "program": "add",
+  "input": [
+   1,
+   2,
+   3
+  ],
+  "expected": [
+   6
+  ]
+ },
+ {
+  "section": "range(upto), range(from;upto)",
+  "program": "[range(2;4)]",
+  "input": null,
+  "expected": [
+   [
+    2,
+    3
+   ]
+  ]
+ },
+ {
+  "section": "tostring",
+  "program": "[.[]|tostring]",
+  "input": [
+   1,
+   "1",
+   [
+    1
+   ]
+  ],
+  "expected": [
+   [
+    "1",
+    "1",
+    "[1]"
+   ]
+  ]
+ },
+ {
+  "section": "type",
+  "program": "map(type)",
+  "input": [
+   0,
+   false,
+   [],
+   {},
+   null,
+   "hello"
+  ],
+  "expected": [
+   [
+    "number",
+    "boolean",
+    "array",
+    "object",
+    "null",
+    "string"
+   ]
+  ]
+ },
+ {
+  "section": "sort, sort_by(path_expression)",
+  "program": "sort",
+  "input": [
+   8,
+   3,
+   null,
+   6
+  ],
+  "expected": [
+   [
+    null,
+    3,
+    6,
+    8
+   ]
+  ]
+ },
+ {
+  "section": "group_by(path_expression)",
+  "program": "group_by(.foo)",
+  "input": [
+   {
+    "foo": 1,
+    "bar": 10
+   },
+   {
+    "foo": 3,
+    "bar": 100
+   },
+   {
+    "foo": 1,
+    "bar": 1
+   }
+  ],
+  "expected": [
+   [
+    [
+     {
+      "foo": 1,
+      "bar": 10
+     },
+     {
+      "foo": 1,
+      "bar": 1
+     }
+    ],
+    [
+     {
+      "foo": 3,
+      "bar": 100
+     }
+    ]
+   ]
+  ]
+ },
+ {
+  "section": "select(boolean_expression)",
+  "program": "map(select(. >= 2))",
+  "input": [
+   1,
+   5,
+   3,
+   0,
+   7
+  ],
+  "expected": [
+   [
+    5,
+    3,
+    7
+   ]
+  ]
+ },
+ {
+  "section": "to_entries, from_entries, with_entries",
+  "program": "to_entries",
+  "input": {
+   "a": 1,
+   "b": 2
+  },
+  "expected": [
+   [
+    {
+     "key": "a",
+     "value": 1
+    },
+    {
+     "key": "b",
+     "value": 2
+    }
+   ]
+  ]
+ },
+ {
+  "section": "to_entries, from_entries, with_entries",
+  "program": "with_entries(.value += 1)",
+  "input": {
+   "a": 1,
+   "b": 2
+  },
+  "expected": [
+   {
+    "a": 2,
+    "b": 3
+   }
+  ]
+ },
+ {
+  "section": "Format strings and escaping: @base64",
+  "program": "@base64",
+  "input": "This is a message",
+  "expected": [
+   "VGhpcyBpcyBhIG1lc3NhZ2U="
+  ]
+ },
+ {
+  "section": "test(val), test(regex; flags)",
+  "program": "test(\"FOO\"; \"ix\")",
+  "input": "foo",
+  "expected": [
+   true
+  ]
+ },
+ {
+  "section": "String interpolation: \\(foo)",
+  "program": "\"The input was \\(.), which is one less than \\(.+1)\"",
+  "input": 42,
+  "expected": [
+   "The input was 42, which is one less than 43"
+  ]
+ },
+ {
+  "section": "reduce",
+  "program": "reduce .[] as $item (0; . + $item)",
+  "input": [
+   10,
+   2,
+   5,
+   3
+  ],
+  "expected": [
+   20
+  ]
+ },
+ {
+  "section": "Destructuring: as [$a, $b]",
+  "program": ".[] as [$a, $b] | {a: $a, b: $b}",
+  "input": [
+   [
+    0
+   ],
+   [
+    0,
+    1
+   ],
+   [
+    2,
+    1,
+    0
+   ]
+  ],
+  "expected": [
+   {
+    "a": 0,
+    "b": null
+   },
+   {
+    "a": 0,
+    "b": 1
+   },
+   {
+    "a": 2,
+    "b": 1
+   }
+  ]
+ },
+ {
+  "section": "if-then-else-end",
+  "program": "if . == 0 then \"zero\" elif . == 1 then \"one\" else \"many\" end",
+  "input": 2,
+  "expected": [
+   "many"
+  ]
+ },
+ {
+  "section": "limit(n; exp)",
+  "program": "[limit(3;.[])]",
+  "input": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9
+  ],
+  "expected": [
+   [
+    0,
+    1,
+    2
+   ]
+  ]
+ },
+ {
+  "section": "join(str)",
+  "program": "join(\", \")",
+  "input": [
+   "a",
+   "b,c,d",
+   "e"
+  ],
+  "expected": [
+   "a, b,c,d, e"
+  ]
+ },
+ {
+  "section": "split(str)",
+  "program": "split(\", \")",
+  "input": "a, b,c,d, e",
+  "expected": [
+   [
+    "a",
+    "b,c,d",
+    "e"
+   ]
+  ]
+ },
+ {
+  "section": "walk(f)",
+  "program": "walk(if type == \"array\" then sort else . end)",
+  "input": [
+   [
+    4,
+    1,
+    7
+   ],
+   [
+    8,
+    5,
+    2
+   ],
+   [
+    3,
+    6,
+    9
+   ]
+  ],
+  "expected": [
+   [
+    [
+     1,
+     4,
+     7
+    ],
+    [
+     2,
+     5,
+     8
+    ],
+    [
+     3,
+     6,
+     9
+    ]
+   ]
+  ]
+ },
+ {
+  "section": "Format strings and escaping: @base32",
+  "program": "@base32",
+  "input": "This is a message",
+  "expected": [
+   "KRUGKIDROVUWG2ZAMJZG653OEBTG66BANJ2W24DTEBXXMZLSEM======"
+  ]
+ },
+ {
+  "section": "Identity: . (large number literals keep their digits)",
+  "program": "tojson",
+  "input": 100000000000000000000000,
+  "expected": [
+   "100000000000000000000000"
+  ]
+ }
+]

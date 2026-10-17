@@ -1839,6 +1839,16 @@
       "AC3": "tests/idkey_ac03_same_key_different_args_conflicts.rs",
       "AC4": "tests/idkey_ac04_concurrent_same_key_runs_once.rs"
     },
+    "jqk": {
+      "_prd": "PRD-mcphost-jq-kind.md (test_prefix: jqk)",
+      "AC1": "tests/jqk_ac01_manual_examples.rs",
+      "AC2": "tests/jqk_ac02_parse_error_position.rs",
+      "AC3": "tests/jqk_ac03_call_latency.rs",
+      "AC4": "tests/jqk_ac04_runtime_error.rs",
+      "AC5": "tests/jqk_ac05_budgets.rs",
+      "AC6": "tests/jqk_ac06_chain_prev.rs",
+      "AC7": "tests/jqk_ac07_unsupported_builtin.rs"
+    },
     "kconb": {
       "_prd": "PRD-mcphost-kind-contract-conformance-generated-b.md (test_prefix: kconb)",
       "AC1": "tests/kconb_ac01_contract_doc_drift_check.rs",

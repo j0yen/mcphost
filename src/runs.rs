@@ -1428,6 +1428,7 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
         // ledger -- checked/recorded by `kinds::compose_call` for every
         // child call this dispatch makes (chain or otherwise).
         budget: Some(budget.clone()),
+        prev_result: None,
     };
 
     // PRD-mcphost-event-trigger-from-webhook R6: `$.event` is live only for a

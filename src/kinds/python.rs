@@ -6785,6 +6785,7 @@ mod tests {
             host_dispatch: None,
             parent_run_id: None,
             budget: None,
+            prev_result: None,
         }
     }
 
@@ -7102,6 +7103,7 @@ mod tests {
             host_dispatch: None,
             parent_run_id: None,
             budget: None,
+            prev_result: None,
         }
     }
 

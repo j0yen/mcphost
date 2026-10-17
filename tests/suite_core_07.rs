@@ -1467,6 +1467,20 @@ mod invite_ac11_lineage_chain_lookup_and_usage_k;
 mod invite_ac12_shares_are_one_hop_across_a_depth_3_chain;
 #[path = "invite_ac13_meta_invite_url_hint_once_per_session.rs"]
 mod invite_ac13_meta_invite_url_hint_once_per_session;
+#[path = "jqk_ac01_manual_examples.rs"]
+mod jqk_ac01_manual_examples;
+#[path = "jqk_ac02_parse_error_position.rs"]
+mod jqk_ac02_parse_error_position;
+#[path = "jqk_ac03_call_latency.rs"]
+mod jqk_ac03_call_latency;
+#[path = "jqk_ac04_runtime_error.rs"]
+mod jqk_ac04_runtime_error;
+#[path = "jqk_ac05_budgets.rs"]
+mod jqk_ac05_budgets;
+#[path = "jqk_ac06_chain_prev.rs"]
+mod jqk_ac06_chain_prev;
+#[path = "jqk_ac07_unsupported_builtin.rs"]
+mod jqk_ac07_unsupported_builtin;
 #[path = "jtl_ac01_three_step_chain_timeline.rs"]
 mod jtl_ac01_three_step_chain_timeline;
 #[path = "jtl_ac02_mapping_miss_step_is_error_family_compose.rs"]

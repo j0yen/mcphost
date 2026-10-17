@@ -12,6 +12,7 @@ use common::{McpClient, TempDataDir, TestServer, signup};
 use mcphost::kinds::KindRegistry;
 use mcphost::kinds::chain::ChainKind;
 use mcphost::kinds::http::HttpKind;
+use mcphost::kinds::jq::JqKind;
 use mcphost::kinds::python::PythonKind;
 use mcphost::kinds::wasm::WasmKind;
 use serde_json::json;
@@ -28,13 +29,16 @@ fn five_kinds_registry(data_dir: &std::path::Path) -> KindRegistry {
     kinds.register(Arc::new(PythonKind::new(data_dir)));
     kinds.register(Arc::new(ChainKind));
     kinds.register(Arc::new(WasmKind::new()));
+    kinds.register(Arc::new(JqKind));
     kinds
 }
 
 #[tokio::test]
 async fn tool_publish_unknown_kind_carries_registered_aliases_and_did_you_mean() {
     let envs_dir = TempDataDir::new();
-    let server = TestServer::start_with_kinds(five_kinds_registry(&envs_dir.0)).await;
+    let registry = five_kinds_registry(&envs_dir.0);
+    let expected: Vec<&str> = registry.names();
+    let server = TestServer::start_with_kinds(registry).await;
     let (_ns, key) = signup(&server.base_url, "Kindroute AC4 Tenant").await;
     let client = McpClient::with_bearer(&server.base_url, &key);
 
@@ -56,10 +60,10 @@ async fn tool_publish_unknown_kind_carries_registered_aliases_and_did_you_mean()
         .iter()
         .filter_map(|v| v.as_str())
         .collect();
-    for k in ["chain", "echo", "http", "python", "wasm"] {
-        assert!(registered.contains(&k), "registered missing {k}: {registered:?}");
+    for k in &expected {
+        assert!(registered.contains(k), "registered missing {k}: {registered:?}");
     }
-    assert_eq!(registered.len(), 5, "registered: {registered:?}");
+    assert_eq!(registered.len(), expected.len(), "registered: {registered:?}");
 
     let aliases: Vec<&str> = data["aliases"]
         .as_array()
