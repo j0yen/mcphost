@@ -455,7 +455,7 @@ async fn build_enduser_archive(
 
     if archive_bytes.len() as i64 > plan.export_bytes_max {
         return Err(AppError::Structured {
-            code: "export_too_large",
+            code: EXPORT_TOO_LARGE,
             message: format!(
                 "export archive is {} bytes, over this plan's {} byte limit",
                 archive_bytes.len(),
@@ -892,7 +892,7 @@ async fn build_archive(
 
     if archive_bytes.len() as i64 > plan.export_bytes_max {
         return Err(AppError::Structured {
-            code: "export_too_large",
+            code: EXPORT_TOO_LARGE,
             message: format!(
                 "export archive is {} bytes, over this plan's {} byte limit",
                 archive_bytes.len(),
@@ -987,3 +987,10 @@ pub async fn download(
         Err(_) => (StatusCode::NOT_FOUND, "export archive missing").into_response(),
     }
 }
+
+crate::err_code! {
+    pub EXPORT_TOO_LARGE,
+    code: "export_too_large", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Reduce the tenant's data below the plan's export_bytes_max, or move to a larger plan.",
+}
+

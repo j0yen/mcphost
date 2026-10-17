@@ -67,7 +67,7 @@ pub fn wait_args() -> Value {
 
 fn plan_limit(field: &str, limit: i64, used: i64) -> AppError {
     AppError::Structured {
-        code: "plan_limit",
+        code: crate::handler::PLAN_LIMIT,
         message: format!("this plan allows {limit} {field}; this tenant already holds {used}"),
         data: json!({"limit": limit, "used": used, "field": field}),
     }
@@ -130,7 +130,7 @@ pub async fn create(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
         let config = crate::webhooks::parse_webhook_config(&existing.config_json);
         if existing.kind != "webhook" || !config.as_ref().is_some_and(|c| c.inbox) {
             return Err(AppError::Structured {
-                code: "trigger_kind_mismatch",
+                code: crate::triggers::TRIGGER_KIND_MISMATCH,
                 message: format!("'{name}' is already a trigger that is not a webhook inbox"),
                 data: json!({"name": name, "existing_kind": existing.kind}),
             });

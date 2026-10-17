@@ -24,8 +24,37 @@ use rmcp::service::Peer;
 use serde_json::{Value, json};
 
 use crate::db::Tenant;
+use crate::err_code;
 use crate::kinds::{CallLog, KindError, SamplingBackend};
 use crate::state::AppState;
+
+err_code! {
+    /// A single run asked the client's model more times than its call ceiling.
+    pub SAMPLING_CALLS_EXCEEDED,
+    code: "sampling_calls_exceeded", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Ask the client's model fewer times per run; data.limit is the per-run sampling-call ceiling.",
+}
+
+err_code! {
+    /// The tenant's daily sampling token quota is spent.
+    pub SAMPLING_QUOTA_EXCEEDED,
+    code: "sampling_quota_exceeded", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Wait for the daily reset or move to a plan with a larger sampling_tokens_per_day.",
+}
+
+err_code! {
+    /// The client's model did not answer a sampling request in time.
+    pub SAMPLING_TIMEOUT,
+    code: "sampling_timeout", family: Call, class: AgentFault, retryable: true,
+    remedy: "Retry with a smaller max_tokens or a shorter prompt; the client's model did not answer in time.",
+}
+
+err_code! {
+    /// The connected client does not support `sampling/createMessage`.
+    pub SAMPLING_UNSUPPORTED,
+    code: "sampling_unsupported", family: Call, class: HostRefusal, retryable: false,
+    remedy: "Do not retry; this client cannot sample. Use data.alternative or call from a client that supports sampling.",
+}
 
 /// What `sampling_unsupported` tells a tool to do instead.
 pub const SAMPLING_ALTERNATIVE: &str = "publish a prompt-kind tool with your own key";
@@ -35,7 +64,7 @@ pub const SAMPLING_MAX_TOKENS_DEFAULT: u64 = 256;
 
 /// Every code `mcphost.sampling` raises; an uncaught one is the tool call's
 /// own error code (`kinds::python::map_envelope_error`).
-pub const SAMPLING_ERROR_CODES: &[&str] = &["sampling_unsupported", "sampling_timeout", "sampling_calls_exceeded", "sampling_quota_exceeded"];
+pub const SAMPLING_ERROR_CODES: &[&str] = &[SAMPLING_UNSUPPORTED, SAMPLING_TIMEOUT, SAMPLING_CALLS_EXCEEDED, SAMPLING_QUOTA_EXCEEDED];
 
 /// Asks one tool call (and the calls it composes) may make.
 pub const SAMPLING_CALLS_MAX: u32 = 4;
@@ -68,7 +97,7 @@ fn unsupported(state: &AppState, reason: &str) -> KindError {
         data["help_url"] = json!(url);
     }
     KindError::structured_with(
-        "sampling_unsupported",
+        SAMPLING_UNSUPPORTED,
         format!("mcphost.sampling has no {reason} to ask; alternative: {SAMPLING_ALTERNATIVE}"),
         data,
     )
@@ -76,7 +105,7 @@ fn unsupported(state: &AppState, reason: &str) -> KindError {
 
 fn timeout(wall: Duration, remaining: Duration, asked: bool) -> KindError {
     KindError::structured_with(
-        "sampling_timeout",
+        SAMPLING_TIMEOUT,
         if asked {
             format!("the client did not answer within {}s", wall.as_secs())
         } else {
@@ -92,7 +121,7 @@ fn timeout(wall: Duration, remaining: Duration, asked: bool) -> KindError {
 
 fn exceeded() -> KindError {
     KindError::structured_with(
-        "sampling_calls_exceeded",
+        SAMPLING_CALLS_EXCEEDED,
         format!("at most {SAMPLING_CALLS_MAX} sampling asks per call"),
         json!({"limit": SAMPLING_CALLS_MAX}),
     )
@@ -100,7 +129,7 @@ fn exceeded() -> KindError {
 
 fn quota_exceeded(limit: i64, used: i64, reset_unix: i64) -> KindError {
     KindError::structured_with(
-        "sampling_quota_exceeded",
+        SAMPLING_QUOTA_EXCEEDED,
         format!("this plan allows {limit} sampling tokens per day and {used} are spent; resets at unix {reset_unix}"),
         json!({"limit": limit, "used": used, "reset_unix": reset_unix, "field": "sampling_tokens_per_day"}),
     )
@@ -127,7 +156,7 @@ impl SamplingBackend for NoClientSampling {
         Err(match &self.state {
             Some(state) => unsupported(state, "no_client"),
             None => KindError::structured_with(
-                "sampling_unsupported",
+                SAMPLING_UNSUPPORTED,
                 format!("mcphost.sampling has no no_client to ask; alternative: {SAMPLING_ALTERNATIVE}"),
                 json!({"reason": "no_client", "alternative": SAMPLING_ALTERNATIVE}),
             ),

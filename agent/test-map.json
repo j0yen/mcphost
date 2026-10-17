@@ -2005,6 +2005,15 @@
       "AC6": "tests/rgpt_ac06_task_sync_check_flags_wall_budget_drift.rs",
       "AC7": "tests/rgpt_ac07_ci_job_fails_on_the_broken_recipe_only.rs"
     },
+    "errreg": {
+      "_prd": "PRD-mcphost-error-codes-generated-registry.md (test_prefix: errreg)",
+      "AC1": "tests/errreg_ac01_err_code_declares_and_registers.rs",
+      "AC2": "tests/errreg_ac02_registry_surfaces_byte_identical_snapshot.rs",
+      "AC3": "tests/errreg_ac03_scanner_fails_bare_literal_names_site.rs",
+      "AC4": "tests/errreg_ac04_scanner_fails_duplicate_and_format_codes.rs",
+      "AC5": "tests/errreg_ac05_hand_table_empty_and_backstop_passes.rs",
+      "AC6": "tests/errreg_ac06_five_10_17_codes_declared_at_emit_site.rs"
+    },
     "errjson": {
       "_prd": "PRD-mcphost-errors-json-contract.md (test_prefix: errjson)",
       "AC1": "tests/errjson_ac01_every_emitted_code_is_a_registry_row.rs",

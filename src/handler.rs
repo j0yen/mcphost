@@ -7814,7 +7814,7 @@ impl McpHostHandler {
         // tripped (`calls_per_day`) -- the wire code alone would make every
         // quota family read the same; every other refusal keeps its wire code.
         let code = match &err {
-            AppError::Structured { code: "quota_exceeded", data, .. } => data
+            AppError::Structured { code: crate::errors::QUOTA_EXCEEDED, data, .. } => data
                 .pointer("/limit/name")
                 .and_then(Value::as_str)
                 .unwrap_or("quota_exceeded")
@@ -8145,7 +8145,7 @@ impl McpHostHandler {
         let Some(outcome) = outcome else {
             drain.note_interrupted();
             let app_err = AppError::Structured {
-                code: "interrupted",
+                code: INTERRUPTED,
                 message: "the server restarted before this call finished; retry it".to_string(),
                 data: json!({
                     "restart_id": drain.restart_id(),
@@ -8349,7 +8349,7 @@ impl McpHostHandler {
                 // refusal names the plan whose ceiling it hit, and is recorded
                 // as `error_class = "concurrency"` (the host-scope `capacity`
                 // keeps its own code).
-                if let AppError::Structured { code: "concurrency_exceeded", data: Value::Object(data), .. } = &mut app_err {
+                if let AppError::Structured { code: CONCURRENCY_EXCEEDED, data: Value::Object(data), .. } = &mut app_err {
                     data.insert("plan".to_string(), json!(tenant.plan));
                 }
                 let recorded_error_class = call_error_class(&app_err);
@@ -8512,7 +8512,7 @@ impl McpHostHandler {
         if let Some(f) = &fixtures {
             if kind.name() != "chain" {
                 return Err(AppError::Structured {
-                    code: "fixtures_not_applicable",
+                    code: FIXTURES_NOT_APPLICABLE,
                     message: format!(
                         "'{local_name}' is a {} tool; fixtures apply to chain tools only",
                         kind.name()
@@ -8523,7 +8523,7 @@ impl McpHostHandler {
             let total: usize = f.iter().map(|(k, v)| k.len() + v.to_string().len()).sum();
             if total > crate::runs::RUN_PART_BYTES {
                 return Err(AppError::Structured {
-                    code: "fixtures_too_large",
+                    code: FIXTURES_TOO_LARGE,
                     message: format!(
                         "fixtures total {total} bytes; the limit is {} bytes",
                         crate::runs::RUN_PART_BYTES
@@ -8571,7 +8571,7 @@ impl McpHostHandler {
             // pinned to exactly `args_invalid` either way.
             let args_err = describe_args_error(&e);
             return Err(AppError::Structured {
-                code: "args_invalid",
+                code: crate::errors::ARGS_INVALID,
                 message: args_err.message(),
                 data: args_err.data(),
             });
@@ -8813,7 +8813,7 @@ impl McpHostHandler {
             // runner's `BridgeShapeError`; the dry run reports that as a
             // `will_fail` verdict with the error text and the user's own
             // line, not as a bare tool error the agent has to decode.
-            Ok(Err(KindError::Structured { code: "tool_exception", message, data }))
+            Ok(Err(KindError::Structured { code: TOOL_EXCEPTION, message, data }))
                 if data.get("exception_class").and_then(Value::as_str) == Some("BridgeShapeError") =>
             {
                 let mut report = json!({
@@ -8974,7 +8974,7 @@ impl McpHostHandler {
             AppError::InvalidArgs("call_id must be the string call_id a tool-call result returned".into())
         })?;
         let row = self.state.db.get_call_trace(call_id).await?.ok_or_else(|| AppError::Structured {
-            code: "trace_not_found",
+            code: TRACE_NOT_FOUND,
             message: format!("no trace for call_id {call_id}: unknown, expired, or made before traces existed"),
             data: json!({"call_id": call_id.to_string(), "reason": "unknown_or_expired"}),
         })?;
@@ -9033,7 +9033,7 @@ impl McpHostHandler {
         };
         if merged.get("_truncated") == Some(&json!(true)) {
             return Err(AppError::Structured {
-                code: "replay_needs_secret",
+                code: REPLAY_NEEDS_SECRET,
                 message: "the recorded request was too large to keep, so it cannot be replayed; pass the full replay.args".into(),
                 data: json!({"key": "_truncated"}),
             });
@@ -9045,7 +9045,7 @@ impl McpHostHandler {
         let mut merged = Value::Object(merged);
         if let Some(key) = crate::calltrace::unresolved_secret_key(&mut merged, &secret_map) {
             return Err(AppError::Structured {
-                code: "replay_needs_secret",
+                code: REPLAY_NEEDS_SECRET,
                 message: format!(
                     "'{key}' is still masked in the recorded request; pass its value in replay.args"
                 ),
@@ -9138,7 +9138,7 @@ impl McpHostHandler {
         {
             let args_err = describe_args_error(&e);
             return Err(AppError::Structured {
-                code: "args_invalid",
+                code: crate::errors::ARGS_INVALID,
                 message: args_err.message(),
                 data: args_err.data(),
             });
@@ -9302,7 +9302,7 @@ impl McpHostHandler {
             return Ok(());
         }
         let refusal = |verdict: &str, detail: String| AppError::Structured {
-            code: "untested_tool_cannot_be_public",
+            code: UNTESTED_TOOL_CANNOT_BE_PUBLIC,
             message: format!("'{name}' version {} did not pass its dry run ({verdict}); it stays {}", row.current_version, row.visibility),
             data: json!({"verdict": verdict, "detail": detail, "next": "host.tool_test"}),
         };
@@ -9401,7 +9401,7 @@ impl McpHostHandler {
         // before any other work (spec validation included).
         if invocations_len > MAX_TEST_INVOCATIONS {
             return Err(AppError::Structured {
-                code: "too_many_invocations",
+                code: TOO_MANY_INVOCATIONS,
                 message: format!(
                     "at most {MAX_TEST_INVOCATIONS} invocations per host.spec_test call; got {invocations_len}"
                 ),
@@ -9697,7 +9697,7 @@ impl McpHostHandler {
         let share = args.get("share").and_then(Value::as_bool).unwrap_or(true);
         let Some(drafter) = self.state.drafter.clone() else {
             return Err(AppError::Structured {
-                code: "draft_unavailable",
+                code: DRAFT_UNAVAILABLE,
                 message: "this host has no draft model configured".to_string(),
                 data: json!({"next_call": {"tool": "host.quickstart", "args": {}}}),
             });
@@ -9724,7 +9724,7 @@ impl McpHostHandler {
             crate::db::DraftReservation::Reserved(id) => id,
             crate::db::DraftReservation::TenantLimit { used } => {
                 return Err(AppError::Structured {
-                    code: "plan_limit",
+                    code: PLAN_LIMIT,
                     message: format!(
                         "this plan allows {} drafts_per_day; this tenant already made {used} today",
                         plan.drafts_per_day
@@ -9739,7 +9739,7 @@ impl McpHostHandler {
             }
             crate::db::DraftReservation::HostCap { used } => {
                 return Err(AppError::Structured {
-                    code: "draft_unavailable",
+                    code: DRAFT_UNAVAILABLE,
                     message: format!("this host's daily draft cap ({used}) is spent; try again tomorrow"),
                     data: json!({"next_call": {"tool": "host.quickstart", "args": {}}}),
                 });
@@ -9816,7 +9816,7 @@ impl McpHostHandler {
                         let message = invocation["message"].as_str().unwrap_or("invocation failed").to_string();
                         let data = json!({"invocation": invocation, "invocations": result["invocations"]});
                         (
-                            AppError::Structured { code: "draft_test_failed", message, data: data.clone() },
+                            AppError::Structured { code: DRAFT_TEST_FAILED, message, data: data.clone() },
                             data,
                         )
                     }
@@ -9857,7 +9857,7 @@ impl McpHostHandler {
     async fn tool_run(&self, tenant: &Tenant, args: Value) -> Result<Value, AppError> {
         if !self.state.tool_run_limiter.allow(tenant.id) {
             return Err(AppError::Structured {
-                code: "rate_limited",
+                code: crate::errors::RATE_LIMITED,
                 message: "host.tool_run is limited to 30 calls per tenant per minute".to_string(),
                 data: json!({"retry_after_s": 60}),
             });
@@ -9915,7 +9915,7 @@ impl McpHostHandler {
             // pinned to exactly `args_invalid` either way.
             let args_err = describe_args_error(&e);
             return Err(AppError::Structured {
-                code: "args_invalid",
+                code: crate::errors::ARGS_INVALID,
                 message: args_err.message(),
                 data: args_err.data(),
             });
@@ -10505,7 +10505,7 @@ impl McpHostHandler {
         if !crate::verbforward::supports_dry_run(canonical) {
             let client_tool = crate::verbforward::client_tool_name(canonical);
             return Err(AppError::Structured {
-                code: "unverifiable",
+                code: UNVERIFIABLE,
                 message: format!("{canonical} has no dry run yet -- call it for real to verify"),
                 data: json!({
                     "host_verb": canonical,
@@ -11608,7 +11608,7 @@ impl McpHostHandler {
                 match self.state.db.is_end_user_revoked(tenant.id, eu.subject.clone()).await {
                     Ok(true) => {
                         end_user_err = Some(AppError::Structured {
-                            code: "end_user_revoked",
+                            code: END_USER_REVOKED,
                             message: format!("end user '{}' has been revoked", eu.subject),
                             data: json!({"subject": eu.subject}),
                         });
@@ -12456,7 +12456,7 @@ impl McpHostHandler {
 /// for `schema`, or an `example_unavailable` refusal naming the failing path.
 fn example_or_refusal(schema: &Value) -> Result<crate::kinds::example::Example, AppError> {
     crate::kinds::example::checked_example(schema).map_err(|e| AppError::Structured {
-        code: "example_unavailable",
+        code: EXAMPLE_UNAVAILABLE,
         message: format!(
             "no example could be generated from this tool's args_schema: {} at {}; pass `args` explicitly",
             e.message,
@@ -12478,6 +12478,97 @@ fn add_example_fields(map: &mut serde_json::Map<String, Value>, ex: &crate::kind
         );
     }
 }
+
+crate::err_code! {
+    pub CONCURRENCY_EXCEEDED,
+    code: "concurrency_exceeded", family: Plan, class: PlanLimit, retryable: true,
+    remedy: "Wait for in-flight calls to finish and retry; data.plan names the concurrency ceiling.",
+}
+
+crate::err_code! {
+    pub DRAFT_TEST_FAILED,
+    code: "draft_test_failed", family: Call, class: AgentFault, retryable: false,
+    remedy: "Read data for the failing draft test and adjust the request.",
+}
+
+crate::err_code! {
+    pub DRAFT_UNAVAILABLE,
+    code: "draft_unavailable", family: Internal, class: HostRefusal, retryable: false,
+    remedy: "This host has no draft model configured; build the spec by hand from host.quickstart.",
+}
+
+crate::err_code! {
+    pub END_USER_REVOKED,
+    code: "end_user_revoked", family: Auth, class: HostRefusal, retryable: false,
+    remedy: "This end user was revoked; do not retry with that subject.",
+}
+
+crate::err_code! {
+    pub EXAMPLE_UNAVAILABLE,
+    code: "example_unavailable", family: Spec, class: AgentFault, retryable: false,
+    remedy: "Pass args explicitly; no example could be generated from args_schema.",
+}
+
+crate::err_code! {
+    pub FIXTURES_NOT_APPLICABLE,
+    code: "fixtures_not_applicable", family: Spec, class: AgentFault, retryable: false,
+    remedy: "Fixtures apply to chain tools only; drop them for other kinds.",
+}
+
+crate::err_code! {
+    pub FIXTURES_TOO_LARGE,
+    code: "fixtures_too_large", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Reduce the fixtures to data.limit_bytes in total.",
+}
+
+crate::err_code! {
+    pub INTERRUPTED,
+    code: "interrupted", family: Internal, class: HostFault, retryable: true,
+    remedy: "The server restarted before this call finished; retry the same call (data.restart_id names the restart).",
+}
+
+crate::err_code! {
+    pub PLAN_LIMIT,
+    code: "plan_limit", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Wait for the daily limit to reset or move to a plan with a higher limit.",
+}
+
+crate::err_code! {
+    pub REPLAY_NEEDS_SECRET,
+    code: "replay_needs_secret", family: Call, class: AgentFault, retryable: false,
+    remedy: "Pass the full replay.args; the recorded request was too large to keep.",
+}
+
+crate::err_code! {
+    pub TOO_MANY_INVOCATIONS,
+    code: "too_many_invocations", family: Args, class: AgentFault, retryable: false,
+    remedy: "Send at most data.limit invocations per call.",
+}
+
+crate::err_code! {
+    pub TOOL_EXCEPTION,
+    code: "tool_exception", family: Call, class: AgentFault, retryable: false,
+    remedy: "Read data.exception_class and data.line, fix the tool's code, republish and re-run host.tool_test.",
+}
+
+crate::err_code! {
+    pub TRACE_NOT_FOUND,
+    code: "trace_not_found", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Use a call_id from a recent call; traces expire.",
+}
+
+crate::err_code! {
+    pub UNTESTED_TOOL_CANNOT_BE_PUBLIC,
+    code: "untested_tool_cannot_be_public", family: Publish, class: AgentFault, retryable: false,
+    remedy: "Read data.verdict and data.detail, fix the tool, pass host.tool_test (data.next) for its current version, then set visibility public again.",
+}
+
+crate::err_code! {
+    pub UNVERIFIABLE,
+    code: "unverifiable", family: Call, class: AgentFault, retryable: false,
+    remedy: "Call data.call_instead for real; no dry run exists for this verb.",
+}
+
 
 #[cfg(test)]
 mod host_tools_stack_tests {

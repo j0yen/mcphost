@@ -94,7 +94,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 /// `POST /billing/webhook` (AC7: the response is 400, no row is written).
 fn invalid_webhook(message: impl Into<String>) -> AppError {
     AppError::Structured {
-        code: "invalid_webhook_signature",
+        code: INVALID_WEBHOOK_SIGNATURE,
         message: message.into(),
         data: json!({}),
     }
@@ -1105,7 +1105,7 @@ pub fn quota_exceeded_for(
         format!("plan '{plan}' quota exceeded: {limit_name} (limit {limit_value})")
     };
     AppError::Structured {
-        code: "quota_exceeded",
+        code: crate::errors::QUOTA_EXCEEDED,
         message,
         data,
     }
@@ -1115,7 +1115,7 @@ pub fn quota_exceeded_for(
 /// Stripe config but doesn't have one) with no secret key configured.
 pub fn billing_unavailable(reason: impl Into<String>) -> AppError {
     AppError::Structured {
-        code: "billing_unavailable",
+        code: BILLING_UNAVAILABLE,
         message: reason.into(),
         data: json!({"billing_mode": "off"}),
     }
@@ -1758,6 +1758,19 @@ async fn apply_downgrade(
         .await?;
     Ok(json!({"received": true}))
 }
+
+crate::err_code! {
+    pub BILLING_UNAVAILABLE,
+    code: "billing_unavailable", family: Plan, class: HostRefusal, retryable: false,
+    remedy: "Billing is not configured on this host; do not retry. Read billing.plans for what the host offers.",
+}
+
+crate::err_code! {
+    pub INVALID_WEBHOOK_SIGNATURE,
+    code: "invalid_webhook_signature", family: Auth, class: AgentFault, retryable: false,
+    remedy: "Re-send with a signature computed over the raw body with the signing secret.",
+}
+
 
 #[cfg(test)]
 mod tests {

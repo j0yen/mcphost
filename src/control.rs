@@ -1578,7 +1578,7 @@ pub fn changelog(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Valu
                 ),
             };
             return Err(AppError::Structured {
-                code: "args_invalid",
+                code: crate::errors::ARGS_INVALID,
                 message: args_err.message(),
                 data: with_anchor(args_err.data(), crate::doc_anchors::DocAnchor::DocsToolsHostChangelog),
             });
@@ -1598,7 +1598,7 @@ pub fn changelog(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Valu
             ),
         };
         return Err(AppError::Structured {
-            code: "args_invalid",
+            code: crate::errors::ARGS_INVALID,
             message: args_err.message(),
             data: with_anchor(args_err.data(), crate::doc_anchors::DocAnchor::DocsToolsHostChangelog),
         });
@@ -1663,7 +1663,7 @@ fn chain_mapping_unresolved(verdict: &Value) -> AppError {
             format!("step {} reads {}, which its predecessor has not returned{available}", first["step"], first["path"])
         }
     };
-    AppError::Structured { code: "compose_mapping_unresolved", message, data: Value::Object(data) }
+    AppError::Structured { code: COMPOSE_MAPPING_UNRESOLVED, message, data: Value::Object(data) }
 }
 
 pub async fn tool_publish(
@@ -2901,6 +2901,13 @@ pub async fn registry_publish(
         "registry_status": status.as_u16(),
     }))
 }
+
+crate::err_code! {
+    pub COMPOSE_MAPPING_UNRESOLVED,
+    code: "compose_mapping_unresolved", family: Compose, class: AgentFault, retryable: false,
+    remedy: "Fix the mapping path named in data.field so it resolves against the inputs.",
+}
+
 
 #[cfg(test)]
 mod tests {

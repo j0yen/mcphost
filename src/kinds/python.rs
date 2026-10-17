@@ -556,7 +556,7 @@ fn validate_requirements_all(reqs: &[String]) -> Vec<KindError> {
     for req in reqs {
         if !requirement_is_allowed(req) {
             errors.push(KindError::structured_with(
-                "requirement_not_allowed",
+                REQUIREMENT_NOT_ALLOWED,
                 format!("requirements: '{req}' is not an allowed PyPI requirement"),
                 json!({"requirement": req}),
             ));
@@ -614,7 +614,7 @@ pub(crate) fn validate_env_all(env: &BTreeMap<String, String>) -> Vec<KindError>
     let mut errors = Vec::new();
     if env.len() > MAX_ENV_ENTRIES {
         errors.push(KindError::structured_with(
-            "invalid_spec",
+            crate::errors::INVALID_SPEC,
             format!("env: at most {MAX_ENV_ENTRIES} entries; got {}", env.len()),
             json!({"field": "env", "rule": "max_entries", "limit": MAX_ENV_ENTRIES, "got": env.len()}),
         ));
@@ -622,7 +622,7 @@ pub(crate) fn validate_env_all(env: &BTreeMap<String, String>) -> Vec<KindError>
     let total_bytes: usize = env.iter().map(|(k, v)| k.len() + v.len()).sum();
     if total_bytes > MAX_ENV_TOTAL_BYTES {
         errors.push(KindError::structured_with(
-            "invalid_spec",
+            crate::errors::INVALID_SPEC,
             format!(
                 "env: {total_bytes} bytes across names and values, over the {MAX_ENV_TOTAL_BYTES}-byte limit"
             ),
@@ -633,7 +633,7 @@ pub(crate) fn validate_env_all(env: &BTreeMap<String, String>) -> Vec<KindError>
         let field = format!("env.{name}");
         if !env_name_matches_pattern(name) {
             errors.push(KindError::structured_with(
-                "invalid_spec",
+                crate::errors::INVALID_SPEC,
                 format!(
                     "{field}: '{name}' must match ^[A-Z][A-Z0-9_]{{0,63}}$"
                 ),
@@ -647,14 +647,14 @@ pub(crate) fn validate_env_all(env: &BTreeMap<String, String>) -> Vec<KindError>
         }
         if let Some(reason) = env_name_reason_if_reserved(name) {
             errors.push(KindError::structured_with(
-                "invalid_spec",
+                crate::errors::INVALID_SPEC,
                 format!("{field}: '{name}' {reason} and cannot be used as an env name"),
                 json!({"field": field, "key": name, "rule": "reserved_name"}),
             ));
         }
         if value.contains('\0') {
             errors.push(KindError::structured_with(
-                "invalid_spec",
+                crate::errors::INVALID_SPEC,
                 format!("{field}: value must not contain a NUL byte"),
                 json!({"field": field, "key": name, "rule": "no_nul_byte"}),
             ));
@@ -939,12 +939,12 @@ async fn ast_check(source: &str, isolation: IsolationMechanism) -> Result<(), Ki
         .unwrap_or("InvalidSpec");
     match envelope.get("line").and_then(Value::as_i64) {
         Some(line) => Err(KindError::structured_with(
-            "invalid_spec",
+            crate::errors::INVALID_SPEC,
             format!("source: syntax error at line {line}: {message}"),
             json!({"field": "source", "exception_class": exception_class, "line": line}),
         )),
         None => Err(KindError::structured_with(
-            "invalid_spec",
+            crate::errors::INVALID_SPEC,
             format!("source: {message}"),
             json!({"field": "source", "exception_class": exception_class}),
         )),
@@ -2633,7 +2633,7 @@ fn unknown_import_error(bad_name: &str, own_domain: &str) -> KindError {
     if is_domain_spelling(bad_name, own_domain) {
         let hint = format!("{}{base}", domain_clause(own_domain));
         return KindError::structured_with(
-            "unknown_import",
+            UNKNOWN_IMPORT,
             format!("unknown_import: no module '{bad_name}'; {hint}"),
             json!({"hint": hint, "module": bad_name, "own_domain": own_domain}),
         );
@@ -2642,7 +2642,7 @@ fn unknown_import_error(bad_name: &str, own_domain: &str) -> KindError {
     // preinstalled import names the lib instead of the bridge list.
     let base = crate::sandbox_libs::typo_hint(bad_name).unwrap_or(base);
     KindError::structured_with(
-        "unknown_import",
+        UNKNOWN_IMPORT,
         format!("unknown_import: no module '{bad_name}'; {base}"),
         json!({"hint": base, "module": bad_name}),
     )
@@ -2821,7 +2821,7 @@ fn scan_sandbox_lib_imports(source: &str, requirements: &[String]) -> Option<Kin
             };
             if let Some(hint) = hint {
                 return Some(KindError::structured_with(
-                    "unknown_import",
+                    UNKNOWN_IMPORT,
                     format!("unknown_import: no module '{dotted}'; {hint}"),
                     json!({"hint": hint, "module": dotted}),
                 ));
@@ -6223,7 +6223,7 @@ impl Kind for PythonKind {
             // Requirement 1/AC3: phase `args_coercion`, naming the
             // argument and both types -- see `describe_args_error`.
             let args_err = super::describe_args_error(&e);
-            return Err(KindError::structured_with("args_invalid", args_err.message(), args_err.data()));
+            return Err(KindError::structured_with(crate::errors::ARGS_INVALID, args_err.message(), args_err.data()));
         }
 
         // Requirement 3 (AC4): the tenant's own admission cap is checked
@@ -6281,7 +6281,7 @@ impl Kind for PythonKind {
 
         if let Err(retry_after_s) = self.cpu_budget.check(ctx.tenant_id) {
             return Err(KindError::structured_with(
-                "rate_limited",
+                crate::errors::RATE_LIMITED,
                 "tenant CPU budget exceeded for this hour",
                 json!({"retry_after_s": retry_after_s}),
             ));
@@ -6365,7 +6365,7 @@ impl Kind for PythonKind {
                 }
                 EnvReadiness::Failed { tail } => {
                     return Err(KindError::structured_with(
-                        "build_failed",
+                        BUILD_FAILED,
                         "the tool's environment failed to build",
                         json!({"tail": tail}),
                     ));
@@ -6541,7 +6541,7 @@ impl Kind for PythonKind {
             // Requirement 1/AC3: phase `args_coercion`, naming the
             // argument and both types -- see `describe_args_error`.
             let args_err = super::describe_args_error(&e);
-            return Err(KindError::structured_with("args_invalid", args_err.message(), args_err.data()));
+            return Err(KindError::structured_with(crate::errors::ARGS_INVALID, args_err.message(), args_err.data()));
         }
 
         let secret_env = self.secret_env(&parsed, ctx);
@@ -6580,7 +6580,7 @@ impl Kind for PythonKind {
                 }
                 EnvReadiness::Failed { tail } => {
                     return Err(KindError::structured_with(
-                        "build_failed",
+                        BUILD_FAILED,
                         "the tool's environment failed to build",
                         json!({"tail": tail}),
                     ));
@@ -6754,7 +6754,7 @@ impl Kind for PythonKind {
 /// adds `plan` to `data` and records `error_class = "concurrency"`.
 fn tenant_capacity_error(in_flight: usize, limit: usize, retry_after_ms: u64) -> KindError {
     KindError::structured_with(
-        "concurrency_exceeded",
+        crate::handler::CONCURRENCY_EXCEEDED,
         format!(
             "{in_flight} of {limit} concurrent calls in flight on this tenant; retry in {retry_after_ms} ms"
         ),
@@ -6776,14 +6776,14 @@ pub(crate) fn sandbox_network_mode(network: &str, egress_allowed: bool) -> Resul
     }
     if !egress_allowed {
         let (message, data) = crate::network_policy::plan_required_fields("network", crate::network_policy::EGRESS_PLAN);
-        return Err(KindError::structured_with("plan_required", message, data));
+        return Err(KindError::structured_with(crate::subkeys::PLAN_REQUIRED, message, data));
     }
     match std::env::var("MCPHOST_EGRESS_PROXY").ok() {
         Some(proxy) => Ok(NetworkMode::Public {
             http_proxy: Some(proxy),
         }),
         None => Err(KindError::structured(
-            "egress_unavailable",
+            EGRESS_UNAVAILABLE,
             "network: \"egress\" requires $MCPHOST_EGRESS_PROXY to be configured",
         )),
     }
@@ -6791,11 +6791,48 @@ pub(crate) fn sandbox_network_mode(network: &str, egress_allowed: bool) -> Resul
 
 pub(crate) fn host_capacity_error(in_flight: usize, limit: usize, retry_after_ms: u64) -> KindError {
     KindError::structured_with(
-        "capacity",
+        CAPACITY,
         "at the concurrent-call limit; try again shortly",
         json!({"in_flight": in_flight, "limit": limit, "retry_after_ms": retry_after_ms, "scope": "host"}),
     )
 }
+
+crate::err_code! {
+    pub BUILD_FAILED,
+    code: "build_failed", family: Call, class: AgentFault, retryable: false,
+    remedy: "Read data.tail for the build error, fix the requirements in the spec, and republish.",
+}
+
+crate::err_code! {
+    pub CAPACITY,
+    code: "capacity", family: Call, class: HostFault, retryable: true,
+    remedy: "Retry after data.retry_after_ms; the host is at its concurrent-call limit.",
+}
+
+crate::err_code! {
+    pub EGRESS_UNAVAILABLE,
+    code: "egress_unavailable", family: Internal, class: HostRefusal, retryable: false,
+    remedy: "Network egress is not configured on this host; use a kind or host that does not need it.",
+}
+
+crate::err_code! {
+    pub REQUIREMENT_NOT_ALLOWED,
+    code: "requirement_not_allowed", family: Spec, class: HostRefusal, retryable: false,
+    remedy: "Use only requirements allowed by the PyPI policy.",
+}
+
+crate::err_code! {
+    pub STATE_QUOTA_EXCEEDED,
+    code: "state_quota_exceeded", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Delete state rows or move to a plan with a higher state_bytes_max.",
+}
+
+crate::err_code! {
+    pub UNKNOWN_IMPORT,
+    code: "unknown_import", family: Spec, class: AgentFault, retryable: false,
+    remedy: "Use a module from the hint in data.hint; the import is not available in the sandbox.",
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -6820,7 +6857,7 @@ mod tests {
         async fn call(&self, op: &str, args: Value) -> Result<Value, KindError> {
             if op == "boom" {
                 return Err(KindError::structured_with(
-                    "state_quota_exceeded",
+                    crate::kinds::python::STATE_QUOTA_EXCEEDED,
                     "over quota",
                     json!({"quota": "state_bytes_max"}),
                 ));

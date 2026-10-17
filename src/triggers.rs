@@ -74,7 +74,7 @@ fn arg_str_opt(args: &Value, name: &str) -> Option<String> {
 /// second constructor for one error code.
 pub(crate) fn trigger_invalid(field: &'static str, message: String) -> AppError {
     AppError::Structured {
-        code: "trigger_invalid",
+        code: TRIGGER_INVALID,
         message,
         data: json!({"field": field}),
     }
@@ -85,7 +85,7 @@ pub(crate) fn trigger_invalid(field: &'static str, message: String) -> AppError 
 /// pause/resume/remove already return.
 pub(crate) fn trigger_not_found(id: &str) -> AppError {
     AppError::Structured {
-        code: "trigger_not_found",
+        code: TRIGGER_NOT_FOUND,
         message: format!("no trigger '{id}' for this tenant"),
         data: json!({"id": id}),
     }
@@ -190,7 +190,7 @@ pub(crate) fn annotate_set_result(mut value: Value, created: bool, changed: &[&s
 /// kinds (non-goal: "that is a remove and a set").
 fn trigger_kind_mismatch(name: &str, existing_kind: &str, requested_kind: &str) -> AppError {
     AppError::Structured {
-        code: "trigger_kind_mismatch",
+        code: TRIGGER_KIND_MISMATCH,
         message: format!(
             "'{name}' is already a {existing_kind} trigger; remove it before using \
              kind=\"{requested_kind}\" (a name never moves between kinds)"
@@ -411,7 +411,7 @@ async fn set_message_trigger(
     let existing_count = state.db.count_event_triggers_for_tenant(tenant.id).await?;
     if existing_count >= plan.event_triggers_max {
         return Err(AppError::Structured {
-            code: "trigger_quota_exceeded",
+            code: TRIGGER_QUOTA_EXCEEDED,
             message: format!(
                 "tenant already holds {existing_count} event/message triggers, the plan maximum \
                  of {}",
@@ -542,7 +542,7 @@ async fn set_schedule(
         let interval = next2 - next1;
         if interval < plan.schedule_min_interval_s {
             return Err(AppError::Structured {
-                code: "trigger_interval_too_short",
+                code: TRIGGER_INTERVAL_TOO_SHORT,
                 message: format!(
                     "schedule fires every {interval}s, under the plan's \
                      {}s minimum",
@@ -601,7 +601,7 @@ async fn set_schedule(
     let existing_count = state.db.count_schedule_triggers_for_tenant(tenant.id).await?;
     if existing_count >= plan.schedules_max {
         return Err(AppError::Structured {
-            code: "trigger_quota_exceeded",
+            code: TRIGGER_QUOTA_EXCEEDED,
             message: format!(
                 "tenant already holds {existing_count} schedules, the plan maximum of {}",
                 plan.schedules_max
@@ -645,7 +645,7 @@ async fn set_schedule(
 /// naming the exact field the PRD's AC2 requires.
 fn cron_error_to_app_error(e: crate::cron::CronError) -> AppError {
     AppError::Structured {
-        code: "trigger_invalid",
+        code: TRIGGER_INVALID,
         message: e.message,
         data: json!({"field": e.field}),
     }
@@ -919,6 +919,37 @@ pub fn spawn_scheduler(state: AppState) -> tokio::task::JoinHandle<()> {
         }
     })
 }
+
+crate::err_code! {
+    pub TRIGGER_INTERVAL_TOO_SHORT,
+    code: "trigger_interval_too_short", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Use a schedule at or above the plan's schedule_min_interval_s.",
+}
+
+crate::err_code! {
+    pub TRIGGER_INVALID,
+    code: "trigger_invalid", family: Args, class: AgentFault, retryable: false,
+    remedy: "Fix the trigger field named in data.field.",
+}
+
+crate::err_code! {
+    pub TRIGGER_KIND_MISMATCH,
+    code: "trigger_kind_mismatch", family: Args, class: AgentFault, retryable: false,
+    remedy: "Remove the existing trigger of the other kind before reusing the name.",
+}
+
+crate::err_code! {
+    pub TRIGGER_NOT_FOUND,
+    code: "trigger_not_found", family: Storage, class: AgentFault, retryable: false,
+    remedy: "List triggers and use an id that exists.",
+}
+
+crate::err_code! {
+    pub TRIGGER_QUOTA_EXCEEDED,
+    code: "trigger_quota_exceeded", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Remove a trigger or move to a plan with a higher event_triggers_max.",
+}
+
 
 #[cfg(test)]
 mod tests {

@@ -49,6 +49,18 @@ use super::KindError;
 static STDLIB_JSON: &str = include_str!("../../infer-data/python-stdlib.json");
 static IMPORT_MAP_JSON: &str = include_str!("../../infer-data/python-import-map.json");
 
+crate::err_code! {
+    pub ARGS_SCHEMA_NOT_INFERABLE,
+    code: "args_schema_not_inferable", family: Spec, class: AgentFault, retryable: false,
+    remedy: "Declare args_schema explicitly in the spec; the source's argument use cannot be inferred.",
+}
+
+crate::err_code! {
+    pub REQUIREMENT_NOT_INFERABLE,
+    code: "requirement_not_inferable", family: Spec, class: AgentFault, retryable: false,
+    remedy: "List requirements explicitly in the spec; the import cannot be mapped.",
+}
+
 /// PRD-mcphost-stdlib-pseudo-modules: compiler-directive / interpreter
 /// pseudo-modules that are always importable and never installable from
 /// PyPI, so they must live in `python-stdlib.json` even though no `pip`
@@ -350,7 +362,7 @@ fn collect_py_keys(source: &str) -> Result<Vec<PyKey>, KindError> {
 
     if keys.is_empty() && any_access_attempt {
         return Err(KindError::structured(
-            "args_schema_not_inferable",
+            crate::kinds::infer::ARGS_SCHEMA_NOT_INFERABLE,
             "source reads 'args' but no literal key could be inferred from it; supply args_schema explicitly",
         ));
     }
@@ -484,7 +496,7 @@ pub fn infer_python_requirements(source: &str) -> Result<Vec<String>, KindError>
             }
             None => {
                 return Err(KindError::structured_with(
-                    "requirement_not_inferable",
+                    crate::kinds::infer::REQUIREMENT_NOT_INFERABLE,
                     format!(
                         "cannot infer a PyPI requirement for import '{module}'; supply requirements explicitly"
                     ),
@@ -509,14 +521,14 @@ fn template_variables(field: &str, template: &str) -> Result<BTreeSet<String>, K
     env.add_template_owned(field.to_string(), template.to_string())
         .map_err(|e| {
             KindError::structured_with(
-                "template_error",
+                crate::kinds::http::TEMPLATE_ERROR,
                 format!("{field}: {e}"),
                 json!({"field": field}),
             )
         })?;
     let tmpl = env.get_template(field).map_err(|e| {
         KindError::structured_with(
-            "template_error",
+            crate::kinds::http::TEMPLATE_ERROR,
             format!("{field}: {e}"),
             json!({"field": field}),
         )
@@ -661,7 +673,7 @@ mod tests {
             "def main(args):\n    k = 'city'\n    return args[k]\n",
         )
         .unwrap_err();
-        assert!(matches!(err, KindError::Structured { code: "args_schema_not_inferable", .. }));
+        assert!(matches!(err, KindError::Structured { code: crate::kinds::infer::ARGS_SCHEMA_NOT_INFERABLE, .. }));
     }
 
     #[test]

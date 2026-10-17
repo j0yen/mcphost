@@ -384,7 +384,7 @@ fn load_key(key_file: Option<&String>) -> Result<Option<String>, String> {
 }
 
 fn usage_failure(message: String) -> i32 {
-    eprintln!("{}", serde_json::json!({"error_code": "args_invalid", "message": message, "data": null}));
+    eprintln!("{}", serde_json::json!({"error_code": crate::errors::ARGS_INVALID, "message": message, "data": null}));
     2
 }
 

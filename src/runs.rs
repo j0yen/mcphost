@@ -417,7 +417,7 @@ pub async fn get(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Valu
         .get_run(run_id.clone(), tenant.id)
         .await?
         .ok_or_else(|| AppError::Structured {
-            code: "run_not_found",
+            code: RUN_NOT_FOUND,
             message: format!("no run '{run_id}' for this tenant"),
             data: json!({"run_id": run_id}),
         })?;
@@ -511,12 +511,12 @@ pub async fn part(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         .get_run(run_id.clone(), tenant.id)
         .await?
         .ok_or_else(|| AppError::Structured {
-            code: "run_not_found",
+            code: RUN_NOT_FOUND,
             message: format!("no run '{run_id}' for this tenant"),
             data: json!({"run_id": run_id}),
         })?;
     let not_found = || AppError::Structured {
-        code: "not_found",
+        code: crate::subkeys::NOT_FOUND,
         message: format!("run '{run_id}' has no part {n}"),
         data: json!({"run_id": run_id, "n": n}),
     };
@@ -709,7 +709,7 @@ pub async fn cancel(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
         .cancel_run(run_id.clone(), tenant.id)
         .await?
         .ok_or_else(|| AppError::Structured {
-            code: "run_not_cancellable",
+            code: RUN_NOT_CANCELLABLE,
             message: "run is already terminal, or does not exist for this tenant".to_string(),
             data: json!({"run_id": run_id}),
         })?;
@@ -749,7 +749,7 @@ pub async fn progress(state: &AppState, tenant: &Tenant, args: &Value) -> Result
         .get_run(run_id.clone(), tenant.id)
         .await?
         .ok_or_else(|| AppError::Structured {
-            code: "run_not_found",
+            code: RUN_NOT_FOUND,
             message: format!("no run '{run_id}' for this tenant"),
             data: json!({"run_id": run_id}),
         })?;
@@ -830,7 +830,7 @@ fn check_monotonic(existing: &Map<String, Value>, key: &str, value: &Value, pref
         && new_num < old_num
     {
         return Err(AppError::Structured {
-            code: "validation",
+            code: VALIDATION,
             message: format!(
                 "counters.{prefix}{key} must be monotonic: {new_num} is less than the current {old_num}"
             ),
@@ -867,7 +867,7 @@ pub async fn wait(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
             .get_run(run_id.clone(), tenant.id)
             .await?
             .ok_or_else(|| AppError::Structured {
-                code: "run_not_found",
+                code: RUN_NOT_FOUND,
                 message: format!("no run '{run_id}' for this tenant"),
                 data: json!({"run_id": run_id}),
             })?;
@@ -956,7 +956,7 @@ pub async fn enqueue(
     {
         let args_err = crate::kinds::describe_args_error(&e);
         return Err(AppError::Structured {
-            code: "args_invalid",
+            code: crate::errors::ARGS_INVALID,
             message: args_err.message(),
             data: args_err.data(),
         });
@@ -1055,7 +1055,7 @@ pub async fn enqueue_with_trigger(
     {
         let args_err = crate::kinds::describe_args_error(&e);
         return Err(AppError::Structured {
-            code: "args_invalid",
+            code: crate::errors::ARGS_INVALID,
             message: args_err.message(),
             data: args_err.data(),
         });
@@ -1128,7 +1128,7 @@ pub async fn enqueue_shared(
     {
         let args_err = crate::kinds::describe_args_error(&e);
         return Err(AppError::Structured {
-            code: "args_invalid",
+            code: crate::errors::ARGS_INVALID,
             message: args_err.message(),
             data: args_err.data(),
         });
@@ -1693,7 +1693,7 @@ async fn store_result_parts(
     let available_bytes = (plan.state_bytes_max - used).max(0);
     if needed_bytes > available_bytes {
         return Err(AppError::Structured {
-            code: "state_quota",
+            code: STATE_QUOTA,
             message: format!(
                 "run result needs {needed_bytes} bytes of state, only {available_bytes} available"
             ),
@@ -1758,6 +1758,31 @@ pub fn spawn_executor(state: AppState) -> tokio::task::JoinHandle<()> {
         }
     })
 }
+
+crate::err_code! {
+    pub RUN_NOT_CANCELLABLE,
+    code: "run_not_cancellable", family: Call, class: AgentFault, retryable: false,
+    remedy: "The run is already finished or unknown; nothing to cancel.",
+}
+
+crate::err_code! {
+    pub RUN_NOT_FOUND,
+    code: "run_not_found", family: Storage, class: AgentFault, retryable: false,
+    remedy: "List runs and use an id that exists for this tenant.",
+}
+
+crate::err_code! {
+    pub STATE_QUOTA,
+    code: "state_quota", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Free state space or move to a plan with a larger state quota.",
+}
+
+crate::err_code! {
+    pub VALIDATION,
+    code: "validation", family: Args, class: AgentFault, retryable: false,
+    remedy: "Fix the counter or field named in data.key.",
+}
+
 
 #[cfg(test)]
 mod tests {

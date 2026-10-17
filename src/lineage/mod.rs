@@ -379,7 +379,7 @@ pub async fn trace_page(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
     let pages = state.lineage_trace_pages.lock().unwrap();
     let Some(stored) = pages.get(&handle).filter(|p| p.tenant_id == tenant.id) else {
         return Err(AppError::Structured {
-            code: "lineage_handle_not_found",
+            code: LINEAGE_HANDLE_NOT_FOUND,
             message: "no stored trace result for this handle".to_string(),
             data: Value::Null,
         });
@@ -394,3 +394,10 @@ pub async fn trace_page(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
     let next_offset = if end < total { Some(end) } else { None };
     Ok(json!({"entries": page, "offset": offset, "total": total, "next_offset": next_offset}))
 }
+
+crate::err_code! {
+    pub LINEAGE_HANDLE_NOT_FOUND,
+    code: "lineage_handle_not_found", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Run the trace again and use the fresh handle.",
+}
+

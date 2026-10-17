@@ -12,7 +12,7 @@ use crate::tables::arg_str;
 
 fn not_found(item_id: &str) -> AppError {
     AppError::Structured {
-        code: "drift_review_not_found",
+        code: DRIFT_REVIEW_NOT_FOUND,
         message: format!("no open or resolved review '{item_id}' exists for this tenant"),
         data: json!({"item_id": item_id}),
     }
@@ -74,3 +74,10 @@ pub async fn resolve(state: &AppState, tenant: &Tenant, args: &Value) -> Result<
     }
     Ok(json!({"item_id": item_id, "resolved": true}))
 }
+
+crate::err_code! {
+    pub DRIFT_REVIEW_NOT_FOUND,
+    code: "drift_review_not_found", family: Storage, class: AgentFault, retryable: false,
+    remedy: "List reviews with host.drift.list and use an item id that exists.",
+}
+
