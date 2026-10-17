@@ -88,16 +88,27 @@ jobs:
       # Normalized-tree-hash cache (rb seat, 10-16): a version-only commit on top
       # of a code tree that already passed this job costs seconds. NTREE is the
       # tree hash of HEAD with the release-bumped version files replaced by their
-      # content on the base branch (scripts/ci/normalized-tree-hash.sh), so it
-      # changes whenever any CODE file changes (including a rebase onto moved
-      # main) and only a byte-identical code tree finds a marker. The marker is
+      # content on the base branch (scripts/ci/normalized-tree-hash.sh; CHANGELOG
+      # only loses its NEW top material, every older entry stays in the hash), so
+      # it changes whenever any CODE file changes (including a rebase onto moved
+      # main) and only a byte-identical code tree finds a marker. The key is v2
+      # since the CHANGELOG/Cargo.lock normalization tightened. The marker is
       # written below ONLY after every heavy step succeeded; a red or cancelled
       # run never writes it. Every step after the lookup is skipped at STEP level:
       # the job itself always runs and ends success (a skipped required check
       # would block the merge). A cache miss or an unavailable cache service
       # leaves cache-hit != 'true', which runs the full suite.
       - name: normalized-tree hash self-test
-        run: ./scripts/ci/test-normalized-tree-hash.sh
+        run: |
+          ./scripts/ci/test-normalized-tree-hash.sh
+          ./scripts/ci/test-version-files-consistency.sh
+
+      # Runs on BOTH a cache hit and a miss. A hit skips the contract tests that
+      # read the version files (changelog heading parse, host.changelog via
+      # include_str!, plugin manifests), and the hash normalizes those files
+      # away, so this proves the part of them a version-only commit can break.
+      - name: version files are consistent
+        run: ./scripts/ci/version-files-consistency.sh
 
       - name: compute normalized code-tree hash
         id: ntree
@@ -122,7 +133,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ runner.temp }}/core-suites-pass.marker
-          key: core-suites-pass-v1-${{ steps.ntree.outputs.ntree }}
+          key: core-suites-pass-v2-${{ steps.ntree.outputs.ntree }}
           lookup-only: true
 
       - name: core suites already passed on this code tree
@@ -259,7 +270,7 @@ jobs:
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ runner.temp }}/core-suites-pass.marker
-          key: core-suites-pass-v1-${{ steps.ntree.outputs.ntree }}
+          key: core-suites-pass-v2-${{ steps.ntree.outputs.ntree }}
 
   sandbox:
     name: sandbox suites (user namespaces, shard ${{ matrix.shard }}/${{ needs.plan.outputs.shards }})

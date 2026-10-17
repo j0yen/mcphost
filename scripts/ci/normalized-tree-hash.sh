@@ -19,7 +19,15 @@
 # manifests also carry code-affecting content (dependencies, features). They are
 # swapped for the base blob ONLY when HEAD and base are equal once the version
 # line itself is blanked; otherwise the HEAD blob stays and the key differs.
-# CHANGELOG.md is swapped unconditionally (it is rewritten by every release).
+#
+# CHANGELOG.md is read by contract tests (heading parse, host.changelog via
+# include_str!), so it is NOT swapped wholesale. Only the NEW TOP material a
+# release adds is normalized: if HEAD's file ends with base's file from its
+# first `## v` heading onward (every older entry byte-identical), HEAD's
+# changelog is replaced by base's; if any older entry was edited, reordered or
+# removed, the HEAD blob stays and the key differs. The shape of the new top
+# section (heading format, order, versions) is proven separately, on every
+# run, by scripts/ci/version-files-consistency.sh.
 set -euo pipefail
 
 base=${1:?usage: normalized-tree-hash.sh <base-ref> [rev]}
@@ -46,24 +54,40 @@ blank_version() { # <path>; blob on stdin
            (sec == "[package]" || sec == "[workspace.package]") && /^version[ \t]*=/ { print "version = BLANK"; next }
            { print }' ;;
     Cargo.lock)
-      # Only path packages (no `source =` line) are ours; a registry/git
-      # package version change is a dependency change and must stay visible.
+      # Only `version =` lines inside a [[package]] block with no `source =`
+      # line (a path package, i.e. ours) are blanked. The file header's own
+      # `version = 4` (lockfile format) and any registry/git package version
+      # are dependency/format changes and must stay visible.
       awk 'function flush() {
-             if (n == 0) return
              for (i = 1; i <= n; i++) {
                l = blk[i]
-               if (!has_source && l ~ /^version = /) l = "version = BLANK"
+               if (in_pkg && !has_source && l ~ /^version = /) l = "version = BLANK"
                print l
              }
              n = 0; has_source = 0
            }
-           /^\[\[package\]\]/ { flush() }
+           /^\[\[package\]\]/ { flush(); in_pkg = 1 }
            { blk[++n] = $0; if ($0 ~ /^source = /) has_source = 1 }
            END { flush() }' ;;
     *.json)
       sed -E 's/^([[:space:]]*"version"[[:space:]]*:[[:space:]]*)"[^"]*"/\1"BLANK"/' ;;
     *) cat ;;
   esac
+}
+
+# CHANGELOG.md: print the base blob if HEAD's changelog is base's changelog
+# (from its first `## v` heading on) with only NEW material above it.
+changelog_is_base_plus_new_top() { # <head-blob> <base-blob>
+  local bf hf bsz
+  bf=$(mktemp) hf=$(mktemp)
+  git cat-file blob "$2" | awk '/^## v/ { on = 1 } on { print }' > "$bf"
+  bsz=$(wc -c < "$bf")
+  if [ "$bsz" -eq 0 ]; then rm -f "$bf" "$hf"; return 1; fi
+  git cat-file blob "$1" > "$hf"
+  if [ "$(wc -c < "$hf")" -ge "$bsz" ] && tail -c "$bsz" "$hf" | cmp -s - "$bf"; then
+    rm -f "$bf" "$hf"; return 0
+  fi
+  rm -f "$bf" "$hf"; return 1
 }
 
 blob() { git rev-parse -q --verify "$1:$2" 2>/dev/null || true; }
@@ -85,7 +109,9 @@ for f in "${VERSION_FILES[@]}"; do
   bb=$(blob "$base" "$f")
   [ -n "$hb" ] && [ -n "$bb" ] || continue   # absent on either side: leave as is
   [ "$hb" != "$bb" ] || continue
-  if [ "$f" != CHANGELOG.md ]; then
+  if [ "$f" = CHANGELOG.md ]; then
+    changelog_is_base_plus_new_top "$hb" "$bb" || continue   # an older entry moved: keep HEAD blob
+  else
     h=$(git cat-file blob "$hb" | blank_version "$f" | git hash-object --stdin)
     b=$(git cat-file blob "$bb" | blank_version "$f" | git hash-object --stdin)
     [ "$h" = "$b" ] || continue              # more than the version moved: keep HEAD blob

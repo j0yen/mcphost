@@ -22,7 +22,7 @@ git config user.email t@example.invalid
 git config user.name t
 git config commit.gpgsign false
 
-write_files() { # <version> <changelog-line>
+write_files() { # <version>   (CHANGELOG.md is handled by write_changelog / release_top)
   mkdir -p src plugin/.claude-plugin
   cat > Cargo.toml <<EOF
 [workspace]
@@ -52,13 +52,33 @@ checksum = "aaaa"
 EOF
   printf '{\n  "name": "demo",\n  "version": "%s"\n}\n' "$1" > plugin/.claude-plugin/plugin.json
   printf '{\n  "name": "demo",\n  "version": "%s"\n}\n' "$1" > plugin/.mcp.json
-  printf '# Changelog\n## %s\n- %s\n' "$1" "$2" > CHANGELOG.md
+}
+
+write_changelog() {
+  cat > CHANGELOG.md <<CLEOF
+# Changelog
+
+## v1.0.0 — 2026-10-01
+
+- base entry
+
+## v0.9.0 — 2026-09-01
+
+- old entry
+CLEOF
+}
+
+# What the daemon's version commit does: a new top release section.
+release_top() { # <version>
+  { printf '# Changelog\n\n## v%s — 2026-10-02\n\nReleased.\n\n' "$1"; sed '1,2d' CHANGELOG.md; } > CHANGELOG.md.new
+  mv CHANGELOG.md.new CHANGELOG.md
 }
 
 commit() { git add -A && git commit -q -m "$1"; }
 
 # base: what origin/<base> holds
-write_files 1.0.0 base
+write_files 1.0.0
+write_changelog
 echo 'fn main() {}' > src/main.rs
 commit base
 git update-ref refs/remotes/origin/main HEAD
@@ -70,7 +90,8 @@ commit code
 code_tree=$(bash "$script" origin/main HEAD)
 
 # version-only commit on top of the passed code tree
-write_files 1.0.1 release
+write_files 1.0.1
+release_top 1.0.1
 commit release
 ver_tree=$(bash "$script" origin/main HEAD)
 expect_eq "version-only commit on top of a code commit has the same NTREE" "$code_tree" "$ver_tree"
@@ -85,6 +106,41 @@ expect_eq "working tree is clean after hashing" "$(git status --porcelain)" ""
 echo 'fn main() { println!("y"); }' > src/main.rs
 commit code2
 expect_ne "a further code change gives a different NTREE" "$ver_tree" "$(bash "$script" origin/main HEAD)"
+git reset -q --hard HEAD~1
+
+# (b) a second stacked release section + Cargo bump is still version-only
+write_files 1.0.2
+release_top 1.0.2
+commit release2
+expect_eq "top-section-only changelog edit + Cargo bump keeps the NTREE" "$ver_tree" "$(bash "$script" origin/main HEAD)"
+git reset -q --hard HEAD~1
+
+# (b2) unreleased prose above the headings (before the daemon adds one) is new top material too
+{ printf '# Changelog\n\nA new feature note.\n\n'; sed '1,2d' CHANGELOG.md; } > CHANGELOG.md.new && mv CHANGELOG.md.new CHANGELOG.md
+commit top-prose
+expect_eq "new prose above the first heading keeps the NTREE" "$ver_tree" "$(bash "$script" origin/main HEAD)"
+git reset -q --hard HEAD~1
+
+# (a) an edit to an OLDER changelog entry changes the NTREE
+sed -i 's/^- old entry$/- edited old entry/' CHANGELOG.md
+commit old-entry-edit
+expect_ne "an edit to an older changelog entry changes the NTREE" "$ver_tree" "$(bash "$script" origin/main HEAD)"
+git reset -q --hard HEAD~1
+
+# (a2) the base's newest entry edited, and (a3) an older section removed
+sed -i 's/^- base entry$/- edited base entry/' CHANGELOG.md
+commit base-entry-edit
+expect_ne "an edit to the base's newest entry changes the NTREE" "$ver_tree" "$(bash "$script" origin/main HEAD)"
+git reset -q --hard HEAD~1
+head -n -4 CHANGELOG.md > CHANGELOG.md.new && mv CHANGELOG.md.new CHANGELOG.md
+commit old-section-removed
+expect_ne "removing an older changelog section changes the NTREE" "$ver_tree" "$(bash "$script" origin/main HEAD)"
+git reset -q --hard HEAD~1
+
+# (d) the Cargo.lock file header (`version = 4`, the lockfile format) is not blanked
+sed -i '1s/^version = 4$/version = 3/' Cargo.lock
+commit lock-header
+expect_ne "a Cargo.lock header change is not normalized away" "$ver_tree" "$(bash "$script" origin/main HEAD)"
 git reset -q --hard HEAD~1
 
 # a dependency change in Cargo.toml (not the version line) differs
