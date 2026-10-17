@@ -19,6 +19,8 @@ set -uo pipefail
 cd "$(dirname "$0")"
 
 MCPHOST_URL="${MCPHOST_URL:-https://mcphost.dev/mcp}"
+# MCPHOST_PROVE_DRY=1: print the plan and exit 0 before any network call (the runner-contract test sets it).
+[[ -n "${MCPHOST_PROVE_DRY:-}" ]] && { echo "plan: webhook-inbox proof against $MCPHOST_URL"; exit 0; }
 HOOK_BASE_URL="${HOOK_BASE_URL:-}"
 FAILURES=0
 EVENT_ID="evt-fixture-1"

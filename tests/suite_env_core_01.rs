@@ -7,6 +7,8 @@
 // original name, path, and test names (nextest's test list, with this
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
+#[path = "support/exprf.rs"]
+mod exprf;
 #[path = "support/serve.rs"]
 mod serve;
 
@@ -20,6 +22,8 @@ mod cprocb_ac01_perf_skip_ready_deadline_is_90s;
 mod emin_ac02_non_fleet_needs_secret_header;
 #[path = "emin_ac05_probe_script_hits_route.rs"]
 mod emin_ac05_probe_script_hits_route;
+#[path = "eprc_ac04_result_row_names_the_runner_host.rs"]
+mod eprc_ac04_result_row_names_the_runner_host;
 #[path = "firstpub_ac08_quickstart_http_starter.rs"]
 mod firstpub_ac08_quickstart_http_starter;
 #[path = "flakelint_ac01_env_mutation.rs"]

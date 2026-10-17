@@ -10,7 +10,7 @@
 # package: the whole recipe is one urllib-based JSON-RPC client).
 #
 # Usage:
-#   docs-qa.sh <endpoint>
+#   docs-qa.sh [<endpoint>]   (endpoint defaults to $MCPHOST_URL, as the runner passes it)
 #   docs-qa.sh <endpoint> [--corpus-dir DIR] [--receipt-dir DIR] \
 #              [--reuse-state FILE] [--embeddings PROVIDER_ENDPOINT MODEL SECRET_NAME]
 #
@@ -58,9 +58,12 @@ def usage():
     sys.exit(2)
 
 argv = sys.argv[1:]
-if not argv:
+if argv and not argv[0].startswith("--"):
+    endpoint = argv.pop(0)
+elif os.environ.get("MCPHOST_URL"):
+    endpoint = os.environ["MCPHOST_URL"]  # the runner sets it; $1 wins when given
+else:
     usage()
-endpoint = argv.pop(0)
 corpus_dir = "corpus"
 receipt_dir = os.environ.get("MCPHOST_RECEIPT_DIR")
 reuse_state = None
@@ -83,6 +86,10 @@ while i < len(argv):
         i += 4
     else:
         usage()
+
+if os.environ.get("MCPHOST_PROVE_DRY"):
+    print(f"plan: docs-qa proof against {endpoint} (corpus {corpus_dir})")
+    sys.exit(0)
 
 if receipt_dir is None:
     import tempfile

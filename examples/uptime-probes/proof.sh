@@ -20,6 +20,8 @@ set -uo pipefail
 cd "$(dirname "$0")"
 
 MCPHOST_URL="${MCPHOST_URL:-https://mcphost.dev/mcp}"
+# MCPHOST_PROVE_DRY=1: print the plan and exit 0 before any network call (the runner-contract test sets it).
+[[ -n "${MCPHOST_PROVE_DRY:-}" ]] && { echo "plan: uptime-probes proof against $MCPHOST_URL"; exit 0; }
 HEALTHY_URL="${HEALTHY_URL:-https://httpbin.org/status/200}"
 DOWN_URL="${DOWN_URL:-https://httpbin.org/status/503}"
 FAILURES=0
