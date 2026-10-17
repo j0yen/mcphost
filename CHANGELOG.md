@@ -2,7 +2,7 @@
 
 ## v0.108.1 — 2026-10-17
 
-ci-cache HIT probe 2: a new top release section only (code tree unchanged).
+ci-cache HIT probe 3: a different top release section text only (code tree unchanged).
 
 ## v0.108.0 — 2026-10-15
 
