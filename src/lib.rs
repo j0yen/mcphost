@@ -51,6 +51,7 @@ pub mod email;
 pub mod email_inbound;
 pub mod enduser;
 pub mod enduserctl;
+pub mod error_registry;
 pub mod errors;
 pub mod events;
 pub mod example_proofs;

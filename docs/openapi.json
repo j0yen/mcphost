@@ -119,6 +119,63 @@
         ],
         "type": "object"
       },
+      "ErrorCatalog": {
+        "properties": {
+          "classes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "codes": {
+            "items": {
+              "properties": {
+                "class": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string"
+                },
+                "docs_anchor": {
+                  "type": "string"
+                },
+                "family": {
+                  "type": "string"
+                },
+                "help_url": {
+                  "type": "string"
+                },
+                "remedy": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "code",
+                "family",
+                "class",
+                "remedy",
+                "docs_anchor",
+                "retryable",
+                "help_url"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "classes",
+          "codes"
+        ],
+        "type": "object"
+      },
       "ErrorEnvelope": {
         "properties": {
           "error": {
@@ -495,8 +552,8 @@
   "info": {
     "description": "Every non-MCP HTTP route mcphost serves, generated from the router's own route table.",
     "title": "mcphost HTTP API",
-    "version": "0.108.141",
-    "x-contract-version": "1.938fb08428f6"
+    "version": "0.108.145",
+    "x-contract-version": "1.44878f6b2642"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -1343,6 +1400,28 @@
           "webhooks"
         ],
         "x-mcphost-auth": "signature"
+      }
+    },
+    "/errors.json": {
+      "get": {
+        "operationId": "get_errors_json",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorCatalog"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Every error code the host can return (generated from the error registry)",
+        "tags": [
+          "status"
+        ],
+        "x-mcphost-auth": "anonymous"
       }
     },
     "/events.json": {

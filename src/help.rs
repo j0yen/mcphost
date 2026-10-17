@@ -227,12 +227,12 @@ pub fn entry(code: &str) -> Option<&'static HelpEntry> {
     HELP_ENTRIES.iter().find(|e| e.code == code)
 }
 
-/// `into_error_data`'s own `data.help_url` (requirement 1, AC1): `None` for
-/// any code not in [`HELP_CODES`] (most `Structured` kind-error codes, which
-/// have no generated page -- adding one is exactly "add it to `HELP_CODES`
-/// and `HELP_ENTRIES`", no other call site changes).
+/// `into_error_data`'s own `data.help_url` (requirement 1, AC1): `Some` for
+/// every code in [`HELP_CODES`] or in the error registry
+/// ([`crate::error_registry::ERROR_CODES`]); a registry code without a
+/// hand-written [`HelpEntry`] gets a page generated from its registry row.
 pub fn help_url(base: &str, code: &str) -> Option<String> {
-    if HELP_CODES.contains(&code) {
+    if HELP_CODES.contains(&code) || crate::error_registry::lookup(code).is_some() {
         Some(format!("{}/help/{code}", base.trim_end_matches('/')))
     } else {
         None
@@ -356,6 +356,24 @@ fn html_escape(s: &str) -> String {
 /// cause, fix, and the doc section to read next, plus the same support
 /// footer every other surface carries.
 pub fn render_help_page(e: &HelpEntry, support_url: Option<&str>) -> String {
+    render_page(e.code, [e.meaning, e.cause, e.fix], e.doc_link.as_str(), support_url)
+}
+
+/// `/help/<code>` for a registry code with no hand-written [`HelpEntry`]:
+/// the same four-part page, generated from the registry row.
+pub fn render_registry_help_page(e: &crate::error_registry::ErrorEntry, support_url: Option<&str>) -> String {
+    let meaning = format!("The host returned the error code {} ({}, family {}).", e.code, e.class.as_str(), e.family.as_str());
+    let cause = if e.retryable {
+        format!("{} Retrying later may succeed.", e.class.describe())
+    } else {
+        format!("{} Retrying the same call will not help.", e.class.describe())
+    };
+    render_page(e.code, [&meaning, &cause, e.remedy], e.docs_anchor.as_str(), support_url)
+}
+
+/// `parts`: meaning, likely cause, fix.
+fn render_page(code: &str, parts: [&str; 3], doc_link: &str, support_url: Option<&str>) -> String {
+    let [meaning, cause, fix] = parts;
     format!(
         r##"{head}
 <title>mcphost — help: {code}</title>
@@ -375,12 +393,12 @@ pub fn render_help_page(e: &HelpEntry, support_url: Option<&str>) -> String {
 "##,
         head = PAGE_HEAD,
         style = PAGE_STYLE,
-        code = html_escape(e.code),
-        meaning = html_escape(&crate::notify::expand_placeholders(e.meaning)),
-        cause = html_escape(&crate::notify::expand_placeholders(e.cause)),
-        fix = html_escape(&crate::notify::expand_placeholders(e.fix)),
-        doc_href = doc_href(e.doc_link.as_str()),
-        doc_link = html_escape(e.doc_link.as_str()),
+        code = html_escape(code),
+        meaning = html_escape(&crate::notify::expand_placeholders(meaning)),
+        cause = html_escape(&crate::notify::expand_placeholders(cause)),
+        fix = html_escape(&crate::notify::expand_placeholders(fix)),
+        doc_href = doc_href(doc_link),
+        doc_link = html_escape(doc_link),
         support = html_escape(&support_line(support_url)),
     )
 }
@@ -400,9 +418,15 @@ fn doc_href(doc_link: &str) -> String {
 /// code page, so that link itself resolves to something a human can read
 /// rather than a 404 (`/help/<code>` alone has no index otherwise).
 pub fn render_help_index(support_url: Option<&str>) -> String {
-    let items: String = HELP_ENTRIES
+    let mut rows: Vec<(&str, &str)> = HELP_ENTRIES.iter().map(|e| (e.code, e.meaning)).collect();
+    for e in crate::error_registry::ERROR_CODES {
+        if entry(e.code).is_none() {
+            rows.push((e.code, e.remedy));
+        }
+    }
+    let items: String = rows
         .iter()
-        .map(|e| format!(r##"<li><a href="/help/{code}">{code}</a> -- {meaning}</li>"##, code = html_escape(e.code), meaning = html_escape(e.meaning)))
+        .map(|(code, meaning)| format!(r##"<li><a href="/help/{code}">{code}</a> -- {meaning}</li>"##, code = html_escape(code), meaning = html_escape(meaning)))
         .collect();
     format!(
         r##"{head}
@@ -530,7 +554,7 @@ mod tests {
 
     #[test]
     fn help_url_is_none_for_an_unlisted_code() {
-        assert_eq!(help_url("https://mcphost.dev", "quota_exceeded"), None);
+        assert_eq!(help_url("https://mcphost.dev", "not_a_code_anywhere"), None);
     }
 
     #[test]

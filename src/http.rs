@@ -912,10 +912,20 @@ async fn help_page(Path(code): Path<String>) -> Response {
                 crate::help::render_help_page(e, support_url.as_deref()),
             )
         }
-        None => crate::claim::html_response(
-            StatusCode::NOT_FOUND,
-            "no help page for that code".to_string(),
-        ),
+        None => match crate::error_registry::lookup(&code) {
+            Some(e) => {
+                crate::help::record_help_served(e.code);
+                let support_url = std::env::var("MCPHOST_SUPPORT_URL").ok();
+                crate::claim::html_response(
+                    StatusCode::OK,
+                    crate::help::render_registry_help_page(e, support_url.as_deref()),
+                )
+            }
+            None => crate::claim::html_response(
+                StatusCode::NOT_FOUND,
+                "no help page for that code".to_string(),
+            ),
+        },
     }
 }
 
@@ -953,6 +963,20 @@ async fn events_json_route() -> Response {
         StatusCode::OK,
         [(CACHE_CONTROL, HeaderValue::from_static("public, max-age=300"))],
         Json(crate::events::events_json()),
+    )
+        .into_response()
+}
+
+/// `GET /errors.json` (PRD-mcphost-errors-json-contract R3, AC3): every error
+/// code the host can return, generated from
+/// [`crate::error_registry::ERROR_CODES`] -- the same object `host.errors`
+/// returns. Anonymous; cacheable for five minutes (it only changes with a
+/// release).
+async fn errors_json_route(State(state): State<Arc<AppState>>) -> Response {
+    (
+        StatusCode::OK,
+        [("cache-control", "public, max-age=300")],
+        Json(crate::error_registry::catalog_json(&state.public_url)),
     )
         .into_response()
 }

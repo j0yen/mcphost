@@ -31,10 +31,13 @@ fn secret_missing_data_keys_are_unchanged() {
     // `request_id` to every payload unconditionally -- additive to every
     // variant alike, so this AC8 pairing keeps meaning what it always has
     // ("no field/expected/example drift") with that one key folded in.
+    // PRD-mcphost-errors-json-contract AC2 likewise adds the registry row
+    // (`class`, `family`, `remedy`) to every payload -- `help_url` only with a
+    // base URL, none here -- so those three fold in the same way.
     assert_eq!(
         keys(&data),
-        BTreeSet::from(["error_code", "field", "expected", "docs", "request_id", "feedback_hint"].map(String::from)),
-        "secret_missing data keys must be exactly error_code/field/expected/docs/request_id/feedback_hint, no example: {data:?}"
+        BTreeSet::from(["error_code", "field", "expected", "docs", "request_id", "feedback_hint", "class", "family", "remedy"].map(String::from)),
+        "secret_missing data keys must be exactly error_code/field/expected/docs/request_id/feedback_hint + registry class/family/remedy, no example: {data:?}"
     );
 }
 
@@ -45,10 +48,11 @@ fn invalid_params_data_keys_are_unchanged() {
     let data = err.data.expect("InvalidParams must carry data");
 
     // PRD-mcphost-first-hour-support-surface requirement 1 (AC1): see the
-    // comment on the sibling assertion above -- same additive `request_id`.
+    // comment on the sibling assertion above -- same additive `request_id`
+    // and errors-json registry `class`/`family`/`remedy`.
     assert_eq!(
         keys(&data),
-        BTreeSet::from(["error_code", "docs", "request_id", "feedback_hint"].map(String::from)),
-        "invalid_params data keys must be exactly error_code/docs/request_id/feedback_hint, no field/expected/example: {data:?}"
+        BTreeSet::from(["error_code", "docs", "request_id", "feedback_hint", "class", "family", "remedy"].map(String::from)),
+        "invalid_params data keys must be exactly error_code/docs/request_id/feedback_hint + registry class/family/remedy, no field/expected/example: {data:?}"
     );
 }

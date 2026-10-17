@@ -51,6 +51,7 @@ EXCEPTIONS = [
     ("host.import", "singleton noun: no sibling verb under 'import'"),
     ("host.progress", "singleton noun: no sibling verb under 'progress'"),
     ("host.call_trace", "singleton noun: no sibling verb under 'call_trace' (the name PRD-mcphost-call-trace-replay gives agents)"),
+    ("host.errors", "singleton noun: no sibling verb under 'errors' (the name PRD-mcphost-errors-json-contract gives agents)"),
     ("host.doctor", "singleton noun: no sibling verb under 'doctor' (the name PRD-mcphost-host-doctor-tool gives agents)"),
     ("host.schedule_receipts", "the name PRD-mcphost-scheduled-job-receipts gives agents: a read of a trigger's receipts, no sibling verb under 'schedule_receipts'"),
     ("host.tool_from_description", "the name PRD-mcphost-first-tool-from-description gives agents; a drafting verb on the tool family, listed only while a draft model is configured"),

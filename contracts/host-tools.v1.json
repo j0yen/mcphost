@@ -6295,6 +6295,130 @@
       "since": "0.60.17"
     },
     {
+      "description": "List every error code this host can return, each with its class (agent_fault | host_refusal | upstream_fault | plan_limit | host_fault), family, remedy, docs anchor, retryable flag and help_url -- the same object GET /errors.json serves. Pass code to get one row; a misspelt code answers tool_not_found with did_you_mean. Read-only, anonymous, no tenant data.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "An error code, e.g. tool_exception. Omit to list every code.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.errors",
+      "output_schema": {
+        "properties": {
+          "class": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "classes": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "codes": {
+            "items": {
+              "properties": {
+                "class": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string"
+                },
+                "docs_anchor": {
+                  "type": "string"
+                },
+                "family": {
+                  "type": "string"
+                },
+                "help_url": {
+                  "type": "string"
+                },
+                "remedy": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "class",
+                "code",
+                "docs_anchor",
+                "family",
+                "help_url",
+                "remedy",
+                "retryable"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "docs_anchor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "family": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "help_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "remedy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "retryable": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "since": "0.108.28",
+      "unpaged_reason": "static registry returned whole in one response, bounded by the code table, so no page cursor applies"
+    },
+    {
       "description": "Ask whether a call to one of your tools fits your plan and what it uses, without making it: the same checks as host.tool_call, no call row, no slot held.",
       "input_schema": {
         "additionalProperties": false,
@@ -29948,6 +30072,27 @@
       },
       "name": "host_enduser_whoami",
       "since": "0.103.1"
+    },
+    {
+      "alias_of": "host.errors",
+      "description": "List every error code this host can return, each with its class (agent_fault | host_refusal | upstream_fault | plan_limit | host_fault), family, remedy, docs anchor, retryable flag and help_url -- the same object GET /errors.json serves. Pass code to get one row; a misspelt code answers tool_not_found with did_you_mean. Read-only, anonymous, no tenant data.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "An error code, e.g. tool_exception. Omit to list every code.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host_errors",
+      "since": "0.108.28"
     },
     {
       "alias_of": "host.estimate",

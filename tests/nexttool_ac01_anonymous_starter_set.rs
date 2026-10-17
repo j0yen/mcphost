@@ -5,11 +5,12 @@
 use crate::common;
 use common::{McpClient, TestServer};
 
-const EXPECTED_STARTER_SET: [&str; 16] = [
+const EXPECTED_STARTER_SET: [&str; 17] = [
     "signup",
     "host.quickstart",
     "host.help.search",
     "host.help.get",
+    "host.errors",
     "host.redeem",
     "billing.plans",
     "host.whoami",
@@ -47,8 +48,8 @@ async fn anonymous_tools_list_is_exactly_the_starter_set_signup_first() {
     );
     assert_eq!(
         tool_names.len(),
-        16,
-        "exactly the 16 starter tools, nothing more: {tool_names:?}"
+        17,
+        "exactly the 17 starter tools, nothing more: {tool_names:?}"
     );
     for expected in EXPECTED_STARTER_SET {
         assert!(

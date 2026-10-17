@@ -904,6 +904,7 @@ const STARTER_TOOL_NAMES: &[&str] = &[
     "host.quickstart",
     "host.help.search",
     "host.help.get",
+    "host.errors",
     "host.redeem",
     "billing.plans",
     "host.whoami",
@@ -1436,6 +1437,11 @@ fn host_tools_part_01(kinds: &KindRegistry) -> Vec<Tool> {
             "host.help.search",
             crate::help_search::TOOL_DESCRIPTION,
             host_schema(crate::help_search::schema_properties(kinds), &["q"]),
+        ),
+        Tool::new(
+            "host.errors",
+            crate::error_registry::TOOL_DESCRIPTION,
+            host_schema(crate::error_registry::schema_properties(), &[]),
         ),
         Tool::new(
             "host.help.get",
@@ -11008,7 +11014,7 @@ impl McpHostHandler {
         if via_tenant_key_arg
             && matches!(auth, Auth::Anonymous)
             && (body_name.starts_with("host.") || body_name.starts_with("billing."))
-            && !matches!(body_name.as_str(), "host.quickstart" | "host.help.search" | "host.help.get" | "host.redeem" | "billing.plans")
+            && !matches!(body_name.as_str(), "host.quickstart" | "host.help.search" | "host.help.get" | "host.errors" | "host.redeem" | "billing.plans")
             && !is_feedback_tool(&body_name)
             && tenant_path_namespace(parts).is_none()
             && crate::invites::invite_path_code(parts).is_none()
@@ -11541,6 +11547,10 @@ impl McpHostHandler {
             // PRD-mcphost-emitted-doc-pointers-resolve R3: the section an
             // emitted anchor points at; same public, anonymous reach.
             (_, "host.help.get") => crate::doc_anchors::help_get(&args),
+            // PRD-mcphost-errors-json-contract R4: public registry, no tenant
+            // data -- the same object `GET /errors.json` serves, reachable
+            // anonymously (never implicit-signs-up) or as a tenant.
+            (_, "host.errors") => crate::error_registry::call(&self.state.public_url, &args),
             // PRD-mcphost-feedback-tool-and-ledger requirement 3: reachable
             // anonymously (never implicit-signs-up) or as a tenant.
             (Auth::Anonymous | Auth::Tenant(..), "host.feedback.send" | "host.feedback.list" | "host.feedback.get")

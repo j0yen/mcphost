@@ -636,6 +636,8 @@ const UNPAGED_RANKED: &str =
     "relevance-ranked top-k result, not a keyset-ordered list, so there is no stable cursor";
 const UNPAGED_ECHO: &str =
     "not a list verb: the array is a field of a single-record or mutation response";
+const UNPAGED_STATIC: &str =
+    "static registry returned whole in one response, bounded by the code table, so no page cursor applies";
 const UNPAGED_WAIT: &str =
     "long-poll batch of at most 50 rows that advances the shared cursor; wait semantics, not page-through";
 
@@ -659,6 +661,7 @@ pub const UNPAGED_VERBS: &[(&str, &str)] = &[
     ("host.enduser.audit", UNPAGED_LEGACY),
     ("host.enduser.list", UNPAGED_LEGACY),
     ("host.example.list", UNPAGED_BOUNDED),
+    ("host.errors", UNPAGED_STATIC),
     ("host.feedback.list", UNPAGED_BOUNDED),
     ("host.group.list", UNPAGED_BOUNDED),
     ("host.help.search", UNPAGED_RANKED),
