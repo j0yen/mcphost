@@ -570,6 +570,8 @@ mod tooltest_ac1_python_two_invocations;
 mod tooltest_ac2_python_exception_other_still_runs;
 #[path = "tsvr_ac03_python_bridge_carries_payload.rs"]
 mod tsvr_ac03_python_bridge_carries_payload;
+#[path = "umeta_ac07_tool_test_and_run_carry_no_usage.rs"]
+mod umeta_ac07_tool_test_and_run_carry_no_usage;
 #[path = "unkfield_ac01_write_table_rejected.rs"]
 mod unkfield_ac01_write_table_rejected;
 #[path = "unkfield_ac02_misplaced_field_valid_for.rs"]

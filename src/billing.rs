@@ -1182,16 +1182,14 @@ pub async fn status(state: &AppState, tenant: &Tenant) -> Result<Value, AppError
     let tools_used = state.db.count_tools(tenant.id).await?;
     let secrets_used = state.db.count_secrets(tenant.id).await?;
     let now = crate::state::now_unix();
-    let midnight = crate::state::utc_midnight_unix(now);
-    let calls_used = state.db.count_calls_since(tenant.id, midnight, true).await?;
-    let resets_at = crate::state::rfc3339_from_unix(midnight + 86_400);
+    let calls_per_day = crate::usage::plan_usage_snapshot(state, tenant, None).await?.calls_per_day_json();
     let mut result = json!({
         "plan": tenant.plan,
         "plan_since": tenant.plan_since,
         "usage": {
             "tools_max": {"used": tools_used, "limit": plan.tools_max},
             "secrets_max": {"used": secrets_used, "limit": plan.secrets_max},
-            "calls_per_day": {"used": calls_used, "limit": plan.calls_per_day, "resets_at": resets_at},
+            "calls_per_day": calls_per_day,
         },
     });
     if tenant.plan == "pro" {

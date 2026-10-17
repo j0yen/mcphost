@@ -11136,6 +11136,11 @@ impl McpHostHandler {
         request: CallToolRequestParams,
         ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, McpError> {
+        // PRD-mcphost-usage-in-every-response: the slot the admission checks
+        // park their `calls_per_day` read in, for `_meta.usage` below.
+        // `Box::pin`: the whole dispatch future lives on the heap, not inline in
+        // this frame (inlined it overflowed a 2 MiB test-thread stack).
+        let result: Result<CallToolResponse, McpError> = Box::pin(crate::usage::scope(async move {
         let parts = get_parts(&ctx)?;
         let source = source_ip(parts);
         let header_name = mcp_name_header(parts);
@@ -12405,6 +12410,13 @@ impl McpHostHandler {
                     meta.0.insert("replayed".to_string(), json!(true));
                     meta.0.insert("first_seen_unix".to_string(), json!(first_seen));
                 }
+                // PRD-mcphost-usage-in-every-response R2: the count the call's
+                // own `calls_per_day` check read, plus the row it just wrote.
+                if let Auth::Tenant(tenant, _) = &auth
+                    && let Some(usage) = crate::usage::result_usage(&self.state, tenant).await
+                {
+                    meta.0.insert("usage".to_string(), usage);
+                }
                 let result = if meta.0.is_empty() { result } else { result.with_meta(Some(meta)) };
                 Ok(CallToolResponse::from(result))
             }
@@ -12429,6 +12441,9 @@ impl McpHostHandler {
                 Err(app_err.into_error_data_at(Some(&self.state.public_url)))
             }
         }
+        }))
+        .await;
+        result
     }
 }
 
