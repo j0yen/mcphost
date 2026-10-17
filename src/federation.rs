@@ -199,7 +199,7 @@ pub async fn provider_set(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     // other two issuer setters use, before any network fetch.
     crate::oauth::require_https_issuer(&issuer)?;
     let discovery = fetch_discovery(&issuer).await.map_err(|reason| AppError::Structured {
-        code: "provider_discovery_failed",
+        code: PROVIDER_DISCOVERY_FAILED,
         message: format!("could not fetch discovery document for issuer '{issuer}': {reason}"),
         data: json!({"issuer": issuer, "reason": reason}),
     })?;
@@ -248,7 +248,7 @@ pub async fn provider_remove(state: &AppState, tenant: &Tenant, _args: &Value) -
     let removed = state.db.remove_oauth_provider(tenant.id).await?;
     if !removed {
         return Err(AppError::Structured {
-            code: "provider_not_found",
+            code: PROVIDER_NOT_FOUND,
             message: "no OIDC provider is registered for this tenant".to_string(),
             data: json!({}),
         });
@@ -261,7 +261,7 @@ pub async fn provider_remove(state: &AppState, tenant: &Tenant, _args: &Value) -
 pub async fn doctor(state: &AppState, tenant: &Tenant, _args: &Value) -> Result<Value, AppError> {
     let Some(provider) = state.db.find_oauth_provider_by_tenant(tenant.id).await? else {
         return Err(AppError::Structured {
-            code: "provider_not_found",
+            code: PROVIDER_NOT_FOUND,
             message: "no OIDC provider is registered for this tenant".to_string(),
             data: json!({}),
         });
@@ -703,3 +703,16 @@ pub async fn post_callback(State(state): State<Arc<AppState>>, axum::Form(form):
     }
     Redirect::to(url.as_str()).into_response()
 }
+
+crate::err_code! {
+    pub PROVIDER_DISCOVERY_FAILED,
+    code: "provider_discovery_failed", family: Oauth, class: UpstreamFault, retryable: true,
+    remedy: "Check the issuer URL serves a discovery document, then retry.",
+}
+
+crate::err_code! {
+    pub PROVIDER_NOT_FOUND,
+    code: "provider_not_found", family: Oauth, class: AgentFault, retryable: false,
+    remedy: "Register an OIDC provider first.",
+}
+

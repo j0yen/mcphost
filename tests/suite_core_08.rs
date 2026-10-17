@@ -1146,6 +1146,16 @@ mod sjrc_ac05_sweeper_drops_receipts_past_plan_retention;
 mod sjrc_ac06_manual_schedule_and_event_fires_all_leave_receipts;
 #[path = "sjrc_ac07_limit_ceiling_and_empty_tool.rs"]
 mod sjrc_ac07_limit_ceiling_and_empty_tool;
+#[path = "skillsrc_ac01_gen_docs_writes_skill_md_byte_equal.rs"]
+mod skillsrc_ac01_gen_docs_writes_skill_md_byte_equal;
+#[path = "skillsrc_ac02_gen_docs_check_names_stale_skill_md.rs"]
+mod skillsrc_ac02_gen_docs_check_names_stale_skill_md;
+#[path = "skillsrc_ac03_missing_skill_md_is_stale_and_recreated.rs"]
+mod skillsrc_ac03_missing_skill_md_is_stale_and_recreated;
+#[path = "skillsrc_ac04_gen_docs_idempotent.rs"]
+mod skillsrc_ac04_gen_docs_idempotent;
+#[path = "skillsrc_ac05_output_list_and_drift_test_kept.rs"]
+mod skillsrc_ac05_output_list_and_drift_test_kept;
 #[path = "soff_ac01_header_and_arg_returns_success_envelope.rs"]
 mod soff_ac01_header_and_arg_returns_success_envelope;
 #[path = "soff_ac02_header_only_returns_success_and_whoami_disabled.rs"]

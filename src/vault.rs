@@ -126,7 +126,7 @@ pub async fn provider_set(state: &AppState, tenant: &Tenant, args: &Value) -> Re
         let count = state.db.count_vault_providers(tenant.id).await?;
         if count >= plan.vault_providers_max {
             return Err(AppError::Structured {
-                code: "quota_vault_providers",
+                code: QUOTA_VAULT_PROVIDERS,
                 message: format!(
                     "plan '{}' quota exceeded: vault_providers_max (limit {})",
                     tenant.plan, plan.vault_providers_max
@@ -195,7 +195,7 @@ fn resolve_status_end_user(args: &Value, end_user: Option<&EndUser>) -> Result<S
         Some(Value::String(s)) if s == "self" => match end_user {
             Some(eu) => Ok(eu.subject.clone()),
             None => Err(AppError::Structured {
-                code: "upstream_not_connected",
+                code: UPSTREAM_NOT_CONNECTED,
                 message: "end_user: \"self\" has no verified end-user identity on this call".to_string(),
                 data: json!({}),
             }),
@@ -266,7 +266,7 @@ pub async fn provider_remove(state: &AppState, tenant: &Tenant, args: &Value) ->
     let existed = state.db.remove_vault_provider(tenant.id, name.clone()).await?;
     if !existed {
         return Err(AppError::Structured {
-            code: "not_found",
+            code: crate::subkeys::NOT_FOUND,
             message: format!("no vault provider named '{name}' is registered for this tenant"),
             data: json!({"name": name}),
         });
@@ -296,7 +296,7 @@ pub async fn connect_link(
 
     if state.db.get_vault_provider(tenant.id, provider.clone()).await?.is_none() {
         return Err(AppError::Structured {
-            code: "vault_provider_not_found",
+            code: VAULT_PROVIDER_NOT_FOUND,
             message: format!("no vault provider named '{provider}' is registered for this tenant"),
             data: json!({"provider": provider}),
         });
@@ -386,7 +386,7 @@ async fn not_connected_error(
         obj.insert("connect_link".to_string(), json!(link));
     }
     AppError::Structured {
-        code: "upstream_not_connected",
+        code: UPSTREAM_NOT_CONNECTED,
         message: format!("no connected upstream token for provider '{provider}'"),
         data,
     }
@@ -406,7 +406,7 @@ pub async fn resolve_for_call(
 ) -> Result<String, AppError> {
     let Some(eu) = end_user else {
         return Err(AppError::Structured {
-            code: "upstream_not_connected",
+            code: UPSTREAM_NOT_CONNECTED,
             message: format!("no verified end-user identity on this call for provider '{provider}'"),
             data: json!({"provider": provider}),
         });
@@ -721,3 +721,22 @@ pub async fn get_callback(State(state): State<Arc<AppState>>, Query(q): Query<Ca
 
     html_response(StatusCode::OK, render_connected())
 }
+
+crate::err_code! {
+    pub QUOTA_VAULT_PROVIDERS,
+    code: "quota_vault_providers", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Remove an unused vault provider or move to a plan with a higher vault_providers_max.",
+}
+
+crate::err_code! {
+    pub UPSTREAM_NOT_CONNECTED,
+    code: "upstream_not_connected", family: Upstream, class: AgentFault, retryable: false,
+    remedy: "Connect the upstream through the vault link first.",
+}
+
+crate::err_code! {
+    pub VAULT_PROVIDER_NOT_FOUND,
+    code: "vault_provider_not_found", family: Oauth, class: AgentFault, retryable: false,
+    remedy: "Register the vault provider first or use a registered name.",
+}
+

@@ -165,7 +165,7 @@ pub fn help_get(args: &Value) -> Result<Value, AppError> {
         }
         let near: Vec<&str> = near_anchors.into_iter().map(DocAnchor::as_str).collect();
         return Err(AppError::Structured {
-            code: "anchor_not_found",
+            code: ANCHOR_NOT_FOUND,
             message: format!("no documentation heading has the anchor '{anchor}'; did you mean {}?", near.join(", ")),
             data: json!({"did_you_mean": near, "hint": "host.help.search"}),
         });
@@ -182,3 +182,10 @@ pub fn help_get(args: &Value) -> Result<Value, AppError> {
     }
     Ok(body)
 }
+
+crate::err_code! {
+    pub ANCHOR_NOT_FOUND,
+    code: "anchor_not_found", family: Args, class: AgentFault, retryable: false,
+    remedy: "Pick one of data.did_you_mean, or call host.help.search for a real anchor.",
+}
+

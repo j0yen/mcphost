@@ -49,7 +49,7 @@ pub struct Excess {
 impl Excess {
     pub fn into_error(self) -> AppError {
         AppError::Structured {
-            code: "scope_escalation",
+            code: SCOPE_ESCALATION,
             message: format!(
                 "the requested {} '{}' exceeds the delegating key's own authority; nothing was minted",
                 self.kind, self.value
@@ -95,6 +95,13 @@ pub fn narrow(parent: &Authority, req: &DelegateReq) -> Result<Authority, Excess
 pub fn scopes_json(scopes: &[Scope]) -> Value {
     json!(scopes.iter().map(|s| s.as_str()).collect::<Vec<_>>())
 }
+
+crate::err_code! {
+    pub SCOPE_ESCALATION,
+    code: "scope_escalation", family: Auth, class: AgentFault, retryable: false,
+    remedy: "Request only scopes, tools and limits inside the delegating key's own authority; data.excess names the one over.",
+}
+
 
 #[cfg(test)]
 mod tests {

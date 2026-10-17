@@ -152,7 +152,7 @@ fn parse_rules(args: &Value) -> Result<Vec<PolicyRule>, AppError> {
 fn require_tenant_key(end_user: Option<&EndUser>) -> Result<(), AppError> {
     if end_user.is_some() {
         return Err(AppError::Structured {
-            code: "tenant_key_required",
+            code: TENANT_KEY_REQUIRED,
             message: "this tool is tenant-key only and refuses a call carrying an end-user identity"
                 .to_string(),
             data: json!({}),
@@ -187,7 +187,7 @@ pub async fn policy_set(
             .map_err(|e| AppError::Internal(format!("stored row policy rule_json is corrupt: {e}")))?;
         if let Some((old, new)) = policy::find_widening(&existing_rule, &rule) {
             return Err(AppError::Structured {
-                code: "policy_widening",
+                code: POLICY_WIDENING,
                 message: format!(
                     "proposed rule on '{}' widens the existing rule on column '{}' from {} to {} \
                      -- set replace: true to confirm",
@@ -316,3 +316,16 @@ pub async fn audit_chain(
         .collect();
     Ok(json!({"records": records_json, "returned_count": returned_count, "withheld_count": withheld_count}))
 }
+
+crate::err_code! {
+    pub POLICY_WIDENING,
+    code: "policy_widening", family: Spec, class: AgentFault, retryable: false,
+    remedy: "Repeat with replace: true to confirm the wider rule, or narrow the proposed rule.",
+}
+
+crate::err_code! {
+    pub TENANT_KEY_REQUIRED,
+    code: "tenant_key_required", family: Auth, class: HostRefusal, retryable: false,
+    remedy: "Call with the tenant key only; this tool refuses an end-user identity.",
+}
+

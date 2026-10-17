@@ -123,7 +123,7 @@ pub fn dry_run_first(tool: &str, args: &Value) -> Value {
 /// R1: the refusal a large destructive call without a token gets.
 pub fn required_error(tool: &str, args: &Value, would: Value, confirm_rows_min: i64) -> AppError {
     AppError::Structured {
-        code: "confirm_required",
+        code: CONFIRM_REQUIRED,
         message: format!(
             "{tool} would affect at least {confirm_rows_min} rows or a whole object; call dry_run_first.tool with \
              dry_run_first.args, read `would`, then repeat this call with the returned `confirm`"
@@ -144,8 +144,21 @@ pub fn invalid_error(reason: &'static str, would: Option<Value>) -> AppError {
         data["would"] = would;
     }
     AppError::Structured {
-        code: "confirm_invalid",
+        code: CONFIRM_INVALID,
         message: format!("confirm token refused: {reason}"),
         data,
     }
 }
+
+crate::err_code! {
+    pub CONFIRM_INVALID,
+    code: "confirm_invalid", family: Call, class: AgentFault, retryable: false,
+    remedy: "Call the dry run again and repeat with the freshly returned confirm token.",
+}
+
+crate::err_code! {
+    pub CONFIRM_REQUIRED,
+    code: "confirm_required", family: Call, class: AgentFault, retryable: false,
+    remedy: "Call dry_run_first.tool with dry_run_first.args, read would, then repeat with the returned confirm token.",
+}
+

@@ -135,9 +135,9 @@ pub fn parse_create(
             let spec = json!({"method": "GET", "url": url});
             if let Err(e) = http.validate(&spec) {
                 return Err(match e {
-                    KindError::Structured { code: "host_not_allowed", message, data } => {
+                    KindError::Structured { code: HOST_NOT_ALLOWED, message, data } => {
                         AppError::Structured {
-                            code: "host_not_allowed",
+                            code: HOST_NOT_ALLOWED,
                             message: format!("urls: '{url}' is not probeable ({message})"),
                             data: merge(data, json!({"url": url})),
                         }
@@ -478,7 +478,7 @@ impl Kind for UptimeKind {
         }
 
         let http = self.http.as_ref().ok_or_else(|| {
-            KindError::structured("uptime_unavailable", "this host has no http kind registered to probe with")
+            KindError::structured(UPTIME_UNAVAILABLE, "this host has no http kind registered to probe with")
         })?;
         let sql = format!("SELECT url FROM {} ORDER BY rowid LIMIT {TARGETS_MAX}", targets_table(name));
         let targets = ctx.table.call("query", json!({"sql": sql})).await?;
@@ -499,6 +499,19 @@ impl Kind for UptimeKind {
         Ok(result_value(rows, checked_at))
     }
 }
+
+crate::err_code! {
+    pub HOST_NOT_ALLOWED,
+    code: "host_not_allowed", family: Call, class: HostRefusal, retryable: false,
+    remedy: "Call a public host; private, loopback, link-local and internal hosts are refused.",
+}
+
+crate::err_code! {
+    pub UPTIME_UNAVAILABLE,
+    code: "uptime_unavailable", family: Internal, class: HostRefusal, retryable: false,
+    remedy: "This host has no http kind registered to probe with; do not retry.",
+}
+
 
 #[cfg(test)]
 mod tests {

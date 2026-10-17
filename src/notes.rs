@@ -179,7 +179,7 @@ fn parse_attach(args: &Value) -> Result<Option<Attach>, AppError> {
 
 fn not_found(what: &str, name: &str) -> AppError {
     AppError::Structured {
-        code: "not_found",
+        code: crate::subkeys::NOT_FOUND,
         message: format!("no {what} '{name}' for this tenant"),
         data: json!({what: name}),
     }
@@ -187,7 +187,7 @@ fn not_found(what: &str, name: &str) -> AppError {
 
 fn quota_exceeded(limit: i64, used: i64) -> AppError {
     AppError::Structured {
-        code: "quota_exceeded",
+        code: crate::errors::QUOTA_EXCEEDED,
         message: format!("notes quota exceeded: notes_max (limit {limit}, used {used})"),
         data: json!({"quota": "notes_max", "limit": limit, "used": used}),
     }

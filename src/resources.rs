@@ -12,8 +12,16 @@ use rmcp::model::{ReadResourceResult, Resource, ResourceContents};
 use serde_json::{Value, json};
 
 use crate::db::Tenant;
+use crate::err_code;
 use crate::errors::AppError;
 use crate::state::AppState;
+
+err_code! {
+    /// A tenant already holds its plan's maximum number of open resource subscriptions.
+    pub RESOURCES_MAX,
+    code: "resources_max", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Unsubscribe from a resource or move to a plan with a higher resources_max; data.limit is the plan maximum of open resource subscriptions.",
+}
 
 /// URI scheme every resource of this host carries.
 pub const URI_SCHEME: &str = "mcphost://";
@@ -213,7 +221,7 @@ fn text_body(text: String, max_bytes: usize) -> Body {
 fn is_missing(e: &AppError) -> bool {
     matches!(
         e,
-        AppError::Structured { code: "table_not_found" | "doc_not_found" | "run_not_found", .. } | AppError::ToolNotFound(_)
+        AppError::Structured { code: crate::tables::TABLE_NOT_FOUND | crate::docs::DOCS_NOT_FOUND | crate::runs::RUN_NOT_FOUND, .. } | AppError::ToolNotFound(_)
     )
 }
 
@@ -578,7 +586,7 @@ pub fn subscribe(
     let limit = plan.resources_max;
     let sub = Subscription { tenant_id: tenant.id, uri: uri.to_string(), conn: conn.to_string(), peer };
     state.resource_subs.add(sub, limit).map_err(|open| AppError::Structured {
-        code: "resources_max",
+        code: RESOURCES_MAX,
         message: format!("this tenant already has {open} open resource subscriptions, the {} plan maximum", plan.name),
         data: json!({"limit": limit, "used": open, "plan": plan.name}),
     })

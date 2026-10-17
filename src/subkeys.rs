@@ -58,6 +58,9 @@ pub struct SubKey {
     /// "session", id))` ties the key to one run or one MCP connection.
     pub bound: Option<(String, String)>,
     pub bound_last_seen_unix: Option<i64>,
+    /// The `Mcp-Session-Id` of the connection that delegated this key, when
+    /// the dispatch had one (R6: `host.whoami` hints from any other session).
+    pub minted_session: Option<String>,
     /// Why a bound key died: `run_<state>`, `session_idle`, `session_closed`.
     pub revoked_reason: Option<String>,
     /// `tools_json` is `null`: no allowlist (a delegation that named no
@@ -67,7 +70,7 @@ pub struct SubKey {
 
 const SUB_KEY_COLUMNS: &str = "id, tenant_id, key_hash, label, tools_json, created_at, expires_at, \
      revoked_at, last_used_at, parent_key_id, scopes_json, can_delegate, depth, revoked_by, \
-     bound_kind, bound_ref, bound_last_seen_unix, revoked_reason";
+     bound_kind, bound_ref, bound_last_seen_unix, revoked_reason, minted_session";
 
 fn sub_key_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<SubKey> {
     let tools_json: String = r.get(4)?;
@@ -93,6 +96,7 @@ fn sub_key_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<SubKey> {
         },
         bound_last_seen_unix: r.get(16)?,
         revoked_reason: r.get(17)?,
+        minted_session: r.get(18)?,
         unrestricted: tools_json.trim() == "null",
     })
 }
@@ -249,13 +253,15 @@ pub struct NewSubKey {
     pub unrestricted: bool,
     /// `(kind, ref)` of a run- or session-bound key.
     pub bound: Option<(String, String)>,
+    /// The delegating connection's session id (`None` for `host.key.mint`).
+    pub minted_session: Option<String>,
 }
 
 impl Db {
     /// Insert one sub-key; a label already used by this tenant is
     /// `label_taken`.
     pub async fn insert_sub_key(&self, tenant_id: i64, new: NewSubKey) -> Result<i64, AppError> {
-        let NewSubKey { key_hash, label, tools, created_at, expires_at, parent_key_id, scopes, can_delegate, depth, unrestricted, bound } =
+        let NewSubKey { key_hash, label, tools, created_at, expires_at, parent_key_id, scopes, can_delegate, depth, unrestricted, bound, minted_session } =
             new;
         let (bound_kind, bound_ref) = bound.unzip();
         let bound_seen = bound_kind.as_ref().map(|_| created_at);
@@ -267,18 +273,18 @@ impl Db {
                 .exists(params![tenant_id, label])?;
             if taken {
                 return Err(AppError::Structured {
-                    code: "label_taken",
+                    code: LABEL_TAKEN,
                     message: format!("this tenant already has a sub-key labelled '{label}'"),
                     data: json!({"label": label}),
                 });
             }
             conn.execute(
                 "INSERT INTO tenant_keys (tenant_id, key_hash, label, tools_json, created_at, expires_at, \
-                 parent_key_id, scopes_json, can_delegate, depth, bound_kind, bound_ref, bound_last_seen_unix) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                 parent_key_id, scopes_json, can_delegate, depth, bound_kind, bound_ref, bound_last_seen_unix, minted_session) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                 params![
                     tenant_id, key_hash, label, tools_json, created_at, expires_at, parent_key_id, scopes_json,
-                    can_delegate as i64, depth, bound_kind, bound_ref, bound_seen
+                    can_delegate as i64, depth, bound_kind, bound_ref, bound_seen, minted_session
                 ],
             )?;
             Ok(conn.last_insert_rowid())
@@ -367,7 +373,7 @@ impl Db {
                 )?;
                 if live > 0 {
                     return Err(AppError::Structured {
-                        code: "has_children",
+                        code: HAS_CHILDREN,
                         message: format!(
                             "sub-key '{label}' has {live} live descendant(s); pass cascade: true to revoke them too"
                         ),
@@ -478,7 +484,7 @@ pub async fn mint(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         };
         if !found {
             return Err(AppError::Structured {
-                code: "not_found",
+                code: NOT_FOUND,
                 message: format!("tool '{name}' is not one of your tools or shared with you; no sub-key was minted"),
                 data: json!({"tool": name}),
             });
@@ -491,7 +497,7 @@ pub async fn mint(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     let active = state.db.count_active_sub_keys(tenant.id, now_unix()).await?;
     if active >= plan.sub_keys_max {
         return Err(AppError::Structured {
-            code: "plan_required",
+            code: PLAN_REQUIRED,
             message: format!(
                 "sub_keys_max: the {} plan allows {} active sub-keys and this tenant holds {active} -- \
                  revoke one with host.key.revoke, or upgrade",
@@ -528,6 +534,7 @@ pub async fn mint(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         depth: 1,
         unrestricted: false,
         bound: None,
+        minted_session: None,
     };
     state.db.insert_sub_key(tenant.id, new).await?;
     Ok(json!({
@@ -569,7 +576,7 @@ impl SubKey {
     /// The `permission_denied` refusal for a call outside the allowlist.
     pub fn denied(&self, name: &str) -> AppError {
         AppError::Structured {
-            code: "permission_denied",
+            code: PERMISSION_DENIED,
             message: format!(
                 "this sub-key ('{}') may call only: {}",
                 self.label,
@@ -604,7 +611,7 @@ impl SubKey {
             return Ok(());
         }
         Err(AppError::Structured {
-            code: "key_bound_elsewhere",
+            code: KEY_BOUND_ELSEWHERE,
             message: format!("sub-key '{}' is bound to {kind} {id} and cannot be used here", self.label),
             data: json!({
                 "bound": {"kind": kind, "ref": id},
@@ -619,7 +626,7 @@ impl SubKey {
     pub fn dead_reason(&self, now: i64) -> Option<AppError> {
         if let Some(at) = self.revoked_at {
             return Some(AppError::Structured {
-                code: "key_revoked",
+                code: KEY_REVOKED,
                 message: format!("sub-key '{}' was revoked", self.label),
                 data: json!({
                     "key_label": self.label,
@@ -631,7 +638,7 @@ impl SubKey {
         }
         if now >= self.expires_at {
             return Some(AppError::Structured {
-                code: "key_expired",
+                code: KEY_EXPIRED,
                 message: format!("sub-key '{}' expired", self.label),
                 data: json!({"key_label": self.label, "expires_at": self.expires_at}),
             });
@@ -678,7 +685,7 @@ pub async fn list(state: &AppState, tenant: &Tenant) -> Result<Value, AppError> 
 }
 
 /// R6: the `key` object `host.whoami` adds when the caller is a sub-key.
-pub async fn whoami_key(state: &AppState) -> Result<Option<Value>, AppError> {
+pub async fn whoami_key(state: &AppState, session_id: Option<&str>) -> Result<Option<Value>, AppError> {
     let Some(id) = current_key_id() else { return Ok(None) };
     let Some(k) = state.db.find_sub_key_by_id(id).await? else { return Ok(None) };
     let parent = match k.parent_key_id {
@@ -689,6 +696,13 @@ pub async fn whoami_key(state: &AppState) -> Result<Option<Value>, AppError> {
     if let Some(obj) = out.as_object_mut() {
         obj.remove("children");
         obj.insert("kind".into(), json!("delegated"));
+        // R6: a delegated key seen from a session other than the minting one
+        // carries the recipe's helper hint (same text, one source).
+        if let (Some(minted), Some(seen)) = (k.minted_session.as_deref(), session_id)
+            && minted != seen
+        {
+            obj.insert("hint".into(), json!(crate::delegation_recipe::delegated_hint(&k.label)));
+        }
     }
     Ok(Some(out))
 }
@@ -720,7 +734,7 @@ pub async fn revoke(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
             }))
         }
         None => Err(AppError::Structured {
-            code: "not_found",
+            code: NOT_FOUND,
             message: format!("no sub-key labelled '{label}'"),
             data: json!({"label": label}),
         }),
@@ -749,7 +763,7 @@ impl SubKey {
     pub fn scope_denied(&self, name: &str) -> AppError {
         let need = crate::scopes::required_for(name).map(|s| s.as_str());
         AppError::Structured {
-            code: "permission_denied",
+            code: PERMISSION_DENIED,
             message: format!("this key ('{}') lacks the scope {} for {name}", self.label, need.unwrap_or("-")),
             data: json!({
                 "reason": "missing_scope",
@@ -776,7 +790,7 @@ impl SubKey {
 /// R5: a plan ceiling hit, naming the `plans.toml` field.
 fn plan_required(field: &str, limit: i64, requested: i64, plan: &str) -> AppError {
     AppError::Structured {
-        code: "plan_required",
+        code: PLAN_REQUIRED,
         message: format!("{field} is {limit} on the {plan} plan (requested {requested}); upgrade the plan or revoke keys"),
         data: json!({"field": field, "limit": limit, "requested": requested, "plan": plan}),
     }
@@ -825,7 +839,7 @@ async fn parse_bind(
                 .ok_or_else(|| AppError::InvalidParams("bind.session_id: a non-empty string".into()))?;
             if session_id != Some(want) {
                 return Err(AppError::Structured {
-                    code: "permission_denied",
+                    code: PERMISSION_DENIED,
                     message: "bind.session_id must be this connection's own session id".into(),
                     data: json!({"reason": "foreign_session"}),
                 });
@@ -838,7 +852,7 @@ async fn parse_bind(
                 .filter(|s| !s.is_empty())
                 .ok_or_else(|| AppError::InvalidParams("bind.run_id: a non-empty string".into()))?;
             let not_found = || AppError::Structured {
-                code: "not_found",
+                code: NOT_FOUND,
                 message: format!("bind.run_id: no open run '{id}' of yours; no key was minted"),
                 data: json!({"run_id": id}),
             };
@@ -868,7 +882,7 @@ pub async fn delegate(
     let parent = caller.as_ref().map(SubKey::authority).unwrap_or_else(crate::delegation::Authority::primary);
     if !parent.can_delegate {
         return Err(AppError::Structured {
-            code: "permission_denied",
+            code: PERMISSION_DENIED,
             message: "this key may not delegate: it was minted with can_delegate=false; ask the key that minted it".into(),
             data: json!({"reason": "can_delegate=false", "key_label": caller.as_ref().map(|c| c.label.clone())}),
         });
@@ -973,6 +987,7 @@ pub async fn delegate(
         depth: child.depth,
         unrestricted: child.tools.is_none(),
         bound: bound.as_ref().map(|b| (b.kind.to_string(), b.id.clone())),
+        minted_session: session_id.map(str::to_string),
     };
     state.db.insert_sub_key(tenant.id, new).await?;
     let detail = json!({
@@ -1014,3 +1029,52 @@ pub fn seen_run_id(
         .or_else(|| meta.and_then(|m| m.get("run_id")).and_then(Value::as_str))
         .map(str::to_string)
 }
+
+crate::err_code! {
+    pub HAS_CHILDREN,
+    code: "has_children", family: Auth, class: AgentFault, retryable: false,
+    remedy: "Pass cascade: true to revoke the sub-key's live descendants too (data.count), or revoke them first.",
+}
+
+crate::err_code! {
+    pub KEY_BOUND_ELSEWHERE,
+    code: "key_bound_elsewhere", family: Auth, class: AgentFault, retryable: false,
+    remedy: "Use this sub-key only from the session or run it is bound to (data.bound), or delegate a new sub-key with host.key.delegate.",
+}
+
+crate::err_code! {
+    pub KEY_EXPIRED,
+    code: "key_expired", family: Auth, class: AgentFault, retryable: false,
+    remedy: "Create a new sub-key with host.key.create.",
+}
+
+crate::err_code! {
+    pub KEY_REVOKED,
+    code: "key_revoked", family: Auth, class: AgentFault, retryable: false,
+    remedy: "Create a new sub-key; this one was revoked.",
+}
+
+crate::err_code! {
+    pub LABEL_TAKEN,
+    code: "label_taken", family: Auth, class: AgentFault, retryable: false,
+    remedy: "Choose a different sub-key label.",
+}
+
+crate::err_code! {
+    pub NOT_FOUND,
+    code: "not_found", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Use a run_id or url from a completed host.export.",
+}
+
+crate::err_code! {
+    pub PERMISSION_DENIED,
+    code: "permission_denied", family: Auth, class: HostRefusal, retryable: false,
+    remedy: "Use a key allowed to call this tool; data.allowed_tools lists what this sub-key may call.",
+}
+
+crate::err_code! {
+    pub PLAN_REQUIRED,
+    code: "plan_required", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Move to a plan that includes this feature; data names it.",
+}
+
