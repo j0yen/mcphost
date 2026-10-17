@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# GENERATED from recipes/webhook-inbox.toml by `cargo xtask recipes` -- do not hand-edit.
+# Recipe calls (budget: 4 calls, within 90 s):
+#   1. host.webhook_inbox.create
+#   2. signed POST to the returned url
+#   3. signed POST to the returned url
+#   4. host.tool_call
+#   5. host.msg.wait
 # proof.sh -- runnable end-to-end proof of "Webhook inbox in one call"
 # (see www/llms.txt). One fresh tenant against $MCPHOST_URL: one
 # host.webhook_inbox.create call, one signed curl to the returned url, then

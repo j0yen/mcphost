@@ -35,3 +35,5 @@ tasks:
       call_check: "result.payload contains vpn-setup.md"
       kind: http
     fixture_route: /docs/search/question-3
+    recipe: docs-qa
+    wall_budget_s: 90

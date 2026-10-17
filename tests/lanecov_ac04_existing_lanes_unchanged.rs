@@ -241,6 +241,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "openapi-doc",
             "output-schemas",
             "plugin",
+            "recipes",
             "registry-manifest",
             "required-checks",
             "sandbox-api-docs",

@@ -33,3 +33,5 @@ tasks:
       tool_name: paid_api
       call_check: "result.payload.ok == true"
       kind: http
+    recipe: share-a-tool
+    wall_budget_s: 60

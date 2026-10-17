@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# GENERATED from recipes/first-run.toml by `cargo xtask recipes` -- do not hand-edit.
+# Recipe calls (budget: 4 calls, within 90 s):
+#   1. host.tool_publish
+#   2. host.tool_test
+#   3. host.trigger.set
 # proof.sh -- runnable end-to-end proof of "First run" (see www/llms.txt).
 # One fresh tenant against $MCPHOST_URL: signs up, publishes `table_note`
 # as a python tool (appends a note through mcphost.table -- no secrets, no

@@ -1,4 +1,15 @@
 #!/usr/bin/env bash
+# GENERATED from recipes/team-memory.toml by `cargo xtask recipes` -- do not hand-edit.
+# Recipe calls (budget: 11 calls, within 90 s):
+#   1. host.table.create
+#   2. host.tool_publish
+#   3. host.tool_publish
+#   4. host.group.create
+#   5. host.tool_share
+#   6. host.tool_share
+#   7. host.group.add
+#   8. host.tool_call
+#   9. host.tool_call
 # proof.sh -- runnable end-to-end proof of "Give your agents one memory"
 # (see www/llms.txt). Three fresh tenants against $MCPHOST_URL: the owner
 # creates a `memory` table, publishes `remember`/`recall` as python tools,
