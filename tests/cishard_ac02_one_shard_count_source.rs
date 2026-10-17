@@ -37,6 +37,8 @@ fn literal_counts(text: &str) -> Vec<String> {
         };
         let mut bad = digit_after("SANDBOX_SHARDS=")
             || digit_after("SANDBOX_SHARDS =")
+            || digit_after("CORE_SHARDS=")
+            || digit_after("CORE_SHARDS =")
             || line.contains("shard: [")
             || line.contains("-way");
         // `shard N/<digit>` / `shard ${{ matrix.shard }}/<digit>`
@@ -106,5 +108,7 @@ fn the_drift_scan_catches_a_reintroduced_literal() {
     assert!(!literal_counts("matrix:\n  shard: [1, 2]").is_empty());
     assert!(!literal_counts("name: x (shard ${{ matrix.shard }}/2)").is_empty());
     assert!(!literal_counts("# SANDBOX_SHARDS=2 matrix").is_empty());
+    assert!(!literal_counts("# CORE_SHARDS=2 matrix").is_empty());
+    assert!(!literal_counts("# CORE_SHARDS = 4").is_empty());
     assert!(literal_counts("name: x (shard ${{ matrix.shard }}/${{ needs.plan.outputs.shards }})").is_empty());
 }

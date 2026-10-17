@@ -31,43 +31,53 @@ fn the_sandbox_suites_run_as_their_own_job_in_parallel_with_the_rest() {
         "AC6's parallel-job branch needs at least two jobs; found {names:?}"
     );
 
-    let gate = jobs
+    // PRD-mcphost-ci-core-suites-sharded: the old `gate` job is now the
+    // `core-static` job plus a `core` matrix, and `gate` is only their
+    // aggregator. The parallel property is about the jobs that RUN tests.
+    let core_static = jobs
         .iter()
-        .find(|(n, _)| n == "gate")
-        .expect("ci.yml must keep a `gate` job");
+        .find(|(n, _)| n == "core-static")
+        .expect("ci.yml must keep a `core-static` job");
+    let core = jobs
+        .iter()
+        .find(|(n, _)| n == "core")
+        .expect("ci.yml must declare a `core` job");
     let sandbox = jobs
         .iter()
         .find(|(n, _)| n == "sandbox")
         .expect("ci.yml must declare a `sandbox` job");
 
-    // `needs:` on either job would serialise them and put the workflow's wall
+    // `needs:` on either side would serialise them and put the workflow's wall
     // time back at the sum this AC exists to avoid.
     // The only `needs:` allowed is the seconds-long `plan` job that derives
-    // the sandbox matrix from ci-test-partition.sh (one shard-count source,
-    // PRD-mcphost-ci-sandbox-shards-balanced); `gate` depends on nothing.
+    // the shard matrices from ci-test-partition.sh (one count source per
+    // partition); `core-static` depends on nothing. (`gate` aggregates the
+    // core jobs and runs no tests, so it is exempt.)
     assert!(
-        !support::declares_needs(&gate.1),
-        "job `gate` declares `needs:`; the two jobs must run concurrently \
+        !support::declares_needs(&core_static.1),
+        "job `core-static` declares `needs:`; the jobs must run concurrently \
          for AC6's parallel-job branch to hold"
     );
-    let needs_lines: Vec<&str> = sandbox
-        .1
-        .lines()
-        .filter(|l| l.trim_start().starts_with("needs:"))
-        .collect();
-    assert_eq!(
-        needs_lines.iter().map(|l| l.trim()).collect::<Vec<_>>(),
-        vec!["needs: plan"],
-        "`sandbox` may depend on the `plan` job only"
-    );
+    for (label, job) in [("sandbox", sandbox), ("core", core)] {
+        let needs_lines: Vec<&str> = job
+            .1
+            .lines()
+            .filter(|l| l.trim_start().starts_with("needs:"))
+            .collect();
+        assert_eq!(
+            needs_lines.iter().map(|l| l.trim()).collect::<Vec<_>>(),
+            vec!["needs: plan"],
+            "`{label}` may depend on the `plan` job only"
+        );
+    }
 
     assert!(
         sandbox.1.contains("ci-test-partition.sh sandbox"),
         "the sandbox job must run the sandbox partition"
     );
     assert!(
-        gate.1.contains("ci-test-partition.sh core"),
-        "the gate job must run the core partition"
+        core.1.contains("ci-test-partition.sh core-shard"),
+        "the core shard job must run the core partition"
     );
 }
 

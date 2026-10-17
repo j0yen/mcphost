@@ -1253,12 +1253,25 @@ def sandbox_shard_count():
     return int(out.stdout.strip())
 
 
+def core_shard_count():
+    """The one CORE_SHARDS definition, read from ci-test-partition.sh."""
+    out = subprocess.run([CLASSIFY_SCRIPT, "shards", "core"], capture_output=True, text=True)
+    if out.returncode != 0 or not out.stdout.strip().isdigit():
+        die(f"`ci-test-partition.sh shards core` did not print a count: {out.stdout!r} {out.stderr!r}")
+    return int(out.stdout.strip())
+
+
 migrations, suite_files, new_cargo_toml, all_files = compute_plan()
 SHARDS = sandbox_shard_count()
 SANDBOX_SUITES = [n for n in suite_files if re.match(r"suite(_env|_contracts)?_sandbox_\d+\.rs$", os.path.basename(n))]
 if len(SANDBOX_SUITES) < SHARDS:
     die(f"{len(SANDBOX_SUITES)} sandbox suites cannot fill {SHARDS} shards "
         "(SANDBOX_SHARDS in scripts/ci-test-partition.sh): lower it")
+CORE_SHARDS = core_shard_count()
+CORE_SUITES = [n for n in suite_files if re.match(r"suite(_env|_contracts)?_core_\d+\.rs$", os.path.basename(n))]
+if len(CORE_SUITES) < CORE_SHARDS:
+    die(f"{len(CORE_SUITES)} core suites cannot fill {CORE_SHARDS} shards "
+        "(CORE_SHARDS in scripts/ci-test-partition.sh): lower it")
 if CHECK:
     sys.exit(check_plan(migrations, suite_files, new_cargo_toml, all_files))
 else:

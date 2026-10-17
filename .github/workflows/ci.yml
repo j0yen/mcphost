@@ -25,9 +25,10 @@ concurrency:
   # = base-ci-cancelled = local rerun of every CI-backed producer).
   cancel-in-progress: ${{ github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/wm-build/gate/') }}
 
-# PRD-mcphost-ci-sandbox-coverage AC6 (P1). `gate` and `sandbox` declare no
-# `needs:` on each other, so GitHub schedules them concurrently and the
-# workflow's wall time is max(gate, sandbox) rather than their sum. That is
+# PRD-mcphost-ci-sandbox-coverage AC6 (P1). The core jobs (`core-static`,
+# `core`) and `sandbox` declare no `needs:` on each other, so GitHub schedules
+# them concurrently and the workflow's wall time is the slowest of them rather
+# than their sum (`gate` only aggregates the core jobs; see its comment). That is
 # the AC's second branch ("or the suites run as a parallel job"), taken
 # because its first branch is now measurably out of reach: with the sandbox
 # suites executing for real instead of skipping, the single `cargo test
@@ -51,12 +52,13 @@ concurrency:
 # sandbox shards) and assert zero capability-skips afterwards, so a target
 # filed into the wrong job/shard turns CI red instead of skipping silently.
 # Only `sandbox` grants the userns capability; a userns-dependent target left
-# in `gate` therefore skips, and `gate`'s own assertion fails the job.
+# in `core` therefore skips, and the core shard's own assertion fails the job.
 jobs:
   # The sandbox shard count lives in scripts/ci-test-partition.sh only; this
   # job turns it into the matrix `sandbox` expands (a literal count in this
-  # file fails tests/cishard_ac02_*). Only `sandbox` needs it, so `gate` and
-  # the shards still start together once this seconds-long job is done.
+  # file fails tests/cishard_ac02_*). `sandbox` and the `core` shards need it, while
+  # `core-static` starts at once and the shards start together once this
+  # seconds-long job is done.
   plan:
     name: sandbox shard plan
     runs-on: ubuntu-latest
@@ -64,21 +66,46 @@ jobs:
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       shards: ${{ steps.plan.outputs.shards }}
+      core_matrix: ${{ steps.plan.outputs.core_matrix }}
+      core_shards: ${{ steps.plan.outputs.core_shards }}
     steps:
       - name: checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: derive the sandbox shard matrix
+      - name: derive the sandbox and core shard matrices
         id: plan
         run: |
           shards=$(./scripts/ci-test-partition.sh shards)
           echo "shards=$shards" >> "$GITHUB_OUTPUT"
           echo "matrix={\"shard\":$(seq 1 "$shards" | jq -sc .)}" >> "$GITHUB_OUTPUT"
+          core_shards=$(./scripts/ci-test-partition.sh shards core)
+          echo "core_shards=$core_shards" >> "$GITHUB_OUTPUT"
+          echo "core_matrix={\"shard\":$(seq 1 "$core_shards" | jq -sc .)}" >> "$GITHUB_OUTPUT"
 
-  gate:
-    name: static analysis + core suites
+  # PRD-mcphost-ci-core-suites-sharded. The required check "static analysis +
+  # core suites" used to be ONE serial job: five minutes of setup, then every
+  # core suite binary in one serial test step (13 to 16 minutes), so main's
+  # runs took 20 to 30 minutes and a branch that added tests was cancelled at
+  # the cap. It is now three kinds of job, none of which names a shard count:
+  #   core-static  the static steps (check, clippy, deny, audit, contract suites,
+  #                doctests, partition check, required-checks compare);
+  #   core         a matrix whose width comes from the `plan` job
+  #                (`ci-test-partition.sh shards core`); shard N runs
+  #                `ci-test-partition.sh core-shard N <total>`, a weight-balanced
+  #                slice of the core suites;
+  #   gate         the aggregator. It keeps the job id and the NAME of the old
+  #                job, so branch protection and wm-build's ci lookups are
+  #                untouched, and it fails unless both of the above succeeded.
+  # `core-static` and `core` carry the required-checks exclude marker: the
+  # contexts a PR must pass stay exactly the committed
+  # .github/required-checks.toml (the aggregator covers both), so no admin
+  # --apply is needed.
+  core-static:
+    # required-checks: exclude -- covered by the `gate` aggregator below, whose
+    # name is the one required context.
+    name: static analysis
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
       - name: checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -112,62 +139,16 @@ jobs:
       - name: verify test partition is total and disjoint
         run: ./scripts/ci-test-partition.sh check
 
-      # PRD-mcphost-metered-overage AC9. `metering_ac09_deploy_units_verify`
-      # runs `systemd-analyze verify` on deploy/mcphost-emit-meter.service,
-      # whose ExecStart (`%h/.local/bin/mcphost billing emit-meter`) is
-      # resolved and checked for an executable file at verify time -- on a
-      # runner with no prior install step that path is empty and verify
-      # fails with "is not executable: No such file or directory" (run
-      # 34078778358), not a metering logic bug. Build once and place the
-      # binary at the exact path the unit expects, matching what a real
-      # mcphost-1 install does before enabling the timer.
-      - name: build mcphost binary for deploy-unit verification
-        run: |
-          cargo build --locked --bin mcphost
-          install -Dm755 target/debug/mcphost "$HOME/.local/bin/mcphost"
-
       # PRD-mcphost-contract-suite-generated: the `//! contract:` suites first, so a
       # drifted tree-derived set (CHANGELOG, migrations, tools/list shape, weights)
       # fails in minutes with a short log. The list is derived from Cargo.toml.
       - name: contract suites
         run: ./scripts/pin-tests.sh
 
-      - name: cargo test (core suites)
-        # CI runners are shared 2-4 vCPU hosts: timing budgets are the gate's
-        # truth (RedBaron, quiet box, var unset), not CI's. Same switch the gate
-        # flips under load; perf_budget!/perf_skipped() print the skip.
-        env:
-          MCPHOST_PERF_SKIP: "1"
-        run: |
-          set -o pipefail
-          start=$(date +%s)
-          cargo test --locked $(./scripts/ci-test-partition.sh core) -- --nocapture 2>&1 | tee /tmp/cargo-test.log
-          status=$?
-          echo "core suites wall time: $(( $(date +%s) - start ))s" | tee -a "$GITHUB_STEP_SUMMARY"
-          exit "$status"
-
       # `--doc` cannot be combined with any other target selector, so doctests
-      # are their own invocation rather than part of either partition.
+      # are their own invocation rather than part of any shard.
       - name: cargo test --doc
         run: cargo test --locked --doc
-
-      # PRD-mcphost-ci-sandbox-coverage P0#3, core half. This job deliberately
-      # does NOT grant unprivileged user namespaces, so any capability-skip
-      # here means `ci-test-partition.sh` filed a userns-dependent target into
-      # the core partition -- where it would have passed vacuously forever.
-      - name: assert no core suite skipped for capability reasons
-        run: |
-          skipped=$(grep -c "skipped: no user namespaces" /tmp/cargo-test.log || true)
-          executed=$(grep -c '^test .* \.\.\. ok$' /tmp/cargo-test.log || true)
-          echo "core non-vacuous check: skipped=$skipped executed-ok=$executed"
-          if [ "$skipped" -gt 0 ]; then
-            echo "::error::$skipped core-partition test(s) skipped for user-namespace reasons. A userns-dependent target is misfiled into the core partition -- it needs the sandbox job's capability grant. See scripts/ci-test-partition.sh."
-            exit 1
-          fi
-          if [ "$executed" -eq 0 ]; then
-            echo "::error::cargo test reported zero executed ('... ok') tests -- the core suites did not run at all."
-            exit 1
-          fi
 
       - name: cargo deny check
         run: cargo deny --locked check
@@ -189,6 +170,130 @@ jobs:
             2) echo "required-checks: skipped (no permission)" ;;
             *) echo "::warning::branch protection differs from .github/required-checks.toml (see above); an admin runs scripts/required-checks.sh --apply" ;;
           esac
+
+  core:
+    # required-checks: exclude -- covered by the `gate` aggregator below.
+    name: core suites (shard ${{ matrix.shard }}/${{ needs.plan.outputs.core_shards }})
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.core_matrix) }}
+    steps:
+      - name: checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      # The shard number is part of the cache key: shards compile different
+      # suite binaries, and a shared key would let the last shard to finish
+      # overwrite the others' cache (PRD-mcphost-ci-core-suites-sharded R7).
+      - name: install rust toolchain (pinned by rust-toolchain.toml)
+        uses: actions-rust-lang/setup-rust-toolchain@9d7e65c320fdb52dcd45ffaa68deb6c02c8754d9 # v1.10.1
+        with:
+          cache-key: core-shard-${{ matrix.shard }}
+
+      # Kept identical to the sandbox job's environment except for the userns
+      # grant: the only intended difference between the two jobs is the
+      # capability, not which binaries exist.
+      - name: install bubblewrap and uv
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: verify test partition is total and disjoint
+        run: ./scripts/ci-test-partition.sh check
+
+      # PRD-mcphost-metered-overage AC9. `metering_ac09_deploy_units_verify`
+      # runs `systemd-analyze verify` on deploy/mcphost-emit-meter.service,
+      # whose ExecStart (`%h/.local/bin/mcphost billing emit-meter`) is
+      # resolved and checked for an executable file at verify time -- on a
+      # runner with no prior install step that path is empty and verify
+      # fails with "is not executable: No such file or directory" (run
+      # 34078778358), not a metering logic bug. Build once and place the
+      # binary at the exact path the unit expects, matching what a real
+      # mcphost-1 install does before enabling the timer. Every shard does
+      # this: the weights, not this file, decide which shard holds that suite.
+      - name: build mcphost binary for deploy-unit verification
+        run: |
+          cargo build --locked --bin mcphost
+          install -Dm755 target/debug/mcphost "$HOME/.local/bin/mcphost"
+
+      - name: cargo test (core suites, shard ${{ matrix.shard }}/${{ needs.plan.outputs.core_shards }})
+        # CI runners are shared 2-4 vCPU hosts: timing budgets are the gate's
+        # truth (RedBaron, quiet box, var unset), not CI's. Same switch the gate
+        # flips under load; perf_budget!/perf_skipped() print the skip.
+        env:
+          MCPHOST_PERF_SKIP: "1"
+        run: |
+          set -o pipefail
+          shard=${{ matrix.shard }}
+          total=${{ needs.plan.outputs.core_shards }}
+          flags=$(./scripts/ci-test-partition.sh core-shard "$shard" "$total")
+          # Build and run are timed apart: only the run is budgeted (warn at
+          # 420 s, fail above 540 s), compile time is reported
+          # (scripts/ci-shard-report.sh).
+          start=$(date +%s)
+          cargo test --locked --no-run $flags
+          build_s=$(( $(date +%s) - start ))
+          start=$(date +%s)
+          cargo test --locked $flags -- --nocapture 2>&1 | tee /tmp/cargo-test.log
+          status=$?
+          run_s=$(( $(date +%s) - start ))
+          ./scripts/ci-shard-report.sh core "$shard" "$total" "$build_s" "$run_s" /tmp/cargo-test.log "$status"
+
+      # PRD-mcphost-ci-sandbox-coverage P0#3, core half. This job deliberately
+      # does NOT grant unprivileged user namespaces, so any capability-skip
+      # here means `ci-test-partition.sh` filed a userns-dependent target into
+      # the core partition -- where it would have passed vacuously forever.
+      - name: assert no core suite skipped for capability reasons
+        run: |
+          skipped=$(grep -c "skipped: no user namespaces" /tmp/cargo-test.log || true)
+          executed=$(grep -c '^test .* \.\.\. ok$' /tmp/cargo-test.log || true)
+          echo "core non-vacuous check: skipped=$skipped executed-ok=$executed"
+          if [ "$skipped" -gt 0 ]; then
+            echo "::error::$skipped core-partition test(s) skipped for user-namespace reasons. A userns-dependent target is misfiled into the core partition -- it needs the sandbox job's capability grant. See scripts/ci-test-partition.sh."
+            exit 1
+          fi
+          if [ "$executed" -eq 0 ]; then
+            echo "::error::cargo test reported zero executed ('... ok') tests -- the core suites did not run at all."
+            exit 1
+          fi
+
+  # The required context. `if: always()` makes it run even when a job it needs
+  # failed or was skipped (the default `if` would skip it, and a skipped
+  # required job reads as "not failed" to some branch-protection
+  # configurations); it then fails unless BOTH `core-static` and the whole
+  # `core` matrix succeeded.
+  gate:
+    name: static analysis + core suites
+    needs: [core-static, core]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: list each core shard's conclusion
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}/jobs" --paginate \
+            --jq '.jobs[] | select((.name | startswith("core suites")) or .name == "static analysis") | "\(.name): \(.conclusion // .status)"' \
+            || echo "(job list unavailable: no actions:read)"
+
+      - name: fail unless static analysis and every core shard succeeded
+        run: |
+          echo "static analysis result: ${{ needs.core-static.result }}"
+          echo "core matrix result: ${{ needs.core.result }}"
+          if [ "${{ needs.core-static.result }}" != "success" ] || [ "${{ needs.core.result }}" != "success" ]; then
+            echo "::error::static analysis (${{ needs.core-static.result }}) or the core suites matrix (${{ needs.core.result }}) did not succeed -- see the failed job above; a shard names its failing test in a 'core shard N/M FAILED <test>' line."
+            exit 1
+          fi
 
   sandbox:
     name: sandbox suites (user namespaces, shard ${{ matrix.shard }}/${{ needs.plan.outputs.shards }})

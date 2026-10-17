@@ -1,6 +1,16 @@
 {
   "lib": 6,
+  "suite_contracts_core_01": 58,
   "suite_contracts_sandbox_01": 5,
+  "suite_core_01": 1,
+  "suite_core_02": 1,
+  "suite_core_03": 1,
+  "suite_core_04": 1,
+  "suite_core_05": 1,
+  "suite_core_06": 1,
+  "suite_core_07": 341,
+  "suite_core_08": 375,
+  "suite_env_core_01": 15,
   "suite_env_sandbox_01": 7,
   "suite_sandbox_01": 110,
   "suite_sandbox_02": 152
