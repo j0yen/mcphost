@@ -1,67 +1,67 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-same-user-second-agent.md",
-  "intent_slug": "mcphost-same-user-second-agent",
-  "root_motivation": "**Who:** a user with two agents (Claude Code and Cursor, or a laptop and a server) and the second agent itself. **What:** land in the tenant the first agent built, with a credential of its own, in one paste. **Why not today:** identity is one hashed key per tenant; `/u/<secret>/mcp` resolves to it (`src/http.rs:1554`), so sharing it means one secret for both clients and `host.key.rotate` kills both. `/i/<code>/mcp` (`:1567`, `src/invites.rs`) mints a fresh tenant: tools are *shared*, state and notes are not. The consent page (`src/authz.rs:969` `resolve_consent_tenant`) accepts a key, a claim code, or \"Create a new workspace\"; a human who consented once has no \"join what I made\" option and sets no cookie. **Premise (agent viewpoint):** the second agent only needs a URL the first agent can print. **Falsifier:** the join cannot be made without a key or claim code in the second agent's hands.",
-  "user_persona": "An agent that pages host.runs.list(verdict=\"fail\") and reads total: 7 from page 1, never walking to the end.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-publish-visibility-and-tags.md",
+  "intent_slug": "mcphost-publish-visibility-and-tags",
+  "root_motivation": "**Who:** the agent publishing a tool it wants others to find; the agent searching for one. **What:** publish once, say who may find it, say what it is for, and know that everything public at least runs. **Why not today:** `tool_publish_props` (`handler.rs:599`) has no `visibility` or `tags`; `tools.visibility` accepts `private|group|public|url` by a hand-written string match (`sharing.rs:52-71`) while the `host.tool_share` schema declares a bare `string` with the names in prose (`handler.rs:1385`) \u2014 two copies of one set, the 10-07 level-8 shape; `share_description` is the only catalog text (migration 0013); nothing checks a public tool runs, so the catalog can carry tools whose `host.tool_test` would fail. **Premise (creative):** a publish-time dry run is cheap enough that \"public = tested\" costs the publisher nothing it would not do anyway. **Falsifier:** the refusal rate in the frontmatter; AC 1 measures the dry run's cost on the three starter tools.",
+  "user_persona": "An agent that runs host.note.put {text, attach_to: {tool}} once and reads the note on that tool's description in every later session; the same user's second client sees it too.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 3
+    "target": 4
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a fresh tenant and its `host.whoami.join_url`, When a second connection on that URL calls `host.whoami` with no key, header, or claim code, Then `namespace` equals the first tenant's, `client_id` differs from client 0, and `clients` has 2 rows (the falsifier as a test).",
-      "test": "tests/sibl_ac01_second_connection_joins_same_namespace.rs"
+      "description": "Given the python, http and chain starter tools from `host.quickstart` published with `visibility: \"public\"`, When each publish runs its dry run, Then all three return `tested_version: 1` and the added latency per publish is \u2264 2 s on the test host; a refusal on any of the three fails this AC and is reported as the falsifier firing.",
+      "test": "tests/pubvis_ac01_starters_publish_public_tested.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a join code with `max_uses: 1` already used, When a third connection uses it, Then the error is `join_code_invalid` with `next_call.tool == \"host.whoami\"` and no `tenant_clients` row is inserted.",
-      "test": "tests/sibl_ac02_used_up_join_code_is_refused.rs"
+      "description": "Given `host_tools()`'s descriptors, When the test reads the `visibility` enum of `host.tool_publish` and of `host.tool_share`, Then both equal `Visibility::PUBLISHABLE` and `Visibility::ALL` minus nothing the validator rejects, and a `Visibility` variant added without a schema change fails the test.",
+      "test": "tests/pubvis_ac02_visibility_enum_single_source.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given two siblings, When client 0 calls `host.key.rotate`, Then client 0's old URL answers `tenant_key_invalid`, the sibling's URL still works, and the join code is unchanged; with `all: true` all three change.",
-      "test": "tests/sibl_ac03_rotate_is_scoped_to_the_calling_client.rs"
+      "description": "Given a python tool whose source raises on every call, When published with `visibility: \"public\"`, Then the error is `untested_tool_cannot_be_public` with `data.verdict` and `data.next = \"host.tool_test\"`, and `host.tool_list` shows the tool `private`.",
+      "test": "tests/pubvis_ac03_untested_tool_cannot_be_public.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given two siblings, When one is revoked via `host.client.revoke`, Then its next call fails `tenant_key_invalid`, `clients` lists one row, and revoking the last remaining client is refused with `last_client`.",
-      "test": "tests/sibl_ac04_revoke_removes_one_client.rs"
+      "description": "Given a tool published `unlisted`, When an anonymous caller runs `host.catalog.search` with no query and `GET /.well-known/mcp/catalog.json`, Then neither lists it, while `host.catalog.get` and a cross-tenant call by full name succeed.",
+      "test": "tests/pubvis_ac04_unlisted_not_listed_but_callable.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given `CLIENT_INFO_NAMES`, When a join arrives with each table entry as `clientInfo.name`, Then the new client's `label` starts with that entry's surface id, and an unknown name yields `client-<n>`.",
-      "test": "tests/sibl_ac05_labels_derive_from_client_info_names.rs"
+      "description": "Given `tags: [\"Webhook\", \"webhook\", \"a b\"]`, When published, Then the response is `args_invalid` naming `a b`; given `[\"Webhook\", \"webhook\"]`, Then stored tags are `[\"webhook\"]`; given 17 valid tags, Then `args_invalid` names the limit 16.",
+      "test": "tests/pubvis_ac05_tags_validated_normalised_capped.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a browser that consented once (cookie set), When it opens a new authorize request, Then the consent page's first option is \"Join <display_name>\" and choosing it issues tokens for that tenant with a new `tenant_clients` row and sends zero emails.",
-      "test": "tests/sibl_ac06_returning_browser_is_offered_join.rs"
+      "description": "Given a public tool at version 1 with `tested_version 1`, When a new version is published, Then it stays public with `stale_test: true`, and a passing `host.tool_test` sets `tested_version: 2` and clears the flag.",
+      "test": "tests/pubvis_ac06_new_version_marks_stale_until_retested.rs"
     },
     {
       "id": "AC7",
-      "level": "MUST",
-      "description": "Given ten concurrent first calls on one join URL with `max_uses: 5`, When they complete, Then exactly 5 client rows exist and 5 calls got `join_code_invalid`.",
-      "test": "tests/sibl_ac07_concurrent_joins_land_exactly_max_uses.rs"
+      "level": "SHOULD",
+      "description": "Given two concurrent `host.tool_share visibility=public` calls on the same untested tool, When both dry runs pass, Then `tested_version` is stamped once and both calls return the same result without a UNIQUE or busy error.",
+      "test": "tests/pubvis_ac07_concurrent_public_share_stamps_once.rs"
     }
   ],
   "scope": [
-    "src/paged.rs: Count { exact, n }, EXACT_TOTAL_MAX, Count::from_bounded, Count::insert_into.",
-    "src/tables.rs: count_filtered_sync, rows_with_total, table_query, runs_list, table_list (bounded counter), table_count (new).",
-    "src/handler.rs: TenantTableBridge::call \"count\" arm, dispatch_control_tool \"host.table.count\" arm.",
-    "contracts/host-tools.v1.json: host.table.count + host_table_count entries; host.table.list exact field."
+    "src/notes.rs: host.note.put/list/delete over the notes/ prefix of tenant_state_kv; the tools/list description suffix.",
+    "src/handler.rs, src/protocol/frames.rs: tools, dispatch, list_changed on a tool-attached put/delete (keyed row allows list_changed).",
+    "src/plans.rs, src/retention.rs, src/db.rs: notes_max plan field; expired-note sweep.",
+    "contracts/, docs/, www/: regenerated tool contract, output schemas, docs."
   ],
   "non_goals": [
-    "Counts on python tool output; materialized counters per table; total for host.table.query with aggregates."
+    "Notes attached to runs surfaced in host.runs.get (R6), attached_to in host.resume/welcome_back (R5), pin (R7); shared notebooks across tenants."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -69,25 +69,17 @@
     "deny_unsafe": false,
     "max_deps": null,
     "msrv": null,
-    "additional": {}
+    "additional": {
+      "engine_form": "mcphost-qjs subprocess in the python bwrap profile; cold_p95_ms measured by jsk_ac01"
+    }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why did the explore session report 'about 60' runs?",
-      "a": "host.runs.list returned no total on each page, so the agent had to walk all pages to count."
-    },
-    {
-      "why": 2,
-      "q": "Why was there no total?",
-      "a": "The Paged output struct reserved the total field but emitted nothing."
-    },
-    {
-      "why": 3,
-      "q": "Why is an exact count feasible?",
-      "a": "SELECT count(*) LIMIT 10001 is bounded regardless of table size; under 10k rows it is exact and fast."
+      "q": "Why does the next session repeat a mistake the last one learned from?",
+      "a": "The only write path is remember at signup; nothing pins a note to the tool it is about."
     }
   ],
-  "created_at": "2026-10-15T00:00:00Z",
+  "created_at": "2026-10-16T00:00:00Z",
   "ambiguities_resolved": []
 }

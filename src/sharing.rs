@@ -23,6 +23,111 @@ fn arg_str_opt(args: &Value, name: &str) -> Option<String> {
     args.get(name).and_then(Value::as_str).map(str::to_string)
 }
 
+/// PRD-mcphost-publish-visibility-and-tags R1: the one set of visibility
+/// names. `tools.visibility`, the `host.tool_publish` / `host.tool_share`
+/// schemas' `enum`s and the validators below all render from it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Visibility {
+    Private,
+    Unlisted,
+    Group,
+    Public,
+    Url,
+}
+
+impl Visibility {
+    pub const ALL: [Visibility; 5] =
+        [Visibility::Private, Visibility::Unlisted, Visibility::Group, Visibility::Public, Visibility::Url];
+    /// What `host.tool_publish` accepts.
+    pub const PUBLISHABLE: [Visibility; 3] = [Visibility::Private, Visibility::Unlisted, Visibility::Public];
+    /// What `host.tool_share` accepts (`host.tool_unshare` is the way back
+    /// to `private`).
+    pub const SHAREABLE: [Visibility; 4] =
+        [Visibility::Unlisted, Visibility::Group, Visibility::Public, Visibility::Url];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Visibility::Private => "private",
+            Visibility::Unlisted => "unlisted",
+            Visibility::Group => "group",
+            Visibility::Public => "public",
+            Visibility::Url => "url",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Visibility> {
+        Self::ALL.into_iter().find(|v| v.as_str() == s)
+    }
+
+    /// The JSON-schema `enum` array for a slice of variants.
+    pub fn schema_enum(set: &[Visibility]) -> Value {
+        json!(set.iter().map(|v| v.as_str()).collect::<Vec<_>>())
+    }
+
+    fn names(set: &[Visibility]) -> String {
+        set.iter().map(|v| format!("'{}'", v.as_str())).collect::<Vec<_>>().join(", ")
+    }
+
+    /// `visibility` as `host.tool_publish` accepts it.
+    pub fn parse_publishable(s: &str) -> Result<Visibility, AppError> {
+        Self::parse(s)
+            .filter(|v| Self::PUBLISHABLE.contains(v))
+            .ok_or_else(|| {
+                AppError::InvalidArgs(format!(
+                    "visibility must be one of {}, got '{s}'",
+                    Self::names(&Self::PUBLISHABLE)
+                ))
+            })
+    }
+
+    /// `visibility` as `host.tool_share` accepts it.
+    pub fn parse_shareable(s: &str) -> Result<Visibility, AppError> {
+        Self::parse(s)
+            .filter(|v| Self::SHAREABLE.contains(v))
+            .ok_or_else(|| {
+                AppError::InvalidArgs(format!(
+                    "visibility must be one of {}, got '{s}'",
+                    Self::names(&Self::SHAREABLE)
+                ))
+            })
+    }
+}
+
+pub const MAX_TAGS: usize = 16;
+
+/// R2: `tags` -- at most [`MAX_TAGS`], each `^[a-z0-9][a-z0-9-]{0,31}$` after
+/// lower-casing; deduped, order kept. `Ok(None)` when the argument is absent.
+pub fn parse_tags(args: &Value) -> Result<Option<Vec<String>>, AppError> {
+    let raw = match args.get("tags") {
+        None | Some(Value::Null) => return Ok(None),
+        Some(Value::Array(list)) => list,
+        Some(_) => return Err(AppError::InvalidArgs("tags must be an array of strings".into())),
+    };
+    let mut out: Vec<String> = Vec::new();
+    for item in raw {
+        let tag = item
+            .as_str()
+            .ok_or_else(|| AppError::InvalidArgs("tags must be an array of strings".into()))?
+            .to_lowercase();
+        let valid = !tag.is_empty()
+            && tag.len() <= 32
+            && tag.chars().next().is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+            && tag.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+        if !valid {
+            return Err(AppError::InvalidArgs(format!(
+                "tag '{tag}' is invalid: use 1-32 chars of a-z, 0-9 and '-', starting with a letter or digit"
+            )));
+        }
+        if !out.contains(&tag) {
+            out.push(tag);
+        }
+    }
+    if out.len() > MAX_TAGS {
+        return Err(AppError::InvalidArgs(format!("tags: at most {MAX_TAGS} tags per tool, got {}", out.len())));
+    }
+    Ok(Some(out))
+}
+
 fn tool_json(namespace: &str, tool: &crate::db::ToolRow) -> Value {
     json!({
         "name": format!("{namespace}.{}", tool.name),
@@ -31,6 +136,9 @@ fn tool_json(namespace: &str, tool: &crate::db::ToolRow) -> Value {
         "visibility": tool.visibility,
         "group": tool.shared_group,
         "description": tool.share_description,
+        "tags": tool.tags,
+        "tested_version": tool.tested_version,
+        "stale_test": tool.tested_version != Some(tool.current_version),
     })
 }
 
@@ -49,27 +157,20 @@ pub async fn tool_share(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
     // default closed.
     let expose_spec = args.get("expose_spec").and_then(Value::as_bool).unwrap_or(false);
 
-    match visibility.as_str() {
-        "public" => {}
-        "url" => {}
-        "group" => {
-            let group_name = group
-                .clone()
-                .ok_or_else(|| AppError::InvalidArgs("visibility 'group' requires 'group'".into()))?;
-            if state
-                .db
-                .list_groups(tenant.id)
-                .await?
-                .iter()
-                .all(|(g, _)| g != &group_name)
-            {
-                return Err(AppError::GroupNotFound(group_name));
-            }
-        }
-        other => {
-            return Err(AppError::InvalidArgs(format!(
-                "visibility must be 'public', 'group', or 'url', got '{other}'"
-            )));
+    let vis = Visibility::parse_shareable(&visibility)?;
+    let new_tags = parse_tags(args)?;
+    if vis == Visibility::Group {
+        let group_name = group
+            .clone()
+            .ok_or_else(|| AppError::InvalidArgs("visibility 'group' requires 'group'".into()))?;
+        if state
+            .db
+            .list_groups(tenant.id)
+            .await?
+            .iter()
+            .all(|(g, _)| g != &group_name)
+        {
+            return Err(AppError::GroupNotFound(group_name));
         }
     }
 
@@ -114,6 +215,22 @@ pub async fn tool_share(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
         None
     };
 
+    if let Some(new_tags) = new_tags {
+        let mut merged = row.tags.clone();
+        for t in new_tags {
+            if !merged.contains(&t) {
+                merged.push(t);
+            }
+        }
+        if merged.len() > MAX_TAGS {
+            return Err(AppError::InvalidArgs(format!(
+                "tags: at most {MAX_TAGS} tags per tool, got {} after merging",
+                merged.len()
+            )));
+        }
+        state.db.set_tool_tags(tenant.id, name.clone(), merged).await?;
+    }
+
     state
         .db
         .set_tool_share(
@@ -126,9 +243,13 @@ pub async fn tool_share(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
         )
         .await?;
 
+    let after = state.db.get_tool(tenant.id, name.clone()).await?.unwrap_or(row.clone());
     let mut result = json!({
         "name": format!("{}.{}", tenant.namespace, name),
         "visibility": visibility,
+        "tags": after.tags,
+        "tested_version": after.tested_version,
+        "stale_test": after.tested_version != Some(after.current_version),
         "group": group,
         "description": description,
         "expose_spec": expose_spec,
@@ -247,7 +368,7 @@ pub async fn resolve_shared_tool(
         .ok_or_else(not_found)?;
 
     let visible = match row.visibility.as_str() {
-        "public" => true,
+        "public" | "unlisted" => true,
         "group" => match &row.shared_group {
             Some(group) => state.db.is_group_member(owner.id, group.clone(), caller.id).await?,
             None => false,

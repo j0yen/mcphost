@@ -22584,7 +22584,10 @@
         "exposed_at",
         "spec_reads",
         "scopes",
-        "stub"
+        "stub",
+        "tags",
+        "tested_version",
+        "stale_test"
       ],
       "input_schema": {
         "additionalProperties": false,
@@ -22605,7 +22608,10 @@
                 "exposed_at",
                 "spec_reads",
                 "scopes",
-                "stub"
+                "stub",
+                "tags",
+                "tested_version",
+                "stale_test"
               ],
               "type": "string"
             },
@@ -23004,8 +23010,24 @@
             "description": "The kind-specific spec object; see host.quickstart(kind) for a filled-in example. For python's network field: \"none\" (every plan), \"public\" (requires the pro plan), \"egress\" (requires the pro plan) -- a tool's own code reaches this tenant's data with `import mcphost` (mcphost.table, mcphost.state, mcphost.docs, mcphost.lineage) even when network is \"none\".",
             "type": "object"
           },
+          "tags": {
+            "description": "Catalog tags: at most 16, each 1-32 chars of a-z, 0-9 and '-', stored lower-case and deduped.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "visibility": {
+            "description": "Who may find the tool (default private). unlisted: callable by full name and readable by host.catalog.get, never listed. public: listed in the catalog, and refused (untested_tool_cannot_be_public) unless the current version passes its dry run first. Use host.tool_share for group or url.",
+            "enum": [
+              "private",
+              "unlisted",
+              "public"
+            ],
             "type": "string"
           }
         },
@@ -23800,12 +23822,25 @@
             "description": "Local name of the tool to share.",
             "type": "string"
           },
+          "tags": {
+            "description": "Catalog tags merged into the tool's existing ones (same rules as host.tool_publish).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
           },
           "visibility": {
-            "description": "\"public\" or \"group\".",
+            "description": "\"public\" (needs a passing dry run of the current version), \"unlisted\", \"group\" or \"url\".",
+            "enum": [
+              "unlisted",
+              "group",
+              "public",
+              "url"
+            ],
             "type": "string"
           }
         },
@@ -25268,7 +25303,10 @@
         "exposed_at",
         "spec_reads",
         "scopes",
-        "stub"
+        "stub",
+        "tags",
+        "tested_version",
+        "stale_test"
       ],
       "input_schema": {
         "additionalProperties": false,
@@ -25289,7 +25327,10 @@
                 "exposed_at",
                 "spec_reads",
                 "scopes",
-                "stub"
+                "stub",
+                "tags",
+                "tested_version",
+                "stale_test"
               ],
               "type": "string"
             },
@@ -25466,8 +25507,24 @@
             "description": "The kind-specific spec object; see host.quickstart(kind) for a filled-in example. For python's network field: \"none\" (every plan), \"public\" (requires the pro plan), \"egress\" (requires the pro plan) -- a tool's own code reaches this tenant's data with `import mcphost` (mcphost.table, mcphost.state, mcphost.docs, mcphost.lineage) even when network is \"none\".",
             "type": "object"
           },
+          "tags": {
+            "description": "Catalog tags: at most 16, each 1-32 chars of a-z, 0-9 and '-', stored lower-case and deduped.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "visibility": {
+            "description": "Who may find the tool (default private). unlisted: callable by full name and readable by host.catalog.get, never listed. public: listed in the catalog, and refused (untested_tool_cannot_be_public) unless the current version passes its dry run first. Use host.tool_share for group or url.",
+            "enum": [
+              "private",
+              "unlisted",
+              "public"
+            ],
             "type": "string"
           }
         },
@@ -25606,12 +25663,25 @@
             "description": "Local name of the tool to share.",
             "type": "string"
           },
+          "tags": {
+            "description": "Catalog tags merged into the tool's existing ones (same rules as host.tool_publish).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
           },
           "visibility": {
-            "description": "\"public\" or \"group\".",
+            "description": "\"public\" (needs a passing dry run of the current version), \"unlisted\", \"group\" or \"url\".",
+            "enum": [
+              "unlisted",
+              "group",
+              "public",
+              "url"
+            ],
             "type": "string"
           }
         },
@@ -34371,7 +34441,10 @@
                 "exposed_at",
                 "spec_reads",
                 "scopes",
-                "stub"
+                "stub",
+                "tags",
+                "tested_version",
+                "stale_test"
               ],
               "type": "string"
             },
@@ -34539,8 +34612,24 @@
             "description": "The kind-specific spec object; see host.quickstart(kind) for a filled-in example. For python's network field: \"none\" (every plan), \"public\" (requires the pro plan), \"egress\" (requires the pro plan) -- a tool's own code reaches this tenant's data with `import mcphost` (mcphost.table, mcphost.state, mcphost.docs, mcphost.lineage) even when network is \"none\".",
             "type": "object"
           },
+          "tags": {
+            "description": "Catalog tags: at most 16, each 1-32 chars of a-z, 0-9 and '-', stored lower-case and deduped.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "visibility": {
+            "description": "Who may find the tool (default private). unlisted: callable by full name and readable by host.catalog.get, never listed. public: listed in the catalog, and refused (untested_tool_cannot_be_public) unless the current version passes its dry run first. Use host.tool_share for group or url.",
+            "enum": [
+              "private",
+              "unlisted",
+              "public"
+            ],
             "type": "string"
           }
         },
@@ -34663,12 +34752,25 @@
             "description": "Local name of the tool to share.",
             "type": "string"
           },
+          "tags": {
+            "description": "Catalog tags merged into the tool's existing ones (same rules as host.tool_publish).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
           },
           "visibility": {
-            "description": "\"public\" or \"group\".",
+            "description": "\"public\" (needs a passing dry run of the current version), \"unlisted\", \"group\" or \"url\".",
+            "enum": [
+              "unlisted",
+              "group",
+              "public",
+              "url"
+            ],
             "type": "string"
           }
         },

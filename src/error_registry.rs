@@ -490,6 +490,7 @@ pub const ERROR_CODES: &[ErrorEntry] = &[
     row("unknown_import", Family::Spec, ErrorClass::AgentFault, false, "Use a module from the hint in data.hint; the import is not available in the sandbox."),
     row("unknown_kind", Family::Spec, ErrorClass::AgentFault, false, "Choose a kind from data.registered; data.did_you_mean suggests a near match."),
     row("unknown_spec_field", Family::Spec, ErrorClass::AgentFault, false, "Remove the spec field or use one the kind documents."),
+    row("untested_tool_cannot_be_public", Family::Publish, ErrorClass::AgentFault, false, "Read data.verdict and data.detail, fix the tool, pass host.tool_test (data.next) for its current version, then set visibility public again."),
     row("unverifiable", Family::Call, ErrorClass::AgentFault, false, "Call data.call_instead for real; no dry run exists for this verb."),
     row("upstream_auth", Family::Upstream, ErrorClass::UpstreamFault, false, "Reconnect the upstream or fix the secret the tool sends; the upstream rejected the credential."),
     row("upstream_client_error", Family::Upstream, ErrorClass::UpstreamFault, false, "Fix the request the tool sends; the upstream rejected it as a client error."),

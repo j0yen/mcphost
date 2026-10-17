@@ -22,3 +22,5 @@ mod mcphost_sandbox_egress_allowlist_ac04_egress_proxy_command_and_env;
 mod mcphost_sandbox_egress_allowlist_ac06_downgrade_then_upgrade_republish_hint;
 #[path = "mcphost_sandbox_egress_allowlist_ac07_healthz_network_denied_counters.rs"]
 mod mcphost_sandbox_egress_allowlist_ac07_healthz_network_denied_counters;
+#[path = "pubvis_ac01_starters_publish_public_tested.rs"]
+mod pubvis_ac01_starters_publish_public_tested;

@@ -23,6 +23,12 @@ async fn cross_tenant_call_never_leaks_owners_secret_to_caller() {
         })))
         .mount(&upstream)
         .await;
+    // PRD-mcphost-publish-visibility-and-tags: sharing `public` first runs a
+    // dry run with a generated example id, which must not 404.
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"id": "example"})))
+        .mount(&upstream)
+        .await;
 
     let server = TestServer::start_with_kinds(http_kind_registry()).await;
     let (ns_a, key_a) = signup(&server.base_url, "Tenant A").await;

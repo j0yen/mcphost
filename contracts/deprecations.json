@@ -2324,5 +2324,26 @@
     "sunset": "2026-12-15",
     "replacement": "hotfix output-schema-nullable-and-optional-cursor: the output schema now declares what the server always returned (null for an absent optional, no cursor on the last page); nothing the server sends changes",
     "narrowing_only": true
+  },
+  {
+    "path": "host.tool.share.visibility",
+    "since": "2026-10-16",
+    "sunset": "2026-12-15",
+    "replacement": "PRD-mcphost-publish-visibility-and-tags: visibility now carries an enum rendered from Visibility::SHAREABLE (unlisted, group, public, url); the server always enforced this set, the schema just did not say so",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool_share.visibility",
+    "since": "2026-10-16",
+    "sunset": "2026-12-15",
+    "replacement": "PRD-mcphost-publish-visibility-and-tags: visibility now carries an enum rendered from Visibility::SHAREABLE (unlisted, group, public, url); the server always enforced this set, the schema just did not say so",
+    "narrowing_only": true
+  },
+  {
+    "path": "host_tool_share.visibility",
+    "since": "2026-10-16",
+    "sunset": "2026-12-15",
+    "replacement": "PRD-mcphost-publish-visibility-and-tags: visibility now carries an enum rendered from Visibility::SHAREABLE (unlisted, group, public, url); the server always enforced this set, the schema just did not say so",
+    "narrowing_only": true
   }
 ]

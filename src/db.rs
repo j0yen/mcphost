@@ -362,6 +362,7 @@ const MIGRATION_0118: &str = include_str!("../migrations/0118_perf_samples.sql")
 
 /// PRD-mcphost-example-proof-nightly-and-hide R2: the `example_proofs` table.
 const MIGRATION_0115: &str = include_str!("../migrations/0115_example_proofs.sql");
+const MIGRATION_PUBVIS: &str = include_str!("../migrations/0119_publish_visibility_tags.sql");
 
 /// PRD-mcphost-org-model R1/R4: `orgs`, `org_members`, `invites.kind = 'org'`.
 const MIGRATION_0116: &str = include_str!("../migrations/0116_orgs.sql");
@@ -491,7 +492,7 @@ pub struct ObservedOutputs {
 
 const TOOL_COLUMNS: &str = "id, tenant_id, name, kind, spec, created_at, visibility, \
     share_description, shared_unix, shared_group, unshared_by, current_version, scopes, \
-    expose_spec, spec_exposed_unix, spec_reads";
+    expose_spec, spec_exposed_unix, spec_reads, tags, tested_version";
 
 fn tool_from_row(r: &Row) -> rusqlite::Result<ToolRow> {
     let spec_text: String = r.get(4)?;
@@ -513,6 +514,8 @@ fn tool_from_row(r: &Row) -> rusqlite::Result<ToolRow> {
         expose_spec: r.get::<_, i64>(13)? != 0,
         spec_exposed_unix: r.get(14)?,
         spec_reads: r.get(15)?,
+        tags: parse_tags(&r.get::<_, String>(16)?),
+        tested_version: r.get(17)?,
     })
 }
 
@@ -1109,6 +1112,16 @@ pub struct ToolRow {
     /// `host.tool_share` call (requirement 9/AC9) -- reset to 0 by the same
     /// share/unshare calls that reset `spec_exposed_unix`.
     pub spec_reads: i64,
+    /// PRD-mcphost-publish-visibility-and-tags R2 (migration 0082): lower-case,
+    /// deduped catalog tags.
+    pub tags: Vec<String>,
+    /// The `current_version` whose dry run last passed; `None` = never.
+    pub tested_version: Option<i64>,
+}
+
+/// `tools.tags` is a JSON array text column.
+fn parse_tags(text: &str) -> Vec<String> {
+    serde_json::from_str(text).unwrap_or_default()
 }
 
 /// A single immutable published version of a tool (PRD-mcphost-tool-versions
@@ -3143,6 +3156,7 @@ impl Db {
         Self::migrate_0117_tenant_clients(&conn)?;
         // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0118)?;
+        Self::migrate_0119_publish_visibility_tags(&conn)?;
         Ok(())
     }
 
@@ -3154,6 +3168,18 @@ impl Db {
             .exists([])?;
         if !has_table {
             conn.execute_batch(MIGRATION_0117)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-publish-visibility-and-tags R2: gated on `tools.tags`
+    /// (the batch is `ALTER`s, so a rerun must skip it).
+    fn migrate_0119_publish_visibility_tags(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tools') WHERE name = 'tags'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_PUBVIS)?;
         }
         Ok(())
     }
@@ -8587,6 +8613,42 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-publish-visibility-and-tags R2: replaces `tags` (callers
+    /// merge first); `name` must be this tenant's.
+    pub async fn set_tool_tags(&self, tenant_id: i64, name: String, tags: Vec<String>) -> Result<(), AppError> {
+        let text = serde_json::to_string(&tags).map_err(|e| AppError::Internal(format!("tags serialize: {e}")))?;
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tools SET tags = ?1 WHERE tenant_id = ?2 AND name = ?3",
+                params![text, tenant_id, name],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// R4/R5: stamps `tested_version` for `version`, but only while it is
+    /// still the tool's `current_version` (a republish that raced the dry
+    /// run must not be marked tested) and never backwards -- idempotent, so
+    /// concurrent stampers agree. Returns whether the stored value is now
+    /// `version`.
+    pub async fn stamp_tested_version(&self, tenant_id: i64, name: String, version: i64) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tools SET tested_version = ?1 WHERE tenant_id = ?2 AND name = ?3 \
+                 AND current_version = ?1 AND (tested_version IS NULL OR tested_version < ?1)",
+                params![version, tenant_id, name],
+            )?;
+            let now: Option<i64> = conn.query_row(
+                "SELECT tested_version FROM tools WHERE tenant_id = ?1 AND name = ?2",
+                params![tenant_id, name],
+                |r| r.get(0),
+            )?;
+            Ok(now == Some(version))
+        })
+        .await
+    }
+
     /// `host.tool_unshare`: back to `'private'`, clearing the group/
     /// description/shared_unix and (requirement 5) `expose_spec`/
     /// `spec_exposed_unix`/`spec_reads`. `unshared_by` is left untouched
@@ -8775,7 +8837,9 @@ impl Db {
             );
             let mut stmt = conn.prepare(&sql)?;
             stmt.query_row(params![owner_namespace, local_name], |r| {
-                let owner_id: i64 = r.get(16)?;
+                // tenants.id follows the TOOL_COLUMNS block; derive its index so adding a
+                // column cannot silently shift it onto a TEXT column (storage error).
+                let owner_id: i64 = r.get(TOOL_COLUMNS.split(", ").count())?;
                 Ok((owner_id, tool_from_row(r)?))
             })
             .optional()
@@ -8840,6 +8904,8 @@ impl Db {
                             expose_spec: r.get::<_, i64>(14)? != 0,
                             spec_exposed_unix: r.get(15)?,
                             spec_reads: r.get(16)?,
+                            tags: parse_tags(&r.get::<_, String>(17)?),
+                            tested_version: r.get(18)?,
                         },
                     ))
                 })?
@@ -8863,7 +8929,9 @@ impl Db {
         else {
             return Ok(None);
         };
-        Ok((tool.visibility == "public").then_some(tool))
+        // PRD-mcphost-publish-visibility-and-tags R3: `unlisted` is readable
+        // by full name, just absent from every listing.
+        Ok(matches!(tool.visibility.as_str(), "public" | "unlisted").then_some(tool))
     }
 
     // ---- groups (PRD-mcphost-sharing) -------------------------------------
@@ -9088,6 +9156,8 @@ impl Db {
                         expose_spec: r.get::<_, i64>(14)? != 0,
                         spec_exposed_unix: r.get(15)?,
                         spec_reads: r.get(16)?,
+                        tags: parse_tags(&r.get::<_, String>(17)?),
+                        tested_version: r.get(18)?,
                     };
                     Ok((namespace, tool))
                 })?
