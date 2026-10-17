@@ -7178,7 +7178,14 @@ impl McpHostHandler {
                         obj.insert(k.clone(), v.clone());
                     }
                 }
-                if let (Some(key), Some(obj)) = (crate::subkeys::whoami_key(&self.state).await?, me.as_object_mut()) {
+                if let (Some(mut key), Some(obj)) =
+                    (crate::subkeys::whoami_key(&self.state, session_id).await?, me.as_object_mut())
+                {
+                    // PRD-mcphost-delegation-recipes-and-quickstart R6: the
+                    // helper hint rides top-level, not inside `key`.
+                    if let Some(hint) = key.as_object_mut().and_then(|k| k.remove("hint")) {
+                        obj.insert("hint".to_string(), hint);
+                    }
                     obj.insert("key".to_string(), key);
                 }
                 Ok(me)
