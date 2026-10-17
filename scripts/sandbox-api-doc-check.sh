@@ -302,6 +302,24 @@ PY
   rm -f "$tmp"
 }
 
+# PRD-mcphost-prompts-from-published-tools requirement 5: docs/protocol/prompts.md
+# is `mcphost prompts-section` (prompts::render_prompts_doc) and nothing else.
+PROMPTS_DOC="docs/protocol/prompts.md"
+
+write_prompts_doc() {
+  local doc tmp
+  doc="$(mcphost_bin prompts-section)" || return $?
+  case "$doc" in
+    "# MCP prompts"*"<!-- prompts:end -->") ;;
+    *)
+      echo "sandbox-api-doc-check.sh: prompts-section did not render a usable $PROMPTS_DOC; writing nothing" >&2
+      return 2
+      ;;
+  esac
+  tmp="$(mktemp "$PROMPTS_DOC.XXXXXX")" || return $?
+  printf '%s\n' "$doc" > "$tmp" && chmod 644 "$tmp" && mv "$tmp" "$PROMPTS_DOC"
+}
+
 RENDERED="$(render_block)" || exit $?
 MODULE_COUNT=$(printf '%s\n' "$RENDERED" | grep -c '^- `mcphost\.')
 
@@ -311,6 +329,7 @@ if [ "$MODE" = "write" ]; then
   done
   write_capabilities || exit $?
   write_recipe_readme || exit $?
+  write_prompts_doc || exit $?
   echo "sandbox-api-doc-check.sh: wrote modules=${MODULE_COUNT} to ${#TARGETS[@]} files"
   # PRD-mcphost-dry-run-on-write-verbs R5: docs/host-tools.md, generated
   # from src/write_verbs.rs, rides along in both modes.
@@ -384,6 +403,18 @@ RECIPE_EXPECTED="$(mcphost_bin recipe-section)" || {
 RECIPE_ACTUAL="$(recipe_block_of "$README_FILE")"
 if [ "$RECIPE_ACTUAL" != "$RECIPE_EXPECTED" ]; then
   echo "sandbox-api-doc-check.sh: $README_FILE recipe:sub_agent_key block differs from the rendered recipe (run sandbox-api-doc-check.sh --write)" >&2
+  FAILURES=$((FAILURES + 1))
+fi
+
+PROMPTS_EXPECTED="$(mcphost_bin prompts-section)" || {
+  echo "sandbox-api-doc-check.sh: could not render the prompts table (mcphost prompts-section failed)" >&2
+  exit 2
+}
+if [ ! -f "$PROMPTS_DOC" ]; then
+  echo "sandbox-api-doc-check.sh: $PROMPTS_DOC does not exist (run sandbox-api-doc-check.sh --write)" >&2
+  FAILURES=$((FAILURES + 1))
+elif [ "$(cat "$PROMPTS_DOC")" != "$PROMPTS_EXPECTED" ]; then
+  echo "sandbox-api-doc-check.sh: $PROMPTS_DOC differs from recipe_prompts() rendered (run sandbox-api-doc-check.sh --write)" >&2
   FAILURES=$((FAILURES + 1))
 fi
 
