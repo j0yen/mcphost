@@ -122,3 +122,305 @@ pub fn matches_ignoring_version(committed: &str, rendered: &str) -> bool {
         _ => committed == rendered,
     }
 }
+
+/// The registry lookup the dry-run and `--live` both query, and the one URL
+/// `README.md` and `docs/launch/wave1-checklist.md` link (checked by
+/// `regone_ac06`). It is `docs/clients.toml`'s `[registry] search_url`, not a
+/// second spelling of it: the code reads it through
+/// [`crate::clients::builtin`] (see [`registry_search_url_from_env`]), this
+/// const exists only because `regone_ac06` needs a literal to search the docs
+/// for, and `registry_search_url_const_is_clients_toml_value` pins the two
+/// together so they cannot drift. Overridable per run with
+/// `$MCPHOST_REGISTRY_SEARCH_URL` (tests point it at a stub).
+pub const REGISTRY_SEARCH_URL: &str =
+    "https://registry.modelcontextprotocol.io/v0.1/servers/dev.mcphost%2Fmcphost/versions/latest";
+
+/// Per-side network timeout for `--live`; the two probes run concurrently,
+/// so the whole check stays inside ~10 s.
+pub const LIVE_TIMEOUT_SECS: u64 = 10;
+
+/// `$MCPHOST_REGISTRY_SEARCH_URL`, defaulting to `docs/clients.toml`'s
+/// `[registry] search_url` (the value [`REGISTRY_SEARCH_URL`] mirrors).
+pub fn registry_search_url_from_env() -> String {
+    std::env::var("MCPHOST_REGISTRY_SEARCH_URL")
+        .unwrap_or_else(|_| crate::clients::builtin().registry.search_url.clone())
+}
+
+/// Outcome of `registry-manifest --live`.
+#[derive(Debug, Clone)]
+pub struct LiveReport {
+    pub registry_version: Option<String>,
+    pub live_version: Option<String>,
+    pub remotes: Option<String>,
+    /// `Some(true|false)` when both sides answered, `None` = unknown.
+    pub drift: Option<bool>,
+    /// Why `drift` is unknown.
+    pub reason: Option<String>,
+}
+
+impl LiveReport {
+    /// Process exit code: 0 no drift, 3 drift, 2 unknown.
+    pub fn exit_code(&self) -> i32 {
+        match self.drift {
+            Some(false) => 0,
+            Some(true) => 3,
+            None => 2,
+        }
+    }
+
+    fn drift_word(&self) -> &'static str {
+        match self.drift {
+            Some(true) => "yes",
+            Some(false) => "no",
+            None => "unknown",
+        }
+    }
+
+    /// `registry=<v> live=<v> remotes=<url> drift=<yes|no|unknown>`
+    /// (+ ` reason=...` when unknown).
+    pub fn line(&self) -> String {
+        let or_q = |o: &Option<String>| o.clone().unwrap_or_else(|| "?".to_string());
+        let mut s = format!(
+            "registry={} live={} remotes={} drift={}",
+            or_q(&self.registry_version),
+            or_q(&self.live_version),
+            or_q(&self.remotes),
+            self.drift_word()
+        );
+        if let Some(r) = &self.reason {
+            s.push_str(&format!(" reason={r}"));
+        }
+        s
+    }
+
+    /// `{registry_version, live_version, remotes, drift, checked_at}`.
+    pub fn to_json(&self, checked_at: &str) -> Value {
+        json!({
+            "registry_version": self.registry_version,
+            "live_version": self.live_version,
+            "remotes": self.remotes,
+            "drift": self.drift_word(),
+            "reason": self.reason,
+            "checked_at": checked_at,
+        })
+    }
+}
+
+fn version_key(v: &str) -> Vec<u64> {
+    v.split(['.', '-', '+'])
+        .map(|p| p.parse::<u64>().unwrap_or(0))
+        .collect()
+}
+
+/// Picks the entry named `name` from a registry response, preferring the
+/// highest version. Two shapes are accepted: the list the old `/v0/servers`
+/// search returned (`{"servers": [{"server": ..}, ..]}`, every published
+/// version) and the single entry the `/v0.1/servers/<name>/versions/latest`
+/// lookup returns (`{"server": {..}, "_meta": {..}}`). Returns
+/// `(version, first remote url)`.
+pub fn select_registry_entry(body: &Value, name: &str) -> Option<(String, Option<String>)> {
+    let single;
+    let servers: &[Value] = match body.get("servers").and_then(Value::as_array) {
+        Some(list) => list,
+        None if body.get("server").is_some() => {
+            single = [body.clone()];
+            &single
+        }
+        None => return None,
+    };
+    servers
+        .iter()
+        .filter_map(|s| {
+            let server = s.get("server").unwrap_or(s);
+            if server.get("name")?.as_str()? != name {
+                return None;
+            }
+            let version = server.get("version")?.as_str()?.to_string();
+            let remote = server
+                .get("remotes")
+                .and_then(|r| r.get(0))
+                .and_then(|r| r.get("url"))
+                .and_then(|u| u.as_str())
+                .map(str::to_string);
+            Some((version, remote))
+        })
+        .max_by_key(|(v, _)| version_key(v))
+}
+
+/// Pulls `result.serverInfo.version` out of an `initialize` reply that is
+/// either plain JSON or an SSE stream (`data: {...}` lines).
+pub fn parse_initialize_version(body: &str) -> Option<String> {
+    let from_json = |s: &str| -> Option<String> {
+        let v: Value = serde_json::from_str(s.trim()).ok()?;
+        v.pointer("/result/serverInfo/version")?.as_str().map(str::to_string)
+    };
+    from_json(body).or_else(|| {
+        body.lines()
+            .filter_map(|l| l.strip_prefix("data:"))
+            .find_map(from_json)
+    })
+}
+
+async fn fetch_registry(
+    client: &reqwest::Client,
+    search_url: &str,
+) -> Result<(String, Option<String>), String> {
+    let resp = client
+        .get(search_url)
+        .send()
+        .await
+        .map_err(|e| format!("registry unreachable: {}", short_err(&e)))?;
+    if !resp.status().is_success() {
+        return Err(format!("registry answered HTTP {}", resp.status().as_u16()));
+    }
+    let body: Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("registry body not JSON: {}", short_err(&e)))?;
+    select_registry_entry(&body, &full_name())
+        .ok_or_else(|| format!("registry has no entry named {}", full_name()))
+}
+
+async fn fetch_live(client: &reqwest::Client, endpoint: &str) -> Result<String, String> {
+    let init = json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "mcphost-registry-probe", "version": "0"},
+        },
+    });
+    let resp = client
+        .post(endpoint)
+        .header("Accept", "application/json, text/event-stream")
+        .header("X-Mcphost-Origin", "probe")
+        .json(&init)
+        .send()
+        .await
+        .map_err(|e| format!("endpoint unreachable: {}", short_err(&e)))?;
+    if !resp.status().is_success() {
+        return Err(format!("endpoint answered HTTP {}", resp.status().as_u16()));
+    }
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("endpoint body unreadable: {}", short_err(&e)))?;
+    parse_initialize_version(&text)
+        .ok_or_else(|| "endpoint initialize carried no serverInfo.version".to_string())
+}
+
+fn short_err(e: &reqwest::Error) -> String {
+    if e.is_timeout() {
+        format!("timed out after {LIVE_TIMEOUT_SECS}s")
+    } else if e.is_connect() {
+        "connection failed".to_string()
+    } else {
+        "request failed".to_string()
+    }
+}
+
+/// `registry-manifest --live`: compares the public registry's published
+/// version to the version the live endpoint's `initialize` reports. Both
+/// probes run concurrently with a [`LIVE_TIMEOUT_SECS`] timeout each.
+pub async fn live_check(public_url: &str, search_url: &str) -> LiveReport {
+    let endpoint = format!("{}/mcp", public_url.trim_end_matches('/'));
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(LIVE_TIMEOUT_SECS))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => {
+            return LiveReport {
+                registry_version: None,
+                live_version: None,
+                remotes: None,
+                drift: None,
+                reason: Some("http client build failed".to_string()),
+            };
+        }
+    };
+    let (reg, live) = tokio::join!(
+        fetch_registry(&client, search_url),
+        fetch_live(&client, &endpoint)
+    );
+    let mut reasons = Vec::new();
+    let (registry_version, remotes) = match reg {
+        Ok((v, r)) => (Some(v), r),
+        Err(e) => {
+            reasons.push(e);
+            (None, None)
+        }
+    };
+    let live_version = match live {
+        Ok(v) => Some(v),
+        Err(e) => {
+            reasons.push(e);
+            None
+        }
+    };
+    let drift = match (&registry_version, &live_version) {
+        (Some(a), Some(b)) => Some(a != b),
+        _ => None,
+    };
+    LiveReport {
+        registry_version,
+        live_version,
+        remotes: remotes.or(Some(endpoint)),
+        drift,
+        reason: if reasons.is_empty() { None } else { Some(reasons.join("; ").replace(' ', "_")) },
+    }
+}
+
+/// Validates a registry entry against the pinned schema plus this host's
+/// own "a listing must name a remote" rule (`required: ["remotes"]`, layered
+/// via `allOf` because the upstream schema leaves `remotes` optional). The
+/// one validator `--validate` and the `reglist_ac03` suite both stand for.
+pub fn validate_entry(entry: &Value, schema: &Value) -> Result<(), String> {
+    let composed = json!({
+        "definitions": schema["definitions"],
+        "allOf": [
+            {"$ref": "#/definitions/ServerDetail"},
+            {"required": ["remotes"]},
+        ],
+    });
+    let validator = jsonschema::validator_for(&composed).map_err(|e| format!("schema: {e}"))?;
+    match validator.iter_errors(entry).next() {
+        Some(err) => Err(format!("{err} at {}", err.instance_path)),
+        None => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The const and `docs/clients.toml`'s `[registry] search_url` are one
+    /// value: the const is only the literal `regone_ac06` greps the docs
+    /// for, so it must never drift from the toml the code actually reads.
+    #[test]
+    fn registry_search_url_const_is_clients_toml_value() {
+        assert_eq!(REGISTRY_SEARCH_URL, crate::clients::builtin().registry.search_url);
+    }
+
+    #[test]
+    fn select_registry_entry_accepts_single_entry_and_list() {
+        let single = json!({
+            "server": {"name": "dev.mcphost/mcphost", "version": "0.108.169",
+                       "remotes": [{"type": "streamable-http", "url": "https://mcphost.dev/mcp"}]},
+            "_meta": {}
+        });
+        assert_eq!(
+            select_registry_entry(&single, "dev.mcphost/mcphost"),
+            Some(("0.108.169".to_string(), Some("https://mcphost.dev/mcp".to_string())))
+        );
+        assert_eq!(select_registry_entry(&single, "other/thing"), None);
+        let list = json!({"servers": [
+            {"server": {"name": "dev.mcphost/mcphost", "version": "0.97.0"}},
+            {"server": {"name": "dev.mcphost/mcphost", "version": "0.98.0"}},
+        ]});
+        assert_eq!(
+            select_registry_entry(&list, "dev.mcphost/mcphost"),
+            Some(("0.98.0".to_string(), None))
+        );
+    }
+}

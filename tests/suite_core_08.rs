@@ -870,6 +870,20 @@ mod reglist_ac03_schema_validates_committed_entry_and_rejects_missing_remotes;
 mod reglist_ac04_workflow_checks_manifest_and_schema_on_every_push;
 #[path = "reglist_ac06_readme_registry_and_quickstart_links_resolve.rs"]
 mod reglist_ac06_readme_registry_and_quickstart_links_resolve;
+#[path = "regone_ac01_live_compares_registry_to_endpoint.rs"]
+mod regone_ac01_live_compares_registry_to_endpoint;
+#[path = "regone_ac02_live_registry_timeout_is_unknown.rs"]
+mod regone_ac02_live_registry_timeout_is_unknown;
+#[path = "regone_ac03_one_server_json.rs"]
+mod regone_ac03_one_server_json;
+#[path = "regone_ac04_dry_run_prints_lines_and_no_secret.rs"]
+mod regone_ac04_dry_run_prints_lines_and_no_secret;
+#[path = "regone_ac05_no_publish_without_ok_makes_no_write.rs"]
+mod regone_ac05_no_publish_without_ok_makes_no_write;
+#[path = "regone_ac06_one_search_url_in_docs.rs"]
+mod regone_ac06_one_search_url_in_docs;
+#[path = "regone_ac07_live_json.rs"]
+mod regone_ac07_live_json;
 #[path = "rgpt_ac01_recipes_generator_idempotent.rs"]
 mod rgpt_ac01_recipes_generator_idempotent;
 #[path = "rgpt_ac02_drift_names_file_recipe_and_line.rs"]
