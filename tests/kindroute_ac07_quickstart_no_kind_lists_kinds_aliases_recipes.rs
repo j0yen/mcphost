@@ -33,7 +33,13 @@ async fn quickstart_with_no_kind_lists_kinds_aliases_and_recipes() {
     assert!(aliases.iter().any(|a| a == "webhook"), "aliases: {aliases:?}");
     assert!(aliases.iter().any(|a| a == "cron"), "aliases: {aliases:?}");
 
-    let recipes = structured["recipes"].as_array().expect("recipes array");
+    // PRD-mcphost-delegation-recipes-and-quickstart R2: on a plan that allows
+    // delegation `recipes` is `{names, sub_agent_key}` (the names are the
+    // same `recipe_names()` list); other plans keep the plain array.
+    let recipes = structured["recipes"]
+        .as_array()
+        .or_else(|| structured["recipes"]["names"].as_array())
+        .expect("recipes array");
     assert!(
         recipes.iter().any(|r| r == "webhook-inbox"),
         "recipes: {recipes:?}"

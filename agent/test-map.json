@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-publish-visibility-and-tags",
+  "ac_test_map_prd": "PRD-mcphost-delegation-recipes-and-quickstart.md (test_prefix: dlrec)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,21 +28,48 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/pubvis_ac01_starters_publish_public_tested.rs",
-    "AC2": "tests/pubvis_ac02_visibility_enum_single_source.rs",
-    "AC3": "tests/pubvis_ac03_untested_tool_cannot_be_public.rs",
-    "AC4": "tests/pubvis_ac04_unlisted_not_listed_but_callable.rs",
-    "AC5": "tests/pubvis_ac05_tags_validated_normalised_capped.rs",
-    "AC6": "tests/pubvis_ac06_new_version_marks_stale_until_retested.rs",
-    "AC7": "tests/pubvis_ac07_concurrent_public_share_stamps_once.rs"
+    "AC1": "tests/dlrec_ac01_recipe_executes_verbatim.rs",
+    "AC2": "tests/dlrec_ac02_quickstart_returns_recipe_and_orders_next_steps.rs",
+    "AC3": "tests/dlrec_ac03_llms_txt_recipe_section_generated.rs",
+    "AC4": "tests/dlrec_ac04_new_scope_changes_both_sections.rs",
+    "AC5": "tests/dlrec_ac05_readme_recipe_block_checked.rs",
+    "AC6": "tests/dlrec_ac06_whoami_hint_for_foreign_session.rs",
+    "AC7": "tests/dlrec_ac07_error_codes_only_in_generated_blocks.rs"
   },
   "ac_test_map_by_prefix": {
+    "oapi": {
+      "_prd": "PRD-mcphost-openapi-for-rest-facade.md (test_prefix: oapi)",
+      "AC1": "tests/oapi_ac01_pinned_response_schemas.rs",
+      "AC2": "tests/oapi_ac02_route_table_drift.rs",
+      "AC3": "tests/oapi_ac03_openapi_json_validates.rs",
+      "AC4": "tests/oapi_ac04_x_responses_match_documented_schemas.rs"
+    },
     "nfs": {
       "_prd": "PRD-mcphost-notes-to-future-self.md (test_prefix: nfs)",
       "AC1": "tests/nfs_ac01_put_emits_list_changed_and_suffix.rs",
       "AC2": "tests/nfs_ac02_suffix_cut_to_120_chars.rs",
       "AC3": "tests/nfs_ac03_quota_and_unknown_tool.rs",
       "AC4": "tests/nfs_ac04_ttl_expiry.rs"
+    },
+    "dlrec": {
+      "_prd": "PRD-mcphost-delegation-recipes-and-quickstart.md (test_prefix: dlrec)",
+      "AC1": "tests/dlrec_ac01_recipe_executes_verbatim.rs",
+      "AC2": "tests/dlrec_ac02_quickstart_returns_recipe_and_orders_next_steps.rs",
+      "AC3": "tests/dlrec_ac03_llms_txt_recipe_section_generated.rs",
+      "AC4": "tests/dlrec_ac04_new_scope_changes_both_sections.rs",
+      "AC5": "tests/dlrec_ac05_readme_recipe_block_checked.rs",
+      "AC6": "tests/dlrec_ac06_whoami_hint_for_foreign_session.rs",
+      "AC7": "tests/dlrec_ac07_error_codes_only_in_generated_blocks.rs"
+    },
+    "kbind": {
+      "_prd": "PRD-mcphost-delegation-bound-to-run-or-session.md",
+      "AC1": "tests/kbind_ac01_session_ids_distinct_and_bound_key_refused_elsewhere.rs",
+      "AC2": "tests/kbind_ac02_run_bound_key_needs_its_run_id.rs",
+      "AC3": "tests/kbind_ac03_run_done_revokes_bound_key.rs",
+      "AC4": "tests/kbind_ac04_bind_target_must_be_yours.rs",
+      "AC5": "tests/kbind_ac05_session_idle_and_close_revoke.rs",
+      "AC6": "tests/kbind_ac06_list_and_whoami_show_bound.rs",
+      "AC7": "tests/kbind_ac07_run_deadline_caps_child_expiry.rs"
     },
     "ccli": {
       "_prd": "PRD-mcphost-call-cli-from-contract.md (test_prefix: ccli)",
