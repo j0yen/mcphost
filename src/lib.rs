@@ -85,6 +85,7 @@ pub mod lineage;
 pub mod clients;
 pub mod launch_check;
 pub mod llms_txt;
+pub mod skill_gen;
 pub mod messaging;
 pub mod notify;
 pub mod paged;

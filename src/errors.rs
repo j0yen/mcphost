@@ -1907,3 +1907,67 @@ mod internal_error_tests {
         );
     }
 }
+
+/// Every code the host can answer with, sorted and de-duplicated: the codes
+/// of [`all_variants_for_test`]'s one-instance-per-variant enumeration (which
+/// fails to compile when a variant is added without being listed).
+pub fn error_codes() -> Vec<&'static str> {
+    let mut codes: Vec<&'static str> = all_variants_for_test().iter().map(AppError::code).collect();
+    codes.sort_unstable();
+    codes.dedup();
+    codes
+}
+
+/// PRD-mcphost-plugin-skill-generated-from-tools-list requirement 4: what an
+/// agent does next after `code`, rendered into the skill's `## Errors` table
+/// by `mcphost skill-gen`. A verb named in backticks must exist in
+/// `host_tools` (`skgn_ac04`); a code with no remedy here returns `""`, which
+/// the same test refuses, naming the code.
+pub fn remedy(code: &str) -> &'static str {
+    match code {
+        "bearer_invalid" => "Drop the Authorization header or present a valid bearer; reconnect through `onboarding.url` from `host.whoami`.",
+        "tenant_key_missing" => "Reconnect through `onboarding.url`; never a second signup.",
+        "tenant_key_invalid" => "Use the key or URL you were issued, or reconnect through `onboarding.url`; `host.key.rotate` issues a new key.",
+        "forbidden" => "This credential may not do that; call `host.whoami` to see which tenant and role you are.",
+        "tenant_disabled" => "The tenant is suspended; read `disabled_reason` and file `host.feedback.send`.",
+        "rate_limited" => "Back off and retry later; `host.usage` shows how much of the quota is spent.",
+        "tool_not_found" => "Check the name with `host.tool.list`; publish it with `host.tool.publish` if it does not exist yet.",
+        "tenant_not_found" => "The namespace does not exist; read it again from `host.whoami`.",
+        "invalid_params" => "Fix the request shape named in the message and resend.",
+        "unknown_kind" => "Use a kind from `registered` in the error; `host.quickstart` lists them with their specs.",
+        "invalid_tool_name" => "Use a name matching `limits.name_pattern` from `host.quickstart`.",
+        "spec_too_large" => "Shrink the spec below `limits.max_spec_bytes` from `host.quickstart`.",
+        "too_many_tools" => "Remove one with `host.tool.remove` or raise the plan from `billing.plans`.",
+        "invalid_spec" => "Dry-run the spec with `host.tool.test` and fix the field the message names.",
+        "args_invalid" => "Read the schema in `tools/list` and resend; a `budget` over the plan ceiling is refused, so stay at or below the ceilings in `host.quickstart` `limits.plan`.",
+        "secret_missing" => "Set the secret the tool names with `host.secret.set`, then retry.",
+        "call_timeout" => "Make the tool do less per call; `host.tool.logs` shows where the time went.",
+        "storage" => "A host-side storage fault; retry once, then file `host.feedback.send` with the call_id.",
+        "internal" => "A host-side fault; retry once, then file `host.feedback.send` with the call_id from `host.call_trace`.",
+        "registry_disabled" => "Registry publishing is off on this host; skip `host.registry.publish`.",
+        "namespace_unverified" => "Verify the namespace before `host.registry.publish`.",
+        "registry_rejected" => "Read the registry's reason in the message, fix the listing, and publish again with `host.registry.publish`.",
+        "share_quota_exceeded" => "Unshare one with `host.tool.unshare` or raise the plan from `billing.plans`.",
+        "group_not_found" => "Create it with `host.group.create` or pick one from `host.group.list`.",
+        "handoff_token_invalid" => "Use the exact `handoff_token` from `signup(handoff: true)` with `host.redeem`.",
+        "handoff_token_redeemed" => "The token is single-use and already spent; sign up again for a fresh one.",
+        "handoff_token_expired" => "The token expired; sign up again and call `host.redeem` straight away.",
+        "version_not_found" => "Pick a version inside the `min`..`max` range from `host.tool.history`.",
+        "issuer_already_registered" => "That issuer is already trusted; list them with `host.oauth.issuers`.",
+        "issuer_quota_exceeded" => "Remove one with `host.oauth.issuer_remove` first.",
+        "issuer_not_found" => "List the registered issuers with `host.oauth.issuers`.",
+        "invalid_token" => "Mint a fresh bearer token from the issuer and retry.",
+        "conflicting_credentials" => "Send one credential: either the `tenant_key` argument or the Authorization header.",
+        "wrong_tenant" => "Use the credential that belongs to this path's tenant; `host.whoami` names yours.",
+        "insufficient_scope" => "Request a bearer token whose scope includes `mcp`.",
+        "auth_conflict" => "The path secret and the Authorization header name different tenants; send only one.",
+        "quota_trusted_issuers" => "Remove one with `host.oauth.trusted_issuer_remove` first.",
+        "tool_exception" => "The tool's own code raised; read `host.tool.logs` and fix it, then check with `host.tool.test`.",
+        "upstream_status" => "The upstream returned an error status; inspect it with `host.tool.logs` and fix the request or retry.",
+        "host_not_allowed" => "Call only hosts the tool's `network` setting allows; `network: public` needs a higher plan (see Limits).",
+        "unknown_argument" => "Drop the argument or use one from `known` in the error.",
+        "end_user_required" => "Pass the end user this tool is bound to.",
+        "end_user_explicit_forbidden" => "Omit the explicit end user; the tool fixes it.",
+        _ => "",
+    }
+}
