@@ -111,13 +111,97 @@ fn a_failing_test_status_is_passed_through() {
 #[test]
 fn ci_yml_times_build_and_run_apart_and_calls_the_report() {
     let ci = std::fs::read_to_string(root().join(".github/workflows/ci.yml")).unwrap();
-    let no_run = ci.find("cargo test --no-run $flags").expect("build step in ci.yml");
-    let run = ci.find("cargo test $flags -- --nocapture").expect("run step in ci.yml");
-    let rep = ci.find("./scripts/ci-shard-report.sh").expect("report call in ci.yml");
-    assert!(no_run < run && run < rep, "order: --no-run, run, report");
+    // Each shard job (sandbox, and since PRD-mcphost-ci-core-suites-sharded
+    // core) times the build and the run apart and ends with the report.
+    for (job, no_run, run) in [
+        ("\n  sandbox:\n", "cargo test --no-run $flags", "cargo test $flags -- --nocapture"),
+        ("\n  core:\n", "cargo test --locked --no-run $flags", "cargo test --locked $flags -- --nocapture"),
+    ] {
+        let start = ci.find(job).unwrap_or_else(|| panic!("job {job:?} in ci.yml"));
+        let body = &ci[start + 1..];
+        let end = body.find("\n  gate:\n").or_else(|| body.find("\n  sandbox-required:\n")).unwrap_or(body.len());
+        let body = &body[..end];
+        let no_run_at = body.find(no_run).unwrap_or_else(|| panic!("build step in {job:?}"));
+        let run_at = body.find(run).unwrap_or_else(|| panic!("run step in {job:?}"));
+        let rep = body.find("./scripts/ci-shard-report.sh").unwrap_or_else(|| panic!("report call in {job:?}"));
+        assert!(no_run_at < run_at && run_at < rep, "order in {job:?}: --no-run, run, report");
+    }
     assert!(!ci.contains("-gt 300"), "the budget lives in ci-shard-report.sh");
     assert!(
-        ci.contains("cargo test --locked $(./scripts/ci-test-partition.sh core)"),
-        "the core job's test step must be untouched"
+        !ci.contains("-gt 720") && !ci.contains("-gt 540") && !ci.contains("-gt 420"),
+        "the core budget lives in ci-shard-report.sh too"
     );
+    // The core partition runs as shards now (PRD-mcphost-ci-core-suites-sharded):
+    // the single `$(ci-test-partition.sh core)` step is gone.
+    assert!(
+        !ci.contains("cargo test --locked $(./scripts/ci-test-partition.sh core)"),
+        "the unsharded core test step must be gone"
+    );
+    assert!(
+        ci.contains(r#"flags=$(./scripts/ci-test-partition.sh core-shard "$shard" "$total")"#),
+        "the core shard step derives its flags from core-shard"
+    );
+}
+
+// PRD-mcphost-ci-core-suites-sharded AC6 (readout half): the core shards use the
+// same script with the `core` partition, a 540 s warn line and a 720 s fail line,
+// and always print one `suite=` line per suite.
+const CORE_LOG: &str = "\
+     Running unittests src/main.rs (target/debug/deps/mcphost-aaaa)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/suite_core_07.rs (target/debug/deps/suite_core_07-bbbb)
+test result: ok. 1225 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out; finished in 341.50s
+     Running tests/suite_contracts_core_01.rs (target/debug/deps/suite_contracts_core_01-cccc)
+test result: ok. 85 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 60.10s
+";
+
+fn core_report(tag: &str, run_s: u32) -> (Output, String) {
+    let dir = std::env::temp_dir().join(format!("cishard-core-ac03r-{}-{tag}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let log = dir.join("cargo-test.log");
+    let summary = dir.join("summary.md");
+    std::fs::write(&log, CORE_LOG).unwrap();
+    std::fs::write(&summary, "").unwrap();
+    let o = Command::new(root().join("scripts/ci-shard-report.sh"))
+        .args(["core", "1", "3", "75", &run_s.to_string()])
+        .arg(&log)
+        .arg("0")
+        .env("GITHUB_STEP_SUMMARY", &summary)
+        .current_dir(root())
+        .output()
+        .unwrap();
+    let s = std::fs::read_to_string(&summary).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    (o, s)
+}
+
+#[test]
+fn a_core_shard_always_reports_build_run_and_every_suite_to_the_summary() {
+    let (o, summary) = core_report("quiet", 300);
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stdout));
+    let so = String::from_utf8_lossy(&o.stdout).into_owned();
+    assert!(!so.contains("::warning::") && !so.contains("::error::"), "{so}");
+    for line in [
+        "core shard 1/3 build wall: 75s",
+        "core shard 1/3 run wall: 300s",
+        "suite=suite_core_07 measured=341.50s recorded=",
+        "suite=suite_contracts_core_01 measured=60.10s recorded=",
+        "suite=bin:src/main.rs measured=0.00s recorded=unrecorded",
+    ] {
+        assert!(summary.contains(line), "summary missing `{line}`:\n{summary}");
+    }
+}
+
+#[test]
+fn warns_at_540_passes_through_720_and_fails_above_it() {
+    let (below, _) = core_report("539", 539);
+    assert!(!String::from_utf8_lossy(&below.stdout).contains("::warning::"));
+    let (at, _) = core_report("540", 540);
+    assert!(at.status.success());
+    assert!(String::from_utf8_lossy(&at.stdout).contains("::warning::"));
+    let (top, _) = core_report("720", 720);
+    assert!(top.status.success(), "720 s is not above 720 s");
+    let (over, _) = core_report("721", 721);
+    assert!(!over.status.success(), "721 s must fail");
+    assert!(String::from_utf8_lossy(&over.stdout).contains("::error::"));
 }

@@ -1,6 +1,8 @@
 //! PRD-mcphost-contract-suite-generated AC7 -- `.github/workflows/ci.yml`'s
-//! `gate` job has a step named `contract suites` that runs
-//! `scripts/pin-tests.sh` before the `cargo test (core suites)` step.
+//! `core-static` job (the static half of the required "static analysis + core
+//! suites" check since PRD-mcphost-ci-core-suites-sharded) has a step named
+//! `contract suites` that runs `scripts/pin-tests.sh` before its `cargo test
+//! --doc` step, and the core shards do not run it a second time as a step.
 
 use std::fs;
 use std::path::PathBuf;
@@ -12,9 +14,9 @@ fn root() -> PathBuf {
 #[test]
 fn ctrs_ac07_contract_suites_step_precedes_core_suites_in_the_gate_job() {
     let yml = fs::read_to_string(root().join(".github/workflows/ci.yml")).unwrap();
-    // The `gate` job block: from `  gate:` to the next top-level job key.
-    let start = yml.find("\n  gate:\n").expect("ci.yml has a gate job") + 1;
-    let rest = &yml[start + "  gate:\n".len()..];
+    // The `core-static` job block: from `  core-static:` to the next top-level job key.
+    let start = yml.find("\n  core-static:\n").expect("ci.yml has a core-static job") + 1;
+    let rest = &yml[start + "  core-static:\n".len()..];
     let end = rest
         .lines()
         .scan(0usize, |off, l| {
@@ -29,9 +31,9 @@ fn ctrs_ac07_contract_suites_step_precedes_core_suites_in_the_gate_job() {
 
     let steps: Vec<&str> = gate.lines().filter(|l| l.trim_start().starts_with("- name:")).collect();
     let pos = |name: &str| steps.iter().position(|l| l.trim_start() == format!("- name: {name}"));
-    let contract = pos("contract suites").expect("gate job has a `contract suites` step");
-    let core = pos("cargo test (core suites)").expect("gate job has a `cargo test (core suites)` step");
-    assert!(contract < core, "`contract suites` must precede `cargo test (core suites)`: {steps:?}");
+    let contract = pos("contract suites").expect("core-static job has a `contract suites` step");
+    let doc = pos("cargo test --doc").expect("core-static job has a `cargo test --doc` step");
+    assert!(contract < doc, "`contract suites` must precede `cargo test --doc`: {steps:?}");
 
     let at = gate.find("- name: contract suites").unwrap();
     let step_body: String = gate[at..].lines().skip(1).take_while(|l| !l.trim_start().starts_with("- name:")).collect::<Vec<_>>().join("\n");
