@@ -120,7 +120,7 @@ fn task_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<TaskRow> {
 /// to the task.
 pub fn task_not_found() -> AppError {
     AppError::Structured {
-        code: "task_not_found",
+        code: TASK_NOT_FOUND,
         message: "no task found for that id".to_string(),
         data: json!({}),
     }
@@ -128,7 +128,7 @@ pub fn task_not_found() -> AppError {
 
 fn task_already_claimed(task_id: &str) -> AppError {
     AppError::Structured {
-        code: "task_already_claimed",
+        code: TASK_ALREADY_CLAIMED,
         message: "that task is already claimed".to_string(),
         data: json!({"task_id": task_id, "status": TaskStatus::Claimed.as_str()}),
     }
@@ -136,7 +136,7 @@ fn task_already_claimed(task_id: &str) -> AppError {
 
 fn task_not_claimed(task_id: &str) -> AppError {
     AppError::Structured {
-        code: "task_not_claimed",
+        code: TASK_NOT_CLAIMED,
         message: "claim the task before completing it".to_string(),
         data: json!({"task_id": task_id, "status": TaskStatus::Posted.as_str(), "hint": "host.task.claim"}),
     }
@@ -144,7 +144,7 @@ fn task_not_claimed(task_id: &str) -> AppError {
 
 fn task_closed(task_id: &str, status: &str) -> AppError {
     AppError::Structured {
-        code: "task_closed",
+        code: TASK_CLOSED,
         message: format!("that task is {status} and takes no further claim or completion"),
         data: json!({"task_id": task_id, "status": status}),
     }
@@ -152,7 +152,7 @@ fn task_closed(task_id: &str, status: &str) -> AppError {
 
 fn recipient_inbox_full() -> AppError {
     AppError::Structured {
-        code: "recipient_inbox_full",
+        code: RECIPIENT_INBOX_FULL,
         message: "that agent's inbox is full".to_string(),
         data: json!({}),
     }
@@ -613,3 +613,34 @@ pub async fn dead_letters(state: &AppState, tenant: &Tenant, _args: &Value) -> R
         .collect();
     Ok(json!({"dead_letters": letters, "limit": DEAD_LETTERS_MAX}))
 }
+
+crate::err_code! {
+    pub RECIPIENT_INBOX_FULL,
+    code: "recipient_inbox_full", family: Share, class: HostRefusal, retryable: true,
+    remedy: "Try again later; that agent's inbox is full.",
+}
+
+crate::err_code! {
+    pub TASK_ALREADY_CLAIMED,
+    code: "task_already_claimed", family: Share, class: AgentFault, retryable: false,
+    remedy: "Pick another task; this one is already claimed.",
+}
+
+crate::err_code! {
+    pub TASK_CLOSED,
+    code: "task_closed", family: Share, class: AgentFault, retryable: false,
+    remedy: "The task takes no further claim or completion; post a new task.",
+}
+
+crate::err_code! {
+    pub TASK_NOT_CLAIMED,
+    code: "task_not_claimed", family: Share, class: AgentFault, retryable: false,
+    remedy: "Claim the task with host.task.claim before completing it.",
+}
+
+crate::err_code! {
+    pub TASK_NOT_FOUND,
+    code: "task_not_found", family: Share, class: AgentFault, retryable: false,
+    remedy: "List tasks and use an id that exists.",
+}
+

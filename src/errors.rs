@@ -164,7 +164,7 @@ pub fn check_unknown_argument(args: &Value, tool: &str, known: &[String]) -> Res
             continue;
         }
         return Err(AppError::Structured {
-            code: "unknown_argument",
+            code: UNKNOWN_ARGUMENT,
             message: format!(
                 "'{key}' is not a recognized argument for {tool}; known: {}",
                 known.join(", ")
@@ -551,56 +551,274 @@ impl AppError {
             // renamed from "unauthorized" -- the header path's own code,
             // distinct from the two argument-path codes below now that
             // there are three ways to fail auth instead of one.
-            AppError::Unauthorized => "bearer_invalid",
-            AppError::TenantKeyMissing(_) => "tenant_key_missing",
-            AppError::TenantKeyInvalid => "tenant_key_invalid",
-            AppError::Forbidden => "forbidden",
-            AppError::TenantDisabled { .. } => "tenant_disabled",
-            AppError::RateLimited => "rate_limited",
-            AppError::ToolNotFound(_) => "tool_not_found",
-            AppError::TenantNotFound(_) => "tenant_not_found",
-            AppError::InvalidParams(_) => "invalid_params",
-            AppError::UnknownKind { .. } => "unknown_kind",
-            AppError::InvalidToolName(_) => "invalid_tool_name",
-            AppError::SpecTooLarge(_) => "spec_too_large",
-            AppError::TooManyTools(_) => "too_many_tools",
-            AppError::InvalidSpec(_) => "invalid_spec",
+            AppError::Unauthorized => BEARER_INVALID,
+            AppError::TenantKeyMissing(_) => TENANT_KEY_MISSING,
+            AppError::TenantKeyInvalid => TENANT_KEY_INVALID,
+            AppError::Forbidden => FORBIDDEN,
+            AppError::TenantDisabled { .. } => TENANT_DISABLED,
+            AppError::RateLimited => RATE_LIMITED,
+            AppError::ToolNotFound(_) => TOOL_NOT_FOUND,
+            AppError::TenantNotFound(_) => TENANT_NOT_FOUND,
+            AppError::InvalidParams(_) => INVALID_PARAMS,
+            AppError::UnknownKind { .. } => UNKNOWN_KIND,
+            AppError::InvalidToolName(_) => INVALID_TOOL_NAME,
+            AppError::SpecTooLarge(_) => SPEC_TOO_LARGE,
+            AppError::TooManyTools(_) => TOO_MANY_TOOLS,
+            AppError::InvalidSpec(_) => INVALID_SPEC,
             // PRD-mcphost-surface-fluidity requirement 2: one code for bad
             // arguments -- this used to be a distinct wire code, now it's
             // the same "args_invalid" every other bad-argument rejection in
             // this file already uses.
-            AppError::InvalidArgs(_) => "args_invalid",
-            AppError::SecretMissing(_) => "secret_missing",
+            AppError::InvalidArgs(_) => ARGS_INVALID,
+            AppError::SecretMissing(_) => SECRET_MISSING,
             AppError::Structured { code, .. } => code,
             AppError::MultiInvalid { errors, .. } => {
-                errors.first().map(AppError::code).unwrap_or("invalid_spec")
+                errors.first().map(AppError::code).unwrap_or(INVALID_SPEC)
             }
-            AppError::CallTimeout(_) => "call_timeout",
-            AppError::Storage(_) => "storage",
-            AppError::Internal(_) => "internal",
-            AppError::RegistryDisabled => "registry_disabled",
-            AppError::NamespaceUnverified => "namespace_unverified",
-            AppError::RegistryRejected(_) => "registry_rejected",
-            AppError::ShareQuotaExceeded { .. } => "share_quota_exceeded",
-            AppError::GroupNotFound(_) => "group_not_found",
-            AppError::HandoffTokenInvalid => "handoff_token_invalid",
-            AppError::HandoffTokenRedeemed => "handoff_token_redeemed",
-            AppError::HandoffTokenExpired => "handoff_token_expired",
+            AppError::CallTimeout(_) => CALL_TIMEOUT,
+            AppError::Storage(_) => STORAGE,
+            AppError::Internal(_) => INTERNAL,
+            AppError::RegistryDisabled => REGISTRY_DISABLED,
+            AppError::NamespaceUnverified => NAMESPACE_UNVERIFIED,
+            AppError::RegistryRejected(_) => REGISTRY_REJECTED,
+            AppError::ShareQuotaExceeded { .. } => SHARE_QUOTA_EXCEEDED,
+            AppError::GroupNotFound(_) => GROUP_NOT_FOUND,
+            AppError::HandoffTokenInvalid => HANDOFF_TOKEN_INVALID,
+            AppError::HandoffTokenRedeemed => HANDOFF_TOKEN_REDEEMED,
+            AppError::HandoffTokenExpired => HANDOFF_TOKEN_EXPIRED,
             // AC4: an argument error, same code as every other bad-argument
             // rejection in this file.
-            AppError::VersionNotFound { .. } => "args_invalid",
-            AppError::IssuerAlreadyRegistered => "issuer_already_registered",
-            AppError::IssuerQuotaExceeded { .. } => "issuer_quota_exceeded",
-            AppError::IssuerNotFound(_) => "issuer_not_found",
-            AppError::InvalidToken(_) => "invalid_token",
-            AppError::ConflictingCredentials => "conflicting_credentials",
-            AppError::WrongTenant => "wrong_tenant",
-            AppError::InsufficientScope => crate::scopes::INSUFFICIENT_SCOPE,
-            AppError::AuthConflict => "auth_conflict",
-            AppError::TrustedIssuerQuotaExceeded { .. } => "quota_trusted_issuers",
+            AppError::VersionNotFound { .. } => ARGS_INVALID,
+            AppError::IssuerAlreadyRegistered => ISSUER_ALREADY_REGISTERED,
+            AppError::IssuerQuotaExceeded { .. } => ISSUER_QUOTA_EXCEEDED,
+            AppError::IssuerNotFound(_) => ISSUER_NOT_FOUND,
+            AppError::InvalidToken(_) => INVALID_TOKEN,
+            AppError::ConflictingCredentials => CONFLICTING_CREDENTIALS,
+            AppError::WrongTenant => WRONG_TENANT,
+            AppError::InsufficientScope => INSUFFICIENT_SCOPE,
+            AppError::AuthConflict => AUTH_CONFLICT,
+            AppError::TrustedIssuerQuotaExceeded { .. } => QUOTA_TRUSTED_ISSUERS,
         }
     }
+}
 
+crate::err_code! {
+    pub ARGS_INVALID => "args_invalid",
+    Args, AgentFault, false,
+    "Re-send with data.field as data.expected; data.example shows a valid value.",
+}
+
+crate::err_code! {
+    pub AUTH_CONFLICT => "auth_conflict",
+    Auth, AgentFault, false,
+    "Send exactly one credential: either the URL secret or the Authorization header, not two different tenants.",
+}
+
+crate::err_code! {
+    pub BEARER_INVALID => "bearer_invalid",
+    Auth, AgentFault, false,
+    "Call signup for a key, then send Authorization: Bearer <key> or pass tenant_key as an argument.",
+}
+
+crate::err_code! {
+    pub CALL_TIMEOUT => "call_timeout",
+    Call, AgentFault, true,
+    "Reduce the work per call or raise timeout_s within the plan ceiling, then retry.",
+}
+
+crate::err_code! {
+    pub CONFLICTING_CREDENTIALS => "conflicting_credentials",
+    Auth, AgentFault, false,
+    "Send one credential: drop the tenant_key argument or the Authorization header.",
+}
+
+crate::err_code! {
+    pub FORBIDDEN => "forbidden",
+    Auth, HostRefusal, false,
+    "This credential may not do that; use a key with the needed access.",
+}
+
+crate::err_code! {
+    pub GROUP_NOT_FOUND => "group_not_found",
+    Share, AgentFault, false,
+    "List groups and use an id that exists.",
+}
+
+crate::err_code! {
+    pub HANDOFF_TOKEN_EXPIRED => "handoff_token_expired",
+    Auth, AgentFault, false,
+    "Request a new handoff token and redeem it before it expires.",
+}
+
+crate::err_code! {
+    pub HANDOFF_TOKEN_INVALID => "handoff_token_invalid",
+    Auth, AgentFault, false,
+    "Request a new handoff token; this one is not valid.",
+}
+
+crate::err_code! {
+    pub HANDOFF_TOKEN_REDEEMED => "handoff_token_redeemed",
+    Auth, AgentFault, false,
+    "Request a new handoff token; each token redeems once.",
+}
+
+crate::err_code! {
+    pub INSUFFICIENT_SCOPE => "insufficient_scope",
+    Auth, HostRefusal, false,
+    "Use a token that carries the scope named in data.scope.",
+}
+
+crate::err_code! {
+    pub INTERNAL => "internal",
+    Internal, HostFault, true,
+    "Retry once; if it persists, report data.request_id through the support link.",
+}
+
+crate::err_code! {
+    pub INVALID_PARAMS => "invalid_params",
+    Args, AgentFault, false,
+    "Re-send with the params the method expects; data names the limit or field.",
+}
+
+crate::err_code! {
+    pub INVALID_SPEC => "invalid_spec",
+    Spec, AgentFault, false,
+    "Fix the spec field named in data.field to match data.expected.",
+}
+
+crate::err_code! {
+    pub INVALID_TOKEN => "invalid_token",
+    Auth, AgentFault, false,
+    "Fetch a new token; data.error_description says whether it was expired, malformed or from an unknown issuer.",
+}
+
+crate::err_code! {
+    pub INVALID_TOOL_NAME => "invalid_tool_name",
+    Args, AgentFault, false,
+    "Use a tool name of lowercase letters, digits and underscores within the length limit.",
+}
+
+crate::err_code! {
+    pub ISSUER_ALREADY_REGISTERED => "issuer_already_registered",
+    Oauth, AgentFault, false,
+    "Use the existing issuer registration or remove it first.",
+}
+
+crate::err_code! {
+    pub ISSUER_NOT_FOUND => "issuer_not_found",
+    Oauth, AgentFault, false,
+    "List issuers and use a registered one.",
+}
+
+crate::err_code! {
+    pub ISSUER_QUOTA_EXCEEDED => "issuer_quota_exceeded",
+    Plan, PlanLimit, false,
+    "Remove an unused issuer; data.limit is the plan's maximum.",
+}
+
+crate::err_code! {
+    pub NAMESPACE_UNVERIFIED => "namespace_unverified",
+    Registry, HostRefusal, false,
+    "Verify the namespace with the registry before publishing.",
+}
+
+crate::err_code! {
+    pub QUOTA_TRUSTED_ISSUERS => "quota_trusted_issuers",
+    Plan, PlanLimit, false,
+    "Remove a trusted issuer; data.limit is the plan's maximum.",
+}
+
+crate::err_code! {
+    pub RATE_LIMITED => "rate_limited",
+    Plan, PlanLimit, true,
+    "Wait data.retry_after_s seconds and retry.",
+}
+
+crate::err_code! {
+    pub REGISTRY_DISABLED => "registry_disabled",
+    Registry, HostRefusal, false,
+    "This host has no registry enabled; do not retry.",
+}
+
+crate::err_code! {
+    pub REGISTRY_REJECTED => "registry_rejected",
+    Registry, UpstreamFault, false,
+    "The registry refused the publish; correct the spec and retry.",
+}
+
+crate::err_code! {
+    pub SECRET_MISSING => "secret_missing",
+    Call, AgentFault, false,
+    "Set the missing secret with host.secret_set, then retry.",
+}
+
+crate::err_code! {
+    pub SHARE_QUOTA_EXCEEDED => "share_quota_exceeded",
+    Plan, PlanLimit, false,
+    "Unshare a tool or move to a plan with a higher share limit.",
+}
+
+crate::err_code! {
+    pub SPEC_TOO_LARGE => "spec_too_large",
+    Plan, PlanLimit, false,
+    "Reduce the spec below the size cap, for example by moving data to host.blob.put.",
+}
+
+crate::err_code! {
+    pub STORAGE => "storage",
+    Storage, HostFault, true,
+    "Retry once; if it persists, report data.request_id through the support link.",
+}
+
+crate::err_code! {
+    pub TENANT_DISABLED => "tenant_disabled",
+    Auth, HostRefusal, false,
+    "This tenant is disabled; read data.disabled_reason and do not retry.",
+}
+
+crate::err_code! {
+    pub TENANT_KEY_INVALID => "tenant_key_invalid",
+    Auth, AgentFault, false,
+    "Call signup for a fresh key; this tenant_key matched no tenant.",
+}
+
+crate::err_code! {
+    pub TENANT_KEY_MISSING => "tenant_key_missing",
+    Auth, AgentFault, false,
+    "Pass tenant_key, or reconnect through your onboarding url; data.tenant names the tenant when known.",
+}
+
+crate::err_code! {
+    pub TENANT_NOT_FOUND => "tenant_not_found",
+    Auth, AgentFault, false,
+    "Check the namespace spelling and use a tenant that exists.",
+}
+
+crate::err_code! {
+    pub TOO_MANY_TOOLS => "too_many_tools",
+    Plan, PlanLimit, false,
+    "Remove a tool or move to a plan with a higher tool limit.",
+}
+
+crate::err_code! {
+    pub TOOL_NOT_FOUND => "tool_not_found",
+    Call, AgentFault, false,
+    "Check the name against host.tool_list; shared tools are called as <owner_namespace>.<tool>.",
+}
+
+crate::err_code! {
+    pub UNKNOWN_KIND => "unknown_kind",
+    Spec, AgentFault, false,
+    "Choose a kind from data.registered; data.did_you_mean suggests a near match.",
+}
+
+crate::err_code! {
+    pub WRONG_TENANT => "wrong_tenant",
+    Auth, AgentFault, false,
+    "Use the credential of the tenant this URL belongs to.",
+}
+
+impl AppError {
     fn jsonrpc_code(&self) -> ErrorCode {
         match self {
             AppError::ToolNotFound(_) | AppError::TenantNotFound(_) | AppError::GroupNotFound(_) => {
@@ -1254,7 +1472,7 @@ impl AppError {
     /// client that only surfaces `message`, not `data`.
     pub fn sandbox_unavailable(status: &crate::sandbox::SandboxStatus, retry_after_s: u32) -> Self {
         AppError::Structured {
-            code: "sandbox_unavailable",
+            code: SANDBOX_UNAVAILABLE,
             message: format!(
                 "the python kind is unavailable on this host; the spec was not evaluated -- \
                  retry in {retry_after_s}s or use http instead"
@@ -1271,19 +1489,19 @@ impl AppError {
     /// PRD-mcphost-incident-banner-for-agents R1: the sandbox/exec backend is
     /// down -- a host fault, listed in [`HOST_FAULT_CODES`].
     pub fn exec_unavailable(detail: &str) -> Self {
-        AppError::Structured { code: "exec_unavailable", message: format!("execution is unavailable: {detail}"), data: json!({}) }
+        AppError::Structured { code: EXEC_UNAVAILABLE, message: format!("execution is unavailable: {detail}"), data: json!({}) }
     }
 
     /// R1: the host (not the caller's spec) ran out of time.
     pub fn host_timeout(detail: &str) -> Self {
-        AppError::Structured { code: "timeout", message: format!("the host timed out: {detail}"), data: json!({}) }
+        AppError::Structured { code: TIMEOUT, message: format!("the host timed out: {detail}"), data: json!({}) }
     }
 
     /// R1: the host as a whole is shedding load, as opposed to the per-tenant
     /// `rate_limited`.
     pub fn rate_limited_host() -> Self {
         AppError::Structured {
-            code: "rate_limited_host",
+            code: RATE_LIMITED_HOST,
             message: "the host is shedding load; retry shortly".to_string(),
             data: json!({}),
         }
@@ -1296,7 +1514,7 @@ impl AppError {
     /// spec itself references.
     pub fn env_collides_with_secret(key: &str) -> Self {
         AppError::Structured {
-            code: "env_secret_collision",
+            code: ENV_SECRET_COLLISION,
             message: format!(
                 "env.{key}: '{key}' collides with an existing secret of the same name for this tenant"
             ),
@@ -1309,7 +1527,7 @@ impl AppError {
     /// with any of this tenant's already-published tools' `env` entries.
     pub fn secret_collides_with_env(key: &str) -> Self {
         AppError::Structured {
-            code: "env_secret_collision",
+            code: ENV_SECRET_COLLISION,
             message: format!(
                 "'{key}' collides with a published tool's env entry of the same name"
             ),
@@ -1327,7 +1545,7 @@ impl AppError {
     /// worse, silently succeed under the wrong kind).
     pub fn kind_mismatch(requested: &str, signal: &KindSignal) -> Self {
         AppError::Structured {
-            code: "kind_mismatch",
+            code: KIND_MISMATCH,
             message: format!(
                 "kind: requested '{requested}' but the spec's shape is only valid as '{}': {}",
                 signal.kind, signal.reason
@@ -1345,7 +1563,7 @@ impl AppError {
     /// whole point of the requirement.
     pub fn handle_taken() -> Self {
         AppError::Structured {
-            code: "handle_taken",
+            code: HANDLE_TAKEN,
             message: "that handle is already claimed".to_string(),
             data: json!({}),
         }
@@ -1359,7 +1577,7 @@ impl AppError {
     /// caller already knows this tool exists.
     pub fn spec_not_exposed(owner_ns: &str, name: &str) -> Self {
         AppError::Structured {
-            code: "spec_not_exposed",
+            code: SPEC_NOT_EXPOSED,
             message: format!("{owner_ns}.{name} has not exposed its spec"),
             data: json!({"tool": format!("{owner_ns}.{name}")}),
         }
@@ -1370,7 +1588,7 @@ impl AppError {
     /// `admin.agent.handle_release`.
     pub fn handle_reserved(handle: &str) -> Self {
         AppError::Structured {
-            code: "handle_reserved",
+            code: HANDLE_RESERVED,
             message: format!("'{handle}' is a reserved handle and cannot be claimed"),
             data: json!({"handle": handle}),
         }
@@ -1381,7 +1599,7 @@ impl AppError {
     /// "exists but hidden".
     pub fn agent_not_found() -> Self {
         AppError::Structured {
-            code: "agent_not_found",
+            code: AGENT_NOT_FOUND,
             message: "no agent found for that address".to_string(),
             data: json!({}),
         }
@@ -1394,7 +1612,7 @@ impl AppError {
     /// [`Self::agent_not_found`] above.
     pub fn thread_not_found() -> Self {
         AppError::Structured {
-            code: "thread_not_found",
+            code: THREAD_NOT_FOUND,
             message: "no thread found for that id".to_string(),
             data: json!({}),
         }
@@ -1409,7 +1627,7 @@ impl AppError {
     /// exactly `limit`/`value` at the top level.
     pub fn msg_quota_exceeded(limit_name: &'static str, limit_value: i64) -> Self {
         AppError::Structured {
-            code: "quota_exceeded",
+            code: QUOTA_EXCEEDED,
             message: format!("messaging quota exceeded: {limit_name} (limit {limit_value})"),
             data: json!({"limit": limit_name, "value": limit_value}),
         }
@@ -1426,7 +1644,7 @@ impl AppError {
     /// rather than this top-level one).
     pub fn contact_refused() -> Self {
         AppError::Structured {
-            code: "contact_refused",
+            code: CONTACT_REFUSED,
             message: "that address does not accept messages from you yet".to_string(),
             data: json!({"hint": "host.agent.contact_request"}),
         }
@@ -1439,7 +1657,7 @@ impl AppError {
     /// from "you need to ask first".
     pub fn contact_pending() -> Self {
         AppError::Structured {
-            code: "contact_pending",
+            code: CONTACT_PENDING,
             message: "a contact request between you and that address is already pending or \
                 was recently denied"
                 .to_string(),
@@ -1452,7 +1670,7 @@ impl AppError {
     /// accepted contact with -- nothing to request.
     pub fn not_needed() -> Self {
         AppError::Structured {
-            code: "not_needed",
+            code: NOT_NEEDED,
             message: "no contact request is needed for that address".to_string(),
             data: json!({}),
         }
@@ -1465,7 +1683,7 @@ impl AppError {
     /// [`Self::thread_not_found`].
     pub fn contact_request_not_found() -> Self {
         AppError::Structured {
-            code: "contact_request_not_found",
+            code: CONTACT_REQUEST_NOT_FOUND,
             message: "no pending contact request found for that id".to_string(),
             data: json!({}),
         }
@@ -1481,7 +1699,7 @@ impl AppError {
     /// omitted").
     pub fn mesh_frozen() -> Self {
         AppError::Structured {
-            code: "mesh_frozen",
+            code: MESH_FROZEN,
             message: "this tenant is frozen by the operator; messaging and posting are paused"
                 .to_string(),
             data: json!({}),
@@ -1498,7 +1716,7 @@ impl AppError {
     /// a lookup `read` never actually ran.
     pub fn channel_not_found(key: &str) -> Self {
         AppError::Structured {
-            code: "channel_not_found",
+            code: CHANNEL_NOT_FOUND,
             message: "no channel found for that key: tried group channel by id, and channel by id or name"
                 .to_string(),
             data: json!({"key": key}),
@@ -1510,7 +1728,7 @@ impl AppError {
     /// (`host.channel.read` never checks `closed_at`).
     pub fn channel_closed() -> Self {
         AppError::Structured {
-            code: "channel_closed",
+            code: CHANNEL_CLOSED,
             message: "this channel is closed; posting is refused, reads still work".to_string(),
             data: json!({}),
         }
@@ -1521,7 +1739,7 @@ impl AppError {
     /// [`Self::channel_closed`].
     pub fn channel_frozen() -> Self {
         AppError::Structured {
-            code: "channel_frozen",
+            code: CHANNEL_FROZEN,
             message: "this channel is frozen; posting is refused, reads still work".to_string(),
             data: json!({}),
         }
@@ -1533,7 +1751,7 @@ impl AppError {
     /// under the generic `quota_exceeded` code AC7 names.
     pub fn channel_quota_exceeded(limit_name: &'static str, limit_value: i64) -> Self {
         AppError::Structured {
-            code: "quota_exceeded",
+            code: QUOTA_EXCEEDED,
             message: format!("channel quota exceeded: {limit_name} (limit {limit_value})"),
             data: json!({"limit": limit_name, "value": limit_value}),
         }
@@ -1570,7 +1788,7 @@ impl AppError {
     /// (`dependency_policy: denied (near-name of requests)`).
     pub fn dependency_policy_denied(reason: &str) -> Self {
         AppError::Structured {
-            code: "dependency_policy",
+            code: DEPENDENCY_POLICY,
             message: format!("dependency_policy: denied ({reason})"),
             data: json!({"reason": reason}),
         }
@@ -1583,7 +1801,7 @@ impl AppError {
     /// fix=<version>`).
     pub fn dependency_advisory(id: &str, package: &str, fixed: &str) -> Self {
         AppError::Structured {
-            code: "dependency_advisory",
+            code: DEPENDENCY_ADVISORY,
             message: format!("dependency_advisory: {id} {package} fix={fixed}"),
             data: json!({"advisory_id": id, "package": package, "fixed": fixed}),
         }
@@ -1599,7 +1817,7 @@ impl AppError {
     pub fn plan_required(field: &str, plan: &str) -> Self {
         let (message, data) = crate::network_policy::plan_required_fields(field, plan);
         AppError::Structured {
-            code: "plan_required",
+            code: crate::subkeys::PLAN_REQUIRED,
             message,
             data,
         }
@@ -1611,7 +1829,7 @@ impl AppError {
     /// `kinds::python::run_command_tail` uses for a failed env build.
     pub fn dependency_resolve_failed(tail: &str) -> Self {
         AppError::Structured {
-            code: "dependency_resolve_failed",
+            code: DEPENDENCY_RESOLVE_FAILED,
             message: format!("dependency resolution failed: {tail}"),
             data: json!({"tail": tail}),
         }
@@ -1626,7 +1844,7 @@ impl AppError {
     /// line" holds byte-for-byte.
     pub fn signup_paused(message: String, retry_after_secs: i64) -> Self {
         AppError::Structured {
-            code: "signup_paused",
+            code: SIGNUP_PAUSED,
             message,
             data: json!({"retry_after_secs": retry_after_secs}),
         }
@@ -1638,7 +1856,7 @@ impl AppError {
     /// written).
     pub fn remember_too_long(len: usize) -> Self {
         AppError::Structured {
-            code: "remember_too_long",
+            code: REMEMBER_TOO_LONG,
             message: format!("remember must be at most 4096 bytes; got {len}"),
             data: json!({"max_bytes": 4096, "len": len}),
         }
@@ -1653,7 +1871,7 @@ impl AppError {
     /// caller's own best current estimate of when a slot frees up again.
     pub fn signup_rate_limited(public_url: &str, retry_after_s: i64) -> Self {
         AppError::Structured {
-            code: "signup_rate_limited",
+            code: SIGNUP_RATE_LIMITED,
             message: "too many tenants created from this address in the last hour".to_string(),
             data: json!({
                 "help": format!("{}/u/new", public_url.trim_end_matches('/')),
@@ -1676,7 +1894,7 @@ impl AppError {
             data.insert("reason".to_string(), json!(reason));
         }
         AppError::Structured {
-            code: "banned",
+            code: crate::deadletters::BANNED,
             message: "this subject is banned".to_string(),
             data: Value::Object(data),
         }
@@ -1684,7 +1902,7 @@ impl AppError {
 
     pub fn disk_floor(free_bytes: u64, floor_bytes: u64) -> Self {
         AppError::Structured {
-            code: "service_unavailable",
+            code: SERVICE_UNAVAILABLE,
             message: format!(
                 "disk floor: {free_bytes} bytes free is below the {floor_bytes}-byte floor"
             ),
@@ -1705,7 +1923,7 @@ impl AppError {
     /// [`Self::disk_floor`] already takes.
     pub fn claim_email_failed(status: Option<u16>) -> Self {
         AppError::Structured {
-            code: "claim_email_failed",
+            code: CLAIM_EMAIL_FAILED,
             message: "could not send the claim email".to_string(),
             data: json!({"status": status}),
         }
@@ -1716,7 +1934,7 @@ impl AppError {
     /// other variant, and for a transport failure (no status to report).
     pub fn claim_email_status(&self) -> Option<u16> {
         match self {
-            AppError::Structured { code: "claim_email_failed", data, .. } => {
+            AppError::Structured { code: CLAIM_EMAIL_FAILED, data, .. } => {
                 data.get("status").and_then(Value::as_u64).map(|v| v as u16)
             }
             _ => None,
@@ -1732,7 +1950,7 @@ impl AppError {
     /// data, or (same one-or-two-query shape either way) response timing.
     pub fn shared_tool_not_found(owner_ns: &str, local_name: &str) -> Self {
         AppError::Structured {
-            code: "tool_not_found",
+            code: TOOL_NOT_FOUND,
             message: format!("tool not found: {owner_ns}.{local_name}"),
             data: json!({
                 "hint": "shared tools are called as <owner_namespace>.<tool>; ask the owner \
@@ -1748,7 +1966,7 @@ impl AppError {
     /// field name.
     pub fn invites_quota_exceeded(limit: i64, used: i64) -> Self {
         AppError::Structured {
-            code: "invites_quota_exceeded",
+            code: INVITES_QUOTA_EXCEEDED,
             message: format!("tenant already has {used} live invites, the plan maximum of {limit}"),
             data: json!({"invites_max": limit, "used": used}),
         }
@@ -1762,7 +1980,7 @@ impl AppError {
     /// from "existed once" from "the last slot was just taken".
     pub fn invite_invalid() -> Self {
         AppError::Structured {
-            code: "invite_invalid",
+            code: INVITE_INVALID,
             message: "this invite link is no longer valid".to_string(),
             data: json!({}),
         }
@@ -1773,7 +1991,7 @@ impl AppError {
     /// at `host.whoami` on any sibling, which prints the live code.
     pub fn join_code_invalid() -> Self {
         AppError::Structured {
-            code: "join_code_invalid",
+            code: JOIN_CODE_INVALID,
             message: "this join link is no longer valid; ask a client already in the workspace \
                       for a fresh one (host.whoami prints the live join_url)"
                 .to_string(),
@@ -1785,7 +2003,7 @@ impl AppError {
     /// the only live client would leave the tenant with no credential.
     pub fn last_client() -> Self {
         AppError::Structured {
-            code: "last_client",
+            code: LAST_CLIENT,
             message: "this is the only client of the workspace; revoking it would lock everyone out"
                 .to_string(),
             data: json!({"next_call": {"tool": "host.whoami", "args": {}}}),
@@ -1796,7 +2014,7 @@ impl AppError {
     /// the caller's tenant.
     pub fn client_not_found(client_id: &str) -> Self {
         AppError::Structured {
-            code: "client_not_found",
+            code: crate::oauth_policy::CLIENT_NOT_FOUND,
             message: format!("no live client '{client_id}' in this workspace"),
             data: json!({"client_id": client_id, "next_call": {"tool": "host.whoami", "args": {}}}),
         }
@@ -1807,7 +2025,7 @@ impl AppError {
     /// so a client can tell "come back later" from "this link is dead".
     pub fn invite_rate_limited() -> Self {
         AppError::Structured {
-            code: "invite_rate_limited",
+            code: INVITE_RATE_LIMITED,
             message: "this invite has reached its hourly join limit; try again later".to_string(),
             data: json!({}),
         }
@@ -1839,7 +2057,7 @@ impl AppError {
     pub fn host_verb_not_forwarded(host_verb: &str, call_args: &Value) -> Self {
         let client_tool = host_verb.replace('.', "_");
         AppError::Structured {
-            code: "tool_not_found",
+            code: TOOL_NOT_FOUND,
             message: format!("tool not found: {host_verb}"),
             data: json!({
                 "host_verb": host_verb,
@@ -1873,7 +2091,7 @@ impl AppError {
         near.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(b.1)));
         let nearest: Vec<&str> = near.into_iter().take(MAX_DID_YOU_MEAN).map(|(_, c)| c).collect();
         AppError::Structured {
-            code: "tool_not_found",
+            code: TOOL_NOT_FOUND,
             message: format!("unknown tool {requested}; nearest: {}", nearest.join(", ")),
             data: json!({
                 "error": "unknown_tool",
@@ -1915,6 +2133,211 @@ impl From<rusqlite::Error> for AppError {
         AppError::Storage(e.to_string())
     }
 }
+
+crate::err_code! {
+    pub AGENT_NOT_FOUND,
+    code: "agent_not_found", family: Share, class: AgentFault, retryable: false,
+    remedy: "Check the address with host.agent.lookup, then re-send to a handle that exists.",
+}
+
+crate::err_code! {
+    pub CHANNEL_CLOSED,
+    code: "channel_closed", family: Share, class: AgentFault, retryable: false,
+    remedy: "Posting is refused on a closed channel; reads still work. Open a new channel to continue.",
+}
+
+crate::err_code! {
+    pub CHANNEL_FROZEN,
+    code: "channel_frozen", family: Share, class: AgentFault, retryable: false,
+    remedy: "Posting is refused on a frozen channel; reads still work. Ask the owner to unfreeze it.",
+}
+
+crate::err_code! {
+    pub CHANNEL_NOT_FOUND,
+    code: "channel_not_found", family: Share, class: AgentFault, retryable: false,
+    remedy: "Check data.key against host.channel.list and use a channel id or name that exists.",
+}
+
+crate::err_code! {
+    pub CLAIM_EMAIL_FAILED,
+    code: "claim_email_failed", family: Internal, class: HostFault, retryable: true,
+    remedy: "The claim email could not be sent; retry later or use the claim link from the response.",
+}
+
+crate::err_code! {
+    pub CONTACT_PENDING,
+    code: "contact_pending", family: Share, class: AgentFault, retryable: false,
+    remedy: "A request is already pending or recently denied; wait for the recipient to answer.",
+}
+
+crate::err_code! {
+    pub CONTACT_REFUSED,
+    code: "contact_refused", family: Share, class: HostRefusal, retryable: false,
+    remedy: "Send host.agent.contact_request first and wait for acceptance.",
+}
+
+crate::err_code! {
+    pub CONTACT_REQUEST_NOT_FOUND,
+    code: "contact_request_not_found", family: Share, class: AgentFault, retryable: false,
+    remedy: "List pending requests and use an id that exists.",
+}
+
+crate::err_code! {
+    pub DEPENDENCY_ADVISORY,
+    code: "dependency_advisory", family: Spec, class: HostRefusal, retryable: false,
+    remedy: "Pin the package to data.fixed or later and republish.",
+}
+
+crate::err_code! {
+    pub DEPENDENCY_POLICY,
+    code: "dependency_policy", family: Spec, class: HostRefusal, retryable: false,
+    remedy: "Remove or replace the requirement named in data.reason; the policy denies it.",
+}
+
+crate::err_code! {
+    pub DEPENDENCY_RESOLVE_FAILED,
+    code: "dependency_resolve_failed", family: Spec, class: AgentFault, retryable: false,
+    remedy: "Read data.tail for the resolver error and fix the requirements.",
+}
+
+crate::err_code! {
+    pub ENV_SECRET_COLLISION,
+    code: "env_secret_collision", family: Spec, class: AgentFault, retryable: false,
+    remedy: "Rename the env entry or the secret so no name is used by both.",
+}
+
+crate::err_code! {
+    pub EXEC_UNAVAILABLE,
+    code: "exec_unavailable", family: Internal, class: HostFault, retryable: true,
+    remedy: "The sandbox or exec backend is down; retry later or use a kind that does not need it.",
+}
+
+crate::err_code! {
+    pub HANDLE_RESERVED,
+    code: "handle_reserved", family: Share, class: AgentFault, retryable: false,
+    remedy: "Choose a different handle; this one is reserved.",
+}
+
+crate::err_code! {
+    pub HANDLE_TAKEN,
+    code: "handle_taken", family: Share, class: AgentFault, retryable: false,
+    remedy: "Choose a different handle; this one is already claimed.",
+}
+
+crate::err_code! {
+    pub INVITE_INVALID,
+    code: "invite_invalid", family: Auth, class: HostRefusal, retryable: false,
+    remedy: "Ask the owner for a new invite link; this one is no longer valid.",
+}
+
+crate::err_code! {
+    pub INVITE_RATE_LIMITED,
+    code: "invite_rate_limited", family: Plan, class: HostRefusal, retryable: true,
+    remedy: "Try the invite link again later; it reached its hourly join limit.",
+}
+
+crate::err_code! {
+    pub INVITES_QUOTA_EXCEEDED,
+    code: "invites_quota_exceeded", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Revoke an unused invite or move to a plan with a higher invites_max.",
+}
+
+crate::err_code! {
+    pub JOIN_CODE_INVALID,
+    code: "join_code_invalid", family: Auth, class: HostRefusal, retryable: false,
+    remedy: "Ask a client already in the workspace for a fresh join link; host.whoami (data.next_call) prints the live join_url.",
+}
+
+crate::err_code! {
+    pub KIND_MISMATCH,
+    code: "kind_mismatch", family: Spec, class: AgentFault, retryable: false,
+    remedy: "Send the kind the spec's shape needs (data.inferred), or change the spec to match data.requested.",
+}
+
+crate::err_code! {
+    pub LAST_CLIENT,
+    code: "last_client", family: Auth, class: AgentFault, retryable: false,
+    remedy: "Add another client to the workspace first (host.whoami prints the join_url), then revoke this one.",
+}
+
+crate::err_code! {
+    pub MESH_FROZEN,
+    code: "mesh_frozen", family: Share, class: HostRefusal, retryable: false,
+    remedy: "Messaging and posting are paused by the operator for this tenant; do not retry.",
+}
+
+crate::err_code! {
+    pub NOT_NEEDED,
+    code: "not_needed", family: Share, class: AgentFault, retryable: false,
+    remedy: "Send the message directly; no contact request is needed.",
+}
+
+crate::err_code! {
+    pub QUOTA_EXCEEDED,
+    code: "quota_exceeded", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Read data for the exceeded quota; reduce usage or move to a plan with a higher limit.",
+}
+
+crate::err_code! {
+    pub RATE_LIMITED_HOST,
+    code: "rate_limited_host", family: Internal, class: HostFault, retryable: true,
+    remedy: "The host is shedding load; retry shortly.",
+}
+
+crate::err_code! {
+    pub REMEMBER_TOO_LONG,
+    code: "remember_too_long", family: Args, class: AgentFault, retryable: false,
+    remedy: "Shorten remember to 4096 bytes or fewer.",
+}
+
+crate::err_code! {
+    pub SANDBOX_UNAVAILABLE,
+    code: "sandbox_unavailable", family: Internal, class: HostFault, retryable: true,
+    remedy: "Retry in data.retry_after_s seconds or use http instead; the python kind is unavailable.",
+}
+
+crate::err_code! {
+    pub SERVICE_UNAVAILABLE,
+    code: "service_unavailable", family: Internal, class: HostFault, retryable: true,
+    remedy: "Retry later; the host is out of a resource such as disk space.",
+}
+
+crate::err_code! {
+    pub SIGNUP_PAUSED,
+    code: "signup_paused", family: Auth, class: HostRefusal, retryable: true,
+    remedy: "Retry after data.retry_after_secs; signup is paused.",
+}
+
+crate::err_code! {
+    pub SIGNUP_RATE_LIMITED,
+    code: "signup_rate_limited", family: Plan, class: HostRefusal, retryable: true,
+    remedy: "Retry after data.retry_after_s; too many tenants were created from this address.",
+}
+
+crate::err_code! {
+    pub SPEC_NOT_EXPOSED,
+    code: "spec_not_exposed", family: Share, class: HostRefusal, retryable: false,
+    remedy: "Ask the owner to expose the spec; it is not shared.",
+}
+
+crate::err_code! {
+    pub THREAD_NOT_FOUND,
+    code: "thread_not_found", family: Share, class: AgentFault, retryable: false,
+    remedy: "List threads and use an id that exists.",
+}
+
+crate::err_code! {
+    pub TIMEOUT,
+    code: "timeout", family: Internal, class: HostFault, retryable: true,
+    remedy: "The host timed out; retry shortly.",
+}
+
+crate::err_code! {
+    pub UNKNOWN_ARGUMENT,
+    code: "unknown_argument", family: Args, class: AgentFault, retryable: false,
+    remedy: "Remove the argument; data.known lists the recognised ones.",
+}
+
 
 #[cfg(test)]
 mod internal_error_tests {

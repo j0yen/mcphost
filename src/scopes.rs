@@ -7,6 +7,12 @@
 
 use crate::subkeys::ALWAYS_LISTED;
 
+/// The error codes a delegation produces, named once: the server returns them
+/// from these constants and `delegation_recipe` / `llms_txt` print them from here, so a
+/// documented code cannot drift from the one the server sends.
+pub const SCOPE_ESCALATION: &str = "scope_escalation";
+pub const KEY_REVOKED: &str = "key_revoked";
+
 /// One authority a credential can hold. The single registry every scope
 /// word in mcphost comes from (PRD-mcphost-scope-registry-generated).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -35,10 +41,10 @@ pub enum Scope {
     Admin,
 }
 
-/// The refusal code for a credential lacking a required scope.
-pub const INSUFFICIENT_SCOPE: &str = "insufficient_scope";
-/// The refusal code for a delegation request that exceeds its parent.
-pub const SCOPE_ESCALATION: &str = "scope_escalation";
+/// The refusal code for a credential lacking a required scope: re-exported
+/// from its one `err_code!` declaration in `errors.rs`, so the literal lives
+/// once, in the error registry (PRD-mcphost-errors-generated-registry).
+pub use crate::errors::INSUFFICIENT_SCOPE;
 /// The refusal code for a scope word in no registry or catalog.
 pub const SCOPE_UNKNOWN: &str = "scope_unknown";
 
@@ -244,4 +250,32 @@ pub fn control_plane_requirement(name: &str) -> Vec<String> {
     } else {
         vec![Scope::Mcp.as_str().to_string()]
     }
+}
+
+/// One row of the scope catalog: a scope's wire name and every scope name that
+/// implies it (itself included). Built from [`Scope::ALL`] by [`catalog`], so
+/// the llms.txt Scopes table and the sub-agent recipe render from one list.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScopeRow {
+    pub name: String,
+    pub implied_by: Vec<String>,
+}
+
+impl ScopeRow {
+    /// Whether a key holding the scope named `held` also holds this one.
+    pub fn granted_by(&self, held: &str) -> bool {
+        self.implied_by.iter().any(|n| n == held)
+    }
+}
+
+/// Every scope in registry order.
+pub fn catalog() -> Vec<ScopeRow> {
+    Scope::ALL
+        .iter()
+        .copied()
+        .map(|sc| ScopeRow {
+            name: sc.as_str().to_string(),
+            implied_by: Scope::ALL.iter().copied().filter(|h| h.implies(sc)).map(|h| h.as_str().to_string()).collect(),
+        })
+        .collect()
 }

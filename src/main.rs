@@ -177,6 +177,10 @@ enum Command {
         #[arg(long)]
         doc: bool,
     },
+    /// PRD-mcphost-delegation-recipes-and-quickstart requirement 5: print the
+    /// README's `<!-- recipe:sub_agent_key -->` block for
+    /// `scripts/sandbox-api-doc-check.sh`.
+    RecipeSection,
     /// PRD-mcphost-first-hour-support-surface requirement 3 (AC4):
     /// regenerate `docs/plans.md` from `billing::plans_from_catalog` over
     /// `PlanCatalog::default_catalog()` -- the exact data `billing.plans`
@@ -1200,6 +1204,10 @@ async fn main() -> anyhow::Result<()> {
             }
             Ok(())
         }
+        Command::RecipeSection => {
+            println!("{}", mcphost::llms_txt::render_recipe_block(&mcphost::delegation_recipe::sub_agent_key()));
+            Ok(())
+        }
         Command::LlmsTxt { check, path, readme, clients } => {
             // Deliberately no `init_tracing()`: same rationale as
             // `SandboxCheck`/`Funnel` above -- this subcommand's contract is
@@ -1234,11 +1242,18 @@ async fn main() -> anyhow::Result<()> {
             let with_tools =
                 mcphost::llms_txt::splice_events(&with_tools, &mcphost::llms_txt::render_events_section());
             let with_tools =
-                mcphost::llms_txt::splice_scopes(&with_tools, &mcphost::llms_txt::render_scopes_section(&kinds));
-            let with_tools =
                 mcphost::llms_txt::splice_rest(&with_tools, &mcphost::llms_txt::render_rest_section());
             let with_tools =
                 mcphost::notify::splice_section(&with_tools, &mcphost::notify::render_section());
+            let with_tools = mcphost::llms_txt::splice_recipe_sections(
+                &with_tools,
+                &mcphost::llms_txt::render_scopes_section(&mcphost::scopes::catalog()),
+                &mcphost::llms_txt::render_recipe(&mcphost::delegation_recipe::sub_agent_key()),
+            );
+            let with_tools = mcphost::llms_txt::splice_scope_verbs(
+                &with_tools,
+                &mcphost::llms_txt::render_scope_verbs_section(&kinds),
+            );
             let with_clients = mcphost::clients::render_into(&with_tools, &clients_file).unwrap_or_else(|why| {
                 eprintln!("llms-txt: {}: {why}", path.display());
                 std::process::exit(2);
@@ -1253,6 +1268,10 @@ async fn main() -> anyhow::Result<()> {
                 eprintln!("llms-txt: {}: {why}", readme.display());
                 std::process::exit(2);
             });
+            let readme_updated = mcphost::llms_txt::splice_readme_recipe(
+                &readme_updated,
+                &mcphost::llms_txt::render_recipe_block(&mcphost::delegation_recipe::sub_agent_key()),
+            );
             files.push((readme, readme_existing, readme_updated));
             let mut stale = false;
             for (p, existing, updated) in &files {

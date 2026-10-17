@@ -54,7 +54,7 @@ pub fn extract_key(meta: Option<&Map<String, Value>>, args: &mut Value) -> Resul
         && key.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | ':' | '-'));
     if !valid {
         return Err(AppError::Structured {
-            code: "invalid_params",
+            code: crate::errors::INVALID_PARAMS,
             message: format!(
                 "idempotency_key must be 1..={MAX_KEY_LEN} characters from [A-Za-z0-9_.:-]"
             ),
@@ -105,7 +105,7 @@ pub fn args_sha256(args: &Value) -> String {
 /// the call carried, or null) so an agent learns the move when it needs it.
 pub fn annotate_timeout(err: AppError, key: Option<&str>) -> AppError {
     match err {
-        AppError::Structured { code: "tool_timeout", message, data } => {
+        AppError::Structured { code: TOOL_TIMEOUT, message, data } => {
             let mut map = match data {
                 Value::Object(m) => m,
                 Value::Null => Map::new(),
@@ -113,7 +113,7 @@ pub fn annotate_timeout(err: AppError, key: Option<&str>) -> AppError {
             };
             map.insert("hint".to_string(), json!(TIMEOUT_HINT));
             map.insert("idempotency_key".to_string(), json!(key));
-            AppError::Structured { code: "tool_timeout", message, data: Value::Object(map) }
+            AppError::Structured { code: TOOL_TIMEOUT, message, data: Value::Object(map) }
         }
         other => other,
     }
@@ -212,6 +212,13 @@ const REPLAY_CODES: &[&str] = &[
     "unknown_kind",
     "wrong_tenant",
 ];
+
+crate::err_code! {
+    pub TOOL_TIMEOUT,
+    code: "tool_timeout", family: Call, class: AgentFault, retryable: false,
+    remedy: "Make the tool finish within the time cap, or reduce its input.",
+}
+
 
 #[cfg(test)]
 mod intern_tests {

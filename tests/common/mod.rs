@@ -2723,3 +2723,46 @@ pub fn jwt_aud(token: &str) -> String {
     let claims: Value = serde_json::from_slice(&bytes).expect("payload json");
     claims["aud"].as_str().expect("aud claim").to_string()
 }
+
+/// PRD-mcphost-skill-md-generated-from-plugin: a scratch copy of the files
+/// `mcphost gen-docs` reads and writes (README.md, docs/, www/), so a test
+/// can run the real binary without touching the worktree.
+pub fn gen_docs_scratch_tree(label: &str) -> PathBuf {
+    fn copy_dir(from: &Path, to: &Path) {
+        std::fs::create_dir_all(to).unwrap();
+        for e in std::fs::read_dir(from).unwrap() {
+            let e = e.unwrap();
+            let dest = to.join(e.file_name());
+            if e.file_type().unwrap().is_dir() {
+                copy_dir(&e.path(), &dest);
+            } else {
+                std::fs::copy(e.path(), dest).unwrap();
+            }
+        }
+    }
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let root = std::env::temp_dir().join(format!(
+        "mcphost-gendocs-{label}-{}-{}",
+        process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let src = Path::new(env!("CARGO_MANIFEST_DIR"));
+    for f in ["README.md", mcphost::gendocs::INSTALL_DOC_PATH] {
+        std::fs::copy(src.join(f), root.join(f)).unwrap();
+    }
+    copy_dir(&src.join("docs"), &root.join("docs"));
+    copy_dir(&src.join("www"), &root.join("www"));
+    root
+}
+
+/// Runs the built `mcphost gen-docs [args]` in `dir`.
+pub fn run_gen_docs(dir: &Path, args: &[&str]) -> process::Output {
+    process::Command::new(env!("CARGO_BIN_EXE_mcphost"))
+        .arg("gen-docs")
+        .args(args)
+        .current_dir(dir)
+        .env_remove("MCPHOST_SUPPORT_URL")
+        .output()
+        .expect("run mcphost gen-docs")
+}

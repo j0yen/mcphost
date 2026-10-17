@@ -754,7 +754,7 @@ fn is_live(row: &BlobRow, now: i64) -> bool {
 /// whose row the prune has not removed yet.
 fn blob_expired(expired_at: i64) -> AppError {
     AppError::Structured {
-        code: "blob_expired",
+        code: BLOB_EXPIRED,
         message: format!("this blob expired at {expired_at}; host.blob.touch {{id, ttl_s}} revives it until the nightly prune removes it"),
         data: json!({"expired_at": expired_at}),
     }
@@ -903,7 +903,7 @@ struct Fetched {
 
 fn host_not_allowed(host: &str) -> AppError {
     AppError::Structured {
-        code: "host_not_allowed",
+        code: crate::uptime::HOST_NOT_ALLOWED,
         message: format!("host '{host}' is not an allowed fetch target (private, loopback, link-local, internal or this host's own domain)"),
         data: json!({"field": "url", "host": host}),
     }
@@ -1114,7 +1114,7 @@ pub async fn store_blob(
 
 fn blob_not_found(what: &str) -> AppError {
     AppError::Structured {
-        code: "blob_not_found",
+        code: BLOB_NOT_FOUND,
         message: format!("no blob found for {what}"),
         data: json!({}),
     }
@@ -1216,7 +1216,7 @@ pub async fn blob_get(state: &AppState, tenant: &Tenant, args: &Value) -> Result
         "base64" => {
             if row.bytes > INLINE_MAX_BYTES {
                 return Err(AppError::Structured {
-                    code: "blob_too_large_inline",
+                    code: BLOB_TOO_LARGE_INLINE,
                     message: format!(
                         "blob is {} bytes, over the {INLINE_MAX_BYTES} byte inline limit; use host.blob.url and fetch the link",
                         row.bytes
@@ -1477,3 +1477,22 @@ pub async fn download(
         Err(_) => (StatusCode::NOT_FOUND, "blob bytes missing").into_response(),
     }
 }
+
+crate::err_code! {
+    pub BLOB_EXPIRED,
+    code: "blob_expired", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Revive it with host.blob.touch {id, ttl_s} before the nightly prune, or upload the blob again.",
+}
+
+crate::err_code! {
+    pub BLOB_NOT_FOUND,
+    code: "blob_not_found", family: Storage, class: AgentFault, retryable: false,
+    remedy: "List blobs with host.blob.list and use an id or name that exists for this tenant.",
+}
+
+crate::err_code! {
+    pub BLOB_TOO_LARGE_INLINE,
+    code: "blob_too_large_inline", family: Args, class: AgentFault, retryable: false,
+    remedy: "Fetch the blob through the link from host.blob.url instead of reading it inline.",
+}
+

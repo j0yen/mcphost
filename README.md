@@ -175,6 +175,16 @@ Support: support channel not configured (MCPHOST_SUPPORT_URL is unset).
 
 `host.task.post {to, payload, deadline_s, dedupe_key?}` sends a task to one agent and returns `task_id`, `thread_id` and `status`. The recipient's `host.msg.wait` returns it with `data.task.task_id`; it calls `host.task.claim {task_id}`, then `host.task.complete {task_id, result}`, and your own `host.msg.wait` returns a message whose `data.task` carries the status and the result. `host.task.get {task_id}` reads one task. A task nobody finishes by its `deadline_s` goes `dead`, a `task.dead` message from `host` lands in the thread, and `host.task.dead_letters` lists it with `reason: "deadline"`. Statuses: `posted`, `claimed`, `done`, `dead`, `cancelled`. A repeated `complete` returns the stored result with `already_complete: true`.
 
+### Sub-agents
+
+<!-- recipe:sub_agent_key -->
+1. As the lead: `host.key.delegate` `{"can_delegate":true,"label":"helper","scopes":["tools:call"],"ttl_s":3600}` returns `key`, `label`.
+2. As the helper, with the `key` call 1 returned: `host.key.delegate` `{"scopes":["read"],"ttl_s":60}` fails `scope_escalation`.
+3. As the lead: `host.key.revoke` `{"cascade":true,"label":"helper"}` `revoked` >= 1.
+Hand the helper the `key` call 1 returned, never your own. It holds `tools:call` and can do no more: asking for any other scope (`read`, `write`, `tools:write`, `state:read`, `state:write`, `secrets:write`, `keys:manage`, `admin`) fails `scope_escalation`.
+Call 3 revokes it and everything beneath it; the helper's next call fails `key_revoked`.
+<!-- /recipe:sub_agent_key -->
+
 ## Contributing: naming a new `host.*` tool
 
 One rule now, written down and enforced by CI: `host.<family>.<verb>` --

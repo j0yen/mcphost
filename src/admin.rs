@@ -516,7 +516,7 @@ pub async fn sandbox_recheck(state: &AppState) -> Result<Value, AppError> {
         }
     }
     Err(AppError::Structured {
-        code: "sandbox_unsupported",
+        code: SANDBOX_UNSUPPORTED,
         message: "no registered kind on this host has a sandbox self-test".to_string(),
         data: Value::Null,
     })
@@ -1543,7 +1543,7 @@ pub async fn alerts_raise(state: &AppState, args: &Value) -> Result<Value, AppEr
     let body_bytes = body.to_string().len();
     if body_bytes > crate::alerts::MAX_ALERT_BODY_BYTES {
         return Err(AppError::Structured {
-            code: "alert_body_too_large",
+            code: ALERT_BODY_TOO_LARGE,
             message: format!(
                 "body is {body_bytes} bytes, over the {} byte limit",
                 crate::alerts::MAX_ALERT_BODY_BYTES
@@ -2087,3 +2087,16 @@ pub async fn upgrades(state: &AppState, args: &Value) -> Result<Value, AppError>
         .collect();
     Ok(json!({"window": {"days": days, "since_unix": since_unix}, "upgrades": upgrades}))
 }
+
+crate::err_code! {
+    pub ALERT_BODY_TOO_LARGE,
+    code: "alert_body_too_large", family: Args, class: AgentFault, retryable: false,
+    remedy: "Shorten the alert body to data.limit_bytes or less and re-send.",
+}
+
+crate::err_code! {
+    pub SANDBOX_UNSUPPORTED,
+    code: "sandbox_unsupported", family: Internal, class: HostRefusal, retryable: false,
+    remedy: "No registered kind on this host has a sandbox self-test; do not retry.",
+}
+

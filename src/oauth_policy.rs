@@ -249,7 +249,7 @@ pub async fn client_approve(state: &AppState, tenant: &Tenant, args: &Value) -> 
     let removed = state.db.remove_oauth_pending_client(tenant.id, client_id.clone()).await?;
     if !removed {
         return Err(AppError::Structured {
-            code: "client_not_found",
+            code: CLIENT_NOT_FOUND,
             message: format!("no pending client '{client_id}'"),
             data: json!({"client_id": client_id}),
         });
@@ -267,7 +267,7 @@ pub async fn client_deny(state: &AppState, tenant: &Tenant, args: &Value) -> Res
     let removed = state.db.remove_oauth_pending_client(tenant.id, client_id.clone()).await?;
     if !removed {
         return Err(AppError::Structured {
-            code: "client_not_found",
+            code: CLIENT_NOT_FOUND,
             message: format!("no pending client '{client_id}'"),
             data: json!({"client_id": client_id}),
         });
@@ -406,7 +406,7 @@ pub async fn audit_export(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     if total_bytes > AUDIT_EXPORT_MAX_BYTES {
         let suggested_until = since + ((until - since) / 2).max(1);
         return Err(AppError::Structured {
-            code: "export_too_large",
+            code: crate::export::EXPORT_TOO_LARGE,
             message: format!(
                 "export exceeds {AUDIT_EXPORT_MAX_BYTES} bytes for this window; try a narrower one"
             ),
@@ -546,3 +546,10 @@ pub async fn record_audit(
         .await?;
     Ok(())
 }
+
+crate::err_code! {
+    pub CLIENT_NOT_FOUND,
+    code: "client_not_found", family: Oauth, class: AgentFault, retryable: false,
+    remedy: "Check data.client_id against the pending clients list and use one that exists.",
+}
+

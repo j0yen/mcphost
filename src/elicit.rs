@@ -129,7 +129,7 @@ pub struct ValidSchema {
 
 fn invalid(path: &str, why: &str) -> KindError {
     KindError::structured_with(
-        "elicit_schema_invalid",
+        ELICIT_SCHEMA_INVALID,
         format!("{path}: {why}; allowed: {}", render_subset()),
         json!({"path": path, "allowed": ELICIT_SCHEMA_SUBSET.types, "limits": {
             "max_properties": ELICIT_SCHEMA_SUBSET.max_properties,
@@ -300,7 +300,7 @@ pub fn current_channel() -> Option<ClientChannel> {
 
 fn unsupported(reason: &str) -> KindError {
     KindError::structured_with(
-        "elicit_unsupported",
+        ELICIT_UNSUPPORTED,
         format!("mcphost.elicit has no {reason}"),
         json!({"reason": reason}),
     )
@@ -308,7 +308,7 @@ fn unsupported(reason: &str) -> KindError {
 
 fn exceeded() -> KindError {
     KindError::structured_with(
-        "elicit_calls_exceeded",
+        ELICIT_CALLS_EXCEEDED,
         format!("at most {ELICIT_CALLS_MAX} elicits per call"),
         json!({"limit": ELICIT_CALLS_MAX}),
     )
@@ -389,7 +389,7 @@ impl TenantElicit {
             Ok(r) => r,
             Err(ServiceError::Timeout { .. }) => {
                 return Err(KindError::structured_with(
-                    "elicit_timeout",
+                    ELICIT_TIMEOUT,
                     format!("the client did not answer within {}s", wall.as_secs()),
                     json!({"timeout_s": wall.as_secs()}),
                 ));
@@ -472,3 +472,28 @@ fn link_answer(schema: &ValidSchema, choice: &str) -> Value {
     }
     json!({"action": "accept", "content": schema.default_content()})
 }
+
+crate::err_code! {
+    pub ELICIT_CALLS_EXCEEDED,
+    code: "elicit_calls_exceeded", family: Call, class: AgentFault, retryable: false,
+    remedy: "Ask for fewer elicitations per call; data.limit is the maximum.",
+}
+
+crate::err_code! {
+    pub ELICIT_SCHEMA_INVALID,
+    code: "elicit_schema_invalid", family: Args, class: AgentFault, retryable: false,
+    remedy: "Use only the schema subset in data.allowed and stay within data.limits.",
+}
+
+crate::err_code! {
+    pub ELICIT_TIMEOUT,
+    code: "elicit_timeout", family: Call, class: AgentFault, retryable: true,
+    remedy: "The client did not answer in time; call again and answer within data.timeout_s.",
+}
+
+crate::err_code! {
+    pub ELICIT_UNSUPPORTED,
+    code: "elicit_unsupported", family: Call, class: HostRefusal, retryable: false,
+    remedy: "This client or context cannot elicit; read data.reason and ask through host.ask.create instead.",
+}
+

@@ -733,6 +733,20 @@ mod dkeyc_ac05_revoke_without_cascade_has_children;
 mod dkeyc_ac06_plan_ceilings_delegated_keys_and_ttl;
 #[path = "dkeyc_ac07_list_tree_and_whoami_key.rs"]
 mod dkeyc_ac07_list_tree_and_whoami_key;
+#[path = "dlrec_ac01_recipe_executes_verbatim.rs"]
+mod dlrec_ac01_recipe_executes_verbatim;
+#[path = "dlrec_ac02_quickstart_returns_recipe_and_orders_next_steps.rs"]
+mod dlrec_ac02_quickstart_returns_recipe_and_orders_next_steps;
+#[path = "dlrec_ac03_llms_txt_recipe_section_generated.rs"]
+mod dlrec_ac03_llms_txt_recipe_section_generated;
+#[path = "dlrec_ac04_new_scope_changes_both_sections.rs"]
+mod dlrec_ac04_new_scope_changes_both_sections;
+#[path = "dlrec_ac05_readme_recipe_block_checked.rs"]
+mod dlrec_ac05_readme_recipe_block_checked;
+#[path = "dlrec_ac06_whoami_hint_for_foreign_session.rs"]
+mod dlrec_ac06_whoami_hint_for_foreign_session;
+#[path = "dlrec_ac07_error_codes_only_in_generated_blocks.rs"]
+mod dlrec_ac07_error_codes_only_in_generated_blocks;
 #[path = "docsearch_ac01_status_reports_watermark_lag_and_chunks.rs"]
 mod docsearch_ac01_status_reports_watermark_lag_and_chunks;
 #[path = "docsearch_ac02_lexical_search_returns_passage_and_offset.rs"]
@@ -879,8 +893,6 @@ mod edead_ac04_replay_dead_letter;
 mod edead_ac05_ring_and_plan_ceiling;
 #[path = "edead_ac06_event_in_chain_context.rs"]
 mod edead_ac06_event_in_chain_context;
-#[path = "edead_ac07_reason_table_cannot_drift.rs"]
-mod edead_ac07_reason_table_cannot_drift;
 #[path = "edp_ac01_pointers_resolve_against_headings.rs"]
 mod edp_ac01_pointers_resolve_against_headings;
 #[path = "edp_ac02_no_literal_anchors_outside_doc_anchors.rs"]
@@ -971,6 +983,18 @@ mod errjson_ac02_error_data_carries_the_registry_row;
 mod errjson_ac03_errors_json_route;
 #[path = "errjson_ac04_host_errors_tool.rs"]
 mod errjson_ac04_host_errors_tool;
+#[path = "errreg_ac01_err_code_declares_and_registers.rs"]
+mod errreg_ac01_err_code_declares_and_registers;
+#[path = "errreg_ac02_registry_surfaces_byte_identical_snapshot.rs"]
+mod errreg_ac02_registry_surfaces_byte_identical_snapshot;
+#[path = "errreg_ac03_scanner_fails_bare_literal_names_site.rs"]
+mod errreg_ac03_scanner_fails_bare_literal_names_site;
+#[path = "errreg_ac04_scanner_fails_duplicate_and_format_codes.rs"]
+mod errreg_ac04_scanner_fails_duplicate_and_format_codes;
+#[path = "errreg_ac05_hand_table_empty_and_backstop_passes.rs"]
+mod errreg_ac05_hand_table_empty_and_backstop_passes;
+#[path = "errreg_ac06_five_10_17_codes_declared_at_emit_site.rs"]
+mod errreg_ac06_five_10_17_codes_declared_at_emit_site;
 #[path = "evkr_ac01_no_second_spelling.rs"]
 mod evkr_ac01_no_second_spelling;
 #[path = "evkr_ac02_renderings_equal_enum.rs"]

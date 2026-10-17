@@ -322,7 +322,7 @@ pub fn strip_control_chars(s: &str) -> String {
 
 fn too_long(what: &str, len: usize, max: usize) -> AppError {
     AppError::Structured {
-        code: "invalid_params",
+        code: crate::errors::INVALID_PARAMS,
         message: format!("{what} must be at most {max} bytes; got {len}"),
         data: json!({"max_bytes": max, "len": len}),
     }
@@ -383,7 +383,7 @@ pub async fn send(state: &AppState, sender: &Sender<'_>, args: &Value) -> Result
         .await?;
     if let Err(retry_after_s) = admitted {
         return Err(AppError::Structured {
-            code: "rate_limited",
+            code: crate::errors::RATE_LIMITED,
             message: "too many feedback sends in the last hour".to_string(),
             data: json!({"retry_after_s": retry_after_s}),
         });
@@ -402,7 +402,7 @@ pub async fn get(state: &AppState, sender: &Sender<'_>, args: &Value) -> Result<
         return Err(AppError::InvalidParams("feedback_id must not be empty".to_string()));
     }
     let not_found = || AppError::Structured {
-        code: "feedback_not_found",
+        code: FEEDBACK_NOT_FOUND,
         message: format!("no feedback '{id}' filed by this caller"),
         data: json!({"feedback_id": id}),
     };
@@ -961,3 +961,10 @@ fn spawn_theme_loop(state: AppState, interval: Option<std::time::Duration>) -> t
         }
     })
 }
+
+crate::err_code! {
+    pub FEEDBACK_NOT_FOUND,
+    code: "feedback_not_found", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Use a feedback id this caller filed.",
+}
+

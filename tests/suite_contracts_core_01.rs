@@ -35,6 +35,8 @@ mod compat_ac04_ac05_admin_and_tenant_cache_fields;
 mod creg_ac02_initialize_capabilities_from_registry;
 #[path = "docsqa_ac10_deferral_is_justified.rs"]
 mod docsqa_ac10_deferral_is_justified;
+#[path = "edead_ac07_reason_table_cannot_drift.rs"]
+mod edead_ac07_reason_table_cannot_drift;
 #[path = "exmf_ac03_index_matches_directories.rs"]
 mod exmf_ac03_index_matches_directories;
 #[path = "kdr_ac02_python_page_tables_generated.rs"]

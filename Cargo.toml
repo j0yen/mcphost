@@ -26,7 +26,7 @@ strip = true
 [package]
 autotests = false  # gen-test-suites.sh: explicit [[test]] suites below
 name = "mcphost"
-version = "0.108.170"
+version = "0.108.178"
 edition = "2024"
 rust-version = "1.95"
 description = "Hosted MCP runtime where your agent publishes its own tools by tool call and keeps working."
@@ -58,6 +58,7 @@ tower-http = { version = "0.6", features = ["limit", "timeout", "trace"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+linkme = "0.3"
 jsonschema = "0.26"
 # PRD-mcphost-migration-refusal-contract R4: the compat report's JSON schema is generated from its struct.
 schemars = "1"

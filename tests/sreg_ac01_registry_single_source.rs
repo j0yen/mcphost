@@ -27,7 +27,10 @@ fn sreg_ac01_no_insufficient_scope_literal_outside_registry() {
     let needle = format!("\"{}\"", scopes::INSUFFICIENT_SCOPE);
     let mut offenders = Vec::new();
     for f in files {
-        if f.ends_with("scopes.rs") {
+        // `scopes.rs` is the registry; `errors.rs` holds the one `err_code!`
+        // declaration of the literal (PRD-mcphost-errors-generated-registry),
+        // which `scopes::INSUFFICIENT_SCOPE` re-exports.
+        if f.ends_with("scopes.rs") || f.ends_with("errors.rs") {
             continue;
         }
         let text = std::fs::read_to_string(&f).expect("read");

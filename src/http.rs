@@ -612,7 +612,7 @@ async fn billing_webhook(
             let data = err.into_error_data();
             (
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error_code": "invalid_webhook_signature", "error": data.message})),
+                Json(json!({"error_code": crate::billing::INVALID_WEBHOOK_SIGNATURE, "error": data.message})),
             )
                 .into_response()
         }
@@ -651,12 +651,12 @@ async fn well_known_server_json(
         Ok(Some(doc)) => (StatusCode::OK, Json(doc)).into_response(),
         Ok(None) => (
             StatusCode::NOT_FOUND,
-            Json(json!({"error_code": "tool_not_found", "error": "no published server.json for this namespace"})),
+            Json(json!({"error_code": crate::errors::TOOL_NOT_FOUND, "error": "no published server.json for this namespace"})),
         )
             .into_response(),
         Err(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error_code": "storage", "error": "storage error"})),
+            Json(json!({"error_code": crate::errors::STORAGE, "error": "storage error"})),
         )
             .into_response(),
     }
@@ -671,7 +671,7 @@ async fn well_known_oauth_protected_resource(State(state): State<Arc<AppState>>)
         Ok(doc) => (StatusCode::OK, Json(doc)).into_response(),
         Err(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error_code": "storage", "error": "storage error"})),
+            Json(json!({"error_code": crate::errors::STORAGE, "error": "storage error"})),
         )
             .into_response(),
     }
@@ -706,14 +706,14 @@ async fn well_known_authorization_server_tenant(
         Ok(None) => {
             return (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error_code": "tenant_not_found", "error": "no such tenant"})),
+                Json(json!({"error_code": crate::errors::TENANT_NOT_FOUND, "error": "no such tenant"})),
             )
                 .into_response();
         }
         Err(_) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error_code": "storage", "error": "storage error"})),
+                Json(json!({"error_code": crate::errors::STORAGE, "error": "storage error"})),
             )
                 .into_response();
         }
@@ -722,7 +722,7 @@ async fn well_known_authorization_server_tenant(
         Ok(doc) => (StatusCode::OK, Json(doc)).into_response(),
         Err(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error_code": "storage", "error": "storage error"})),
+            Json(json!({"error_code": crate::errors::STORAGE, "error": "storage error"})),
         )
             .into_response(),
     }
@@ -750,14 +750,14 @@ async fn well_known_oauth_protected_resource_tenant(
         Ok(None) => {
             return (
                 StatusCode::NOT_FOUND,
-                Json(json!({"error_code": "tenant_not_found", "error": "no such tenant"})),
+                Json(json!({"error_code": crate::errors::TENANT_NOT_FOUND, "error": "no such tenant"})),
             )
                 .into_response();
         }
         Err(_) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error_code": "storage", "error": "storage error"})),
+                Json(json!({"error_code": crate::errors::STORAGE, "error": "storage error"})),
             )
                 .into_response();
         }
@@ -766,7 +766,7 @@ async fn well_known_oauth_protected_resource_tenant(
         Ok(doc) => (StatusCode::OK, Json(doc)).into_response(),
         Err(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error_code": "storage", "error": "storage error"})),
+            Json(json!({"error_code": crate::errors::STORAGE, "error": "storage error"})),
         )
             .into_response(),
     }
@@ -782,7 +782,7 @@ async fn well_known_catalog(State(state): State<Arc<AppState>>) -> impl IntoResp
         Ok(doc) => (StatusCode::OK, Json(doc)).into_response(),
         Err(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error_code": "storage", "error": "storage error"})),
+            Json(json!({"error_code": crate::errors::STORAGE, "error": "storage error"})),
         )
             .into_response(),
     }
@@ -1018,7 +1018,7 @@ async fn incidents_json_route(State(state): State<Arc<AppState>>) -> Response {
         Ok(value) => (StatusCode::OK, Json(value)).into_response(),
         Err(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error_code": "storage", "error": "storage error"})),
+            Json(json!({"error_code": crate::errors::STORAGE, "error": "storage error"})),
         )
             .into_response(),
     };
@@ -1050,7 +1050,7 @@ async fn status_json_route(
         Ok(value) => (StatusCode::OK, Json(value)).into_response(),
         Err(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error_code": "storage", "error": "storage error"})),
+            Json(json!({"error_code": crate::errors::STORAGE, "error": "storage error"})),
         )
             .into_response(),
     };
@@ -1709,7 +1709,7 @@ async fn require_entry_bearer(State(state): State<Arc<AppState>>, req: Request<B
         Err(crate::errors::AppError::InvalidToken(reason)) => entry_unauthorized(&state, Some(reason)),
         Err(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error_code": "storage", "error": "storage error"})),
+            Json(json!({"error_code": crate::errors::STORAGE, "error": "storage error"})),
         )
             .into_response(),
     }
@@ -1721,9 +1721,9 @@ async fn require_entry_bearer(State(state): State<Arc<AppState>>, req: Request<B
 fn entry_unauthorized(state: &AppState, invalid: Option<&'static str>) -> Response {
     let metadata_url = crate::oauth::entry_metadata_url(&state.public_url);
     let data = match invalid {
-        Some(reason) => json!({"error_code": "invalid_token", "error_description": reason}),
+        Some(reason) => json!({"error_code": crate::errors::INVALID_TOKEN, "error_description": reason}),
         None => json!({
-            "error_code": "authorization_required",
+            "error_code": AUTHORIZATION_REQUIRED,
             "error": "this URL is OAuth-only: authorize through the metadata named in WWW-Authenticate",
         }),
     };
@@ -2308,6 +2308,13 @@ async fn serve_until_signal(
     }
     Ok(())
 }
+
+crate::err_code! {
+    pub AUTHORIZATION_REQUIRED,
+    code: "authorization_required", family: Oauth, class: HostRefusal, retryable: false,
+    remedy: "Authorize through the OAuth metadata named in the WWW-Authenticate header, then retry with the token.",
+}
+
 
 #[cfg(test)]
 mod anon_healthz_tests {

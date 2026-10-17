@@ -2108,7 +2108,7 @@ pub async fn grant_revoke(state: &AppState, tenant: &crate::db::Tenant, args: &V
     let revoked = state.db.revoke_oauth_grant_for_tenant(id, tenant.id, now).await?;
     if !revoked {
         return Err(AppError::Structured {
-            code: "grant_not_found",
+            code: GRANT_NOT_FOUND,
             message: format!("no live grant {id} for this tenant"),
             data: json!({"id": id}),
         });
@@ -2160,3 +2160,10 @@ pub async fn post_revoke(State(state): State<Arc<AppState>>, axum::Form(req): ax
     }
     StatusCode::OK.into_response()
 }
+
+crate::err_code! {
+    pub GRANT_NOT_FOUND,
+    code: "grant_not_found", family: Oauth, class: AgentFault, retryable: false,
+    remedy: "List grants and use an id that is still live for this tenant.",
+}
+

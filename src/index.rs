@@ -168,7 +168,7 @@ fn invalid(msg: impl Into<String>) -> AppError {
 
 fn index_exists(name: &str) -> AppError {
     AppError::Structured {
-        code: "index_exists",
+        code: INDEX_EXISTS,
         message: format!("an index named '{name}' already exists"),
         data: json!({"name": name}),
     }
@@ -176,7 +176,7 @@ fn index_exists(name: &str) -> AppError {
 
 fn index_not_found(name: &str) -> AppError {
     AppError::Structured {
-        code: "index_not_found",
+        code: INDEX_NOT_FOUND,
         message: format!("no index named '{name}'"),
         data: json!({"name": name}),
     }
@@ -184,7 +184,7 @@ fn index_not_found(name: &str) -> AppError {
 
 fn quota_index_max(limit: i64, used: i64) -> AppError {
     AppError::Structured {
-        code: "quota_index_max",
+        code: QUOTA_INDEX_MAX,
         message: format!("index_max quota exceeded (limit {limit}, at {used})"),
         data: json!({"limit": limit, "used": used}),
     }
@@ -210,7 +210,7 @@ fn refresh_below_minimum(got: i64, minimum: i64) -> AppError {
     let mut data = args_err.data();
     data["minimum"] = json!(minimum);
     AppError::Structured {
-        code: "args_invalid",
+        code: crate::errors::ARGS_INVALID,
         message: args_err.message(),
         data,
     }
@@ -224,7 +224,7 @@ fn plan_of<'a>(state: &'a AppState, tenant: &Tenant) -> Result<&'a crate::plans:
 
 fn host_not_allowed(host: &str) -> AppError {
     AppError::Structured {
-        code: "host_not_allowed",
+        code: crate::uptime::HOST_NOT_ALLOWED,
         message: format!("host '{host}' is not allowed as an index url source"),
         data: json!({"field": "url", "host": host}),
     }
@@ -1653,6 +1653,25 @@ async fn commit_batch(
         })
         .await
 }
+
+crate::err_code! {
+    pub INDEX_EXISTS,
+    code: "index_exists", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Use a different index name or drop the existing index first.",
+}
+
+crate::err_code! {
+    pub INDEX_NOT_FOUND,
+    code: "index_not_found", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Create the index first or use a name from the index list.",
+}
+
+crate::err_code! {
+    pub QUOTA_INDEX_MAX,
+    code: "quota_index_max", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Drop an unused index or move to a plan with a higher index_max.",
+}
+
 
 #[cfg(test)]
 mod tests {

@@ -39,6 +39,31 @@ use crate::tool_aliases;
 pub const PLANS_DOC_PATH: &str = "docs/plans.md";
 pub const PLANS_HTML_PATH: &str = "www/plans.html";
 
+/// PRD-mcphost-skill-md-generated-from-plugin: `www/skill.md` is the plugin
+/// skill, written unchanged (no header, trailer, or newline change) so
+/// Caddy keeps serving a vendored file and `docurl_ac02` keeps passing.
+pub const SKILL_MD_PATH: &str = "www/skill.md";
+pub const PLUGIN_SKILL_MD: &str = include_str!("../plugin/skills/mcphost/SKILL.md");
+
+/// Public accessor for the files `gen-docs` writes from a render (the
+/// support-spliced and kind-contract files are edited in place and not
+/// listed here).
+pub fn output_paths() -> Vec<&'static str> {
+    vec![
+        PLANS_DOC_PATH,
+        PLANS_HTML_PATH,
+        PRICING_HTML_PATH,
+        TOOLS_DOC_PATH,
+        BLOB_TYPES_DOC_PATH,
+        crate::events::EVENTS_DOC_PATH,
+        crate::events::EVENTS_JSON_PATH,
+        RETRIEVAL_DOC_PATH,
+        INSTALL_DOC_PATH,
+        INSTALL_DOC_WWW_PATH,
+        SKILL_MD_PATH,
+    ]
+}
+
 /// AC5's three build-time docs -- plain repo files, never served at
 /// request time, so `MCPHOST_SUPPORT_URL`'s value for them is baked in at
 /// `mcphost gen-docs` time (see this module's own doc comment) and
@@ -781,11 +806,21 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
             Path::new(INSTALL_DOC_WWW_PATH),
             crate::install_links::render_install_doc(crate::install_links::CANONICAL_PUBLIC_URL),
         ),
+        (Path::new(SKILL_MD_PATH), PLUGIN_SKILL_MD.to_string()),
     ] {
         if check {
             let current = std::fs::read_to_string(path).unwrap_or_default();
             if current != rendered {
-                eprintln!("gen-docs --check: {} is stale (run `mcphost gen-docs`)", path.display());
+                let first_diff = current
+                    .lines()
+                    .zip(rendered.lines())
+                    .position(|(a, b)| a != b)
+                    .unwrap_or_else(|| current.lines().count().min(rendered.lines().count()))
+                    + 1;
+                eprintln!(
+                    "gen-docs --check: {} is stale vs its source (first differing line {first_diff}; run `mcphost gen-docs`)",
+                    path.display()
+                );
                 stale = true;
             }
         } else {
