@@ -14613,9 +14613,6 @@
       "hint": {
         "type": "string"
       },
-      "invite_url": {
-        "type": "string"
-      },
       "key_age_s": {
         "type": "integer"
       },
