@@ -315,6 +315,26 @@ enum Command {
         /// `registry/server.json`.
         #[arg(long)]
         path: Option<PathBuf>,
+        /// PRD-mcphost-registry-entry-one-source: compare the public
+        /// registry's published version to the live endpoint's
+        /// `initialize -> serverInfo.version`. Prints
+        /// `registry=<v> live=<v> remotes=<url> drift=<yes|no|unknown>`;
+        /// exit 0 no drift, 3 drift, 2 unknown (a side unreachable).
+        #[arg(long)]
+        live: bool,
+        /// The public URL `--live` probes (`<U>/mcp`). Defaults to
+        /// `$MCPHOST_PUBLIC_URL`, else `https://mcphost.dev`.
+        #[arg(long)]
+        public_url: Option<String>,
+        /// Validate the committed file (`--path`, default
+        /// `registry/server.json`) against the pinned schema plus the
+        /// "must name a remote" rule; exit 1 on failure.
+        #[arg(long)]
+        validate: bool,
+        /// With `--live`: print `{registry_version, live_version, remotes,
+        /// drift, checked_at}` JSON instead of the drift line.
+        #[arg(long, requires = "live")]
+        json: bool,
     },
     /// PRD-mcphost-launch-check-generated: run the `host` probes in
     /// `launch/items.toml` and print one green/red line per item (`joe`
@@ -977,10 +997,47 @@ async fn main() -> anyhow::Result<()> {
                 Ok(())
             }
         },
-        Command::RegistryManifest { write, check, path } => {
+        Command::RegistryManifest { write, check, path, live, public_url, validate, json } => {
             // Deliberately no `init_tracing()`: same rationale as
             // `LlmsTxt`/`Funnel` above -- this subcommand's contract is
             // plain stdout (JSON, or a diff on stderr) plus an exit code.
+            if validate {
+                use mcphost::registry_manifest as rm;
+                let path = path.unwrap_or_else(|| PathBuf::from(rm::MANIFEST_PATH));
+                let load = |p: &std::path::Path| -> anyhow::Result<serde_json::Value> {
+                    Ok(serde_json::from_str(&std::fs::read_to_string(p)?)?)
+                };
+                let result = load(&path)
+                    .and_then(|e| Ok((e, load(std::path::Path::new(rm::SCHEMA_PATH))?)))
+                    .map_err(|e| e.to_string())
+                    .and_then(|(e, s)| rm::validate_entry(&e, &s));
+                match result {
+                    Ok(()) => {
+                        println!("registry-manifest --validate: {} is schema-valid", path.display());
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("registry-manifest --validate: {} failed: {e}", path.display());
+                        std::process::exit(1);
+                    }
+                }
+            }
+            if live {
+                let url = public_url
+                    .unwrap_or_else(mcphost::registry_manifest::public_url_from_env);
+                let report = mcphost::registry_manifest::live_check(
+                    &url,
+                    &mcphost::registry_manifest::registry_search_url_from_env(),
+                )
+                .await;
+                if json {
+                    let now = mcphost::state::rfc3339_now();
+                    println!("{}", report.to_json(&now));
+                } else {
+                    println!("{}", report.line());
+                }
+                std::process::exit(report.exit_code());
+            }
             let manifest = mcphost::registry_manifest::build_manifest(
                 &mcphost::registry_manifest::public_url_from_env(),
             );
