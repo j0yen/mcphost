@@ -54,7 +54,7 @@ wall_minutes = 5
 name = "contract-suite"
 cmd = "./scripts/pin-tests.sh"
 where = "host"
-wall_minutes = 10
+wall_minutes = 25  # 10-16 r7: was 10; ryzen7 prechecks 265 and 323 died exit 124 at the 10-min wall (suite alone 313-583 s; 573-583 s under contention)
 
 [[check]]
 name = "bad-rust-audit"
