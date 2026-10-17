@@ -8545,6 +8545,14 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "format": {
+            "description": "json (default) or text: {format, text} with one line per step and a totals line.",
+            "enum": [
+              "json",
+              "text"
+            ],
+            "type": "string"
+          },
           "run_id": {
             "description": "The run id to read the timeline of.",
             "type": "string"
@@ -8562,6 +8570,12 @@
       "name": "host.job.timeline",
       "output_schema": {
         "properties": {
+          "format": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "run": {
             "properties": {
               "duration_ms": {
@@ -8611,7 +8625,10 @@
               "tool",
               "trigger"
             ],
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           },
           "steps": {
             "items": {
@@ -8680,7 +8697,16 @@
               ],
               "type": "object"
             },
-            "type": "array"
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "totals": {
             "properties": {
@@ -8715,14 +8741,12 @@
               "steps",
               "wall_ms"
             ],
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           }
         },
-        "required": [
-          "run",
-          "steps",
-          "totals"
-        ],
         "type": "object"
       },
       "since": "0.107.98"
@@ -8733,6 +8757,14 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "format": {
+            "description": "json (default) or text: {format, text} with one line per step and a totals line.",
+            "enum": [
+              "json",
+              "text"
+            ],
+            "type": "string"
+          },
           "run_id": {
             "description": "The run id to read the timeline of.",
             "type": "string"
@@ -31072,6 +31104,14 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "format": {
+            "description": "json (default) or text: {format, text} with one line per step and a totals line.",
+            "enum": [
+              "json",
+              "text"
+            ],
+            "type": "string"
+          },
           "run_id": {
             "description": "The run id to read the timeline of.",
             "type": "string"

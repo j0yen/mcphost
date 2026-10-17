@@ -1127,9 +1127,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Returns**
 
-- `run`: object (always)
-- `steps`: array<object> (always)
-- `totals`: object (always)
+- `format`: string | null
+- `run`: object | null
+- `steps`: array<object> | null
+- `text`: string | null
+- `totals`: object | null
 
 ### `host.key.delegate`
 

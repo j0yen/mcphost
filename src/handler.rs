@@ -3463,7 +3463,14 @@ fn host_tools_part_08() -> Vec<Tool> {
              finished_unix null. error_family names the error code's family (upstream, compose, \
              args, tool, budget, host, other).",
             host_schema(
-                json!({"run_id": {"type": "string", "description": "The run id to read the timeline of."}}),
+                json!({
+                    "run_id": {"type": "string", "description": "The run id to read the timeline of."},
+                    "format": {
+                        "type": "string",
+                        "enum": ["json", "text"],
+                        "description": "json (default) or text: {format, text} with one line per step and a totals line."
+                    }
+                }),
                 &["run_id"],
             ),
         ),

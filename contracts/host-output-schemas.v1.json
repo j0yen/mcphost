@@ -4578,6 +4578,9 @@
   },
   "host.job.timeline": {
     "properties": {
+      "format": {
+        "type": "string"
+      },
       "run": {
         "properties": {
           "run_id": {
@@ -4698,6 +4701,9 @@
         },
         "type": "array"
       },
+      "text": {
+        "type": "string"
+      },
       "totals": {
         "properties": {
           "bytes_out": {
@@ -4734,11 +4740,6 @@
         "type": "object"
       }
     },
-    "required": [
-      "run",
-      "steps",
-      "totals"
-    ],
     "type": "object"
   },
   "host.key.delegate": {

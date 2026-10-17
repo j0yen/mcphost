@@ -115,6 +115,13 @@ pub async fn job_timeline(state: &AppState, tenant: &Tenant, args: &Value) -> Re
         (_, _, Some(started)) => ((crate::state::now_unix() - started) * 1000).max(0),
         _ => 0,
     };
+    let format = match args.get("format").and_then(Value::as_str) {
+        None | Some("json") => "json",
+        Some("text") => "text",
+        Some(other) => {
+            return Err(AppError::InvalidArgs(format!("format must be \"json\" or \"text\", got \"{other}\"")));
+        }
+    };
     let totals = json!({
         "steps": steps.len(),
         "done": count("done"),
@@ -124,6 +131,9 @@ pub async fn job_timeline(state: &AppState, tenant: &Tenant, args: &Value) -> Re
         "bytes_out": rows.iter().map(|r| bytes_out(r)).sum::<i64>(),
         "wall_ms": wall_ms,
     });
+    if format == "text" {
+        return Ok(json!({"format": "text", "text": render_text(&steps, &totals)}));
+    }
     Ok(json!({
         "run": {
             "run_id": run.id,
@@ -138,4 +148,43 @@ pub async fn job_timeline(state: &AppState, tenant: &Tenant, args: &Value) -> Re
         "steps": steps,
         "totals": totals,
     }))
+}
+
+/// Most lines `format: "text"` prints, the totals line included.
+pub const TEXT_MAX_LINES: usize = 40;
+
+fn cell(v: &Value) -> String {
+    match v {
+        Value::Null => "-".to_string(),
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
+/// One line per step (`step  tool  status  duration_ms=N  error_class`) plus a
+/// `totals` line, at most [`TEXT_MAX_LINES`] lines in all.
+fn render_text(steps: &[Value], totals: &Value) -> String {
+    let room = TEXT_MAX_LINES - 1;
+    let shown = if steps.len() > room { room - 1 } else { steps.len() };
+    let mut lines: Vec<String> = steps[..shown]
+        .iter()
+        .map(|s| {
+            format!(
+                "{}  {}  {}  duration_ms={}  {}",
+                cell(&s["step"]),
+                cell(&s["tool"]),
+                cell(&s["status"]),
+                cell(&s["duration_ms"]),
+                cell(&s["error_class"])
+            )
+        })
+        .collect();
+    if shown < steps.len() {
+        lines.push(format!("… +{} steps", steps.len() - shown));
+    }
+    lines.push(format!(
+        "totals  steps={} done={} error={} running={} skipped={} bytes_out={} wall_ms={}",
+        totals["steps"], totals["done"], totals["error"], totals["running"], totals["skipped"], totals["bytes_out"], totals["wall_ms"]
+    ));
+    lines.join("\n")
 }
