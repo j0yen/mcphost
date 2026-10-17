@@ -8049,6 +8049,14 @@ impl McpHostHandler {
                 tenant.clone(),
                 crate::elicit::current_channel(),
             )),
+            // PRD-mcphost-sampling-from-tools: the client `call_tool` set
+            // around this dispatch (none for a job: `no_client`).
+            sampling: Arc::new(crate::sampling::TenantSampling::new(
+                self.state.clone(),
+                tenant.clone(),
+                crate::sampling::current_client(),
+                log.clone() as Arc<dyn CallLog>,
+            )),
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             sidecar_ops_max: self.sidecar_ops_cap(tenant),
             // PRD-mcphost-composition requirement 1/2: every real
@@ -8639,6 +8647,7 @@ impl McpHostHandler {
             channel: channel_backend.clone(),
             msg: msg_backend.clone(),
             elicit: Arc::new(crate::elicit::NoClientElicit),
+            sampling: Arc::new(crate::sampling::NoClientSampling { state: None }),
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             sidecar_ops_max: self.sidecar_ops_cap(tenant),
             // PRD-mcphost-composition requirement 3/AC8: `chain`'s dry run
@@ -9161,6 +9170,7 @@ impl McpHostHandler {
             channel: Arc::new(NoChannel),
             msg: Arc::new(NoMsg),
             elicit: Arc::new(crate::elicit::NoClientElicit),
+            sampling: Arc::new(crate::sampling::NoClientSampling { state: None }),
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             sidecar_ops_max: i64::MAX,
             compose_depth: 0,
@@ -9544,6 +9554,7 @@ impl McpHostHandler {
             channel: channel_backend.clone(),
             msg: msg_backend.clone(),
             elicit: Arc::new(crate::elicit::NoClientElicit),
+            sampling: Arc::new(crate::sampling::NoClientSampling { state: None }),
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             sidecar_ops_max,
             compose_depth: 0,
@@ -9977,6 +9988,7 @@ impl McpHostHandler {
             channel: channel_backend.clone(),
             msg: msg_backend.clone(),
             elicit: Arc::new(crate::elicit::NoClientElicit),
+            sampling: Arc::new(crate::sampling::NoClientSampling { state: None }),
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             sidecar_ops_max: self.sidecar_ops_cap(tenant),
             // PRD-mcphost-composition: `host.tool_run` has no notion of a
@@ -11084,10 +11096,18 @@ impl ServerHandler for McpHostHandler {
                 info.capabilities.elicitation.as_ref().is_some_and(|e| e.form.is_some())
             }))
         .then(|| crate::elicit::ClientChannel { peer: ctx.peer.clone() });
+        // PRD-mcphost-sampling-from-tools R2: same peer rule as elicitation;
+        // `peer` is set only when the client advertised `sampling`, so a live
+        // call without it answers `sampling_unsupported {reason: client}`.
+        let sampling_peer = (ctx.meta.client_capabilities().is_none()
+            && ctx.peer.peer_info().is_some_and(|info| info.capabilities.sampling.is_some()))
+        .then(|| ctx.peer.clone());
         // PRD-mcphost-key-scoped-to-tools R3: the cell `call_tool_inner`
         // fills once a sub-key resolves, read by the `calls` insert.
         let inner = crate::subkeys::CALL_KEY
             .scope(std::cell::Cell::new(None), self.call_tool_inner(request, ctx));
+        let inner = crate::sampling::SAMPLING_CLIENT
+            .scope(crate::sampling::SamplingClient { peer: sampling_peer }, inner);
         let result = match channel {
             Some(channel) => crate::elicit::CLIENT_CHANNEL.scope(channel, inner).await,
             None => inner.await,
