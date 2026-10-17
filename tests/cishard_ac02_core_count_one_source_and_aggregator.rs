@@ -121,3 +121,15 @@ fn the_aggregator_keeps_id_and_name_and_needs_both_jobs_always() {
     assert!(job("core-static").contains("cargo deny --locked check"));
     assert!(job("core-static").contains("./scripts/audit.sh"));
 }
+
+#[test]
+fn each_shard_builds_the_contract_binaries_beside_its_own_before_the_timed_run() {
+    // Tests that drive scripts/pin-tests.sh (ctrs_ac0*) compile and run the
+    // contract suites; left cold in a shard they ate a 300 s budget and failed
+    // the first CI run of the sharded workflow (PR #407, shard 2).
+    let core = job("core");
+    let build = core.find("cargo test --locked --no-run $flags $contract_flags").expect("--no-run builds the contract binaries too");
+    let run = core.find("cargo test --locked $flags -- --nocapture").expect("run step");
+    assert!(build < run);
+    assert!(core.contains("./scripts/pin-tests.sh --list"), "contract flags come from pin-tests.sh --list, never a hand list");
+}

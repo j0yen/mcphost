@@ -236,8 +236,12 @@ jobs:
           # Build and run are timed apart: only the run is budgeted (warn at
           # 420 s, fail above 540 s), compile time is reported
           # (scripts/ci-shard-report.sh).
+          # Tests that drive scripts/pin-tests.sh (the ctrs_ac0* timing tests)
+          # run the contract suite binaries too: build them here with the
+          # shard's own so none of them compiles cold inside the timed run.
+          contract_flags=$(./scripts/pin-tests.sh --list | sed 's/^/--test /' | tr '\n' ' ')
           start=$(date +%s)
-          cargo test --locked --no-run $flags
+          cargo test --locked --no-run $flags $contract_flags
           build_s=$(( $(date +%s) - start ))
           start=$(date +%s)
           cargo test --locked $flags -- --nocapture 2>&1 | tee /tmp/cargo-test.log

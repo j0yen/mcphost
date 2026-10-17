@@ -23,6 +23,7 @@
 # A non-zero test status also names every failed test, so `gh run view
 # --log-failed` shows the test and its shard instead of a log cut mid-suite:
 #   <partition> shard N/M FAILED <test>
+# (emitted as a `::error::` annotation too, which survives a cut job log)
 # (names come from libtest's `failures:` list and `---- <test> stdout ----`
 # headers; none parsed -> one `<partition> shard N/M ERROR ...` line).
 # Exit: the tests' own status when non-zero, else 1 iff run wall > FAIL_ABOVE.
@@ -75,7 +76,7 @@ if [ "$level" != ok ] || [ "$partition" = core ]; then
   # Suite name for each `Running` line, then the `finished in` that follows it.
   # `Running unittests src/lib.rs` is the `lib` weight; any other unit-test
   # binary (core's `--bins`) is named by its source path.
-  plain_log | awk '
+  suite_lines="$(plain_log | awk '
     /^[[:space:]]*Running unittests / {
       name = $3
       if (name ~ /(^|\/)src\/lib\.rs$/) name = "lib"; else name = "bin:" name
@@ -92,8 +93,18 @@ if [ "$level" != ok ] || [ "$partition" = core ]; then
       name = ""
     }' | while read -r name measured; do
     recorded="$(jq -r --arg k "$name" '.[$k] // "unrecorded"' "$WEIGHTS_FILE" 2>/dev/null || echo unrecorded)"
-    say "suite=$name measured=${measured}s recorded=${recorded}s"
-  done
+    unit=s; [ "$recorded" = unrecorded ] && unit=""
+    echo "suite=$name measured=${measured}s recorded=${recorded}${unit}"
+  done)"
+  if [ -n "$suite_lines" ]; then
+    while IFS= read -r line; do say "$line"; done <<<"$suite_lines"
+  fi
+  if [ "$partition" = core ]; then
+    # One annotation carries the whole readout: the step summary and the job
+    # log are not always retrievable (a hosted log can be cut mid-suite), an
+    # annotation is, so the weights can still be refreshed from a red run.
+    echo "::notice title=$label readout::build ${build_s}s; run ${run_s}s; $(printf '%s' "$suite_lines" | tr '\n' ';')"
+  fi
 fi
 
 if [ "$status" -ne 0 ]; then
@@ -111,12 +122,16 @@ if [ "$status" -ne 0 ]; then
     }
     inlist { inlist = 0 }')"
   if [ -n "$failed" ]; then
+    # Printed as `::error::` annotations as well as step-summary lines: the
+    # hosted job log is sometimes cut mid-suite (the original defect), and the
+    # annotation survives that, readable from the check run's annotations.
     while read -r t; do
       [ -n "$t" ] || continue
-      say "$label FAILED $t"
+      echo "::error::$label FAILED $t"
+      if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then echo "$label FAILED $t" >> "$GITHUB_STEP_SUMMARY"; fi
     done <<<"$failed"
   else
-    say "$label ERROR no failed test parsed from the log (test status $status; a compile error or a killed run leaves none)"
+    echo "::error::$label ERROR no failed test parsed from the log (test status $status; a compile error or a killed run leaves none)"
   fi
   exit "$status"
 fi
