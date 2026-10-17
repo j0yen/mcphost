@@ -14,6 +14,7 @@ members = [
     "vendor/mqo-chart-recommender",
     "vendor/mqo-vega-emitter",
     "vendor/mqo-chart-caption",
+    "xtask",
 ]
 
 [profile.dev]
@@ -25,7 +26,7 @@ strip = true
 [package]
 autotests = false  # gen-test-suites.sh: explicit [[test]] suites below
 name = "mcphost"
-version = "0.108.149"
+version = "0.108.150"
 edition = "2024"
 rust-version = "1.95"
 description = "Hosted MCP runtime where your agent publishes its own tools by tool call and keeps working."
