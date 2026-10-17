@@ -523,6 +523,9 @@ pub async fn status_json(state: &AppState) -> Result<Value, AppError> {
         "email_inbound_rejected_1h": state.event_counters.email_rejected_1h(),
         // PRD-mcphost-example-proof-nightly-and-hide R5.
         "examples": crate::example_proofs::status_block(state).await?,
+        // PRD-mcphost-graceful-drain-contract R4: `last` is `null` on a host
+        // that never restarted.
+        "restart": restart_block(state).await?,
     });
     // PRD-mcphost-healthz-version-field requirement 3: whole-feed only; the
     // per-component rollup (`daily_rows`) stays unchanged.
@@ -538,6 +541,25 @@ pub async fn status_json(state: &AppState) -> Result<Value, AppError> {
         }
     }
     Ok(body)
+}
+
+/// PRD-mcphost-graceful-drain-contract R4: `{last, count_30d}` from the
+/// `restarts` table.
+async fn restart_block(state: &AppState) -> Result<Value, AppError> {
+    let now = now_unix();
+    let (last, count_30d) = state.db.restart_summary(now - RECENT_INCIDENTS_DAYS * 86_400).await?;
+    let last = last.map(|r| {
+        json!({
+            "at": r.signal_at_unix,
+            "in_flight_at_signal": r.in_flight_at_signal,
+            "finished": r.finished,
+            "dropped": r.dropped,
+            "drain_ms": r.drain_ms,
+            "bound_s": r.bound_s,
+            "version": r.version,
+        })
+    });
+    Ok(json!({"last": last, "count_30d": count_30d}))
 }
 
 /// File name the deploy tool leaves a `check-compat --report` document under

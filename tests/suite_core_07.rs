@@ -1163,6 +1163,12 @@ mod funnel_ac07_invited_split_and_k;
 mod gatedebt_4f1112d_ac4_no_test_reads_gate_receipts;
 #[path = "gatedebt_4f1112d_ac5_no_flake_audit_selftest_names.rs"]
 mod gatedebt_4f1112d_ac5_no_flake_audit_selftest_names;
+#[path = "gdrainb_ac01_status_restart_block.rs"]
+mod gdrainb_ac01_status_restart_block;
+#[path = "gdrainb_ac02_running_run_interrupted_no_skip.rs"]
+mod gdrainb_ac02_running_run_interrupted_no_skip;
+#[path = "gdrainb_ac03_print_drain_bound.rs"]
+mod gdrainb_ac03_print_drain_bound;
 #[path = "gsig_ac01_replay_bad_night.rs"]
 mod gsig_ac01_replay_bad_night;
 #[path = "gsig_ac02_status_json_carries_signals.rs"]
