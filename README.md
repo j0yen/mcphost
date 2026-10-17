@@ -472,7 +472,7 @@ rendered request URL:
 ### Registry publish (P1)
 
 Off by default. Once `--registry-url` / `$MCPHOST_REGISTRY_URL` names a
-registry API base (e.g. `https://registry.modelcontextprotocol.io`):
+registry API base (the registry's own base URL):
 
 1. The operator verifies a tenant's domain namespace by whatever method
    they trust (the PRD leaves the verification METHOD itself — DNS vs
