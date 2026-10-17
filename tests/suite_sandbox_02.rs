@@ -166,6 +166,10 @@ mod envelope_ac2_python_object_declared_output_promoted;
 mod envelope_ac3_python_scalar_promotion_warns;
 #[path = "envelope_ac5_replay_recorded_sessions.rs"]
 mod envelope_ac5_replay_recorded_sessions;
+#[path = "ercp_ac02_uptime_probes_publishes_network_none.rs"]
+mod ercp_ac02_uptime_probes_publishes_network_none;
+#[path = "ercp_ac04_every_example_recipe_publishes_on_the_free_plan.rs"]
+mod ercp_ac04_every_example_recipe_publishes_on_the_free_plan;
 #[path = "exargs_ac07_try_before_call_sentence.rs"]
 mod exargs_ac07_try_before_call_sentence;
 #[path = "exprp_ac01_rendered_example_forks_and_proves.rs"]

@@ -23,6 +23,7 @@ async fn run_proof(mcphost_url: &str) -> String {
         .arg(&script)
         .env("MCPHOST_URL", mcphost_url)
         .env_remove("UPSTREAM_URL")
+        .env("MOCK_LOCAL", "1")
         .env("SHARE_A_TOOL_RECEIPT", &receipt_path)
         .output()
         .await

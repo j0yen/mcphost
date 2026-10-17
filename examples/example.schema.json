@@ -32,6 +32,15 @@
           "description": "relative path of the proof script",
           "type": "string"
         },
+        "runner": {
+          "default": "any",
+          "description": "where the proof can run: any, or orch-only when it only passes from outside the host",
+          "enum": [
+            "any",
+            "orch-only"
+          ],
+          "type": "string"
+        },
         "secrets_needed": {
           "default": [],
           "items": {
