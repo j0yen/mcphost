@@ -406,6 +406,20 @@ mod mrefu_ac04_previous_up_failure_exits_4_with_tables_changed;
 mod mrefub_ac01_unwritable_report_exits_5;
 #[path = "mrefub_ac02_remedy_table_contract.rs"]
 mod mrefub_ac02_remedy_table_contract;
+#[path = "mres_ac01_read_authorises_like_list_tools.rs"]
+mod mres_ac01_read_authorises_like_list_tools;
+#[path = "mres_ac02_templates_list_equals_const_and_docs.rs"]
+mod mres_ac02_templates_list_equals_const_and_docs;
+#[path = "mres_ac03_list_counts_and_scope_filter.rs"]
+mod mres_ac03_list_counts_and_scope_filter;
+#[path = "mres_ac04_subscribe_gets_updated_on_append.rs"]
+mod mres_ac04_subscribe_gets_updated_on_append;
+#[path = "mres_ac05_ninth_subscription_hits_resources_max.rs"]
+mod mres_ac05_ninth_subscription_hits_resources_max;
+#[path = "mres_ac06_read_truncates_at_a_row_and_hides_other_tenants.rs"]
+mod mres_ac06_read_truncates_at_a_row_and_hides_other_tenants;
+#[path = "mres_ac07_capabilities_row_flips_to_implemented.rs"]
+mod mres_ac07_capabilities_row_flips_to_implemented;
 #[path = "msg_ac01_send_reaches_inbox.rs"]
 mod msg_ac01_send_reaches_inbox;
 #[path = "msg_ac02_reply_appends_next_seq.rs"]

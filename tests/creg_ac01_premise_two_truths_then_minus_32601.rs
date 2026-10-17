@@ -66,9 +66,15 @@ async fn premise_holds_on_a_stock_server_and_the_registry_closes_it() {
     let client = McpClient::new(&server.base_url);
     let init = client.initialize().await;
     let caps = &init["result"]["capabilities"];
-    assert!(caps.get("resources").is_none() && caps.get("prompts").is_none(), "{caps}");
+    // PRD-mcphost-resources-for-tenant-data flipped `resources` to implemented:
+    // it is advertised and answers a result; `prompts` is still the -32601 row.
+    assert!(caps.get("resources").is_some() && caps.get("prompts").is_none(), "{caps}");
     for (method, row) in METHODS {
         let reply = client.rpc(method, json!({})).await;
+        if row == "resources" {
+            assert!(reply.get("result").is_some(), "{method}: implemented row answers a result: {reply}");
+            continue;
+        }
         assert_eq!(reply["error"]["code"], -32601, "{method}: {reply}");
         assert_eq!(reply["error"]["data"]["capability"], row, "{method}: {reply}");
     }

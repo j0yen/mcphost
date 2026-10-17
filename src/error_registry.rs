@@ -419,6 +419,7 @@ pub const ERROR_CODES: &[ErrorEntry] = &[
     row("replay_needs_secret", Family::Call, ErrorClass::AgentFault, false, "Pass the full replay.args; the recorded request was too large to keep."),
     row("requirement_not_allowed", Family::Spec, ErrorClass::HostRefusal, false, "Use only requirements allowed by the PyPI policy."),
     row("requirement_not_inferable", Family::Spec, ErrorClass::AgentFault, false, "List requirements explicitly in the spec; the import cannot be mapped."),
+    row("resources_max", Family::Plan, ErrorClass::PlanLimit, false, "Unsubscribe from a resource or move to a plan with a higher resources_max; data.limit is the plan maximum of open resource subscriptions."),
     row("response_too_large", Family::Upstream, ErrorClass::UpstreamFault, false, "Ask the upstream for a smaller response; the cap is in the message."),
     row("revoke_required", Family::Auth, ErrorClass::AgentFault, false, "Revoke the end user first, then purge."),
     row("run_error", Family::Call, ErrorClass::AgentFault, false, "Read the run's error_class and fix the tool."),

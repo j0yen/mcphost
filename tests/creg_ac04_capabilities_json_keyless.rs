@@ -32,7 +32,7 @@ async fn capabilities_json_is_keyless_fast_and_creates_no_rows() {
         let doc: Value = resp.json().await.expect("json");
         assert_eq!(doc["primitives"]["tools"]["implemented"], true, "{doc}");
         assert_eq!(doc["version"], env!("CARGO_PKG_VERSION"));
-        assert_eq!(doc["primitives"]["resources"]["implemented"], false);
+        assert_eq!(doc["primitives"]["prompts"]["implemented"], false);
     }
     });
 

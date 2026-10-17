@@ -177,6 +177,9 @@ enum Command {
         #[arg(long)]
         doc: bool,
     },
+    /// PRD-mcphost-resources-for-tenant-data requirement 1: print
+    /// `docs/protocol/resources.md`, generated from `RESOURCE_TEMPLATES`.
+    ResourcesDoc,
     /// PRD-mcphost-first-hour-support-surface requirement 3 (AC4):
     /// regenerate `docs/plans.md` from `billing::plans_from_catalog` over
     /// `PlanCatalog::default_catalog()` -- the exact data `billing.plans`
@@ -1200,6 +1203,10 @@ async fn main() -> anyhow::Result<()> {
             }
             Ok(())
         }
+        Command::ResourcesDoc => {
+            print!("{}", mcphost::resources::render_resources_doc());
+            Ok(())
+        }
         Command::LlmsTxt { check, path, readme, clients } => {
             // Deliberately no `init_tracing()`: same rationale as
             // `SandboxCheck`/`Funnel` above -- this subcommand's contract is
@@ -1842,6 +1849,7 @@ async fn main() -> anyhow::Result<()> {
                 blob_clock_offset_secs: Default::default(),
                 confirm_clock_offset_secs: Default::default(),
                 onboarding_cache: Default::default(),
+                resource_subs: Default::default(),
             });
             // PRD-mcphost-abuse-guard-ban-list requirement 6: load the ban
             // cache once before this process ever serves a request, so the
