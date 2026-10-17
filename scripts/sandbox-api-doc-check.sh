@@ -240,6 +240,68 @@ PY
   return "$rc"
 }
 
+# PRD-mcphost-delegation-recipes-and-quickstart requirement 5: README.md's
+# `### Sub-agents` block between the recipe markers is `mcphost recipe-section`
+# (llms_txt::render_recipe_block) byte-for-byte. Check mode fails iff it differs
+# (a missing block differs); --write splices it via `mcphost llms-txt` into a
+# temp copy so a failed render never touches README.md.
+README_FILE="${MCPHOST_README:-README.md}"
+RECIPE_START="<!-- recipe:sub_agent_key -->"
+RECIPE_END="<!-- /recipe:sub_agent_key -->"
+
+recipe_block_of() {
+  python3 - "$1" "$RECIPE_START" "$RECIPE_END" <<'PY'
+import sys
+
+path, start, end = sys.argv[1:4]
+with open(path, encoding="utf-8") as f:
+    text = f.read()
+if start not in text or end not in text:
+    sys.exit(3)
+sys.stdout.write(text[text.index(start) : text.index(end) + len(end)])
+PY
+}
+
+write_recipe_readme() {
+  local block tmp
+  block="$(mcphost_bin recipe-section)" || return $?
+  case "$block" in
+    "$RECIPE_START"*"$RECIPE_END") ;;
+    *) echo "sandbox-api-doc-check.sh: recipe-section output lacks its markers; writing nothing" >&2; return 2 ;;
+  esac
+  tmp="$(mktemp "${TMPDIR:-/tmp}/readme-recipe.XXXXXX")" || return $?
+  if ! python3 - "$README_FILE" "$RECIPE_START" "$RECIPE_END" "$block" "### Sub-agents" "## Contributing: naming a new" > "$tmp" <<'PY'
+import sys
+
+path, start, end, block, heading, anchor = sys.argv[1:7]
+with open(path, encoding="utf-8") as f:
+    text = f.read()
+if start in text and end in text:
+    s, e = text.index(start), text.index(end) + len(end)
+    if e <= s:
+        sys.exit("end marker precedes start marker")
+    out = text[:s] + block + text[e:]
+elif anchor in text:
+    i = text.index(anchor)
+    out = text[:i] + heading + "\n\n" + block + "\n\n" + text[i:]
+else:
+    out = text.rstrip("\n") + "\n\n" + heading + "\n\n" + block + "\n"
+sys.stdout.write(out)
+PY
+  then
+    rm -f "$tmp"
+    echo "sandbox-api-doc-check.sh: refusing to write README.md: the recipe splice failed; file left untouched" >&2
+    return 2
+  fi
+  if [ ! -s "$tmp" ]; then
+    rm -f "$tmp"
+    echo "sandbox-api-doc-check.sh: refusing to write README.md: the splice produced an empty file; file left untouched" >&2
+    return 2
+  fi
+  cat "$tmp" > "$README_FILE"
+  rm -f "$tmp"
+}
+
 RENDERED="$(render_block)" || exit $?
 MODULE_COUNT=$(printf '%s\n' "$RENDERED" | grep -c '^- `mcphost\.')
 
@@ -248,6 +310,7 @@ if [ "$MODE" = "write" ]; then
     apply_to_file "$f" "$RENDERED" || exit $?
   done
   write_capabilities || exit $?
+  write_recipe_readme || exit $?
   echo "sandbox-api-doc-check.sh: wrote modules=${MODULE_COUNT} to ${#TARGETS[@]} files"
   # PRD-mcphost-dry-run-on-write-verbs R5: docs/host-tools.md, generated
   # from src/write_verbs.rs, rides along in both modes.
@@ -313,6 +376,16 @@ for f in "${CAP_TARGETS[@]}"; do
     FAILURES=$((FAILURES + 1))
   fi
 done
+
+RECIPE_EXPECTED="$(mcphost_bin recipe-section)" || {
+  echo "sandbox-api-doc-check.sh: could not render the sub-agent recipe (mcphost recipe-section failed)" >&2
+  exit 2
+}
+RECIPE_ACTUAL="$(recipe_block_of "$README_FILE")"
+if [ "$RECIPE_ACTUAL" != "$RECIPE_EXPECTED" ]; then
+  echo "sandbox-api-doc-check.sh: $README_FILE recipe:sub_agent_key block differs from the rendered recipe (run sandbox-api-doc-check.sh --write)" >&2
+  FAILURES=$((FAILURES + 1))
+fi
 
 if ! "$(dirname "$0")/protocol-frames-check.sh" --check 2>/dev/null; then
   "$(dirname "$0")/protocol-frames-check.sh" --check >&2

@@ -727,6 +727,20 @@ mod dkeyc_ac05_revoke_without_cascade_has_children;
 mod dkeyc_ac06_plan_ceilings_delegated_keys_and_ttl;
 #[path = "dkeyc_ac07_list_tree_and_whoami_key.rs"]
 mod dkeyc_ac07_list_tree_and_whoami_key;
+#[path = "dlrec_ac01_recipe_executes_verbatim.rs"]
+mod dlrec_ac01_recipe_executes_verbatim;
+#[path = "dlrec_ac02_quickstart_returns_recipe_and_orders_next_steps.rs"]
+mod dlrec_ac02_quickstart_returns_recipe_and_orders_next_steps;
+#[path = "dlrec_ac03_llms_txt_recipe_section_generated.rs"]
+mod dlrec_ac03_llms_txt_recipe_section_generated;
+#[path = "dlrec_ac04_new_scope_changes_both_sections.rs"]
+mod dlrec_ac04_new_scope_changes_both_sections;
+#[path = "dlrec_ac05_readme_recipe_block_checked.rs"]
+mod dlrec_ac05_readme_recipe_block_checked;
+#[path = "dlrec_ac06_whoami_hint_for_foreign_session.rs"]
+mod dlrec_ac06_whoami_hint_for_foreign_session;
+#[path = "dlrec_ac07_error_codes_only_in_generated_blocks.rs"]
+mod dlrec_ac07_error_codes_only_in_generated_blocks;
 #[path = "docsearch_ac01_status_reports_watermark_lag_and_chunks.rs"]
 mod docsearch_ac01_status_reports_watermark_lag_and_chunks;
 #[path = "docsearch_ac02_lexical_search_returns_passage_and_offset.rs"]

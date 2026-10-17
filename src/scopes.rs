@@ -7,6 +7,12 @@
 
 use crate::subkeys::ALWAYS_LISTED;
 
+/// The error codes a delegation produces, named once: the server returns them
+/// from these constants and `recipes` / `llms_txt` print them from here, so a
+/// documented code cannot drift from the one the server sends.
+pub const SCOPE_ESCALATION: &str = "scope_escalation";
+pub const KEY_REVOKED: &str = "key_revoked";
+
 /// One authority a key can hold.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Scope {
@@ -68,4 +74,31 @@ pub fn parse_json(raw: &str) -> Vec<Scope> {
     serde_json::from_str::<Vec<String>>(raw)
         .map(|v| v.iter().filter_map(|s| Scope::parse(s)).collect())
         .unwrap_or_default()
+}
+
+/// One row of the scope catalog: a scope's wire name and every scope name that
+/// implies it (itself included). Built from [`Scope::ALL`] by [`catalog`], so
+/// the llms.txt Scopes table and the sub-agent recipe render from one list.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScopeRow {
+    pub name: String,
+    pub implied_by: Vec<String>,
+}
+
+impl ScopeRow {
+    /// Whether a key holding the scope named `held` also holds this one.
+    pub fn granted_by(&self, held: &str) -> bool {
+        self.implied_by.iter().any(|n| n == held)
+    }
+}
+
+/// Every scope in registry order.
+pub fn catalog() -> Vec<ScopeRow> {
+    Scope::ALL
+        .into_iter()
+        .map(|sc| ScopeRow {
+            name: sc.as_str().to_string(),
+            implied_by: Scope::ALL.into_iter().filter(|h| h.implies(sc)).map(|h| h.as_str().to_string()).collect(),
+        })
+        .collect()
 }

@@ -6795,11 +6795,20 @@
           "string"
         ]
       },
+      "next_steps": {
+        "items": {
+          "type": "object"
+        },
+        "type": "array"
+      },
       "recipes": {
         "items": {
           "type": "string"
         },
-        "type": "array"
+        "type": [
+          "array",
+          "object"
+        ]
       },
       "recipes_nearby": {
         "items": {
@@ -14398,6 +14407,9 @@
           }
         },
         "type": "object"
+      },
+      "hint": {
+        "type": "string"
       },
       "invite_url": {
         "type": "string"

@@ -1564,10 +1564,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `limits`: object | null
 - `namespace`: string | null
 - `next`: array<object> | null
+- `next_steps`: array<object> | null
 - `outcome`: string | null
 - `reachability`: string | null
 - `recipe`: object | string | null
-- `recipes`: array<string> | null
+- `recipes`: array<string> | object | null
 - `recipes_nearby`: array<string> | null
 - `resolved_from`: string | null
 - `sandbox_api`: object | null
@@ -2499,6 +2500,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `created_at`: string | null
 - `disabled`: boolean | null
 - `display_name`: string | null
+- `hint`: string | null
 - `invite_url`: string | null
 - `key`: object | null
 - `key_age_s`: integer | null

@@ -58,6 +58,9 @@ pub struct SubKey {
     /// "session", id))` ties the key to one run or one MCP connection.
     pub bound: Option<(String, String)>,
     pub bound_last_seen_unix: Option<i64>,
+    /// The `Mcp-Session-Id` of the connection that delegated this key, when
+    /// the dispatch had one (R6: `host.whoami` hints from any other session).
+    pub minted_session: Option<String>,
     /// Why a bound key died: `run_<state>`, `session_idle`, `session_closed`.
     pub revoked_reason: Option<String>,
     /// `tools_json` is `null`: no allowlist (a delegation that named no
@@ -67,7 +70,7 @@ pub struct SubKey {
 
 const SUB_KEY_COLUMNS: &str = "id, tenant_id, key_hash, label, tools_json, created_at, expires_at, \
      revoked_at, last_used_at, parent_key_id, scopes_json, can_delegate, depth, revoked_by, \
-     bound_kind, bound_ref, bound_last_seen_unix, revoked_reason";
+     bound_kind, bound_ref, bound_last_seen_unix, revoked_reason, minted_session";
 
 fn sub_key_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<SubKey> {
     let tools_json: String = r.get(4)?;
@@ -93,6 +96,7 @@ fn sub_key_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<SubKey> {
         },
         bound_last_seen_unix: r.get(16)?,
         revoked_reason: r.get(17)?,
+        minted_session: r.get(18)?,
         unrestricted: tools_json.trim() == "null",
     })
 }
@@ -249,13 +253,15 @@ pub struct NewSubKey {
     pub unrestricted: bool,
     /// `(kind, ref)` of a run- or session-bound key.
     pub bound: Option<(String, String)>,
+    /// The delegating connection's session id (`None` for `host.key.mint`).
+    pub minted_session: Option<String>,
 }
 
 impl Db {
     /// Insert one sub-key; a label already used by this tenant is
     /// `label_taken`.
     pub async fn insert_sub_key(&self, tenant_id: i64, new: NewSubKey) -> Result<i64, AppError> {
-        let NewSubKey { key_hash, label, tools, created_at, expires_at, parent_key_id, scopes, can_delegate, depth, unrestricted, bound } =
+        let NewSubKey { key_hash, label, tools, created_at, expires_at, parent_key_id, scopes, can_delegate, depth, unrestricted, bound, minted_session } =
             new;
         let (bound_kind, bound_ref) = bound.unzip();
         let bound_seen = bound_kind.as_ref().map(|_| created_at);
@@ -274,11 +280,11 @@ impl Db {
             }
             conn.execute(
                 "INSERT INTO tenant_keys (tenant_id, key_hash, label, tools_json, created_at, expires_at, \
-                 parent_key_id, scopes_json, can_delegate, depth, bound_kind, bound_ref, bound_last_seen_unix) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                 parent_key_id, scopes_json, can_delegate, depth, bound_kind, bound_ref, bound_last_seen_unix, minted_session) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                 params![
                     tenant_id, key_hash, label, tools_json, created_at, expires_at, parent_key_id, scopes_json,
-                    can_delegate as i64, depth, bound_kind, bound_ref, bound_seen
+                    can_delegate as i64, depth, bound_kind, bound_ref, bound_seen, minted_session
                 ],
             )?;
             Ok(conn.last_insert_rowid())
@@ -528,6 +534,7 @@ pub async fn mint(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         depth: 1,
         unrestricted: false,
         bound: None,
+        minted_session: None,
     };
     state.db.insert_sub_key(tenant.id, new).await?;
     Ok(json!({
@@ -619,7 +626,7 @@ impl SubKey {
     pub fn dead_reason(&self, now: i64) -> Option<AppError> {
         if let Some(at) = self.revoked_at {
             return Some(AppError::Structured {
-                code: "key_revoked",
+                code: crate::scopes::KEY_REVOKED,
                 message: format!("sub-key '{}' was revoked", self.label),
                 data: json!({
                     "key_label": self.label,
@@ -678,7 +685,7 @@ pub async fn list(state: &AppState, tenant: &Tenant) -> Result<Value, AppError> 
 }
 
 /// R6: the `key` object `host.whoami` adds when the caller is a sub-key.
-pub async fn whoami_key(state: &AppState) -> Result<Option<Value>, AppError> {
+pub async fn whoami_key(state: &AppState, session_id: Option<&str>) -> Result<Option<Value>, AppError> {
     let Some(id) = current_key_id() else { return Ok(None) };
     let Some(k) = state.db.find_sub_key_by_id(id).await? else { return Ok(None) };
     let parent = match k.parent_key_id {
@@ -689,6 +696,13 @@ pub async fn whoami_key(state: &AppState) -> Result<Option<Value>, AppError> {
     if let Some(obj) = out.as_object_mut() {
         obj.remove("children");
         obj.insert("kind".into(), json!("delegated"));
+        // R6: a delegated key seen from a session other than the minting one
+        // carries the recipe's helper hint (same text, one source).
+        if let (Some(minted), Some(seen)) = (k.minted_session.as_deref(), session_id)
+            && minted != seen
+        {
+            obj.insert("hint".into(), json!(crate::recipes::delegated_hint(&k.label)));
+        }
     }
     Ok(Some(out))
 }
@@ -973,6 +987,7 @@ pub async fn delegate(
         depth: child.depth,
         unrestricted: child.tools.is_none(),
         bound: bound.as_ref().map(|b| (b.kind.to_string(), b.id.clone())),
+        minted_session: session_id.map(str::to_string),
     };
     state.db.insert_sub_key(tenant.id, new).await?;
     let detail = json!({

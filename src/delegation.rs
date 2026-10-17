@@ -49,7 +49,7 @@ pub struct Excess {
 impl Excess {
     pub fn into_error(self) -> AppError {
         AppError::Structured {
-            code: "scope_escalation",
+            code: crate::scopes::SCOPE_ESCALATION,
             message: format!(
                 "the requested {} '{}' exceeds the delegating key's own authority; nothing was minted",
                 self.kind, self.value
