@@ -1875,3 +1875,5 @@ stateless per 2026-07-28), bearer-key tenancy with SHA-256-hashed keys, the
 `rusqlite` bundled), AES-256-GCM-encrypted tenant secrets, the `Kind` trait
 and registry with the reference `echo` kind, and the `mcphost` CLI
 (`serve` / `migrate` / `version`).
+
+<!-- ci-cache HIT probe (version-only change; normalized out of the code tree) -->
