@@ -181,6 +181,9 @@ enum Command {
     /// README's `<!-- recipe:sub_agent_key -->` block for
     /// `scripts/sandbox-api-doc-check.sh`.
     RecipeSection,
+    /// PRD-mcphost-prompts-from-published-tools requirement 5: print
+    /// `docs/protocol/prompts.md`, rendered from `recipe_prompts()`.
+    PromptsSection,
     /// PRD-mcphost-first-hour-support-surface requirement 3 (AC4):
     /// regenerate `docs/plans.md` from `billing::plans_from_catalog` over
     /// `PlanCatalog::default_catalog()` -- the exact data `billing.plans`
@@ -1190,6 +1193,10 @@ async fn main() -> anyhow::Result<()> {
                     }
                 },
             }
+            Ok(())
+        }
+        Command::PromptsSection => {
+            print!("{}", mcphost::prompts::render_prompts_doc());
             Ok(())
         }
         Command::CapabilitiesSection { doc } => {
