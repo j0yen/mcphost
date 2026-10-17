@@ -236,7 +236,7 @@ fn kind_args_invalid(got: String, raw: String, suggestion: Option<&str>) -> AppE
     data["expected_one_of"] = json!(expected);
     data["did_you_mean"] = json!(suggestion);
     AppError::Structured {
-        code: "args_invalid",
+        code: crate::errors::ARGS_INVALID,
         message: args_err.message(),
         data,
     }

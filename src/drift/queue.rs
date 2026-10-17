@@ -46,7 +46,7 @@ pub(crate) async fn enqueue_for_change(
 
 fn target_not_found(target: &str) -> AppError {
     AppError::Structured {
-        code: "drift_target_not_found",
+        code: DRIFT_TARGET_NOT_FOUND,
         message: format!("'{target}' names no declared table or document for this tenant"),
         data: json!({"target": target}),
     }
@@ -100,3 +100,10 @@ pub async fn check(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
         "queued": queued,
     }))
 }
+
+crate::err_code! {
+    pub DRIFT_TARGET_NOT_FOUND,
+    code: "drift_target_not_found", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Declare the table or document first, or use a target that already exists.",
+}
+

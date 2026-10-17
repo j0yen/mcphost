@@ -328,25 +328,25 @@ pub async fn call_embeddings_provider(
         .send()
         .await
         .map_err(|e| AppError::Structured {
-            code: "docs_provider_unreachable",
+            code: DOCS_PROVIDER_UNREACHABLE,
             message: format!("embeddings provider request failed: {e}"),
             data: json!({}),
         })?;
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
         return Err(AppError::Structured {
-            code: "docs_provider_error",
+            code: DOCS_PROVIDER_ERROR,
             message: format!("embeddings provider returned status {status}"),
             data: json!({"status": status}),
         });
     }
     let body: Value = resp.json().await.map_err(|e| AppError::Structured {
-        code: "docs_provider_error",
+        code: DOCS_PROVIDER_ERROR,
         message: format!("embeddings provider returned invalid JSON: {e}"),
         data: json!({}),
     })?;
     let data = body.get("data").and_then(Value::as_array).ok_or_else(|| AppError::Structured {
-        code: "docs_provider_error",
+        code: DOCS_PROVIDER_ERROR,
         message: "embeddings provider response missing a 'data' array".to_string(),
         data: json!({}),
     })?;
@@ -354,7 +354,7 @@ pub async fn call_embeddings_provider(
     for item in data {
         let embedding =
             item.get("embedding").and_then(Value::as_array).ok_or_else(|| AppError::Structured {
-                code: "docs_provider_error",
+                code: DOCS_PROVIDER_ERROR,
                 message: "embeddings provider response item is missing an 'embedding' array"
                     .to_string(),
                 data: json!({}),
@@ -372,7 +372,7 @@ async fn resolve_tenant_secret(
     let (ciphertext, nonce) =
         state.db.get_secret(tenant_id, name.to_string()).await?.ok_or_else(|| {
             AppError::Structured {
-                code: "docs_secret_missing",
+                code: DOCS_SECRET_MISSING,
                 message: format!("tenant has no secret named '{name}'"),
                 data: json!({"secret": name}),
             }
@@ -553,6 +553,25 @@ pub fn spawn_scheduler(state: AppState) -> tokio::task::JoinHandle<()> {
         }
     })
 }
+
+crate::err_code! {
+    pub DOCS_PROVIDER_ERROR,
+    code: "docs_provider_error", family: Upstream, class: UpstreamFault, retryable: true,
+    remedy: "The embeddings provider returned an error status; retry later or check the provider config.",
+}
+
+crate::err_code! {
+    pub DOCS_PROVIDER_UNREACHABLE,
+    code: "docs_provider_unreachable", family: Upstream, class: UpstreamFault, retryable: true,
+    remedy: "The embeddings provider could not be reached; retry later or check its URL.",
+}
+
+crate::err_code! {
+    pub DOCS_SECRET_MISSING,
+    code: "docs_secret_missing", family: Args, class: AgentFault, retryable: false,
+    remedy: "Set the secret named in data.secret with host.secret_set, then retry.",
+}
+
 
 #[cfg(test)]
 mod tests {

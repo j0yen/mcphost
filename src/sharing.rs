@@ -544,7 +544,7 @@ pub async fn catalog_document(state: &AppState) -> Result<Value, AppError> {
 /// leaving it to guess.
 pub fn quota_caller(caller_namespace: &str, tool: &str, limit: i64, used: i64, reset_at: String) -> AppError {
     AppError::Structured {
-        code: "quota_caller",
+        code: QUOTA_CALLER,
         message: format!(
             "caller '{caller_namespace}' exceeded its calls_per_day limit ({limit}) for tool '{tool}'"
         ),
@@ -622,3 +622,10 @@ pub async fn caller_limit_remove(state: &AppState, tenant: &Tenant, args: &Value
         .await?;
     Ok(json!({ "tool": name, "caller_tenant": caller_tenant, "removed": removed }))
 }
+
+crate::err_code! {
+    pub QUOTA_CALLER,
+    code: "quota_caller", family: Plan, class: PlanLimit, retryable: true,
+    remedy: "The caller exceeded its calls_per_day limit for this shared tool; retry after the daily reset.",
+}
+

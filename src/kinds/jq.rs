@@ -253,7 +253,7 @@ fn unsupported(name: &str) -> KindError {
 fn syntax_error(code: &str, found: &str, expected: &str) -> KindError {
     let (line, column, source_line) = position_of(code, offset_in(code, found));
     KindError::structured_with(
-        "invalid_spec",
+        crate::errors::INVALID_SPEC,
         format!("program: syntax error at line {line}, column {column}: expected {expected}"),
         json!({
             "field": "program",
@@ -300,7 +300,7 @@ fn compile(program: &str) -> Result<JqFilter, KindError> {
                     } else {
                         let (line, column, source_line) = position_of(program, offset_in(program, name));
                         KindError::structured_with(
-                            "invalid_spec",
+                            crate::errors::INVALID_SPEC,
                             format!("program: undefined {} `{name}` at line {line}, column {column}", what.as_str()),
                             json!({
                                 "field": "program",
@@ -536,7 +536,7 @@ impl Kind for JqKind {
             if let Some(obj) = data.as_object_mut() {
                 obj.insert("schema_path".to_string(), json!(e.schema_path.to_string()));
             }
-            return Err(KindError::structured_with("args_invalid", args_err.message(), data));
+            return Err(KindError::structured_with(crate::errors::ARGS_INVALID, args_err.message(), data));
         }
         let filter = compiled(&parsed.program)?;
 

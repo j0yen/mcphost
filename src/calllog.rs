@@ -434,7 +434,7 @@ pub async fn build_bundle(state: &AppState, tenant: &Tenant, filter: CallFilter)
     let total = state.db.count_call_rows(tenant.id, filter.clone()).await?;
     if total > EXPORT_ROWS_MAX {
         return Err(AppError::Structured {
-            code: "too_many_rows",
+            code: TOO_MANY_ROWS,
             message: format!(
                 "the window holds {total} calls; an export is at most {EXPORT_ROWS_MAX} rows -- narrow since/until"
             ),
@@ -469,3 +469,10 @@ pub async fn export(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
     let filter = filter_from_args(args, now_unix())?;
     build_bundle(state, tenant, filter).await
 }
+
+crate::err_code! {
+    pub TOO_MANY_ROWS,
+    code: "too_many_rows", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Narrow since/until so the export holds fewer rows than data.max_rows.",
+}
+

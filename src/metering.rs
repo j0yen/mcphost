@@ -230,13 +230,20 @@ pub fn acquire_lock(data_dir: &Path) -> Result<MeterLock, AppError> {
     let rc = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
     if rc != 0 {
         return Err(AppError::Structured {
-            code: "meter_emit_locked",
+            code: METER_EMIT_LOCKED,
             message: "another `mcphost billing emit-meter` run already holds the lock".to_string(),
             data: json!({}),
         });
     }
     Ok(MeterLock { _file: file })
 }
+
+crate::err_code! {
+    pub METER_EMIT_LOCKED,
+    code: "meter_emit_locked", family: Internal, class: HostFault, retryable: true,
+    remedy: "Another emit-meter run holds the lock; retry when it finishes.",
+}
+
 
 #[cfg(test)]
 mod tests {

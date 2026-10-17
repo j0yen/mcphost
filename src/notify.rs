@@ -224,7 +224,7 @@ fn plan_for<'a>(state: &'a AppState, tenant: &Tenant) -> Result<&'a crate::plans
 
 fn target_invalid(why: &str) -> AppError {
     AppError::Structured {
-        code: "notify_target_invalid",
+        code: NOTIFY_TARGET_INVALID,
         message: format!("target: {why}"),
         data: json!({"field": "target"}),
     }
@@ -284,14 +284,14 @@ async fn check_owner_email(state: &AppState, tenant: &Tenant, target: &str) -> R
         .ok_or_else(|| AppError::Internal("tenant vanished mid-call".to_string()))?;
     let Some(owner) = fresh.owner_email.as_deref().filter(|_| fresh.owner_verified_at.is_some()) else {
         return Err(AppError::Structured {
-            code: "owner_unverified",
+            code: OWNER_UNVERIFIED,
             message: "email channels go to the owner's verified address; this tenant's owner has not verified one".to_string(),
             data: json!({"next_call": "host.claim"}),
         });
     };
     if !owner.trim().eq_ignore_ascii_case(target.trim()) {
         return Err(AppError::Structured {
-            code: "email_not_owner",
+            code: EMAIL_NOT_OWNER,
             message: "an email channel may only target the verified owner address".to_string(),
             data: json!({"field": "target"}),
         });
@@ -330,7 +330,7 @@ pub async fn channel_add(state: &AppState, tenant: &Tenant, args: &Value) -> Res
             )?;
             if held >= max {
                 return Err(AppError::Structured {
-                    code: "notify_channel_limit",
+                    code: NOTIFY_CHANNEL_LIMIT,
                     message: format!("{held} channels are already registered; this plan allows {max} (notify_channels_max)"),
                     data: json!({"limit": max, "used": held, "notify_channels_max": max,
                                  "next_call": "host.notify.channel_list"}),
@@ -396,7 +396,7 @@ pub async fn channel_remove(state: &AppState, tenant: &Tenant, args: &Value) -> 
         .await?;
     if !removed {
         return Err(AppError::Structured {
-            code: "notify_channel_not_found",
+            code: NOTIFY_CHANNEL_NOT_FOUND,
             message: format!("no channel '{channel_id}' on this tenant"),
             data: json!({"next_call": "host.notify.channel_list"}),
         });
@@ -456,7 +456,7 @@ pub async fn send(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
             )?;
             if used >= per_day {
                 return Err(AppError::Structured {
-                    code: "notify_limit",
+                    code: NOTIFY_LIMIT,
                     message: format!("{used} notifies in the last day; this plan allows {per_day} (notifies_per_day)"),
                     data: json!({"limit": per_day, "used": used, "notifies_per_day": per_day,
                                  "resets_unix": oldest.unwrap_or(now) + DAY_SECS}),
@@ -479,7 +479,7 @@ pub async fn send(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
                 .collect();
             if live.is_empty() {
                 return Err(AppError::Structured {
-                    code: "no_channel",
+                    code: NO_CHANNEL,
                     message: "no notify channel is registered; add one first".to_string(),
                     data: json!({"next_call": "host.notify.channel_add"}),
                 });
@@ -741,3 +741,46 @@ pub async fn receipts(state: &AppState, tenant: &Tenant, args: &Value) -> Result
 
 /// The most receipt rows one `host.notify.receipts` call returns.
 pub const RECEIPTS_MAX: i64 = 100;
+
+crate::err_code! {
+    pub EMAIL_NOT_OWNER,
+    code: "email_not_owner", family: Args, class: AgentFault, retryable: false,
+    remedy: "Set target to the owner's verified email address, or add a webhook or slack channel for another destination.",
+}
+
+crate::err_code! {
+    pub NO_CHANNEL,
+    code: "no_channel", family: Args, class: AgentFault, retryable: false,
+    remedy: "Register a channel with host.notify.channel_add, then send the notify again.",
+}
+
+crate::err_code! {
+    pub NOTIFY_CHANNEL_LIMIT,
+    code: "notify_channel_limit", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Remove a channel with host.notify.channel_remove or move to a plan with a higher notify_channels_max.",
+}
+
+crate::err_code! {
+    pub NOTIFY_CHANNEL_NOT_FOUND,
+    code: "notify_channel_not_found", family: Args, class: AgentFault, retryable: false,
+    remedy: "List channels with host.notify.channel_list and use a channel_id that exists on this tenant.",
+}
+
+crate::err_code! {
+    pub NOTIFY_LIMIT,
+    code: "notify_limit", family: Plan, class: PlanLimit, retryable: true,
+    remedy: "The daily notify quota is used; retry after data.resets_unix or move to a plan with a higher notifies_per_day.",
+}
+
+crate::err_code! {
+    pub NOTIFY_TARGET_INVALID,
+    code: "notify_target_invalid", family: Args, class: AgentFault, retryable: false,
+    remedy: "Fix target for the channel kind; a webhook or slack target must be an https URL on a public host.",
+}
+
+crate::err_code! {
+    pub OWNER_UNVERIFIED,
+    code: "owner_unverified", family: Auth, class: HostRefusal, retryable: false,
+    remedy: "Verify the owner email first (data.next_call is host.claim), or add a webhook or slack channel instead.",
+}
+

@@ -385,3 +385,142 @@ pub fn splice_doc_block(doc: &str, block: &str) -> String {
     out.push_str(block);
     out
 }
+
+crate::err_code! {
+    pub COMPOSE_CHILDREN_EXCEEDED,
+    code: "compose_children_exceeded", family: Compose, class: AgentFault, retryable: false,
+    remedy: "Reduce the number of child calls in the compose spec to the plan ceiling.",
+}
+
+crate::err_code! {
+    pub COMPOSE_DEPTH_EXCEEDED,
+    code: "compose_depth_exceeded", family: Compose, class: AgentFault, retryable: false,
+    remedy: "Flatten the compose spec; nesting is deeper than the allowed depth.",
+}
+
+crate::err_code! {
+    pub COMPOSE_FANOUT_EXCEEDED,
+    code: "compose_fanout_exceeded", family: Compose, class: AgentFault, retryable: false,
+    remedy: "Reduce the for_each fan-out to the allowed number of items.",
+}
+
+crate::err_code! {
+    pub COMPOSE_FANOUT_ITEM_FAILED,
+    code: "compose_fanout_item_failed", family: Compose, class: UpstreamFault, retryable: false,
+    remedy: "Read data for the failing item's own error and fix or skip that item.",
+}
+
+crate::err_code! {
+    pub COMPOSE_INPUT_MISSING,
+    code: "compose_input_missing", family: Compose, class: AgentFault, retryable: false,
+    remedy: "Pass the input the compose mapping reads, named in the message.",
+}
+
+crate::err_code! {
+    pub COMPOSE_ITEM_OUTSIDE_FOR_EACH,
+    code: "compose_item_outside_for_each", family: Compose, class: AgentFault, retryable: false,
+    remedy: "Use item only inside a for_each mapping.",
+}
+
+crate::err_code! {
+    pub COMPOSE_MAPPING_MISSING,
+    code: "compose_mapping_missing", family: Compose, class: AgentFault, retryable: false,
+    remedy: "Add the missing mapping for the child argument named in the message.",
+}
+
+crate::err_code! {
+    pub COMPOSE_MAPPING_TYPE,
+    code: "compose_mapping_type", family: Compose, class: AgentFault, retryable: false,
+    remedy: "Map a value of the child argument's declared type.",
+}
+
+crate::err_code! {
+    pub COMPOSE_SELF_CALL,
+    code: "compose_self_call", family: Compose, class: AgentFault, retryable: false,
+    remedy: "A compose tool may not call itself; point the step at a different tool.",
+}
+
+crate::err_code! {
+    pub TOOL_BUILDING,
+    code: "tool_building", family: Call, class: HostFault, retryable: true,
+    remedy: "Retry shortly; the tool's environment is still building.",
+}
+
+crate::err_code! {
+    pub TOOL_OOM,
+    code: "tool_oom", family: Call, class: AgentFault, retryable: false,
+    remedy: "Reduce the tool's memory use or the input size.",
+}
+
+crate::err_code! {
+    pub TOOL_OUTPUT_INVALID,
+    code: "tool_output_invalid", family: Call, class: AgentFault, retryable: false,
+    remedy: "Return JSON that matches the tool's declared output.",
+}
+
+crate::err_code! {
+    pub TOOL_OUTPUT_TOO_LARGE,
+    code: "tool_output_too_large", family: Call, class: AgentFault, retryable: false,
+    remedy: "Return less data; the output exceeds the cap.",
+}
+
+crate::err_code! {
+    pub TOOL_PROCESS_LIMIT,
+    code: "tool_process_limit", family: Call, class: AgentFault, retryable: false,
+    remedy: "Reduce the number of processes or threads the tool starts.",
+}
+
+crate::err_code! {
+    pub TOOL_RUN_UNSUPPORTED,
+    code: "tool_run_unsupported", family: Call, class: HostRefusal, retryable: false,
+    remedy: "This kind cannot be run this way; call the tool through host.tool_call.",
+}
+
+crate::err_code! {
+    pub TOOL_TRAPPED,
+    code: "tool_trapped", family: Call, class: AgentFault, retryable: false,
+    remedy: "The tool trapped; fix the runtime fault in its code and republish.",
+}
+
+crate::err_code! {
+    pub UPSTREAM_AUTH,
+    code: "upstream_auth", family: Upstream, class: UpstreamFault, retryable: false,
+    remedy: "Reconnect the upstream or fix the secret the tool sends; the upstream rejected the credential.",
+}
+
+crate::err_code! {
+    pub UPSTREAM_CLIENT_ERROR,
+    code: "upstream_client_error", family: Upstream, class: UpstreamFault, retryable: false,
+    remedy: "Fix the request the tool sends; the upstream rejected it as a client error.",
+}
+
+crate::err_code! {
+    pub UPSTREAM_ERROR,
+    code: "upstream_error", family: Upstream, class: UpstreamFault, retryable: true,
+    remedy: "Retry later; the upstream failed with a server error.",
+}
+
+crate::err_code! {
+    pub UPSTREAM_RATE_LIMITED,
+    code: "upstream_rate_limited", family: Upstream, class: UpstreamFault, retryable: true,
+    remedy: "Wait and retry; the upstream is rate limiting this tool.",
+}
+
+crate::err_code! {
+    pub UPSTREAM_STATUS,
+    code: "upstream_status", family: Upstream, class: UpstreamFault, retryable: false,
+    remedy: "Read data.upstream_status for the upstream's HTTP status, then fix the request or retry later.",
+}
+
+crate::err_code! {
+    pub UPSTREAM_TIMEOUT,
+    code: "upstream_timeout", family: Upstream, class: UpstreamFault, retryable: true,
+    remedy: "Retry later; the upstream did not answer in time.",
+}
+
+crate::err_code! {
+    pub UPSTREAM_UNREACHABLE,
+    code: "upstream_unreachable", family: Upstream, class: UpstreamFault, retryable: true,
+    remedy: "Retry later; the upstream could not be reached.",
+}
+

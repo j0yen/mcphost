@@ -104,7 +104,7 @@ fn arg_i64_opt(args: &Value, name: &str) -> Option<i64> {
 /// `quota`.
 fn quota_exceeded(quota: &'static str, limit: i64, used: i64) -> AppError {
     AppError::Structured {
-        code: "state_quota_exceeded",
+        code: crate::kinds::python::STATE_QUOTA_EXCEEDED,
         message: format!("state quota exceeded: {quota} (limit {limit}, at {used})"),
         data: json!({"quota": quota, "limit": limit, "used": used}),
     }
@@ -112,7 +112,7 @@ fn quota_exceeded(quota: &'static str, limit: i64, used: i64) -> AppError {
 
 fn table_not_found(table: &str) -> AppError {
     AppError::Structured {
-        code: "state_table_not_found",
+        code: STATE_TABLE_NOT_FOUND,
         message: format!("no table '{table}' is declared for this tenant"),
         data: json!({"table": table}),
     }
@@ -828,6 +828,13 @@ pub async fn state_delete_rows(
         impersonated,
     ))
 }
+
+crate::err_code! {
+    pub STATE_TABLE_NOT_FOUND,
+    code: "state_table_not_found", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Declare the table first or use a declared name.",
+}
+
 
 #[cfg(test)]
 mod tests {

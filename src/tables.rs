@@ -278,7 +278,7 @@ pub(crate) fn quote_ident(s: &str) -> String {
 
 pub(crate) fn table_not_found(table: &str) -> AppError {
     AppError::Structured {
-        code: "table_not_found",
+        code: TABLE_NOT_FOUND,
         message: format!("no table '{table}' is declared for this tenant"),
         data: json!({"table": table}),
     }
@@ -373,7 +373,7 @@ pub(crate) fn declared_pairs(columns: &BTreeMap<String, ColumnType>) -> Vec<(&st
 
 fn already_exists(name: &str) -> AppError {
     AppError::Structured {
-        code: "table_already_exists",
+        code: TABLE_ALREADY_EXISTS,
         message: format!("table '{name}' already exists"),
         data: json!({"table": name}),
     }
@@ -385,7 +385,7 @@ fn already_exists(name: &str) -> AppError {
 fn query_rejected(reason: impl Into<String>) -> AppError {
     let reason = reason.into();
     AppError::Structured {
-        code: "table_query_rejected",
+        code: TABLE_QUERY_REJECTED,
         message: format!("query rejected: {reason}"),
         data: json!({"reason": reason}),
     }
@@ -395,7 +395,7 @@ fn query_rejected(reason: impl Into<String>) -> AppError {
 /// [`QUERY_TIME_CAP`].
 fn bound_exceeded(bound: &'static str, limit: i64) -> AppError {
     AppError::Structured {
-        code: "table_bound_exceeded",
+        code: TABLE_BOUND_EXCEEDED,
         message: format!("query exceeded bound '{bound}' (limit {limit})"),
         data: json!({"bound": bound, "limit": limit}),
     }
@@ -841,7 +841,7 @@ pub async fn table_drop(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
             )
             .await;
         return Err(AppError::Structured {
-            code: "lineage_blocked",
+            code: LINEAGE_BLOCKED,
             message: format!(
                 "dropping '{name}' would break {} consumer(s); call again with confirm: true to proceed",
                 breaking.len()
@@ -1375,7 +1375,7 @@ fn log_query(conn: &Connection, sql: &str, log_outcome: QueryLogOutcome<'_>) {
     // (and therefore stats-keying) code is the specific `data.bound` name
     // when present, falling back to the top-level code otherwise.
     let error_code = error.map(|e| match e {
-        AppError::Structured { code: "table_bound_exceeded", data, .. } => {
+        AppError::Structured { code: TABLE_BOUND_EXCEEDED, data, .. } => {
             data.get("bound").and_then(Value::as_str).unwrap_or("table_bound_exceeded")
         }
         _ => e.code(),
@@ -1681,7 +1681,7 @@ pub async fn table_query_diagnose(state: &AppState, tenant: &Tenant, args: &Valu
     .await?;
     let Some(row) = row else {
         return Err(AppError::Structured {
-            code: "not_found",
+            code: crate::subkeys::NOT_FOUND,
             message: format!("no query log row '{log_id}' for this tenant"),
             data: json!({"log_id": log_id}),
         });
@@ -1726,7 +1726,7 @@ pub async fn table_query_diagnose(state: &AppState, tenant: &Tenant, args: &Valu
     // other field, so this round-trips exactly what it needs from the
     // stored row without re-running the query.
     let synthetic_result: Result<Vec<Value>, AppError> = if let Some(msg) = error_message {
-        Err(AppError::Structured { code: "storage", message: msg, data: Value::Null })
+        Err(AppError::Structured { code: crate::errors::STORAGE, message: msg, data: Value::Null })
     } else if row_count.unwrap_or(0) == 0 {
         Ok(Vec::new())
     } else {
@@ -1837,7 +1837,7 @@ pub async fn table_query_stats(state: &AppState, tenant: &Tenant, args: &Value) 
 /// different tenant's own file.
 fn handle_not_found(handle: &str) -> AppError {
     AppError::Structured {
-        code: "handle_not_found",
+        code: HANDLE_NOT_FOUND,
         message: format!("no handle '{handle}' exists for this tenant"),
         data: json!({"handle": handle}),
     }
@@ -1850,7 +1850,7 @@ fn handle_not_found(handle: &str) -> AppError {
 /// created.
 fn handle_quota_exceeded(plan: &str, cap_bytes: i64) -> AppError {
     AppError::Structured {
-        code: "handle_quota_exceeded",
+        code: HANDLE_QUOTA_EXCEEDED,
         message: format!("plan '{plan}' handle byte quota exceeded (cap {cap_bytes} bytes)"),
         data: json!({"plan": plan, "cap_bytes": cap_bytes}),
     }
@@ -3051,6 +3051,49 @@ pub(crate) async fn restore_table_rows(
     }
     Ok(())
 }
+
+crate::err_code! {
+    pub HANDLE_NOT_FOUND,
+    code: "handle_not_found", family: Storage, class: AgentFault, retryable: false,
+    remedy: "List handles and use one that exists for this tenant.",
+}
+
+crate::err_code! {
+    pub HANDLE_QUOTA_EXCEEDED,
+    code: "handle_quota_exceeded", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Drop unused handles or move to a plan with a larger handle byte quota.",
+}
+
+crate::err_code! {
+    pub LINEAGE_BLOCKED,
+    code: "lineage_blocked", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Repeat with confirm: true, or remove the consumers named in data.lineage_blocked first.",
+}
+
+crate::err_code! {
+    pub TABLE_ALREADY_EXISTS,
+    code: "table_already_exists", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Use a different table name or drop the existing one.",
+}
+
+crate::err_code! {
+    pub TABLE_BOUND_EXCEEDED,
+    code: "table_bound_exceeded", family: Call, class: AgentFault, retryable: false,
+    remedy: "Narrow the query so it stays under data.bound's limit.",
+}
+
+crate::err_code! {
+    pub TABLE_NOT_FOUND,
+    code: "table_not_found", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Declare the table first or use a declared name.",
+}
+
+crate::err_code! {
+    pub TABLE_QUERY_REJECTED,
+    code: "table_query_rejected", family: Args, class: AgentFault, retryable: false,
+    remedy: "Fix the query; data.reason says why it was rejected.",
+}
+
 
 #[cfg(test)]
 mod tests {
