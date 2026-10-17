@@ -1066,6 +1066,18 @@ mod sjrc_ac05_sweeper_drops_receipts_past_plan_retention;
 mod sjrc_ac06_manual_schedule_and_event_fires_all_leave_receipts;
 #[path = "sjrc_ac07_limit_ceiling_and_empty_tool.rs"]
 mod sjrc_ac07_limit_ceiling_and_empty_tool;
+#[path = "skgn_ac02_check_exits_zero_and_names_the_drifted_line.rs"]
+mod skgn_ac02_check_exits_zero_and_names_the_drifted_line;
+#[path = "skgn_ac03_drift_test_fails_until_regenerated.rs"]
+mod skgn_ac03_drift_test_fails_until_regenerated;
+#[path = "skgn_ac04_every_error_code_has_a_remedy_naming_a_real_verb.rs"]
+mod skgn_ac04_every_error_code_has_a_remedy_naming_a_real_verb;
+#[path = "skgn_ac05_limits_numbers_equal_ceilings_json.rs"]
+mod skgn_ac05_limits_numbers_equal_ceilings_json;
+#[path = "skgn_ac06_devloop_names_only_verbs_the_build_has.rs"]
+mod skgn_ac06_devloop_names_only_verbs_the_build_has;
+#[path = "skgn_ac07_url_renders_verbs_from_a_live_tools_list.rs"]
+mod skgn_ac07_url_renders_verbs_from_a_live_tools_list;
 #[path = "soff_ac01_header_and_arg_returns_success_envelope.rs"]
 mod soff_ac01_header_and_arg_returns_success_envelope;
 #[path = "soff_ac02_header_only_returns_success_and_whoami_disabled.rs"]
