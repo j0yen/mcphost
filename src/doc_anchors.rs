@@ -69,9 +69,37 @@ impl DocAnchor {
         self.entry().example
     }
 
-    /// The anchor spelled `<path>#<slug>`, if a heading has it.
+    /// The anchor spelled `<path>#<slug>`, if a heading has it. Also
+    /// `<path>#top` and a bare `<path>` (no `#`): both resolve to the first
+    /// generated anchor of that path, unless a real heading owns the slug.
     pub fn parse(anchor: &str) -> Option<DocAnchor> {
-        ENTRIES.iter().position(|e| e.anchor == anchor).map(|i| ALL[i])
+        if let Some(i) = ENTRIES.iter().position(|e| e.anchor == anchor) {
+            return Some(ALL[i]);
+        }
+        let path = anchor.strip_suffix(TOP_SLUG).unwrap_or(anchor);
+        if path.contains('#') {
+            return None;
+        }
+        Self::first_of_path(path)
+    }
+
+    /// The first generated anchor whose document is `path`.
+    pub fn first_of_path(path: &str) -> Option<DocAnchor> {
+        ENTRIES.iter().position(|e| e.path == path).map(|i| ALL[i])
+    }
+
+    /// Up to `n` anchors of the document `anchor` names (the part before
+    /// `#`, or all of it), nearest first; empty when no document has that
+    /// path.
+    pub fn nearest_in_path(anchor: &str, n: usize) -> Vec<DocAnchor> {
+        let path = anchor.split_once('#').map_or(anchor, |(p, _)| p);
+        let mut scored: Vec<(usize, DocAnchor)> = ALL
+            .iter()
+            .filter(|a| a.path() == path)
+            .map(|a| (edit_distance(anchor, a.as_str()), *a))
+            .collect();
+        scored.sort_by_key(|(d, _)| *d);
+        scored.into_iter().take(n).map(|(_, a)| a).collect()
     }
 
     /// Up to `n` anchors nearest `anchor` by edit distance, nearest first.
@@ -98,6 +126,9 @@ fn edit_distance(a: &str, b: &str) -> usize {
     prev[b.len()]
 }
 
+/// The slug `help.get` accepts for "the document's first section".
+const TOP_SLUG: &str = "#top";
+
 /// Nearest anchors `anchor_not_found` offers.
 const DID_YOU_MEAN: usize = 3;
 
@@ -112,7 +143,7 @@ pub fn help_get_schema_properties() -> Value {
     json!({
         "anchor": {
             "type": "string",
-            "description": "A `<path>#<slug>` anchor, e.g. README.md#call-limits, as printed by an error's `anchor` field or a `host.help.search` hit.",
+            "description": "A `<path>#<slug>` anchor, e.g. README.md#call-limits, as printed by an error's `anchor` field or a `host.help.search` hit. `<path>#top` and a bare `<path>` (e.g. docs/kinds/chain.md) both return that document's first section.",
         },
     })
 }
@@ -124,7 +155,15 @@ pub fn help_get(args: &Value) -> Result<Value, AppError> {
         _ => return Err(AppError::InvalidArgs("anchor is required: a `<path>#<slug>` string such as README.md#call-limits".to_string())),
     };
     let Some(found) = DocAnchor::parse(anchor) else {
-        let near: Vec<&str> = DocAnchor::nearest(anchor, DID_YOU_MEAN).into_iter().map(DocAnchor::as_str).collect();
+        // A known document with an unknown slug: that document's own
+        // anchors first, then the global nearest to fill the list.
+        let mut near_anchors = DocAnchor::nearest_in_path(anchor, DID_YOU_MEAN);
+        for extra in DocAnchor::nearest(anchor, DID_YOU_MEAN) {
+            if near_anchors.len() < DID_YOU_MEAN && !near_anchors.contains(&extra) {
+                near_anchors.push(extra);
+            }
+        }
+        let near: Vec<&str> = near_anchors.into_iter().map(DocAnchor::as_str).collect();
         return Err(AppError::Structured {
             code: "anchor_not_found",
             message: format!("no documentation heading has the anchor '{anchor}'; did you mean {}?", near.join(", ")),

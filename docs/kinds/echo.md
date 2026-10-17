@@ -24,6 +24,7 @@ Dry-run before publishing: `host.spec_test("echo", spec, invocations)` runs the 
 | field | type | required | meaning |
 |---|---|---|---|
 | `schema` | object | yes | JSON Schema the call arguments are validated against; a call echoes them back |
+| `description` | string | no | the tool's description in `tools/list` (every kind) |
 | `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind) |
 | `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
 | `ui` | object | no | optional presentation hints for clients that render a tool's result |

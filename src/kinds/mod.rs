@@ -735,7 +735,26 @@ pub fn apply_declared_outputs(value: Value, declared: &[OutputDecl]) -> Value {
 /// server's MCP `instructions` sentence about it is rendered from this list
 /// by [`outputs_envelope_instruction`], never hand-written, so the text
 /// cannot name a spec field a kind refuses.
-pub const UNIVERSAL_SPEC_FIELDS: &[&str] = &[OUTPUTS_FIELD, "reads", "ui"];
+pub const UNIVERSAL_SPEC_FIELDS: &[&str] = &[DESCRIPTION_FIELD, OUTPUTS_FIELD, "reads", "ui"];
+
+/// The spec field that carries a published tool's `tools/list` description.
+/// Universal so a spec written for the python kind (which reads it itself)
+/// publishes unchanged on every kind.
+pub const DESCRIPTION_FIELD: &str = "description";
+
+/// `descriptor.description` replaced by the spec's own non-empty
+/// `description` string -- for kinds that do not read the field themselves
+/// (a kind listing it in [`Kind::known_spec_fields`] keeps its own handling).
+pub fn apply_spec_description(kind: &dyn Kind, spec: &Value, descriptor: &mut ToolDescriptor) {
+    if kind.known_spec_fields().contains(&DESCRIPTION_FIELD) {
+        return;
+    }
+    if let Some(text) = spec.get(DESCRIPTION_FIELD).and_then(Value::as_str)
+        && !text.trim().is_empty()
+    {
+        descriptor.description = text.to_string();
+    }
+}
 
 /// The spec field that declares a tool's `result.payload.<field>` names.
 pub const OUTPUTS_FIELD: &str = "outputs";

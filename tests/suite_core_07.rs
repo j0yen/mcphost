@@ -357,6 +357,14 @@ mod cclib_ac01_contract_skew_warning;
 mod cclib_ac02_cli_tree_equals_contract;
 #[path = "cclib_ac03_completions_rendered_from_the_table.rs"]
 mod cclib_ac03_completions_rendered_from_the_table;
+#[path = "cdft_ac01_description_universal.rs"]
+mod cdft_ac01_description_universal;
+#[path = "cdft_ac02_help_get_top_and_bare_path.rs"]
+mod cdft_ac02_help_get_top_and_bare_path;
+#[path = "cdft_ac03_numeral_coercion.rs"]
+mod cdft_ac03_numeral_coercion;
+#[path = "cdft_ac04_trigger_test_self_signs_every_scheme.rs"]
+mod cdft_ac04_trigger_test_self_signs_every_scheme;
 #[path = "cdump_ac01_unparsable_committed_contract_refused.rs"]
 mod cdump_ac01_unparsable_committed_contract_refused;
 #[path = "cest_ac01_dry_run_verdict_matches_real_call.rs"]

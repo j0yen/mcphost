@@ -426,7 +426,17 @@ async fn load_table(
 /// PRD-mcphost-table-schema-violation-names-the-remedy requirement 2: the
 /// error is built by `tables::schema_violation_error`, the same payload
 /// `host.table.append` gives, under code `state_schema_violation`.
-fn validate_row(table: &str, schema: &TableSchema, row: &Map<String, Value>) -> Result<(), AppError> {
+///
+/// PRD-mcphost-chain-friction-fixes-20261016 requirement 3: a canonical
+/// numeral string is coerced in place by the same function `host.table.append`
+/// uses (`tables::coerce_canonical_numeral`); `index` is the row's position
+/// in the call, reported in the returned `coerced` entries.
+fn validate_row(
+    table: &str,
+    schema: &TableSchema,
+    index: usize,
+    row: &mut Map<String, Value>,
+) -> Result<Vec<Value>, AppError> {
     let declared: Vec<(&str, &str)> =
         schema.columns.iter().map(|(n, t)| (n.as_str(), t.as_str())).collect();
     let violation = |field: &str, mismatch: Option<(ColumnType, &Value)>| {
@@ -438,15 +448,20 @@ fn validate_row(table: &str, schema: &TableSchema, row: &Map<String, Value>) -> 
             &declared,
         )
     };
-    for (field, value) in row {
+    let mut coerced = Vec::new();
+    for (field, value) in row.iter_mut() {
         let Some(ty) = schema.columns.get(field) else {
             return Err(violation(field, None));
         };
         if !ty.matches(value) {
-            return Err(violation(field, Some((*ty, value))));
+            let Some(fixed) = crate::tables::coerce_canonical_numeral(ty.as_str(), value) else {
+                return Err(violation(field, Some((*ty, value))));
+            };
+            *value = fixed;
+            coerced.push(crate::tables::coerced_entry(index, field, ty.as_str()));
         }
     }
-    Ok(())
+    Ok(coerced)
 }
 
 // ---- host.state.insert/query/delete_rows ---------------------------------
@@ -469,7 +484,7 @@ pub async fn state_insert(
     let rows_val = args
         .get("rows")
         .ok_or_else(|| AppError::InvalidArgs("missing required argument 'rows'".to_string()))?;
-    let rows: Vec<Map<String, Value>> = match rows_val {
+    let mut rows: Vec<Map<String, Value>> = match rows_val {
         Value::Array(items) => items
             .iter()
             .map(|v| {
@@ -481,8 +496,9 @@ pub async fn state_insert(
         Value::Object(obj) => vec![obj.clone()],
         _ => return Err(AppError::InvalidArgs("'rows' must be an object or array of objects".to_string())),
     };
-    for row in &rows {
-        validate_row(&table, &schema, row)?;
+    let mut coerced = Vec::new();
+    for (i, row) in rows.iter_mut().enumerate() {
+        coerced.extend(validate_row(&table, &schema, i, row)?);
     }
 
     let plan = plan_of(state, &tenant.plan)?;
@@ -563,10 +579,12 @@ pub async fn state_insert(
     // PK, similar-sized row) reports close to 0 rather than double-counting
     // the bytes the upsert just freed.
     let bytes_delta = total_new_bytes - total_replaced_bytes;
-    Ok(with_impersonated(
-        json!({"table": table, "inserted": inserted_ids.len(), "ids": inserted_ids, "bytes_delta": bytes_delta}),
-        impersonated,
-    ))
+    let mut response =
+        json!({"table": table, "inserted": inserted_ids.len(), "ids": inserted_ids, "bytes_delta": bytes_delta});
+    if !coerced.is_empty() {
+        response["coerced"] = json!(coerced);
+    }
+    Ok(with_impersonated(response, impersonated))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -839,7 +857,7 @@ mod tests {
         let mut row = Map::new();
         row.insert("metric".to_string(), json!("cpu"));
         row.insert("last_value".to_string(), json!("high"));
-        let err = validate_row("alerts", &schema, &row).unwrap_err();
+        let err = validate_row("alerts", &schema, 0, &mut row).unwrap_err();
         assert_eq!(err.code(), "state_schema_violation");
         let data = err.into_error_data().data.expect("data");
         assert_eq!(data["field"], "last_value");
@@ -853,7 +871,7 @@ mod tests {
         let schema = TableSchema { columns, primary_key: None };
         let mut row = Map::new();
         row.insert("nope".to_string(), json!(1));
-        assert!(validate_row("alerts", &schema, &row).is_err());
+        assert!(validate_row("alerts", &schema, 0, &mut row).is_err());
     }
 
     /// AC4's exact scenario: `last_value > 0.5`, `order_by "last_value

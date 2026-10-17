@@ -21,7 +21,7 @@ fn shapes() -> Vec<Value> {
         json!({"ts": 1760000000}),
         json!({"checked_at": 1760000000}),
         json!({"memory_mb": 12.5}),
-        json!({"amount": "3"}),
+        json!({"amount": "abc"}),
     ]
 }
 

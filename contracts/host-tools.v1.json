@@ -7293,7 +7293,7 @@
         "additionalProperties": false,
         "properties": {
           "anchor": {
-            "description": "A `<path>#<slug>` anchor, e.g. README.md#call-limits, as printed by an error's `anchor` field or a `host.help.search` hit.",
+            "description": "A `<path>#<slug>` anchor, e.g. README.md#call-limits, as printed by an error's `anchor` field or a `host.help.search` hit. `<path>#top` and a bare `<path>` (e.g. docs/kinds/chain.md) both return that document's first section.",
             "type": "string"
           },
           "tenant_key": {
@@ -22375,6 +22375,9 @@
                 "spec": {
                   "additionalProperties": false,
                   "properties": {
+                    "description": {
+                      "description": "the tool's description in `tools/list` (every kind)"
+                    },
                     "outputs": {
                       "description": "fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind)"
                     },
@@ -24834,6 +24837,9 @@
                 "spec": {
                   "additionalProperties": false,
                   "properties": {
+                    "description": {
+                      "description": "the tool's description in `tools/list` (every kind)"
+                    },
                     "outputs": {
                       "description": "fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind)"
                     },
@@ -30085,7 +30091,7 @@
         "additionalProperties": false,
         "properties": {
           "anchor": {
-            "description": "A `<path>#<slug>` anchor, e.g. README.md#call-limits, as printed by an error's `anchor` field or a `host.help.search` hit.",
+            "description": "A `<path>#<slug>` anchor, e.g. README.md#call-limits, as printed by an error's `anchor` field or a `host.help.search` hit. `<path>#top` and a bare `<path>` (e.g. docs/kinds/chain.md) both return that document's first section.",
             "type": "string"
           },
           "tenant_key": {
@@ -33652,6 +33658,9 @@
                 "spec": {
                   "additionalProperties": false,
                   "properties": {
+                    "description": {
+                      "description": "the tool's description in `tools/list` (every kind)"
+                    },
                     "outputs": {
                       "description": "fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind)"
                     },

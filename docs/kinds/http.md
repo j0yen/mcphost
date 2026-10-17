@@ -39,6 +39,7 @@ Publish error `url: host '<host>' is not a publicly callable host` (code `host_n
 | `description` | string | no | human-readable text shown in `tools/list` |
 | `upstream` | string | no | name of a connected upstream provider to call instead of `method` + `url` |
 | `upstream_provider` | string | no | provider the `upstream` connection belongs to |
+| `description` | string | no | human-readable text shown in `tools/list` |
 | `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind) |
 | `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
 | `ui` | object | no | optional presentation hints for clients that render a tool's result |
