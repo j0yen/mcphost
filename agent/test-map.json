@@ -28,15 +28,24 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/dlrec_ac01_recipe_executes_verbatim.rs",
-    "AC2": "tests/dlrec_ac02_quickstart_returns_recipe_and_orders_next_steps.rs",
-    "AC3": "tests/dlrec_ac03_llms_txt_recipe_section_generated.rs",
-    "AC4": "tests/dlrec_ac04_new_scope_changes_both_sections.rs",
-    "AC5": "tests/dlrec_ac05_readme_recipe_block_checked.rs",
-    "AC6": "tests/dlrec_ac06_whoami_hint_for_foreign_session.rs",
-    "AC7": "tests/dlrec_ac07_error_codes_only_in_generated_blocks.rs"
+    "AC2": "tests/ownv_ac02_method_table_drift.rs",
+    "AC3": "tests/ownv_ac03_github_callback_verifies.rs",
+    "AC4": "tests/ownv_ac04_github_unavailable_without_env.rs",
+    "AC5": "tests/ownv_ac05_email_verified_tenant_is_not_overwritten.rs",
+    "AC6": "tests/ownv_ac06_concurrent_dns_check_writes_once.rs",
+    "AC7": "tests/ownv_ac07_quickstart_names_every_method.rs"
   },
   "ac_test_map_by_prefix": {
+    "pubvis": {
+      "_prd": "PRD-mcphost-publish-visibility-and-tags",
+      "AC1": "tests/dlrec_ac01_recipe_executes_verbatim.rs",
+      "AC2": "tests/dlrec_ac02_quickstart_returns_recipe_and_orders_next_steps.rs",
+      "AC3": "tests/dlrec_ac03_llms_txt_recipe_section_generated.rs",
+      "AC4": "tests/dlrec_ac04_new_scope_changes_both_sections.rs",
+      "AC5": "tests/dlrec_ac05_readme_recipe_block_checked.rs",
+      "AC6": "tests/dlrec_ac06_whoami_hint_for_foreign_session.rs",
+      "AC7": "tests/dlrec_ac07_error_codes_only_in_generated_blocks.rs"
+    },
     "oapi": {
       "_prd": "PRD-mcphost-openapi-for-rest-facade.md (test_prefix: oapi)",
       "AC1": "tests/oapi_ac01_pinned_response_schemas.rs",

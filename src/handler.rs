@@ -4801,6 +4801,61 @@ fn host_tools_part_12() -> Vec<Tool> {
     ]
 }
 
+/// PRD-mcphost-owner-verification-paths R1: the `host.claim.*` descriptors.
+/// Every one carries the `method` enum rendered from
+/// [`crate::verify::VERIFICATION_METHODS`], never a typed copy.
+#[inline(never)]
+fn host_tools_part_14() -> Vec<Tool> {
+    let method = crate::verify::method_property();
+    vec![
+        Tool::new(
+            "host.claim.start",
+            "Verify this tenant's owner by email: sends a one-time magic link to the address; \
+             opening it makes that address the owner. Other methods: host.claim.github, \
+             host.claim.dns (see /claim/methods.json for which this host can run).",
+            host_schema(
+                json!({
+                    "email": {"type": "string", "description": "The owner's email address."},
+                    "method": method.clone(),
+                }),
+                &["email"],
+            ),
+        ),
+        Tool::new(
+            "host.claim.github",
+            "Verify this tenant's owner with GitHub: returns {authorize_url, expires_in}; the human \
+             opens the URL and the callback marks the tenant verified with their GitHub login as \
+             the handle. Fails method_unavailable when this host has no GitHub OAuth app.",
+            host_schema(json!({"method": method.clone()}), &[]),
+        ),
+        Tool::new(
+            "host.claim.dns",
+            "Verify this tenant's owner with a DNS record: returns the TXT record to publish at \
+             _mcphost.<domain>; then call host.claim.dns.check.",
+            host_schema(
+                json!({
+                    "domain": {"type": "string", "description": "A domain you control, e.g. acme.dev."},
+                    "method": method.clone(),
+                }),
+                &["domain"],
+            ),
+        ),
+        Tool::new(
+            "host.claim.dns.check",
+            "Look up the TXT record host.claim.dns returned and, when it matches, verify this \
+             tenant's owner with the domain as the handle. Answers dns_record_not_found with \
+             {expected, seen} on a mismatch.",
+            host_schema(
+                json!({
+                    "domain": {"type": "string", "description": "The domain passed to host.claim.dns."},
+                    "method": method,
+                }),
+                &["domain"],
+            ),
+        ),
+    ]
+}
+
 #[inline(never)]
 fn host_tools_part_13() -> Vec<Tool> {
     vec![
@@ -5078,6 +5133,7 @@ fn host_tools_part_13() -> Vec<Tool> {
     tools.extend(host_tools_part_11());
     tools.extend(host_tools_part_12());
     tools.extend(host_tools_part_13());
+    tools.extend(host_tools_part_14());
     if authenticated {
         tools.push(Tool::new(
             "host.spec.test",
@@ -7299,6 +7355,10 @@ impl McpHostHandler {
             "host.policy.attrs_set" => {
                 crate::rowpolicy::policy_attrs_set(&self.state, tenant, &args, end_user).await
             }
+            "host.claim.start" => crate::verify::claim_start(&self.state, tenant, &args).await,
+            "host.claim.github" => crate::verify::claim_github(&self.state, tenant, &args).await,
+            "host.claim.dns" => crate::verify::claim_dns(&self.state, tenant, &args).await,
+            "host.claim.dns.check" => crate::verify::claim_dns_check(&self.state, tenant, &args).await,
             "host.audit.chain" => crate::rowpolicy::audit_chain(&self.state, tenant, &args, end_user).await,
             "host.audit.verify" => crate::rowpolicy::audit_verify(&self.state, tenant, &args, end_user).await,
             "host.enduser.whoami" => Ok(crate::enduser::whoami(end_user)),

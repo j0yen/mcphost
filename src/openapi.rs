@@ -256,6 +256,7 @@ pub fn schemas() -> BTreeMap<&'static str, Value> {
     map.insert("AuthorizationServerMetadata", render::<AuthorizationServerMetadata>());
     map.insert("Incidents", serde_json::json!({"type": "array", "items": {"type": "object"}}));
     map.insert("FramesDocument", free_object.clone());
+    map.insert("ClaimMethods", free_object.clone());
     map.insert("ServerCard", free_object.clone());
     map.insert("OpenObject", free_object.clone());
     map.insert(

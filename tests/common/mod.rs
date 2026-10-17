@@ -2262,6 +2262,46 @@ impl Drop for EnvGuard {
     }
 }
 
+/// Like [`EnvGuard`], for a test that needs several variables set (and
+/// restored) under ONE hold of the process-wide lock -- two `EnvGuard`s in
+/// one test would deadlock on it. `None` removes the variable.
+pub struct EnvGuardMany {
+    prev: Vec<(&'static str, Option<String>)>,
+    _permit: tokio::sync::MutexGuard<'static, ()>,
+}
+
+impl EnvGuardMany {
+    pub async fn set(vars: &[(&'static str, Option<&str>)]) -> Self {
+        let permit = ENV_GUARD_LOCK.lock().await;
+        let mut prev = Vec::new();
+        for (key, value) in vars {
+            prev.push((*key, std::env::var(key).ok()));
+            // SAFETY: see `EnvGuard::set` -- `permit` serializes every guarded test.
+            unsafe {
+                match value {
+                    Some(v) => std::env::set_var(key, v),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+        Self { prev, _permit: permit }
+    }
+}
+
+impl Drop for EnvGuardMany {
+    fn drop(&mut self) {
+        for (key, value) in self.prev.drain(..) {
+            // SAFETY: see `EnvGuard::set` -- still holding `_permit`.
+            unsafe {
+                match value {
+                    Some(v) => std::env::set_var(key, v),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+    }
+}
+
 /// Thin alias over [`EnvGuard`], kept so existing call sites
 /// (`common::AdvisoryModeGuard::set(mode)`) don't need to name the var.
 pub struct AdvisoryModeGuard;

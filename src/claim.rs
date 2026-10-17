@@ -225,7 +225,7 @@ fn render_claim_form(display_name: &str, token: &str, error: Option<&str>) -> St
 
 /// requirement 3: "first char, three stars, domain" (technical
 /// considerations) -- `j***@gmail.com` for `jsmith@gmail.com`.
-fn mask_email(email: &str) -> String {
+pub(crate) fn mask_email(email: &str) -> String {
     match email.split_once('@') {
         Some((local, domain)) => {
             let first = local.chars().next().unwrap_or('*');
@@ -397,7 +397,7 @@ async fn send_with_retry(state: &AppState, message: EmailMessage) -> Result<(), 
 /// requirement 2/3/7: mints a verify code (rate-limited to
 /// [`crate::state::CLAIM_EMAIL_SEND_LIMIT_PER_HOUR`] sends per tenant per
 /// hour), and sends the magic link through [`send_with_retry`].
-async fn send_verify_email(state: &AppState, tenant: &Tenant, email: &str) -> Result<(), AppError> {
+pub(crate) async fn send_verify_email(state: &AppState, tenant: &Tenant, email: &str) -> Result<(), AppError> {
     let code = generate_verify_code();
     let code_hash = hash_key(&code);
     let now = crate::state::now_unix();
@@ -477,7 +477,7 @@ pub(crate) fn source_ip(headers: &HeaderMap, peer: SocketAddr) -> String {
 
 /// requirement 7 / AC8: shared by every `/claim/*` route -- `None` on
 /// success, the 429 page (or a 500 on a storage error) otherwise.
-async fn check_claim_rate_limit(state: &AppState, headers: &HeaderMap, peer: SocketAddr) -> Option<Response> {
+pub(crate) async fn check_claim_rate_limit(state: &AppState, headers: &HeaderMap, peer: SocketAddr) -> Option<Response> {
     let ip = source_ip(headers, peer);
     let since = crate::state::now_unix() - 3600;
     match state
@@ -499,7 +499,7 @@ async fn check_claim_rate_limit(state: &AppState, headers: &HeaderMap, peer: Soc
 /// Checked before [`check_claim_rate_limit`] at each call site: a banned
 /// address shouldn't spend the rate-limit budget it's about to be refused
 /// from anyway.
-async fn check_addr_ban(state: &AppState, headers: &HeaderMap, peer: SocketAddr) -> Option<Response> {
+pub(crate) async fn check_addr_ban(state: &AppState, headers: &HeaderMap, peer: SocketAddr) -> Option<Response> {
     let ip = source_ip(headers, peer);
     match crate::bans::enforce(state, "addr", &ip).await {
         Ok(()) => None,
