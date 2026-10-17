@@ -22852,6 +22852,67 @@
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
+      "description": "List tools other tenants shared with you: public shares plus group shares you are a member of (group shares also appear in tools/list; public ones never do).",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "Max entries (default 50, max 200).",
+            "type": "integer"
+          },
+          "q": {
+            "description": "Optional substring filter on name/description.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.tool.list_shared",
+      "output_schema": {
+        "properties": {
+          "tools": {
+            "items": {
+              "properties": {
+                "_meta": {
+                  "type": "object"
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "_meta",
+                "name"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "tools",
+          "truncated"
+        ],
+        "type": "object"
+      },
+      "since": "0.108.153",
+      "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
+    },
+    {
       "description": "Return the most recent log lines for one of this tenant's tools.",
       "input_schema": {
         "additionalProperties": false,
@@ -25359,6 +25420,36 @@
       "name": "host.tool_list",
       "since": "0.58.0",
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
+    },
+    {
+      "alias_of": "host.tool.list_shared",
+      "description": "List tools other tenants shared with you: public shares plus group shares you are a member of (group shares also appear in tools/list; public ones never do).",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "Max entries (default 50, max 200).",
+            "type": "integer"
+          },
+          "q": {
+            "description": "Optional substring filter on name/description.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-deprecated": {
+          "replaced_by": "host.tool.list_shared",
+          "sunset": "2026-12-31"
+        }
+      },
+      "name": "host.tool_list_shared",
+      "since": "0.108.153",
+      "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
     },
     {
       "alias_of": "host.tool.logs",
@@ -34468,6 +34559,31 @@
       },
       "name": "host_tool_list",
       "since": "0.103.1"
+    },
+    {
+      "alias_of": "host.tool.list_shared",
+      "description": "List tools other tenants shared with you: public shares plus group shares you are a member of (group shares also appear in tools/list; public ones never do).",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "Max entries (default 50, max 200).",
+            "type": "integer"
+          },
+          "q": {
+            "description": "Optional substring filter on name/description.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host_tool_list_shared",
+      "since": "0.108.153"
     },
     {
       "alias_of": "host.tool.logs",
