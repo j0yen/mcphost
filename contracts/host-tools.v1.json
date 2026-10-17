@@ -22543,6 +22543,29 @@
         "type": "object"
       },
       "name": "host.tool.fork",
+      "output_schema": {
+        "properties": {
+          "forked_from": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "visibility": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "forked_from",
+          "kind",
+          "name",
+          "visibility"
+        ],
+        "type": "object"
+      },
       "since": "0.108.156"
     },
     {

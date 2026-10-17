@@ -7268,11 +7268,16 @@ impl McpHostHandler {
             "host.changelog" => control::changelog(&self.state, tenant, &args),
             "host.export" => crate::export::export(&self.state, tenant, &args).await,
             "host.import" => crate::import::import(&self.state, tenant, &args).await,
-            "host.tool.share" => self.tool_share_tested(tenant, args).await,
-            "host.tool.spec_shared" => self.tool_spec_shared(tenant, args).await,
+            // PRD-mcphost-scoped-tool-share: the share/unshare/spec_shared/catalog_get/
+            // fork arms below are `Box::pin`ned. Their futures grew with the scope
+            // checks, and inlined they enlarge `dispatch_tenant_tool_inner`'s
+            // debug-build frame past the 2 MiB test-thread stack (verbfwd_ac01 and
+            // verbfwd_ac05 overflowed, aborting the whole core suite).
+            "host.tool.share" => Box::pin(self.tool_share_tested(tenant, args)).await,
+            "host.tool.spec_shared" => Box::pin(self.tool_spec_shared(tenant, args)).await,
             "host.tool.list_shared" => crate::sharing::list_shared(&self.state, tenant, &args).await,
-            "host.tool.fork" => crate::sharing::tool_fork(&self.state, tenant, &args).await,
-            "host.tool.unshare" => crate::sharing::tool_unshare(&self.state, tenant, &args).await,
+            "host.tool.fork" => Box::pin(crate::sharing::tool_fork(&self.state, tenant, &args)).await,
+            "host.tool.unshare" => Box::pin(crate::sharing::tool_unshare(&self.state, tenant, &args)).await,
             "host.share.caller_limit" => {
                 crate::sharing::caller_limit(&self.state, tenant, &args).await
             }
@@ -7284,7 +7289,7 @@ impl McpHostHandler {
             "host.group.remove" => crate::sharing::group_remove(&self.state, tenant, &args).await,
             "host.group.list" => crate::sharing::group_list(&self.state, tenant).await,
             "host.catalog.search" => crate::sharing::catalog_search(&self.state, &args).await,
-            "host.catalog.get" => crate::sharing::catalog_get(&self.state, Some(tenant), &args).await,
+            "host.catalog.get" => Box::pin(crate::sharing::catalog_get(&self.state, Some(tenant), &args)).await,
             "host.invite.create" => crate::invites::create(&self.state, tenant, &args).await,
             "host.invite.list" => crate::invites::list(&self.state, tenant).await,
             "host.invite.revoke" => crate::invites::revoke(&self.state, tenant, &args).await,

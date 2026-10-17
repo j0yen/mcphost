@@ -2163,6 +2163,15 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `name`: string (always)
 - `to`: integer (always)
 
+### `host.tool.fork`
+
+**Returns**
+
+- `forked_from`: string (always)
+- `kind`: string (always)
+- `name`: string (always)
+- `visibility`: string (always)
+
 ### `host.tool.history`
 
 **Returns**
