@@ -357,6 +357,8 @@ const MIGRATION_0110: &str = include_str!("../migrations/0110_call_results.sql")
 const MIGRATION_0111: &str = include_str!("../migrations/0111_key_binding.sql");
 /// PRD-mcphost-graceful-drain-contract R2: the `restarts` table.
 const MIGRATION_0113: &str = include_str!("../migrations/0113_restarts.sql");
+/// PRD-mcphost-performance-guarantees-measured R3: the `perf_samples` table.
+const MIGRATION_0118: &str = include_str!("../migrations/0118_perf_samples.sql");
 
 /// PRD-mcphost-example-proof-nightly-and-hide R2: the `example_proofs` table.
 const MIGRATION_0115: &str = include_str!("../migrations/0115_example_proofs.sql");
@@ -794,6 +796,17 @@ pub struct ConfirmTokenRow {
     pub diff_hash: String,
     pub expires_unix: i64,
     pub used_unix: Option<i64>,
+}
+
+/// PRD-mcphost-performance-guarantees-measured R3: a `perf_samples` row.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PerfSample {
+    pub ts: i64,
+    pub plan: String,
+    pub path: String,
+    pub p50_ms: i64,
+    pub p95_ms: i64,
+    pub n: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -3128,6 +3141,8 @@ impl Db {
         conn.execute_batch(MIGRATION_0115)?;
         Self::migrate_0116_orgs(&conn)?;
         Self::migrate_0117_tenant_clients(&conn)?;
+        // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
+        conn.execute_batch(MIGRATION_0118)?;
         Ok(())
     }
 
@@ -4789,6 +4804,53 @@ impl Db {
                 |r| r.get(0),
             )
             .map_err(AppError::from)
+        })
+        .await
+    }
+
+    // ---- perf samples ------------------------------------------------
+
+    /// PRD-mcphost-performance-guarantees-measured R3: one hourly row.
+    pub async fn insert_perf_sample(&self, row: PerfSample) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO perf_samples (ts, plan, path, p50_ms, p95_ms, n) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![row.ts, row.plan, row.path, row.p50_ms, row.p95_ms, row.n],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// The newest `limit` rows for one (plan, path), newest first.
+    pub async fn recent_perf_samples(&self, plan: String, path: String, limit: i64) -> Result<Vec<PerfSample>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT ts, plan, path, p50_ms, p95_ms, n FROM perf_samples \
+                 WHERE plan = ?1 AND path = ?2 ORDER BY ts DESC, id DESC LIMIT ?3",
+            )?;
+            let rows = stmt
+                .query_map(params![plan, path, limit], |r| {
+                    Ok(PerfSample {
+                        ts: r.get(0)?,
+                        plan: r.get(1)?,
+                        path: r.get(2)?,
+                        p50_ms: r.get(3)?,
+                        p95_ms: r.get(4)?,
+                        n: r.get(5)?,
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// Deletes rows older than `cutoff_unix`; returns how many.
+    pub async fn prune_perf_samples_older_than(&self, cutoff_unix: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute("DELETE FROM perf_samples WHERE ts < ?1", params![cutoff_unix])?;
+            Ok(n as i64)
         })
         .await
     }
@@ -7095,7 +7157,10 @@ impl Db {
     pub async fn count_calls_by_origin(&self) -> Result<(i64, i64), AppError> {
         self.with_conn(|conn| {
             conn.query_row(
-                "SELECT (SELECT COUNT(*) FROM calls WHERE origin = 'external'), \
+                // PRD-mcphost-performance-guarantees-measured R3: the reserved
+                // `perf-*` tenants (`origin = 'internal'`) are never customers.
+                "SELECT (SELECT COUNT(*) FROM calls WHERE origin = 'external' \
+                         AND tenant_id NOT IN (SELECT id FROM tenants WHERE origin = 'internal')), \
                         (SELECT COUNT(*) FROM calls WHERE origin = 'synthetic')",
                 [],
                 |r| Ok((r.get(0)?, r.get(1)?)),

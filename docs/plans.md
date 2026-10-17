@@ -58,6 +58,9 @@ Every numeric ceiling in the plan table, as `host.quickstart` `limits.plan` repo
 | `notifies_per_day` | 20 | 1000 |
 | `notify_channels_max` | 2 | 10 |
 | `org_members_max` | 3 | 25 |
+| `perf_echo_p95_ms` | 150 | 100 |
+| `perf_http_p95_ms` | 800 | 500 |
+| `perf_python_cold_p95_ms` | 1500 | 800 |
 | `receipts_retention_days` | 7 | 30 |
 | `recipients_per_msg_max` | 5 | 20 |
 | `schedule_min_interval_s` | 300 | 60 |

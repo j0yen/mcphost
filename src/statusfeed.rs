@@ -516,6 +516,8 @@ pub async fn status_json(state: &AppState) -> Result<Value, AppError> {
         "maintenance": crate::maintenance::status_block(state).await?,
         "feedback": {"rows_24h": rows_24h, "themes_open": themes_open},
         "onboarding_7d": onboarding_block(state).await?,
+        // PRD-mcphost-performance-guarantees-measured R4.
+        "perf": crate::perf::status_block(state).await?,
         "docs_gaps": crate::help_search::status_block(&state.db, now_unix()).await?,
         "deploy": {"last_refusal": last_refusal(state.db.data_dir())},
         // PRD-mcphost-email-inbound-route requirement 5: counts only.

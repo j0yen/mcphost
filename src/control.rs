@@ -1371,7 +1371,12 @@ pub async fn whoami(
     // relayed to the human.
     let claim_url_value = crate::claim::claim_url_for_tenant(&state.public_url, tenant);
     let concurrency = concurrency_json(state, tenant);
+    // PRD-mcphost-performance-guarantees-measured R6: the plan's p95 targets
+    // beside the host's latest measurement of them.
+    let perf_measured = crate::perf::measured_json(state, &tenant.plan).await?;
     let mut response = json!({
+        "limits": {"plan": crate::perf::targets_json(state, &tenant.plan)},
+        "perf_measured": perf_measured,
         "tenant": tenant.namespace,
         "namespace": tenant.namespace,
         "concurrency": concurrency,

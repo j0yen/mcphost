@@ -136,6 +136,23 @@ rss      37.3 MiB</code></pre>
       " \u00b7 dropped " + num(r.last.dropped);
   }
 
+  // PRD-mcphost-performance-guarantees-measured requirement 5: one line per
+  // plan, "measured/target" per path, "n/a" until a sample exists, nothing
+  // at all when the server predates the `perf` key.
+  function perfLines(perf) {
+    if (!perf || typeof perf !== "object") { return []; }
+    return Object.keys(perf).map(function (plan) {
+      var paths = perf[plan] || {};
+      return pad(plan, 6) + Object.keys(paths).map(function (name) {
+        var r = paths[name] || {};
+        var cls3 = r.state === "over" ? "bad" : "dim";
+        return '<span class="' + cls3 + '">' + name + " " +
+          (r.measured_p95_ms === null || r.measured_p95_ms === undefined ? "n/a" : num(r.measured_p95_ms)) +
+          "/" + num(r.target_p95_ms) + "</span>";
+      }).join("  ");
+    });
+  }
+
   function renderIncidents(data) {
     var open = data.incidents_open || [];
     var recent = data.incidents_recent_30d || [];
@@ -169,6 +186,7 @@ rss      37.3 MiB</code></pre>
       componentsEl.textContent = "";
       var hl = hostLine(data.host);
       if (hl) { rows.push('<span class="dim">' + hl + '</span>'); }
+      perfLines(data.perf).forEach(function (l) { rows.push(l); });
       var ol = onboardingLine(data.onboarding_7d);
       if (ol) { rows.push('<span class="dim">' + ol + '</span>'); }
       var rl = restartLine(data.restart);
