@@ -672,6 +672,18 @@ mod ownmt_ac05_claim_email_configured_signal;
 mod ownmt_ac06_claim_round_trip_for_journey_claim_step;
 #[path = "ownmt_ac07_claim_page_shows_remember_note.rs"]
 mod ownmt_ac07_claim_page_shows_remember_note;
+#[path = "pgm_ac02_ceilings_carry_perf_fields.rs"]
+mod pgm_ac02_ceilings_carry_perf_fields;
+#[path = "pgm_ac03_hourly_task_writes_two_rows_per_plan_path.rs"]
+mod pgm_ac03_hourly_task_writes_two_rows_per_plan_path;
+#[path = "pgm_ac04_status_json_perf_state.rs"]
+mod pgm_ac04_status_json_perf_state;
+#[path = "pgm_ac06_perf_tenant_is_not_a_customer.rs"]
+mod pgm_ac06_perf_tenant_is_not_a_customer;
+#[path = "pgm_ac07_whoami_perf_measured.rs"]
+mod pgm_ac07_whoami_perf_measured;
+#[path = "pgm_drift.rs"]
+mod pgm_drift;
 #[path = "pgtr_ac01_inconsistency_census.rs"]
 mod pgtr_ac01_inconsistency_census;
 #[path = "pgtr_ac02_docs_list_walk_ends_exactly_once.rs"]

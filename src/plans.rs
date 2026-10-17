@@ -345,6 +345,14 @@ pub struct Plan {
     /// requirement 2: a run's default `budget.max_wall_ms`. "free 60,000 ms
     /// wall".
     pub budget_max_wall_ms: i64,
+    /// PRD-mcphost-performance-guarantees-measured R1: the p95 target (ms)
+    /// the host publishes for an echo call on this plan; the hourly probe
+    /// ([`crate::perf`]) measures it beside this number.
+    pub perf_echo_p95_ms: i64,
+    /// R1: p95 target (ms) for a python call after idle (warm pool bypassed).
+    pub perf_python_cold_p95_ms: i64,
+    /// R1: p95 target (ms) for an http round trip against the host itself.
+    pub perf_http_p95_ms: i64,
 }
 
 /// Numeric [`Plan`] fields that are not ceilings an agent can hit.
@@ -659,6 +667,9 @@ impl PlanCatalog {
                     budget_max_est_tokens: 200_000,
                     budget_max_tool_latency_ms: 30_000,
                     budget_max_wall_ms: 60_000,
+                    perf_echo_p95_ms: 150,
+                    perf_python_cold_p95_ms: 1500,
+                    perf_http_p95_ms: 800,
                 },
                 Plan {
                     name: "pro".to_string(),
@@ -782,6 +793,9 @@ impl PlanCatalog {
                     budget_max_est_tokens: 2_000_000,
                     budget_max_tool_latency_ms: 120_000,
                     budget_max_wall_ms: 600_000,
+                    perf_echo_p95_ms: 100,
+                    perf_python_cold_p95_ms: 800,
+                    perf_http_p95_ms: 500,
                 },
             ],
         }
@@ -945,6 +959,12 @@ impl PlanCatalog {
                 p.budget_max_tool_latency_ms
             ));
             out.push_str(&format!("budget_max_wall_ms = {}\n", p.budget_max_wall_ms));
+            out.push_str(&format!("perf_echo_p95_ms = {}\n", p.perf_echo_p95_ms));
+            out.push_str(&format!(
+                "perf_python_cold_p95_ms = {}\n",
+                p.perf_python_cold_p95_ms
+            ));
+            out.push_str(&format!("perf_http_p95_ms = {}\n", p.perf_http_p95_ms));
             out.push('\n');
         }
         out
@@ -1059,6 +1079,9 @@ impl PlanCatalog {
                     builder.budget_max_tool_latency_ms = Some(int_value())
                 }
                 "budget_max_wall_ms" => builder.budget_max_wall_ms = Some(int_value()),
+                "perf_echo_p95_ms" => builder.perf_echo_p95_ms = Some(int_value()),
+                "perf_python_cold_p95_ms" => builder.perf_python_cold_p95_ms = Some(int_value()),
+                "perf_http_p95_ms" => builder.perf_http_p95_ms = Some(int_value()),
                 _ => {}
             }
         }
@@ -1162,6 +1185,9 @@ struct PlanBuilder {
     budget_max_est_tokens: Option<i64>,
     budget_max_tool_latency_ms: Option<i64>,
     budget_max_wall_ms: Option<i64>,
+    perf_echo_p95_ms: Option<i64>,
+    perf_python_cold_p95_ms: Option<i64>,
+    perf_http_p95_ms: Option<i64>,
 }
 
 impl PlanBuilder {
@@ -1252,6 +1278,9 @@ impl PlanBuilder {
             budget_max_est_tokens: quota!(budget_max_est_tokens),
             budget_max_tool_latency_ms: quota!(budget_max_tool_latency_ms),
             budget_max_wall_ms: quota!(budget_max_wall_ms),
+            perf_echo_p95_ms: quota!(perf_echo_p95_ms),
+            perf_python_cold_p95_ms: quota!(perf_python_cold_p95_ms),
+            perf_http_p95_ms: quota!(perf_http_p95_ms),
         };
         Ok((plan, defaulted))
     }

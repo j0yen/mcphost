@@ -1294,6 +1294,17 @@
       "AC7": "tests/hpress_ac07_metrics_doc_matches_struct.rs",
       "AC8": "deferred -- operator-provisioned: live curl of prod /status.json after deploy"
     },
+    "pgm": {
+      "_prd": "PRD-mcphost-performance-guarantees-measured.md (test_prefix: pgm)",
+      "AC1": "deferred -- operator-provisioned: premise check against prod and the orch latency ledger after land.",
+      "AC2": "tests/pgm_ac02_ceilings_carry_perf_fields.rs",
+      "AC3": "tests/pgm_ac03_hourly_task_writes_two_rows_per_plan_path.rs",
+      "AC4": "tests/pgm_ac04_status_json_perf_state.rs",
+      "AC5": "tests/pgm_ac05_skip_when_semaphore_nearly_full.rs",
+      "AC6": "tests/pgm_ac06_perf_tenant_is_not_a_customer.rs",
+      "AC7": "tests/pgm_ac07_whoami_perf_measured.rs",
+      "AC8": "deferred -- operator-provisioned: live curl of prod /status.json 25 h after deploy."
+    },
     "pgtr": {
       "_prd": "PRD-mcphost-paged-trait-on-every-list-verb.md (test_prefix: pgtr)",
       "AC1": "tests/pgtr_ac01_inconsistency_census.rs",

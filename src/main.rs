@@ -1929,6 +1929,13 @@ async fn main() -> anyhow::Result<()> {
             // here alongside the other background tasks.
             mcphost::statusfeed::spawn_tick((*state).clone());
             mcphost::statusfeed::spawn_daily_tick((*state).clone());
+            mcphost::perf::set_self_url(format!("http://{bind}"));
+            for plan in mcphost::perf::PLANS {
+                if let Err(e) = mcphost::perf::ensure_tenant(&state, plan).await {
+                    tracing::warn!(error = %e, plan, "perf internal tenant not created at boot");
+                }
+            }
+            mcphost::perf::spawn_tick((*state).clone());
             // PRD-mcphost-db-maintenance-window R6: once a day at the quiet hour.
             mcphost::maintenance::spawn_scheduler(state.db.clone());
             // PRD-mcphost-result-handles P0 requirement 4: the 30s handle
