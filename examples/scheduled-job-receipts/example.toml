@@ -1,0 +1,15 @@
+[example]
+name = "scheduled-job-receipts"
+title = "Scheduled job receipts"
+summary = "Schedule a tool, fire it, and read one host.schedule_receipts call: rows, failure streak and next fire time."
+use_case = ["uptime"]
+clients = ["any"]
+since = "0.108.153"
+secrets_needed = []
+
+[first_call]
+tool = "host.schedule_receipts"
+expect = "result.summary.runs == 0"
+
+[first_call.args]
+tool = "probe"

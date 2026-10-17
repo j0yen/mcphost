@@ -163,6 +163,29 @@
       }
     },
     {
+      "name": "scheduled-job-receipts",
+      "title": "Scheduled job receipts",
+      "summary": "Schedule a tool, fire it, and read one host.schedule_receipts call: rows, failure streak and next fire time.",
+      "use_case": [
+        "uptime"
+      ],
+      "clients": [
+        "any"
+      ],
+      "since": "0.108.153",
+      "proof": "proof.sh",
+      "secrets_needed": [],
+      "manifest_sha256": "270d866cd8171a6ceed510376a80b3754f3747e247c8497acbe05eb2a46dae55",
+      "tools": [],
+      "first_call": {
+        "tool": "host.schedule_receipts",
+        "args": {
+          "tool": "probe"
+        },
+        "expect": "result.summary.runs == 0"
+      }
+    },
+    {
       "name": "share-a-tool",
       "title": "Share a tool, not a key",
       "summary": "Publish an http tool that injects a secret, share it to a group, and let a teammate call it without ever seeing the key.",
