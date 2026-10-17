@@ -48,27 +48,30 @@ VERSION_FILES=(
 
 # Blank the version line(s) that a release bump rewrites, so two blobs that
 # differ only there compare equal.
-blank_version() { # <path>; blob on stdin
+blank_version() { # <path> <root-package-name>; blob on stdin
   case "$1" in
     Cargo.toml)
       awk '/^\[/ { sec = $0 }
            (sec == "[package]" || sec == "[workspace.package]") && /^version[ \t]*=/ { print "version = BLANK"; next }
            { print }' ;;
     Cargo.lock)
-      # Only `version =` lines inside a [[package]] block with no `source =`
-      # line (a path package, i.e. ours) are blanked. The file header's own
-      # `version = 4` (lockfile format) and any registry/git package version
-      # are dependency/format changes and must stay visible.
-      awk 'function flush() {
+      # Only `version =` in the [[package]] block of the ROOT package (no
+      # `source =` line, name == $2, the Cargo.toml [package] name) is
+      # blanked. Other path packages (workspace/vendor members), the file
+      # header's own `version = 4` (lockfile format) and every registry/git
+      # package version are dependency/format changes and must stay visible.
+      awk -v root="$2" '
+           function flush(   i, l) {
              for (i = 1; i <= n; i++) {
                l = blk[i]
-               if (in_pkg && !has_source && l ~ /^version = /) l = "version = BLANK"
+               if (in_pkg && !has_source && root != "" && pname == root && l ~ /^version = /) l = "version = BLANK"
                print l
              }
-             n = 0; has_source = 0
+             n = 0; has_source = 0; pname = ""
            }
            /^\[\[package\]\]/ { flush(); in_pkg = 1 }
-           { blk[++n] = $0; if ($0 ~ /^source = /) has_source = 1 }
+           { blk[++n] = $0; if ($0 ~ /^source = /) has_source = 1
+             if ($0 ~ /^name = /) { pname = $0; sub(/^[^"]*"/, "", pname); sub(/".*$/, "", pname) } }
            END { flush() }' ;;
     *.json)
       sed -E 's/^([[:space:]]*"version"[[:space:]]*:[[:space:]]*)"[^"]*"/\1"BLANK"/' ;;
@@ -89,6 +92,12 @@ changelog_is_base_plus_new_top() { # <head-blob> <base-blob>
     rm -f "$bf" "$hf"; return 0
   fi
   rm -f "$bf" "$hf"; return 1
+}
+
+# The root Cargo.toml [package] name on <rev> (empty when there is none).
+root_name() { # <rev>
+  git cat-file blob "$1:Cargo.toml" 2>/dev/null \
+    | awk '/^\[/ { sec = $0 } sec == "[package]" && /^name[ \t]*=/ { gsub(/^[^"]*"|".*$/, ""); print; exit }' || true
 }
 
 blob() { git rev-parse -q --verify "$1:$2" 2>/dev/null || true; }
@@ -116,8 +125,8 @@ for f in "${VERSION_FILES[@]}"; do
   if [ "$f" = CHANGELOG.md ]; then
     changelog_is_base_plus_new_top "$hb" "$bb" || continue   # an older entry moved: keep HEAD blob
   else
-    h=$(git cat-file blob "$hb" | blank_version "$f" | git hash-object --stdin)
-    b=$(git cat-file blob "$bb" | blank_version "$f" | git hash-object --stdin)
+    h=$(git cat-file blob "$hb" | blank_version "$f" "$(root_name "$rev")" | git hash-object --stdin)
+    b=$(git cat-file blob "$bb" | blank_version "$f" "$(root_name "$base")" | git hash-object --stdin)
     [ "$h" = "$b" ] || continue              # more than the version moved: keep HEAD blob
   fi
   git update-index --cacheinfo "$(mode "$base" "$f"),$bb,$f"

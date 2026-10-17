@@ -54,6 +54,10 @@ name = "serde"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aaaa"
+
+[[package]]
+name = "vendored"
+version = "0.1.0"
 EOF
   printf '{\n  "name": "demo",\n  "version": "%s"\n}\n' "$1" > plugin/.claude-plugin/plugin.json
   printf '{\n  "name": "demo",\n  "version": "%s"\n}\n' "$1" > plugin/.mcp.json
@@ -208,6 +212,13 @@ commit release-with-chmod
 expect_ne "chmod +x on a version file riding a version bump changes the NTREE" "$ver_tree" "$(bash "$script" origin/main HEAD)"
 git checkout -q pr
 git branch -q -D modebump
+
+# a lock-only version change of ANOTHER path package (a workspace/vendor
+# member) is not a release bump: only the root package's version is blanked
+sed -i '/^name = "vendored"$/{n;s/^version = .*/version = "9.9.9"/}' Cargo.lock
+commit vendored-lock-only
+expect_ne "a lock-only version change of a non-root path package changes the NTREE" "$ver_tree" "$(bash "$script" origin/main HEAD)"
+git reset -q --hard HEAD~1
 
 # a registry package version change in Cargo.lock differs
 awk '/name = "serde"/ { s = 1 } s && /^version = / { print "version = \"1.0.9\""; s = 0; next } { print }' Cargo.lock > Cargo.lock.new && mv Cargo.lock.new Cargo.lock
