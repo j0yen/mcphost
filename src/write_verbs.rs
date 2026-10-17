@@ -133,6 +133,9 @@ pub const WRITE_VERBS: &[WriteVerb] = &[
     nd("host.oauth.provider_remove", Kind::Remove, "external_effect"),
     nd("host.note.put", Kind::Write, "external_effect"),
     nd("host.note.delete", Kind::Delete, "external_effect"),
+    // org create/join run their own BEGIN IMMEDIATE/COMMIT, which a dry-run savepoint scope cannot roll back.
+    nd("host.org.create", Kind::Write, "external_effect"),
+    nd("host.org.join", Kind::Write, "irreversible_by_design"),
 ];
 
 const fn count_where(supported: bool) -> usize {

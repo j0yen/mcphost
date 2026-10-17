@@ -1981,6 +1981,46 @@ fn host_tools_part_03() -> Vec<Tool> {
             ),
         ),
         Tool::new(
+            "host.org.create",
+            "Create an org with you as its owner and get an org invite url \
+             (https://<host>/o/<code>/mcp): each teammate who connects to it gets its own \
+             tenant, key and url, and joins the org as a member. You can belong to one org.",
+            host_schema(
+                json!({
+                    "name": {"type": "string", "description": "Org name, 3-32 characters: \
+                        lowercase letters, digits and single hyphens (^[a-z0-9]+(-[a-z0-9]+)*$)."},
+                }),
+                &["name"],
+            ),
+        ),
+        Tool::new(
+            "host.org.join",
+            "Join an org with the tenant you already have, using the code from its org \
+             invite url. Your key, namespace, url and tools are untouched; you become a member.",
+            host_schema(
+                json!({
+                    "code": {"type": "string", "description": "The <code> segment of the \
+                        org's /o/<code>/mcp invite url."},
+                }),
+                &["code"],
+            ),
+        ),
+        Tool::new(
+            "host.org.members",
+            "List your org's live members (namespace, role, joined_at, last_seen, tool \
+             count). The owner's response also carries the org invite_url.",
+            host_schema(
+                json!({
+                    "role": {
+                        "type": "string",
+                        "enum": crate::org::roles_enum_json(),
+                        "description": "Only members with this role. Default: all.",
+                    },
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
             "host.secret.set",
             "Store an encrypted secret value under this tenant's namespace.",
             host_schema(
@@ -7040,6 +7080,9 @@ impl McpHostHandler {
             "host.invite.create" => crate::invites::create(&self.state, tenant, &args).await,
             "host.invite.list" => crate::invites::list(&self.state, tenant).await,
             "host.invite.revoke" => crate::invites::revoke(&self.state, tenant, &args).await,
+            "host.org.create" => crate::org::create(&self.state, tenant, &args).await,
+            "host.org.join" => crate::org::join(&self.state, tenant, &args).await,
+            "host.org.members" => crate::org::members(&self.state, tenant, &args).await,
             "host.secret.set" => control::secret_set(&self.state, tenant, &args).await,
             "host.secret.list" => control::secret_list(&self.state, tenant).await,
             "host.registry.publish" => control::registry_publish(&self.state, tenant, &args).await,

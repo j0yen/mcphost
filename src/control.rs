@@ -1366,6 +1366,9 @@ pub async fn whoami(
         "created_at": tenant.created_at,
         "disabled": tenant.disabled,
         "invite_url": invite_url,
+        // PRD-mcphost-org-model R6: the caller's live org membership, or
+        // null; a sibling of `owner`, never inside it.
+        "org": crate::org::whoami_org(state, tenant.id).await?,
         // PRD-grand-loop-billing goal: an agent's own identity call
         // already tells it what plan it's on, with no extra round trip.
         "plan": tenant.plan,

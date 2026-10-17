@@ -46,6 +46,9 @@
             "name": {
               "type": "string"
             },
+            "org_members_max": {
+              "type": "integer"
+            },
             "overage_usd_per_1000_calls": {
               "type": "integer"
             },
@@ -4399,6 +4402,91 @@
       "revoked"
     ],
     "type": "object"
+  },
+  "host.org.create": {
+    "type": "object",
+    "properties": {
+      "org": {
+        "type": "string"
+      },
+      "role": {
+        "type": "string"
+      },
+      "invite_url": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "org",
+      "role",
+      "invite_url"
+    ]
+  },
+  "host.org.join": {
+    "type": "object",
+    "properties": {
+      "org": {
+        "type": "string"
+      },
+      "role": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "org",
+      "role"
+    ]
+  },
+  "host.org.members": {
+    "type": "object",
+    "properties": {
+      "org": {
+        "type": "string"
+      },
+      "role": {
+        "type": "string"
+      },
+      "invite_url": {
+        "type": "string"
+      },
+      "members": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "namespace": {
+              "type": "string"
+            },
+            "role": {
+              "type": "string"
+            },
+            "joined_at": {
+              "type": "integer"
+            },
+            "last_seen": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "tools": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "namespace",
+            "role",
+            "joined_at",
+            "tools"
+          ]
+        }
+      }
+    },
+    "required": [
+      "org",
+      "role",
+      "members"
+    ]
   },
   "host.job.timeline": {
     "properties": {

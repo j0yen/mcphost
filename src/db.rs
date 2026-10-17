@@ -359,6 +359,9 @@ const MIGRATION_0111: &str = include_str!("../migrations/0111_key_binding.sql");
 /// PRD-mcphost-example-proof-nightly-and-hide R2: the `example_proofs` table.
 const MIGRATION_0115: &str = include_str!("../migrations/0115_example_proofs.sql");
 
+/// PRD-mcphost-org-model R1/R4: `orgs`, `org_members`, `invites.kind = 'org'`.
+const MIGRATION_0116: &str = include_str!("../migrations/0116_orgs.sql");
+
 /// PRD-mcphost-docs-telemetry-failed-after-search R3: how long after a
 /// `host.help.search` the same tenant's first failed call still joins it.
 pub const HELP_SEARCH_JOIN_WINDOW_S: i64 = 120;
@@ -3074,7 +3077,29 @@ impl Db {
         Self::migrate_0114_notify_channels(&conn)?;
         // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0115)?;
+        Self::migrate_0116_orgs(&conn)?;
         Ok(())
+    }
+
+    /// PRD-mcphost-org-model R1/R4: gated on the `orgs` table. The batch
+    /// rebuilds `invites`, so `foreign_keys` is OFF around it (a DROP with
+    /// it ON would cascade-delete every `invite_joins` row).
+    fn migrate_0116_orgs(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'orgs'")?
+            .exists([])?;
+        if has_table {
+            return Ok(());
+        }
+        conn.pragma_update(None, "foreign_keys", "OFF")?;
+        let ran = conn
+            .execute_batch(&format!("BEGIN;\n{MIGRATION_0116}\nCOMMIT;"))
+            .map_err(AppError::from);
+        if ran.is_err() {
+            let _ = conn.execute_batch("ROLLBACK");
+        }
+        conn.pragma_update(None, "foreign_keys", "ON")?;
+        ran
     }
 
     /// PRD-mcphost-notify-user-channel: gated on the `notify_channels` table.
@@ -22949,7 +22974,7 @@ const INVITE_INVITER_RATE_LIMIT_PER_DAY: i64 = 100;
 const INVITE_INVITER_RATE_LIMIT_WINDOW_SECS: i64 = 86_400;
 
 const INVITE_COLUMNS: &str = "id, inviter_tenant_id, kind, share_json, max_uses, uses, \
-    caller_limit, expires_unix, revoked_unix, created_unix, code_plain";
+    caller_limit, expires_unix, revoked_unix, created_unix, code_plain, org_id";
 
 /// One `invites` row (PRD-mcphost-invite-links requirements 1, 5, 10):
 /// `kind` is `"standard"` (`host.invite.create`, capped/expiring/
@@ -22970,6 +22995,8 @@ pub struct InviteRow {
     /// `Some` only for `kind = "standing"` rows -- see migration 0068's
     /// own doc comment for why. `None` for every `kind = "standard"` row.
     pub code_plain: Option<String>,
+    /// PRD-mcphost-org-model R4: the org a `kind = "org"` invite admits to.
+    pub org_id: Option<i64>,
 }
 
 fn invite_row_from_row(r: &Row) -> rusqlite::Result<InviteRow> {
@@ -22986,6 +23013,7 @@ fn invite_row_from_row(r: &Row) -> rusqlite::Result<InviteRow> {
         revoked_unix: r.get(8)?,
         created_unix: r.get(9)?,
         code_plain: r.get(10)?,
+        org_id: r.get(11)?,
     })
 }
 
@@ -23086,6 +23114,7 @@ impl Db {
                 revoked_unix: None,
                 created_unix,
                 code_plain,
+                org_id: None,
             })
         })
         .await
@@ -23340,6 +23369,7 @@ impl Db {
         invitee_standing_code_hash: String,
         invitee_standing_code_plain: String,
         funnel_origin: String,
+        org_caps: crate::org::OrgCaps,
     ) -> Result<ClaimedInvite, AppError> {
         let now = now_unix();
         let created_at = now_rfc3339();
@@ -23369,6 +23399,13 @@ impl Db {
                 )?;
                 if inviter_joins >= INVITE_INVITER_RATE_LIMIT_PER_DAY {
                     return Err(AppError::invite_rate_limited());
+                }
+                // PRD-mcphost-org-model R4 (AC4): an org invite refuses at
+                // the owner plan's `org_members_max` before any tenant is
+                // minted -- inside this transaction so two joins racing for
+                // the last seat cannot both pass.
+                if invite.kind == "org" {
+                    crate::org::check_cap_sync(conn, invite.org_id, &org_caps)?;
                 }
                 // AC4: re-checked here, inside the transaction that also
                 // consumes the slot -- the middleware's own liveness check
@@ -23495,6 +23532,10 @@ impl Db {
                      VALUES (?1, ?2, 'standing', '[]', ?3, ?4)",
                     params![invitee_standing_code_hash, tenant_id, now, invitee_standing_code_plain],
                 )?;
+
+                if invite.kind == "org" {
+                    crate::org::insert_member_sync(conn, invite.org_id, tenant_id, "member", now)?;
+                }
 
                 let sql = format!("SELECT {TENANT_COLUMNS} FROM tenants WHERE id = ?1");
                 let tenant = conn.query_row(&sql, params![tenant_id], tenant_from_row)?;

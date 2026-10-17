@@ -219,7 +219,10 @@ pub async fn mint_standing_invite(state: &AppState, tenant_id: i64) -> Result<()
 /// the original request's own URI -- same convention as `handler.rs`'s
 /// own `url_path_secret`. `None` for every other path.
 pub fn invite_path_code(parts: &http::request::Parts) -> Option<&str> {
-    parts.uri.path().strip_prefix("/i/")?.strip_suffix("/mcp")
+    let path = parts.uri.path();
+    path.strip_prefix("/i/")
+        .or_else(|| path.strip_prefix("/o/"))?
+        .strip_suffix("/mcp")
 }
 
 /// Requirement 2 (AC2), requirement 6: the whole implicit-signup-via-invite
@@ -254,6 +257,7 @@ pub async fn claim_on_first_call(
             invitee_standing_code_hash,
             invitee_standing_code,
             funnel_origin.to_string(),
+            crate::org::OrgCaps::from_state(state),
         )
         .await?;
 
