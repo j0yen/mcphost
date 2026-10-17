@@ -1214,6 +1214,20 @@ mod statusfeed_ac07_prune_keeps_rollup;
 mod statusfeed_ac08_status_html_renders;
 #[path = "statusfeed_ac10_component_days_query.rs"]
 mod statusfeed_ac10_component_days_query;
+#[path = "stgl_ac01_grantee_list_names_group_share.rs"]
+mod stgl_ac01_grantee_list_names_group_share;
+#[path = "stgl_ac02_one_accessor_for_list_and_call.rs"]
+mod stgl_ac02_one_accessor_for_list_and_call;
+#[path = "stgl_ac03_public_share_not_in_tools_list.rs"]
+mod stgl_ac03_public_share_not_in_tools_list;
+#[path = "stgl_ac04_no_shares_list_unchanged.rs"]
+mod stgl_ac04_no_shares_list_unchanged;
+#[path = "stgl_ac05_unshare_removes_entry.rs"]
+mod stgl_ac05_unshare_removes_entry;
+#[path = "stgl_ac06_subkey_hides_shared_entries.rs"]
+mod stgl_ac06_subkey_hides_shared_entries;
+#[path = "stgl_ac07_share_reports_grantees_notified.rs"]
+mod stgl_ac07_share_reports_grantees_notified;
 #[path = "suite_ac1_ten_binaries_and_names_preserved.rs"]
 mod suite_ac1_ten_binaries_and_names_preserved;
 #[path = "suite_ac3_mod_common_declared_once.rs"]

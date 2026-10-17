@@ -12105,6 +12105,39 @@
     ],
     "type": "object"
   },
+  "host.tool.list_shared": {
+    "properties": {
+      "tools": {
+        "items": {
+          "properties": {
+            "_meta": {
+              "type": "object"
+            },
+            "description": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "_meta",
+            "name"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "truncated": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "tools",
+      "truncated"
+    ],
+    "type": "object"
+  },
   "host.tool.logs": {
     "properties": {
       "lines": {
