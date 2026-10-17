@@ -18,7 +18,8 @@
 # Soundness beyond a plain path swap: Cargo.toml, Cargo.lock and the two JSON
 # manifests also carry code-affecting content (dependencies, features). They are
 # swapped for the base blob ONLY when HEAD and base are equal once the version
-# line itself is blanked; otherwise the HEAD blob stays and the key differs.
+# line itself is blanked and the file mode is unchanged; otherwise the HEAD
+# entry stays and the key differs.
 #
 # CHANGELOG.md is read by contract tests (heading parse, host.changelog via
 # include_str!), so it is NOT swapped wholesale. Only the NEW TOP material a
@@ -109,6 +110,9 @@ for f in "${VERSION_FILES[@]}"; do
   bb=$(blob "$base" "$f")
   [ -n "$hb" ] && [ -n "$bb" ] || continue   # absent on either side: leave as is
   [ "$hb" != "$bb" ] || continue
+  # A mode change (e.g. chmod +x) is not a version bump: the swap would take
+  # the base's mode and hide it, so keep HEAD's entry and the key differs.
+  [ "$(mode "$rev" "$f")" = "$(mode "$base" "$f")" ] || continue
   if [ "$f" = CHANGELOG.md ]; then
     changelog_is_base_plus_new_top "$hb" "$bb" || continue   # an older entry moved: keep HEAD blob
   else

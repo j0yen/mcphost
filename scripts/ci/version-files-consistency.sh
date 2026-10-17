@@ -8,7 +8,8 @@
 # miss) and proves what the skipped tests would have:
 #   1. plugin/.claude-plugin/plugin.json and plugin/.mcp.json (and a root
 #      plugin.json / .mcp.json where they exist) carry the Cargo.toml
-#      [package] version;
+#      [package] version, and so does Cargo.lock's entry for our own package
+#      (a stale lock is what `cargo check --locked` would have caught);
 #   2. every `## ` heading of CHANGELOG.md is `## v<semver> — <date>`;
 #   3. the headings are strictly descending;
 #   4. the top heading is on Cargo's major.minor line and not ahead of it.
@@ -34,6 +35,30 @@ for f in plugin/.claude-plugin/plugin.json plugin/.mcp.json plugin.json .mcp.jso
   [ -n "$v" ] || continue
   [ "$v" = "$cargo" ] || bad "$f version $v != Cargo.toml version $cargo"
 done
+
+# Cargo.lock: the [[package]] entry (no `source =` line, i.e. a path package)
+# named like the Cargo.toml [package] must carry the same version.
+if [ -f Cargo.lock ]; then
+  pkg=$(awk '/^\[/ { sec = $0 } sec == "[package]" && /^name[ \t]*=/ { gsub(/^[^"]*"|".*$/, ""); print; exit }' Cargo.toml)
+  if [ -z "$pkg" ]; then
+    bad "cannot read the [package] name from Cargo.toml to check Cargo.lock"
+  else
+    lockv=$(awk -v name="$pkg" '
+      function val(l) { sub(/^[^"]*"/, "", l); sub(/".*$/, "", l); return l }
+      function flush() { if (!done && cur == name && !src && ver != "") { print ver; done = 1 } cur = ""; src = 0; ver = "" }
+      /^\[\[package\]\]/ { flush(); inpkg = 1; next }
+      /^\[/ { flush(); inpkg = 0; next }
+      inpkg && /^name = /    { cur = val($0) }
+      inpkg && /^version = / { ver = val($0) }
+      inpkg && /^source = /  { src = 1 }
+      END { flush() }' Cargo.lock)
+    if [ -z "$lockv" ]; then
+      bad "Cargo.lock has no path-package entry for $pkg"
+    elif [ "$lockv" != "$cargo" ]; then
+      bad "Cargo.lock $pkg version $lockv != Cargo.toml version $cargo"
+    fi
+  fi
+fi
 
 if [ -f CHANGELOG.md ]; then
   heads=$(grep '^## ' CHANGELOG.md || true)

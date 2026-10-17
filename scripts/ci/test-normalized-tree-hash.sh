@@ -35,6 +35,11 @@ edition = "2024"
 
 [dependencies]
 serde = "1"
+foo = { version = "1" }
+
+[dependencies.bar]
+version = "1"
+features = ["x"]
 EOF
   cat > Cargo.lock <<EOF
 version = 4
@@ -80,6 +85,12 @@ commit() { git add -A && git commit -q -m "$1"; }
 write_files 1.0.0
 write_changelog
 echo 'fn main() {}' > src/main.rs
+echo 'fn helper() {}' > src/helper.rs
+echo 'fn main() {}' > build.rs
+printf '[toolchain]\nchannel = "1.95"\n' > rust-toolchain.toml
+mkdir -p .github/workflows scripts/ci
+printf 'name: ci\n' > .github/workflows/ci.yml
+printf '#!/usr/bin/env bash\necho a\n' > scripts/ci/some-check.sh
 commit base
 git update-ref refs/remotes/origin/main HEAD
 
@@ -148,6 +159,55 @@ sed -i 's/^serde = "1"/serde = "2"/' Cargo.toml
 commit dep-toml
 expect_ne "a Cargo.toml dependency change is not normalized away" "$ver_tree" "$(bash "$script" origin/main HEAD)"
 git reset -q --hard HEAD~1
+
+# dependency versions in every Cargo.toml dependency form differ (the version
+# blanking is limited to [package] / [workspace.package])
+sed -i 's/^foo = { version = "1" }/foo = { version = "2" }/' Cargo.toml
+commit dep-inline
+expect_ne "an inline { version = } dependency bump is not normalized away" "$ver_tree" "$(bash "$script" origin/main HEAD)"
+git reset -q --hard HEAD~1
+
+sed -i '/^\[dependencies.bar\]/,/^$/s/^version = "1"/version = "2"/' Cargo.toml
+commit dep-table
+expect_ne "a [dependencies.x] table version bump is not normalized away" "$ver_tree" "$(bash "$script" origin/main HEAD)"
+git reset -q --hard HEAD~1
+
+# build / toolchain / CI inputs are part of the key
+for f in build.rs rust-toolchain.toml .github/workflows/ci.yml scripts/ci/some-check.sh; do
+  echo '# changed' >> "$f"
+  commit "touch-$f"
+  expect_ne "a change to $f changes the NTREE" "$ver_tree" "$(bash "$script" origin/main HEAD)"
+  git reset -q --hard HEAD~1
+done
+
+# a deleted file and a renamed src file differ
+git rm -q src/helper.rs
+commit delete-file
+expect_ne "a deleted file changes the NTREE" "$ver_tree" "$(bash "$script" origin/main HEAD)"
+git reset -q --hard HEAD~1
+git mv src/helper.rs src/helper2.rs
+commit rename-file
+expect_ne "a renamed src file changes the NTREE" "$ver_tree" "$(bash "$script" origin/main HEAD)"
+git reset -q --hard HEAD~1
+
+# a mode change differs: on a non-version file, and on a version file riding a
+# version bump (the swap must not take the base's mode)
+chmod +x src/main.rs
+commit chmod-code
+expect_ne "chmod +x on a non-version file changes the NTREE" "$ver_tree" "$(bash "$script" origin/main HEAD)"
+git reset -q --hard HEAD~1
+chmod +x Cargo.toml
+commit chmod-cargo-toml
+expect_ne "chmod +x on Cargo.toml alone changes the NTREE" "$ver_tree" "$(bash "$script" origin/main HEAD)"
+git reset -q --hard HEAD~1
+git checkout -q -b modebump HEAD~1   # the code commit, before the release bump
+write_files 1.0.1
+release_top 1.0.1
+chmod +x Cargo.toml
+commit release-with-chmod
+expect_ne "chmod +x on a version file riding a version bump changes the NTREE" "$ver_tree" "$(bash "$script" origin/main HEAD)"
+git checkout -q pr
+git branch -q -D modebump
 
 # a registry package version change in Cargo.lock differs
 awk '/name = "serde"/ { s = 1 } s && /^version = / { print "version = \"1.0.9\""; s = 0; next } { print }' Cargo.lock > Cargo.lock.new && mv Cargo.lock.new Cargo.lock
