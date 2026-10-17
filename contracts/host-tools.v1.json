@@ -22873,6 +22873,42 @@
         "type": "object"
       },
       "name": "host.tool.list_shared",
+      "output_schema": {
+        "properties": {
+          "tools": {
+            "items": {
+              "properties": {
+                "_meta": {
+                  "type": "object"
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "_meta",
+                "name"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "tools",
+          "truncated"
+        ],
+        "type": "object"
+      },
       "since": "0.108.153",
       "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
     },
