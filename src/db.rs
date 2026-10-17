@@ -359,6 +359,8 @@ const MIGRATION_0111: &str = include_str!("../migrations/0111_key_binding.sql");
 const MIGRATION_0113: &str = include_str!("../migrations/0113_restarts.sql");
 /// PRD-mcphost-performance-guarantees-measured R3: the `perf_samples` table.
 const MIGRATION_0118: &str = include_str!("../migrations/0118_perf_samples.sql");
+/// PRD-mcphost-scoped-tool-share R2/R5/R6: share scopes, rate, revoke time, fork origin.
+const MIGRATION_0120: &str = include_str!("../migrations/0120_share_scopes.sql");
 
 /// PRD-mcphost-example-proof-nightly-and-hide R2: the `example_proofs` table.
 const MIGRATION_0115: &str = include_str!("../migrations/0115_example_proofs.sql");
@@ -1124,6 +1126,18 @@ pub struct ToolRow {
 /// `tools.tags` is a JSON array text column.
 fn parse_tags(text: &str) -> Vec<String> {
     serde_json::from_str(text).unwrap_or_default()
+}
+
+/// PRD-mcphost-scoped-tool-share (migration 0119): the share-scope columns of
+/// a `tools` row, read apart from [`ToolRow`] so the many `tools` readers keep
+/// their column layout.
+#[derive(Debug, Clone, Default)]
+pub struct ShareMeta {
+    /// The `ShareScope` names the share grants; `None` while private.
+    pub scopes: Option<Vec<String>>,
+    pub rate_per_hour: Option<i64>,
+    pub unshared_unix: Option<i64>,
+    pub forked_from: Option<String>,
 }
 
 /// A single immutable published version of a tool (PRD-mcphost-tool-versions
@@ -3160,6 +3174,19 @@ impl Db {
         // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0118)?;
         Self::migrate_0119_publish_visibility_tags(&conn)?;
+        Self::migrate_0120_share_scopes(&conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-scoped-tool-share R2: gated on `tools.share_scopes_json`
+    /// (the batch is `ALTER`s plus a one-time backfill, so a rerun must skip it).
+    fn migrate_0120_share_scopes(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tools') WHERE name = 'share_scopes_json'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0120)?;
+        }
         Ok(())
     }
 
@@ -8642,6 +8669,28 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-scoped-tool-share R2: store the scopes + per-caller hourly
+    /// rate a `host.tool_share` grants, replacing both on a re-share.
+    pub async fn set_share_scopes(
+        &self,
+        tenant_id: i64,
+        name: String,
+        scopes: Vec<String>,
+        rate_per_hour: Option<i64>,
+    ) -> Result<(), AppError> {
+        let scopes_text = serde_json::to_string(&scopes)
+            .map_err(|e| AppError::Internal(format!("scopes serialize: {e}")))?;
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tools SET share_scopes_json = ?1, share_rate_per_hour = ?2, unshared_unix = NULL \
+                 WHERE tenant_id = ?3 AND name = ?4",
+                params![scopes_text, rate_per_hour, tenant_id, name],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
     /// R4/R5: stamps `tested_version` for `version`, but only while it is
     /// still the tool's `current_version` (a republish that raced the dry
     /// run must not be marked tested) and never backwards -- idempotent, so
@@ -8664,6 +8713,103 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-scoped-tool-share: the share-scope columns of one tool row
+    /// (`None` when there is no such row).
+    pub async fn get_share_meta(&self, tenant_id: i64, name: String) -> Result<Option<ShareMeta>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT share_scopes_json, share_rate_per_hour, unshared_unix, forked_from \
+                 FROM tools WHERE tenant_id = ?1 AND name = ?2",
+                params![tenant_id, name],
+                |r| {
+                    let scopes_text: Option<String> = r.get(0)?;
+                    Ok(ShareMeta {
+                        scopes: scopes_text.and_then(|t| serde_json::from_str(&t).ok()),
+                        rate_per_hour: r.get(1)?,
+                        unshared_unix: r.get(2)?,
+                        forked_from: r.get(3)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-scoped-tool-share R4: the successful calls of
+    /// `caller_tenant_id` into `tenant_id`'s `tool_name` since `since_unix`,
+    /// as `(count, oldest started_unix)` -- the sliding hour's window.
+    pub async fn caller_calls_window(
+        &self,
+        tenant_id: i64,
+        tool_name: String,
+        caller_tenant_id: i64,
+        since_unix: i64,
+    ) -> Result<(i64, Option<i64>), AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*), MIN(started_unix) FROM calls \
+                 WHERE tenant_id = ?1 AND tool_name = ?2 AND caller_tenant_id = ?3 \
+                       AND started_unix >= ?4 AND ok = 1",
+                params![tenant_id, tool_name, caller_tenant_id, since_unix],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-scoped-tool-share R6: record where a forked tool came from.
+    pub async fn set_forked_from(&self, tenant_id: i64, name: String, forked_from: String) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tools SET forked_from = ?1 WHERE tenant_id = ?2 AND name = ?3",
+                params![forked_from, tenant_id, name],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-scoped-tool-share R6: `name -> forked_from` for every
+    /// forked tool of `tenant_id` (`host.tool_list` reads it).
+    pub async fn forked_from_map(
+        &self,
+        tenant_id: i64,
+    ) -> Result<std::collections::HashMap<String, String>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt =
+                conn.prepare("SELECT name, forked_from FROM tools WHERE tenant_id = ?1 AND forked_from IS NOT NULL")?;
+            let rows = stmt
+                .query_map(params![tenant_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+                .collect::<Result<_, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-scoped-tool-share R5: did `caller_tenant_id` place any call
+    /// into `tenant_id`'s `tool_name` since `since_unix`?
+    pub async fn caller_called_since(
+        &self,
+        tenant_id: i64,
+        tool_name: String,
+        caller_tenant_id: i64,
+        since_unix: i64,
+    ) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM calls WHERE tenant_id = ?1 AND tool_name = ?2 \
+                 AND caller_tenant_id = ?3 AND started_unix >= ?4)",
+                params![tenant_id, tool_name, caller_tenant_id, since_unix],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
     /// `host.tool_unshare`: back to `'private'`, clearing the group/
     /// description/shared_unix and (requirement 5) `expose_spec`/
     /// `spec_exposed_unix`/`spec_reads`. `unshared_by` is left untouched
@@ -8675,9 +8821,10 @@ impl Db {
             let n = conn.execute(
                 "UPDATE tools SET visibility = 'private', shared_group = NULL, \
                  share_description = NULL, shared_unix = NULL, expose_spec = 0, \
-                 spec_exposed_unix = NULL, spec_reads = 0 \
+                 spec_exposed_unix = NULL, spec_reads = 0, share_scopes_json = NULL, \
+                 share_rate_per_hour = NULL, unshared_unix = ?3 \
                  WHERE tenant_id = ?1 AND name = ?2",
-                params![tenant_id, name],
+                params![tenant_id, name, now_unix()],
             )?;
             Ok(n > 0)
         })
@@ -8712,9 +8859,10 @@ impl Db {
             let n = conn.execute(
                 "UPDATE tools SET visibility = 'private', shared_group = NULL, \
                  share_description = NULL, shared_unix = NULL, unshared_by = 'admin', \
-                 expose_spec = 0, spec_exposed_unix = NULL, spec_reads = 0 \
+                 expose_spec = 0, spec_exposed_unix = NULL, spec_reads = 0, \
+                 share_scopes_json = NULL, share_rate_per_hour = NULL, unshared_unix = ?3 \
                  WHERE name = ?2 AND tenant_id = (SELECT id FROM tenants WHERE namespace = ?1)",
-                params![owner_namespace, name],
+                params![owner_namespace, name, now_unix()],
             )?;
             Ok(n > 0)
         })

@@ -55,7 +55,7 @@ fn landing_commit_has_zero_violations_and_lists_exceptions() {
         .lines()
         .find(|l| l.starts_with("violations="))
         .unwrap_or_else(|| panic!("no violations=.. summary line: {stdout:?}"));
-    assert_eq!(summary, "violations=0 aliases=22", "stdout: {stdout}");
+    assert_eq!(summary, "violations=0 aliases=23", "stdout: {stdout}");
 }
 
 #[test]
