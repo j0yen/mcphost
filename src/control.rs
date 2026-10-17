@@ -1675,6 +1675,12 @@ pub async fn tool_publish(
     let mut spec = args.get("spec").cloned().unwrap_or(Value::Null);
 
     validate_tool_name(&name)?;
+    // PRD-mcphost-publish-visibility-and-tags R1/R2: malformed requests,
+    // refused before anything is written (dry_run included).
+    if let Some(v) = args.get("visibility").and_then(Value::as_str) {
+        crate::sharing::Visibility::parse_publishable(v)?;
+    }
+    let tags = crate::sharing::parse_tags(args)?;
     // PRD-mcphost-tool-scopes-and-consent requirement 1 (AC5): validated
     // unconditionally, `dry_run` or not -- an invalid `scopes` argument is
     // never one of the "collectible" gates below, it's a malformed request.
@@ -2087,6 +2093,10 @@ pub async fn tool_publish(
         )
         .await?;
 
+    if let Some(tags) = tags {
+        state.db.set_tool_tags(tenant.id, name.clone(), tags).await?;
+    }
+
     // PRD-mcphost-activation-funnel requirement 2: every successful publish
     // (fresh or a republish) proves the tenant has published at least
     // once -- stamped only the first time (technical considerations: skip
@@ -2394,6 +2404,9 @@ pub async fn tool_list(state: &AppState, tenant: &Tenant, args: &Value) -> Resul
                 // `"admin"` only when `admin.tool_unshare` (not the owner's
                 // own `host.tool_unshare`) most recently forced it private.
                 "visibility": row.visibility,
+                "tags": row.tags,
+                "tested_version": row.tested_version,
+                "stale_test": row.tested_version != Some(row.current_version),
                 "share_description": row.share_description,
                 "unshared_by": row.unshared_by,
                 "env": env,

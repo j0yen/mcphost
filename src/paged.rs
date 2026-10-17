@@ -726,7 +726,8 @@ pub fn splice_input_schema(verb: &str, properties: &mut Map<String, Value>) {
 /// only on an echo-kind tool, the rest always.
 pub const TOOL_LIST_FIELDS: &[&str] = &[
     "name", "kind", "created_at", "visibility", "share_description", "unshared_by", "env",
-    "advisories", "expose_spec", "exposed_at", "spec_reads", "scopes", "stub",
+    "advisories", "expose_spec", "exposed_at", "spec_reads", "scopes", "stub", "tags", "tested_version",
+    "stale_test",
 ];
 
 /// List verbs that are not [`Paged`] (no keyset cursor yet) but still accept

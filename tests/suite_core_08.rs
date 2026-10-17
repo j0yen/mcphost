@@ -806,6 +806,16 @@ mod pubtool_ac07_admin_disabled_tenant_503;
 mod pubtool_ac08_put_delete_405;
 #[path = "pubtool_ac10_cors_header_and_preflight.rs"]
 mod pubtool_ac10_cors_header_and_preflight;
+#[path = "pubvis_ac02_visibility_enum_single_source.rs"]
+mod pubvis_ac02_visibility_enum_single_source;
+#[path = "pubvis_ac04_unlisted_not_listed_but_callable.rs"]
+mod pubvis_ac04_unlisted_not_listed_but_callable;
+#[path = "pubvis_ac05_tags_validated_normalised_capped.rs"]
+mod pubvis_ac05_tags_validated_normalised_capped;
+#[path = "pubvis_ac06_new_version_marks_stale_until_retested.rs"]
+mod pubvis_ac06_new_version_marks_stale_until_retested;
+#[path = "pubvis_ac07_concurrent_public_share_stamps_once.rs"]
+mod pubvis_ac07_concurrent_public_share_stamps_once;
 #[path = "qdiag_ac01_column_typo_fuzzy_covered_hint.rs"]
 mod qdiag_ac01_column_typo_fuzzy_covered_hint;
 #[path = "qdiag_ac02_table_typo_fuzzy_covered_hint.rs"]

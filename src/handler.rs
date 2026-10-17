@@ -788,6 +788,20 @@ fn tool_publish_props(kinds: &KindRegistry) -> Value {
                 this tool: catalogued names from host.oauth.scopes, or the built-ins read/write. \
                 At most 8. Omit (or [] ) to require only mcp -- unaffected by any catalog.",
         },
+        "visibility": {
+            "type": "string",
+            "enum": crate::sharing::Visibility::schema_enum(&crate::sharing::Visibility::PUBLISHABLE),
+            "description": "Who may find the tool (default private). unlisted: callable by full \
+                name and readable by host.catalog.get, never listed. public: listed in the \
+                catalog, and refused (untested_tool_cannot_be_public) unless the current \
+                version passes its dry run first. Use host.tool_share for group or url.",
+        },
+        "tags": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Catalog tags: at most 16, each 1-32 chars of a-z, 0-9 and '-', \
+                stored lower-case and deduped.",
+        },
     })
 }
 
@@ -1841,7 +1855,17 @@ fn host_tools_part_02() -> Vec<Tool> {
             host_schema(
                 json!({
                     "name": {"type": "string", "description": "Local name of the tool to share."},
-                    "visibility": {"type": "string", "description": "\"public\" or \"group\"."},
+                    "visibility": {
+                        "type": "string",
+                        "enum": crate::sharing::Visibility::schema_enum(&crate::sharing::Visibility::SHAREABLE),
+                        "description": "\"public\" (needs a passing dry run of the current version), \
+                            \"unlisted\", \"group\" or \"url\".",
+                    },
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Catalog tags merged into the tool's existing ones (same rules as host.tool_publish).",
+                    },
                     "group": {
                         "type": "string",
                         "description": "Required when visibility is \"group\"; must already exist \
@@ -7172,7 +7196,7 @@ impl McpHostHandler {
             "host.tool.list" => control::tool_list(&self.state, tenant, &args).await,
             "host.tool.remove" => control::tool_remove(&self.state, tenant, &args).await,
             "host.tool.logs" => control::tool_logs(&self.state, tenant, &args).await,
-            "host.tool.test" => self.tool_test(tenant, args).await,
+            "host.tool.test" => self.tool_test_stamping(tenant, args).await,
             "host.bridge.test" => self.bridge_test(tenant, args).await,
             "host.spec.test" => self.spec_test(tenant, args).await,
             "host.tool_from_description" => self.tool_from_description(tenant, args).await,
@@ -7199,7 +7223,7 @@ impl McpHostHandler {
             "host.changelog" => control::changelog(&self.state, tenant, &args),
             "host.export" => crate::export::export(&self.state, tenant, &args).await,
             "host.import" => crate::import::import(&self.state, tenant, &args).await,
-            "host.tool.share" => crate::sharing::tool_share(&self.state, tenant, &args).await,
+            "host.tool.share" => self.tool_share_tested(tenant, args).await,
             "host.tool.spec_shared" => self.tool_spec_shared(tenant, args).await,
             "host.tool.unshare" => crate::sharing::tool_unshare(&self.state, tenant, &args).await,
             "host.share.caller_limit" => {
@@ -8782,6 +8806,12 @@ impl McpHostHandler {
             Ok(Err(kind_err)) => Err(AppError::from(kind_err)),
             Err(_elapsed) => Err(AppError::CallTimeout(resolved_timeout.as_secs())),
         };
+        // The publish gate's own dry run (`require_tested`) leaves no `calls`
+        // row: a pro tenant would otherwise be metered for a call it never
+        // made.
+        if args.get("_pubvis_gate").and_then(Value::as_bool) == Some(true) {
+            return result;
+        }
         self.finish_test_call(tenant, &local_name, &trace_args, &secret_map, capture.as_ref(), duration_ms, error_info, result)
             .await
     }
@@ -9180,6 +9210,9 @@ impl McpHostHandler {
     async fn tool_publish_with_example(&self, tenant: &Tenant, args: Value) -> Result<Value, AppError> {
         let mut out = control::tool_publish(&self.state, tenant, &args).await?;
         let dry_run = args.get("dry_run").and_then(Value::as_bool).unwrap_or(false);
+        if !dry_run {
+            self.apply_publish_visibility(tenant, &args, &mut out).await?;
+        }
         let has_invocations = args.get("invocations").is_some_and(|v| !v.is_null());
         let (Some(kind), Some(spec)) = (args.get("kind"), args.get("spec")) else {
             return Ok(out);
@@ -9203,6 +9236,113 @@ impl McpHostHandler {
             }
         }
         Ok(out)
+    }
+
+    /// PRD-mcphost-publish-visibility-and-tags R4/R5: a passing `host.tool_test`
+    /// of the tool's current version stamps `tested_version`, clearing
+    /// `stale_test`.
+    async fn tool_test_stamping(&self, tenant: &Tenant, args: Value) -> Result<Value, AppError> {
+        let name = args.get("name").and_then(Value::as_str).map(str::to_string);
+        let mut out = self.tool_test(tenant, args).await?;
+        if let Some(name) = name
+            && out.get("verdict").and_then(Value::as_str) == Some("pass")
+            && let Some(row) = self.state.db.get_tool(tenant.id, name.clone()).await?
+        {
+            self.state.db.stamp_tested_version(tenant.id, name, row.current_version).await?;
+            if let Value::Object(map) = &mut out {
+                map.insert("tested_version".to_string(), json!(row.current_version));
+                map.insert("stale_test".to_string(), json!(false));
+            }
+        }
+        Ok(out)
+    }
+
+    /// R4: `public` needs a passing dry run of the tool's current version.
+    /// Skipped when that version already passed; otherwise runs
+    /// `host.tool_test` (which stamps on pass). A `will_fail`/`unverifiable`
+    /// verdict or an error leaves the stored visibility untouched.
+    async fn require_tested(&self, tenant: &Tenant, name: &str) -> Result<(), AppError> {
+        let row = self
+            .state
+            .db
+            .get_tool(tenant.id, name.to_string())
+            .await?
+            .ok_or_else(|| AppError::ToolNotFound(name.to_string()))?;
+        if row.tested_version == Some(row.current_version) {
+            return Ok(());
+        }
+        let refusal = |verdict: &str, detail: String| AppError::Structured {
+            code: "untested_tool_cannot_be_public",
+            message: format!("'{name}' version {} did not pass its dry run ({verdict}); it stays {}", row.current_version, row.visibility),
+            data: json!({"verdict": verdict, "detail": detail, "next": "host.tool_test"}),
+        };
+        match self.tool_test_stamping(tenant, json!({"name": name, "_pubvis_gate": true})).await {
+            Ok(v) if v.get("verdict").and_then(Value::as_str) == Some("pass") => Ok(()),
+            // `unverifiable` (a chain whose mapping needs inputs the example
+            // does not supply) is not a failure: R4 refuses only `will_fail`
+            // or an error, so the version is stamped as tested.
+            Ok(v) if v.get("verdict").and_then(Value::as_str) == Some("unverifiable") => {
+                self.state.db.stamp_tested_version(tenant.id, name.to_string(), row.current_version).await?;
+                Ok(())
+            }
+            Ok(v) => {
+                let verdict = v.get("verdict").and_then(Value::as_str).unwrap_or("will_fail").to_string();
+                let detail = v
+                    .get("error")
+                    .or_else(|| v.get("reason"))
+                    .map(|d| d.to_string())
+                    .unwrap_or_default();
+                Err(refusal(&verdict, detail))
+            }
+            Err(e) => Err(refusal("error", e.to_string())),
+        }
+    }
+
+    /// `host.tool_share`, with R4's dry-run gate in front of `public`.
+    async fn tool_share_tested(&self, tenant: &Tenant, args: Value) -> Result<Value, AppError> {
+        if args.get("visibility").and_then(Value::as_str) == Some("public")
+            && let Some(name) = args.get("name").and_then(Value::as_str)
+        {
+            crate::sharing::parse_tags(&args)?;
+            self.require_tested(tenant, name).await?;
+        }
+        crate::sharing::tool_share(&self.state, tenant, &args).await
+    }
+
+    /// `host.tool_publish`'s `visibility` (R3/R4): the tool is already stored
+    /// (private on first publish); this moves it to `unlisted`/`public`
+    /// after the dry-run gate and adds the visibility fields to `out`.
+    async fn apply_publish_visibility(&self, tenant: &Tenant, args: &Value, out: &mut Value) -> Result<(), AppError> {
+        let Some(name) = args.get("name").and_then(Value::as_str) else {
+            return Ok(());
+        };
+        if let Some(requested) = args.get("visibility").and_then(Value::as_str) {
+            match crate::sharing::Visibility::parse_publishable(requested)? {
+                crate::sharing::Visibility::Public => {
+                    self.require_tested(tenant, name).await?;
+                    crate::sharing::tool_share(&self.state, tenant, &json!({"name": name, "visibility": "public"}))
+                        .await?;
+                }
+                crate::sharing::Visibility::Unlisted => {
+                    crate::sharing::tool_share(&self.state, tenant, &json!({"name": name, "visibility": "unlisted"}))
+                        .await?;
+                }
+                _ => {
+                    if self.state.db.get_tool(tenant.id, name.to_string()).await?.is_some_and(|r| r.visibility != "private") {
+                        crate::sharing::tool_unshare(&self.state, tenant, &json!({"name": name})).await?;
+                    }
+                }
+            }
+        }
+        if let Some(row) = self.state.db.get_tool(tenant.id, name.to_string()).await?
+            && let Value::Object(map) = out
+        {
+            map.insert("visibility".to_string(), json!(row.visibility));
+            map.insert("tags".to_string(), json!(row.tags));
+            map.insert("tested_version".to_string(), json!(row.tested_version));
+            map.insert("stale_test".to_string(), json!(row.tested_version != Some(row.current_version)));
+        }
+        Ok(())
     }
 
     async fn spec_test(&self, tenant: &Tenant, args: Value) -> Result<Value, AppError> {
@@ -10415,7 +10555,7 @@ impl McpHostHandler {
         caller_id: i64,
     ) -> Result<bool, AppError> {
         Ok(match row.visibility.as_str() {
-            "public" => true,
+            "public" | "unlisted" => true,
             "group" => match &row.shared_group {
                 Some(group) => {
                     self.state
