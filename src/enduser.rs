@@ -424,6 +424,7 @@ mod tests {
             blob_clock_offset_secs: Default::default(),
             confirm_clock_offset_secs: Default::default(),
             onboarding_cache: Default::default(),
+            resource_subs: Default::default(),
         };
 
         let eu = verify_assertion(&state, &tenant, &token).await.expect("valid assertion");

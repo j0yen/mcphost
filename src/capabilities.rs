@@ -50,10 +50,10 @@ pub const CAPABILITIES: &[Capability] = &[
             "resources/subscribe",
             "resources/unsubscribe",
         ],
-        implemented: false,
-        list_changed: false,
-        subscribe: false,
-        ceiling: None,
+        implemented: true,
+        list_changed: true,
+        subscribe: true,
+        ceiling: Some("resources_max"),
         probe: "resources",
         alternative: Some("host.table.list"),
         help_code: UNSUPPORTED_CODE,
@@ -240,7 +240,7 @@ mod tests {
     #[test]
     fn tools_row_renders_tools_with_list_changed() {
         let v = serde_json::to_value(server_capabilities()).unwrap();
-        assert_eq!(v, json!({"tools": {"listChanged": true}}));
+        assert_eq!(v["tools"], json!({"listChanged": true}));
     }
 
     #[test]

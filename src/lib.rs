@@ -120,6 +120,7 @@ pub mod returns;
 pub mod rowpolicy;
 pub mod receipts;
 pub mod incident_banner;
+pub mod resources;
 pub mod runs;
 pub mod sandbox;
 pub mod secrets;

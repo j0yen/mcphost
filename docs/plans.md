@@ -63,6 +63,8 @@ Every numeric ceiling in the plan table, as `host.quickstart` `limits.plan` repo
 | `perf_python_cold_p95_ms` | 1500 | 800 |
 | `receipts_retention_days` | 7 | 30 |
 | `recipients_per_msg_max` | 5 | 20 |
+| `resource_read_bytes_max` | 1048576 | 1048576 |
+| `resources_max` | 8 | 64 |
 | `schedule_min_interval_s` | 300 | 60 |
 | `schedules_max` | 3 | 25 |
 | `secrets_max` | 2 | 20 |
