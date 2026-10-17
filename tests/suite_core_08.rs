@@ -21,6 +21,8 @@ mod msrvlock;
 mod oauth;
 #[path = "support/oauthclient.rs"]
 mod oauthclient;
+#[path = "support/pysdk.rs"]
+mod pysdk;
 #[path = "support/rgpt.rs"]
 mod rgpt;
 #[path = "support/serve.rs"]
@@ -816,6 +818,20 @@ mod pubvis_ac05_tags_validated_normalised_capped;
 mod pubvis_ac06_new_version_marks_stale_until_retested;
 #[path = "pubvis_ac07_concurrent_public_share_stamps_once.rs"]
 mod pubvis_ac07_concurrent_public_share_stamps_once;
+#[path = "pysdk_ac01_no_override_table.rs"]
+mod pysdk_ac01_no_override_table;
+#[path = "pysdk_ac02_mypy_strict_pytest_and_header.rs"]
+mod pysdk_ac02_mypy_strict_pytest_and_header;
+#[path = "pysdk_ac03_invalid_args_raise_before_http.rs"]
+mod pysdk_ac03_invalid_args_raise_before_http;
+#[path = "pysdk_ac04_error_codes_are_typed_exceptions.rs"]
+mod pysdk_ac04_error_codes_are_typed_exceptions;
+#[path = "pysdk_ac05_contract_skew_warns_once_or_raises.rs"]
+mod pysdk_ac05_contract_skew_warns_once_or_raises;
+#[path = "pysdk_ac06_result_shape_error_and_extra_fields.rs"]
+mod pysdk_ac06_result_shape_error_and_extra_fields;
+#[path = "pysdk_ac07_ci_diff_fails_on_stale_sdk.rs"]
+mod pysdk_ac07_ci_diff_fails_on_stale_sdk;
 #[path = "qdiag_ac01_column_typo_fuzzy_covered_hint.rs"]
 mod qdiag_ac01_column_typo_fuzzy_covered_hint;
 #[path = "qdiag_ac02_table_typo_fuzzy_covered_hint.rs"]

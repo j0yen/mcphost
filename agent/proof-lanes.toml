@@ -51,6 +51,14 @@ required_commands = [
 ]
 
 [[lane]]
+id = "sdk-python"
+description = "PRD-mcphost-python-sdk-generated: the generated Python SDK (sdk/python/**) and the hand-written Python templates the generator embeds (src/sdk_python_tmpl/**, include_str!'d into src/sdk_python.rs). Added project-locally: neither glob is covered by rust-source (src/**/*.rs only) and the scaffold has no lane for a Python tree. Proof is the pysdk_ac* tests, which run the generator, `uv run mypy --strict` and `uv run pytest`."
+globs = ["sdk/**", "src/sdk_python_tmpl/**", "tests/test_live_smoke.py"]
+required_commands = [
+  "cargo test --workspace pysdk_",
+]
+
+[[lane]]
 id = "db-migrations"
 description = "Numbered SQLite migration files (requirement 7 -- applied at `mcphost migrate` and at `serve` start). Added project-locally: the shipped scaffold template has no lane for migrations/ either (same gap class as the meta lane below)."
 globs = ["migrations/**"]

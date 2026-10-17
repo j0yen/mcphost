@@ -499,6 +499,24 @@ enum GenTarget {
         #[arg(long)]
         check: bool,
     },
+    /// PRD-mcphost-python-sdk-generated: render client SDKs from the contract.
+    Sdk {
+        #[command(subcommand)]
+        lang: SdkLang,
+    },
+}
+
+#[derive(Subcommand)]
+enum SdkLang {
+    /// Write the `mcphost_sdk` Python package (pydantic v2 models, typed
+    /// client, one exception per error code) into `--out` (default
+    /// `sdk/python/mcphost_sdk`) from the embedded contract, or `--contract`.
+    Python {
+        #[arg(long)]
+        out: Option<PathBuf>,
+        #[arg(long)]
+        contract: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1373,6 +1391,21 @@ async fn main() -> anyhow::Result<()> {
             } else {
                 std::fs::write(&out, mcphost::openapi::render_committed())?;
                 println!("gen openapi: wrote {}", out.display());
+            }
+            Ok(())
+        }
+        Command::Gen { target: GenTarget::Sdk { lang: SdkLang::Python { out, contract } } } => {
+            let out = out.unwrap_or_else(|| PathBuf::from(mcphost::sdk_python::DEFAULT_OUT));
+            let bytes = match contract {
+                Some(p) => std::fs::read(&p)?,
+                None => mcphost::call_cli::EMBEDDED_CONTRACT.to_vec(),
+            };
+            match mcphost::sdk_python::write(&out, &bytes) {
+                Ok(files) => println!("gen sdk python: wrote {} files to {}", files.len(), out.display()),
+                Err(why) => {
+                    eprintln!("gen sdk python: {why}");
+                    std::process::exit(1);
+                }
             }
             Ok(())
         }
