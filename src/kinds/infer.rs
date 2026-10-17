@@ -440,6 +440,18 @@ fn top_level_imports(source: &str) -> BTreeSet<String> {
     out
 }
 
+/// True for a stdlib module (or `__future__`/`__main__`): never a pip
+/// requirement. `pub(crate)` for the sandbox-libs import hints in
+/// `kinds::python`.
+pub(crate) fn is_stdlib_module(module: &str) -> bool {
+    stdlib_modules().contains(module)
+}
+
+/// The PyPI distribution `import_map` names for top-level `module`, if any.
+pub(crate) fn dist_for_import(module: &str) -> Option<&'static str> {
+    import_map().get(module).map(String::as_str)
+}
+
 /// Requirements 5/6: modules already covered by the standard library are
 /// ignored; a module in [`import_map`] is resolved to its distribution
 /// name; anything else fails publish naming the module (AC10) rather than
@@ -456,6 +468,14 @@ pub fn infer_python_requirements(source: &str) -> Result<Vec<String>, KindError>
         // wiring) -- it is never a PyPI package, so it needs no
         // requirement, the same as a stdlib import.
         if module == "mcphost" {
+            continue;
+        }
+        // PRD-mcphost-sandbox-file-processing-libs: a preinstalled lib's
+        // import name resolves from `sandbox-libs.toml` (the import map need
+        // not repeat it), so `import pypdf` infers `pypdf` and the tool
+        // takes the shared base env.
+        if let Some(lib) = crate::sandbox_libs::lib_for_import(&module) {
+            out.insert(lib.name.clone());
             continue;
         }
         match import_map().get(&module) {

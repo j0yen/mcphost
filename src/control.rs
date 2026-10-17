@@ -1931,7 +1931,12 @@ pub async fn tool_publish(
     let mut deps_err: Option<AppError> = None;
     if kind_name == "python" {
         let reqs = crate::kinds::python::effective_requirements_for_publish(&spec)?;
-        if !reqs.is_empty() {
+        if crate::kinds::python::spec_uses_base_env(&spec) {
+            // PRD-mcphost-sandbox-file-processing-libs R2: every requirement
+            // is a preinstalled lib, already locked in `sandbox-libs.lock`;
+            // nothing to resolve, nothing to build.
+            gates.push(publish_gate("deps", true, None, None));
+        } else if !reqs.is_empty() {
             let input = crate::deps::classify(&reqs);
             match crate::deps::check_package_policy(&input) {
                 Err(e) => {
@@ -2161,6 +2166,13 @@ pub async fn tool_publish(
         "kind": kind_name,
         "version": version,
     });
+    // PRD-mcphost-sandbox-file-processing-libs R2: `env: preinstalled`,
+    // `build_ms: 0` for a spec on the shared base env.
+    if let (Some(Value::Object(report)), Value::Object(map)) =
+        (kind.publish_env_report(&spec), &mut response)
+    {
+        map.extend(report);
+    }
     // PRD-mcphost-publish-time-tool-lint R5: advisory findings, `[]` when
     // clean; a lint never changes whether the publish succeeded.
     if let (true, Value::Object(map)) = (kind_name == "python", &mut response) {

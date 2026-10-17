@@ -65,6 +65,7 @@ pub mod federation;
 pub mod form_page;
 pub mod funnel;
 pub mod gendocs;
+pub mod sandbox_libs;
 pub mod handler;
 pub mod doctor;
 pub mod heal;

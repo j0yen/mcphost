@@ -486,6 +486,16 @@ mod sandboxready_ac6_periodic_recheck_flips_unready;
 mod sandboxready_ac8_get_info_and_description_note;
 #[path = "sandboxready_ac9_failure_classification.rs"]
 mod sandboxready_ac9_failure_classification;
+#[path = "sblibs_ac03_base_env_built_at_start.rs"]
+mod sblibs_ac03_base_env_built_at_start;
+#[path = "sblibs_ac04_pypdf_without_requirements_preinstalled.rs"]
+mod sblibs_ac04_pypdf_without_requirements_preinstalled;
+#[path = "sblibs_ac05_import_hints_name_preinstalled_libs.rs"]
+mod sblibs_ac05_import_hints_name_preinstalled_libs;
+#[path = "sblibs_ac06_requirements_beyond_base_build_own_env.rs"]
+mod sblibs_ac06_requirements_beyond_base_build_own_env;
+#[path = "sblibs_ac07_probe_tool_via_spec_test.rs"]
+mod sblibs_ac07_probe_tool_via_spec_test;
 #[path = "state_ac02_ac03_python_sandbox.rs"]
 mod state_ac02_ac03_python_sandbox;
 #[path = "state_ac03_network_none_default.rs"]

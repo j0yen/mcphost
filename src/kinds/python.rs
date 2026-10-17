@@ -166,6 +166,8 @@ pub fn max_processes() -> u64 {
     MAX_PROCESSES
 }
 const MAX_PROCESSES: u64 = 64;
+/// Namespace directory of the shared base env under `<data_dir>/envs`.
+const BASE_ENV_NAMESPACE: &str = "_base";
 const BUILD_TIMEOUT: Duration = Duration::from_secs(120);
 const DEFAULT_CPU_BUDGET_MS_PER_HOUR: u64 = 600_000;
 const CPU_BUDGET_WINDOW: Duration = Duration::from_secs(3600);
@@ -404,10 +406,21 @@ impl PythonSpec {
     /// by bare name (`uv pip install`, the pre-PRD path every env published
     /// before this feature shipped still uses -- Migration/compatibility).
     fn env_source(&self, effective_requirements: &[String]) -> EnvSource {
+        if self.uses_base_env(effective_requirements) {
+            return EnvSource::Base;
+        }
         match &self.dependency_lock {
             Some(lock) => EnvSource::Lock(lock.lock_text.clone()),
             None => EnvSource::Names(effective_requirements.to_vec()),
         }
+    }
+
+    /// PRD-mcphost-sandbox-file-processing-libs R2: true when this spec has
+    /// no lock of its own and its effective requirements are a non-empty
+    /// subset of `sandbox-libs.toml` -- it then runs on the shared base env.
+    fn uses_base_env(&self, effective_requirements: &[String]) -> bool {
+        self.dependency_lock.is_none()
+            && crate::sandbox_libs::requirements_are_preinstalled(effective_requirements)
     }
 
     /// The env-cache key [`PythonKind::env_dir`] keys `envs/<namespace>/<key>`
@@ -452,6 +465,17 @@ fn parse_spec(spec: &Value) -> Result<PythonSpec, KindError> {
 /// [`PythonSpec::effective_requirements`] uses everywhere else), computed
 /// from the caller's own spec, before the host's `_dependency_lock` field
 /// is ever injected.
+/// PRD-mcphost-sandbox-file-processing-libs R2: true when `spec` would run on
+/// the shared base env (no lock of its own, effective requirements a
+/// non-empty subset of `sandbox-libs.toml`), so `host.tool_publish` skips
+/// dependency resolution and reports `env: preinstalled`.
+pub fn spec_uses_base_env(spec: &Value) -> bool {
+    parse_spec(spec)
+        .ok()
+        .and_then(|p| p.effective_requirements().ok().map(|r| p.uses_base_env(&r)))
+        .unwrap_or(false)
+}
+
 pub fn effective_requirements_for_publish(spec: &Value) -> Result<Vec<String>, KindError> {
     parse_spec(spec)?.effective_requirements()
 }
@@ -658,6 +682,8 @@ fn validate_spec_fields_all(parsed: &PythonSpec, own_domain: &str) -> Vec<KindEr
         // `unknown_import` naming the real module -- before anything else
         // about the spec is even checked, and before any sandbox spins up.
         errors.push(unknown_import_error(&bad_name, own_domain));
+    } else if let Some(err) = scan_sandbox_lib_imports(&parsed.source, &parsed.requirements) {
+        errors.push(err);
     }
     errors.extend(validate_requirements_all(&parsed.requirements));
     errors.extend(validate_env_all(&parsed.env));
@@ -1188,11 +1214,15 @@ enum EnvSource {
     /// Pre-existing tools published before this PRD shipped (Migration/
     /// compatibility) -- installed the old way, by bare package name.
     Names(Vec<String>),
+    /// PRD-mcphost-sandbox-file-processing-libs R2: the shared base env,
+    /// built once from the committed `sandbox-libs.lock`.
+    Base,
 }
 
 impl EnvSource {
     fn is_empty(&self) -> bool {
         match self {
+            EnvSource::Base => false,
             EnvSource::Lock(text) => text.trim().is_empty(),
             EnvSource::Names(names) => names.is_empty(),
         }
@@ -1298,6 +1328,30 @@ async fn build_env(env_dir: PathBuf, source: EnvSource) -> EnvStatus {
     }
 }
 
+/// R5: after the base env is ready, measure its disk size and the wall time
+/// to import every preinstalled lib; over budget logs `sandbox_libs_slow`
+/// (quickstart keeps the table either way).
+async fn probe_base_env(env_dir: &Path, python: &Path) {
+    let mut du = tokio::process::Command::new("du");
+    du.arg("-sm").arg(env_dir);
+    let size_mb = run_command_tail(du)
+        .await
+        .ok()
+        .and_then(|out| String::from_utf8_lossy(&out).split_whitespace().next().and_then(|n| n.parse::<u64>().ok()))
+        .unwrap_or(0);
+    let imports: Vec<&str> = crate::sandbox_libs::libs().iter().map(|l| l.import.as_str()).collect();
+    let started = Instant::now();
+    let mut py = tokio::process::Command::new(python);
+    py.arg("-c").arg(format!("import {}", imports.join(", ")));
+    let import_ok = run_command_tail(py).await.is_ok();
+    let import_ms = started.elapsed().as_millis() as u64;
+    if !import_ok || import_ms > 1500 || size_mb > crate::sandbox_libs::BASE_ENV_MAX_MB {
+        tracing::warn!(import_ok, import_ms, size_mb, "sandbox_libs_slow");
+    } else {
+        tracing::info!(import_ms, size_mb, "sandbox libs base env ready");
+    }
+}
+
 async fn run_command_tail(mut cmd: tokio::process::Command) -> Result<Vec<u8>, String> {
     let output = cmd
         .output()
@@ -1339,7 +1393,11 @@ async fn run_build_steps(env_dir: &Path, source: &EnvSource) -> Result<String, S
             // from names -- a hash mismatch (a tampered or corrupted
             // cached wheel) fails the build instead of silently installing
             // something that doesn't match what was audited at publish.
-            EnvSource::Lock(lock_text) => {
+            EnvSource::Lock(_) | EnvSource::Base => {
+                let lock_text: &str = match source {
+                    EnvSource::Lock(text) => text,
+                    _ => crate::sandbox_libs::SANDBOX_LIBS_LOCK,
+                };
                 let lock_path = env_dir.join("requirements.lock");
                 tokio::fs::write(&lock_path, lock_text)
                     .await
@@ -2553,6 +2611,9 @@ fn unknown_import_error(bad_name: &str, own_domain: &str) -> KindError {
             json!({"hint": hint, "module": bad_name, "own_domain": own_domain}),
         );
     }
+    // PRD-mcphost-sandbox-file-processing-libs R4: a near-miss of a
+    // preinstalled import names the lib instead of the bridge list.
+    let base = crate::sandbox_libs::typo_hint(bad_name).unwrap_or(base);
     KindError::structured_with(
         "unknown_import",
         format!("unknown_import: no module '{bad_name}'; {base}"),
@@ -2657,6 +2718,92 @@ fn scan_unknown_imports(source: &str, own_domain: &str) -> Option<String> {
     None
 }
 
+/// Every dotted module name an `import`/`from` statement on `line` names.
+fn imported_modules(line: &str) -> Vec<String> {
+    let line = line.trim_start();
+    if let Some(rest) = line.strip_prefix("import ") {
+        rest.split(',')
+            .map(|part| part.split(" as ").next().unwrap_or(part).trim())
+            .map(|m| m.split_whitespace().next().unwrap_or(m))
+            .filter(|m| !m.is_empty() && !m.starts_with('.'))
+            .map(str::to_string)
+            .collect()
+    } else if let Some(rest) = line.strip_prefix("from ") {
+        let module = rest.split_whitespace().next().unwrap_or("");
+        if module.is_empty() || module.starts_with('.') {
+            Vec::new()
+        } else {
+            vec![module.to_string()]
+        }
+    } else {
+        Vec::new()
+    }
+}
+
+/// PRD-mcphost-sandbox-file-processing-libs R4: the `unknown_import`
+/// refusals that consult `sandbox-libs.toml`. A listed import is never
+/// refused for being unknown; a name within edit distance 2 of a listed
+/// import (or of one of its known submodules, `PIL.Imag`) is refused with
+/// `<import> is preinstalled (<pkg> <version>): import <import>`; and a tool
+/// that declares its own `requirements` but imports a pip module those
+/// requirements do not name is refused with the `requirements` hint listing
+/// the preinstalled names (a tool with no `requirements` infers them, so it
+/// is never refused for this).
+fn scan_sandbox_lib_imports(source: &str, requirements: &[String]) -> Option<KindError> {
+    // A supplied multi-line lock (requirement 5 of the dependency policy)
+    // names its packages in a form this scan does not parse.
+    let requirements: &[String] = if requirements.iter().any(|r| r.contains('\n')) { &[] } else { requirements };
+    let declared: Vec<String> = requirements
+        .iter()
+        .map(|r| {
+            let name = r.split(['=', '<', '>', '!', '~', ';', '[', ' ']).next().unwrap_or(r);
+            crate::sandbox_libs::normalize(name)
+        })
+        .collect();
+    for line in source.lines() {
+        for dotted in imported_modules(line) {
+            let top = dotted.split('.').next().unwrap_or(&dotted).to_string();
+            if top == "mcphost" || infer::is_stdlib_module(&top) {
+                continue;
+            }
+            let hint = if let Some(lib) = crate::sandbox_libs::lib_for_import(&top) {
+                let hint = crate::sandbox_libs::typo_hint(&dotted);
+                match hint {
+                    Some(h) => Some(h),
+                    None if !declared.is_empty() && !declared.contains(&crate::sandbox_libs::normalize(&lib.name)) => {
+                        Some(format!(
+                            "{} is preinstalled only when every requirement is preinstalled; add requirements: [\"{}\"] to use it next to {}",
+                            lib.name,
+                            lib.name,
+                            requirements.join(", ")
+                        ))
+                    }
+                    None => None,
+                }
+            } else if infer::dist_for_import(&top).is_none() {
+                crate::sandbox_libs::typo_hint(&top)
+            } else if !declared.is_empty()
+                && infer::dist_for_import(&top)
+                    .is_some_and(|dist| !declared.contains(&crate::sandbox_libs::normalize(dist)))
+            {
+                Some(crate::sandbox_libs::not_preinstalled_hint(
+                    infer::dist_for_import(&top).unwrap_or(&top),
+                ))
+            } else {
+                None
+            };
+            if let Some(hint) = hint {
+                return Some(KindError::structured_with(
+                    "unknown_import",
+                    format!("unknown_import: no module '{dotted}'; {hint}"),
+                    json!({"hint": hint, "module": dotted}),
+                ));
+            }
+        }
+    }
+    None
+}
+
 /// PRD-mcphost-unknown-import-domain-hint R2: a [`domain_spellings`] entry
 /// written as a whole name right after an `import`/`from` keyword, anywhere
 /// on the line -- so the `mcphost-dev` spelling (not a valid identifier) is
@@ -2723,7 +2870,10 @@ fn unknown_module_named(text: &str, own_domain: &str) -> Option<String> {
         let start = from + found + MARKER.len();
         let end = text[start..].find('\'').map(|e| start + e)?;
         let name = &text[start..end];
-        if RUNTIME_UNKNOWN_IMPORT_NAMES.contains(&name) || is_domain_spelling(name, own_domain) {
+        if RUNTIME_UNKNOWN_IMPORT_NAMES.contains(&name)
+            || is_domain_spelling(name, own_domain)
+            || crate::sandbox_libs::typo_hint(name).is_some()
+        {
             return Some(name.to_string());
         }
         from = end;
@@ -5225,6 +5375,52 @@ impl PythonKind {
         self.envs_root.join(namespace).join(cache_key)
     }
 
+    /// The directory a spec's env lives in: the shared base env for a
+    /// preinstalled-subset spec ([`PythonSpec::uses_base_env`]), else the
+    /// tenant's own `envs/<namespace>/<key>`.
+    fn env_dir_for(&self, parsed: &PythonSpec, namespace: &str, requirements: &[String]) -> PathBuf {
+        if parsed.uses_base_env(requirements) {
+            self.base_env_dir()
+        } else {
+            self.env_dir(namespace, &parsed.env_cache_key(requirements))
+        }
+    }
+
+    /// `<data_dir>/envs/_base/<lock-hash>`: the shared env every
+    /// `sandbox-libs.toml` lib is installed in.
+    pub fn base_env_dir(&self) -> PathBuf {
+        self.envs_root.join(BASE_ENV_NAMESPACE).join(crate::sandbox_libs::lock_hash())
+    }
+
+    /// R2: starts the base env build (at daemon start) unless a ready or
+    /// failed marker already exists. Returns at once; the build runs in the
+    /// background under the per-namespace queue.
+    pub async fn ensure_base_env(&self) {
+        let env_dir = self.base_env_dir();
+        if self.envs.status(&env_dir).await.is_none() {
+            self.envs.start_build(env_dir.clone(), BASE_ENV_NAMESPACE.to_string(), EnvSource::Base);
+        }
+        let envs = self.envs.clone();
+        tokio::spawn(async move {
+            if let (Some(EnvStatus::Ready { python, .. }), _) =
+                envs.wait_ready(&env_dir, BUILD_TIMEOUT + Duration::from_secs(5)).await
+            {
+                probe_base_env(&env_dir, &python).await;
+            }
+        });
+    }
+
+    /// Waits up to `bound` for the base env; `Err` carries the build tail or
+    /// "still building".
+    pub async fn wait_base_env(&self, bound: Duration) -> Result<PathBuf, String> {
+        let env_dir = self.base_env_dir();
+        match self.envs.wait_ready(&env_dir, bound).await.0 {
+            Some(EnvStatus::Ready { .. }) => Ok(env_dir),
+            Some(EnvStatus::Failed { tail }) => Err(tail),
+            _ => Err("still building".to_string()),
+        }
+    }
+
     async fn prepare_scratch(
         &self,
         source: &str,
@@ -5836,6 +6032,12 @@ impl Kind for PythonKind {
         parse_spec(spec).map(|p| p.env).unwrap_or_default()
     }
 
+    /// PRD-mcphost-sandbox-file-processing-libs R2: `{env: "preinstalled",
+    /// build_ms: 0}` for a spec that runs on the shared base env.
+    fn publish_env_report(&self, spec: &Value) -> Option<Value> {
+        spec_uses_base_env(spec).then(|| json!({"env": "preinstalled", "build_ms": 0}))
+    }
+
     /// PRD-mcphost-shared-tool-spec-readback requirement 3 (AC1/AC3):
     /// allowlist straight off the stored (raw) spec `Value` -- `env`,
     /// `secrets`, `memory_mb`, `description`, `_dependency_lock`, and
@@ -6024,8 +6226,7 @@ impl Kind for PythonKind {
         // early returns) since even a call that never reaches the sandbox
         // spent real wall time getting there.
         let cold_call_started = Instant::now();
-        let env_key = parsed.env_cache_key(&effective_requirements);
-        let env_dir = self.env_dir(&ctx.namespace, &env_key);
+        let env_dir = self.env_dir_for(&parsed, &ctx.namespace, &effective_requirements);
         let env_source = parsed.env_source(&effective_requirements);
         // PRD-mcphost-first-call-reliability requirement 1/2: waits (bounded)
         // for a building environment instead of failing the call outright;
@@ -6240,8 +6441,7 @@ impl Kind for PythonKind {
             parsed.env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
 
         let effective_requirements = parsed.effective_requirements()?;
-        let env_key = parsed.env_cache_key(&effective_requirements);
-        let env_dir = self.env_dir(&ctx.namespace, &env_key);
+        let env_dir = self.env_dir_for(&parsed, &ctx.namespace, &effective_requirements);
         let env_source = parsed.env_source(&effective_requirements);
         // PRD-mcphost-first-call-reliability requirement 1/2: same bounded
         // wait + structured `building` result as `call` above, through the
@@ -6356,8 +6556,7 @@ impl Kind for PythonKind {
         let Ok(requirements) = parsed.effective_requirements() else {
             return;
         };
-        let env_key = parsed.env_cache_key(&requirements);
-        let env_dir = self.env_dir(namespace, &env_key);
+        let env_dir = self.env_dir_for(&parsed, namespace, &requirements);
         if self.envs.status(&env_dir).await.is_none() {
             self.envs
                 .start_build(env_dir, namespace.to_string(), parsed.env_source(&requirements));

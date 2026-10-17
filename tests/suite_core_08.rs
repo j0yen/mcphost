@@ -924,6 +924,8 @@ mod runsubject_ac06_migration_0048_under_1s_at_100k_rows;
 mod runsubject_ac07_llms_txt_names_end_user_and_filter;
 #[path = "sandboxready_ac7_conformance_suite.rs"]
 mod sandboxready_ac7_conformance_suite;
+#[path = "sblibs_ac02_drift_toml_lock_docs.rs"]
+mod sblibs_ac02_drift_toml_lock_docs;
 #[path = "sched_ac10_trigger_fire_manual.rs"]
 mod sched_ac10_trigger_fire_manual;
 #[path = "sched_ac1_two_firings_visible_in_ledger.rs"]

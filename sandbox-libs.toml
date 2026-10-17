@@ -1,0 +1,42 @@
+# sandbox-libs.toml -- PRD-mcphost-sandbox-file-processing-libs R1.
+# The libraries every python tool may import with no `requirements` line.
+# One source: `sandbox-libs.lock` (hashed, `uv pip compile --generate-hashes`),
+# the docs table (`gen-docs`), the `unknown_import` hint and the daemon's
+# shared base env all read from this file. Bump a version here, then run
+# `scripts/sandbox-libs-lock.sh` and `mcphost gen-docs`.
+
+[[lib]]
+name = "pypdf"
+version = "6.21.0"
+import = "pypdf"
+purpose = "read PDFs: page count, text extraction, metadata"
+wheel_sha256 = "3aec619699dacb1b73f57e87d9adaa4424814517b2cc028de20adba5a37af4c4"
+
+[[lib]]
+name = "openpyxl"
+version = "3.1.5"
+import = "openpyxl"
+purpose = "read and write xlsx workbooks"
+wheel_sha256 = "5282c12b107bffeef825f4617dc029afaf41d0ea60823bbb665ef3079dc79de2"
+
+[[lib]]
+name = "Pillow"
+version = "13.0.0"
+import = "PIL"
+purpose = "open, resize and convert images"
+modules = ["PIL.Image", "PIL.ImageChops", "PIL.ImageColor", "PIL.ImageDraw", "PIL.ImageEnhance", "PIL.ImageFilter", "PIL.ImageFont", "PIL.ImageOps", "PIL.ImageSequence", "PIL.ImageStat", "PIL.ExifTags"]
+wheel_sha256 = "e91c2b1cbeae768c98752e67e717e283d68dae45717b41f2d91eaee648e37b7d"
+
+[[lib]]
+name = "python-dateutil"
+version = "2.9.0.post0"
+import = "dateutil"
+purpose = "parse and shift dates in any common format"
+wheel_sha256 = "a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427"
+
+[[lib]]
+name = "chardet"
+version = "7.6.0"
+import = "chardet"
+purpose = "detect the text encoding of a csv or other bytes"
+wheel_sha256 = "4076d795897ce45239825956a1334e134322ecc4bfe84dbb12acd5390de0fbc1"
