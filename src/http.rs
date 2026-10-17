@@ -1878,6 +1878,18 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id))
         .route_layer(middleware::from_fn_with_state(state.clone(), enrich_unsupported_errors));
 
+    // PRD-mcphost-org-model R4: `/o/{code}/mcp` is the org flavor of the
+    // invite path: same service, same implicit-signup claim, and the claim
+    // adds the membership row (`kind = 'org'` on the invite).
+    let org_mcp_router = Router::new()
+        .route_service("/o/{code}/mcp", service.clone())
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_live_invite_code,
+        ))
+        .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id))
+        .route_layer(middleware::from_fn_with_state(state.clone(), enrich_unsupported_errors));
+
     // PRD-mcphost-session-bound-tenant-after-signup requirement 1: only the
     // streamable-HTTP routes get a session identity, so `/healthz`, the
     // OAuth endpoints and the router's own 404 fallback are untouched. Its
@@ -1971,6 +1983,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         .merge(tenant_mcp_router)
         .merge(url_mcp_router)
         .merge(invite_mcp_router)
+        .merge(org_mcp_router)
         .merge(entry_mcp_router)
         // PRD-mcphost-session-bound-tenant-after-signup requirement 7
         // (AC10): `oauth_401_upgrade` must run INSIDE (closer to the

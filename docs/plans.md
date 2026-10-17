@@ -57,6 +57,7 @@ Every numeric ceiling in the plan table, as `host.quickstart` `limits.plan` repo
 | `notes_max` | 200 | 5000 |
 | `notifies_per_day` | 20 | 1000 |
 | `notify_channels_max` | 2 | 10 |
+| `org_members_max` | 3 | 25 |
 | `receipts_retention_days` | 7 | 30 |
 | `recipients_per_msg_max` | 5 | 20 |
 | `schedule_min_interval_s` | 300 | 60 |

@@ -78,6 +78,7 @@ pub mod maintenance;
 pub mod http;
 pub mod install_links;
 pub mod invites;
+pub mod org;
 pub mod kinds;
 pub mod lineage;
 pub mod clients;

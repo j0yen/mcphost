@@ -293,6 +293,10 @@ pub struct Plan {
     /// more"); pro is sized against the same ~8x free/pro ratio
     /// `channels_max`/`event_triggers_max` already use.
     pub invites_max: i64,
+    /// PRD-mcphost-org-model R4: live seats (owner included) one org may
+    /// hold, read from the OWNER's plan -- a further join refuses with
+    /// `org_members_max`. "free 3, pro 25".
+    pub org_members_max: i64,
     /// PRD-mcphost-ask-user-decision R6: how many `host.ask.create` asks a
     /// tenant may have pending (unanswered, unexpired) at once -- a further
     /// create refuses with `asks_limit`. "free 5, pro 100".
@@ -638,6 +642,7 @@ impl PlanCatalog {
                     // PRD-mcphost-invite-links requirement 1: "free plan
                     // allows 3 live".
                     invites_max: 3,
+                    org_members_max: 3,
                     asks_open_max: 5,
                     notify_channels_max: 2,
                     notifies_per_day: 20,
@@ -756,6 +761,7 @@ impl PlanCatalog {
                     // open question, no published pro number, sized against
                     // the ~8x free/pro ratio `channels_max` already uses.
                     invites_max: 25,
+                    org_members_max: 25,
                     asks_open_max: 100,
                     notify_channels_max: 10,
                     notifies_per_day: 1000,
@@ -915,6 +921,7 @@ impl PlanCatalog {
                 p.vault_providers_max
             ));
             out.push_str(&format!("invites_max = {}\n", p.invites_max));
+            out.push_str(&format!("org_members_max = {}\n", p.org_members_max));
             out.push_str(&format!("asks_open_max = {}\n", p.asks_open_max));
             out.push_str(&format!("notify_channels_max = {}\n", p.notify_channels_max));
             out.push_str(&format!("notifies_per_day = {}\n", p.notifies_per_day));
@@ -1038,6 +1045,7 @@ impl PlanCatalog {
                 "end_users_max" => builder.end_users_max = Some(int_value()),
                 "vault_providers_max" => builder.vault_providers_max = Some(int_value()),
                 "invites_max" => builder.invites_max = Some(int_value()),
+                "org_members_max" => builder.org_members_max = Some(int_value()),
                 "asks_open_max" => builder.asks_open_max = Some(int_value()),
                 "notify_channels_max" => builder.notify_channels_max = Some(int_value()),
                 "notifies_per_day" => builder.notifies_per_day = Some(int_value()),
@@ -1142,6 +1150,7 @@ struct PlanBuilder {
     end_users_max: Option<i64>,
     vault_providers_max: Option<i64>,
     invites_max: Option<i64>,
+    org_members_max: Option<i64>,
     asks_open_max: Option<i64>,
     notify_channels_max: Option<i64>,
     notifies_per_day: Option<i64>,
@@ -1231,6 +1240,7 @@ impl PlanBuilder {
             end_users_max: quota!(end_users_max),
             vault_providers_max: quota!(vault_providers_max),
             invites_max: quota!(invites_max),
+            org_members_max: quota!(org_members_max),
             asks_open_max: quota!(asks_open_max),
             notify_channels_max: quota!(notify_channels_max),
             notifies_per_day: quota!(notifies_per_day),

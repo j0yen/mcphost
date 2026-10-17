@@ -600,6 +600,14 @@ mod oauthsig_ac04_admin_oauth_stats_funnel;
 mod oauthsig_ac05_healthz_cache_and_p95;
 #[path = "oauthsig_ac06_conformance_script_writes_receipt.rs"]
 mod oauthsig_ac06_conformance_script_writes_receipt;
+#[path = "orgm_ac01_join_keeps_tenant_bytes.rs"]
+mod orgm_ac01_join_keeps_tenant_bytes;
+#[path = "orgm_ac02_org_url_mints_member_tenant.rs"]
+mod orgm_ac02_org_url_mints_member_tenant;
+#[path = "orgm_ac03_roles_one_source_drift.rs"]
+mod orgm_ac03_roles_one_source_drift;
+#[path = "orgm_ac04_org_at_cap_refuses_third_join.rs"]
+mod orgm_ac04_org_at_cap_refuses_third_join;
 #[path = "outsch_ac01_oneof_budget_falsifier.rs"]
 mod outsch_ac01_oneof_budget_falsifier;
 #[path = "outsch_ac02_every_canonical_declares_an_object_output_schema.rs"]

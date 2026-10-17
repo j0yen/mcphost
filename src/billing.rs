@@ -1151,6 +1151,8 @@ pub fn plans_from_catalog(catalog: &crate::plans::PlanCatalog, billing_mode: &st
                 "secrets_max": p.secrets_max,
                 "calls_included_month": p.calls_included_month,
                 "overage_usd_per_1000_calls": p.overage_usd_per_1000_calls,
+                // PRD-mcphost-org-model R4: the cap an org owner's plan sets.
+                "org_members_max": p.org_members_max,
                 "wait_max_s": crate::longpoll::WAIT_MAX_S,
                 "wait_default_s": crate::longpoll::WAIT_DEFAULT_S,
                 "description": p.description,
