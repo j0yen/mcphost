@@ -987,6 +987,12 @@ impl PersistentSandbox {
         self.pid
     }
 
+    /// The live stderr buffer, so a registry can read the tail after this
+    /// child is killed from outside (PRD-mcphost-sandbox-pool-self-restart R7).
+    pub fn stderr_buffer(&self) -> Arc<Mutex<Vec<u8>>> {
+        self.stderr_tail.clone()
+    }
+
     /// The last known stderr tail (up to [`READ_CAP_BYTES`]), as of whenever
     /// this is called -- a snapshot, not consumed.
     pub fn stderr_tail(&self) -> String {

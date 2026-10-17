@@ -111,7 +111,10 @@ pub fn annotate_timeout(err: AppError, key: Option<&str>) -> AppError {
                 Value::Null => Map::new(),
                 other => Map::from_iter([("detail".to_string(), other)]),
             };
-            map.insert("hint".to_string(), json!(TIMEOUT_HINT));
+            // A timeout a sandbox pool restart caused names its own hint.
+            if !map.contains_key("heal_action_id") {
+                map.insert("hint".to_string(), json!(TIMEOUT_HINT));
+            }
             map.insert("idempotency_key".to_string(), json!(key));
             AppError::Structured { code: "tool_timeout", message, data: Value::Object(map) }
         }

@@ -502,6 +502,12 @@ mod sblibs_ac05_import_hints_name_preinstalled_libs;
 mod sblibs_ac06_requirements_beyond_base_build_own_env;
 #[path = "sblibs_ac07_probe_tool_via_spec_test.rs"]
 mod sblibs_ac07_probe_tool_via_spec_test;
+#[path = "spsr_ac01_wedged_detector_names_exactly_the_planted_key.rs"]
+mod spsr_ac01_wedged_detector_names_exactly_the_planted_key;
+#[path = "spsr_ac03_stragglers_time_out_with_the_heal_action_id.rs"]
+mod spsr_ac03_stragglers_time_out_with_the_heal_action_id;
+#[path = "spsr_ac06_calls_wait_while_the_pool_drains.rs"]
+mod spsr_ac06_calls_wait_while_the_pool_drains;
 #[path = "state_ac02_ac03_python_sandbox.rs"]
 mod state_ac02_ac03_python_sandbox;
 #[path = "state_ac03_network_none_default.rs"]

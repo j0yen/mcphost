@@ -83,6 +83,10 @@ pub struct Threshold {
     pub unit: String,
     #[serde(default)]
     pub wedge_factor: Option<f64>,
+    /// PRD-mcphost-sandbox-pool-self-restart: seconds a pool drain waits for
+    /// healthy in-flight calls. Only `sandbox_pool` reads it.
+    #[serde(default)]
+    pub drain_budget_s: Option<u64>,
 }
 
 #[derive(Deserialize)]

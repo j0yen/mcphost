@@ -22,3 +22,11 @@ mod mcphost_sandbox_egress_allowlist_ac04_egress_proxy_command_and_env;
 mod mcphost_sandbox_egress_allowlist_ac06_downgrade_then_upgrade_republish_hint;
 #[path = "mcphost_sandbox_egress_allowlist_ac07_healthz_network_denied_counters.rs"]
 mod mcphost_sandbox_egress_allowlist_ac07_healthz_network_denied_counters;
+#[path = "spsr_ac02_restart_kills_wedged_child_and_writes_ok_row.rs"]
+mod spsr_ac02_restart_kills_wedged_child_and_writes_ok_row;
+#[path = "spsr_ac04_third_restart_in_the_hour_is_rate_limited.rs"]
+mod spsr_ac04_third_restart_in_the_hour_is_rate_limited;
+#[path = "spsr_ac05_dry_run_names_the_wedge_and_kills_nothing.rs"]
+mod spsr_ac05_dry_run_names_the_wedge_and_kills_nothing;
+#[path = "spsr_ac07_killed_child_stderr_tail_is_admin_only.rs"]
+mod spsr_ac07_killed_child_stderr_tail_is_admin_only;

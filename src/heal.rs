@@ -67,7 +67,7 @@ macro_rules! heal_actions {
 }
 
 heal_actions! {
-    SandboxPoolRestart => ("sandbox_pool_restart", 4, "Restart the warm python sandbox pool when its workers wedge."),
+    SandboxPoolRestart => ("sandbox_pool_restart", 2, "Restart the warm python sandbox pool when its workers wedge."),
     LoadShed => ("load_shed", 6, "Briefly refuse new anonymous work while host pressure is above threshold."),
     Rollback => ("rollback", 1, "Return to the previous release; refused until its actuator lands."),
     DbMaintenance => ("db_maintenance", 1, "Optimise, empty the write-ahead log and reclaim free pages once a day at the quietest hour."),
@@ -276,7 +276,7 @@ where
 /// `size_before`); everything else is dropped, so a new field is private
 /// until it is added here.
 pub const PUBLIC_KEY_STEMS: &[&str] = &[
-    "count", "ms", "mb", "ratio", "p95_ms", "wedged", "size", "from", "to", "reason", "signal", "threshold",
+    "count", "ms", "mb", "ratio", "p95_ms", "wedged", "size", "pool", "in_flight", "from", "to", "reason", "signal", "threshold",
 ];
 
 fn key_is_public(key: &str) -> bool {

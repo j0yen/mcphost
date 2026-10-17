@@ -2269,6 +2269,41 @@ pub struct PoolSignals {
     pub pool_size: usize,
 }
 
+/// PRD-mcphost-sandbox-pool-self-restart: one reading of a kind's pool.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PoolCounts {
+    pub wedged: usize,
+    pub pool: usize,
+    pub in_flight: usize,
+}
+
+/// What a pool restart is asked to do.
+#[derive(Clone, Copy, Debug)]
+pub struct PoolRestartPlan {
+    pub wedge_factor: f64,
+    pub drain_budget: Duration,
+}
+
+/// What a pool restart did: `before`/`after` readings and the stderr tail of
+/// each wedged child it killed (each at most [`STDERR_TAIL_MAX_BYTES`]).
+#[derive(Clone, Debug, Default)]
+pub struct PoolRestartReport {
+    pub before: PoolCounts,
+    pub after: PoolCounts,
+    pub stderr_tails: Vec<String>,
+}
+
+/// Largest stderr tail one killed child contributes to a ledger row.
+pub const STDERR_TAIL_MAX_BYTES: usize = 2048;
+
+/// `/status.json.sandbox_pool` before `last_restart` is joined on.
+#[derive(Clone, Copy, Debug)]
+pub struct PoolView {
+    pub counts: PoolCounts,
+    /// `ready` or `draining`.
+    pub state: &'static str,
+}
+
 /// A tool execution kind. Implementors are registered in a [`KindRegistry`]
 /// under a fixed [`Kind::name`]; `host.tool_publish` names the kind by that
 /// string and stores the caller's `spec` alongside it.
@@ -2582,6 +2617,23 @@ pub trait Kind: Send + Sync {
     fn pool_signals(&self, _wedge_factor: f64) -> Option<PoolSignals> {
         None
     }
+
+    /// PRD-mcphost-sandbox-pool-self-restart R5: the pool's live reading.
+    /// `None` (the default) for a kind with no pool.
+    fn pool_view(&self, _wedge_factor: f64) -> Option<PoolView> {
+        None
+    }
+
+    /// PRD-mcphost-sandbox-pool-self-restart R3: drain the pool, kill its
+    /// wedged children, let healthy calls finish within the budget, rebuild.
+    /// `None` (the default) for a kind with no pool.
+    async fn pool_restart(&self, _plan: PoolRestartPlan) -> Option<PoolRestartReport> {
+        None
+    }
+
+    /// The ledger row id of the restart that just ended: calls it timed out
+    /// carry it as `heal_action_id`.
+    fn pool_restart_done(&self, _heal_action_id: i64) {}
 
     /// PRD-mcphost-first-publish-real-kind requirement 3: this kind's own
     /// current estimate (in seconds) of how long a caller hitting
