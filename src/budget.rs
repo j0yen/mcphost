@@ -252,7 +252,7 @@ pub fn resolve_and_validate(
                         None,
                     );
                     return Err(AppError::Structured {
-                        code: "budget_ceiling_exceeded",
+                        code: BUDGET_CEILING_EXCEEDED,
                         message: format!(
                             "budget.{}: {requested_value} exceeds this plan's ceiling of {ceiling}",
                             $key
@@ -441,3 +441,10 @@ impl BudgetTracker {
         }
     }
 }
+
+crate::err_code! {
+    pub BUDGET_CEILING_EXCEEDED,
+    code: "budget_ceiling_exceeded", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Lower the requested budget value to data.ceiling or below, or move to a plan with a higher ceiling.",
+}
+

@@ -225,7 +225,7 @@ fn invalid_mark_error(requested: &str, rec: &Recommendation) -> AppError {
     let mut allowed: Vec<&str> = vec![rec.mark.as_str()];
     allowed.extend(rec.alternatives.iter().map(|m| m.as_str()));
     AppError::Structured {
-        code: "chart_invalid_mark",
+        code: CHART_INVALID_MARK,
         message: format!(
             "mark '{requested}' is not allowed for this result; allowed marks: {}",
             allowed.join(", ")
@@ -570,3 +570,10 @@ pub async fn download(
     let html = render_chart_html(title.as_deref(), &vega_lite_json, &caption_json);
     (StatusCode::OK, [("content-type", "text/html; charset=utf-8")], html).into_response()
 }
+
+crate::err_code! {
+    pub CHART_INVALID_MARK,
+    code: "chart_invalid_mark", family: Args, class: AgentFault, retryable: false,
+    remedy: "Re-send with one of data.allowed as the mark.",
+}
+

@@ -143,7 +143,7 @@ pub fn exists_in_index(tool: &str) -> bool {
 
 pub fn example_exists(tool: &str) -> AppError {
     AppError::Structured {
-        code: "example_exists",
+        code: EXAMPLE_EXISTS,
         message: format!("an example named `{}` is already in the gallery; rename the tool and propose again", example_name(tool)),
         data: json!({"name": example_name(tool)}),
     }
@@ -151,7 +151,7 @@ pub fn example_exists(tool: &str) -> AppError {
 
 pub fn too_many_proposals(open: i64) -> AppError {
     AppError::Structured {
-        code: "too_many_proposals",
+        code: TOO_MANY_PROPOSALS,
         message: format!("{open} proposals are already open (limit {MAX_OPEN_PROPOSALS}); wait for a decision"),
         data: json!({"open": open, "limit": MAX_OPEN_PROPOSALS}),
     }
@@ -383,7 +383,7 @@ pub fn render_files(p: &Prepared, req: &Request, stamp: &Stamp<'_>, kinds: &[&st
     if let Err(errs) = crate::examples::load_with(&p.name, kinds, &|rel| files.get(rel).cloned()) {
         let listed: Vec<String> = errs.iter().map(ToString::to_string).collect();
         return Err(AppError::Structured {
-            code: "invalid_example",
+            code: INVALID_EXAMPLE,
             message: format!("the rendered example fails `mcphost examples check`: {}", listed.join("; ")),
             data: json!({"errors": listed}),
         });
@@ -407,7 +407,7 @@ pub fn pack_tar(files: &Files) -> Result<Vec<u8>, AppError> {
     let tar = builder.into_inner().map_err(|e| AppError::Internal(format!("example tar: {e}")))?;
     if tar.len() > TAR_MAX_BYTES {
         return Err(AppError::Structured {
-            code: "too_large",
+            code: TOO_LARGE,
             message: format!("the rendered example is {} bytes; the limit is {TAR_MAX_BYTES}", tar.len()),
             data: json!({"bytes": tar.len(), "max_bytes": TAR_MAX_BYTES}),
         });
@@ -486,7 +486,7 @@ pub fn find_non_portable(tool_text: &str, spec: &Value, own_ns: &str) -> Option<
 
 fn not_portable(reference: &str) -> AppError {
     AppError::Structured {
-        code: "not_portable",
+        code: NOT_PORTABLE,
         message: format!(
             "the tool references `{reference}`, which lives in your tenant; an example must run in a fresh one"
         ),
@@ -533,7 +533,7 @@ pub fn find_secret_leak(files: &[(&str, &str)], secrets: &[(String, String)]) ->
 
 fn secret_leak(file: &str, line: usize, name: &str) -> AppError {
     AppError::Structured {
-        code: "secret_leak",
+        code: SECRET_LEAK,
         message: format!(
             "line {line} of {file} holds the literal value of your stored secret `{name}`; \
              replace it with {{{{ secret.{name} }}}} and republish before proposing"
@@ -584,7 +584,7 @@ pub fn eval_expect(expect: &str, result: &Value) -> Result<(), String> {
 
 fn proof_failed(expect: &str, why: &str, actual: &str) -> AppError {
     AppError::Structured {
-        code: "proof_failed",
+        code: PROOF_FAILED,
         message: format!("proof_call does not hold now: {why}; actual result: {actual}"),
         data: json!({"expect": expect, "actual": actual}),
     }
@@ -746,3 +746,46 @@ pub async fn proposal_status(state: &AppState, tenant: &crate::db::Tenant, args:
         _ => Err(AppError::ToolNotFound(format!("example proposal {id}"))),
     }
 }
+
+crate::err_code! {
+    pub EXAMPLE_EXISTS,
+    code: "example_exists", family: Share, class: AgentFault, retryable: false,
+    remedy: "Rename the tool and propose again.",
+}
+
+crate::err_code! {
+    pub INVALID_EXAMPLE,
+    code: "invalid_example", family: Share, class: AgentFault, retryable: false,
+    remedy: "Fix the errors listed in data.errors and propose again.",
+}
+
+crate::err_code! {
+    pub NOT_PORTABLE,
+    code: "not_portable", family: Share, class: AgentFault, retryable: false,
+    remedy: "Remove the reference to your tenant named in data.reference and propose again.",
+}
+
+crate::err_code! {
+    pub PROOF_FAILED,
+    code: "proof_failed", family: Share, class: AgentFault, retryable: false,
+    remedy: "Fix the tool so proof_call holds; data.actual is the result it returned.",
+}
+
+crate::err_code! {
+    pub SECRET_LEAK,
+    code: "secret_leak", family: Share, class: AgentFault, retryable: false,
+    remedy: "Replace the literal value with the secret placeholder named in the message and republish.",
+}
+
+crate::err_code! {
+    pub TOO_LARGE,
+    code: "too_large", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Shrink the payload to the limit in data.max_bytes.",
+}
+
+crate::err_code! {
+    pub TOO_MANY_PROPOSALS,
+    code: "too_many_proposals", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Wait for an open proposal to be decided; data.limit is the maximum.",
+}
+

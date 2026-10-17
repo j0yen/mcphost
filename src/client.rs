@@ -273,13 +273,13 @@ pub fn classify(failure: &RpcFailure) -> CallError {
                 },
                 None if *status >= 500 => CallError {
                     exit: 5,
-                    error_code: "host_unavailable".to_string(),
+                    error_code: HOST_UNAVAILABLE.to_string(),
                     message,
                     data,
                 },
                 None => CallError {
                     exit: 1,
-                    error_code: "jsonrpc_error".to_string(),
+                    error_code: JSONRPC_ERROR.to_string(),
                     message,
                     data,
                 },
@@ -294,9 +294,28 @@ pub fn classify(failure: &RpcFailure) -> CallError {
         },
         RpcFailure::Unreachable(detail) => CallError {
             exit: 5,
-            error_code: "host_unreachable".to_string(),
+            error_code: HOST_UNREACHABLE.to_string(),
             message: detail.clone(),
             data: Value::Null,
         },
     }
 }
+
+crate::err_code! {
+    pub HOST_UNAVAILABLE,
+    code: "host_unavailable", family: Upstream, class: UpstreamFault, retryable: true,
+    remedy: "The host did not answer; retry later or check /healthz.",
+}
+
+crate::err_code! {
+    pub HOST_UNREACHABLE,
+    code: "host_unreachable", family: Upstream, class: UpstreamFault, retryable: true,
+    remedy: "The host could not be reached from this client; check the URL and network, then retry.",
+}
+
+crate::err_code! {
+    pub JSONRPC_ERROR,
+    code: "jsonrpc_error", family: Call, class: AgentFault, retryable: false,
+    remedy: "Read the JSON-RPC error's own code and message returned by the host.",
+}
+

@@ -188,7 +188,7 @@ async fn find_for_tenant(state: &AppState, tenant: &Tenant, id: &str) -> Result<
 
 fn ask_not_found(id: &str) -> AppError {
     AppError::Structured {
-        code: "ask_not_found",
+        code: ASK_NOT_FOUND,
         message: format!("no ask '{id}' for this tenant"),
         data: json!({"ask_id": id, "next_call": "host.ask.create"}),
     }
@@ -446,7 +446,7 @@ fn wait_result(row: &AskRow, waited_ms: i64) -> Value {
 
 fn asks_limit(limit: i64, used: i64) -> AppError {
     AppError::Structured {
-        code: "asks_limit",
+        code: ASKS_LIMIT,
         message: format!("{used} asks are already pending; this plan allows {limit} (asks_open_max)"),
         data: json!({
             "limit": limit,
@@ -460,7 +460,7 @@ fn asks_limit(limit: i64, used: i64) -> AppError {
 
 fn ask_expired(row: &AskRow) -> AppError {
     AppError::Structured {
-        code: "ask_expired",
+        code: ASK_EXPIRED,
         message: format!("ask '{}' expired at {} with no answer; do not act on a missing answer", row.id, row.expires_unix),
         data: json!({
             "ask_id": row.id,
@@ -806,3 +806,22 @@ pub async fn post_answer(
         Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "storage error").into_response(),
     }
 }
+
+crate::err_code! {
+    pub ASK_EXPIRED,
+    code: "ask_expired", family: Share, class: AgentFault, retryable: false,
+    remedy: "Do not act on a missing answer; create a new ask with host.ask.create.",
+}
+
+crate::err_code! {
+    pub ASK_NOT_FOUND,
+    code: "ask_not_found", family: Share, class: AgentFault, retryable: false,
+    remedy: "List asks with host.ask.list and use an id from data.next_call's result.",
+}
+
+crate::err_code! {
+    pub ASKS_LIMIT,
+    code: "asks_limit", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Wait for a pending ask to be answered or expire, or reuse one from host.ask.list; data.asks_open_max is the ceiling.",
+}
+

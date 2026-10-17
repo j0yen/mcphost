@@ -39,56 +39,56 @@ pub struct DeadLetterReason {
 /// description and the drift test all read it.
 pub const DEAD_LETTER_REASONS: &[DeadLetterReason] = &[
     DeadLetterReason {
-        code: "events_rate_limited",
-        error_code: "events_rate_limited",
+        code: EVENTS_RATE_LIMITED,
+        error_code: EVENTS_RATE_LIMITED,
         stored: true,
         description: "more deliveries than the plan's events_per_minute in the last minute (HTTP 429)",
     },
     DeadLetterReason {
-        code: "event_body_too_large",
-        error_code: "event_body_too_large",
+        code: EVENT_BODY_TOO_LARGE,
+        error_code: EVENT_BODY_TOO_LARGE,
         stored: true,
         description: "body over the plan's event_body_bytes_max (HTTP 413); body is cut to that size",
     },
     DeadLetterReason {
-        code: "signature_mismatch",
-        error_code: "signature_invalid",
+        code: SIGNATURE_MISMATCH,
+        error_code: crate::hooks::SIGNATURE_INVALID,
         stored: true,
         description: "the verify config rejected the signature, token or timestamp (HTTP 401)",
     },
     DeadLetterReason {
-        code: "secret_unavailable",
-        error_code: "secret_missing",
+        code: SECRET_UNAVAILABLE,
+        error_code: crate::errors::SECRET_MISSING,
         stored: true,
         description: "the verify config names a secret this tenant no longer has (HTTP 400)",
     },
     DeadLetterReason {
-        code: "tool_missing",
-        error_code: "hook_not_found",
+        code: TOOL_MISSING,
+        error_code: HOOK_NOT_FOUND,
         stored: true,
         description: "the trigger exists but its target tool was removed (HTTP 404)",
     },
     DeadLetterReason {
-        code: "jobs_concurrent",
-        error_code: "jobs_concurrent_exceeded",
+        code: JOBS_CONCURRENT,
+        error_code: JOBS_CONCURRENT_EXCEEDED,
         stored: true,
         description: "the tenant was at its jobs_concurrent ceiling; the run was rejected (HTTP 202)",
     },
     DeadLetterReason {
-        code: "run_error",
+        code: RUN_ERROR,
         error_code: "",
         stored: true,
         description: "the event-fired run finalized error; the letter carries run_id and error_class",
     },
     DeadLetterReason {
-        code: "hook_not_found",
-        error_code: "hook_not_found",
+        code: HOOK_NOT_FOUND,
+        error_code: HOOK_NOT_FOUND,
         stored: false,
         description: "no enabled event trigger resolved for the URL (HTTP 404); no letter, nothing to attach it to",
     },
     DeadLetterReason {
-        code: "banned",
-        error_code: "banned",
+        code: BANNED,
+        error_code: BANNED,
         stored: false,
         description: "the owning key is banned (HTTP 403); no letter",
     },
@@ -281,7 +281,7 @@ pub async fn record_run_error(
         plan,
         &trigger,
         LetterSource {
-            reason_code: "run_error",
+            reason_code: RUN_ERROR,
             headers,
             body: body.as_bytes(),
             run_id: Some(&run.id),
@@ -301,3 +301,64 @@ pub async fn stats_json(state: &AppState, tenant_id: i64, trigger_id: &str) -> V
         Err(_) => json!({"count": 0, "newest_unix": null}),
     }
 }
+
+crate::err_code! {
+    pub BANNED,
+    code: "banned", family: Auth, class: HostRefusal, retryable: false,
+    remedy: "This key is banned; do not retry. Contact support through the support_url on /support.html.",
+}
+
+crate::err_code! {
+    pub EVENT_BODY_TOO_LARGE,
+    code: "event_body_too_large", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Send a smaller event body; the limit is the plan's event_body_bytes_max.",
+}
+
+crate::err_code! {
+    pub EVENTS_RATE_LIMITED,
+    code: "events_rate_limited", family: Plan, class: PlanLimit, retryable: true,
+    remedy: "Slow the delivery rate and retry; the plan caps events_per_minute.",
+}
+
+crate::err_code! {
+    pub HOOK_NOT_FOUND,
+    code: "hook_not_found", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Create the event trigger for this tool first, or use one that exists.",
+}
+
+crate::err_code! {
+    pub JOBS_CONCURRENT,
+    code: "jobs_concurrent", family: Plan, class: PlanLimit, retryable: true,
+    remedy: "Wait for a running job to finish; the tenant is at its jobs_concurrent ceiling.",
+}
+
+crate::err_code! {
+    pub JOBS_CONCURRENT_EXCEEDED,
+    code: "jobs_concurrent_exceeded", family: Plan, class: PlanLimit, retryable: true,
+    remedy: "Wait for a running job to finish; the tenant is at its jobs_concurrent ceiling.",
+}
+
+crate::err_code! {
+    pub RUN_ERROR,
+    code: "run_error", family: Call, class: AgentFault, retryable: false,
+    remedy: "Read the run's error_class and fix the tool.",
+}
+
+crate::err_code! {
+    pub SECRET_UNAVAILABLE,
+    code: "secret_unavailable", family: Call, class: AgentFault, retryable: false,
+    remedy: "Set the missing secret with host.secret_set, then retry.",
+}
+
+crate::err_code! {
+    pub SIGNATURE_MISMATCH,
+    code: "signature_mismatch", family: Auth, class: AgentFault, retryable: false,
+    remedy: "Re-send with a signature that matches the verify config.",
+}
+
+crate::err_code! {
+    pub TOOL_MISSING,
+    code: "tool_missing", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Restore the target tool or remove the trigger.",
+}
+

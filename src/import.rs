@@ -29,7 +29,7 @@ pub(crate) fn progress_key(run_id: &str) -> String {
 
 fn not_found() -> AppError {
     AppError::Structured {
-        code: "not_found",
+        code: crate::subkeys::NOT_FOUND,
         message: "no completed host.export matches that run_id / url".to_string(),
         data: json!({}),
     }
@@ -55,7 +55,7 @@ impl ArchiveInfo {
 /// the tar headers instead.
 fn read_info(path: &std::path::Path) -> Result<ArchiveInfo, AppError> {
     let corrupt = |m: String| AppError::Structured {
-        code: "archive_corrupt",
+        code: ARCHIVE_CORRUPT,
         message: m,
         data: json!({}),
     };
@@ -112,7 +112,7 @@ type RawEntry = (String, Vec<u8>);
 
 /// Every entry in tar order, fully read.
 fn read_all(path: &std::path::Path) -> Result<Vec<RawEntry>, AppError> {
-    let corrupt = |m: String| AppError::Structured { code: "archive_corrupt", message: m, data: json!({}) };
+    let corrupt = |m: String| AppError::Structured { code: ARCHIVE_CORRUPT, message: m, data: json!({}) };
     let file = std::fs::File::open(path).map_err(|e| AppError::Storage(format!("open export archive: {e}")))?;
     let mut archive = Archive::new(GzDecoder::new(file));
     let mut out = Vec::new();
@@ -166,7 +166,7 @@ async fn resolve_archive(state: &AppState, tenant: &Tenant, args: &Value) -> Res
         }
         if crate::state::now_unix() > expires {
             return Err(AppError::Structured {
-                code: "export_link_expired",
+                code: EXPORT_LINK_EXPIRED,
                 message: "the signed export URL has expired; run host.export again".to_string(),
                 data: json!({"expires_unix": expires}),
             });
@@ -179,7 +179,7 @@ async fn resolve_archive(state: &AppState, tenant: &Tenant, args: &Value) -> Res
     }
     if run.status != "done" {
         return Err(AppError::Structured {
-            code: "export_not_complete",
+            code: EXPORT_NOT_COMPLETE,
             message: format!("export run '{run_id}' is {}; import needs a completed export", run.status),
             data: json!({"run_id": run_id, "status": run.status}),
         });
@@ -230,7 +230,7 @@ pub async fn import(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
         .any(|k| existing[*k].as_array().is_some_and(|a| !a.is_empty()));
     if occupied {
         return Err(AppError::Structured {
-            code: "tenant_not_empty",
+            code: TENANT_NOT_EMPTY,
             message: "host.import restores into an empty tenant; this one already holds data".to_string(),
             data: existing,
         });
@@ -293,7 +293,7 @@ async fn write_progress(state: &AppState, tenant: &Tenant, run_id: &str, done: u
 
 fn json_of(path: &str, data: &[u8]) -> Result<Value, AppError> {
     serde_json::from_slice(data).map_err(|e| AppError::Structured {
-        code: "archive_corrupt",
+        code: ARCHIVE_CORRUPT,
         message: format!("{path}: {e}"),
         data: json!({}),
     })
@@ -318,7 +318,7 @@ async fn restore(
     let by_path: BTreeMap<&str, &Vec<u8>> = entries.iter().map(|(p, d)| (p.as_str(), d)).collect();
     for (p, sha, bytes) in &info.entries {
         let data = by_path.get(p.as_str()).ok_or_else(|| AppError::Structured {
-            code: "archive_corrupt",
+            code: ARCHIVE_CORRUPT,
             message: format!("manifest lists '{p}' but the archive lacks it"),
             data: json!({"path": p}),
         })?;
@@ -326,7 +326,7 @@ async fn restore(
             || sha.as_deref().is_some_and(|s| s != crate::billing::sha256_hex(data));
         if bad {
             return Err(AppError::Structured {
-                code: "archive_corrupt",
+                code: ARCHIVE_CORRUPT,
                 message: format!("'{p}' does not match its manifest sha256/bytes"),
                 data: json!({"path": p}),
             });
@@ -379,7 +379,7 @@ async fn restore(
             Some(ArchiveEntry::TableRows { name }) => {
                 if !created_tables.contains(&name) {
                     return Err(AppError::Structured {
-                        code: "archive_corrupt",
+                        code: ARCHIVE_CORRUPT,
                         message: format!("rows for table '{name}' precede its schema"),
                         data: json!({}),
                     });
@@ -455,3 +455,28 @@ async fn restore(
         "entries_total": total,
     }))
 }
+
+crate::err_code! {
+    pub ARCHIVE_CORRUPT,
+    code: "archive_corrupt", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Re-run host.export and import the fresh archive; this one is damaged or not an export.",
+}
+
+crate::err_code! {
+    pub EXPORT_LINK_EXPIRED,
+    code: "export_link_expired", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Run host.export again to get a fresh signed link.",
+}
+
+crate::err_code! {
+    pub EXPORT_NOT_COMPLETE,
+    code: "export_not_complete", family: Storage, class: AgentFault, retryable: true,
+    remedy: "Wait for the export run to complete, then import.",
+}
+
+crate::err_code! {
+    pub TENANT_NOT_EMPTY,
+    code: "tenant_not_empty", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Import into a new empty tenant; this one already holds data.",
+}
+
