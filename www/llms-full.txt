@@ -841,7 +841,7 @@ the `# required-checks: exclude` marker). The core count is defined once
 naming a core suite with no weight or a predicted heaviest core shard above
 420 s. Each shard prints `build wall`, `run wall` and one
 `suite=<name> measured=<s>s recorded=<s>s` line per suite to the step summary
-(warn at 420 s of run wall, fail above 540 s), and a failing test is named in a
+(warn at 540 s of run wall, fail above 720 s; slow hosted runners on 10-17 measured `suite_core_08` at 559 s against 375 s recorded), and a failing test is named in a
 `core shard N/M FAILED <test>` line so `gh run view --log-failed` shows it.
 
 ### Adding a test

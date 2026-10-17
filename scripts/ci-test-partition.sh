@@ -101,8 +101,8 @@ WEIGHTS_REL="scripts/ci-suite-weights.json"
 # Predicted heaviest shard above this fails `check` (the CI run budget warns at
 # 240 s and fails above 300 s; see ci.yml's sandbox step).
 SHARD_PREDICT_LIMIT=240
-# The same bound for a core shard's run wall (ci-shard-report.sh warns at 420 s
-# and fails above 540 s for core).
+# The same bound for a core shard's run wall (ci-shard-report.sh warns at 540 s
+# and fails above 720 s for core; the recorded weights are fast-runner seconds).
 CORE_SHARD_PREDICT_LIMIT=420
 
 # The sandbox-execution surface. `supports_user_namespaces` and

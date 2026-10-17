@@ -128,7 +128,7 @@ fn ci_yml_times_build_and_run_apart_and_calls_the_report() {
     }
     assert!(!ci.contains("-gt 300"), "the budget lives in ci-shard-report.sh");
     assert!(
-        !ci.contains("-gt 540") && !ci.contains("-gt 420"),
+        !ci.contains("-gt 720") && !ci.contains("-gt 540") && !ci.contains("-gt 420"),
         "the core budget lives in ci-shard-report.sh too"
     );
     // The core partition runs as shards now (PRD-mcphost-ci-core-suites-sharded):
@@ -144,7 +144,7 @@ fn ci_yml_times_build_and_run_apart_and_calls_the_report() {
 }
 
 // PRD-mcphost-ci-core-suites-sharded AC6 (readout half): the core shards use the
-// same script with the `core` partition, a 420 s warn line and a 540 s fail line,
+// same script with the `core` partition, a 540 s warn line and a 720 s fail line,
 // and always print one `suite=` line per suite.
 const CORE_LOG: &str = "\
      Running unittests src/main.rs (target/debug/deps/mcphost-aaaa)
@@ -193,15 +193,15 @@ fn a_core_shard_always_reports_build_run_and_every_suite_to_the_summary() {
 }
 
 #[test]
-fn warns_at_420_passes_through_540_and_fails_above_it() {
-    let (below, _) = core_report("419", 419);
+fn warns_at_540_passes_through_720_and_fails_above_it() {
+    let (below, _) = core_report("539", 539);
     assert!(!String::from_utf8_lossy(&below.stdout).contains("::warning::"));
-    let (at, _) = core_report("420", 420);
+    let (at, _) = core_report("540", 540);
     assert!(at.status.success());
     assert!(String::from_utf8_lossy(&at.stdout).contains("::warning::"));
-    let (top, _) = core_report("540", 540);
-    assert!(top.status.success(), "540 s is not above 540 s");
-    let (over, _) = core_report("541", 541);
-    assert!(!over.status.success(), "541 s must fail");
+    let (top, _) = core_report("720", 720);
+    assert!(top.status.success(), "720 s is not above 720 s");
+    let (over, _) = core_report("721", 721);
+    assert!(!over.status.success(), "721 s must fail");
     assert!(String::from_utf8_lossy(&over.stdout).contains("::error::"));
 }

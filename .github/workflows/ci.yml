@@ -234,7 +234,7 @@ jobs:
           total=${{ needs.plan.outputs.core_shards }}
           flags=$(./scripts/ci-test-partition.sh core-shard "$shard" "$total")
           # Build and run are timed apart: only the run is budgeted (warn at
-          # 420 s, fail above 540 s), compile time is reported
+          # 540 s, fail above 720 s), compile time is reported
           # (scripts/ci-shard-report.sh).
           # Tests that drive scripts/pin-tests.sh (the ctrs_ac0* timing tests)
           # run the contract suite binaries too: build them here with the

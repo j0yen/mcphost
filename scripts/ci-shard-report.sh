@@ -13,7 +13,7 @@
 #   <partition> shard N/M build wall: <s>s
 #   <partition> shard N/M run wall: <s>s
 # warns at run wall >= WARN_AT, fails above FAIL_ABOVE (sandbox 240/300 s, core
-# 420/540 s), and prints one line per suite:
+# 540/720 s), and prints one line per suite:
 #   suite=<name> measured=<s>s recorded=<s>s
 # on warn or fail for the sandbox partition and ALWAYS for core (the core
 # readout is the evidence the weights are refreshed from).
@@ -38,7 +38,9 @@ case "${1:-}" in
 esac
 
 case "$partition" in
-  core)    WARN_AT=420; FAIL_ABOVE=540 ;;
+  # 10-17 slow hosted runners measured suite_core_08 559 s and suite_core_07 438 s
+  # against recorded 375/341 s (weights stay at fast-runner values); hence 540/720.
+  core)    WARN_AT=540; FAIL_ABOVE=720 ;;
   *)       WARN_AT=240; FAIL_ABOVE=300 ;;
 esac
 
