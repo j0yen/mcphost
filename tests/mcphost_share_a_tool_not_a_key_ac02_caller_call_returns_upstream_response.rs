@@ -26,6 +26,7 @@ async fn run_proof(mcphost_url: &str) -> (bool, String) {
         .arg(&script)
         .env("MCPHOST_URL", mcphost_url)
         .env_remove("UPSTREAM_URL")
+        .env("MOCK_LOCAL", "1")
         .output()
         .await
         .expect("run examples/share-a-tool/proof.sh");

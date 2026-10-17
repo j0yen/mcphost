@@ -20,13 +20,20 @@
 # Env vars:
 #   MCPHOST_URL   the endpoint to run the recipe against.
 #                 Default: https://mcphost.dev/mcp
-#   UPSTREAM_URL  URL of a paid-API stand-in the owner's tool calls. If
-#                 unset, this script starts its own local echo server on
-#                 127.0.0.1 and uses that -- which only works when
-#                 MCPHOST_URL's host permits a loopback http upstream
-#                 (e.g. a locally-run mcphost in test mode). Against real
-#                 mcphost.dev, production SSRF policy refuses loopback and
-#                 you must pass a public UPSTREAM_URL of your own.
+#   UPSTREAM_URL  URL of a paid-API stand-in the owner's tool calls. It must
+#                 be https (the http kind refuses anything else with
+#                 host_not_allowed) and not the host's own domain.
+#                 Default: https://example.com/ (a public https page that
+#                 ignores the injected Authorization header and never
+#                 reflects it back).
+#   UPSTREAM_RESPONSE  "json" or "text": how the http kind reads the upstream
+#                 body. Default "text" for the built-in https upstream,
+#                 "json" otherwise.
+#   MOCK_LOCAL    set to 1 for an offline run: the script starts its own
+#                 local http echo server on 127.0.0.1 and uses that, which
+#                 only works when MCPHOST_URL's host permits a loopback http
+#                 upstream (a locally-run mcphost in test mode). Never set
+#                 under the runner / against real mcphost.dev.
 #
 # This script never prints the secret value it generates, in any check
 # output, log line, or error message.
@@ -229,12 +236,20 @@ PY
 # a subshell, so those assignments would never reach this shell (the
 # cleanup trap would then kill nothing and leak the server process, and
 # the log-file checks below would read from an empty path).
-MOCK_LOCAL=0
+MOCK_LOCAL="${MOCK_LOCAL:-0}"
 if [[ -z "${UPSTREAM_URL:-}" ]]; then
-  start_mock_upstream
-  UPSTREAM_URL="$MOCK_UPSTREAM_URL"
-  MOCK_LOCAL=1
+  if [[ "$MOCK_LOCAL" == "1" ]]; then
+    start_mock_upstream
+    UPSTREAM_URL="$MOCK_UPSTREAM_URL"
+  else
+    UPSTREAM_URL="https://example.com/"
+    UPSTREAM_RESPONSE="${UPSTREAM_RESPONSE:-text}"
+  fi
+else
+  MOCK_LOCAL=0
 fi
+UPSTREAM_RESPONSE="${UPSTREAM_RESPONSE:-json}"
+echo "UPSTREAM_URL=${UPSTREAM_URL}"
 
 # ---- the recipe -------------------------------------------------------------
 
@@ -263,7 +278,7 @@ secret_resp=$(mcp_call "host.secret_set" "$secret_args" "$OWNER_KEY")
 check "owner_secret_set" "$(has_error "$secret_resp" && echo 0 || echo 1)"
 
 # 3. Publish the wrapper.
-publish_args=$(python3 -c 'import json,sys; print(json.dumps({"name": "paid_api", "kind": "http", "spec": {"method": "GET", "url": sys.argv[1], "headers": {"Authorization": "Bearer {{ secret.upstream_key }}"}, "response": "json"}}))' "$UPSTREAM_URL")
+publish_args=$(python3 -c 'import json,sys; print(json.dumps({"name": "paid_api", "kind": "http", "spec": {"method": "GET", "url": sys.argv[1], "headers": {"Authorization": "Bearer {{ secret.upstream_key }}"}, "response": sys.argv[2]}}))' "$UPSTREAM_URL" "$UPSTREAM_RESPONSE")
 publish_resp=$(mcp_call "host.tool_publish" "$publish_args" "$OWNER_KEY")
 publish_struct=$(structured_of "$publish_resp")
 QUALIFIED=$(json_str "$publish_struct" "name")

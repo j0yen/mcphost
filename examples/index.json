@@ -241,14 +241,14 @@
       "since": "0.59.3",
       "proof": "proof.sh",
       "secrets_needed": [],
-      "manifest_sha256": "38c96037bd374af837c04fa08f892cac9522252c342c2d9579fe4a1834af027a",
+      "manifest_sha256": "85f4a7fa7095ef28c213aa26f1cb8ae52a4a57fe38f48f679d9c1e888a9fb09e",
       "tools": [
         {
           "name": "probe",
           "kind": "python",
           "file": "tools/probe.py",
           "sha256": "1a2aed3a229f3c7f1b50febb69cde6133dc70bca4264d9d60c8e58858e5dd5b9",
-          "network": "public"
+          "network": "none"
         },
         {
           "name": "status",
@@ -276,7 +276,7 @@
       "since": "0.107.16",
       "proof": "proof.sh",
       "secrets_needed": [],
-      "manifest_sha256": "b2e9f733dc05522803e0ec8b36f899b7d5c6fcea3e2b167feebca6462c0ce186",
+      "manifest_sha256": "2758a73d16dabda2dba714130b2e317d6170446224b09fac490c63693cde9228",
       "tools": [],
       "first_call": {
         "tool": "host.webhook_inbox.create",

@@ -87,6 +87,17 @@ struct Meta {
     proof: String,
     #[serde(default)]
     secrets_needed: Vec<String>,
+    /// Where the proof can run: `any` (default) or `orch-only` (it only
+    /// passes from outside the host, e.g. webhook-inbox's hairpin POST).
+    #[serde(default = "default_runner")]
+    runner: String,
+}
+
+/// The accepted values of `example.runner`.
+pub const RUNNERS: &[&str] = &["any", "orch-only"];
+
+fn default_runner() -> String {
+    "any".to_string()
 }
 
 fn default_proof() -> String {
@@ -253,6 +264,13 @@ pub fn load_with(
     }
     check_vocab(dname, "example.use_case", &meta.use_case, EXAMPLE_USE_CASES, &mut errs);
     check_vocab(dname, "example.clients", &meta.clients, CLIENT_TAGS, &mut errs);
+    if !RUNNERS.contains(&meta.runner.as_str()) {
+        errs.push(err(
+            dname,
+            "example.runner",
+            format!("`{}` is not one of {} (examples/{dname}/{MANIFEST_FILE})", meta.runner, RUNNERS.join(", ")),
+        ));
+    }
     let since_ok = {
         let p: Vec<&str> = meta.since.split('.').collect();
         p.len() == 3 && p.iter().all(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()))
@@ -444,7 +462,8 @@ pub fn render_schema_with(use_cases: &[&str], clients: &[&str]) -> String {
                     },
                     "since": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
                     "proof": { "type": "string", "default": "proof.sh", "description": "relative path of the proof script" },
-                    "secrets_needed": { "type": "array", "items": { "type": "string" }, "default": [] }
+                    "secrets_needed": { "type": "array", "items": { "type": "string" }, "default": [] },
+                    "runner": { "type": "string", "enum": RUNNERS, "default": "any", "description": "where the proof can run: any, or orch-only when it only passes from outside the host" }
                 }
             },
             "tools": {

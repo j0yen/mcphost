@@ -6,6 +6,9 @@ use_case = ["webhook"]
 clients = ["any"]
 since = "0.107.16"
 secrets_needed = []
+# The proof POSTs to the host's own public URL (a hairpin): it passes from
+# orch / ryzen7 and is red when run from mcphost-1 itself.
+runner = "orch-only"
 
 [first_call]
 tool = "host.webhook_inbox.create"

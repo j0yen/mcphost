@@ -17,6 +17,13 @@
 #                   Default: https://mcphost.dev/mcp
 #   HEALTHY_URL     a URL that returns 2xx. Default: https://httpbin.org/status/200
 #   DOWN_URL        a URL that returns a non-2xx status. Default: https://httpbin.org/status/503
+#   PROBE_NETWORK   the `network` the probe tool is published with.
+#                   Default: none (works on the free plan). `public` is
+#                   `plan: pro`: a free tenant is refused with
+#                   `plan_required`; on pro the probe really reaches
+#                   HEALTHY_URL / DOWN_URL and the healthy target shows 100%.
+#                   With `none` the probe cannot reach either URL, so BOTH
+#                   targets record code 0 and show down.
 #
 # Exit code 0 iff every check below passes.
 
@@ -26,6 +33,7 @@ cd "$(dirname "$0")"
 MCPHOST_URL="${MCPHOST_URL:-https://mcphost.dev/mcp}"
 # MCPHOST_PROVE_DRY=1: print the plan and exit 0 before any network call (the runner-contract test sets it).
 [[ -n "${MCPHOST_PROVE_DRY:-}" ]] && { echo "plan: uptime-probes proof against $MCPHOST_URL"; exit 0; }
+PROBE_NETWORK="${PROBE_NETWORK:-none}"
 HEALTHY_URL="${HEALTHY_URL:-https://httpbin.org/status/200}"
 DOWN_URL="${DOWN_URL:-https://httpbin.org/status/503}"
 FAILURES=0
@@ -198,9 +206,11 @@ insert_args=$(python3 -c 'import json,sys,time; print(json.dumps({"table": "targ
 insert_resp=$(mcp_call "host.state.insert" "$insert_args" "$KEY")
 check "targets_inserted" "$(has_error "$insert_resp" && echo 0 || echo 1)"
 
-# 4. Publish probe (python, network: public) and status (python).
+# 4. Publish probe (python, network: $PROBE_NETWORK -- `none` on the free
+#    plan, `public` is plan: pro) and status (python).
 PROBE_SRC=$(cat tools/probe.py)
-publish_args=$(python3 -c 'import json,sys; print(json.dumps({"name":"probe","kind":"python","spec":{"source": sys.argv[1], "network": "public"}}))' "$PROBE_SRC")
+publish_args=$(python3 -c 'import json,sys; print(json.dumps({"name":"probe","kind":"python","spec":{"source": sys.argv[1], "network": sys.argv[2]}}))' "$PROBE_SRC" "$PROBE_NETWORK")
+echo "PROBE_NETWORK=${PROBE_NETWORK}"
 publish_resp=$(mcp_call "host.tool_publish" "$publish_args" "$KEY")
 check "publish_probe" "$(has_error "$publish_resp" && echo 0 || echo 1)"
 
@@ -246,9 +256,13 @@ DOWN_SINCE=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); t=[x for x 
 check "down_target_down_since_matches_first_check" "$([[ -n "$DOWN_SINCE" && "$DOWN_SINCE" == "$FIRST_DOWN_AT" ]] && echo 1 || echo 0)"
 
 HEALTHY_UP_PCT=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); t=[x for x in d.get("targets") or [] if x.get("url")==sys.argv[2]]; print(t[0].get("up_pct_24h","") if t else "")' "$status_struct" "$HEALTHY_URL")
-check "healthy_target_up_pct_is_100" "$([[ "$HEALTHY_UP_PCT" == "100" ]] && echo 1 || echo 0)"
+HEALTHY_WANT_PCT=100
+[[ "$PROBE_NETWORK" == "none" ]] && HEALTHY_WANT_PCT=0
+check "healthy_target_up_pct_is_${HEALTHY_WANT_PCT}" "$([[ "$HEALTHY_UP_PCT" == "$HEALTHY_WANT_PCT" ]] && echo 1 || echo 0)"
 HEALTHY_HAS_DOWN_SINCE=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); t=[x for x in d.get("targets") or [] if x.get("url")==sys.argv[2]]; print(1 if (t and "down_since" in t[0]) else 0)' "$status_struct" "$HEALTHY_URL")
-check "healthy_target_has_no_down_since" "$([[ "$HEALTHY_HAS_DOWN_SINCE" == "0" ]] && echo 1 || echo 0)"
+HEALTHY_WANT_DOWN_SINCE=0
+[[ "$PROBE_NETWORK" == "none" ]] && HEALTHY_WANT_DOWN_SINCE=1
+check "healthy_target_down_since_matches_network" "$([[ "$HEALTHY_HAS_DOWN_SINCE" == "$HEALTHY_WANT_DOWN_SINCE" ]] && echo 1 || echo 0)"
 
 END_EPOCH=$(python3 -c 'import time; print(time.time())')
 WALL_MS=$(python3 -c "print(int((${END_EPOCH} - ${START_EPOCH}) * 1000))")

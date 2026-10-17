@@ -109,7 +109,15 @@ async fn share_a_tool_stays_under_budget() {
     let (success, transcript) = run_proof_sh(
         "share-a-tool",
         &mcphost_url,
-        &[("SHARE_A_TOOL_RECEIPT", receipt_path.to_str().expect("utf8 path"))],
+        &[
+            ("SHARE_A_TOOL_RECEIPT", receipt_path.to_str().expect("utf8 path")),
+            // The proof's default upstream is the public https page
+            // (https://example.com/), which a sandboxed CI runner cannot
+            // reach; MOCK_LOCAL=1 is its documented offline mode for a
+            // locally-run mcphost in test mode (loopback http upstream),
+            // the same wiring every other share-a-tool proof test uses.
+            ("MOCK_LOCAL", "1"),
+        ],
     )
     .await;
     std::fs::remove_file(&receipt_path).ok();

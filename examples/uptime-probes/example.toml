@@ -11,7 +11,11 @@ secrets_needed = []
 name = "probe"
 kind = "python"
 file = "tools/probe.py"
-network = "public"
+# Free-plan default. `network: "public"` (real outbound probes) is the
+# `plan: pro` variant: a free tenant publishing it is refused with
+# `plan_required`, so the recipe publishes `network: "none"` and the proof
+# asserts the pipeline (rows, down_since) rather than live reachability.
+network = "none"
 
 [[tools]]
 name = "status"
