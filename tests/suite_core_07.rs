@@ -957,6 +957,14 @@ mod eprc_ac02_every_embedded_proof_accepts_the_runner_spawn;
 mod eprc_ac03_fail_prints_indented_excerpt;
 #[path = "eprc_ac05_list_contract_prints_runner_constants.rs"]
 mod eprc_ac05_list_contract_prints_runner_constants;
+#[path = "errjson_ac01_every_emitted_code_is_a_registry_row.rs"]
+mod errjson_ac01_every_emitted_code_is_a_registry_row;
+#[path = "errjson_ac02_error_data_carries_the_registry_row.rs"]
+mod errjson_ac02_error_data_carries_the_registry_row;
+#[path = "errjson_ac03_errors_json_route.rs"]
+mod errjson_ac03_errors_json_route;
+#[path = "errjson_ac04_host_errors_tool.rs"]
+mod errjson_ac04_host_errors_tool;
 #[path = "evkr_ac01_no_second_spelling.rs"]
 mod evkr_ac01_no_second_spelling;
 #[path = "evkr_ac02_renderings_equal_enum.rs"]

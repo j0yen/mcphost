@@ -3395,6 +3395,79 @@
     ],
     "type": "object"
   },
+  "host.errors": {
+    "properties": {
+      "class": {
+        "type": "string"
+      },
+      "code": {
+        "type": "string"
+      },
+      "docs_anchor": {
+        "type": "string"
+      },
+      "family": {
+        "type": "string"
+      },
+      "help_url": {
+        "type": "string"
+      },
+      "remedy": {
+        "type": "string"
+      },
+      "retryable": {
+        "type": "boolean"
+      },
+      "classes": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "codes": {
+        "items": {
+          "properties": {
+            "class": {
+              "type": "string"
+            },
+            "code": {
+              "type": "string"
+            },
+            "docs_anchor": {
+              "type": "string"
+            },
+            "family": {
+              "type": "string"
+            },
+            "help_url": {
+              "type": "string"
+            },
+            "remedy": {
+              "type": "string"
+            },
+            "retryable": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "class",
+            "code",
+            "docs_anchor",
+            "family",
+            "help_url",
+            "remedy",
+            "retryable"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "version": {
+        "type": "string"
+      }
+    },
+    "type": "object"
+  },
   "host.estimate": {
     "properties": {
       "dry_run": {

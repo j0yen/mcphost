@@ -144,6 +144,26 @@ pub struct EventKinds {
 
 #[derive(JsonSchema)]
 #[allow(dead_code)]
+pub struct ErrorCode {
+    pub code: String,
+    pub family: String,
+    pub class: String,
+    pub remedy: String,
+    pub docs_anchor: String,
+    pub retryable: bool,
+    pub help_url: String,
+}
+
+#[derive(JsonSchema)]
+#[allow(dead_code)]
+pub struct ErrorCatalog {
+    pub version: String,
+    pub classes: Vec<String>,
+    pub codes: Vec<ErrorCode>,
+}
+
+#[derive(JsonSchema)]
+#[allow(dead_code)]
 pub struct Capabilities {
     pub version: String,
     /// Keyed by primitive name; each row carries `implemented`, `methods`, ...
@@ -227,6 +247,7 @@ pub fn schemas() -> BTreeMap<&'static str, Value> {
     map.insert("ContractDocument", render::<ContractDocument>());
     map.insert("Plans", render::<Plans>());
     map.insert("EventKinds", render::<EventKinds>());
+    map.insert("ErrorCatalog", render::<ErrorCatalog>());
     map.insert("Capabilities", render::<Capabilities>());
     map.insert("Catalog", render::<Catalog>());
     map.insert("Jwks", render::<Jwks>());

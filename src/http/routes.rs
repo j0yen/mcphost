@@ -12,7 +12,7 @@ use axum::routing::{MethodRouter, get, options, post};
 use super::{
     billing_cancel, billing_done, billing_webhook, capabilities_json, connect_go, connect_page,
     contract_json_route, events_json_route, get_new_url, healthz, help_index, help_page,
-    incidents_json_route, plans_json_route, post_new_url, protocol_frames_json, status_json_route,
+    errors_json_route, incidents_json_route, plans_json_route, post_new_url, protocol_frames_json, status_json_route,
     well_known_authorization_server, well_known_authorization_server_tenant, well_known_authz_jwks,
     well_known_catalog, well_known_oauth_protected_resource, well_known_oauth_protected_resource_entry,
     well_known_oauth_protected_resource_tenant, well_known_server_json,
@@ -167,6 +167,9 @@ pub static ROUTES: &[RouteSpec] = &[
     route!("GET" "/events.json" "status" "Event-kind registry" Anonymous
         responses [200 => Json("EventKinds")]
         => || get(events_json_route)),
+    route!("GET" "/errors.json" "status" "Every error code the host can return (generated from the error registry)" Anonymous
+        responses [200 => Json("ErrorCatalog")]
+        => || get(errors_json_route)),
     route!("GET" "/capabilities.json" "status" "MCP capability matrix; implemented=1 keeps implemented rows" Anonymous
         query ["implemented"] request None; cors false;
         responses [200 => Json("Capabilities")]

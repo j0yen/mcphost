@@ -1202,10 +1202,18 @@ impl AppError {
                 json!(crate::feedback::feedback_hint(code, tool.as_deref(), id)),
             );
         }
-        // AC1: `help_url` for every code `crate::help::HELP_CODES` lists,
-        // resolving on whichever base this call arrived on -- absent (not
-        // `null`) for every other code, and absent entirely when no base
-        // was given (see `into_error_data_at`'s doc comment).
+        // PRD-mcphost-errors-json-contract AC2: the registry row's own
+        // `class`, `family` and `remedy` ride in every error's `data`, so a
+        // client branches on them instead of matching the message.
+        if let Some(row) = crate::error_registry::lookup(code) {
+            obj.insert("class".to_string(), json!(row.class.as_str()));
+            obj.insert("family".to_string(), json!(row.family.as_str()));
+            obj.insert("remedy".to_string(), json!(row.remedy));
+        }
+        // AC1 / errors-json AC2: `help_url` for every registry code (and
+        // every `crate::help::HELP_CODES` entry), resolving on whichever
+        // base this call arrived on -- absent when no base was given (see
+        // `into_error_data_at`'s doc comment).
         if let Some(base) = base_url
             && let Some(url) = crate::help::help_url(base, code)
         {
