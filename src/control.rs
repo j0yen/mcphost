@@ -938,6 +938,9 @@ pub fn quickstart(
                 "unsupported": crate::capabilities::unsupported_names(),
             }),
         );
+        // PRD-mcphost-org-model-b R7: the five `host.org.*` verbs, generated
+        // from `org::TOOLS` so they cannot drift from `tools/list`.
+        map.insert("org".to_string(), crate::org::quickstart_json());
         // PRD-mcphost-event-kinds-registry-generated-b R6: the registry
         // pointer, counted from `EventKind::ALL`.
         map.insert(
