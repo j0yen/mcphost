@@ -16,4 +16,5 @@
   <url><loc>https://mcphost.dev/llms-install.md</loc></url>
   <url><loc>https://mcphost.dev/frames.json</loc></url>
   <url><loc>https://mcphost.dev/event-kinds.json</loc></url>
+  <url><loc>https://mcphost.dev/retry_policy.json</loc></url>
 </urlset>

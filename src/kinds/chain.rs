@@ -923,6 +923,38 @@ fn invalid_spec(message: impl Into<String>) -> KindError {
     KindError::InvalidSpec(message.into())
 }
 
+/// PRD-mcphost-retry-policy-table-generated R5: a step's `retry.on` names
+/// only codes `RETRY_POLICY` marks retryable -- resolved through
+/// [`crate::retry_policy::policy_for`], never a list of its own. A refusal
+/// carries `data.accepted`, the table's retryable codes. (The host does not
+/// retry a step itself; this is the publish-time contract.)
+fn validate_retry_on(i: usize, retry: &Value) -> Result<(), KindError> {
+    let on = retry
+        .get("on")
+        .and_then(Value::as_array)
+        .ok_or_else(|| invalid_spec(format!("spec.steps[{i}].retry.on: must be an array of error codes")))?;
+    let accepted = crate::retry_policy::retryable_codes();
+    let refused: Vec<&str> = on
+        .iter()
+        .filter_map(|c| match c.as_str() {
+            Some(code) if crate::retry_policy::is_retryable_code(code) => None,
+            Some(code) => Some(code),
+            None => Some("<non-string>"),
+        })
+        .collect();
+    if refused.is_empty() {
+        return Ok(());
+    }
+    Err(KindError::structured_with(
+        "invalid_spec",
+        format!(
+            "spec.steps[{i}].retry.on: {} not retryable; accepted codes are listed in data.accepted",
+            refused.join(", ")
+        ),
+        json!({"step": i + 1, "field": format!("steps[{i}].retry.on"), "refused": refused, "accepted": accepted}),
+    ))
+}
+
 /// Requirement 3: parses and shape-checks `spec.steps`. Does not resolve or
 /// parse any `"$."` path inside a step's `args` -- a malformed mapping path
 /// is reported at call time (requirement 4), naming the step and path, not
@@ -975,6 +1007,9 @@ fn parse_steps(spec: &Value) -> Result<Vec<ParsedStep>, KindError> {
                 )));
             }
         };
+        if let Some(retry) = step_obj.get("retry") {
+            validate_retry_on(i, retry)?;
+        }
         let for_each = match step_obj.get("for_each") {
             None => None,
             Some(Value::String(s)) if Path::parse(s).is_ok() => Some(s.clone()),

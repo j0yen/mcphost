@@ -11617,6 +11617,8 @@ impl McpHostHandler {
         let idem_key = crate::idempotency::extract_key(request.meta.as_ref().map(|m| &m.0.0), &mut raw_args)
             .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
 
+        let attempt = crate::retry_policy::attempt_from_meta(request.meta.as_ref().map(|m| &m.0.0).or(Some(&ctx.meta.0)));
+
         // Requirements 16/17: redacted by key name, recursively, exactly
         // once here, so every dispatch branch below -- a `host.*` tool, an
         // `admin.*` tool, or a direct namespaced call -- works from
@@ -12426,7 +12428,7 @@ impl McpHostHandler {
                 {
                     crate::help_search::note_failure(&self.state, tenant.id, app_err.code(), &body_name);
                 }
-                Err(app_err.into_error_data_at(Some(&self.state.public_url)))
+                Err(app_err.into_error_data_attempt(Some(&self.state.public_url), attempt))
             }
         }
     }

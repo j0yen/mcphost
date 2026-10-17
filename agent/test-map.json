@@ -2027,6 +2027,17 @@
       "AC5": "tests/sibl_ac05_labels_derive_from_client_info_names.rs",
       "AC6": "tests/sibl_ac06_returning_browser_is_offered_join.rs",
       "AC7": "tests/sibl_ac07_concurrent_joins_land_exactly_max_uses.rs"
+    },
+    "rpol": {
+      "_prd": "PRD-mcphost-retry-policy-table-generated.md (test_prefix: rpol)",
+      "AC1": "tests/rpol_ac01_non_retryable_stops_resends.rs",
+      "AC2": "tests/rpol_ac02_every_code_has_exactly_one_row.rs",
+      "AC3": "tests/rpol_ac03_retry_after_wins_over_backoff.rs",
+      "AC4": "tests/rpol_ac04_attempts_exhausted_flips_retryable.rs",
+      "AC5": "tests/rpol_ac05_chain_retry_on_validated_against_table.rs",
+      "AC6": "tests/rpol_ac06_retry_policy_check_names_the_edited_file.rs",
+      "AC7": "deferred -- operator-provisioned: synthorg repo vendoring and digest; not in this repo.",
+      "AC8": "deferred -- operator-provisioned: Live AC against prod after deploy."
     }
   }
 }

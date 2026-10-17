@@ -170,6 +170,23 @@ enum Command {
         #[arg(long)]
         clients: Option<PathBuf>,
     },
+    /// PRD-mcphost-retry-policy-table-generated R4: render `RETRY_POLICY` into
+    /// `www/llms.txt` (`## Retry policy`), `docs/errors.md` and
+    /// `www/retry_policy.json`. `--check` exits 1, writing nothing, naming
+    /// every file that has drifted. Needs no DB and no sandbox.
+    RetryPolicy {
+        #[arg(long)]
+        check: bool,
+        /// Defaults to `www/llms.txt`.
+        #[arg(long)]
+        llms: Option<PathBuf>,
+        /// Defaults to `docs/errors.md`.
+        #[arg(long)]
+        errors_doc: Option<PathBuf>,
+        /// Defaults to `www/retry_policy.json`.
+        #[arg(long)]
+        json: Option<PathBuf>,
+    },
     /// PRD-mcphost-server-capabilities-from-registry requirement 4: print
     /// the generated `## Capabilities` section (`--doc`: the whole
     /// `docs/protocol/capabilities.md`) for `scripts/sandbox-api-doc-check.sh`.
@@ -1189,6 +1206,39 @@ async fn main() -> anyhow::Result<()> {
                         std::process::exit(2);
                     }
                 },
+            }
+            Ok(())
+        }
+        Command::RetryPolicy { check, llms, errors_doc, json } => {
+            // No `init_tracing()`: plain stdout/exit-code contract, like `LlmsTxt`.
+            let llms = llms.unwrap_or_else(|| PathBuf::from("www/llms.txt"));
+            let errors_doc = errors_doc.unwrap_or_else(|| PathBuf::from("docs/errors.md"));
+            let json = json.unwrap_or_else(|| PathBuf::from("www/retry_policy.json"));
+            let llms_existing = std::fs::read_to_string(&llms).unwrap_or_else(|e| {
+                eprintln!("retry-policy: failed to read {}: {e}", llms.display());
+                std::process::exit(2);
+            });
+            let llms_updated = mcphost::retry_policy::splice_into(&llms_existing, &mcphost::retry_policy::render_section());
+            let files = [
+                (llms, Some(llms_existing), llms_updated),
+                (errors_doc, None, mcphost::retry_policy::render_doc()),
+                (json, None, mcphost::retry_policy::render_json()),
+            ];
+            let mut stale = false;
+            for (p, existing, updated) in files {
+                let existing = existing.or_else(|| std::fs::read_to_string(&p).ok());
+                if existing.as_deref() == Some(updated.as_str()) {
+                    println!("retry-policy{}: {} is up to date", if check { " --check" } else { "" }, p.display());
+                } else if check {
+                    eprintln!("retry-policy --check: {} is stale (run `mcphost retry-policy`)", p.display());
+                    stale = true;
+                } else {
+                    std::fs::write(&p, updated)?;
+                    println!("retry-policy: regenerated {}", p.display());
+                }
+            }
+            if stale {
+                std::process::exit(1);
             }
             Ok(())
         }

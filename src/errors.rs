@@ -1039,6 +1039,13 @@ impl AppError {
     /// such base exists at all (see [`Self::into_error_data`]'s doc
     /// comment).
     pub fn into_error_data_at(self, base_url: Option<&str>) -> ErrorData {
+        self.into_error_data_attempt(base_url, 1)
+    }
+
+    /// [`Self::into_error_data_at`] for a caller-reported `_meta.attempt`
+    /// (PRD-mcphost-retry-policy-table-generated R2): `data.retry`'s
+    /// `attempts_left` and `after_ms` are computed for that attempt.
+    pub fn into_error_data_attempt(self, base_url: Option<&str>, attempt: u32) -> ErrorData {
         let code = self.code();
         let jsonrpc_code = self.jsonrpc_code();
         let request_id = generate_request_id();
@@ -1224,6 +1231,7 @@ impl AppError {
                 obj.insert("anchor".to_string(), json!(entry.doc_link.as_str()));
             }
         }
+        crate::retry_policy::attach(&mut obj, code, attempt);
         crate::incident_banner::attach(&mut obj, code, base_url);
         ErrorData::new(jsonrpc_code, message, Some(Value::Object(obj)))
     }
