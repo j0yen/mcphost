@@ -109,6 +109,7 @@ pub mod public_tool;
 pub mod query_diag;
 pub mod reach;
 pub mod recipes;
+pub mod delegation_recipe;
 pub mod registry;
 pub mod registry_manifest;
 pub mod retention;

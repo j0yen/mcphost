@@ -1161,6 +1161,20 @@ fn quickstart_inner(
             map.insert("alt_endpoint".to_string(), json!(alt_endpoint));
             map.insert("reachability".to_string(), json!(block));
         }
+        // PRD-mcphost-delegation-recipes-and-quickstart R2/R7: a plan that
+        // allows delegation gets the generated sub-agent recipe (`recipes`
+        // becomes `{names, sub_agent_key}`) and `next_steps`, delegation
+        // ordered ahead of sharing; other plans keep the plain `recipes` array.
+        if state.plans.get(&tenant.plan).is_some_and(|p| p.delegated_keys_max > 0) {
+            let recipe = crate::delegation_recipe::sub_agent_key();
+            let mut recipe_json = json!(recipe);
+            recipe_json["copy_paste"] = json!(crate::delegation_recipe::copy_paste(&recipe, &state.public_url));
+            map.insert(
+                "recipes".to_string(),
+                json!({"names": crate::kinds::aliases::recipe_names(), recipe.id.as_str(): recipe_json}),
+            );
+            map.insert("next_steps".to_string(), json!(crate::delegation_recipe::next_steps()));
+        }
         map.insert("endpoint".to_string(), json!(endpoint));
         map.insert("install_doc_url".to_string(), json!(crate::install_links::install_doc_url()));
         // PRD-mcphost-oauth-first-entry-url requirement 6: the URL to give an

@@ -13423,6 +13423,15 @@
               "null"
             ]
           },
+          "next_steps": {
+            "items": {
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "outcome": {
             "type": [
               "string",
@@ -13491,6 +13500,7 @@
             },
             "type": [
               "array",
+              "object",
               "null"
             ]
           },
@@ -27743,6 +27753,12 @@
             ]
           },
           "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hint": {
             "type": [
               "string",
               "null"

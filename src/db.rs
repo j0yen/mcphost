@@ -372,6 +372,8 @@ pub const HELP_SEARCH_JOIN_WINDOW_S: i64 = 120;
 const MIGRATION_0108: &str = include_str!("../migrations/0108_calls_audit.sql");
 
 /// PRD-mcphost-email-attachments-as-blobs R1: mail provenance on `blobs`.
+/// PRD-mcphost-delegation-recipes-and-quickstart R6: `tenant_keys.minted_session`.
+const MIGRATION_0113_KEY_MINTED_SESSION: &str = include_str!("../migrations/0113_key_minted_session.sql");
 const MIGRATION_0112: &str = include_str!("../migrations/0112_email_attachments.sql");
 
 /// PRD-mcphost-notify-user-channel: `notify_channels`, `notifies`, `notify_receipts`.
@@ -3120,6 +3122,7 @@ impl Db {
         Self::migrate_0111_key_binding(&conn)?;
         Self::migrate_0112_email_attachments(&conn)?;
         Self::migrate_0113_restarts(&conn)?;
+        Self::migrate_0113_key_minted_session(&conn)?;
         Self::migrate_0114_notify_channels(&conn)?;
         // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0115)?;
@@ -3146,6 +3149,18 @@ impl Db {
         }
         conn.pragma_update(None, "foreign_keys", "ON")?;
         ran
+    }
+
+    /// PRD-mcphost-delegation-recipes-and-quickstart R6: gated on the column
+    /// (the batch is a single `ALTER`, so a rerun must skip it).
+    fn migrate_0113_key_minted_session(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenant_keys') WHERE name = 'minted_session'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0113_KEY_MINTED_SESSION)?;
+        }
+        Ok(())
     }
 
     /// PRD-mcphost-notify-user-channel: gated on the `notify_channels` table.

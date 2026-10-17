@@ -7058,7 +7058,14 @@ impl McpHostHandler {
                 let session_tenant = self.session_tenant_namespace(session_id).await;
                 let mut me =
                     control::whoami(&self.state, tenant, subject, auth_method, session_tenant.as_deref()).await?;
-                if let (Some(key), Some(obj)) = (crate::subkeys::whoami_key(&self.state).await?, me.as_object_mut()) {
+                if let (Some(mut key), Some(obj)) =
+                    (crate::subkeys::whoami_key(&self.state, session_id).await?, me.as_object_mut())
+                {
+                    // PRD-mcphost-delegation-recipes-and-quickstart R6: the
+                    // helper hint rides top-level, not inside `key`.
+                    if let Some(hint) = key.as_object_mut().and_then(|k| k.remove("hint")) {
+                        obj.insert("hint".to_string(), hint);
+                    }
                     obj.insert("key".to_string(), key);
                 }
                 Ok(me)
