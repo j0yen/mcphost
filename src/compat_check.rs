@@ -1260,7 +1260,7 @@ mod scratch_remove_retry_tests {
     }
 
     #[test]
-    fn retry_really_removes_a_populated_directory() {
+    fn retry_really_removes_a_populated_directory() -> std::io::Result<()> {
         let dir = std::env::temp_dir().join(format!(
             "mcphost-scratch-retry-test-{}-{}",
             std::process::id(),
@@ -1269,9 +1269,10 @@ mod scratch_remove_retry_tests {
                 .unwrap_or_default()
                 .as_nanos()
         ));
-        std::fs::create_dir_all(dir.join("sub")).expect("create dir");
-        std::fs::write(dir.join("sub").join("f"), b"x").expect("write file");
-        remove_dir_all_retry(&dir, 5, TICK, remove_tree).expect("remove");
+        std::fs::create_dir_all(dir.join("sub"))?;
+        std::fs::write(dir.join("sub").join("f"), b"x")?;
+        remove_dir_all_retry(&dir, 5, TICK, remove_tree)?;
         assert!(!dir.exists(), "directory must be gone");
+        Ok(())
     }
 }
