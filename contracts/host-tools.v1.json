@@ -4584,6 +4584,214 @@
       "since": "0.60.1"
     },
     {
+      "description": "Verify this tenant's owner with a DNS record: returns the TXT record to publish at _mcphost.<domain>; then call host.claim.dns.check.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "domain": {
+            "description": "A domain you control, e.g. acme.dev.",
+            "type": "string"
+          },
+          "method": {
+            "description": "The verification method this tool performs; optional, and refused when it names a different method than the tool does.",
+            "enum": [
+              "email",
+              "github",
+              "dns"
+            ],
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain"
+        ],
+        "type": "object"
+      },
+      "name": "host.claim.dns",
+      "output_schema": {
+        "properties": {
+          "method": {
+            "type": "string"
+          },
+          "next": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "record": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "record",
+          "type",
+          "value"
+        ],
+        "type": "object"
+      },
+      "since": "0.108.169"
+    },
+    {
+      "description": "Look up the TXT record host.claim.dns returned and, when it matches, verify this tenant's owner with the domain as the handle. Answers dns_record_not_found with {expected, seen} on a mismatch.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "domain": {
+            "description": "The domain passed to host.claim.dns.",
+            "type": "string"
+          },
+          "method": {
+            "description": "The verification method this tool performs; optional, and refused when it names a different method than the tool does.",
+            "enum": [
+              "email",
+              "github",
+              "dns"
+            ],
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain"
+        ],
+        "type": "object"
+      },
+      "name": "host.claim.dns.check",
+      "output_schema": {
+        "properties": {
+          "handle": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "verified": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "verified",
+          "method",
+          "handle"
+        ],
+        "type": "object"
+      },
+      "since": "0.108.169"
+    },
+    {
+      "description": "Verify this tenant's owner with GitHub: returns {authorize_url, expires_in}; the human opens the URL and the callback marks the tenant verified with their GitHub login as the handle. Fails method_unavailable when this host has no GitHub OAuth app.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "description": "The verification method this tool performs; optional, and refused when it names a different method than the tool does.",
+            "enum": [
+              "email",
+              "github",
+              "dns"
+            ],
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.claim.github",
+      "output_schema": {
+        "properties": {
+          "authorize_url": {
+            "type": "string"
+          },
+          "expires_in": {
+            "type": "integer"
+          },
+          "method": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "authorize_url",
+          "expires_in"
+        ],
+        "type": "object"
+      },
+      "since": "0.108.169"
+    },
+    {
+      "description": "Verify this tenant's owner by email: sends a one-time magic link to the address; opening it makes that address the owner. Other methods: host.claim.github, host.claim.dns (see /claim/methods.json for which this host can run).",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "description": "The owner's email address.",
+            "type": "string"
+          },
+          "method": {
+            "description": "The verification method this tool performs; optional, and refused when it names a different method than the tool does.",
+            "enum": [
+              "email",
+              "github",
+              "dns"
+            ],
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "type": "object"
+      },
+      "name": "host.claim.start",
+      "output_schema": {
+        "properties": {
+          "email_masked": {
+            "type": "string"
+          },
+          "expires_in": {
+            "type": "integer"
+          },
+          "method": {
+            "type": "string"
+          },
+          "sent": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "method",
+          "sent",
+          "email_masked",
+          "expires_in"
+        ],
+        "type": "object"
+      },
+      "since": "0.108.169"
+    },
+    {
       "description": "Revoke one client of this workspace (a sibling that joined through join_url, listed in the clients field of host.whoami): its URL answers tenant_key_invalid from the next call. The last remaining client cannot be revoked (last_client).",
       "input_schema": {
         "additionalProperties": false,
@@ -29704,6 +29912,128 @@
       },
       "name": "host_channel_unfreeze",
       "since": "0.103.1"
+    },
+    {
+      "alias_of": "host.claim.dns",
+      "description": "Verify this tenant's owner with a DNS record: returns the TXT record to publish at _mcphost.<domain>; then call host.claim.dns.check.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "domain": {
+            "description": "A domain you control, e.g. acme.dev.",
+            "type": "string"
+          },
+          "method": {
+            "description": "The verification method this tool performs; optional, and refused when it names a different method than the tool does.",
+            "enum": [
+              "email",
+              "github",
+              "dns"
+            ],
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain"
+        ],
+        "type": "object"
+      },
+      "name": "host_claim_dns",
+      "since": "0.108.169"
+    },
+    {
+      "alias_of": "host.claim.dns.check",
+      "description": "Look up the TXT record host.claim.dns returned and, when it matches, verify this tenant's owner with the domain as the handle. Answers dns_record_not_found with {expected, seen} on a mismatch.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "domain": {
+            "description": "The domain passed to host.claim.dns.",
+            "type": "string"
+          },
+          "method": {
+            "description": "The verification method this tool performs; optional, and refused when it names a different method than the tool does.",
+            "enum": [
+              "email",
+              "github",
+              "dns"
+            ],
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain"
+        ],
+        "type": "object"
+      },
+      "name": "host_claim_dns_check",
+      "since": "0.108.169"
+    },
+    {
+      "alias_of": "host.claim.github",
+      "description": "Verify this tenant's owner with GitHub: returns {authorize_url, expires_in}; the human opens the URL and the callback marks the tenant verified with their GitHub login as the handle. Fails method_unavailable when this host has no GitHub OAuth app.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "description": "The verification method this tool performs; optional, and refused when it names a different method than the tool does.",
+            "enum": [
+              "email",
+              "github",
+              "dns"
+            ],
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host_claim_github",
+      "since": "0.108.169"
+    },
+    {
+      "alias_of": "host.claim.start",
+      "description": "Verify this tenant's owner by email: sends a one-time magic link to the address; opening it makes that address the owner. Other methods: host.claim.github, host.claim.dns (see /claim/methods.json for which this host can run).",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "description": "The owner's email address.",
+            "type": "string"
+          },
+          "method": {
+            "description": "The verification method this tool performs; optional, and refused when it names a different method than the tool does.",
+            "enum": [
+              "email",
+              "github",
+              "dns"
+            ],
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "type": "object"
+      },
+      "name": "host_claim_start",
+      "since": "0.108.169"
     },
     {
       "alias_of": "host.client.revoke",

@@ -672,6 +672,14 @@ mod ownmt_ac05_claim_email_configured_signal;
 mod ownmt_ac06_claim_round_trip_for_journey_claim_step;
 #[path = "ownmt_ac07_claim_page_shows_remember_note.rs"]
 mod ownmt_ac07_claim_page_shows_remember_note;
+#[path = "ownv_ac02_method_table_drift.rs"]
+mod ownv_ac02_method_table_drift;
+#[path = "ownv_ac05_email_verified_tenant_is_not_overwritten.rs"]
+mod ownv_ac05_email_verified_tenant_is_not_overwritten;
+#[path = "ownv_ac06_concurrent_dns_check_writes_once.rs"]
+mod ownv_ac06_concurrent_dns_check_writes_once;
+#[path = "ownv_ac07_quickstart_names_every_method.rs"]
+mod ownv_ac07_quickstart_names_every_method;
 #[path = "pgm_ac02_ceilings_carry_perf_fields.rs"]
 mod pgm_ac02_ceilings_carry_perf_fields;
 #[path = "pgm_ac03_hourly_task_writes_two_rows_per_plan_path.rs"]

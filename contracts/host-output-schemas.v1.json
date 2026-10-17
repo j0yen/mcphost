@@ -2531,6 +2531,93 @@
     ],
     "type": "object"
   },
+  "host.claim.dns": {
+    "properties": {
+      "method": {
+        "type": "string"
+      },
+      "next": {
+        "type": "object"
+      },
+      "record": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      },
+      "value": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "method",
+      "record",
+      "type",
+      "value"
+    ],
+    "type": "object"
+  },
+  "host.claim.dns.check": {
+    "properties": {
+      "handle": {
+        "type": "string"
+      },
+      "method": {
+        "type": "string"
+      },
+      "verified": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "verified",
+      "method",
+      "handle"
+    ],
+    "type": "object"
+  },
+  "host.claim.github": {
+    "properties": {
+      "authorize_url": {
+        "type": "string"
+      },
+      "expires_in": {
+        "type": "integer"
+      },
+      "method": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "method",
+      "authorize_url",
+      "expires_in"
+    ],
+    "type": "object"
+  },
+  "host.claim.start": {
+    "properties": {
+      "email_masked": {
+        "type": "string"
+      },
+      "expires_in": {
+        "type": "integer"
+      },
+      "method": {
+        "type": "string"
+      },
+      "sent": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "method",
+      "sent",
+      "email_masked",
+      "expires_in"
+    ],
+    "type": "object"
+  },
   "host.client.revoke": {
     "properties": {
       "clients_remaining": {

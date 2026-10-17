@@ -81,6 +81,7 @@ pub async fn tenants(state: &AppState, args: &Value) -> Result<Value, AppError> 
         Some(p) => state.db.list_tenants_by_prefix(p, None).await?.0,
         None => state.db.list_tenants().await?,
     };
+    let owner_methods = state.db.owner_methods().await?;
     let tenants: Vec<Value> = rows
         .into_iter()
         .filter(|t| match synthetic_filter.as_str() {
@@ -115,6 +116,9 @@ pub async fn tenants(state: &AppState, args: &Value) -> Result<Value, AppError> 
                 // without this row becoming a second place a human's
                 // address is stored.
                 "owner_verified": t.owner_verified_at.is_some(),
+                // PRD-mcphost-owner-verification-paths R5: how the owner
+                // proved it (`email`, `github`, `dns`), null while unverified.
+                "owner_method": owner_methods.get(&t.id),
             })
         })
         .collect();

@@ -74,6 +74,9 @@
         ],
         "type": "object"
       },
+      "ClaimMethods": {
+        "type": "object"
+      },
       "ContractDocument": {
         "properties": {
           "contract_sha": {
@@ -553,7 +556,7 @@
     "description": "Every non-MCP HTTP route mcphost serves, generated from the router's own route table.",
     "title": "mcphost HTTP API",
     "version": "0.108.174",
-    "x-contract-version": "1.266446783d98"
+    "x-contract-version": "1.2865327f1299"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -1101,6 +1104,98 @@
           "assets"
         ],
         "x-mcphost-auth": "token"
+      }
+    },
+    "/claim/github/callback": {
+      "get": {
+        "operationId": "get_claim_github_callback",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "409": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "502": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          }
+        },
+        "summary": "GitHub OAuth callback that verifies the tenant owner",
+        "tags": [
+          "claim"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/claim/methods.json": {
+      "get": {
+        "operationId": "get_claim_methods_json",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimMethods"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Ownership verification methods this host knows, and which are available",
+        "tags": [
+          "claim"
+        ],
+        "x-mcphost-auth": "anonymous"
       }
     },
     "/claim/verify/{code}": {

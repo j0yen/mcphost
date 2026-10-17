@@ -1117,7 +1117,12 @@ fn quickstart_inner(
             },
         })
     };
-    let next = steps[2..].to_vec();
+    let mut next = steps[2..].to_vec();
+    // PRD-mcphost-owner-verification-paths R7: an unverified tenant is told
+    // every way to verify, from `verify::VERIFICATION_METHODS`.
+    if tenant.owner_verified_at.is_none() {
+        next.push(crate::verify::quickstart_next_step());
+    }
 
     let mut response = json!({
         "authenticated": true,
@@ -1477,8 +1482,15 @@ pub async fn whoami(
         // requirement 1 (AC1): once claimed, `owner.verified_at` replaces
         // `claim_url` -- `owner_verified` above stays the pre-existing
         // bool-only read for callers that only need "is it claimed".
+        // PRD-mcphost-owner-verification-paths R5: `method` and `handle`
+        // ride beside `verified_at`.
         if let Some(verified_at) = tenant.owner_verified_at {
-            obj.insert("owner".to_string(), json!({"verified_at": verified_at}));
+            let (method, handle) = state
+                .db
+                .owner_method(tenant.id)
+                .await?
+                .unwrap_or_else(|| ("email".to_string(), None));
+            obj.insert("owner".to_string(), json!({"verified_at": verified_at, "method": method, "handle": handle}));
         }
         // PRD-mcphost-session-bound-tenant-key P1 requirement 4 (AC6):
         // the tenant THIS connection's own memory holds (an implicit

@@ -36,6 +36,10 @@ mod flakelint_ac07_full_lint_pass_and_env_suites;
 mod heal_ac02_dry_run_writes_would_run;
 #[path = "ntfyb_ac03_webhook_retries_to_delivered_or_failed.rs"]
 mod ntfyb_ac03_webhook_retries_to_delivered_or_failed;
+#[path = "ownv_ac03_github_callback_verifies.rs"]
+mod ownv_ac03_github_callback_verifies;
+#[path = "ownv_ac04_github_unavailable_without_env.rs"]
+mod ownv_ac04_github_unavailable_without_env;
 #[path = "support_ac05_support_url_rendered_or_not_configured.rs"]
 mod support_ac05_support_url_rendered_or_not_configured;
 #[path = "tlint_ac04_deadline_budget_fires_and_scales.rs"]
