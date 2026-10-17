@@ -2709,9 +2709,16 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
         0.0
     };
     let quota = data_quota_for(state, tenant).await?;
+    // PRD-mcphost-sampling-from-tools R4: tokens `mcphost.sampling.ask` has
+    // spent on the client's model since UTC midnight (counts only).
+    let sampling_tokens_today = state
+        .db
+        .sampling_tokens_on(tenant.id, crate::state::utc_midnight_unix(now_unix()))
+        .await?;
     Ok(json!({
         "window": window,
         "quota": quota,
+        "sampling_tokens_today": sampling_tokens_today,
         "calls": stats.calls,
         "errors": stats.errors,
         "p50_ms": stats.p50_ms,

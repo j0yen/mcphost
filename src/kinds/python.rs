@@ -2169,6 +2169,13 @@ pub const BRIDGE_MODULES: &[BridgeModule] = &[
         ],
     },
     BridgeModule {
+        name: "sampling",
+        purpose: "ask the calling client's own model one question mid-call (sampling/createMessage), metered against the plan's sampling_tokens_per_day",
+        signatures: &[
+            "mcphost.sampling.ask(prompt, max_tokens=256, system=None, hints=None) -- ask the client's model; returns {text, model, stop_reason, tokens}, or raises SamplingError (sampling_unsupported | sampling_timeout | sampling_calls_exceeded | sampling_quota_exceeded)",
+        ],
+    },
+    BridgeModule {
         name: "elicit",
         purpose: "ask the user a typed question mid-call: the client's form when it can, the ask-user link otherwise",
         signatures: &[
@@ -2372,6 +2379,10 @@ pub const BRIDGE_RETURNS: &[BridgeReturn] = &[
         shape: Envelope(&[("messages", "list")]),
     },
     BridgeReturn {
+        function: "mcphost.sampling.ask",
+        shape: Plain("dict {text, model, stop_reason, tokens}; raises SamplingError (sampling_unsupported | sampling_timeout | sampling_calls_exceeded | sampling_quota_exceeded)"),
+    },
+    BridgeReturn {
         function: "mcphost.elicit",
         shape: Plain("dict {action: accept|decline|cancel, content?} or {action: pending, ask_id, url, expires_unix}"),
     },
@@ -2562,6 +2573,22 @@ pub fn unknown_import_hint() -> String {
 pub fn bridge_module_list() -> String {
     let names: Vec<String> = BRIDGE_MODULES.iter().map(|m| format!("mcphost.{}", m.name)).collect();
     names.join(", ")
+}
+
+pub const BRIDGE_DOCS_START: &str = "<!-- mcphost-bridge-modules:start -->";
+pub const BRIDGE_DOCS_END: &str = "<!-- mcphost-bridge-modules:end -->";
+
+/// The marked block `docs/sandbox-api.md` carries: one bullet per
+/// [`BRIDGE_MODULES`] entry, so the doc and [`unknown_import_hint`] list the
+/// same modules because they read the same constant (PRD-mcphost-sampling-from-tools
+/// R1/AC7).
+pub fn render_bridge_docs_block() -> String {
+    let mut out = format!("{BRIDGE_DOCS_START}\n");
+    for m in BRIDGE_MODULES {
+        out.push_str(&format!("- `mcphost.{}` -- {}\n", m.name, m.purpose));
+    }
+    out.push_str(BRIDGE_DOCS_END);
+    out
 }
 
 /// PRD-mcphost-unknown-import-domain-hint R2: the spellings of the host's
@@ -3567,6 +3594,41 @@ _mcphost_elicit_mod = _McphostElicitModule("mcphost.elicit", _ELICIT_DOC)
 _mcphost_elicit_mod.ElicitError = McphostElicitError
 _mcphost_elicit_mod.BridgeError = McphostBridgeError
 
+# ---- mcphost.sampling (PRD-mcphost-sampling-from-tools) --------------------
+#
+# Same request-line-out/response-line-in round trip, marked
+# `__mcphost_sampling__`; the host answers it on the calling connection's peer.
+class McphostSamplingError(McphostBridgeError):
+    # The code leads the message, so an uncaught raise still names it on the
+    # host side (`kinds::python::map_envelope_error`).
+    def __init__(self, code, message, data=None):
+        McphostBridgeError.__init__(self, code, code + ": " + message, data)
+
+def _sampling_ask(prompt, max_tokens=256, system=None, hints=None):
+    """Ask the calling client's own model one question (sampling/createMessage)."""
+    request = {"__mcphost_sampling__": True, "prompt": prompt, "max_tokens": max_tokens}
+    if system is not None:
+        request["system"] = system
+    if hints is not None:
+        request["hints"] = hints
+    _real_stdout.write(json.dumps(request))
+    _real_stdout.write("\n")
+    _real_stdout.flush()
+    line = sys.stdin.readline()
+    if not line:
+        raise McphostSamplingError("sampling_unavailable", "the sampling bridge closed")
+    resp = json.loads(line)
+    if not resp.get("ok"):
+        raise McphostSamplingError(
+            resp.get("code", "sampling_error"), resp.get("message", "sampling failed"), resp.get("data")
+        )
+    return resp.get("result")
+
+_mcphost_sampling_mod = _mcphost_types.ModuleType("mcphost.sampling")
+_mcphost_sampling_mod.ask = _sampling_ask
+_mcphost_sampling_mod.SamplingError = McphostSamplingError
+_mcphost_sampling_mod.BridgeError = McphostBridgeError
+
 _mcphost_mod = _mcphost_types.ModuleType("mcphost")
 _mcphost_mod.state = _mcphost_state_mod
 _mcphost_mod.table = _mcphost_table_mod
@@ -3578,6 +3640,7 @@ _mcphost_mod.drift = _mcphost_drift_mod
 _mcphost_mod.channel = _mcphost_channel_mod
 _mcphost_mod.msg = _mcphost_msg_mod
 _mcphost_mod.elicit = _mcphost_elicit_mod
+_mcphost_mod.sampling = _mcphost_sampling_mod
 _mcphost_mod.call = _mcphost_call
 _mcphost_mod.quota = _mcphost_quota
 _mcphost_mod.CallError = McphostCallError
@@ -3618,6 +3681,7 @@ sys.modules["mcphost.drift"] = _mcphost_drift_mod
 sys.modules["mcphost.channel"] = _mcphost_channel_mod
 sys.modules["mcphost.msg"] = _mcphost_msg_mod
 sys.modules["mcphost.elicit"] = _mcphost_elicit_mod
+sys.modules["mcphost.sampling"] = _mcphost_sampling_mod
 
 # ---- return shapes (PRD-mcphost-sandbox-return-shape-contract) --------------
 #
@@ -3960,6 +4024,20 @@ fn map_envelope_error_untagged(envelope: &Value, stderr_tail: &str, own_domain: 
                 && let Some(code) = message
                     .split_once(": ")
                     .and_then(|(c, _)| crate::elicit::ELICIT_ERROR_CODES.iter().find(|k| **k == c))
+            {
+                return KindError::structured_with(
+                    code,
+                    message.to_string(),
+                    json!({"phase": key::PHASE_TOOL_CODE, "exception_class": error}),
+                );
+            }
+            // PRD-mcphost-sampling-from-tools: an uncaught `mcphost.sampling`
+            // refusal keeps its own code (`sampling_unsupported`, ...), so the
+            // run row records the code, not a traceback.
+            if error == "McphostSamplingError"
+                && let Some(code) = message
+                    .split_once(": ")
+                    .and_then(|(c, _)| crate::sampling::SAMPLING_ERROR_CODES.iter().find(|k| **k == c))
             {
                 return KindError::structured_with(
                     code,
@@ -4509,6 +4587,35 @@ impl SidecarBridge for ElicitSidecarBridge<'_> {
     }
 }
 
+/// PRD-mcphost-sampling-from-tools: `PY_RUNNER_SCRIPT`'s `mcphost.sampling.ask`
+/// emits `{"__mcphost_sampling__": true, "prompt": ..., "max_tokens": ...,
+/// "system"?: ..., "hints"?: ...}` and blocks on the response line.
+struct SamplingSidecarBridge<'a> {
+    ctx: &'a CallCtx,
+}
+
+#[async_trait::async_trait]
+impl SidecarBridge for SamplingSidecarBridge<'_> {
+    async fn intercept(&self, line: &[u8]) -> Option<Vec<u8>> {
+        let request: Value = serde_json::from_slice(line).ok()?;
+        if request.get("__mcphost_sampling__").and_then(Value::as_bool) != Some(true) {
+            return None;
+        }
+        let response = match self.ctx.sampling.ask(request, self.ctx.time_remaining()).await {
+            Ok(result) => json!({"ok": true, "result": result}),
+            Err(e) => {
+                let (code, message, data) = match e {
+                    KindError::Structured { code, message, data } => (code, message, data),
+                    KindError::InvalidArgs(m) | KindError::InvalidSpec(m) => ("sampling_args_invalid", m, Value::Null),
+                    KindError::Exec(m) => ("sampling_error", m, Value::Null),
+                };
+                json!({"ok": false, "code": code, "message": message, "data": data})
+            }
+        };
+        Some(serde_json::to_vec(&response).unwrap_or_default())
+    }
+}
+
 /// PRD-mcphost-composition requirement 1: bridges the same sidecar channel
 /// to `kinds::compose_call` -- `PY_RUNNER_SCRIPT`'s `mcphost.call(name,
 /// args, timeout_s=None)` emits `{"__mcphost_call__": true, "name": ...,
@@ -4655,6 +4762,10 @@ impl SidecarBridge for HostSidecarBridge<'_> {
         }
         let elicit_bridge = ElicitSidecarBridge { ctx: self.ctx };
         if let Some(response) = elicit_bridge.intercept(line).await {
+            return Some(response);
+        }
+        let sampling_bridge = SamplingSidecarBridge { ctx: self.ctx };
+        if let Some(response) = sampling_bridge.intercept(line).await {
             return Some(response);
         }
         let progress_bridge = ProgressSidecarBridge { ctx: self.ctx };
@@ -7006,6 +7117,7 @@ mod tests {
             channel: Arc::new(crate::kinds::NoChannel),
             msg: Arc::new(crate::kinds::NoMsg),
             elicit: Arc::new(crate::elicit::NoClientElicit),
+            sampling: Arc::new(crate::sampling::NoClientSampling { state: None }),
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             sidecar_ops_max: i64::MAX,
             host_dispatch: None,
@@ -7324,6 +7436,7 @@ mod tests {
             channel: Arc::new(crate::kinds::NoChannel),
             msg: Arc::new(crate::kinds::NoMsg),
             elicit: Arc::new(crate::elicit::NoClientElicit),
+            sampling: Arc::new(crate::sampling::NoClientSampling { state: None }),
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             sidecar_ops_max: i64::MAX,
             host_dispatch: None,

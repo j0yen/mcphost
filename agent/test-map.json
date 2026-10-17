@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-delegation-recipes-and-quickstart.md (test_prefix: dlrec)",
+  "ac_test_map_prd": "PRD-mcphost-sampling-from-tools.md (test_prefix: msmp)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,13 +28,13 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/dlrec_ac01_recipe_executes_verbatim.rs",
-    "AC2": "tests/dlrec_ac02_quickstart_returns_recipe_and_orders_next_steps.rs",
-    "AC3": "tests/dlrec_ac03_llms_txt_recipe_section_generated.rs",
-    "AC4": "tests/dlrec_ac04_new_scope_changes_both_sections.rs",
-    "AC5": "tests/dlrec_ac05_readme_recipe_block_checked.rs",
-    "AC6": "tests/dlrec_ac06_whoami_hint_for_foreign_session.rs",
-    "AC7": "tests/dlrec_ac07_error_codes_only_in_generated_blocks.rs"
+    "AC1": "tests/msmp_ac01_ask_returns_client_answer_or_unsupported.rs",
+    "AC2": "tests/msmp_ac02_job_run_has_no_client_and_records_the_code.rs",
+    "AC3": "tests/msmp_ac03_wall_is_thirty_seconds_and_short_budget_fails_fast.rs",
+    "AC4": "tests/msmp_ac04_fifth_ask_in_one_call_is_refused.rs",
+    "AC5": "tests/msmp_ac05_daily_token_quota_refuses_before_asking.rs",
+    "AC6": "tests/msmp_ac06_tool_logs_hold_counts_never_the_prompt.rs",
+    "AC7": "tests/msmp_ac07_bridge_modules_list_sampling_everywhere.rs"
   },
   "ac_test_map_by_prefix": {
     "oapi": {
@@ -2027,6 +2027,16 @@
       "AC5": "tests/sibl_ac05_labels_derive_from_client_info_names.rs",
       "AC6": "tests/sibl_ac06_returning_browser_is_offered_join.rs",
       "AC7": "tests/sibl_ac07_concurrent_joins_land_exactly_max_uses.rs"
+    },
+    "msmp": {
+      "_prd": "PRD-mcphost-sampling-from-tools.md (test_prefix: msmp)",
+      "AC1": "tests/msmp_ac01_ask_returns_client_answer_or_unsupported.rs",
+      "AC2": "tests/msmp_ac02_job_run_has_no_client_and_records_the_code.rs",
+      "AC3": "tests/msmp_ac03_wall_is_thirty_seconds_and_short_budget_fails_fast.rs",
+      "AC4": "tests/msmp_ac04_fifth_ask_in_one_call_is_refused.rs",
+      "AC5": "tests/msmp_ac05_daily_token_quota_refuses_before_asking.rs",
+      "AC6": "tests/msmp_ac06_tool_logs_hold_counts_never_the_prompt.rs",
+      "AC7": "tests/msmp_ac07_bridge_modules_list_sampling_everywhere.rs"
     }
   }
 }

@@ -313,6 +313,10 @@ pub struct Plan {
     /// calls a tenant may make per UTC day (`plan_limit` naming
     /// `drafts_per_day`). "free 5, pro 100".
     pub drafts_per_day: i64,
+    /// PRD-mcphost-sampling-from-tools R4: tokens `mcphost.sampling.ask` may
+    /// spend on the client's model per UTC day (`sampling_quota_exceeded`
+    /// naming this limit). "free 20 000, pro 500 000".
+    pub sampling_tokens_per_day: i64,
     /// PRD-mcphost-chain-fanout-and-join R3: the most items one `for_each`
     /// chain step may fan out over; more is refused `compose_fanout_exceeded`
     /// before any item runs. "free 20, pro 50".
@@ -655,6 +659,7 @@ impl PlanCatalog {
                     notify_channels_max: 2,
                     notifies_per_day: 20,
                     drafts_per_day: 5,
+                    sampling_tokens_per_day: 20_000,
                     chain_fanout_max: 20,
                     // PRD-mcphost-result-handles Open Questions: "free 64
                     // MiB" of live query-result handles.
@@ -777,6 +782,7 @@ impl PlanCatalog {
                     notify_channels_max: 10,
                     notifies_per_day: 1000,
                     drafts_per_day: 100,
+                    sampling_tokens_per_day: 500_000,
                     chain_fanout_max: 50,
                     // PRD-mcphost-result-handles: no published pro number
                     // -- sized against the same ~8x free/pro ratio
@@ -940,6 +946,7 @@ impl PlanCatalog {
             out.push_str(&format!("notify_channels_max = {}\n", p.notify_channels_max));
             out.push_str(&format!("notifies_per_day = {}\n", p.notifies_per_day));
             out.push_str(&format!("drafts_per_day = {}\n", p.drafts_per_day));
+            out.push_str(&format!("sampling_tokens_per_day = {}\n", p.sampling_tokens_per_day));
             out.push_str(&format!("chain_fanout_max = {}\n", p.chain_fanout_max));
             out.push_str(&format!(
                 "table_handle_bytes_max = {}\n",
@@ -1070,6 +1077,7 @@ impl PlanCatalog {
                 "notify_channels_max" => builder.notify_channels_max = Some(int_value()),
                 "notifies_per_day" => builder.notifies_per_day = Some(int_value()),
                 "drafts_per_day" => builder.drafts_per_day = Some(int_value()),
+                "sampling_tokens_per_day" => builder.sampling_tokens_per_day = Some(int_value()),
                 "chain_fanout_max" => builder.chain_fanout_max = Some(int_value()),
                 "table_handle_bytes_max" => builder.table_handle_bytes_max = Some(int_value()),
                 "notes_max" => builder.notes_max = Some(int_value()),
@@ -1178,6 +1186,7 @@ struct PlanBuilder {
     notify_channels_max: Option<i64>,
     notifies_per_day: Option<i64>,
     drafts_per_day: Option<i64>,
+    sampling_tokens_per_day: Option<i64>,
     chain_fanout_max: Option<i64>,
     table_handle_bytes_max: Option<i64>,
     notes_max: Option<i64>,
@@ -1271,6 +1280,7 @@ impl PlanBuilder {
             notify_channels_max: quota!(notify_channels_max),
             notifies_per_day: quota!(notifies_per_day),
             drafts_per_day: quota!(drafts_per_day),
+            sampling_tokens_per_day: quota!(sampling_tokens_per_day),
             chain_fanout_max: quota!(chain_fanout_max),
             table_handle_bytes_max: quota!(table_handle_bytes_max),
             notes_max: quota!(notes_max),
