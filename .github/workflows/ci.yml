@@ -85,24 +85,74 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Normalized-tree-hash cache (rb seat, 10-16): a version-only commit on top
+      # of a code tree that already passed this job costs seconds. NTREE is the
+      # tree hash of HEAD with the release-bumped version files replaced by their
+      # content on the base branch (scripts/ci/normalized-tree-hash.sh), so it
+      # changes whenever any CODE file changes (including a rebase onto moved
+      # main) and only a byte-identical code tree finds a marker. The marker is
+      # written below ONLY after every heavy step succeeded; a red or cancelled
+      # run never writes it. Every step after the lookup is skipped at STEP level:
+      # the job itself always runs and ends success (a skipped required check
+      # would block the merge). A cache miss or an unavailable cache service
+      # leaves cache-hit != 'true', which runs the full suite.
+      - name: normalized-tree hash self-test
+        run: ./scripts/ci/test-normalized-tree-hash.sh
+
+      - name: compute normalized code-tree hash
+        id: ntree
+        env:
+          PR_BASE: ${{ github.base_ref }}
+          MQ_BASE: ${{ github.event.merge_group.base_ref }}
+        run: |
+          base=${PR_BASE:-}
+          [ -n "$base" ] || base=${MQ_BASE#refs/heads/}
+          [ -n "$base" ] || base=main
+          git fetch --no-tags --quiet origin "+refs/heads/$base:refs/remotes/origin/$base" || true
+          if ntree=$(./scripts/ci/normalized-tree-hash.sh "origin/$base"); then
+            echo "normalized tree vs origin/$base: $ntree (head tree: $(git rev-parse 'HEAD^{tree}'))"
+          else
+            echo "::warning::normalized-tree hash failed; running the full suite"
+            ntree="sha-$GITHUB_SHA"
+          fi
+          echo "ntree=$ntree" >> "$GITHUB_OUTPUT"
+
+      - name: look up a passed-suite marker for this code tree
+        id: nc
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/core-suites-pass.marker
+          key: core-suites-pass-v1-${{ steps.ntree.outputs.ntree }}
+          lookup-only: true
+
+      - name: core suites already passed on this code tree
+        if: steps.nc.outputs.cache-hit == 'true'
+        run: |
+          echo "cache hit: code tree ${{ steps.ntree.outputs.ntree }} already passed; heavy steps skipped" | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: install rust toolchain (pinned by rust-toolchain.toml)
+        if: steps.nc.outputs.cache-hit != 'true'
         uses: actions-rust-lang/setup-rust-toolchain@9d7e65c320fdb52dcd45ffaa68deb6c02c8754d9 # v1.10.1
 
       - name: install cargo-deny
+        if: steps.nc.outputs.cache-hit != 'true'
         uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b # v2.87.4
         with:
           tool: cargo-deny@0.20.2
 
       - name: cargo check
+        if: steps.nc.outputs.cache-hit != 'true'
         run: cargo check --locked --workspace
 
       - name: cargo clippy
+        if: steps.nc.outputs.cache-hit != 'true'
         run: cargo clippy --locked --workspace -- -D warnings
 
       # Kept identical to the sandbox job's environment except for the userns
       # grant: the only intended difference between the two jobs is the
       # capability, not which binaries exist.
       - name: install bubblewrap and uv
+        if: steps.nc.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y bubblewrap
@@ -110,6 +160,7 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: verify test partition is total and disjoint
+        if: steps.nc.outputs.cache-hit != 'true'
         run: ./scripts/ci-test-partition.sh check
 
       # PRD-mcphost-metered-overage AC9. `metering_ac09_deploy_units_verify`
@@ -122,6 +173,7 @@ jobs:
       # binary at the exact path the unit expects, matching what a real
       # mcphost-1 install does before enabling the timer.
       - name: build mcphost binary for deploy-unit verification
+        if: steps.nc.outputs.cache-hit != 'true'
         run: |
           cargo build --locked --bin mcphost
           install -Dm755 target/debug/mcphost "$HOME/.local/bin/mcphost"
@@ -130,9 +182,11 @@ jobs:
       # drifted tree-derived set (CHANGELOG, migrations, tools/list shape, weights)
       # fails in minutes with a short log. The list is derived from Cargo.toml.
       - name: contract suites
+        if: steps.nc.outputs.cache-hit != 'true'
         run: ./scripts/pin-tests.sh
 
       - name: cargo test (core suites)
+        if: steps.nc.outputs.cache-hit != 'true'
         # CI runners are shared 2-4 vCPU hosts: timing budgets are the gate's
         # truth (RedBaron, quiet box, var unset), not CI's. Same switch the gate
         # flips under load; perf_budget!/perf_skipped() print the skip.
@@ -149,6 +203,7 @@ jobs:
       # `--doc` cannot be combined with any other target selector, so doctests
       # are their own invocation rather than part of either partition.
       - name: cargo test --doc
+        if: steps.nc.outputs.cache-hit != 'true'
         run: cargo test --locked --doc
 
       # PRD-mcphost-ci-sandbox-coverage P0#3, core half. This job deliberately
@@ -156,6 +211,7 @@ jobs:
       # here means `ci-test-partition.sh` filed a userns-dependent target into
       # the core partition -- where it would have passed vacuously forever.
       - name: assert no core suite skipped for capability reasons
+        if: steps.nc.outputs.cache-hit != 'true'
         run: |
           skipped=$(grep -c "skipped: no user namespaces" /tmp/cargo-test.log || true)
           executed=$(grep -c '^test .* \.\.\. ok$' /tmp/cargo-test.log || true)
@@ -170,15 +226,18 @@ jobs:
           fi
 
       - name: cargo deny check
+        if: steps.nc.outputs.cache-hit != 'true'
         run: cargo deny --locked check
 
       - name: bad-rust audit
+        if: steps.nc.outputs.cache-hit != 'true'
         run: ./scripts/audit.sh
 
       # Informational: live branch protection vs .github/required-checks.toml.
       # The default GITHUB_TOKEN usually cannot read protection (needs admin);
       # a permission error prints a skip line and never fails the job.
       - name: required checks match branch protection
+        if: steps.nc.outputs.cache-hit != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -189,6 +248,18 @@ jobs:
             2) echo "required-checks: skipped (no permission)" ;;
             *) echo "::warning::branch protection differs from .github/required-checks.toml (see above); an admin runs scripts/required-checks.sh --apply" ;;
           esac
+
+      # Written last, and only when every step above passed on a cache miss.
+      - name: record passed-suite marker
+        if: success() && steps.nc.outputs.cache-hit != 'true'
+        run: echo "${{ steps.ntree.outputs.ntree }}" > "${{ runner.temp }}/core-suites-pass.marker"
+
+      - name: save passed-suite marker
+        if: success() && steps.nc.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/core-suites-pass.marker
+          key: core-suites-pass-v1-${{ steps.ntree.outputs.ntree }}
 
   sandbox:
     name: sandbox suites (user namespaces, shard ${{ matrix.shard }}/${{ needs.plan.outputs.shards }})
