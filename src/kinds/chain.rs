@@ -144,7 +144,7 @@ pub async fn resolve_steps(db: &crate::db::Db, tenant_id: i64, spec: &Value) -> 
         }
         if step.tool.starts_with("host.") || step.tool.starts_with("billing.") {
             return Err(AppError::Structured {
-                code: "step_tool_not_allowed",
+                code: STEP_TOOL_NOT_ALLOWED,
                 message: format!(
                     "step {step_no} ('{}'): not an allowlisted host step; allowed: {}",
                     step.tool,
@@ -159,7 +159,7 @@ pub async fn resolve_steps(db: &crate::db::Db, tenant_id: i64, spec: &Value) -> 
         }
         let suggestions = nearest_sibling_names(&step.tool, tenant_names.as_deref().unwrap_or(&[]));
         return Err(AppError::Structured {
-            code: "step_tool_not_found",
+            code: STEP_TOOL_NOT_FOUND,
             message: format!("step {step_no} ('{}'): no such tool", step.tool),
             data: json!({"step": step_no, "name": step.tool, "suggestions": suggestions}),
         });
@@ -1339,7 +1339,7 @@ fn resolve_fixture_steps(
         let step_no = if let Ok(n) = key.parse::<usize>() {
             if n == 0 || n > steps.len() {
                 return Err(KindError::structured_with(
-                    "fixture_step_unknown",
+                    FIXTURE_STEP_UNKNOWN,
                     format!("fixture key '{key}': the chain has {} steps", steps.len()),
                     json!({"key": key, "steps": steps.len()}),
                 ));
@@ -1355,7 +1355,7 @@ fn resolve_fixture_steps(
             match matches.as_slice() {
                 [] => {
                     return Err(KindError::structured_with(
-                        "fixture_step_unknown",
+                        FIXTURE_STEP_UNKNOWN,
                         format!("fixture key '{key}': no step uses a tool with that name"),
                         json!({"key": key, "steps": steps.len()}),
                     ));
@@ -1363,7 +1363,7 @@ fn resolve_fixture_steps(
                 [n] => *n,
                 _ => {
                     return Err(KindError::structured_with(
-                        "fixture_step_ambiguous",
+                        FIXTURE_STEP_AMBIGUOUS,
                         format!("fixture key '{key}': steps {matches:?} all use that tool; use the step number"),
                         json!({"key": key, "steps": matches}),
                     ));
@@ -1401,7 +1401,7 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
             let given: Vec<String> = fixture.as_object().map(|m| m.keys().cloned().collect()).unwrap_or_default();
             if !expected.iter().any(|k| given.contains(k)) {
                 return Err(KindError::structured_with(
-                    "fixture_shape_mismatch",
+                    FIXTURE_SHAPE_MISMATCH,
                     format!(
                         "fixture for step {step_no} ('{tool}') carries none of the declared outputs {expected:?} (given keys {given:?})"
                     ),
@@ -2117,6 +2117,37 @@ impl Kind for ChainKind {
         }
     }
 }
+
+crate::err_code! {
+    pub FIXTURE_SHAPE_MISMATCH,
+    code: "fixture_shape_mismatch", family: Spec, class: AgentFault, retryable: false,
+    remedy: "Give the fixture one of the declared outputs named in data.expected.",
+}
+
+crate::err_code! {
+    pub FIXTURE_STEP_AMBIGUOUS,
+    code: "fixture_step_ambiguous", family: Spec, class: AgentFault, retryable: false,
+    remedy: "Key the fixture by step number; several steps use that tool.",
+}
+
+crate::err_code! {
+    pub FIXTURE_STEP_UNKNOWN,
+    code: "fixture_step_unknown", family: Spec, class: AgentFault, retryable: false,
+    remedy: "Key the fixture by a step that exists; data.steps is the step count.",
+}
+
+crate::err_code! {
+    pub STEP_TOOL_NOT_ALLOWED,
+    code: "step_tool_not_allowed", family: Spec, class: AgentFault, retryable: false,
+    remedy: "Use a host step from the allowlist named in the message.",
+}
+
+crate::err_code! {
+    pub STEP_TOOL_NOT_FOUND,
+    code: "step_tool_not_found", family: Spec, class: AgentFault, retryable: false,
+    remedy: "Use a tool that exists; data.suggestions lists near matches.",
+}
+
 
 #[cfg(test)]
 mod tests {

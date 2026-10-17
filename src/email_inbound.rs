@@ -229,8 +229,8 @@ async fn decide_part(
         Ok(v) => v,
         Err(e) => {
             let (reason, quota) = match &e {
-                AppError::Structured { code: "blob_too_large", .. } => (RejectedReason::TooLarge, false),
-                AppError::Structured { code: "quota_blob_bytes" | "quota_blobs", .. } => {
+                AppError::Structured { code: BLOB_TOO_LARGE, .. } => (RejectedReason::TooLarge, false),
+                AppError::Structured { code: QUOTA_BLOB_BYTES | "quota_blobs", .. } => {
                     (RejectedReason::QuotaExceeded, true)
                 }
                 _ => (RejectedReason::StoreUnavailable, false),
@@ -420,3 +420,16 @@ async fn inbound(state: &AppState, namespace: String, peer: SocketAddr, headers:
         }
     }
 }
+
+crate::err_code! {
+    pub BLOB_TOO_LARGE,
+    code: "blob_too_large", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "The blob is larger than blob_max_bytes (data.limit); upload a smaller file or move to a plan with a larger blob_max_bytes.",
+}
+
+crate::err_code! {
+    pub QUOTA_BLOB_BYTES,
+    code: "quota_blob_bytes", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Delete blobs or move to a plan with a higher blob_bytes_max; data.limit is the plan's maximum.",
+}
+

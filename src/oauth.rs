@@ -137,7 +137,7 @@ pub(crate) fn require_https_issuer(issuer: &str) -> Result<(), AppError> {
     }
     let shown: String = issuer.chars().take(64).collect();
     Err(AppError::Structured {
-        code: "issuer_url_invalid",
+        code: ISSUER_URL_INVALID,
         message: format!("issuer must be an https:// URL (got \"{shown}\")"),
         data: json!({"field": "issuer"}),
     })
@@ -1240,3 +1240,10 @@ pub async fn protected_resource_metadata_for_tenant(state: &AppState, tenant: &T
         "resource_documentation": format!("{}/docs", state.public_url),
     }))
 }
+
+crate::err_code! {
+    pub ISSUER_URL_INVALID,
+    code: "issuer_url_invalid", family: Oauth, class: AgentFault, retryable: false,
+    remedy: "Use an https:// issuer URL.",
+}
+

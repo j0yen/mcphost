@@ -92,7 +92,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 
 fn webhook_not_found() -> AppError {
     AppError::Structured {
-        code: "webhook_not_found",
+        code: WEBHOOK_NOT_FOUND,
         message: "no such webhook".to_string(),
         data: json!({}),
     }
@@ -100,7 +100,7 @@ fn webhook_not_found() -> AppError {
 
 fn webhook_signature_invalid() -> AppError {
     AppError::Structured {
-        code: "webhook_signature_invalid",
+        code: WEBHOOK_SIGNATURE_INVALID,
         message: "signature did not match".to_string(),
         data: json!({}),
     }
@@ -108,7 +108,7 @@ fn webhook_signature_invalid() -> AppError {
 
 fn webhook_body_too_large(limit_bytes: i64, actual_bytes: usize) -> AppError {
     AppError::Structured {
-        code: "webhook_body_too_large",
+        code: WEBHOOK_BODY_TOO_LARGE,
         message: format!("body is {actual_bytes} bytes, over the plan's {limit_bytes} byte limit"),
         data: json!({"limit_bytes": limit_bytes, "actual_bytes": actual_bytes}),
     }
@@ -116,7 +116,7 @@ fn webhook_body_too_large(limit_bytes: i64, actual_bytes: usize) -> AppError {
 
 fn webhook_over_quota() -> AppError {
     AppError::Structured {
-        code: "webhook_over_quota",
+        code: WEBHOOK_OVER_QUOTA,
         message: "tenant is over its calls_per_day quota".to_string(),
         data: json!({}),
     }
@@ -255,7 +255,7 @@ pub async fn set_webhook_trigger(
     let existing_count = state.db.count_schedule_triggers_for_tenant(tenant.id).await?;
     if existing_count >= plan.schedules_max {
         return Err(AppError::Structured {
-            code: "trigger_quota_exceeded",
+            code: crate::triggers::TRIGGER_QUOTA_EXCEEDED,
             message: format!(
                 "tenant already holds {existing_count} schedules/webhooks, the plan maximum of {}",
                 plan.schedules_max
@@ -707,7 +707,7 @@ pub async fn replay_webhook_row(state: &AppState, tenant: &Tenant, row: &Trigger
         .find(|(id, _)| *id == row_id)
         .ok_or_else(|| {
             AppError::Structured {
-                code: "webhook_row_not_found",
+                code: WEBHOOK_ROW_NOT_FOUND,
                 message: format!("no inbox row '{row_id}' for this webhook trigger"),
                 data: json!({"row_id": row_id}),
             }
@@ -748,3 +748,34 @@ pub async fn replay_webhook_row(state: &AppState, tenant: &Tenant, row: &Trigger
 pub(crate) fn arg_i64(args: &Value, name: &str) -> Option<i64> {
     args.get(name).and_then(Value::as_i64)
 }
+
+crate::err_code! {
+    pub WEBHOOK_BODY_TOO_LARGE,
+    code: "webhook_body_too_large", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Send a body under data.limit_bytes.",
+}
+
+crate::err_code! {
+    pub WEBHOOK_NOT_FOUND,
+    code: "webhook_not_found", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Use a webhook that exists.",
+}
+
+crate::err_code! {
+    pub WEBHOOK_OVER_QUOTA,
+    code: "webhook_over_quota", family: Plan, class: PlanLimit, retryable: true,
+    remedy: "Retry after the daily reset; the tenant is over its calls_per_day quota.",
+}
+
+crate::err_code! {
+    pub WEBHOOK_ROW_NOT_FOUND,
+    code: "webhook_row_not_found", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Use an inbox row id that exists for this webhook.",
+}
+
+crate::err_code! {
+    pub WEBHOOK_SIGNATURE_INVALID,
+    code: "webhook_signature_invalid", family: Auth, class: AgentFault, retryable: false,
+    remedy: "Re-send with a signature that matches the webhook secret.",
+}
+

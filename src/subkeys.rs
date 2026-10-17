@@ -273,7 +273,7 @@ impl Db {
                 .exists(params![tenant_id, label])?;
             if taken {
                 return Err(AppError::Structured {
-                    code: "label_taken",
+                    code: LABEL_TAKEN,
                     message: format!("this tenant already has a sub-key labelled '{label}'"),
                     data: json!({"label": label}),
                 });
@@ -373,7 +373,7 @@ impl Db {
                 )?;
                 if live > 0 {
                     return Err(AppError::Structured {
-                        code: "has_children",
+                        code: HAS_CHILDREN,
                         message: format!(
                             "sub-key '{label}' has {live} live descendant(s); pass cascade: true to revoke them too"
                         ),
@@ -484,7 +484,7 @@ pub async fn mint(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         };
         if !found {
             return Err(AppError::Structured {
-                code: "not_found",
+                code: NOT_FOUND,
                 message: format!("tool '{name}' is not one of your tools or shared with you; no sub-key was minted"),
                 data: json!({"tool": name}),
             });
@@ -497,7 +497,7 @@ pub async fn mint(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     let active = state.db.count_active_sub_keys(tenant.id, now_unix()).await?;
     if active >= plan.sub_keys_max {
         return Err(AppError::Structured {
-            code: "plan_required",
+            code: PLAN_REQUIRED,
             message: format!(
                 "sub_keys_max: the {} plan allows {} active sub-keys and this tenant holds {active} -- \
                  revoke one with host.key.revoke, or upgrade",
@@ -576,7 +576,7 @@ impl SubKey {
     /// The `permission_denied` refusal for a call outside the allowlist.
     pub fn denied(&self, name: &str) -> AppError {
         AppError::Structured {
-            code: "permission_denied",
+            code: PERMISSION_DENIED,
             message: format!(
                 "this sub-key ('{}') may call only: {}",
                 self.label,
@@ -611,7 +611,7 @@ impl SubKey {
             return Ok(());
         }
         Err(AppError::Structured {
-            code: "key_bound_elsewhere",
+            code: KEY_BOUND_ELSEWHERE,
             message: format!("sub-key '{}' is bound to {kind} {id} and cannot be used here", self.label),
             data: json!({
                 "bound": {"kind": kind, "ref": id},
@@ -626,7 +626,7 @@ impl SubKey {
     pub fn dead_reason(&self, now: i64) -> Option<AppError> {
         if let Some(at) = self.revoked_at {
             return Some(AppError::Structured {
-                code: crate::scopes::KEY_REVOKED,
+                code: KEY_REVOKED,
                 message: format!("sub-key '{}' was revoked", self.label),
                 data: json!({
                     "key_label": self.label,
@@ -638,7 +638,7 @@ impl SubKey {
         }
         if now >= self.expires_at {
             return Some(AppError::Structured {
-                code: "key_expired",
+                code: KEY_EXPIRED,
                 message: format!("sub-key '{}' expired", self.label),
                 data: json!({"key_label": self.label, "expires_at": self.expires_at}),
             });
@@ -734,7 +734,7 @@ pub async fn revoke(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
             }))
         }
         None => Err(AppError::Structured {
-            code: "not_found",
+            code: NOT_FOUND,
             message: format!("no sub-key labelled '{label}'"),
             data: json!({"label": label}),
         }),
@@ -763,7 +763,7 @@ impl SubKey {
     pub fn scope_denied(&self, name: &str) -> AppError {
         let need = crate::scopes::required_for(name).map(|s| s.as_str());
         AppError::Structured {
-            code: "permission_denied",
+            code: PERMISSION_DENIED,
             message: format!("this key ('{}') lacks the scope {} for {name}", self.label, need.unwrap_or("-")),
             data: json!({
                 "reason": "missing_scope",
@@ -790,7 +790,7 @@ impl SubKey {
 /// R5: a plan ceiling hit, naming the `plans.toml` field.
 fn plan_required(field: &str, limit: i64, requested: i64, plan: &str) -> AppError {
     AppError::Structured {
-        code: "plan_required",
+        code: PLAN_REQUIRED,
         message: format!("{field} is {limit} on the {plan} plan (requested {requested}); upgrade the plan or revoke keys"),
         data: json!({"field": field, "limit": limit, "requested": requested, "plan": plan}),
     }
@@ -839,7 +839,7 @@ async fn parse_bind(
                 .ok_or_else(|| AppError::InvalidParams("bind.session_id: a non-empty string".into()))?;
             if session_id != Some(want) {
                 return Err(AppError::Structured {
-                    code: "permission_denied",
+                    code: PERMISSION_DENIED,
                     message: "bind.session_id must be this connection's own session id".into(),
                     data: json!({"reason": "foreign_session"}),
                 });
@@ -852,7 +852,7 @@ async fn parse_bind(
                 .filter(|s| !s.is_empty())
                 .ok_or_else(|| AppError::InvalidParams("bind.run_id: a non-empty string".into()))?;
             let not_found = || AppError::Structured {
-                code: "not_found",
+                code: NOT_FOUND,
                 message: format!("bind.run_id: no open run '{id}' of yours; no key was minted"),
                 data: json!({"run_id": id}),
             };
@@ -882,7 +882,7 @@ pub async fn delegate(
     let parent = caller.as_ref().map(SubKey::authority).unwrap_or_else(crate::delegation::Authority::primary);
     if !parent.can_delegate {
         return Err(AppError::Structured {
-            code: "permission_denied",
+            code: PERMISSION_DENIED,
             message: "this key may not delegate: it was minted with can_delegate=false; ask the key that minted it".into(),
             data: json!({"reason": "can_delegate=false", "key_label": caller.as_ref().map(|c| c.label.clone())}),
         });
@@ -1029,3 +1029,52 @@ pub fn seen_run_id(
         .or_else(|| meta.and_then(|m| m.get("run_id")).and_then(Value::as_str))
         .map(str::to_string)
 }
+
+crate::err_code! {
+    pub HAS_CHILDREN,
+    code: "has_children", family: Auth, class: AgentFault, retryable: false,
+    remedy: "Pass cascade: true to revoke the sub-key's live descendants too (data.count), or revoke them first.",
+}
+
+crate::err_code! {
+    pub KEY_BOUND_ELSEWHERE,
+    code: "key_bound_elsewhere", family: Auth, class: AgentFault, retryable: false,
+    remedy: "Use this sub-key only from the session or run it is bound to (data.bound), or delegate a new sub-key with host.key.delegate.",
+}
+
+crate::err_code! {
+    pub KEY_EXPIRED,
+    code: "key_expired", family: Auth, class: AgentFault, retryable: false,
+    remedy: "Create a new sub-key with host.key.create.",
+}
+
+crate::err_code! {
+    pub KEY_REVOKED,
+    code: "key_revoked", family: Auth, class: AgentFault, retryable: false,
+    remedy: "Create a new sub-key; this one was revoked.",
+}
+
+crate::err_code! {
+    pub LABEL_TAKEN,
+    code: "label_taken", family: Auth, class: AgentFault, retryable: false,
+    remedy: "Choose a different sub-key label.",
+}
+
+crate::err_code! {
+    pub NOT_FOUND,
+    code: "not_found", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Use a run_id or url from a completed host.export.",
+}
+
+crate::err_code! {
+    pub PERMISSION_DENIED,
+    code: "permission_denied", family: Auth, class: HostRefusal, retryable: false,
+    remedy: "Use a key allowed to call this tool; data.allowed_tools lists what this sub-key may call.",
+}
+
+crate::err_code! {
+    pub PLAN_REQUIRED,
+    code: "plan_required", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Move to a plan that includes this feature; data names it.",
+}
+

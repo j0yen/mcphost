@@ -37,7 +37,7 @@ pub fn timeout_s_arg(args: &Value) -> Result<i64, crate::errors::AppError> {
             let mut data = args_err.data();
             data["max"] = json!(WAIT_MAX_S);
             crate::errors::AppError::Structured {
-                code: "args_invalid",
+                code: crate::errors::ARGS_INVALID,
                 message: args_err.message(),
                 data,
             }

@@ -69,7 +69,7 @@ fn plan_of<'a>(state: &'a AppState, plan_name: &str) -> Result<&'a Plan, AppErro
 
 fn doc_not_found(what: &str) -> AppError {
     AppError::Structured {
-        code: "docs_not_found",
+        code: DOCS_NOT_FOUND,
         message: format!("no document found for {what}"),
         data: json!({}),
     }
@@ -77,7 +77,7 @@ fn doc_not_found(what: &str) -> AppError {
 
 fn doc_too_large(bytes: i64, limit: i64) -> AppError {
     AppError::Structured {
-        code: "docs_too_large",
+        code: DOCS_TOO_LARGE,
         message: format!("document is {bytes} bytes, over the {limit} byte limit"),
         data: json!({"bytes": bytes, "limit_bytes": limit}),
     }
@@ -85,7 +85,7 @@ fn doc_too_large(bytes: i64, limit: i64) -> AppError {
 
 fn mime_unsupported(mime: &str) -> AppError {
     AppError::Structured {
-        code: "docs_mime_unsupported",
+        code: DOCS_MIME_UNSUPPORTED,
         message: format!(
             "mime '{mime}' is not supported; allowed mimes are {ALLOWED_MIMES:?}"
         ),
@@ -99,7 +99,7 @@ fn mime_unsupported(mime: &str) -> AppError {
 /// the PRD's own AC6 wording pins the exact code names.
 fn quota_docs(limit: i64, used: i64) -> AppError {
     AppError::Structured {
-        code: "quota_docs",
+        code: QUOTA_DOCS,
         message: format!("docs_max quota exceeded (limit {limit}, at {used})"),
         data: json!({"limit": limit, "used": used}),
     }
@@ -107,7 +107,7 @@ fn quota_docs(limit: i64, used: i64) -> AppError {
 
 fn quota_docs_bytes(limit: i64, used: i64) -> AppError {
     AppError::Structured {
-        code: "quota_docs_bytes",
+        code: QUOTA_DOCS_BYTES,
         message: format!("docs_bytes_max quota exceeded (limit {limit}, at {used})"),
         data: json!({"limit": limit, "used": used}),
     }
@@ -1106,6 +1106,37 @@ pub async fn doc_purge(state: &AppState, tenant: &Tenant, args: &Value) -> Resul
         "kept_from_version": keep_from_version,
     }))
 }
+
+crate::err_code! {
+    pub DOCS_MIME_UNSUPPORTED,
+    code: "docs_mime_unsupported", family: Args, class: AgentFault, retryable: false,
+    remedy: "Use one of data.allowed mimes; binary files go to host.blob.put.",
+}
+
+crate::err_code! {
+    pub DOCS_NOT_FOUND,
+    code: "docs_not_found", family: Storage, class: AgentFault, retryable: false,
+    remedy: "List documents with host.docs.list and use a name or id that exists.",
+}
+
+crate::err_code! {
+    pub DOCS_TOO_LARGE,
+    code: "docs_too_large", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Shorten the document to data.limit_bytes or split it.",
+}
+
+crate::err_code! {
+    pub QUOTA_DOCS,
+    code: "quota_docs", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Delete a document or move to a plan with a higher docs_max.",
+}
+
+crate::err_code! {
+    pub QUOTA_DOCS_BYTES,
+    code: "quota_docs_bytes", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Delete documents or move to a plan with a higher docs_bytes_max.",
+}
+
 
 #[cfg(test)]
 mod tests {

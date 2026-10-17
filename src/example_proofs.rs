@@ -47,7 +47,7 @@ fn find_example(name: &str) -> Option<&'static Example> {
 
 fn not_found(name: &str) -> AppError {
     AppError::Structured {
-        code: "example_not_found",
+        code: EXAMPLE_NOT_FOUND,
         message: format!("no example named `{name}`; call host.example.list for the names"),
         data: json!({"name": name}),
     }
@@ -223,7 +223,7 @@ pub async fn fork(state: &AppState, args: &Value) -> Result<Value, AppError> {
     };
     if let Some((reason, red_since)) = hidden_map(state).await?.remove(name) {
         return Err(AppError::Structured {
-            code: "example_hidden",
+            code: EXAMPLE_HIDDEN,
             message: format!("example `{name}` is hidden: {reason}; pick another from host.example.list"),
             data: json!({"name": name, "reason": reason, "red_since": red_since}),
         });
@@ -403,3 +403,16 @@ pub async fn run(opts: &RunOpts, out: &mut dyn Write) -> Result<(Vec<ProofRun>, 
     }
     Ok((runs, all_ok))
 }
+
+crate::err_code! {
+    pub EXAMPLE_HIDDEN,
+    code: "example_hidden", family: Share, class: HostRefusal, retryable: true,
+    remedy: "The example failed its nightly proof and is hidden (data.reason, data.red_since); pick another from host.example.list or retry after it is green again.",
+}
+
+crate::err_code! {
+    pub EXAMPLE_NOT_FOUND,
+    code: "example_not_found", family: Share, class: AgentFault, retryable: false,
+    remedy: "Call host.example.list for the example names and pass one of them as name.",
+}
+

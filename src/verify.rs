@@ -231,9 +231,33 @@ fn current_resolver() -> Result<Arc<dyn TxtResolver>, AppError> {
 
 // ---- shared tool plumbing ---------------------------------------------------------
 
+crate::err_code! {
+    pub ALREADY_VERIFIED,
+    code: "already_verified", family: Auth, class: AgentFault, retryable: false,
+    remedy: "Nothing to do: data.method already verified this tenant and no claim was written.",
+}
+
+crate::err_code! {
+    pub METHOD_UNAVAILABLE,
+    code: "method_unavailable", family: Auth, class: AgentFault, retryable: false,
+    remedy: "This host cannot run data.method; pick another from /claim/methods.json (available: true).",
+}
+
+crate::err_code! {
+    pub DNS_CLAIM_NOT_STARTED,
+    code: "dns_claim_not_started", family: Auth, class: AgentFault, retryable: false,
+    remedy: "Call host.claim.dns with the domain first (data.next), publish the TXT record it returns, then call host.claim.dns.check.",
+}
+
+crate::err_code! {
+    pub DNS_RECORD_NOT_FOUND,
+    code: "dns_record_not_found", family: Auth, class: AgentFault, retryable: true,
+    remedy: "Publish the TXT record data.record = data.expected, wait for DNS to propagate, then call host.claim.dns.check again; data.seen is what the resolver returned.",
+}
+
 fn already_verified(method: &str) -> AppError {
     AppError::Structured {
-        code: "already_verified",
+        code: ALREADY_VERIFIED,
         message: format!("this tenant is already verified (method: {method}); nothing was changed"),
         data: json!({"method": method}),
     }
@@ -241,7 +265,7 @@ fn already_verified(method: &str) -> AppError {
 
 fn method_unavailable(method: &str, why: &str) -> AppError {
     AppError::Structured {
-        code: "method_unavailable",
+        code: METHOD_UNAVAILABLE,
         message: format!("verification by {method} is not available on this host: {why}"),
         data: json!({"method": method}),
     }
@@ -492,7 +516,7 @@ pub async fn claim_dns_check(state: &AppState, tenant: &Tenant, args: &Value) ->
     let domain = normalize_domain(str_arg(args, "domain")?)?;
     let Some(token) = state.db.find_dns_claim_token(tenant.id, domain.clone()).await? else {
         return Err(AppError::Structured {
-            code: "dns_claim_not_started",
+            code: DNS_CLAIM_NOT_STARTED,
             message: format!("no DNS claim for {domain}; call host.claim.dns first"),
             data: json!({"next": "host.claim.dns", "domain": domain}),
         });
@@ -505,7 +529,7 @@ pub async fn claim_dns_check(state: &AppState, tenant: &Tenant, args: &Value) ->
     };
     if !seen.iter().any(|v| v.trim() == expected) {
         return Err(AppError::Structured {
-            code: "dns_record_not_found",
+            code: DNS_RECORD_NOT_FOUND,
             message: format!("{record} has no TXT record equal to the expected value"),
             data: json!({"record": record, "expected": expected, "seen": seen}),
         });

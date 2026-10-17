@@ -875,7 +875,7 @@ pub fn check_unknown_spec_field(kind: &dyn Kind, spec: &Value, registry: &KindRe
                 obj.insert("did_you_mean".to_string(), json!(did_you_mean));
             }
         }
-        return Some(KindError::structured_with("unknown_spec_field", message, data));
+        return Some(KindError::structured_with(UNKNOWN_SPEC_FIELD, message, data));
     }
     check_ui_spec(obj.get("ui")?)
 }
@@ -893,7 +893,7 @@ fn check_ui_spec(ui: &Value) -> Option<KindError> {
         if !known.contains(&key.as_str()) {
             let message = format!("'{key}' is not a ui spec field; known: {}", known.join(", "));
             return Some(KindError::structured_with(
-                "unknown_spec_field",
+                UNKNOWN_SPEC_FIELD,
                 message,
                 json!({"field": format!("ui.{key}"), "kind": "ui", "known": known}),
             ));
@@ -935,7 +935,7 @@ fn invalid_spec_error(field: impl Into<String>, got: &str, expected: &str, examp
         serde_json::to_string(&example).unwrap_or_default()
     );
     KindError::structured_with(
-        "invalid_spec",
+        crate::errors::INVALID_SPEC,
         message,
         json!({"field": field, "got": got, "expected": expected, "example": example}),
     )
@@ -955,7 +955,7 @@ fn invalid_path_error(field: impl Into<String>, raw_path: &str, reason: &'static
         "invalid spec: {field}: path \"{raw_path}\" {reason}; supported: {expected}"
     );
     KindError::structured_with(
-        "invalid_spec",
+        crate::errors::INVALID_SPEC,
         message,
         json!({"field": field, "got": "string", "expected": expected, "example": example}),
     )
@@ -1279,7 +1279,7 @@ pub struct NoState;
 impl StateBackend for NoState {
     async fn call(&self, _op: &str, _args: Value) -> Result<Value, KindError> {
         Err(KindError::structured(
-            "state_unavailable",
+            STATE_UNAVAILABLE,
             "no tenant state backend is wired for this call context",
         ))
     }
@@ -1307,7 +1307,7 @@ pub struct NoTable;
 impl TableBackend for NoTable {
     async fn call(&self, _op: &str, _args: Value) -> Result<Value, KindError> {
         Err(KindError::structured(
-            "table_unavailable",
+            TABLE_UNAVAILABLE,
             "no tenant table backend is wired for this call context",
         ))
     }
@@ -1332,7 +1332,7 @@ pub struct NoDocs;
 impl DocsBackend for NoDocs {
     async fn call(&self, _op: &str, _args: Value) -> Result<Value, KindError> {
         Err(KindError::structured(
-            "docs_unavailable",
+            DOCS_UNAVAILABLE,
             "no tenant document backend is wired for this call context",
         ))
     }
@@ -1358,7 +1358,7 @@ pub struct NoLineage;
 impl LineageBackend for NoLineage {
     async fn call(&self, _op: &str, _args: Value) -> Result<Value, KindError> {
         Err(KindError::structured(
-            "lineage_unavailable",
+            LINEAGE_UNAVAILABLE,
             "no tenant lineage backend is wired for this call context",
         ))
     }
@@ -1383,7 +1383,7 @@ pub struct NoDrift;
 impl DriftBackend for NoDrift {
     async fn call(&self, _op: &str, _args: Value) -> Result<Value, KindError> {
         Err(KindError::structured(
-            "drift_unavailable",
+            DRIFT_UNAVAILABLE,
             "no tenant drift backend is wired for this call context",
         ))
     }
@@ -1409,7 +1409,7 @@ pub struct NoChannel;
 impl ChannelBackend for NoChannel {
     async fn call(&self, _op: &str, _args: Value) -> Result<Value, KindError> {
         Err(KindError::structured(
-            "channel_unavailable",
+            CHANNEL_UNAVAILABLE,
             "no tenant channel backend is wired for this call context",
         ))
     }
@@ -1432,7 +1432,7 @@ pub struct NoMsg;
 impl MsgBackend for NoMsg {
     async fn call(&self, _op: &str, _args: Value) -> Result<Value, KindError> {
         Err(KindError::structured(
-            "msg_unavailable",
+            MSG_UNAVAILABLE,
             "no tenant messaging backend is wired for this call context",
         ))
     }
@@ -1895,7 +1895,7 @@ async fn compose_dispatch(
     {
         let args_err = describe_args_error(&e);
         return Err(KindError::Structured {
-            code: "args_invalid",
+            code: crate::errors::ARGS_INVALID,
             message: args_err.message(),
             data: args_err.data(),
         });
@@ -2036,7 +2036,7 @@ async fn compose_dispatch(
             let detail = budget.exceeded_detail(dimension, now_ms);
             budget.persist(now_ms).await;
             return Err(KindError::structured_with(
-                "budget_exceeded",
+                BUDGET_EXCEEDED,
                 format!(
                     "this run's budget is exceeded on dimension '{}'",
                     dimension.as_str()
@@ -2773,6 +2773,61 @@ impl KindRegistry {
         self.kinds.values()
     }
 }
+
+crate::err_code! {
+    pub BUDGET_EXCEEDED,
+    code: "budget_exceeded", family: Call, class: PlanLimit, retryable: false,
+    remedy: "Raise the run budget on data.dimension within the plan ceiling, or reduce the work per call.",
+}
+
+crate::err_code! {
+    pub CHANNEL_UNAVAILABLE,
+    code: "channel_unavailable", family: Internal, class: HostRefusal, retryable: false,
+    remedy: "This call context has no channel backend; call the tool directly instead of from a sandbox.",
+}
+
+crate::err_code! {
+    pub DOCS_UNAVAILABLE,
+    code: "docs_unavailable", family: Internal, class: HostRefusal, retryable: false,
+    remedy: "This call context has no document backend; call the tool directly instead of from a sandbox.",
+}
+
+crate::err_code! {
+    pub DRIFT_UNAVAILABLE,
+    code: "drift_unavailable", family: Internal, class: HostRefusal, retryable: false,
+    remedy: "This call context has no drift backend; call the tool directly instead of from a sandbox.",
+}
+
+crate::err_code! {
+    pub LINEAGE_UNAVAILABLE,
+    code: "lineage_unavailable", family: Internal, class: HostRefusal, retryable: false,
+    remedy: "This call context has no lineage backend; call the tool directly instead of from a sandbox.",
+}
+
+crate::err_code! {
+    pub MSG_UNAVAILABLE,
+    code: "msg_unavailable", family: Internal, class: HostRefusal, retryable: false,
+    remedy: "This call context has no messaging backend; call the tool directly instead of from a sandbox.",
+}
+
+crate::err_code! {
+    pub STATE_UNAVAILABLE,
+    code: "state_unavailable", family: Internal, class: HostRefusal, retryable: false,
+    remedy: "This call context has no state backend; call the tool directly instead of from a sandbox.",
+}
+
+crate::err_code! {
+    pub TABLE_UNAVAILABLE,
+    code: "table_unavailable", family: Internal, class: HostRefusal, retryable: false,
+    remedy: "This call context has no table backend; call the tool directly instead of from a sandbox.",
+}
+
+crate::err_code! {
+    pub UNKNOWN_SPEC_FIELD,
+    code: "unknown_spec_field", family: Spec, class: AgentFault, retryable: false,
+    remedy: "Remove the spec field or use one the kind documents.",
+}
+
 
 #[cfg(test)]
 mod spec_output_paths_tests {

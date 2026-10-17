@@ -908,7 +908,7 @@ fn render_str(
 ) -> Result<String, KindError> {
     env.render_str(template, context).map_err(|e| {
         KindError::structured_with(
-            "template_error",
+            TEMPLATE_ERROR,
             format!("{field}: {e}"),
             json!({"field": field}),
         )
@@ -1351,7 +1351,7 @@ impl Kind for HttpKind {
                 obj.insert("schema_path".to_string(), json!(e.schema_path.to_string()));
             }
             return Err(KindError::structured_with(
-                "args_invalid",
+                crate::errors::ARGS_INVALID,
                 args_err.message(),
                 data,
             ));
@@ -1359,7 +1359,7 @@ impl Kind for HttpKind {
 
         if let Err(retry_after_s) = self.limiter.check(ctx.tenant_id) {
             return Err(KindError::structured_with(
-                "rate_limited",
+                crate::errors::RATE_LIMITED,
                 "outbound http-tool rate limit exceeded (600 calls/min)",
                 json!({"retry_after_s": retry_after_s}),
             ));
@@ -1391,7 +1391,7 @@ impl Kind for HttpKind {
         for (field, template) in template_fields(&parsed) {
             if let Some(bad) = find_undefined_ref(&template, &known) {
                 return Err(KindError::structured_with(
-                    "template_error",
+                    TEMPLATE_ERROR,
                     format!("{field}: undefined variable '{bad}'"),
                     json!({"field": field, "variable": bad}),
                 ));
@@ -1423,14 +1423,14 @@ impl Kind for HttpKind {
             let header_name =
                 reqwest::header::HeaderName::from_bytes(key.as_bytes()).map_err(|e| {
                     KindError::structured_with(
-                        "template_error",
+                        TEMPLATE_ERROR,
                         format!("{field}: not a valid header name: {e}"),
                         json!({"field": field}),
                     )
                 })?;
             let header_value = reqwest::header::HeaderValue::from_str(&value).map_err(|e| {
                 KindError::structured_with(
-                    "template_error",
+                    TEMPLATE_ERROR,
                     format!("{field}: rendered value is not a valid header value: {e}"),
                     json!({"field": field}),
                 )
@@ -1584,7 +1584,7 @@ impl Kind for HttpKind {
                 "{method_str} {host} response_too_large {duration_ms}ms"
             ));
             return Err(KindError::structured(
-                "response_too_large",
+                RESPONSE_TOO_LARGE,
                 format!(
                     "upstream response exceeded the {}-byte cap",
                     crate::state::MAX_TOOL_OUTPUT_BYTES
@@ -1718,6 +1718,19 @@ impl Kind for HttpKind {
         super::docs::parse_kind_doc(include_str!("../../docs/kinds/http.md"))
     }
 }
+
+crate::err_code! {
+    pub RESPONSE_TOO_LARGE,
+    code: "response_too_large", family: Upstream, class: UpstreamFault, retryable: false,
+    remedy: "Ask the upstream for a smaller response; the cap is in the message.",
+}
+
+crate::err_code! {
+    pub TEMPLATE_ERROR,
+    code: "template_error", family: Spec, class: AgentFault, retryable: false,
+    remedy: "Fix the template in the field named in data.field.",
+}
+
 
 #[cfg(test)]
 mod tests {
