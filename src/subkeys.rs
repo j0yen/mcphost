@@ -472,7 +472,7 @@ pub async fn mint(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         } else {
             match name.split_once('.') {
                 Some((ns, local)) if ns == tenant.namespace => own.contains(local),
-                Some((ns, local)) => crate::sharing::resolve_shared_tool(state, tenant, ns, local).await.is_ok(),
+                Some((ns, local)) => crate::sharing::resolve_shared_tool(state, tenant, ns, local, crate::sharing::ShareScope::Call).await.is_ok(),
                 None => false,
             }
         };

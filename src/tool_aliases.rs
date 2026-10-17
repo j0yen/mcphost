@@ -54,6 +54,7 @@ pub const TOOL_ALIASES: &[ToolAlias] = &[
     ToolAlias { alias: "host.tool_diff", canonical: "host.tool.diff" },
     ToolAlias { alias: "host.tool_share", canonical: "host.tool.share" },
     ToolAlias { alias: "host.tool_spec_shared", canonical: "host.tool.spec_shared" },
+    ToolAlias { alias: "host.tool_fork", canonical: "host.tool.fork" },
     ToolAlias { alias: "host.tool_unshare", canonical: "host.tool.unshare" },
     ToolAlias { alias: "host.secret_set", canonical: "host.secret.set" },
     ToolAlias { alias: "host.secret_list", canonical: "host.secret.list" },

@@ -299,6 +299,26 @@ fn calls_per_day<'a>(ctx: &'a Ctx<'a>) -> CheckFuture<'a> {
 fn caller_limit<'a>(ctx: &'a Ctx<'a>) -> CheckFuture<'a> {
     Box::pin(async move {
         let Some(caller) = ctx.caller else { return Ok(()) };
+        // PRD-mcphost-scoped-tool-share R4: the share's own per-caller hourly
+        // cap, a sliding hour over this caller's calls into the tool.
+        if let Some(rate) = ctx
+            .state
+            .db
+            .get_share_meta(ctx.owner.id, ctx.tool.to_string())
+            .await?
+            .and_then(|m| m.rate_per_hour)
+        {
+            let now = crate::state::now_unix();
+            let (used, oldest) = ctx
+                .state
+                .db
+                .caller_calls_window(ctx.owner.id, ctx.tool.to_string(), caller.id, now - 3600)
+                .await?;
+            if used >= rate {
+                let reset_at = crate::state::rfc3339_from_unix(oldest.unwrap_or(now) + 3600);
+                return Err(crate::sharing::quota_caller(&caller.namespace, ctx.tool, rate, used, reset_at));
+            }
+        }
         let Some(limit) = ctx
             .state
             .db

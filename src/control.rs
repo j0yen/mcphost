@@ -2377,6 +2377,7 @@ pub async fn tool_list(state: &AppState, tenant: &Tenant, args: &Value) -> Resul
         .db
         .current_tool_lock_advisory_counts_for_tenant(tenant.id)
         .await?;
+    let forked = state.db.forked_from_map(tenant.id).await?;
     let tools: Vec<Value> = rows
         .into_iter()
         .map(|row| {
@@ -2431,6 +2432,12 @@ pub async fn tool_list(state: &AppState, tenant: &Tenant, args: &Value) -> Resul
                 && let Value::Object(map) = &mut entry
             {
                 map.insert("stub".to_string(), json!(true));
+            }
+            // PRD-mcphost-scoped-tool-share R6: `forked_from` on a fork only.
+            if let Some(origin) = forked.get(&row.name)
+                && let Value::Object(map) = &mut entry
+            {
+                map.insert("forked_from".to_string(), json!(origin));
             }
             entry
         })

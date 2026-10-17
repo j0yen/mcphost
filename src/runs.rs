@@ -1112,7 +1112,7 @@ pub async fn enqueue_shared(
     // doc on this parameter.
     budget_arg: Option<&Value>,
 ) -> Result<Value, AppError> {
-    let (_owner, row) = crate::sharing::resolve_shared_tool(state, caller, owner_ns, local_name).await?;
+    let (_owner, row) = crate::sharing::resolve_shared_tool(state, caller, owner_ns, local_name, crate::sharing::ShareScope::Call).await?;
     let kind = state.kinds.get(&row.kind).ok_or_else(|| {
         AppError::Internal(format!(
             "published tool names unregistered kind '{}'",
@@ -1234,7 +1234,7 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
     // contains a `.` (`validate_tool_name` forbids it), so this is a no-op
     // for every run this executor ran before this PRD.
     let (tenant, local_name, row) = match run.tool_name.split_once('.') {
-        Some((ns, local)) => match crate::sharing::resolve_shared_tool(state, &run_tenant, ns, local).await {
+        Some((ns, local)) => match crate::sharing::resolve_shared_tool(state, &run_tenant, ns, local, crate::sharing::ShareScope::Call).await {
             Ok((owner, row)) => (owner, local.to_string(), row),
             Err(_) => {
                 return JobOutcome::Error {

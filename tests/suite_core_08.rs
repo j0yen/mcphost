@@ -1102,6 +1102,20 @@ mod sharedrunscope_ac06_raw_tools_call_shares_the_path;
 mod sharedrunscope_ac07_migration_backfills_legacy_rows;
 #[path = "sharedrunscope_ac08_proof_script_owner_ledger_check.rs"]
 mod sharedrunscope_ac08_proof_script_owner_ledger_check;
+#[path = "shsc_ac01_scope_enum_source_of_truth.rs"]
+mod shsc_ac01_scope_enum_source_of_truth;
+#[path = "shsc_ac02_meta_and_catalog_show_scopes.rs"]
+mod shsc_ac02_meta_and_catalog_show_scopes;
+#[path = "shsc_ac03_rate_per_hour_per_caller.rs"]
+mod shsc_ac03_rate_per_hour_per_caller;
+#[path = "shsc_ac04_unshare_is_share_revoked_for_past_callers.rs"]
+mod shsc_ac04_unshare_is_share_revoked_for_past_callers;
+#[path = "shsc_ac05_fork_copies_a_fork_scoped_tool.rs"]
+mod shsc_ac05_fork_copies_a_fork_scoped_tool;
+#[path = "shsc_ac06_url_shares_allow_only_call.rs"]
+mod shsc_ac06_url_shares_allow_only_call;
+#[path = "shsc_ac07_migration_backfills_shared_rows.rs"]
+mod shsc_ac07_migration_backfills_shared_rows;
 #[path = "sibl_ac01_second_connection_joins_same_namespace.rs"]
 mod sibl_ac01_second_connection_joins_same_namespace;
 #[path = "sibl_ac02_used_up_join_code_is_refused.rs"]

@@ -22504,6 +22504,38 @@
       "since": "0.81.1"
     },
     {
+      "description": "Copy a tool shared with you (scope fork) into your own tenant as a private tool you can edit. The copy records forked_from and counts toward tools_max; the owner's env values are not copied.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "as": {
+            "description": "Name for your private copy.",
+            "type": "string"
+          },
+          "owner": {
+            "description": "The owner's namespace, e.g. t_ab12.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "tool": {
+            "description": "The owner's local tool name.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "owner",
+          "tool",
+          "as"
+        ],
+        "type": "object"
+      },
+      "name": "host.tool.fork",
+      "since": "0.108.156"
+    },
+    {
       "description": "List every published version of one of this tenant's tools, newest first, each with its creation time, source_sha256, and whether it's the current one.",
       "input_schema": {
         "additionalProperties": false,
@@ -22587,7 +22619,8 @@
         "stub",
         "tags",
         "tested_version",
-        "stale_test"
+        "stale_test",
+        "forked_from"
       ],
       "input_schema": {
         "additionalProperties": false,
@@ -22611,7 +22644,8 @@
                 "stub",
                 "tags",
                 "tested_version",
-                "stale_test"
+                "stale_test",
+                "forked_from"
               ],
               "type": "string"
             },
@@ -23821,6 +23855,22 @@
           "name": {
             "description": "Local name of the tool to share.",
             "type": "string"
+          },
+          "rate_per_hour_per_caller": {
+            "description": "Optional cap (1..10000) on calls per hour from any one grantee.",
+            "type": "integer"
+          },
+          "scopes": {
+            "description": "What the grantee may do: call, read_source, fork. Default [\"call\"] ([\"call\",\"read_source\"] with expose_spec: true). url shares allow only call.",
+            "items": {
+              "enum": [
+                "call",
+                "read_source",
+                "fork"
+              ],
+              "type": "string"
+            },
+            "type": "array"
           },
           "tags": {
             "description": "Catalog tags merged into the tool's existing ones (same rules as host.tool_publish).",
@@ -25261,6 +25311,43 @@
       "since": "0.60.0"
     },
     {
+      "alias_of": "host.tool.fork",
+      "description": "Copy a tool shared with you (scope fork) into your own tenant as a private tool you can edit. The copy records forked_from and counts toward tools_max; the owner's env values are not copied.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "as": {
+            "description": "Name for your private copy.",
+            "type": "string"
+          },
+          "owner": {
+            "description": "The owner's namespace, e.g. t_ab12.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "tool": {
+            "description": "The owner's local tool name.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "owner",
+          "tool",
+          "as"
+        ],
+        "type": "object",
+        "x-deprecated": {
+          "replaced_by": "host.tool.fork",
+          "sunset": "2026-12-31"
+        }
+      },
+      "name": "host.tool_fork",
+      "since": "0.108.156"
+    },
+    {
       "alias_of": "host.tool.history",
       "description": "List every published version of one of this tenant's tools, newest first, each with its creation time, source_sha256, and whether it's the current one.",
       "input_schema": {
@@ -25306,7 +25393,8 @@
         "stub",
         "tags",
         "tested_version",
-        "stale_test"
+        "stale_test",
+        "forked_from"
       ],
       "input_schema": {
         "additionalProperties": false,
@@ -25330,7 +25418,8 @@
                 "stub",
                 "tags",
                 "tested_version",
-                "stale_test"
+                "stale_test",
+                "forked_from"
               ],
               "type": "string"
             },
@@ -25662,6 +25751,22 @@
           "name": {
             "description": "Local name of the tool to share.",
             "type": "string"
+          },
+          "rate_per_hour_per_caller": {
+            "description": "Optional cap (1..10000) on calls per hour from any one grantee.",
+            "type": "integer"
+          },
+          "scopes": {
+            "description": "What the grantee may do: call, read_source, fork. Default [\"call\"] ([\"call\",\"read_source\"] with expose_spec: true). url shares allow only call.",
+            "items": {
+              "enum": [
+                "call",
+                "read_source",
+                "fork"
+              ],
+              "type": "string"
+            },
+            "type": "array"
           },
           "tags": {
             "description": "Catalog tags merged into the tool's existing ones (same rules as host.tool_publish).",
@@ -34397,6 +34502,39 @@
       "since": "0.103.1"
     },
     {
+      "alias_of": "host.tool.fork",
+      "description": "Copy a tool shared with you (scope fork) into your own tenant as a private tool you can edit. The copy records forked_from and counts toward tools_max; the owner's env values are not copied.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "as": {
+            "description": "Name for your private copy.",
+            "type": "string"
+          },
+          "owner": {
+            "description": "The owner's namespace, e.g. t_ab12.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "tool": {
+            "description": "The owner's local tool name.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "owner",
+          "tool",
+          "as"
+        ],
+        "type": "object"
+      },
+      "name": "host_tool_fork",
+      "since": "0.108.156"
+    },
+    {
       "alias_of": "host.tool.history",
       "description": "List every published version of one of this tenant's tools, newest first, each with its creation time, source_sha256, and whether it's the current one.",
       "input_schema": {
@@ -34444,7 +34582,8 @@
                 "stub",
                 "tags",
                 "tested_version",
-                "stale_test"
+                "stale_test",
+                "forked_from"
               ],
               "type": "string"
             },
@@ -34751,6 +34890,22 @@
           "name": {
             "description": "Local name of the tool to share.",
             "type": "string"
+          },
+          "rate_per_hour_per_caller": {
+            "description": "Optional cap (1..10000) on calls per hour from any one grantee.",
+            "type": "integer"
+          },
+          "scopes": {
+            "description": "What the grantee may do: call, read_source, fork. Default [\"call\"] ([\"call\",\"read_source\"] with expose_spec: true). url shares allow only call.",
+            "items": {
+              "enum": [
+                "call",
+                "read_source",
+                "fork"
+              ],
+              "type": "string"
+            },
+            "type": "array"
           },
           "tags": {
             "description": "Catalog tags merged into the tool's existing ones (same rules as host.tool_publish).",
