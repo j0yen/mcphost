@@ -136,3 +136,16 @@ fn ci_yml_hands_the_shard_report_the_core_partition_and_the_test_status() {
         "the core shard step must end with the report, handing it the tests' status"
     );
 }
+
+#[test]
+fn the_shard_steps_survive_a_failing_pipeline_so_the_report_runs() {
+    // GitHub runs `run:` under `bash -e`; with pipefail a failing `cargo test | tee`
+    // ended the step before `status=$?` and the report (PR #407 runs 2 and 3: exit
+    // 101 and no `FAILED <test>` annotation).
+    let ci = std::fs::read_to_string(root().join(".github/workflows/ci.yml")).unwrap();
+    assert!(
+        !ci.contains("tee /tmp/cargo-test.log\n          status=$?"),
+        "a bare `cargo test | tee` then `status=$?` dies under bash -e before the report"
+    );
+    assert_eq!(ci.matches("tee /tmp/cargo-test.log || status=$?").count(), 2, "sandbox and core shard steps");
+}

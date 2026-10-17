@@ -244,8 +244,10 @@ jobs:
           cargo test --locked --no-run $flags $contract_flags
           build_s=$(( $(date +%s) - start ))
           start=$(date +%s)
-          cargo test --locked $flags -- --nocapture 2>&1 | tee /tmp/cargo-test.log
-          status=$?
+          # The shell runs with -e and pipefail: a bare failing pipeline would end the
+          # step before the report below, so the failed test would never be named.
+          status=0
+          cargo test --locked $flags -- --nocapture 2>&1 | tee /tmp/cargo-test.log || status=$?
           run_s=$(( $(date +%s) - start ))
           ./scripts/ci-shard-report.sh core "$shard" "$total" "$build_s" "$run_s" /tmp/cargo-test.log "$status"
 
@@ -359,8 +361,10 @@ jobs:
           cargo test --no-run $flags
           build_s=$(( $(date +%s) - start ))
           start=$(date +%s)
-          cargo test $flags -- --nocapture 2>&1 | tee /tmp/cargo-test.log
-          status=$?
+          # The shell runs with -e and pipefail: a bare failing pipeline would end the
+          # step before the report below, so the failed test would never be named.
+          status=0
+          cargo test $flags -- --nocapture 2>&1 | tee /tmp/cargo-test.log || status=$?
           run_s=$(( $(date +%s) - start ))
           ./scripts/ci-shard-report.sh "$shard" "$total" "$build_s" "$run_s" /tmp/cargo-test.log "$status"
 
