@@ -2000,6 +2000,17 @@
       "AC5": "tests/sibl_ac05_labels_derive_from_client_info_names.rs",
       "AC6": "tests/sibl_ac06_returning_browser_is_offered_join.rs",
       "AC7": "tests/sibl_ac07_concurrent_joins_land_exactly_max_uses.rs"
+    },
+    "spsr": {
+      "_prd": "PRD-mcphost-sandbox-pool-self-restart.md (test_prefix: spsr)",
+      "AC1": "tests/spsr_ac01_wedged_detector_names_exactly_the_planted_key.rs",
+      "AC2": "tests/spsr_ac02_restart_kills_wedged_child_and_writes_ok_row.rs",
+      "AC3": "tests/spsr_ac03_stragglers_time_out_with_the_heal_action_id.rs",
+      "AC4": "tests/spsr_ac04_third_restart_in_the_hour_is_rate_limited.rs",
+      "AC5": "tests/spsr_ac05_dry_run_names_the_wedge_and_kills_nothing.rs",
+      "AC6": "tests/spsr_ac06_calls_wait_while_the_pool_drains.rs",
+      "AC7": "tests/spsr_ac07_killed_child_stderr_tail_is_admin_only.rs",
+      "AC8": "deferred -- operator-provisioned: Live check on prod after deploy."
     }
   }
 }

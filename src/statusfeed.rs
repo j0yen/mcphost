@@ -271,7 +271,17 @@ async fn sample_signals(state: &AppState, now: i64, exec_latency_ms: i64) {
             pool.wedged_keys.join(",")
         );
     }
-    signals.record(Signal::SandboxPool, now, pool.wedged as f64 / pool.pool_size.max(1) as f64);
+    let pool_event = signals.record(Signal::SandboxPool, now, pool.wedged as f64 / pool.pool_size.max(1) as f64);
+    // PRD-mcphost-sandbox-pool-self-restart R2: a breach restarts the pool;
+    // the drain can take a while, so the tick does not wait for it.
+    if let Some(breach @ crate::signals::SignalEvent::Breach { .. }) = pool_event {
+        let state = state.clone();
+        tokio::spawn(async move {
+            if let Err(e) = crate::pool_restart::run(&state, &breach).await {
+                tracing::warn!(error = %e, "sandbox pool restart failed");
+            }
+        });
+    }
     tracing::debug!(signals_probe_ms = started.elapsed().as_millis() as u64, "golden signals sampled");
 }
 
@@ -314,6 +324,21 @@ fn incident_names_component(incident: &Incident, component: &str) -> bool {
     serde_json::from_str::<Vec<String>>(&incident.components_json)
         .map(|names| names.iter().any(|n| n == component))
         .unwrap_or(false)
+}
+
+/// Opens an auto-incident for `component` unless an open one already names it
+/// -- the `status.component_down` hand-off of a rate-limited heal action.
+pub(crate) async fn open_component_incident_once(state: &AppState, component: &str, title: &str) -> Result<(), AppError> {
+    let already_named = state
+        .db
+        .list_open_incidents()
+        .await?
+        .iter()
+        .any(|i| incident_names_component(i, component));
+    if already_named {
+        return Ok(());
+    }
+    open_auto_incident_titled(state, component, title).await
 }
 
 async fn open_auto_incident(state: &AppState, component: &str) -> Result<(), AppError> {
@@ -513,6 +538,8 @@ pub async fn status_json(state: &AppState) -> Result<Value, AppError> {
         "warnings": warnings,
         "signals": state.signals.status_json(now_unix()),
         "heal": crate::heal::status_block(state).await?,
+        // PRD-mcphost-sandbox-pool-self-restart R5.
+        "sandbox_pool": crate::pool_restart::status_block(state).await?,
         "maintenance": crate::maintenance::status_block(state).await?,
         "feedback": {"rows_24h": rows_24h, "themes_open": themes_open},
         "onboarding_7d": onboarding_block(state).await?,

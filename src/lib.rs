@@ -69,6 +69,7 @@ pub mod sandbox_libs;
 pub mod handler;
 pub mod doctor;
 pub mod heal;
+pub mod pool_restart;
 pub mod help;
 pub mod doc_anchors;
 pub mod doc_scan;

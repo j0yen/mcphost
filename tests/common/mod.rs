@@ -2723,3 +2723,67 @@ pub fn jwt_aud(token: &str) -> String {
     let claims: Value = serde_json::from_slice(&bytes).expect("payload json");
     claims["aud"].as_str().expect("aud claim").to_string()
 }
+
+// ---- PRD-mcphost-sandbox-pool-self-restart (spsr) --------------------------
+
+/// A stand-in for a wedged sandbox child: a `sleep 600` in its own process
+/// group (so a pool restart's `killpg` reaches it), registered as the live
+/// pid of `slot` the way the python kind registers a real child.
+pub struct WedgedChild {
+    pub child: tokio::process::Child,
+    pub slot: Arc<mcphost::runs::CancelSlot>,
+    pub stderr: Arc<std::sync::Mutex<Vec<u8>>>,
+}
+
+impl WedgedChild {
+    pub fn spawn(stderr_text: &[u8]) -> Self {
+        let child = tokio::process::Command::new("sleep")
+            .arg("600")
+            .process_group(0)
+            .kill_on_drop(true)
+            .spawn()
+            .expect("spawn wedged stand-in");
+        let slot = Arc::new(mcphost::runs::CancelSlot::default());
+        assert!(slot.set_live(child.id().expect("pid") as i32));
+        let stderr = Arc::new(std::sync::Mutex::new(stderr_text.to_vec()));
+        slot.set_stderr(stderr.clone());
+        Self { child, slot, stderr }
+    }
+
+    /// True once the child has exited (killed by the restart).
+    pub async fn is_dead(&mut self) -> bool {
+        for _ in 0..50 {
+            if matches!(self.child.try_wait(), Ok(Some(_))) {
+                return true;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        false
+    }
+}
+
+/// The `sandbox_pool` breach a signal tick would emit.
+pub fn pool_breach() -> mcphost::signals::SignalEvent {
+    mcphost::signals::SignalEvent::Breach {
+        signal: mcphost::signals::Signal::SandboxPool,
+        value: 0.5,
+        threshold: 0.5,
+        since: 0,
+    }
+}
+
+/// A `heal.toml` override whose `sandbox_pool` drain budget is `drain_budget_s`.
+pub fn signals_with_drain_budget(drain_budget_s: u64) -> mcphost::signals::Signals {
+    let text = mcphost::signals::COMPILED_HEAL_TOML.replace(
+        "drain_budget_s = 30",
+        &format!("drain_budget_s = {drain_budget_s}"),
+    );
+    mcphost::signals::Signals::new(mcphost::signals::HealConfig::parse(&text).expect("heal.toml override"))
+}
+
+/// A python `CallCtx` for `tool_name`, as the warm-pool tests build.
+pub fn python_ctx(tenant_id: i64, namespace: &str, tool_name: &str) -> mcphost::kinds::CallCtx {
+    let mut ctx = mcphost::kinds::CallCtx::for_test(tenant_id, namespace);
+    ctx.tool_name = Some(tool_name.to_string());
+    ctx
+}

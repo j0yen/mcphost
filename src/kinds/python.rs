@@ -92,7 +92,7 @@
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
@@ -1729,14 +1729,75 @@ struct WarmPool {
     /// here past a multiple of its timeout is wedged.
     inflight: Mutex<HashMap<u64, Flight>>,
     next_flight: AtomicU64,
+    /// PRD-mcphost-sandbox-pool-self-restart R3: [`POOL_READY`] or
+    /// [`POOL_DRAINING`]; one atomic read on the call path.
+    state: AtomicU8,
+    /// Woken when `state` returns to ready.
+    state_changed: tokio::sync::Notify,
+    /// Bumped when a drain ends: every call still in flight is timed out.
+    abort: tokio::sync::watch::Sender<u64>,
+    /// The ledger row id of the restart that last ran (`None` while one is
+    /// running); aborted calls carry it as `heal_action_id`.
+    heal_id: tokio::sync::watch::Sender<Option<i64>>,
+    /// Multiple of its wall-clock timeout past which a call is wedged.
+    wedge_factor: Mutex<f64>,
+    /// How long a drain waits for healthy in-flight calls.
+    drain_budget: Mutex<Duration>,
+    /// When the current drain began.
+    draining_since: Mutex<Option<Instant>>,
 }
 
+/// The pool serves calls.
+const POOL_READY: u8 = 0;
+/// The pool is being restarted: new calls wait.
+const POOL_DRAINING: u8 = 1;
+
+/// Default multiple of `wall_clock_timeout` that makes a child wedged.
+const DEFAULT_WEDGE_FACTOR: f64 = 3.0;
+/// Default seconds a drain waits for healthy in-flight calls.
+pub const DEFAULT_DRAIN_BUDGET_S: u64 = 30;
+/// How long past the drain budget a waiting call is held before it gets
+/// `sandbox_unavailable`.
+const DRAIN_WAITER_GRACE: Duration = Duration::from_secs(5);
+/// How long an aborted call waits for the ledger row id of the restart.
+const HEAL_ID_WAIT: Duration = Duration::from_secs(10);
+/// The retry delay a `tool_timeout` from a restart carries.
+const RESTART_RETRY_AFTER_MS: u64 = 3000;
+/// The `tool_timeout` hint after a restart.
+const RESTART_HINT: &str = "the host restarted its sandbox pool; retry once";
+
 /// One call in flight: when it started, its wall-clock timeout, and the
-/// `tenant/tool` key it runs.
+/// tool it runs.
 struct Flight {
     started: Instant,
     timeout: Duration,
-    key: String,
+    tool: ToolKey,
+    /// The slot holding this call's live child, so a restart can kill it.
+    cancel: Option<Arc<crate::runs::CancelSlot>>,
+    /// Set when a restart killed this call's child as wedged.
+    killed: Arc<AtomicBool>,
+}
+
+impl Flight {
+    fn key(&self) -> String {
+        format!("{}/{}", self.tool.0, self.tool.1)
+    }
+
+    fn is_wedged(&self, now: Instant, factor: f64) -> bool {
+        !self.killed.load(Ordering::Acquire)
+            && now.saturating_duration_since(self.started).as_secs_f64() > factor * self.timeout.as_secs_f64()
+    }
+}
+
+/// The last [`crate::kinds::STDERR_TAIL_MAX_BYTES`] bytes of `bytes` as text
+/// (never more than that many bytes once decoded).
+fn stderr_tail_2k(bytes: &[u8]) -> String {
+    let max = crate::kinds::STDERR_TAIL_MAX_BYTES;
+    let mut text = String::from_utf8_lossy(&bytes[bytes.len().saturating_sub(max)..]).into_owned();
+    while text.len() > max {
+        text.remove(0);
+    }
+    text
 }
 
 /// How many cold-call durations [`WarmPool::cold_starts`] keeps.
@@ -1747,6 +1808,19 @@ const COLD_START_KEEP: usize = 256;
 struct FlightGuard {
     warm: Arc<WarmPool>,
     id: u64,
+    killed: Arc<AtomicBool>,
+    abort_rx: tokio::sync::watch::Receiver<u64>,
+}
+
+impl FlightGuard {
+    /// Resolves when a restart's drain ends with this call still running,
+    /// to the `tool_timeout` it must fail with.
+    async fn aborted(&mut self) -> KindError {
+        if self.abort_rx.changed().await.is_err() {
+            std::future::pending::<()>().await;
+        }
+        self.warm.restart_timeout_error().await
+    }
 }
 
 impl Drop for FlightGuard {
@@ -1767,16 +1841,183 @@ impl WarmPool {
             cold_starts: Mutex::new(VecDeque::new()),
             inflight: Mutex::new(HashMap::new()),
             next_flight: AtomicU64::new(0),
+            state: AtomicU8::new(POOL_READY),
+            state_changed: tokio::sync::Notify::new(),
+            abort: tokio::sync::watch::channel(0).0,
+            heal_id: tokio::sync::watch::channel(None).0,
+            wedge_factor: Mutex::new(DEFAULT_WEDGE_FACTOR),
+            drain_budget: Mutex::new(Duration::from_secs(DEFAULT_DRAIN_BUDGET_S)),
+            draining_since: Mutex::new(None),
         }
     }
 
-    fn begin_flight(self: &Arc<Self>, key: String, wall_clock_timeout: Duration) -> FlightGuard {
+    fn begin_flight(
+        self: &Arc<Self>,
+        tool: ToolKey,
+        wall_clock_timeout: Duration,
+        cancel: Option<Arc<crate::runs::CancelSlot>>,
+    ) -> FlightGuard {
         let id = self.next_flight.fetch_add(1, Ordering::Relaxed);
-        self.inflight
+        let killed = Arc::new(AtomicBool::new(false));
+        self.inflight.lock().unwrap_or_else(|e| e.into_inner()).insert(
+            id,
+            Flight { started: Instant::now(), timeout: wall_clock_timeout, tool, cancel, killed: killed.clone() },
+        );
+        FlightGuard { warm: self.clone(), id, killed, abort_rx: self.abort.subscribe() }
+    }
+
+    fn is_draining(&self) -> bool {
+        self.state.load(Ordering::Acquire) == POOL_DRAINING
+    }
+
+    fn drain_budget(&self) -> Duration {
+        *self.drain_budget.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn wedge_factor(&self) -> f64 {
+        *self.wedge_factor.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// PRD-mcphost-sandbox-pool-self-restart R1: the tools whose in-flight
+    /// call is older than `wedge_factor` x its wall-clock timeout with no
+    /// result, sorted. A child a restart already killed is no longer wedged.
+    fn wedged(&self, now: Instant) -> Vec<ToolKey> {
+        self.wedged_with(now, self.wedge_factor())
+    }
+
+    fn wedged_with(&self, now: Instant, factor: f64) -> Vec<ToolKey> {
+        let mut keys: Vec<ToolKey> = self
+            .inflight
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .insert(id, Flight { started: Instant::now(), timeout: wall_clock_timeout, key });
-        FlightGuard { warm: self.clone(), id }
+            .values()
+            .filter(|f| f.is_wedged(now, factor))
+            .map(|f| f.tool.clone())
+            .collect();
+        keys.sort();
+        keys
+    }
+
+    /// `{wedged, pool, in_flight}` as of `now`. A child a restart killed is
+    /// counted nowhere.
+    fn counts(&self, now: Instant, factor: f64) -> crate::kinds::PoolCounts {
+        let idle = self.pool_size();
+        let inflight = self.inflight.lock().unwrap_or_else(|e| e.into_inner());
+        let live = inflight.values().filter(|f| !f.killed.load(Ordering::Acquire)).count();
+        crate::kinds::PoolCounts {
+            wedged: inflight.values().filter(|f| f.is_wedged(now, factor)).count(),
+            pool: idle + live,
+            in_flight: live,
+        }
+    }
+
+    /// The `tool_timeout` a call fails with when a restart ends it.
+    async fn restart_timeout_error(&self) -> KindError {
+        let mut rx = self.heal_id.subscribe();
+        let id = match tokio::time::timeout(HEAL_ID_WAIT, rx.wait_for(Option::is_some)).await {
+            Ok(Ok(guard)) => *guard,
+            _ => None,
+        };
+        KindError::structured_with(
+            codes::TOOL_TIMEOUT,
+            "the call was ended by a sandbox pool restart; retry once",
+            json!({"heal_action_id": id, "retry_after_ms": RESTART_RETRY_AFTER_MS, "hint": RESTART_HINT}),
+        )
+    }
+
+    /// New calls wait here while the pool is draining. `Ok(None)` when the
+    /// pool was ready, `Ok(Some(queued_ms))` after a wait, `Err(())` when
+    /// the drain outlasted its budget plus [`DRAIN_WAITER_GRACE`].
+    async fn wait_ready(&self) -> Result<Option<u64>, ()> {
+        if !self.is_draining() {
+            return Ok(None);
+        }
+        let started = Instant::now();
+        loop {
+            let notified = self.state_changed.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            if !self.is_draining() {
+                return Ok(Some(started.elapsed().as_millis() as u64));
+            }
+            let limit = self.drain_budget() + DRAIN_WAITER_GRACE;
+            let Some(remaining) = limit.checked_sub(started.elapsed()) else {
+                return Err(());
+            };
+            let _ = tokio::time::timeout(remaining, notified).await;
+            if self.is_draining() && started.elapsed() >= limit {
+                return Err(());
+            }
+        }
+    }
+
+    fn begin_drain(&self, budget: Duration) {
+        *self.drain_budget.lock().unwrap_or_else(|e| e.into_inner()) = budget;
+        *self.draining_since.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
+        self.state.store(POOL_DRAINING, Ordering::Release);
+    }
+
+    fn end_drain(&self) {
+        *self.draining_since.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        self.state.store(POOL_READY, Ordering::Release);
+        self.state_changed.notify_waiters();
+    }
+
+    /// Seconds of drain budget still to run, rounded up; 0 when not draining.
+    fn drain_remaining_s(&self) -> u32 {
+        let since = *self.draining_since.lock().unwrap_or_else(|e| e.into_inner());
+        match since {
+            Some(t) if self.is_draining() => {
+                self.drain_budget().saturating_sub(t.elapsed()).as_secs_f64().ceil() as u32
+            }
+            _ => 0,
+        }
+    }
+
+    /// PRD-mcphost-sandbox-pool-self-restart R3: mark the pool draining, kill
+    /// the wedged children, give healthy in-flight calls the drain budget,
+    /// time out whatever still runs, evict every idle child, and go ready.
+    async fn restart(&self, plan: crate::kinds::PoolRestartPlan) -> crate::kinds::PoolRestartReport {
+        let factor = plan.wedge_factor;
+        *self.wedge_factor.lock().unwrap_or_else(|e| e.into_inner()) = factor;
+        self.heal_id.send_replace(None);
+        let before = self.counts(Instant::now(), factor);
+        self.begin_drain(plan.drain_budget);
+
+        let victims: Vec<Arc<crate::runs::CancelSlot>> = {
+            let now = Instant::now();
+            let inflight = self.inflight.lock().unwrap_or_else(|e| e.into_inner());
+            inflight
+                .values()
+                .filter(|f| f.is_wedged(now, factor))
+                .filter_map(|f| {
+                    f.killed.store(true, Ordering::Release);
+                    f.cancel.clone()
+                })
+                .collect()
+        };
+        let mut stderr_tails = Vec::new();
+        for slot in &victims {
+            slot.kill_live();
+        }
+        if !victims.is_empty() {
+            // The stderr drain task reads what the child wrote before it died.
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        for slot in &victims {
+            if let Some(bytes) = slot.stderr_snapshot().filter(|b| !b.is_empty()) {
+                stderr_tails.push(stderr_tail_2k(&bytes));
+            }
+        }
+
+        let deadline = Instant::now() + plan.drain_budget;
+        while self.counts(Instant::now(), factor).in_flight > 0 && Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        self.abort.send_modify(|generation| *generation += 1);
+        self.evict_all().await;
+        self.end_drain();
+        crate::kinds::PoolRestartReport { before, after: self.counts(Instant::now(), factor), stderr_tails }
     }
 
     fn record_cold_start(&self, ms: u64) {
@@ -1792,8 +2033,8 @@ impl WarmPool {
             let inflight = self.inflight.lock().unwrap_or_else(|e| e.into_inner());
             let keys: Vec<String> = inflight
                 .values()
-                .filter(|f| f.started.elapsed().as_secs_f64() > wedge_factor * f.timeout.as_secs_f64())
-                .map(|f| f.key.clone())
+                .filter(|f| f.is_wedged(Instant::now(), wedge_factor))
+                .map(Flight::key)
                 .collect();
             (inflight.len(), keys)
         };
@@ -4998,6 +5239,374 @@ pub struct PythonKind {
 }
 
 impl PythonKind {
+    /// PRD-mcphost-sandbox-pool-self-restart R1: the tools with a wedged
+    /// in-flight call as of `now`.
+    pub fn wedged(&self, now: Instant) -> Vec<(i64, String)> {
+        self.warm.wedged(now)
+    }
+
+    /// Test-only: puts the pool in `draining` with `budget`, as a restart
+    /// that has not finished would.
+    pub fn begin_drain_for_test(&self, budget: Duration) {
+        self.warm.begin_drain(budget);
+    }
+
+    /// Test-only: ends a drain begun by [`Self::begin_drain_for_test`].
+    pub fn end_drain_for_test(&self) {
+        self.warm.end_drain();
+    }
+
+    /// `sandbox_unavailable` for a call that waited out a whole drain.
+    fn pool_unavailable(&self) -> KindError {
+        let status = self.selftest.read_status();
+        let retry_after_s = Kind::queue_wait_estimate_s(self).unwrap_or(5).clamp(1, 30);
+        KindError::structured_with(
+            "sandbox_unavailable",
+            format!(
+                "the python sandbox pool is restarting; the spec was not evaluated -- \
+                 retry in {retry_after_s}s or use http instead"
+            ),
+            json!({
+                "mechanism": status.mechanism.as_str(),
+                "detail": status.detail,
+                "retry_after_s": retry_after_s,
+                "alternatives": ["http"],
+            }),
+        )
+    }
+
+    /// A call: waits while the pool drains, counts as in flight (so a wedge
+    /// is seen and a restart can end it), and carries `queued_ms` when it
+    /// waited.
+    async fn call_pooled(&self, spec: &Value, args: Value, ctx: &CallCtx) -> Result<Value, KindError> {
+        let queued_ms = match self.warm.wait_ready().await {
+            Ok(queued) => queued,
+            Err(()) => return Err(self.pool_unavailable()),
+        };
+        let timeout_s = parse_spec(spec).map(|p| p.effective_timeout_s()).unwrap_or(0) + 2;
+        let tool = (ctx.tenant_id, ctx.tool_name.clone().unwrap_or_else(|| "<unnamed>".to_string()));
+        let mut flight = self.warm.begin_flight(tool, Duration::from_secs(timeout_s), Some(ctx.cancel_pid.clone()));
+        let mut result = tokio::select! {
+            r = self.call_inner(spec, args, ctx) => r,
+            timed_out = flight.aborted() => Err(timed_out),
+        };
+        if result.is_err() && flight.killed.load(Ordering::Acquire) {
+            result = Err(self.warm.restart_timeout_error().await);
+        }
+        if let (Some(ms), Ok(Value::Object(map))) = (queued_ms, &mut result) {
+            map.insert("queued_ms".to_string(), json!(ms));
+        }
+        result
+    }
+
+    /// The python call itself, run once the pool is `ready` and registered as in flight by
+    /// [`Self::call_pooled`].
+    async fn call_inner(&self, spec: &Value, args: Value, ctx: &CallCtx) -> Result<Value, KindError> {
+        let parsed = parse_spec(spec)?;
+        validate_spec_fields(&parsed, &self.own_domain)?;
+
+        // PRD-mcphost-sandbox-egress-allowlist requirement 2/3 (AC3/AC6):
+        // resolved once, up front -- `?` refuses before any admission-
+        // control slot, warm-pool lookup, or scratch dir is touched.
+        let network = self.network_mode(&parsed, ctx.egress_allowed)?;
+
+        let effective_schema = parsed.effective_args_schema()?;
+        let validator = jsonschema::validator_for(&effective_schema)
+            .map_err(|e| KindError::InvalidSpec(format!("args_schema: {e}")))?;
+        if let Err(e) = validator.validate(&args) {
+            // Requirement 1/AC3: phase `args_coercion`, naming the
+            // argument and both types -- see `describe_args_error`.
+            let args_err = super::describe_args_error(&e);
+            return Err(KindError::structured_with("args_invalid", args_err.message(), args_err.data()));
+        }
+
+        // Requirement 3 (AC4): the tenant's own admission cap is checked
+        // before the box-wide one -- a tenant already at its own limit is
+        // refused without ever contending for (or holding, even briefly) a
+        // slot another tenant could have used.
+        let tenant_sem = self.tenant_semaphore(ctx.tenant_id, ctx.concurrent_calls_per_tenant);
+        let Ok(_tenant_permit) = tenant_sem.clone().try_acquire_owned() else {
+            let retry_after_ms = self.estimate_retry_after_ms();
+            let limit = ctx.concurrent_calls_per_tenant.clamp(1, Semaphore::MAX_PERMITS);
+            let in_flight = limit.saturating_sub(tenant_sem.available_permits());
+            if self.should_log_capacity_refusal(ctx.tenant_id) {
+                tracing::warn!(
+                    tenant_id = ctx.tenant_id,
+                    scope = "tenant",
+                    in_flight,
+                    limit,
+                    retry_after_ms,
+                    "python call refused: tenant at its concurrent-call limit"
+                );
+            }
+            return Err(tenant_capacity_error(in_flight, limit, retry_after_ms));
+        };
+
+        let Ok(_permit) = self.semaphore.clone().try_acquire_owned() else {
+            let retry_after_ms = self.estimate_retry_after_ms();
+            let in_flight = self.max_concurrent.saturating_sub(self.semaphore.available_permits());
+            if self.should_log_capacity_refusal(ctx.tenant_id) {
+                tracing::warn!(
+                    tenant_id = ctx.tenant_id,
+                    scope = "host",
+                    in_flight,
+                    limit = self.max_concurrent,
+                    retry_after_ms,
+                    "python call refused: host at the concurrent-call limit"
+                );
+            }
+            return Err(host_capacity_error(in_flight, self.max_concurrent, retry_after_ms));
+        };
+
+        let secret_env = self.secret_env(&parsed, ctx);
+        let secret_values: Vec<String> = secret_env.iter().map(|(_, v)| v.clone()).collect();
+        // PRD-mcphost-python-kind-plain-env requirement 1 (AC1/AC6): this
+        // spec's own plain configuration, verbatim names (unlike
+        // `secret_env`'s `SECRET_<NAME>` prefixing) -- folded into the
+        // fingerprint (AC8) and merged into the sandbox's environment
+        // beside `secret_env` at every spawn site below.
+        let plain_env: Vec<(String, String)> =
+            parsed.env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+
+        if let Err(retry_after_s) = self.cpu_budget.check(ctx.tenant_id) {
+            return Err(KindError::structured_with(
+                "rate_limited",
+                "tenant CPU budget exceeded for this hour",
+                json!({"retry_after_s": retry_after_s}),
+            ));
+        }
+
+        let effective_requirements = parsed.effective_requirements()?;
+
+        // Requirement 1 (AC1/AC4/AC8): a repeat call of the same tool with
+        // the same requirements/source reuses a warm sandbox if one is
+        // idle, skipping the env-build-status lookup and the cold spawn
+        // entirely. `ctx.tool_name` is `None` in every context that has no
+        // notion of a tool's own name (`for_test`, the conformance suite) --
+        // those always fall through to the cold path below, by design (see
+        // the module doc's "Pool key" note).
+        let warm_key: Option<ToolKey> = ctx.tool_name.clone().map(|name| (ctx.tenant_id, name));
+        let fingerprint = call_fingerprint(
+            &parsed.source,
+            &effective_requirements,
+            &secret_env,
+            &plain_env,
+        );
+        if let Some(key) = &warm_key {
+            let call_timeout = Duration::from_secs(parsed.effective_timeout_s() + 2);
+            if let Some(result) = self
+                .try_warm(
+                    key,
+                    &fingerprint,
+                    &args,
+                    call_timeout,
+                    ctx,
+                    &effective_schema,
+                    &secret_values,
+                    &parsed.outputs,
+                )
+                .await
+            {
+                return result;
+            }
+            // `try_warm` returning `None` covers every "no usable warm
+            // sandbox" reason (nothing pooled yet, a stale fingerprint, or
+            // a pooled sandbox that turned out to be dead) -- all of them
+            // are a miss for requirement 4's metrics; only a `Some(_)`
+            // return above (an actual hit, or a definitive failure like
+            // AC5's timeout) is not.
+            self.warm.record_miss();
+        }
+
+        // PRD-mcphost-python-kind-runtime requirement 1/AC4: everything
+        // from here down only runs on the cold path (a warm-pool hit
+        // above already returned) -- this is exactly "first call" cost:
+        // env-status lookup, scratch prep, and the sandboxed run itself.
+        // Logged unconditionally (including the `building`/`build_failed`
+        // early returns) since even a call that never reaches the sandbox
+        // spent real wall time getting there.
+        let cold_call_started = Instant::now();
+        let env_dir = self.env_dir_for(&parsed, &ctx.namespace, &effective_requirements);
+        let env_source = parsed.env_source(&effective_requirements);
+        // PRD-mcphost-first-call-reliability requirement 1/2: waits (bounded)
+        // for a building environment instead of failing the call outright;
+        // past the bound, returns the structured `building` result rather
+        // than the old free-text "try again shortly" error.
+        let (python, site_packages) =
+            match resolve_env_readiness(&self.envs, &env_dir, &ctx.namespace, env_source).await {
+                EnvReadiness::Ready {
+                    python,
+                    site_packages,
+                    waited_ms,
+                } => {
+                    if waited_ms > 0 {
+                        ctx.log.log(&format!("waited_ms={waited_ms}"));
+                        tracing::info!(
+                            waited_ms,
+                            "python call waited for environment readiness"
+                        );
+                    }
+                    (python, site_packages)
+                }
+                EnvReadiness::Building { retry_after_ms } => {
+                    ctx.log.log(&format!("status=building retry_after_ms={retry_after_ms}"));
+                    return Ok(building_result(retry_after_ms, ctx.tool_name.as_deref()));
+                }
+                EnvReadiness::Failed { tail } => {
+                    return Err(KindError::structured_with(
+                        "build_failed",
+                        "the tool's environment failed to build",
+                        json!({"tail": tail}),
+                    ));
+                }
+            };
+
+        let scratch = self
+            .prepare_scratch(&parsed.source, &args, &site_packages, payload_end_user(ctx))
+            .await?;
+        let stdin_payload = tokio::fs::read(scratch.join("stdin.json"))
+            .await
+            .map_err(|e| KindError::Exec(format!("read stdin payload: {e}")))?;
+        // PRD-mcphost-tenant-state requirement 3: `spawn_persistent` below
+        // ignores `RunSpec.stdin_payload` (its own doc comment: "a
+        // persistent sandbox's first request comes from the first call,
+        // not from spawn time") -- this call is made through the same
+        // interactive `PersistentSandbox::call` a warm sandbox uses, so the
+        // payload has to be handed to `call` directly instead.
+        let call_payload_bytes = stdin_payload.clone();
+
+        let mut read_only_dirs = system_python_dirs();
+        read_only_dirs.push(env_dir.clone());
+
+        // Cloned before `run_spec` below moves it: requirement 1/AC1's
+        // pre-warm-after-a-cold-miss step (`maybe_promote_to_warm`) needs
+        // the same interpreter path once this cold call is done with it.
+        let python_for_warm = python.clone();
+
+        let run_spec = sandbox::RunSpec {
+            interpreter: python,
+            interpreter_args: vec!["-I".to_string(), "-S".to_string()],
+            script_path: scratch.join("runner.py"),
+            scratch_dir: scratch.clone(),
+            read_only_dirs,
+            stdin_payload,
+            limits: ResourceLimits {
+                cpu_seconds: parsed.effective_timeout_s(),
+                memory_mb: parsed.effective_memory_mb(),
+                max_open_files: MAX_OPEN_FILES,
+                max_file_size_mb: MAX_FILE_SIZE_MB,
+                max_processes: MAX_PROCESSES,
+            },
+            wall_clock_timeout: Duration::from_secs(parsed.effective_timeout_s() + 2),
+            network: network.clone(),
+            // PRD-mcphost-python-kind-plain-env requirement 1 (AC1/AC6):
+            // this spec's own `env` joins `secret_env` at the same
+            // injection point -- see `merge_env`'s doc comment.
+            extra_env: merge_env(&secret_env, &plain_env),
+            isolation: self.isolation,
+        };
+
+        // PRD-mcphost-tenant-state requirement 3 (AC2/AC3): the cold path
+        // runs through the same interactive, line-at-a-time protocol a warm
+        // sandbox uses (`sandbox::PersistentSandbox::call`) rather than the
+        // older one-shot `sandbox::run`, so `mcphost.state` works from the
+        // very first call to a tool, not just a reused warm one. See
+        // `run_cold_interactive`'s own doc comment for how its result stays
+        // a plain `SandboxOutcome` so nothing downstream of this line has
+        // to change.
+        let bridge = HostSidecarBridge { ctx };
+        let outcome = run_cold_interactive(&run_spec, &call_payload_bytes, &bridge, &ctx.cancel_pid).await;
+        let _ = tokio::fs::remove_dir_all(&scratch).await;
+        // Requirement 1/AC4: the cold-path number the AC's ≤5s budget is
+        // judged against, logged before the spawn-error `?` so a genuine
+        // spawn failure is still timed and visible.
+        let cold_call_elapsed = cold_call_started.elapsed();
+        tracing::info!(
+            cold_call_ms = cold_call_elapsed.as_millis() as u64,
+            "python cold call (env lookup + sandboxed run) complete"
+        );
+        // Requirement 3: feeds `estimate_retry_after_ms`'s p50 window.
+        self.record_call_duration(cold_call_elapsed);
+        self.warm.record_cold_start(cold_call_elapsed.as_millis() as u64);
+        let outcome = outcome.map_err(|e| KindError::Exec(format!("sandbox spawn failed: {e}")))?;
+
+        let (cpu_ms, peak_rss_kb) = outcome_usage(&outcome);
+        ctx.resources.record(cpu_ms, peak_rss_kb);
+        self.cpu_budget.record(ctx.tenant_id, cpu_ms);
+
+        // Requirement 1/AC1/AC8: a cold call that ran the sandboxed process
+        // to completion (whether the tool itself succeeded or raised -- a
+        // healthy sandbox either way) is a candidate to seed the warm pool
+        // for the *next* call, if this call came through a real dispatch
+        // path (`warm_key.is_some()`) and there's room. Anything else that
+        // could have gone wrong (spawn failure already returned above; a
+        // timeout, signal or non-zero exit below) means the sandbox itself
+        // is not healthy enough to keep alive.
+        if let (Some(key), true) = (&warm_key, matches!(&outcome, SandboxOutcome::Exited { .. })) {
+            self.maybe_promote_to_warm(
+                key.clone(),
+                fingerprint.clone(),
+                &parsed,
+                python_for_warm,
+                site_packages,
+                env_dir,
+                &secret_env,
+                network,
+            )
+            .await;
+        }
+
+        // Requirement 7: secret values are "redacted from any string that
+        // leaves the host" -- that includes a tool's own result (a tool may
+        // legitimately be handed a secret and choose to echo it back, e.g.
+        // while debugging), not just an error/traceback.
+        match map_sandbox_outcome(outcome, ctx.run_id.is_some(), &self.own_domain) {
+            Ok(value) => {
+                let redacted = redact_value(&value, &secret_values);
+                // PRD-mcphost-result-envelope-contract requirement 1/3,
+                // AC2/AC3: declared output fields promoted to
+                // `result.payload.<field>` -- a no-op when this spec
+                // declares none.
+                let redacted = apply_declared_outputs(redacted, &parsed.outputs);
+                // Requirement 10 / AC15: `host.tool_test` shows the schema
+                // the host inferred (or the author's own, unchanged) so a
+                // tenant can inspect it before relying on it. Same pattern
+                // `http`'s own `call` already uses for its test-mode-only
+                // request echo -- attach the debug info to the response
+                // `Value` itself, never touching `handler.rs`.
+                if ctx.test_mode {
+                    Ok(json!({
+                        "result": redacted,
+                        "schema": effective_schema,
+                        // PRD-mcphost-python-kind-plain-env requirement 5
+                        // (AC5): `host.tool_test`'s rendered environment --
+                        // plain `env` values shown verbatim, secret values
+                        // redacted, each labeled which is which. Secrets
+                        // are named by the spec's own declared name (e.g.
+                        // `"token"`), not the `SECRET_<NAME>` form the
+                        // sandboxed process actually sees, since that's
+                        // what a publisher wrote and would recognize.
+                        "environment": environment_report(&parsed.env, &parsed.secrets),
+                    }))
+                } else {
+                    Ok(redacted)
+                }
+            }
+            Err(e) => {
+                let e = redact_kind_error(e, &secret_values);
+                // PRD-mcphost-tool-test-truth P0 requirement 3 (AC4): a
+                // composing tool's `host.tool_test` succeeds with
+                // `verdict: unverifiable` instead of this call's own
+                // `tool_exception` error -- see
+                // `composition_unverifiable_detail`'s own doc comment.
+                match (ctx.test_mode, composition_unverifiable_detail(&e)) {
+                    (true, Some(detail)) => Ok(composition_unverifiable_value(detail)),
+                    _ => Err(e),
+                }
+            }
+        }
+    }
+
     /// R1: the host's own domain, so an `unknown_import` for a spelling of
     /// it says it is the server's address.
     pub fn with_own_domain(mut self, own_domain: impl Into<String>) -> Self {
@@ -5106,7 +5715,23 @@ impl PythonKind {
     /// the returned guard drops. The only way a test can hold a wedged child
     /// without a real hung sandbox.
     pub fn hold_test_flight(&self, key: &str, timeout: Duration, age: Duration) -> Box<dyn std::any::Any + Send> {
-        let guard = self.warm.begin_flight(key.to_string(), timeout);
+        self.hold_test_flight_with_cancel(key, timeout, age, None)
+    }
+
+    /// [`Self::hold_test_flight`] whose child is `cancel`'s live pid, so a
+    /// restart can kill it.
+    pub fn hold_test_flight_with_cancel(
+        &self,
+        key: &str,
+        timeout: Duration,
+        age: Duration,
+        cancel: Option<Arc<crate::runs::CancelSlot>>,
+    ) -> Box<dyn std::any::Any + Send> {
+        let tool = match key.split_once('/') {
+            Some((tenant, name)) => (tenant.parse().unwrap_or(0), name.to_string()),
+            None => (0, key.to_string()),
+        };
+        let guard = self.warm.begin_flight(tool, timeout, cancel);
         if let Some(entry) = self.warm.inflight.lock().unwrap_or_else(|e| e.into_inner()).get_mut(&guard.id) {
             entry.started = Instant::now().checked_sub(age).unwrap_or(entry.started);
         }
@@ -5561,6 +6186,7 @@ impl PythonKind {
             kill_warm_entry(entry).await;
             return Some(Err(KindError::Exec("run cancelled".to_string())));
         }
+        ctx.cancel_pid.set_stderr(entry.sandbox.stderr_buffer());
         crate::calltrace::mark_dispatch();
         let outcome = entry.sandbox.call(&payload, timeout, &bridge).await;
         ctx.cancel_pid.clear();
@@ -5736,6 +6362,7 @@ pub(crate) async fn run_cold_interactive(
         sandbox.kill().await;
         return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "run cancelled"));
     }
+    cancel_pid.set_stderr(sandbox.stderr_buffer());
     crate::calltrace::mark_dispatch();
     let call_outcome = sandbox.call(payload, wall_clock_timeout, bridge).await?;
     cancel_pid.clear();
@@ -6097,314 +6724,7 @@ impl Kind for PythonKind {
     }
 
     async fn call(&self, spec: &Value, args: Value, ctx: &CallCtx) -> Result<Value, KindError> {
-        let parsed = parse_spec(spec)?;
-        validate_spec_fields(&parsed, &self.own_domain)?;
-
-        // PRD-mcphost-sandbox-egress-allowlist requirement 2/3 (AC3/AC6):
-        // resolved once, up front -- `?` refuses before any admission-
-        // control slot, warm-pool lookup, or scratch dir is touched.
-        let network = self.network_mode(&parsed, ctx.egress_allowed)?;
-
-        let effective_schema = parsed.effective_args_schema()?;
-        let validator = jsonschema::validator_for(&effective_schema)
-            .map_err(|e| KindError::InvalidSpec(format!("args_schema: {e}")))?;
-        if let Err(e) = validator.validate(&args) {
-            // Requirement 1/AC3: phase `args_coercion`, naming the
-            // argument and both types -- see `describe_args_error`.
-            let args_err = super::describe_args_error(&e);
-            return Err(KindError::structured_with("args_invalid", args_err.message(), args_err.data()));
-        }
-
-        // Requirement 3 (AC4): the tenant's own admission cap is checked
-        // before the box-wide one -- a tenant already at its own limit is
-        // refused without ever contending for (or holding, even briefly) a
-        // slot another tenant could have used.
-        let tenant_sem = self.tenant_semaphore(ctx.tenant_id, ctx.concurrent_calls_per_tenant);
-        let Ok(_tenant_permit) = tenant_sem.clone().try_acquire_owned() else {
-            let retry_after_ms = self.estimate_retry_after_ms();
-            let limit = ctx.concurrent_calls_per_tenant.clamp(1, Semaphore::MAX_PERMITS);
-            let in_flight = limit.saturating_sub(tenant_sem.available_permits());
-            if self.should_log_capacity_refusal(ctx.tenant_id) {
-                tracing::warn!(
-                    tenant_id = ctx.tenant_id,
-                    scope = "tenant",
-                    in_flight,
-                    limit,
-                    retry_after_ms,
-                    "python call refused: tenant at its concurrent-call limit"
-                );
-            }
-            return Err(tenant_capacity_error(in_flight, limit, retry_after_ms));
-        };
-
-        let Ok(_permit) = self.semaphore.clone().try_acquire_owned() else {
-            let retry_after_ms = self.estimate_retry_after_ms();
-            let in_flight = self.max_concurrent.saturating_sub(self.semaphore.available_permits());
-            if self.should_log_capacity_refusal(ctx.tenant_id) {
-                tracing::warn!(
-                    tenant_id = ctx.tenant_id,
-                    scope = "host",
-                    in_flight,
-                    limit = self.max_concurrent,
-                    retry_after_ms,
-                    "python call refused: host at the concurrent-call limit"
-                );
-            }
-            return Err(host_capacity_error(in_flight, self.max_concurrent, retry_after_ms));
-        };
-
-        // PRD-mcphost-golden-signals-self-probe: counted as in flight until
-        // this call returns, so the pool-health signal can see a wedge.
-        let flight_key = format!("{}/{}", ctx.tenant_id, ctx.tool_name.as_deref().unwrap_or("<unnamed>"));
-        let _flight = self.warm.begin_flight(flight_key, Duration::from_secs(parsed.effective_timeout_s() + 2));
-
-        let secret_env = self.secret_env(&parsed, ctx);
-        let secret_values: Vec<String> = secret_env.iter().map(|(_, v)| v.clone()).collect();
-        // PRD-mcphost-python-kind-plain-env requirement 1 (AC1/AC6): this
-        // spec's own plain configuration, verbatim names (unlike
-        // `secret_env`'s `SECRET_<NAME>` prefixing) -- folded into the
-        // fingerprint (AC8) and merged into the sandbox's environment
-        // beside `secret_env` at every spawn site below.
-        let plain_env: Vec<(String, String)> =
-            parsed.env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-
-        if let Err(retry_after_s) = self.cpu_budget.check(ctx.tenant_id) {
-            return Err(KindError::structured_with(
-                "rate_limited",
-                "tenant CPU budget exceeded for this hour",
-                json!({"retry_after_s": retry_after_s}),
-            ));
-        }
-
-        let effective_requirements = parsed.effective_requirements()?;
-
-        // Requirement 1 (AC1/AC4/AC8): a repeat call of the same tool with
-        // the same requirements/source reuses a warm sandbox if one is
-        // idle, skipping the env-build-status lookup and the cold spawn
-        // entirely. `ctx.tool_name` is `None` in every context that has no
-        // notion of a tool's own name (`for_test`, the conformance suite) --
-        // those always fall through to the cold path below, by design (see
-        // the module doc's "Pool key" note).
-        let warm_key: Option<ToolKey> = ctx.tool_name.clone().map(|name| (ctx.tenant_id, name));
-        let fingerprint = call_fingerprint(
-            &parsed.source,
-            &effective_requirements,
-            &secret_env,
-            &plain_env,
-        );
-        if let Some(key) = &warm_key {
-            let call_timeout = Duration::from_secs(parsed.effective_timeout_s() + 2);
-            if let Some(result) = self
-                .try_warm(
-                    key,
-                    &fingerprint,
-                    &args,
-                    call_timeout,
-                    ctx,
-                    &effective_schema,
-                    &secret_values,
-                    &parsed.outputs,
-                )
-                .await
-            {
-                return result;
-            }
-            // `try_warm` returning `None` covers every "no usable warm
-            // sandbox" reason (nothing pooled yet, a stale fingerprint, or
-            // a pooled sandbox that turned out to be dead) -- all of them
-            // are a miss for requirement 4's metrics; only a `Some(_)`
-            // return above (an actual hit, or a definitive failure like
-            // AC5's timeout) is not.
-            self.warm.record_miss();
-        }
-
-        // PRD-mcphost-python-kind-runtime requirement 1/AC4: everything
-        // from here down only runs on the cold path (a warm-pool hit
-        // above already returned) -- this is exactly "first call" cost:
-        // env-status lookup, scratch prep, and the sandboxed run itself.
-        // Logged unconditionally (including the `building`/`build_failed`
-        // early returns) since even a call that never reaches the sandbox
-        // spent real wall time getting there.
-        let cold_call_started = Instant::now();
-        let env_dir = self.env_dir_for(&parsed, &ctx.namespace, &effective_requirements);
-        let env_source = parsed.env_source(&effective_requirements);
-        // PRD-mcphost-first-call-reliability requirement 1/2: waits (bounded)
-        // for a building environment instead of failing the call outright;
-        // past the bound, returns the structured `building` result rather
-        // than the old free-text "try again shortly" error.
-        let (python, site_packages) =
-            match resolve_env_readiness(&self.envs, &env_dir, &ctx.namespace, env_source).await {
-                EnvReadiness::Ready {
-                    python,
-                    site_packages,
-                    waited_ms,
-                } => {
-                    if waited_ms > 0 {
-                        ctx.log.log(&format!("waited_ms={waited_ms}"));
-                        tracing::info!(
-                            waited_ms,
-                            "python call waited for environment readiness"
-                        );
-                    }
-                    (python, site_packages)
-                }
-                EnvReadiness::Building { retry_after_ms } => {
-                    ctx.log.log(&format!("status=building retry_after_ms={retry_after_ms}"));
-                    return Ok(building_result(retry_after_ms, ctx.tool_name.as_deref()));
-                }
-                EnvReadiness::Failed { tail } => {
-                    return Err(KindError::structured_with(
-                        "build_failed",
-                        "the tool's environment failed to build",
-                        json!({"tail": tail}),
-                    ));
-                }
-            };
-
-        let scratch = self
-            .prepare_scratch(&parsed.source, &args, &site_packages, payload_end_user(ctx))
-            .await?;
-        let stdin_payload = tokio::fs::read(scratch.join("stdin.json"))
-            .await
-            .map_err(|e| KindError::Exec(format!("read stdin payload: {e}")))?;
-        // PRD-mcphost-tenant-state requirement 3: `spawn_persistent` below
-        // ignores `RunSpec.stdin_payload` (its own doc comment: "a
-        // persistent sandbox's first request comes from the first call,
-        // not from spawn time") -- this call is made through the same
-        // interactive `PersistentSandbox::call` a warm sandbox uses, so the
-        // payload has to be handed to `call` directly instead.
-        let call_payload_bytes = stdin_payload.clone();
-
-        let mut read_only_dirs = system_python_dirs();
-        read_only_dirs.push(env_dir.clone());
-
-        // Cloned before `run_spec` below moves it: requirement 1/AC1's
-        // pre-warm-after-a-cold-miss step (`maybe_promote_to_warm`) needs
-        // the same interpreter path once this cold call is done with it.
-        let python_for_warm = python.clone();
-
-        let run_spec = sandbox::RunSpec {
-            interpreter: python,
-            interpreter_args: vec!["-I".to_string(), "-S".to_string()],
-            script_path: scratch.join("runner.py"),
-            scratch_dir: scratch.clone(),
-            read_only_dirs,
-            stdin_payload,
-            limits: ResourceLimits {
-                cpu_seconds: parsed.effective_timeout_s(),
-                memory_mb: parsed.effective_memory_mb(),
-                max_open_files: MAX_OPEN_FILES,
-                max_file_size_mb: MAX_FILE_SIZE_MB,
-                max_processes: MAX_PROCESSES,
-            },
-            wall_clock_timeout: Duration::from_secs(parsed.effective_timeout_s() + 2),
-            network: network.clone(),
-            // PRD-mcphost-python-kind-plain-env requirement 1 (AC1/AC6):
-            // this spec's own `env` joins `secret_env` at the same
-            // injection point -- see `merge_env`'s doc comment.
-            extra_env: merge_env(&secret_env, &plain_env),
-            isolation: self.isolation,
-        };
-
-        // PRD-mcphost-tenant-state requirement 3 (AC2/AC3): the cold path
-        // runs through the same interactive, line-at-a-time protocol a warm
-        // sandbox uses (`sandbox::PersistentSandbox::call`) rather than the
-        // older one-shot `sandbox::run`, so `mcphost.state` works from the
-        // very first call to a tool, not just a reused warm one. See
-        // `run_cold_interactive`'s own doc comment for how its result stays
-        // a plain `SandboxOutcome` so nothing downstream of this line has
-        // to change.
-        let bridge = HostSidecarBridge { ctx };
-        let outcome = run_cold_interactive(&run_spec, &call_payload_bytes, &bridge, &ctx.cancel_pid).await;
-        let _ = tokio::fs::remove_dir_all(&scratch).await;
-        // Requirement 1/AC4: the cold-path number the AC's ≤5s budget is
-        // judged against, logged before the spawn-error `?` so a genuine
-        // spawn failure is still timed and visible.
-        let cold_call_elapsed = cold_call_started.elapsed();
-        tracing::info!(
-            cold_call_ms = cold_call_elapsed.as_millis() as u64,
-            "python cold call (env lookup + sandboxed run) complete"
-        );
-        // Requirement 3: feeds `estimate_retry_after_ms`'s p50 window.
-        self.record_call_duration(cold_call_elapsed);
-        self.warm.record_cold_start(cold_call_elapsed.as_millis() as u64);
-        let outcome = outcome.map_err(|e| KindError::Exec(format!("sandbox spawn failed: {e}")))?;
-
-        let (cpu_ms, peak_rss_kb) = outcome_usage(&outcome);
-        ctx.resources.record(cpu_ms, peak_rss_kb);
-        self.cpu_budget.record(ctx.tenant_id, cpu_ms);
-
-        // Requirement 1/AC1/AC8: a cold call that ran the sandboxed process
-        // to completion (whether the tool itself succeeded or raised -- a
-        // healthy sandbox either way) is a candidate to seed the warm pool
-        // for the *next* call, if this call came through a real dispatch
-        // path (`warm_key.is_some()`) and there's room. Anything else that
-        // could have gone wrong (spawn failure already returned above; a
-        // timeout, signal or non-zero exit below) means the sandbox itself
-        // is not healthy enough to keep alive.
-        if let (Some(key), true) = (&warm_key, matches!(&outcome, SandboxOutcome::Exited { .. })) {
-            self.maybe_promote_to_warm(
-                key.clone(),
-                fingerprint.clone(),
-                &parsed,
-                python_for_warm,
-                site_packages,
-                env_dir,
-                &secret_env,
-                network,
-            )
-            .await;
-        }
-
-        // Requirement 7: secret values are "redacted from any string that
-        // leaves the host" -- that includes a tool's own result (a tool may
-        // legitimately be handed a secret and choose to echo it back, e.g.
-        // while debugging), not just an error/traceback.
-        match map_sandbox_outcome(outcome, ctx.run_id.is_some(), &self.own_domain) {
-            Ok(value) => {
-                let redacted = redact_value(&value, &secret_values);
-                // PRD-mcphost-result-envelope-contract requirement 1/3,
-                // AC2/AC3: declared output fields promoted to
-                // `result.payload.<field>` -- a no-op when this spec
-                // declares none.
-                let redacted = apply_declared_outputs(redacted, &parsed.outputs);
-                // Requirement 10 / AC15: `host.tool_test` shows the schema
-                // the host inferred (or the author's own, unchanged) so a
-                // tenant can inspect it before relying on it. Same pattern
-                // `http`'s own `call` already uses for its test-mode-only
-                // request echo -- attach the debug info to the response
-                // `Value` itself, never touching `handler.rs`.
-                if ctx.test_mode {
-                    Ok(json!({
-                        "result": redacted,
-                        "schema": effective_schema,
-                        // PRD-mcphost-python-kind-plain-env requirement 5
-                        // (AC5): `host.tool_test`'s rendered environment --
-                        // plain `env` values shown verbatim, secret values
-                        // redacted, each labeled which is which. Secrets
-                        // are named by the spec's own declared name (e.g.
-                        // `"token"`), not the `SECRET_<NAME>` form the
-                        // sandboxed process actually sees, since that's
-                        // what a publisher wrote and would recognize.
-                        "environment": environment_report(&parsed.env, &parsed.secrets),
-                    }))
-                } else {
-                    Ok(redacted)
-                }
-            }
-            Err(e) => {
-                let e = redact_kind_error(e, &secret_values);
-                // PRD-mcphost-tool-test-truth P0 requirement 3 (AC4): a
-                // composing tool's `host.tool_test` succeeds with
-                // `verdict: unverifiable` instead of this call's own
-                // `tool_exception` error -- see
-                // `composition_unverifiable_detail`'s own doc comment.
-                match (ctx.test_mode, composition_unverifiable_detail(&e)) {
-                    (true, Some(detail)) => Ok(composition_unverifiable_value(detail)),
-                    _ => Err(e),
-                }
-            }
-        }
+        self.call_pooled(spec, args, ctx).await
     }
 
     /// `host.tool_run` (requirement 3, AC6/AC7). Always cold (module doc:
@@ -6586,6 +6906,21 @@ impl Kind for PythonKind {
         Some(self.warm.pool_signals(wedge_factor))
     }
 
+    fn pool_view(&self, wedge_factor: f64) -> Option<crate::kinds::PoolView> {
+        Some(crate::kinds::PoolView {
+            counts: self.warm.counts(Instant::now(), wedge_factor),
+            state: if self.warm.is_draining() { "draining" } else { "ready" },
+        })
+    }
+
+    async fn pool_restart(&self, plan: crate::kinds::PoolRestartPlan) -> Option<crate::kinds::PoolRestartReport> {
+        Some(self.warm.restart(plan).await)
+    }
+
+    fn pool_restart_done(&self, heal_action_id: i64) {
+        self.warm.heal_id.send_replace(Some(heal_action_id));
+    }
+
     /// PRD-mcphost-sandbox-ready requirement 4: `admin.sandbox_recheck`.
     async fn sandbox_recheck(&self) -> Option<sandbox::SandboxStatus> {
         Some(self.selftest.recheck().await)
@@ -6595,10 +6930,16 @@ impl Kind for PythonKind {
     /// practice today (see the field's own doc comment) -- `None` in
     /// production, same as every other kind's default.
     fn queue_wait_estimate_s(&self) -> Option<u32> {
-        *self
+        let base = *self
             .queue_wait_estimate_s
             .read()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(|e| e.into_inner());
+        // PRD-mcphost-sandbox-pool-self-restart R3: a draining pool adds the
+        // drain budget still to run.
+        if self.warm.is_draining() {
+            return Some(base.unwrap_or(0).saturating_add(self.warm.drain_remaining_s()));
+        }
+        base
     }
 
     /// PRD-mcphost-call-concurrency-visible R1: live admission counts for

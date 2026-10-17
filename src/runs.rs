@@ -78,9 +78,14 @@ struct CancelState {
 /// kills it; a cancel that arrives before the child exists leaves
 /// `cancel_requested` set and [`CancelSlot::set_live`] kills the child as
 /// soon as it is registered.
+/// A sandbox child's live stderr buffer.
+type StderrBuf = Arc<Mutex<Vec<u8>>>;
+
 #[derive(Default)]
 pub struct CancelSlot {
     state: Mutex<CancelState>,
+    /// The live child's stderr buffer, for the pool restart's ledger evidence.
+    stderr: Mutex<Option<StderrBuf>>,
 }
 
 fn killpg_sigkill(pid: i32) {
@@ -116,6 +121,31 @@ impl CancelSlot {
         }
         st.pid = Some(pid);
         true
+    }
+
+    /// Registers the live child's stderr buffer (see [`Self::stderr_snapshot`]).
+    pub fn set_stderr(&self, buf: StderrBuf) {
+        *self.stderr.lock().unwrap_or_else(|e| e.into_inner()) = Some(buf);
+    }
+
+    /// What the live (or just-killed) child wrote to stderr so far.
+    pub fn stderr_snapshot(&self) -> Option<Vec<u8>> {
+        let buf = self.stderr.lock().unwrap_or_else(|e| e.into_inner()).clone()?;
+        let bytes = buf.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        Some(bytes)
+    }
+
+    /// Kills the live child's process group without marking the run
+    /// cancelled (the pool restart killing a wedged child). `true` when a
+    /// live pid was killed.
+    pub fn kill_live(&self) -> bool {
+        match self.lock().pid {
+            Some(pid) => {
+                killpg_sigkill(pid);
+                true
+            }
+            None => false,
+        }
     }
 
     /// The sandbox round trip is over; nothing is live any more.
