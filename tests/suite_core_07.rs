@@ -1529,6 +1529,12 @@ mod jtl_ac02_mapping_miss_step_is_error_family_compose;
 mod jtl_ac03_scheduled_run_is_one_entry;
 #[path = "jtl_ac04_running_chain_shows_in_flight_step.rs"]
 mod jtl_ac04_running_chain_shows_in_flight_step;
+#[path = "jtlb_ac01_foreign_or_unknown_run_not_found.rs"]
+mod jtlb_ac01_foreign_or_unknown_run_not_found;
+#[path = "jtlb_ac02_fields_contract_and_runs_get_agree.rs"]
+mod jtlb_ac02_fields_contract_and_runs_get_agree;
+#[path = "jtlb_ac03_text_format_four_lines.rs"]
+mod jtlb_ac03_text_format_four_lines;
 #[path = "kbind_ac01_session_ids_distinct_and_bound_key_refused_elsewhere.rs"]
 mod kbind_ac01_session_ids_distinct_and_bound_key_refused_elsewhere;
 #[path = "kbind_ac02_run_bound_key_needs_its_run_id.rs"]
