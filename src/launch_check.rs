@@ -359,3 +359,18 @@ pub fn render_checklist(items: &[Item]) -> String {
     }
     out
 }
+
+/// Write a run's `--json` body to `<dir>/launch-check-<UTC date>.json`. A
+/// file already there (an earlier run the same UTC day) is kept as
+/// `launch-check-<date>.1.json`, replacing any older `.1`. Returns the path
+/// written.
+pub fn write_run_json(dir: &Path, body: &str) -> std::io::Result<std::path::PathBuf> {
+    std::fs::create_dir_all(dir)?;
+    let date = crate::state::date_from_unix(crate::state::now_unix());
+    let latest = dir.join(format!("launch-check-{date}.json"));
+    if latest.exists() {
+        std::fs::rename(&latest, dir.join(format!("launch-check-{date}.1.json")))?;
+    }
+    std::fs::write(&latest, body)?;
+    Ok(latest)
+}

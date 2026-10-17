@@ -1563,6 +1563,12 @@ mod lchk_ac02_text_run;
 mod lchk_ac03_json_shape;
 #[path = "lchk_ac04_render_check_drift.rs"]
 mod lchk_ac04_render_check_drift;
+#[path = "lchkb_ac01_readme_link_rows.rs"]
+mod lchkb_ac01_readme_link_rows;
+#[path = "lchkb_ac02_malformed_toml_exits_two.rs"]
+mod lchkb_ac02_malformed_toml_exits_two;
+#[path = "lchkb_ac03_out_dir_rotation.rs"]
+mod lchkb_ac03_out_dir_rotation;
 #[path = "limits_ac05_signup_burst_atomic.rs"]
 mod limits_ac05_signup_burst_atomic;
 #[path = "lineage_ac02_drop_with_no_consumers_is_unrefused.rs"]
