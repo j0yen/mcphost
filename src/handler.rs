@@ -6604,6 +6604,24 @@ impl StateBackend for CountingStateBackend {
 
 // ---- the handler -----------------------------------------------------
 
+/// The stack, in bytes, every forwarded dotted host verb must complete its real
+/// `host.tool_call` / `host.tool_test` call in on a debug build (profile and
+/// test thread as CI's `cargo test`). GENERATED MEASUREMENT: the measured
+/// maximum over all 226 forwardable ids is 1,560,576 B (every id within a few
+/// KiB of it: `test:host.trigger.set`, `call:host.vault.status`, ...,
+/// binary-searched on a thread of exactly that size, 10-17, after this fix, on
+/// origin/main a5c0ef6c) and the budget is that + 25 % = 1,950,720 B (1.86 MiB),
+/// so CI's 2 MiB test thread keeps >= 7 % over it and the next fat frame fails
+/// `tests/verbfwd_ac08_forward_stack_budget.rs`, naming the verb, instead of SIGABRTing a shard (run 326 `verbfwd_ac01`, run
+/// 953; both 10-17, both `has overflowed its stack`). The boundary is
+/// `dispatch_tenant_tool` / `forward_host_verb`, where a dotted verb re-enters
+/// the dispatcher. Re-measure and tighten as the dispatch frames shrink.
+pub const FORWARD_STACK_BUDGET: usize = 1_950_720;
+
+/// Verbs whose handler forwards a call back into `dispatch_tenant_tool`; see the
+/// comment there. Canonical dotted names (an alias is resolved before dispatch).
+const FORWARDING_WRAPPERS: &[&str] = &["host.tool.call", "host.tool.test", "host.estimate"];
+
 #[derive(Clone)]
 pub struct McpHostHandler {
     pub state: Arc<AppState>,
@@ -6853,8 +6871,23 @@ impl McpHostHandler {
         name: &str,
         args: Value,
     ) -> Result<Value, AppError> {
-        let result = self
-            .dispatch_tenant_tool_dry_run(
+        // The forwarding boundary. A wrapper verb (`FORWARDING_WRAPPERS`) re-enters
+        // this dispatcher with the verb it forwards, so it is on the stack UNDER
+        // the forwarded verb. Dispatched the usual way it would hold the
+        // `dispatch_tenant_tool_dry_run` + `dispatch_tenant_tool_inner` poll
+        // frames (~540 KiB in a debug build, most of it that one match's
+        // per-arm future temporaries) while the forwarded verb pays for its own,
+        // so every forward cost two. Skip them for the wrapper: none is a write
+        // verb (`wrappers_are_not_write_verbs` pins that), so `dry_run` passes
+        // straight through to `inner`, whose first line is the `fields` check
+        // repeated here. run 326 / run 953 (10-17), FORWARD_STACK_BUDGET.
+        let result = if FORWARDING_WRAPPERS.contains(&name) {
+            match crate::paged::refuse_fields_on_unprojected(name, &args) {
+                Ok(()) => self.forwarding_wrapper(tenant, calls_auth_method, end_user, name, args).await,
+                Err(e) => Err(e),
+            }
+        } else {
+            self.dispatch_tenant_tool_dry_run(
                 tenant,
                 subject,
                 auth_method,
@@ -6864,8 +6897,38 @@ impl McpHostHandler {
                 name,
                 args,
             )
-            .await;
+            .await
+        };
         self.attach_data_quota(tenant, name, result).await
+    }
+
+    /// The three verbs that forward a call back into `dispatch_tenant_tool`:
+    /// `host.tool.call` / `host.estimate` (-> `forward_host_verb`) and
+    /// `host.tool.test` (-> `test_forward_host_verb`). One body for both ways in:
+    /// `dispatch_tenant_tool`'s early route and `dispatch_tenant_tool_inner`'s arm.
+    #[allow(clippy::too_many_arguments)]
+    async fn forwarding_wrapper(
+        &self,
+        tenant: &Tenant,
+        calls_auth_method: &str,
+        end_user: Option<&crate::enduser::EndUser>,
+        name: &str,
+        args: Value,
+    ) -> Result<Value, AppError> {
+        match name {
+            "host.tool.test" => self.tool_test_stamping(tenant, args).await,
+            // PRD-mcphost-call-cost-estimate requirement 3: `host.estimate` IS
+            // `host.tool_call` with `dry_run` forced true -- same handler, same
+            // argument names, so its verdict cannot differ from the flag's.
+            "host.estimate" => {
+                let mut args = args;
+                if let Some(obj) = args.as_object_mut() {
+                    obj.insert("dry_run".to_string(), json!(true));
+                }
+                self.host_tool_call(tenant, args, calls_auth_method, end_user).await
+            }
+            _ => self.host_tool_call(tenant, args, calls_auth_method, end_user).await,
+        }
     }
 
     /// Adds `data.quota` (the ceilings `name` touches) to a data verb's
@@ -7004,7 +7067,7 @@ impl McpHostHandler {
         {
             if self.state.db.tenant_is_scratch(tenant.id).await? {
                 let mut result = self
-                    .dispatch_tenant_tool_inner(
+                    .dispatch_inner_boxed(
                         tenant,
                         subject,
                         auth_method,
@@ -7041,7 +7104,7 @@ impl McpHostHandler {
                 obj.insert("confirm".to_string(), json!(true));
             }
             let result = self
-                .dispatch_tenant_tool_inner(
+                .dispatch_inner_boxed(
                     tenant,
                     subject,
                     auth_method,
@@ -7060,7 +7123,7 @@ impl McpHostHandler {
             }
             return result;
         }
-        self.dispatch_tenant_tool_inner(
+        self.dispatch_inner_boxed(
             tenant,
             subject,
             auth_method,
@@ -7071,6 +7134,35 @@ impl McpHostHandler {
             args,
         )
         .await
+    }
+
+    /// `dispatch_tenant_tool_inner`, its future built and boxed in this frame
+    /// instead of its caller's. `dispatch_tenant_tool_dry_run` calls it from four
+    /// places, and in a debug build each call site held its own ~14 KiB copy of
+    /// the future in that function's poll frame (88 KiB, once per dispatch, so
+    /// twice per forwarded verb); here the copy is gone before the poll starts.
+    #[allow(clippy::too_many_arguments)]
+    fn dispatch_inner_boxed<'a>(
+        &'a self,
+        tenant: &'a Tenant,
+        subject: Option<&'a str>,
+        auth_method: &'a str,
+        calls_auth_method: &'a str,
+        end_user: Option<&'a crate::enduser::EndUser>,
+        session_id: Option<&'a str>,
+        name: &'a str,
+        args: Value,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Value, AppError>> + Send + 'a>> {
+        Box::pin(self.dispatch_tenant_tool_inner(
+            tenant,
+            subject,
+            auth_method,
+            calls_auth_method,
+            end_user,
+            session_id,
+            name,
+            args,
+        ))
     }
 
     /// Runs `name` with `args` (minus `dry_run`/`confirm`) inside a
@@ -7283,21 +7375,14 @@ impl McpHostHandler {
             "host.tool.list" => control::tool_list(&self.state, tenant, &args).await,
             "host.tool.remove" => control::tool_remove(&self.state, tenant, &args).await,
             "host.tool.logs" => control::tool_logs(&self.state, tenant, &args).await,
-            "host.tool.test" => self.tool_test_stamping(tenant, args).await,
             "host.bridge.test" => self.bridge_test(tenant, args).await,
             "host.spec.test" => self.spec_test(tenant, args).await,
             "host.tool_from_description" => self.tool_from_description(tenant, args).await,
             "host.tool.run" => self.tool_run(tenant, args).await,
-            "host.tool.call" => self.host_tool_call(tenant, args, calls_auth_method, end_user).await,
-            // PRD-mcphost-call-cost-estimate requirement 3: `host.estimate` IS
-            // `host.tool_call` with `dry_run` forced true -- same handler, same
-            // argument names, so its verdict cannot differ from the flag's.
-            "host.estimate" => {
-                let mut args = args;
-                if let Some(obj) = args.as_object_mut() {
-                    obj.insert("dry_run".to_string(), json!(true));
-                }
-                self.host_tool_call(tenant, args, calls_auth_method, end_user).await
+            // The forwarding wrappers: also reached, ahead of this match, by
+            // `dispatch_tenant_tool` (see `FORWARDING_WRAPPERS`).
+            "host.tool.call" | "host.tool.test" | "host.estimate" => {
+                self.forwarding_wrapper(tenant, calls_auth_method, end_user, name, args).await
             }
             "host.uptime.create" => self.uptime_create(tenant, args, calls_auth_method, end_user).await,
             "host.call_trace" => self.call_trace(Some(tenant), args).await,
@@ -12642,5 +12727,19 @@ mod host_tools_stack_tests {
             panic!("host.trigger.set is a control-plane tool");
         };
         assert!(args.iter().any(|a| a == "tool"), "host.trigger.set args: {args:?}");
+    }
+
+    /// `dispatch_tenant_tool` routes `FORWARDING_WRAPPERS` past
+    /// `dispatch_tenant_tool_dry_run`, which is only equivalent while none of them
+    /// is a write verb (the only thing that function acts on). Route one through
+    /// it by registering it as a write verb and this fails, naming the wrapper.
+    #[test]
+    fn wrappers_are_not_write_verbs() {
+        for wrapper in FORWARDING_WRAPPERS {
+            assert!(
+                crate::write_verbs::lookup(wrapper).is_none(),
+                "{wrapper} is a write verb: dispatch_tenant_tool must not skip dispatch_tenant_tool_dry_run for it"
+            );
+        }
     }
 }
