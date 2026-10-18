@@ -359,6 +359,8 @@ const MIGRATION_0111: &str = include_str!("../migrations/0111_key_binding.sql");
 const MIGRATION_0113: &str = include_str!("../migrations/0113_restarts.sql");
 /// PRD-mcphost-performance-guarantees-measured R3: the `perf_samples` table.
 const MIGRATION_0118: &str = include_str!("../migrations/0118_perf_samples.sql");
+/// PRD-mcphost-sampling-from-tools R4: the `sampling_usage` daily counter.
+const MIGRATION_0120: &str = include_str!("../migrations/0120_sampling_usage.sql");
 
 /// PRD-mcphost-example-proof-nightly-and-hide R2: the `example_proofs` table.
 const MIGRATION_0115: &str = include_str!("../migrations/0115_example_proofs.sql");
@@ -3181,6 +3183,8 @@ impl Db {
         // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0118)?;
         Self::migrate_0119_publish_visibility_tags(&conn)?;
+        // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
+        conn.execute_batch(MIGRATION_0120)?;
         Ok(())
     }
 
@@ -13491,6 +13495,36 @@ impl Db {
                 params![tenant_id, now],
             )?;
             Ok(DraftReservation::Reserved(conn.last_insert_rowid()))
+        })
+        .await
+    }
+
+    /// PRD-mcphost-sampling-from-tools R4: tokens `tenant_id` has spent on
+    /// sampling since `day_start` (a UTC midnight).
+    pub async fn sampling_tokens_on(&self, tenant_id: i64, day_start: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            let used: Option<i64> = conn
+                .query_row(
+                    "SELECT tokens FROM sampling_usage WHERE tenant_id = ?1 AND day_start = ?2",
+                    params![tenant_id, day_start],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            Ok(used.unwrap_or(0))
+        })
+        .await
+    }
+
+    /// PRD-mcphost-sampling-from-tools R4: adds one ask's `tokens` to the
+    /// tenant's counter for the day starting `day_start`.
+    pub async fn sampling_record(&self, tenant_id: i64, day_start: i64, tokens: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO sampling_usage (tenant_id, day_start, tokens, asks) VALUES (?1, ?2, ?3, 1) \
+                 ON CONFLICT(tenant_id, day_start) DO UPDATE SET tokens = tokens + ?3, asks = asks + 1",
+                params![tenant_id, day_start, tokens],
+            )?;
+            Ok(())
         })
         .await
     }

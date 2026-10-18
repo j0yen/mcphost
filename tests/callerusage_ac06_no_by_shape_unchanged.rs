@@ -98,6 +98,8 @@ async fn usage_without_by_keeps_the_pre_prd_shape() {
         "quota",
         // PRD-mcphost-usage-in-every-response AC3: additive.
         "plan",
+        // PRD-mcphost-sampling-from-tools R4: additive.
+        "sampling_tokens_today",
     ]
     .into_iter()
     .collect();

@@ -1446,6 +1446,14 @@ pub trait ElicitBackend: Send + Sync {
     async fn elicit(&self, args: Value, remaining: Duration) -> Result<Value, KindError>;
 }
 
+/// PRD-mcphost-sampling-from-tools: `mcphost.sampling.ask`'s backend. `args`
+/// is the sidecar request (`prompt`, `max_tokens?`, `system?`, `hints?`);
+/// `remaining` is what is left of the calling tool's budget.
+#[async_trait::async_trait]
+pub trait SamplingBackend: Send + Sync {
+    async fn ask(&self, args: Value, remaining: Duration) -> Result<Value, KindError>;
+}
+
 /// PRD-mcphost-chain-host-steps requirement 1: a step's target, as
 /// [`compose_call`] wired into `handler.rs::dispatch_tenant_tool` can reach
 /// a `host.*` verb -- `op` is the full dotted name (e.g.
@@ -1670,6 +1678,10 @@ pub struct CallCtx {
     /// reaches. [`crate::elicit::NoClientElicit`] everywhere but the real
     /// `tools/call` dispatch path, so a job run answers `elicit_unsupported`.
     pub elicit: Arc<dyn ElicitBackend>,
+    /// PRD-mcphost-sampling-from-tools: what `mcphost.sampling.ask` reaches.
+    /// [`crate::sampling::NoClientSampling`] everywhere but the real
+    /// `tools/call` dispatch path, so a job run answers `sampling_unsupported`.
+    pub sampling: Arc<dyn SamplingBackend>,
     /// PRD-mcphost-sandbox-channel-msg-bridge requirement 5: the running
     /// count of `mcphost.channel`/`mcphost.msg` sidecar calls made so far in
     /// this call (shared, via the `Arc`, the same "one counter for the whole
@@ -1769,6 +1781,7 @@ impl CallCtx {
             channel: Arc::new(NoChannel),
             msg: Arc::new(NoMsg),
             elicit: Arc::new(crate::elicit::NoClientElicit),
+            sampling: Arc::new(crate::sampling::NoClientSampling { state: None }),
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             sidecar_ops_max: i64::MAX,
             host_dispatch: None,
@@ -1994,6 +2007,7 @@ async fn compose_dispatch(
         channel: ctx.channel.clone(),
         msg: ctx.msg.clone(),
         elicit: ctx.elicit.clone(),
+        sampling: ctx.sampling.clone(),
         sidecar_ops: ctx.sidecar_ops.clone(),
         sidecar_ops_max: ctx.sidecar_ops_max,
         // PRD-mcphost-chain-host-steps: composition stays inside one tenant
