@@ -423,15 +423,21 @@ jobs:
   # against an in-process TestServer on every PR, so a recipe the host no
   # longer accepts fails HERE, naming its own test, instead of showing up as a
   # 0.0 in the nightly recipe row. Only the suites that hold an rgpt_ module
-  # are built (derived from tests/suite_*.rs, never listed here), and the
-  # job's own cap is the PRD's 6 minutes. Independent of `gate`/`sandbox`, so
-  # it runs concurrently with them. Python-kind recipes need the userns grant
-  # the sandbox job gives itself; the non-vacuous check below turns a runner
-  # that cannot do it into a red job, not a silent skip.
+  # are built (derived from tests/suite_*.rs, never listed here). The PRD's 6
+  # minutes bound the golden RUN (the "(golden paths)" step), not a cold
+  # compile: a cold build is ~9 minutes (run 39159162246: xtask 3m54s + test
+  # profile 3m19s + run 5s), so a 6-minute job cap cancelled the job
+  # before its Post step could save the rust-cache and every run stayed cold.
+  # The compile has its own step and the job cap covers compile + run, so a
+  # cold run finishes, saves the cache, and the next run is warm. Independent
+  # of `gate`/`sandbox`, so it runs concurrently with them. Python-kind
+  # recipes need the userns grant the sandbox job gives itself; the
+  # non-vacuous check below turns a runner that cannot do it into a red job,
+  # not a silent skip.
   recipes-golden-path:
     name: recipes-golden-path
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 15
     steps:
       - name: checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -455,7 +461,16 @@ jobs:
       - name: generated recipe files match recipes/*.toml
         run: cargo run --locked --quiet --package xtask -- recipes --check
 
+      # Same suites, flags and profile as the run step below, compile only, so
+      # the run step times the golden paths and nothing else.
+      - name: cargo test build (golden-path suites, no run)
+        run: |
+          flags=$(grep -l 'mod rgpt_' tests/suite_*.rs | sed 's#tests/\(.*\)\.rs#--test \1#' | tr '\n' ' ')
+          echo "suites holding rgpt_ tests: $flags"
+          cargo test --locked $flags --no-run
+
       - name: cargo test (golden paths)
+        timeout-minutes: 6
         env:
           MCPHOST_PERF_SKIP: "1"
         run: |
