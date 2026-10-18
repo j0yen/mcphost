@@ -22,6 +22,24 @@ const MIN_PREFIX_LEN: usize = 4;
 /// change, or `mcphost_admin_schema_contract_ac06_*` fails naming the drift.
 pub const SCHEMA_VERSION: i64 = 1;
 
+/// The `synthetic` filter values of `admin.tenants`, as its descriptor enum
+/// publishes them; [`tenants`] filters on `true`/`false` and passes every row
+/// on `all`.
+pub const SYNTHETIC_FILTERS: &[&str] = &["true", "false", "all"];
+
+/// The `subject_kind` values of `admin.ban.*`: the descriptor's enum and
+/// [`ban_add`]'s own check read this one list.
+pub const BAN_SUBJECT_KINDS: &[&str] = &["key", "addr", "email_domain"];
+
+/// The `impact` values of `admin.incident.open`: the descriptor's enum and
+/// [`incident_open`]'s own check read this one list.
+pub const INCIDENT_IMPACTS: &[&str] = &["minor", "partial", "major"];
+
+/// The `action` and `status` values of `admin.example_proposals`, as its
+/// descriptor enums publish them.
+pub const PROPOSAL_ACTIONS: &[&str] = &["list", "approve", "reject", "merge"];
+pub const PROPOSAL_STATUSES: &[&str] = &["pending", "approved", "rejected", "merged"];
+
 fn arg_str(args: &Value, name: &str) -> Result<String, AppError> {
     args.get(name)
         .and_then(Value::as_str)
@@ -77,6 +95,12 @@ fn remove_tenant_tables(state: &AppState, tenant_id: i64) {
 pub async fn tenants(state: &AppState, args: &Value) -> Result<Value, AppError> {
     let prefix = arg_str_opt(args, "prefix");
     let synthetic_filter = arg_str_opt(args, "synthetic").unwrap_or_else(|| "all".to_string());
+    if !SYNTHETIC_FILTERS.contains(&synthetic_filter.as_str()) {
+        return Err(AppError::InvalidArgs(format!(
+            "synthetic: must be one of {}; got '{synthetic_filter}'",
+            SYNTHETIC_FILTERS.join(", ")
+        )));
+    }
     let rows = match prefix {
         Some(p) => state.db.list_tenants_by_prefix(p, None).await?.0,
         None => state.db.list_tenants().await?,
@@ -1329,9 +1353,10 @@ fn operator_identity(state: &AppState) -> String {
 /// already follows.
 pub async fn ban_add(state: &AppState, args: &Value) -> Result<Value, AppError> {
     let subject_kind = arg_str(args, "subject_kind")?;
-    if !matches!(subject_kind.as_str(), "key" | "addr" | "email_domain") {
+    if !BAN_SUBJECT_KINDS.contains(&subject_kind.as_str()) {
         return Err(AppError::InvalidParams(format!(
-            "subject_kind must be one of \"key\", \"addr\", \"email_domain\"; got '{subject_kind}'"
+            "subject_kind must be one of {}; got '{subject_kind}'",
+            BAN_SUBJECT_KINDS.iter().map(|k| format!("\"{k}\"")).collect::<Vec<_>>().join(", ")
         )));
     }
     let raw_subject = arg_str(args, "subject")?;
@@ -1612,9 +1637,10 @@ async fn incident_or_not_found(state: &AppState, id: i64) -> Result<crate::db::I
 pub async fn incident_open(state: &AppState, args: &Value) -> Result<Value, AppError> {
     let title = arg_str(args, "title")?;
     let impact = arg_str(args, "impact")?;
-    if !matches!(impact.as_str(), "minor" | "partial" | "major") {
+    if !INCIDENT_IMPACTS.contains(&impact.as_str()) {
         return Err(AppError::InvalidParams(format!(
-            "impact must be one of \"minor\", \"partial\", \"major\"; got '{impact}'"
+            "impact must be one of {}; got '{impact}'",
+            INCIDENT_IMPACTS.iter().map(|i| format!("\"{i}\"")).collect::<Vec<_>>().join(", ")
         )));
     }
     let components = arg_str_array(args, "components")?;

@@ -532,13 +532,17 @@ pub async fn get(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Valu
     Ok(out)
 }
 
+/// The `status` values of `host.ask.list`: the descriptor's enum and
+/// [`list`]'s own check read this one list.
+pub const STATUSES: &[&str] = &["pending", "answered", "expired"];
+
 /// `host.ask.list {status?, limit?}`: this tenant's asks, newest first.
 pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let status = match args.get("status") {
         None | Some(Value::Null) => None,
         Some(v) => match v.as_str() {
-            Some(s @ ("pending" | "answered" | "expired")) => Some(s.to_string()),
-            _ => return Err(invalid("status: one of pending, answered, expired".into())),
+            Some(s) if STATUSES.contains(&s) => Some(s.to_string()),
+            _ => return Err(invalid(format!("status: one of {}", STATUSES.join(", ")))),
         },
     };
     let limit = args.get("limit").and_then(Value::as_i64).unwrap_or(LIST_DEFAULT).clamp(1, LIST_MAX);

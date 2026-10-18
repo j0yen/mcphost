@@ -1198,7 +1198,7 @@ fn tool_from_description_tool() -> Tool {
             json!({
                 "description": {"type": "string", "description": "What the tool should do, in one sentence."},
                 "name": {"type": "string", "description": "Optional tool name; default is the model's proposal."},
-                "kind": {"type": "string", "enum": ["python"], "description": "Only python is drafted."},
+                "kind": {"type": "string", "enum": crate::drafter::DRAFT_KINDS, "description": "Only python is drafted."},
                 "share": {"type": "boolean", "description": "Mint a public url (default true)."},
             }),
             &["description"],
@@ -2975,7 +2975,7 @@ fn host_tools_part_05() -> Vec<Tool> {
                 json!({
                     "id": {"type": "string", "description": "Blob id; use name instead if you don't have it."},
                     "name": {"type": "string", "description": "Blob name; use id instead if you have it."},
-                    "as": {"type": "string", "enum": ["url", "base64"], "description": "\"url\" (default) or \"base64\" (files up to 1 MiB)."},
+                    "as": {"type": "string", "enum": crate::blobs::GET_AS, "description": "\"url\" (default) or \"base64\" (files up to 1 MiB)."},
                 }),
                 &[],
                 &["id", "name"],
@@ -3411,7 +3411,7 @@ fn host_tools_part_07() -> Vec<Tool> {
             host_schema(
                 json!({
                     "name": {"type": "string", "description": "Inbox name; also the reader tool's name (^[a-z][a-z0-9_]{1,40}$)."},
-                    "verify": {"type": "string", "enum": ["hmac", "github", "stripe"], "description": "How a POST is signed; default hmac (X-Mcphost-Signature: sha256=<hex hmac of the body>)."},
+                    "verify": {"type": "string", "enum": crate::webhook_inbox::VERIFY_SCHEMES, "description": "How a POST is signed; default hmac (X-Mcphost-Signature: sha256=<hex hmac of the body>)."},
                     "rotate": {"type": "boolean", "description": "On an existing inbox, mint and return a new secret; the url never changes."},
                 }),
                 &["name"],
@@ -3664,7 +3664,7 @@ fn host_tools_part_08() -> Vec<Tool> {
                     "run_id": {"type": "string", "description": "The run id to read the timeline of."},
                     "format": {
                         "type": "string",
-                        "enum": ["json", "text"],
+                        "enum": crate::timeline::FORMATS,
                         "description": "json (default) or text: {format, text} with one line per step and a totals line."
                     }
                 }),
@@ -3979,7 +3979,7 @@ fn host_tools_part_09() -> Vec<Tool> {
                     },
                     "contact_policy": {
                         "type": "string",
-                        "enum": ["open", "contacts", "closed"],
+                        "enum": crate::agents::CONTACT_POLICIES,
                         "description": "What contact this tenant accepts; enforced by the inbox PRD.",
                     },
                     "hints": {
@@ -4422,7 +4422,7 @@ fn host_tools_part_10() -> Vec<Tool> {
              and how long the agent waited. Rows persist 30 days after expiry.",
             host_schema(
                 json!({
-                    "status": {"type": "string", "enum": ["pending", "answered", "expired"], "description": "Only asks in this state."},
+                    "status": {"type": "string", "enum": crate::asks::STATUSES, "description": "Only asks in this state."},
                     "limit": {"type": "integer", "description": "At most this many rows; default 50, at most 100."},
                 }),
                 &[],
@@ -4558,7 +4558,7 @@ fn host_tools_part_10() -> Vec<Tool> {
                 json!({
                     "status": {
                         "type": "string",
-                        "enum": ["pending", "accepted", "denied", "expired"],
+                        "enum": crate::consent::STATUSES,
                         "description": "Filter incoming/outgoing requests to this status; omit for all.",
                     },
                 }),
@@ -4799,7 +4799,7 @@ fn host_tools_part_11() -> Vec<Tool> {
              and the next authorize shows consent again; null clears it).",
             host_schema(
                 json!({
-                    "clients": {"type": "string", "enum": ["any", "allowlist", "approve"]},
+                    "clients": {"type": "string", "enum": crate::oauth_policy::CLIENTS_MODES},
                     "allowlist": {"type": "array", "items": {"type": "string"}},
                     "access_ttl_s": {"type": "integer"},
                     "refresh_ttl_s": {"type": "integer"},
@@ -5572,7 +5572,7 @@ fn admin_tools_raw() -> Vec<Tool> {
             schema(
                 json!({
                     "prefix": {"type": "string"},
-                    "synthetic": {"type": "string", "enum": ["true", "false", "all"]},
+                    "synthetic": {"type": "string", "enum": crate::admin::SYNTHETIC_FILTERS},
                 }),
                 &[],
             ),
@@ -5946,7 +5946,7 @@ fn admin_tools_raw() -> Vec<Tool> {
              otherwise it never does.",
             schema(
                 json!({
-                    "subject_kind": {"type": "string", "enum": ["key", "addr", "email_domain"]},
+                    "subject_kind": {"type": "string", "enum": crate::admin::BAN_SUBJECT_KINDS},
                     "subject": {
                         "type": "string",
                         "description": "The raw tenant key, a literal address, or an email domain.",
@@ -5974,7 +5974,7 @@ fn admin_tools_raw() -> Vec<Tool> {
             schema(
                 json!({
                     "active_only": {"type": "boolean"},
-                    "subject_kind": {"type": "string", "enum": ["key", "addr", "email_domain"]},
+                    "subject_kind": {"type": "string", "enum": crate::admin::BAN_SUBJECT_KINDS},
                 }),
                 &[],
             ),
@@ -6091,11 +6091,11 @@ fn admin_tools_raw() -> Vec<Tool> {
              `mcphost examples proposals pull`) marks an approved one merged with its pr_url.",
             schema(
                 json!({
-                    "action": {"type": "string", "enum": ["list", "approve", "reject", "merge"]},
+                    "action": {"type": "string", "enum": crate::admin::PROPOSAL_ACTIONS},
                     "id": {"type": "integer"},
                     "reason": {"type": "string"},
                     "pr_url": {"type": "string"},
-                    "status": {"type": "string", "enum": ["pending", "approved", "rejected", "merged"]},
+                    "status": {"type": "string", "enum": crate::admin::PROPOSAL_STATUSES},
                 }),
                 &["action"],
             ),
@@ -6130,7 +6130,7 @@ fn admin_tools_raw() -> Vec<Tool> {
             schema(
                 json!({
                     "key": {"type": "string"},
-                    "severity": {"type": "string", "enum": ["info", "warn", "critical"]},
+                    "severity": {"type": "string", "enum": crate::alerts::SEVERITIES},
                     "title": {"type": "string"},
                     "body": {"type": "object"},
                 }),
@@ -6146,7 +6146,7 @@ fn admin_tools_raw() -> Vec<Tool> {
             schema(
                 json!({
                     "title": {"type": "string"},
-                    "impact": {"type": "string", "enum": ["minor", "partial", "major"]},
+                    "impact": {"type": "string", "enum": crate::admin::INCIDENT_IMPACTS},
                     "components": {"type": "array", "items": {"type": "string"}},
                 }),
                 &["title", "impact", "components"],
@@ -6175,7 +6175,7 @@ fn admin_tools_raw() -> Vec<Tool> {
              into the status feed -- one status_samples row, source preserved verbatim.",
             schema(
                 json!({
-                    "component": {"type": "string", "enum": ["mcp", "exec", "billing", "claim"]},
+                    "component": {"type": "string", "enum": crate::statusfeed::COMPONENTS},
                     "ok": {"type": "boolean"},
                     "latency_ms": {"type": "integer"},
                     "source": {"type": "string"},
@@ -10221,7 +10221,7 @@ impl McpHostHandler {
             .ok_or_else(|| AppError::InvalidArgs("missing required argument 'description'".into()))?
             .to_string();
         let kind_name = args.get("kind").and_then(Value::as_str).unwrap_or("python");
-        if kind_name != "python" {
+        if !crate::drafter::DRAFT_KINDS.contains(&kind_name) {
             return Err(AppError::InvalidArgs(format!(
                 "host.tool_from_description drafts python tools only; got kind '{kind_name}'"
             )));

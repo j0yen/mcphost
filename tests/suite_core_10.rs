@@ -712,6 +712,8 @@ mod vbd_ac03_skips_come_from_the_owner_registry;
 mod vbd_ac04_owner_registry_cross_contract;
 #[path = "vbd_ac05_unknown_argument_everywhere.rs"]
 mod vbd_ac05_unknown_argument_everywhere;
+#[path = "vbd_ac06_descriptor_enums_from_constants.rs"]
+mod vbd_ac06_descriptor_enums_from_constants;
 #[path = "verbfwd_ac01_trigger_set_dotted_forwards.rs"]
 mod verbfwd_ac01_trigger_set_dotted_forwards;
 #[path = "verbfwd_ac02_every_spelling_forwards_identically.rs"]

@@ -309,11 +309,16 @@ pub async fn contacts(state: &AppState, tenant: &Tenant, args: &Value) -> Result
     }))
 }
 
+/// The `status` values of `host.agent.contacts`: the descriptor's enum and
+/// [`validate_status`] read this one list.
+pub const STATUSES: &[&str] = &["pending", "accepted", "denied", "expired"];
+
 fn validate_status(raw: &str) -> Result<String, AppError> {
     match raw {
-        "pending" | "accepted" | "denied" | "expired" => Ok(raw.to_string()),
+        status if STATUSES.contains(&status) => Ok(raw.to_string()),
         other => Err(AppError::InvalidArgs(format!(
-            "status: must be one of pending, accepted, denied, expired; got '{other}'"
+            "status: must be one of {}; got '{other}'",
+            STATUSES.join(", ")
         ))),
     }
 }
