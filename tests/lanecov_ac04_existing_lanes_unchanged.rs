@@ -215,6 +215,9 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // PRD-mcphost-task-handoff-live-script added its own "live-scripts" lane
     // (routes scripts/task-handoff-live.sh to its proof tests) -- an intended
     // addition since the baseline (rb seat hand-fix 10-15 5:5x am, CI lanecov red on PR 297).
+    // PRD-mcphost-python-sdk-generated added its own "sdk-python" lane
+    // (routes the generated sdk-python/** to its regenerate-and-diff check) --
+    // an intended addition since the baseline, not drift.
     assert_eq!(
         added,
         vec![
@@ -245,6 +248,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "registry-manifest",
             "required-checks",
             "sandbox-api-docs",
+            "sdk-python",
             "sharing-docs",
             "spec-fields-doc-check",
             "tool-naming",
@@ -253,7 +257,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
         ],
         "only admin-schemas, blobguard-fixtures, checkcompat-race-soak, child-proc-lint, contracts, docs-links, docsearch-fixtures, \
          event-trigger-self-test-fixtures, example-manifest, examples, flake-lint, heal-config, heal-docs, host-pressure-doc-check, launch-docs, \
-         loop-config, oauthconf-data, output-schemas, plugin, registry-manifest, required-checks, sandbox-api-docs, sharing-docs, \
+         loop-config, oauthconf-data, output-schemas, plugin, registry-manifest, required-checks, sandbox-api-docs, sdk-python, sharing-docs, \
          spec-fields-doc-check, tool-naming, vendor, and wasm-fixtures may have been added since \
          {BASELINE_REV}"
     );
