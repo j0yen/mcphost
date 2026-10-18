@@ -107,6 +107,11 @@ fn sample(schema: &Value) -> Value {
     if let Some(first) = schema.get("enum").and_then(Value::as_array).and_then(|a| a.first()) {
         return first.clone();
     }
+    // `host.email.send`'s `to` declares `format: email`: a string with no `@` stops at
+    // argument validation, so the verb's own body would never be measured.
+    if schema.get("format").and_then(Value::as_str) == Some("email") {
+        return json!(format!("{PLACEHOLDER}@{PLACEHOLDER}.example"));
+    }
     for key in ["oneOf", "anyOf", "allOf"] {
         if let Some(first) = schema.get(key).and_then(Value::as_array).and_then(|a| a.first()) {
             return sample(first);

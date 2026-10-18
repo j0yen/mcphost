@@ -83,6 +83,7 @@ async fn three_provider_failures_retry_then_abandon() {
             reply_to: "noreply@mcphost.invalid".to_string(),
             subject: "probe".to_string(),
             text_body: "probe".to_string(),
+            ..Default::default()
         })
         .await
         .expect_err("fake provider configured to fail once");
