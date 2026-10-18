@@ -930,7 +930,7 @@ pub fn tool_publish_input_schema(kinds: &KindRegistry) -> Value {
 /// connection with neither a header nor a prior signup now implicitly
 /// signs that connection up instead (requirement 1), so the description
 /// says that, pointing at `host.whoami`'s `source` field as how to tell.
-fn host_schema(mut props: Value, required: &[&str]) -> Map<String, Value> {
+pub(crate) fn host_schema(mut props: Value, required: &[&str]) -> Map<String, Value> {
     if let Some(obj) = props.as_object_mut() {
         obj.insert(
             "tenant_key".to_string(),
@@ -5276,6 +5276,7 @@ fn host_tools_part_13() -> Vec<Tool> {
     tools.extend(host_tools_part_11());
     tools.extend(host_tools_part_12());
     tools.extend(host_tools_part_13());
+    tools.extend(crate::verify::tools());
     if authenticated {
         tools.push(Tool::new(
             "host.spec.test",
@@ -7758,6 +7759,11 @@ impl McpHostHandler {
             "host.vault.disconnect" => crate::vault::disconnect(&self.state, tenant, &args, end_user).await,
             "host.vault.status" => crate::vault::status(&self.state, tenant, &args, end_user).await,
             "host.vault.provider_remove" => crate::vault::provider_remove(&self.state, tenant, &args).await,
+            // PRD-mcphost-owner-verification-paths R1: one arm per `host.claim.*` tool.
+            "host.claim.start" => crate::verify::claim_start(&self.state, tenant, &args).await,
+            "host.claim.github" => crate::verify::claim_github(&self.state, tenant, &args).await,
+            "host.claim.dns" => crate::verify::claim_dns(&self.state, tenant, &args).await,
+            "host.claim.dns.check" => crate::verify::claim_dns_check(&self.state, tenant, &args).await,
             // PRD-mcphost-end-user-audit-and-revoke requirement 2 (AC1/AC10).
             "host.enduser.list" => crate::enduserctl::list(&self.state, tenant, &args).await,
             // PRD-mcphost-end-user-audit-and-revoke requirement 2 (AC2).

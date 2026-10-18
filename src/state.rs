@@ -326,6 +326,8 @@ pub struct AppState {
     /// (technical considerations: "Tests never reach the network"), same
     /// shape as [`AppState::billing_client`].
     pub email_client: std::sync::Arc<dyn crate::email::EmailClient>,
+    /// PRD-mcphost-owner-verification-paths R3/R4: the GitHub app and the DNS resolver.
+    pub owner_verify: crate::verify::OwnerVerify,
     /// PRD-mcphost-first-tool-from-description R1: the outbound LLM client
     /// behind `host.tool_from_description`; `None` = not configured
     /// (`MCPHOST_DRAFT_API_URL` unset), the tool answers `draft_unavailable`.

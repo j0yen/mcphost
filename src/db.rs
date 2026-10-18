@@ -363,6 +363,9 @@ const MIGRATION_0118: &str = include_str!("../migrations/0118_perf_samples.sql")
 const MIGRATION_0120: &str = include_str!("../migrations/0120_sampling_usage.sql");
 /// PRD-mcphost-scoped-tool-share R2/R5/R6: share scopes, rate, revoke time, fork origin.
 const MIGRATION_0123: &str = include_str!("../migrations/0123_share_scopes.sql");
+/// PRD-mcphost-owner-verification-paths R2: `tenants.owner_method`/`owner_handle`
+/// plus the GitHub state and DNS challenge tables.
+const MIGRATION_0124: &str = include_str!("../migrations/0124_owner_verification_method.sql");
 
 /// PRD-mcphost-example-proof-nightly-and-hide R2: the `example_proofs` table.
 const MIGRATION_0115: &str = include_str!("../migrations/0115_example_proofs.sql");
@@ -1879,6 +1882,15 @@ pub struct VaultTenantStats {
     pub providers: Vec<VaultProviderStats>,
 }
 
+/// PRD-mcphost-owner-verification-paths R6: what [`Db::verify_owner`] did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OwnerVerifyOutcome {
+    /// This call flipped `owner_verified_at` and wrote the audit row.
+    Verified,
+    /// The tenant was already verified (by `method`); nothing was written.
+    Already { method: String },
+}
+
 /// [`Db::verify_claim_code`]'s outcome (PRD-mcphost-human-claim-magic-link
 /// requirement 3 / AC3, AC7).
 pub enum ClaimVerifyOutcome {
@@ -3219,6 +3231,19 @@ impl Db {
         // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0122)?;
         Self::migrate_0123_share_scopes(&conn)?;
+        Self::migrate_0124_owner_verification_method(&conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-owner-verification-paths R2: gated on `tenants.owner_method`
+    /// (the batch is `ALTER`s, so a rerun must skip it).
+    fn migrate_0124_owner_verification_method(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'owner_method'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0124)?;
+        }
         Ok(())
     }
 
@@ -6961,7 +6986,7 @@ impl Db {
                 return Ok(ClaimVerifyOutcome::AlreadyConsumed);
             }
             let set = conn.execute(
-                "UPDATE tenants SET owner_email = ?1, owner_verified_at = ?2, \
+                "UPDATE tenants SET owner_email = ?1, owner_verified_at = ?2, owner_method = 'email', \
                  claim_token_hash = NULL, claim_expires_at = NULL, claim_token_plain = NULL \
                  WHERE id = ?3 AND owner_verified_at IS NULL",
                 params![email, now, tenant_id],
@@ -6969,6 +6994,11 @@ impl Db {
             if set == 0 {
                 return Ok(ClaimVerifyOutcome::Conflict);
             }
+            conn.execute(
+                "INSERT INTO tenant_audit (tenant_id, subject, action, detail, created_unix) \
+                 VALUES (?1, 'owner', 'claim.email', NULL, ?2)",
+                params![tenant_id, now],
+            )?;
             Ok(ClaimVerifyOutcome::Verified { tenant_id, email })
         })
         .await
@@ -20922,6 +20952,135 @@ impl Db {
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-owner-verification-paths R2/R5/R6: the single-winner
+    /// ownership write every non-email path shares -- the same `UPDATE ...
+    /// WHERE owner_verified_at IS NULL` shape as [`Self::verify_claim_code`],
+    /// with the `claim.<method>` audit row written in the same transaction
+    /// only by the call that won. A loser (or a tenant verified earlier)
+    /// writes nothing and learns the method that did.
+    pub async fn verify_owner(
+        &self,
+        tenant_id: i64,
+        method: String,
+        handle: String,
+    ) -> Result<OwnerVerifyOutcome, AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            let set = tx.execute(
+                "UPDATE tenants SET owner_verified_at = ?1, owner_method = ?2, owner_handle = ?3, \
+                 claim_token_hash = NULL, claim_expires_at = NULL, claim_token_plain = NULL \
+                 WHERE id = ?4 AND owner_verified_at IS NULL",
+                params![now, method, handle, tenant_id],
+            )?;
+            if set == 0 {
+                let seen: Option<String> = tx
+                    .query_row("SELECT owner_method FROM tenants WHERE id = ?1", params![tenant_id], |r| r.get(0))
+                    .optional()?
+                    .flatten();
+                return Ok(OwnerVerifyOutcome::Already { method: seen.unwrap_or_else(|| "email".to_string()) });
+            }
+            tx.execute(
+                "INSERT INTO tenant_audit (tenant_id, subject, action, detail, created_unix) \
+                 VALUES (?1, 'owner', ?2, ?3, ?4)",
+                params![tenant_id, format!("claim.{method}"), handle, now],
+            )?;
+            tx.commit()?;
+            Ok(OwnerVerifyOutcome::Verified)
+        })
+        .await
+    }
+
+    /// `(owner_method, owner_handle)` for one tenant; both `None` while unverified.
+    pub async fn owner_provenance(&self, tenant_id: i64) -> Result<(Option<String>, Option<String>), AppError> {
+        self.with_conn(move |conn| {
+            Ok(conn
+                .query_row(
+                    "SELECT owner_method, owner_handle FROM tenants WHERE id = ?1",
+                    params![tenant_id],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .optional()?
+                .unwrap_or((None, None)))
+        })
+        .await
+    }
+
+    /// `tenant id -> owner_method` for every verified tenant (the `admin.tenants` listing).
+    pub async fn owner_methods(&self) -> Result<std::collections::HashMap<i64, String>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt =
+                conn.prepare("SELECT id, owner_method FROM tenants WHERE owner_method IS NOT NULL")?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?
+                .collect::<Result<_, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// Stores a GitHub authorize `state` for `tenant_id` (CSRF + who to verify).
+    pub async fn put_github_state(&self, state: String, tenant_id: i64, expires_unix: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO owner_github_states (state, tenant_id, expires_unix) VALUES (?1, ?2, ?3)",
+                params![state, tenant_id, expires_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Consumes a GitHub `state`: the tenant it was minted for when it exists and
+    /// has not expired, `None` otherwise. The row is deleted either way.
+    pub async fn take_github_state(&self, state: String) -> Result<Option<i64>, AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            let row: Option<(i64, i64)> = conn
+                .query_row(
+                    "SELECT tenant_id, expires_unix FROM owner_github_states WHERE state = ?1",
+                    params![state],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .optional()?;
+            conn.execute("DELETE FROM owner_github_states WHERE state = ?1", params![state])?;
+            Ok(row.filter(|(_, expires)| now <= *expires).map(|(tenant_id, _)| tenant_id))
+        })
+        .await
+    }
+
+    /// The DNS challenge token for `(tenant, domain)`, minting `fresh` when none exists.
+    pub async fn dns_challenge_token(&self, tenant_id: i64, domain: String, fresh: String) -> Result<String, AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT OR IGNORE INTO owner_dns_challenges (tenant_id, domain, token, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![tenant_id, domain, fresh, now],
+            )?;
+            Ok(conn.query_row(
+                "SELECT token FROM owner_dns_challenges WHERE tenant_id = ?1 AND domain = ?2",
+                params![tenant_id, domain],
+                |r| r.get(0),
+            )?)
+        })
+        .await
+    }
+
+    /// The stored DNS challenge token for `(tenant, domain)`, if `host.claim.dns` ran.
+    pub async fn find_dns_challenge(&self, tenant_id: i64, domain: String) -> Result<Option<String>, AppError> {
+        self.with_conn(move |conn| {
+            Ok(conn
+                .query_row(
+                    "SELECT token FROM owner_dns_challenges WHERE tenant_id = ?1 AND domain = ?2",
+                    params![tenant_id, domain],
+                    |r| r.get(0),
+                )
+                .optional()?)
         })
         .await
     }

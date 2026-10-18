@@ -281,6 +281,13 @@ pub static ROUTES: &[RouteSpec] = &[
         => || post(crate::asks::post_answer)),
 
     // ---- claim ---------------------------------------------------------------
+    route!("GET" "/claim/methods.json" "claim" "Owner verification methods and whether this host can run each" Anonymous
+        responses [200 => Json("OpenObject")]
+        => || get(crate::verify::methods_json_route)),
+    route!("GET" "/claim/github/callback" "claim" "GitHub OAuth callback that verifies the tenant owner" Anonymous
+        query ["code", "state"] request None; cors false;
+        responses [200 => Html, 400 => Html, 502 => Html]
+        => || get(crate::verify::github_callback)),
     route!("GET" "/claim/{token}" "claim" "Human claim page" Token
         responses [200 => Html, 404 => Html]
         => || get(crate::claim::get_claim)),

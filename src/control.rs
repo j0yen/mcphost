@@ -950,6 +950,13 @@ pub fn quickstart(
     path_url_secret: Option<&str>,
 ) -> Result<Value, AppError> {
     let mut response = quickstart_inner(state, tenant, args, path_url_secret)?;
+    // PRD-mcphost-owner-verification-paths R7: an unverified tenant's `next`
+    // also names every verification method, from `VERIFICATION_METHODS`.
+    if tenant.is_some_and(|t| t.owner_verified_at.is_none())
+        && let Some(next) = response.get_mut("next").and_then(Value::as_array_mut)
+    {
+        next.extend(crate::verify::next_steps());
+    }
     // PRD-mcphost-server-capabilities-from-registry requirement 6: anonymous
     // and keyed alike, generated from the same `CAPABILITIES` const as
     // `initialize.capabilities` and `/capabilities.json`.
@@ -1495,7 +1502,12 @@ pub async fn whoami(
         // `claim_url` -- `owner_verified` above stays the pre-existing
         // bool-only read for callers that only need "is it claimed".
         if let Some(verified_at) = tenant.owner_verified_at {
-            obj.insert("owner".to_string(), json!({"verified_at": verified_at}));
+            // PRD-mcphost-owner-verification-paths R5: which path proved it.
+            let (method, handle) = state.db.owner_provenance(tenant.id).await?;
+            obj.insert(
+                "owner".to_string(),
+                json!({"verified_at": verified_at, "method": method, "handle": handle}),
+            );
         }
         // PRD-mcphost-session-bound-tenant-key P1 requirement 4 (AC6):
         // the tenant THIS connection's own memory holds (an implicit

@@ -3159,6 +3159,7 @@ mod tests {
             claim_rate_limit_per_hour: crate::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
             email_config: crate::email::EmailConfig::default(),
             email_client: std::sync::Arc::new(crate::email::FakeEmailClient::new()),
+            owner_verify: Default::default(),
             drafter: None,
             bans: crate::bans::BanCache::new(),
             ban_denials_threshold: crate::bans::BAN_DENIALS_THRESHOLD_DEFAULT,
