@@ -6,7 +6,6 @@
 // below; it declares no tests of its own. Every included file keeps its
 // original name, path, and test names (nextest's test list, with this
 // suite's prefix stripped, is unchanged from before consolidation).
-mod common;
 
-#[path = "sessionkey_ac17_request_log_no_key.rs"]
-mod sessionkey_ac17_request_log_no_key;
+#[path = "ctrs_ac06_contract_suites_finish_within_budget.rs"]
+mod ctrs_ac06_contract_suites_finish_within_budget;

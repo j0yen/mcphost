@@ -39,7 +39,8 @@ esac
 
 case "$partition" in
   # 10-17 slow hosted runners measured suite_core_08 559 s and suite_core_07 438 s
-  # against recorded 375/341 s (weights stay at fast-runner values); hence 540/720.
+  # against the then-recorded 375/341 s; the weights are the max measured seconds
+  # since 10-18 (ci-test-partition.sh CORE_SHARD_PREDICT_LIMIT = this warn line).
   core)    WARN_AT=540; FAIL_ABOVE=720 ;;
   *)       WARN_AT=240; FAIL_ABOVE=300 ;;
 esac

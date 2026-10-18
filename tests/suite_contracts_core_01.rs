@@ -37,6 +37,8 @@ mod cishard_ac02_one_shard_count_source;
 mod cishard_ac05_core_timeouts_and_cache_key;
 #[path = "cishard_ac06_core_predicted_shard_under_limit.rs"]
 mod cishard_ac06_core_predicted_shard_under_limit;
+#[path = "cishard_ac07_stale_weight_fails_check.rs"]
+mod cishard_ac07_stale_weight_fails_check;
 #[path = "compat_ac04_ac05_admin_and_tenant_cache_fields.rs"]
 mod compat_ac04_ac05_admin_and_tenant_cache_fields;
 #[path = "creg_ac02_initialize_capabilities_from_registry.rs"]

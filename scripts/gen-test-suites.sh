@@ -620,7 +620,16 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # suite_ac1_ten_binaries_and_names_preserved blocked the land's delta gate.
 # 200 -> 220 is the smallest tested raise that keeps 2 sandbox suites
 # (8 core + 2 sandbox = 10) with --check ok.
-MAX_PER_SUITE = {"core": 900, "sandbox": 220}
+# 2026-10-18 (the second core shard over the 720 s budget on main, runs 39129276291,
+# 39133346672, 39133722354): suite_core_07 measured 586-735 s and suite_core_08
+# 427-711 s on a hosted runner against recorded 341/375 s, so two normal core
+# buckets could never fit three 540 s shards (their measured sum alone was
+# 1.4-1.7 ks). Two changes: ctrs_ac06 (330-423 s by itself) became a solo-suite
+# singleton (SOLO_RE above), and the normal core buckets went from 2 to 3 at
+# cap 700 (local per-test timings, RUSTC_BOOTSTRAP=1 `--report-time`, scaled to
+# the CI totals, put the three buckets at ~290/370/360 s where the old split was
+# ~310/710). 7 singletons + 3 normal + 2 sandbox = 12 = MAX_SUITES.
+MAX_PER_SUITE = {"core": 700, "sandbox": 220}
 
 # The P0 ceiling on core+sandbox test binaries (tests/suite_ac1_ten_binaries_
 # and_names_preserved.rs). ci-test-partition.sh's `check` greps this very line
@@ -636,8 +645,13 @@ MAX_PER_SUITE = {"core": 900, "sandbox": 220}
 # sandbox = 1 normal + 1 singleton could never shrink, the old loop kept
 # growing it to cap 5220 and never touched core, so an 11th suite shipped).
 # If no partition can shrink and the plan still exceeds MAX_SUITES the
-# generator FAILS (never emits an 11th suite).
-MAX_SUITES = 10
+# generator FAILS (never emits a suite over the cap).
+# 10 -> 12 on 2026-10-18 for the solo ctrs_ac06 singleton and the third normal
+# core bucket (see MAX_PER_SUITE above); the 10 had been reached with 6 exclusive
+# singletons + 2 normal core buckets + 2 sandbox suites, so no core bucket could
+# be added without it. tests/suite_ac1_ten_binaries_and_names_preserved.rs and
+# tests/suitecap_ac01_*.rs carry the same number and move with it.
+MAX_SUITES = 12
 
 # scripts/ci-suite-weights.json is generated with the suites: its keys are
 # EXACTLY the generated suite names (plus `lib`, the --lib run), so a new suite
@@ -744,6 +758,29 @@ CONTRACT_RE = re.compile(r'^//!\s*contract:')
 
 def is_contract(content):
     return any(CONTRACT_RE.match(l) for l in content.split("\n")[:10])
+
+
+# A single test that alone runs for minutes (ctrs_ac06 re-runs every contract
+# suite through scripts/pin-tests.sh: 330-423 s on a hosted runner, 10-18 runs
+# 39129276291/39133346672/39133722354) cannot be balanced by file count: parked
+# inside a normal bucket it makes that bucket the heaviest core shard no matter
+# how the other buckets are cut (that shard ran 736 s against the 720 s
+# budget with that one test inside suite_core_07). Such a file declares
+# `//! solo-suite: <seconds> <why>` in its first 10 lines and is routed into its
+# own singleton binary, exactly like an exclusive-global file; the declared
+# seconds (the max measured on CI) are that suite's weight in
+# scripts/ci-suite-weights.json, so the weight is GENERATED from the marker and
+# `--check` fails when the two disagree.
+SOLO_RE = re.compile(r'^//!\s*solo-suite:\s*([0-9]+)\b')
+SOLO_WEIGHTS = {}  # stem -> declared seconds, filled by compute_plan() from file content
+
+
+def solo_weight(content):
+    for line in content.split("\n")[:10]:
+        m = SOLO_RE.match(line)
+        if m:
+            return int(m.group(1))
+    return None
 
 
 def distribute_exclusive(buckets, exclusive_stems):
@@ -1039,7 +1076,10 @@ def compute_plan():
         if is_affinity(stem, content):
             AFFINITY[stem] = AFFINITY_KEY
         env = is_env_guarded(content)
-        exclusive = is_exclusive_global(content)
+        solo = solo_weight(content)
+        if solo is not None:
+            SOLO_WEIGHTS[stem] = solo
+        exclusive = is_exclusive_global(content) or solo is not None
         if is_contract(content):
             (contract_exclusive_by_partition if exclusive else contract_by_partition)[part].append(stem)
         elif env and exclusive:
@@ -1182,6 +1222,17 @@ def read_weights():
     return data if isinstance(data, dict) else None
 
 
+def solo_suite_weights(suite_files):
+    """{suite name: declared seconds} for every generated suite whose ONE member
+    file carries a `//! solo-suite: <seconds>` line (SOLO_WEIGHTS)."""
+    out = {}
+    for path, content in suite_files.items():
+        members = [m for m in re.findall(r'#\[path\s*=\s*"([^"/]+)\.rs"\]', content)]
+        if len(members) == 1 and members[0] in SOLO_WEIGHTS:
+            out[os.path.basename(path)[:-3]] = SOLO_WEIGHTS[members[0]]
+    return out
+
+
 def plan_weights(suite_files):
     """The weights file this plan implies: keys = generated suites (+ `lib`
     when present). Measured values stay when the suite exists on disk with the
@@ -1199,18 +1250,24 @@ def plan_weights(suite_files):
     files = {"core": 0, "sandbox": 0}
     for name, w in old.items():
         n = old_counts.get(name, 0)
-        if n and isinstance(w, (int, float)):
+        # only NORMAL buckets set the seconds-per-file rate: singleton suites
+        # (exclusive-global / solo files) and the env/contract suites say nothing
+        # about what a file of a normal bucket costs
+        if n > 1 and re.match(r"suite_(core|sandbox)_\d+$", name) and isinstance(w, (int, float)):
             secs[suite_partition(name)] += w
             files[suite_partition(name)] += n
     rate = {p: (secs[p] / files[p] if files[p] else 1.0) for p in secs}
     out = {}
     if "lib" in old:
         out["lib"] = old["lib"]
+    solo = solo_suite_weights(suite_files)
     for path, content in suite_files.items():
         name = os.path.basename(path)[:-3]
         n = suite_member_count(content)
         prev = old.get(name)
-        if isinstance(prev, (int, float)) and old_counts.get(name) == n:
+        if name in solo:
+            out[name] = solo[name]  # declared by the file's own `//! solo-suite:` line
+        elif isinstance(prev, (int, float)) and old_counts.get(name) == n:
             out[name] = prev
         elif isinstance(prev, (int, float)) and old_counts.get(name):
             out[name] = max(1, round(prev * n / old_counts[name]))
@@ -1341,6 +1398,9 @@ def check_plan(migrations, suite_files, new_cargo_toml, all_files):
     else:
         for name in sorted(want - set(have)):
             problems.append(f"{WEIGHTS_REL} has no weight for suite {name} (run gen-test-suites.sh)")
+        for name, secs in sorted(solo_suite_weights(suite_files).items()):
+            if have.get(name) != secs:
+                problems.append(f"{WEIGHTS_REL} weighs solo suite {name} at {have.get(name)!r} but its file declares `//! solo-suite: {secs}` (run gen-test-suites.sh)")
         for name in sorted(set(have) - want - {"lib"}):
             problems.append(f"{WEIGHTS_REL} has a stale entry for {name}, which gen-test-suites.sh no longer generates (run gen-test-suites.sh)")
 

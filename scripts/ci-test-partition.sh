@@ -93,17 +93,30 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 SANDBOX_SHARDS="${SANDBOX_SHARDS:-3}"
-CORE_SHARDS="${CORE_SHARDS:-3}"
+CORE_SHARDS="${CORE_SHARDS:-5}"
 
 # Recorded seconds per sandbox suite (and `lib`); overridable for tests.
 WEIGHTS_FILE="${CI_SUITE_WEIGHTS_FILE:-$REPO_ROOT/scripts/ci-suite-weights.json}"
 WEIGHTS_REL="scripts/ci-suite-weights.json"
+# Max MEASURED CI seconds per suite, written ONLY by scripts/ci-refresh-weights.sh
+# (the `suite=<name> measured=<s>s` lines of a CI run log; the same script also
+# rewrites the recorded weights from them). `check` reads this committed file, so
+# it needs no network and runs on every PR.
+MEASURED_FILE="${CI_SUITE_MEASURED_FILE:-$REPO_ROOT/scripts/ci-suite-measured.json}"
+MEASURED_REL="scripts/ci-suite-measured.json"
+# A recorded weight is STALE when the measured seconds reach this multiple of it.
+# 2026-10-18: suite_core_07/08 were recorded at 341/375 s while CI measured
+# 586-735/427-711 s, and `check` kept predicting 375 s from the old numbers.
+STALE_RATIO=1.5
 # Predicted heaviest shard above this fails `check` (the CI run budget warns at
 # 240 s and fails above 300 s; see ci.yml's sandbox step).
 SHARD_PREDICT_LIMIT=240
 # The same bound for a core shard's run wall (ci-shard-report.sh warns at 540 s
-# and fails above 720 s for core; the recorded weights are fast-runner seconds).
-CORE_SHARD_PREDICT_LIMIT=420
+# and fails above 720 s for core). The recorded core weights are the MAX measured
+# hosted-runner seconds (refreshed 2026-10-18 from CI runs 39129276291,
+# 39133346672, 39133722354; the old 420 bound belonged to fast-runner weights that
+# understated suite_core_07/08 by 1.7-2x), so the bound is the warn line itself.
+CORE_SHARD_PREDICT_LIMIT=540
 
 # The sandbox-execution surface. `supports_user_namespaces` and
 # `require_user_namespaces_or_ci_skip` are the capability guard itself;
@@ -403,6 +416,26 @@ check() {
     fi
   else
     printf '%s\n' "$core_plan" >&2
+    rc=1
+  fi
+
+  # Staleness guard (one source, one reader): scripts/ci-suite-measured.json holds
+  # the max measured CI seconds that scripts/ci-refresh-weights.sh also derives the
+  # recorded weights from. A suite measured at >= STALE_RATIO x its recorded weight
+  # fails here, so the weights can never again pass `check` on old numbers.
+  local stale
+  if [ ! -f "$MEASURED_FILE" ]; then
+    echo "ci-test-partition: $MEASURED_REL is missing -- run scripts/ci-refresh-weights.sh <ci-log>..." >&2
+    rc=1
+  elif ! stale="$(jq -r --argjson r "$STALE_RATIO" --slurpfile w "$WEIGHTS_FILE" \
+        'to_entries[] | select(($w[0][.key] // null) != null and .value >= $r * $w[0][.key])
+         | "\(.key) measured \(.value)s >= \($r)x recorded \($w[0][.key])s"' "$MEASURED_FILE" 2>&1)"; then
+    echo "ci-test-partition: cannot read $MEASURED_REL: $stale" >&2
+    rc=1
+  elif [ -n "$stale" ]; then
+    while IFS= read -r line; do
+      echo "ci-test-partition: stale weight: $line in $WEIGHTS_REL -- run scripts/ci-refresh-weights.sh on a CI run log" >&2
+    done <<<"$stale"
     rc=1
   fi
 
