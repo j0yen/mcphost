@@ -67,6 +67,20 @@ if not text.strip():
 PY
 done
 
+# www/retry_policy.json (PRD-mcphost-retry-policy-table-generated) is served
+# as JSON; it must parse and carry a row for every entry (drift against the
+# table itself is `mcphost retry-policy --check`).
+python3 - www/retry_policy.json <<'PY' || status=1
+import json, sys
+path = sys.argv[1]
+try:
+    rows = json.load(open(path, encoding="utf-8"))["rows"]
+    assert rows and all("code" in r and "retryable" in r for r in rows)
+except Exception as e:
+    print(f"{path}: not a valid retry policy document: {e}", file=sys.stderr)
+    sys.exit(1)
+PY
+
 # www/llms-full.txt (requirement 7, PRD-mcphost-agent-findability) is
 # generated from README.md + docs/kinds + docs/benchmarks + docs/receipts;
 # fail if it has drifted from its source, same shape as gen-agent-docs.sh

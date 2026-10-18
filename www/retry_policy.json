@@ -1,0 +1,1028 @@
+{
+  "rows": [
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "bearer_invalid",
+      "max_attempts": 1,
+      "policy": "reauthenticate",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "tenant_key_missing",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "tenant_key_invalid",
+      "max_attempts": 1,
+      "policy": "reauthenticate",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "forbidden",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "tenant_disabled",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "base_ms": 1000,
+        "kind": "exponential",
+        "max_ms": 30000
+      },
+      "code": "rate_limited",
+      "max_attempts": 3,
+      "policy": "honour-retry-after",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "tool_not_found",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "tenant_not_found",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "invalid_params",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "unknown_kind",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "invalid_tool_name",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "spec_too_large",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "too_many_tools",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "invalid_spec",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "args_invalid",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "secret_missing",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "fixed",
+        "ms": 1000
+      },
+      "code": "call_timeout",
+      "max_attempts": 2,
+      "policy": "retry-with-idempotency-key",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "base_ms": 500,
+        "kind": "exponential",
+        "max_ms": 8000
+      },
+      "code": "storage",
+      "max_attempts": 2,
+      "policy": "backoff-then-retry",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "base_ms": 500,
+        "kind": "exponential",
+        "max_ms": 8000
+      },
+      "code": "internal",
+      "max_attempts": 2,
+      "policy": "backoff-then-retry",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "registry_disabled",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "namespace_unverified",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "registry_rejected",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "share_quota_exceeded",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "group_not_found",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "handoff_token_invalid",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "handoff_token_redeemed",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "handoff_token_expired",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "issuer_already_registered",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "issuer_quota_exceeded",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "issuer_not_found",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "invalid_token",
+      "max_attempts": 1,
+      "policy": "reauthenticate",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "conflicting_credentials",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "wrong_tenant",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "insufficient_scope",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "auth_conflict",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "quota_trusted_issuers",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "upstream_status",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "unknown_argument",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "end_user_required",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "end_user_explicit_forbidden",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "args_schema_not_inferable",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "budget_exceeded",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "build_failed",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "base_ms": 1000,
+        "kind": "exponential",
+        "max_ms": 30000
+      },
+      "code": "capacity",
+      "max_attempts": 3,
+      "policy": "backoff-then-retry",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "kind": "fixed",
+        "ms": 5000
+      },
+      "code": "channel_unavailable",
+      "max_attempts": 3,
+      "policy": "backoff-then-retry",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "compose_children_exceeded",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "compose_depth_exceeded",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "compose_fanout_exceeded",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "compose_fanout_item_failed",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "compose_input_missing",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "compose_item_outside_for_each",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "compose_mapping_missing",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "compose_mapping_type",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "compose_self_call",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "fixed",
+        "ms": 1000
+      },
+      "code": "concurrency_exceeded",
+      "max_attempts": 3,
+      "policy": "wait-then-retry",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "kind": "fixed",
+        "ms": 5000
+      },
+      "code": "docs_unavailable",
+      "max_attempts": 3,
+      "policy": "backoff-then-retry",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "kind": "fixed",
+        "ms": 5000
+      },
+      "code": "drift_unavailable",
+      "max_attempts": 3,
+      "policy": "backoff-then-retry",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "kind": "fixed",
+        "ms": 5000
+      },
+      "code": "egress_unavailable",
+      "max_attempts": 3,
+      "policy": "backoff-then-retry",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "elicit_calls_exceeded",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "elicit_schema_invalid",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "elicit_timeout",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "elicit_unsupported",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "exec",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "fixture_shape_mismatch",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "fixture_step_ambiguous",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "fixture_step_unknown",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "host_not_allowed",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "jq_builtin_unsupported",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "fixed",
+        "ms": 5000
+      },
+      "code": "lineage_unavailable",
+      "max_attempts": 3,
+      "policy": "backoff-then-retry",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "kind": "fixed",
+        "ms": 5000
+      },
+      "code": "msg_unavailable",
+      "max_attempts": 3,
+      "policy": "backoff-then-retry",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "plan_required",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "requirement_not_allowed",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "requirement_not_inferable",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "response_too_large",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "sampling_calls_exceeded",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "sampling_quota_exceeded",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "fixed",
+        "ms": 1000
+      },
+      "code": "sampling_timeout",
+      "max_attempts": 2,
+      "policy": "fix-and-resend",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "sampling_unsupported",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "state_quota_exceeded",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "fixed",
+        "ms": 5000
+      },
+      "code": "state_unavailable",
+      "max_attempts": 3,
+      "policy": "backoff-then-retry",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "kind": "fixed",
+        "ms": 5000
+      },
+      "code": "table_unavailable",
+      "max_attempts": 3,
+      "policy": "backoff-then-retry",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "template_error",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "tool_exception",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "tool_oom",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "tool_output_invalid",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "tool_output_too_large",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "tool_process_limit",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "tool_run_unsupported",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "fixed",
+        "ms": 1000
+      },
+      "code": "tool_timeout",
+      "max_attempts": 2,
+      "policy": "retry-with-idempotency-key",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "tool_trapped",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "typescript_not_supported",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "unknown_import",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "unknown_spec_field",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "fixed",
+        "ms": 5000
+      },
+      "code": "uptime_unavailable",
+      "max_attempts": 3,
+      "policy": "backoff-then-retry",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "upstream_auth",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "base_ms": 1000,
+        "kind": "exponential",
+        "max_ms": 60000
+      },
+      "code": "upstream_rate_limited",
+      "max_attempts": 3,
+      "policy": "honour-retry-after",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "upstream_client_error",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "base_ms": 1000,
+        "kind": "exponential",
+        "max_ms": 30000
+      },
+      "code": "upstream_error",
+      "max_attempts": 3,
+      "policy": "backoff-then-retry",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "base_ms": 1000,
+        "kind": "exponential",
+        "max_ms": 30000
+      },
+      "code": "upstream_timeout",
+      "max_attempts": 2,
+      "policy": "retry-with-idempotency-key",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "base_ms": 1000,
+        "kind": "exponential",
+        "max_ms": 30000
+      },
+      "code": "upstream_unreachable",
+      "max_attempts": 3,
+      "policy": "backoff-then-retry",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "upstream_not_connected",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "fixed",
+        "ms": 5000
+      },
+      "code": "sandbox_unavailable",
+      "max_attempts": 3,
+      "policy": "honour-retry-after",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "kind": "fixed",
+        "ms": 60000
+      },
+      "code": "signup_paused",
+      "max_attempts": 3,
+      "policy": "honour-retry-after",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "base_ms": 1000,
+        "kind": "exponential",
+        "max_ms": 60000
+      },
+      "code": "signup_rate_limited",
+      "max_attempts": 3,
+      "policy": "honour-retry-after",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "base_ms": 1000,
+        "kind": "exponential",
+        "max_ms": 30000
+      },
+      "code": "service_unavailable",
+      "max_attempts": 3,
+      "policy": "backoff-then-retry",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "kind": "fixed",
+        "ms": 2000
+      },
+      "code": "tool_building",
+      "max_attempts": 5,
+      "policy": "wait-then-retry",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "base_ms": 1000,
+        "kind": "exponential",
+        "max_ms": 30000
+      },
+      "code": "events_rate_limited",
+      "max_attempts": 3,
+      "policy": "honour-retry-after",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "base_ms": 1000,
+        "kind": "exponential",
+        "max_ms": 30000
+      },
+      "code": "rate_limited_host",
+      "max_attempts": 3,
+      "policy": "honour-retry-after",
+      "retryable": true
+    },
+    {
+      "backoff": {
+        "base_ms": 1000,
+        "kind": "exponential",
+        "max_ms": 60000
+      },
+      "code": "invite_rate_limited",
+      "max_attempts": 3,
+      "policy": "honour-retry-after",
+      "retryable": true
+    }
+  ],
+  "version": 1
+}
