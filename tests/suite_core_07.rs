@@ -419,6 +419,20 @@ mod cfix_ac04_run_exports_as_fixtures;
 mod cfix_ac06_unrunnable_unfixtured_step_is_skipped_and_named;
 #[path = "cfix_ac07_quickstart_names_fixtures.rs"]
 mod cfix_ac07_quickstart_names_fixtures;
+#[path = "cgd_ac01_gate_labels_roots_list.rs"]
+mod cgd_ac01_gate_labels_roots_list;
+#[path = "cgd_ac02_every_method_refused_on_the_wire.rs"]
+mod cgd_ac02_every_method_refused_on_the_wire;
+#[path = "cgd_ac03_one_refusal_site.rs"]
+mod cgd_ac03_one_refusal_site;
+#[path = "cgd_ac04_dispatch_table_matches_registry.rs"]
+mod cgd_ac04_dispatch_table_matches_registry;
+#[path = "cgd_ac05_capabilities_json_marks_server_to_client.rs"]
+mod cgd_ac05_capabilities_json_marks_server_to_client;
+#[path = "cgd_ac06_wire_check_script_green_in_process.rs"]
+mod cgd_ac06_wire_check_script_green_in_process;
+#[path = "cgd_ac07_capabilities_tables_carry_server_to_client.rs"]
+mod cgd_ac07_capabilities_tables_carry_server_to_client;
 #[path = "chainhost_ac01_host_table_append_step.rs"]
 mod chainhost_ac01_host_table_append_step;
 #[path = "chainhost_ac02_step_tool_not_found.rs"]

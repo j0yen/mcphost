@@ -2109,6 +2109,35 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
     }
 }
 
+/// PRD-mcphost-capabilities-generated-from-dispatch R5: a raw JSON-RPC POST
+/// that sends NO SEP-2243 headers (no `Mcp-Method`, `Mcp-Name`, nor
+/// `MCP-Protocol-Version`) unless `mcp_method_header` asks for `Mcp-Method`
+/// -- what the Claude Agent SDK and the python-mcp SDK actually put on the
+/// wire, deliberately independent of [`McpClient`].
+pub async fn raw_rpc(
+    base_url: &str,
+    path: &str,
+    method: &str,
+    params: Value,
+    mcp_method_header: bool,
+) -> Value {
+    let mut req = reqwest::Client::new()
+        .post(format!("{base_url}{path}"))
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json, text/event-stream")
+        .body(json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).to_string());
+    if mcp_method_header {
+        req = req.header("Mcp-Method", method);
+    }
+    let resp = req.send().await.expect("raw_rpc send");
+    let text = resp.text().await.expect("raw_rpc body");
+    if text.trim_start().starts_with('{') {
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("raw_rpc: reply not JSON ({e}): {text}"))
+    } else {
+        parse_sse_messages(&text).pop().unwrap_or_else(|| panic!("raw_rpc: empty reply: {text:?}"))
+    }
+}
+
 /// A fresh tenant in `state`'s own db, for direct `docs::doc_*` calls
 /// against a [`bare_state`].
 pub async fn bare_tenant(state: &AppState, namespace: &str) -> mcphost::db::Tenant {

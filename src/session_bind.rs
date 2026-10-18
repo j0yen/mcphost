@@ -393,4 +393,30 @@ mod tests {
         assert_eq!(bindings.lookup(&first, 0), None, "the oldest entry is the one evicted");
         assert_eq!(bindings.lookup(&newest, 0), Some(MAX_BOUND_SESSIONS as i64 + 1));
     }
+
+    #[test]
+    fn inbandsec_is_server_issued_rejects_every_forged_shape() {
+        let bindings = SessionBindings::new();
+        let id = bindings.issue();
+        assert!(bindings.is_server_issued(&id), "a fresh id verifies");
+
+        let (nonce, tag) = id.split_once('.').expect("nonce.tag");
+        // Same nonce, tag with its last hex digit changed.
+        let flipped = if tag.ends_with('0') { '1' } else { '0' };
+        let forged = format!("{nonce}.{}{flipped}", &tag[..tag.len() - 1]);
+        assert_ne!(forged, id);
+        assert!(!bindings.is_server_issued(&forged), "a flipped tag digit");
+        // Same tag under a different nonce.
+        let first = if nonce.starts_with('0') { '1' } else { '0' };
+        assert!(!bindings.is_server_issued(&format!("{first}{}.{tag}", &nonce[1..])), "a swapped nonce");
+        // Wrong lengths, no dot, empty, trailing segment.
+        assert!(!bindings.is_server_issued(&format!("{nonce}.{}", &tag[..tag.len() - 2])), "short tag");
+        assert!(!bindings.is_server_issued(&format!("{nonce}.{tag}00")), "long tag");
+        assert!(!bindings.is_server_issued(&format!("{}.{tag}", &nonce[..nonce.len() - 2])), "short nonce");
+        assert!(!bindings.is_server_issued(&format!("{nonce}{tag}")), "no dot");
+        assert!(!bindings.is_server_issued(""), "empty");
+        assert!(!bindings.is_server_issued(&format!("{id}.x")), "trailing segment");
+        // An id minted under another instance's key.
+        assert!(!SessionBindings::new().is_server_issued(&id), "a different key");
+    }
 }

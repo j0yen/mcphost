@@ -81,6 +81,7 @@ fn a_row_with_empty_methods_fails_naming_the_row() {
     let row = Capability {
         name: "widgets",
         methods: &[],
+        server_to_client: &[],
         implemented: false,
         list_changed: false,
         subscribe: false,

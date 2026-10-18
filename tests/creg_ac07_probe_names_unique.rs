@@ -9,6 +9,7 @@ fn row(name: &'static str, probe: &'static str) -> Capability {
     Capability {
         name,
         methods: &["x/y"],
+        server_to_client: &[],
         implemented: false,
         list_changed: false,
         subscribe: false,
