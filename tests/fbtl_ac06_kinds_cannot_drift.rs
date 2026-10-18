@@ -1,3 +1,4 @@
+//! contract: reads registry handler::host_tool_descriptors
 //! PRD-mcphost-feedback-tool-and-ledger AC6 — Given `FeedbackKind::ALL`, When
 //! `fbtl_kinds_cannot_drift` runs, Then the `host.feedback.send` schema enum,
 //! the llms.txt kinds line, and `ALL` are identical, and removing one kind

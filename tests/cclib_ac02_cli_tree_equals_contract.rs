@@ -1,3 +1,4 @@
+//! contract: reads registry tool_aliases::TOOL_ALIASES
 //! AC2 (PRD-mcphost-call-cli-from-contract-b) -- Given the contract and the CLI
 //! tree, When the drift test compares subcommand names, flag names and help
 //! text, Then all three sets are equal; one tool removed from the embedded

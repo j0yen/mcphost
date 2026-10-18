@@ -1,3 +1,4 @@
+//! contract: contract-lint.sh --artifacts prints only derived repo paths
 //! PRD-mcphost-contract-suite-markers AC5 -- `scripts/contract-lint.sh
 //! --artifacts` prints one repo-relative path per line (including the intent
 //! card, the changelog and the suite weights), every printed path is read by at

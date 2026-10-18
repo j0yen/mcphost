@@ -1,3 +1,4 @@
+//! contract: registry write_verbs::WRITE_VERBS, write_verbs::DRY_RUN_VERBS, write_verbs::NO_DRY_RUN_VERBS — every write verb is registered and dispatches, and the dry-run partition covers the registry
 //! PRD-mcphost-dry-run-on-write-verbs
 //! AC2 -- Given `host_tools(kinds, true)` plus aliases, When the drift test
 //! runs, Then every verb matching the R2 pattern is in the `WriteVerb`

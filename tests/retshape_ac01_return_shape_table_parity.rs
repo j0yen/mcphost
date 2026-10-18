@@ -1,3 +1,4 @@
+//! contract: reads registry kinds::python::BRIDGE_MODULES
 //! PRD-mcphost-sandbox-return-shape-contract
 //! AC1 (P0) -- Given the return-shape table, When the parity test calls each
 //! envelope-returning bridge function on a fixture tenant, Then the real

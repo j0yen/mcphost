@@ -1,3 +1,4 @@
+//! contract: reads scripts/sandbox-api-doc-check.sh
 //! AC5 (P0) -- PRD-mcphost-server-capabilities-from-registry. `www/llms.txt`
 //! and `docs/protocol/capabilities.md` each carry a `## Capabilities`
 //! section equal byte-for-byte to `render_capabilities_section()`;

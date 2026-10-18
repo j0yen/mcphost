@@ -1,3 +1,4 @@
+//! contract: reads registry kinds::python::BRIDGE_MODULES
 //! PRD-mcphost-sandbox-bridge-discoverability
 //! AC1 (P0) -- Given a fresh tenant, When it calls `host.quickstart
 //! kind=python`, Then the response carries `sandbox_api.import == "import

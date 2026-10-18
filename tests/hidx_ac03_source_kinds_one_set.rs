@@ -1,3 +1,4 @@
+//! contract: reads registry handler::host_tool_descriptors
 //! PRD-mcphost-index-create-from-sources
 //! AC3 -- Given `sources: [{kind: "blob"}]`, When `host.index.create` runs,
 //! Then `args_invalid` is returned and its message lists exactly the

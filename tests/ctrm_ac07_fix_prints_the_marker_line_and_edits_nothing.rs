@@ -1,3 +1,4 @@
+//! contract: reads scripts/contract-lint.sh
 //! PRD-mcphost-contract-suite-markers AC7 -- given one unmarked reader of a
 //! derived artifact, `scripts/contract-lint.sh --fix <dir>` prints exactly one
 //! line `<file>: add  //! contract: reads <artifact>` and leaves the file

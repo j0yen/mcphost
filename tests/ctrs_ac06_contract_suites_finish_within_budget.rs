@@ -21,7 +21,9 @@ use std::time::Instant;
 /// Hard budget: catches a hang or runaway, not a slow runner.
 const BUDGET_SECS: u64 = 900;
 /// Target: exceeding it only emits a `::warning::`.
-const TARGET_SECS: u64 = 300;
+// measured 362 s on CI run 39163232421 (suite_contracts_core_01 296.98 + suite_contracts_sandbox_01 65) + 25 %, rounded up to a minute
+// Raising this again needs a new measured number in this comment (reviewer's check).
+const TARGET_SECS: u64 = 480;
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

@@ -20,6 +20,10 @@ mod child_proc_lint;
 mod ctrace;
 #[path = "support/docs_qa.rs"]
 mod docs_qa;
+#[path = "support/exprf.rs"]
+mod exprf;
+#[path = "support/exprp.rs"]
+mod exprp;
 #[path = "support/oauth.rs"]
 mod oauth;
 #[path = "support/serve.rs"]
@@ -93,16 +97,10 @@ mod alert_ac09_min_severity_filters_delivery;
 mod alert_ac10_healthz_reports_open_and_last_raised_at;
 #[path = "alert_ac11_raise_body_size_limit.rs"]
 mod alert_ac11_raise_body_size_limit;
-#[path = "aliastruth_ac01_tools_list_has_every_name.rs"]
-mod aliastruth_ac01_tools_list_has_every_name;
 #[path = "aliastruth_ac03_unknown_tool_names_nearest.rs"]
 mod aliastruth_ac03_unknown_tool_names_nearest;
 #[path = "aliastruth_ac04_flattened_collision_refuses_start.rs"]
 mod aliastruth_ac04_flattened_collision_refuses_start;
-#[path = "aliastruth_ac06_contract_and_docs_list_the_same_names.rs"]
-mod aliastruth_ac06_contract_and_docs_list_the_same_names;
-#[path = "aliastruth_ac07_alias_entries_carry_alias_of.rs"]
-mod aliastruth_ac07_alias_entries_carry_alias_of;
 #[path = "althost_ac01_fallback_lines_on_claim_invite_quickstart.rs"]
 mod althost_ac01_fallback_lines_on_claim_invite_quickstart;
 #[path = "althost_ac02_alt_host_header_served_identically.rs"]
@@ -257,8 +255,6 @@ mod blobput_ac07_tenant_isolation;
 mod blobputb_ac01_url_fetch_refusals_write_nothing;
 #[path = "blobputb_ac03_tenant_isolation.rs"]
 mod blobputb_ac03_tenant_isolation;
-#[path = "bridgedisc_ac07_sandbox_api_doc_check.rs"]
-mod bridgedisc_ac07_sandbox_api_doc_check;
 #[path = "budget_ac01_ported_ledger_seven_tests.rs"]
 mod budget_ac01_ported_ledger_seven_tests;
 #[path = "budget_ac02_chain_child_calls_halts_at_ten.rs"]
@@ -335,14 +331,10 @@ mod ccli_ac03_publish_round_trip_key_stays_secret;
 mod ccli_ac04_error_classes_map_to_exit_codes;
 #[path = "ccli_ac05_contract_skew_warning.rs"]
 mod ccli_ac05_contract_skew_warning;
-#[path = "ccli_ac06_cli_tree_equals_contract.rs"]
-mod ccli_ac06_cli_tree_equals_contract;
 #[path = "ccli_ac07_completions_rendered_from_the_table.rs"]
 mod ccli_ac07_completions_rendered_from_the_table;
 #[path = "cclib_ac01_contract_skew_warning.rs"]
 mod cclib_ac01_contract_skew_warning;
-#[path = "cclib_ac02_cli_tree_equals_contract.rs"]
-mod cclib_ac02_cli_tree_equals_contract;
 #[path = "cclib_ac03_completions_rendered_from_the_table.rs"]
 mod cclib_ac03_completions_rendered_from_the_table;
 #[path = "cdft_ac01_description_universal.rs"]
@@ -419,8 +411,6 @@ mod cgd_ac04_dispatch_table_matches_registry;
 mod cgd_ac05_capabilities_json_marks_server_to_client;
 #[path = "cgd_ac06_wire_check_script_green_in_process.rs"]
 mod cgd_ac06_wire_check_script_green_in_process;
-#[path = "cgd_ac07_capabilities_tables_carry_server_to_client.rs"]
-mod cgd_ac07_capabilities_tables_carry_server_to_client;
 #[path = "chainhost_ac01_host_table_append_step.rs"]
 mod chainhost_ac01_host_table_append_step;
 #[path = "chainhost_ac02_step_tool_not_found.rs"]
@@ -519,8 +509,6 @@ mod checkcompat_race_ac06_explicit_bind_still_enforces_token;
 mod checkcompat_race_ac07_suite_green_and_clippy_clean;
 #[path = "chg_ac02_contract_since_drift.rs"]
 mod chg_ac02_contract_since_drift;
-#[path = "chg_ac03_changelog_renamed_lists_every_alias.rs"]
-mod chg_ac03_changelog_renamed_lists_every_alias;
 #[path = "chg_ac04_changelog_defaults_to_last_seen_version.rs"]
 mod chg_ac04_changelog_defaults_to_last_seen_version;
 #[path = "chgb_ac01_fresh_tenant_last_five_releases.rs"]
@@ -565,8 +553,6 @@ mod cnfm_ac02_confirm_required_over_threshold;
 mod cnfm_ac03_token_deletes_once;
 #[path = "cnfm_ac04_token_bound_to_args_state_and_time.rs"]
 mod cnfm_ac04_token_bound_to_args_state_and_time;
-#[path = "cnfm_ac05_tools_list_marks_destructive_verbs.rs"]
-mod cnfm_ac05_tools_list_marks_destructive_verbs;
 #[path = "cnfm_ac06_scratch_tenant_is_never_gated.rs"]
 mod cnfm_ac06_scratch_tenant_is_never_gated;
 #[path = "cnfm_ac07_plan_override_disables_the_gate.rs"]
@@ -637,8 +623,6 @@ mod creg_ac01_premise_two_truths_then_minus_32601;
 mod creg_ac03_every_method_matches_its_row;
 #[path = "creg_ac04_capabilities_json_keyless.rs"]
 mod creg_ac04_capabilities_json_keyless;
-#[path = "creg_ac05_capabilities_docs_in_sync.rs"]
-mod creg_ac05_capabilities_docs_in_sync;
 #[path = "creg_ac06_quickstart_names_capabilities.rs"]
 mod creg_ac06_quickstart_names_capabilities;
 #[path = "creg_ac07_probe_names_unique.rs"]
@@ -661,20 +645,8 @@ mod ctraceb_ac02_sweep_keeps_newest_200_within_24h;
 mod ctrm_ac01_literal_lint_misses_the_two_unmarked_files;
 #[path = "ctrm_ac02_four_files_marked_and_in_one_contract_suite.rs"]
 mod ctrm_ac02_four_files_marked_and_in_one_contract_suite;
-#[path = "ctrm_ac03_unmarked_reader_of_a_marked_artifact_fails.rs"]
-mod ctrm_ac03_unmarked_reader_of_a_marked_artifact_fails;
-#[path = "ctrm_ac04_unmarked_tree_walk_fails_the_lint.rs"]
-mod ctrm_ac04_unmarked_tree_walk_fails_the_lint;
-#[path = "ctrm_ac05_artifacts_printed_and_derived_not_listed.rs"]
-mod ctrm_ac05_artifacts_printed_and_derived_not_listed;
-#[path = "ctrm_ac06_lint_clean_on_committed_tree_prints_marked_count.rs"]
-mod ctrm_ac06_lint_clean_on_committed_tree_prints_marked_count;
-#[path = "ctrm_ac07_fix_prints_the_marker_line_and_edits_nothing.rs"]
-mod ctrm_ac07_fix_prints_the_marker_line_and_edits_nothing;
 #[path = "ctrs_ac01_marked_files_live_in_contract_suites.rs"]
 mod ctrs_ac01_marked_files_live_in_contract_suites;
-#[path = "ctrs_ac02_six_files_carry_marker_and_keep_tests.rs"]
-mod ctrs_ac02_six_files_carry_marker_and_keep_tests;
 #[path = "ctrs_ac03_pin_tests_derives_list_from_cargo_toml.rs"]
 mod ctrs_ac03_pin_tests_derives_list_from_cargo_toml;
 #[path = "ctrs_ac04_contract_lint_names_unmarked_contract_files.rs"]
@@ -695,6 +667,10 @@ mod ctrv_ac05_contract_json_is_served_with_etag_and_304;
 mod ctrv_ac06_committed_contract_file_matches_served_sha;
 #[path = "ctrv_ac07_changelog_since_accepts_contract_version.rs"]
 mod ctrv_ac07_changelog_since_accepts_contract_version;
+#[path = "ctrx_ac05_registry_walkers_marked_and_routed.rs"]
+mod ctrx_ac05_registry_walkers_marked_and_routed;
+#[path = "ctrx_ac06_contract_family_stays_in_budget.rs"]
+mod ctrx_ac06_contract_family_stays_in_budget;
 #[path = "dbmw_ac02_db_maintenance_truncates_wal_and_vacuums.rs"]
 mod dbmw_ac02_db_maintenance_truncates_wal_and_vacuums;
 #[path = "dbmw_ac03_backup_lock_refuses_window.rs"]
@@ -743,8 +719,6 @@ mod dlrec_ac02_quickstart_returns_recipe_and_orders_next_steps;
 mod dlrec_ac03_llms_txt_recipe_section_generated;
 #[path = "dlrec_ac04_new_scope_changes_both_sections.rs"]
 mod dlrec_ac04_new_scope_changes_both_sections;
-#[path = "dlrec_ac05_readme_recipe_block_checked.rs"]
-mod dlrec_ac05_readme_recipe_block_checked;
 #[path = "dlrec_ac06_whoami_hint_for_foreign_session.rs"]
 mod dlrec_ac06_whoami_hint_for_foreign_session;
 #[path = "dlrec_ac07_error_codes_only_in_generated_blocks.rs"]
@@ -845,18 +819,12 @@ mod dryrun_ac05_chain_host_table_append_step;
 mod dryrun_ac06_tools_list_mentions_dry_run;
 #[path = "dryv_ac01_table_drop_survives_savepoint.rs"]
 mod dryv_ac01_table_drop_survives_savepoint;
-#[path = "dryv_ac02_write_verb_registry_drift.rs"]
-mod dryv_ac02_write_verb_registry_drift;
 #[path = "dryv_ac03_table_drop_dry_run_would.rs"]
 mod dryv_ac03_table_drop_dry_run_would;
 #[path = "dryv_ac04_state_delete_rows_dry_run_would.rs"]
 mod dryv_ac04_state_delete_rows_dry_run_would;
 #[path = "dryv_ac05_real_errors_pass_through.rs"]
 mod dryv_ac05_real_errors_pass_through;
-#[path = "dryv_ac06_key_rotate_refuses_dry_run.rs"]
-mod dryv_ac06_key_rotate_refuses_dry_run;
-#[path = "dryv_ac07_tools_list_dry_run_schema.rs"]
-mod dryv_ac07_tools_list_dry_run_schema;
 #[path = "dtf_ac02_search_then_failure_row_joined_once.rs"]
 mod dtf_ac02_search_then_failure_row_joined_once;
 #[path = "dtf_ac03_anonymous_and_stale_never_joined.rs"]
@@ -1025,11 +993,51 @@ mod evkr_ac01_no_second_spelling;
 mod evkr_ac02_renderings_equal_enum;
 #[path = "evkr_ac03_description_and_fields.rs"]
 mod evkr_ac03_description_and_fields;
-#[path = "evkr_ac04_bad_kind_args_invalid.rs"]
-mod evkr_ac04_bad_kind_args_invalid;
 #[path = "evkrb_ac01_llms_txt_events_section_checked.rs"]
 mod evkrb_ac01_llms_txt_events_section_checked;
 #[path = "evkrb_ac02_quickstart_events_pointer.rs"]
 mod evkrb_ac02_quickstart_events_pointer;
 #[path = "evkrb_ac03_events_json_stable_and_cached.rs"]
 mod evkrb_ac03_events_json_stable_and_cached;
+#[path = "exargs_ac02_generator_values.rs"]
+mod exargs_ac02_generator_values;
+#[path = "exargs_ac03_tool_test_runs_the_example.rs"]
+mod exargs_ac03_tool_test_runs_the_example;
+#[path = "exargs_ac04_unsatisfiable_schema_is_refused.rs"]
+mod exargs_ac04_unsatisfiable_schema_is_refused;
+#[path = "exargs_ac05_publish_dry_run_and_spec_test_run_one_example.rs"]
+mod exargs_ac05_publish_dry_run_and_spec_test_run_one_example;
+#[path = "exargs_ac06_depth_limit.rs"]
+mod exargs_ac06_depth_limit;
+#[path = "exmf_ac01_seven_manifests_check_green.rs"]
+mod exmf_ac01_seven_manifests_check_green;
+#[path = "exmf_ac02_bad_manifest_exits_two_index_untouched.rs"]
+mod exmf_ac02_bad_manifest_exits_two_index_untouched;
+#[path = "exmf_ac04_stale_index_fails_the_build.rs"]
+mod exmf_ac04_stale_index_fails_the_build;
+#[path = "exmf_ac05_schema_matches_committed_file.rs"]
+mod exmf_ac05_schema_matches_committed_file;
+#[path = "exmf_ac06_zero_manifests_exits_two.rs"]
+mod exmf_ac06_zero_manifests_exits_two;
+#[path = "exprf_ac02_failing_proof_hides_the_example.rs"]
+mod exprf_ac02_failing_proof_hides_the_example;
+#[path = "exprf_ac03_green_report_unhides_and_resolves.rs"]
+mod exprf_ac03_green_report_unhides_and_resolves;
+#[path = "exprf_ac04_second_red_appends_to_one_incident.rs"]
+mod exprf_ac04_second_red_appends_to_one_incident;
+#[path = "exprf_ac05_unknown_name_and_non_admin_refused.rs"]
+mod exprf_ac05_unknown_name_and_non_admin_refused;
+#[path = "exprf_ac06_status_json_examples_block.rs"]
+mod exprf_ac06_status_json_examples_block;
+#[path = "exprf_ac07_only_dry_run_prints_and_executes_nothing.rs"]
+mod exprf_ac07_only_dry_run_prints_and_executes_nothing;
+#[path = "exprp_ac02_literal_secret_value_is_refused.rs"]
+mod exprp_ac02_literal_secret_value_is_refused;
+#[path = "exprp_ac03_non_portable_and_failing_proof_are_refused.rs"]
+mod exprp_ac03_non_portable_and_failing_proof_are_refused;
+#[path = "exprp_ac04_admin_decides_and_the_proposer_sees_it.rs"]
+mod exprp_ac04_admin_decides_and_the_proposer_sees_it;
+#[path = "exprp_ac05_pull_writes_the_clone_commits_and_merges.rs"]
+mod exprp_ac05_pull_writes_the_clone_commits_and_merges;
+#[path = "exprp_ac06_name_collision_and_open_proposal_cap.rs"]
+mod exprp_ac06_name_collision_and_open_proposal_cap;

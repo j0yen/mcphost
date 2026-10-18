@@ -1,3 +1,4 @@
+//! contract: reads scripts/sandbox-api-doc-check.sh
 //! PRD-mcphost-delegation-recipes-and-quickstart
 //! AC5 (P1) — Given `README.md`, When `scripts/sandbox-api-doc-check.sh` runs
 //! without `--write`, Then it exits non-zero iff the block between

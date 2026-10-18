@@ -1,3 +1,4 @@
+//! contract: reads scripts/sandbox-api-doc-check.sh
 //! PRD-mcphost-tools-list-alias-truth
 //! AC6 — Given the registry changes, When `sandbox-api-doc-check.sh --write`
 //! runs, Then `api_contract` and docs list the same names as tools/list.

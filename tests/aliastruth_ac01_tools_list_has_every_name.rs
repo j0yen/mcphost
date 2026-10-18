@@ -1,3 +1,4 @@
+//! contract: registry tool_aliases::TOOL_ALIASES — tools/list carries every canonical name, every alias in TOOL_ALIASES and the flattened form of each
 //! PRD-mcphost-tools-list-alias-truth
 //! AC1 — Given the server starts, When tools/list is requested, Then it
 //! contains every canonical name, every alias in `tool_aliases.rs`, and the

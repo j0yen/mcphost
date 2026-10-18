@@ -231,6 +231,10 @@ mcphost = { path = ".", features = ["test-support"] }
 # BEGIN gen-test-suites.sh generated suites -- do not edit by hand
 
 [[test]]
+name = "suite_cargo_core_01"
+path = "tests/suite_cargo_core_01.rs"
+
+[[test]]
 name = "suite_contracts_core_01"
 path = "tests/suite_contracts_core_01.rs"
 

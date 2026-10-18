@@ -1,3 +1,4 @@
+//! contract: reads registry write_verbs::WRITE_VERBS
 //! PRD-mcphost-destructive-verb-confirmation-token
 //! AC5 -- Given `tools/list` for a keyed tenant, When read, Then every
 //! registry verb of a gated kind carries `annotations.destructiveHint ==

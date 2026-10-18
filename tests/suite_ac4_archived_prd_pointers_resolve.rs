@@ -35,6 +35,7 @@ fn suite_files(tests_dir: &Path) -> Vec<PathBuf> {
                 || name.starts_with("suite_sandbox_")
                 || name.starts_with("suite_env_")
                 || name.starts_with("suite_contracts_")
+                || name.starts_with("suite_cargo_")
         })
         .collect()
 }

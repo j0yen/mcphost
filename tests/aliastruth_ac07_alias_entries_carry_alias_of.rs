@@ -1,3 +1,4 @@
+//! contract: reads registry tool_aliases::TOOL_ALIASES
 //! PRD-mcphost-tools-list-alias-truth
 //! AC7 — Given an alias entry in tools/list, When read, Then it carries
 //! `alias_of: <canonical>`.

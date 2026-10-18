@@ -1,3 +1,4 @@
+//! contract: reads registry handler::host_tool_descriptors
 //! PRD-mcphost-input-schema-is-the-validator
 //! AC6 (P1) -- Given the contract dump and `docs/tools.md`, When regenerated,
 //! Then every `anyOf`, `enum`, `pattern`, `minimum`, `maximum`, `minItems` and

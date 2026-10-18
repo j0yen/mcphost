@@ -1,3 +1,4 @@
+//! contract: registry handler::host_tool_descriptors — every forwardable verb forwards within FORWARD_STACK_BUDGET and its schema generates a call that reaches the verb body
 //! PRD-mcphost-tool-call-host-verb-forward, stack-budget guard (hand PR
 //! hand/forward-stack-budget, after the two 10-17 debug-build stack overflows,
 //! run 326 and run 953).

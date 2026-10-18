@@ -1,3 +1,4 @@
+//! contract: reads docs/sandbox-api.md
 //! PRD-mcphost-sandbox-bridge-discoverability
 //! AC7 (P1) -- Given `scripts/sandbox-api-doc-check.sh` at the landing
 //! commit, When run, Then it exits 0 and reports `modules=<n>

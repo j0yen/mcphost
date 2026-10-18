@@ -1,3 +1,4 @@
+//! contract: reads registry handler::host_tool_descriptors
 //! PRD-mcphost-input-schema-is-the-validator
 //! AC5 (P0) -- Given every tool returned by `host_tools(kinds, true)`, When a
 //! call is built from its own schema with the test placeholder generator and

@@ -1,3 +1,4 @@
+//! contract: reads registry tool_aliases::TOOL_ALIASES
 //! PRD-mcphost-host-changelog-since AC3 — Given `since: "0.0.0"`, When
 //! `host.changelog` runs, Then `renamed` has exactly `TOOL_ALIASES.len()`
 //! entries and each `from`/`to` pair matches the table.
