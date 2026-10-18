@@ -745,21 +745,24 @@ fn schema(props: Value, required: &[&str]) -> Map<String, Value> {
     }))
 }
 
-/// [`schema`] for an `admin.*` tool whose descriptor is the validator for it:
-/// the schema carries [`crate::host_args::VALIDATED_KEY`] and
-/// `dispatch_admin_tool` refuses by it (through the same
-/// `host_args::validate_host_args` the `host.*` verbs use) before the handler
-/// runs.
+/// [`schema`] for an `admin.*` tool; validated like every other descriptor
+/// (the key is written once, by [`crate::host_args::mark_validated`]).
 fn schema_checked(props: Value, required: &[&str]) -> Map<String, Value> {
-    let mut obj = schema(props, required);
-    obj.insert(crate::host_args::VALIDATED_KEY.to_string(), json!(true));
-    obj
+    schema(props, required)
 }
 
 /// The `admin.*` descriptors, for `host_args` to compile the checked ones
 /// beside [`host_tool_descriptors`].
 pub fn admin_tool_descriptors() -> Vec<Tool> {
     admin_tools()
+}
+
+/// The `admin.*` descriptors with [`crate::host_args::VALIDATED_KEY`]
+/// written by the one post-pass.
+fn admin_tools() -> Vec<Tool> {
+    let mut tools = admin_tools_raw();
+    crate::host_args::mark_validated(&mut tools);
+    tools
 }
 
 /// `host.tool_publish`'s own properties (minus `host_schema`'s
@@ -966,7 +969,6 @@ fn host_schema_extra(props: Value, required: &[&str], extra: Value) -> Map<Strin
     if let Value::Object(extra) = extra {
         obj.extend(extra);
     }
-    obj.insert(crate::host_args::VALIDATED_KEY.to_string(), json!(true));
     obj
 }
 
@@ -5367,6 +5369,9 @@ fn host_tools_part_13() -> Vec<Tool> {
             tool.description = Some(Cow::Owned(format!("{existing} {}", crate::confirm::CONFIRM_SENTENCE)));
         }
     }
+    // PRD-mcphost-host-args-validated-by-default R1: the one writer of
+    // `VALIDATED_KEY`, before the alias clones are made so they carry it too.
+    crate::host_args::mark_validated(&mut tools);
     apply_tool_aliases(&mut tools);
     tools
 }
@@ -5537,7 +5542,7 @@ fn flattened_to_canonical(kinds: &KindRegistry, name: &str) -> Option<String> {
     .cloned()
 }
 
-fn admin_tools() -> Vec<Tool> {
+fn admin_tools_raw() -> Vec<Tool> {
     vec![
         Tool::new(
             "admin.tenants",

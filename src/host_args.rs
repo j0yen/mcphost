@@ -17,11 +17,40 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 /// The top-level schema key marking a descriptor as the validator for its
-/// tool. Generated into the descriptor by `host_schema_checked`/
-/// `host_schema_extra`, so the set of validated tools cannot drift from the
+/// tool. Generated into the descriptor by [`mark_validated`], so the set of validated tools cannot drift from the
 /// descriptors; a tool without it keeps its handler's own checks and error
 /// taxonomy (`invalid_tool_name`, `invalid_params`, clamped limits, ...).
 pub const VALIDATED_KEY: &str = "x-mcphost-validated";
+
+/// PRD-mcphost-host-args-validated-by-default R2: the tools that keep their
+/// handler's own refusal instead of validating by their descriptor, as
+/// `(tool, reason)` where the reason names the `tests/` file pinning that
+/// refusal. Shrink-only: `vbd_ac01` fails when an entry names an absent tool or
+/// file, or when the list outgrows [`UNVALIDATED_SNAPSHOT`].
+pub const UNVALIDATED: &[(&str, &str)] = &[
+    // The `allOf` spec branches disagree with `Kind::describe`'s own refusal
+    // (`invalid_spec`, `invalid_tool_name`, `unknown_kind` with their `field`/
+    // `expected`/`example`), which this test pins; the two alias names are
+    // clones of the canonical descriptor and so opt out with it.
+    ("host.tool.publish", "publishfirsttry_ac02_structured_error_fields.rs"),
+    ("host.tool_publish", "publishfirsttry_ac02_structured_error_fields.rs"),
+    ("host_tool_publish", "publishfirsttry_ac02_structured_error_fields.rs"),
+];
+
+/// The `UNVALIDATED.len()` at merge; lowering it is the only edit that lets the
+/// list shrink, raising it is refused by review (3 is the ceiling).
+pub const UNVALIDATED_SNAPSHOT: usize = 3;
+
+/// R1: marks every descriptor not named in [`UNVALIDATED`] with
+/// [`VALIDATED_KEY`]; the one writer of the key.
+pub fn mark_validated(tools: &mut [rmcp::model::Tool]) {
+    for tool in tools.iter_mut() {
+        if UNVALIDATED.iter().any(|(name, _)| *name == tool.name.as_ref()) {
+            continue;
+        }
+        std::sync::Arc::make_mut(&mut tool.input_schema).insert(VALIDATED_KEY.to_string(), Value::Bool(true));
+    }
+}
 
 /// Handler bodies entered (after validation passed), per (tenant namespace,
 /// tool). A test reads its own tenant's count before and after a violating
