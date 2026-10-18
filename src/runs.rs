@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 use serde_json::{Map, Value, json};
 
 use crate::db::{RunRow, RunsPageQuery, Tenant};
+pub use crate::run_enums::{RunStatus, RunTrigger};
 use crate::paged::{Cursor, OrderEnum as _, Paged as _, RunsList, RunsOrder};
 use crate::errors::AppError;
 use crate::handler::{
@@ -227,6 +228,28 @@ fn arg_str(args: &Value, name: &str) -> Result<String, AppError> {
 
 fn arg_str_opt(args: &Value, name: &str) -> Option<String> {
     args.get(name).and_then(Value::as_str).map(str::to_string)
+}
+
+/// The handler's own parse of an enum-valued filter. The descriptor's `enum`
+/// (checked by `host_args::validate_host_args`) refuses an out-of-set value
+/// before this runs; this arm is reachable only with the validator off.
+fn enum_arg<T>(
+    args: &Value,
+    name: &str,
+    parse: fn(&str) -> Option<T>,
+    names: fn() -> Vec<&'static str>,
+) -> Result<Option<T>, AppError> {
+    match args.get(name).and_then(Value::as_str) {
+        None => Ok(None),
+        Some(raw) => parse(raw).map(Some).ok_or_else(|| enum_refusal(name, raw, names())),
+    }
+}
+
+/// Plain `InvalidArgs` (message only): the descriptor's `enum` already refused
+/// an out-of-set value with the structured `path`/`expected` data before this
+/// handler ran, so this arm exists only for a validator that is off.
+fn enum_refusal(name: &str, raw: &str, expected: Vec<&'static str>) -> AppError {
+    AppError::InvalidArgs(format!("{name} '{raw}' is not one of {}", expected.join("|")))
 }
 
 fn arg_i64_opt(args: &Value, name: &str) -> Option<i64> {
@@ -605,13 +628,19 @@ async fn attach_result_if_single_part(
 pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     // PRD-mcphost-fields-projection-on-list-verbs R4: refused before any read.
     let fields = crate::paged::parse_fields("host.runs.list", args)?;
+    // Counted after the descriptor validator passed (it refuses an
+    // out-of-enum `status`/`trigger`/`verdict` before this body runs).
+    crate::host_args::note_handler_run(&tenant.namespace, "host.runs.list#body");
     let tool = arg_str_opt(args, "tool");
-    let status = arg_str_opt(args, "status");
-    let trigger = arg_str_opt(args, "trigger");
+    let status = enum_arg::<RunStatus>(args, "status", RunStatus::parse, RunStatus::names)?;
+    let trigger = enum_arg::<RunTrigger>(args, "trigger", RunTrigger::parse, RunTrigger::names)?;
     let end_user_subject = arg_str_opt(args, "end_user_subject");
     let parent_run_id = arg_str_opt(args, "parent_run_id");
     let include_children = args.get("include_children").and_then(Value::as_bool).unwrap_or(false);
     let verdict = arg_str_opt(args, "verdict");
+    if let Some(v) = verdict.as_deref().filter(|v| !crate::budget::Verdict::NAMES.contains(v)) {
+        return Err(enum_refusal("verdict", v, crate::budget::Verdict::names()));
+    }
     // R6: `include_result: true` is sugar for naming `result` in `fields`.
     let include_result_arg = args.get("include_result").and_then(Value::as_bool).unwrap_or(false);
     let wants_result = fields.as_ref().is_some_and(|f| f.iter().any(|n| n == "result"));
@@ -637,8 +666,8 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     // and `next_cursor` is minted only from filtered rows.
     let query = RunsPageQuery {
         tool_name: tool,
-        status,
-        trigger,
+        status: status.map(|s| s.as_str().to_string()),
+        trigger: trigger.map(|t| t.as_str().to_string()),
         end_user_subject,
         parent_run_id,
         include_children,
@@ -871,7 +900,7 @@ pub async fn wait(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
                 message: format!("no run '{run_id}' for this tenant"),
                 data: json!({"run_id": run_id}),
             })?;
-        let terminal = matches!(run.status.as_str(), "done" | "error" | "timeout" | "cancelled");
+        let terminal = RunStatus::is_terminal_str(&run.status);
         let until_reached = until.as_ref().is_some_and(|(counter, gte)| {
             let counters: Value = run
                 .counters_json
@@ -891,6 +920,10 @@ pub async fn wait(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
 
 /// `admin.runs(tenant?, status?, limit?)`.
 pub async fn admin_runs(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    // Counted after the descriptor validator passed, keyed by the `tenant`
+    // argument (empty for "every tenant") so concurrent tests cannot disturb
+    // each other's count.
+    crate::host_args::note_handler_run(&arg_str_opt(args, "tenant").unwrap_or_default(), "admin.runs");
     let tenant_id = if let Some(ns) = arg_str_opt(args, "tenant") {
         let tenant = state
             .db
@@ -901,7 +934,8 @@ pub async fn admin_runs(state: &AppState, args: &Value) -> Result<Value, AppErro
     } else {
         None
     };
-    let status = arg_str_opt(args, "status");
+    let status = enum_arg::<RunStatus>(args, "status", RunStatus::parse, RunStatus::names)?
+        .map(|s| s.as_str().to_string());
     let limit = arg_i64_opt(args, "limit").unwrap_or(50).clamp(1, 500);
     let rows = state.db.admin_list_runs(tenant_id, status, limit).await?;
     Ok(json!({"runs": rows.iter().map(run_to_json).collect::<Vec<_>>()}))
@@ -983,7 +1017,7 @@ pub async fn enqueue(
             run_id.clone(),
             tenant.id,
             local_name.to_string(),
-            "job".to_string(),
+            RunTrigger::Job.as_str().to_string(),
             None,
             None,
             deadline_s,
@@ -1023,7 +1057,7 @@ pub async fn enqueue_url(
     args: Value,
     token_id: &str,
 ) -> Result<String, AppError> {
-    enqueue_with_trigger(state, tenant, local_name, args, ("url", token_id)).await
+    enqueue_with_trigger(state, tenant, local_name, args, (RunTrigger::Url.as_str(), token_id)).await
 }
 
 /// [`enqueue_url`]'s body with the run's `trigger` as a parameter:
@@ -1150,7 +1184,7 @@ pub async fn enqueue_shared(
             run_id.clone(),
             caller.id,
             format!("{owner_ns}.{local_name}"),
-            "job".to_string(),
+            RunTrigger::Job.as_str().to_string(),
             None,
             None,
             deadline_s,
@@ -1578,7 +1612,7 @@ async fn run_one_job(state: AppState, run: RunRow) {
                                 "content_type": "application/json",
                             })
                             .to_string();
-                            ("done".to_string(), Some(result_ref), None, None)
+                            (RunStatus::Done.as_str().to_string(), Some(result_ref), None, None)
                         }
                         Err(e) => {
                             // The raw `Structured` data as-constructed (just
@@ -1592,12 +1626,12 @@ async fn run_one_job(state: AppState, run: RunRow) {
                                 AppError::Structured { data, .. } => Some(data.to_string()),
                                 _ => None,
                             };
-                            ("error".to_string(), None, Some(e.code().to_string()), data)
+                            (RunStatus::Error.as_str().to_string(), None, Some(e.code().to_string()), data)
                         }
                     }
                 }
                 _ => (
-                    "error".to_string(),
+                    RunStatus::Error.as_str().to_string(),
                     None,
                     Some("tenant_not_found".to_string()),
                     None,
@@ -1608,9 +1642,9 @@ async fn run_one_job(state: AppState, run: RunRow) {
             if wants_receipt && let Some(data) = &error_data {
                 receipt_result = Value::String(data.clone());
             }
-            ("error".to_string(), None, Some(error_class), error_data)
+            (RunStatus::Error.as_str().to_string(), None, Some(error_class), error_data)
         }
-        JobOutcome::Timeout => ("timeout".to_string(), None, None, None),
+        JobOutcome::Timeout => (RunStatus::Timeout.as_str().to_string(), None, None, None),
     };
 
     let ended_done = status == "done";

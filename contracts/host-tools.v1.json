@@ -20401,7 +20401,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "List this tenant's recent runs, newest first, optionally filtered by tool, status (queued|running|done|error|timeout|cancelled), trigger (call|job|schedule|event|composition|...), end_user_subject (the end user, if any, the run ran as), or verdict (alert|exceeded, the run's own budget.verdict). A chain's own composed step runs (trigger: \"composition\") are excluded by default -- pass parent_run_id, trigger: \"composition\", or include_children: true to see them. include_result: true inlines each terminal row's result when it fits one part, so a poller reading trigger=\"event\" runs doesn't need a second host.runs.get per row.",
+      "description": "List this tenant's recent runs, newest first, optionally filtered by tool, status (queued|running|done|error|timeout|cancelled|rejected|skipped|in_flight|failed), trigger (call|job|schedule|event|message|webhook|composition|url), end_user_subject (the end user, if any, the run ran as), or verdict (ok|alert|exceeded, the run's own budget.verdict). A chain's own composed step runs (trigger: \"composition\") are excluded by default -- pass parent_run_id, trigger: \"composition\", or include_children: true to see them. include_result: true inlines each terminal row's result when it fits one part, so a poller reading trigger=\"event\" runs doesn't need a second host.runs.get per row.",
       "fields_enum": [
         "run_id",
         "tool",
@@ -20503,7 +20503,19 @@
             "type": "string"
           },
           "status": {
-            "description": "Only runs in this status.",
+            "description": "Only runs in this status (queued|running|done|error|timeout|cancelled|rejected|skipped|in_flight|failed).",
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "error",
+              "timeout",
+              "cancelled",
+              "rejected",
+              "skipped",
+              "in_flight",
+              "failed"
+            ],
             "type": "string"
           },
           "tenant_key": {
@@ -20515,16 +20527,32 @@
             "type": "string"
           },
           "trigger": {
-            "description": "Only runs of this trigger kind.",
+            "description": "Only runs of this trigger kind (call|job|schedule|event|message|webhook|composition|url).",
+            "enum": [
+              "call",
+              "job",
+              "schedule",
+              "event",
+              "message",
+              "webhook",
+              "composition",
+              "url"
+            ],
             "type": "string"
           },
           "verdict": {
-            "description": "Only runs whose progress.budget.verdict is this value (alert|exceeded) -- a run with no budget block never matches.",
+            "description": "Only runs whose progress.budget.verdict is this value (ok|alert|exceeded) -- a run with no budget block never matches.",
+            "enum": [
+              "ok",
+              "alert",
+              "exceeded"
+            ],
             "type": "string"
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.runs.list",
       "output_schema": {
@@ -40859,7 +40887,7 @@
     },
     {
       "alias_of": "host.runs.list",
-      "description": "List this tenant's recent runs, newest first, optionally filtered by tool, status (queued|running|done|error|timeout|cancelled), trigger (call|job|schedule|event|composition|...), end_user_subject (the end user, if any, the run ran as), or verdict (alert|exceeded, the run's own budget.verdict). A chain's own composed step runs (trigger: \"composition\") are excluded by default -- pass parent_run_id, trigger: \"composition\", or include_children: true to see them. include_result: true inlines each terminal row's result when it fits one part, so a poller reading trigger=\"event\" runs doesn't need a second host.runs.get per row.",
+      "description": "List this tenant's recent runs, newest first, optionally filtered by tool, status (queued|running|done|error|timeout|cancelled|rejected|skipped|in_flight|failed), trigger (call|job|schedule|event|message|webhook|composition|url), end_user_subject (the end user, if any, the run ran as), or verdict (ok|alert|exceeded, the run's own budget.verdict). A chain's own composed step runs (trigger: \"composition\") are excluded by default -- pass parent_run_id, trigger: \"composition\", or include_children: true to see them. include_result: true inlines each terminal row's result when it fits one part, so a poller reading trigger=\"event\" runs doesn't need a second host.runs.get per row.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -40935,7 +40963,19 @@
             "type": "string"
           },
           "status": {
-            "description": "Only runs in this status.",
+            "description": "Only runs in this status (queued|running|done|error|timeout|cancelled|rejected|skipped|in_flight|failed).",
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "error",
+              "timeout",
+              "cancelled",
+              "rejected",
+              "skipped",
+              "in_flight",
+              "failed"
+            ],
             "type": "string"
           },
           "tenant_key": {
@@ -40947,16 +40987,32 @@
             "type": "string"
           },
           "trigger": {
-            "description": "Only runs of this trigger kind.",
+            "description": "Only runs of this trigger kind (call|job|schedule|event|message|webhook|composition|url).",
+            "enum": [
+              "call",
+              "job",
+              "schedule",
+              "event",
+              "message",
+              "webhook",
+              "composition",
+              "url"
+            ],
             "type": "string"
           },
           "verdict": {
-            "description": "Only runs whose progress.budget.verdict is this value (alert|exceeded) -- a run with no budget block never matches.",
+            "description": "Only runs whose progress.budget.verdict is this value (ok|alert|exceeded) -- a run with no budget block never matches.",
+            "enum": [
+              "ok",
+              "alert",
+              "exceeded"
+            ],
             "type": "string"
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_runs_list",
       "since": "0.103.1"

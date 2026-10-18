@@ -9,7 +9,7 @@
 //! handler's own refusal.
 
 use crate::errors::{ARGS_INVALID, AppError};
-use crate::handler::host_tool_descriptors;
+use crate::handler::{admin_tool_descriptors, host_tool_descriptors};
 use crate::kinds::{KindRegistry, describe_args_error};
 use jsonschema::{Validator, error::ValidationErrorKind};
 use serde_json::{Value, json};
@@ -61,9 +61,19 @@ fn table_for(kinds: &KindRegistry) -> Table {
     }
     let compiled: HashMap<String, Compiled> = host_tool_descriptors(kinds)
         .into_iter()
+        .chain(admin_tool_descriptors())
         .filter(|tool| tool.input_schema.get(VALIDATED_KEY) == Some(&Value::Bool(true)))
         .filter_map(|tool| {
-            let schema = Value::Object((*tool.input_schema).clone());
+            let mut schema = Value::Object((*tool.input_schema).clone());
+            // A paged verb's `limit` above its max is CLAMPED and reported
+            // (`_meta.mcphost.limit_clamped`, PRD-mcphost-paged-trait-on-every-
+            // list-verb requirement 7), never refused: the published schema
+            // keeps `maximum` as documentation, the validator must not enforce it.
+            if crate::paged::paged_spec(tool.name.as_ref()).is_some()
+                && let Some(limit) = schema.pointer_mut("/properties/limit").and_then(Value::as_object_mut)
+            {
+                limit.remove("maximum");
+            }
             let validator = jsonschema::validator_for(&schema).ok()?;
             Some((tool.name.to_string(), Compiled { schema, validator }))
         })
@@ -79,6 +89,20 @@ fn constraint_of(schema_path: &str) -> String {
     schema_path.rsplit('/').find(|s| !s.is_empty()).unwrap_or("schema").to_string()
 }
 
+/// Whether `err` is a violation of the generated `fields` property of a
+/// projecting verb. `paged::parse_fields` is the one owner of `fields`
+/// semantics -- an unknown name is `field_unknown {field, nearest, valid}`
+/// (the one set the fldp contract pins), duplicates collapse, an empty or
+/// malformed list is `args_invalid` -- and it runs first in the handler, so the
+/// validator leaves these to it exactly as it leaves `additionalProperties` to
+/// `check_unknown_argument`. The set of such verbs is `paged::fields_for`, the
+/// same source that generates the property, so a verb moved onto the checked
+/// path later keeps its `field_unknown` without a special case.
+fn left_to_projection(tool: &str, err: &jsonschema::ValidationError<'_>) -> bool {
+    let at = err.instance_path.as_str();
+    crate::paged::fields_for(tool).is_some() && (at == "/fields" || at.starts_with("/fields/"))
+}
+
 /// Validates `args` against `tool`'s descriptor. `Ok` when the tool has no
 /// descriptor here (not a `host.*` tool) or the args satisfy it. An unlisted
 /// argument (`additionalProperties`) is left to `check_unknown_argument`'s own
@@ -89,7 +113,7 @@ pub fn validate_host_args(kinds: &KindRegistry, tool: &str, args: &Value) -> Res
     let Some(err) = compiled
         .validator
         .iter_errors(args)
-        .find(|e| constraint_of(e.schema_path.as_str()) != "additionalProperties")
+        .find(|e| constraint_of(e.schema_path.as_str()) != "additionalProperties" && !left_to_projection(tool, e))
     else {
         return Ok(());
     };

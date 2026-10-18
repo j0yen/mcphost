@@ -745,6 +745,23 @@ fn schema(props: Value, required: &[&str]) -> Map<String, Value> {
     }))
 }
 
+/// [`schema`] for an `admin.*` tool whose descriptor is the validator for it:
+/// the schema carries [`crate::host_args::VALIDATED_KEY`] and
+/// `dispatch_admin_tool` refuses by it (through the same
+/// `host_args::validate_host_args` the `host.*` verbs use) before the handler
+/// runs.
+fn schema_checked(props: Value, required: &[&str]) -> Map<String, Value> {
+    let mut obj = schema(props, required);
+    obj.insert(crate::host_args::VALIDATED_KEY.to_string(), json!(true));
+    obj
+}
+
+/// The `admin.*` descriptors, for `host_args` to compile the checked ones
+/// beside [`host_tool_descriptors`].
+pub fn admin_tool_descriptors() -> Vec<Tool> {
+    admin_tools()
+}
+
 /// `host.tool_publish`'s own properties (minus `host_schema`'s
 /// `tenant_key`, a connection-auth concern with no counterpart in a
 /// manifest entry), factored out so both its own `Tool::new` descriptor
@@ -3414,20 +3431,24 @@ fn host_tools_part_07() -> Vec<Tool> {
         ),
         Tool::new(
             "host.runs.list",
-            "List this tenant's recent runs, newest first, optionally filtered by tool, \
-             status (queued|running|done|error|timeout|cancelled), trigger \
-             (call|job|schedule|event|composition|...), end_user_subject (the end user, if \
-             any, the run ran as), or verdict (alert|exceeded, the run's own budget.verdict). \
-             A chain's own composed step runs (trigger: \"composition\") \
-             are excluded by default -- pass parent_run_id, trigger: \"composition\", or \
-             include_children: true to see them. include_result: true inlines each terminal \
-             row's result when it fits one part, so a poller reading trigger=\"event\" runs \
-             doesn't need a second host.runs.get per row.",
-            host_schema(
+            format!(
+                "List this tenant's recent runs, newest first, optionally filtered by tool, \
+                 status ({status}), trigger ({trigger}), end_user_subject (the end user, if \
+                 any, the run ran as), or verdict ({verdict}, the run's own budget.verdict). \
+                 A chain's own composed step runs (trigger: \"composition\") \
+                 are excluded by default -- pass parent_run_id, trigger: \"composition\", or \
+                 include_children: true to see them. include_result: true inlines each terminal \
+                 row's result when it fits one part, so a poller reading trigger=\"event\" runs \
+                 doesn't need a second host.runs.get per row.",
+                status = crate::run_enums::RunStatus::names().join("|"),
+                trigger = crate::run_enums::RunTrigger::names().join("|"),
+                verdict = crate::budget::Verdict::names().join("|"),
+            ),
+            host_schema_checked(
                 json!({
                     "tool": {"type": "string", "description": "Only runs of this tool name."},
-                    "status": {"type": "string", "description": "Only runs in this status."},
-                    "trigger": {"type": "string", "description": "Only runs of this trigger kind."},
+                    "status": crate::run_enums::RunStatus::schema_property(),
+                    "trigger": crate::run_enums::RunTrigger::schema_property(),
                     "end_user_subject": {
                         "type": "string",
                         "description": "Only runs that ran as this end user's subject.",
@@ -3441,11 +3462,7 @@ fn host_tools_part_07() -> Vec<Tool> {
                         "description": "Include composed child runs (trigger: \"composition\") \
                              alongside top-level ones; default false.",
                     },
-                    "verdict": {
-                        "type": "string",
-                        "description": "Only runs whose progress.budget.verdict is this value \
-                            (alert|exceeded) -- a run with no budget block never matches.",
-                    },
+                    "verdict": crate::budget::Verdict::schema_property(),
                     "include_result": {
                         "type": "boolean",
                         "description": "Inline each terminal row's result when it fits one part \
@@ -5669,13 +5686,16 @@ fn admin_tools() -> Vec<Tool> {
         // PRD-mcphost-runs-and-jobs P0 requirement 7 (user story "Operator (Joe)").
         Tool::new(
             "admin.runs",
-            "List runs across every tenant (or one, via tenant), optionally filtered by \
-             status -- a stuck executor is visible as runs older than their deadline_s \
-             still running.",
-            schema(
+            format!(
+                "List runs across every tenant (or one, via tenant), optionally filtered by \
+                 status ({}) -- a stuck executor is visible as runs older than their deadline_s \
+                 still running.",
+                crate::run_enums::RunStatus::names().join("|"),
+            ),
+            schema_checked(
                 json!({
                     "tenant": {"type": "string", "description": "Restrict to one tenant's namespace."},
-                    "status": {"type": "string", "description": "Only runs in this status."},
+                    "status": crate::run_enums::RunStatus::schema_property(),
                     "limit": {"type": "integer", "description": "Max runs to return; default 50."},
                 }),
                 &[],
@@ -7936,6 +7956,11 @@ impl McpHostHandler {
     }
 
     async fn dispatch_admin_tool(&self, name: &str, args: Value) -> Result<Value, AppError> {
+        // PRD-mcphost-runs-list-filter-enums-generated R3: a checked admin
+        // descriptor is the validator, through the SAME `validate_host_args`
+        // `call_tool_inner` runs for `host.*` -- one validator, one more
+        // call site.
+        crate::host_args::validate_host_args(&self.state.kinds, name, &args)?;
         let result = match name {
             "admin.tenants" => admin::tenants(&self.state, &args).await,
             "admin.tenant_disable" => admin::tenant_disable(&self.state, &args).await,

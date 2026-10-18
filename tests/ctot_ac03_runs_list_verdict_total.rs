@@ -1,5 +1,5 @@
 //! PRD-mcphost-count-and-total-semantics
-//! AC3 -- Given `host.runs.list(verdict="fail")` over 60 runs with 7
+//! AC3 -- Given `host.runs.list(verdict="exceeded")` over 60 runs with 7
 //! failures, When page 1 returns, Then `total: 7`.
 
 use crate::common;
@@ -15,7 +15,7 @@ async fn ctot_ac03_runs_list_verdict_total() {
     let client = McpClient::with_bearer(&server.base_url, &key);
 
     let page = client
-        .tools_call("host.runs.list", json!({"verdict": "fail", "limit": 5}))
+        .tools_call("host.runs.list", json!({"verdict": "exceeded", "limit": 5}))
         .await
         .expect("runs.list ok");
     let page = extract_structured(&page);

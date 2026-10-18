@@ -972,6 +972,14 @@ mod rgpt_database_in_a_minute_golden_path;
 mod rgpt_share_a_tool_golden_path;
 #[path = "rgpt_uptime_probes_golden_path.rs"]
 mod rgpt_uptime_probes_golden_path;
+#[path = "rlfe_ac01_unknown_status_refused_with_set.rs"]
+mod rlfe_ac01_unknown_status_refused_with_set;
+#[path = "rlfe_ac02_trigger_and_verdict_refused_before_handler.rs"]
+mod rlfe_ac02_trigger_and_verdict_refused_before_handler;
+#[path = "rlfe_ac03_every_value_filters_exactly_its_rows.rs"]
+mod rlfe_ac03_every_value_filters_exactly_its_rows;
+#[path = "rlfe_ac04_descriptor_enums_and_prose_set_drift.rs"]
+mod rlfe_ac04_descriptor_enums_and_prose_set_drift;
 #[path = "rowpol_ac01_sql_predicate_scopes_to_end_user_attribute.rs"]
 mod rowpol_ac01_sql_predicate_scopes_to_end_user_attribute;
 #[path = "rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0.rs"]

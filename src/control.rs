@@ -1316,10 +1316,10 @@ fn with_anchor(mut data: Value, anchor: crate::doc_anchors::DocAnchor) -> Value 
 /// hinting a `kind=` value `host.trigger.set` would itself reject is worse
 /// than no hint at all.
 fn trigger_set_hint(alias: &crate::kinds::aliases::KindAlias, requested: &str) -> String {
-    /// The `kind` values `triggers::set` accepts (`src/triggers.rs`).
-    const TRIGGER_KINDS: [&str; 4] = ["schedule", "event", "message", "webhook"];
+    // The `kind` values `triggers::set` accepts, derived from `RunTrigger` so
+    // the two cannot separate.
     let lower = requested.to_ascii_lowercase();
-    let trigger_kind = if TRIGGER_KINDS.contains(&lower.as_str()) {
+    let trigger_kind = if crate::run_enums::RunTrigger::SETTABLE.iter().any(|t| t.as_str() == lower) {
         lower.clone()
     } else if alias.recipe == "schedules" {
         "schedule".to_string()

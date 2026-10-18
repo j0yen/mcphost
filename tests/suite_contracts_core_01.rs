@@ -69,6 +69,12 @@ mod mwlp_ac02_wait_ceiling_drift;
 mod oauthentry_ac06_path_contract_docs_router_quickstart;
 #[path = "revdebt_ac1_intent_card_pointers_resolve.rs"]
 mod revdebt_ac1_intent_card_pointers_resolve;
+#[path = "rlfe_ac05_run_writes_pass_as_str.rs"]
+mod rlfe_ac05_run_writes_pass_as_str;
+#[path = "rlfe_ac06_limit_clamp_and_children_preserved.rs"]
+mod rlfe_ac06_limit_clamp_and_children_preserved;
+#[path = "rlfe_ac07_admin_runs_refused_through_the_shared_validator.rs"]
+mod rlfe_ac07_admin_runs_refused_through_the_shared_validator;
 #[path = "sfc_ac04_stray_notify_panics_in_debug.rs"]
 mod sfc_ac04_stray_notify_panics_in_debug;
 #[path = "sreg_ac01_registry_single_source.rs"]

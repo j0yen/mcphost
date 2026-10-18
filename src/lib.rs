@@ -130,6 +130,7 @@ pub mod returns;
 pub mod rowpolicy;
 pub mod receipts;
 pub mod incident_banner;
+pub mod run_enums;
 pub mod runs;
 pub mod sandbox;
 pub mod secrets;

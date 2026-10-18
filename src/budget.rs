@@ -68,6 +68,28 @@ impl Verdict {
             Verdict::Exceeded { .. } => "exceeded",
         }
     }
+
+    /// Every value [`Self::as_str`] returns (`Exceeded` carries a payload, so
+    /// the set cannot be a variant list); pinned against `as_str` by a unit
+    /// test below.
+    pub const NAMES: [&'static str; 3] = ["ok", "alert", "exceeded"];
+
+    pub fn names() -> Vec<&'static str> {
+        Self::NAMES.to_vec()
+    }
+
+    /// The input-schema property for a `verdict` filter.
+    pub fn schema_property() -> serde_json::Value {
+        serde_json::json!({
+            "type": "string",
+            "enum": Self::names(),
+            "description": format!(
+                "Only runs whose progress.budget.verdict is this value ({}) -- a run with no \
+                 budget block never matches.",
+                Self::names().join("|")
+            ),
+        })
+    }
 }
 
 /// requirement 1: `BudgetLimits {max_child_calls, max_est_tokens,
