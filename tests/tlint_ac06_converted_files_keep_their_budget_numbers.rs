@@ -146,8 +146,8 @@ fn evidence_from_git(root: &std::path::Path, site: &Site) -> Vec<String> {
 }
 
 /// Rebuild the committed fixture from git history. Needs a full clone:
-/// `cargo test --test suite_core_08 regenerate_pre_conversion_fixture -- --ignored`
-/// (or this file's own test target).
+/// `cargo test --test <the suite that includes this file, see `suite_holding`>
+/// regenerate_pre_conversion_fixture -- --ignored` (or this file's own test target).
 #[test]
 #[ignore]
 fn regenerate_pre_conversion_fixture() {

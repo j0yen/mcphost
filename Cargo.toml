@@ -279,6 +279,10 @@ name = "suite_core_10"
 path = "tests/suite_core_10.rs"
 
 [[test]]
+name = "suite_core_11"
+path = "tests/suite_core_11.rs"
+
+[[test]]
 name = "suite_env_core_01"
 path = "tests/suite_env_core_01.rs"
 

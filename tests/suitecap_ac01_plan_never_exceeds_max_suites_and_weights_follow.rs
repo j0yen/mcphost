@@ -29,8 +29,16 @@ fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-const CAPS_LINE: &str = r#"MAX_PER_SUITE = {"core": 700, "sandbox": 220}"#;
-const MAX_LINE: &str = "MAX_SUITES = 12";
+/// The generator's own `MAX_PER_SUITE = ...` and `MAX_SUITES = N` lines, read from
+/// the script (never a copy of their values here), so the scratch edit below
+/// follows the real constants whenever they move.
+fn constant_line(script: &str, prefix: &str) -> String {
+    script
+        .lines()
+        .find(|l| l.starts_with(prefix))
+        .unwrap_or_else(|| panic!("{prefix}... line missing from scripts/gen-test-suites.sh; update this test"))
+        .to_string()
+}
 
 /// A scratch repo: 12 core files in 4 areas of 3, 6 sandbox files in 2 areas of
 /// 3, caps scaled to 3 files per suite and `max_suites` core+sandbox suites,
@@ -56,11 +64,11 @@ fn scratch(max_suites: u32) -> PathBuf {
     fs::write(dir.join("scripts/ci-suite-measured.json"), "{}\n").unwrap();
 
     let script = fs::read_to_string(root.join("scripts/gen-test-suites.sh")).unwrap();
-    assert!(script.contains(CAPS_LINE), "MAX_PER_SUITE line changed; update this test");
-    assert!(script.contains(MAX_LINE), "MAX_SUITES line changed; update this test");
+    let caps_line = constant_line(&script, "MAX_PER_SUITE = ");
+    let max_line = constant_line(&script, "MAX_SUITES = ");
     let script = script
-        .replace(CAPS_LINE, r#"MAX_PER_SUITE = {"core": 3, "sandbox": 3}"#)
-        .replace(MAX_LINE, &format!("MAX_SUITES = {max_suites}"));
+        .replace(&caps_line, r#"MAX_PER_SUITE = {"core": 3, "sandbox": 3}"#)
+        .replace(&max_line, &format!("MAX_SUITES = {max_suites}"));
     fs::write(dir.join("scripts/gen-test-suites.sh"), script).unwrap();
     fs::copy(
         root.join("scripts/ci-test-partition.sh"),

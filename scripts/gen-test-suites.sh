@@ -629,7 +629,14 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # cap 700 (local per-test timings, RUSTC_BOOTSTRAP=1 `--report-time`, scaled to
 # the CI totals, put the three buckets at ~290/370/360 s where the old split was
 # ~310/710). 7 singletons + 3 normal + 2 sandbox = 12 = MAX_SUITES.
-MAX_PER_SUITE = {"core": 700, "sandbox": 220}
+# 2026-10-18 (main's first 5-shard run 39156878110): suite_core_10 alone measured
+# 532 s against CORE_SHARD_PREDICT_LIMIT 540 (recorded 428), and a single suite
+# cannot be split by sharding. Its 399 files are the heaviest per file (~1.33 s vs
+# ~0.5 s for core_08/09), so one more normal core bucket (cap 700 -> 505) cuts the
+# tail across two buckets: 4 normal core buckets of ~502/500/503/269 files, which the
+# per-file seconds of the files' previous suites put at ~235/253/366/369 s.
+# 7 singletons + 4 normal + 2 sandbox = 13 = MAX_SUITES.
+MAX_PER_SUITE = {"core": 505, "sandbox": 220}
 
 # The P0 ceiling on core+sandbox test binaries (tests/suite_ac1_ten_binaries_
 # and_names_preserved.rs). ci-test-partition.sh's `check` greps this very line
@@ -650,8 +657,10 @@ MAX_PER_SUITE = {"core": 700, "sandbox": 220}
 # core bucket (see MAX_PER_SUITE above); the 10 had been reached with 6 exclusive
 # singletons + 2 normal core buckets + 2 sandbox suites, so no core bucket could
 # be added without it. tests/suite_ac1_ten_binaries_and_names_preserved.rs and
-# tests/suitecap_ac01_*.rs carry the same number and move with it.
-MAX_SUITES = 12
+# tests/suitecap_ac01_*.rs read this very line (no copy of the number).
+# 12 -> 13 on 2026-10-18 for the fourth normal core bucket (see MAX_PER_SUITE above):
+# 7 exclusive singletons + 4 normal core buckets + 2 sandbox suites.
+MAX_SUITES = 13
 
 # scripts/ci-suite-weights.json is generated with the suites: its keys are
 # EXACTLY the generated suite names (plus `lib`, the --lib run), so a new suite
@@ -1236,16 +1245,21 @@ def solo_suite_weights(suite_files):
 def plan_weights(suite_files):
     """The weights file this plan implies: keys = generated suites (+ `lib`
     when present). Measured values stay when the suite exists on disk with the
-    same member count; a resized suite keeps its own measured seconds-per-file
-    x the new count; a new suite gets file count x its partition's measured
-    seconds-per-file (>= 1 s)."""
+    same member count; a re-cut suite (members moved between buckets) is the sum of
+    its files' seconds-per-file in the buckets they came from, so a bucket that
+    takes over the heavy tail of an old one inherits that weight; a suite none of
+    whose files has a recorded origin keeps its own seconds-per-file x the new
+    count, else file count x its partition's measured seconds-per-file (>= 1 s)."""
     old = read_weights() or {}
     old_counts = {}
+    old_members = {}
     for path in glob.glob("tests/suite_*.rs"):
         base = os.path.basename(path)
         if GENERATED_SUITE_RE.match(base):
             with open(path, encoding="utf-8") as fh:
-                old_counts[base[:-3]] = suite_member_count(fh.read())
+                text = fh.read()
+            old_counts[base[:-3]] = suite_member_count(text)
+            old_members[base[:-3]] = [m for m in re.findall(r'#\[path\s*=\s*"([^"]+\.rs)"\]', text) if "/" not in m]
     secs = {"core": 0.0, "sandbox": 0.0}
     files = {"core": 0, "sandbox": 0}
     for name, w in old.items():
@@ -1257,6 +1271,13 @@ def plan_weights(suite_files):
             secs[suite_partition(name)] += w
             files[suite_partition(name)] += n
     rate = {p: (secs[p] / files[p] if files[p] else 1.0) for p in secs}
+    # seconds a file cost in the NORMAL bucket it ran in before this plan
+    file_secs = {}
+    for name, w in old.items():
+        n = old_counts.get(name, 0)
+        if n > 1 and re.match(r"suite_(core|sandbox)_\d+$", name) and isinstance(w, (int, float)):
+            for m in old_members[name]:
+                file_secs[m] = w / n
     out = {}
     if "lib" in old:
         out["lib"] = old["lib"]
@@ -1269,6 +1290,10 @@ def plan_weights(suite_files):
             out[name] = solo[name]  # declared by the file's own `//! solo-suite:` line
         elif isinstance(prev, (int, float)) and old_counts.get(name) == n:
             out[name] = prev
+        elif n > 1 and any(m in file_secs for m in re.findall(r'#\[path\s*=\s*"([^"]+\.rs)"\]', content) if "/" not in m):
+            part = suite_partition(name)
+            mem = [m for m in re.findall(r'#\[path\s*=\s*"([^"]+\.rs)"\]', content) if "/" not in m]
+            out[name] = max(1, round(sum(file_secs.get(m, rate[part]) for m in mem)))
         elif isinstance(prev, (int, float)) and old_counts.get(name):
             out[name] = max(1, round(prev * n / old_counts[name]))
         else:
@@ -1279,12 +1304,14 @@ def plan_weights(suite_files):
 MEASURED_REL = "scripts/ci-suite-measured.json"
 
 
-def plan_measured(suite_files):
+def plan_measured(suite_files, new_weights):
     """scripts/ci-suite-measured.json as this plan implies it, or None when the
     file is absent (ci-refresh-weights.sh creates it). The measured seconds of a
     suite belong to the member set CI ran: a resized suite's entry is scaled by
-    new/old member count exactly as plan_weights scales its recorded weight, and
-    a suite this plan drops or creates has no entry until the next refresh.
+    the factor plan_weights applied to its recorded weight (new / old recorded
+    seconds), so their ratio -- what the stale check reads -- survives the
+    re-pack whatever per-file costs moved; a suite this plan drops or creates has
+    no entry until the next refresh.
     Otherwise ci-test-partition.sh check compares the OLD set's seconds with the
     NEW set's weight (ryzen7 run 404, 10-18: core_08 re-packed to recorded 223 s
     against measured 398 s, and the land precheck refused)."""
@@ -1302,6 +1329,7 @@ def plan_measured(suite_files):
             with open(path, encoding="utf-8") as fh:
                 old_counts[base[:-3]] = suite_member_count(fh.read())
     new_counts = {os.path.basename(p)[:-3]: suite_member_count(c) for p, c in suite_files.items()}
+    old_weights = read_weights() or {}
     out = {}
     for name, secs in old.items():
         if not GENERATED_SUITE_RE.match(name + ".rs"):
@@ -1310,14 +1338,19 @@ def plan_measured(suite_files):
         n, o = new_counts.get(name), old_counts.get(name)
         if n is None or not o or not isinstance(secs, (int, float)):
             continue
-        out[name] = secs if n == o else round(secs * n / o, 2)
+        if n == o:
+            out[name] = secs
+            continue
+        w_old, w_new = old_weights.get(name), new_weights.get(name)
+        if isinstance(w_old, (int, float)) and w_old > 0 and isinstance(w_new, (int, float)):
+            out[name] = round(secs * w_new / w_old, 2)
     return dict(sorted(out.items()))
 
 
 def write_plan(migrations, suite_files, new_cargo_toml, all_files):
     changed = []
     new_weights = plan_weights(suite_files)  # reads the OLD suite files, so before they are rewritten
-    new_measured = plan_measured(suite_files)  # same: scaled from the OLD member counts
+    new_measured = plan_measured(suite_files, new_weights)  # same: reads the OLD suite files and weights
     for path, (new_content, _c, _s, _h) in migrations.items():
         with open(path, encoding="utf-8") as fh:
             old_content = fh.read()
