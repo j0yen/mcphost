@@ -71,6 +71,7 @@ fn dlrec_ac04_new_scope_changes_the_table_and_the_recipe_and_nothing_else() {
     // Part 3: the recipe now names the new scope as one the helper cannot get.
     let (old_r, new_r) = (block(LLMS_TXT, RECIPE_START, RECIPE_END), block(&out, RECIPE_START, RECIPE_END));
     assert_ne!(old_r, new_r);
-    assert!(new_r.contains("`tools:write`, `tools:admin`"), "{new_r}");
+    let last = catalog().last().expect("catalog").name.clone();
+    assert!(new_r.contains(&format!("`{last}`, `tools:admin`")), "{new_r}");
     assert!(!old_r.contains("tools:admin"));
 }

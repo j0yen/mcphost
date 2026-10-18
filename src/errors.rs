@@ -937,7 +937,7 @@ impl AppError {
                 // outside its allowlist is the same caller-credential
                 // problem as `insufficient_scope`.
                 | "permission_denied"
-                | "insufficient_scope" | "invite_invalid" | "invite_rate_limited" | "join_code_invalid" => {
+                | crate::scopes::INSUFFICIENT_SCOPE | "invite_invalid" | "invite_rate_limited" | "join_code_invalid" => {
                     ErrorCode::INVALID_REQUEST
                 }
                 // PRD-mcphost-invite-links requirement 1 (AC7): the same
@@ -1031,7 +1031,7 @@ impl AppError {
                 // PRD-mcphost-key-delegate-child-keys R2/R4: a delegation
                 // asking for more than its parent, or a revoke that would
                 // orphan live children, is a caller-input problem.
-                "scope_escalation" | "has_children" => ErrorCode::INVALID_PARAMS,
+                crate::scopes::SCOPE_ESCALATION | "has_children" => ErrorCode::INVALID_PARAMS,
                 "replay_needs_secret" => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-inbound-events: `host.trigger.test`'s own
                 // caller-input problems -- a bad signature/payload, a rate

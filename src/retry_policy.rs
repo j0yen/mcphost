@@ -119,7 +119,7 @@ pub const RETRY_POLICY: &[RetryRow] = &[
     no("invalid_token", AUTH),
     no("conflicting_credentials", FIX),
     no("wrong_tenant", NO),
-    no("insufficient_scope", NO),
+    no(crate::scopes::INSUFFICIENT_SCOPE, NO),
     no("auth_conflict", FIX),
     no("quota_trusted_issuers", NO),
     // kind-level codes (`KIND_LEVEL_CODES` and `KindError::structured` literals)

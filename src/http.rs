@@ -1137,7 +1137,7 @@ pub async fn protocol_version_and_log(req: Request<Body>, next: Next) -> Respons
 /// covers `/t/{ns}/mcp`, naming that tenant's own metadata URL instead of
 /// the root document's, and upgrades `wrong_tenant` the same way
 /// `invalid_token` already was; `insufficient_scope` becomes a real HTTP
-/// 403 with the RFC 6750 §3 `error="insufficient_scope"` challenge. Every
+/// 403 with the RFC 6750 §3 `insufficient_scope` error challenge. Every
 /// 401/403 challenge this middleware writes now also carries `scope="mcp"`
 /// (spec 2026-07-28 requirement 4). A no-op for every other route
 /// (`signup`/`host.quickstart`/`billing.plans`/`host.redeem` never reach
@@ -1198,10 +1198,11 @@ async fn oauth_401_upgrade(State(state): State<Arc<AppState>>, req: Request<Body
                     .insert(axum::http::header::WWW_AUTHENTICATE, value);
             }
         }
-        Some("insufficient_scope") => {
+        Some(crate::scopes::INSUFFICIENT_SCOPE) => {
             *response.status_mut() = StatusCode::FORBIDDEN;
             if let Ok(value) = HeaderValue::from_str(&format!(
-                "Bearer error=\"insufficient_scope\", scope=\"{scope}\", resource_metadata=\"{metadata_url}\""
+                "Bearer error=\"{code}\", scope=\"{scope}\", resource_metadata=\"{metadata_url}\"",
+                code = crate::scopes::INSUFFICIENT_SCOPE
             )) {
                 response
                     .headers_mut()

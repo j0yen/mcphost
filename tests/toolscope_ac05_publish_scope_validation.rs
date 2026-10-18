@@ -35,10 +35,10 @@ async fn scopes_not_in_catalog_too_many_or_badly_named_are_all_invalid_params() 
         .expect("scope_set write");
 
     // Rule 1: a scope not in the catalog and not a built-in.
-    let err = publish_err(&client, json!(["admin"])).await;
+    let err = publish_err(&client, json!(["unlisted"])).await;
     assert_eq!(err.error_code.as_deref(), Some("invalid_params"));
     assert!(
-        err.message.contains("catalog") || err.message.contains("admin"),
+        err.message.contains("catalog") || err.message.contains("unlisted"),
         "must name the catalog rule: {}",
         err.message
     );

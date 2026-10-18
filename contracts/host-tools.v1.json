@@ -12183,8 +12183,16 @@
             "items": {
               "enum": [
                 "mcp",
+                "read",
+                "write",
+                "tools:read",
                 "tools:call",
-                "tools:write"
+                "tools:write",
+                "state:read",
+                "state:write",
+                "secrets:write",
+                "keys:manage",
+                "admin"
               ],
               "type": "string"
             },
@@ -39139,8 +39147,16 @@
             "items": {
               "enum": [
                 "mcp",
+                "read",
+                "write",
+                "tools:read",
                 "tools:call",
-                "tools:write"
+                "tools:write",
+                "state:read",
+                "state:write",
+                "secrets:write",
+                "keys:manage",
+                "admin"
               ],
               "type": "string"
             },

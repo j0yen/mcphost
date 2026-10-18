@@ -71,6 +71,8 @@ mod oauthentry_ac06_path_contract_docs_router_quickstart;
 mod revdebt_ac1_intent_card_pointers_resolve;
 #[path = "sfc_ac04_stray_notify_panics_in_debug.rs"]
 mod sfc_ac04_stray_notify_panics_in_debug;
+#[path = "sreg_ac01_registry_single_source.rs"]
+mod sreg_ac01_registry_single_source;
 #[path = "statusfeed_ac11_deferral_is_justified.rs"]
 mod statusfeed_ac11_deferral_is_justified;
 #[path = "suite_ac2_check_catches_unregistered_file.rs"]

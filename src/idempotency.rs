@@ -210,7 +210,7 @@ const REPLAY_CODES: &[&str] = &[
     "handoff_token_invalid",
     "handoff_token_redeemed",
     "idempotency_conflict",
-    "insufficient_scope",
+    crate::scopes::INSUFFICIENT_SCOPE,
     "internal",
     "invalid_params",
     "invalid_spec",

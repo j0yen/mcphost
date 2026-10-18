@@ -95,8 +95,9 @@ pub fn sub_agent_key_for(catalog: &[ScopeRow]) -> Recipe {
         .filter(|r| !r.granted_by(held) && r.name != Scope::Mcp.as_str())
         .map(|r| r.name.as_str())
         .collect();
-    let wider = lacking.first().copied().unwrap_or(Scope::ToolsWrite.as_str()).to_string();
-    let lacking_list = lacking.iter().map(|n| format!("`{n}`")).collect::<Vec<_>>().join(", ");
+    // The escalation attempt asks for every scope `tools:call` lacks at once,
+    // so each scope the prose names is one the executed call actually asks for.
+    let wider: Vec<&str> = if lacking.is_empty() { vec![Scope::ToolsWrite.as_str()] } else { lacking.clone() };
 
     let calls = vec![
         RecipeCall {
@@ -113,7 +114,7 @@ pub fn sub_agent_key_for(catalog: &[ScopeRow]) -> Recipe {
         RecipeCall {
             tool: "host.key.delegate".to_string(),
             caller: Caller::Helper,
-            arguments: json!({"scopes": [wider], "ttl_s": ESCALATION_TTL_S}),
+            arguments: json!({"scopes": wider, "ttl_s": ESCALATION_TTL_S}),
             expect: Expect { error_code: Some(SCOPE_ESCALATION.to_string()), ..Expect::default() },
         },
         RecipeCall {
@@ -129,10 +130,10 @@ pub fn sub_agent_key_for(catalog: &[ScopeRow]) -> Recipe {
     ];
     let prose = vec![
         format!(
-            "Hand the helper the `key` call 1 returned, never your own. It holds `{held}` and can do no \
-             more: asking for any other scope ({lacking_list}) fails `{SCOPE_ESCALATION}`."
+            "Hand the helper the `key` call 1 returned, never your own. It holds `{held}` only: any other \
+             scope fails `{SCOPE_ESCALATION}`, as call 2 shows."
         ),
-        format!("Call 3 revokes it and everything beneath it; the helper's next call fails `{KEY_REVOKED}`."),
+        format!("Call 3 revokes it and its children; the helper's next call fails `{KEY_REVOKED}`."),
         HELPER_HINT.to_string(),
     ];
     Recipe {
@@ -180,12 +181,12 @@ pub fn next_steps() -> Vec<Value> {
     steps.into_iter().map(|(weight, step, call)| json!({"step": step, "call": call, "weight": weight})).collect()
 }
 
-/// One `curl` per call, for shells (R7), after a header array. `$MCPHOST_KEY`
+/// One `curl` per call, for shells (R7), after an array holding the URL and headers. `$MCPHOST_KEY`
 /// is the lead's key and `$HELPER_KEY` the `key` call 1 returned.
 pub fn copy_paste(recipe: &Recipe, public_url: &str) -> String {
     let url = format!("{}/mcp", public_url.trim_end_matches('/'));
     let mut lines = vec![
-        "H=(-H 'Accept: application/json, text/event-stream' -H 'Content-Type: application/json')".to_string(),
+        format!("H=({url} -H 'Accept: application/json, text/event-stream' -H 'Content-Type: application/json')"),
     ];
     lines.extend(recipe.calls.iter().map(|c| {
         let key = match c.caller {
@@ -196,7 +197,7 @@ pub fn copy_paste(recipe: &Recipe, public_url: &str) -> String {
             "jsonrpc": "2.0", "id": 1, "method": "tools/call",
             "params": {"name": c.tool, "arguments": c.arguments},
         });
-        format!("curl -s {url} \"${{H[@]}}\" -H \"Authorization: Bearer {key}\" -d '{body}'")
+        format!("curl -s \"${{H[@]}}\" -H \"Authorization: Bearer {key}\" -d '{body}'")
     }));
     lines.join("\n")
 }
@@ -267,12 +268,13 @@ mod tests {
     }
 
     #[test]
-    fn a_new_scope_changes_the_recipe_prose() {
+    fn a_new_scope_changes_the_recipe() {
         let mut catalog = scopes::catalog();
         let before = sub_agent_key_for(&catalog);
         catalog.push(ScopeRow { name: "tools:admin".into(), implied_by: vec!["mcp".into(), "tools:admin".into()] });
         let after = sub_agent_key_for(&catalog);
-        assert_ne!(before.prose, after.prose);
-        assert!(after.prose[0].contains("tools:admin"));
+        assert_ne!(before.calls, after.calls);
+        assert!(after.calls[1].arguments["scopes"].to_string().contains("tools:admin"));
+        assert!(crate::llms_txt::render_recipe_lines(&after).contains("`tools:admin`"));
     }
 }

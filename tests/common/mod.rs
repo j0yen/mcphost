@@ -124,6 +124,15 @@ pub fn outsch_capture(wire_name: &str, result: &Value) {
     let Some(structured) = result.get("structuredContent").filter(|v| v.is_object()) else {
         return;
     };
+    // A forwarded call (`host.tool_call` / `host.tool_test` with a dotted verb,
+    // PRD-mcphost-verb-forwarding) returns the FORWARDED verb's output plus
+    // `client_tool` / `forwarded_to`: it is not the wrapper's own output, so
+    // recording it under the wrapper's canonical name puts another verb's
+    // fields (`rows`, `ok`, `next`, `welcome_back`, ...) into the wrapper's
+    // corpus, and `oschv_ac04` then fails for whichever run saw those rows.
+    if structured.get("forwarded_to").is_some() {
+        return;
+    }
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/outsch");
     if std::fs::create_dir_all(&dir).is_err() {
         return;
