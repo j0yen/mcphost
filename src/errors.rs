@@ -20,6 +20,49 @@ use crate::kinds::infer::KindSignal;
 /// real cause from the id a caller reports without the client ever seeing
 /// that text. Same hex-encoding convention as `auth::generate_key`, just
 /// shorter -- this is a log-correlation token, not a secret.
+/// PRD-mcphost-error-envelope-schema-contract R1: the ONE constructor of an
+/// error envelope (`code`, `message`, `data`; `data.error_code` names the
+/// failure, an optional `data.retryable` says whether a retry can help).
+/// `data` is always a JSON object: an object stays as it is, `null` becomes
+/// `{}`, and any other value is kept as `{"detail": <value>}`, so a stored or
+/// hand-built `null` can never reach a client that was promised an object.
+pub fn error_envelope(code: ErrorCode, message: impl Into<String>, data: Value) -> ErrorData {
+    let data = match data {
+        Value::Object(map) => map,
+        Value::Null => Map::new(),
+        other => {
+            let mut map = Map::new();
+            map.insert("detail".to_string(), other);
+            map
+        }
+    };
+    ErrorData::new(code, message.into(), Some(Value::Object(data)))
+}
+
+/// Name of the shared `$defs` entry every registered output schema carries.
+pub const ERROR_ENVELOPE_DEF: &str = "ErrorEnvelope";
+
+/// The JSON Schema of [`error_envelope`]'s result, generated here so the
+/// output-schema registry restates nothing per verb.
+pub fn error_envelope_schema() -> Value {
+    json!({
+        "type": "object",
+        "required": ["code", "message", "data"],
+        "properties": {
+            "code": {"type": "integer"},
+            "message": {"type": "string"},
+            "data": {
+                "type": "object",
+                "required": ["error_code"],
+                "properties": {
+                    "error_code": {"type": "string"},
+                    "retryable": {"type": "boolean"}
+                }
+            }
+        }
+    })
+}
+
 fn generate_request_id() -> String {
     let mut bytes = [0u8; 8];
     rand::thread_rng().fill_bytes(&mut bytes);
@@ -1331,6 +1374,18 @@ impl AppError {
         // `data.tenant` (namespace only, never the key) and a hint naming
         // it, so a caller that dropped `tenant_key` learns which tenant
         // this connection already is without parsing the message.
+        // PRD-mcphost-error-envelope-schema-contract AC6: the machine-readable
+        // reason a tenant-key rejection carries, so a client branches on
+        // `data.reason` rather than the message, on every verb alike.
+        match &self {
+            AppError::TenantKeyInvalid => {
+                obj.insert("reason".to_string(), json!("unknown_key"));
+            }
+            AppError::TenantKeyMissing(_) => {
+                obj.insert("reason".to_string(), json!("missing_key"));
+            }
+            _ => {}
+        }
         if let AppError::TenantKeyMissing(Some(namespace)) = &self {
             obj.insert("tenant".to_string(), json!(namespace));
             obj.insert(
@@ -1451,7 +1506,7 @@ impl AppError {
         }
         crate::retry_policy::attach(&mut obj, code, attempt);
         crate::incident_banner::attach(&mut obj, code, base_url);
-        ErrorData::new(jsonrpc_code, message, Some(Value::Object(obj)))
+        error_envelope(jsonrpc_code, message, Value::Object(obj))
     }
 
     /// Requirement 3 / AC2: builds the single-field error exactly as before

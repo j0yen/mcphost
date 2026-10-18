@@ -979,6 +979,18 @@ mod ercp_ac01_share_a_tool_upstream_is_https;
 mod ercp_ac03_retention_body_goes_to_curl_from_a_file;
 #[path = "ercp_ac05_runner_key_is_validated_by_examples_check.rs"]
 mod ercp_ac05_runner_key_is_validated_by_examples_check;
+#[path = "errenv_ac02_every_verb_error_envelope_validates.rs"]
+mod errenv_ac02_every_verb_error_envelope_validates;
+#[path = "errenv_ac03_schema_completeness.rs"]
+mod errenv_ac03_schema_completeness;
+#[path = "errenv_ac04_legacy_null_error_data_renders_object.rs"]
+mod errenv_ac04_legacy_null_error_data_renders_object;
+#[path = "errenv_ac05_chain_verifier_fixture_fails_old_passes_new.rs"]
+mod errenv_ac05_chain_verifier_fixture_fails_old_passes_new;
+#[path = "errenv_ac06_invalid_tenant_key_envelope_has_reason.rs"]
+mod errenv_ac06_invalid_tenant_key_envelope_has_reason;
+#[path = "errenv_ac07_doctor_reports_error_envelope.rs"]
+mod errenv_ac07_doctor_reports_error_envelope;
 #[path = "errjson_ac01_every_emitted_code_is_a_registry_row.rs"]
 mod errjson_ac01_every_emitted_code_is_a_registry_row;
 #[path = "errjson_ac02_error_data_carries_the_registry_row.rs"]

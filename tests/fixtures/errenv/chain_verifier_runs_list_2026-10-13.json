@@ -1,0 +1,14 @@
+{
+  "runs": [
+    {
+      "run_id": "01K7ERRENVFIXTURE0000000000",
+      "tool": "synthorg.explore_session",
+      "trigger": "job",
+      "trigger_ref": null,
+      "status": "error",
+      "error_class": "budget_exceeded",
+      "error": {"kind": "budget_exceeded", "data": null},
+      "attempt": 1
+    }
+  ]
+}
