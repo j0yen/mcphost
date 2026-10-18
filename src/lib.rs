@@ -112,6 +112,7 @@ pub mod notes;
 pub mod perf;
 pub mod oauth;
 pub mod openapi;
+pub mod r#gen;
 pub mod sdk_python;
 pub mod oauth_policy;
 pub mod oauth_stats;

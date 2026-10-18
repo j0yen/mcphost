@@ -586,6 +586,60 @@ jobs:
         working-directory: sdk/python
         run: uv build
 
+  # PRD-mcphost-typescript-sdk-generated R5 (AC7). `sdk/ts/src` is RENDERED
+  # from contracts/host-tools.v1.json by `mcphost gen sdk ts`; a PR that
+  # edits a tool description (or any schema) without rerunning the generator
+  # fails on the `diff -r` step below, which names the stale file. Then the
+  # package's own build, vitest and `tsc --strict --noEmit`. On a `v*` tag the
+  # package is published with provenance; until NPM_TOKEN exists that step
+  # only warns (open question: who owns the @mcphost npm scope).
+  sdk-ts:
+    # required-checks: exclude -- live branch protection is never changed; the
+    # regenerate-and-diff drift check also runs inside `regen-check` (a
+    # required context), so a stale SDK still blocks merge. This job adds the
+    # package-level build / vitest / tsc --strict on top.
+    name: sdk-ts (generated SDK matches the contract)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: install rust toolchain (pinned by rust-toolchain.toml)
+        uses: actions-rust-lang/setup-rust-toolchain@9d7e65c320fdb52dcd45ffaa68deb6c02c8754d9 # v1.10.1
+
+      - name: regenerate the SDK and diff it against the committed tree
+        run: |
+          cargo run --quiet --bin mcphost -- gen sdk ts --out /tmp/x
+          diff -r /tmp/x/src sdk/ts/src
+
+      - name: npm ci, build and test
+        working-directory: sdk/ts
+        run: |
+          npm ci
+          npm run build
+          npm test
+
+      - name: tsc --strict --noEmit
+        working-directory: sdk/ts
+        run: npx tsc --strict --noEmit
+
+      - name: publish @mcphost/sdk with provenance (warns until NPM_TOKEN exists)
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: sdk/ts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::warning::NPM_TOKEN is not set; @mcphost/sdk was not published"
+            exit 0
+          fi
+          npm config set //registry.npmjs.org/:_authToken "$NODE_AUTH_TOKEN"
+          npm publish --provenance --access public
+
   # Defect (10-03): a dependency bump (wasmtime 48 / cranelift 0.135, needing
   # rustc 1.95) landed on main while `rust-version` in Cargo.toml stayed at
   # 1.94. `gate` and `sandbox` both build with the toolchain pinned in
@@ -679,6 +733,8 @@ jobs:
           # (PRD-mcphost-python-sdk-generated R5); the `sdk-python` job is not a
           # required context, so its drift check is repeated here.
           check bash -c 'd=$(mktemp -d) && ./target/debug/mcphost gen sdk python --out "$d" && diff -r "$d" sdk/python/mcphost_sdk'
+          # sdk/ts/src is the render of the same contract (PRD-mcphost-typescript-sdk-generated R5).
+          check bash -c 'd=$(mktemp -d) && ./target/debug/mcphost gen sdk ts --out "$d" && diff -r "$d/src" sdk/ts/src'
           exit "$failed"
 
       # Informational until README.md / www/llms.txt are regenerated on main:

@@ -1,0 +1,34 @@
+{
+  "name": "@mcphost/sdk",
+  "version": "0.108.230",
+  "description": "Typed, zod-validated TypeScript client for mcphost, rendered from the host's contract by `mcphost gen sdk ts`.",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --strict --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.10",
+    "typescript": "5.6.3",
+    "vitest": "2.1.8"
+  }
+}
