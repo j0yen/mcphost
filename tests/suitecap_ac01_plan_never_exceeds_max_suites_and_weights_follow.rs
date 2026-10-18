@@ -15,6 +15,11 @@
 //!      emitting an over-cap plan;
 //!   3. `gen-test-suites.sh --check` names a suite with no weight and a stale
 //!      weight entry; measured weights survive a no-op regeneration.
+//!   4. a regeneration that RESIZES a suite scales its measured seconds in
+//!      `scripts/ci-suite-measured.json` with its recorded weight, so the stale
+//!      check never compares the old member set's seconds with the new set's
+//!      weight (ryzen7 run 404, 10-18: recorded 223 s vs measured 398 s refused
+//!      the land precheck).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -220,5 +225,44 @@ fn check_names_a_missing_and_a_stale_weight_and_measured_values_survive_regen() 
     assert!(run(&dir, "gen-test-suites.sh", &["--check"]).status.success());
     assert!(weights(&dir).contains_key(&victim));
     assert!(!weights(&dir).contains_key("suite_core_99"));
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn a_resized_suite_scales_its_measured_seconds_with_its_weight() {
+    let dir = scratch(4);
+    assert!(run(&dir, "gen-test-suites.sh", &[]).status.success());
+
+    // A CI refresh: every suite measured at exactly its recorded weight.
+    let mut w = weights(&dir);
+    let mut m = serde_json::Map::new();
+    for k in all_suites(&dir) {
+        w.insert(k.clone(), serde_json::json!(90));
+        m.insert(k, serde_json::json!(90.0));
+    }
+    fs::write(dir.join("scripts/ci-suite-weights.json"), serde_json::to_string_pretty(&w).unwrap() + "\n").unwrap();
+    let mpath = dir.join("scripts/ci-suite-measured.json");
+    fs::write(&mpath, serde_json::to_string_pretty(&m).unwrap() + "\n").unwrap();
+    let p = run(&dir, "ci-test-partition.sh", &["check"]);
+    assert!(p.status.success(), "{}", text(&p));
+
+    // Two of area ca's three files go away: the suite holding them shrinks.
+    fs::remove_file(dir.join("tests/ca_t1.rs")).unwrap();
+    fs::remove_file(dir.join("tests/ca_t2.rs")).unwrap();
+    let o = run(&dir, "gen-test-suites.sh", &[]);
+    assert!(o.status.success(), "{}", text(&o));
+
+    let measured: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(&fs::read_to_string(&mpath).unwrap()).unwrap();
+    assert!(
+        measured.values().any(|v| v.as_f64().unwrap() < 90.0),
+        "the shrunk suite's measured seconds must scale down with its weight: {measured:?}"
+    );
+    let suites = all_suites(&dir);
+    for k in measured.keys() {
+        assert!(suites.contains(k), "measured entry {k} names no generated suite");
+    }
+    let p = run(&dir, "ci-test-partition.sh", &["check"]);
+    assert!(p.status.success(), "a re-pack must not make the weights stale\n{}", text(&p));
     fs::remove_dir_all(&dir).ok();
 }

@@ -1276,9 +1276,48 @@ def plan_weights(suite_files):
     return dict(sorted(out.items()))
 
 
+MEASURED_REL = "scripts/ci-suite-measured.json"
+
+
+def plan_measured(suite_files):
+    """scripts/ci-suite-measured.json as this plan implies it, or None when the
+    file is absent (ci-refresh-weights.sh creates it). The measured seconds of a
+    suite belong to the member set CI ran: a resized suite's entry is scaled by
+    new/old member count exactly as plan_weights scales its recorded weight, and
+    a suite this plan drops or creates has no entry until the next refresh.
+    Otherwise ci-test-partition.sh check compares the OLD set's seconds with the
+    NEW set's weight (ryzen7 run 404, 10-18: core_08 re-packed to recorded 223 s
+    against measured 398 s, and the land precheck refused)."""
+    try:
+        with open(MEASURED_REL, encoding="utf-8") as fh:
+            old = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(old, dict):
+        return None
+    old_counts = {}
+    for path in glob.glob("tests/suite_*.rs"):
+        base = os.path.basename(path)
+        if GENERATED_SUITE_RE.match(base):
+            with open(path, encoding="utf-8") as fh:
+                old_counts[base[:-3]] = suite_member_count(fh.read())
+    new_counts = {os.path.basename(p)[:-3]: suite_member_count(c) for p, c in suite_files.items()}
+    out = {}
+    for name, secs in old.items():
+        if not GENERATED_SUITE_RE.match(name + ".rs"):
+            out[name] = secs  # not a generated suite (lib, bin:*): the plan says nothing about it
+            continue
+        n, o = new_counts.get(name), old_counts.get(name)
+        if n is None or not o or not isinstance(secs, (int, float)):
+            continue
+        out[name] = secs if n == o else round(secs * n / o, 2)
+    return dict(sorted(out.items()))
+
+
 def write_plan(migrations, suite_files, new_cargo_toml, all_files):
     changed = []
     new_weights = plan_weights(suite_files)  # reads the OLD suite files, so before they are rewritten
+    new_measured = plan_measured(suite_files)  # same: scaled from the OLD member counts
     for path, (new_content, _c, _s, _h) in migrations.items():
         with open(path, encoding="utf-8") as fh:
             old_content = fh.read()
@@ -1313,6 +1352,14 @@ def write_plan(migrations, suite_files, new_cargo_toml, all_files):
         with open(WEIGHTS_REL, "w", encoding="utf-8") as fh:
             fh.write(json.dumps(new_weights, indent=2) + "\n")
         changed.append(WEIGHTS_REL)
+
+    if new_measured is not None:
+        with open(MEASURED_REL, encoding="utf-8") as fh:
+            old_measured = json.load(fh)
+        if old_measured != new_measured:
+            with open(MEASURED_REL, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps(new_measured, indent=2) + "\n")
+            changed.append(MEASURED_REL)
 
     if changed:
         print("gen-test-suites.sh: wrote/updated:")
