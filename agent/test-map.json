@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-sampling-from-tools.md (test_prefix: msmp)",
+  "ac_test_map_prd": "PRD-mcphost-prompts-from-published-tools",
   "routes": [
     {
       "glob": "src/**",
@@ -28,13 +28,13 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/msmp_ac01_ask_returns_client_answer_or_unsupported.rs",
-    "AC2": "tests/msmp_ac02_job_run_has_no_client_and_records_the_code.rs",
-    "AC3": "tests/msmp_ac03_wall_is_thirty_seconds_and_short_budget_fails_fast.rs",
-    "AC4": "tests/msmp_ac04_fifth_ask_in_one_call_is_refused.rs",
-    "AC5": "tests/msmp_ac05_daily_token_quota_refuses_before_asking.rs",
-    "AC6": "tests/msmp_ac06_tool_logs_hold_counts_never_the_prompt.rs",
-    "AC7": "tests/msmp_ac07_bridge_modules_list_sampling_everywhere.rs"
+    "AC1": "tests/mprm_ac01_recipes_listed_and_rendered.rs",
+    "AC2": "tests/mprm_ac02_missing_argument_and_unknown_prompt.rs",
+    "AC3": "tests/mprm_ac03_prompt_kind_tool_listed_and_rendered.rs",
+    "AC4": "tests/mprm_ac04_oauth_scope_filters_prompt_tools.rs",
+    "AC5": "tests/mprm_ac05_list_changed_on_prompt_publish_and_remove.rs",
+    "AC6": "tests/mprm_ac06_docs_table_and_quickstart_share_recipes.rs",
+    "AC7": "tests/mprm_ac07_capabilities_advertise_prompts.rs"
   },
   "ac_test_map_by_prefix": {
     "oschv": {
@@ -1664,12 +1664,6 @@
       "AC3": "tests/hsr_ac03_kind_filter_and_unknown_kind.rs",
       "AC4": "tests/hsr_ac04_response_under_2kb_truncation_marked.rs"
     },
-    "ctot": {
-      "_prd": "PRD-mcphost-count-and-total-semantics.md (test_prefix: ctot)",
-      "AC2": "tests/ctot_ac02_page_total_exact_then_estimate.rs",
-      "AC3": "tests/ctot_ac03_runs_list_verdict_total.rs",
-      "AC4": "tests/ctot_ac04_one_counter.rs"
-    },
     "hsrb": {
       "_prd": "PRD-mcphost-help-search-tool-b.md (test_prefix: hsrb)",
       "AC1": "tests/hsrb_ac01_empty_and_symbol_queries_return_hint.rs",
@@ -1985,6 +1979,28 @@
       "AC2": "tests/orgm_ac02_org_url_mints_member_tenant.rs",
       "AC3": "tests/orgm_ac03_roles_one_source_drift.rs",
       "AC4": "tests/orgm_ac04_org_at_cap_refuses_third_join.rs"
+    },
+    "mprm": {
+      "_prd": "PRD-mcphost-prompts-from-published-tools.md (test_prefix: mprm)",
+      "AC1": "tests/mprm_ac01_recipes_listed_and_rendered.rs",
+      "AC2": "tests/mprm_ac02_missing_argument_and_unknown_prompt.rs",
+      "AC3": "tests/mprm_ac03_prompt_kind_tool_listed_and_rendered.rs",
+      "AC4": "tests/mprm_ac04_oauth_scope_filters_prompt_tools.rs",
+      "AC5": "tests/mprm_ac05_list_changed_on_prompt_publish_and_remove.rs",
+      "AC6": "tests/mprm_ac06_docs_table_and_quickstart_share_recipes.rs",
+      "AC7": "tests/mprm_ac07_capabilities_advertise_prompts.rs"
+    },
+    "orgmb": {
+      "_prd": "PRD-mcphost-org-model-b.md (test_prefix: orgmb)",
+      "AC1": "tests/orgmb_ac01_owner_removes_member.rs",
+      "AC2": "tests/orgmb_ac02_concurrent_create_one_winner.rs",
+      "AC3": "tests/orgmb_ac03_llms_txt_and_quickstart_name_org_verbs.rs"
+    },
+    "ctot": {
+      "_prd": "PRD-mcphost-count-and-total-semantics.md (test_prefix: ctot)",
+      "AC2": "tests/ctot_ac02_page_total_exact_then_estimate.rs",
+      "AC3": "tests/ctot_ac03_runs_list_verdict_total.rs",
+      "AC4": "tests/ctot_ac04_one_counter.rs"
     },
     "rgpt": {
       "_prd": "PRD-mcphost-recipe-golden-path-tests.md (test_prefix: rgpt)",

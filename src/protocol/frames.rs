@@ -24,6 +24,9 @@ pub const PROTOCOL_VERSION: &str = "2026-07-28";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FrameKind {
     ListChanged,
+    /// `notifications/prompts/list_changed`: a prompt-kind tool was published
+    /// or removed (PRD-mcphost-prompts-from-published-tools R4).
+    PromptsListChanged,
     Progress,
     Result,
     Error,
@@ -35,6 +38,7 @@ impl FrameKind {
     pub const fn method(self) -> &'static str {
         match self {
             FrameKind::ListChanged => "notifications/tools/list_changed",
+            FrameKind::PromptsListChanged => "notifications/prompts/list_changed",
             FrameKind::Progress => "notifications/progress",
             FrameKind::Result => "result",
             FrameKind::Error => "error",
@@ -44,7 +48,7 @@ impl FrameKind {
     /// Classify one decoded JSON-RPC frame.
     pub fn classify(frame: &Value) -> Option<FrameKind> {
         if let Some(method) = frame.get("method").and_then(Value::as_str) {
-            return [FrameKind::ListChanged, FrameKind::Progress].into_iter().find(|k| k.method() == method);
+            return [FrameKind::ListChanged, FrameKind::PromptsListChanged, FrameKind::Progress].into_iter().find(|k| k.method() == method);
         }
         if frame.get("result").is_some() {
             return Some(FrameKind::Result);
@@ -139,7 +143,11 @@ pub const FRAME_SEQUENCES: &[FrameRow] = &[
     },
     FrameRow {
         request_type: "tools/call:keyed",
-        frames: &[(FrameKind::ListChanged, Card::AtMostOne), (FrameKind::Result, Card::ExactlyOne)],
+        frames: &[
+            (FrameKind::ListChanged, Card::AtMostOne),
+            (FrameKind::PromptsListChanged, Card::AtMostOne),
+            (FrameKind::Result, Card::ExactlyOne),
+        ],
         content_type_rule: ContentTypeRule::JsonWhenSingleFrame,
     },
     FrameRow {
@@ -251,6 +259,7 @@ pub async fn emit(peer: &Peer<RoleServer>, kind: FrameKind, request_type: &str) 
     assert_allowed(kind, request_type);
     match kind {
         FrameKind::ListChanged => peer.notify_tool_list_changed().await.map_err(|e| e.to_string()),
+        FrameKind::PromptsListChanged => peer.notify_prompt_list_changed().await.map_err(|e| e.to_string()),
         other => Err(format!("frames::emit has no sender for {other:?}")),
     }
 }

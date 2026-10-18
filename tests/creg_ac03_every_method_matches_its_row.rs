@@ -14,7 +14,7 @@ fn params_for(method: &str) -> Value {
     match method {
         "tools/call" => json!({"name": "signup", "arguments": {"name": "creg ac03"}}),
         "resources/read" | "resources/subscribe" | "resources/unsubscribe" => json!({"uri": "mcphost://x"}),
-        "prompts/get" => json!({"name": "x"}),
+        "prompts/get" => json!({"name": "webhook-inbox", "arguments": {"name": "x"}}),
         "completion/complete" => {
             let body: Value = serde_json::from_str(include_str!("fixtures/clive_complete_keyless.json")).expect("fixture is JSON");
             body["params"].clone()

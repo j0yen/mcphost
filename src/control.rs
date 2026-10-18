@@ -1051,6 +1051,9 @@ fn quickstart_inner(
             if let Some(outcome) = crate::kinds::outcomes::find(&kind_name_requested) =>
         {
             let mut response = outcome.to_json();
+            if let Some(text) = crate::prompts::recipe_text(outcome.recipe) {
+                response["text"] = json!(text);
+            }
             response["verdict"] = json!("recipe");
             response["resolved_from"] = json!(kind_name_requested);
             return Ok(response);
@@ -1258,15 +1261,16 @@ fn quickstart_inner(
     // "http"`) gets no `resolved_from`/`recipe`, same as before this PRD.
     if let (Some(alias), Value::Object(map)) = (alias, &mut response) {
         map.insert("resolved_from".to_string(), json!(kind_name_requested));
-        map.insert(
-            "recipe".to_string(),
-            json!({
-                "name": alias.recipe,
-                "steps": crate::kinds::aliases::recipe_steps(alias.recipe, tool_name, &example.spec),
-                "docs": "host.quickstart",
-                "anchor": crate::doc_anchors::DocAnchor::DocsToolsHostQuickstart.as_str(),
-            }),
-        );
+        let mut recipe = json!({
+            "name": alias.recipe,
+            "steps": crate::kinds::aliases::recipe_steps(alias.recipe, tool_name, &example.spec),
+            "docs": "host.quickstart",
+            "anchor": crate::doc_anchors::DocAnchor::DocsToolsHostQuickstart.as_str(),
+        });
+        if let Some(text) = crate::prompts::recipe_text(alias.recipe) {
+            recipe["text"] = json!(text);
+        }
+        map.insert("recipe".to_string(), recipe);
         let nearby = crate::kinds::aliases::recipes_nearby(alias);
         if !nearby.is_empty() {
             map.insert("recipes_nearby".to_string(), json!(nearby));
