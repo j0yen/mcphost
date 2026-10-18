@@ -7278,7 +7278,7 @@ impl McpHostHandler {
             "host.key.delegate" => crate::subkeys::delegate(&self.state, tenant, &args, session_id).await,
             "host.key.list" => crate::subkeys::list(&self.state, tenant).await,
             "host.key.revoke" => crate::subkeys::revoke(&self.state, tenant, &args).await,
-            "host.self.offboard" => control::self_offboard(&self.state, tenant).await,
+            "host.self.offboard" => control::self_offboard(&self.state, tenant, session_id).await,
             "host.tool.publish" => self.tool_publish_with_example(tenant, args).await,
             "host.tool.list" => control::tool_list(&self.state, tenant, &args).await,
             "host.tool.remove" => control::tool_remove(&self.state, tenant, &args).await,
@@ -11405,6 +11405,10 @@ impl McpHostHandler {
                         );
                         return Err(AppError::TenantKeyMissing(Some(t.namespace))
                             .into_error_data_at(Some(&self.state.public_url)));
+                    }
+                    // A self-offboarded tenant no longer blocks a fresh start.
+                    Ok(Some(t)) if t.disabled_reason.as_deref() == Some(crate::auth_shape::SELF_OFFBOARD_REASON) => {
+                        self.state.redeemed_peers.forget(&peer);
                     }
                     Ok(Some(t)) => {
                         self.state.redeemed_peers.forget(&peer);

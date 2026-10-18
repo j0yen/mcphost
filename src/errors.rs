@@ -773,7 +773,7 @@ crate::err_code! {
 crate::err_code! {
     pub TENANT_DISABLED => "tenant_disabled",
     Auth, HostRefusal, false,
-    "This tenant is disabled; read data.disabled_reason and do not retry.",
+    "Read data.disabled_reason. self_offboard: this account was closed by self_offboard; call any host.* with no key on a new session (or signup) to start fresh. admin_disable: do not retry.",
 }
 
 crate::err_code! {

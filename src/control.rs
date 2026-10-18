@@ -787,8 +787,9 @@ pub async fn key_rotate(state: &AppState, tenant: &Tenant) -> Result<Value, AppE
 /// here with `tenant.disabled` set and answers with the
 /// `already_offboarded` envelope -- no second billing cancel, no second
 /// flip. Every other verb still refuses that tenant's key as before.
-pub async fn self_offboard(state: &AppState, tenant: &Tenant) -> Result<Value, AppError> {
+pub async fn self_offboard(state: &AppState, tenant: &Tenant, session_id: Option<&str>) -> Result<Value, AppError> {
     if tenant.disabled {
+        release_session(state, session_id);
         return Ok(json!({
             "tenant": tenant.namespace,
             "disabled": true,
@@ -811,6 +812,7 @@ pub async fn self_offboard(state: &AppState, tenant: &Tenant) -> Result<Value, A
     }
 
     state.db.self_offboard_tenant(tenant.id).await?;
+    release_session(state, session_id);
 
     // Same retention convention `admin.tenant_disable` already applies
     // (`src/admin.rs::tenant_disable`) -- every registered kind gets a
@@ -830,6 +832,17 @@ pub async fn self_offboard(state: &AppState, tenant: &Tenant) -> Result<Value, A
         "disabled_reason": "self_offboard",
         "billing_canceled": billing_canceled,
     }))
+}
+
+/// PRD-mcphost-self-offboard-releases-session R1: drop the caller session's
+/// three tenant memories in the offboard call itself, so the next key-less
+/// call signs up fresh instead of being refused `tenant_disabled`.
+fn release_session(state: &AppState, session_id: Option<&str>) {
+    if let Some(sid) = session_id {
+        state.session_bindings.drop_binding(sid);
+        state.implicit_signup_memory.drop_binding(sid);
+        state.tenant_key_arg_memory.drop_binding(sid);
+    }
 }
 
 /// PRD-mcphost-first-publish-real-kind requirement 1 (AC1): the documented
