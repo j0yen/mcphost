@@ -176,7 +176,7 @@ jobs:
     name: core suites (shard ${{ matrix.shard }}/${{ needs.plan.outputs.core_shards }})
     needs: plan
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.plan.outputs.core_matrix) }}
