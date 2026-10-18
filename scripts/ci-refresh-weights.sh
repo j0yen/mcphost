@@ -15,21 +15,31 @@
 # measured / 1.5, which is how a stale weight gets noticed on every PR.
 #
 # Usage:
-#   ci-refresh-weights.sh <log-file|run-id>...   # a run-id is fetched with
-#                                                  `gh run view <id> -R j0yen/mcphost --log`
+#   ci-refresh-weights.sh <log-file|run-id>...   # a run-id is fetched as the run's log ZIP,
+#                                                  `gh api repos/j0yen/mcphost/actions/runs/<id>/logs`,
+#                                                  every member read with `unzip -p` (needs `unzip`).
+#                                                  NEVER `gh run view --log`: it TRUNCATES a long
+#                                                  job's log mid-shard (run 39163386677 lost shard 3/5,
+#                                                  incl. suite_core_09), dropping suites silently.
 #   then: scripts/gen-test-suites.sh && scripts/ci-test-partition.sh check
+# Completeness: every CORE suite key in scripts/ci-suite-weights.json (not `lib`, `bin:*`, or a
+# sandbox suite, which reports only above its warn line) must have a `suite=<name> measured=` line
+# in the input; otherwise this exits 1 naming the missing suites and writes NOTHING.
 # Env: CI_REFRESH_REPO (default j0yen/mcphost); CI_REFRESH_ROOT (default this checkout; tests use a scratch root).
 set -uo pipefail
 cd "${CI_REFRESH_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}" || exit 2
-[ "$#" -ge 1 ] || { sed -n '2,20p' "$0" >&2; exit 2; }
+[ "$#" -ge 1 ] || { sed -n '2,29p' "$0" >&2; exit 2; }
 
-tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
+tmp="$(mktemp)"; zip="$(mktemp)"; trap 'rm -f "$tmp" "$zip"' EXIT
 for arg in "$@"; do
   if [ -f "$arg" ]; then
     sed -E $'s/\\x1b\\[[0-9;]*m//g' "$arg" >> "$tmp"
   else
-    gh run view "$arg" -R "${CI_REFRESH_REPO:-j0yen/mcphost}" --log 2>/dev/null | sed -E $'s/\\x1b\\[[0-9;]*m//g' >> "$tmp" \
-      || { echo "ci-refresh-weights: cannot fetch run $arg" >&2; exit 1; }
+    command -v unzip >/dev/null 2>&1 \
+      || { echo "ci-refresh-weights: unzip is required to read a run id's log ZIP (install unzip); not falling back to the truncating \`gh run view --log\`" >&2; exit 1; }
+    gh api "repos/${CI_REFRESH_REPO:-j0yen/mcphost}/actions/runs/$arg/logs" > "$zip" 2>/dev/null \
+      && unzip -p "$zip" | sed -E $'s/\\x1b\\[[0-9;]*m//g' >> "$tmp" \
+      || { echo "ci-refresh-weights: cannot fetch the log ZIP of run $arg" >&2; exit 1; }
   fi
 done
 
@@ -48,6 +58,14 @@ if not measured:
 
 W, M = "scripts/ci-suite-weights.json", "scripts/ci-suite-measured.json"
 weights = json.load(open(W))
+
+# COMPLETENESS (generated from the weights file, never a hand list): every core suite must be
+# measured in the input, else a truncated log silently drops suites from the measured file.
+core = [k for k in weights if k != "lib" and not k.startswith("bin:") and "sandbox" not in k]
+missing = sorted(k for k in core if k not in measured)
+if missing:
+    sys.exit("ci-refresh-weights: input lacks a `suite=<name> measured=` line for core suite(s): "
+             + ", ".join(missing) + " (truncated log? nothing written)")
 old_m = json.load(open(M)) if os.path.exists(M) else {}
 
 # suites whose ONE member file declares a solo-suite weight
