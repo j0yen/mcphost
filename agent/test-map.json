@@ -2065,6 +2065,16 @@
       "AC7": "tests/pysdk_ac07_ci_diff_fails_on_stale_sdk.rs",
       "AC8": "tests/test_live_smoke.py"
     },
+    "tssdk": {
+      "_prd": "PRD-mcphost-typescript-sdk-generated.md (test_prefix: tssdk)",
+      "AC1": "tests/tssdk_ac01_no_override_table.rs",
+      "AC2": "tests/tssdk_ac02_build_test_tsc_and_header.rs",
+      "AC3": "tests/tssdk_ac03_invalid_args_rejected_before_fetch.rs",
+      "AC4": "tests/tssdk_ac04_error_codes_are_typed_errors.rs",
+      "AC5": "tests/tssdk_ac05_contract_skew_warns_once_or_throws.rs",
+      "AC6": "tests/tssdk_ac06_ir_parity_with_python_generator.rs",
+      "AC7": "tests/tssdk_ac07_ci_diff_fails_on_stale_sdk.rs"
+    },
     "insch": {
       "_prd": "PRD-mcphost-input-schema-is-the-validator.md (test_prefix: insch)",
       "AC1": "tests/insch_ac01_either_or_required_in_schema.rs",

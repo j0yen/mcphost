@@ -52,10 +52,11 @@ required_commands = [
 
 [[lane]]
 id = "sdk-python"
-description = "PRD-mcphost-python-sdk-generated: the generated Python SDK (sdk/python/**) and the hand-written Python templates the generator embeds (src/sdk_python_tmpl/**, include_str!'d into src/sdk_python.rs). Added project-locally: neither glob is covered by rust-source (src/**/*.rs only) and the scaffold has no lane for a Python tree. Proof is the pysdk_ac* tests, which run the generator, `uv run mypy --strict` and `uv run pytest`."
-globs = ["sdk/**", "src/sdk_python_tmpl/**", "tests/test_live_smoke.py"]
+description = "PRD-mcphost-python-sdk-generated: the generated Python SDK (sdk/python/**) and the hand-written Python templates the generator embeds (src/sdk_python_tmpl/**, include_str!'d into src/sdk_python.rs). Added project-locally: neither glob is covered by rust-source (src/**/*.rs only) and the scaffold has no lane for a Python tree. Proof is the pysdk_ac* tests, which run the generator, `uv run mypy --strict` and `uv run pytest`. PRD-mcphost-typescript-sdk-generated extends the lane to the TypeScript SDK: sdk/ts/** is already inside `sdk/**`, and the hand-written TS templates the TS generator embeds (src/gen/sdk_ts_tmpl/**, include_str!'d into src/gen/sdk_ts.rs) are added; proof is the tssdk_ac* tests (generator, `npm run build`, vitest, `tsc --strict --noEmit`)."
+globs = ["sdk/**", "src/sdk_python_tmpl/**", "src/gen/sdk_ts_tmpl/**", "tests/test_live_smoke.py"]
 required_commands = [
   "cargo test --workspace pysdk_",
+  "cargo test --workspace tssdk_",
 ]
 
 [[lane]]

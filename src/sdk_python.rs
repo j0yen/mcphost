@@ -19,6 +19,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
+use crate::r#gen::schema_ir::{self, Lit};
+
 /// Default output directory of `mcphost gen sdk python` (the package itself).
 pub const DEFAULT_OUT: &str = "sdk/python/mcphost_sdk";
 
@@ -87,12 +89,11 @@ fn py_str(s: &str) -> String {
     serde_json::to_string(s).expect("string serializes")
 }
 
-fn py_lit(v: &Value) -> Option<String> {
-    match v {
-        Value::String(s) => Some(py_str(s)),
-        Value::Bool(b) => Some(if *b { "True" } else { "False" }.into()),
-        Value::Number(n) => Some(n.to_string()),
-        _ => None,
+fn py_lit(l: &Lit) -> String {
+    match l {
+        Lit::Str(s) => py_str(s),
+        Lit::Bool(b) => if *b { "True" } else { "False" }.into(),
+        Lit::Num(n) => n.clone(),
     }
 }
 
@@ -149,55 +150,20 @@ struct Prop {
     constraint: String,
 }
 
-fn schema_types(schema: &Value) -> (Vec<&str>, bool) {
-    let mut nullable = false;
-    let mut out = Vec::new();
-    match schema.get("type") {
-        Some(Value::String(t)) => out.push(t.as_str()),
-        Some(Value::Array(ts)) => {
-            for t in ts.iter().filter_map(Value::as_str) {
-                out.push(t);
-            }
-        }
-        _ => {}
-    }
-    if out.contains(&"null") {
-        nullable = true;
-        out.retain(|t| *t != "null");
-    }
-    (out, nullable)
-}
-
 fn constraints(schema: &Value, only_type: Option<&str>) -> String {
     let Some(t) = only_type else { return String::new() };
+    let b = schema_ir::bounds(schema, t);
+    let (lo, hi) = match t {
+        "integer" | "number" => ("ge", "le"),
+        "string" | "array" => ("min_length", "max_length"),
+        _ => return String::new(),
+    };
     let mut parts = Vec::new();
-    let num = |k: &str| schema.get(k).filter(|v| v.is_number()).map(Value::to_string);
-    match t {
-        "integer" | "number" => {
-            if let Some(v) = num("minimum") {
-                parts.push(format!("ge={v}"));
-            }
-            if let Some(v) = num("maximum") {
-                parts.push(format!("le={v}"));
-            }
-        }
-        "string" => {
-            if let Some(v) = num("minLength") {
-                parts.push(format!("min_length={v}"));
-            }
-            if let Some(v) = num("maxLength") {
-                parts.push(format!("max_length={v}"));
-            }
-        }
-        "array" => {
-            if let Some(v) = num("minItems") {
-                parts.push(format!("min_length={v}"));
-            }
-            if let Some(v) = num("maxItems") {
-                parts.push(format!("max_length={v}"));
-            }
-        }
-        _ => {}
+    if let Some(v) = b.min {
+        parts.push(format!("{lo}={v}"));
+    }
+    if let Some(v) = b.max {
+        parts.push(format!("{hi}={v}"));
     }
     parts.join(", ")
 }
@@ -205,14 +171,10 @@ fn constraints(schema: &Value, only_type: Option<&str>) -> String {
 /// Renders `schema` to a [`Ty`], emitting nested model classes into `m`
 /// (children before the parent that uses them). Returns `(ty, nullable)`.
 fn render_ty(m: &mut Models, schema: &Value, hint: &str, args: bool) -> (Ty, bool) {
-    let (types, nullable) = schema_types(schema);
-    if let Some(Value::Array(vals)) = schema.get("enum") {
-        let lits: Vec<String> = vals.iter().filter_map(py_lit).collect();
-        if !lits.is_empty() {
-            let t = format!("Literal[{}]", lits.join(", "));
-            let null = nullable || vals.iter().any(Value::is_null);
-            return (Ty { field: t.clone(), param: t }, null);
-        }
+    let (types, nullable) = schema_ir::schema_types(schema);
+    if let Some((lits, null)) = schema_ir::enum_values(schema) {
+        let t = format!("Literal[{}]", lits.iter().map(py_lit).collect::<Vec<_>>().join(", "));
+        return (Ty { field: t.clone(), param: t }, null);
     }
     let mut alts: Vec<Ty> = Vec::new();
     for t in &types {
@@ -228,11 +190,10 @@ fn render_ty(m: &mut Models, schema: &Value, hint: &str, args: bool) -> (Ty, boo
                 Ty { field: format!("list[{f}]"), param: format!("Sequence[{p}]") }
             }
             "object" => {
-                let has_props = schema.get("properties").and_then(Value::as_object).is_some_and(|p| !p.is_empty());
-                if has_props {
+                if schema_ir::has_properties(schema) {
                     let (class, _) = render_model(m, schema, hint, args);
                     Ty { field: class.clone(), param: format!("Union[{class}, Mapping[str, Any]]") }
-                } else if let Some(ap) = schema.get("additionalProperties").filter(|v| v.is_object()) {
+                } else if let Some(ap) = schema_ir::map_value_schema(schema) {
                     let (vt, vnull) = render_ty(m, ap, &format!("{hint}Value"), args);
                     let (f, p) = if vnull { (opt(&vt.field), opt(&vt.param)) } else { (vt.field, vt.param) };
                     Ty { field: format!("dict[str, {f}]"), param: format!("Mapping[str, {p}]") }
@@ -259,32 +220,23 @@ fn opt(t: &str) -> String {
 }
 
 fn props_of(m: &mut Models, schema: &Value, class: &str, args: bool) -> Vec<Prop> {
-    let required: BTreeSet<&str> = schema
-        .get("required")
-        .and_then(Value::as_array)
-        .map(|r| r.iter().filter_map(Value::as_str).collect())
-        .unwrap_or_default();
     let mut used = HashSet::new();
     let mut out = Vec::new();
-    let Some(props) = schema.get("properties").and_then(Value::as_object) else { return out };
-    let mut keys: Vec<&String> = props.keys().collect();
-    keys.sort();
-    for wire in keys {
-        let sub = &props[wire];
-        let mut py = py_ident(wire);
+    for f in schema_ir::object_fields(schema) {
+        let mut py = py_ident(f.wire);
         while !used.insert(py.clone()) {
             py.push('_');
         }
-        let (ty, nullable) = render_ty(m, sub, &format!("{class}{}", camel(wire)), args);
-        let (ts, _) = schema_types(sub);
+        let (ty, nullable) = render_ty(m, f.schema, &format!("{class}{}", camel(f.wire)), args);
+        let (ts, _) = schema_ir::schema_types(f.schema);
         let only = (ts.len() == 1).then(|| ts[0]);
         out.push(Prop {
-            wire: wire.clone(),
+            wire: f.wire.to_string(),
             py,
             ty,
-            required: required.contains(wire.as_str()),
+            required: f.required,
             nullable,
-            constraint: constraints(sub, only),
+            constraint: constraints(f.schema, only),
         });
     }
     out
@@ -294,7 +246,7 @@ fn props_of(m: &mut Models, schema: &Value, class: &str, args: bool) -> Vec<Prop
 fn render_model(m: &mut Models, schema: &Value, hint: &str, args: bool) -> (String, Vec<Prop>) {
     let class = m.class_name(hint.to_string());
     let props = props_of(m, schema, &class, args);
-    let forbid = args && schema.get("additionalProperties") == Some(&Value::Bool(false));
+    let forbid = args && schema_ir::forbids_extra(schema);
     let extra = if forbid { "forbid" } else { "allow" };
     let mut body = format!(
         "class {class}(BaseModel):\n    model_config = ConfigDict(extra=\"{extra}\", populate_by_name=True, protected_namespaces=())\n"
@@ -337,17 +289,9 @@ struct ToolOut {
     params: Vec<Prop>,
 }
 
-fn canonical(contract: &Value) -> Result<Vec<&Value>, String> {
-    let tools = contract.get("tools").and_then(Value::as_array).ok_or("contract has no `tools` array")?;
-    let mut v: Vec<&Value> = tools.iter().filter(|t| t.get("alias_of").is_none()).collect();
-    v.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
-    Ok(v)
-}
-
 /// The canonical (non-alias) tool names in `contract_bytes`, sorted.
 pub fn canonical_names(contract_bytes: &[u8]) -> Result<Vec<String>, String> {
-    let contract: Value = serde_json::from_slice(contract_bytes).map_err(|e| format!("contract is not JSON: {e}"))?;
-    Ok(canonical(&contract)?.iter().filter_map(|t| t["name"].as_str().map(str::to_string)).collect())
+    schema_ir::canonical_names(contract_bytes)
 }
 
 /// Every wire error code the host knows (sorted, deduplicated).
@@ -411,14 +355,12 @@ fn render_ns(out: &mut String, node: &Node, path: &str, tools: &[ToolOut]) -> Re
 /// Renders the whole package from `contract_bytes`: file name -> contents.
 pub fn render(contract_bytes: &[u8]) -> Result<BTreeMap<String, String>, String> {
     let contract: Value = serde_json::from_slice(contract_bytes).map_err(|e| format!("contract is not JSON: {e}"))?;
-    let major = contract.get("contract_version").and_then(Value::as_u64).ok_or("contract has no contract_version")?;
-    let sha = crate::api_contract::sha_hex(contract_bytes);
-    let version = format!("{major}.{}", &sha[..12]);
+    let (sha, major, version) = schema_ir::contract_version(&contract, contract_bytes)?;
     let hdr = header(&version);
 
     let mut models = Models { out: String::new(), names: HashSet::new(), all: Vec::new() };
     let mut tools: Vec<ToolOut> = Vec::new();
-    for t in canonical(&contract)? {
+    for t in schema_ir::canonical(&contract)? {
         let name = t["name"].as_str().ok_or("tool without a name")?.to_string();
         let base = camel(&name);
         let in_schema = &t["input_schema"];

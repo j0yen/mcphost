@@ -560,6 +560,16 @@ enum SdkLang {
         #[arg(long)]
         contract: Option<PathBuf>,
     },
+    /// PRD-mcphost-typescript-sdk-generated: write the `@mcphost/sdk` source
+    /// tree (zod schemas, typed client, one error class per code) into
+    /// `<--out>/src` (default `sdk/ts`) from the embedded contract, or
+    /// `--contract`.
+    Ts {
+        #[arg(long)]
+        out: Option<PathBuf>,
+        #[arg(long)]
+        contract: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1529,6 +1539,21 @@ async fn main() -> anyhow::Result<()> {
                 Ok(files) => println!("gen sdk python: wrote {} files to {}", files.len(), out.display()),
                 Err(why) => {
                     eprintln!("gen sdk python: {why}");
+                    std::process::exit(1);
+                }
+            }
+            Ok(())
+        }
+        Command::Gen { target: GenTarget::Sdk { lang: SdkLang::Ts { out, contract } } } => {
+            let out = out.unwrap_or_else(|| PathBuf::from(mcphost::r#gen::sdk_ts::DEFAULT_OUT));
+            let bytes = match contract {
+                Some(p) => std::fs::read(&p)?,
+                None => mcphost::call_cli::EMBEDDED_CONTRACT.to_vec(),
+            };
+            match mcphost::r#gen::sdk_ts::write(&out, &bytes) {
+                Ok(files) => println!("gen sdk ts: wrote {} files to {}", files.len(), out.join("src").display()),
+                Err(why) => {
+                    eprintln!("gen sdk ts: {why}");
                     std::process::exit(1);
                 }
             }

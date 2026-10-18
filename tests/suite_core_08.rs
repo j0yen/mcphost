@@ -33,6 +33,8 @@ mod serve;
 mod sjrc;
 #[path = "support/timp.rs"]
 mod timp;
+#[path = "support/tssdk.rs"]
+mod tssdk;
 #[path = "support/uprg.rs"]
 mod uprg;
 #[path = "support/xlinks.rs"]
@@ -1630,6 +1632,20 @@ mod trigidem_ac05_verbs_accept_name;
 mod trigidem_ac06_migration_backfills_duplicate_names;
 #[path = "trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent.rs"]
 mod trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent;
+#[path = "tssdk_ac01_no_override_table.rs"]
+mod tssdk_ac01_no_override_table;
+#[path = "tssdk_ac02_build_test_tsc_and_header.rs"]
+mod tssdk_ac02_build_test_tsc_and_header;
+#[path = "tssdk_ac03_invalid_args_rejected_before_fetch.rs"]
+mod tssdk_ac03_invalid_args_rejected_before_fetch;
+#[path = "tssdk_ac04_error_codes_are_typed_errors.rs"]
+mod tssdk_ac04_error_codes_are_typed_errors;
+#[path = "tssdk_ac05_contract_skew_warns_once_or_throws.rs"]
+mod tssdk_ac05_contract_skew_warns_once_or_throws;
+#[path = "tssdk_ac06_ir_parity_with_python_generator.rs"]
+mod tssdk_ac06_ir_parity_with_python_generator;
+#[path = "tssdk_ac07_ci_diff_fails_on_stale_sdk.rs"]
+mod tssdk_ac07_ci_diff_fails_on_stale_sdk;
 #[path = "tsvr_ac01_unknown_column_names_declared.rs"]
 mod tsvr_ac01_unknown_column_names_declared;
 #[path = "tsvr_ac02_type_mismatch_names_accepted_shape.rs"]
