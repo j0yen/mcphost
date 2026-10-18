@@ -596,6 +596,18 @@ pub(crate) fn row_count_sync(conn: &Connection, table: &str) -> Result<i64, AppE
     .map_err(AppError::from)
 }
 
+/// PRD-mcphost-resources-for-tenant-data: does `tenant` have a declared table
+/// called `table`? The ownership check `resources/read` makes before it
+/// builds any SQL: another tenant's table name is simply absent here.
+pub async fn table_exists(state: &AppState, tenant: &Tenant, table: &str) -> Result<bool, AppError> {
+    let path = tenant_db_path(state, tenant.id);
+    let table = table.to_string();
+    with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+        Ok(list_table_names_sync(conn)?.contains(&table))
+    })
+    .await
+}
+
 /// requirement 3 (foreign-key detection): every table name this tenant has
 /// declared, in no particular order -- [`crate::tables_model`]'s own
 /// candidate list when checking a column against every other table's key.
@@ -3182,6 +3194,7 @@ mod tests {
             blob_clock_offset_secs: Default::default(),
             confirm_clock_offset_secs: Default::default(),
             onboarding_cache: Default::default(),
+            resource_subs: Default::default(),
         }
     }
 

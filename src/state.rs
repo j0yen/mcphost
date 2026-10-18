@@ -498,6 +498,10 @@ pub struct AppState {
     /// `onboarding_7d` block, refreshed by `statusfeed::tick_once` so
     /// `/status.json` stays a read.
     pub onboarding_cache: std::sync::Arc<std::sync::Mutex<Option<serde_json::Value>>>,
+    /// PRD-mcphost-resources-for-tenant-data requirement 4: open
+    /// `resources/subscribe` entries, bounded per tenant by
+    /// `Plan::resources_max`.
+    pub resource_subs: crate::resources::Subscriptions,
 }
 
 /// requirement 6's own default: 60 calls per client IP per minute.

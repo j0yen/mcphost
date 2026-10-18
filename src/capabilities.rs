@@ -78,10 +78,10 @@ pub const CAPABILITIES: &[Capability] = &[
             "resources/unsubscribe",
         ],
         server_to_client: &[],
-        implemented: false,
-        list_changed: false,
-        subscribe: false,
-        ceiling: None,
+        implemented: true,
+        list_changed: true,
+        subscribe: true,
+        ceiling: Some("resources_max"),
         probe: "resources",
         alternative: Some("host.table.list"),
         help_code: UNSUPPORTED_CODE,
@@ -321,7 +321,14 @@ mod tests {
     #[test]
     fn implemented_rows_render_tools_and_prompts_with_list_changed() {
         let v = serde_json::to_value(server_capabilities()).unwrap();
-        assert_eq!(v, json!({"tools": {"listChanged": true}, "prompts": {"listChanged": true}}));
+        assert_eq!(
+            v,
+            json!({
+                "tools": {"listChanged": true},
+                "prompts": {"listChanged": true},
+                "resources": {"listChanged": true, "subscribe": true}
+            })
+        );
     }
 
     #[test]

@@ -35,6 +35,17 @@ fn params_for(method: &str) -> Value {
 /// PRD-mcphost-sampling-from-tools flips `sampling`).
 const SERVER_INITIATED: &[&str] = &["elicitation/create", "sampling/createMessage"];
 
+/// Implemented methods that act on a tenant's object: sent keyless with a
+/// made-up URI they answer a resource-not-found error (`data.code`
+/// `resource_not_found`) rather than a result -- routed, and not `-32601`
+/// (PRD-mcphost-resources-for-tenant-data).
+const TENANT_SCOPED: &[&str] = &["resources/read"];
+
+/// Methods rmcp serves only to a legacy-protocol peer: this drift test speaks
+/// 2026-07-28, which answers them with a bare `-32601`. Their wire behaviour
+/// is proved over rmcp's session transport by mres_ac04/mres_ac05.
+const LEGACY_ONLY: &[&str] = &["resources/subscribe", "resources/unsubscribe"];
+
 /// The row-level precondition the drift test needs: a row names its methods.
 fn methods_problem(row: &Capability) -> Option<String> {
     row.methods.is_empty().then(|| format!("capability row `{}` has an empty `methods` list", row.name))
@@ -51,7 +62,13 @@ async fn every_method_of_every_row_answers_as_its_row_says() {
     for row in CAPABILITIES {
         for method in row.methods {
             let reply = client.rpc(method, params_for(method)).await;
-            if row.implemented && SERVER_INITIATED.contains(method) {
+            if row.implemented && (SERVER_INITIATED.contains(method) || LEGACY_ONLY.contains(method)) {
+                continue;
+            }
+            if row.implemented && TENANT_SCOPED.contains(method) {
+                if reply["error"]["data"]["code"] != "resource_not_found" {
+                    failures.push(format!("{method}: keyless call must answer resource_not_found, got {reply}"));
+                }
                 continue;
             }
             if row.implemented {

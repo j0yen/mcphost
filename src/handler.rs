@@ -601,6 +601,16 @@ fn tenant_path_namespace(parts: &http::request::Parts) -> Option<&str> {
 /// from the request's extensions rather than its headers: see
 /// [`crate::session_bind::RequestSessionId`] for why the header itself is
 /// left exactly as the client sent it.
+/// The identity a resource subscription is filed under: the session id this
+/// host minted for the request, else the transport's own `Mcp-Session-Id`.
+/// Empty for a connection with neither (then only the peer's liveness ties
+/// the entry to its connection).
+fn conn_key(parts: &http::request::Parts) -> String {
+    session_id(parts)
+        .or_else(|| parts.headers.get("mcp-session-id").and_then(|v| v.to_str().ok()).map(str::to_string))
+        .unwrap_or_default()
+}
+
 fn session_id(parts: &http::request::Parts) -> Option<String> {
     parts
         .extensions
@@ -6661,6 +6671,13 @@ pub const FORWARD_STACK_BUDGET: usize = 1_950_720;
 /// comment there. Canonical dotted names (an alias is resolved before dispatch).
 const FORWARDING_WRAPPERS: &[&str] = &["host.tool.call", "host.tool.test", "host.estimate"];
 
+/// Who a resource method is acting for (see `resolve_resource_caller`).
+struct ResourceCaller {
+    tenant: Option<Tenant>,
+    /// The OAuth `scope` claim; `None` for a key (unrestricted).
+    token_scope: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct McpHostHandler {
     pub state: Arc<AppState>,
@@ -6669,6 +6686,41 @@ pub struct McpHostHandler {
 impl McpHostHandler {
     pub fn new(state: Arc<AppState>) -> Self {
         Self { state }
+    }
+
+    /// PRD-mcphost-resources-for-tenant-data requirement 3: the `list_tools`
+    /// auth chain (path secret -> Authorization header -> the session's
+    /// signup binding) for a resource method, which carries no `tenant_key`
+    /// argument. Anonymous, invalid, admin and sub-key callers resolve to no
+    /// tenant: a resource is tenant data, and a sub-key's tool allowlist has
+    /// no resource analogue.
+    async fn resolve_resource_caller(&self, ctx: &RequestContext<RoleServer>) -> Result<ResourceCaller, McpError> {
+        let parts = get_parts(ctx)?;
+        let at = |e: AppError| e.into_error_data_at(Some(&self.state.public_url));
+        let mut sub_key: Option<crate::subkeys::SubKey> = None;
+        let mut auth = match resolve_path_secret_auth(&self.state, parts, "").await.map_err(at)? {
+            Some(a) => a,
+            None => resolve_auth(&self.state, parts, &mut sub_key, "").await.map_err(at)?,
+        };
+        if matches!(auth, Auth::Anonymous)
+            && let Some(session_id) = session_id(parts)
+            && let Some(bound) = resolve_session_binding(&self.state, &session_id, "").await.map_err(at)?
+        {
+            auth = bound;
+        }
+        let mut caller = ResourceCaller { tenant: None, token_scope: None };
+        if let Auth::Tenant(tenant, oauth_caller) = auth {
+            if let Some(ns) = tenant_path_namespace(parts)
+                && tenant.namespace != ns
+            {
+                return Err(at(AppError::WrongTenant));
+            }
+            if sub_key.is_none() {
+                caller.token_scope = oauth_caller.and_then(|o| o.scope);
+                caller.tenant = Some(*tenant);
+            }
+        }
+        Ok(caller)
     }
 
     /// PRD-mcphost-kind-ask-routing requirement 5 (AC6): best-effort ledger
@@ -6904,6 +6956,9 @@ impl McpHostHandler {
         name: &str,
         args: Value,
     ) -> Result<Value, AppError> {
+        // PRD-mcphost-resources-for-tenant-data requirements 4 and 6: the
+        // one place a committed write tells resource subscribers.
+        let hint = crate::resources::write_hint(name, &args);
         // The forwarding boundary. A wrapper verb (`FORWARDING_WRAPPERS`) re-enters
         // this dispatcher with the verb it forwards, so it is on the stack UNDER
         // the forwarded verb. Dispatched the usual way it would hold the
@@ -6920,7 +6975,9 @@ impl McpHostHandler {
                 Err(e) => Err(e),
             }
         } else {
-            self.dispatch_tenant_tool_dry_run(
+            // `Box::pin`: run 945 verbfwd_ac01 stack overflow (CI 39080964983) -- the hint
+            // locals added here grew this frame past the 2 MiB test-thread stack.
+            Box::pin(self.dispatch_tenant_tool_dry_run(
                 tenant,
                 subject,
                 auth_method,
@@ -6929,9 +6986,12 @@ impl McpHostHandler {
                 session_id,
                 name,
                 args,
-            )
+            ))
             .await
         };
+        if let (Some(hint), Ok(out)) = (hint, &result) {
+            crate::resources::after_write(&self.state, tenant.id, hint, out);
+        }
         self.attach_data_quota(tenant, name, result).await
     }
 
@@ -11172,6 +11232,113 @@ impl ServerHandler for McpHostHandler {
             ),
         ))
         .with_instructions(instructions)
+    }
+
+    // PRD-mcphost-resources-for-tenant-data requirement 2: one entry per
+    // table, doc, run of the last 24 h and published tool of the authed
+    // tenant; an anonymous or unresolvable caller gets an empty list (not an
+    // error), like `tools/list`; an OAuth scope filters by template scope.
+    async fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<rmcp::model::ListResourcesResult, McpError> {
+        let caller = self.resolve_resource_caller(&ctx).await?;
+        let Some(tenant) = caller.tenant else {
+            return Ok(rmcp::model::ListResourcesResult::with_all_items(Vec::new()));
+        };
+        // Requirement 6: a connection that listed hears `list_changed`.
+        let conn = conn_key(get_parts(&ctx)?);
+        self.state.resource_subs.watch_list(tenant.id, &conn, ctx.peer.clone());
+        let resources = crate::resources::list(&self.state, &tenant, caller.token_scope.as_deref())
+            .await
+            .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
+        Ok(rmcp::model::ListResourcesResult::with_all_items(resources))
+    }
+
+    async fn list_resource_templates(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _ctx: RequestContext<RoleServer>,
+    ) -> Result<rmcp::model::ListResourceTemplatesResult, McpError> {
+        // PRD-mcphost-resources-for-tenant-data requirement 1: keyless, and
+        // exactly the rows of `RESOURCE_TEMPLATES`.
+        Ok(rmcp::model::ListResourceTemplatesResult::with_all_items(crate::resources::template_list()))
+    }
+
+    // PRD-mcphost-resources-for-tenant-data requirement 3: authorised exactly
+    // as `list_tools` is, then served by `crate::resources::read`. A caller
+    // that resolves to no tenant gets `-32002`, like another tenant's object.
+    async fn read_resource(
+        &self,
+        request: rmcp::model::ReadResourceRequestParams,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<rmcp::model::ReadResourceResponse, McpError> {
+        let caller = self.resolve_resource_caller(&ctx).await?;
+        let not_found = |message: String| {
+            McpError::resource_not_found(
+                message,
+                Some(json!({"code": "resource_not_found", "uri": request.uri})),
+            )
+        };
+        let Some(tenant) = caller.tenant else {
+            return Err(not_found(format!("no resource at {}", request.uri)));
+        };
+        match crate::resources::read(&self.state, &tenant, caller.token_scope.as_deref(), &request.uri).await {
+            Ok(result) => Ok(rmcp::model::ReadResourceResponse::Complete(result)),
+            Err(crate::resources::ReadError::NotFound(message)) => Err(not_found(message)),
+            Err(crate::resources::ReadError::Forbidden { scope }) => Err(McpError::new(
+                rmcp::model::ErrorCode::INVALID_REQUEST,
+                format!("forbidden: this token lacks the `{scope}` scope"),
+                Some(json!({"error_code": crate::errors::FORBIDDEN, "scope": scope, "uri": request.uri})),
+            )),
+            Err(crate::resources::ReadError::App(e)) => Err(e.into_error_data_at(Some(&self.state.public_url))),
+        }
+    }
+
+    // PRD-mcphost-resources-for-tenant-data requirement 4: registers
+    // `(tenant, uri, connection)` for `notifications/resources/updated`.
+    #[allow(deprecated)]
+    async fn subscribe(
+        &self,
+        request: rmcp::model::SubscribeRequestParams,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<(), McpError> {
+        let caller = self.resolve_resource_caller(&ctx).await?;
+        let not_found = |message: String| {
+            McpError::resource_not_found(message, Some(json!({"code": "resource_not_found", "uri": request.uri})))
+        };
+        let Some(tenant) = caller.tenant else {
+            return Err(not_found(format!("no resource at {}", request.uri)));
+        };
+        match crate::resources::check_subscribable(&request.uri, caller.token_scope.as_deref()) {
+            Ok(_) => {}
+            Err(crate::resources::SubscribeError::NotFound(message)) => return Err(not_found(message)),
+            Err(crate::resources::SubscribeError::Forbidden { scope }) => {
+                return Err(McpError::new(
+                    rmcp::model::ErrorCode::INVALID_REQUEST,
+                    format!("forbidden: this token lacks the `{scope}` scope"),
+                    Some(json!({"error_code": crate::errors::FORBIDDEN, "scope": scope, "uri": request.uri})),
+                ));
+            }
+        }
+        let conn = conn_key(get_parts(&ctx)?);
+        crate::resources::subscribe(&self.state, &tenant, &request.uri, &conn, ctx.peer.clone())
+            .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))
+    }
+
+    #[allow(deprecated)]
+    async fn unsubscribe(
+        &self,
+        request: rmcp::model::UnsubscribeRequestParams,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<(), McpError> {
+        let caller = self.resolve_resource_caller(&ctx).await?;
+        if let Some(tenant) = caller.tenant {
+            let conn = conn_key(get_parts(&ctx)?);
+            self.state.resource_subs.remove(tenant.id, &request.uri, &conn);
+        }
+        Ok(())
     }
 
     async fn list_prompts(

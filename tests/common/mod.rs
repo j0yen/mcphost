@@ -587,6 +587,7 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
         blob_clock_offset_secs: Default::default(),
         confirm_clock_offset_secs: Default::default(),
         onboarding_cache: Default::default(),
+        resource_subs: Default::default(),
         session_bindings,
     };
     (state, data_dir)
@@ -1295,6 +1296,7 @@ impl TestServer {
             blob_clock_offset_secs: Default::default(),
             confirm_clock_offset_secs: Default::default(),
             onboarding_cache: Default::default(),
+            resource_subs: Default::default(),
             session_bindings,
         });
 
@@ -2105,6 +2107,7 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
         blob_clock_offset_secs: Default::default(),
         confirm_clock_offset_secs: Default::default(),
         onboarding_cache: Default::default(),
+        resource_subs: Default::default(),
         session_bindings,
     }
 }
@@ -2698,6 +2701,16 @@ pub async fn ttfs_tenant(
 /// JSON)` -- the whole token response, so a caller reads `access_token`
 /// without this helper deciding what else it needs.
 pub async fn oauth_consent_and_token(base_url: &str, resource: &str, consent_extra: &[(&str, &str)]) -> (String, Value) {
+    oauth_consent_and_token_scoped(base_url, resource, "mcp", consent_extra).await
+}
+
+/// [`oauth_consent_and_token`] for an explicit `scope` request instead of `mcp`.
+pub async fn oauth_consent_and_token_scoped(
+    base_url: &str,
+    resource: &str,
+    scope: &str,
+    consent_extra: &[(&str, &str)],
+) -> (String, Value) {
     use base64::Engine as _;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use sha2::{Digest, Sha256};
@@ -2722,7 +2735,7 @@ pub async fn oauth_consent_and_token(base_url: &str, resource: &str, consent_ext
         ("code_challenge", challenge.as_str()),
         ("code_challenge_method", "S256"),
         ("state", "abc"),
-        ("scope", "mcp"),
+        ("scope", scope),
         ("resource", resource),
     ];
     form.extend_from_slice(consent_extra);

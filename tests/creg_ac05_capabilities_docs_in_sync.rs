@@ -56,7 +56,15 @@ fn check_script_passes_clean_and_fails_naming_the_file_when_a_row_is_edited() {
         let dir = common::doc_check_scratch("creg-ac05-edited");
         let path = dir.join(rel);
         let text = std::fs::read_to_string(&path).expect("read");
-        let edited = text.replace("| `resources` | no |", "| `resources` | yes |");
+        // Edit the first data row of the generated section itself (flip its
+        // `implemented` cell), so no row's current value is hard-coded here.
+        let row = block_of(&text)
+            .lines()
+            .find(|l| l.starts_with("| `"))
+            .unwrap_or_else(|| panic!("{rel}: no data row in the Capabilities section"));
+        let mut cells: Vec<&str> = row.split(" | ").collect();
+        cells[1] = if cells[1] == "yes" { "no" } else { "yes" };
+        let edited = text.replacen(row, &cells.join(" | "), 1);
         assert_ne!(edited, text, "the edit must change {rel}");
         std::fs::write(&path, edited).expect("write");
         let out = run_check(&dir);
