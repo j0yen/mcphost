@@ -61,6 +61,8 @@ pub fn doc_check_scratch(label: &str) -> PathBuf {
         "www/llms.txt",
         "docs/protocol/capabilities.md",
         "docs/protocol/prompts.md",
+        // seed SDB: the bridge-modules block in docs/sandbox-api.md is a --write output.
+        "docs/sandbox-api.md",
         "src/prompts.rs",
         "www/llms-install.md",
         "www/llms-full.txt",

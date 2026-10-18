@@ -15,6 +15,9 @@
 #                                              missing module and file.
 #   scripts/sandbox-api-doc-check.sh --write  regenerate the marked block
 #                                              in every target file.
+#   scripts/sandbox-api-doc-check.sh --write-bridge
+#                                              regenerate only docs/sandbox-api.md's
+#                                              bridge-modules block.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
@@ -24,6 +27,7 @@ START="<!-- mcphost-sandbox-api:start -->"
 END="<!-- mcphost-sandbox-api:end -->"
 MODE="${1:-check}"
 [ "$MODE" = "--write" ] && MODE="write"
+[ "$MODE" = "--write-bridge" ] && MODE="write-bridge"
 
 if [ ! -f "$SOURCE" ]; then
   echo "sandbox-api-doc-check.sh: missing $SOURCE" >&2
@@ -146,6 +150,84 @@ mcphost_bin() {
     done
   done
   cargo run -q --bin mcphost -- "$@"
+}
+
+# Seed SDB: docs/sandbox-api.md's `mcphost-bridge-modules` block is
+# `mcphost bridge-docs-block` (kinds::python::render_bridge_docs_block) byte
+# for byte, so a new BRIDGE_MODULES entry can never leave the doc stale (the
+# msmp_ac07 test compares the same two strings). The marker strings are read
+# back off the rendered block (first and last line), never copied here.
+BRIDGE_DOC="${MCPHOST_SANDBOX_DOC:-docs/sandbox-api.md}"
+
+bridge_block_of() {
+  python3 - "$1" "$2" "$3" <<'PY'
+import sys
+
+path, start, end = sys.argv[1:4]
+with open(path, encoding="utf-8") as f:
+    text = f.read()
+if text.count(start) != 1 or text.count(end) != 1:
+    sys.exit(3)
+sys.stdout.write(text[text.index(start) : text.index(end) + len(end)])
+PY
+}
+
+# Renders the bridge block and validates it (non-empty, wrapped in its own
+# markers, at least one module bullet) before anything reads or writes a file.
+render_bridge_block() {
+  local block first last
+  block="$(mcphost_bin bridge-docs-block)" || return $?
+  first="${block%%$'\n'*}"
+  last="${block##*$'\n'}"
+  case "$first|$last" in
+    "<!--"*":start -->|<!--"*":end -->") ;;
+    *)
+      echo "sandbox-api-doc-check.sh: bridge-docs-block output is empty or lacks its start/end markers; writing nothing" >&2
+      return 2
+      ;;
+  esac
+  if ! grep -qE '^- `mcphost\.[a-z_]+` -- ' <<<"$block"; then
+    echo "sandbox-api-doc-check.sh: bridge-docs-block output has no module bullets; writing nothing" >&2
+    return 2
+  fi
+  printf '%s' "$block"
+}
+
+write_bridge_doc() {
+  local block first last n_start n_end tmp
+  block="$(render_bridge_block)" || return $?
+  first="${block%%$'\n'*}"
+  last="${block##*$'\n'}"
+  n_start=$(grep -Fxc "$first" "$BRIDGE_DOC")
+  n_end=$(grep -Fxc "$last" "$BRIDGE_DOC")
+  if [ "$n_start" -ne 1 ] || [ "$n_end" -ne 1 ]; then
+    echo "sandbox-api-doc-check.sh: $BRIDGE_DOC must have exactly one $first / $last pair (found start=$n_start end=$n_end)" >&2
+    return 2
+  fi
+  tmp="$(mktemp "$BRIDGE_DOC.XXXXXX")" || return $?  # same dir: mv is an atomic rename
+  if ! python3 - "$BRIDGE_DOC" "$first" "$last" "$block" > "$tmp" <<'PY'
+import sys
+
+path, start, end, block = sys.argv[1:5]
+with open(path, encoding="utf-8") as f:
+    text = f.read()
+s, e = text.index(start), text.index(end) + len(end)
+if e <= s:
+    sys.exit("end marker precedes start marker")
+sys.stdout.write(text[:s] + block + text[e:])
+PY
+  then
+    rm -f "$tmp"
+    echo "sandbox-api-doc-check.sh: refusing to write $BRIDGE_DOC: the marker splice failed; file left untouched" >&2
+    return 2
+  fi
+  if [ ! -s "$tmp" ]; then
+    rm -f "$tmp"
+    echo "sandbox-api-doc-check.sh: refusing to write $BRIDGE_DOC: the splice produced an empty file; file left untouched" >&2
+    return 2
+  fi
+  chmod 644 "$tmp"
+  mv "$tmp" "$BRIDGE_DOC"
 }
 
 # The marked block (markers included) of file $1 on stdout.
@@ -323,10 +405,19 @@ write_prompts_doc() {
 RENDERED="$(render_block)" || exit $?
 MODULE_COUNT=$(printf '%s\n' "$RENDERED" | grep -c '^- `mcphost\.')
 
+# --write-bridge: only docs/sandbox-api.md's bridge-modules block (what the
+# msmp_ac07 test pins), none of the other generated docs.
+if [ "$MODE" = "write-bridge" ]; then
+  write_bridge_doc || exit $?
+  echo "sandbox-api-doc-check.sh: wrote the bridge-modules block to $BRIDGE_DOC"
+  exit 0
+fi
+
 if [ "$MODE" = "write" ]; then
   for f in "${TARGETS[@]}"; do
     apply_to_file "$f" "$RENDERED" || exit $?
   done
+  write_bridge_doc || exit $?
   write_capabilities || exit $?
   write_recipe_readme || exit $?
   write_prompts_doc || exit $?
@@ -378,6 +469,23 @@ PY
     fi
   done < <(printf '%s\n' "$RENDERED" | grep -o '`mcphost\.[a-z_]*`' | sed -e 's/`mcphost\.//' -e 's/`//')
 done
+
+BRIDGE_EXPECTED="$(render_bridge_block)" || {
+  echo "sandbox-api-doc-check.sh: could not render the bridge-modules block (mcphost bridge-docs-block failed)" >&2
+  exit 2
+}
+BRIDGE_FIRST="${BRIDGE_EXPECTED%%$'\n'*}"
+BRIDGE_LAST="${BRIDGE_EXPECTED##*$'\n'}"
+if [ ! -f "$BRIDGE_DOC" ]; then
+  echo "sandbox-api-doc-check.sh: $BRIDGE_DOC does not exist (run sandbox-api-doc-check.sh --write)" >&2
+  FAILURES=$((FAILURES + 1))
+elif ! BRIDGE_ACTUAL="$(bridge_block_of "$BRIDGE_DOC" "$BRIDGE_FIRST" "$BRIDGE_LAST")"; then
+  echo "sandbox-api-doc-check.sh: $BRIDGE_DOC must have exactly one $BRIDGE_FIRST / $BRIDGE_LAST pair" >&2
+  FAILURES=$((FAILURES + 1))
+elif [ "$BRIDGE_ACTUAL" != "$BRIDGE_EXPECTED" ]; then
+  echo "sandbox-api-doc-check.sh: $BRIDGE_DOC bridge-modules block differs from render_bridge_docs_block() (run sandbox-api-doc-check.sh --write)" >&2
+  FAILURES=$((FAILURES + 1))
+fi
 
 CAP_EXPECTED="$(mcphost_bin capabilities-section)" || {
   echo "sandbox-api-doc-check.sh: could not render the capabilities section (mcphost capabilities-section failed)" >&2

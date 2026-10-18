@@ -41,41 +41,8 @@ fn host_tools_doc_names_the_reason_beside_the_verb_and_the_check_script_catches_
     assert!(line.contains("external_effect"), "{line}");
 
     // Run the real check script against a scratch copy of what it reads.
-    let dir = std::env::temp_dir().join(format!("mcphost-dryv-ac06-{}-{}", std::process::id(), mcphost::state::now_unix_ms()));
-    let doc_files = common::DOC_CHECK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    for rel in [
-        "scripts/sandbox-api-doc-check.sh",
-        "scripts/host-tools-doc-check.sh",
-        "scripts/protocol-frames-check.sh",
-        "src/protocol/frames.rs",
-        "docs/protocol/frames.md",
-        "www/frames.json",
-        "src/write_verbs.rs",
-        "src/kinds/python.rs",
-        "docs/host-tools.md",
-        "docs/kinds/python.md",
-        "docs/kinds/js.md",
-        "www/llms.txt",
-        "docs/protocol/capabilities.md",
-        // PRD-mcphost-prompts-from-published-tools req 5: the script also checks
-        // docs/protocol/prompts.md.
-        "docs/protocol/prompts.md",
-        "plugin/skills/mcphost/SKILL.md",
-        "src/oauth.rs",
-        // PRD-mcphost-oauth-first-entry-url: the script also checks that every
-        // client page names the one OAUTH_ENTRY_PATH.
-        "README.md",
-        "llms-install.md",
-        "www/llms-install.md",
-        "www/llms-full.txt",
-        "www/index.html",
-        "docs/oauth-connect.md",
-    ] {
-        let dest = dir.join(rel);
-        std::fs::create_dir_all(dest.parent().expect("parent")).expect("mkdir");
-        std::fs::copy(repo_root().join(rel), &dest).unwrap_or_else(|e| panic!("copy {rel}: {e}"));
-    }
-    drop(doc_files);
+    // The shared scratch copy holds every file the script reads (no private list to drift).
+    let dir = common::doc_check_scratch("dryv-ac06");
     let run = |args: &[&str]| {
         Command::new("bash")
             .arg(dir.join("scripts/sandbox-api-doc-check.sh"))

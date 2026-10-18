@@ -204,6 +204,11 @@ enum Command {
     /// PRD-mcphost-prompts-from-published-tools requirement 5: print
     /// `docs/protocol/prompts.md`, rendered from `recipe_prompts()`.
     PromptsSection,
+    /// PRD-mcphost-sampling-from-tools R1/AC7 (seed SDB): print the marked
+    /// `<!-- mcphost-bridge-modules:start/end -->` block `docs/sandbox-api.md`
+    /// carries (`kinds::python::render_bridge_docs_block`, markers included)
+    /// for `scripts/sandbox-api-doc-check.sh`.
+    BridgeDocsBlock,
     /// PRD-mcphost-first-hour-support-surface requirement 3 (AC4):
     /// regenerate `docs/plans.md` from `billing::plans_from_catalog` over
     /// `PlanCatalog::default_catalog()` -- the exact data `billing.plans`
@@ -1351,6 +1356,10 @@ async fn main() -> anyhow::Result<()> {
         }
         Command::ResourcesDoc => {
             print!("{}", mcphost::resources::render_resources_doc());
+            Ok(())
+        }
+        Command::BridgeDocsBlock => {
+            println!("{}", mcphost::kinds::python::render_bridge_docs_block());
             Ok(())
         }
         Command::RecipeSection => {

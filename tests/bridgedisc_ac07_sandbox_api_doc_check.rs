@@ -45,6 +45,8 @@ const TOUCHED: &[&str] = &[
     "www/llms-full.txt",
     "www/index.html",
     "docs/oauth-connect.md",
+    // seed SDB: the bridge-modules block in docs/sandbox-api.md is checked too.
+    "docs/sandbox-api.md",
 ];
 
 fn scratch_copy(label: &str) -> std::path::PathBuf {
