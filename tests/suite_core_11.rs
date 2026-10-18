@@ -23,6 +23,8 @@ mod timp;
 mod tssdk;
 #[path = "support/uprg.rs"]
 mod uprg;
+#[path = "support/vbd_calls.rs"]
+mod vbd_calls;
 #[path = "support/xlinks.rs"]
 mod xlinks;
 #[path = "support/xlinks_cli.rs"]
@@ -476,6 +478,16 @@ mod vaultst_ac07_provider_set_presets_fill_urls;
 mod vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green;
 #[path = "vaultst_ac09_live_vault_status_trailer.rs"]
 mod vaultst_ac09_live_vault_status_trailer;
+#[path = "vbd_ac01_validated_by_default_coverage.rs"]
+mod vbd_ac01_validated_by_default_coverage;
+#[path = "vbd_ac02_three_unvalidated_verbs_now_refuse.rs"]
+mod vbd_ac02_three_unvalidated_verbs_now_refuse;
+#[path = "vbd_ac04_owner_registry_cross_contract.rs"]
+mod vbd_ac04_owner_registry_cross_contract;
+#[path = "vbd_ac06_descriptor_enums_from_constants.rs"]
+mod vbd_ac06_descriptor_enums_from_constants;
+#[path = "vbd_ac07_every_schema_valid_call_reaches_its_handler.rs"]
+mod vbd_ac07_every_schema_valid_call_reaches_its_handler;
 #[path = "verbfwd_ac01_trigger_set_dotted_forwards.rs"]
 mod verbfwd_ac01_trigger_set_dotted_forwards;
 #[path = "verbfwd_ac02_every_spelling_forwards_identically.rs"]

@@ -29864,7 +29864,8 @@
           "tool",
           "as"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.tool.fork",
       "output_schema": {
@@ -33011,7 +33012,8 @@
         "x-deprecated": {
           "replaced_by": "host.tool.fork",
           "sunset": "2026-12-31"
-        }
+        },
+        "x-mcphost-validated": true
       },
       "name": "host.tool_fork",
       "since": "0.108.156"
@@ -43548,7 +43550,8 @@
           "tool",
           "as"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_tool_fork",
       "since": "0.108.156"
