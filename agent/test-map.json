@@ -38,6 +38,14 @@
     "AC8": "tests/test_live_smoke.py"
   },
   "ac_test_map_by_prefix": {
+    "oschv": {
+      "_prd": "PRD-mcphost-output-schema-tenant-values-opaque.md (test_prefix: oschv)",
+      "AC1": "tests/oschv_ac01_opaque_pointers_resolve.rs",
+      "AC2": "tests/oschv_ac02_chain_step_array_result_validates.rs",
+      "AC3": "tests/oschv_ac03_state_values_generated_validate.rs",
+      "AC4": "tests/oschv_ac04_corpus_still_validates_diff_widened.rs",
+      "AC5": "tests/oschv_ac05_declared_output_untyped_is_opaque.rs"
+    },
     "nfs": {
       "_prd": "PRD-mcphost-notes-to-future-self.md (test_prefix: nfs)",
       "AC1": "tests/nfs_ac01_put_emits_list_changed_and_suffix.rs",

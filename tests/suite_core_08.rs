@@ -630,6 +630,16 @@ mod orgmb_ac01_owner_removes_member;
 mod orgmb_ac02_concurrent_create_one_winner;
 #[path = "orgmb_ac03_llms_txt_and_quickstart_name_org_verbs.rs"]
 mod orgmb_ac03_llms_txt_and_quickstart_name_org_verbs;
+#[path = "oschv_ac01_opaque_pointers_resolve.rs"]
+mod oschv_ac01_opaque_pointers_resolve;
+#[path = "oschv_ac02_chain_step_array_result_validates.rs"]
+mod oschv_ac02_chain_step_array_result_validates;
+#[path = "oschv_ac03_state_values_generated_validate.rs"]
+mod oschv_ac03_state_values_generated_validate;
+#[path = "oschv_ac04_corpus_still_validates_diff_widened.rs"]
+mod oschv_ac04_corpus_still_validates_diff_widened;
+#[path = "oschv_ac05_declared_output_untyped_is_opaque.rs"]
+mod oschv_ac05_declared_output_untyped_is_opaque;
 #[path = "outsch_ac01_oneof_budget_falsifier.rs"]
 mod outsch_ac01_oneof_budget_falsifier;
 #[path = "outsch_ac02_every_canonical_declares_an_object_output_schema.rs"]

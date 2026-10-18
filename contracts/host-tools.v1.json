@@ -14928,13 +14928,7 @@
           "purged": {
             "type": "boolean"
           },
-          "result": {
-            "type": [
-              "object",
-              "string",
-              "null"
-            ]
-          },
+          "result": {},
           "result_ref": {
             "properties": {
               "bytes": {
@@ -15289,38 +15283,7 @@
                     "null"
                   ]
                 },
-                "result": {
-                  "properties": {
-                    "dry_run": {
-                      "type": [
-                        "object",
-                        "null"
-                      ]
-                    },
-                    "event": {
-                      "type": [
-                        "object",
-                        "null"
-                      ]
-                    },
-                    "result": {
-                      "type": [
-                        "object",
-                        "null"
-                      ]
-                    },
-                    "schema": {
-                      "type": [
-                        "object",
-                        "null"
-                      ]
-                    }
-                  },
-                  "type": [
-                    "object",
-                    "null"
-                  ]
-                },
+                "result": {},
                 "result_ref": {
                   "properties": {
                     "bytes": {
@@ -15438,20 +15401,7 @@
           "bytes": {
             "type": "integer"
           },
-          "data": {
-            "properties": {
-              "blob": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            },
-            "type": [
-              "object",
-              "string"
-            ]
-          },
+          "data": {},
           "n": {
             "type": "integer"
           },
@@ -15758,95 +15708,7 @@
           "purged": {
             "type": "boolean"
           },
-          "result": {
-            "properties": {
-              "dry_run": {
-                "properties": {
-                  "delivered": {
-                    "type": [
-                      "boolean",
-                      "null"
-                    ]
-                  },
-                  "rolled_back": {
-                    "type": [
-                      "boolean",
-                      "null"
-                    ]
-                  },
-                  "writes": {
-                    "type": [
-                      "array",
-                      "null"
-                    ]
-                  }
-                },
-                "type": [
-                  "object",
-                  "null"
-                ]
-              },
-              "event": {
-                "properties": {
-                  "body": {
-                    "properties": {
-                      "commits": {
-                        "type": [
-                          "array",
-                          "null"
-                        ]
-                      }
-                    },
-                    "type": [
-                      "object",
-                      "null"
-                    ]
-                  },
-                  "headers": {
-                    "properties": {
-                      "content-type": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "x-hub-signature-256": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      }
-                    },
-                    "type": [
-                      "object",
-                      "null"
-                    ]
-                  },
-                  "received_unix": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ]
-                  }
-                },
-                "type": [
-                  "object",
-                  "null"
-                ]
-              },
-              "msg": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            },
-            "type": [
-              "object",
-              "string",
-              "null"
-            ]
-          },
+          "result": {},
           "result_ref": {
             "properties": {
               "bytes": {
@@ -17144,46 +17006,7 @@
               "null"
             ]
           },
-          "value": {
-            "properties": {
-              "at": {
-                "type": [
-                  "integer",
-                  "null"
-                ]
-              },
-              "n": {
-                "type": [
-                  "integer",
-                  "null"
-                ]
-              },
-              "source": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "text": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "who": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            },
-            "type": [
-              "object",
-              "string",
-              "integer",
-              "null"
-            ]
-          }
+          "value": {}
         },
         "required": [
           "found",
@@ -17401,149 +17224,7 @@
                     "null"
                   ]
                 },
-                "value": {
-                  "properties": {
-                    "download_url": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "entries_done": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    },
-                    "entries_total": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    },
-                    "expires_unix": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    },
-                    "imported": {
-                      "properties": {
-                        "docs": {
-                          "type": "integer"
-                        },
-                        "models": {
-                          "type": "integer"
-                        },
-                        "rows": {
-                          "type": "integer"
-                        },
-                        "state": {
-                          "type": "integer"
-                        },
-                        "tables": {
-                          "type": "integer"
-                        },
-                        "tools": {
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "docs",
-                        "models",
-                        "rows",
-                        "state",
-                        "tables",
-                        "tools"
-                      ],
-                      "type": [
-                        "object",
-                        "null"
-                      ]
-                    },
-                    "manifest": {
-                      "items": {
-                        "properties": {
-                          "kind": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          },
-                          "spec": {
-                            "properties": {
-                              "schema": {
-                                "properties": {
-                                  "type": {
-                                    "type": "string"
-                                  }
-                                },
-                                "required": [
-                                  "type"
-                                ],
-                                "type": "object"
-                              }
-                            },
-                            "required": [
-                              "schema"
-                            ],
-                            "type": "object"
-                          }
-                        },
-                        "required": [
-                          "kind",
-                          "name",
-                          "spec"
-                        ],
-                        "type": "object"
-                      },
-                      "type": [
-                        "array",
-                        "null"
-                      ]
-                    },
-                    "n": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    },
-                    "secrets_to_set": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": [
-                        "array",
-                        "null"
-                      ]
-                    },
-                    "size_bytes": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    },
-                    "skipped": {
-                      "type": [
-                        "array",
-                        "null"
-                      ]
-                    },
-                    "unrecognised_paths": {
-                      "type": [
-                        "array",
-                        "null"
-                      ]
-                    }
-                  },
-                  "required": [],
-                  "type": [
-                    "integer",
-                    "object",
-                    "string",
-                    "null"
-                  ]
-                }
+                "value": {}
               },
               "required": [],
               "type": "object"
@@ -17601,154 +17282,7 @@
       "output_schema": {
         "properties": {
           "rows": {
-            "items": {
-              "properties": {
-                "acked": {
-                  "type": [
-                    "boolean",
-                    "null"
-                  ]
-                },
-                "amount": {
-                  "type": [
-                    "number",
-                    "null"
-                  ]
-                },
-                "at": {
-                  "type": [
-                    "number",
-                    "null"
-                  ]
-                },
-                "body": {
-                  "properties": {
-                    "amount": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    },
-                    "currency": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "type": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    }
-                  },
-                  "type": [
-                    "object",
-                    "null"
-                  ]
-                },
-                "category": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "code": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                },
-                "day": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                },
-                "delivery_id": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "headers": {
-                  "properties": {
-                    "content-type": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "stripe-signature": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "x-mcphost-delivery-id": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "x-mcphost-signature": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    }
-                  },
-                  "type": [
-                    "object",
-                    "null"
-                  ]
-                },
-                "id": {
-                  "type": [
-                    "string",
-                    "integer",
-                    "null"
-                  ]
-                },
-                "last_value": {
-                  "type": [
-                    "number",
-                    "null"
-                  ]
-                },
-                "metric": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "ms": {
-                  "type": [
-                    "number",
-                    "null"
-                  ]
-                },
-                "received_at": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                },
-                "url": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "v": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                }
-              },
-              "type": "object"
-            },
+            "items": {},
             "type": "array"
           },
           "table": {
@@ -22319,26 +21853,7 @@
             ]
           },
           "preset": {},
-          "result": {
-            "properties": {
-              "region": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "rows": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            },
-            "type": [
-              "object",
-              "null"
-            ]
-          },
+          "result": {},
           "rows": {
             "items": {
               "properties": {
@@ -22429,32 +21944,7 @@
           "steps": {
             "items": {
               "properties": {
-                "result": {
-                  "properties": {
-                    "region": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "rows": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "url": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    }
-                  },
-                  "type": [
-                    "object",
-                    "null"
-                  ]
-                },
+                "result": {},
                 "status": {
                   "type": [
                     "string",
@@ -23887,52 +23377,7 @@
           "exit_code": {
             "type": "integer"
           },
-          "payload": {
-            "properties": {
-              "analysis": {
-                "properties": {
-                  "diagnosis": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  }
-                },
-                "type": [
-                  "object",
-                  "null"
-                ]
-              },
-              "count": {
-                "type": [
-                  "integer",
-                  "null"
-                ]
-              },
-              "diagnosis": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "ok": {
-                "type": [
-                  "boolean",
-                  "null"
-                ]
-              },
-              "raw": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            },
-            "type": [
-              "object",
-              "null"
-            ]
-          },
+          "payload": {},
           "schema": {
             "properties": {
               "properties": {
@@ -24879,134 +24324,7 @@
               "null"
             ]
           },
-          "result": {
-            "properties": {
-              "a": {},
-              "appended": {
-                "type": [
-                  "integer",
-                  "null"
-                ]
-              },
-              "b": {},
-              "city": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "data": {
-                "properties": {
-                  "status": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  }
-                },
-                "type": [
-                  "object",
-                  "null"
-                ]
-              },
-              "delivered": {
-                "type": [
-                  "boolean",
-                  "null"
-                ]
-              },
-              "n": {
-                "type": [
-                  "integer",
-                  "null"
-                ]
-              },
-              "ok": {
-                "type": [
-                  "boolean",
-                  "null"
-                ]
-              },
-              "payload": {
-                "properties": {
-                  "data": {
-                    "properties": {
-                      "status": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      }
-                    },
-                    "type": [
-                      "object",
-                      "null"
-                    ]
-                  },
-                  "ingestion_status": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  }
-                },
-                "type": [
-                  "object",
-                  "null"
-                ]
-              },
-              "table": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "total": {
-                "type": [
-                  "integer",
-                  "null"
-                ]
-              },
-              "would_post": {
-                "properties": {
-                  "body": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "channel": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "data": {
-                    "properties": {
-                      "n": {
-                        "type": [
-                          "integer",
-                          "null"
-                        ]
-                      }
-                    },
-                    "type": [
-                      "object",
-                      "null"
-                    ]
-                  }
-                },
-                "type": [
-                  "object",
-                  "null"
-                ]
-              }
-            },
-            "type": [
-              "object",
-              "null"
-            ]
-          },
+          "result": {},
           "schedule": {
             "type": [
               "string",
@@ -25158,56 +24476,7 @@
                     "null"
                   ]
                 },
-                "result": {
-                  "properties": {
-                    "a": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    },
-                    "appended": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    },
-                    "ids": {
-                      "type": [
-                        "array",
-                        "null"
-                      ]
-                    },
-                    "leads": {
-                      "type": [
-                        "array",
-                        "null"
-                      ]
-                    },
-                    "owner": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "rows": {
-                      "type": [
-                        "array",
-                        "null"
-                      ]
-                    },
-                    "table": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    }
-                  },
-                  "type": [
-                    "object",
-                    "null"
-                  ]
-                },
+                "result": {},
                 "side_effects": {
                   "type": [
                     "boolean",

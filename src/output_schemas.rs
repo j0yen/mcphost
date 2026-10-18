@@ -40,6 +40,9 @@ fn registry() -> &'static Registry {
                 status.insert("enum".to_string(), crate::tasks::TaskStatus::schema_enum());
             }
         }
+        if let Err(bad) = widen_opaque(&mut parsed, OPAQUE_FIELDS) {
+            panic!("OPAQUE_FIELDS: {bad}"); // allowlist: a renamed field must fail the build, never silently drop the rule; `oschv_ac01` asserts every pointer resolves
+        }
         parsed
             .into_iter()
             .map(|(k, mut v)| {
@@ -48,6 +51,51 @@ fn registry() -> &'static Registry {
             })
             .collect()
     })
+}
+
+/// PRD-mcphost-output-schema-tenant-values-opaque R1: every output path whose
+/// value the TENANT defines (a chain step's result, a stored state value, a
+/// tool's payload), as `(canonical tool, JSON pointer into its schema)`. The
+/// corpus can only ever sample such a value, so the registry declares each
+/// node free-form (`{}`) at load instead of typing it from the sample. A new
+/// tenant-defined output field is one line here; `oschv_ac03` fails if one is
+/// forgotten.
+pub const OPAQUE_FIELDS: &[(&str, &str)] = &[
+    ("host.tool.call", "/properties/steps/items/properties/result"),
+    ("host.tool.call", "/properties/result"),
+    ("host.runs.get", "/properties/result"),
+    ("host.runs.get", "/properties/children/items/properties/result"),
+    ("host.runs.list", "/properties/runs/items/properties/result"),
+    ("host.runs.wait", "/properties/result"),
+    ("host.runs.part", "/properties/data"),
+    ("host.state.get", "/properties/value"),
+    ("host.state.list", "/properties/keys/items/properties/value"),
+    ("host.state.query", "/properties/rows/items"),
+    ("host.tool.run", "/properties/payload"),
+    ("host.tool.test", "/properties/result"),
+    ("host.tool.test", "/properties/steps/items/properties/result"),
+];
+
+/// Replace the node each `(tool, pointer)` names with `{}`. `Err` names the
+/// first pointer that resolves to nothing.
+pub fn widen_opaque(schemas: &mut BTreeMap<String, Map<String, Value>>, fields: &[(&str, &str)]) -> Result<(), String> {
+    for (tool, pointer) in fields {
+        let node = schemas
+            .get_mut(*tool)
+            .and_then(|schema| pointer_mut(schema, pointer))
+            .ok_or_else(|| format!("{tool} {pointer} does not resolve to a schema node"))?;
+        *node = Value::Object(Map::new());
+    }
+    Ok(())
+}
+
+fn pointer_mut<'a>(schema: &'a mut Map<String, Value>, pointer: &str) -> Option<&'a mut Value> {
+    let mut parts = pointer.strip_prefix('/')?.split('/');
+    let mut node = schema.get_mut(parts.next()?)?;
+    for part in parts {
+        node = node.get_mut(part)?;
+    }
+    Some(node)
 }
 
 /// The corpus the schemas are drafted from cannot tell an `Option<T>` (the
