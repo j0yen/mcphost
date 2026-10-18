@@ -165,6 +165,7 @@ async fn send_return_email(
              Last call: {last_call}\n\nPick back up here:\n\n{url}\n\n— mcphost\nmcphost.dev",
             url = state.public_url,
         ),
+        ..Default::default()
     };
     state.email_client.send(&message).await
 }

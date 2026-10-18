@@ -105,11 +105,13 @@ async fn census_counts_list_verbs_cursors_and_end_of_list_conventions() {
     // window with a note-key cursor, registered unpaged in
     // `paged::UNPAGED_VERBS`),
     // plus host.notify.channel_list and host.notify.receipts
-    // (PRD-mcphost-notify-user-channel, both registered unpaged).
+    // (PRD-mcphost-notify-user-channel, both registered unpaged), plus
+    // host.email.sends (PRD-mcphost-send-email-from-tool, a newest-first
+    // window registered unpaged).
     assert_eq!(
         list_shaped.len(),
-        39,
-        "list-shaped verbs drifted from the PRD baseline 32 + host.ask.list + host.key.list + host.calls.list + host.index.list + host.note.list + host.notify.channel_list + host.notify.receipts: {list_shaped:?}"
+        40,
+        "list-shaped verbs drifted from the PRD baseline 32 + host.ask.list + host.key.list + host.calls.list + host.index.list + host.note.list + host.notify.channel_list + host.notify.receipts + host.email.sends: {list_shaped:?}"
     );
     assert_eq!(
         conventions,

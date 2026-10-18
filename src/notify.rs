@@ -561,6 +561,7 @@ impl Envelope {
             from,
             subject: format!("[{}] {}", self.level.as_str(), self.text.chars().take(60).collect::<String>()),
             text_body: body,
+            ..Default::default()
         }
     }
 }
