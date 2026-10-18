@@ -8,6 +8,8 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 mod ci_sandbox_support;
+#[path = "support/vbd_calls.rs"]
+mod vbd_calls;
 
 #[path = "ac01_extended_gates_prd_path_resolves_and_matches_card.rs"]
 mod ac01_extended_gates_prd_path_resolves_and_matches_card;
@@ -93,3 +95,7 @@ mod suitecap_ac01_plan_never_exceeds_max_suites_and_weights_follow;
 mod toolname_ac08_tools_list_counts_updated;
 #[path = "vaultst_ac09_deferral_is_justified.rs"]
 mod vaultst_ac09_deferral_is_justified;
+#[path = "vbd_ac03_skips_come_from_the_owner_registry.rs"]
+mod vbd_ac03_skips_come_from_the_owner_registry;
+#[path = "vbd_ac05_unknown_argument_everywhere.rs"]
+mod vbd_ac05_unknown_argument_everywhere;

@@ -706,12 +706,8 @@ mod vaultst_ac09_live_vault_status_trailer;
 mod vbd_ac01_validated_by_default_coverage;
 #[path = "vbd_ac02_three_unvalidated_verbs_now_refuse.rs"]
 mod vbd_ac02_three_unvalidated_verbs_now_refuse;
-#[path = "vbd_ac03_skips_come_from_the_owner_registry.rs"]
-mod vbd_ac03_skips_come_from_the_owner_registry;
 #[path = "vbd_ac04_owner_registry_cross_contract.rs"]
 mod vbd_ac04_owner_registry_cross_contract;
-#[path = "vbd_ac05_unknown_argument_everywhere.rs"]
-mod vbd_ac05_unknown_argument_everywhere;
 #[path = "vbd_ac06_descriptor_enums_from_constants.rs"]
 mod vbd_ac06_descriptor_enums_from_constants;
 #[path = "vbd_ac07_every_schema_valid_call_reaches_its_handler.rs"]
