@@ -28,6 +28,18 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "state_ac01_kv_roundtrip.rs"]
+mod state_ac01_kv_roundtrip;
+#[path = "state_ac04_table_query.rs"]
+mod state_ac04_table_query;
+#[path = "state_ac05_schema_violation.rs"]
+mod state_ac05_schema_violation;
+#[path = "state_ac06_quota_exceeded.rs"]
+mod state_ac06_quota_exceeded;
+#[path = "state_ac08_tenant_isolation.rs"]
+mod state_ac08_tenant_isolation;
+#[path = "state_ac09_cascade_delete.rs"]
+mod state_ac09_cascade_delete;
 #[path = "statusfeed_ac02_exec_disabled_degrades.rs"]
 mod statusfeed_ac02_exec_disabled_degrades;
 #[path = "statusfeed_ac03_major_incident_outage.rs"]
