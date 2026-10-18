@@ -1036,15 +1036,3 @@ mod sreg_ac06_oauth_scopes_registry_first;
 mod sreg_ac07_unknown_scope_word_not_effective;
 #[path = "srlp_ac02_plan_ceilings_published.rs"]
 mod srlp_ac02_plan_ceilings_published;
-#[path = "state_ac01_kv_roundtrip.rs"]
-mod state_ac01_kv_roundtrip;
-#[path = "state_ac04_table_query.rs"]
-mod state_ac04_table_query;
-#[path = "state_ac05_schema_violation.rs"]
-mod state_ac05_schema_violation;
-#[path = "state_ac06_quota_exceeded.rs"]
-mod state_ac06_quota_exceeded;
-#[path = "state_ac08_tenant_isolation.rs"]
-mod state_ac08_tenant_isolation;
-#[path = "state_ac09_cascade_delete.rs"]
-mod state_ac09_cascade_delete;

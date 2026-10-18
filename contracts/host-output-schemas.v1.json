@@ -2531,7 +2531,7 @@
     ],
     "type": "object"
   },
-  "host.claim.dns": {
+  "host.claim.dns.start": {
     "properties": {
       "method": {
         "type": "string"

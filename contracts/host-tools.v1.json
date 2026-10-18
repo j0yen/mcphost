@@ -6089,7 +6089,7 @@
         ],
         "type": "object"
       },
-      "name": "host.claim.dns",
+      "name": "host.claim.dns.start",
       "output_schema": {
         "$defs": {
           "ErrorEnvelope": {
@@ -6157,7 +6157,7 @@
       "since": "0.108.230"
     },
     {
-      "description": "Look up the TXT record host.claim.dns asked for and, on a match, verify ownership. A mismatch answers dns_record_not_found {expected, seen}.",
+      "description": "Look up the TXT record host.claim.dns.start asked for and, on a match, verify ownership. A mismatch answers dns_record_not_found {expected, seen}.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -38412,7 +38412,7 @@
       "since": "0.103.1"
     },
     {
-      "alias_of": "host.claim.dns",
+      "alias_of": "host.claim.dns.start",
       "description": "Verify ownership with a DNS record: returns the TXT record to publish at _mcphost.<domain>. Then call host.claim.dns.check.",
       "input_schema": {
         "additionalProperties": false,
@@ -38443,12 +38443,12 @@
         ],
         "type": "object"
       },
-      "name": "host_claim_dns",
+      "name": "host_claim_dns_start",
       "since": "0.108.230"
     },
     {
       "alias_of": "host.claim.dns.check",
-      "description": "Look up the TXT record host.claim.dns asked for and, on a match, verify ownership. A mismatch answers dns_record_not_found {expected, seen}.",
+      "description": "Look up the TXT record host.claim.dns.start asked for and, on a match, verify ownership. A mismatch answers dns_record_not_found {expected, seen}.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
