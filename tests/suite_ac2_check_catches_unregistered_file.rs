@@ -19,8 +19,8 @@ fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-/// Copy `tests/`, `scripts/gen-test-suites.sh`, `scripts/ci-test-partition.sh`
-/// and `Cargo.toml` into a fresh temp dir. `gen-test-suites.sh` only reads
+/// Copy `tests/`, `scripts/gen-test-suites.sh`, `scripts/ci-test-partition.sh`,
+/// `scripts/ci-suite-weights.json` and `Cargo.toml` into a fresh temp dir. `gen-test-suites.sh` only reads
 /// file text (never compiles anything), so this is enough for it to run for
 /// real without touching the crate this test is itself compiled from.
 fn scratch_copy() -> PathBuf {
@@ -48,6 +48,12 @@ fn scratch_copy() -> PathBuf {
         scripts_dir.join("ci-test-partition.sh"),
     )
     .expect("copy ci-test-partition.sh");
+    // gen-test-suites.sh --check also holds the weights file to the suite set.
+    fs::copy(
+        root.join("scripts/ci-suite-weights.json"),
+        scripts_dir.join("ci-suite-weights.json"),
+    )
+    .expect("copy ci-suite-weights.json");
     fs::copy(root.join("Cargo.toml"), scratch.join("Cargo.toml")).expect("copy Cargo.toml");
 
     #[cfg(unix)]
