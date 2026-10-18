@@ -1,10 +1,11 @@
 //! PRD-mcphost-recipe-golden-path-tests
 //! AC7 -- Given a PR that breaks one recipe step (fixture route renamed),
 //! When CI runs, Then the `recipes-golden-path` job fails on that recipe only
-//! and the job finished within 6 minutes.
+//! and the golden run finished within 6 minutes.
 //!
 //! What a test can prove without a CI run: the job exists, runs every `rgpt_`
-//! test on every PR, carries a 6-minute cap and no `needs:`; and a renamed
+//! test on every PR, times its golden RUN step at 6 minutes (the job cap
+//! covers a cold compile too) and has no `needs:`; and a renamed
 //! fixture route makes that recipe's golden path fail while another recipe's
 //! still passes. The wall time of a real runner is the PRD's AC8-style live
 //! evidence and is read from the first CI run after landing.
@@ -30,17 +31,39 @@ fn job_text() -> String {
     lines[start..end].join("\n")
 }
 
+/// The `timeout-minutes:` of the first step whose `- name:` is `step_name`.
+fn step_cap(job: &str, step_name: &str) -> u32 {
+    let marker = format!("- name: {step_name}");
+    let at = job.find(&marker).unwrap_or_else(|| panic!("a `{step_name}` step in the job"));
+    job[at..]
+        .lines()
+        .skip(1)
+        .take_while(|l| !l.trim_start().starts_with("- name:"))
+        .find_map(|l| l.trim().strip_prefix("timeout-minutes:"))
+        .unwrap_or_else(|| panic!("the `{step_name}` step carries no timeout-minutes"))
+        .trim()
+        .parse()
+        .expect("numeric step timeout")
+}
+
 #[test]
 fn rgpt_ac07_ci_job_runs_every_rgpt_test_inside_six_minutes() {
     let job = job_text();
-    let cap: u32 = job
+    // The 6 minutes bound the golden RUN (a step), not a cold compile: a job-level
+    // 6-minute cap cancelled the cold build before its Post step could save the
+    // rust-cache, so the cache was never written (seed GPC, 10-18).
+    let run_cap = step_cap(&job, "cargo test (golden paths)");
+    assert_eq!(run_cap, 6, "the golden-path RUN step must be capped at 6 minutes, found {run_cap}");
+    let job_cap: u32 = job
         .lines()
-        .find_map(|l| l.trim().strip_prefix("timeout-minutes:"))
-        .expect("timeout-minutes")
+        .find_map(|l| l.strip_prefix("    timeout-minutes:"))
+        .expect("job-level timeout-minutes")
         .trim()
         .parse()
         .expect("numeric timeout");
-    assert!(cap <= 6, "the job must be capped at 6 minutes, found {cap}");
+    assert!(job_cap > run_cap, "the job cap ({job_cap}) must exceed the run step cap ({run_cap}) so a cold compile can finish and save the cache");
+    assert!(job_cap <= 20, "the job cap must stay <= 20 minutes, found {job_cap}");
+    assert!(job.contains("--no-run"), "the compile must be its own step (cargo test ... --no-run) ahead of the timed run");
     assert!(job.contains("name: recipes-golden-path"), "the context name is the job name");
     assert!(!job.contains("needs:"), "the job must start with the others, not wait on them");
     assert!(job.contains("rgpt_ -- --nocapture"), "the job must run the rgpt_ tests: {job}");
