@@ -58,6 +58,7 @@ def main(args):
         ("mcphost.channel.read", lambda: mcphost.channel.read(args["cid"])),
         ("mcphost.msg.send", lambda: mcphost.msg.send(args["to"], {"hello": 1})),
         ("mcphost.msg.inbox", lambda: mcphost.msg.inbox()),
+        ("mcphost.email.send", lambda: mcphost.email.send(args["owner"], "probe", "probe")),
         ("mcphost.table.drop", lambda: table.drop("rs_scratch")),
     ]
     for name, fn in steps:
@@ -98,6 +99,16 @@ pub async fn probe_real_returns() -> Option<BTreeMap<String, Value>> {
     .await
     .expect("register edge");
 
+    // `mcphost.email.send` mails the verified owner (the probe tenant has none
+    // until this row says so).
+    let conn = rusqlite::Connection::open(server.data_dir.0.join("mcphost.db")).expect("open raw db");
+    conn.execute(
+        "UPDATE tenants SET owner_email = 'owner@example.com', owner_verified_at = 1700000000 WHERE namespace = ?1",
+        rusqlite::params![ns],
+    )
+    .expect("set owner");
+    drop(conn);
+
     client.tools_call("host.group.create", json!({"name": "rs"})).await.expect("group.create");
     let opened = extract_structured(
         &client.tools_call("host.channel.open", json!({"group": "rs"})).await.expect("channel.open"),
@@ -112,7 +123,7 @@ pub async fn probe_real_returns() -> Option<BTreeMap<String, Value>> {
         .await
         .expect("publish probe");
     let result = extract_structured(
-        &poll_until_ready(&client, &format!("{ns}.probe"), json!({"cid": cid, "to": ns_b}), Duration::from_secs(20))
+        &poll_until_ready(&client, &format!("{ns}.probe"), json!({"cid": cid, "to": ns_b, "owner": "owner@example.com"}), Duration::from_secs(20))
             .await
             .unwrap_or_else(|e| panic!("probe call must succeed: {} {}", e.code, e.message)),
     );

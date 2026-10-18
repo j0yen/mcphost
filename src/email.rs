@@ -41,13 +41,34 @@ impl EmailProvider {
 /// `from`/`reply_to` travel with the message (rather than living on the
 /// client) so the display-name form of `$MCPHOST_EMAIL_FROM` (e.g.
 /// `mcphost <hello@mcphost.dev>`) reaches the provider verbatim.
-#[derive(Debug, Clone)]
+///
+/// PRD-mcphost-send-email-from-tool R3: `html_body`, `headers` and
+/// `attachments` are the send verb's additions; the claim path leaves them
+/// at their `Default` (none / empty) and its wire body is unchanged.
+#[derive(Debug, Clone, Default)]
 pub struct EmailMessage {
     pub to: String,
     pub from: String,
     pub reply_to: String,
     pub subject: String,
     pub text_body: String,
+    pub html_body: Option<String>,
+    pub headers: Vec<(String, String)>,
+    pub attachments: Vec<EmailAttachment>,
+}
+
+/// One attachment on an [`EmailMessage`]: `content` is already base64.
+#[derive(Debug, Clone, Default)]
+pub struct EmailAttachment {
+    pub filename: String,
+    pub content_type: String,
+    pub content: String,
+}
+
+/// What the provider answered for one accepted message.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SendReceipt {
+    pub provider_message_id: Option<String>,
 }
 
 /// requirement 2: the bare address a human can actually reply to --
@@ -102,6 +123,13 @@ impl EmailConfig {
 #[async_trait::async_trait]
 pub trait EmailClient: Send + Sync {
     async fn send(&self, message: &EmailMessage) -> Result<(), AppError>;
+
+    /// [`Self::send`] plus the provider's message id. The default keeps
+    /// every existing implementor valid: it sends and reports no id.
+    async fn send_message(&self, message: &EmailMessage) -> Result<SendReceipt, AppError> {
+        self.send(message).await?;
+        Ok(SendReceipt::default())
+    }
 }
 
 /// The real implementation: `POST $MCPHOST_EMAIL_API_URL`, JSON body,
@@ -133,32 +161,74 @@ impl HttpEmailClient {
 #[async_trait::async_trait]
 impl EmailClient for HttpEmailClient {
     async fn send(&self, message: &EmailMessage) -> Result<(), AppError> {
+        self.send_message(message).await.map(|_| ())
+    }
+
+    async fn send_message(&self, message: &EmailMessage) -> Result<SendReceipt, AppError> {
         // AC3: the request shape (body keys and auth header) is selected
         // by `self.provider` alone -- `api_url`/`api_key` stay the same
         // two env-driven values either way; `from`/`reply_to` travel on
         // the message (requirement 2).
         let req = match self.provider {
             EmailProvider::Resend => {
-                let mut req = self.http.post(&self.api_url).json(&json!({
+                let mut body = json!({
                     "from": message.from,
                     "to": message.to,
                     "reply_to": message.reply_to,
                     "subject": message.subject,
                     "text": message.text_body,
-                }));
+                });
+                if let Some(obj) = body.as_object_mut() {
+                    if let Some(html) = &message.html_body {
+                        obj.insert("html".to_string(), json!(html));
+                    }
+                    if !message.headers.is_empty() {
+                        let headers: serde_json::Map<String, serde_json::Value> =
+                            message.headers.iter().map(|(k, v)| (k.clone(), json!(v))).collect();
+                        obj.insert("headers".to_string(), serde_json::Value::Object(headers));
+                    }
+                    if !message.attachments.is_empty() {
+                        let attachments: Vec<_> = message
+                            .attachments
+                            .iter()
+                            .map(|a| json!({"filename": a.filename, "content": a.content}))
+                            .collect();
+                        obj.insert("attachments".to_string(), json!(attachments));
+                    }
+                }
+                let mut req = self.http.post(&self.api_url).json(&body);
                 if let Some(key) = self.api_key.as_deref() {
                     req = req.bearer_auth(key);
                 }
                 req
             }
             EmailProvider::Postmark => {
-                let mut req = self.http.post(&self.api_url).json(&json!({
+                let mut body = json!({
                     "From": message.from,
                     "To": message.to,
                     "ReplyTo": message.reply_to,
                     "Subject": message.subject,
                     "TextBody": message.text_body,
-                }));
+                });
+                if let Some(obj) = body.as_object_mut() {
+                    if let Some(html) = &message.html_body {
+                        obj.insert("HtmlBody".to_string(), json!(html));
+                    }
+                    if !message.headers.is_empty() {
+                        let headers: Vec<_> =
+                            message.headers.iter().map(|(k, v)| json!({"Name": k, "Value": v})).collect();
+                        obj.insert("Headers".to_string(), json!(headers));
+                    }
+                    if !message.attachments.is_empty() {
+                        let attachments: Vec<_> = message
+                            .attachments
+                            .iter()
+                            .map(|a| json!({"Name": a.filename, "Content": a.content, "ContentType": a.content_type}))
+                            .collect();
+                        obj.insert("Attachments".to_string(), json!(attachments));
+                    }
+                }
+                let mut req = self.http.post(&self.api_url).json(&body);
                 if let Some(key) = self.api_key.as_deref() {
                     req = req.header("X-Postmark-Server-Token", key);
                 }
@@ -169,7 +239,14 @@ impl EmailClient for HttpEmailClient {
         if !resp.status().is_success() {
             return Err(AppError::claim_email_failed(Some(resp.status().as_u16())));
         }
-        Ok(())
+        // Resend answers `{"id": ..}`, Postmark `{"MessageID": ..}`; a body
+        // that is not JSON (or names neither) is still an accepted send.
+        let provider_message_id = resp
+            .json::<serde_json::Value>()
+            .await
+            .ok()
+            .and_then(|v| v.get("id").or_else(|| v.get("MessageID")).and_then(|x| x.as_str().map(str::to_string)));
+        Ok(SendReceipt { provider_message_id })
     }
 }
 
@@ -181,6 +258,7 @@ impl EmailClient for HttpEmailClient {
 pub struct FakeEmailClient {
     sends: std::sync::Mutex<Vec<EmailMessage>>,
     fail_next: std::sync::atomic::AtomicUsize,
+    fail_status: std::sync::atomic::AtomicU16,
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -189,7 +267,15 @@ impl FakeEmailClient {
         Self {
             sends: std::sync::Mutex::new(Vec::new()),
             fail_next: std::sync::atomic::AtomicUsize::new(0),
+            fail_status: std::sync::atomic::AtomicU16::new(500),
         }
+    }
+
+    /// [`Self::fail_next`] with the provider status the failures report
+    /// (the default is 500).
+    pub fn fail_next_with_status(&self, n: usize, status: u16) {
+        self.fail_status.store(status, std::sync::atomic::Ordering::SeqCst);
+        self.fail_next.store(n, std::sync::atomic::Ordering::SeqCst);
     }
 
     /// AC10: the next `n` `send` calls fail (as if the provider returned
@@ -219,15 +305,22 @@ impl Default for FakeEmailClient {
 #[async_trait::async_trait]
 impl EmailClient for FakeEmailClient {
     async fn send(&self, message: &EmailMessage) -> Result<(), AppError> {
+        self.send_message(message).await.map(|_| ())
+    }
+
+    async fn send_message(&self, message: &EmailMessage) -> Result<SendReceipt, AppError> {
         let remaining = self.fail_next.load(std::sync::atomic::Ordering::SeqCst);
         if remaining > 0 {
             self.fail_next
                 .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-            return Err(AppError::claim_email_failed(Some(500)));
+            let status = self.fail_status.load(std::sync::atomic::Ordering::SeqCst);
+            return Err(AppError::claim_email_failed(Some(status)));
         }
+        let mut count = 0;
         if let Ok(mut guard) = self.sends.lock() {
             guard.push(message.clone());
+            count = guard.len();
         }
-        Ok(())
+        Ok(SendReceipt { provider_message_id: Some(format!("fake-msg-{count}")) })
     }
 }
