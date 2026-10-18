@@ -87,6 +87,7 @@ pub mod invites;
 pub mod org;
 pub mod tenant_clients;
 pub mod kinds;
+pub mod host_args;
 pub mod lineage;
 pub mod clients;
 pub mod launch_check;

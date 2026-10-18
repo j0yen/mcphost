@@ -20,6 +20,10 @@ pub enum PolicyTarget {
 }
 
 impl PolicyTarget {
+    /// The target kinds `host.policy.set` accepts, i.e. the single key of its
+    /// `target` object; the descriptor's `target.propertyNames.enum` is this.
+    pub const KINDS: [&'static str; 2] = ["table", "doc_prefix"];
+
     pub fn kind(&self) -> &'static str {
         match self {
             PolicyTarget::Table(_) => "table",

@@ -1511,6 +1511,16 @@ mod infer_ac14_latency_budget;
 mod infer_ac17_no_execution;
 #[path = "inner_rules_ac01_block_names_every_contract_test.rs"]
 mod inner_rules_ac01_block_names_every_contract_test;
+#[path = "insch_ac02_enums_from_handler_constants.rs"]
+mod insch_ac02_enums_from_handler_constants;
+#[path = "insch_ac03_patterns_and_bounds_in_schema.rs"]
+mod insch_ac03_patterns_and_bounds_in_schema;
+#[path = "insch_ac04_dispatch_refuses_by_schema.rs"]
+mod insch_ac04_dispatch_refuses_by_schema;
+#[path = "insch_ac05_schema_valid_call_clears_validation.rs"]
+mod insch_ac05_schema_valid_call_clears_validation;
+#[path = "insch_ac06_contract_and_docs_carry_constraints.rs"]
+mod insch_ac06_contract_and_docs_carry_constraints;
 #[path = "invite_ac01_create_returns_url_and_list_shows_zero_uses.rs"]
 mod invite_ac01_create_returns_url_and_list_shows_zero_uses;
 #[path = "invite_ac02_first_call_creates_tenant_with_onboarding.rs"]

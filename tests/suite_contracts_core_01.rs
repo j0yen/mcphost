@@ -47,6 +47,8 @@ mod docsqa_ac10_deferral_is_justified;
 mod edead_ac07_reason_table_cannot_drift;
 #[path = "exmf_ac03_index_matches_directories.rs"]
 mod exmf_ac03_index_matches_directories;
+#[path = "insch_ac01_either_or_required_in_schema.rs"]
+mod insch_ac01_either_or_required_in_schema;
 #[path = "kdr_ac02_python_page_tables_generated.rs"]
 mod kdr_ac02_python_page_tables_generated;
 #[path = "kdr_ac03_check_names_stale_block.rs"]

@@ -673,6 +673,107 @@ pub fn render_tools_markdown(kinds: &KindRegistry) -> String {
         let Some(schema) = &t.output_schema else { continue };
         out.push_str(&format!("\n### `{}`\n\n**Returns**\n\n", t.name));
         out.push_str(&render_returns_block(schema));
+        out.push_str("\n**Arguments**\n\n");
+        out.push_str(&render_arguments_block(&t.input_schema));
+    }
+    out
+}
+
+/// PRD-mcphost-input-schema-is-the-validator R1/AC6: a tool's `input_schema`
+/// as an argument list -- one bullet per property (sorted by name) with its
+/// type, whether it is required, and every `enum`, `pattern`, `minimum`,
+/// `maximum`, `minItems` and `maxItems` the schema carries (nested `items` and
+/// object properties included, under a dotted path), plus one bullet per
+/// top-level `anyOf` naming its alternatives. Rendered from the same
+/// descriptor `tools/list` and the contract dump read, so the three cannot
+/// drift.
+pub fn render_arguments_block(schema: &serde_json::Map<String, serde_json::Value>) -> String {
+    use serde_json::Value;
+    fn show(v: &Value) -> String {
+        match v {
+            Value::String(s) => format!("`{s}`"),
+            other => format!("`{other}`"),
+        }
+    }
+    fn type_of(schema: &Value) -> String {
+        match schema.get("type") {
+            Some(Value::String(t)) => t.clone(),
+            Some(Value::Array(ts)) => ts.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(" | "),
+            _ => "any".to_string(),
+        }
+    }
+    /// The constraint fragments of one schema node, in a fixed keyword order.
+    fn fragments(node: &Value) -> Vec<String> {
+        let mut out = Vec::new();
+        if let Some(e) = node.get("enum").and_then(Value::as_array) {
+            out.push(format!("enum: {}", e.iter().map(show).collect::<Vec<_>>().join(", ")));
+        }
+        if let Some(p) = node.get("pattern") {
+            out.push(format!("pattern: {}", show(p)));
+        }
+        for key in ["minimum", "maximum", "minItems", "maxItems"] {
+            if let Some(n) = node.get(key) {
+                out.push(format!("{key}: {n}"));
+            }
+        }
+        if let Some(any) = node.get("anyOf").and_then(Value::as_array) {
+            out.push(format!("anyOf: {}", any_of_text(any)));
+        }
+        out
+    }
+    fn any_of_text(branches: &[Value]) -> String {
+        branches
+            .iter()
+            .map(|b| {
+                b.get("required")
+                    .and_then(Value::as_array)
+                    .map(|r| r.iter().map(show).collect::<Vec<_>>().join(" + "))
+                    .unwrap_or_else(|| "(any)".to_string())
+            })
+            .collect::<Vec<_>>()
+            .join(" | ")
+    }
+    /// Constraint bullets for a node and everything nested under it.
+    fn walk(path: &str, node: &Value, out: &mut Vec<String>) {
+        for f in fragments(node) {
+            out.push(format!("  - `{path}` {f}\n"));
+        }
+        if let Some(items) = node.get("items") {
+            walk(&format!("{path}[]"), items, out);
+        }
+        if let Some(props) = node.get("properties").and_then(Value::as_object) {
+            for (name, sub) in props {
+                walk(&format!("{path}.{name}"), sub, out);
+            }
+        }
+        for key in ["propertyNames"] {
+            if let Some(sub) = node.get(key) {
+                walk(&format!("{path}.<{key}>"), sub, out);
+            }
+        }
+    }
+    let required: HashSet<&str> = schema
+        .get("required")
+        .and_then(|r| r.as_array())
+        .map(|r| r.iter().filter_map(|v| v.as_str()).collect())
+        .unwrap_or_default();
+    let mut out = String::new();
+    if let Some(any) = schema.get("anyOf").and_then(Value::as_array) {
+        out.push_str(&format!("- one of (anyOf): {}\n", any_of_text(any)));
+    }
+    if let Some(props) = schema.get("properties").and_then(|p| p.as_object()) {
+        for (name, prop) in props {
+            let req = if required.contains(name.as_str()) { ", required" } else { "" };
+            out.push_str(&format!("- `{name}`: {}{req}\n", type_of(prop)));
+            let mut nested = Vec::new();
+            walk(name, prop, &mut nested);
+            for line in nested {
+                out.push_str(&line);
+            }
+        }
+    }
+    if out.is_empty() {
+        out.push_str("- (no arguments)\n");
     }
     out
 }
