@@ -194,6 +194,9 @@ enum Command {
         #[arg(long)]
         doc: bool,
     },
+    /// PRD-mcphost-resources-for-tenant-data requirement 1: print
+    /// `docs/protocol/resources.md`, generated from `RESOURCE_TEMPLATES`.
+    ResourcesDoc,
     /// PRD-mcphost-delegation-recipes-and-quickstart requirement 5: print the
     /// README's `<!-- recipe:sub_agent_key -->` block for
     /// `scripts/sandbox-api-doc-check.sh`.
@@ -1336,6 +1339,10 @@ async fn main() -> anyhow::Result<()> {
             }
             Ok(())
         }
+        Command::ResourcesDoc => {
+            print!("{}", mcphost::resources::render_resources_doc());
+            Ok(())
+        }
         Command::RecipeSection => {
             println!("{}", mcphost::llms_txt::render_recipe_block(&mcphost::delegation_recipe::sub_agent_key()));
             Ok(())
@@ -2010,6 +2017,7 @@ async fn main() -> anyhow::Result<()> {
                 blob_clock_offset_secs: Default::default(),
                 confirm_clock_offset_secs: Default::default(),
                 onboarding_cache: Default::default(),
+                resource_subs: Default::default(),
             });
             // PRD-mcphost-abuse-guard-ban-list requirement 6: load the ban
             // cache once before this process ever serves a request, so the

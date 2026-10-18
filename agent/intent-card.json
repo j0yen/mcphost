@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-elicitation-in-band-on-stateless-transport.md",
-  "intent_slug": "mcphost-elicitation-in-band-on-stateless-transport",
-  "root_motivation": "**Who:** the agent in Claude Code, VS Code Copilot or Cursor whose deployed tool calls `mcphost.elicit(\"Rotate the production key now?\", {confirm: {type: \"boolean\"}})`; the human sitting in that client, who should see a form, not a link; the nightly conformance link that measures whether the host speaks what it advertises. **What:** the tool should receive `{action: \"accept\", content: {confirm: true}}` within the same `tools/call`, through the client's own form UI, whenever the client declared `elicitation` at `initialize`. **Why not today:** on prod 0.108.213 the tool always receives `{action: \"pending\", ask_id, url}` after ~25 s, as a single `application/json` reply, and the client never receives `elicitation/create` \u2014 observed by hand from the r7 seat at 10:2x pm PDT 10-17 for `{\"elicitation\":{\"form\":{}}}` and for `{}`, for `host.tool_call` and for direct `tools/call` alike; the conformance link records the same as `elicitation_pending_despite_capability` on every elicitation-c...",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-resources-for-tenant-data.md",
+  "intent_slug": "mcphost-resources-for-tenant-data",
+  "root_motivation": "**Who:** the agent whose client renders resources (Claude Code `@mcphost:\u2026`, VS Code Copilot \"Add Context\", Cursor); the human user who wants the run log in the chat without asking the agent to fetch it. **What:** read a table, a doc, a run log or a tool spec by URI, and be told when it changes. **Why not today:** prod answers `resources/list` with `{\"resources\":[]}` (rmcp default); after PRD-mcphost-server-capabilities-from-registry it answers `-32601`. Every read is a `tools/call` with `tenant_key` in `arguments`; the resource methods have no arguments slot for a key, so the auth that `list_tools` performs (`handler.rs:7838-7850`: path secret first, then `resolve_auth` over header and connection) is the only auth available \u2014 nothing today proves it reaches `read_resource`. **Consequence:** the explore personas re-implement reads as tool calls (`usecases.py` 10-08: 26 `budget.max_tool_latency_ms` refusals came from agents polling `host.table.query` for data a subscription would...",
   "user_persona": "An agent that runs host.note.put {text, attach_to: {tool}} once and reads the note on that tool's description in every later session; the same user's second client sees it too.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,44 +14,44 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given `TestServer` and a client declaring `{\"elicitation\":{\"form\":{}}}` that echoes `Mcp-Session-Id` and answers `accept {confirm:true}`, When a tool calls `mcphost.elicit` in `tools/call`, Then the client gets `elicitation/create` on the call's own stream and the tool gets the accepted `content` in < 2 s measured from the first non-`tool_building` `tools/call`, one `channel: client` audit row, no `url` row \u2014 RED at 0fdd8e53 today (prod answers `pending`, zero server\u2192client requests).",
-      "test": "tests/elib_ac01_form_elicitation_rides_the_calls_own_stream.rs"
+      "description": "Given an in-process server with a path-bound tenant `/u/{secret}/mcp` that owns table `orders` with 3 rows, When `resources/read mcphost://table/orders` is sent on that connection, Then the result's single content is `application/json` with 3 rows; Given a keyless connection that never signed up, When the same URI is read, Then `-32002` is returned and the tenants table gained 0 rows.",
+      "test": "tests/mres_ac01_read_authorises_like_list_tools.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given AC 1's client declaring the bare `{\"elicitation\":{}}`, When the tool elicits, Then AC 1's in-band path is taken; Given a `TestServer` client declaring `sampling` that answers `sampling/createMessage` with the fixture text, When a tool calls `mcphost.sampling.ask`, Then the frame rides the call's own stream and the tool gets that text \u2014 RED today (`sampling_unsupported`); a parser table test covers `{}`/`{\"form\":{}}` \u2192 form, `{\"url\":{}}`/absent \u2192 link, `sampling` present/absent.",
-      "test": "tests/elib_ac02_bare_capability_and_sampling_ride_in_band.rs"
+      "description": "Given `RESOURCE_TEMPLATES`, When `resources/templates/list` is sent keyless, Then it lists exactly the const's rows with `uriTemplate` and `mimeType`; Given `docs/protocol/resources.md`, Then its table equals the const byte-for-byte.",
+      "test": "tests/mres_ac02_templates_list_equals_const_and_docs.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a client that advertises nothing, or one that never echoes `Mcp-Session-Id` (the Claude Agent SDK replay shape), When the tool elicits and nobody answers the link within the wait, Then the `tools/call` response is one `application/json` body carrying `{action:\"pending\",ask_id,url,expires_unix}` exactly as today, and `melc_ac02`, `melc_ac05`, `melc_ac06`, `melc_ac07` pass unmodified.",
-      "test": "tests/elib_ac03_clients_without_the_channel_keep_the_link_reply.rs"
+      "description": "Given a tenant with 2 tables, 1 doc, 1 run, 2 tools, When `resources/list` is sent with the key in the Authorization header, Then 6 entries are returned; Given an OAuth session scoped `tables:read`, Then exactly the 2 table entries.",
+      "test": "tests/mres_ac03_list_counts_and_scope_filter.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given the same binary, When `compat_ac11_ac12_claude_sdk_replay` and `sessbind_ac01`..`ac11` run, Then they pass unchanged, a non-eliciting `tools/call` from an elicitation-advertising session is still one `application/json` body (no SSE) with the same status and headers as before, and a `text/event-stream` body served through `build_router` on `/mcp` delivers its first event before the stream closes (R0: `oauth_401_upgrade` buffers only `application/json`).",
-      "test": "tests/elib_ac04_guardrails_json_stays_json_and_sse_streams.rs"
+      "description": "Given a subscription on `mcphost://table/orders`, When `host.table.append` commits 2 rows, Then one `notifications/resources/updated {uri}` reaches the peer within 500 ms; Given `unsubscribe`, Then a further append sends nothing.",
+      "test": "tests/mres_ac04_subscribe_gets_updated_on_append.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the suite, When run, Then every in-band test serves the handler via `build_router` (no second router under `tests/`), a sandbox-free contract test (no `require_user_namespaces_or_ci_skip`; fails on GitHub CI) asserts prod's `(json_response, legacy_session_mode)` source is `(true, false)` and built the in-band server, and a second asserts each `/capabilities.json` row `true` for `elicitation`/`sampling` renders from the in-band gate function and has a raw-client exerciser.",
-      "test": "tests/elib_ac05_transport_contract_is_derived_from_build_router.rs"
+      "description": "Given a free tenant with 8 open subscriptions, When the 9th `resources/subscribe` arrives, Then `resources_max` is returned with `data.limit: 8`; Given the connection closes, Then all 8 entries are gone and a new connection may open 8 again.",
+      "test": "tests/mres_ac05_ninth_subscription_hits_resources_max.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given an in-band elicitation in flight, When the client never answers, Then `elicit_timeout` is returned at `timeout_s` inside the tool's budget and the stream closes with the tool's result; Given a POSTed response whose request id is unknown or already completed, or whose `Mcp-Session-Id` belongs to another session, Then the server answers `202`, delivers nothing, and the in-flight call is unaffected.",
-      "test": "tests/elib_ac06_silence_times_out_and_stray_answers_deliver_nothing.rs"
+      "description": "Given a table whose JSON exceeds `resource_read_bytes_max`, When read, Then the body is cut at the last complete row under the ceiling and `_meta.truncated` is `true`; Given another tenant's table name, Then `-32002`, never `forbidden`.",
+      "test": "tests/mres_ac06_read_truncates_at_a_row_and_hides_other_tenants.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given 8 concurrent sessions eliciting at once and answering in shuffled order, When all complete, Then each call receives only its own session's `content`; Given two concurrent eliciting `tools/call`s on ONE session, Then the first gets its own `content` and the second returns `pending`, with no cross-delivery; Given `initialize` floods beyond the capability store's ceiling, Then the store never exceeds it, the oldest entries are evicted and the newest still elicit in-band.",
-      "test": "tests/elib_ac07_concurrent_sessions_never_cross_and_the_store_is_bounded.rs"
+      "description": "Given `capabilities.rs`, When `initialize` is answered, Then `capabilities.resources` is `{listChanged: true, subscribe: true}` and `/capabilities.json` shows `resources.implemented == true`, `probe == \"resources\"`.",
+      "test": "tests/mres_ac07_capabilities_row_flips_to_implemented.rs"
     }
   ],
   "scope": [

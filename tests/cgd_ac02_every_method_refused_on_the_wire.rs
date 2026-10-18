@@ -12,6 +12,9 @@ use common::TestServer;
 use mcphost::capabilities::CAPABILITIES;
 use serde_json::{Value, json};
 
+/// Implemented methods whose keyless valid-params answer is a `-32002` lookup miss.
+const LOOKUP_MISS_METHODS: &[&str] = &["resources/read", "resources/subscribe"];
+
 /// Minimal valid params per method; a method not listed takes `{}`.
 fn params_for(method: &str, n: usize) -> Value {
     match method {
@@ -64,7 +67,16 @@ async fn cgd_ac02_every_row_method_answers_as_its_row_says_on_every_route_and_va
                             failures.push(format!("{cell}: data.help_url must end /help/{code:?}, got {reply}"));
                         }
                     } else if valid && reply.get("result").is_none() {
-                        failures.push(format!("{cell}: implemented method must answer a result, got {reply}"));
+                        // A keyless caller reading or subscribing to a resource it
+                        // cannot see gets `-32002 resource_not_found`
+                        // (mcphost-resources-for-tenant-data): a lookup miss, not a
+                        // capability refusal, so it is not drift.
+                        let lookup_miss = LOOKUP_MISS_METHODS.contains(method)
+                            && reply["error"]["code"] == -32002
+                            && reply["error"]["data"]["capability"].is_null();
+                        if !lookup_miss {
+                            failures.push(format!("{cell}: implemented method must answer a result, got {reply}"));
+                        }
                     }
                 }
             }

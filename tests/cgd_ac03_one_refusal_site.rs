@@ -48,10 +48,23 @@ fn cgd_ac03_no_header_keyed_refusal_and_no_per_hook_override() {
     let http = read("src/http.rs");
     assert!(!http.contains("enrich_unsupported_errors"), "enrich_unsupported_errors is back");
     let handler = read("src/handler.rs");
-    // `list_prompts` / `get_prompt` are real handlers since the `prompts` row became
-    // implemented (mcphost-prompts-from-published-tools), not refusal overrides.
-    for hook in ["list_resources", "list_resource_templates", "read_resource", "subscribe", "unsubscribe", "complete", "set_level"] {
-        assert!(!handler.contains(&format!("async fn {hook}(")), "handler.rs still overrides `{hook}`");
+    // A row that is implemented has real handlers (`list_prompts` / `get_prompt`
+    // since mcphost-prompts-from-published-tools, the `resources/*` hooks since
+    // mcphost-resources-for-tenant-data), not refusal overrides: only the hooks
+    // of rows still `implemented: false` must be absent.
+    let hooks: [(&str, &[&str]); 3] = [
+        ("resources", &["list_resources", "list_resource_templates", "read_resource", "subscribe", "unsubscribe"]),
+        ("completions", &["complete"]),
+        ("logging", &["set_level"]),
+    ];
+    for (row, names) in hooks {
+        let implemented = mcphost::capabilities::CAPABILITIES.iter().any(|r| r.name == row && r.implemented);
+        if implemented {
+            continue;
+        }
+        for hook in names {
+            assert!(!handler.contains(&format!("async fn {hook}(")), "handler.rs still overrides `{hook}`");
+        }
     }
 }
 
