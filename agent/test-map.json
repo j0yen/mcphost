@@ -2085,6 +2085,16 @@
       "AC6": "tests/tssdk_ac06_ir_parity_with_python_generator.rs",
       "AC7": "tests/tssdk_ac07_ci_diff_fails_on_stale_sdk.rs"
     },
+    "vbd": {
+      "_prd": "PRD-mcphost-host-args-validated-by-default.md (test_prefix: vbd)",
+      "AC1": "tests/vbd_ac01_validated_by_default_coverage.rs",
+      "AC2": "tests/vbd_ac02_three_unvalidated_verbs_now_refuse.rs",
+      "AC3": "tests/vbd_ac03_skips_come_from_the_owner_registry.rs",
+      "AC4": "tests/vbd_ac04_owner_registry_cross_contract.rs",
+      "AC5": "tests/vbd_ac05_unknown_argument_everywhere.rs",
+      "AC6": "tests/vbd_ac06_descriptor_enums_from_constants.rs",
+      "AC7": "tests/vbd_ac07_every_schema_valid_call_reaches_its_handler.rs"
+    },
     "insch": {
       "_prd": "PRD-mcphost-input-schema-is-the-validator.md (test_prefix: insch)",
       "AC1": "tests/insch_ac01_either_or_required_in_schema.rs",
