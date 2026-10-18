@@ -1,5 +1,8 @@
 //! AC8 — Given `host.tool_unshare(name="geo")`, When B calls, Then
-//! `tool_not_found`.
+//! the call is refused. B is a PRIMARY key that called the tool while it was
+//! shared, so PRD-mcphost-scoped-tool-share AC4 / R5 applies: a past caller
+//! gets `share_revoked` (a tenant that never called it, or a delegated
+//! sub-key, still gets `tool_not_found`).
 
 use crate::common;
 use common::{McpClient, TestServer, signup};
@@ -45,5 +48,8 @@ async fn unshare_revokes_a_previously_public_tool() {
         .tools_call(&qualified, json!({}))
         .await
         .expect_err("B must be refused after unshare");
-    assert_eq!(err.error_code.as_deref(), Some("tool_not_found"));
+    // PRD-mcphost-scoped-tool-share AC4: "Given a grantee that called the tool
+    // today, When the owner unshares and the grantee calls 1 s later, Then
+    // `share_revoked`". B called above with its primary key.
+    assert_eq!(err.error_code.as_deref(), Some("share_revoked"));
 }

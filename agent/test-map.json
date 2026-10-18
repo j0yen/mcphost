@@ -2141,6 +2141,17 @@
       "AC6": "tests/srlp_ac06_warm_hit_keeps_plan_pids.rs",
       "AC7": "tests/srlp_ac07_tool_run_reports_resources_used.rs",
       "AC8": "deferred -- operator-provisioned: live curl of prod plans.json after deploy"
+    },
+    "shsc": {
+      "_prd": "PRD-mcphost-scoped-tool-share.md (test_prefix: shsc)",
+      "AC1": "tests/shsc_ac01_scope_enum_source_of_truth.rs",
+      "AC2": "tests/shsc_ac02_meta_and_catalog_show_scopes.rs",
+      "AC3": "tests/shsc_ac03_rate_per_hour_per_caller.rs",
+      "AC4": "tests/shsc_ac04_unshare_is_share_revoked_for_past_callers.rs",
+      "AC5": "tests/shsc_ac05_fork_copies_a_fork_scoped_tool.rs",
+      "AC6": "tests/shsc_ac06_url_shares_allow_only_call.rs",
+      "AC7": "tests/shsc_ac07_migration_backfills_shared_rows.rs",
+      "AC8": "deferred -- operator-provisioned: live `scripts/share-scope-live.sh https://mcphost.dev` against prod after deploy."
     }
   }
 }

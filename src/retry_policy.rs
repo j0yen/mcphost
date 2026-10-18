@@ -109,6 +109,8 @@ pub const RETRY_POLICY: &[RetryRow] = &[
     no("namespace_unverified", NO),
     no("registry_rejected", NO),
     no("share_quota_exceeded", NO),
+    no(crate::sharing::SCOPE_MISSING, NO),
+    no(crate::sharing::SHARE_REVOKED, NO),
     no("group_not_found", NO),
     no("handoff_token_invalid", NO),
     no("handoff_token_redeemed", NO),

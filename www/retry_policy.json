@@ -218,6 +218,24 @@
       "backoff": {
         "kind": "none"
       },
+      "code": "scope_missing",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "share_revoked",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
       "code": "group_not_found",
       "max_attempts": 1,
       "policy": "do-not-retry",
