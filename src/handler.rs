@@ -11289,6 +11289,11 @@ impl McpHostHandler {
         request: CallToolRequestParams,
         ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, McpError> {
+        // PRD-mcphost-usage-in-every-response: the slot the admission checks
+        // park their `calls_per_day` read in, for `_meta.usage` below.
+        // `Box::pin`: the whole dispatch future lives on the heap, not inline in
+        // this frame (inlined it overflowed a 2 MiB test-thread stack).
+        let result: Result<CallToolResponse, McpError> = Box::pin(crate::usage::scope(async move {
         let parts = get_parts(&ctx)?;
         let source = source_ip(parts);
         let header_name = mcp_name_header(parts);
@@ -11838,6 +11843,7 @@ impl McpHostHandler {
         let mut idem_guard: Option<crate::idempotency::ClaimGuard> = None;
         let mut replayed_at: Option<i64> = None;
         let mut replay_outcome: Option<Result<Value, AppError>> = None;
+        let mut replay_usage: Option<Value> = None;
         if let (Some(key), Auth::Tenant(tenant, _)) = (idem_key.as_deref(), &auth) {
             let sha = crate::idempotency::args_sha256(&args);
             // R5: a second concurrent caller polls the first's pending row
@@ -11889,6 +11895,7 @@ impl McpHostHandler {
                     {
                         tracing::warn!(error = %e, tool = %body_name, "failed to record replayed call");
                     }
+                    replay_usage = stored.usage;
                     replay_outcome = Some(stored.outcome);
                 }
                 crate::idempotency::Claim::Conflict { stored_args_sha256 } => {
@@ -12326,8 +12333,22 @@ impl McpHostHandler {
         // PRD-mcphost-idempotency-key-on-call R6: a `tool_timeout` names the
         // key (or null) and the retry hint.
         let outcome = outcome.map_err(|e| crate::idempotency::annotate_timeout(e, idem_key.as_deref()));
+        // PRD-mcphost-usage-in-every-response R2: `_meta.usage` is built BEFORE
+        // the idempotency store captures the response, so a replay returns the
+        // first response's usage verbatim (no replay-path query). A replay
+        // carries the stored block; any other call reads what its own checks
+        // observed.
+        let result_usage_meta: Option<Value> = if outcome.is_err() {
+            None
+        } else if replayed_at.is_some() {
+            replay_usage.take()
+        } else if let Auth::Tenant(tenant, _) = &auth {
+            crate::usage::result_usage(&self.state, tenant).await
+        } else {
+            None
+        };
         if let Some(guard) = idem_guard.take() {
-            guard.finish(&outcome).await;
+            guard.finish(&outcome, result_usage_meta.as_ref()).await;
         }
         match outcome {
             Ok(mut value) => {
@@ -12562,6 +12583,11 @@ impl McpHostHandler {
                     meta.0.insert("replayed".to_string(), json!(true));
                     meta.0.insert("first_seen_unix".to_string(), json!(first_seen));
                 }
+                // PRD-mcphost-usage-in-every-response R2: the count the call's
+                // own `calls_per_day` check read, plus the row it just wrote.
+                if let Some(usage) = result_usage_meta {
+                    meta.0.insert("usage".to_string(), usage);
+                }
                 let result = if meta.0.is_empty() { result } else { result.with_meta(Some(meta)) };
                 Ok(CallToolResponse::from(result))
             }
@@ -12586,6 +12612,9 @@ impl McpHostHandler {
                 Err(app_err.into_error_data_at(Some(&self.state.public_url)))
             }
         }
+        }))
+        .await;
+        result
     }
 }
 

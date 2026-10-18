@@ -2756,6 +2756,8 @@ pub(crate) fn note_rusqlite_error(e: &rusqlite::Error) {
     });
 }
 
+static SELECT_STATEMENTS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// Times `f` (one statement, or a small fixed batch treated as one unit)
 /// and records its wait against `role`'s counters -- any
 /// `SQLITE_BUSY`/`SQLITE_LOCKED` `f` raises is picked up by
@@ -2894,6 +2896,25 @@ impl Db {
         };
         db.migrate_sync()?;
         Ok(db)
+    }
+
+    /// PRD-mcphost-usage-in-every-response AC5: starts counting every `SELECT`
+    /// statement the server connection executes (the harness's SQL query
+    /// counter). Process-wide and off until a test asks, so the hot path
+    /// pays nothing in production.
+    pub fn enable_select_counter(&self) {
+        if let Ok(mut conn) = self.conn.lock() {
+            conn.trace(Some(|sql: &str| {
+                if sql.trim_start().get(..6).is_some_and(|p| p.eq_ignore_ascii_case("select")) {
+                    SELECT_STATEMENTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                }
+            }));
+        }
+    }
+
+    /// `SELECT` statements counted since [`Self::enable_select_counter`].
+    pub fn select_count() -> u64 {
+        SELECT_STATEMENTS.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Requirement 3, AC4/AC5: this role's contention counters right now.

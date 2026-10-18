@@ -96,6 +96,8 @@ async fn usage_without_by_keeps_the_pre_prd_shape() {
         "first_contact",
         // PRD-mcphost-data-quota-in-every-response AC3: additive.
         "quota",
+        // PRD-mcphost-usage-in-every-response AC3: additive.
+        "plan",
     ]
     .into_iter()
     .collect();

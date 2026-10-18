@@ -128,6 +128,31 @@ pub const WAIT_MAX_SECS: i64 = 30;
 pub struct Stored {
     pub outcome: Result<Value, AppError>,
     pub first_seen_unix: i64,
+    /// The first response's `_meta.usage`, stored beside (never inside) the
+    /// body so a replay returns it verbatim (PRD-mcphost-usage-in-every-response).
+    pub usage: Option<Value>,
+}
+
+/// Marks a stored `result_json` that wraps `{value, usage}`; a row without it
+/// is the bare body written before `_meta.usage` existed.
+const ENVELOPE_KEY: &str = "__idem_v";
+
+fn wrap_result(value: &Value, usage: Option<&Value>) -> String {
+    match usage {
+        Some(u) => json!({ENVELOPE_KEY: 1, "value": value, "usage": u}).to_string(),
+        None => value.to_string(),
+    }
+}
+
+fn unwrap_result(raw: &str) -> (Value, Option<Value>) {
+    let mut v: Value = serde_json::from_str(raw).unwrap_or(Value::Null);
+    if v.get(ENVELOPE_KEY).is_some()
+        && let Some(obj) = v.as_object_mut()
+    {
+        let usage = obj.remove("usage").filter(|u| !u.is_null());
+        return (obj.remove("value").unwrap_or(Value::Null), usage);
+    }
+    (v, None)
 }
 
 /// What [`Db::idem_claim`] found.
@@ -281,28 +306,33 @@ impl crate::db::Db {
             if stored_sha != sha {
                 return Ok(Claim::Conflict { stored_args_sha256: stored_sha });
             }
-            let outcome = match (result, error) {
-                (Some(r), _) => Ok(serde_json::from_str(&r).unwrap_or(Value::Null)),
-                (None, Some(e)) => Err(error_from_json(&serde_json::from_str(&e).unwrap_or(Value::Null))),
+            let (outcome, usage) = match (result, error) {
+                (Some(r), _) => {
+                    let (value, usage) = unwrap_result(&r);
+                    (Ok(value), usage)
+                }
+                (None, Some(e)) => (Err(error_from_json(&serde_json::from_str(&e).unwrap_or(Value::Null))), None),
                 (None, None) => return Ok(Claim::Pending),
             };
-            Ok(Claim::Replay(Stored { outcome, first_seen_unix: created }))
+            Ok(Claim::Replay(Stored { outcome, first_seen_unix: created, usage }))
         })
         .await
     }
 
     /// Fill the claim with the call's outcome, or release it (a transient
     /// outcome is never stored, so a retry executes once).
+    #[allow(clippy::too_many_arguments)]
     pub async fn idem_finish(
         &self,
         tenant_id: i64,
         tool: &str,
         key: &str,
         outcome: &Result<Value, AppError>,
+        usage: Option<&Value>,
     ) -> Result<(), AppError> {
         let (tool, key) = (tool.to_string(), key.to_string());
         let (result, error) = match outcome {
-            Ok(v) => (Some(v.to_string()), None),
+            Ok(v) => (Some(wrap_result(v, usage)), None),
             Err(e) if storable(e) => (None, Some(error_to_json(e).to_string())),
             Err(_) => (None, None),
         };
@@ -350,9 +380,9 @@ impl ClaimGuard {
         Self { db, tenant_id, tool: tool.to_string(), key: key.to_string(), done: false }
     }
 
-    pub async fn finish(mut self, outcome: &Result<Value, AppError>) {
+    pub async fn finish(mut self, outcome: &Result<Value, AppError>, usage: Option<&Value>) {
         self.done = true;
-        if let Err(e) = self.db.idem_finish(self.tenant_id, &self.tool, &self.key, outcome).await {
+        if let Err(e) = self.db.idem_finish(self.tenant_id, &self.tool, &self.key, outcome, usage).await {
             tracing::warn!(error = %e, tool = %self.tool, "failed to store idempotent call result");
         }
     }
@@ -366,7 +396,7 @@ impl Drop for ClaimGuard {
         let (db, tenant_id, tool, key) = (self.db.clone(), self.tenant_id, self.tool.clone(), self.key.clone());
         if let Ok(rt) = tokio::runtime::Handle::try_current() {
             rt.spawn(async move {
-                let _ = db.idem_finish(tenant_id, &tool, &key, &Err(AppError::CallTimeout(0))).await;
+                let _ = db.idem_finish(tenant_id, &tool, &key, &Err(AppError::CallTimeout(0)), None).await;
             });
         }
     }
