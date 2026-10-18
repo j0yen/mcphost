@@ -766,6 +766,45 @@ fn diff_output_properties(
     }
 }
 
+/// PRD-mcphost-output-schema-tenant-values-opaque R5: every output node that
+/// went from a typed schema in `committed` to the empty (any-JSON) schema in
+/// `live`, pathed `<tool>.output.<field>[.<field>...]` (`[]` for array items).
+/// A widening accepts strictly more, so [`diff`] never reports it as a
+/// violation; this is the report that makes it visible instead of silent.
+pub fn widened(committed: &Value, live: &Value) -> Vec<String> {
+    fn walk(old: &Value, new: &Value, path: &str, out: &mut Vec<String>) {
+        if new.as_object().is_some_and(serde_json::Map::is_empty) && old.as_object().is_some_and(|o| !o.is_empty()) {
+            out.push(path.to_string());
+            return;
+        }
+        if let (Some(old_props), Some(new_props)) = (
+            old.get("properties").and_then(Value::as_object),
+            new.get("properties").and_then(Value::as_object),
+        ) {
+            for (field, old_field) in old_props {
+                if let Some(new_field) = new_props.get(field) {
+                    walk(old_field, new_field, &format!("{path}.{field}"), out);
+                }
+            }
+        }
+        if let (Some(old_items), Some(new_items)) = (old.get("items"), new.get("items")) {
+            walk(old_items, new_items, &format!("{path}[]"), out);
+        }
+    }
+    let live_tools = tools_by_name(live);
+    let mut out = Vec::new();
+    for (name, old_tool) in tools_by_name(committed) {
+        let (Some(old_output), Some(new_output)) = (
+            old_tool.get("output_schema"),
+            live_tools.get(&name).and_then(|t| t.get("output_schema")),
+        ) else {
+            continue;
+        };
+        walk(old_output, new_output, &format!("{name}.output"), &mut out);
+    }
+    out
+}
+
 fn tools_by_name(contract: &Value) -> std::collections::BTreeMap<String, &Value> {
     contract["tools"]
         .as_array()

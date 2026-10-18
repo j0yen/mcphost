@@ -2670,7 +2670,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `parent_tool`: any (always)
 - `progress`: object | null (always)
 - `purged`: boolean (always)
-- `result`: object | string | null (always)
+- `result`: any (always)
 - `result_ref`: object | null (always)
 - `run_id`: string (always)
 - `started_unix`: integer | null (always)
@@ -2719,7 +2719,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Returns**
 
 - `bytes`: integer (always)
-- `data`: object | string (always)
+- `data`: any (always)
 - `n`: integer (always)
 - `parts`: integer (always)
 
@@ -2758,7 +2758,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `parent_tool`: any (always)
 - `progress`: object | null (always)
 - `purged`: boolean (always)
-- `result`: object | string | null (always)
+- `result`: any (always)
 - `result_ref`: object | null (always)
 - `run_id`: string (always)
 - `started_unix`: integer (always)
@@ -2925,7 +2925,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `impersonated`: boolean | null
 - `key`: string (always)
 - `updated_unix`: integer | null
-- `value`: object | string | integer | null (always)
+- `value`: any (always)
 
 **Arguments**
 
@@ -2969,7 +2969,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Returns**
 
-- `rows`: array<object> (always)
+- `rows`: array (always)
 - `table`: string (always)
 
 **Arguments**
@@ -3469,7 +3469,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `onboarding`: object | null
 - `payload`: object | null
 - `preset`: any
-- `result`: object | null
+- `result`: any
 - `rows`: array<object> | null
 - `run_id`: string | null
 - `schedule`: string | null
@@ -3646,7 +3646,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `dry_run`: object | null
 - `duration_ms`: integer (always)
 - `exit_code`: integer (always)
-- `payload`: object | null (always)
+- `payload`: any (always)
 - `schema`: object | null
 - `state`: object (always)
 - `stderr`: string (always)
@@ -3733,7 +3733,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `reason`: string | null
 - `request`: object | null
 - `response`: object | null
-- `result`: object | null
+- `result`: any
 - `schedule`: string | null
 - `schema`: object | null
 - `source_line`: string | null
