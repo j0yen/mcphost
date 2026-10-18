@@ -15003,5 +15003,105 @@
       "left"
     ],
     "type": "object"
+  },
+  "host.email.send": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "provider_message_id": {
+        "type": "string"
+      },
+      "from": {
+        "type": "string"
+      },
+      "sent_at": {
+        "type": "integer"
+      },
+      "sends": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            },
+            "provider_message_id": {
+              "type": "string"
+            },
+            "sent_at": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "sent_at",
+            "to"
+          ]
+        }
+      }
+    },
+    "required": [
+      "from",
+      "id",
+      "sends",
+      "sent_at"
+    ]
+  },
+  "host.email.sends": {
+    "type": "object",
+    "properties": {
+      "sends": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "tool": {
+              "type": "string"
+            },
+            "from": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            },
+            "subject": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "provider_message_id": {
+              "type": "string"
+            },
+            "error": {
+              "type": "string"
+            },
+            "sent_at": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "from",
+            "id",
+            "sent_at",
+            "status",
+            "subject",
+            "to",
+            "tool"
+          ]
+        }
+      }
+    },
+    "required": [
+      "sends"
+    ]
   }
 }

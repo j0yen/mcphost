@@ -969,8 +969,12 @@ impl AppError {
                 "ask_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
                 // PRD-mcphost-notify-user-channel: caller-input and caller-state refusals.
                 "notify_kind_unknown" | "owner_unverified" | "email_not_owner" | "no_channel" | "notify_limit"
-                | "notify_channel_limit" | "notify_target_invalid" => ErrorCode::INVALID_PARAMS,
+                | "notify_channel_limit" | "notify_target_invalid" | "email_quota_exceeded" | "email_owner_unverified" => {
+                    ErrorCode::INVALID_PARAMS
+                }
                 "notify_channel_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
+                // PRD-mcphost-send-email-from-tool: `email_provider_error` is a host-side failure
+                // and stays on the default mapping.
                 "trigger_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
                 // PRD-mcphost-call-trace-replay: an unknown/expired trace
                 // mirrors `tool_not_found`; a replay left holding a masked

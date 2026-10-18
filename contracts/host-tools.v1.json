@@ -5905,6 +5905,196 @@
       "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
     },
     {
+      "description": "Send one email from your own address: {to (an address or at most 10 addresses), subject (at most 998 bytes), text (at most 262144 bytes), html?, reply_to_message_id?} returns {id, provider_message_id, from, sent_at}. From is <tool>@<tenant>.<domain> when a tool sends (mcphost.email.send) and agent@<tenant>.<domain> when you do. Every attempt is a row in host.email.sends with status one of sent, provider_error, quota_exceeded, owner_unverified.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "html": {
+            "description": "Optional HTML body, at most 524288 bytes.",
+            "type": "string"
+          },
+          "reply_to_message_id": {
+            "description": "Optional Message-ID this answers; copied into In-Reply-To.",
+            "type": "string"
+          },
+          "subject": {
+            "description": "One line, at most 998 bytes.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "text": {
+            "description": "Plain-text body, at most 262144 bytes.",
+            "type": "string"
+          },
+          "to": {
+            "description": "One address, or an array of at most 10.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "required": [
+          "to",
+          "subject",
+          "text"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.email.send",
+      "output_schema": {
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "provider_message_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sends": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "provider_message_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sent_at": {
+                  "type": "integer"
+                },
+                "to": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "sent_at",
+                "to"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "sent_at": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "from",
+          "id",
+          "sends",
+          "sent_at"
+        ],
+        "type": "object"
+      },
+      "since": "0.108.206"
+    },
+    {
+      "description": "List this tenant's email send rows, newest first: {sends: [{id, tool, from, to, subject, status, provider_message_id, error, sent_at}]}, status one of sent, provider_error, quota_exceeded, owner_unverified.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "1 to 100; default 20.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.email.sends",
+      "output_schema": {
+        "properties": {
+          "sends": {
+            "items": {
+              "properties": {
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "from": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "provider_message_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sent_at": {
+                  "type": "integer"
+                },
+                "status": {
+                  "enum": [
+                    "sent",
+                    "provider_error",
+                    "quota_exceeded",
+                    "owner_unverified"
+                  ],
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "to": {
+                  "type": "string"
+                },
+                "tool": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "from",
+                "id",
+                "sent_at",
+                "status",
+                "subject",
+                "to",
+                "tool"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sends"
+        ],
+        "type": "object"
+      },
+      "since": "0.108.206",
+      "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
+    },
+    {
       "description": "Generate and store a new per-tenant secret for signing end_user_assertion (HS256 compact JWS, claims sub/iat/exp with exp <= iat + 3600). Returns the secret once; it is never shown again and never appears in host.secret_list. Assertions signed with any prior secret stop verifying immediately -- no overlap window.",
       "input_schema": {
         "additionalProperties": false,
@@ -29818,6 +30008,79 @@
       },
       "name": "host_drift_reviews",
       "since": "0.103.1"
+    },
+    {
+      "alias_of": "host.email.send",
+      "description": "Send one email from your own address: {to (an address or at most 10 addresses), subject (at most 998 bytes), text (at most 262144 bytes), html?, reply_to_message_id?} returns {id, provider_message_id, from, sent_at}. From is <tool>@<tenant>.<domain> when a tool sends (mcphost.email.send) and agent@<tenant>.<domain> when you do. Every attempt is a row in host.email.sends with status one of sent, provider_error, quota_exceeded, owner_unverified.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "html": {
+            "description": "Optional HTML body, at most 524288 bytes.",
+            "type": "string"
+          },
+          "reply_to_message_id": {
+            "description": "Optional Message-ID this answers; copied into In-Reply-To.",
+            "type": "string"
+          },
+          "subject": {
+            "description": "One line, at most 998 bytes.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "text": {
+            "description": "Plain-text body, at most 262144 bytes.",
+            "type": "string"
+          },
+          "to": {
+            "description": "One address, or an array of at most 10.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          }
+        },
+        "required": [
+          "to",
+          "subject",
+          "text"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_email_send",
+      "since": "0.108.206"
+    },
+    {
+      "alias_of": "host.email.sends",
+      "description": "List this tenant's email send rows, newest first: {sends: [{id, tool, from, to, subject, status, provider_message_id, error, sent_at}]}, status one of sent, provider_error, quota_exceeded, owner_unverified.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "1 to 100; default 20.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host_email_sends",
+      "since": "0.108.206"
     },
     {
       "alias_of": "host.enduser.assertion_secret_rotate",

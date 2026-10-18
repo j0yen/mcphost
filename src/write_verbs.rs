@@ -123,6 +123,7 @@ pub const WRITE_VERBS: &[WriteVerb] = &[
     nd("host.notify.channel_add", Kind::Write, "external_effect"),
     nd("host.notify.channel_remove", Kind::Remove, "external_effect"),
     nd("host.notify.send", Kind::Write, "external_effect"),
+    nd("host.email.send", Kind::Write, "external_effect"),
     nd("host.task.post", Kind::Write, "external_effect"),
     nd("host.channel.post", Kind::Write, "external_effect"),
     nd("host.uptime.create", Kind::Write, "external_effect"),

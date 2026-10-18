@@ -2065,6 +2065,16 @@
       "AC6": "tests/umeta_ac06_caller_limit_in_meta_usage.rs",
       "AC7": "tests/umeta_ac07_tool_test_and_run_carry_no_usage.rs",
       "AC8": "deferred: tests/umeta_ac08_live_prod_result_usage_matches_status.rs (Live)"
+    },
+    "emsnd": {
+      "_prd": "PRD-mcphost-send-email-from-tool.md (test_prefix: emsnd)",
+      "AC1": "tests/emsnd_ac01_tool_reply_is_recorded_from_the_tool.rs",
+      "AC2": "tests/emsnd_ac02_tool_sender_reply_to_inbound_and_sent_row.rs",
+      "AC3": "tests/emsnd_ac03_html_and_text_reach_the_resend_body.rs",
+      "AC4": "tests/emsnd_ac04_free_tenant_51st_send_is_email_quota_exceeded.rs",
+      "AC5": "tests/emsnd_ac05_unverified_tenant_mails_only_its_owner.rs",
+      "AC6": "tests/emsnd_ac06_bad_to_is_args_invalid_and_503_twice_is_provider_error.rs",
+      "AC7": "tests/emsnd_ac07_send_status_and_bridge_module_cannot_drift.rs"
     }
   }
 }

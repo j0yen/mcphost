@@ -34,6 +34,7 @@ A python tool's own code does `import mcphost` to reach this tenant's data witho
 - `mcphost.drift` -- list drift review items (same list host.drift.reviews returns)
 - `mcphost.channel` -- post to or read a tenant channel (same store host.channel.* uses)
 - `mcphost.msg` -- send or read direct messages (same store host.msg.* uses)
+- `mcphost.email` -- send an email from this tool's own address (same verb host.email.send is)
 - `mcphost.elicit` -- ask the user a typed question mid-call: the client's form when it can, the ask-user link otherwise
 <!-- mcphost-sandbox-api:end -->
 

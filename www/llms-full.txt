@@ -953,6 +953,7 @@ Every numeric ceiling in the plan table, as `host.quickstart` `limits.plan` repo
 | `docs_chunks_max` | 10000 | 50000 |
 | `docs_max` | 200 | 20000 |
 | `drafts_per_day` | 5 | 100 |
+| `emails_per_day` | 50 | 2000 |
 | `end_users_max` | 100 | 10000 |
 | `event_body_bytes_max` | 262144 | 262144 |
 | `event_triggers_max` | 3 | 25 |
@@ -1404,6 +1405,7 @@ A python tool's own code does `import mcphost` to reach this tenant's data witho
 - `mcphost.drift` -- list drift review items (same list host.drift.reviews returns)
 - `mcphost.channel` -- post to or read a tenant channel (same store host.channel.* uses)
 - `mcphost.msg` -- send or read direct messages (same store host.msg.* uses)
+- `mcphost.email` -- send an email from this tool's own address (same verb host.email.send is)
 - `mcphost.elicit` -- ask the user a typed question mid-call: the client's form when it can, the ask-user link otherwise
 <!-- mcphost-sandbox-api:end -->
 
@@ -1546,6 +1548,7 @@ A python tool's own code does `import mcphost` to reach this tenant's data witho
 - `mcphost.drift` -- list drift review items (same list host.drift.reviews returns)
 - `mcphost.channel` -- post to or read a tenant channel (same store host.channel.* uses)
 - `mcphost.msg` -- send or read direct messages (same store host.msg.* uses)
+- `mcphost.email` -- send an email from this tool's own address (same verb host.email.send is)
 - `mcphost.elicit` -- ask the user a typed question mid-call: the client's form when it can, the ask-user link otherwise
 <!-- mcphost-sandbox-api:end -->
 

@@ -362,6 +362,8 @@ const MIGRATION_0118: &str = include_str!("../migrations/0118_perf_samples.sql")
 
 /// PRD-mcphost-example-proof-nightly-and-hide R2: the `example_proofs` table.
 const MIGRATION_0115: &str = include_str!("../migrations/0115_example_proofs.sql");
+/// PRD-mcphost-send-email-from-tool R6: the `email_sends` table.
+const MIGRATION_0120: &str = include_str!("../migrations/0120_email_sends.sql");
 const MIGRATION_PUBVIS: &str = include_str!("../migrations/0119_publish_visibility_tags.sql");
 
 /// PRD-mcphost-org-model R1/R4: `orgs`, `org_members`, `invites.kind = 'org'`.
@@ -3181,6 +3183,8 @@ impl Db {
         // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0118)?;
         Self::migrate_0119_publish_visibility_tags(&conn)?;
+        // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
+        conn.execute_batch(MIGRATION_0120)?;
         Ok(())
     }
 

@@ -309,6 +309,10 @@ pub struct Plan {
     /// a tenant may make per rolling day ("free 20, pro 1000"); one more
     /// refuses with `notify_limit` and `resets_unix`.
     pub notifies_per_day: i64,
+    /// PRD-mcphost-send-email-from-tool R4: how many `host.email.send` mails
+    /// a tenant may send per UTC day ("free 50, pro 2 000"); one more
+    /// refuses with `email_quota_exceeded {used, limit, resets_at}`.
+    pub emails_per_day: i64,
     /// PRD-mcphost-first-tool-from-description R5: `host.tool_from_description`
     /// calls a tenant may make per UTC day (`plan_limit` naming
     /// `drafts_per_day`). "free 5, pro 100".
@@ -654,6 +658,7 @@ impl PlanCatalog {
                     asks_open_max: 5,
                     notify_channels_max: 2,
                     notifies_per_day: 20,
+                    emails_per_day: 50,
                     drafts_per_day: 5,
                     chain_fanout_max: 20,
                     // PRD-mcphost-result-handles Open Questions: "free 64
@@ -776,6 +781,7 @@ impl PlanCatalog {
                     asks_open_max: 100,
                     notify_channels_max: 10,
                     notifies_per_day: 1000,
+                    emails_per_day: 2_000,
                     drafts_per_day: 100,
                     chain_fanout_max: 50,
                     // PRD-mcphost-result-handles: no published pro number
@@ -939,6 +945,7 @@ impl PlanCatalog {
             out.push_str(&format!("asks_open_max = {}\n", p.asks_open_max));
             out.push_str(&format!("notify_channels_max = {}\n", p.notify_channels_max));
             out.push_str(&format!("notifies_per_day = {}\n", p.notifies_per_day));
+            out.push_str(&format!("emails_per_day = {}\n", p.emails_per_day));
             out.push_str(&format!("drafts_per_day = {}\n", p.drafts_per_day));
             out.push_str(&format!("chain_fanout_max = {}\n", p.chain_fanout_max));
             out.push_str(&format!(
@@ -1069,6 +1076,7 @@ impl PlanCatalog {
                 "asks_open_max" => builder.asks_open_max = Some(int_value()),
                 "notify_channels_max" => builder.notify_channels_max = Some(int_value()),
                 "notifies_per_day" => builder.notifies_per_day = Some(int_value()),
+                "emails_per_day" => builder.emails_per_day = Some(int_value()),
                 "drafts_per_day" => builder.drafts_per_day = Some(int_value()),
                 "chain_fanout_max" => builder.chain_fanout_max = Some(int_value()),
                 "table_handle_bytes_max" => builder.table_handle_bytes_max = Some(int_value()),
@@ -1177,6 +1185,7 @@ struct PlanBuilder {
     asks_open_max: Option<i64>,
     notify_channels_max: Option<i64>,
     notifies_per_day: Option<i64>,
+    emails_per_day: Option<i64>,
     drafts_per_day: Option<i64>,
     chain_fanout_max: Option<i64>,
     table_handle_bytes_max: Option<i64>,
@@ -1270,6 +1279,7 @@ impl PlanBuilder {
             asks_open_max: quota!(asks_open_max),
             notify_channels_max: quota!(notify_channels_max),
             notifies_per_day: quota!(notifies_per_day),
+            emails_per_day: quota!(emails_per_day),
             drafts_per_day: quota!(drafts_per_day),
             chain_fanout_max: quota!(chain_fanout_max),
             table_handle_bytes_max: quota!(table_handle_bytes_max),

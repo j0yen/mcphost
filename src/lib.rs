@@ -93,6 +93,7 @@ pub mod clients;
 pub mod launch_check;
 pub mod llms_txt;
 pub mod messaging;
+pub mod email_send;
 pub mod notify;
 pub mod paged;
 pub mod usage;

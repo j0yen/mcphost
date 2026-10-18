@@ -156,6 +156,12 @@ mod dryrun_ac04_tool_run_test_state_write;
 mod dryrun_ac07_quota_real_error_table_unchanged;
 #[path = "ematt_ac02_attachments_become_blobs_a_tool_reads.rs"]
 mod ematt_ac02_attachments_become_blobs_a_tool_reads;
+#[path = "emsnd_ac01_tool_reply_is_recorded_from_the_tool.rs"]
+mod emsnd_ac01_tool_reply_is_recorded_from_the_tool;
+#[path = "emsnd_ac02_tool_sender_reply_to_inbound_and_sent_row.rs"]
+mod emsnd_ac02_tool_sender_reply_to_inbound_and_sent_row;
+#[path = "emsnd_ac07_send_status_and_bridge_module_cannot_drift.rs"]
+mod emsnd_ac07_send_status_and_bridge_module_cannot_drift;
 #[path = "enduser_ac01_oauth_python_env_and_calls_row.rs"]
 mod enduser_ac01_oauth_python_env_and_calls_row;
 #[path = "enduser_ac04_no_identity_env_unset_and_calls_row_null.rs"]

@@ -923,6 +923,14 @@ mod emin_ac03_csv_part_becomes_a_blob_and_redelivery_is_idempotent;
 mod emin_ac04_invalid_payload_is_400;
 #[path = "emin_ac07_status_json_counts_inbound.rs"]
 mod emin_ac07_status_json_counts_inbound;
+#[path = "emsnd_ac03_html_and_text_reach_the_resend_body.rs"]
+mod emsnd_ac03_html_and_text_reach_the_resend_body;
+#[path = "emsnd_ac04_free_tenant_51st_send_is_email_quota_exceeded.rs"]
+mod emsnd_ac04_free_tenant_51st_send_is_email_quota_exceeded;
+#[path = "emsnd_ac05_unverified_tenant_mails_only_its_owner.rs"]
+mod emsnd_ac05_unverified_tenant_mails_only_its_owner;
+#[path = "emsnd_ac06_bad_to_is_args_invalid_and_503_twice_is_provider_error.rs"]
+mod emsnd_ac06_bad_to_is_args_invalid_and_503_twice_is_provider_error;
 #[path = "enduser_ac02_assertion_http_headers_and_calls_row.rs"]
 mod enduser_ac02_assertion_http_headers_and_calls_row;
 #[path = "enduser_ac03_invalid_assertion_rejected.rs"]

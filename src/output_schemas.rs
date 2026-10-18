@@ -40,6 +40,19 @@ fn registry() -> &'static Registry {
                 status.insert("enum".to_string(), crate::tasks::TaskStatus::schema_enum());
             }
         }
+        // PRD-mcphost-send-email-from-tool R6: the row `status` is the
+        // `SendStatus` set, never a typed copy.
+        if let Some(status) = parsed
+            .get_mut("host.email.sends")
+            .and_then(|schema| schema.get_mut("properties"))
+            .and_then(|props| props.get_mut("sends"))
+            .and_then(|sends| sends.get_mut("items"))
+            .and_then(|items| items.get_mut("properties"))
+            .and_then(|props| props.get_mut("status"))
+            .and_then(Value::as_object_mut)
+        {
+            status.insert("enum".to_string(), serde_json::json!(crate::email_send::SendStatus::names()));
+        }
         if let Err(bad) = widen_opaque(&mut parsed, OPAQUE_FIELDS) {
             panic!("OPAQUE_FIELDS: {bad}"); // allowlist: a renamed field must fail the build, never silently drop the rule; `oschv_ac01` asserts every pointer resolves
         }

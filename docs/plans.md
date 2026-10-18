@@ -41,6 +41,7 @@ Every numeric ceiling in the plan table, as `host.quickstart` `limits.plan` repo
 | `docs_chunks_max` | 10000 | 50000 |
 | `docs_max` | 200 | 20000 |
 | `drafts_per_day` | 5 | 100 |
+| `emails_per_day` | 50 | 2000 |
 | `end_users_max` | 100 | 10000 |
 | `event_body_bytes_max` | 262144 | 262144 |
 | `event_triggers_max` | 3 | 25 |

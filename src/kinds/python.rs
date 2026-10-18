@@ -2169,6 +2169,13 @@ pub const BRIDGE_MODULES: &[BridgeModule] = &[
         ],
     },
     BridgeModule {
+        name: "email",
+        purpose: "send an email from this tool's own address (same verb host.email.send is)",
+        signatures: &[
+            "mcphost.email.send(to, subject, text, html=None, reply_to_message_id=None) -- send one email as <tool>@<tenant>.mcphost.dev",
+        ],
+    },
+    BridgeModule {
         name: "elicit",
         purpose: "ask the user a typed question mid-call: the client's form when it can, the ask-user link otherwise",
         signatures: &[
@@ -2370,6 +2377,16 @@ pub const BRIDGE_RETURNS: &[BridgeReturn] = &[
     BridgeReturn {
         function: "mcphost.msg.inbox",
         shape: Envelope(&[("messages", "list")]),
+    },
+    BridgeReturn {
+        function: "mcphost.email.send",
+        shape: Envelope(&[
+            ("id", "str"),
+            ("provider_message_id", "str"),
+            ("from", "str"),
+            ("sent_at", "int"),
+            ("sends", "list"),
+        ]),
     },
     BridgeReturn {
         function: "mcphost.elicit",
@@ -3527,6 +3544,37 @@ _mcphost_msg_mod.inbox = _msg_inbox
 _mcphost_msg_mod.MsgError = McphostMsgError
 _mcphost_msg_mod.BridgeError = McphostBridgeError
 
+# ---- mcphost.email (PRD-mcphost-send-email-from-tool R7) ---------------------
+#
+# Same round trip, marked `__mcphost_email__`; the host adds the calling
+# tool's name, so the From line is the tool's and the sandbox cannot pick it.
+class McphostEmailError(McphostBridgeError):
+    pass
+
+def _email_send(to, subject, text, html=None, reply_to_message_id=None):
+    kwargs = {"to": to, "subject": subject, "text": text}
+    if html is not None:
+        kwargs["html"] = html
+    if reply_to_message_id is not None:
+        kwargs["reply_to_message_id"] = reply_to_message_id
+    _real_stdout.write(json.dumps({"__mcphost_email__": True, "op": "send", "args": kwargs}))
+    _real_stdout.write("\n")
+    _real_stdout.flush()
+    line = sys.stdin.readline()
+    if not line:
+        raise McphostEmailError("email_unavailable", "the email bridge closed")
+    resp = json.loads(line)
+    if not resp.get("ok"):
+        raise McphostEmailError(
+            resp.get("code", "email_error"), resp.get("message", "email call failed"), resp.get("data")
+        )
+    return resp.get("result")
+
+_mcphost_email_mod = _mcphost_types.ModuleType("mcphost.email")
+_mcphost_email_mod.send = _email_send
+_mcphost_email_mod.EmailError = McphostEmailError
+_mcphost_email_mod.BridgeError = McphostBridgeError
+
 # ---- mcphost.elicit (PRD-mcphost-elicitation-with-ask-fallback) -----------
 #
 # Same request-line-out/response-line-in round trip, marked
@@ -3577,6 +3625,7 @@ _mcphost_mod.lineage = _mcphost_lineage_mod
 _mcphost_mod.drift = _mcphost_drift_mod
 _mcphost_mod.channel = _mcphost_channel_mod
 _mcphost_mod.msg = _mcphost_msg_mod
+_mcphost_mod.email = _mcphost_email_mod
 _mcphost_mod.elicit = _mcphost_elicit_mod
 _mcphost_mod.call = _mcphost_call
 _mcphost_mod.quota = _mcphost_quota
@@ -3617,6 +3666,7 @@ sys.modules["mcphost.lineage"] = _mcphost_lineage_mod
 sys.modules["mcphost.drift"] = _mcphost_drift_mod
 sys.modules["mcphost.channel"] = _mcphost_channel_mod
 sys.modules["mcphost.msg"] = _mcphost_msg_mod
+sys.modules["mcphost.email"] = _mcphost_email_mod
 sys.modules["mcphost.elicit"] = _mcphost_elicit_mod
 
 # ---- return shapes (PRD-mcphost-sandbox-return-shape-contract) --------------
@@ -4480,6 +4530,61 @@ impl SidecarBridge for MsgSidecarBridge<'_> {
     }
 }
 
+/// PRD-mcphost-send-email-from-tool R7: `PY_RUNNER_SCRIPT`'s `mcphost.email`
+/// emits `{"__mcphost_email__": true, "op": "send", "args": {...}}`. The
+/// request goes through `ctx.msg` as the `email_send` op with the calling
+/// tool's name added under `__tool`, so the sender is the host's choice.
+/// A `host.tool_test` dry run reports the would-be send and sends nothing.
+struct EmailSidecarBridge<'a> {
+    ctx: &'a CallCtx,
+}
+
+#[async_trait::async_trait]
+impl SidecarBridge for EmailSidecarBridge<'_> {
+    async fn intercept(&self, line: &[u8]) -> Option<Vec<u8>> {
+        let request: Value = serde_json::from_slice(line).ok()?;
+        if request.get("__mcphost_email__").and_then(Value::as_bool) != Some(true) {
+            return None;
+        }
+        if let Some(response) = check_sidecar_ops_cap(self.ctx) {
+            return Some(response);
+        }
+        let mut args = request.get("args").cloned().unwrap_or(Value::Null);
+        if self.ctx.test_mode {
+            if let Some(dry_run) = crate::dryrun::current() {
+                dry_run.record_write(json!({
+                    "store": "email",
+                    "op": "send",
+                    "to": args.get("to").cloned().unwrap_or(Value::Null),
+                }));
+            }
+            let response = json!({"ok": true, "result": {"delivered": false, "would_send": args}});
+            return Some(serde_json::to_vec(&response).unwrap_or_default());
+        }
+        if let Some(obj) = args.as_object_mut() {
+            obj.insert(
+                crate::email_send::BRIDGE_TOOL_KEY.to_string(),
+                json!(self.ctx.tool_name.clone().unwrap_or_default()),
+            );
+        }
+        let response = match self.ctx.msg.call("email_send", args).await {
+            Ok(result) => json!({"ok": true, "result": result}),
+            Err(e) => {
+                let (code, message, data) = match e {
+                    KindError::Structured { code, message, data } => (code, message, data),
+                    KindError::InvalidArgs(m) => ("args_invalid", m, Value::Null),
+                    KindError::InvalidSpec(m) => ("args_invalid", m, Value::Null),
+                    KindError::Exec(m) => ("email_error", m, Value::Null),
+                };
+                json!({"ok": false, "code": code, "message": message, "data": data})
+            }
+        };
+        Some(serde_json::to_vec(&response).unwrap_or_else(|_| {
+            br#"{"ok":false,"code":"email_error","message":"internal: response not serializable"}"#.to_vec()
+        }))
+    }
+}
+
 /// PRD-mcphost-elicitation-with-ask-fallback: `PY_RUNNER_SCRIPT`'s
 /// `mcphost.elicit` emits `{"__mcphost_elicit__": true, "message": ...,
 /// "schema": ..., "timeout_s": ...}` and blocks on the response line.
@@ -4651,6 +4756,10 @@ impl SidecarBridge for HostSidecarBridge<'_> {
         }
         let msg_bridge = MsgSidecarBridge { ctx: self.ctx };
         if let Some(response) = msg_bridge.intercept(line).await {
+            return Some(response);
+        }
+        let email_bridge = EmailSidecarBridge { ctx: self.ctx };
+        if let Some(response) = email_bridge.intercept(line).await {
             return Some(response);
         }
         let elicit_bridge = ElicitSidecarBridge { ctx: self.ctx };
