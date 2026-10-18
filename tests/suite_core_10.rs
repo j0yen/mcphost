@@ -568,6 +568,8 @@ mod tssdk_ac05_contract_skew_warns_once_or_throws;
 mod tssdk_ac06_ir_parity_with_python_generator;
 #[path = "tssdk_ac07_ci_diff_fails_on_stale_sdk.rs"]
 mod tssdk_ac07_ci_diff_fails_on_stale_sdk;
+#[path = "tssdk_ac08_tool_that_is_a_family_prefix.rs"]
+mod tssdk_ac08_tool_that_is_a_family_prefix;
 #[path = "tsvr_ac01_unknown_column_names_declared.rs"]
 mod tsvr_ac01_unknown_column_names_declared;
 #[path = "tsvr_ac02_type_mismatch_names_accepted_shape.rs"]
