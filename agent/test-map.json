@@ -1852,6 +1852,17 @@
       "AC7": "tests/ctrs_ac07_ci_gate_runs_contract_suites_before_core_suites.rs",
       "AC8": "deferred -- operator-provisioned: live evidence is the wm-build journal inner-repo-check row for repo:contract-suite on this PRD's own land."
     },
+    "ctrx": {
+      "_prd": "PRD-mcphost-contract-suite-registry-axis.md (test_prefix: ctrx)",
+      "AC1": "tests/ctrx_ac01_cited_tree_gap_is_real.rs",
+      "AC2": "tests/ctrx_ac02_unmarked_registry_walker_is_flagged.rs",
+      "AC3": "tests/ctrx_ac03_stale_and_orphan_registry_markers_fail.rs",
+      "AC4": "tests/ctrx_ac04_concat_manifest_dir_literal_is_a_read.rs",
+      "AC5": "tests/ctrx_ac05_registry_walkers_marked_and_routed.rs",
+      "AC6": "tests/ctrx_ac06_contract_family_stays_in_budget.rs",
+      "AC7": "tests/ctrx_ac07_rules_block_is_generated_from_artifacts.rs",
+      "AC8": "deferred -- operator-provisioned: live evidence is a draft PR run on GitHub CI (probe deleting format:email from host.email.send)."
+    },
     "melc": {
       "_prd": "PRD-mcphost-elicitation-with-ask-fallback.md (test_prefix: melc)",
       "AC1": "tests/melc_ac01_typed_elicit_via_client_callback.rs",

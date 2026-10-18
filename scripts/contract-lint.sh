@@ -22,6 +22,7 @@
 # Usage:
 #   scripts/contract-lint.sh [DIR-or-FILE]   defaults to `tests`
 #   scripts/contract-lint.sh --fix [DIR]     print `<file>: add  //! contract: reads <artifact | registry sym>` per flagged file; edits nothing
+#   scripts/contract-lint.sh --definers      like --artifacts, with a TAB-separated definer file and its marker text
 #   scripts/contract-lint.sh --artifacts     print the derived artifact set: repo paths, then `registry <sym>` lines
 # Exit 0 clean, 1 on any unmarked contract-shaped file.
 set -uo pipefail
@@ -232,6 +233,17 @@ def walked_dirs(text):
                 found.add(c)
     return found
 
+
+if "--definers" in FLAGS:
+    # `<entry> TAB <definer file> TAB <marker text>`, in --artifacts order (inner-rules.sh reads this).
+    texts = {f: marker(t) for f, t in definers}
+    for a in sorted(defines):
+        print(f"{a}\t{defines[a]}\t{texts[defines[a]]}")
+    for n in sorted(registries):
+        d = registries[n][1]
+        text = marker(dict(definers).get(d) or "") or ""
+        print(f"registry {n}\t{d}\t{text.split(chr(0x2014), 1)[-1].strip()}")
+    sys.exit(0)
 
 if "--artifacts" in FLAGS:
     for a in sorted(defines):

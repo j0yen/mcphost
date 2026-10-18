@@ -3,20 +3,14 @@
 # into every inner-coder prompt (`[inner.repos.mcphost.lint] rules_cmd`).
 #
 # GENERATED, never hand-written: every line printed comes from a source of
-# truth (the header comment of scripts/flake-lint.sh, the leading doc
-# comments of the contract tests, and the suite files that include them), so
-# the block cannot drift from the checks CI and the gate actually run.
+# truth (the header comment of scripts/flake-lint.sh and the artifacts and
+# registries `scripts/contract-lint.sh --definers` derives from the marked
+# contract tests), so the block cannot drift from the checks CI and the gate
+# actually run.
 # tests/inner_rules_ac01_block_names_every_contract_test.rs pins that.
 #
 # Usage: scripts/inner-rules.sh        (run from anywhere; prints to stdout)
 set -uo pipefail
-
-# Contract tests whose doc comments become rules. One test stem per line;
-# adding a contract test is one line here.
-CONTRACT_TESTS=(
-  pgtr_ac04_every_array_verb_is_paged_or_excused
-  toolname_ac01_lint_reports_violations
-)
 
 cd "$(dirname "$0")/.." || exit 1
 
@@ -26,38 +20,14 @@ echo "-- 1. Flake-lint patterns (header of scripts/flake-lint.sh) --"
 # Leading comment block after the shebang, `# ` prefix stripped.
 awk 'NR==1 && /^#!/ {next} /^#/ {sub(/^# ?/, ""); print; next} {exit}' scripts/flake-lint.sh
 echo
-echo "-- 2. Contract rules (one per contract test) --"
-for stem in "${CONTRACT_TESTS[@]}"; do
-  f="tests/${stem}.rs"
-  echo
-  if [ ! -f "$f" ]; then
-    echo "[$f] MISSING: listed in CONTRACT_TESTS but not on disk."
-    continue
-  fi
-  doc=$(awk '/^\/\/[\/!]/ {sub(/^\/\/[\/!] ?/, ""); printf "%s ", $0; next} {exit}' "$f" | sed -e 's/  */ /g' -e 's/ $//')
-  if [ -n "$doc" ]; then
-    echo "[$f] $doc"
-  else
-    echo "[$f] (no doc comment; first 15 lines of comments instead)"
-    grep -E '^\s*//' "$f" | head -15
-  fi
-done
+echo "-- 2. Contract rules (one per derived artifact or registry; scripts/contract-lint.sh --artifacts) --"
 echo
-# Suite files that #[path]-include each contract test, and the test-name filters.
-declare -A SUITE_FILTERS=()
-for stem in "${CONTRACT_TESTS[@]}"; do
-  filter=$(echo "$stem" | cut -d_ -f1-2)
-  while IFS= read -r suite; do
-    [ -n "$suite" ] || continue
-    suite=$(basename "$suite" .rs)
-    case " ${SUITE_FILTERS[$suite]:-} " in
-      *" $filter "*) ;;
-      *) SUITE_FILTERS[$suite]="${SUITE_FILTERS[$suite]:-} $filter" ;;
-    esac
-  done < <(grep -lF "#[path = \"${stem}.rs\"]" tests/suite_*.rs 2>/dev/null)
-done
+# <path | registry sym> TAB <definer file> TAB <marker text>
+while IFS=$'\t' read -r entry file text; do
+  [ -n "$entry" ] || continue
+  echo "$entry — $(basename "$file" .rs): $text"
+done < <(scripts/contract-lint.sh --definers tests)
+echo
 echo "Done checks the daemon runs:"
 echo "  bash scripts/flake-lint.sh"
-for suite in $(printf "%s\n" "${!SUITE_FILTERS[@]}" | LC_ALL=C sort); do
-  echo "  cargo test --test ${suite}${SUITE_FILTERS[$suite]}"
-done
+echo "  scripts/pin-tests.sh"

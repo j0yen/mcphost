@@ -707,6 +707,8 @@ mod ctrx_ac02_unmarked_registry_walker_is_flagged;
 mod ctrx_ac04_concat_manifest_dir_literal_is_a_read;
 #[path = "ctrx_ac06_contract_family_stays_in_budget.rs"]
 mod ctrx_ac06_contract_family_stays_in_budget;
+#[path = "ctrx_ac07_rules_block_is_generated_from_artifacts.rs"]
+mod ctrx_ac07_rules_block_is_generated_from_artifacts;
 #[path = "dbmw_ac02_db_maintenance_truncates_wal_and_vacuums.rs"]
 mod dbmw_ac02_db_maintenance_truncates_wal_and_vacuums;
 #[path = "dbmw_ac03_backup_lock_refuses_window.rs"]
