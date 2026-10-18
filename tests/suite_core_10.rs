@@ -458,6 +458,8 @@ mod planlim_ac05_publish_network_description_lists_gated_values;
 mod planlim_ac06_tool_test_warns_timeout_above_latency_ceiling;
 #[path = "planlim_ac07_contract_drift_with_deprecation_entry.rs"]
 mod planlim_ac07_contract_drift_with_deprecation_entry;
+#[path = "plansjson_ac01_every_ceiling_reaches_the_public_catalog.rs"]
+mod plansjson_ac01_every_ceiling_reaches_the_public_catalog;
 #[path = "ppage_ac01_plan_carries_included_and_overage.rs"]
 mod ppage_ac01_plan_carries_included_and_overage;
 #[path = "ppage_ac02_plans_json_carries_fields_no_digits.rs"]
