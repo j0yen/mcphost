@@ -38,13 +38,6 @@
     "AC8": "tests/test_live_smoke.py"
   },
   "ac_test_map_by_prefix": {
-    "oapi": {
-      "_prd": "PRD-mcphost-openapi-for-rest-facade.md (test_prefix: oapi)",
-      "AC1": "tests/oapi_ac01_pinned_response_schemas.rs",
-      "AC2": "tests/oapi_ac02_route_table_drift.rs",
-      "AC3": "tests/oapi_ac03_openapi_json_validates.rs",
-      "AC4": "tests/oapi_ac04_x_responses_match_documented_schemas.rs"
-    },
     "nfs": {
       "_prd": "PRD-mcphost-notes-to-future-self.md (test_prefix: nfs)",
       "AC1": "tests/nfs_ac01_put_emits_list_changed_and_suffix.rs",
@@ -61,16 +54,6 @@
       "AC5": "tests/dlrec_ac05_readme_recipe_block_checked.rs",
       "AC6": "tests/dlrec_ac06_whoami_hint_for_foreign_session.rs",
       "AC7": "tests/dlrec_ac07_error_codes_only_in_generated_blocks.rs"
-    },
-    "kbind": {
-      "_prd": "PRD-mcphost-delegation-bound-to-run-or-session.md",
-      "AC1": "tests/kbind_ac01_session_ids_distinct_and_bound_key_refused_elsewhere.rs",
-      "AC2": "tests/kbind_ac02_run_bound_key_needs_its_run_id.rs",
-      "AC3": "tests/kbind_ac03_run_done_revokes_bound_key.rs",
-      "AC4": "tests/kbind_ac04_bind_target_must_be_yours.rs",
-      "AC5": "tests/kbind_ac05_session_idle_and_close_revoke.rs",
-      "AC6": "tests/kbind_ac06_list_and_whoami_show_bound.rs",
-      "AC7": "tests/kbind_ac07_run_deadline_caps_child_expiry.rs"
     },
     "ccli": {
       "_prd": "PRD-mcphost-call-cli-from-contract.md (test_prefix: ccli)",
