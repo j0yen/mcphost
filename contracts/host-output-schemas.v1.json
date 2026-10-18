@@ -2909,6 +2909,40 @@
       "next": {
         "type": "string"
       },
+      "oauth_issuers": {
+        "properties": {
+          "invalid": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "integer"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "tenant_id": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "id",
+                "reason",
+                "tenant_id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "rows": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "invalid",
+          "rows"
+        ],
+        "type": "object"
+      },
       "window": {
         "properties": {
           "calls": {

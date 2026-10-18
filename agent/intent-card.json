@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-publish-visibility-and-tags.md",
-  "intent_slug": "mcphost-publish-visibility-and-tags",
-  "root_motivation": "**Who:** the agent publishing a tool it wants others to find; the agent searching for one. **What:** publish once, say who may find it, say what it is for, and know that everything public at least runs. **Why not today:** `tool_publish_props` (`handler.rs:599`) has no `visibility` or `tags`; `tools.visibility` accepts `private|group|public|url` by a hand-written string match (`sharing.rs:52-71`) while the `host.tool_share` schema declares a bare `string` with the names in prose (`handler.rs:1385`) \u2014 two copies of one set, the 10-07 level-8 shape; `share_description` is the only catalog text (migration 0013); nothing checks a public tool runs, so the catalog can carry tools whose `host.tool_test` would fail. **Premise (creative):** a publish-time dry run is cheap enough that \"public = tested\" costs the publisher nothing it would not do anyway. **Falsifier:** the refusal rate in the frontmatter; AC 1 measures the dry run's cost on the three starter tools.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-oauth-discovery-document-contract.md",
+  "intent_slug": "mcphost-oauth-discovery-document-contract",
+  "root_motivation": "From 2026-10-05 07:01 UTC to 2026-10-13 9:09 pm PDT the root document `https://mcphost.dev/.well-known/oauth-protected-resource` listed `\"toolconf-probe\"` beside `https://mcphost.dev` as an authorization server: one `oauth_issuers` row (id 9, tenant 3539, the only row in the table) written by a probe. The root builder (`src/oauth.rs:1012\u20131037`) publishes `list_distinct_oauth_issuer_urls()` over all tenants with no filter; the write side accepted any string until PR #261 (10-13) added the `https://` check at `src/oauth.rs:48\u201360`. Nothing removed the row \u2014 no verb exists to delete an issuer \u2014 and nothing read the document: the chain's explore OAuth cohort failed 42 of 42 at bootstrap each night for 8 nights before anyone looked (`wiki/answers/2026-10-13-oauth-discovery-pollution-toolconf-probe-five-whys.md`, levels 1\u20135). Who: every OAuth-first MCP client and the chain. What: discovery that names a server that does not exist. Why they cannot today: the document is a shared, d...",
   "user_persona": "An agent that runs host.note.put {text, attach_to: {tool}} once and reads the note on that tool's description in every later session; the same user's second client sees it too.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -12,46 +12,46 @@
   },
   "acceptance_criteria": [
     {
-      "id": "AC1",
-      "level": "MUST",
-      "description": "Given the python, http and chain starter tools from `host.quickstart` published with `visibility: \"public\"`, When each publish runs its dry run, Then all three return `tested_version: 1` and the added latency per publish is \u2264 2 s on the test host; a refusal on any of the three fails this AC and is reported as the falsifier firing.",
-      "test": "tests/pubvis_ac01_starters_publish_public_tested.rs"
-    },
-    {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given `host_tools()`'s descriptors, When the test reads the `visibility` enum of `host.tool_publish` and of `host.tool_share`, Then both equal `Visibility::PUBLISHABLE` and `Visibility::ALL` minus nothing the validator rejects, and a `Visibility` variant added without a schema change fails the test.",
-      "test": "tests/pubvis_ac02_visibility_enum_single_source.rs"
+      "description": "Given an `oauth_issuers` row with issuer `toolconf-probe` inserted directly into the test database, When the root and per-tenant documents are built, Then neither lists it and `host.doctor` reports one invalid row with that id and reason `not_https_url`.",
+      "test": "tests/oauthdoc_ac02_non_url_row_leaves_documents_and_doctor_reports_it.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a python tool whose source raises on every call, When published with `visibility: \"public\"`, Then the error is `untested_tool_cannot_be_public` with `data.verdict` and `data.next = \"host.tool_test\"`, and `host.tool_list` shows the tool `private`.",
-      "test": "tests/pubvis_ac03_untested_tool_cannot_be_public.rs"
+      "description": "Given the validator's rejection table, When the generated test feeds each case to the write verb and to the read filter, Then both reject the same set and the test fails on the first divergence, naming the case.",
+      "test": "tests/oauthdoc_ac03_write_and_read_reject_the_same_set.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a tool published `unlisted`, When an anonymous caller runs `host.catalog.search` with no query and `GET /.well-known/mcp/catalog.json`, Then neither lists it, while `host.catalog.get` and a cross-tenant call by full name succeed.",
-      "test": "tests/pubvis_ac04_unlisted_not_listed_but_callable.rs"
+      "description": "Given a tenant with two valid issuers, When `host.oauth.issuer_remove` names one, Then the row is gone, the per-tenant and root documents no longer list it, an audit row exists, and the response is `{removed: true}`.",
+      "test": "tests/oauthdoc_ac04_tenant_issuer_remove_updates_documents_and_audits.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given `tags: [\"Webhook\", \"webhook\", \"a b\"]`, When published, Then the response is `args_invalid` naming `a b`; given `[\"Webhook\", \"webhook\"]`, Then stored tags are `[\"webhook\"]`; given 17 valid tags, Then `args_invalid` names the limit 16.",
-      "test": "tests/pubvis_ac05_tags_validated_normalised_capped.rs"
+      "description": "Given an admin and a tenant's invalid issuer, When `admin.oauth.issuer_remove` runs with a reason, Then the row is removed, the audit row carries the reason, and the tenant's own documents rebuild without it.",
+      "test": "tests/oauthdoc_ac05_admin_issuer_remove_clears_invalid_row_with_reason.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a public tool at version 1 with `tested_version 1`, When a new version is published, Then it stays public with `stale_test: true`, and a passing `host.tool_test` sets `tested_version: 2` and clears the flag.",
-      "test": "tests/pubvis_ac06_new_version_marks_stale_until_retested.rs"
+      "description": "Given a disabled tenant and an orphan row whose tenant id no longer exists, When the root document is built, Then neither row is listed and the doctor reports the orphan with reason `tenant_missing`.",
+      "test": "tests/oauthdoc_ac06_orphan_and_disabled_tenant_rows_are_not_listed.rs"
     },
     {
       "id": "AC7",
+      "level": "MUST",
+      "description": "Given two concurrent `issuer_remove` calls for the same issuer, When both complete, Then exactly one returns `{removed: true}`, the other `not_found`, and no panic or duplicate audit row occurs.",
+      "test": "tests/oauthdoc_ac07_concurrent_issuer_remove_has_one_winner.rs"
+    },
+    {
+      "id": "AC8",
       "level": "SHOULD",
-      "description": "Given two concurrent `host.tool_share visibility=public` calls on the same untested tool, When both dry runs pass, Then `tested_version` is stamped once and both calls return the same result without a UNIQUE or busy error.",
-      "test": "tests/pubvis_ac07_concurrent_public_share_stamps_once.rs"
+      "description": "Given an empty `oauth_issuers` table, When the root document is built, Then it lists exactly the hosted authorization server and the doctor reports `{rows: 0, invalid: []}`. - iter_log: 2026-10-14T22:45:05Z amended by /dream (build_priority high \u2192 normal, carbon controller; Joe 10-14 3:4x pm \"prioritize the mcphost PRDs that are blocking synthorg PRDs. have them go next.\") \u2014 yields the high tier to the 8 synthorg-blocking mcphost PRDs; re-raise when those have landed; frontmatter only",
+      "test": "tests/oauthdoc_ac08_empty_table_lists_only_hosted_as.rs"
     }
   ],
   "scope": [

@@ -921,6 +921,11 @@ pub fn admin_audit_entry(
             args.get("id").and_then(Value::as_i64).map(|n| n.to_string()),
             None,
         )),
+        "admin.oauth.issuer_remove" => Some((
+            "oauth_issuer_remove".into(),
+            args.get("issuer").and_then(Value::as_str).map(String::from),
+            args.get("reason").and_then(Value::as_str).map(String::from),
+        )),
         "admin.oauth.jwks_refresh" => Some((
             "oauth_jwks_refresh".into(),
             args.get("issuer").and_then(Value::as_str).map(String::from),

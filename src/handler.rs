@@ -3308,7 +3308,7 @@ fn host_tools_part_07() -> Vec<Tool> {
              family, each group with the next concrete step. Returns {window: {calls, failed, \
              first_ts, last_ts}, groups: [{code, family, class, count, tools, last_ts, \
              first_source_line?, line?, next}]} biggest group first; tool_exception groups carry \
-             the tool-source line of the newest failure. No failed calls: groups: [] and a next \
+             the tool-source line of the newest failure; oauth_issuers: {rows, invalid: [{id, tenant_id, reason}]} reports stored OAuth issuer rows the discovery documents omit (the admin key sees every tenant's rows). No failed calls: groups: [] and a next \
              saying so (hint: host.quickstart when the tenant has no tools yet). The admin key \
              may pass tenant: <namespace>; a tenant key naming another tenant is forbidden.",
             host_schema(
@@ -5817,6 +5817,20 @@ fn admin_tools() -> Vec<Tool> {
             schema(json!({}), &[]),
         ),
         Tool::new(
+            "admin.oauth.issuer_remove",
+            "Remove one tenant's registered OAuth issuer (for example an invalid row the \
+             discovery documents already omit). Writes an audit row carrying the reason; an \
+             absent issuer returns issuer_not_found. Returns {removed: true, issuer}.",
+            schema(
+                json!({
+                    "tenant_id": {"type": "integer", "description": "The owning tenant's id (host.doctor's oauth_issuers.invalid[].tenant_id)."},
+                    "issuer": {"type": "string"},
+                    "reason": {"type": "string", "description": "Why; stored in the tenant's audit row."},
+                }),
+                &["tenant_id", "issuer", "reason"],
+            ),
+        ),
+        Tool::new(
             "admin.oauth.jwks_refresh",
             "Force an immediate JWKS refetch for one issuer, bypassing the normal TTL and \
              unknown-kid throttle.",
@@ -7879,6 +7893,7 @@ impl McpHostHandler {
             // PRD-mcphost-oauth-resource-server P1 requirement 6, AC9.
             "admin.oauth.issuers" => crate::oauth::admin_issuers(&self.state).await,
             "admin.oauth.jwks_refresh" => crate::oauth::admin_jwks_refresh(&self.state, &args).await,
+            "admin.oauth.issuer_remove" => crate::oauth::admin_issuer_remove(&self.state, &args).await,
             // PRD-mcphost-oauth-client-policy requirement 5 (AC7).
             "admin.oauth.client_block" => crate::oauth_policy::admin_client_block(&self.state, &args).await,
             "admin.oauth.client_unblock" => crate::oauth_policy::admin_client_unblock(&self.state, &args).await,
@@ -9105,6 +9120,7 @@ impl McpHostHandler {
                 "validated": crate::output_schemas::error_envelope_report().validated,
                 "skipped": crate::output_schemas::error_envelope_report().skipped,
             },
+            "oauth_issuers": crate::oauth::doctor_report(&self.state, tenant.map(|t| t.id)).await?,
         });
         if rows.is_empty() {
             out["next"] = json!(crate::doctor::empty_next(limit));

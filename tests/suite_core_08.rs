@@ -558,6 +558,20 @@ mod oauthconf_ac05_probe_cli_json_matches_gate_and_exit_codes;
 mod oauthconf_ac06_records_and_receipt_never_leak_secrets;
 #[path = "oauthconf_ac07_scenarios_doc_matches_gold_and_docs_sharing_check.rs"]
 mod oauthconf_ac07_scenarios_doc_matches_gold_and_docs_sharing_check;
+#[path = "oauthdoc_ac02_non_url_row_leaves_documents_and_doctor_reports_it.rs"]
+mod oauthdoc_ac02_non_url_row_leaves_documents_and_doctor_reports_it;
+#[path = "oauthdoc_ac03_write_and_read_reject_the_same_set.rs"]
+mod oauthdoc_ac03_write_and_read_reject_the_same_set;
+#[path = "oauthdoc_ac04_tenant_issuer_remove_updates_documents_and_audits.rs"]
+mod oauthdoc_ac04_tenant_issuer_remove_updates_documents_and_audits;
+#[path = "oauthdoc_ac05_admin_issuer_remove_clears_invalid_row_with_reason.rs"]
+mod oauthdoc_ac05_admin_issuer_remove_clears_invalid_row_with_reason;
+#[path = "oauthdoc_ac06_orphan_and_disabled_tenant_rows_are_not_listed.rs"]
+mod oauthdoc_ac06_orphan_and_disabled_tenant_rows_are_not_listed;
+#[path = "oauthdoc_ac07_concurrent_issuer_remove_has_one_winner.rs"]
+mod oauthdoc_ac07_concurrent_issuer_remove_has_one_winner;
+#[path = "oauthdoc_ac08_empty_table_lists_only_hosted_as.rs"]
+mod oauthdoc_ac08_empty_table_lists_only_hosted_as;
 #[path = "oauthentry_ac01_every_method_401_with_entry_challenge.rs"]
 mod oauthentry_ac01_every_method_401_with_entry_challenge;
 #[path = "oauthentry_ac02_entry_document_names_entry_resource.rs"]
