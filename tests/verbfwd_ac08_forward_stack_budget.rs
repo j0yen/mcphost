@@ -363,7 +363,7 @@ fn every_dotted_verb_forwards_within_the_stack_budget() {
     // Every id is a server start + signup + call: spread them over a few child
     // processes at a time (the budget is per thread, so this changes nothing but
     // wall time).
-    let exe = std::env::current_exe().expect("current_exe");
+    let exe = common::self_exe();
     let all = ids(&verbs);
     let total = all.len();
     let workers = std::thread::available_parallelism().map_or(2, |n| n.get()).clamp(1, 4);

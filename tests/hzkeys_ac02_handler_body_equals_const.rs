@@ -83,7 +83,7 @@ fn an_extra_key_in_the_handler_fails_exactly_hzkeys_ac02() {
         );
     }
 
-    let out = std::process::Command::new(std::env::current_exe().expect("current_exe"))
+    let out = std::process::Command::new(crate::common::self_exe())
         .args(&readers)
         .args(["--skip", META_TEST])
         .env(EXTRA_KEY_ENV, "uptime_s")

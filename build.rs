@@ -1,6 +1,16 @@
-//! Stamps `MCPHOST_GIT_SHA` (12-char short sha) into the build when a `.git`
-//! is present; leaves it unset otherwise so `build_info::BUILD.git_sha` is
-//! `None`. Never fails the build when `git` is absent.
+//! Stamps `MCPHOST_BUILD_GIT_SHA` (12-char short sha) into the build: the
+//! `MCPHOST_GIT_SHA` override when set and non-empty (deploys/docker), else
+//! `git rev-parse` when a `.git` is present; leaves it unset otherwise so
+//! `build_info::BUILD.git_sha` is `None`. Never fails the build when `git`
+//! is absent.
+//!
+//! The env var read (`MCPHOST_GIT_SHA`) and the one emitted
+//! (`MCPHOST_BUILD_GIT_SHA`) are DIFFERENT names on purpose: cargo exports a
+//! package's `rustc-env` values into the environment of the test processes
+//! it runs, so an output that shares a name with a `rerun-if-env-changed`
+//! input makes a nested `cargo test` inside a test see the env "changed",
+//! rerun this script and relink the binary under the running suite
+//! (`tests/vfxenv_ac01_build_env_inputs_are_not_outputs.rs` guards it).
 //!
 //! Also embeds `examples/index.json` (PRD-mcphost-example-manifest-contract
 //! R4): writes `$OUT_DIR/examples_embedded.rs`, which `src/examples.rs`
@@ -181,7 +191,10 @@ fn main() {
     embed_migrations_index();
     println!("cargo:rerun-if-changed=.git/HEAD");
     println!("cargo:rerun-if-env-changed=MCPHOST_GIT_SHA");
-    if std::env::var_os("MCPHOST_GIT_SHA").is_some() {
+    let over = std::env::var("MCPHOST_GIT_SHA").unwrap_or_default();
+    let over = over.trim();
+    if !over.is_empty() {
+        println!("cargo:rustc-env=MCPHOST_BUILD_GIT_SHA={over}");
         return;
     }
     if !std::path::Path::new(".git").exists() {
@@ -198,7 +211,7 @@ fn main() {
     }
     let sha = String::from_utf8_lossy(&out.stdout).trim().to_string();
     if !sha.is_empty() {
-        println!("cargo:rustc-env=MCPHOST_GIT_SHA={sha}");
+        println!("cargo:rustc-env=MCPHOST_BUILD_GIT_SHA={sha}");
     }
 }
 

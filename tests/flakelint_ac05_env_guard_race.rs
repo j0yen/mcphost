@@ -56,7 +56,7 @@ const RACER_FILTER: &str = "flakelint_ac05_racer";
 
 #[test]
 fn both_racers_pass_every_time_across_twenty_runs() {
-    let exe = std::env::current_exe().expect("this test binary's own path");
+    let exe = common::self_exe();
     for attempt in 0..20 {
         let output = std::process::Command::new(&exe)
             .args([RACER_FILTER, "--test-threads", "2"])

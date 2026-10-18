@@ -3,7 +3,7 @@
 //! JSON `null` and `version` is still present.
 //!
 //! A full second build of the crate is not needed to prove the chain: (1)
-//! `build.rs`, run in a `.git`-less directory, emits no `MCPHOST_GIT_SHA`
+//! `build.rs`, run in a `.git`-less directory, emits no `MCPHOST_BUILD_GIT_SHA`
 //! (so `option_env!` is `None`); (2) the real `/healthz` handler, served
 //! from an `AppState` carrying a `BuildInfo` with `git_sha: None`,
 //! renders JSON `null` beside `version`, never omitting the key.
@@ -71,7 +71,7 @@ fn build_rs_in_gitless_tree_emits_no_sha() {
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        !stdout.contains("MCPHOST_GIT_SHA="),
+        !stdout.contains("MCPHOST_BUILD_GIT_SHA="),
         "no .git => no sha stamped: {stdout}"
     );
     let _ = std::fs::remove_dir_all(&tmp);

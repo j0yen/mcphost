@@ -99,7 +99,8 @@ pub fn child_report_guard() -> ! {
 /// Re-invoke this test binary running only `test_name`, with the capability
 /// probe and `$CI` forced to the requested combination.
 pub fn run_guard_child(test_name: &str, capable: bool, ci: bool) -> Output {
-    let exe = std::env::current_exe().expect("current_exe");
+    // /proc/self/exe execs the running inode even if a nested build relinked its path (VFX).
+    let exe = if cfg!(target_os = "linux") { std::path::PathBuf::from("/proc/self/exe") } else { std::env::current_exe().unwrap() };
     let mut cmd = Command::new(&exe);
     cmd.args([test_name, "--exact", "--nocapture", "--test-threads=1"])
         .env(CHILD_ROLE_ENV, "1");

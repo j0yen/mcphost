@@ -8,13 +8,15 @@ use serde_json::{Map, Value};
 pub struct BuildInfo {
     pub version: &'static str,
     /// `None` when built outside a git checkout (`build.rs` leaves
-    /// `MCPHOST_GIT_SHA` unset); rendered as JSON `null`, never omitted.
+    /// `MCPHOST_BUILD_GIT_SHA` unset and no `MCPHOST_GIT_SHA` override was
+    /// given); rendered as JSON `null`, never omitted. The compile-time name
+    /// differs from the build-time override on purpose -- see `build.rs`.
     pub git_sha: Option<&'static str>,
 }
 
 pub const BUILD: BuildInfo = BuildInfo {
     version: env!("CARGO_PKG_VERSION"),
-    git_sha: option_env!("MCPHOST_GIT_SHA"),
+    git_sha: option_env!("MCPHOST_BUILD_GIT_SHA"),
 };
 
 /// The only source of the anonymous `/healthz` key set (sorted, the order
