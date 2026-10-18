@@ -3,8 +3,11 @@ name: sdk-python-publish
 # PRD-mcphost-python-sdk-generated R5: on a `v*` tag, build the wheel and
 # publish it to PyPI with the trusted publisher. Until the PyPI project
 # `mcphost-sdk` exists and trusts this repo (open question, owner: Joe) the
-# publish step fails; `continue-on-error` turns that into a warning, never a
-# failed release.
+# publish step is SKIPPED: it runs only when the repo variable
+# PYPI_PUBLISH_READY is "true" (set it once the project and its trusted
+# publisher exist). No continue-on-error: the audit (HLT-034) forbids a
+# non-blocking step, and a skipped step is honest where a swallowed failure
+# is not.
 
 on:
   push:
@@ -36,6 +39,7 @@ jobs:
         run: uv build
 
       - name: publish to PyPI
+        if: vars.PYPI_PUBLISH_READY == 'true'
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
         with:
           packages-dir: sdk/python/dist
