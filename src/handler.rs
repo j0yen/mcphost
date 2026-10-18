@@ -890,8 +890,20 @@ fn tool_publish_spec_branches(kinds: &KindRegistry) -> Value {
 /// `host.tool_publish`'s input schema (`schema` + the per-kind `allOf`
 /// branches), optionally wrapped by `host_schema` for the `tenant_key`.
 fn tool_publish_schema(kinds: &KindRegistry, with_tenant_key: bool) -> Map<String, Value> {
-    let props = tool_publish_props(kinds);
+    let mut props = tool_publish_props(kinds);
     let mut out = if with_tenant_key {
+        // `force` is a call-time switch of the control-plane verb, not part of a
+        // manifest entry, so it is declared only on the verb's own descriptor.
+        if let Some(obj) = props.as_object_mut() {
+            obj.insert(
+                "force".to_string(),
+                json!({
+                    "type": "boolean",
+                    "description": "Publish a chain whose mapping can never resolve (verdict will_fail) anyway; \
+                        the response's gates entry then carries forced: true. Default false.",
+                }),
+            );
+        }
         host_schema(props, TOOL_PUBLISH_REQUIRED)
     } else {
         schema(props, TOOL_PUBLISH_REQUIRED)
@@ -1005,6 +1017,13 @@ pub(crate) fn self_check_tools_list(state: &AppState) -> usize {
 /// may use without being implicitly signed up.
 fn is_feedback_tool(name: &str) -> bool {
     matches!(name, "host.feedback.send" | "host.feedback.list" | "host.feedback.get")
+}
+
+/// The control-plane verbs `call_tool_inner` answers before (and without)
+/// `dispatch_tenant_tool_inner`, because they are reachable with no tenant.
+fn is_pre_dispatch_tool(name: &str) -> bool {
+    is_feedback_tool(name)
+        || matches!(name, "host.quickstart" | "host.help.search" | "host.help.get" | "host.errors" | "billing.plans" | "host.redeem")
 }
 
 /// PRD-mcphost-one-next-tool requirement 1 (AC1): the starter set an
@@ -1759,7 +1778,7 @@ fn host_tools_part_02() -> Vec<Tool> {
                             {fits, units, remaining, refusal}; same as host.estimate. Default false.",
                     },
                 }),
-                &["name", "args"],
+                &["name"],
             ),
         ),
         // PRD-mcphost-tool-versions P0 requirements 3/4, P2 requirement 8:
@@ -4704,10 +4723,10 @@ fn host_tools_part_11() -> Vec<Tool> {
             host_schema(
                 json!({
                     "issuer": {"type": "string", "description": "The JWT `iss` claim value to match, e.g. https://issuer.example.com."},
-                    "audience": {"type": "string", "description": "The JWT `aud` claim value to require."},
+                    "audience": {"type": "string", "description": "The JWT `aud` claim value to require; defaults to this tenant's own canonical resource URI."},
                     "jwks_url": {"type": "string", "description": "URL this host fetches the issuer's JWKS from."},
                 }),
-                &["issuer", "audience", "jwks_url"],
+                &["issuer", "jwks_url"],
             ),
         ),
         Tool::new(
@@ -6853,6 +6872,16 @@ impl StateBackend for CountingStateBackend {
 /// the dispatcher. Re-measure and tighten as the dispatch frames shrink.
 pub const FORWARD_STACK_BUDGET: usize = 1_950_720;
 
+/// The validator's registration for what `host.spec.test` owns (R3): more
+/// than `MAX_TEST_INVOCATIONS` invocations is refused `too_many_invocations`
+/// (`data.limit`) by the handler, ahead of any run.
+pub const ARG_OWNERS: &[crate::host_args::ArgOwner] = &[crate::host_args::ArgOwner {
+    applies: |tool| tool.replace('_', ".") == "host.spec.test",
+    path: "/invocations",
+    keywords: &["maxItems"],
+    codes: &["too_many_invocations"],
+}];
+
 /// Verbs whose handler forwards a call back into `dispatch_tenant_tool`; see the
 /// comment there. Canonical dotted names (an alias is resolved before dispatch).
 const FORWARDING_WRAPPERS: &[&str] = &["host.tool.call", "host.tool.test", "host.estimate"];
@@ -7156,8 +7185,15 @@ impl McpHostHandler {
         // straight through to `inner`, whose first line is the `fields` check
         // repeated here. run 326 / run 953 (10-17), FORWARD_STACK_BUDGET.
         let result = if FORWARDING_WRAPPERS.contains(&name) {
-            match crate::paged::refuse_fields_on_unprojected(name, &args) {
-                Ok(()) => self.forwarding_wrapper(tenant, calls_auth_method, end_user, name, args).await,
+            // The same two checks `dispatch_tenant_tool_inner` makes first: the
+            // wrapper's descriptor validates its own call like every other verb.
+            match crate::paged::refuse_fields_on_unprojected(name, &args)
+                .and_then(|()| crate::host_args::validate_host_args(&self.state.kinds, name, &args))
+            {
+                Ok(()) => {
+                    crate::host_args::note_handler_run(&tenant.namespace, name);
+                    self.forwarding_wrapper(tenant, calls_auth_method, end_user, name, args).await
+                }
                 Err(e) => Err(e),
             }
         } else {
@@ -12678,9 +12714,24 @@ impl McpHostHandler {
                 _ => {}
             }
         }
+        // PRD-mcphost-host-args-validated-by-default R5 (open question 3): the
+        // verbs the match below answers WITHOUT `dispatch_tenant_tool_inner`
+        // (reachable before signup) are validated by the same descriptor here.
+        let pre_dispatch_gate: Result<(), AppError> = if is_pre_dispatch_tool(&body_name) {
+            let namespace = match &auth {
+                Auth::Tenant(tenant, _) => tenant.namespace.as_str(),
+                _ => "",
+            };
+            crate::host_args::validate_host_args(&self.state.kinds, &body_name, &args)
+                .inspect(|()| crate::host_args::note_handler_run(namespace, &body_name))
+        } else {
+            Ok(())
+        };
         let outcome: Result<Value, AppError> = if let Some(replayed) = replay_outcome {
             replayed
         } else if let Some(err) = end_user_err {
+            Err(err)
+        } else if let Err(err) = pre_dispatch_gate {
             Err(err)
         } else {
             match (&auth, body_name.as_str()) {

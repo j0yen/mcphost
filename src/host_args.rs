@@ -142,7 +142,13 @@ pub struct ArgOwner {
 /// Every registration, collected from the owning modules.
 pub fn arg_owners() -> &'static [ArgOwner] {
     static OWNERS: OnceLock<Vec<ArgOwner>> = OnceLock::new();
-    OWNERS.get_or_init(|| crate::paged::ARG_OWNERS.iter().chain(crate::errors::ARG_OWNERS).copied().collect())
+    OWNERS.get_or_init(|| {
+        [crate::paged::ARG_OWNERS, crate::errors::ARG_OWNERS, crate::plans::ARG_OWNERS, crate::handler::ARG_OWNERS]
+            .into_iter()
+            .flatten()
+            .copied()
+            .collect()
+    })
 }
 
 /// Whether `owner` owns a violation of `keyword` at the instance path `at` of `tool`.

@@ -16256,7 +16256,7 @@
         "additionalProperties": false,
         "properties": {
           "audience": {
-            "description": "The JWT `aud` claim value to require.",
+            "description": "The JWT `aud` claim value to require; defaults to this tenant's own canonical resource URI.",
             "type": "string"
           },
           "dry_run": {
@@ -16278,7 +16278,6 @@
         },
         "required": [
           "issuer",
-          "audience",
           "jwks_url"
         ],
         "type": "object",
@@ -29239,8 +29238,7 @@
           }
         },
         "required": [
-          "name",
-          "args"
+          "name"
         ],
         "type": "object",
         "x-mcphost-validated": true
@@ -30590,6 +30588,10 @@
         "properties": {
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "force": {
+            "description": "Publish a chain whose mapping can never resolve (verdict will_fail) anyway; the response's gates entry then carries forced: true. Default false.",
             "type": "boolean"
           },
           "kind": {
@@ -32927,8 +32929,7 @@
           }
         },
         "required": [
-          "name",
-          "args"
+          "name"
         ],
         "type": "object",
         "x-deprecated": {
@@ -33245,6 +33246,10 @@
         "properties": {
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "force": {
+            "description": "Publish a chain whose mapping can never resolve (verdict will_fail) anyway; the response's gates entry then carries forced: true. Default false.",
             "type": "boolean"
           },
           "kind": {
@@ -41155,7 +41160,7 @@
         "additionalProperties": false,
         "properties": {
           "audience": {
-            "description": "The JWT `aud` claim value to require.",
+            "description": "The JWT `aud` claim value to require; defaults to this tenant's own canonical resource URI.",
             "type": "string"
           },
           "dry_run": {
@@ -41177,7 +41182,6 @@
         },
         "required": [
           "issuer",
-          "audience",
           "jwks_url"
         ],
         "type": "object",
@@ -43474,8 +43478,7 @@
           }
         },
         "required": [
-          "name",
-          "args"
+          "name"
         ],
         "type": "object",
         "x-mcphost-validated": true
@@ -43743,6 +43746,10 @@
         "properties": {
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "force": {
+            "description": "Publish a chain whose mapping can never resolve (verdict will_fail) anyway; the response's gates entry then carries forced: true. Default false.",
             "type": "boolean"
           },
           "kind": {

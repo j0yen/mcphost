@@ -14,10 +14,16 @@ use mcphost::paged::{fields_for, paged_spec};
 use serde_json::{Value, json};
 
 #[test]
-fn vbd_ac03_the_registry_holds_exactly_the_owners_paged_and_errors_export() {
+fn vbd_ac03_the_registry_holds_what_paged_and_errors_export() {
     let owners = arg_owners();
     let triples: Vec<(&str, &[&str], &[&str])> = owners.iter().map(|o| (o.path, o.keywords, o.codes)).collect();
-    assert_eq!(owners.len(), mcphost::paged::ARG_OWNERS.len() + mcphost::errors::ARG_OWNERS.len(), "{triples:?}");
+    // Every owner a module exports is in the registry (paged and errors, then the
+    // plan-ceiling and spec-test owners), in that order and nothing else.
+    let exported = mcphost::paged::ARG_OWNERS.len()
+        + mcphost::errors::ARG_OWNERS.len()
+        + mcphost::plans::ARG_OWNERS.len()
+        + mcphost::handler::ARG_OWNERS.len();
+    assert_eq!(owners.len(), exported, "{triples:?}");
     for (path, keywords, codes) in [
         ("/fields", &["*"][..], &["field_unknown", "args_invalid"][..]),
         ("/limit", &["maximum"][..], &[][..]),

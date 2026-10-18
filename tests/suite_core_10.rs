@@ -25,6 +25,8 @@ mod timp;
 mod tssdk;
 #[path = "support/uprg.rs"]
 mod uprg;
+#[path = "support/vbd_calls.rs"]
+mod vbd_calls;
 #[path = "support/xlinks.rs"]
 mod xlinks;
 #[path = "support/xlinks_cli.rs"]
@@ -706,6 +708,8 @@ mod vbd_ac01_validated_by_default_coverage;
 mod vbd_ac02_three_unvalidated_verbs_now_refuse;
 #[path = "vbd_ac03_skips_come_from_the_owner_registry.rs"]
 mod vbd_ac03_skips_come_from_the_owner_registry;
+#[path = "vbd_ac04_owner_registry_cross_contract.rs"]
+mod vbd_ac04_owner_registry_cross_contract;
 #[path = "verbfwd_ac01_trigger_set_dotted_forwards.rs"]
 mod verbfwd_ac01_trigger_set_dotted_forwards;
 #[path = "verbfwd_ac02_every_spelling_forwards_identically.rs"]
