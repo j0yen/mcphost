@@ -63,13 +63,16 @@ async fn dlrec_ac01_recipe_executes_verbatim() {
         assert!(rendered.contains(code), "rendered text names {code}");
         assert!(transcript.contains(code), "{code} appears in the executed calls");
     }
+    // Derived from the registry, not counted: every scope `tools:call` does not
+    // grant is asked for by the executed calls.
+    for row in mcphost::scopes::catalog() {
+        if !row.granted_by(mcphost::scopes::Scope::ToolsCall.as_str()) && row.name != mcphost::scopes::Scope::Mcp.as_str() {
+            assert!(transcript.contains(&format!("\"{}\"", row.name)), "scope {} is never asked for by the executed calls", row.name);
+        }
+    }
     for row in mcphost::scopes::catalog() {
         if rendered.contains(&format!("`{}`", row.name)) {
-            // The prose lists every scope `tools:call` lacks; the call executes
-            // the first, and `delegation::every_scope_pair_is_allowed_exactly_when_it_implies`
-            // proves the rest fail by the same rule, so only the others must be in the calls.
-            let lacking = !row.granted_by(mcphost::scopes::Scope::ToolsCall.as_str()) && row.name != "mcp";
-            assert!(lacking || transcript.contains(&row.name), "scope {} is in the text but never in the calls", row.name);
+            assert!(transcript.contains(&row.name), "scope {} is in the text but never in the calls", row.name);
         }
     }
 }

@@ -255,8 +255,17 @@ pub fn render_recipe_lines(recipe: &Recipe) -> String {
             Caller::Lead => "the lead",
             Caller::Helper => "the helper, with the `key` call 1 returned",
         };
+        // An escalation attempt lists the scopes it asks for, read from its own
+        // arguments, so the docs name exactly the scopes the call sends.
+        let asked = match (&c.expect.error_code, c.arguments["scopes"].as_array()) {
+            (Some(_), Some(scopes)) => format!(
+                " (asking for {})",
+                scopes.iter().filter_map(|s| s.as_str()).map(|s| format!("`{s}`")).collect::<Vec<_>>().join(", ")
+            ),
+            _ => String::new(),
+        };
         out.push_str(&format!(
-            "{}. As {who}: `{}` `{}` {}.\n",
+            "{}. As {who}: `{}` `{}` {}{asked}.\n",
             i + 1,
             c.tool,
             c.arguments,

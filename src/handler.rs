@@ -1448,7 +1448,7 @@ fn host_tools_part_01(kinds: &KindRegistry) -> Vec<Tool> {
                 json!({
                     "scopes": {
                         "type": "array",
-                        "items": {"type": "string", "enum": ["mcp", "tools:call", "tools:write"]},
+                        "items": {"type": "string", "enum": crate::scopes::all_names()},
                         "minItems": 1,
                         "description": "Scopes the child holds; each must be implied by yours (required unless bind is given; then default mcp).",
                     },
