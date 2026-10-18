@@ -27,9 +27,28 @@ fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
+/// Drops the env cargo injects into a test process before running cargo (or
+/// pin-tests.sh) in the running suite's target dir: same rule as
+/// tests/common/mod.rs `strip_cargo_injected_env` (suite_core_04 has no
+/// `mod common`). Without it `ring`'s build script sees CARGO_MANIFEST_DIR /
+/// OUT_DIR "change", reruns, and the nested build relinks the binaries the
+/// outer suite is running (the VFX flake class).
+fn strip_cargo_injected_env(cmd: &mut Command) -> &mut Command {
+    for (k, _) in std::env::vars_os() {
+        let injected = k.to_str().is_some_and(|n| {
+            ["CARGO_PKG_", "CARGO_MANIFEST_", "CARGO_BIN_EXE_"].iter().any(|p| n.starts_with(p))
+                || ["CARGO_BIN_NAME", "CARGO_CRATE_NAME", "CARGO_PRIMARY_PACKAGE", "CARGO_TARGET_TMPDIR", "OUT_DIR"].contains(&n)
+        });
+        if injected {
+            cmd.env_remove(k);
+        }
+    }
+    cmd
+}
+
 #[test]
 fn ctrs_ac06_pin_tests_runs_all_contract_suites_within_budget_and_prints_timings() {
-    let list = Command::new(root().join("scripts/pin-tests.sh"))
+    let list = strip_cargo_injected_env(&mut Command::new(root().join("scripts/pin-tests.sh")))
         .arg("--list")
         .current_dir(root())
         .output()
@@ -39,7 +58,7 @@ fn ctrs_ac06_pin_tests_runs_all_contract_suites_within_budget_and_prints_timings
 
     // warm the target (compile only), untimed
     for b in &bins {
-        let st = Command::new(env!("CARGO"))
+        let st = strip_cargo_injected_env(&mut Command::new(env!("CARGO")))
             .args(["test", "-q", "--no-run", "--test", b])
             .current_dir(root())
             .status()
@@ -48,7 +67,7 @@ fn ctrs_ac06_pin_tests_runs_all_contract_suites_within_budget_and_prints_timings
     }
 
     let start = Instant::now();
-    let out = Command::new(root().join("scripts/pin-tests.sh"))
+    let out = strip_cargo_injected_env(&mut Command::new(root().join("scripts/pin-tests.sh")))
         .current_dir(root())
         .output()
         .unwrap();

@@ -107,7 +107,8 @@ pub const CHILD_DIR_ENV: &str = "BLOBGUARD_CHILD_DIR";
 /// removed), so a test can exercise a real process environment without
 /// mutating the shared one. Asserts the child ran its one test and passed.
 pub fn run_child(test: &str, envs: &[(&str, Option<&std::ffi::OsStr>)]) -> String {
-    let mut cmd = std::process::Command::new(std::env::current_exe().unwrap());
+    // /proc/self/exe execs the running inode even if a nested build relinked its path (VFX).
+    let mut cmd = std::process::Command::new(if cfg!(target_os = "linux") { std::path::PathBuf::from("/proc/self/exe") } else { std::env::current_exe().unwrap() });
     cmd.args(["--exact", test, "--nocapture", "--test-threads=1"]);
     for (k, v) in envs {
         match v {

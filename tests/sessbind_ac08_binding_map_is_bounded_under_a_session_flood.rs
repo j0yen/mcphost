@@ -89,7 +89,7 @@ async fn a_flood_of_50000_sessions_leaves_at_most_10000_bindings_under_20mb() {
         return;
     }
 
-    let exe = std::env::current_exe().expect("this test binary's own path");
+    let exe = common::self_exe();
     let output = std::process::Command::new(exe)
         .args(["--exact", FLOOD_TEST_NAME, "--test-threads", "1", "--nocapture"])
         .env(CHILD_MARKER, "1")
