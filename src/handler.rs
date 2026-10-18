@@ -1289,6 +1289,22 @@ fn mark_scratch(value: &mut Value) {
 /// (required or not) carries a `description`, including `host.bridge_test.spec`
 /// and `host.spec_test.invocations`, which previously had none -- see
 /// `tests/surface_ac04_required_field_descriptions.rs`.
+/// How many canonical (non-alias) `host_tools` entries declare each registry
+/// scope as `_meta.scope`; the `verbs (count)` column of the llms.txt table.
+pub fn scope_verb_counts(kinds: &KindRegistry) -> std::collections::HashMap<crate::scopes::Scope, usize> {
+    let mut counts = std::collections::HashMap::new();
+    for tool in host_tools(kinds, true) {
+        let Some(meta) = tool.meta.as_ref() else { continue };
+        if meta.0.contains_key("alias_of") {
+            continue;
+        }
+        if let Some(scope) = meta.0.get("scope").and_then(Value::as_str).and_then(crate::scopes::Scope::parse) {
+            *counts.entry(scope).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
 pub(crate) fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
 /// The `host_tools` descriptor table, built in `host_tools_part_NN` chunks of 16
 /// descriptors each. One `vec![...]` of ~200 `json!` schemas in a single
@@ -1467,7 +1483,7 @@ fn host_tools_part_01(kinds: &KindRegistry) -> Vec<Tool> {
                 json!({
                     "scopes": {
                         "type": "array",
-                        "items": {"type": "string", "enum": ["mcp", "tools:call", "tools:write"]},
+                        "items": {"type": "string", "enum": crate::scopes::all_names()},
                         "minItems": 1,
                         "description": "Scopes the child holds; each must be implied by yours (required unless bind is given; then default mcp).",
                     },
@@ -5191,6 +5207,15 @@ fn host_tools_part_13() -> Vec<Tool> {
     if authenticated {
         tools.push(estimate_tool());
     }
+    // PRD-mcphost-scope-registry-generated R2: every listed verb declares
+    // the one registry scope it needs as `_meta.scope`, generated from
+    // `scopes::verb_scope` (before the alias clones are made, so they carry
+    // it too).
+    for tool in tools.iter_mut() {
+        let scope = crate::scopes::verb_scope(&tool.name);
+        let meta = tool.meta.get_or_insert_with(rmcp::model::MetaObject::new);
+        meta.0.insert("scope".to_string(), json!(scope.as_str()));
+    }
     // PRD-mcphost-dry-run-on-write-verbs R4: `dry_run` in every `Supported`
     // write verb's schema, generated from the registry (before the alias
     // clones are made, so they carry it too).
@@ -7361,6 +7386,20 @@ impl McpHostHandler {
                         obj.insert("hint".to_string(), hint);
                     }
                     obj.insert("key".to_string(), key);
+                }
+                // PRD-mcphost-scope-registry-generated R5: the registry and
+                // the caller's own effective set.
+                let call_scope = crate::scopes::CALL_SCOPE.try_with(|s| s.clone()).ok().flatten();
+                let catalog: Vec<String> = self
+                    .state
+                    .db
+                    .list_oauth_scopes(tenant.id)
+                    .await?
+                    .into_iter()
+                    .map(|r| r.name)
+                    .collect();
+                if let Some(obj) = me.as_object_mut() {
+                    obj.insert("scopes".to_string(), crate::scopes::whoami_json(call_scope.as_deref(), &catalog));
                 }
                 Ok(me)
             }
@@ -11871,7 +11910,7 @@ impl McpHostHandler {
         // is.
         if let Auth::Tenant(tenant, Some(oauth_caller)) = &auth
             && let Some(scope) = &oauth_caller.scope
-            && !scope.split_whitespace().any(|w| w == "mcp")
+            && !crate::scopes::check(Some(scope), &crate::scopes::control_plane_requirement(&body_name))
             && !body_name.starts_with(&format!("{}.", tenant.namespace))
         {
             return Err(AppError::InsufficientScope.into_error_data_at(Some(&self.state.public_url)));
@@ -12508,19 +12547,23 @@ impl McpHostHandler {
                 // poll frame sits under every dotted-verb forward, and
                 // inlining that bookkeeping here overflowed a 2 MB test
                 // thread stack (verbfwd_ac01).
-                let (result, prompts_changed) = crate::tenant_clients::CALL_CLIENT
+                let call_scope = oauth_caller.as_ref().and_then(|o| o.scope.clone());
+                let (result, prompts_changed) = crate::scopes::CALL_SCOPE
                     .scope(
-                        call_client,
-                        Box::pin(self.dispatch_tenant_tool_tracking_prompts(
-                            tenant,
-                            subject,
-                            auth_method,
-                            calls_method,
-                            end_user.as_ref(),
-                            session_id.as_deref(),
-                            dispatch_name,
-                            args,
-                        )),
+                        call_scope,
+                        crate::tenant_clients::CALL_CLIENT.scope(
+                            call_client,
+                            Box::pin(self.dispatch_tenant_tool_tracking_prompts(
+                                tenant,
+                                subject,
+                                auth_method,
+                                calls_method,
+                                end_user.as_ref(),
+                                session_id.as_deref(),
+                                dispatch_name,
+                                args,
+                            )),
+                        ),
                     )
                     .await;
                 // PRD-mcphost-notes-to-future-self R3: a tool-attached note

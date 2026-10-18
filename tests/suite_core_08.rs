@@ -1282,6 +1282,18 @@ mod sqlpass_ac11_concurrent_queries_produce_ten_log_rows;
 mod sqlpass_ac12_empty_table_zero_rows_null_error_code;
 #[path = "sqlpass_ac13_long_sql_truncated_in_log_not_refused.rs"]
 mod sqlpass_ac13_long_sql_truncated_in_log_not_refused;
+#[path = "sreg_ac02_every_host_tool_declares_a_scope.rs"]
+mod sreg_ac02_every_host_tool_declares_a_scope;
+#[path = "sreg_ac03_implied_scopes_gate_tool_calls.rs"]
+mod sreg_ac03_implied_scopes_gate_tool_calls;
+#[path = "sreg_ac04_llms_txt_scopes_table_generated.rs"]
+mod sreg_ac04_llms_txt_scopes_table_generated;
+#[path = "sreg_ac05_whoami_scopes_all_and_effective.rs"]
+mod sreg_ac05_whoami_scopes_all_and_effective;
+#[path = "sreg_ac06_oauth_scopes_registry_first.rs"]
+mod sreg_ac06_oauth_scopes_registry_first;
+#[path = "sreg_ac07_unknown_scope_word_not_effective.rs"]
+mod sreg_ac07_unknown_scope_word_not_effective;
 #[path = "state_ac01_kv_roundtrip.rs"]
 mod state_ac01_kv_roundtrip;
 #[path = "state_ac04_table_query.rs"]

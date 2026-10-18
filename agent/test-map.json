@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-elicitation-in-band-on-stateless-transport",
+  "ac_test_map_prd": "PRD-mcphost-scope-registry-generated.md (test_prefix: sreg)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,13 +28,13 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/elib_ac01_form_elicitation_rides_the_calls_own_stream.rs",
-    "AC2": "tests/elib_ac02_bare_capability_and_sampling_ride_in_band.rs",
-    "AC3": "tests/elib_ac03_clients_without_the_channel_keep_the_link_reply.rs",
-    "AC4": "tests/elib_ac04_guardrails_json_stays_json_and_sse_streams.rs",
-    "AC5": "tests/elib_ac05_transport_contract_is_derived_from_build_router.rs",
-    "AC6": "tests/elib_ac06_silence_times_out_and_stray_answers_deliver_nothing.rs",
-    "AC7": "tests/elib_ac07_concurrent_sessions_never_cross_and_the_store_is_bounded.rs"
+    "AC1": "tests/sreg_ac01_registry_single_source.rs",
+    "AC2": "tests/sreg_ac02_every_host_tool_declares_a_scope.rs",
+    "AC3": "tests/sreg_ac03_implied_scopes_gate_tool_calls.rs",
+    "AC4": "tests/sreg_ac04_llms_txt_scopes_table_generated.rs",
+    "AC5": "tests/sreg_ac05_whoami_scopes_all_and_effective.rs",
+    "AC6": "tests/sreg_ac06_oauth_scopes_registry_first.rs",
+    "AC7": "tests/sreg_ac07_unknown_scope_word_not_effective.rs"
   },
   "ac_test_map_by_prefix": {
     "oschv": {
@@ -2114,6 +2114,16 @@
       "AC5": "tests/elib_ac05_transport_contract_is_derived_from_build_router.rs",
       "AC6": "tests/elib_ac06_silence_times_out_and_stray_answers_deliver_nothing.rs",
       "AC7": "tests/elib_ac07_concurrent_sessions_never_cross_and_the_store_is_bounded.rs"
+    },
+    "sreg": {
+      "_prd": "PRD-mcphost-scope-registry-generated.md (test_prefix: sreg)",
+      "AC1": "tests/sreg_ac01_registry_single_source.rs",
+      "AC2": "tests/sreg_ac02_every_host_tool_declares_a_scope.rs",
+      "AC3": "tests/sreg_ac03_implied_scopes_gate_tool_calls.rs",
+      "AC4": "tests/sreg_ac04_llms_txt_scopes_table_generated.rs",
+      "AC5": "tests/sreg_ac05_whoami_scopes_all_and_effective.rs",
+      "AC6": "tests/sreg_ac06_oauth_scopes_registry_first.rs",
+      "AC7": "tests/sreg_ac07_unknown_scope_word_not_effective.rs"
     }
   }
 }

@@ -137,7 +137,7 @@ pub const CODE_TO_KIND: &[(&str, FeedbackKind)] = &[
     ("invalid_token", FeedbackKind::WrongError),
     ("conflicting_credentials", FeedbackKind::WrongError),
     ("wrong_tenant", FeedbackKind::WrongError),
-    ("insufficient_scope", FeedbackKind::WrongError),
+    (crate::scopes::INSUFFICIENT_SCOPE, FeedbackKind::WrongError),
     ("auth_conflict", FeedbackKind::WrongError),
     ("quota_trusted_issuers", FeedbackKind::WrongError),
     ("tool_exception", FeedbackKind::Bug),

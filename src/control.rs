@@ -1730,9 +1730,9 @@ pub async fn tool_publish(
         let catalog_names: std::collections::HashSet<&str> =
             catalog.iter().map(|s| s.name.as_str()).collect();
         for s in &scopes {
-            if !(crate::oauth::BUILTIN_SCOPES.contains(&s.as_str()) || catalog_names.contains(s.as_str())) {
+            if !(crate::scopes::Scope::parse(s).is_some() || catalog_names.contains(s.as_str())) {
                 return Err(AppError::InvalidParams(format!(
-                    "scopes: '{s}' is not in this tenant's scope catalog (host.oauth.scopes) and is not a built-in (read, write)"
+                    "scopes: '{s}' is not in this tenant's scope catalog (host.oauth.scopes) and is not a built-in scope"
                 )));
             }
         }

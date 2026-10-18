@@ -1382,6 +1382,10 @@ async fn main() -> anyhow::Result<()> {
                 &mcphost::llms_txt::render_scopes_section(&mcphost::scopes::catalog()),
                 &mcphost::llms_txt::render_recipe(&mcphost::delegation_recipe::sub_agent_key()),
             );
+            let with_tools = mcphost::llms_txt::splice_scope_verbs(
+                &with_tools,
+                &mcphost::llms_txt::render_scope_verbs_section(&kinds),
+            );
             let with_clients = mcphost::clients::render_into(&with_tools, &clients_file).unwrap_or_else(|why| {
                 eprintln!("llms-txt: {}: {why}", path.display());
                 std::process::exit(2);

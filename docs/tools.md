@@ -1786,7 +1786,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `label`: string
 - `scopes`: array
   - `scopes` minItems: 1
-  - `scopes[]` enum: `mcp`, `tools:call`, `tools:write`
+  - `scopes[]` enum: `mcp`, `read`, `write`, `tools:read`, `tools:call`, `tools:write`, `state:read`, `state:write`, `secrets:write`, `keys:manage`, `admin`
 - `tenant_key`: string
 - `tools`: array
   - `tools` minItems: 1
