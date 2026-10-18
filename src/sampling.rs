@@ -19,12 +19,13 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use rmcp::RoleServer;
-use rmcp::model::CreateMessageRequestParams;
+use rmcp::model::{CreateMessageRequest, CreateMessageRequestParams, ServerRequest};
 use rmcp::service::Peer;
 use serde_json::{Value, json};
 
 use crate::db::Tenant;
 use crate::err_code;
+use crate::inband::AskError;
 use crate::kinds::{CallLog, KindError, SamplingBackend};
 use crate::state::AppState;
 
@@ -78,6 +79,8 @@ pub const SAMPLING_WALL: Duration = Duration::from_secs(30);
 #[derive(Clone)]
 pub struct SamplingClient {
     pub peer: Option<Peer<RoleServer>>,
+    /// The `Mcp-Session-Id` the client's answer comes back under.
+    pub session_id: Option<String>,
 }
 
 tokio::task_local! {
@@ -175,11 +178,13 @@ pub struct TenantSampling {
     pub log: Arc<dyn CallLog>,
     /// Successful asks and their tokens so far in this call.
     pub tally: std::sync::Mutex<(u32, i64)>,
+    /// What the call's client advertised (the log line, R7).
+    pub gate: Option<crate::inband::CallGate>,
 }
 
 impl TenantSampling {
     pub fn new(state: Arc<AppState>, tenant: Tenant, client: Option<SamplingClient>, log: Arc<dyn CallLog>) -> Self {
-        Self { state, tenant, client, calls: AtomicU32::new(0), log, tally: std::sync::Mutex::new((0, 0)) }
+        Self { state, tenant, client, calls: AtomicU32::new(0), log, tally: std::sync::Mutex::new((0, 0)), gate: crate::inband::current_gate() }
     }
 
     /// R5: the line `host.tool.logs` shows for one ask -- `sampling: {asks,
@@ -214,16 +219,24 @@ impl SamplingBackend for TenantSampling {
         let prompt_len = args.get("prompt").and_then(Value::as_str).map_or(0, str::len);
         let outcome = self.ask_inner(args, remaining).await;
         self.log_ask(prompt_len, &outcome);
+        let outcome_name = match &outcome {
+            Ok(_) => "ok",
+            Err(KindError::Structured { code, .. }) => code,
+            Err(_) => "error",
+        };
+        let in_band = self.client.as_ref().is_some_and(|c| c.peer.is_some()) && outcome.is_ok();
+        crate::inband::log_ask("sampling", self.gate.as_ref(), if in_band { "client" } else { "none" }, outcome_name);
         outcome
     }
 }
 
 impl TenantSampling {
     async fn ask_inner(&self, args: Value, remaining: Duration) -> Result<Value, KindError> {
-        let peer = match &self.client {
+        let (peer, session_id) = match &self.client {
             None => return Err(unsupported(&self.state, "no_client")),
-            Some(SamplingClient { peer: None }) => return Err(unsupported(&self.state, "client")),
-            Some(SamplingClient { peer: Some(peer) }) => peer,
+            Some(SamplingClient { peer: None, .. }) => return Err(unsupported(&self.state, "client")),
+            Some(SamplingClient { peer: Some(_), session_id: None }) => return Err(unsupported(&self.state, "client")),
+            Some(SamplingClient { peer: Some(peer), session_id: Some(session_id) }) => (peer, session_id),
         };
         if self.calls.fetch_add(1, Ordering::SeqCst) >= SAMPLING_CALLS_MAX {
             return Err(exceeded());
@@ -261,11 +274,17 @@ impl TenantSampling {
         if remaining < SAMPLING_WALL {
             return Err(timeout(SAMPLING_WALL, remaining, false));
         }
-        let result = match tokio::time::timeout(SAMPLING_WALL, peer.create_message(params)).await {
-            Err(_) => return Err(timeout(SAMPLING_WALL, remaining, true)),
-            Ok(result) => result.map_err(|e| KindError::Exec(format!("sampling/createMessage failed: {e}")))?,
+        params.validate().map_err(|e| KindError::InvalidArgs(format!("mcphost.sampling.ask: {e}")))?;
+        let request = ServerRequest::CreateMessageRequest(CreateMessageRequest::new(params));
+        let stores = self.state.session_bindings.inband();
+        let result = match crate::inband::ask(stores, peer, session_id, request, SAMPLING_WALL).await {
+            Ok(result) => result,
+            Err(AskError::Timeout) => return Err(timeout(SAMPLING_WALL, remaining, true)),
+            // One in-band request per session: a second concurrent ask.
+            Err(AskError::Busy) => return Err(unsupported(&self.state, "busy")),
+            Err(e) => return Err(KindError::Exec(format!("sampling/createMessage failed: {e:?}"))),
         };
-        let out = render_result(&serde_json::to_value(&result).unwrap_or(Value::Null), prompt.len());
+        let out = render_result(&result, prompt.len());
         let tokens = out["tokens"].as_i64().unwrap_or(0);
         self.state.db.sampling_record(self.tenant.id, day_start, tokens).await.map_err(app)?;
         Ok(out)

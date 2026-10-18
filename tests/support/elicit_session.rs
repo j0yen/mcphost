@@ -1,12 +1,10 @@
-//! PRD-mcphost-elicitation-with-ask-fallback: a session-mode streamable-HTTP
-//! fixture client. The production router is stateless (a client's answer to a
-//! server request would be dropped), so the typed `elicitation/create` path is
-//! exercised over `build_router_with_session_mode(.., true)`, the same router
-//! with rmcp's session routing on: the client `initialize`s with its
-//! capabilities, then answers the server's request on the call's own stream.
-//! The `answer` closure plays python-mcp's `elicitation_callback`.
+//! PRD-mcphost-elicitation-with-ask-fallback: a streamable-HTTP fixture
+//! client that `initialize`s with its capabilities, echoes `Mcp-Session-Id`,
+//! then answers the server's `elicitation/create` on the call's own stream.
+//! PRD-mcphost-elicitation-in-band-on-stateless-transport: it runs against
+//! `build_router` itself (no test-only router); the `Reply` plays python-mcp's
+//! `elicitation_callback`.
 
-use std::net::SocketAddr;
 use std::sync::Arc;
 
 use mcphost::state::AppState;
@@ -22,26 +20,17 @@ pub enum Reply {
     Silent,
 }
 
-/// Serves the MCP handler over rmcp's session-mode streamable-HTTP service
-/// on an ephemeral port; returns its base url. This is `build_router`'s
-/// service without its stateless config and without the
-/// `issue_session_id` layer (which rewrites `Mcp-Session-Id` and so hides
-/// rmcp's own session from the client).
+/// Serves the MCP handler on an ephemeral port through `build_router` -- the
+/// production constructor, via `serve_on_listener` like `TestServer` -- and
+/// returns its base url. PRD-mcphost-elicitation-in-band-on-stateless-transport
+/// R9: this used to build a second, legacy-session-mode router; there is no
+/// second router any more, so the client's `initialize` capabilities ride the
+/// `Mcp-Session-Id` the host mints and the answer is routed by the host.
 pub async fn serve_session_mode(state: Arc<AppState>) -> String {
-    use rmcp::transport::streamable_http_server::{
-        StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
-    };
-    let config = StreamableHttpServerConfig::default().with_legacy_session_mode(true).disable_allowed_hosts();
-    let service = StreamableHttpService::new(
-        move || Ok(mcphost::handler::McpHostHandler::new(state.clone())),
-        Arc::new(LocalSessionManager::default()),
-        config,
-    );
-    let app = axum::Router::new().nest_service("/mcp", service);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let addr = listener.local_addr().expect("addr");
     tokio::spawn(async move {
-        let _ = axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await;
+        let _ = mcphost::http::serve_on_listener(listener, state).await;
     });
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     format!("http://{addr}")
@@ -131,7 +120,13 @@ impl SessionClient {
                 .await
                 .expect("call timed out")
                 .expect("read stream");
-            let Some(chunk) = chunk else { panic!("stream ended without a response: {buf}") };
+            let Some(chunk) = chunk else {
+                // A call that never elicits is one `application/json` body, not a stream.
+                match serde_json::from_str::<Value>(buf.trim()) {
+                    Ok(msg) if msg.get("id") == Some(&json!(id)) => return msg,
+                    _ => panic!("stream ended without a response: {buf}"),
+                }
+            };
             buf.push_str(&String::from_utf8_lossy(&chunk).replace("\r\n", "\n"));
             while let Some(end) = buf.find("\n\n") {
                 let block: String = buf.drain(..end + 2).collect();

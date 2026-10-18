@@ -141,7 +141,13 @@ impl SamplingSession {
                 .await
                 .expect("call timed out")
                 .expect("read stream");
-            let Some(chunk) = chunk else { panic!("stream ended without a response: {buf}") };
+            let Some(chunk) = chunk else {
+                // A call that never elicits is one `application/json` body, not a stream.
+                match serde_json::from_str::<Value>(buf.trim()) {
+                    Ok(msg) if msg.get("id") == Some(&json!(id)) => return msg,
+                    _ => panic!("stream ended without a response: {buf}"),
+                }
+            };
             buf.push_str(&String::from_utf8_lossy(&chunk).replace("\r\n", "\n"));
             while let Some(end) = buf.find("\n\n") {
                 let block: String = buf.drain(..end + 2).collect();

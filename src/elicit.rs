@@ -19,13 +19,17 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
-use rmcp::model::{ElicitRequestParams, ElicitationAction, ElicitationSchema, PrimitiveSchemaDefinition};
-use rmcp::service::{Peer, ServiceError};
+use rmcp::model::{
+    ElicitRequest, ElicitRequestParams, ElicitResult, ElicitationAction, ElicitationSchema, PrimitiveSchemaDefinition,
+    ServerRequest,
+};
+use rmcp::service::Peer;
 use rmcp::RoleServer;
 use serde_json::{Map, Value, json};
 
 use crate::asks;
 use crate::db::Tenant;
+use crate::inband::AskError;
 use crate::kinds::{ElicitBackend, KindError};
 use crate::state::AppState;
 
@@ -285,6 +289,10 @@ impl ValidSchema {
 #[derive(Clone)]
 pub struct ClientChannel {
     pub peer: Peer<RoleServer>,
+    /// The `Mcp-Session-Id` the client's answer comes back under.
+    pub session_id: String,
+    /// What the client advertised (for the log line).
+    pub shape: crate::inband::ElicitShape,
 }
 
 tokio::task_local! {
@@ -332,17 +340,35 @@ pub struct TenantElicit {
     pub tenant: Tenant,
     pub channel: Option<ClientChannel>,
     pub calls: AtomicU32,
+    /// What the call's client advertised (the log line, R7).
+    pub gate: Option<crate::inband::CallGate>,
+    /// An in-band ask found the session's slot taken and took the link path.
+    fell_back: std::sync::atomic::AtomicBool,
 }
 
 impl TenantElicit {
     pub fn new(state: Arc<AppState>, tenant: Tenant, channel: Option<ClientChannel>) -> Self {
-        Self { state, tenant, channel, calls: AtomicU32::new(0) }
+        Self { state, tenant, channel, calls: AtomicU32::new(0), gate: crate::inband::current_gate(), fell_back: Default::default() }
     }
 }
 
 #[async_trait::async_trait]
 impl ElicitBackend for TenantElicit {
     async fn elicit(&self, args: Value, remaining: Duration) -> Result<Value, KindError> {
+        let outcome = self.elicit_inner(args, remaining).await;
+        let outcome_name = match &outcome {
+            Ok(v) => v["action"].as_str().unwrap_or("ok").to_string(),
+            Err(KindError::Structured { code, .. }) => code.to_string(),
+            Err(_) => "error".to_string(),
+        };
+        let in_band = self.channel.is_some() && !self.fell_back.load(Ordering::SeqCst);
+        crate::inband::log_ask("elicit", self.gate.as_ref(), if in_band { "client" } else { "link" }, &outcome_name);
+        outcome
+    }
+}
+
+impl TenantElicit {
+    async fn elicit_inner(&self, args: Value, remaining: Duration) -> Result<Value, KindError> {
         if self.calls.fetch_add(1, Ordering::SeqCst) >= ELICIT_CALLS_MAX {
             return Err(exceeded());
         }
@@ -385,17 +411,26 @@ impl TenantElicit {
             message: message.to_string(),
             requested_schema: schema.to_rmcp()?,
         };
-        let result = match channel.peer.create_elicitation_with_timeout(params, Some(wall)).await {
-            Ok(r) => r,
-            Err(ServiceError::Timeout { .. }) => {
+        let request = ServerRequest::ElicitRequest(ElicitRequest::new(params));
+        let stores = self.state.session_bindings.inband();
+        let value = match crate::inband::ask(stores, &channel.peer, &channel.session_id, request, wall).await {
+            Ok(v) => v,
+            // A second eliciting call on one session: the link path.
+            Err(AskError::Busy) => {
+                self.fell_back.store(true, Ordering::SeqCst);
+                return self.link(req).await;
+            }
+            Err(AskError::Timeout) => {
                 return Err(KindError::structured_with(
                     ELICIT_TIMEOUT,
                     format!("the client did not answer within {}s", wall.as_secs()),
                     json!({"timeout_s": wall.as_secs()}),
                 ));
             }
-            Err(e) => return Err(KindError::Exec(format!("elicitation/create failed: {e}"))),
+            Err(e) => return Err(KindError::Exec(format!("elicitation/create failed: {e:?}"))),
         };
+        let result: ElicitResult = serde_json::from_value(value)
+            .map_err(|e| KindError::Exec(format!("elicitation/create returned an unreadable result: {e}")))?;
         let (action, content) = match result.action {
             ElicitationAction::Accept => ("accept", Some(result.content.unwrap_or_else(|| json!({})))),
             ElicitationAction::Decline => ("decline", None),

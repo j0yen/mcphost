@@ -83,7 +83,7 @@ pub const CAPABILITIES: &[Capability] = &[
     Capability {
         name: "sampling",
         methods: &["sampling/createMessage"],
-        implemented: true,
+        implemented: crate::inband::in_band_available(),
         list_changed: false,
         subscribe: false,
         ceiling: Some("sampling_tokens_per_day"),
@@ -94,7 +94,7 @@ pub const CAPABILITIES: &[Capability] = &[
     Capability {
         name: "elicitation",
         methods: &["elicitation/create"],
-        implemented: true,
+        implemented: crate::inband::in_band_available(),
         list_changed: false,
         subscribe: false,
         ceiling: None,
@@ -200,9 +200,18 @@ pub fn server_capabilities() -> ServerCapabilities {
     caps
 }
 
+/// PRD-mcphost-elicitation-in-band-on-stateless-transport R8: how a row that
+/// names a client capability reaches the client, as a `transport` field of its
+/// `/capabilities.json` row. Keyed by the registry row's name, so the
+/// advertisement says exactly which clients get which path.
+pub fn transport_note(name: &str) -> Option<&'static str> {
+    (name == "elicitation")
+        .then_some("in-band when the client echoes Mcp-Session-Id and advertises form; link otherwise")
+}
+
 /// One row as it appears under `primitives` in `GET /capabilities.json`.
 fn primitive_json(c: &Capability) -> Value {
-    json!({
+    let mut row = json!({
         "implemented": c.implemented,
         "list_changed": c.list_changed,
         "subscribe": c.subscribe,
@@ -210,7 +219,11 @@ fn primitive_json(c: &Capability) -> Value {
         "probe": c.probe,
         "alternative": c.alternative,
         "methods": c.methods,
-    })
+    });
+    if let Some(transport) = transport_note(c.name) {
+        row["transport"] = json!(transport);
+    }
+    row
 }
 
 /// `GET /capabilities.json`: `{version, primitives: {name: {...}}}` rendered

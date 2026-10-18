@@ -11037,6 +11037,24 @@ async fn notify_prompt_list_changed(peer: &Peer<RoleServer>, namespace: &str) {
 }
 
 impl ServerHandler for McpHostHandler {
+    /// PRD-mcphost-elicitation-in-band-on-stateless-transport R1: the default
+    /// `initialize` plus remembering what the client advertised, under the
+    /// session id `http::issue_session_id` minted for this response (rmcp's
+    /// stateless peer forgets it).
+    async fn initialize(
+        &self,
+        request: rmcp::model::InitializeRequestParams,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<rmcp::model::InitializeResult, McpError> {
+        if let Some(parts) = ctx.extensions.get::<http::request::Parts>()
+            && let Some(id) = session_id(parts)
+        {
+            self.state.session_bindings.inband().remember(&id, &request.capabilities, now_unix());
+        }
+        ctx.peer.set_peer_info(request.clone());
+        self.negotiate_initialize(&request)
+    }
+
     /// PRD-mcphost-implicit-signup requirement 5: `instructions` used to
     /// claim a key-less `host.*` call fails `tenant_key_missing` outright.
     /// That is no longer true on the first such call on a fresh connection
@@ -11427,29 +11445,26 @@ impl ServerHandler for McpHostHandler {
         request: CallToolRequestParams,
         ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, McpError> {
-        // PRD-mcphost-elicitation-with-ask-fallback: the typed path needs a
-        // peer that can carry a server-to-client request AND whose client
-        // advertised form elicitation at `initialize` (a session peer).
-        // A stateless peer's per-request `_meta` capabilities cannot be
-        // answered (the transport drops client responses), so it stays on
-        // the link channel.
-        let channel = (ctx.meta.client_capabilities().is_none()
-            && ctx.peer.peer_info().is_some_and(|info| {
-                info.capabilities.elicitation.as_ref().is_some_and(|e| e.form.is_some())
-            }))
-        .then(|| crate::elicit::ClientChannel { peer: ctx.peer.clone() });
-        // PRD-mcphost-sampling-from-tools R2: same peer rule as elicitation;
-        // `peer` is set only when the client advertised `sampling`, so a live
-        // call without it answers `sampling_unsupported {reason: client}`.
-        let sampling_peer = (ctx.meta.client_capabilities().is_none()
-            && ctx.peer.peer_info().is_some_and(|info| info.capabilities.sampling.is_some()))
-        .then(|| ctx.peer.clone());
+        // PRD-mcphost-elicitation-in-band-on-stateless-transport R1/R2: what
+        // this connection advertised at `initialize` is read from the host's
+        // own store under the `Mcp-Session-Id` it minted -- the stateless
+        // peer (`ctx.peer.peer_info()`) carries only default capabilities.
+        // A client that never echoes the id, or advertised nothing, stays on
+        // the link path / `sampling_unsupported`.
+        let gate = self.call_gate(&ctx);
+        let channel = gate.elicit.then(|| crate::elicit::ClientChannel {
+            peer: ctx.peer.clone(),
+            session_id: gate.session_id.clone().unwrap_or_default(),
+            shape: gate.shape,
+        });
+        let sampling_peer = gate.sampling.then(|| ctx.peer.clone());
         // PRD-mcphost-key-scoped-to-tools R3: the cell `call_tool_inner`
         // fills once a sub-key resolves, read by the `calls` insert.
         let inner = crate::subkeys::CALL_KEY
             .scope(std::cell::Cell::new(None), self.call_tool_inner(request, ctx));
         let inner = crate::sampling::SAMPLING_CLIENT
-            .scope(crate::sampling::SamplingClient { peer: sampling_peer }, inner);
+            .scope(crate::sampling::SamplingClient { peer: sampling_peer, session_id: gate.session_id.clone() }, inner);
+        let inner = crate::inband::CALL_GATE.scope(gate, inner);
         let result = match channel {
             Some(channel) => crate::elicit::CLIENT_CHANNEL.scope(channel, inner).await,
             None => inner.await,
@@ -11476,6 +11491,24 @@ impl ServerHandler for McpHostHandler {
 const CALL_TOOL_INNER_FUTURE_MAX_BYTES: usize = 26_100;
 
 impl McpHostHandler {
+    /// R2: what this `tools/call` may do in-band, from the stored
+    /// advertisement of its session. Kept out of `call_tool` so its future
+    /// stays small.
+    fn call_gate(&self, ctx: &RequestContext<RoleServer>) -> crate::inband::CallGate {
+        let parts = ctx.extensions.get::<http::request::Parts>();
+        let id = parts.and_then(session_id);
+        let present = parts
+            .and_then(|p| p.extensions.get::<crate::session_bind::SessionPresented>())
+            .is_some_and(|p| p.0);
+        crate::inband::CallGate::read(
+            self.state.session_bindings.inband(),
+            id.as_deref(),
+            present,
+            ctx.meta.client_capabilities().is_some(),
+            now_unix(),
+        )
+    }
+
     /// PRD-mcphost-same-user-second-agent R2: which client of `tenant` is
     /// calling -- the sibling the join just created, else the sibling whose
     /// `/u/` secret is on the path, else the one this session joined as,
