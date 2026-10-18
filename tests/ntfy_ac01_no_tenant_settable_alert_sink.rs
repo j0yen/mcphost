@@ -1,3 +1,4 @@
+//! contract: reads registry handler::host_tool_descriptors
 //! PRD-mcphost-notify-user-channel
 //! AC1 -- Given `src/alerts.rs` at the cited tree, When a test enumerates
 //! every sink source (`from_env`, any `alerts_*` table column, any `host.*`

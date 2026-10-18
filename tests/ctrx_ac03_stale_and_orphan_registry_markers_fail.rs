@@ -1,3 +1,4 @@
+//! contract: reads registry write_verbs::WRITE_VERBS
 //! PRD-mcphost-contract-suite-registry-axis AC3 -- a marker naming a registry
 //! that `src/` does not define fails the lint with `stale marker` and the symbol;
 //! a follower line with no definer fails with `no definer for registry <sym>`;

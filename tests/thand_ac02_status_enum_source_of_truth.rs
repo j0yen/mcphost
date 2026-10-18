@@ -1,3 +1,4 @@
+//! contract: reads registry handler::host_tool_descriptors
 //! PRD-mcphost-task-handoff-tool AC2 (P0) — Given `host_tools()`, When the
 //! drift test runs, Then `host.task.get`'s `status` enum equals
 //! `TaskStatus::ALL` and llms.txt lists the same five words.

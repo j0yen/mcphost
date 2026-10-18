@@ -1,3 +1,4 @@
+//! contract: reads registry handler::host_tool_descriptors
 //! PRD-mcphost-publish-visibility-and-tags AC2 (P0) -- Given
 //! `host_tools()`'s descriptors, When the test reads the `visibility` enum of
 //! `host.tool_publish` and of `host.tool_share`, Then each equals the slice

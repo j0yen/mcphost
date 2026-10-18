@@ -48,16 +48,12 @@ mod whin;
 mod ac17_kind_conformance;
 #[path = "aliastruth_ac02_flattened_call_runs_canonical.rs"]
 mod aliastruth_ac02_flattened_call_runs_canonical;
-#[path = "aliastruth_ac05_contract_next_hints_are_advertised.rs"]
-mod aliastruth_ac05_contract_next_hints_are_advertised;
 #[path = "askd_ac01_composed_path_costs_more_host_calls_than_verbs.rs"]
 mod askd_ac01_composed_path_costs_more_host_calls_than_verbs;
 #[path = "blobput_ac06_python_bridge_reads_exact_bytes.rs"]
 mod blobput_ac06_python_bridge_reads_exact_bytes;
 #[path = "blobputb_ac02_python_bridge_reads_exact_bytes.rs"]
 mod blobputb_ac02_python_bridge_reads_exact_bytes;
-#[path = "bridgedisc_ac01_sandbox_api_source_of_truth.rs"]
-mod bridgedisc_ac01_sandbox_api_source_of_truth;
 #[path = "bridgedisc_ac02_starter_tool_bridge_table.rs"]
 mod bridgedisc_ac02_starter_tool_bridge_table;
 #[path = "bridgedisc_ac03_unknown_import_rejected_at_publish.rs"]
@@ -116,6 +112,8 @@ mod ctrace_ac04_trace_has_tails_line_and_phase_timings;
 mod ctrace_ac07_replay_dry_runs_with_edited_args;
 #[path = "ctraceb_ac03_replay_dry_runs_with_edited_args.rs"]
 mod ctraceb_ac03_replay_dry_runs_with_edited_args;
+#[path = "ctrx_ac05_registry_walkers_marked_and_routed.rs"]
+mod ctrx_ac05_registry_walkers_marked_and_routed;
 #[path = "docsqa_ac01_recipe_end_to_end.rs"]
 mod docsqa_ac01_recipe_end_to_end;
 #[path = "docsqa_ac02_quota_inside_free_plan_knobs.rs"]
@@ -180,8 +178,6 @@ mod ematt_ac02_attachments_become_blobs_a_tool_reads;
 mod emsnd_ac01_tool_reply_is_recorded_from_the_tool;
 #[path = "emsnd_ac02_tool_sender_reply_to_inbound_and_sent_row.rs"]
 mod emsnd_ac02_tool_sender_reply_to_inbound_and_sent_row;
-#[path = "emsnd_ac07_send_status_and_bridge_module_cannot_drift.rs"]
-mod emsnd_ac07_send_status_and_bridge_module_cannot_drift;
 #[path = "enduser_ac01_oauth_python_env_and_calls_row.rs"]
 mod enduser_ac01_oauth_python_env_and_calls_row;
 #[path = "enduser_ac04_no_identity_env_unset_and_calls_row_null.rs"]
@@ -276,16 +272,12 @@ mod kcon_ac04_error_families_and_source_line;
 mod kcon_live_ac01_prod_error_families;
 #[path = "kconb_ac03_spec_test_carries_contract.rs"]
 mod kconb_ac03_spec_test_carries_contract;
-#[path = "kdr_ac01_kind_doc_from_data.rs"]
-mod kdr_ac01_kind_doc_from_data;
 #[path = "kindhonor_ac2_kind_mismatch_refused.rs"]
 mod kindhonor_ac2_kind_mismatch_refused;
 #[path = "kindroute_ac04_unknown_kind_carries_recipe_hints.rs"]
 mod kindroute_ac04_unknown_kind_carries_recipe_hints;
 #[path = "kindroute_ac05_sandbox_docs_help_names_write_path.rs"]
 mod kindroute_ac05_sandbox_docs_help_names_write_path;
-#[path = "kindroute_ac05_startup_aliases_and_recipe_tools_are_registered.rs"]
-mod kindroute_ac05_startup_aliases_and_recipe_tools_are_registered;
 #[path = "limits_ac01_declared_timeout_honored.rs"]
 mod limits_ac01_declared_timeout_honored;
 #[path = "limits_ac02_default_timeout_when_undeclared.rs"]
@@ -374,8 +366,6 @@ mod melc_ac01_typed_elicit_via_client_callback;
 mod melc_ac02_link_fallback_for_clients_without_elicitation;
 #[path = "melc_ac03_invalid_schema_is_refused_before_any_ask.rs"]
 mod melc_ac03_invalid_schema_is_refused_before_any_ask;
-#[path = "melc_ac04_schema_subset_one_const_three_renderings.rs"]
-mod melc_ac04_schema_subset_one_const_three_renderings;
 #[path = "melc_ac05_decline_is_returned_and_silence_times_out.rs"]
 mod melc_ac05_decline_is_returned_and_silence_times_out;
 #[path = "melc_ac06_job_run_has_no_client_and_records_the_code.rs"]
@@ -398,8 +388,6 @@ mod msmp_ac04_fifth_ask_in_one_call_is_refused;
 mod msmp_ac05_daily_token_quota_refuses_before_asking;
 #[path = "msmp_ac06_tool_logs_hold_counts_never_the_prompt.rs"]
 mod msmp_ac06_tool_logs_hold_counts_never_the_prompt;
-#[path = "msmp_ac07_bridge_modules_list_sampling_everywhere.rs"]
-mod msmp_ac07_bridge_modules_list_sampling_everywhere;
 #[path = "pgm_ac05_skip_when_semaphore_nearly_full.rs"]
 mod pgm_ac05_skip_when_semaphore_nearly_full;
 #[path = "plainenv_ac01_env_reaches_process.rs"]
@@ -456,20 +444,12 @@ mod python_ac13_capacity_admission;
 mod python_ac14_cpu_budget_rate_limit;
 #[path = "qdiag_ac09_python_bridge_query_stats.rs"]
 mod qdiag_ac09_python_bridge_query_stats;
-#[path = "retshape_ac01_return_shape_table_parity.rs"]
-mod retshape_ac01_return_shape_table_parity;
-#[path = "retshape_ac02_runner_docstrings_carry_returns.rs"]
-mod retshape_ac02_runner_docstrings_carry_returns;
 #[path = "retshape_ac03_list_access_is_a_named_will_fail.rs"]
 mod retshape_ac03_list_access_is_a_named_will_fail;
 #[path = "retshape_ac04_envelope_behaves_as_plain_dict.rs"]
 mod retshape_ac04_envelope_behaves_as_plain_dict;
 #[path = "retshape_ac05_starter_example_shows_rows_access.rs"]
 mod retshape_ac05_starter_example_shows_rows_access;
-#[path = "retshape_ac06_quickstart_carries_bridge_returns.rs"]
-mod retshape_ac06_quickstart_carries_bridge_returns;
-#[path = "retshape_ac07_handle_query_shape_in_table.rs"]
-mod retshape_ac07_handle_query_shape_in_table;
 #[path = "rgpt_ac04_webhook_inbox_generated_and_passes.rs"]
 mod rgpt_ac04_webhook_inbox_generated_and_passes;
 #[path = "rgpt_docs_qa_golden_path.rs"]
@@ -580,8 +560,6 @@ mod testtruth_ac04_python_compose_unverifiable_in_dry_run;
 mod testtruth_ac05_verdict_on_every_kind_dry_run;
 #[path = "tfd_ac01_fixture_sentences_pass_first_draft.rs"]
 mod tfd_ac01_fixture_sentences_pass_first_draft;
-#[path = "tfd_ac02_prompt_is_generated_contract_only.rs"]
-mod tfd_ac02_prompt_is_generated_contract_only;
 #[path = "tfd_ac03_retry_then_publish_and_share.rs"]
 mod tfd_ac03_retry_then_publish_and_share;
 #[path = "tfd_ac04_final_failure_carries_draft_and_next_call.rs"]

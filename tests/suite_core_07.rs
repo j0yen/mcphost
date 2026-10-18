@@ -103,16 +103,12 @@ mod alert_ac09_min_severity_filters_delivery;
 mod alert_ac10_healthz_reports_open_and_last_raised_at;
 #[path = "alert_ac11_raise_body_size_limit.rs"]
 mod alert_ac11_raise_body_size_limit;
-#[path = "aliastruth_ac01_tools_list_has_every_name.rs"]
-mod aliastruth_ac01_tools_list_has_every_name;
 #[path = "aliastruth_ac03_unknown_tool_names_nearest.rs"]
 mod aliastruth_ac03_unknown_tool_names_nearest;
 #[path = "aliastruth_ac04_flattened_collision_refuses_start.rs"]
 mod aliastruth_ac04_flattened_collision_refuses_start;
 #[path = "aliastruth_ac06_contract_and_docs_list_the_same_names.rs"]
 mod aliastruth_ac06_contract_and_docs_list_the_same_names;
-#[path = "aliastruth_ac07_alias_entries_carry_alias_of.rs"]
-mod aliastruth_ac07_alias_entries_carry_alias_of;
 #[path = "althost_ac01_fallback_lines_on_claim_invite_quickstart.rs"]
 mod althost_ac01_fallback_lines_on_claim_invite_quickstart;
 #[path = "althost_ac02_alt_host_header_served_identically.rs"]
@@ -347,14 +343,10 @@ mod ccli_ac03_publish_round_trip_key_stays_secret;
 mod ccli_ac04_error_classes_map_to_exit_codes;
 #[path = "ccli_ac05_contract_skew_warning.rs"]
 mod ccli_ac05_contract_skew_warning;
-#[path = "ccli_ac06_cli_tree_equals_contract.rs"]
-mod ccli_ac06_cli_tree_equals_contract;
 #[path = "ccli_ac07_completions_rendered_from_the_table.rs"]
 mod ccli_ac07_completions_rendered_from_the_table;
 #[path = "cclib_ac01_contract_skew_warning.rs"]
 mod cclib_ac01_contract_skew_warning;
-#[path = "cclib_ac02_cli_tree_equals_contract.rs"]
-mod cclib_ac02_cli_tree_equals_contract;
 #[path = "cclib_ac03_completions_rendered_from_the_table.rs"]
 mod cclib_ac03_completions_rendered_from_the_table;
 #[path = "cdft_ac01_description_universal.rs"]
@@ -531,8 +523,6 @@ mod checkcompat_race_ac06_explicit_bind_still_enforces_token;
 mod checkcompat_race_ac07_suite_green_and_clippy_clean;
 #[path = "chg_ac02_contract_since_drift.rs"]
 mod chg_ac02_contract_since_drift;
-#[path = "chg_ac03_changelog_renamed_lists_every_alias.rs"]
-mod chg_ac03_changelog_renamed_lists_every_alias;
 #[path = "chg_ac04_changelog_defaults_to_last_seen_version.rs"]
 mod chg_ac04_changelog_defaults_to_last_seen_version;
 #[path = "chgb_ac01_fresh_tenant_last_five_releases.rs"]
@@ -577,8 +567,6 @@ mod cnfm_ac02_confirm_required_over_threshold;
 mod cnfm_ac03_token_deletes_once;
 #[path = "cnfm_ac04_token_bound_to_args_state_and_time.rs"]
 mod cnfm_ac04_token_bound_to_args_state_and_time;
-#[path = "cnfm_ac05_tools_list_marks_destructive_verbs.rs"]
-mod cnfm_ac05_tools_list_marks_destructive_verbs;
 #[path = "cnfm_ac06_scratch_tenant_is_never_gated.rs"]
 mod cnfm_ac06_scratch_tenant_is_never_gated;
 #[path = "cnfm_ac07_plan_override_disables_the_gate.rs"]
@@ -715,8 +703,6 @@ mod ctrv_ac07_changelog_since_accepts_contract_version;
 mod ctrx_ac01_cited_tree_gap_is_real;
 #[path = "ctrx_ac02_unmarked_registry_walker_is_flagged.rs"]
 mod ctrx_ac02_unmarked_registry_walker_is_flagged;
-#[path = "ctrx_ac03_stale_and_orphan_registry_markers_fail.rs"]
-mod ctrx_ac03_stale_and_orphan_registry_markers_fail;
 #[path = "ctrx_ac04_concat_manifest_dir_literal_is_a_read.rs"]
 mod ctrx_ac04_concat_manifest_dir_literal_is_a_read;
 #[path = "dbmw_ac02_db_maintenance_truncates_wal_and_vacuums.rs"]
@@ -869,8 +855,6 @@ mod dryrun_ac05_chain_host_table_append_step;
 mod dryrun_ac06_tools_list_mentions_dry_run;
 #[path = "dryv_ac01_table_drop_survives_savepoint.rs"]
 mod dryv_ac01_table_drop_survives_savepoint;
-#[path = "dryv_ac02_write_verb_registry_drift.rs"]
-mod dryv_ac02_write_verb_registry_drift;
 #[path = "dryv_ac03_table_drop_dry_run_would.rs"]
 mod dryv_ac03_table_drop_dry_run_would;
 #[path = "dryv_ac04_state_delete_rows_dry_run_would.rs"]
@@ -879,8 +863,6 @@ mod dryv_ac04_state_delete_rows_dry_run_would;
 mod dryv_ac05_real_errors_pass_through;
 #[path = "dryv_ac06_key_rotate_refuses_dry_run.rs"]
 mod dryv_ac06_key_rotate_refuses_dry_run;
-#[path = "dryv_ac07_tools_list_dry_run_schema.rs"]
-mod dryv_ac07_tools_list_dry_run_schema;
 #[path = "dtf_ac02_search_then_failure_row_joined_once.rs"]
 mod dtf_ac02_search_then_failure_row_joined_once;
 #[path = "dtf_ac03_anonymous_and_stale_never_joined.rs"]
@@ -1049,8 +1031,6 @@ mod evkr_ac01_no_second_spelling;
 mod evkr_ac02_renderings_equal_enum;
 #[path = "evkr_ac03_description_and_fields.rs"]
 mod evkr_ac03_description_and_fields;
-#[path = "evkr_ac04_bad_kind_args_invalid.rs"]
-mod evkr_ac04_bad_kind_args_invalid;
 #[path = "evkrb_ac01_llms_txt_events_section_checked.rs"]
 mod evkrb_ac01_llms_txt_events_section_checked;
 #[path = "evkrb_ac02_quickstart_events_pointer.rs"]
@@ -1133,8 +1113,6 @@ mod fbtl_ac03_text_limits_and_control_chars;
 mod fbtl_ac04_anonymous_send_cap;
 #[path = "fbtl_ac05_keyed_call_ids_and_list.rs"]
 mod fbtl_ac05_keyed_call_ids_and_list;
-#[path = "fbtl_ac06_kinds_cannot_drift.rs"]
-mod fbtl_ac06_kinds_cannot_drift;
 #[path = "fbtl_ac07_cli_list.rs"]
 mod fbtl_ac07_cli_list;
 #[path = "fcgift_ac01_remember_persists_and_memory_line.rs"]
@@ -1327,8 +1305,6 @@ mod healb_ac02_pre_ledger_rows_render_action_null;
 mod healb_ac03_incidents_list_admin_only;
 #[path = "hidx_ac02_three_sources_build_with_offsets.rs"]
 mod hidx_ac02_three_sources_build_with_offsets;
-#[path = "hidx_ac03_source_kinds_one_set.rs"]
-mod hidx_ac03_source_kinds_one_set;
 #[path = "hidx_ac04_index_max_quota.rs"]
 mod hidx_ac04_index_max_quota;
 #[path = "hidxb_ac01_url_refusal_and_503.rs"]
@@ -1415,8 +1391,6 @@ mod hrfr_ac03_query_carries_stale_sources_while_ticking;
 mod hrfr_ac04_url_conditional_refresh_and_floor;
 #[path = "hrfr_ac05_rechunk_keeps_vectors_of_unchanged_chunks.rs"]
 mod hrfr_ac05_rechunk_keeps_vectors_of_unchanged_chunks;
-#[path = "hrfr_ac06_table_write_verbs_bump_change_counter.rs"]
-mod hrfr_ac06_table_write_verbs_bump_change_counter;
 #[path = "hrfr_ac07_failing_url_pauses_until_refreshed.rs"]
 mod hrfr_ac07_failing_url_pauses_until_refreshed;
 #[path = "hsr_ac01_top10_errors_have_fix_anchor.rs"]
@@ -1555,16 +1529,8 @@ mod infer_ac14_latency_budget;
 mod infer_ac17_no_execution;
 #[path = "inner_rules_ac01_block_names_every_contract_test.rs"]
 mod inner_rules_ac01_block_names_every_contract_test;
-#[path = "insch_ac02_enums_from_handler_constants.rs"]
-mod insch_ac02_enums_from_handler_constants;
-#[path = "insch_ac03_patterns_and_bounds_in_schema.rs"]
-mod insch_ac03_patterns_and_bounds_in_schema;
 #[path = "insch_ac04_dispatch_refuses_by_schema.rs"]
 mod insch_ac04_dispatch_refuses_by_schema;
-#[path = "insch_ac05_schema_valid_call_clears_validation.rs"]
-mod insch_ac05_schema_valid_call_clears_validation;
-#[path = "insch_ac06_contract_and_docs_carry_constraints.rs"]
-mod insch_ac06_contract_and_docs_carry_constraints;
 #[path = "invite_ac01_create_returns_url_and_list_shows_zero_uses.rs"]
 mod invite_ac01_create_returns_url_and_list_shows_zero_uses;
 #[path = "invite_ac02_first_call_creates_tenant_with_onboarding.rs"]

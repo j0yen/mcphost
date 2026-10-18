@@ -1,3 +1,4 @@
+//! contract: reads docs/sandbox-api.md
 //! PRD-mcphost-elicitation-with-ask-fallback
 //! AC4 (P0) — Given `ELICIT_SCHEMA_SUBSET`, When the bridge docstring,
 //! `docs/sandbox-api.md` and the rmcp mapping test are rendered, Then all

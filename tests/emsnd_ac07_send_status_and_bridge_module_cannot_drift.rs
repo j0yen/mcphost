@@ -1,3 +1,4 @@
+//! contract: reads registry handler::host_tool_descriptors
 //! PRD-mcphost-send-email-from-tool
 //! AC7 (P0) -- Given the `SendStatus` enum and `BRIDGE_MODULES`, When the
 //! drift tests run, Then the tool description lists every status and

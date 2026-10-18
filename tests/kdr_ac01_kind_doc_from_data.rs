@@ -1,3 +1,4 @@
+//! contract: reads registry kinds::python::BRIDGE_MODULES
 //! PRD-mcphost-kind-docs-from-registry AC1: `KindDoc` is built from Rust
 //! data for every registered kind, with nothing left empty.
 

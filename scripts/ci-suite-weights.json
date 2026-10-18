@@ -1,19 +1,17 @@
 {
   "lib": 6,
-  "suite_contracts_core_01": 297,
-  "suite_contracts_sandbox_01": 5,
+  "suite_contracts_core_01": 98,
+  "suite_contracts_sandbox_01": 65,
   "suite_core_01": 1,
   "suite_core_02": 1,
   "suite_core_03": 1,
-  "suite_core_04": 423,
+  "suite_core_04": 1,
   "suite_core_05": 1,
   "suite_core_06": 1,
-  "suite_core_07": 1,
-  "suite_core_08": 297,
-  "suite_core_09": 369,
-  "suite_core_10": 429,
-  "suite_env_core_01": 43,
+  "suite_core_07": 334,
+  "suite_core_08": 372,
+  "suite_env_core_01": 15,
   "suite_env_sandbox_01": 7,
   "suite_sandbox_01": 110,
-  "suite_sandbox_02": 152
+  "suite_sandbox_02": 146
 }

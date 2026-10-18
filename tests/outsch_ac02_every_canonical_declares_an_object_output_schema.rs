@@ -1,3 +1,4 @@
+//! contract: reads registry handler::host_tool_descriptors
 //! PRD-mcphost-contract-output-schemas
 //! AC2 (P0) -- Given `host_tools(kinds, true)`, When every canonical tool is
 //! checked, Then each has a non-empty `output_schema` of `type: object` (or

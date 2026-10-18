@@ -1,3 +1,4 @@
+//! contract: registry kinds::python::BRIDGE_MODULES — every bridge module is listed in unknown_import_hint() and docs/sandbox-api.md
 //! PRD-mcphost-sampling-from-tools
 //! AC7 (P0) — Given `BRIDGE_MODULES`, When `unknown_import_hint()` and
 //! `docs/sandbox-api.md` are rendered, Then both list `mcphost.sampling` and
