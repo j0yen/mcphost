@@ -17,7 +17,7 @@
 //! overridden by a real 45s declaration.
 
 use crate::common;
-use common::{TestServer, poll_until_ready, python_kind_registry, signup};
+use common::{TestServer, poll_until_ready, python_kind_registry};
 use mcphost::sandbox;
 use serde_json::json;
 use std::time::Duration;
@@ -30,7 +30,8 @@ async fn declared_timeout_of_45s_lets_a_40s_sleep_complete() {
     }
     let envs_dir = common::TempDataDir::new();
     let server = TestServer::start_with_kinds(python_kind_registry(&envs_dir.0)).await;
-    let (ns, key) = signup(&server.base_url, "AC1 Tenant A").await;
+    // timeout_s 45 is above the free plan's sandbox_cpu_s_max (30): pro.
+    let (ns, key, _) = common::signup_and_make_pro(&server, "AC1 Tenant A", "cus_srlp_l1a").await;
     let client = common::McpClient::with_bearer(&server.base_url, &key);
 
     let spec = json!({
@@ -72,7 +73,8 @@ async fn declared_timeout_of_45s_names_the_45s_deadline_on_overrun() {
     }
     let envs_dir = common::TempDataDir::new();
     let server = TestServer::start_with_kinds(python_kind_registry(&envs_dir.0)).await;
-    let (ns, key) = signup(&server.base_url, "AC1 Tenant B").await;
+    // timeout_s 45 is above the free plan's sandbox_cpu_s_max (30): pro.
+    let (ns, key, _) = common::signup_and_make_pro(&server, "AC1 Tenant B", "cus_srlp_l1b").await;
     let client = common::McpClient::with_bearer(&server.base_url, &key);
 
     let spec = json!({

@@ -11,7 +11,7 @@
 //! it normally; only the deadline is shortened.
 
 use crate::common;
-use common::{TestServer, extract_structured, poll_until_ready, python_kind_registry, signup};
+use common::{TestServer, extract_structured, poll_until_ready, python_kind_registry};
 use mcphost::sandbox;
 use serde_json::json;
 use std::time::{Duration, Instant};
@@ -24,7 +24,8 @@ async fn job_times_out_at_its_deadline_keeping_last_progress() {
     }
     let envs_dir = common::TempDataDir::new();
     let server = TestServer::start_with_kinds(python_kind_registry(&envs_dir.0)).await;
-    let (ns, key) = signup(&server.base_url, "AC2 Tenant").await;
+    // timeout_s 45 is above the free plan's sandbox_cpu_s_max (30): pro.
+    let (ns, key, _) = common::signup_and_make_pro(&server, "AC2 Tenant", "cus_srlp_r2").await;
     let client = common::McpClient::with_bearer(&server.base_url, &key);
 
     let spec = json!({

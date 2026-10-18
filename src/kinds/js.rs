@@ -320,7 +320,7 @@ pub async fn cold_call(
         .map_err(|e| super::KindError::Exec(format!("scratch dir: {e}")))?;
     let spec = run_spec(params, &scratch, &qjs);
     let bytes = serde_json::to_vec(payload).unwrap_or_default();
-    let outcome = python::run_cold_interactive(&spec, &bytes, bridge, cancel_pid).await;
+    let outcome = python::run_cold_interactive(&spec, &bytes, bridge, cancel_pid, &crate::kinds::null_resources()).await;
     let _ = tokio::fs::remove_dir_all(&scratch).await;
     outcome.map_err(|e| super::KindError::Exec(format!("sandbox spawn failed: {e}")))
 }

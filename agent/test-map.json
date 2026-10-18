@@ -2130,6 +2130,17 @@
       "AC5": "tests/mres_ac05_ninth_subscription_hits_resources_max.rs",
       "AC6": "tests/mres_ac06_read_truncates_at_a_row_and_hides_other_tenants.rs",
       "AC7": "tests/mres_ac07_capabilities_row_flips_to_implemented.rs"
+    },
+    "srlp": {
+      "_prd": "PRD-mcphost-sandbox-resource-limits-from-plan.md (test_prefix: srlp)",
+      "AC1": "deferred -- operator-provisioned: premise check against prod after land.",
+      "AC2": "tests/srlp_ac02_plan_ceilings_published.rs",
+      "AC3": "tests/srlp_ac03_publish_over_plan_refused.rs",
+      "AC4": "tests/srlp_ac04_free_pids_ceiling_and_peak.rs",
+      "AC5": "tests/srlp_ac05_python_result_carries_resources_used.rs",
+      "AC6": "tests/srlp_ac06_warm_hit_keeps_plan_pids.rs",
+      "AC7": "tests/srlp_ac07_tool_run_reports_resources_used.rs",
+      "AC8": "deferred -- operator-provisioned: live curl of prod plans.json after deploy"
     }
   }
 }
