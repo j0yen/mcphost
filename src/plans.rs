@@ -77,6 +77,14 @@ pub struct Plan {
     /// for stored bytes" measure `state_bytes_max` uses for the KV store's
     /// serialized-value-length sum.
     pub table_bytes_max: i64,
+    /// PRD-mcphost-resources-for-tenant-data requirement 5: open
+    /// `resources/subscribe` entries per tenant (free 8, pro 64). Defaults to
+    /// the `free` plan's own default (8) when a hand-edited `plans.toml`
+    /// predates this key, same tolerant-parse convention as the quotas above.
+    pub resources_max: i64,
+    /// requirement 5: bytes of one `resources/read` body before it is cut at
+    /// the last complete row (1 MiB on every plan).
+    pub resource_read_bytes_max: i64,
     /// PRD-mcphost-runs-and-jobs P0 requirement 4: the deadline (seconds) a
     /// job of this plan's tenants runs under, distinct from the ordinary
     /// call deadline ([`crate::state::CALL_TIMEOUT`]) -- the whole point of
@@ -583,6 +591,8 @@ impl PlanCatalog {
                     table_tables_max: 5,
                     table_rows_max: 5_000,
                     table_bytes_max: 10 * 1024 * 1024,
+                    resources_max: 8,
+                    resource_read_bytes_max: 1_048_576,
                     // PRD-mcphost-runs-and-jobs open question, resolved at
                     // build: "free job_max_s 300 and jobs_concurrent 1".
                     job_max_s: 300,
@@ -700,6 +710,8 @@ impl PlanCatalog {
                     table_tables_max: 50,
                     table_rows_max: 200_000,
                     table_bytes_max: 500 * 1024 * 1024,
+                    resources_max: 64,
+                    resource_read_bytes_max: 1_048_576,
                     // PRD-mcphost-runs-and-jobs: pro gets a longer deadline
                     // and more concurrent jobs than free, same free/pro
                     // scaling shape as every other quota above.
@@ -880,6 +892,8 @@ impl PlanCatalog {
             out.push_str(&format!("table_tables_max = {}\n", p.table_tables_max));
             out.push_str(&format!("table_rows_max = {}\n", p.table_rows_max));
             out.push_str(&format!("table_bytes_max = {}\n", p.table_bytes_max));
+            out.push_str(&format!("resources_max = {}\n", p.resources_max));
+            out.push_str(&format!("resource_read_bytes_max = {}\n", p.resource_read_bytes_max));
             out.push_str(&format!("job_max_s = {}\n", p.job_max_s));
             out.push_str(&format!("jobs_concurrent = {}\n", p.jobs_concurrent));
             out.push_str(&format!("schedules_max = {}\n", p.schedules_max));
@@ -1033,6 +1047,8 @@ impl PlanCatalog {
                 "table_tables_max" => builder.table_tables_max = Some(int_value()),
                 "table_rows_max" => builder.table_rows_max = Some(int_value()),
                 "table_bytes_max" => builder.table_bytes_max = Some(int_value()),
+                "resources_max" => builder.resources_max = Some(int_value()),
+                "resource_read_bytes_max" => builder.resource_read_bytes_max = Some(int_value()),
                 "job_max_s" => builder.job_max_s = Some(int_value()),
                 "jobs_concurrent" => builder.jobs_concurrent = Some(int_value()),
                 "schedules_max" => builder.schedules_max = Some(int_value()),
@@ -1144,6 +1160,8 @@ struct PlanBuilder {
     table_tables_max: Option<i64>,
     table_rows_max: Option<i64>,
     table_bytes_max: Option<i64>,
+    resources_max: Option<i64>,
+    resource_read_bytes_max: Option<i64>,
     job_max_s: Option<i64>,
     jobs_concurrent: Option<i64>,
     schedules_max: Option<i64>,
@@ -1238,6 +1256,8 @@ impl PlanBuilder {
             table_tables_max: quota!(table_tables_max),
             table_rows_max: quota!(table_rows_max),
             table_bytes_max: quota!(table_bytes_max),
+            resources_max: quota!(resources_max),
+            resource_read_bytes_max: quota!(resource_read_bytes_max),
             job_max_s: quota!(job_max_s),
             jobs_concurrent: quota!(jobs_concurrent),
             schedules_max: quota!(schedules_max),

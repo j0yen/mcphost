@@ -56,7 +56,7 @@ fn check_script_passes_clean_and_fails_naming_the_file_when_a_row_is_edited() {
         let dir = common::doc_check_scratch("creg-ac05-edited");
         let path = dir.join(rel);
         let text = std::fs::read_to_string(&path).expect("read");
-        let edited = text.replace("| `resources` | no |", "| `resources` | yes |");
+        let edited = text.replace("| `prompts` | no |", "| `prompts` | yes |");
         assert_ne!(edited, text, "the edit must change {rel}");
         std::fs::write(&path, edited).expect("write");
         let out = run_check(&dir);

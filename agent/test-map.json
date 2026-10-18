@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-prompts-from-published-tools",
+  "ac_test_map_prd": "PRD-mcphost-resources-for-tenant-data.md (test_prefix: mres)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,13 +28,13 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/mprm_ac01_recipes_listed_and_rendered.rs",
-    "AC2": "tests/mprm_ac02_missing_argument_and_unknown_prompt.rs",
-    "AC3": "tests/mprm_ac03_prompt_kind_tool_listed_and_rendered.rs",
-    "AC4": "tests/mprm_ac04_oauth_scope_filters_prompt_tools.rs",
-    "AC5": "tests/mprm_ac05_list_changed_on_prompt_publish_and_remove.rs",
-    "AC6": "tests/mprm_ac06_docs_table_and_quickstart_share_recipes.rs",
-    "AC7": "tests/mprm_ac07_capabilities_advertise_prompts.rs"
+    "AC1": "tests/mres_ac01_read_authorises_like_list_tools.rs",
+    "AC2": "tests/mres_ac02_templates_list_equals_const_and_docs.rs",
+    "AC3": "tests/mres_ac03_list_counts_and_scope_filter.rs",
+    "AC4": "tests/mres_ac04_subscribe_gets_updated_on_append.rs",
+    "AC5": "tests/mres_ac05_ninth_subscription_hits_resources_max.rs",
+    "AC6": "tests/mres_ac06_read_truncates_at_a_row_and_hides_other_tenants.rs",
+    "AC7": "tests/mres_ac07_capabilities_row_flips_to_implemented.rs"
   },
   "ac_test_map_by_prefix": {
     "oschv": {
@@ -2090,6 +2090,16 @@
       "AC5": "tests/msmp_ac05_daily_token_quota_refuses_before_asking.rs",
       "AC6": "tests/msmp_ac06_tool_logs_hold_counts_never_the_prompt.rs",
       "AC7": "tests/msmp_ac07_bridge_modules_list_sampling_everywhere.rs"
+    },
+    "mres": {
+      "_prd": "PRD-mcphost-resources-for-tenant-data.md (test_prefix: mres)",
+      "AC1": "tests/mres_ac01_read_authorises_like_list_tools.rs",
+      "AC2": "tests/mres_ac02_templates_list_equals_const_and_docs.rs",
+      "AC3": "tests/mres_ac03_list_counts_and_scope_filter.rs",
+      "AC4": "tests/mres_ac04_subscribe_gets_updated_on_append.rs",
+      "AC5": "tests/mres_ac05_ninth_subscription_hits_resources_max.rs",
+      "AC6": "tests/mres_ac06_read_truncates_at_a_row_and_hides_other_tenants.rs",
+      "AC7": "tests/mres_ac07_capabilities_row_flips_to_implemented.rs"
     }
   }
 }

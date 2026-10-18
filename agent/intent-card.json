@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-publish-visibility-and-tags.md",
-  "intent_slug": "mcphost-publish-visibility-and-tags",
-  "root_motivation": "**Who:** the agent publishing a tool it wants others to find; the agent searching for one. **What:** publish once, say who may find it, say what it is for, and know that everything public at least runs. **Why not today:** `tool_publish_props` (`handler.rs:599`) has no `visibility` or `tags`; `tools.visibility` accepts `private|group|public|url` by a hand-written string match (`sharing.rs:52-71`) while the `host.tool_share` schema declares a bare `string` with the names in prose (`handler.rs:1385`) \u2014 two copies of one set, the 10-07 level-8 shape; `share_description` is the only catalog text (migration 0013); nothing checks a public tool runs, so the catalog can carry tools whose `host.tool_test` would fail. **Premise (creative):** a publish-time dry run is cheap enough that \"public = tested\" costs the publisher nothing it would not do anyway. **Falsifier:** the refusal rate in the frontmatter; AC 1 measures the dry run's cost on the three starter tools.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-resources-for-tenant-data.md",
+  "intent_slug": "mcphost-resources-for-tenant-data",
+  "root_motivation": "**Who:** the agent whose client renders resources (Claude Code `@mcphost:\u2026`, VS Code Copilot \"Add Context\", Cursor); the human user who wants the run log in the chat without asking the agent to fetch it. **What:** read a table, a doc, a run log or a tool spec by URI, and be told when it changes. **Why not today:** prod answers `resources/list` with `{\"resources\":[]}` (rmcp default); after PRD-mcphost-server-capabilities-from-registry it answers `-32601`. Every read is a `tools/call` with `tenant_key` in `arguments`; the resource methods have no arguments slot for a key, so the auth that `list_tools` performs (`handler.rs:7838-7850`: path secret first, then `resolve_auth` over header and connection) is the only auth available \u2014 nothing today proves it reaches `read_resource`. **Consequence:** the explore personas re-implement reads as tool calls (`usecases.py` 10-08: 26 `budget.max_tool_latency_ms` refusals came from agents polling `host.table.query` for data a subscription would...",
   "user_persona": "An agent that runs host.note.put {text, attach_to: {tool}} once and reads the note on that tool's description in every later session; the same user's second client sees it too.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,44 +14,44 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the python, http and chain starter tools from `host.quickstart` published with `visibility: \"public\"`, When each publish runs its dry run, Then all three return `tested_version: 1` and the added latency per publish is \u2264 2 s on the test host; a refusal on any of the three fails this AC and is reported as the falsifier firing.",
-      "test": "tests/pubvis_ac01_starters_publish_public_tested.rs"
+      "description": "Given an in-process server with a path-bound tenant `/u/{secret}/mcp` that owns table `orders` with 3 rows, When `resources/read mcphost://table/orders` is sent on that connection, Then the result's single content is `application/json` with 3 rows; Given a keyless connection that never signed up, When the same URI is read, Then `-32002` is returned and the tenants table gained 0 rows.",
+      "test": "tests/mres_ac01_read_authorises_like_list_tools.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given `host_tools()`'s descriptors, When the test reads the `visibility` enum of `host.tool_publish` and of `host.tool_share`, Then both equal `Visibility::PUBLISHABLE` and `Visibility::ALL` minus nothing the validator rejects, and a `Visibility` variant added without a schema change fails the test.",
-      "test": "tests/pubvis_ac02_visibility_enum_single_source.rs"
+      "description": "Given `RESOURCE_TEMPLATES`, When `resources/templates/list` is sent keyless, Then it lists exactly the const's rows with `uriTemplate` and `mimeType`; Given `docs/protocol/resources.md`, Then its table equals the const byte-for-byte.",
+      "test": "tests/mres_ac02_templates_list_equals_const_and_docs.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a python tool whose source raises on every call, When published with `visibility: \"public\"`, Then the error is `untested_tool_cannot_be_public` with `data.verdict` and `data.next = \"host.tool_test\"`, and `host.tool_list` shows the tool `private`.",
-      "test": "tests/pubvis_ac03_untested_tool_cannot_be_public.rs"
+      "description": "Given a tenant with 2 tables, 1 doc, 1 run, 2 tools, When `resources/list` is sent with the key in the Authorization header, Then 6 entries are returned; Given an OAuth session scoped `tables:read`, Then exactly the 2 table entries.",
+      "test": "tests/mres_ac03_list_counts_and_scope_filter.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a tool published `unlisted`, When an anonymous caller runs `host.catalog.search` with no query and `GET /.well-known/mcp/catalog.json`, Then neither lists it, while `host.catalog.get` and a cross-tenant call by full name succeed.",
-      "test": "tests/pubvis_ac04_unlisted_not_listed_but_callable.rs"
+      "description": "Given a subscription on `mcphost://table/orders`, When `host.table.append` commits 2 rows, Then one `notifications/resources/updated {uri}` reaches the peer within 500 ms; Given `unsubscribe`, Then a further append sends nothing.",
+      "test": "tests/mres_ac04_subscribe_gets_updated_on_append.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given `tags: [\"Webhook\", \"webhook\", \"a b\"]`, When published, Then the response is `args_invalid` naming `a b`; given `[\"Webhook\", \"webhook\"]`, Then stored tags are `[\"webhook\"]`; given 17 valid tags, Then `args_invalid` names the limit 16.",
-      "test": "tests/pubvis_ac05_tags_validated_normalised_capped.rs"
+      "description": "Given a free tenant with 8 open subscriptions, When the 9th `resources/subscribe` arrives, Then `resources_max` is returned with `data.limit: 8`; Given the connection closes, Then all 8 entries are gone and a new connection may open 8 again.",
+      "test": "tests/mres_ac05_ninth_subscription_hits_resources_max.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a public tool at version 1 with `tested_version 1`, When a new version is published, Then it stays public with `stale_test: true`, and a passing `host.tool_test` sets `tested_version: 2` and clears the flag.",
-      "test": "tests/pubvis_ac06_new_version_marks_stale_until_retested.rs"
+      "description": "Given a table whose JSON exceeds `resource_read_bytes_max`, When read, Then the body is cut at the last complete row under the ceiling and `_meta.truncated` is `true`; Given another tenant's table name, Then `-32002`, never `forbidden`.",
+      "test": "tests/mres_ac06_read_truncates_at_a_row_and_hides_other_tenants.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given two concurrent `host.tool_share visibility=public` calls on the same untested tool, When both dry runs pass, Then `tested_version` is stamped once and both calls return the same result without a UNIQUE or busy error.",
-      "test": "tests/pubvis_ac07_concurrent_public_share_stamps_once.rs"
+      "level": "MUST",
+      "description": "Given `capabilities.rs`, When `initialize` is answered, Then `capabilities.resources` is `{listChanged: true, subscribe: true}` and `/capabilities.json` shows `resources.implemented == true`, `probe == \"resources\"`.",
+      "test": "tests/mres_ac07_capabilities_row_flips_to_implemented.rs"
     }
   ],
   "scope": [
