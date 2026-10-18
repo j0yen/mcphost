@@ -7,1892 +7,1409 @@
 // original name, path, and test names (nextest's test list, with this
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
-#[path = "support/assertion.rs"]
-mod assertion;
+mod ci_sandbox_support;
+#[path = "support/blobguard.rs"]
+mod blobguard;
 #[path = "support/busyaudit.rs"]
 mod busyaudit;
-#[path = "support/fake_as.rs"]
-mod fake_as;
-#[path = "support/mrefu.rs"]
-mod mrefu;
-#[path = "support/msrvlock.rs"]
-mod msrvlock;
+#[path = "support/chart_fixture.rs"]
+mod chart_fixture;
+#[path = "support/child_proc_lint.rs"]
+mod child_proc_lint;
+#[path = "support/ctrace.rs"]
+mod ctrace;
+#[path = "support/docs_qa.rs"]
+mod docs_qa;
+#[path = "support/exprf.rs"]
+mod exprf;
+#[path = "support/exprp.rs"]
+mod exprp;
+#[path = "support/federation.rs"]
+mod federation;
 #[path = "support/oauth.rs"]
 mod oauth;
-#[path = "support/oauthclient.rs"]
-mod oauthclient;
-#[path = "support/promptkind.rs"]
-mod promptkind;
-#[path = "support/pysdk.rs"]
-mod pysdk;
-#[path = "support/rgpt.rs"]
-mod rgpt;
 #[path = "support/serve.rs"]
 mod serve;
-#[path = "support/sjrc.rs"]
-mod sjrc;
-#[path = "support/timp.rs"]
-mod timp;
-#[path = "support/tssdk.rs"]
-mod tssdk;
-#[path = "support/uprg.rs"]
-mod uprg;
-#[path = "support/xlinks.rs"]
-mod xlinks;
+#[path = "support/slotkind.rs"]
+mod slotkind;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
-#[path = "mcphost-chatgpt-submission-pack_ac01_pack_validates_against_schema.rs"]
-mod mcphost_chatgpt_submission_pack_ac01_pack_validates_against_schema;
-#[path = "mcphost-chatgpt-submission-pack_ac02_check_detects_drift.rs"]
-mod mcphost_chatgpt_submission_pack_ac02_check_detects_drift;
-#[path = "mcphost-chatgpt-submission-pack_ac03_descriptions_identical.rs"]
-mod mcphost_chatgpt_submission_pack_ac03_descriptions_identical;
-#[path = "mcphost-chatgpt-submission-pack_ac04_chatgpt_surface_everywhere.rs"]
-mod mcphost_chatgpt_submission_pack_ac04_chatgpt_surface_everywhere;
-#[path = "mcphost-chatgpt-submission-pack_ac05_chatgpt_profile_empty_tenant_table.rs"]
-mod mcphost_chatgpt_submission_pack_ac05_chatgpt_profile_empty_tenant_table;
-#[path = "mcphost-chatgpt-submission-pack_ac06_reviewer_notes_first_call.rs"]
-mod mcphost_chatgpt_submission_pack_ac06_reviewer_notes_first_call;
-#[path = "mcphost-install-links-more-clients_ac01_twelve_surfaces.rs"]
-mod mcphost_install_links_more_clients_ac01_twelve_surfaces;
-#[path = "mcphost-install-links-more-clients_ac02_command_artefacts_carry_url_once.rs"]
-mod mcphost_install_links_more_clients_ac02_command_artefacts_carry_url_once;
-#[path = "mcphost-install-links-more-clients_ac03_connect_page_groups_every_surface.rs"]
-mod mcphost_install_links_more_clients_ac03_connect_page_groups_every_surface;
-#[path = "mcphost-install-links-more-clients_ac04_connect_go_every_id.rs"]
-mod mcphost_install_links_more_clients_ac04_connect_go_every_id;
-#[path = "mcphost-install-links-more-clients_ac05_quickstart_twelve_personal_surfaces.rs"]
-mod mcphost_install_links_more_clients_ac05_quickstart_twelve_personal_surfaces;
-#[path = "mcphost-install-links-more-clients_ac06_docs_block_regenerates_from_table.rs"]
-mod mcphost_install_links_more_clients_ac06_docs_block_regenerates_from_table;
-#[path = "mcphost-install-links-more-clients_ac07_prior_prd_tests_still_apply.rs"]
-mod mcphost_install_links_more_clients_ac07_prior_prd_tests_still_apply;
-#[path = "mcphost-llms-install-doc_ac01_generator_sections.rs"]
-mod mcphost_llms_install_doc_ac01_generator_sections;
-#[path = "mcphost-llms-install-doc_ac02_served_unauthenticated.rs"]
-mod mcphost_llms_install_doc_ac02_served_unauthenticated;
-#[path = "mcphost-llms-install-doc_ac03_committed_copy_drift.rs"]
-mod mcphost_llms_install_doc_ac03_committed_copy_drift;
-#[path = "mcphost-llms-install-doc_ac04_linked_from_every_entry_point.rs"]
-mod mcphost_llms_install_doc_ac04_linked_from_every_entry_point;
-#[path = "mcphost-llms-install-doc_ac06_install_doc_funnel_event.rs"]
-mod mcphost_llms_install_doc_ac06_install_doc_funnel_event;
-#[path = "mcphost_admin_schema_contract_ac01_tenants_schema_version.rs"]
-mod mcphost_admin_schema_contract_ac01_tenants_schema_version;
-#[path = "mcphost_admin_schema_contract_ac02_listings_validate_v1_schema.rs"]
-mod mcphost_admin_schema_contract_ac02_listings_validate_v1_schema;
-#[path = "mcphost_admin_schema_contract_ac03_unknown_field_fails_naming_it.rs"]
-mod mcphost_admin_schema_contract_ac03_unknown_field_fails_naming_it;
-#[path = "mcphost_admin_schema_contract_ac04_unsupported_version_refused.rs"]
-mod mcphost_admin_schema_contract_ac04_unsupported_version_refused;
-#[path = "mcphost_admin_schema_contract_ac05_doctor_live_schema_version.rs"]
-mod mcphost_admin_schema_contract_ac05_doctor_live_schema_version;
-#[path = "mcphost_admin_schema_contract_ac06_admin_rs_fields_match_schema.rs"]
-mod mcphost_admin_schema_contract_ac06_admin_rs_fields_match_schema;
-#[path = "mcphost_admin_schema_contract_ac07_whoami_admin_schema_version.rs"]
-mod mcphost_admin_schema_contract_ac07_whoami_admin_schema_version;
-#[path = "mcphost_chain_run_lineage_ac01_chain_declares_required_inputs.rs"]
-mod mcphost_chain_run_lineage_ac01_chain_declares_required_inputs;
-#[path = "mcphost_chain_run_lineage_ac02_no_input_paths_keeps_plain_schema.rs"]
-mod mcphost_chain_run_lineage_ac02_no_input_paths_keeps_plain_schema;
-#[path = "mcphost_chain_run_lineage_ac03_compose_input_missing_before_step_one.rs"]
-mod mcphost_chain_run_lineage_ac03_compose_input_missing_before_step_one;
-#[path = "mcphost_chain_run_lineage_ac04_child_run_rows_per_step.rs"]
-mod mcphost_chain_run_lineage_ac04_child_run_rows_per_step;
-#[path = "mcphost_chain_run_lineage_ac05_runs_list_filters_children.rs"]
-mod mcphost_chain_run_lineage_ac05_runs_list_filters_children;
-#[path = "mcphost_chain_run_lineage_ac06_on_error_stop_partial_children.rs"]
-mod mcphost_chain_run_lineage_ac06_on_error_stop_partial_children;
-#[path = "mcphost_chain_run_lineage_ac07_children_inherit_end_user.rs"]
-mod mcphost_chain_run_lineage_ac07_children_inherit_end_user;
-#[path = "mcphost_chain_run_lineage_ac08_chain_meters_as_one_call.rs"]
-mod mcphost_chain_run_lineage_ac08_chain_meters_as_one_call;
-#[path = "mcphost_chain_run_lineage_ac09_lifecycle_delete_and_purge_cascade.rs"]
-mod mcphost_chain_run_lineage_ac09_lifecycle_delete_and_purge_cascade;
-#[path = "mcphost_chain_run_lineage_ac10_tool_test_reports_inputs_required.rs"]
-mod mcphost_chain_run_lineage_ac10_tool_test_reports_inputs_required;
-#[path = "mcphost_chain_run_lineage_ac11_failed_child_carries_step_no_and_parent_tool.rs"]
-mod mcphost_chain_run_lineage_ac11_failed_child_carries_step_no_and_parent_tool;
-#[path = "mcphost_chain_run_lineage_ac12_healthz_composition_counters.rs"]
-mod mcphost_chain_run_lineage_ac12_healthz_composition_counters;
-#[path = "mcphost_chain_run_lineage_ac13_daily_pipeline_persona_trailer.rs"]
-mod mcphost_chain_run_lineage_ac13_daily_pipeline_persona_trailer;
-#[path = "mcphost_claude_code_plugin_and_snippets_ac01_plugin_assets_script.rs"]
-mod mcphost_claude_code_plugin_and_snippets_ac01_plugin_assets_script;
-#[path = "mcphost_claude_code_plugin_and_snippets_ac02_plugin_json_and_mcp_json_version.rs"]
-mod mcphost_claude_code_plugin_and_snippets_ac02_plugin_json_and_mcp_json_version;
-#[path = "mcphost_claude_code_plugin_and_snippets_ac03_readme_connect_section.rs"]
-mod mcphost_claude_code_plugin_and_snippets_ac03_readme_connect_section;
-#[path = "mcphost_claude_code_plugin_and_snippets_ac04_index_html_snippets.rs"]
-mod mcphost_claude_code_plugin_and_snippets_ac04_index_html_snippets;
-#[path = "mcphost_claude_code_plugin_and_snippets_ac05_skill_md_walkthrough.rs"]
-mod mcphost_claude_code_plugin_and_snippets_ac05_skill_md_walkthrough;
-#[path = "mcphost_claude_code_plugin_and_snippets_ac06_llms_txt_first_run_walkthrough.rs"]
-mod mcphost_claude_code_plugin_and_snippets_ac06_llms_txt_first_run_walkthrough;
-#[path = "mcphost_claude_code_plugin_and_snippets_ac07_no_leaked_bearer_key.rs"]
-mod mcphost_claude_code_plugin_and_snippets_ac07_no_leaked_bearer_key;
-#[path = "mcphost_claude_code_plugin_and_snippets_ac08_claude_plugin_validate.rs"]
-mod mcphost_claude_code_plugin_and_snippets_ac08_claude_plugin_validate;
-#[path = "mcphost_claude_code_plugin_and_snippets_ac09_readme_connect_links_status_and_aup.rs"]
-mod mcphost_claude_code_plugin_and_snippets_ac09_readme_connect_links_status_and_aup;
-#[path = "mcphost_data_retention_ac01_calls_prune_by_window.rs"]
-mod mcphost_data_retention_ac01_calls_prune_by_window;
-#[path = "mcphost_data_retention_ac02_metering_rows_survive_window.rs"]
-mod mcphost_data_retention_ac02_metering_rows_survive_window;
-#[path = "mcphost_data_retention_ac03_untracked_table_unchanged.rs"]
-mod mcphost_data_retention_ac03_untracked_table_unchanged;
-#[path = "mcphost_data_retention_ac04_batched_prune_no_lock_errors.rs"]
-mod mcphost_data_retention_ac04_batched_prune_no_lock_errors;
-#[path = "mcphost_data_retention_ac05_admin_usage_reports_size_and_last_prune.rs"]
-mod mcphost_data_retention_ac05_admin_usage_reports_size_and_last_prune;
-#[path = "mcphost_data_retention_ac06_disk_floor_refuses_writes.rs"]
-mod mcphost_data_retention_ac06_disk_floor_refuses_writes;
-#[path = "mcphost_data_retention_ac07_automatic_prune_keeps_last_prune_fresh.rs"]
-mod mcphost_data_retention_ac07_automatic_prune_keeps_last_prune_fresh;
-#[path = "mcphost_data_retention_ac08_host_usage_lists_retention_windows.rs"]
-mod mcphost_data_retention_ac08_host_usage_lists_retention_windows;
-#[path = "mcphost_data_retention_ac09_prune_error_sets_last_prune_ok_false.rs"]
-mod mcphost_data_retention_ac09_prune_error_sets_last_prune_ok_false;
-#[path = "mcphost_data_retention_ac10_admin_prune_now_runs_one_cycle.rs"]
-mod mcphost_data_retention_ac10_admin_prune_now_runs_one_cycle;
-#[path = "mcphost_database_in_a_minute_ac08_live_test_skipped_without_env.rs"]
-mod mcphost_database_in_a_minute_ac08_live_test_skipped_without_env;
-#[path = "mcphost_event_trigger_self_test_ac01_self_sign_when_no_headers.rs"]
-mod mcphost_event_trigger_self_test_ac01_self_sign_when_no_headers;
-#[path = "mcphost_event_trigger_self_test_ac02_present_header_stays_strict.rs"]
-mod mcphost_event_trigger_self_test_ac02_present_header_stays_strict;
-#[path = "mcphost_event_trigger_self_test_ac03_signed_replay_hits_live_url.rs"]
-mod mcphost_event_trigger_self_test_ac03_signed_replay_hits_live_url;
-#[path = "mcphost_event_trigger_self_test_ac04_github_preset_expands_and_hides_secret.rs"]
-mod mcphost_event_trigger_self_test_ac04_github_preset_expands_and_hides_secret;
-#[path = "mcphost_event_trigger_self_test_ac05_unknown_verify_preset_rejected.rs"]
-mod mcphost_event_trigger_self_test_ac05_unknown_verify_preset_rejected;
-#[path = "mcphost_event_trigger_self_test_ac06_runs_list_include_result_inlines_single_part.rs"]
-mod mcphost_event_trigger_self_test_ac06_runs_list_include_result_inlines_single_part;
-#[path = "mcphost_event_trigger_self_test_ac07_runs_list_include_result_skips_multi_part.rs"]
-mod mcphost_event_trigger_self_test_ac07_runs_list_include_result_skips_multi_part;
-#[path = "mcphost_event_trigger_self_test_ac08_quickstart_and_llms_txt_name_triggers.rs"]
-mod mcphost_event_trigger_self_test_ac08_quickstart_and_llms_txt_name_triggers;
-#[path = "mcphost_event_trigger_self_test_ac09_string_body_signed_byte_for_byte.rs"]
-mod mcphost_event_trigger_self_test_ac09_string_body_signed_byte_for_byte;
-#[path = "mcphost_event_trigger_self_test_ac10_healthz_self_test_counters.rs"]
-mod mcphost_event_trigger_self_test_ac10_healthz_self_test_counters;
-#[path = "mcphost_host_tool_deprecation_ac01_contract_dump_deterministic.rs"]
-mod mcphost_host_tool_deprecation_ac01_contract_dump_deterministic;
-#[path = "mcphost_host_tool_deprecation_ac02_removed_field_without_deprecation_fails.rs"]
-mod mcphost_host_tool_deprecation_ac02_removed_field_without_deprecation_fails;
-#[path = "mcphost_host_tool_deprecation_ac03_deprecation_entry_marks_tools_list.rs"]
-mod mcphost_host_tool_deprecation_ac03_deprecation_entry_marks_tools_list;
-#[path = "mcphost_host_tool_deprecation_ac04_deprecated_field_call_envelope.rs"]
-mod mcphost_host_tool_deprecation_ac04_deprecated_field_call_envelope;
-#[path = "mcphost_host_tool_deprecation_ac05_removal_gated_on_sunset.rs"]
-mod mcphost_host_tool_deprecation_ac05_removal_gated_on_sunset;
-#[path = "mcphost_host_tool_deprecation_ac06_changelog_lists_additions.rs"]
-mod mcphost_host_tool_deprecation_ac06_changelog_lists_additions;
-#[path = "mcphost_host_tool_deprecation_ac07_whoami_contract_version.rs"]
-mod mcphost_host_tool_deprecation_ac07_whoami_contract_version;
-#[path = "mcphost_host_tool_deprecation_ac08_llms_txt_links_contract.rs"]
-mod mcphost_host_tool_deprecation_ac08_llms_txt_links_contract;
-#[path = "mcphost_human_claim_magic_link_ac01_claim_url_in_signup.rs"]
-mod mcphost_human_claim_magic_link_ac01_claim_url_in_signup;
-#[path = "mcphost_human_claim_magic_link_ac02_post_claim_sends_magic_link.rs"]
-mod mcphost_human_claim_magic_link_ac02_post_claim_sends_magic_link;
-#[path = "mcphost_human_claim_magic_link_ac03_verify_sets_owner_and_shows_summary.rs"]
-mod mcphost_human_claim_magic_link_ac03_verify_sets_owner_and_shows_summary;
-#[path = "mcphost_human_claim_magic_link_ac04_expired_claim_token_410.rs"]
-mod mcphost_human_claim_magic_link_ac04_expired_claim_token_410;
-#[path = "mcphost_human_claim_magic_link_ac05_malformed_email_400.rs"]
-mod mcphost_human_claim_magic_link_ac05_malformed_email_400;
-#[path = "mcphost_human_claim_magic_link_ac06_email_not_configured.rs"]
-mod mcphost_human_claim_magic_link_ac06_email_not_configured;
-#[path = "mcphost_human_claim_magic_link_ac07_racing_verify_single_winner.rs"]
-mod mcphost_human_claim_magic_link_ac07_racing_verify_single_winner;
-#[path = "mcphost_human_claim_magic_link_ac08_claim_rate_limit_per_ip.rs"]
-mod mcphost_human_claim_magic_link_ac08_claim_rate_limit_per_ip;
-#[path = "mcphost_human_claim_magic_link_ac09_healthz_and_admin_tenants_claimed.rs"]
-mod mcphost_human_claim_magic_link_ac09_healthz_and_admin_tenants_claimed;
-#[path = "mcphost_human_claim_magic_link_ac10_retry_recovers_from_one_failure.rs"]
-mod mcphost_human_claim_magic_link_ac10_retry_recovers_from_one_failure;
-#[path = "mcphost_human_claim_magic_link_ac11_whoami_owner_verified.rs"]
-mod mcphost_human_claim_magic_link_ac11_whoami_owner_verified;
-#[path = "mcphost_human_claim_magic_link_ac12_llms_txt_relay_sentence.rs"]
-mod mcphost_human_claim_magic_link_ac12_llms_txt_relay_sentence;
-#[path = "mcphost_human_claim_magic_link_ac13_bearer_key_never_in_claim_pages.rs"]
-mod mcphost_human_claim_magic_link_ac13_bearer_key_never_in_claim_pages;
-#[path = "mcphost_oauth_first_grant_signup_ac01_new_workspace_choice_creates_tenant_and_token.rs"]
-mod mcphost_oauth_first_grant_signup_ac01_new_workspace_choice_creates_tenant_and_token;
-#[path = "mcphost_oauth_first_grant_signup_ac02_first_call_carries_onboarding_once.rs"]
-mod mcphost_oauth_first_grant_signup_ac02_first_call_carries_onboarding_once;
-#[path = "mcphost_oauth_first_grant_signup_ac03_tenant_key_consent_unchanged.rs"]
-mod mcphost_oauth_first_grant_signup_ac03_tenant_key_consent_unchanged;
-#[path = "mcphost_oauth_first_grant_signup_ac04_rate_limit_refuses_new_workspace.rs"]
-mod mcphost_oauth_first_grant_signup_ac04_rate_limit_refuses_new_workspace;
-#[path = "mcphost_oauth_first_grant_signup_ac05_pause_file_refuses_new_workspace.rs"]
-mod mcphost_oauth_first_grant_signup_ac05_pause_file_refuses_new_workspace;
-#[path = "mcphost_oauth_first_grant_signup_ac06_first_grant_signup_audit_event.rs"]
-mod mcphost_oauth_first_grant_signup_ac06_first_grant_signup_audit_event;
-#[path = "mcphost_oauth_first_grant_signup_ac07_claude_chatgpt_profiles_reach_tools_list.rs"]
-mod mcphost_oauth_first_grant_signup_ac07_claude_chatgpt_profiles_reach_tools_list;
-#[path = "mcphost_oauth_unverified_client_consent_warning_ac01_dcr_unverified_caution_renders.rs"]
-mod mcphost_oauth_unverified_client_consent_warning_ac01_dcr_unverified_caution_renders;
-#[path = "mcphost_oauth_unverified_client_consent_warning_ac02_cimd_no_unverified_caution.rs"]
-mod mcphost_oauth_unverified_client_consent_warning_ac02_cimd_no_unverified_caution;
-#[path = "mcphost_oauth_unverified_client_consent_warning_ac03_destination_host_shown.rs"]
-mod mcphost_oauth_unverified_client_consent_warning_ac03_destination_host_shown;
-#[path = "mcphost_oauth_unverified_client_consent_warning_ac04_dcr_name_escaped_self_asserted.rs"]
-mod mcphost_oauth_unverified_client_consent_warning_ac04_dcr_name_escaped_self_asserted;
-#[path = "mcphost_oauth_unverified_client_consent_warning_ac05_dcr_no_name_neutral_placeholder.rs"]
-mod mcphost_oauth_unverified_client_consent_warning_ac05_dcr_no_name_neutral_placeholder;
-#[path = "mcphost_oauth_unverified_client_consent_warning_ac06_operator_allowlist_suppresses_caution.rs"]
-mod mcphost_oauth_unverified_client_consent_warning_ac06_operator_allowlist_suppresses_caution;
-#[path = "mcphost_oauth_unverified_client_consent_warning_ac07_caution_links_to_explainer.rs"]
-mod mcphost_oauth_unverified_client_consent_warning_ac07_caution_links_to_explainer;
-#[path = "mcphost_oauth_unverified_client_consent_warning_ac08_consent_record_notes_unverified.rs"]
-mod mcphost_oauth_unverified_client_consent_warning_ac08_consent_record_notes_unverified;
-#[path = "mcphost_oauth_unverified_client_consent_warning_ac09_verified_flow_unchanged.rs"]
-mod mcphost_oauth_unverified_client_consent_warning_ac09_verified_flow_unchanged;
-#[path = "mcphost_sandbox_egress_allowlist_ac05_none_network_unshare_all.rs"]
-mod mcphost_sandbox_egress_allowlist_ac05_none_network_unshare_all;
-#[path = "mcphost_sandbox_egress_allowlist_ac09_readme_documents_proxy_and_deny_list.rs"]
-mod mcphost_sandbox_egress_allowlist_ac09_readme_documents_proxy_and_deny_list;
-#[path = "mcphost_share_a_tool_not_a_key_ac01_llms_txt_section.rs"]
-mod mcphost_share_a_tool_not_a_key_ac01_llms_txt_section;
-#[path = "mcphost_share_a_tool_not_a_key_ac02_caller_call_returns_upstream_response.rs"]
-mod mcphost_share_a_tool_not_a_key_ac02_caller_call_returns_upstream_response;
-#[path = "mcphost_share_a_tool_not_a_key_ac03_caller_never_sees_secret.rs"]
-mod mcphost_share_a_tool_not_a_key_ac03_caller_never_sees_secret;
-#[path = "mcphost_share_a_tool_not_a_key_ac04_group_remove_revokes_caller.rs"]
-mod mcphost_share_a_tool_not_a_key_ac04_group_remove_revokes_caller;
-#[path = "mcphost_share_a_tool_not_a_key_ac05_signup_events_source_tagged.rs"]
-mod mcphost_share_a_tool_not_a_key_ac05_signup_events_source_tagged;
-#[path = "mcphost_share_a_tool_not_a_key_ac07_synthorg_task_five_completions.rs"]
-mod mcphost_share_a_tool_not_a_key_ac07_synthorg_task_five_completions;
-#[path = "mcphost_share_a_tool_not_a_key_ac08_live_test_skipped_without_env.rs"]
-mod mcphost_share_a_tool_not_a_key_ac08_live_test_skipped_without_env;
-#[path = "mcphost_share_a_tool_not_a_key_ac09_public_variant_states_default_reason.rs"]
-mod mcphost_share_a_tool_not_a_key_ac09_public_variant_states_default_reason;
-#[path = "mcphost_shared_tool_spec_readback_ac07_docs_worked_example.rs"]
-mod mcphost_shared_tool_spec_readback_ac07_docs_worked_example;
-#[path = "mcphost_signup_kill_switch_and_source_ac01_source_echoed_and_stored.rs"]
-mod mcphost_signup_kill_switch_and_source_ac01_source_echoed_and_stored;
-#[path = "mcphost_signup_kill_switch_and_source_ac02_no_source_is_null.rs"]
-mod mcphost_signup_kill_switch_and_source_ac02_no_source_is_null;
-#[path = "mcphost_signup_kill_switch_and_source_ac03_invalid_source_rejected.rs"]
-mod mcphost_signup_kill_switch_and_source_ac03_invalid_source_rejected;
-#[path = "mcphost_signup_kill_switch_and_source_ac04_pause_file_stops_and_resumes_signups.rs"]
-mod mcphost_signup_kill_switch_and_source_ac04_pause_file_stops_and_resumes_signups;
-#[path = "mcphost_signup_kill_switch_and_source_ac05_pause_does_not_affect_authenticated_calls.rs"]
-mod mcphost_signup_kill_switch_and_source_ac05_pause_does_not_affect_authenticated_calls;
-#[path = "mcphost_signup_kill_switch_and_source_ac06_healthz_signups_by_source.rs"]
-mod mcphost_signup_kill_switch_and_source_ac06_healthz_signups_by_source;
-#[path = "mcphost_signup_kill_switch_and_source_ac07_healthz_reports_paused.rs"]
-mod mcphost_signup_kill_switch_and_source_ac07_healthz_reports_paused;
-#[path = "mcphost_signup_kill_switch_and_source_ac08_concurrent_burst_with_pause_toggle.rs"]
-mod mcphost_signup_kill_switch_and_source_ac08_concurrent_burst_with_pause_toggle;
-#[path = "mcphost_signup_kill_switch_and_source_ac09_llms_txt_documents_source.rs"]
-mod mcphost_signup_kill_switch_and_source_ac09_llms_txt_documents_source;
-#[path = "mcphost_signup_kill_switch_and_source_ac10_until_line_bounds_retry_after.rs"]
-mod mcphost_signup_kill_switch_and_source_ac10_until_line_bounds_retry_after;
-#[path = "mcphost_team_memory_ac01_llms_txt_section.rs"]
-mod mcphost_team_memory_ac01_llms_txt_section;
-#[path = "mcphost_team_memory_ac08_live_test_skipped_without_env.rs"]
-mod mcphost_team_memory_ac08_live_test_skipped_without_env;
-#[path = "mcphost_tenant_data_export_ac01_archive_contents.rs"]
-mod mcphost_tenant_data_export_ac01_archive_contents;
-#[path = "mcphost_tenant_data_export_ac02_signed_url_expiry.rs"]
-mod mcphost_tenant_data_export_ac02_signed_url_expiry;
-#[path = "mcphost_tenant_data_export_ac03_dedupe_in_progress.rs"]
-mod mcphost_tenant_data_export_ac03_dedupe_in_progress;
-#[path = "mcphost_tenant_data_export_ac04_live_export_trailer.rs"]
-mod mcphost_tenant_data_export_ac04_live_export_trailer;
-#[path = "mcphost_tenant_data_export_ac05_manifest_validates_publish_schema.rs"]
-mod mcphost_tenant_data_export_ac05_manifest_validates_publish_schema;
-#[path = "mcphost_tenant_data_export_ac06_tools_subset.rs"]
-mod mcphost_tenant_data_export_ac06_tools_subset;
-#[path = "mcphost_tenant_data_export_ac07_admin_usage_exports_today.rs"]
-mod mcphost_tenant_data_export_ac07_admin_usage_exports_today;
-#[path = "mcphost_tool_versions_ac01_publish_twice_lists_two_versions.rs"]
-mod mcphost_tool_versions_ac01_publish_twice_lists_two_versions;
-#[path = "mcphost_tool_versions_ac02_rollback_runs_old_source.rs"]
-mod mcphost_tool_versions_ac02_rollback_runs_old_source;
-#[path = "mcphost_tool_versions_ac03_free_plan_retains_five_versions.rs"]
-mod mcphost_tool_versions_ac03_free_plan_retains_five_versions;
-#[path = "mcphost_tool_versions_ac04_rollback_unknown_version_names_range.rs"]
-mod mcphost_tool_versions_ac04_rollback_unknown_version_names_range;
-#[path = "mcphost_tool_versions_ac05_pinned_caller_survives_republish.rs"]
-mod mcphost_tool_versions_ac05_pinned_caller_survives_republish;
-#[path = "mcphost_tool_versions_ac07_sharer_sees_version_changed_once.rs"]
-mod mcphost_tool_versions_ac07_sharer_sees_version_changed_once;
-#[path = "mcphost_tool_versions_ac08_remove_clears_all_versions.rs"]
-mod mcphost_tool_versions_ac08_remove_clears_all_versions;
-#[path = "mcphost_tool_versions_ac09_diff_returns_unified_diff.rs"]
-mod mcphost_tool_versions_ac09_diff_returns_unified_diff;
-#[path = "mcphost_uptime_probes_ac01_llms_txt_section.rs"]
-mod mcphost_uptime_probes_ac01_llms_txt_section;
-#[path = "mcphost_uptime_probes_ac08_live_test_skipped_without_env.rs"]
-mod mcphost_uptime_probes_ac08_live_test_skipped_without_env;
-#[path = "mcphost_webhook_inbox_ac01_set_returns_url_and_secret_get_omits_secret.rs"]
-mod mcphost_webhook_inbox_ac01_set_returns_url_and_secret_get_omits_secret;
-#[path = "mcphost_webhook_inbox_ac02_signed_post_stores_row_and_fires_run.rs"]
-mod mcphost_webhook_inbox_ac02_signed_post_stores_row_and_fires_run;
-#[path = "mcphost_webhook_inbox_ac03_unsigned_or_wrong_signature_401_no_row.rs"]
-mod mcphost_webhook_inbox_ac03_unsigned_or_wrong_signature_401_no_row;
-#[path = "mcphost_webhook_inbox_ac04_unknown_id_404_empty_body.rs"]
-mod mcphost_webhook_inbox_ac04_unknown_id_404_empty_body;
-#[path = "mcphost_webhook_inbox_ac05_oversized_body_413_no_row.rs"]
-mod mcphost_webhook_inbox_ac05_oversized_body_413_no_row;
-#[path = "mcphost_webhook_inbox_ac06_paused_stores_no_run_replay_fires_once.rs"]
-mod mcphost_webhook_inbox_ac06_paused_stores_no_run_replay_fires_once;
-#[path = "mcphost_webhook_inbox_ac07_repeated_delivery_id_dedupes_row.rs"]
-mod mcphost_webhook_inbox_ac07_repeated_delivery_id_dedupes_row;
-#[path = "mcphost_webhook_inbox_ac08_free_tenant_three_schedules_webhook_refused.rs"]
-mod mcphost_webhook_inbox_ac08_free_tenant_three_schedules_webhook_refused;
-#[path = "mcphost_webhook_inbox_ac09_concurrent_deliveries_all_land.rs"]
-mod mcphost_webhook_inbox_ac09_concurrent_deliveries_all_land;
-#[path = "mcphost_webhook_inbox_ac11_trigger_test_stores_and_fires_synthetic_delivery.rs"]
-mod mcphost_webhook_inbox_ac11_trigger_test_stores_and_fires_synthetic_delivery;
-#[path = "mcphost_webhook_inbox_ac12_stripe_verify_scheme_accepted.rs"]
-mod mcphost_webhook_inbox_ac12_stripe_verify_scheme_accepted;
-#[path = "meshops_ac01_stats_real_vs_synthetic_volume.rs"]
-mod meshops_ac01_stats_real_vs_synthetic_volume;
-#[path = "meshops_ac02_threads_no_bodies.rs"]
-mod meshops_ac02_threads_no_bodies;
-#[path = "meshops_ac03_thread_read_bodies_and_audit.rs"]
-mod meshops_ac03_thread_read_bodies_and_audit;
-#[path = "meshops_ac04_freeze_blocks_sends_not_reads_or_tools.rs"]
-mod meshops_ac04_freeze_blocks_sends_not_reads_or_tools;
-#[path = "meshops_ac05_unfreeze_restores_sending.rs"]
-mod meshops_ac05_unfreeze_restores_sending;
-#[path = "meshops_ac06_purge_dry_run_then_real.rs"]
-mod meshops_ac06_purge_dry_run_then_real;
-#[path = "meshops_ac07_tenant_delete_cascade_across_mesh_tables.rs"]
-mod meshops_ac07_tenant_delete_cascade_across_mesh_tables;
-#[path = "meshops_ac08_healthz_mesh_counters.rs"]
-mod meshops_ac08_healthz_mesh_counters;
-#[path = "meshops_ac09_stats_refusals_by_code_per_sender.rs"]
-mod meshops_ac09_stats_refusals_by_code_per_sender;
-#[path = "metering_ac01_stripe_customer_id_null_default.rs"]
-mod metering_ac01_stripe_customer_id_null_default;
-#[path = "metering_ac02_webhook_stores_stripe_customer_id.rs"]
-mod metering_ac02_webhook_stores_stripe_customer_id;
-#[path = "metering_ac03_checkout_metered_line_item.rs"]
-mod metering_ac03_checkout_metered_line_item;
-#[path = "metering_ac04_emits_pro_calls_only.rs"]
-mod metering_ac04_emits_pro_calls_only;
-#[path = "metering_ac05_crash_replay.rs"]
-mod metering_ac05_crash_replay;
-#[path = "metering_ac06_failure_leaves_state_unmoved.rs"]
-mod metering_ac06_failure_leaves_state_unmoved;
-#[path = "metering_ac07_batches_cap_at_100.rs"]
-mod metering_ac07_batches_cap_at_100;
-#[path = "metering_ac08_healthz_meter_lag.rs"]
-mod metering_ac08_healthz_meter_lag;
-#[path = "metering_ac09_deploy_units_verify.rs"]
-mod metering_ac09_deploy_units_verify;
-#[path = "metering_ac11_admin_meter_status.rs"]
-mod metering_ac11_admin_meter_status;
-#[path = "metering_ac12_billing_status_stripe_reported_usage.rs"]
-mod metering_ac12_billing_status_stripe_reported_usage;
-#[path = "metering_billing_status_emitted_this_month.rs"]
-mod metering_billing_status_emitted_this_month;
-#[path = "minimal_ac2_admin_full_document.rs"]
-mod minimal_ac2_admin_full_document;
-#[path = "minimal_ac3_wrong_bearer_matches_anonymous.rs"]
-mod minimal_ac3_wrong_bearer_matches_anonymous;
-#[path = "mprm_ac01_recipes_listed_and_rendered.rs"]
-mod mprm_ac01_recipes_listed_and_rendered;
-#[path = "mprm_ac02_missing_argument_and_unknown_prompt.rs"]
-mod mprm_ac02_missing_argument_and_unknown_prompt;
-#[path = "mprm_ac03_prompt_kind_tool_listed_and_rendered.rs"]
-mod mprm_ac03_prompt_kind_tool_listed_and_rendered;
-#[path = "mprm_ac04_oauth_scope_filters_prompt_tools.rs"]
-mod mprm_ac04_oauth_scope_filters_prompt_tools;
-#[path = "mprm_ac06_docs_table_and_quickstart_share_recipes.rs"]
-mod mprm_ac06_docs_table_and_quickstart_share_recipes;
-#[path = "mprm_ac07_capabilities_advertise_prompts.rs"]
-mod mprm_ac07_capabilities_advertise_prompts;
-#[path = "mrefu_ac01_breaking_migration_refuses_with_report.rs"]
-mod mrefu_ac01_breaking_migration_refuses_with_report;
-#[path = "mrefu_ac02_compatible_migration_reports_ok.rs"]
-mod mrefu_ac02_compatible_migration_reports_ok;
-#[path = "mrefu_ac03_schema_is_generated_and_drift_tested.rs"]
-mod mrefu_ac03_schema_is_generated_and_drift_tested;
-#[path = "mrefu_ac04_previous_up_failure_exits_4_with_tables_changed.rs"]
-mod mrefu_ac04_previous_up_failure_exits_4_with_tables_changed;
-#[path = "mrefub_ac01_unwritable_report_exits_5.rs"]
-mod mrefub_ac01_unwritable_report_exits_5;
-#[path = "mrefub_ac02_remedy_table_contract.rs"]
-mod mrefub_ac02_remedy_table_contract;
-#[path = "mres_ac01_read_authorises_like_list_tools.rs"]
-mod mres_ac01_read_authorises_like_list_tools;
-#[path = "mres_ac02_templates_list_equals_const_and_docs.rs"]
-mod mres_ac02_templates_list_equals_const_and_docs;
-#[path = "mres_ac03_list_counts_and_scope_filter.rs"]
-mod mres_ac03_list_counts_and_scope_filter;
-#[path = "mres_ac04_subscribe_gets_updated_on_append.rs"]
-mod mres_ac04_subscribe_gets_updated_on_append;
-#[path = "mres_ac05_ninth_subscription_hits_resources_max.rs"]
-mod mres_ac05_ninth_subscription_hits_resources_max;
-#[path = "mres_ac06_read_truncates_at_a_row_and_hides_other_tenants.rs"]
-mod mres_ac06_read_truncates_at_a_row_and_hides_other_tenants;
-#[path = "mres_ac07_capabilities_row_flips_to_implemented.rs"]
-mod mres_ac07_capabilities_row_flips_to_implemented;
-#[path = "msg_ac01_send_reaches_inbox.rs"]
-mod msg_ac01_send_reaches_inbox;
-#[path = "msg_ac02_reply_appends_next_seq.rs"]
-mod msg_ac02_reply_appends_next_seq;
-#[path = "msg_ac03_non_participant_thread_not_found.rs"]
-mod msg_ac03_non_participant_thread_not_found;
-#[path = "msg_ac04_dedupe_key.rs"]
-mod msg_ac04_dedupe_key;
-#[path = "msg_ac05_block.rs"]
-mod msg_ac05_block;
-#[path = "msg_ac06_inbox_cursor_concurrent.rs"]
-mod msg_ac06_inbox_cursor_concurrent;
-#[path = "msg_ac07_forged_from.rs"]
-mod msg_ac07_forged_from;
-#[path = "msg_ac08_contact_policy_closed.rs"]
-mod msg_ac08_contact_policy_closed;
-#[path = "msg_ac09_msgs_per_hour_quota.rs"]
-mod msg_ac09_msgs_per_hour_quota;
-#[path = "msg_ac10_body_and_recipients_quota.rs"]
-mod msg_ac10_body_and_recipients_quota;
-#[path = "msg_ac11_tenant_delete_cascade.rs"]
-mod msg_ac11_tenant_delete_cascade;
-#[path = "msg_ac12_send_latency.rs"]
-mod msg_ac12_send_latency;
-#[path = "msg_ac13_unread_only.rs"]
-mod msg_ac13_unread_only;
-#[path = "msg_ac14_thread_continuation.rs"]
-mod msg_ac14_thread_continuation;
-#[path = "msg_regr01_dedupe_hit_preserves_refused.rs"]
-mod msg_regr01_dedupe_hit_preserves_refused;
-#[path = "msrvlock_ac01_stale_lock_fails.rs"]
-mod msrvlock_ac01_stale_lock_fails;
-#[path = "msrvlock_ac02_cargo_steps_are_locked.rs"]
-mod msrvlock_ac02_cargo_steps_are_locked;
-#[path = "msrvlock_ac03_generate_lists_nine_contexts.rs"]
-mod msrvlock_ac03_generate_lists_nine_contexts;
-#[path = "msrvlock_ac04_check_compares_live_protection.rs"]
-mod msrvlock_ac04_check_compares_live_protection;
-#[path = "msrvlock_ac05_toml_equals_generate.rs"]
-mod msrvlock_ac05_toml_equals_generate;
-#[path = "mwlp_ac01_keyless_wait_returns_at_once.rs"]
-mod mwlp_ac01_keyless_wait_returns_at_once;
-#[path = "mwlp_ac03_timeout_reports_timed_out.rs"]
-mod mwlp_ac03_timeout_reports_timed_out;
-#[path = "mwlp_ac04_arrival_wakes_wait.rs"]
-mod mwlp_ac04_arrival_wakes_wait;
-#[path = "mwlpb_ac01_timeout_clamp_and_args_invalid.rs"]
-mod mwlpb_ac01_timeout_clamp_and_args_invalid;
-#[path = "mwlpb_ac02_final_run_wait_returns_fast.rs"]
-mod mwlpb_ac02_final_run_wait_returns_fast;
-#[path = "mwlpb_ac03_plans_json_carries_wait_limits.rs"]
-mod mwlpb_ac03_plans_json_carries_wait_limits;
-#[path = "nexttool_ac01_anonymous_starter_set.rs"]
-mod nexttool_ac01_anonymous_starter_set;
-#[path = "nexttool_ac02_authenticated_listing_unchanged.rs"]
-mod nexttool_ac02_authenticated_listing_unchanged;
-#[path = "nexttool_ac03_signup_emits_list_changed.rs"]
-mod nexttool_ac03_signup_emits_list_changed;
-#[path = "nexttool_ac04_tool_publish_next_hint.rs"]
-mod nexttool_ac04_tool_publish_next_hint;
-#[path = "nexttool_ac05_five_distinct_tools_suppresses_hint.rs"]
-mod nexttool_ac05_five_distinct_tools_suppresses_hint;
-#[path = "nexttool_ac06_hints_false_suppresses_hint.rs"]
-mod nexttool_ac06_hints_false_suppresses_hint;
-#[path = "nexttool_ac07_header_authenticated_never_gets_hint.rs"]
-mod nexttool_ac07_header_authenticated_never_gets_hint;
-#[path = "nexttool_ac09_host_usage_hints_shown_and_followed.rs"]
-mod nexttool_ac09_host_usage_hints_shown_and_followed;
-#[path = "nfs_ac01_put_emits_list_changed_and_suffix.rs"]
-mod nfs_ac01_put_emits_list_changed_and_suffix;
-#[path = "nfs_ac02_suffix_cut_to_120_chars.rs"]
-mod nfs_ac02_suffix_cut_to_120_chars;
-#[path = "nfs_ac03_quota_and_unknown_tool.rs"]
-mod nfs_ac03_quota_and_unknown_tool;
-#[path = "nfs_ac04_ttl_expiry.rs"]
-mod nfs_ac04_ttl_expiry;
-#[path = "nfsb_ac01_first_contact_note_in_list_and_welcome_back.rs"]
-mod nfsb_ac01_first_contact_note_in_list_and_welcome_back;
-#[path = "nfsb_ac02_shared_tool_and_tenants_isolated.rs"]
-mod nfsb_ac02_shared_tool_and_tenants_isolated;
-#[path = "nfsb_ac03_quickstart_notes_max_drift.rs"]
-mod nfsb_ac03_quickstart_notes_max_drift;
-#[path = "ntfy_ac01_no_tenant_settable_alert_sink.rs"]
-mod ntfy_ac01_no_tenant_settable_alert_sink;
-#[path = "ntfy_ac02_enums_generated_into_every_surface.rs"]
-mod ntfy_ac02_enums_generated_into_every_surface;
-#[path = "ntfy_ac03_webhook_send_receipt.rs"]
-mod ntfy_ac03_webhook_send_receipt;
-#[path = "ntfy_ac04_email_channel_owner_only.rs"]
-mod ntfy_ac04_email_channel_owner_only;
-#[path = "ntfyb_ac01_no_channel_writes_nothing.rs"]
-mod ntfyb_ac01_no_channel_writes_nothing;
-#[path = "ntfyb_ac02_free_tenant_21st_notify_is_notify_limit.rs"]
-mod ntfyb_ac02_free_tenant_21st_notify_is_notify_limit;
-#[path = "nudge_ac01_claimed_tenant_gets_one_return_email.rs"]
-mod nudge_ac01_claimed_tenant_gets_one_return_email;
-#[path = "nudge_ac02_second_sweep_sends_nothing_more.rs"]
-mod nudge_ac02_second_sweep_sends_nothing_more;
-#[path = "nudge_ac03_unclaimed_tenant_recorded_as_none.rs"]
-mod nudge_ac03_unclaimed_tenant_recorded_as_none;
-#[path = "nudge_ac04_fleet_tenant_excluded.rs"]
-mod nudge_ac04_fleet_tenant_excluded;
-#[path = "nudge_ac05_provider_failure_retries_then_abandons.rs"]
-mod nudge_ac05_provider_failure_retries_then_abandons;
-#[path = "nudge_ac06_welcome_back_since_you_left.rs"]
-mod nudge_ac06_welcome_back_since_you_left;
-#[path = "nudge_ac07_funnel_reports_nudged_and_return_rate.rs"]
-mod nudge_ac07_funnel_reports_nudged_and_return_rate;
-#[path = "oapi_ac01_pinned_response_schemas.rs"]
-mod oapi_ac01_pinned_response_schemas;
-#[path = "oapi_ac02_route_table_drift.rs"]
-mod oapi_ac02_route_table_drift;
-#[path = "oapi_ac03_openapi_json_validates.rs"]
-mod oapi_ac03_openapi_json_validates;
-#[path = "oapi_ac04_x_responses_match_documented_schemas.rs"]
-mod oapi_ac04_x_responses_match_documented_schemas;
-#[path = "oapib_ac01_docs_page_single_cdn_host.rs"]
-mod oapib_ac01_docs_page_single_cdn_host;
-#[path = "oapib_ac02_gen_openapi_matches_committed.rs"]
-mod oapib_ac02_gen_openapi_matches_committed;
-#[path = "oapib_ac03_llms_txt_rest_section.rs"]
-mod oapib_ac03_llms_txt_rest_section;
-#[path = "oauthconf_ac01_gate_verdict_table_matches_gold.rs"]
-mod oauthconf_ac01_gate_verdict_table_matches_gold;
-#[path = "oauthconf_ac02_cimd_preferred_over_dcr_and_unsupported_without_either.rs"]
-mod oauthconf_ac02_cimd_preferred_over_dcr_and_unsupported_without_either;
-#[path = "oauthconf_ac03_authorize_request_scope_resource_pkce_state.rs"]
-mod oauthconf_ac03_authorize_request_scope_resource_pkce_state;
-#[path = "oauthconf_ac04_attack_probes_pass_only_on_as_refusal.rs"]
-mod oauthconf_ac04_attack_probes_pass_only_on_as_refusal;
-#[path = "oauthconf_ac05_probe_cli_json_matches_gate_and_exit_codes.rs"]
-mod oauthconf_ac05_probe_cli_json_matches_gate_and_exit_codes;
-#[path = "oauthconf_ac06_records_and_receipt_never_leak_secrets.rs"]
-mod oauthconf_ac06_records_and_receipt_never_leak_secrets;
-#[path = "oauthconf_ac07_scenarios_doc_matches_gold_and_docs_sharing_check.rs"]
-mod oauthconf_ac07_scenarios_doc_matches_gold_and_docs_sharing_check;
-#[path = "oauthdoc_ac02_non_url_row_leaves_documents_and_doctor_reports_it.rs"]
-mod oauthdoc_ac02_non_url_row_leaves_documents_and_doctor_reports_it;
-#[path = "oauthdoc_ac03_write_and_read_reject_the_same_set.rs"]
-mod oauthdoc_ac03_write_and_read_reject_the_same_set;
-#[path = "oauthdoc_ac04_tenant_issuer_remove_updates_documents_and_audits.rs"]
-mod oauthdoc_ac04_tenant_issuer_remove_updates_documents_and_audits;
-#[path = "oauthdoc_ac05_admin_issuer_remove_clears_invalid_row_with_reason.rs"]
-mod oauthdoc_ac05_admin_issuer_remove_clears_invalid_row_with_reason;
-#[path = "oauthdoc_ac06_orphan_and_disabled_tenant_rows_are_not_listed.rs"]
-mod oauthdoc_ac06_orphan_and_disabled_tenant_rows_are_not_listed;
-#[path = "oauthdoc_ac07_concurrent_issuer_remove_has_one_winner.rs"]
-mod oauthdoc_ac07_concurrent_issuer_remove_has_one_winner;
-#[path = "oauthdoc_ac08_empty_table_lists_only_hosted_as.rs"]
-mod oauthdoc_ac08_empty_table_lists_only_hosted_as;
-#[path = "oauthentry_ac01_every_method_401_with_entry_challenge.rs"]
-mod oauthentry_ac01_every_method_401_with_entry_challenge;
-#[path = "oauthentry_ac02_entry_document_names_entry_resource.rs"]
-mod oauthentry_ac02_entry_document_names_entry_resource;
-#[path = "oauthentry_ac03_new_workspace_on_entry_resource.rs"]
-mod oauthentry_ac03_new_workspace_on_entry_resource;
-#[path = "oauthentry_ac04_entry_audience_is_enforced_both_ways.rs"]
-mod oauthentry_ac04_entry_audience_is_enforced_both_ways;
-#[path = "oauthentry_ac05_claude_chatgpt_profiles_reach_tools_list.rs"]
-mod oauthentry_ac05_claude_chatgpt_profiles_reach_tools_list;
-#[path = "oauthmeta_ac01_tenant_document_lists_hosted_as.rs"]
-mod oauthmeta_ac01_tenant_document_lists_hosted_as;
-#[path = "oauthmeta_ac02_registered_issuer_follows_hosted_as.rs"]
-mod oauthmeta_ac02_registered_issuer_follows_hosted_as;
-#[path = "oauthmeta_ac03_issuer_url_validator_gates_setters.rs"]
-mod oauthmeta_ac03_issuer_url_validator_gates_setters;
-#[path = "oauthmeta_ac04_stored_non_url_issuer_leaves_documents.rs"]
-mod oauthmeta_ac04_stored_non_url_issuer_leaves_documents;
-#[path = "oauthmeta_ac05_contract_walk_document_to_token.rs"]
-mod oauthmeta_ac05_contract_walk_document_to_token;
-#[path = "oauthpol_ac01_allowlist_by_client_id_and_cimd_host.rs"]
-mod oauthpol_ac01_allowlist_by_client_id_and_cimd_host;
-#[path = "oauthpol_ac02_approve_mode_pending_approve_deny.rs"]
-mod oauthpol_ac02_approve_mode_pending_approve_deny;
-#[path = "oauthpol_ac03_session_ttls_and_max_grant_age.rs"]
-mod oauthpol_ac03_session_ttls_and_max_grant_age;
-#[path = "oauthpol_ac04_reconsent_after_forces_consent_again.rs"]
-mod oauthpol_ac04_reconsent_after_forces_consent_again;
-#[path = "oauthpol_ac05_revoke_all_grants_and_pending.rs"]
-mod oauthpol_ac05_revoke_all_grants_and_pending;
-#[path = "oauthpol_ac06_audit_paging_and_export.rs"]
-mod oauthpol_ac06_audit_paging_and_export;
-#[path = "oauthpol_ac07_operator_block_list_and_admin_rejection.rs"]
-mod oauthpol_ac07_operator_block_list_and_admin_rejection;
-#[path = "oauthpol_ac08_cimd_host_daily_registration_cap.rs"]
-mod oauthpol_ac08_cimd_host_daily_registration_cap;
-#[path = "oauthpol_ac09_no_policy_defaults_match_hosted_as.rs"]
-mod oauthpol_ac09_no_policy_defaults_match_hosted_as;
-#[path = "oauthrs_ac01_protected_resource_metadata_empty.rs"]
-mod oauthrs_ac01_protected_resource_metadata_empty;
-#[path = "oauthrs_ac02_bearer_jwt_runs_as_tenant.rs"]
-mod oauthrs_ac02_bearer_jwt_runs_as_tenant;
-#[path = "oauthrs_ac03_invalid_tokens_rejected_with_reasons.rs"]
-mod oauthrs_ac03_invalid_tokens_rejected_with_reasons;
-#[path = "oauthrs_ac04_401_challenge_signup_still_open.rs"]
-mod oauthrs_ac04_401_challenge_signup_still_open;
-#[path = "oauthrs_ac05_unknown_kid_refetch_throttled.rs"]
-mod oauthrs_ac05_unknown_kid_refetch_throttled;
-#[path = "oauthrs_ac06_jwks_server_down_unknown_issuer.rs"]
-mod oauthrs_ac06_jwks_server_down_unknown_issuer;
-#[path = "oauthrs_ac07_issuer_registration_limits.rs"]
-mod oauthrs_ac07_issuer_registration_limits;
-#[path = "oauthrs_ac08_conflicting_credentials.rs"]
-mod oauthrs_ac08_conflicting_credentials;
-#[path = "oauthrs_ac09_admin_lists_issuers_and_audits.rs"]
-mod oauthrs_ac09_admin_lists_issuers_and_audits;
-#[path = "oauthrs_ac10_key_based_flow_unchanged.rs"]
-mod oauthrs_ac10_key_based_flow_unchanged;
-#[path = "oauthrs_ac11_issuer_and_jwks_url_must_be_https.rs"]
-mod oauthrs_ac11_issuer_and_jwks_url_must_be_https;
-#[path = "oauthsig_ac01_auth_method_by_credential.rs"]
-mod oauthsig_ac01_auth_method_by_credential;
-#[path = "oauthsig_ac02_healthz_calls_and_tenants_by_method.rs"]
-mod oauthsig_ac02_healthz_calls_and_tenants_by_method;
-#[path = "oauthsig_ac03_admin_oauth_stats_tenant_rows_and_admin_only.rs"]
-mod oauthsig_ac03_admin_oauth_stats_tenant_rows_and_admin_only;
-#[path = "oauthsig_ac04_admin_oauth_stats_funnel.rs"]
-mod oauthsig_ac04_admin_oauth_stats_funnel;
-#[path = "oauthsig_ac05_healthz_cache_and_p95.rs"]
-mod oauthsig_ac05_healthz_cache_and_p95;
-#[path = "oauthsig_ac06_conformance_script_writes_receipt.rs"]
-mod oauthsig_ac06_conformance_script_writes_receipt;
-#[path = "orgm_ac01_join_keeps_tenant_bytes.rs"]
-mod orgm_ac01_join_keeps_tenant_bytes;
-#[path = "orgm_ac02_org_url_mints_member_tenant.rs"]
-mod orgm_ac02_org_url_mints_member_tenant;
-#[path = "orgm_ac03_roles_one_source_drift.rs"]
-mod orgm_ac03_roles_one_source_drift;
-#[path = "orgm_ac04_org_at_cap_refuses_third_join.rs"]
-mod orgm_ac04_org_at_cap_refuses_third_join;
-#[path = "orgmb_ac01_owner_removes_member.rs"]
-mod orgmb_ac01_owner_removes_member;
-#[path = "orgmb_ac02_concurrent_create_one_winner.rs"]
-mod orgmb_ac02_concurrent_create_one_winner;
-#[path = "orgmb_ac03_llms_txt_and_quickstart_name_org_verbs.rs"]
-mod orgmb_ac03_llms_txt_and_quickstart_name_org_verbs;
-#[path = "oschv_ac01_opaque_pointers_resolve.rs"]
-mod oschv_ac01_opaque_pointers_resolve;
-#[path = "oschv_ac02_chain_step_array_result_validates.rs"]
-mod oschv_ac02_chain_step_array_result_validates;
-#[path = "oschv_ac03_state_values_generated_validate.rs"]
-mod oschv_ac03_state_values_generated_validate;
-#[path = "oschv_ac04_corpus_still_validates_diff_widened.rs"]
-mod oschv_ac04_corpus_still_validates_diff_widened;
-#[path = "oschv_ac05_declared_output_untyped_is_opaque.rs"]
-mod oschv_ac05_declared_output_untyped_is_opaque;
-#[path = "outsch_ac01_oneof_budget_falsifier.rs"]
-mod outsch_ac01_oneof_budget_falsifier;
-#[path = "outsch_ac02_every_canonical_declares_an_object_output_schema.rs"]
-mod outsch_ac02_every_canonical_declares_an_object_output_schema;
-#[path = "outsch_ac03_contract_dump_marks_aliases_and_outputs.rs"]
-mod outsch_ac03_contract_dump_marks_aliases_and_outputs;
-#[path = "outsch_ac04_tools_list_carries_output_schema.rs"]
-mod outsch_ac04_tools_list_carries_output_schema;
-#[path = "outsch_ac05_whoami_one_schema_for_every_connection.rs"]
-mod outsch_ac05_whoami_one_schema_for_every_connection;
-#[path = "outsch_ac06_diff_flags_a_removed_output_field.rs"]
-mod outsch_ac06_diff_flags_a_removed_output_field;
-#[path = "outsch_ac07_tools_doc_has_a_returns_block.rs"]
-mod outsch_ac07_tools_doc_has_a_returns_block;
-#[path = "outschb_ac01_whoami_one_schema_for_every_connection.rs"]
-mod outschb_ac01_whoami_one_schema_for_every_connection;
-#[path = "outschb_ac02_diff_flags_a_removed_output_field.rs"]
-mod outschb_ac02_diff_flags_a_removed_output_field;
-#[path = "outschb_ac03_tools_doc_has_a_returns_block.rs"]
-mod outschb_ac03_tools_doc_has_a_returns_block;
-#[path = "owncopy_ac01_email_subject_and_body_match_draft.rs"]
-mod owncopy_ac01_email_subject_and_body_match_draft;
-#[path = "owncopy_ac02_from_and_reply_to_passed_verbatim.rs"]
-mod owncopy_ac02_from_and_reply_to_passed_verbatim;
-#[path = "owncopy_ac03_pages_match_draft_text.rs"]
-mod owncopy_ac03_pages_match_draft_text;
-#[path = "owncopy_ac04_error_pages_match_draft_no_env_var.rs"]
-mod owncopy_ac04_error_pages_match_draft_no_env_var;
-#[path = "owncopy_ac05_no_claim_verify_tenant_in_visible_text.rs"]
-mod owncopy_ac05_no_claim_verify_tenant_in_visible_text;
-#[path = "ownmt_ac01_claim_url_on_every_onboarding_path.rs"]
-mod ownmt_ac01_claim_url_on_every_onboarding_path;
-#[path = "ownmt_ac02_claim_nudge_on_first_publish.rs"]
-mod ownmt_ac02_claim_nudge_on_first_publish;
-#[path = "ownmt_ac03_email_provider_shape_and_failure_journal.rs"]
-mod ownmt_ac03_email_provider_shape_and_failure_journal;
-#[path = "ownmt_ac04_healthz_claims_block.rs"]
-mod ownmt_ac04_healthz_claims_block;
-#[path = "ownmt_ac05_claim_email_configured_signal.rs"]
-mod ownmt_ac05_claim_email_configured_signal;
-#[path = "ownmt_ac06_claim_round_trip_for_journey_claim_step.rs"]
-mod ownmt_ac06_claim_round_trip_for_journey_claim_step;
-#[path = "ownmt_ac07_claim_page_shows_remember_note.rs"]
-mod ownmt_ac07_claim_page_shows_remember_note;
-#[path = "pgm_ac02_ceilings_carry_perf_fields.rs"]
-mod pgm_ac02_ceilings_carry_perf_fields;
-#[path = "pgm_ac03_hourly_task_writes_two_rows_per_plan_path.rs"]
-mod pgm_ac03_hourly_task_writes_two_rows_per_plan_path;
-#[path = "pgm_ac04_status_json_perf_state.rs"]
-mod pgm_ac04_status_json_perf_state;
-#[path = "pgm_ac06_perf_tenant_is_not_a_customer.rs"]
-mod pgm_ac06_perf_tenant_is_not_a_customer;
-#[path = "pgm_ac07_whoami_perf_measured.rs"]
-mod pgm_ac07_whoami_perf_measured;
-#[path = "pgm_drift.rs"]
-mod pgm_drift;
-#[path = "pgtr_ac01_inconsistency_census.rs"]
-mod pgtr_ac01_inconsistency_census;
-#[path = "pgtr_ac02_docs_list_walk_ends_exactly_once.rs"]
-mod pgtr_ac02_docs_list_walk_ends_exactly_once;
-#[path = "pgtr_ac03_cursor_invalid_after_restart.rs"]
-mod pgtr_ac03_cursor_invalid_after_restart;
-#[path = "pgtr_ac04_every_array_verb_is_paged_or_excused.rs"]
-mod pgtr_ac04_every_array_verb_is_paged_or_excused;
-#[path = "pgtr_ac05_channel_read_empty_page_and_ack.rs"]
-mod pgtr_ac05_channel_read_empty_page_and_ack;
-#[path = "pgtr_ac06_cursor_is_bound_to_its_tenant.rs"]
-mod pgtr_ac06_cursor_is_bound_to_its_tenant;
-#[path = "pgtr_ac07_limit_clamped_and_zero_refused.rs"]
-mod pgtr_ac07_limit_clamped_and_zero_refused;
-#[path = "plancat_ac01_missing_state_quotas_default_from_catalog.rs"]
-mod plancat_ac01_missing_state_quotas_default_from_catalog;
-#[path = "plancat_ac02_startup_logs_defaulted_fields.rs"]
-mod plancat_ac02_startup_logs_defaulted_fields;
-#[path = "plancat_ac03_unknown_plan_name_defaults_from_free.rs"]
-mod plancat_ac03_unknown_plan_name_defaults_from_free;
-#[path = "plancat_ac04_healthz_lists_plans_with_quotas.rs"]
-mod plancat_ac04_healthz_lists_plans_with_quotas;
-#[path = "plancat_ac05_full_plans_toml_unchanged_and_silent.rs"]
-mod plancat_ac05_full_plans_toml_unchanged_and_silent;
-#[path = "plancat_ac06_build_has_no_hardcoded_quota_defaults.rs"]
-mod plancat_ac06_build_has_no_hardcoded_quota_defaults;
-#[path = "plancat_ac07_llms_txt_names_defaulting_and_startup_line.rs"]
-mod plancat_ac07_llms_txt_names_defaulting_and_startup_line;
-#[path = "planlim_ac01_quickstart_limits_plan_every_ceiling.rs"]
-mod planlim_ac01_quickstart_limits_plan_every_ceiling;
-#[path = "planlim_ac02_tool_call_budget_schema_maximum.rs"]
-mod planlim_ac02_tool_call_budget_schema_maximum;
-#[path = "planlim_ac03_ceiling_error_points_at_quickstart.rs"]
-mod planlim_ac03_ceiling_error_points_at_quickstart;
-#[path = "planlim_ac04_ceilings_table_in_generated_docs.rs"]
-mod planlim_ac04_ceilings_table_in_generated_docs;
-#[path = "planlim_ac05_publish_network_description_lists_gated_values.rs"]
-mod planlim_ac05_publish_network_description_lists_gated_values;
-#[path = "planlim_ac06_tool_test_warns_timeout_above_latency_ceiling.rs"]
-mod planlim_ac06_tool_test_warns_timeout_above_latency_ceiling;
-#[path = "planlim_ac07_contract_drift_with_deprecation_entry.rs"]
-mod planlim_ac07_contract_drift_with_deprecation_entry;
-#[path = "ppage_ac01_plan_carries_included_and_overage.rs"]
-mod ppage_ac01_plan_carries_included_and_overage;
-#[path = "ppage_ac02_plans_json_carries_fields_no_digits.rs"]
-mod ppage_ac02_plans_json_carries_fields_no_digits;
-#[path = "ppage_ac03_pricing_html_rendered_from_catalog.rs"]
-mod ppage_ac03_pricing_html_rendered_from_catalog;
-#[path = "ppage_ac04_www_pages_checks_derive_from_plans_json.rs"]
-mod ppage_ac04_www_pages_checks_derive_from_plans_json;
-#[path = "ppage_ac05_docs_carry_included_and_overage_rows.rs"]
-mod ppage_ac05_docs_carry_included_and_overage_rows;
-#[path = "ppage_ac06_billing_price_check.rs"]
-mod ppage_ac06_billing_price_check;
-#[path = "ppage_ac07_old_plans_toml_defaults_both_fields.rs"]
-mod ppage_ac07_old_plans_toml_defaults_both_fields;
-#[path = "proptest_invariants.rs"]
-mod proptest_invariants;
-#[path = "provaudit_ac01_synthetic_signup_stamped.rs"]
-mod provaudit_ac01_synthetic_signup_stamped;
-#[path = "provaudit_ac02_external_signup_stamped.rs"]
-mod provaudit_ac02_external_signup_stamped;
-#[path = "provaudit_ac03_migration_backfill_counts.rs"]
-mod provaudit_ac03_migration_backfill_counts;
-#[path = "provaudit_ac04_healthz_split_shape.rs"]
-mod provaudit_ac04_healthz_split_shape;
-#[path = "provaudit_ac05_admin_audit_log.rs"]
-mod provaudit_ac05_admin_audit_log;
-#[path = "provaudit_ac06_null_origin_rejected.rs"]
-mod provaudit_ac06_null_origin_rejected;
-#[path = "provaudit_ac07_ip_class_triage.rs"]
-mod provaudit_ac07_ip_class_triage;
-#[path = "proxy_ac1_loopback_xff_resolves_signup_source.rs"]
-mod proxy_ac1_loopback_xff_resolves_signup_source;
-#[path = "proxy_ac2_non_loopback_peer_ignores_header.rs"]
-mod proxy_ac2_non_loopback_peer_ignores_header;
-#[path = "proxy_ac3_unparseable_header_falls_back.rs"]
-mod proxy_ac3_unparseable_header_falls_back;
-#[path = "proxy_ac4_rate_limit_keys_on_resolved_address.rs"]
-mod proxy_ac4_rate_limit_keys_on_resolved_address;
-#[path = "proxy_ac5_signup_event_stores_forwarded_address.rs"]
-mod proxy_ac5_signup_event_stores_forwarded_address;
-#[path = "proxy_ac6_healthz_distinct_source_ips.rs"]
-mod proxy_ac6_healthz_distinct_source_ips;
-#[path = "publishfirsttry_ac01_tool_publish_description.rs"]
-mod publishfirsttry_ac01_tool_publish_description;
-#[path = "publishfirsttry_ac02_structured_error_fields.rs"]
-mod publishfirsttry_ac02_structured_error_fields;
-#[path = "publishfirsttry_ac07_signup_next.rs"]
-mod publishfirsttry_ac07_signup_next;
-#[path = "pubschema_ac01_kind_enum_from_registry.rs"]
-mod pubschema_ac01_kind_enum_from_registry;
-#[path = "pubschema_ac02_spec_branch_per_kind.rs"]
-mod pubschema_ac02_spec_branch_per_kind;
-#[path = "pubschema_ac03_unknown_field_list_equals_branch.rs"]
-mod pubschema_ac03_unknown_field_list_equals_branch;
-#[path = "pubschema_ac04_quickstart_no_kind_index_without_tenant.rs"]
-mod pubschema_ac04_quickstart_no_kind_index_without_tenant;
-#[path = "pubschema_ac05_generated_artifacts_match_and_drift_excused.rs"]
-mod pubschema_ac05_generated_artifacts_match_and_drift_excused;
-#[path = "pubschema_ac06_no_literal_kind_list_in_descriptors.rs"]
-mod pubschema_ac06_no_literal_kind_list_in_descriptors;
-#[path = "pubschema_ac07_quickstart_example_validates_against_branch.rs"]
-mod pubschema_ac07_quickstart_example_validates_against_branch;
-#[path = "pubtool_ac01_tool_share_mints_stable_url.rs"]
-mod pubtool_ac01_tool_share_mints_stable_url;
-#[path = "pubtool_ac02_post_json_runs_tool.rs"]
-mod pubtool_ac02_post_json_runs_tool;
-#[path = "pubtool_ac03_get_query_runs_tool.rs"]
-mod pubtool_ac03_get_query_runs_tool;
-#[path = "pubtool_ac04_revoked_token_404_constant_time.rs"]
-mod pubtool_ac04_revoked_token_404_constant_time;
-#[path = "pubtool_ac05_rate_limit_429.rs"]
-mod pubtool_ac05_rate_limit_429;
-#[path = "pubtool_ac06_long_run_returns_202_then_polls_to_done.rs"]
-mod pubtool_ac06_long_run_returns_202_then_polls_to_done;
-#[path = "pubtool_ac07_admin_disabled_tenant_503.rs"]
-mod pubtool_ac07_admin_disabled_tenant_503;
-#[path = "pubtool_ac08_put_delete_405.rs"]
-mod pubtool_ac08_put_delete_405;
-#[path = "pubtool_ac10_cors_header_and_preflight.rs"]
-mod pubtool_ac10_cors_header_and_preflight;
-#[path = "pubvis_ac02_visibility_enum_single_source.rs"]
-mod pubvis_ac02_visibility_enum_single_source;
-#[path = "pubvis_ac04_unlisted_not_listed_but_callable.rs"]
-mod pubvis_ac04_unlisted_not_listed_but_callable;
-#[path = "pubvis_ac05_tags_validated_normalised_capped.rs"]
-mod pubvis_ac05_tags_validated_normalised_capped;
-#[path = "pubvis_ac06_new_version_marks_stale_until_retested.rs"]
-mod pubvis_ac06_new_version_marks_stale_until_retested;
-#[path = "pubvis_ac07_concurrent_public_share_stamps_once.rs"]
-mod pubvis_ac07_concurrent_public_share_stamps_once;
-#[path = "pysdk_ac01_no_override_table.rs"]
-mod pysdk_ac01_no_override_table;
-#[path = "pysdk_ac02_mypy_strict_pytest_and_header.rs"]
-mod pysdk_ac02_mypy_strict_pytest_and_header;
-#[path = "pysdk_ac03_invalid_args_raise_before_http.rs"]
-mod pysdk_ac03_invalid_args_raise_before_http;
-#[path = "pysdk_ac04_error_codes_are_typed_exceptions.rs"]
-mod pysdk_ac04_error_codes_are_typed_exceptions;
-#[path = "pysdk_ac05_contract_skew_warns_once_or_raises.rs"]
-mod pysdk_ac05_contract_skew_warns_once_or_raises;
-#[path = "pysdk_ac06_result_shape_error_and_extra_fields.rs"]
-mod pysdk_ac06_result_shape_error_and_extra_fields;
-#[path = "pysdk_ac07_ci_diff_fails_on_stale_sdk.rs"]
-mod pysdk_ac07_ci_diff_fails_on_stale_sdk;
-#[path = "qdiag_ac01_column_typo_fuzzy_covered_hint.rs"]
-mod qdiag_ac01_column_typo_fuzzy_covered_hint;
-#[path = "qdiag_ac02_table_typo_fuzzy_covered_hint.rs"]
-mod qdiag_ac02_table_typo_fuzzy_covered_hint;
-#[path = "qdiag_ac03_zero_row_value_absent_hint_and_latency.rs"]
-mod qdiag_ac03_zero_row_value_absent_hint_and_latency;
-#[path = "qdiag_ac04_successful_nonempty_diagnosis_and_hint_null.rs"]
-mod qdiag_ac04_successful_nonempty_diagnosis_and_hint_null;
-#[path = "qdiag_ac05_query_diagnose_tool_tenant_scoped.rs"]
-mod qdiag_ac05_query_diagnose_tool_tenant_scoped;
-#[path = "qdiag_ac06_query_stats_counts_and_percentiles.rs"]
-mod qdiag_ac06_query_stats_counts_and_percentiles;
-#[path = "qdiag_ac07_description_annotation_offers_candidate.rs"]
-mod qdiag_ac07_description_annotation_offers_candidate;
-#[path = "qdiag_ac08_footprint_columns_est_tokens.rs"]
-mod qdiag_ac08_footprint_columns_est_tokens;
-#[path = "qdiag_ac11_ten_concurrent_refused_queries_all_hinted.rs"]
-mod qdiag_ac11_ten_concurrent_refused_queries_all_hinted;
-#[path = "qsbc_ac01_detection_keys_on_known_names.rs"]
-mod qsbc_ac01_detection_keys_on_known_names;
-#[path = "qsbc_ac02_quickstart_client_cursor.rs"]
-mod qsbc_ac02_quickstart_client_cursor;
-#[path = "qsbc_ac03_quickstart_client_user_agent.rs"]
-mod qsbc_ac03_quickstart_client_user_agent;
-#[path = "qsbc_ac04_quickstart_client_unknown.rs"]
-mod qsbc_ac04_quickstart_client_unknown;
-#[path = "qsbc_ac05_quickstart_client_chatgpt.rs"]
-mod qsbc_ac05_quickstart_client_chatgpt;
-#[path = "qsbc_ac06_connect_go_json_matches_quickstart.rs"]
-mod qsbc_ac06_connect_go_json_matches_quickstart;
-#[path = "qsbc_ac07_quickstart_writes_client_name.rs"]
-mod qsbc_ac07_quickstart_writes_client_name;
-#[path = "refrow_ac01_args_invalid_writes_refused_row.rs"]
-mod refrow_ac01_args_invalid_writes_refused_row;
-#[path = "refrow_ac02_calls_per_day_refusal_writes_row_not_quota.rs"]
-mod refrow_ac02_calls_per_day_refusal_writes_row_not_quota;
-#[path = "refrow_ac03_anonymous_unrecognized_key_writes_no_row.rs"]
-mod refrow_ac03_anonymous_unrecognized_key_writes_no_row;
-#[path = "refrow_ac04_insufficient_scope_row_has_token_auth_method.rs"]
-mod refrow_ac04_insufficient_scope_row_has_token_auth_method;
-#[path = "refrow_ac05_host_usage_reports_refused.rs"]
-mod refrow_ac05_host_usage_reports_refused;
-#[path = "refrow_ac06_unwritable_db_refusal_still_returned.rs"]
-mod refrow_ac06_unwritable_db_refusal_still_returned;
-#[path = "reglist_ac01_manifest_fields_match_cargo_and_endpoint.rs"]
-mod reglist_ac01_manifest_fields_match_cargo_and_endpoint;
-#[path = "reglist_ac02_check_detects_drift.rs"]
-mod reglist_ac02_check_detects_drift;
-#[path = "reglist_ac03_schema_validates_committed_entry_and_rejects_missing_remotes.rs"]
-mod reglist_ac03_schema_validates_committed_entry_and_rejects_missing_remotes;
-#[path = "reglist_ac04_workflow_checks_manifest_and_schema_on_every_push.rs"]
-mod reglist_ac04_workflow_checks_manifest_and_schema_on_every_push;
-#[path = "reglist_ac06_readme_registry_and_quickstart_links_resolve.rs"]
-mod reglist_ac06_readme_registry_and_quickstart_links_resolve;
-#[path = "regone_ac01_live_compares_registry_to_endpoint.rs"]
-mod regone_ac01_live_compares_registry_to_endpoint;
-#[path = "regone_ac02_live_registry_timeout_is_unknown.rs"]
-mod regone_ac02_live_registry_timeout_is_unknown;
-#[path = "regone_ac03_one_server_json.rs"]
-mod regone_ac03_one_server_json;
-#[path = "regone_ac04_dry_run_prints_lines_and_no_secret.rs"]
-mod regone_ac04_dry_run_prints_lines_and_no_secret;
-#[path = "regone_ac05_no_publish_without_ok_makes_no_write.rs"]
-mod regone_ac05_no_publish_without_ok_makes_no_write;
-#[path = "regone_ac06_one_search_url_in_docs.rs"]
-mod regone_ac06_one_search_url_in_docs;
-#[path = "regone_ac07_live_json.rs"]
-mod regone_ac07_live_json;
-#[path = "rgpt_ac01_recipes_generator_idempotent.rs"]
-mod rgpt_ac01_recipes_generator_idempotent;
-#[path = "rgpt_ac02_drift_names_file_recipe_and_line.rs"]
-mod rgpt_ac02_drift_names_file_recipe_and_line;
-#[path = "rgpt_ac03_unknown_tool_or_arg_exits_2.rs"]
-mod rgpt_ac03_unknown_tool_or_arg_exits_2;
-#[path = "rgpt_ac05_every_golden_test_runs_its_calls_in_order.rs"]
-mod rgpt_ac05_every_golden_test_runs_its_calls_in_order;
-#[path = "rgpt_ac06_task_sync_check_flags_wall_budget_drift.rs"]
-mod rgpt_ac06_task_sync_check_flags_wall_budget_drift;
-#[path = "rgpt_ac07_ci_job_fails_on_the_broken_recipe_only.rs"]
-mod rgpt_ac07_ci_job_fails_on_the_broken_recipe_only;
-#[path = "rgpt_chart_in_a_minute_golden_path.rs"]
-mod rgpt_chart_in_a_minute_golden_path;
-#[path = "rgpt_database_in_a_minute_golden_path.rs"]
-mod rgpt_database_in_a_minute_golden_path;
-#[path = "rgpt_share_a_tool_golden_path.rs"]
-mod rgpt_share_a_tool_golden_path;
-#[path = "rgpt_uptime_probes_golden_path.rs"]
-mod rgpt_uptime_probes_golden_path;
-#[path = "rlfe_ac01_unknown_status_refused_with_set.rs"]
-mod rlfe_ac01_unknown_status_refused_with_set;
-#[path = "rlfe_ac02_trigger_and_verdict_refused_before_handler.rs"]
-mod rlfe_ac02_trigger_and_verdict_refused_before_handler;
-#[path = "rlfe_ac03_every_value_filters_exactly_its_rows.rs"]
-mod rlfe_ac03_every_value_filters_exactly_its_rows;
-#[path = "rlfe_ac04_descriptor_enums_and_prose_set_drift.rs"]
-mod rlfe_ac04_descriptor_enums_and_prose_set_drift;
-#[path = "rowpol_ac01_sql_predicate_scopes_to_end_user_attribute.rs"]
-mod rowpol_ac01_sql_predicate_scopes_to_end_user_attribute;
-#[path = "rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0.rs"]
-mod rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0;
-#[path = "rowpol_ac03_unpolicied_table_zero_rows_for_end_user_all_for_tenant_key.rs"]
-mod rowpol_ac03_unpolicied_table_zero_rows_for_end_user_all_for_tenant_key;
-#[path = "rowpol_ac04_cte_and_subquery_both_rewritten_via_ast.rs"]
-mod rowpol_ac04_cte_and_subquery_both_rewritten_via_ast;
-#[path = "rowpol_ac05_docs_prefix_policy_zero_hits_lexical_and_embeddings.rs"]
-mod rowpol_ac05_docs_prefix_policy_zero_hits_lexical_and_embeddings;
-#[path = "rowpol_ac06_empty_allowed_set_1_equals_0_and_denies_docs.rs"]
-mod rowpol_ac06_empty_allowed_set_1_equals_0_and_denies_docs;
-#[path = "rowpol_ac07_audit_verify_intact_then_tampered.rs"]
-mod rowpol_ac07_audit_verify_intact_then_tampered;
-#[path = "rowpol_ac08_audit_chain_pages_and_refuses_end_users.rs"]
-mod rowpol_ac08_audit_chain_pages_and_refuses_end_users;
-#[path = "rowpol_ac09_filtered_vs_unfiltered_p95_within_3ms.rs"]
-mod rowpol_ac09_filtered_vs_unfiltered_p95_within_3ms;
-#[path = "rowpol_ac10_policy_set_refuses_a_widening_rule.rs"]
-mod rowpol_ac10_policy_set_refuses_a_widening_rule;
-#[path = "rpol_ac01_non_retryable_stops_resends.rs"]
-mod rpol_ac01_non_retryable_stops_resends;
-#[path = "rpol_ac02_every_code_has_exactly_one_row.rs"]
-mod rpol_ac02_every_code_has_exactly_one_row;
-#[path = "rpol_ac03_retry_after_wins_over_backoff.rs"]
-mod rpol_ac03_retry_after_wins_over_backoff;
-#[path = "rpol_ac04_attempts_exhausted_flips_retryable.rs"]
-mod rpol_ac04_attempts_exhausted_flips_retryable;
-#[path = "rpol_ac05_chain_retry_on_validated_against_table.rs"]
-mod rpol_ac05_chain_retry_on_validated_against_table;
-#[path = "rpol_ac06_retry_policy_check_names_the_edited_file.rs"]
-mod rpol_ac06_retry_policy_check_names_the_edited_file;
-#[path = "run_metrics_handoff_glob_regression.rs"]
-mod run_metrics_handoff_glob_regression;
-#[path = "runoverflow_ac03_progress_counter_monotonic_validation.rs"]
-mod runoverflow_ac03_progress_counter_monotonic_validation;
-#[path = "runoverflow_ac04_inline_part_zero_and_out_of_range_not_found.rs"]
-mod runoverflow_ac04_inline_part_zero_and_out_of_range_not_found;
-#[path = "runoverflow_ac05_http_async_2mib_overflows_to_parts.rs"]
-mod runoverflow_ac05_http_async_2mib_overflows_to_parts;
-#[path = "runs_ac05_sync_call_writes_run_row.rs"]
-mod runs_ac05_sync_call_writes_run_row;
-#[path = "runs_ac07_purge_clears_result.rs"]
-mod runs_ac07_purge_clears_result;
-#[path = "runs_ac08_tenant_delete_cascades_runs.rs"]
-mod runs_ac08_tenant_delete_cascades_runs;
-#[path = "runs_ac09_quickstart_and_llms_txt_name_job_limits.rs"]
-mod runs_ac09_quickstart_and_llms_txt_name_job_limits;
-#[path = "runs_ac10_wait_long_polls.rs"]
-mod runs_ac10_wait_long_polls;
-#[path = "runs_ac11_admin_runs_reap.rs"]
-mod runs_ac11_admin_runs_reap;
-#[path = "runsubject_ac01_async_assertion_end_user_on_run.rs"]
-mod runsubject_ac01_async_assertion_end_user_on_run;
-#[path = "runsubject_ac02_list_filters_by_end_user_subject.rs"]
-mod runsubject_ac02_list_filters_by_end_user_subject;
-#[path = "runsubject_ac03_oauth_run_carries_issuer_and_method.rs"]
-mod runsubject_ac03_oauth_run_carries_issuer_and_method;
-#[path = "runsubject_ac04_schedule_fired_run_end_user_null.rs"]
-mod runsubject_ac04_schedule_fired_run_end_user_null;
-#[path = "runsubject_ac05_list_output_unchanged_but_for_end_user.rs"]
-mod runsubject_ac05_list_output_unchanged_but_for_end_user;
-#[path = "runsubject_ac06_migration_0048_under_1s_at_100k_rows.rs"]
-mod runsubject_ac06_migration_0048_under_1s_at_100k_rows;
-#[path = "runsubject_ac07_llms_txt_names_end_user_and_filter.rs"]
-mod runsubject_ac07_llms_txt_names_end_user_and_filter;
-#[path = "sandboxready_ac7_conformance_suite.rs"]
-mod sandboxready_ac7_conformance_suite;
-#[path = "sblibs_ac02_drift_toml_lock_docs.rs"]
-mod sblibs_ac02_drift_toml_lock_docs;
-#[path = "sched_ac10_trigger_fire_manual.rs"]
-mod sched_ac10_trigger_fire_manual;
-#[path = "sched_ac1_two_firings_visible_in_ledger.rs"]
-mod sched_ac1_two_firings_visible_in_ledger;
-#[path = "sched_ac2_invalid_cron_names_minute.rs"]
-mod sched_ac2_invalid_cron_names_minute;
-#[path = "sched_ac3_free_plan_quota_exceeded.rs"]
-mod sched_ac3_free_plan_quota_exceeded;
-#[path = "sched_ac4_free_plan_interval_too_short.rs"]
-mod sched_ac4_free_plan_interval_too_short;
-#[path = "sched_ac5_overlap_skips_and_records.rs"]
-mod sched_ac5_overlap_skips_and_records;
-#[path = "sched_ac6_pause_blocks_resume_allows.rs"]
-mod sched_ac6_pause_blocks_resume_allows;
-#[path = "sched_ac7_tool_remove_disables_triggers.rs"]
-mod sched_ac7_tool_remove_disables_triggers;
-#[path = "sched_ac8_healthz_scheduler_fields.rs"]
-mod sched_ac8_healthz_scheduler_fields;
-#[path = "sched_quickstart_and_usage_report_schedules.rs"]
-mod sched_quickstart_and_usage_report_schedules;
-#[path = "self_offboard_ac1_disables_tenant_and_returns_success.rs"]
-mod self_offboard_ac1_disables_tenant_and_returns_success;
-#[path = "self_offboard_ac2_idempotent_second_call.rs"]
-mod self_offboard_ac2_idempotent_second_call;
-#[path = "self_offboard_ac3_offboarded_key_same_shape_as_unissued.rs"]
-mod self_offboard_ac3_offboarded_key_same_shape_as_unissued;
-#[path = "self_offboard_ac4_pro_tenant_cancels_stripe_subscription.rs"]
-mod self_offboard_ac4_pro_tenant_cancels_stripe_subscription;
-#[path = "self_offboard_ac5_admin_tenants_distinguishes_reason.rs"]
-mod self_offboard_ac5_admin_tenants_distinguishes_reason;
-#[path = "sessbind_ac01_keyless_call_after_signup_runs_as_the_bound_tenant.rs"]
-mod sessbind_ac01_keyless_call_after_signup_runs_as_the_bound_tenant;
-#[path = "sessbind_ac02_five_tools_run_as_the_bound_tenant.rs"]
-mod sessbind_ac02_five_tools_run_as_the_bound_tenant;
-#[path = "sessbind_ac03_anonymous_session_unchanged.rs"]
-mod sessbind_ac03_anonymous_session_unchanged;
-#[path = "sessbind_ac04_explicit_key_wins_over_the_binding.rs"]
-mod sessbind_ac04_explicit_key_wins_over_the_binding;
-#[path = "sessbind_ac05_bearer_wins_and_the_binding_survives.rs"]
-mod sessbind_ac05_bearer_wins_and_the_binding_survives;
-#[path = "sessbind_ac06_second_signup_rebinds_and_reports_session_bound.rs"]
-mod sessbind_ac06_second_signup_rebinds_and_reports_session_bound;
-#[path = "sessbind_ac07_concurrent_sessions_no_cross_session_leak.rs"]
-mod sessbind_ac07_concurrent_sessions_no_cross_session_leak;
-#[path = "sessbind_ac08_binding_map_is_bounded_under_a_session_flood.rs"]
-mod sessbind_ac08_binding_map_is_bounded_under_a_session_flood;
-#[path = "sessbind_ac09_disabled_bound_tenant_drops_the_binding.rs"]
-mod sessbind_ac09_disabled_bound_tenant_drops_the_binding;
-#[path = "sessbind_ac10_request_log_records_the_upgraded_status.rs"]
-mod sessbind_ac10_request_log_records_the_upgraded_status;
-#[path = "sessbind_ac11_session_bound_calls_are_metered_and_counted.rs"]
-mod sessbind_ac11_session_bound_calls_are_metered_and_counted;
-#[path = "sessbind_ac12_tenant_key_description_states_signup_optionality.rs"]
-mod sessbind_ac12_tenant_key_description_states_signup_optionality;
-#[path = "sessbind_ac13_regression_gate.rs"]
-mod sessbind_ac13_regression_gate;
-#[path = "sessbind_ac14_fresh_connection_implicit_signup_unchanged.rs"]
-mod sessbind_ac14_fresh_connection_implicit_signup_unchanged;
-#[path = "sessbind_ac15_second_bare_call_is_refused_and_named.rs"]
-mod sessbind_ac15_second_bare_call_is_refused_and_named;
-#[path = "sessbind_ac16_tenant_key_arg_then_omit_refused_or_reused.rs"]
-mod sessbind_ac16_tenant_key_arg_then_omit_refused_or_reused;
-#[path = "sessbind_ac17_concurrent_connections_isolated_memory.rs"]
-mod sessbind_ac17_concurrent_connections_isolated_memory;
-#[path = "sessbind_ac18_reconnect_without_key_is_a_fresh_client.rs"]
-mod sessbind_ac18_reconnect_without_key_is_a_fresh_client;
-#[path = "sessbind_ac19_funnel_blocked_count_and_whoami_session_tenant.rs"]
-mod sessbind_ac19_funnel_blocked_count_and_whoami_session_tenant;
-#[path = "sessbind_ac20_docs_and_help_name_the_reconnect_rule.rs"]
-mod sessbind_ac20_docs_and_help_name_the_reconnect_rule;
-#[path = "sessionkey_ac02_ac03_discovery_shape.rs"]
-mod sessionkey_ac02_ac03_discovery_shape;
-#[path = "sessionkey_ac04_signup_usage_field.rs"]
-mod sessionkey_ac04_signup_usage_field;
-#[path = "sessionkey_ac05_ac07_ac08_ac09_tenant_key_auth.rs"]
-mod sessionkey_ac05_ac07_ac08_ac09_tenant_key_auth;
-#[path = "sessionkey_ac06_publish_via_tenant_key.rs"]
-mod sessionkey_ac06_publish_via_tenant_key;
-#[path = "sessionkey_ac10_tenant_key_to_admin_forbidden.rs"]
-mod sessionkey_ac10_tenant_key_to_admin_forbidden;
-#[path = "sessionkey_ac11_ac12_ac13_ac14_ac15_tool_call.rs"]
-mod sessionkey_ac11_ac12_ac13_ac14_ac15_tool_call;
-#[path = "sessionkey_ac16_full_session_no_header.rs"]
-mod sessionkey_ac16_full_session_no_header;
-#[path = "sessionkey_ac18_tool_logs_no_key.rs"]
-mod sessionkey_ac18_tool_logs_no_key;
-#[path = "sessionkey_ac19_nested_tenant_key_redacted.rs"]
-mod sessionkey_ac19_nested_tenant_key_redacted;
-#[path = "sessionkey_ac20_error_message_no_key.rs"]
-mod sessionkey_ac20_error_message_no_key;
-#[path = "sfc_ac01_keyless_call_frames_are_stable.rs"]
-mod sfc_ac01_keyless_call_frames_are_stable;
-#[path = "sfc_ac02_wire_frames_match_table.rs"]
-mod sfc_ac02_wire_frames_match_table;
-#[path = "sfc_ac03_keyed_call_is_one_json_frame.rs"]
-mod sfc_ac03_keyed_call_is_one_json_frame;
-#[path = "sfc_ac05_frames_check_script_names_drift.rs"]
-mod sfc_ac05_frames_check_script_names_drift;
-#[path = "sfc_ac06_select_result_rejects_wrong_order.rs"]
-mod sfc_ac06_select_result_rejects_wrong_order;
-#[path = "sfc_ac07_llms_txt_transport_section_matches_script.rs"]
-mod sfc_ac07_llms_txt_transport_section_matches_script;
-#[path = "share_ac01_public_tool_cross_tenant_call.rs"]
-mod share_ac01_public_tool_cross_tenant_call;
-#[path = "share_ac02_private_tool_still_not_found.rs"]
-mod share_ac02_private_tool_still_not_found;
-#[path = "share_ac03_group_visibility_members_only.rs"]
-mod share_ac03_group_visibility_members_only;
-#[path = "share_ac04_secret_never_reaches_caller.rs"]
-mod share_ac04_secret_never_reaches_caller;
-#[path = "share_ac05_usage_and_quota_attribution.rs"]
-mod share_ac05_usage_and_quota_attribution;
-#[path = "share_ac06_share_quota_exceeded.rs"]
-mod share_ac06_share_quota_exceeded;
-#[path = "share_ac07_catalog_search_and_well_known.rs"]
-mod share_ac07_catalog_search_and_well_known;
-#[path = "share_ac08_unshare_revokes_access.rs"]
-mod share_ac08_unshare_revokes_access;
-#[path = "share_ac09_admin_tool_unshare.rs"]
-mod share_ac09_admin_tool_unshare;
-#[path = "sharedcall_ac01_host_tool_call_public_cross_tenant.rs"]
-mod sharedcall_ac01_host_tool_call_public_cross_tenant;
-#[path = "sharedcall_ac02_group_share_non_member_gets_hint.rs"]
-mod sharedcall_ac02_group_share_non_member_gets_hint;
-#[path = "sharedcall_ac03_not_found_reasons_indistinguishable.rs"]
-mod sharedcall_ac03_not_found_reasons_indistinguishable;
-#[path = "sharedcall_ac04_async_qualified_call_scoped_to_caller.rs"]
-mod sharedcall_ac04_async_qualified_call_scoped_to_caller;
-#[path = "sharedcall_ac05_gen_docs_sharing_check.rs"]
-mod sharedcall_ac05_gen_docs_sharing_check;
-#[path = "sharedcall_ac06_proof_script_qualified_host_tool_call.rs"]
-mod sharedcall_ac06_proof_script_qualified_host_tool_call;
-#[path = "sharedcall_ac07_own_unqualified_call_unchanged.rs"]
-mod sharedcall_ac07_own_unqualified_call_unchanged;
-#[path = "sharedcall_ac08_get_info_lists_shared_tools_with_via.rs"]
-mod sharedcall_ac08_get_info_lists_shared_tools_with_via;
-#[path = "sharedcall_ac09_quota_exhausted_qualified_call_refused.rs"]
-mod sharedcall_ac09_quota_exhausted_qualified_call_refused;
-#[path = "sharedrunscope_ac01_caller_sees_sync_shared_run.rs"]
-mod sharedrunscope_ac01_caller_sees_sync_shared_run;
-#[path = "sharedrunscope_ac02_owner_cannot_see_callers_run.rs"]
-mod sharedrunscope_ac02_owner_cannot_see_callers_run;
-#[path = "sharedrunscope_ac03_owner_meter_and_usage_unchanged.rs"]
-mod sharedrunscope_ac03_owner_meter_and_usage_unchanged;
-#[path = "sharedrunscope_ac04_own_call_run_row_unchanged.rs"]
-mod sharedrunscope_ac04_own_call_run_row_unchanged;
-#[path = "sharedrunscope_ac05_async_and_sync_share_scoping.rs"]
-mod sharedrunscope_ac05_async_and_sync_share_scoping;
-#[path = "sharedrunscope_ac06_raw_tools_call_shares_the_path.rs"]
-mod sharedrunscope_ac06_raw_tools_call_shares_the_path;
-#[path = "sharedrunscope_ac07_migration_backfills_legacy_rows.rs"]
-mod sharedrunscope_ac07_migration_backfills_legacy_rows;
-#[path = "sharedrunscope_ac08_proof_script_owner_ledger_check.rs"]
-mod sharedrunscope_ac08_proof_script_owner_ledger_check;
-#[path = "sibl_ac01_second_connection_joins_same_namespace.rs"]
-mod sibl_ac01_second_connection_joins_same_namespace;
-#[path = "sibl_ac02_used_up_join_code_is_refused.rs"]
-mod sibl_ac02_used_up_join_code_is_refused;
-#[path = "sibl_ac03_rotate_is_scoped_to_the_calling_client.rs"]
-mod sibl_ac03_rotate_is_scoped_to_the_calling_client;
-#[path = "sibl_ac04_revoke_removes_one_client.rs"]
-mod sibl_ac04_revoke_removes_one_client;
-#[path = "sibl_ac05_labels_derive_from_client_info_names.rs"]
-mod sibl_ac05_labels_derive_from_client_info_names;
-#[path = "sibl_ac06_returning_browser_is_offered_join.rs"]
-mod sibl_ac06_returning_browser_is_offered_join;
-#[path = "sibl_ac07_concurrent_joins_land_exactly_max_uses.rs"]
-mod sibl_ac07_concurrent_joins_land_exactly_max_uses;
-#[path = "signupfleet_ac01_fleet_ips_bypass_signup_rate_limit.rs"]
-mod signupfleet_ac01_fleet_ips_bypass_signup_rate_limit;
-#[path = "sjrc_ac01_one_call_summarizes_five_fires.rs"]
-mod sjrc_ac01_one_call_summarizes_five_fires;
-#[path = "sjrc_ac02_third_consecutive_failure_alerts_once.rs"]
-mod sjrc_ac02_third_consecutive_failure_alerts_once;
-#[path = "sjrc_ac03_excerpt_is_cut_and_redacted.rs"]
-mod sjrc_ac03_excerpt_is_cut_and_redacted;
-#[path = "sjrc_ac04_pause_produces_nothing_resume_restarts_streak.rs"]
-mod sjrc_ac04_pause_produces_nothing_resume_restarts_streak;
-#[path = "sjrc_ac05_sweeper_drops_receipts_past_plan_retention.rs"]
-mod sjrc_ac05_sweeper_drops_receipts_past_plan_retention;
-#[path = "sjrc_ac06_manual_schedule_and_event_fires_all_leave_receipts.rs"]
-mod sjrc_ac06_manual_schedule_and_event_fires_all_leave_receipts;
-#[path = "sjrc_ac07_limit_ceiling_and_empty_tool.rs"]
-mod sjrc_ac07_limit_ceiling_and_empty_tool;
-#[path = "skillsrc_ac01_gen_docs_writes_skill_md_byte_equal.rs"]
-mod skillsrc_ac01_gen_docs_writes_skill_md_byte_equal;
-#[path = "skillsrc_ac02_gen_docs_check_names_stale_skill_md.rs"]
-mod skillsrc_ac02_gen_docs_check_names_stale_skill_md;
-#[path = "skillsrc_ac03_missing_skill_md_is_stale_and_recreated.rs"]
-mod skillsrc_ac03_missing_skill_md_is_stale_and_recreated;
-#[path = "skillsrc_ac04_gen_docs_idempotent.rs"]
-mod skillsrc_ac04_gen_docs_idempotent;
-#[path = "skillsrc_ac05_output_list_and_drift_test_kept.rs"]
-mod skillsrc_ac05_output_list_and_drift_test_kept;
-#[path = "snp_ac01_url_to_unbound_host_is_blocked.rs"]
-mod snp_ac01_url_to_unbound_host_is_blocked;
-#[path = "snp_ac02_echoed_secret_in_result_is_blocked.rs"]
-mod snp_ac02_echoed_secret_in_result_is_blocked;
-#[path = "snp_ac03_unbound_secret_is_sent_and_reported.rs"]
-mod snp_ac03_unbound_secret_is_sent_and_reported;
-#[path = "snp_ac04_leak_test_proves_both_legs_blocked.rs"]
-mod snp_ac04_leak_test_proves_both_legs_blocked;
-#[path = "snp_ac05_leak_test_cannot_pass_by_accident.rs"]
-mod snp_ac05_leak_test_cannot_pass_by_accident;
-#[path = "snp_ac06_short_secret_blocks_whole_tokens_only.rs"]
-mod snp_ac06_short_secret_blocks_whole_tokens_only;
-#[path = "snp_ac07_blocks_reach_audit_log_and_healthz.rs"]
-mod snp_ac07_blocks_reach_audit_log_and_healthz;
-#[path = "soff_ac01_header_and_arg_returns_success_envelope.rs"]
-mod soff_ac01_header_and_arg_returns_success_envelope;
-#[path = "soff_ac02_header_only_returns_success_and_whoami_disabled.rs"]
-mod soff_ac02_header_only_returns_success_and_whoami_disabled;
-#[path = "soff_ac03_arg_only_returns_success_envelope.rs"]
-mod soff_ac03_arg_only_returns_success_envelope;
-#[path = "soff_ac04_already_offboarded_idempotent_all_shapes.rs"]
-mod soff_ac04_already_offboarded_idempotent_all_shapes;
-#[path = "soff_ac05_matrix_exhaustive_auth_shapes.rs"]
-mod soff_ac05_matrix_exhaustive_auth_shapes;
-#[path = "soff_ac06_non_lifecycle_verb_still_refused.rs"]
-mod soff_ac06_non_lifecycle_verb_still_refused;
-#[path = "soff_ac07_docs_document_already_offboarded.rs"]
-mod soff_ac07_docs_document_already_offboarded;
-#[path = "sorel_ac01_offboard_releases_session_fresh_signup.rs"]
-mod sorel_ac01_offboard_releases_session_fresh_signup;
-#[path = "sorel_ac02_self_offboard_remedy_and_idempotent.rs"]
-mod sorel_ac02_self_offboard_remedy_and_idempotent;
-#[path = "sorel_ac03_admin_disable_remedy_unchanged.rs"]
-mod sorel_ac03_admin_disable_remedy_unchanged;
-#[path = "specpath_ac01_map_form_normalizes_and_publishes.rs"]
-mod specpath_ac01_map_form_normalizes_and_publishes;
-#[path = "specpath_ac02_outputs_map_value_type_error.rs"]
-mod specpath_ac02_outputs_map_value_type_error;
-#[path = "specpath_ac03_headers_array_type_error.rs"]
-mod specpath_ac03_headers_array_type_error;
-#[path = "specpath_ac04_path_reads_declared_field.rs"]
-mod specpath_ac04_path_reads_declared_field;
-#[path = "specpath_ac05_missing_path_reports_tried_path.rs"]
-mod specpath_ac05_missing_path_reports_tried_path;
-#[path = "specpath_ac06_list_form_seen_at_hint.rs"]
-mod specpath_ac06_list_form_seen_at_hint;
-#[path = "specpath_ac07_replay_recorded_sessions_map_form.rs"]
-mod specpath_ac07_replay_recorded_sessions_map_form;
-#[path = "specpath_ac08_wildcard_path_rejected.rs"]
-mod specpath_ac08_wildcard_path_rejected;
-#[path = "sqlpass_ac01_table_level_description_in_schema.rs"]
-mod sqlpass_ac01_table_level_description_in_schema;
-#[path = "sqlpass_ac02_column_description_in_schema.rs"]
-mod sqlpass_ac02_column_description_in_schema;
-#[path = "sqlpass_ac03_no_annotations_shape_unchanged.rs"]
-mod sqlpass_ac03_no_annotations_shape_unchanged;
-#[path = "sqlpass_ac04_group_by_logs_row_count_and_duration.rs"]
-mod sqlpass_ac04_group_by_logs_row_count_and_duration;
-#[path = "sqlpass_ac05_update_refused_logs_error_code.rs"]
-mod sqlpass_ac05_update_refused_logs_error_code;
-#[path = "sqlpass_ac06_query_log_tenant_isolated_and_limit_capped.rs"]
-mod sqlpass_ac06_query_log_tenant_isolated_and_limit_capped;
-#[path = "sqlpass_ac07_query_log_capped_at_1000_bytes_used_includes_log.rs"]
-mod sqlpass_ac07_query_log_capped_at_1000_bytes_used_includes_log;
-#[path = "sqlpass_ac08_proof_sh_sql_questions_no_publish.rs"]
-mod sqlpass_ac08_proof_sh_sql_questions_no_publish;
-#[path = "sqlpass_ac09_llms_txt_sql_path_under_70_lines.rs"]
-mod sqlpass_ac09_llms_txt_sql_path_under_70_lines;
-#[path = "sqlpass_ac11_concurrent_queries_produce_ten_log_rows.rs"]
-mod sqlpass_ac11_concurrent_queries_produce_ten_log_rows;
-#[path = "sqlpass_ac12_empty_table_zero_rows_null_error_code.rs"]
-mod sqlpass_ac12_empty_table_zero_rows_null_error_code;
-#[path = "sqlpass_ac13_long_sql_truncated_in_log_not_refused.rs"]
-mod sqlpass_ac13_long_sql_truncated_in_log_not_refused;
-#[path = "sreg_ac02_every_host_tool_declares_a_scope.rs"]
-mod sreg_ac02_every_host_tool_declares_a_scope;
-#[path = "sreg_ac03_implied_scopes_gate_tool_calls.rs"]
-mod sreg_ac03_implied_scopes_gate_tool_calls;
-#[path = "sreg_ac04_llms_txt_scopes_table_generated.rs"]
-mod sreg_ac04_llms_txt_scopes_table_generated;
-#[path = "sreg_ac05_whoami_scopes_all_and_effective.rs"]
-mod sreg_ac05_whoami_scopes_all_and_effective;
-#[path = "sreg_ac06_oauth_scopes_registry_first.rs"]
-mod sreg_ac06_oauth_scopes_registry_first;
-#[path = "sreg_ac07_unknown_scope_word_not_effective.rs"]
-mod sreg_ac07_unknown_scope_word_not_effective;
-#[path = "state_ac01_kv_roundtrip.rs"]
-mod state_ac01_kv_roundtrip;
-#[path = "state_ac04_table_query.rs"]
-mod state_ac04_table_query;
-#[path = "state_ac05_schema_violation.rs"]
-mod state_ac05_schema_violation;
-#[path = "state_ac06_quota_exceeded.rs"]
-mod state_ac06_quota_exceeded;
-#[path = "state_ac08_tenant_isolation.rs"]
-mod state_ac08_tenant_isolation;
-#[path = "state_ac09_cascade_delete.rs"]
-mod state_ac09_cascade_delete;
-#[path = "statusfeed_ac02_exec_disabled_degrades.rs"]
-mod statusfeed_ac02_exec_disabled_degrades;
-#[path = "statusfeed_ac03_major_incident_outage.rs"]
-mod statusfeed_ac03_major_incident_outage;
-#[path = "statusfeed_ac04_incident_timeline_and_close.rs"]
-mod statusfeed_ac04_incident_timeline_and_close;
-#[path = "statusfeed_ac05_daily_rollup_uptime.rs"]
-mod statusfeed_ac05_daily_rollup_uptime;
-#[path = "statusfeed_ac06_external_sample_source_preserved.rs"]
-mod statusfeed_ac06_external_sample_source_preserved;
-#[path = "statusfeed_ac07_prune_keeps_rollup.rs"]
-mod statusfeed_ac07_prune_keeps_rollup;
-#[path = "statusfeed_ac08_status_html_renders.rs"]
-mod statusfeed_ac08_status_html_renders;
-#[path = "statusfeed_ac10_component_days_query.rs"]
-mod statusfeed_ac10_component_days_query;
-#[path = "stgl_ac01_grantee_list_names_group_share.rs"]
-mod stgl_ac01_grantee_list_names_group_share;
-#[path = "stgl_ac02_one_accessor_for_list_and_call.rs"]
-mod stgl_ac02_one_accessor_for_list_and_call;
-#[path = "stgl_ac03_public_share_not_in_tools_list.rs"]
-mod stgl_ac03_public_share_not_in_tools_list;
-#[path = "stgl_ac04_no_shares_list_unchanged.rs"]
-mod stgl_ac04_no_shares_list_unchanged;
-#[path = "stgl_ac05_unshare_removes_entry.rs"]
-mod stgl_ac05_unshare_removes_entry;
-#[path = "stgl_ac06_subkey_hides_shared_entries.rs"]
-mod stgl_ac06_subkey_hides_shared_entries;
-#[path = "stgl_ac07_share_reports_grantees_notified.rs"]
-mod stgl_ac07_share_reports_grantees_notified;
-#[path = "suite_ac1_ten_binaries_and_names_preserved.rs"]
-mod suite_ac1_ten_binaries_and_names_preserved;
-#[path = "suite_ac3_mod_common_declared_once.rs"]
-mod suite_ac3_mod_common_declared_once;
-#[path = "suite_ac5_disk_size_budget.rs"]
-mod suite_ac5_disk_size_budget;
-#[path = "suite_ac6_wall_time_budget.rs"]
-mod suite_ac6_wall_time_budget;
-#[path = "suite_ac7_junit_per_test_timing.rs"]
-mod suite_ac7_junit_per_test_timing;
-#[path = "suite_ac9_selftest_named_and_green.rs"]
-mod suite_ac9_selftest_named_and_green;
-#[path = "support_ac01_bearer_invalid_help_url.rs"]
-mod support_ac01_bearer_invalid_help_url;
-#[path = "support_ac02_internal_error_generic_and_logged.rs"]
-mod support_ac02_internal_error_generic_and_logged;
-#[path = "support_ac03_disk_floor_and_5xx_messages_generic.rs"]
-mod support_ac03_disk_floor_and_5xx_messages_generic;
-#[path = "support_ac04_plans_doc_and_json_consistent.rs"]
-mod support_ac04_plans_doc_and_json_consistent;
-#[path = "support_ac06_served_pages_from_docs_and_readme.rs"]
-mod support_ac06_served_pages_from_docs_and_readme;
-#[path = "support_ac07_whoami_links_resolve.rs"]
-mod support_ac07_whoami_links_resolve;
-#[path = "support_ac08_release_artifact_includes_www.rs"]
-mod support_ac08_release_artifact_includes_www;
-#[path = "surface_ac02_dry_run_descriptions.rs"]
-mod surface_ac02_dry_run_descriptions;
-#[path = "surface_ac03_args_invalid_unified.rs"]
-mod surface_ac03_args_invalid_unified;
-#[path = "surface_ac04_required_field_descriptions.rs"]
-mod surface_ac04_required_field_descriptions;
-#[path = "surface_ac05_llms_txt_tool_parity.rs"]
-mod surface_ac05_llms_txt_tool_parity;
-#[path = "surface_ac07_tool_publish_description_length.rs"]
-mod surface_ac07_tool_publish_description_length;
-#[path = "surface_ac08_get_info_mentions_try_before_call.rs"]
-mod surface_ac08_get_info_mentions_try_before_call;
-#[path = "surface_tool_description_min_length.rs"]
-mod surface_tool_description_min_length;
-#[path = "surface_vault_tools_registered.rs"]
-mod surface_vault_tools_registered;
-#[path = "synthetic_ac01_migration_null_default.rs"]
-mod synthetic_ac01_migration_null_default;
-#[path = "synthetic_ac02_signup_header_sets_label.rs"]
-mod synthetic_ac02_signup_header_sets_label;
-#[path = "synthetic_ac04_tenant_facing_byte_identical.rs"]
-mod synthetic_ac04_tenant_facing_byte_identical;
-#[path = "synthetic_ac05_admin_tenant_set_synthetic.rs"]
-mod synthetic_ac05_admin_tenant_set_synthetic;
-#[path = "synthetic_ac06_bulk_retro_tag.rs"]
-mod synthetic_ac06_bulk_retro_tag;
-#[path = "synthetic_ac07_healthz_counts.rs"]
-mod synthetic_ac07_healthz_counts;
-#[path = "synthetic_ac08_admin_tenants_field.rs"]
-mod synthetic_ac08_admin_tenants_field;
-#[path = "synthetic_ac09_metering_filter.rs"]
-mod synthetic_ac09_metering_filter;
-#[path = "synthetic_ac10_healthz_paying_real.rs"]
-mod synthetic_ac10_healthz_paying_real;
-#[path = "tablemodel_ac01_key_id_measure_category_date_roles.rs"]
-mod tablemodel_ac01_key_id_measure_category_date_roles;
-#[path = "tablemodel_ac02_foreign_key_detected_against_customers_id.rs"]
-mod tablemodel_ac02_foreign_key_detected_against_customers_id;
-#[path = "tablemodel_ac03_measures_and_dimensions_suggested.rs"]
-mod tablemodel_ac03_measures_and_dimensions_suggested;
-#[path = "tablemodel_ac04_null_share_with_category_role_preserved.rs"]
-mod tablemodel_ac04_null_share_with_category_role_preserved;
-#[path = "tablemodel_ac05_stale_after_append_recomputes_on_tick.rs"]
-mod tablemodel_ac05_stale_after_append_recomputes_on_tick;
-#[path = "tablemodel_ac06_large_table_samples_10000_under_500ms.rs"]
-mod tablemodel_ac06_large_table_samples_10000_under_500ms;
-#[path = "tablemodel_ac07_model_set_unit_annotation_survives_refresh.rs"]
-mod tablemodel_ac07_model_set_unit_annotation_survives_refresh;
-#[path = "tablemodel_ac08_model_set_role_override_keeps_inferred_role.rs"]
-mod tablemodel_ac08_model_set_role_override_keeps_inferred_role;
-#[path = "tablemodel_ac09_drop_removes_model_and_annotations.rs"]
-mod tablemodel_ac09_drop_removes_model_and_annotations;
-#[path = "tablemodel_ac10_empty_table_reports_unknown_types_no_error.rs"]
-mod tablemodel_ac10_empty_table_reports_unknown_types_no_error;
-#[path = "tables_ac07_tenant_delete_cascade.rs"]
-mod tables_ac07_tenant_delete_cascade;
-#[path = "tenant_delete_ac01_cascade_delete.rs"]
-mod tenant_delete_ac01_cascade_delete;
-#[path = "tenant_delete_ac02_forbidden.rs"]
-mod tenant_delete_ac02_forbidden;
-#[path = "tenant_delete_ac03_dry_run_prefix.rs"]
-mod tenant_delete_ac03_dry_run_prefix;
-#[path = "tenant_delete_ac04_prefix_delete.rs"]
-mod tenant_delete_ac04_prefix_delete;
-#[path = "tenant_delete_ac05_prefix_too_short.rs"]
-mod tenant_delete_ac05_prefix_too_short;
-#[path = "tenant_delete_ac06_migration_cascade.rs"]
-mod tenant_delete_ac06_migration_cascade;
-#[path = "tenant_delete_ac07_tenant_not_found.rs"]
-mod tenant_delete_ac07_tenant_not_found;
-#[path = "tenant_delete_ac09_healthz_probe_split.rs"]
-mod tenant_delete_ac09_healthz_probe_split;
-#[path = "tenant_delete_ac10_tenants_prefix_filter.rs"]
-mod tenant_delete_ac10_tenants_prefix_filter;
-#[path = "tenantprm_ac01_tenant_metadata_document.rs"]
-mod tenantprm_ac01_tenant_metadata_document;
-#[path = "tenantprm_ac02_bearer_jwt_tenant_and_audience_scoping.rs"]
-mod tenantprm_ac02_bearer_jwt_tenant_and_audience_scoping;
-#[path = "tenantprm_ac03_key_based_tenant_scoping_and_unknown_ns_404.rs"]
-mod tenantprm_ac03_key_based_tenant_scoping_and_unknown_ns_404;
-#[path = "tenantprm_ac04_401_challenge_names_tenant_or_root_metadata.rs"]
-mod tenantprm_ac04_401_challenge_names_tenant_or_root_metadata;
-#[path = "tenantprm_ac05_scope_gates_tool_calls.rs"]
-mod tenantprm_ac05_scope_gates_tool_calls;
-#[path = "tenantprm_ac06_whoami_carries_resource_and_metadata_url.rs"]
-mod tenantprm_ac06_whoami_carries_resource_and_metadata_url;
-#[path = "tenantprm_ac07_key_and_oauth_suites_unchanged.rs"]
-mod tenantprm_ac07_key_and_oauth_suites_unchanged;
-#[path = "tenantprm_ac09_llms_txt_documents_tenant_oauth.rs"]
-mod tenantprm_ac09_llms_txt_documents_tenant_oauth;
-#[path = "testtruth_ac01_chain_prev_will_fail.rs"]
-mod testtruth_ac01_chain_prev_will_fail;
-#[path = "testtruth_ac02_chain_prev_result_pass.rs"]
-mod testtruth_ac02_chain_prev_result_pass;
-#[path = "testtruth_ac03_chain_prev_no_output_schema_unverifiable.rs"]
-mod testtruth_ac03_chain_prev_no_output_schema_unverifiable;
-#[path = "testtruth_ac06_publish_gate_verdict.rs"]
-mod testtruth_ac06_publish_gate_verdict;
-#[path = "testtruth_ac07_quickstart_chain_verdict_blurb.rs"]
-mod testtruth_ac07_quickstart_chain_verdict_blurb;
-#[path = "tgraph_ac01_foreign_key_edge_and_graph_includes_both_tables.rs"]
-mod tgraph_ac01_foreign_key_edge_and_graph_includes_both_tables;
-#[path = "tgraph_ac02_join_paths_one_step_foreign_key.rs"]
-mod tgraph_ac02_join_paths_one_step_foreign_key;
-#[path = "tgraph_ac03_two_step_same_name_path.rs"]
-mod tgraph_ac03_two_step_same_name_path;
-#[path = "tgraph_ac04_no_shared_columns_returns_no_path_with_candidates.rs"]
-mod tgraph_ac04_no_shared_columns_returns_no_path_with_candidates;
-#[path = "tgraph_ac05_next_questions_five_entries_all_runnable.rs"]
-mod tgraph_ac05_next_questions_five_entries_all_runnable;
-#[path = "tgraph_ac06_stale_after_append_tick_clears.rs"]
-mod tgraph_ac06_stale_after_append_tick_clears;
-#[path = "tgraph_ac07_tenant_isolation_identically_named_tables.rs"]
-mod tgraph_ac07_tenant_isolation_identically_named_tables;
-#[path = "tgraph_ac08_description_annotation_node_attribute_and_question_text.rs"]
-mod tgraph_ac08_description_annotation_node_attribute_and_question_text;
-#[path = "tgraph_ac10_fifty_tables_twenty_columns_under_500ms.rs"]
-mod tgraph_ac10_fifty_tables_twenty_columns_under_500ms;
-#[path = "thand_ac01_poster_wait_returns_completion.rs"]
-mod thand_ac01_poster_wait_returns_completion;
-#[path = "thand_ac02_status_enum_source_of_truth.rs"]
-mod thand_ac02_status_enum_source_of_truth;
-#[path = "thand_ac03_claim_is_recipient_only_and_once.rs"]
-mod thand_ac03_claim_is_recipient_only_and_once;
-#[path = "thand_ac04_deadline_sweep_dead_letters.rs"]
-mod thand_ac04_deadline_sweep_dead_letters;
-#[path = "thand_ac05_complete_is_idempotent.rs"]
-mod thand_ac05_complete_is_idempotent;
-#[path = "thand_ac06_open_task_quota_and_refusals.rs"]
-mod thand_ac06_open_task_quota_and_refusals;
-#[path = "thand_ac07_tenant_delete_cascade.rs"]
-mod thand_ac07_tenant_delete_cascade;
-#[path = "thlive_ac01_script_usage_and_dependencies.rs"]
-mod thlive_ac01_script_usage_and_dependencies;
-#[path = "thlive_ac02_local_server_handoff_done.rs"]
-mod thlive_ac02_local_server_handoff_done;
-#[path = "thlive_ac04_closed_port_exits_1.rs"]
-mod thlive_ac04_closed_port_exits_1;
-#[path = "thlive_ac05_exit_trap_offboards_both_tenants.rs"]
-mod thlive_ac05_exit_trap_offboards_both_tenants;
-#[path = "thlive_ac06_json_flag_output.rs"]
-mod thlive_ac06_json_flag_output;
-#[path = "timp_ac01_export_lacks_tables_and_docs_baseline.rs"]
-mod timp_ac01_export_lacks_tables_and_docs_baseline;
-#[path = "timp_ac02_export_carries_tables_models_docs_manifest_v2.rs"]
-mod timp_ac02_export_carries_tables_models_docs_manifest_v2;
-#[path = "timp_ac03_import_restores_an_empty_tenant.rs"]
-mod timp_ac03_import_restores_an_empty_tenant;
-#[path = "timp_ac04_import_refuses_non_empty_and_foreign_runs.rs"]
-mod timp_ac04_import_refuses_non_empty_and_foreign_runs;
-#[path = "timp_ac05_round_trip_sha256_equal.rs"]
-mod timp_ac05_round_trip_sha256_equal;
-#[path = "timp_ac06_import_enforces_export_bytes_max_and_reports_progress.rs"]
-mod timp_ac06_import_enforces_export_bytes_max_and_reports_progress;
-#[path = "timp_ac07_archive_layout_one_enum.rs"]
-mod timp_ac07_archive_layout_one_enum;
-#[path = "tkparam_ac01_tenant_key_missing_is_invalid_params.rs"]
-mod tkparam_ac01_tenant_key_missing_is_invalid_params;
-#[path = "tkparam_ac02_non_string_tenant_key_is_invalid_params.rs"]
-mod tkparam_ac02_non_string_tenant_key_is_invalid_params;
-#[path = "tkparam_ac03_five_tools_missing_tenant_key.rs"]
-mod tkparam_ac03_five_tools_missing_tenant_key;
-#[path = "tkparam_ac04_header_auth_unaffected.rs"]
-mod tkparam_ac04_header_auth_unaffected;
-#[path = "tkparam_ac05_tenant_key_invalid_unchanged.rs"]
-mod tkparam_ac05_tenant_key_invalid_unchanged;
-#[path = "tkparam_ac06_tenant_key_missing_payload_fields.rs"]
-mod tkparam_ac06_tenant_key_missing_payload_fields;
-#[path = "tkparam_ac07_example_is_placeholder_not_live.rs"]
-mod tkparam_ac07_example_is_placeholder_not_live;
-#[path = "tkparam_ac08_secretmissing_and_invalidparams_shape_unchanged.rs"]
-mod tkparam_ac08_secretmissing_and_invalidparams_shape_unchanged;
-#[path = "tkparam_ac09_schema_tenant_key_not_required_and_discoverable.rs"]
-mod tkparam_ac09_schema_tenant_key_not_required_and_discoverable;
-#[path = "tkparam_ac11_full_suite_green_at_landing.rs"]
-mod tkparam_ac11_full_suite_green_at_landing;
-#[path = "tlint_ac01_hand_skip_then_bare_assert_fails.rs"]
-mod tlint_ac01_hand_skip_then_bare_assert_fails;
-#[path = "tlint_ac02_bare_assert_after_budget_block_is_named.rs"]
-mod tlint_ac02_bare_assert_after_budget_block_is_named;
-#[path = "tlint_ac03_allow_set_comes_from_the_harness_file.rs"]
-mod tlint_ac03_allow_set_comes_from_the_harness_file;
-#[path = "tlint_ac05_landed_tree_has_zero_offenders.rs"]
-mod tlint_ac05_landed_tree_has_zero_offenders;
-#[path = "tlint_ac06_converted_files_keep_their_budget_numbers.rs"]
-mod tlint_ac06_converted_files_keep_their_budget_numbers;
-#[path = "tlint_ac07_json_field_names_are_not_wall_clock_tokens.rs"]
-mod tlint_ac07_json_field_names_are_not_wall_clock_tokens;
-#[path = "toolname_ac01_lint_reports_violations.rs"]
-mod toolname_ac01_lint_reports_violations;
-#[path = "toolname_ac02_alias_dispatch_hint_and_log.rs"]
-mod toolname_ac02_alias_dispatch_hint_and_log;
-#[path = "toolname_ac03_tools_list_alias_entries.rs"]
-mod toolname_ac03_tools_list_alias_entries;
-#[path = "toolname_ac04_docs_names_exist_and_tools_doc_fresh.rs"]
-mod toolname_ac04_docs_names_exist_and_tools_doc_fresh;
-#[path = "toolname_ac05_alias_metrics_counter.rs"]
-mod toolname_ac05_alias_metrics_counter;
-#[path = "toolname_ac06_did_you_mean_suggests_canonical.rs"]
-mod toolname_ac06_did_you_mean_suggests_canonical;
-#[path = "toolname_ac07_whoami_naming_rule_url_once_per_session.rs"]
-mod toolname_ac07_whoami_naming_rule_url_once_per_session;
-#[path = "toolscope_ac01_scoped_consent_and_token.rs"]
-mod toolscope_ac01_scoped_consent_and_token;
-#[path = "toolscope_ac02_scoped_token_list_and_call.rs"]
-mod toolscope_ac02_scoped_token_list_and_call;
-#[path = "toolscope_ac03_step_up_reauthorize_union_scope.rs"]
-mod toolscope_ac03_step_up_reauthorize_union_scope;
-#[path = "toolscope_ac04_mcp_key_and_pre_prd_token_unaffected.rs"]
-mod toolscope_ac04_mcp_key_and_pre_prd_token_unaffected;
-#[path = "toolscope_ac05_publish_scope_validation.rs"]
-mod toolscope_ac05_publish_scope_validation;
-#[path = "toolscope_ac06_scope_change_takes_effect_next_call.rs"]
-mod toolscope_ac06_scope_change_takes_effect_next_call;
-#[path = "toolscope_ac07_metadata_scopes_supported.rs"]
-mod toolscope_ac07_metadata_scopes_supported;
-#[path = "toolscope_ac08_admin_stats_consents_by_scope.rs"]
-mod toolscope_ac08_admin_stats_consents_by_scope;
-#[path = "tooltest_ac12_log_marking.rs"]
-mod tooltest_ac12_log_marking;
-#[path = "tooltest_ac3_http_dry_run.rs"]
-mod tooltest_ac3_http_dry_run;
-#[path = "tooltest_ac4_echo_verbatim.rs"]
-mod tooltest_ac4_echo_verbatim;
-#[path = "tooltest_ac5_validation_error_taxonomy.rs"]
-mod tooltest_ac5_validation_error_taxonomy;
-#[path = "tooltest_ac6_quota_and_metering.rs"]
-mod tooltest_ac6_quota_and_metering;
-#[path = "tooltest_ac7_too_many_invocations.rs"]
-mod tooltest_ac7_too_many_invocations;
-#[path = "tooltest_ac9_ac10_listing_and_auth.rs"]
-mod tooltest_ac9_ac10_listing_and_auth;
-#[path = "trigidem_ac01_webhook_set_twice_idempotent.rs"]
-mod trigidem_ac01_webhook_set_twice_idempotent;
-#[path = "trigidem_ac02_webhook_update_tool_keeps_id_and_url.rs"]
-mod trigidem_ac02_webhook_update_tool_keeps_id_and_url;
-#[path = "trigidem_ac03_schedule_update_cron_changes_next_unix.rs"]
-mod trigidem_ac03_schedule_update_cron_changes_next_unix;
-#[path = "trigidem_ac04_kind_mismatch_refused.rs"]
-mod trigidem_ac04_kind_mismatch_refused;
-#[path = "trigidem_ac05_verbs_accept_name.rs"]
-mod trigidem_ac05_verbs_accept_name;
-#[path = "trigidem_ac06_migration_backfills_duplicate_names.rs"]
-mod trigidem_ac06_migration_backfills_duplicate_names;
-#[path = "trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent.rs"]
-mod trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent;
-#[path = "tssdk_ac01_no_override_table.rs"]
-mod tssdk_ac01_no_override_table;
-#[path = "tssdk_ac02_build_test_tsc_and_header.rs"]
-mod tssdk_ac02_build_test_tsc_and_header;
-#[path = "tssdk_ac03_invalid_args_rejected_before_fetch.rs"]
-mod tssdk_ac03_invalid_args_rejected_before_fetch;
-#[path = "tssdk_ac04_error_codes_are_typed_errors.rs"]
-mod tssdk_ac04_error_codes_are_typed_errors;
-#[path = "tssdk_ac05_contract_skew_warns_once_or_throws.rs"]
-mod tssdk_ac05_contract_skew_warns_once_or_throws;
-#[path = "tssdk_ac06_ir_parity_with_python_generator.rs"]
-mod tssdk_ac06_ir_parity_with_python_generator;
-#[path = "tssdk_ac07_ci_diff_fails_on_stale_sdk.rs"]
-mod tssdk_ac07_ci_diff_fails_on_stale_sdk;
-#[path = "tsvr_ac01_unknown_column_names_declared.rs"]
-mod tsvr_ac01_unknown_column_names_declared;
-#[path = "tsvr_ac02_type_mismatch_names_accepted_shape.rs"]
-mod tsvr_ac02_type_mismatch_names_accepted_shape;
-#[path = "ttfs_ac01_onboarding_7d_reads_external_stamps.rs"]
-mod ttfs_ac01_onboarding_7d_reads_external_stamps;
-#[path = "ttfs_ac02_whoami_activation_first_call_only.rs"]
-mod ttfs_ac02_whoami_activation_first_call_only;
-#[path = "ttfs_ac03_milestone_table_is_the_one_key_set.rs"]
-mod ttfs_ac03_milestone_table_is_the_one_key_set;
-#[path = "ttfs_ac04_onboarding_block_carries_no_identifiers.rs"]
-mod ttfs_ac04_onboarding_block_carries_no_identifiers;
-#[path = "ttfs_ac05_under_five_tenants_shows_n_and_nulls.rs"]
-mod ttfs_ac05_under_five_tenants_shows_n_and_nulls;
-#[path = "ttfs_ac06_admin_has_no_activation_and_unclassified_excluded.rs"]
-mod ttfs_ac06_admin_has_no_activation_and_unclassified_excluded;
-#[path = "ttfs_ac07_by_client_only_for_groups_of_five.rs"]
-mod ttfs_ac07_by_client_only_for_groups_of_five;
-#[path = "umeta_ac01_meta_usage_matches_refusal_and_status.rs"]
-mod umeta_ac01_meta_usage_matches_refusal_and_status;
-#[path = "umeta_ac02_golden_echo_result_unchanged.rs"]
-mod umeta_ac02_golden_echo_result_unchanged;
-#[path = "umeta_ac03_host_usage_plan_block.rs"]
-mod umeta_ac03_host_usage_plan_block;
-#[path = "umeta_ac04_unlimited_plan_renders_null_limit.rs"]
-mod umeta_ac04_unlimited_plan_renders_null_limit;
-#[path = "umeta_ac05_no_extra_select_on_hot_path.rs"]
-mod umeta_ac05_no_extra_select_on_hot_path;
-#[path = "umeta_ac06_caller_limit_in_meta_usage.rs"]
-mod umeta_ac06_caller_limit_in_meta_usage;
-#[path = "unkfield_ac04_trigger_set_unknown_argument.rs"]
-mod unkfield_ac04_trigger_set_unknown_argument;
-#[path = "unkfield_ac05_tools_list_additional_properties_false.rs"]
-mod unkfield_ac05_tools_list_additional_properties_false;
-#[path = "unkfield_ac07_spec_fields_doc_check_script.rs"]
-mod unkfield_ac07_spec_fields_doc_check_script;
-#[path = "upfam_ac01_auth_family_401_403.rs"]
-mod upfam_ac01_auth_family_401_403;
-#[path = "upfam_ac02_rate_limited_retry_after.rs"]
-mod upfam_ac02_rate_limited_retry_after;
-#[path = "upfam_ac03_client_and_server_error_families.rs"]
-mod upfam_ac03_client_and_server_error_families;
-#[path = "upfam_ac04_remedy_table_total_and_single_source.rs"]
-mod upfam_ac04_remedy_table_total_and_single_source;
-#[path = "upfam_ac05_hints_name_real_tools.rs"]
-mod upfam_ac05_hints_name_real_tools;
-#[path = "upfam_ac06_host_not_allowed_names_tool_call.rs"]
-mod upfam_ac06_host_not_allowed_names_tool_call;
-#[path = "upfam_ac07_tool_test_matches_real_call.rs"]
-mod upfam_ac07_tool_test_matches_real_call;
-#[path = "upgrade_ac01_calls_per_day_next_checkout.rs"]
-mod upgrade_ac01_calls_per_day_next_checkout;
-#[path = "upgrade_ac02_billing_off_refusal_text.rs"]
-mod upgrade_ac02_billing_off_refusal_text;
-#[path = "upgrade_ac03_checkout_source_metadata.rs"]
-mod upgrade_ac03_checkout_source_metadata;
-#[path = "upgrade_ac04_webhook_stamps_paid_unix.rs"]
-mod upgrade_ac04_webhook_stamps_paid_unix;
-#[path = "upgrade_ac05_billing_status_receipt.rs"]
-mod upgrade_ac05_billing_status_receipt;
-#[path = "upgrade_ac06_admin_funnel_upgrades_by_trigger.rs"]
-mod upgrade_ac06_admin_funnel_upgrades_by_trigger;
-#[path = "upgrade_ac07_admin_upgrades_listing.rs"]
-mod upgrade_ac07_admin_upgrades_listing;
-#[path = "uprg_ac01_one_call_creates_probe_status_schedule.rs"]
-mod uprg_ac01_one_call_creates_probe_status_schedule;
-#[path = "uprg_ac02_status_tool_returns_readable_table.rs"]
-mod uprg_ac02_status_tool_returns_readable_table;
-#[path = "uprg_ac03_bad_urls_refused_nothing_created.rs"]
-mod uprg_ac03_bad_urls_refused_nothing_created;
-#[path = "uprg_ac04_free_interval_clamped_pro_keeps_60.rs"]
-mod uprg_ac04_free_interval_clamped_pro_keeps_60;
-#[path = "uprg_ac06_llms_txt_plan_numbers_generated.rs"]
-mod uprg_ac06_llms_txt_plan_numbers_generated;
-#[path = "uprg_ac07_slow_target_is_a_timeout_row.rs"]
-mod uprg_ac07_slow_target_is_a_timeout_row;
-#[path = "urltenant_ac01_path_secret_whoami_auth_method_url.rs"]
-mod urltenant_ac01_path_secret_whoami_auth_method_url;
-#[path = "urltenant_ac02_wrong_or_rotated_secret_404.rs"]
-mod urltenant_ac02_wrong_or_rotated_secret_404;
-#[path = "urltenant_ac03_key_rotate_rotates_key_and_url.rs"]
-mod urltenant_ac03_key_rotate_rotates_key_and_url;
-#[path = "urltenant_ac04_new_url_page_and_signup_limiter.rs"]
-mod urltenant_ac04_new_url_page_and_signup_limiter;
-#[path = "urltenant_ac05_browser_get_shows_explainer_page.rs"]
-mod urltenant_ac05_browser_get_shows_explainer_page;
-#[path = "urltenant_ac06_quickstart_url_bound_no_signup_step.rs"]
-mod urltenant_ac06_quickstart_url_bound_no_signup_step;
-#[path = "urltenant_ac07_header_conflict_is_auth_conflict.rs"]
-mod urltenant_ac07_header_conflict_is_auth_conflict;
-#[path = "vault_ac01_connect_link_redirects_to_auth_url.rs"]
-mod vault_ac01_connect_link_redirects_to_auth_url;
-#[path = "vault_ac02_callback_exchanges_code_and_stores_tokens.rs"]
-mod vault_ac02_callback_exchanges_code_and_stores_tokens;
-#[path = "vault_ac03_injects_bearer_overriding_tool_header.rs"]
-mod vault_ac03_injects_bearer_overriding_tool_header;
-#[path = "vault_ac04_call_log_never_contains_token.rs"]
-mod vault_ac04_call_log_never_contains_token;
-#[path = "vault_ac05_refresh_before_expiry_used_once.rs"]
-mod vault_ac05_refresh_before_expiry_used_once;
-#[path = "vault_ac06_unconnected_end_user_gets_connect_link.rs"]
-mod vault_ac06_unconnected_end_user_gets_connect_link;
-#[path = "vault_ac07_used_handoff_token_returns_410.rs"]
-mod vault_ac07_used_handoff_token_returns_410;
-#[path = "vault_ac08_disconnect_revokes_and_blocks_calls.rs"]
-mod vault_ac08_disconnect_revokes_and_blocks_calls;
-#[path = "vault_ac09_providers_hides_client_secret.rs"]
-mod vault_ac09_providers_hides_client_secret;
-#[path = "vault_ac10_refresh_401_revokes_no_retry_storm.rs"]
-mod vault_ac10_refresh_401_revokes_no_retry_storm;
-#[path = "vault_ac11_quota_vault_providers.rs"]
-mod vault_ac11_quota_vault_providers;
-#[path = "vaultst_ac01_status_lists_connected_and_unconnected_providers.rs"]
-mod vaultst_ac01_status_lists_connected_and_unconnected_providers;
-#[path = "vaultst_ac02_status_end_user_resolution_matches_connect_link.rs"]
-mod vaultst_ac02_status_end_user_resolution_matches_connect_link;
-#[path = "vaultst_ac03_status_shows_revoked_after_refresh_401.rs"]
-mod vaultst_ac03_status_shows_revoked_after_refresh_401;
-#[path = "vaultst_ac04_admin_vault_stats_per_tenant_per_provider.rs"]
-mod vaultst_ac04_admin_vault_stats_per_tenant_per_provider;
-#[path = "vaultst_ac05_admin_vault_stats_rejects_tenant_key.rs"]
-mod vaultst_ac05_admin_vault_stats_rejects_tenant_key;
-#[path = "vaultst_ac06_provider_remove_revokes_all_tokens.rs"]
-mod vaultst_ac06_provider_remove_revokes_all_tokens;
-#[path = "vaultst_ac07_provider_set_presets_fill_urls.rs"]
-mod vaultst_ac07_provider_set_presets_fill_urls;
-#[path = "vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green.rs"]
-mod vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green;
-#[path = "vaultst_ac09_live_vault_status_trailer.rs"]
-mod vaultst_ac09_live_vault_status_trailer;
-#[path = "verbfwd_ac01_trigger_set_dotted_forwards.rs"]
-mod verbfwd_ac01_trigger_set_dotted_forwards;
-#[path = "verbfwd_ac02_every_spelling_forwards_identically.rs"]
-mod verbfwd_ac02_every_spelling_forwards_identically;
-#[path = "verbfwd_ac03_tenant_tool_name_wins_over_verb.rs"]
-mod verbfwd_ac03_tenant_tool_name_wins_over_verb;
-#[path = "verbfwd_ac04_admin_verb_refused_never_forwarded.rs"]
-mod verbfwd_ac04_admin_verb_refused_never_forwarded;
-#[path = "verbfwd_ac05_tool_test_forwards_dry_run_or_unverifiable.rs"]
-mod verbfwd_ac05_tool_test_forwards_dry_run_or_unverifiable;
-#[path = "verbfwd_ac06_hint_parity_underscore_form_resolves.rs"]
-mod verbfwd_ac06_hint_parity_underscore_form_resolves;
-#[path = "verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota.rs"]
-mod verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota;
-#[path = "verbfwd_ac08_forward_stack_budget.rs"]
-mod verbfwd_ac08_forward_stack_budget;
-#[path = "vord_ac01_falsifier.rs"]
-mod vord_ac01_falsifier;
-#[path = "vord_ac02_contract_order_enum.rs"]
-mod vord_ac02_contract_order_enum;
-#[path = "vord_ac03_cursor_bound_to_order.rs"]
-mod vord_ac03_cursor_bound_to_order;
-#[path = "vord_ac04_order_by_from_enum.rs"]
-mod vord_ac04_order_by_from_enum;
-#[path = "vord_ac05_runs_list_filters_in_sql.rs"]
-mod vord_ac05_runs_list_filters_in_sql;
-#[path = "vord_ac06_concurrent_inserts_every_paged_verb.rs"]
-mod vord_ac06_concurrent_inserts_every_paged_verb;
-#[path = "vord_ac07_removed_order_variant_is_breaking.rs"]
-mod vord_ac07_removed_order_variant_is_breaking;
-#[path = "vordb_ac01_runs_verdict_filter_pages_in_sql.rs"]
-mod vordb_ac01_runs_verdict_filter_pages_in_sql;
-#[path = "vordb_ac02_every_paged_verb_walks_clean.rs"]
-mod vordb_ac02_every_paged_verb_walks_clean;
-#[path = "vordb_ac03_removed_order_variant_breaks_contract_check.rs"]
-mod vordb_ac03_removed_order_variant_breaks_contract_check;
-#[path = "wake_ac1_message_trigger_fires_run.rs"]
-mod wake_ac1_message_trigger_fires_run;
-#[path = "wake_ac2_from_filter.rs"]
-mod wake_ac2_from_filter;
-#[path = "wake_ac3_dedupe.rs"]
-mod wake_ac3_dedupe;
-#[path = "wake_ac4_jobs_concurrent_rejects.rs"]
-mod wake_ac4_jobs_concurrent_rejects;
-#[path = "wake_ac5_pause_resume.rs"]
-mod wake_ac5_pause_resume;
-#[path = "wake_ac6_msg_wait.rs"]
-mod wake_ac6_msg_wait;
-#[path = "wake_ac7_trigger_test_synthetic_envelope.rs"]
-mod wake_ac7_trigger_test_synthetic_envelope;
-#[path = "wake_ac8_replay.rs"]
-mod wake_ac8_replay;
-#[path = "wasmkind_ac01_echo_component_calls_and_meters.rs"]
-mod wasmkind_ac01_echo_component_calls_and_meters;
-#[path = "wasmkind_ac02_publish_validation_errors.rs"]
-mod wasmkind_ac02_publish_validation_errors;
-#[path = "wasmkind_ac03_timeout_and_oom_recover.rs"]
-mod wasmkind_ac03_timeout_and_oom_recover;
-#[path = "wasmkind_ac05_tool_test_dry_run.rs"]
-mod wasmkind_ac05_tool_test_dry_run;
-#[path = "wasmkind_ac06_trap_is_structured_and_logged.rs"]
-mod wasmkind_ac06_trap_is_structured_and_logged;
-#[path = "wasmkind_ac07_docs_llms_and_quickstart_document_wasm.rs"]
-mod wasmkind_ac07_docs_llms_and_quickstart_document_wasm;
-#[path = "wasmkind_ac08_cache_reuses_compiled_artifact.rs"]
-mod wasmkind_ac08_cache_reuses_compiled_artifact;
-#[path = "wasmkind_ac09_healthz_reports_wasm_runtime.rs"]
-mod wasmkind_ac09_healthz_reports_wasm_runtime;
-#[path = "wasmkind_ac10_declared_output_promotion_matches_python.rs"]
-mod wasmkind_ac10_declared_output_promotion_matches_python;
-#[path = "whin_ac04_keyless_call_after_redeem_is_refused_and_named.rs"]
-mod whin_ac04_keyless_call_after_redeem_is_refused_and_named;
-#[path = "whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule.rs"]
-mod whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule;
-#[path = "xaa_ac01_valid_assertion_no_consent.rs"]
-mod xaa_ac01_valid_assertion_no_consent;
-#[path = "xaa_ac03_invalid_grant_reasons_are_distinct_and_audited.rs"]
-mod xaa_ac03_invalid_grant_reasons_are_distinct_and_audited;
-#[path = "xaa_ac04_invalid_client_scope_target.rs"]
-mod xaa_ac04_invalid_client_scope_target;
-#[path = "xaa_ac05_metadata_grant_types_and_trusted_issuer.rs"]
-mod xaa_ac05_metadata_grant_types_and_trusted_issuer;
-#[path = "xaa_ac06_offline_access_gates_refresh_token.rs"]
-mod xaa_ac06_offline_access_gates_refresh_token;
-#[path = "xaa_ac07_revoke_and_unrevoke_end_user.rs"]
-mod xaa_ac07_revoke_and_unrevoke_end_user;
-#[path = "xaa_ac08_trusted_issuer_quota.rs"]
-mod xaa_ac08_trusted_issuer_quota;
-#[path = "xaa_ac09_hosted_and_key_paths_unchanged.rs"]
-mod xaa_ac09_hosted_and_key_paths_unchanged;
-#[path = "xlinks_ac01_fail_line_for_404_cursor_ignored.rs"]
-mod xlinks_ac01_fail_line_for_404_cursor_ignored;
-#[path = "xlinks_ac02_allowlist_skip_and_empty_set.rs"]
-mod xlinks_ac02_allowlist_skip_and_empty_set;
-#[path = "xlinks_ac03_head_405_falls_back_and_timeout_fails.rs"]
-mod xlinks_ac03_head_405_falls_back_and_timeout_fails;
-#[path = "xlinks_ac04_clients_toml_renders_into_both_files.rs"]
-mod xlinks_ac04_clients_toml_renders_into_both_files;
-#[path = "xlinks_ac05_check_names_the_edited_file.rs"]
-mod xlinks_ac05_check_names_the_edited_file;
-#[path = "xlinks_ac06_default_set_resolves_and_dead_urls_replaced.rs"]
-mod xlinks_ac06_default_set_resolves_and_dead_urls_replaced;
-#[path = "xlinks_ac07_ci_docs_job_fails_on_a_404_and_stays_fast.rs"]
-mod xlinks_ac07_ci_docs_job_fails_on_a_404_and_stays_fast;
-#[path = "xlinks_r07_report_json.rs"]
-mod xlinks_r07_report_json;
+#[path = "ac01_unauthenticated_lists_signup.rs"]
+mod ac01_unauthenticated_lists_signup;
+#[path = "ac02_signup_creates_hashed_tenant.rs"]
+mod ac02_signup_creates_hashed_tenant;
+#[path = "ac03_tenant_lists_control_plane_only.rs"]
+mod ac03_tenant_lists_control_plane_only;
+#[path = "ac04_publish_list_and_call.rs"]
+mod ac04_publish_list_and_call;
+#[path = "ac05_cross_tenant_isolation.rs"]
+mod ac05_cross_tenant_isolation;
+#[path = "ac06_remove_tool.rs"]
+mod ac06_remove_tool;
+#[path = "ac07_usage_metering.rs"]
+mod ac07_usage_metering;
+#[path = "ac08_admin_disable_and_forbidden.rs"]
+mod ac08_admin_disable_and_forbidden;
+#[path = "ac09_signup_rate_limit.rs"]
+mod ac09_signup_rate_limit;
+#[path = "ac10_publish_validation_errors.rs"]
+mod ac10_publish_validation_errors;
+#[path = "ac11_load_smoke.rs"]
+mod ac11_load_smoke;
+#[path = "ac12_preflight.rs"]
+mod ac12_preflight;
+#[path = "ac13_mcp_name_mismatch_metering.rs"]
+mod ac13_mcp_name_mismatch_metering;
+#[path = "ac15_call_timeout.rs"]
+mod ac15_call_timeout;
+#[path = "ac16_request_body_too_large.rs"]
+mod ac16_request_body_too_large;
+#[path = "ac18_tools_list_ttl.rs"]
+mod ac18_tools_list_ttl;
+#[path = "ac19_registry_publish.rs"]
+mod ac19_registry_publish;
+#[path = "agentdir_ac01_ac02_ac03_ac04_identity_and_lookup.rs"]
+mod agentdir_ac01_ac02_ac03_ac04_identity_and_lookup;
+#[path = "agentdir_ac05_ac06_search.rs"]
+mod agentdir_ac05_ac06_search;
+#[path = "agentdir_ac07_ac09_ac10_lifecycle.rs"]
+mod agentdir_ac07_ac09_ac10_lifecycle;
+#[path = "agentdir_ac08_lookup_latency.rs"]
+mod agentdir_ac08_lookup_latency;
+#[path = "alert_ac01_signup_paused_webhook_delivered.rs"]
+mod alert_ac01_signup_paused_webhook_delivered;
+#[path = "alert_ac02_cooldown_collapses_repeat_alert.rs"]
+mod alert_ac02_cooldown_collapses_repeat_alert;
+#[path = "alert_ac03_quota_trip_raises_once_per_tenant_knob.rs"]
+mod alert_ac03_quota_trip_raises_once_per_tenant_knob;
+#[path = "alert_ac04_errors_rate_over_five_min.rs"]
+mod alert_ac04_errors_rate_over_five_min;
+#[path = "alert_ac05_webhook_retries_then_failed.rs"]
+mod alert_ac05_webhook_retries_then_failed;
+#[path = "alert_ac06_tenant_inbox_delivery.rs"]
+mod alert_ac06_tenant_inbox_delivery;
+#[path = "alert_ac07_admin_alerts_list_and_ack.rs"]
+mod alert_ac07_admin_alerts_list_and_ack;
+#[path = "alert_ac08_store_only_when_no_sink_configured.rs"]
+mod alert_ac08_store_only_when_no_sink_configured;
+#[path = "alert_ac09_min_severity_filters_delivery.rs"]
+mod alert_ac09_min_severity_filters_delivery;
+#[path = "alert_ac10_healthz_reports_open_and_last_raised_at.rs"]
+mod alert_ac10_healthz_reports_open_and_last_raised_at;
+#[path = "alert_ac11_raise_body_size_limit.rs"]
+mod alert_ac11_raise_body_size_limit;
+#[path = "aliastruth_ac01_tools_list_has_every_name.rs"]
+mod aliastruth_ac01_tools_list_has_every_name;
+#[path = "aliastruth_ac03_unknown_tool_names_nearest.rs"]
+mod aliastruth_ac03_unknown_tool_names_nearest;
+#[path = "aliastruth_ac04_flattened_collision_refuses_start.rs"]
+mod aliastruth_ac04_flattened_collision_refuses_start;
+#[path = "aliastruth_ac06_contract_and_docs_list_the_same_names.rs"]
+mod aliastruth_ac06_contract_and_docs_list_the_same_names;
+#[path = "aliastruth_ac07_alias_entries_carry_alias_of.rs"]
+mod aliastruth_ac07_alias_entries_carry_alias_of;
+#[path = "althost_ac01_fallback_lines_on_claim_invite_quickstart.rs"]
+mod althost_ac01_fallback_lines_on_claim_invite_quickstart;
+#[path = "althost_ac02_alt_host_header_served_identically.rs"]
+mod althost_ac02_alt_host_header_served_identically;
+#[path = "althost_ac03_reach_endpoint_unauthenticated.rs"]
+mod althost_ac03_reach_endpoint_unauthenticated;
+#[path = "althost_ac04_hsts_header_on_https_public_url.rs"]
+mod althost_ac04_hsts_header_on_https_public_url;
+#[path = "althost_ac05_no_alt_no_fallback_lines.rs"]
+mod althost_ac05_no_alt_no_fallback_lines;
+#[path = "argmsg_ac01_message_names_field_and_no_coercion.rs"]
+mod argmsg_ac01_message_names_field_and_no_coercion;
+#[path = "argmsg_ac02_nested_path.rs"]
+mod argmsg_ac02_nested_path;
+#[path = "argmsg_ac03_non_type_failures.rs"]
+mod argmsg_ac03_non_type_failures;
+#[path = "argmsg_ac04_got_excerpt_cap.rs"]
+mod argmsg_ac04_got_excerpt_cap;
+#[path = "argmsg_ac05_message_data_drift.rs"]
+mod argmsg_ac05_message_data_drift;
+#[path = "argmsg_ac07_tool_test_equals_tools_call.rs"]
+mod argmsg_ac07_tool_test_equals_tools_call;
+#[path = "askd_ac02_keyless_answer_unblocks_wait_second_post_409.rs"]
+mod askd_ac02_keyless_answer_unblocks_wait_second_post_409;
+#[path = "askd_ac04_expired_ask_errors_and_page_is_404.rs"]
+mod askd_ac04_expired_ask_errors_and_page_is_404;
+#[path = "askd_ac05_keyless_wait_is_tenant_key_missing_and_signs_nobody_up.rs"]
+mod askd_ac05_keyless_wait_is_tenant_key_missing_and_signs_nobody_up;
+#[path = "askd_ac06_free_tenant_sixth_pending_ask_is_asks_limit.rs"]
+mod askd_ac06_free_tenant_sixth_pending_ask_is_asks_limit;
+#[path = "askd_ac07_concurrent_posts_record_exactly_one_answer.rs"]
+mod askd_ac07_concurrent_posts_record_exactly_one_answer;
+#[path = "askdb_ac01_keyless_wait_is_tenant_key_missing_and_signs_nobody_up.rs"]
+mod askdb_ac01_keyless_wait_is_tenant_key_missing_and_signs_nobody_up;
+#[path = "askdb_ac02_free_tenant_sixth_pending_ask_is_asks_limit.rs"]
+mod askdb_ac02_free_tenant_sixth_pending_ask_is_asks_limit;
+#[path = "askdb_ac03_concurrent_posts_record_exactly_one_answer.rs"]
+mod askdb_ac03_concurrent_posts_record_exactly_one_answer;
+#[path = "attrib_ac1_loopback_signup_unstamped.rs"]
+mod attrib_ac1_loopback_signup_unstamped;
+#[path = "attrib_ac2_clientinfo_captured.rs"]
+mod attrib_ac2_clientinfo_captured;
+#[path = "attrib_ac3_backfill_migration.rs"]
+mod attrib_ac3_backfill_migration;
+#[path = "attrib_ac4_external_signup_counts_real.rs"]
+mod attrib_ac4_external_signup_counts_real;
+#[path = "attrib_ac5_funnel_report.rs"]
+mod attrib_ac5_funnel_report;
+#[path = "attrib_ac6_whoami_source_class.rs"]
+mod attrib_ac6_whoami_source_class;
+#[path = "attribdefault_ac1_bare_signup_client_info_is_null.rs"]
+mod attribdefault_ac1_bare_signup_client_info_is_null;
+#[path = "attribdefault_ac2_real_clientinfo_still_captured.rs"]
+mod attribdefault_ac2_real_clientinfo_still_captured;
+#[path = "autherr_ac1_tenant_key_missing.rs"]
+mod autherr_ac1_tenant_key_missing;
+#[path = "autherr_ac2_tenant_key_invalid.rs"]
+mod autherr_ac2_tenant_key_invalid;
+#[path = "autherr_ac3_disabled_tenant_key_invalid.rs"]
+mod autherr_ac3_disabled_tenant_key_invalid;
+#[path = "autherr_ac4_bearer_invalid_unchanged.rs"]
+mod autherr_ac4_bearer_invalid_unchanged;
+#[path = "autherr_ac5_instructions_mention_codes.rs"]
+mod autherr_ac5_instructions_mention_codes;
+#[path = "banlist_ac01_addr_ban_blocks_signup.rs"]
+mod banlist_ac01_addr_ban_blocks_signup;
+#[path = "banlist_ac02_key_ban_blocks_authenticated_calls.rs"]
+mod banlist_ac02_key_ban_blocks_authenticated_calls;
+#[path = "banlist_ac03_public_flag_controls_reason_visibility.rs"]
+mod banlist_ac03_public_flag_controls_reason_visibility;
+#[path = "banlist_ac04_auto_ban_on_network_denials.rs"]
+mod banlist_ac04_auto_ban_on_network_denials;
+#[path = "banlist_ac05_auto_ban_on_claim_rate_events.rs"]
+mod banlist_ac05_auto_ban_on_claim_rate_events;
+#[path = "banlist_ac06_expiry_lifts_ban_without_restart.rs"]
+mod banlist_ac06_expiry_lifts_ban_without_restart;
+#[path = "banlist_ac07_ban_remove_audited_with_operator_identity.rs"]
+mod banlist_ac07_ban_remove_audited_with_operator_identity;
+#[path = "banlist_ac08_list_active_only_excludes_expired.rs"]
+mod banlist_ac08_list_active_only_excludes_expired;
+#[path = "banlist_ac09_permanent_requires_literal_true.rs"]
+mod banlist_ac09_permanent_requires_literal_true;
+#[path = "banlist_ac10_cache_lookup_latency_at_scale.rs"]
+mod banlist_ac10_cache_lookup_latency_at_scale;
+#[path = "banlist_ac11_healthz_bans_block.rs"]
+mod banlist_ac11_healthz_bans_block;
+#[path = "banlist_ac12_live_ban_unban_trailer.rs"]
+mod banlist_ac12_live_ban_unban_trailer;
+#[path = "billing_ac01_plans_toml_and_billing_plans.rs"]
+mod billing_ac01_plans_toml_and_billing_plans;
+#[path = "billing_ac02_publish_quota_exceeded.rs"]
+mod billing_ac02_publish_quota_exceeded;
+#[path = "billing_ac03_call_time_quota_exceeded.rs"]
+mod billing_ac03_call_time_quota_exceeded;
+#[path = "billing_ac04_checkout_unavailable_no_keys.rs"]
+mod billing_ac04_checkout_unavailable_no_keys;
+#[path = "billing_ac05_checkout_returns_session.rs"]
+mod billing_ac05_checkout_returns_session;
+#[path = "billing_ac06_webhook_checkout_completed_idempotent.rs"]
+mod billing_ac06_webhook_checkout_completed_idempotent;
+#[path = "billing_ac07_webhook_bad_signature_or_stale.rs"]
+mod billing_ac07_webhook_bad_signature_or_stale;
+#[path = "billing_ac08_webhook_subscription_deleted_downgrades.rs"]
+mod billing_ac08_webhook_subscription_deleted_downgrades;
+#[path = "billing_ac09_admin_billing_ledger_filters.rs"]
+mod billing_ac09_admin_billing_ledger_filters;
+#[path = "billing_ac10_webhook_mode_mismatch.rs"]
+mod billing_ac10_webhook_mode_mismatch;
+#[path = "billing_ac11_healthz_paying_tenants.rs"]
+mod billing_ac11_healthz_paying_tenants;
+#[path = "billing_ac13_checkout_reuse.rs"]
+mod billing_ac13_checkout_reuse;
+#[path = "blobgc_ac02_ttl_expiry_blob_expired_and_410.rs"]
+mod blobgc_ac02_ttl_expiry_blob_expired_and_410;
+#[path = "blobgc_ac03_keep_latest_versions_gc_dry_run.rs"]
+mod blobgc_ac03_keep_latest_versions_gc_dry_run;
+#[path = "blobgc_ac04_nightly_prune_rows_files_orphans.rs"]
+mod blobgc_ac04_nightly_prune_rows_files_orphans;
+#[path = "blobgc_ac05_data_quota_on_put_and_refusal.rs"]
+mod blobgc_ac05_data_quota_on_put_and_refusal;
+#[path = "blobgc_ac06_disk_floor_refuses_put.rs"]
+mod blobgc_ac06_disk_floor_refuses_put;
+#[path = "blobgc_ac07_expiring_notice_once.rs"]
+mod blobgc_ac07_expiring_notice_once;
+#[path = "blobguard_ac01_benign_corpus_not_refused.rs"]
+mod blobguard_ac01_benign_corpus_not_refused;
+#[path = "blobguard_ac02_type_and_magic_refused_415.rs"]
+mod blobguard_ac02_type_and_magic_refused_415;
+#[path = "blobguard_ac03_archive_refusals_422.rs"]
+mod blobguard_ac03_archive_refusals_422;
+#[path = "blobguard_ac04_clamd_found_and_unavailable.rs"]
+mod blobguard_ac04_clamd_found_and_unavailable;
+#[path = "blobguard_ac05_allowlist_mode_png_fast.rs"]
+mod blobguard_ac05_allowlist_mode_png_fast;
+#[path = "blobguard_ac06_one_table_one_set.rs"]
+mod blobguard_ac06_one_table_one_set;
+#[path = "blobguard_ac07_active_content_svg.rs"]
+mod blobguard_ac07_active_content_svg;
+#[path = "blobput_ac01_corpus_has_binary_fixture_task.rs"]
+mod blobput_ac01_corpus_has_binary_fixture_task;
+#[path = "blobput_ac02_pdf_put_sniffs_mime_and_serves_bytes.rs"]
+mod blobput_ac02_pdf_put_sniffs_mime_and_serves_bytes;
+#[path = "blobput_ac03_signed_routes_share_403_and_410.rs"]
+mod blobput_ac03_signed_routes_share_403_and_410;
+#[path = "blobput_ac04_quota_refusals_and_plan_ceilings.rs"]
+mod blobput_ac04_quota_refusals_and_plan_ceilings;
+#[path = "blobput_ac05_url_fetch_refusals_write_nothing.rs"]
+mod blobput_ac05_url_fetch_refusals_write_nothing;
+#[path = "blobput_ac07_tenant_isolation.rs"]
+mod blobput_ac07_tenant_isolation;
+#[path = "blobputb_ac01_url_fetch_refusals_write_nothing.rs"]
+mod blobputb_ac01_url_fetch_refusals_write_nothing;
+#[path = "blobputb_ac03_tenant_isolation.rs"]
+mod blobputb_ac03_tenant_isolation;
+#[path = "bridgedisc_ac07_sandbox_api_doc_check.rs"]
+mod bridgedisc_ac07_sandbox_api_doc_check;
+#[path = "budget_ac01_ported_ledger_seven_tests.rs"]
+mod budget_ac01_ported_ledger_seven_tests;
+#[path = "budget_ac02_chain_child_calls_halts_at_ten.rs"]
+mod budget_ac02_chain_child_calls_halts_at_ten;
+#[path = "budget_ac03_free_plan_override_ceiling_validation.rs"]
+mod budget_ac03_free_plan_override_ceiling_validation;
+#[path = "budget_ac04_est_tokens_halts_before_fourth_child.rs"]
+mod budget_ac04_est_tokens_halts_before_fourth_child;
+#[path = "budget_ac05_progress_fraction_and_alert_verdict_while_running.rs"]
+mod budget_ac05_progress_fraction_and_alert_verdict_while_running;
+#[path = "budget_ac06_plain_async_call_defaults_and_ok_verdict.rs"]
+mod budget_ac06_plain_async_call_defaults_and_ok_verdict;
+#[path = "budget_ac07_check_overhead_p95_under_1ms.rs"]
+mod budget_ac07_check_overhead_p95_under_1ms;
+#[path = "budget_ac08_alert_event_written_once.rs"]
+mod budget_ac08_alert_event_written_once;
+#[path = "budget_ac09_runs_list_verdict_exceeded_filter.rs"]
+mod budget_ac09_runs_list_verdict_exceeded_filter;
+#[path = "busyaudit_ac01_startup_pragma_audit_default_config.rs"]
+mod busyaudit_ac01_startup_pragma_audit_default_config;
+#[path = "busyaudit_ac02_env_override_busy_timeout.rs"]
+mod busyaudit_ac02_env_override_busy_timeout;
+#[path = "busyaudit_ac03_bypass_connection_named_file_and_line.rs"]
+mod busyaudit_ac03_bypass_connection_named_file_and_line;
+#[path = "busyaudit_ac04_wait_over_100ms_counted_no_error.rs"]
+mod busyaudit_ac04_wait_over_100ms_counted_no_error;
+#[path = "busyaudit_ac05_busy_total_increments_exactly_one.rs"]
+mod busyaudit_ac05_busy_total_increments_exactly_one;
+#[path = "busyaudit_ac06_64_tenants_50_cycles_no_contention.rs"]
+mod busyaudit_ac06_64_tenants_50_cycles_no_contention;
+#[path = "busyaudit_ac07_admin_db_stats.rs"]
+mod busyaudit_ac07_admin_db_stats;
+#[path = "busyaudit_ac09_contention_alert.rs"]
+mod busyaudit_ac09_contention_alert;
+#[path = "busyaudit_ac10_wal_checkpoint_cron.rs"]
+mod busyaudit_ac10_wal_checkpoint_cron;
+#[path = "cae_ac02_cursor_pages_every_row_once.rs"]
+mod cae_ac02_cursor_pages_every_row_once;
+#[path = "cae_ac03_export_is_es256_signed_over_the_csv_bytes.rs"]
+mod cae_ac03_export_is_es256_signed_over_the_csv_bytes;
+#[path = "cae_ac04_free_plan_prunes_to_seven_days.rs"]
+mod cae_ac04_free_plan_prunes_to_seven_days;
+#[path = "cae_ac05_export_row_cap_and_subkey_scope.rs"]
+mod cae_ac05_export_row_cap_and_subkey_scope;
+#[path = "cae_ac06_admin_export_matches_the_tenants_own.rs"]
+mod cae_ac06_admin_export_matches_the_tenants_own;
+#[path = "cae_ac07_empty_window_exports_the_header_only.rs"]
+mod cae_ac07_empty_window_exports_the_header_only;
+#[path = "callerusage_ac01_caller_breakdown.rs"]
+mod callerusage_ac01_caller_breakdown;
+#[path = "callerusage_ac02_end_user_breakdown.rs"]
+mod callerusage_ac02_end_user_breakdown;
+#[path = "callerusage_ac03_caller_limit_enforced.rs"]
+mod callerusage_ac03_caller_limit_enforced;
+#[path = "callerusage_ac04_caller_requires_shared_tool.rs"]
+mod callerusage_ac04_caller_requires_shared_tool;
+#[path = "callerusage_ac05_end_user_pagination.rs"]
+mod callerusage_ac05_end_user_pagination;
+#[path = "callerusage_ac06_no_by_shape_unchanged.rs"]
+mod callerusage_ac06_no_by_shape_unchanged;
+#[path = "callerusage_ac07_rollup_speed_at_scale.rs"]
+mod callerusage_ac07_rollup_speed_at_scale;
+#[path = "callerusage_ac08_end_user_key_includes_caller.rs"]
+mod callerusage_ac08_end_user_key_includes_caller;
+#[path = "callerusage_ac09_admin_usage_top_audited.rs"]
+mod callerusage_ac09_admin_usage_top_audited;
+#[path = "ccli_ac01_tree_builds_from_contract.rs"]
+mod ccli_ac01_tree_builds_from_contract;
+#[path = "ccli_ac02_bad_enum_refused_before_network.rs"]
+mod ccli_ac02_bad_enum_refused_before_network;
+#[path = "ccli_ac03_publish_round_trip_key_stays_secret.rs"]
+mod ccli_ac03_publish_round_trip_key_stays_secret;
+#[path = "ccli_ac04_error_classes_map_to_exit_codes.rs"]
+mod ccli_ac04_error_classes_map_to_exit_codes;
+#[path = "ccli_ac05_contract_skew_warning.rs"]
+mod ccli_ac05_contract_skew_warning;
+#[path = "ccli_ac06_cli_tree_equals_contract.rs"]
+mod ccli_ac06_cli_tree_equals_contract;
+#[path = "ccli_ac07_completions_rendered_from_the_table.rs"]
+mod ccli_ac07_completions_rendered_from_the_table;
+#[path = "cclib_ac01_contract_skew_warning.rs"]
+mod cclib_ac01_contract_skew_warning;
+#[path = "cclib_ac02_cli_tree_equals_contract.rs"]
+mod cclib_ac02_cli_tree_equals_contract;
+#[path = "cclib_ac03_completions_rendered_from_the_table.rs"]
+mod cclib_ac03_completions_rendered_from_the_table;
+#[path = "cdft_ac01_description_universal.rs"]
+mod cdft_ac01_description_universal;
+#[path = "cdft_ac02_help_get_top_and_bare_path.rs"]
+mod cdft_ac02_help_get_top_and_bare_path;
+#[path = "cdft_ac03_numeral_coercion.rs"]
+mod cdft_ac03_numeral_coercion;
+#[path = "cdft_ac04_trigger_test_self_signs_every_scheme.rs"]
+mod cdft_ac04_trigger_test_self_signs_every_scheme;
+#[path = "cdump_ac01_unparsable_committed_contract_refused.rs"]
+mod cdump_ac01_unparsable_committed_contract_refused;
+#[path = "cest_ac01_dry_run_verdict_matches_real_call.rs"]
+mod cest_ac01_dry_run_verdict_matches_real_call;
+#[path = "cest_ac02_handler_runs_only_preflight_rows.rs"]
+mod cest_ac02_handler_runs_only_preflight_rows;
+#[path = "cest_ac03_dry_run_remaining_calls_per_day.rs"]
+mod cest_ac03_dry_run_remaining_calls_per_day;
+#[path = "cest_ac04_fifty_concurrent_dry_runs_hold_no_slot.rs"]
+mod cest_ac04_fifty_concurrent_dry_runs_hold_no_slot;
+#[path = "cest_ac05_dry_run_counts_as_estimate_not_call.rs"]
+mod cest_ac05_dry_run_counts_as_estimate_not_call;
+#[path = "cest_ac06_anonymous_estimate_is_the_real_auth_error.rs"]
+mod cest_ac06_anonymous_estimate_is_the_real_auth_error;
+#[path = "cest_ac07_estimate_listed_and_in_quickstart.rs"]
+mod cest_ac07_estimate_listed_and_in_quickstart;
+#[path = "cestb_ac01_dry_run_counts_as_estimate_not_call.rs"]
+mod cestb_ac01_dry_run_counts_as_estimate_not_call;
+#[path = "cestb_ac02_anonymous_estimate_is_the_real_auth_error.rs"]
+mod cestb_ac02_anonymous_estimate_is_the_real_auth_error;
+#[path = "cestb_ac03_estimate_listed_and_in_quickstart.rs"]
+mod cestb_ac03_estimate_listed_and_in_quickstart;
+#[path = "cfan_ac01_for_each_joins_items_in_input_order.rs"]
+mod cfan_ac01_for_each_joins_items_in_input_order;
+#[path = "cfan_ac02_item_failure_continue_or_stop.rs"]
+mod cfan_ac02_item_failure_continue_or_stop;
+#[path = "cfan_ac03_concurrency_capped_at_plan.rs"]
+mod cfan_ac03_concurrency_capped_at_plan;
+#[path = "cfan_ac04_over_ceiling_refused_before_any_item.rs"]
+mod cfan_ac04_over_ceiling_refused_before_any_item;
+#[path = "cfan_ac05_publish_checks_for_each_and_item_scope.rs"]
+mod cfan_ac05_publish_checks_for_each_and_item_scope;
+#[path = "cfan_ac06_ceiling_rendered_and_quickstart_example.rs"]
+mod cfan_ac06_ceiling_rendered_and_quickstart_example;
+#[path = "cfan_ac07_empty_array_runs_the_next_step.rs"]
+mod cfan_ac07_empty_array_runs_the_next_step;
+#[path = "cfanc_ac01_children_carry_role_step_no_item_index.rs"]
+mod cfanc_ac01_children_carry_role_step_no_item_index;
+#[path = "cfanc_ac02_role_enum_equals_emitted_roles.rs"]
+mod cfanc_ac02_role_enum_equals_emitted_roles;
+#[path = "cfanc_ac03_fixtures_keyed_by_step_and_item.rs"]
+mod cfanc_ac03_fixtures_keyed_by_step_and_item;
+#[path = "cfix_ac01_fixture_replaces_unreachable_step.rs"]
+mod cfix_ac01_fixture_replaces_unreachable_step;
+#[path = "cfix_ac02_fully_fixtured_dry_run_makes_no_upstream_call.rs"]
+mod cfix_ac02_fully_fixtured_dry_run_makes_no_upstream_call;
+#[path = "cfix_ac03_fixture_shape_mismatch_is_refused.rs"]
+mod cfix_ac03_fixture_shape_mismatch_is_refused;
+#[path = "cfix_ac04_run_exports_as_fixtures.rs"]
+mod cfix_ac04_run_exports_as_fixtures;
+#[path = "cfix_ac06_unrunnable_unfixtured_step_is_skipped_and_named.rs"]
+mod cfix_ac06_unrunnable_unfixtured_step_is_skipped_and_named;
+#[path = "cfix_ac07_quickstart_names_fixtures.rs"]
+mod cfix_ac07_quickstart_names_fixtures;
+#[path = "cgd_ac01_gate_labels_roots_list.rs"]
+mod cgd_ac01_gate_labels_roots_list;
+#[path = "cgd_ac02_every_method_refused_on_the_wire.rs"]
+mod cgd_ac02_every_method_refused_on_the_wire;
+#[path = "cgd_ac03_one_refusal_site.rs"]
+mod cgd_ac03_one_refusal_site;
+#[path = "cgd_ac04_dispatch_table_matches_registry.rs"]
+mod cgd_ac04_dispatch_table_matches_registry;
+#[path = "cgd_ac05_capabilities_json_marks_server_to_client.rs"]
+mod cgd_ac05_capabilities_json_marks_server_to_client;
+#[path = "cgd_ac06_wire_check_script_green_in_process.rs"]
+mod cgd_ac06_wire_check_script_green_in_process;
+#[path = "cgd_ac07_capabilities_tables_carry_server_to_client.rs"]
+mod cgd_ac07_capabilities_tables_carry_server_to_client;
+#[path = "chainhost_ac01_host_table_append_step.rs"]
+mod chainhost_ac01_host_table_append_step;
+#[path = "chainhost_ac02_step_tool_not_found.rs"]
+mod chainhost_ac02_step_tool_not_found;
+#[path = "chainhost_ac03_step_tool_not_allowed.rs"]
+mod chainhost_ac03_step_tool_not_allowed;
+#[path = "chainhost_ac04_dry_run_report_resolved_host.rs"]
+mod chainhost_ac04_dry_run_report_resolved_host;
+#[path = "chainhost_ac06_usage_by_tool_step_tool.rs"]
+mod chainhost_ac06_usage_by_tool_step_tool;
+#[path = "chainhost_ac07_table_rows_max_at_step.rs"]
+mod chainhost_ac07_table_rows_max_at_step;
+#[path = "chainprev_ac01_context_key_parity.rs"]
+mod chainprev_ac01_context_key_parity;
+#[path = "chainprev_ac02_missing_hop_will_fail.rs"]
+mod chainprev_ac02_missing_hop_will_fail;
+#[path = "chainprev_ac03_actual_result_resolution.rs"]
+mod chainprev_ac03_actual_result_resolution;
+#[path = "chainprev_ac04_unverifiable_only_when_predecessor_cannot_run.rs"]
+mod chainprev_ac04_unverifiable_only_when_predecessor_cannot_run;
+#[path = "chainprev_ac05_no_pass_with_unresolved_path.rs"]
+mod chainprev_ac05_no_pass_with_unresolved_path;
+#[path = "chainprev_ac06_live_error_carries_available.rs"]
+mod chainprev_ac06_live_error_carries_available;
+#[path = "chainprev_ac07_prev_fields_and_grammar_sentence.rs"]
+mod chainprev_ac07_prev_fields_and_grammar_sentence;
+#[path = "chanbridge_ac06_python_kind_doc_documents_channel_and_msg.rs"]
+mod chanbridge_ac06_python_kind_doc_documents_channel_and_msg;
+#[path = "channel_ac01_group_open_and_broadcast_read.rs"]
+mod channel_ac01_group_open_and_broadcast_read;
+#[path = "channel_ac02_non_member_channel_not_found.rs"]
+mod channel_ac02_non_member_channel_not_found;
+#[path = "channel_ac03_ack_resumes_from_stored_cursor.rs"]
+mod channel_ac03_ack_resumes_from_stored_cursor;
+#[path = "channel_ac04_concurrent_posts_no_dups_no_gaps.rs"]
+mod channel_ac04_concurrent_posts_no_dups_no_gaps;
+#[path = "channel_ac05_removed_member_loses_access_posts_remain.rs"]
+mod channel_ac05_removed_member_loses_access_posts_remain;
+#[path = "channel_ac06_message_trigger_fires_per_member_not_poster.rs"]
+mod channel_ac06_message_trigger_fires_per_member_not_poster;
+#[path = "channel_ac07_post_quota_120_per_hour.rs"]
+mod channel_ac07_post_quota_120_per_hour;
+#[path = "channel_ac08_retention_tick_purges_old_posts.rs"]
+mod channel_ac08_retention_tick_purges_old_posts;
+#[path = "channel_ac09_close_blocks_posts_not_reads.rs"]
+mod channel_ac09_close_blocks_posts_not_reads;
+#[path = "channel_ac10_freeze_blocks_posts_unfreeze_restores.rs"]
+mod channel_ac10_freeze_blocks_posts_unfreeze_restores;
+#[path = "chanread_ac01_named_channel_post_then_read_by_id.rs"]
+mod chanread_ac01_named_channel_post_then_read_by_id;
+#[path = "chanread_ac02_named_channel_read_by_name.rs"]
+mod chanread_ac02_named_channel_read_by_name;
+#[path = "chanread_ac03_group_channel_no_regression.rs"]
+mod chanread_ac03_group_channel_no_regression;
+#[path = "chanread_ac04_nonexistent_key_names_both_lookups.rs"]
+mod chanread_ac04_nonexistent_key_names_both_lookups;
+#[path = "chanread_ac05_named_channel_freeze_and_close_parity.rs"]
+mod chanread_ac05_named_channel_freeze_and_close_parity;
+#[path = "chanread_ac06_tools_list_names_both_kinds.rs"]
+mod chanread_ac06_tools_list_names_both_kinds;
+#[path = "chart_ac01_vendor_crates_documented_and_wired.rs"]
+mod chart_ac01_vendor_crates_documented_and_wired;
+#[path = "chart_ac02_category_sum_profiles_bar.rs"]
+mod chart_ac02_category_sum_profiles_bar;
+#[path = "chart_ac03_caption_recomputes_facts_from_rows.rs"]
+mod chart_ac03_caption_recomputes_facts_from_rows;
+#[path = "chart_ac04_temporal_day_column_picks_line_or_bar.rs"]
+mod chart_ac04_temporal_day_column_picks_line_or_bar;
+#[path = "chart_ac05_empty_result_is_table_with_no_takeaway.rs"]
+mod chart_ac05_empty_result_is_table_with_no_takeaway;
+#[path = "chart_ac06_count_star_is_bignumber.rs"]
+mod chart_ac06_count_star_is_bignumber;
+#[path = "chart_ac07_disallowed_mark_override_is_rejected.rs"]
+mod chart_ac07_disallowed_mark_override_is_rejected;
+#[path = "chart_ac08_share_link_opens_unauthenticated.rs"]
+mod chart_ac08_share_link_opens_unauthenticated;
+#[path = "chart_ac09_expired_or_altered_signature_refused.rs"]
+mod chart_ac09_expired_or_altered_signature_refused;
+#[path = "chart_ac10_101st_share_evicts_oldest.rs"]
+mod chart_ac10_101st_share_evicts_oldest;
+#[path = "chart_ac13_llms_txt_section_under_50_lines.rs"]
+mod chart_ac13_llms_txt_section_under_50_lines;
+#[path = "chart_ac14_ten_concurrent_calls_p95_under_250ms.rs"]
+mod chart_ac14_ten_concurrent_calls_p95_under_250ms;
+#[path = "checkcompat_ac02_ac03.rs"]
+mod checkcompat_ac02_ac03;
+#[path = "checkcompat_race_ac01_previous_up_within_1s.rs"]
+mod checkcompat_race_ac01_previous_up_within_1s;
+#[path = "checkcompat_race_ac04_no_token_header_when_unset.rs"]
+mod checkcompat_race_ac04_no_token_header_when_unset;
+#[path = "checkcompat_race_ac05_stress_no_port_collisions.rs"]
+mod checkcompat_race_ac05_stress_no_port_collisions;
+#[path = "checkcompat_race_ac06_explicit_bind_still_enforces_token.rs"]
+mod checkcompat_race_ac06_explicit_bind_still_enforces_token;
+#[path = "checkcompat_race_ac07_suite_green_and_clippy_clean.rs"]
+mod checkcompat_race_ac07_suite_green_and_clippy_clean;
+#[path = "chg_ac02_contract_since_drift.rs"]
+mod chg_ac02_contract_since_drift;
+#[path = "chg_ac03_changelog_renamed_lists_every_alias.rs"]
+mod chg_ac03_changelog_renamed_lists_every_alias;
+#[path = "chg_ac04_changelog_defaults_to_last_seen_version.rs"]
+mod chg_ac04_changelog_defaults_to_last_seen_version;
+#[path = "chgb_ac01_fresh_tenant_last_five_releases.rs"]
+mod chgb_ac01_fresh_tenant_last_five_releases;
+#[path = "chgb_ac02_out_of_order_heading_not_monotonic.rs"]
+mod chgb_ac02_out_of_order_heading_not_monotonic;
+#[path = "chgb_ac03_since_banana_args_invalid.rs"]
+mod chgb_ac03_since_banana_args_invalid;
+#[path = "ci_sandbox_ac01_workflow_executes_sandbox_suites.rs"]
+mod ci_sandbox_ac01_workflow_executes_sandbox_suites;
+#[path = "ci_sandbox_ac03_incapable_in_ci_skips_and_fails_job.rs"]
+mod ci_sandbox_ac03_incapable_in_ci_skips_and_fails_job;
+#[path = "ci_sandbox_ac04_incapable_outside_ci_fails_loudly.rs"]
+mod ci_sandbox_ac04_incapable_outside_ci_fails_loudly;
+#[path = "cishard_ac03_core_required_checks_toml_unchanged.rs"]
+mod cishard_ac03_core_required_checks_toml_unchanged;
+#[path = "cishard_ac03_run_wall_budget_and_readout.rs"]
+mod cishard_ac03_run_wall_budget_and_readout;
+#[path = "cishard_ac04_core_shard_report_names_failed_test.rs"]
+mod cishard_ac04_core_shard_report_names_failed_test;
+#[path = "classify_ac9_is_within_proptest.rs"]
+mod classify_ac9_is_within_proptest;
+#[path = "clink_ac01_for_url_pinned_fixtures.rs"]
+mod clink_ac01_for_url_pinned_fixtures;
+#[path = "clink_ac02_connect_page_unauthenticated.rs"]
+mod clink_ac02_connect_page_unauthenticated;
+#[path = "clink_ac03_quickstart_personal_install_links.rs"]
+mod clink_ac03_quickstart_personal_install_links;
+#[path = "clink_ac04_readme_install_links_drift.rs"]
+mod clink_ac04_readme_install_links_drift;
+#[path = "clink_ac05_connect_go_records_click_and_redirects.rs"]
+mod clink_ac05_connect_go_records_click_and_redirects;
+#[path = "clink_ac06_digest_install_link_clicks_humans_only.rs"]
+mod clink_ac06_digest_install_link_clicks_humans_only;
+#[path = "clive_ac01_complete_fixture_keyless_envelope.rs"]
+mod clive_ac01_complete_fixture_keyless_envelope;
+#[path = "clive_ac03_empty_params_gets_bare_minus_32601.rs"]
+mod clive_ac03_empty_params_gets_bare_minus_32601;
+#[path = "cnfm_ac02_confirm_required_over_threshold.rs"]
+mod cnfm_ac02_confirm_required_over_threshold;
+#[path = "cnfm_ac03_token_deletes_once.rs"]
+mod cnfm_ac03_token_deletes_once;
+#[path = "cnfm_ac04_token_bound_to_args_state_and_time.rs"]
+mod cnfm_ac04_token_bound_to_args_state_and_time;
+#[path = "cnfm_ac05_tools_list_marks_destructive_verbs.rs"]
+mod cnfm_ac05_tools_list_marks_destructive_verbs;
+#[path = "cnfm_ac06_scratch_tenant_is_never_gated.rs"]
+mod cnfm_ac06_scratch_tenant_is_never_gated;
+#[path = "cnfm_ac07_plan_override_disables_the_gate.rs"]
+mod cnfm_ac07_plan_override_disables_the_gate;
+#[path = "compat_ac01_ac02_ac03_cache_fields.rs"]
+mod compat_ac01_ac02_ac03_cache_fields;
+#[path = "compat_ac08_ac09_ac10_advertised_version.rs"]
+mod compat_ac08_ac09_ac10_advertised_version;
+#[path = "compat_ac11_ac12_claude_sdk_replay.rs"]
+mod compat_ac11_ac12_claude_sdk_replay;
+#[path = "compatchown_ac01_scratch_owned_by_run_as.rs"]
+mod compatchown_ac01_scratch_owned_by_run_as;
+#[path = "compatfix_ac1_previous_release_stderr_surfaced.rs"]
+mod compatfix_ac1_previous_release_stderr_surfaced;
+#[path = "compose_ac3_self_call_refused.rs"]
+mod compose_ac3_self_call_refused;
+#[path = "compose_ac4_depth_exceeded.rs"]
+mod compose_ac4_depth_exceeded;
+#[path = "compose_ac5_three_step_chain_prev_mapping.rs"]
+mod compose_ac5_three_step_chain_prev_mapping;
+#[path = "compose_ac6_mapping_missing.rs"]
+mod compose_ac6_mapping_missing;
+#[path = "compose_ac7_on_error_continue.rs"]
+mod compose_ac7_on_error_continue;
+#[path = "compose_ac8_tool_test_dry_run.rs"]
+mod compose_ac8_tool_test_dry_run;
+#[path = "consent_ac01_ac02_ac03_ac04_contact_lifecycle.rs"]
+mod consent_ac01_ac02_ac03_ac04_contact_lifecycle;
+#[path = "consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox.rs"]
+mod consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox;
+#[path = "cpath_ac01_unresolved_path_refused_at_publish.rs"]
+mod cpath_ac01_unresolved_path_refused_at_publish;
+#[path = "cpath_ac02_observed_union_across_runs.rs"]
+mod cpath_ac02_observed_union_across_runs;
+#[path = "cpath_ac03_no_history_is_unverifiable_and_publishes.rs"]
+mod cpath_ac03_no_history_is_unverifiable_and_publishes;
+#[path = "cpath_ac04_declared_wins_and_drift_is_reported.rs"]
+mod cpath_ac04_declared_wins_and_drift_is_reported;
+#[path = "cpath_ac05_steps_index_checked_and_forward_reference.rs"]
+mod cpath_ac05_steps_index_checked_and_forward_reference;
+#[path = "cpath_ac06_force_publishes_and_records_it.rs"]
+mod cpath_ac06_force_publishes_and_records_it;
+#[path = "cpath_ac07_context_keys_table_parity.rs"]
+mod cpath_ac07_context_keys_table_parity;
+#[path = "cpathb_ac01_steps_index_checked_and_forward_reference.rs"]
+mod cpathb_ac01_steps_index_checked_and_forward_reference;
+#[path = "cpathb_ac02_force_publishes_and_records_it.rs"]
+mod cpathb_ac02_force_publishes_and_records_it;
+#[path = "cpathb_ac03_context_keys_table_parity.rs"]
+mod cpathb_ac03_context_keys_table_parity;
+#[path = "cproc_ac01_raw_serve_spawn_and_pipe_read_fail.rs"]
+mod cproc_ac01_raw_serve_spawn_and_pipe_read_fail;
+#[path = "cproc_ac02_guard_struct_fails_waited_child_passes.rs"]
+mod cproc_ac02_guard_struct_fails_waited_child_passes;
+#[path = "cproc_ac03_allow_set_derived_from_serve_rs.rs"]
+mod cproc_ac03_allow_set_derived_from_serve_rs;
+#[path = "cproc_ac06_real_tree_has_no_raw_spawns_or_guards.rs"]
+mod cproc_ac06_real_tree_has_no_raw_spawns_or_guards;
+#[path = "cproc_ac07_flake_lint_job_runs_child_proc_lint.rs"]
+mod cproc_ac07_flake_lint_job_runs_child_proc_lint;
+#[path = "cprocb_ac02_real_tree_clean_and_six_files_use_helper.rs"]
+mod cprocb_ac02_real_tree_clean_and_six_files_use_helper;
+#[path = "cprocb_ac03_flake_lint_job_fails_on_raw_spawn_before_toolchain.rs"]
+mod cprocb_ac03_flake_lint_job_fails_on_raw_spawn_before_toolchain;
+#[path = "creg_ac01_premise_two_truths_then_minus_32601.rs"]
+mod creg_ac01_premise_two_truths_then_minus_32601;
+#[path = "creg_ac03_every_method_matches_its_row.rs"]
+mod creg_ac03_every_method_matches_its_row;
+#[path = "creg_ac04_capabilities_json_keyless.rs"]
+mod creg_ac04_capabilities_json_keyless;
+#[path = "creg_ac05_capabilities_docs_in_sync.rs"]
+mod creg_ac05_capabilities_docs_in_sync;
+#[path = "creg_ac06_quickstart_names_capabilities.rs"]
+mod creg_ac06_quickstart_names_capabilities;
+#[path = "creg_ac07_probe_names_unique.rs"]
+mod creg_ac07_probe_names_unique;
+#[path = "ctot_ac02_page_total_exact_then_estimate.rs"]
+mod ctot_ac02_page_total_exact_then_estimate;
+#[path = "ctot_ac03_runs_list_verdict_total.rs"]
+mod ctot_ac03_runs_list_verdict_total;
+#[path = "ctot_ac04_one_counter.rs"]
+mod ctot_ac04_one_counter;
+#[path = "ctrace_ac05_trace_access_is_tenant_scoped.rs"]
+mod ctrace_ac05_trace_access_is_tenant_scoped;
+#[path = "ctrace_ac06_sweep_keeps_newest_200_within_24h.rs"]
+mod ctrace_ac06_sweep_keeps_newest_200_within_24h;
+#[path = "ctraceb_ac01_trace_access_is_tenant_scoped.rs"]
+mod ctraceb_ac01_trace_access_is_tenant_scoped;
+#[path = "ctraceb_ac02_sweep_keeps_newest_200_within_24h.rs"]
+mod ctraceb_ac02_sweep_keeps_newest_200_within_24h;
+#[path = "ctrm_ac01_literal_lint_misses_the_two_unmarked_files.rs"]
+mod ctrm_ac01_literal_lint_misses_the_two_unmarked_files;
+#[path = "ctrm_ac02_four_files_marked_and_in_one_contract_suite.rs"]
+mod ctrm_ac02_four_files_marked_and_in_one_contract_suite;
+#[path = "ctrm_ac03_unmarked_reader_of_a_marked_artifact_fails.rs"]
+mod ctrm_ac03_unmarked_reader_of_a_marked_artifact_fails;
+#[path = "ctrm_ac04_unmarked_tree_walk_fails_the_lint.rs"]
+mod ctrm_ac04_unmarked_tree_walk_fails_the_lint;
+#[path = "ctrm_ac05_artifacts_printed_and_derived_not_listed.rs"]
+mod ctrm_ac05_artifacts_printed_and_derived_not_listed;
+#[path = "ctrm_ac06_lint_clean_on_committed_tree_prints_marked_count.rs"]
+mod ctrm_ac06_lint_clean_on_committed_tree_prints_marked_count;
+#[path = "ctrm_ac07_fix_prints_the_marker_line_and_edits_nothing.rs"]
+mod ctrm_ac07_fix_prints_the_marker_line_and_edits_nothing;
+#[path = "ctrs_ac01_marked_files_live_in_contract_suites.rs"]
+mod ctrs_ac01_marked_files_live_in_contract_suites;
+#[path = "ctrs_ac02_six_files_carry_marker_and_keep_tests.rs"]
+mod ctrs_ac02_six_files_carry_marker_and_keep_tests;
+#[path = "ctrs_ac03_pin_tests_derives_list_from_cargo_toml.rs"]
+mod ctrs_ac03_pin_tests_derives_list_from_cargo_toml;
+#[path = "ctrs_ac04_contract_lint_names_unmarked_contract_files.rs"]
+mod ctrs_ac04_contract_lint_names_unmarked_contract_files;
+#[path = "ctrs_ac05_contract_suite_check_matches_pin_tests_list.rs"]
+mod ctrs_ac05_contract_suite_check_matches_pin_tests_list;
+#[path = "ctrs_ac07_ci_gate_runs_contract_suites_before_core_suites.rs"]
+mod ctrs_ac07_ci_gate_runs_contract_suites_before_core_suites;
+#[path = "ctrv_ac01_sha_stable_across_boot_requests_and_process.rs"]
+mod ctrv_ac01_sha_stable_across_boot_requests_and_process;
+#[path = "ctrv_ac02_whoami_reports_sha_version_on_every_auth_path.rs"]
+mod ctrv_ac02_whoami_reports_sha_version_on_every_auth_path;
+#[path = "ctrv_ac04_server_info_version_carries_contract_build_metadata.rs"]
+mod ctrv_ac04_server_info_version_carries_contract_build_metadata;
+#[path = "ctrv_ac05_contract_json_is_served_with_etag_and_304.rs"]
+mod ctrv_ac05_contract_json_is_served_with_etag_and_304;
+#[path = "ctrv_ac06_committed_contract_file_matches_served_sha.rs"]
+mod ctrv_ac06_committed_contract_file_matches_served_sha;
+#[path = "ctrv_ac07_changelog_since_accepts_contract_version.rs"]
+mod ctrv_ac07_changelog_since_accepts_contract_version;
+#[path = "dbmw_ac02_db_maintenance_truncates_wal_and_vacuums.rs"]
+mod dbmw_ac02_db_maintenance_truncates_wal_and_vacuums;
+#[path = "dbmw_ac03_backup_lock_refuses_window.rs"]
+mod dbmw_ac03_backup_lock_refuses_window;
+#[path = "dbmw_ac04_log_rotate_sweeps_only_expired_scratch_and_exports.rs"]
+mod dbmw_ac04_log_rotate_sweeps_only_expired_scratch_and_exports;
+#[path = "dbmw_ac05_busy_truncate_retries_passive.rs"]
+mod dbmw_ac05_busy_truncate_retries_passive;
+#[path = "dbmw_ac06_maintenance_run_dry_run.rs"]
+mod dbmw_ac06_maintenance_run_dry_run;
+#[path = "dbmw_ac07_window_runs_the_retention_pruner.rs"]
+mod dbmw_ac07_window_runs_the_retention_pruner;
+#[path = "demo_ac01_page_lists_three_runs_newest_first.rs"]
+mod demo_ac01_page_lists_three_runs_newest_first;
+#[path = "demo_ac02_unshared_unknown_tool_unknown_ns_identical_404.rs"]
+mod demo_ac02_unshared_unknown_tool_unknown_ns_identical_404;
+#[path = "demo_ac03_secrets_and_sensitive_keys_redacted.rs"]
+mod demo_ac03_secrets_and_sensitive_keys_redacted;
+#[path = "demo_ac04_try_it_form_posts_number_and_surfaces_429.rs"]
+mod demo_ac04_try_it_form_posts_number_and_surfaces_429;
+#[path = "demo_ac05_ten_rows_capped_noindex_no_store.rs"]
+mod demo_ac05_ten_rows_capped_noindex_no_store;
+#[path = "demo_ac06_share_returns_demo_url_unshare_404s.rs"]
+mod demo_ac06_share_returns_demo_url_unshare_404s;
+#[path = "demo_ac07_format_json_same_ten_rows_redacted.rs"]
+mod demo_ac07_format_json_same_ten_rows_redacted;
+#[path = "dkeyc_ac01_child_cannot_escalate_scope.rs"]
+mod dkeyc_ac01_child_cannot_escalate_scope;
+#[path = "dkeyc_ac02_chain_depth_and_can_delegate_gate.rs"]
+mod dkeyc_ac02_chain_depth_and_can_delegate_gate;
+#[path = "dkeyc_ac03_ttl_and_depth_ceilings.rs"]
+mod dkeyc_ac03_ttl_and_depth_ceilings;
+#[path = "dkeyc_ac04_cascade_revoke_is_one_transaction.rs"]
+mod dkeyc_ac04_cascade_revoke_is_one_transaction;
+#[path = "dkeyc_ac05_revoke_without_cascade_has_children.rs"]
+mod dkeyc_ac05_revoke_without_cascade_has_children;
+#[path = "dkeyc_ac06_plan_ceilings_delegated_keys_and_ttl.rs"]
+mod dkeyc_ac06_plan_ceilings_delegated_keys_and_ttl;
+#[path = "dkeyc_ac07_list_tree_and_whoami_key.rs"]
+mod dkeyc_ac07_list_tree_and_whoami_key;
+#[path = "dlrec_ac01_recipe_executes_verbatim.rs"]
+mod dlrec_ac01_recipe_executes_verbatim;
+#[path = "dlrec_ac02_quickstart_returns_recipe_and_orders_next_steps.rs"]
+mod dlrec_ac02_quickstart_returns_recipe_and_orders_next_steps;
+#[path = "dlrec_ac03_llms_txt_recipe_section_generated.rs"]
+mod dlrec_ac03_llms_txt_recipe_section_generated;
+#[path = "dlrec_ac04_new_scope_changes_both_sections.rs"]
+mod dlrec_ac04_new_scope_changes_both_sections;
+#[path = "dlrec_ac05_readme_recipe_block_checked.rs"]
+mod dlrec_ac05_readme_recipe_block_checked;
+#[path = "dlrec_ac06_whoami_hint_for_foreign_session.rs"]
+mod dlrec_ac06_whoami_hint_for_foreign_session;
+#[path = "dlrec_ac07_error_codes_only_in_generated_blocks.rs"]
+mod dlrec_ac07_error_codes_only_in_generated_blocks;
+#[path = "docsearch_ac01_status_reports_watermark_lag_and_chunks.rs"]
+mod docsearch_ac01_status_reports_watermark_lag_and_chunks;
+#[path = "docsearch_ac02_lexical_search_returns_passage_and_offset.rs"]
+mod docsearch_ac02_lexical_search_returns_passage_and_offset;
+#[path = "docsearch_ac03_version_update_drops_old_chunks.rs"]
+mod docsearch_ac03_version_update_drops_old_chunks;
+#[path = "docsearch_ac04_delete_removes_chunks.rs"]
+mod docsearch_ac04_delete_removes_chunks;
+#[path = "docsearch_ac05_embeddings_mode_ranks_by_cosine.rs"]
+mod docsearch_ac05_embeddings_mode_ranks_by_cosine;
+#[path = "docsearch_ac06_provider_503_falls_back_to_lexical.rs"]
+mod docsearch_ac06_provider_503_falls_back_to_lexical;
+#[path = "docsearch_ac07_chunk_quota_stops_indexer.rs"]
+mod docsearch_ac07_chunk_quota_stops_indexer;
+#[path = "docsearch_ac08_cross_tenant_isolation.rs"]
+mod docsearch_ac08_cross_tenant_isolation;
+#[path = "docsearch_ac09_fixture_corpus_hit_rate.rs"]
+mod docsearch_ac09_fixture_corpus_hit_rate;
+#[path = "docsearch_ac10_reindex_forces_all_documents.rs"]
+mod docsearch_ac10_reindex_forces_all_documents;
+#[path = "docsearch_ac11_lexical_search_p95_latency.rs"]
+mod docsearch_ac11_lexical_search_p95_latency;
+#[path = "docsqa_ac06_synthorg_task_matches_gold_question_3.rs"]
+mod docsqa_ac06_synthorg_task_matches_gold_question_3;
+#[path = "docsqa_ac10_truth_tier_panel_satisfaction_recorded.rs"]
+mod docsqa_ac10_truth_tier_panel_satisfaction_recorded;
+#[path = "docstore_ac01_first_put_returns_version1_seq1.rs"]
+mod docstore_ac01_first_put_returns_version1_seq1;
+#[path = "docstore_ac02_put_bumps_version_noop_on_identical_content.rs"]
+mod docstore_ac02_put_bumps_version_noop_on_identical_content;
+#[path = "docstore_ac03_size_cap_rejects_over_2mib_accepts_exactly.rs"]
+mod docstore_ac03_size_cap_rejects_over_2mib_accepts_exactly;
+#[path = "docstore_ac04_extraction_json_and_csv.rs"]
+mod docstore_ac04_extraction_json_and_csv;
+#[path = "docstore_ac05_list_since_includes_deleted.rs"]
+mod docstore_ac05_list_since_includes_deleted;
+#[path = "docstore_ac06_quota_docs_and_docs_bytes.rs"]
+mod docstore_ac06_quota_docs_and_docs_bytes;
+#[path = "docstore_ac07_put_bytes_metering_event.rs"]
+mod docstore_ac07_put_bytes_metering_event;
+#[path = "docstore_ac08_unsupported_mime_by_content_sniff.rs"]
+mod docstore_ac08_unsupported_mime_by_content_sniff;
+#[path = "docstore_ac10_purge_older_than_versions.rs"]
+mod docstore_ac10_purge_older_than_versions;
+#[path = "docstore_ac11_export_includes_documents.rs"]
+mod docstore_ac11_export_includes_documents;
+#[path = "docurl_ac01_quickstart_connect_first_call_save_url.rs"]
+mod docurl_ac01_quickstart_connect_first_call_save_url;
+#[path = "docurl_ac02_skill_one_url_no_ritual.rs"]
+mod docurl_ac02_skill_one_url_no_ritual;
+#[path = "docurl_ac03_index_connect_no_bearer_placeholder.rs"]
+mod docurl_ac03_index_connect_no_bearer_placeholder;
+#[path = "docurl_ac04_quickstart_description_no_signup_first.rs"]
+mod docurl_ac04_quickstart_description_no_signup_first;
+#[path = "docurl_ac06_starter_set_covers_pre_bind_tools.rs"]
+mod docurl_ac06_starter_set_covers_pre_bind_tools;
+#[path = "docurl_ac07_u_new_and_help_name_onboarding_url.rs"]
+mod docurl_ac07_u_new_and_help_name_onboarding_url;
+#[path = "domhint_ac06_llms_txt_line.rs"]
+mod domhint_ac06_llms_txt_line;
+#[path = "dquota_ac02_table_append_carries_data_quota.rs"]
+mod dquota_ac02_table_append_carries_data_quota;
+#[path = "dquota_ac03_quickstart_and_usage_match_every_verb.rs"]
+mod dquota_ac03_quickstart_and_usage_match_every_verb;
+#[path = "dquota_ac04_three_surfaces_one_renderer.rs"]
+mod dquota_ac04_three_surfaces_one_renderer;
+#[path = "dquota_ac05_refusal_carries_quota_and_missing_plan_omits_it.rs"]
+mod dquota_ac05_refusal_carries_quota_and_missing_plan_omits_it;
+#[path = "dquota_ac06_data_usage_is_fast_and_consistent_under_concurrent_appends.rs"]
+mod dquota_ac06_data_usage_is_fast_and_consistent_under_concurrent_appends;
+#[path = "drift_ac01_table_note_change_queues_and_completes.rs"]
+mod drift_ac01_table_note_change_queues_and_completes;
+#[path = "drift_ac02_cosmetic_note_change_zero_regressions.rs"]
+mod drift_ac02_cosmetic_note_change_zero_regressions;
+#[path = "drift_ac03_identical_content_applied_twice_one_review.rs"]
+mod drift_ac03_identical_content_applied_twice_one_review;
+#[path = "drift_ac04_append_changes_group_by_row_count.rs"]
+mod drift_ac04_append_changes_group_by_row_count;
+#[path = "drift_ac05_dropped_table_regresses_with_error_and_alert.rs"]
+mod drift_ac05_dropped_table_regresses_with_error_and_alert;
+#[path = "drift_ac06_document_version_search_overlap_regression.rs"]
+mod drift_ac06_document_version_search_overlap_regression;
+#[path = "drift_ac07_resolve_hides_from_open_only_and_shows_reason.rs"]
+mod drift_ac07_resolve_hides_from_open_only_and_shows_reason;
+#[path = "drift_ac08_cross_tenant_reviews_isolated.rs"]
+mod drift_ac08_cross_tenant_reviews_isolated;
+#[path = "drift_ac09_fifty_queries_rerun_under_5s_one_call.rs"]
+mod drift_ac09_fifty_queries_rerun_under_5s_one_call;
+#[path = "drift_ac10_manual_check_produces_review_without_version_change.rs"]
+mod drift_ac10_manual_check_produces_review_without_version_change;
+#[path = "dryrun_ac05_chain_host_table_append_step.rs"]
+mod dryrun_ac05_chain_host_table_append_step;
+#[path = "dryrun_ac06_tools_list_mentions_dry_run.rs"]
+mod dryrun_ac06_tools_list_mentions_dry_run;
+#[path = "dryv_ac01_table_drop_survives_savepoint.rs"]
+mod dryv_ac01_table_drop_survives_savepoint;
+#[path = "dryv_ac02_write_verb_registry_drift.rs"]
+mod dryv_ac02_write_verb_registry_drift;
+#[path = "dryv_ac03_table_drop_dry_run_would.rs"]
+mod dryv_ac03_table_drop_dry_run_would;
+#[path = "dryv_ac04_state_delete_rows_dry_run_would.rs"]
+mod dryv_ac04_state_delete_rows_dry_run_would;
+#[path = "dryv_ac05_real_errors_pass_through.rs"]
+mod dryv_ac05_real_errors_pass_through;
+#[path = "dryv_ac06_key_rotate_refuses_dry_run.rs"]
+mod dryv_ac06_key_rotate_refuses_dry_run;
+#[path = "dryv_ac07_tools_list_dry_run_schema.rs"]
+mod dryv_ac07_tools_list_dry_run_schema;
+#[path = "dtf_ac02_search_then_failure_row_joined_once.rs"]
+mod dtf_ac02_search_then_failure_row_joined_once;
+#[path = "dtf_ac03_anonymous_and_stale_never_joined.rs"]
+mod dtf_ac03_anonymous_and_stale_never_joined;
+#[path = "dtf_ac04_fifty_concurrent_failures_joined_once_fast.rs"]
+mod dtf_ac04_fifty_concurrent_failures_joined_once_fast;
+#[path = "dtf_ac05_status_json_docs_gaps_top10_normalized.rs"]
+mod dtf_ac05_status_json_docs_gaps_top10_normalized;
+#[path = "dtf_ac06_host_help_gaps_operator_only.rs"]
+mod dtf_ac06_host_help_gaps_operator_only;
+#[path = "dtf_ac07_retention_sweeps_help_search_events.rs"]
+mod dtf_ac07_retention_sweeps_help_search_events;
+#[path = "dxn_ac01_classify_fences.rs"]
+mod dxn_ac01_classify_fences;
+#[path = "dxn_ac02_extract_corpus_and_drift_check.rs"]
+mod dxn_ac02_extract_corpus_and_drift_check;
+#[path = "dxn_ac03_run_corpus_against_fixture_host.rs"]
+mod dxn_ac03_run_corpus_against_fixture_host;
+#[path = "dxn_ac04_anonymous_and_skip_attributes.rs"]
+mod dxn_ac04_anonymous_and_skip_attributes;
+#[path = "dxn_ac05_cross_page_dependency_fails_extract.rs"]
+mod dxn_ac05_cross_page_dependency_fails_extract;
+#[path = "dxn_ac06_gen_llms_full_gates_on_corpus_and_annotates.rs"]
+mod dxn_ac06_gen_llms_full_gates_on_corpus_and_annotates;
+#[path = "dxn_ac07_unreachable_host_exits_two_after_one_retry.rs"]
+mod dxn_ac07_unreachable_host_exits_two_after_one_retry;
+#[path = "edead_ac01_rate_limit_dead_letter.rs"]
+mod edead_ac01_rate_limit_dead_letter;
+#[path = "edead_ac02_signature_mismatch_dead_letter.rs"]
+mod edead_ac02_signature_mismatch_dead_letter;
+#[path = "edead_ac03_run_error_dead_letter.rs"]
+mod edead_ac03_run_error_dead_letter;
+#[path = "edead_ac04_replay_dead_letter.rs"]
+mod edead_ac04_replay_dead_letter;
+#[path = "edead_ac05_ring_and_plan_ceiling.rs"]
+mod edead_ac05_ring_and_plan_ceiling;
+#[path = "edead_ac06_event_in_chain_context.rs"]
+mod edead_ac06_event_in_chain_context;
+#[path = "edp_ac01_pointers_resolve_against_headings.rs"]
+mod edp_ac01_pointers_resolve_against_headings;
+#[path = "edp_ac02_no_literal_anchors_outside_doc_anchors.rs"]
+mod edp_ac02_no_literal_anchors_outside_doc_anchors;
+#[path = "edp_ac03_help_get_returns_the_section.rs"]
+mod edp_ac03_help_get_returns_the_section;
+#[path = "edp_ac04_error_anchor_beside_help_url.rs"]
+mod edp_ac04_error_anchor_beside_help_url;
+#[path = "elib_r08_capabilities_row_names_its_transport.rs"]
+mod elib_r08_capabilities_row_names_its_transport;
+#[path = "ematt_ac03_too_large_part_is_refused_others_stored.rs"]
+mod ematt_ac03_too_large_part_is_refused_others_stored;
+#[path = "ematt_ac04_tenant_at_blob_bytes_max_refuses_the_part.rs"]
+mod ematt_ac04_tenant_at_blob_bytes_max_refuses_the_part;
+#[path = "ematt_ac05_pe_named_csv_is_refused_declared_mime_recorded.rs"]
+mod ematt_ac05_pe_named_csv_is_refused_declared_mime_recorded;
+#[path = "ematt_ac06_part_cap_and_corrupt_base64.rs"]
+mod ematt_ac06_part_cap_and_corrupt_base64;
+#[path = "ematt_ac07_redelivery_is_idempotent_and_reasons_are_rendered.rs"]
+mod ematt_ac07_redelivery_is_idempotent_and_reasons_are_rendered;
+#[path = "emin_ac01_unknown_namespace_is_404.rs"]
+mod emin_ac01_unknown_namespace_is_404;
+#[path = "emin_ac03_csv_part_becomes_a_blob_and_redelivery_is_idempotent.rs"]
+mod emin_ac03_csv_part_becomes_a_blob_and_redelivery_is_idempotent;
+#[path = "emin_ac04_invalid_payload_is_400.rs"]
+mod emin_ac04_invalid_payload_is_400;
+#[path = "emin_ac07_status_json_counts_inbound.rs"]
+mod emin_ac07_status_json_counts_inbound;
+#[path = "emsnd_ac03_html_and_text_reach_the_resend_body.rs"]
+mod emsnd_ac03_html_and_text_reach_the_resend_body;
+#[path = "emsnd_ac04_free_tenant_51st_send_is_email_quota_exceeded.rs"]
+mod emsnd_ac04_free_tenant_51st_send_is_email_quota_exceeded;
+#[path = "emsnd_ac05_unverified_tenant_mails_only_its_owner.rs"]
+mod emsnd_ac05_unverified_tenant_mails_only_its_owner;
+#[path = "emsnd_ac06_bad_to_is_args_invalid_and_503_twice_is_provider_error.rs"]
+mod emsnd_ac06_bad_to_is_args_invalid_and_503_twice_is_provider_error;
+#[path = "enduser_ac02_assertion_http_headers_and_calls_row.rs"]
+mod enduser_ac02_assertion_http_headers_and_calls_row;
+#[path = "enduser_ac03_invalid_assertion_rejected.rs"]
+mod enduser_ac03_invalid_assertion_rejected;
+#[path = "enduser_ac05_state_set_get_end_user_self_isolation.rs"]
+mod enduser_ac05_state_set_get_end_user_self_isolation;
+#[path = "enduser_ac06_state_query_end_user_self_scales_via_index.rs"]
+mod enduser_ac06_state_query_end_user_self_scales_via_index;
+#[path = "enduser_ac07_end_user_required_and_explicit_impersonation.rs"]
+mod enduser_ac07_end_user_required_and_explicit_impersonation;
+#[path = "enduser_ac08_explicit_subject_forbidden_with_own_identity.rs"]
+mod enduser_ac08_explicit_subject_forbidden_with_own_identity;
+#[path = "enduser_ac09_quota_end_users.rs"]
+mod enduser_ac09_quota_end_users;
+#[path = "enduser_ac10_whoami.rs"]
+mod enduser_ac10_whoami;
+#[path = "enduser_ac11_assertion_secret_rotate_invalidates_and_never_leaks.rs"]
+mod enduser_ac11_assertion_secret_rotate_invalidates_and_never_leaks;
+#[path = "enduserctl_ac01_list_flush_aggregates_calls.rs"]
+mod enduserctl_ac01_list_flush_aggregates_calls;
+#[path = "enduserctl_ac02_get_row_plus_counts.rs"]
+mod enduserctl_ac02_get_row_plus_counts;
+#[path = "enduserctl_ac03_audit_calls_newest_first_paged.rs"]
+mod enduserctl_ac03_audit_calls_newest_first_paged;
+#[path = "enduserctl_ac04_revoke_refuses_next_call_and_disconnects_vault.rs"]
+mod enduserctl_ac04_revoke_refuses_next_call_and_disconnects_vault;
+#[path = "enduserctl_ac05_purge_deletes_scoped_rows_and_deidentifies_calls.rs"]
+mod enduserctl_ac05_purge_deletes_scoped_rows_and_deidentifies_calls;
+#[path = "enduserctl_ac06_purge_without_revoke_rejected.rs"]
+mod enduserctl_ac06_purge_without_revoke_rejected;
+#[path = "enduserctl_ac07_unrevoke_restores_calls_audit_shows_both.rs"]
+mod enduserctl_ac07_unrevoke_restores_calls_audit_shows_both;
+#[path = "enduserctl_ac08_export_bundle_scoped_to_one_subject.rs"]
+mod enduserctl_ac08_export_bundle_scoped_to_one_subject;
+#[path = "enduserctl_ac09_admin_stats_per_tenant_and_audited.rs"]
+mod enduserctl_ac09_admin_stats_per_tenant_and_audited;
+#[path = "enduserctl_ac10_list_100k_pages_under_50ms_stable_cursor.rs"]
+mod enduserctl_ac10_list_100k_pages_under_50ms_stable_cursor;
+#[path = "envelope_ac1_http_declared_output_promoted.rs"]
+mod envelope_ac1_http_declared_output_promoted;
+#[path = "envelope_ac4_tool_test_reports_missing_declared_output.rs"]
+mod envelope_ac4_tool_test_reports_missing_declared_output;
+#[path = "eprc_ac01_runner_passes_url_as_argv.rs"]
+mod eprc_ac01_runner_passes_url_as_argv;
+#[path = "eprc_ac02_every_embedded_proof_accepts_the_runner_spawn.rs"]
+mod eprc_ac02_every_embedded_proof_accepts_the_runner_spawn;
+#[path = "eprc_ac03_fail_prints_indented_excerpt.rs"]
+mod eprc_ac03_fail_prints_indented_excerpt;
+#[path = "eprc_ac05_list_contract_prints_runner_constants.rs"]
+mod eprc_ac05_list_contract_prints_runner_constants;
+#[path = "ercp_ac01_share_a_tool_upstream_is_https.rs"]
+mod ercp_ac01_share_a_tool_upstream_is_https;
+#[path = "ercp_ac03_retention_body_goes_to_curl_from_a_file.rs"]
+mod ercp_ac03_retention_body_goes_to_curl_from_a_file;
+#[path = "ercp_ac05_runner_key_is_validated_by_examples_check.rs"]
+mod ercp_ac05_runner_key_is_validated_by_examples_check;
+#[path = "errenv_ac02_every_verb_error_envelope_validates.rs"]
+mod errenv_ac02_every_verb_error_envelope_validates;
+#[path = "errenv_ac03_schema_completeness.rs"]
+mod errenv_ac03_schema_completeness;
+#[path = "errenv_ac04_legacy_null_error_data_renders_object.rs"]
+mod errenv_ac04_legacy_null_error_data_renders_object;
+#[path = "errenv_ac05_chain_verifier_fixture_fails_old_passes_new.rs"]
+mod errenv_ac05_chain_verifier_fixture_fails_old_passes_new;
+#[path = "errenv_ac06_invalid_tenant_key_envelope_has_reason.rs"]
+mod errenv_ac06_invalid_tenant_key_envelope_has_reason;
+#[path = "errenv_ac07_doctor_reports_error_envelope.rs"]
+mod errenv_ac07_doctor_reports_error_envelope;
+#[path = "errjson_ac01_every_emitted_code_is_a_registry_row.rs"]
+mod errjson_ac01_every_emitted_code_is_a_registry_row;
+#[path = "errjson_ac02_error_data_carries_the_registry_row.rs"]
+mod errjson_ac02_error_data_carries_the_registry_row;
+#[path = "errjson_ac03_errors_json_route.rs"]
+mod errjson_ac03_errors_json_route;
+#[path = "errjson_ac04_host_errors_tool.rs"]
+mod errjson_ac04_host_errors_tool;
+#[path = "errreg_ac01_err_code_declares_and_registers.rs"]
+mod errreg_ac01_err_code_declares_and_registers;
+#[path = "errreg_ac02_registry_surfaces_byte_identical_snapshot.rs"]
+mod errreg_ac02_registry_surfaces_byte_identical_snapshot;
+#[path = "errreg_ac03_scanner_fails_bare_literal_names_site.rs"]
+mod errreg_ac03_scanner_fails_bare_literal_names_site;
+#[path = "errreg_ac04_scanner_fails_duplicate_and_format_codes.rs"]
+mod errreg_ac04_scanner_fails_duplicate_and_format_codes;
+#[path = "errreg_ac05_hand_table_empty_and_backstop_passes.rs"]
+mod errreg_ac05_hand_table_empty_and_backstop_passes;
+#[path = "errreg_ac06_five_10_17_codes_declared_at_emit_site.rs"]
+mod errreg_ac06_five_10_17_codes_declared_at_emit_site;
+#[path = "evkr_ac01_no_second_spelling.rs"]
+mod evkr_ac01_no_second_spelling;
+#[path = "evkr_ac02_renderings_equal_enum.rs"]
+mod evkr_ac02_renderings_equal_enum;
+#[path = "evkr_ac03_description_and_fields.rs"]
+mod evkr_ac03_description_and_fields;
+#[path = "evkr_ac04_bad_kind_args_invalid.rs"]
+mod evkr_ac04_bad_kind_args_invalid;
+#[path = "evkrb_ac01_llms_txt_events_section_checked.rs"]
+mod evkrb_ac01_llms_txt_events_section_checked;
+#[path = "evkrb_ac02_quickstart_events_pointer.rs"]
+mod evkrb_ac02_quickstart_events_pointer;
+#[path = "evkrb_ac03_events_json_stable_and_cached.rs"]
+mod evkrb_ac03_events_json_stable_and_cached;
+#[path = "exargs_ac02_generator_values.rs"]
+mod exargs_ac02_generator_values;
+#[path = "exargs_ac03_tool_test_runs_the_example.rs"]
+mod exargs_ac03_tool_test_runs_the_example;
+#[path = "exargs_ac04_unsatisfiable_schema_is_refused.rs"]
+mod exargs_ac04_unsatisfiable_schema_is_refused;
+#[path = "exargs_ac05_publish_dry_run_and_spec_test_run_one_example.rs"]
+mod exargs_ac05_publish_dry_run_and_spec_test_run_one_example;
+#[path = "exargs_ac06_depth_limit.rs"]
+mod exargs_ac06_depth_limit;
+#[path = "exmf_ac01_seven_manifests_check_green.rs"]
+mod exmf_ac01_seven_manifests_check_green;
+#[path = "exmf_ac02_bad_manifest_exits_two_index_untouched.rs"]
+mod exmf_ac02_bad_manifest_exits_two_index_untouched;
+#[path = "exmf_ac04_stale_index_fails_the_build.rs"]
+mod exmf_ac04_stale_index_fails_the_build;
+#[path = "exmf_ac05_schema_matches_committed_file.rs"]
+mod exmf_ac05_schema_matches_committed_file;
+#[path = "exmf_ac06_zero_manifests_exits_two.rs"]
+mod exmf_ac06_zero_manifests_exits_two;
+#[path = "exprf_ac02_failing_proof_hides_the_example.rs"]
+mod exprf_ac02_failing_proof_hides_the_example;
+#[path = "exprf_ac03_green_report_unhides_and_resolves.rs"]
+mod exprf_ac03_green_report_unhides_and_resolves;
+#[path = "exprf_ac04_second_red_appends_to_one_incident.rs"]
+mod exprf_ac04_second_red_appends_to_one_incident;
+#[path = "exprf_ac05_unknown_name_and_non_admin_refused.rs"]
+mod exprf_ac05_unknown_name_and_non_admin_refused;
+#[path = "exprf_ac06_status_json_examples_block.rs"]
+mod exprf_ac06_status_json_examples_block;
+#[path = "exprf_ac07_only_dry_run_prints_and_executes_nothing.rs"]
+mod exprf_ac07_only_dry_run_prints_and_executes_nothing;
+#[path = "exprp_ac02_literal_secret_value_is_refused.rs"]
+mod exprp_ac02_literal_secret_value_is_refused;
+#[path = "exprp_ac03_non_portable_and_failing_proof_are_refused.rs"]
+mod exprp_ac03_non_portable_and_failing_proof_are_refused;
+#[path = "exprp_ac04_admin_decides_and_the_proposer_sees_it.rs"]
+mod exprp_ac04_admin_decides_and_the_proposer_sees_it;
+#[path = "exprp_ac05_pull_writes_the_clone_commits_and_merges.rs"]
+mod exprp_ac05_pull_writes_the_clone_commits_and_merges;
+#[path = "exprp_ac06_name_collision_and_open_proposal_cap.rs"]
+mod exprp_ac06_name_collision_and_open_proposal_cap;
+#[path = "fbeh_ac02_hint_on_every_variant.rs"]
+mod fbeh_ac02_hint_on_every_variant;
+#[path = "fbeh_ac03_missing_mapping_is_named.rs"]
+mod fbeh_ac03_missing_mapping_is_named;
+#[path = "fbeh_ac04_tool_exception_names_the_tool.rs"]
+mod fbeh_ac04_tool_exception_names_the_tool;
+#[path = "fbeh_ac05_internal_hint_carries_request_id.rs"]
+mod fbeh_ac05_internal_hint_carries_request_id;
+#[path = "fbeh_ac06_messages_byte_identical.rs"]
+mod fbeh_ac06_messages_byte_identical;
+#[path = "fbeh_ac07_hint_is_one_short_line.rs"]
+mod fbeh_ac07_hint_is_one_short_line;
+#[path = "fbth_ac01_normalizer_separates_asks.rs"]
+mod fbth_ac01_normalizer_separates_asks;
+#[path = "fbth_ac02_similar_texts_share_a_theme.rs"]
+mod fbth_ac02_similar_texts_share_a_theme;
+#[path = "fbth_ac03_error_code_splits_themes.rs"]
+mod fbth_ac03_error_code_splits_themes;
+#[path = "fbth_ac04_rerun_changes_nothing.rs"]
+mod fbth_ac04_rerun_changes_nothing;
+#[path = "fbth_ac05_admin_themes_verb.rs"]
+mod fbth_ac05_admin_themes_verb;
+#[path = "fbth_ac06_status_json_feedback_counts.rs"]
+mod fbth_ac06_status_json_feedback_counts;
+#[path = "fbth_ac07_feedback_get_is_owner_only.rs"]
+mod fbth_ac07_feedback_get_is_owner_only;
+#[path = "fbtl_ac02_anonymous_send_stores_row.rs"]
+mod fbtl_ac02_anonymous_send_stores_row;
+#[path = "fbtl_ac03_text_limits_and_control_chars.rs"]
+mod fbtl_ac03_text_limits_and_control_chars;
+#[path = "fbtl_ac04_anonymous_send_cap.rs"]
+mod fbtl_ac04_anonymous_send_cap;
+#[path = "fbtl_ac05_keyed_call_ids_and_list.rs"]
+mod fbtl_ac05_keyed_call_ids_and_list;
+#[path = "fbtl_ac06_kinds_cannot_drift.rs"]
+mod fbtl_ac06_kinds_cannot_drift;
+#[path = "fbtl_ac07_cli_list.rs"]
+mod fbtl_ac07_cli_list;
+#[path = "fcgift_ac01_remember_persists_and_memory_line.rs"]
+mod fcgift_ac01_remember_persists_and_memory_line;
+#[path = "fcgift_ac02_remember_too_long_creates_nothing.rs"]
+mod fcgift_ac02_remember_too_long_creates_nothing;
+#[path = "fcgift_ac03_welcome_back_on_first_call_of_new_session.rs"]
+mod fcgift_ac03_welcome_back_on_first_call_of_new_session;
+#[path = "fcgift_ac04_welcome_back_not_repeated_same_session.rs"]
+mod fcgift_ac04_welcome_back_not_repeated_same_session;
+#[path = "fcgift_ac05_welcome_back_suppressed_by_optout_or_header_auth.rs"]
+mod fcgift_ac05_welcome_back_suppressed_by_optout_or_header_auth;
+#[path = "fcgift_ac07_remember_rate_7d.rs"]
+mod fcgift_ac07_remember_rate_7d;
+#[path = "fcgift_ac08_implicit_tenant_onboarding_memory_line.rs"]
+mod fcgift_ac08_implicit_tenant_onboarding_memory_line;
+#[path = "federation_ac11_tenant_prm_lists_hosted_as.rs"]
+mod federation_ac11_tenant_prm_lists_hosted_as;
+#[path = "fedlogin_ac01_provider_set_discovery_no_secret.rs"]
+mod fedlogin_ac01_provider_set_discovery_no_secret;
+#[path = "fedlogin_ac02_authorize_redirects_consent_mints_code.rs"]
+mod fedlogin_ac02_authorize_redirects_consent_mints_code;
+#[path = "fedlogin_ac04_callback_error_paths.rs"]
+mod fedlogin_ac04_callback_error_paths;
+#[path = "fedlogin_ac05_email_verified_gate.rs"]
+mod fedlogin_ac05_email_verified_gate;
+#[path = "fedlogin_ac06_revoke_and_provider_remove.rs"]
+mod fedlogin_ac06_revoke_and_provider_remove;
+#[path = "fedlogin_ac07_key_form_present_or_absent.rs"]
+mod fedlogin_ac07_key_form_present_or_absent;
+#[path = "fedlogin_ac08_doctor_discovery_down.rs"]
+mod fedlogin_ac08_doctor_discovery_down;
+#[path = "fedlogin_ac09_docs_and_llms_txt.rs"]
+mod fedlogin_ac09_docs_and_llms_txt;
+#[path = "fedlogin_ac10_hosted_as_and_key_flows_unchanged.rs"]
+mod fedlogin_ac10_hosted_as_and_key_flows_unchanged;
+#[path = "firstcall_ac6_outcome_metering.rs"]
+mod firstcall_ac6_outcome_metering;
+#[path = "firstpub_ac09_dry_run_spec_size_short_circuits.rs"]
+mod firstpub_ac09_dry_run_spec_size_short_circuits;
+#[path = "firstpub_ac10_live_proof_against_real_mcphost.rs"]
+mod firstpub_ac10_live_proof_against_real_mcphost;
+#[path = "flakelint_ac02_single_shot_perf.rs"]
+mod flakelint_ac02_single_shot_perf;
+#[path = "flakelint_ac03_receipt_read.rs"]
+mod flakelint_ac03_receipt_read;
+#[path = "flakelint_ac04_allow_list.rs"]
+mod flakelint_ac04_allow_list;
+#[path = "flakelint_ac06_perf_budget_skip_and_median.rs"]
+mod flakelint_ac06_perf_budget_skip_and_median;
+#[path = "flakelint_ac07_timing_tests_use_perf_budget.rs"]
+mod flakelint_ac07_timing_tests_use_perf_budget;
+#[path = "fldp_ac02_tool_list_fields_two_keys_under_12kib.rs"]
+mod fldp_ac02_tool_list_fields_two_keys_under_12kib;
+#[path = "fldp_ac03_field_unknown_names_nearest_before_any_read.rs"]
+mod fldp_ac03_field_unknown_names_nearest_before_any_read;
+#[path = "fldp_ac04_fields_one_set.rs"]
+mod fldp_ac04_fields_one_set;
+#[path = "fldp_ac05_fields_name_walk_450_docs.rs"]
+mod fldp_ac05_fields_name_walk_450_docs;
+#[path = "fldp_ac06_empty_fields_and_unpaged_verbs_are_args_invalid.rs"]
+mod fldp_ac06_empty_fields_and_unpaged_verbs_are_args_invalid;
+#[path = "fldp_ac07_include_result_is_sugar_for_fields_result.rs"]
+mod fldp_ac07_include_result_is_sugar_for_fields_result;
+#[path = "fleetips_reclassify_backfill.rs"]
+mod fleetips_reclassify_backfill;
+#[path = "fsurf_ac02_surfaces_drift.rs"]
+mod fsurf_ac02_surfaces_drift;
+#[path = "fsurf_ac03_by_surface_and_probe.rs"]
+mod fsurf_ac03_by_surface_and_probe;
+#[path = "fsurf_ac04_day7_active_null_until_mature.rs"]
+mod fsurf_ac04_day7_active_null_until_mature;
+#[path = "fsurfb_ac01_own_key_call_not_external.rs"]
+mod fsurfb_ac01_own_key_call_not_external;
+#[path = "fsurfb_ac02_admin_funnel_matches_cli.rs"]
+mod fsurfb_ac02_admin_funnel_matches_cli;
+#[path = "fsurfb_ac03_surface_flag_table_and_exit_2.rs"]
+mod fsurfb_ac03_surface_flag_table_and_exit_2;
+#[path = "ftool_ac01_demo_try_it_does_not_notify_owner.rs"]
+mod ftool_ac01_demo_try_it_does_not_notify_owner;
+#[path = "ftool_ac02_input_map_covers_validator_types.rs"]
+mod ftool_ac02_input_map_covers_validator_types;
+#[path = "ftool_ac03_form_page_renders_inputs.rs"]
+mod ftool_ac03_form_page_renders_inputs;
+#[path = "ftool_ac04_form_post_validates_and_runs.rs"]
+mod ftool_ac04_form_post_validates_and_runs;
+#[path = "ftoolb_ac01_submission_wakes_msg_wait_once.rs"]
+mod ftoolb_ac01_submission_wakes_msg_wait_once;
+#[path = "ftoolb_ac02_no_ui_form_means_404_and_no_form_url.rs"]
+mod ftoolb_ac02_no_ui_form_means_404_and_no_form_url;
+#[path = "ftoolb_ac03_form_post_rate_limited_like_x.rs"]
+mod ftoolb_ac03_form_post_rate_limited_like_x;
+#[path = "ftruth_ac01_never_unknown_at_insert.rs"]
+mod ftruth_ac01_never_unknown_at_insert;
+#[path = "ftruth_ac02_fleet_ip_vs_human.rs"]
+mod ftruth_ac02_fleet_ip_vs_human;
+#[path = "ftruth_ac03_probe_header_requires_fleet_ip.rs"]
+mod ftruth_ac03_probe_header_requires_fleet_ip;
+#[path = "ftruth_ac04_digest_and_funnel_report_human_headline.rs"]
+mod ftruth_ac04_digest_and_funnel_report_human_headline;
+#[path = "ftruth_ac05_backfill_origin_idempotent.rs"]
+mod ftruth_ac05_backfill_origin_idempotent;
+#[path = "funnel_ac01_activation_stamps_set_once.rs"]
+mod funnel_ac01_activation_stamps_set_once;
+#[path = "funnel_ac02_shared_call_not_own_call.rs"]
+mod funnel_ac02_shared_call_not_own_call;
+#[path = "funnel_ac03_external_filter_share_and_median.rs"]
+mod funnel_ac03_external_filter_share_and_median;
+#[path = "funnel_ac04_healthz_funnel_7d_external_only.rs"]
+mod funnel_ac04_healthz_funnel_7d_external_only;
+#[path = "funnel_ac05_claim_and_plan_backfill.rs"]
+mod funnel_ac05_claim_and_plan_backfill;
+#[path = "funnel_ac06_median_null_under_three.rs"]
+mod funnel_ac06_median_null_under_three;
+#[path = "funnel_ac07_invited_split_and_k.rs"]
+mod funnel_ac07_invited_split_and_k;
+#[path = "gatedebt_4f1112d_ac4_no_test_reads_gate_receipts.rs"]
+mod gatedebt_4f1112d_ac4_no_test_reads_gate_receipts;
+#[path = "gatedebt_4f1112d_ac5_no_flake_audit_selftest_names.rs"]
+mod gatedebt_4f1112d_ac5_no_flake_audit_selftest_names;
+#[path = "gdrainb_ac01_status_restart_block.rs"]
+mod gdrainb_ac01_status_restart_block;
+#[path = "gdrainb_ac02_running_run_interrupted_no_skip.rs"]
+mod gdrainb_ac02_running_run_interrupted_no_skip;
+#[path = "gdrainb_ac03_print_drain_bound.rs"]
+mod gdrainb_ac03_print_drain_bound;
+#[path = "gsig_ac01_replay_bad_night.rs"]
+mod gsig_ac01_replay_bad_night;
+#[path = "gsig_ac02_status_json_carries_signals.rs"]
+mod gsig_ac02_status_json_carries_signals;
+#[path = "gsig_ac03_breach_and_clear_broadcast_once.rs"]
+mod gsig_ac03_breach_and_clear_broadcast_once;
+#[path = "gsig_ac04_bad_override_is_rejected_at_boot.rs"]
+mod gsig_ac04_bad_override_is_rejected_at_boot;
+#[path = "gsigb_ac01_heal_toml_docs_drift.rs"]
+mod gsigb_ac01_heal_toml_docs_drift;
+#[path = "gsigb_ac02_one_tick_reads_unknown.rs"]
+mod gsigb_ac02_one_tick_reads_unknown;
+#[path = "handle_ac01_materialize_50k_rows_summary.rs"]
+mod handle_ac01_materialize_50k_rows_summary;
+#[path = "handle_ac02_query_handle_group_by_matches_source.rs"]
+mod handle_ac02_query_handle_group_by_matches_source;
+#[path = "handle_ac03_unknown_handle_not_found.rs"]
+mod handle_ac03_unknown_handle_not_found;
+#[path = "handle_ac04_ttl_expiry_dropped_by_tick.rs"]
+mod handle_ac04_ttl_expiry_dropped_by_tick;
+#[path = "handle_ac05_quota_eviction_and_oversized_refusal.rs"]
+mod handle_ac05_quota_eviction_and_oversized_refusal;
+#[path = "handle_ac06_hdl_prefix_reserved_on_create.rs"]
+mod handle_ac06_hdl_prefix_reserved_on_create;
+#[path = "handle_ac07_update_on_handle_refused_read_only.rs"]
+mod handle_ac07_update_on_handle_refused_read_only;
+#[path = "handle_ac08_export_csv_signed_url_expiry.rs"]
+mod handle_ac08_export_csv_signed_url_expiry;
+#[path = "handle_ac11_cross_tenant_handle_not_found.rs"]
+mod handle_ac11_cross_tenant_handle_not_found;
+#[path = "handle_ac12_empty_result_materialize.rs"]
+mod handle_ac12_empty_result_materialize;
+#[path = "handoff_ac01_signup_returns_token_and_no_key.rs"]
+mod handoff_ac01_signup_returns_token_and_no_key;
+#[path = "handoff_ac02_redeem_single_use_and_expiry.rs"]
+mod handoff_ac02_redeem_single_use_and_expiry;
+#[path = "handoff_ac03_key_rotate_invalidates_old_key.rs"]
+mod handoff_ac03_key_rotate_invalidates_old_key;
+#[path = "handoff_ac04_full_two_context_flow.rs"]
+mod handoff_ac04_full_two_context_flow;
+#[path = "handoff_ac05_raw_signup_still_works_unchanged.rs"]
+mod handoff_ac05_raw_signup_still_works_unchanged;
+#[path = "handoff_ac06_errors_never_echo_token_or_key.rs"]
+mod handoff_ac06_errors_never_echo_token_or_key;
+#[path = "handoff_ac07_docs_recommend_handoff_flow.rs"]
+mod handoff_ac07_docs_recommend_handoff_flow;
+#[path = "handoff_ac08_whoami_reports_key_age_and_rotation.rs"]
+mod handoff_ac08_whoami_reports_key_age_and_rotation;
+#[path = "hdnext_ac01_next_names_envelope_keys.rs"]
+mod hdnext_ac01_next_names_envelope_keys;
+#[path = "hdnext_ac04_doctor_group_names_envelope_keys.rs"]
+mod hdnext_ac04_doctor_group_names_envelope_keys;
+#[path = "heal_ac01_action_set_single_source.rs"]
+mod heal_ac01_action_set_single_source;
+#[path = "heal_ac03_rate_limit_per_hour.rs"]
+mod heal_ac03_rate_limit_per_hour;
+#[path = "heal_ac04_no_destructive_action.rs"]
+mod heal_ac04_no_destructive_action;
+#[path = "healb_ac01_incidents_json_anonymised.rs"]
+mod healb_ac01_incidents_json_anonymised;
+#[path = "healb_ac02_pre_ledger_rows_render_action_null.rs"]
+mod healb_ac02_pre_ledger_rows_render_action_null;
+#[path = "healb_ac03_incidents_list_admin_only.rs"]
+mod healb_ac03_incidents_list_admin_only;
+#[path = "hidx_ac02_three_sources_build_with_offsets.rs"]
+mod hidx_ac02_three_sources_build_with_offsets;
+#[path = "hidx_ac03_source_kinds_one_set.rs"]
+mod hidx_ac03_source_kinds_one_set;
+#[path = "hidx_ac04_index_max_quota.rs"]
+mod hidx_ac04_index_max_quota;
+#[path = "hidxb_ac01_url_refusal_and_503.rs"]
+mod hidxb_ac01_url_refusal_and_503;
+#[path = "hidxb_ac02_chunk_ceiling_truncates.rs"]
+mod hidxb_ac02_chunk_ceiling_truncates;
+#[path = "hooks_ac10_healthz_event_counters.rs"]
+mod hooks_ac10_healthz_event_counters;
+#[path = "hooks_ac11_dedupe_header_idempotent.rs"]
+mod hooks_ac11_dedupe_header_idempotent;
+#[path = "hooks_ac1_hmac_sha256_valid_signature_runs.rs"]
+mod hooks_ac1_hmac_sha256_valid_signature_runs;
+#[path = "hooks_ac2_wrong_signature_401_no_run.rs"]
+mod hooks_ac2_wrong_signature_401_no_run;
+#[path = "hooks_ac3_stripe_style_stale_timestamp_401.rs"]
+mod hooks_ac3_stripe_style_stale_timestamp_401;
+#[path = "hooks_ac4_none_scheme_requires_allow_unverified.rs"]
+mod hooks_ac4_none_scheme_requires_allow_unverified;
+#[path = "hooks_ac5_rate_limit_429.rs"]
+mod hooks_ac5_rate_limit_429;
+#[path = "hooks_ac6_body_too_large_413.rs"]
+mod hooks_ac6_body_too_large_413;
+#[path = "hooks_ac7_trigger_test_creates_marked_run.rs"]
+mod hooks_ac7_trigger_test_creates_marked_run;
+#[path = "hooks_ac8_trigger_replay_new_run_trigger_ref.rs"]
+mod hooks_ac8_trigger_replay_new_run_trigger_ref;
+#[path = "hooks_ac9_paused_trigger_404.rs"]
+mod hooks_ac9_paused_trigger_404;
+#[path = "hostdoc_ac01_five_families_five_concrete_next_lines.rs"]
+mod hostdoc_ac01_five_families_five_concrete_next_lines;
+#[path = "hostdoc_ac03_every_next_template_renders_fully.rs"]
+mod hostdoc_ac03_every_next_template_renders_fully;
+#[path = "hostdoc_ac04_empty_window_and_no_tools.rs"]
+mod hostdoc_ac04_empty_window_and_no_tools;
+#[path = "hostdocb_ac01_admin_and_forbidden_tenant.rs"]
+mod hostdocb_ac01_admin_and_forbidden_tenant;
+#[path = "hostdocb_ac02_limit_window_and_group_order.rs"]
+mod hostdocb_ac02_limit_window_and_group_order;
+#[path = "hostdocb_ac03_args_invalid_refusal_is_a_row.rs"]
+mod hostdocb_ac03_args_invalid_refusal_is_a_row;
+#[path = "hostedas_ac01_well_known_metadata.rs"]
+mod hostedas_ac01_well_known_metadata;
+#[path = "hostedas_ac02_cimd_client_identification.rs"]
+mod hostedas_ac02_cimd_client_identification;
+#[path = "hostedas_ac03_dcr_register_and_rate_limit.rs"]
+mod hostedas_ac03_dcr_register_and_rate_limit;
+#[path = "hostedas_ac04_consent_code_token_hosted_bearer.rs"]
+mod hostedas_ac04_consent_code_token_hosted_bearer;
+#[path = "hostedas_ac05_code_replay_revokes_issued_tokens.rs"]
+mod hostedas_ac05_code_replay_revokes_issued_tokens;
+#[path = "hostedas_ac06_authorize_hardening.rs"]
+mod hostedas_ac06_authorize_hardening;
+#[path = "hostedas_ac07_cross_client_code_and_refresh_reuse.rs"]
+mod hostedas_ac07_cross_client_code_and_refresh_reuse;
+#[path = "hostedas_ac08_grants_list_revoke_and_oauth_revoke.rs"]
+mod hostedas_ac08_grants_list_revoke_and_oauth_revoke;
+#[path = "hostedas_ac09_no_secret_leakage.rs"]
+mod hostedas_ac09_no_secret_leakage;
+#[path = "hostedas_ac10_key_and_issuer_jwt_flows_unchanged.rs"]
+mod hostedas_ac10_key_and_issuer_jwt_flows_unchanged;
+#[path = "hostedas_ac11_docs_and_llms_txt.rs"]
+mod hostedas_ac11_docs_and_llms_txt;
+#[path = "hostedas_offline_access_scope.rs"]
+mod hostedas_offline_access_scope;
+#[path = "hpress_ac01_sample_cx33_fixture.rs"]
+mod hpress_ac01_sample_cx33_fixture;
+#[path = "hpress_ac02_missing_psi_is_null.rs"]
+mod hpress_ac02_missing_psi_is_null;
+#[path = "hpress_ac03_garbage_stat_and_meminfo_are_null.rs"]
+mod hpress_ac03_garbage_stat_and_meminfo_are_null;
+#[path = "hpress_ac04_status_json_carries_host.rs"]
+mod hpress_ac04_status_json_carries_host;
+#[path = "hpress_ac05_daily_rows_have_no_host.rs"]
+mod hpress_ac05_daily_rows_have_no_host;
+#[path = "hpress_ac06_status_html_host_line.rs"]
+mod hpress_ac06_status_html_host_line;
+#[path = "hpress_ac07_metrics_doc_matches_struct.rs"]
+mod hpress_ac07_metrics_doc_matches_struct;
+#[path = "hrfr_ac02_incremental_refresh_after_appends_and_reput.rs"]
+mod hrfr_ac02_incremental_refresh_after_appends_and_reput;
+#[path = "hrfr_ac03_query_carries_stale_sources_while_ticking.rs"]
+mod hrfr_ac03_query_carries_stale_sources_while_ticking;
+#[path = "hrfr_ac04_url_conditional_refresh_and_floor.rs"]
+mod hrfr_ac04_url_conditional_refresh_and_floor;
+#[path = "hrfr_ac05_rechunk_keeps_vectors_of_unchanged_chunks.rs"]
+mod hrfr_ac05_rechunk_keeps_vectors_of_unchanged_chunks;
+#[path = "hrfr_ac06_table_write_verbs_bump_change_counter.rs"]
+mod hrfr_ac06_table_write_verbs_bump_change_counter;
+#[path = "hrfr_ac07_failing_url_pauses_until_refreshed.rs"]
+mod hrfr_ac07_failing_url_pauses_until_refreshed;
+#[path = "hsr_ac01_top10_errors_have_fix_anchor.rs"]
+mod hsr_ac01_top10_errors_have_fix_anchor;
+#[path = "hsr_ac02_import_mcphost_dev_finds_python_example.rs"]
+mod hsr_ac02_import_mcphost_dev_finds_python_example;
+#[path = "hsr_ac03_kind_filter_and_unknown_kind.rs"]
+mod hsr_ac03_kind_filter_and_unknown_kind;
+#[path = "hsr_ac04_response_under_2kb_truncation_marked.rs"]
+mod hsr_ac04_response_under_2kb_truncation_marked;
+#[path = "hsrb_ac01_empty_and_symbol_queries_return_hint.rs"]
+mod hsrb_ac01_empty_and_symbol_queries_return_hint;
+#[path = "hsrb_ac02_listed_in_both_tools_lists_llms_txt_and_manifest.rs"]
+mod hsrb_ac02_listed_in_both_tools_lists_llms_txt_and_manifest;

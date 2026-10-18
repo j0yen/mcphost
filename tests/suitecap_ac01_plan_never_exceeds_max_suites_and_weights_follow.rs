@@ -24,8 +24,8 @@ fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-const CAPS_LINE: &str = r#"MAX_PER_SUITE = {"core": 900, "sandbox": 220}"#;
-const MAX_LINE: &str = "MAX_SUITES = 10";
+const CAPS_LINE: &str = r#"MAX_PER_SUITE = {"core": 700, "sandbox": 220}"#;
+const MAX_LINE: &str = "MAX_SUITES = 12";
 
 /// A scratch repo: 12 core files in 4 areas of 3, 6 sandbox files in 2 areas of
 /// 3, caps scaled to 3 files per suite and `max_suites` core+sandbox suites,
@@ -48,6 +48,7 @@ fn scratch(max_suites: u32) -> PathBuf {
     )
     .unwrap();
     fs::write(dir.join("scripts/ci-suite-weights.json"), "{\n  \"lib\": 5\n}\n").unwrap();
+    fs::write(dir.join("scripts/ci-suite-measured.json"), "{}\n").unwrap();
 
     let script = fs::read_to_string(root.join("scripts/gen-test-suites.sh")).unwrap();
     assert!(script.contains(CAPS_LINE), "MAX_PER_SUITE line changed; update this test");

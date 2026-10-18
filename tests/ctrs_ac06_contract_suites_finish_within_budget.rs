@@ -1,3 +1,4 @@
+//! solo-suite: 423 one test re-runs every contract suite through pin-tests.sh (330-423 s on a hosted runner, the max of CI runs 39129276291, 39133346672, 39133722354)
 //! PRD-mcphost-contract-suite-generated AC6 -- on a warm cargo target
 //! `scripts/pin-tests.sh` finishes every contract suite within the hard budget
 //! (900 s) and prints a per-binary timing line for each.

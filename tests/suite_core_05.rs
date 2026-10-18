@@ -8,5 +8,5 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 
-#[path = "synthetic_ac03_invalid_and_missing_header.rs"]
-mod synthetic_ac03_invalid_and_missing_header;
+#[path = "sessionkey_ac17_request_log_no_key.rs"]
+mod sessionkey_ac17_request_log_no_key;

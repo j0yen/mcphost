@@ -10,10 +10,33 @@
 
 use mcphost::install_links;
 
-const SUITE: &str = include_str!("suite_core_07.rs");
+/// Every generated suite file, concatenated: which suite binary holds a given test
+/// file is the generator's call (it moves when buckets are re-cut), so the check
+/// reads them all instead of naming one.
+fn all_suites() -> String {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
+    let mut names: Vec<String> = std::fs::read_dir(&dir)
+        .expect("read tests/")
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| {
+            n.ends_with(".rs")
+                && (n.starts_with("suite_core_")
+                    || n.starts_with("suite_sandbox_")
+                    || n.starts_with("suite_env_")
+                    || n.starts_with("suite_contracts_"))
+        })
+        .collect();
+    names.sort();
+    names
+        .iter()
+        .map(|n| std::fs::read_to_string(dir.join(n)).expect("read suite"))
+        .collect()
+}
 
 #[test]
 fn the_prior_prd_test_files_are_still_registered_in_a_suite() {
+    let suite = all_suites();
     for file in [
         "clink_ac01_for_url_pinned_fixtures.rs",
         "clink_ac02_connect_page_unauthenticated.rs",
@@ -22,7 +45,7 @@ fn the_prior_prd_test_files_are_still_registered_in_a_suite() {
         "clink_ac05_connect_go_records_click_and_redirects.rs",
         "clink_ac06_digest_install_link_clicks_humans_only.rs",
     ] {
-        assert!(SUITE.contains(&format!("#[path = \"{file}\"]")), "{file} is no longer part of the suite");
+        assert!(suite.contains(&format!("#[path = \"{file}\"]")), "{file} is no longer part of the suite");
     }
 }
 

@@ -24,8 +24,6 @@ const PRE_CONVERSION: &str = "1f7bfb4";
 
 struct Site {
     file: &'static str,
-    /// Test binary (suite) that compiles this file in as a module.
-    suite: &'static str,
     /// Every `deadline_budget!` literal the converted file must hold, in order
     /// (the pre-conversion budget in ms).
     budgets_ms: &'static [u64],
@@ -38,62 +36,52 @@ const CONVERTED: &[Site] = &[
     // the 4 former ALLOW files
     Site {
         file: "checkcompat_race_ac01_previous_up_within_1s.rs",
-        suite: "suite_core_07",
         budgets_ms: &[1000],
         original: &["as_secs_f64() < 1.0"],
     },
     Site {
         file: "python_ac01_no_deps_cpu_memory.rs",
-        suite: "suite_sandbox_02",
         budgets_ms: &[5000],
         original: &["started.elapsed() < Duration::from_secs(5)"],
     },
     Site {
         file: "ac15_call_timeout.rs",
-        suite: "suite_core_07",
         budgets_ms: &[5000],
         original: &["started.elapsed() < Duration::from_secs(5)"],
     },
     Site {
         file: "tablemodel_ac06_large_table_samples_10000_under_500ms.rs",
-        suite: "suite_core_08",
         budgets_ms: &[500],
         original: &["elapsed.as_millis() < 500"],
     },
     // budget sites named in Technical considerations
     Site {
         file: "drift_ac09_fifty_queries_rerun_under_5s_one_call.rs",
-        suite: "suite_core_07",
         budgets_ms: &[5000],
         original: &["elapsed < Duration::from_secs(5)"],
     },
     Site {
         file: "hooks_ac1_hmac_sha256_valid_signature_runs.rs",
-        suite: "suite_core_07",
         budgets_ms: &[500],
         original: &["elapsed < Duration::from_millis(500)"],
     },
     Site {
         file: "oauthconf_ac01_gate_verdict_table_matches_gold.rs",
-        suite: "suite_core_07",
         budgets_ms: &[20_000],
         original: &["elapsed.as_secs() < 20"],
     },
     Site {
         file: "wake_ac6_msg_wait.rs",
-        suite: "suite_core_08",
         budgets_ms: &[3000, 4000],
         original: &["elapsed < Duration::from_secs(3)", "elapsed <= Duration::from_secs(4)"],
     },
     Site {
         file: "xlinks_ac07_ci_docs_job_fails_on_a_404_and_stays_fast.rs",
-        suite: "suite_core_08",
         budgets_ms: &[60_000],
         original: &["took < std::time::Duration::from_secs(60)"],
     },
     Site {
         file: "xlinks_ac03_head_405_falls_back_and_timeout_fails.rs",
-        suite: "suite_core_08",
         budgets_ms: &[10_000],
         original: &["xlinks::run_checker(&[&file]);", "elapsed.as_millis() >= 1900"],
     },
@@ -207,13 +195,31 @@ fn pre_conversion_source_holds_the_budget_each_helper_literal_claims() {
     assert!(problems.is_empty(), "{}", problems.join("\n"));
 }
 
+/// The test binary (suite) that compiles `file` in as a module, read from the
+/// generated `tests/suite_*.rs` files (scripts/gen-test-suites.sh) so a re-cut
+/// of the suite layout can never leave this test filtering an empty binary.
+fn suite_holding(root: &std::path::Path, file: &str) -> String {
+    let needle = format!("#[path = \"{file}\"]");
+    let mut found = Vec::new();
+    for entry in fs::read_dir(root.join("tests")).expect("read tests/") {
+        let path = entry.expect("dir entry").path();
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+        if name.starts_with("suite_") && name.ends_with(".rs") && fs::read_to_string(&path).unwrap_or_default().contains(&needle) {
+            found.push(name.trim_end_matches(".rs").to_string());
+        }
+    }
+    assert_eq!(found.len(), 1, "{file}: expected exactly one generated suite to include it, found {found:?}");
+    found.remove(0)
+}
+
 /// Run every converted site's tests (`cargo test --test <suite> <module>::`)
 /// once per env setting and require them all to pass.
 #[test]
 fn every_converted_site_passes_with_and_without_perf_skip() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cargo = option_env!("CARGO").unwrap_or("cargo");
-    let mut suites: Vec<&str> = CONVERTED.iter().map(|s| s.suite).collect();
+    let suite_of: Vec<(&Site, String)> = CONVERTED.iter().map(|s| (s, suite_holding(&root, s.file))).collect();
+    let mut suites: Vec<&str> = suite_of.iter().map(|(_, suite)| suite.as_str()).collect();
     suites.sort();
     suites.dedup();
     let mut problems = Vec::new();
@@ -227,7 +233,7 @@ fn every_converted_site_passes_with_and_without_perf_skip() {
                 attempt += 1;
                 let mut cmd = Command::new(cargo);
                 cmd.current_dir(&root).args(["test", "--test", suite, "--features", "test-support", "--"]);
-                for site in CONVERTED.iter().filter(|s| s.suite == *suite) {
+                for (site, _) in suite_of.iter().filter(|(_, s)| s == suite) {
                     cmd.arg(format!("{}::", site.file.trim_end_matches(".rs")));
                 }
                 cmd.arg("--test-threads=1");
