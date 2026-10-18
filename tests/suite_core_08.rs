@@ -1574,6 +1574,18 @@ mod ttfs_ac05_under_five_tenants_shows_n_and_nulls;
 mod ttfs_ac06_admin_has_no_activation_and_unclassified_excluded;
 #[path = "ttfs_ac07_by_client_only_for_groups_of_five.rs"]
 mod ttfs_ac07_by_client_only_for_groups_of_five;
+#[path = "umeta_ac01_meta_usage_matches_refusal_and_status.rs"]
+mod umeta_ac01_meta_usage_matches_refusal_and_status;
+#[path = "umeta_ac02_golden_echo_result_unchanged.rs"]
+mod umeta_ac02_golden_echo_result_unchanged;
+#[path = "umeta_ac03_host_usage_plan_block.rs"]
+mod umeta_ac03_host_usage_plan_block;
+#[path = "umeta_ac04_unlimited_plan_renders_null_limit.rs"]
+mod umeta_ac04_unlimited_plan_renders_null_limit;
+#[path = "umeta_ac05_no_extra_select_on_hot_path.rs"]
+mod umeta_ac05_no_extra_select_on_hot_path;
+#[path = "umeta_ac06_caller_limit_in_meta_usage.rs"]
+mod umeta_ac06_caller_limit_in_meta_usage;
 #[path = "unkfield_ac04_trigger_set_unknown_argument.rs"]
 mod unkfield_ac04_trigger_set_unknown_argument;
 #[path = "unkfield_ac05_tools_list_additional_properties_false.rs"]

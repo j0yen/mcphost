@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-python-sdk-generated.md (test_prefix: pysdk)",
+  "ac_test_map_prd": "PRD-mcphost-usage-in-every-response.md (test_prefix: umeta)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,14 +28,14 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/pysdk_ac01_no_override_table.rs",
-    "AC2": "tests/pysdk_ac02_mypy_strict_pytest_and_header.rs",
-    "AC3": "tests/pysdk_ac03_invalid_args_raise_before_http.rs",
-    "AC4": "tests/pysdk_ac04_error_codes_are_typed_exceptions.rs",
-    "AC5": "tests/pysdk_ac05_contract_skew_warns_once_or_raises.rs",
-    "AC6": "tests/pysdk_ac06_result_shape_error_and_extra_fields.rs",
-    "AC7": "tests/pysdk_ac07_ci_diff_fails_on_stale_sdk.rs",
-    "AC8": "tests/test_live_smoke.py"
+    "AC1": "tests/umeta_ac01_meta_usage_matches_refusal_and_status.rs",
+    "AC2": "tests/umeta_ac02_golden_echo_result_unchanged.rs",
+    "AC3": "tests/umeta_ac03_host_usage_plan_block.rs",
+    "AC4": "tests/umeta_ac04_unlimited_plan_renders_null_limit.rs",
+    "AC5": "tests/umeta_ac05_no_extra_select_on_hot_path.rs",
+    "AC6": "tests/umeta_ac06_caller_limit_in_meta_usage.rs",
+    "AC7": "tests/umeta_ac07_tool_test_and_run_carry_no_usage.rs",
+    "AC8": "deferred: tests/umeta_ac08_live_prod_result_usage_matches_status.rs (Live)"
   },
   "ac_test_map_by_prefix": {
     "oschv": {
@@ -2054,6 +2054,17 @@
       "AC1": "tests/sorel_ac01_offboard_releases_session_fresh_signup.rs",
       "AC2": "tests/sorel_ac02_self_offboard_remedy_and_idempotent.rs",
       "AC3": "tests/sorel_ac03_admin_disable_remedy_unchanged.rs"
+    },
+    "umeta": {
+      "_prd": "PRD-mcphost-usage-in-every-response.md (test_prefix: umeta)",
+      "AC1": "tests/umeta_ac01_meta_usage_matches_refusal_and_status.rs",
+      "AC2": "tests/umeta_ac02_golden_echo_result_unchanged.rs",
+      "AC3": "tests/umeta_ac03_host_usage_plan_block.rs",
+      "AC4": "tests/umeta_ac04_unlimited_plan_renders_null_limit.rs",
+      "AC5": "tests/umeta_ac05_no_extra_select_on_hot_path.rs",
+      "AC6": "tests/umeta_ac06_caller_limit_in_meta_usage.rs",
+      "AC7": "tests/umeta_ac07_tool_test_and_run_carry_no_usage.rs",
+      "AC8": "deferred: tests/umeta_ac08_live_prod_result_usage_matches_status.rs (Live)"
     }
   }
 }

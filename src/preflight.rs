@@ -232,12 +232,8 @@ impl DailyCalls {
 }
 
 pub async fn daily_calls(state: &AppState, tenant: &Tenant) -> Result<DailyCalls, AppError> {
-    let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
-        AppError::Internal(format!("tenant's plan '{}' is not in the loaded plan catalog", tenant.plan))
-    })?;
-    let midnight = crate::state::utc_midnight_unix(crate::state::now_unix());
-    let used = state.db.count_calls_since(tenant.id, midnight, true).await?;
-    Ok(DailyCalls { used, limit: plan.calls_per_day, midnight })
+    let usage = crate::usage::plan_usage_snapshot(state, tenant, None).await?;
+    Ok(DailyCalls { used: usage.used, limit: usage.limit, midnight: usage.midnight })
 }
 
 /// `calls_per_day`: reject with `quota_exceeded` once `tenant` has made
@@ -249,7 +245,12 @@ pub async fn daily_calls(state: &AppState, tenant: &Tenant) -> Result<DailyCalls
 /// writes a `calls` row.
 pub async fn check_calls_per_day(state: &AppState, tenant: &Tenant, mode: Mode) -> Result<(), AppError> {
     let daily = daily_calls(state, tenant).await?;
-    if daily.used >= daily.limit {
+    check_daily_calls(state, tenant, mode, &daily).await
+}
+
+async fn check_daily_calls(state: &AppState, tenant: &Tenant, mode: Mode, daily: &DailyCalls) -> Result<(), AppError> {
+    // A plan row with `calls_per_day: 0` is unlimited (renders `limit: null`).
+    if daily.limit > 0 && daily.used >= daily.limit {
         // A `quota.trip` alert once the same plan knob trips
         // `MCPHOST_ALERT_QUOTA_TRIP_THRESHOLD` (default 20) times in 5
         // minutes for this tenant. A dry run is a question, not a trip.
@@ -291,7 +292,17 @@ pub async fn check_calls_per_day(state: &AppState, tenant: &Tenant, mode: Mode) 
 
 fn calls_per_day<'a>(ctx: &'a Ctx<'a>) -> CheckFuture<'a> {
     // A cross-tenant call counts against the CALLER's quota, not the owner's.
-    Box::pin(async move { check_calls_per_day(ctx.state, ctx.billed(), ctx.mode).await })
+    Box::pin(async move {
+        let billed = ctx.billed();
+        let daily = daily_calls(ctx.state, billed).await?;
+        check_daily_calls(ctx.state, billed, ctx.mode, &daily).await?;
+        // The count this call was admitted on, for `_meta.usage` (no second
+        // COUNT): a dry run is a question, not a call.
+        if ctx.mode == Mode::Real {
+            crate::usage::observe_daily(daily.used);
+        }
+        Ok(())
+    })
 }
 
 /// An owner-set per-caller cap, checked only for a cross-tenant call (an
@@ -313,6 +324,7 @@ fn caller_limit<'a>(ctx: &'a Ctx<'a>) -> CheckFuture<'a> {
             .db
             .count_caller_calls_since(ctx.owner.id, ctx.tool.to_string(), caller.id, midnight)
             .await?;
+        crate::usage::observe_caller(used, limit);
         if used >= limit {
             let reset_at = crate::state::rfc3339_from_unix(midnight + 86_400);
             return Err(crate::sharing::quota_caller(&caller.namespace, ctx.tool, limit, used, reset_at));
