@@ -77,6 +77,8 @@ mod statusfeed_ac11_deferral_is_justified;
 mod suite_ac2_check_catches_unregistered_file;
 #[path = "suite_ac4_archived_prd_pointers_resolve.rs"]
 mod suite_ac4_archived_prd_pointers_resolve;
+#[path = "suitecap_ac01_plan_never_exceeds_max_suites_and_weights_follow.rs"]
+mod suitecap_ac01_plan_never_exceeds_max_suites_and_weights_follow;
 #[path = "toolname_ac08_tools_list_counts_updated.rs"]
 mod toolname_ac08_tools_list_counts_updated;
 #[path = "vaultst_ac09_deferral_is_justified.rs"]

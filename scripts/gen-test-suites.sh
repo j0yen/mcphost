@@ -63,6 +63,7 @@ cd "$(dirname "$0")/.."
 
 python3 - "${1:-}" <<'PY'
 import glob
+import json
 import os
 import re
 import subprocess
@@ -625,11 +626,26 @@ MAX_PER_SUITE = {"core": 900, "sandbox": 220}
 # and_names_preserved.rs). ci-test-partition.sh's `check` greps this very line
 # (`^MAX_SUITES = N`) so the gate enforces the same cap -- change it here only. When the planned
 # core+sandbox count would exceed it, compute_plan() grows the per-suite file
-# budget of the sandbox partition (else core), one file at a time, until the
-# plan fits -- the automated form of the hand-retunes recorded above
-# (PRD-mcphost-first-tool-from-description, run 764, 2026-10-12: 8 core + 3
-# sandbox = 11 until the sandbox budget auto-grew past 220).
+# budget of a partition (sandbox first, else core) to the SMALLEST cap that
+# actually removes a bucket, until the plan fits -- the automated form of the
+# hand-retunes recorded above (PRD-mcphost-first-tool-from-description, run
+# 764, 2026-10-12: 8 core + 3 sandbox = 11 until the sandbox budget auto-grew
+# past 220). A partition whose bucket count cannot shrink any further (its
+# remaining buckets are exclusive singletons, or it sits at the sandbox shard
+# floor) is skipped so the other one is grown instead (run 952, 2026-10-18:
+# sandbox = 1 normal + 1 singleton could never shrink, the old loop kept
+# growing it to cap 5220 and never touched core, so an 11th suite shipped).
+# If no partition can shrink and the plan still exceeds MAX_SUITES the
+# generator FAILS (never emits an 11th suite).
 MAX_SUITES = 10
+
+# scripts/ci-suite-weights.json is generated with the suites: its keys are
+# EXACTLY the generated suite names (plus `lib`, the --lib run), so a new suite
+# can never lack a weight and a removed suite leaves no stale entry. Measured
+# seconds already recorded are kept; a new or resized suite gets a derived
+# default (file count x measured seconds-per-file), which a later refresh from
+# a green CI run's `finished in` lines replaces.
+WEIGHTS_REL = "scripts/ci-suite-weights.json"
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"
@@ -966,6 +982,16 @@ ENV_MAX_PER_SUITE = {"core": 500, "sandbox": 500}
 CONTRACT_MAX_PER_SUITE = {"core": 500, "sandbox": 500}
 
 
+def plan_buckets(stems, exclusive, cap):
+    """The buckets (exclusive singletons first) one partition packs into at
+    per-suite file budget `cap`."""
+    grouped = {}
+    for stem in sorted(stems):
+        grouped.setdefault(area_key(stem), []).append(stem)
+    groups = [(k, sorted(grouped[k])) for k in sorted(grouped)]
+    return distribute_exclusive(bucketize(groups, cap), exclusive)
+
+
 def build_suites(name_prefix, cap_by_partition, stems_by_partition, exclusive_by_partition, migrations, suite_files):
     """Buckets `stems_by_partition[part]` (+ `exclusive_by_partition[part]`
     as singletons) into `<name_prefix>_<part>_NN` suites, same area-key
@@ -973,16 +999,7 @@ def build_suites(name_prefix, cap_by_partition, stems_by_partition, exclusive_by
     `suite_files` and returning `{part: [suite_name, ...]}`."""
     names_by_partition = {}
     for part in ("core", "sandbox"):
-        stems = sorted(stems_by_partition[part])
-        grouped = {}
-        for stem in stems:
-            grouped.setdefault(area_key(stem), []).append(stem)
-        groups = sorted(grouped.items())
-        for k in grouped:
-            grouped[k].sort()
-        groups = [(k, grouped[k]) for k, _ in groups]
-        buckets = bucketize(groups, cap_by_partition[part])
-        buckets = distribute_exclusive(buckets, exclusive_by_partition[part])
+        buckets = plan_buckets(stems_by_partition[part], exclusive_by_partition[part], cap_by_partition[part])
         names = []
         for i, bucket in enumerate(buckets, 1):
             name = f"{name_prefix}_{part}_{i:02d}"
@@ -1041,17 +1058,36 @@ def compute_plan():
     env_names = build_suites("suite_env", ENV_MAX_PER_SUITE, env_by_partition, env_exclusive_by_partition, migrations, {})
     contract_names = build_suites("suite_contracts", CONTRACT_MAX_PER_SUITE, contract_by_partition, contract_exclusive_by_partition, migrations, {})
     min_buckets = {"core": 1, "sandbox": max(1, sandbox_shard_count() - len(env_names["sandbox"]) - len(contract_names["sandbox"]))}
-    for _ in range(5000):
-        scratch = {}
-        names = build_suites("suite", caps, by_partition, exclusive_by_partition, migrations, scratch)
-        total = len(names["core"]) + len(names["sandbox"])
-        growable = [p for p in ("sandbox", "core") if len(names[p]) > min_buckets[p]]
-        if total <= MAX_SUITES or not growable:
-            break
+    def n_buckets(part, cap):
+        return len(plan_buckets(by_partition[part], exclusive_by_partition[part], cap))
+
+    while n_buckets("core", caps["core"]) + n_buckets("sandbox", caps["sandbox"]) > MAX_SUITES:
         # sandbox first: its bucket count is pinned near the shard count, so
         # a 3rd sandbox bucket is the usual overflow; core only if sandbox
-        # is already at its floor.
-        caps[growable[0]] += 1
+        # cannot shrink. A partition is grown to the smallest cap that
+        # REMOVES a bucket; one that cannot (exclusive singletons, shard
+        # floor) is skipped rather than grown forever.
+        grew = False
+        for part in ("sandbox", "core"):
+            cur = n_buckets(part, caps[part])
+            if cur <= min_buckets[part]:
+                continue
+            for cand in range(caps[part] + 1, len(by_partition[part]) + 1):
+                if n_buckets(part, cand) < cur:
+                    caps[part] = cand
+                    grew = True
+                    break
+            if grew:
+                break
+        if not grew:
+            die(f"cannot pack the core+sandbox suites into MAX_SUITES={MAX_SUITES}: "
+                f"core needs {n_buckets('core', caps['core'])} "
+                f"({len(exclusive_by_partition['core'])} exclusive singletons), "
+                f"sandbox needs {n_buckets('sandbox', caps['sandbox'])} "
+                f"({len(exclusive_by_partition['sandbox'])} exclusive singletons, floor {min_buckets['sandbox']}) "
+                "and no per-suite budget removes another bucket -- raise MAX_SUITES in this file "
+                "and tests/suite_ac1_ten_binaries_and_names_preserved.rs deliberately, or merge/remove "
+                "exclusive-global test files")
 
     suite_files = {}  # path -> content
     suite_names_by_partition = build_suites(
@@ -1128,8 +1164,64 @@ def render_cargo_toml(cargo_toml, suite_names):
     return "\n".join(lines)
 
 
+def suite_member_count(content):
+    """Test files (not support modules) a suite file includes."""
+    return sum(1 for m in re.findall(r'#\[path\s*=\s*"([^"]+\.rs)"\]', content) if "/" not in m)
+
+
+def suite_partition(name):
+    return "sandbox" if "_sandbox_" in name else "core"
+
+
+def read_weights():
+    try:
+        with open(WEIGHTS_REL, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def plan_weights(suite_files):
+    """The weights file this plan implies: keys = generated suites (+ `lib`
+    when present). Measured values stay when the suite exists on disk with the
+    same member count; a resized suite keeps its own measured seconds-per-file
+    x the new count; a new suite gets file count x its partition's measured
+    seconds-per-file (>= 1 s)."""
+    old = read_weights() or {}
+    old_counts = {}
+    for path in glob.glob("tests/suite_*.rs"):
+        base = os.path.basename(path)
+        if GENERATED_SUITE_RE.match(base):
+            with open(path, encoding="utf-8") as fh:
+                old_counts[base[:-3]] = suite_member_count(fh.read())
+    secs = {"core": 0.0, "sandbox": 0.0}
+    files = {"core": 0, "sandbox": 0}
+    for name, w in old.items():
+        n = old_counts.get(name, 0)
+        if n and isinstance(w, (int, float)):
+            secs[suite_partition(name)] += w
+            files[suite_partition(name)] += n
+    rate = {p: (secs[p] / files[p] if files[p] else 1.0) for p in secs}
+    out = {}
+    if "lib" in old:
+        out["lib"] = old["lib"]
+    for path, content in suite_files.items():
+        name = os.path.basename(path)[:-3]
+        n = suite_member_count(content)
+        prev = old.get(name)
+        if isinstance(prev, (int, float)) and old_counts.get(name) == n:
+            out[name] = prev
+        elif isinstance(prev, (int, float)) and old_counts.get(name):
+            out[name] = max(1, round(prev * n / old_counts[name]))
+        else:
+            out[name] = max(1, round(n * rate[suite_partition(name)]))
+    return dict(sorted(out.items()))
+
+
 def write_plan(migrations, suite_files, new_cargo_toml, all_files):
     changed = []
+    new_weights = plan_weights(suite_files)  # reads the OLD suite files, so before they are rewritten
     for path, (new_content, _c, _s, _h) in migrations.items():
         with open(path, encoding="utf-8") as fh:
             old_content = fh.read()
@@ -1159,6 +1251,11 @@ def write_plan(migrations, suite_files, new_cargo_toml, all_files):
         with open("Cargo.toml", "w", encoding="utf-8") as fh:
             fh.write(new_cargo_toml)
         changed.append("Cargo.toml")
+
+    if read_weights() != new_weights:
+        with open(WEIGHTS_REL, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(new_weights, indent=2) + "\n")
+        changed.append(WEIGHTS_REL)
 
     if changed:
         print("gen-test-suites.sh: wrote/updated:")
@@ -1235,6 +1332,17 @@ def check_plan(migrations, suite_files, new_cargo_toml, all_files):
         old_cargo = fh.read()
     if old_cargo != new_cargo_toml:
         problems.append("Cargo.toml's generated [[test]] block (or autotests = false) has drifted")
+
+    # The weights file's keys must be exactly the generated suite set (+ lib).
+    have = read_weights()
+    want = {os.path.basename(p)[:-3] for p in suite_files}
+    if have is None:
+        problems.append(f"{WEIGHTS_REL} is missing or not a JSON object (run gen-test-suites.sh)")
+    else:
+        for name in sorted(want - set(have)):
+            problems.append(f"{WEIGHTS_REL} has no weight for suite {name} (run gen-test-suites.sh)")
+        for name in sorted(set(have) - want - {"lib"}):
+            problems.append(f"{WEIGHTS_REL} has a stale entry for {name}, which gen-test-suites.sh no longer generates (run gen-test-suites.sh)")
 
     if problems:
         print("gen-test-suites.sh --check: FAILED", file=sys.stderr)
