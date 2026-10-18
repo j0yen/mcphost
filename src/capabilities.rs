@@ -12,11 +12,20 @@ use serde_json::{Value, json};
 /// The help code every unimplemented-capability `-32601` carries.
 pub const UNSUPPORTED_CODE: &str = "capability_unsupported";
 
+crate::err_code! {
+    pub METHOD_SERVER_TO_CLIENT,
+    code: "method_server_to_client", family: Spec, class: AgentFault, retryable: false,
+    remedy: "Do not post this method: the host sends it to the client. Answer it when the host sends it, or read /capabilities.json server_to_client.",
+}
+
 /// One MCP primitive family.
 pub struct Capability {
     pub name: &'static str,
     /// Every JSON-RPC method of this family a client can send this host.
     pub methods: &'static [&'static str],
+    /// The subset of `methods` this host SENDS to the client (a client
+    /// posting one is refused even when the row is implemented).
+    pub server_to_client: &'static [&'static str],
     pub implemented: bool,
     pub list_changed: bool,
     pub subscribe: bool,
@@ -29,10 +38,28 @@ pub struct Capability {
     pub help_code: &'static str,
 }
 
+/// Methods every client may send that belong to no primitive row: the
+/// protocol core plus the rmcp-routed lifecycle methods (`server/discover`,
+/// `subscriptions/listen`, `tasks/*`) this registry has no primitive row for.
+/// `tests/cgd_ac04_dispatch_table_matches_registry.rs` ties this list and the
+/// rows to rmcp's `ClientRequest` dispatch table.
+pub const CORE_METHODS: &[&str] = &[
+    "initialize",
+    "ping",
+    "tools/list",
+    "tools/call",
+    "server/discover",
+    "subscriptions/listen",
+    "tasks/get",
+    "tasks/update",
+    "tasks/cancel",
+];
+
 pub const CAPABILITIES: &[Capability] = &[
     Capability {
         name: "tools",
         methods: &["tools/list", "tools/call"],
+        server_to_client: &[],
         implemented: true,
         list_changed: true,
         subscribe: false,
@@ -50,6 +77,7 @@ pub const CAPABILITIES: &[Capability] = &[
             "resources/subscribe",
             "resources/unsubscribe",
         ],
+        server_to_client: &[],
         implemented: false,
         list_changed: false,
         subscribe: false,
@@ -61,6 +89,7 @@ pub const CAPABILITIES: &[Capability] = &[
     Capability {
         name: "prompts",
         methods: &["prompts/list", "prompts/get"],
+        server_to_client: &[],
         implemented: true,
         list_changed: true,
         subscribe: false,
@@ -72,6 +101,7 @@ pub const CAPABILITIES: &[Capability] = &[
     Capability {
         name: "completions",
         methods: &["completion/complete"],
+        server_to_client: &[],
         implemented: false,
         list_changed: false,
         subscribe: false,
@@ -83,6 +113,7 @@ pub const CAPABILITIES: &[Capability] = &[
     Capability {
         name: "sampling",
         methods: &["sampling/createMessage"],
+        server_to_client: &["sampling/createMessage"],
         implemented: crate::inband::in_band_available(),
         list_changed: false,
         subscribe: false,
@@ -94,6 +125,7 @@ pub const CAPABILITIES: &[Capability] = &[
     Capability {
         name: "elicitation",
         methods: &["elicitation/create"],
+        server_to_client: &["elicitation/create"],
         implemented: crate::inband::in_band_available(),
         list_changed: false,
         subscribe: false,
@@ -107,6 +139,7 @@ pub const CAPABILITIES: &[Capability] = &[
     Capability {
         name: "logging",
         methods: &["logging/setLevel"],
+        server_to_client: &[],
         implemented: false,
         list_changed: false,
         subscribe: false,
@@ -118,6 +151,7 @@ pub const CAPABILITIES: &[Capability] = &[
     Capability {
         name: "roots",
         methods: &["roots/list"],
+        server_to_client: &["roots/list"],
         implemented: false,
         list_changed: false,
         subscribe: false,
@@ -156,6 +190,39 @@ pub fn unsupported_error(method: &str, base_url: Option<&str>) -> McpError {
     McpError::new(
         ErrorCode::METHOD_NOT_FOUND,
         format!("{method}: this host does not implement the `{}` capability", cap.map_or("?", |c| c.name)),
+        Some(Value::Object(data)),
+    )
+}
+
+/// The error the pre-dispatch gate answers for `method`, if it is refusable:
+/// a method of an unimplemented row.
+pub fn refusal(method: &str, base_url: Option<&str>) -> Option<McpError> {
+    let cap = capability_for_method(method)?;
+    if !cap.implemented {
+        Some(unsupported_error(method, base_url))
+    } else if cap.server_to_client.contains(&method) {
+        Some(server_to_client_error(method, cap, base_url))
+    } else {
+        None
+    }
+}
+
+/// `-32601` for a server-to-client method of an IMPLEMENTED row posted by a
+/// client: the host sends it, it does not receive it.
+fn server_to_client_error(method: &str, cap: &Capability, base_url: Option<&str>) -> McpError {
+    let mut data = serde_json::Map::new();
+    data.insert("code".into(), json!(METHOD_SERVER_TO_CLIENT));
+    data.insert("capability".into(), json!(cap.name));
+    data.insert("method".into(), json!(method));
+    data.insert("alternative".into(), json!(cap.alternative));
+    if let Some(base) = base_url
+        && let Some(url) = crate::help::help_url(base, METHOD_SERVER_TO_CLIENT)
+    {
+        data.insert("help_url".into(), json!(url));
+    }
+    McpError::new(
+        ErrorCode::METHOD_NOT_FOUND,
+        format!("{method}: the host sends this request to the client; clients do not post it"),
         Some(Value::Object(data)),
     )
 }
@@ -219,6 +286,7 @@ fn primitive_json(c: &Capability) -> Value {
         "probe": c.probe,
         "alternative": c.alternative,
         "methods": c.methods,
+        "server_to_client": c.server_to_client,
     });
     if let Some(transport) = transport_note(c.name) {
         row["transport"] = json!(transport);

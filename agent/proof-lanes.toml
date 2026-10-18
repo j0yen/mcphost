@@ -399,3 +399,11 @@ required_commands = [
   "cargo xtask recipes --check",
   "cargo test --workspace rgpt_",
 ]
+
+[[lane]]
+id = "capabilities-wire-check"
+description = "PRD-mcphost-capabilities-generated-from-dispatch R6: scripts/capabilities-wire-check.sh, the keyless no-Mcp-Method probe of every unimplemented-row and server-to-client method that tests/cgd_ac06_wire_check_script_green_in_process.rs runs against the in-process server and the Live AC runs against prod. Added project-locally: no existing lane routes a new standalone script under scripts/."
+globs = ["scripts/capabilities-wire-check.sh"]
+required_commands = [
+  "cargo test --workspace cgd_ac06",
+]

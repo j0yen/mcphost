@@ -1759,58 +1759,43 @@ fn entry_unauthorized(state: &AppState, invalid: Option<&'static str>) -> Respon
     response
 }
 
-/// PRD-mcphost-server-capabilities-from-registry requirement 2: methods
-/// `rmcp` cannot route to a handler hook (`sampling/createMessage`,
-/// `elicitation/create` and `roots/list` are server-to-client requests; a
-/// client sending them gets rmcp's bare `-32601 "<method>"`) still have to
-/// carry `data.{capability,alternative,help_url}`. When the request names (via
-/// `Mcp-Method`) a method of an unimplemented capability row and the reply
-/// is a `-32601` with no `data`, the error is replaced by
-/// [`crate::capabilities::unsupported_error`]; every other response -- in
-/// particular the hooks' own already-enriched errors -- passes untouched.
-async fn enrich_unsupported_errors(
-    State(state): State<Arc<AppState>>,
+/// PRD-mcphost-capabilities-generated-from-dispatch R1: the one pre-dispatch
+/// refusal site. Reads the JSON-RPC `method` of a POST body (each element of a
+/// batch) and, when [`crate::capabilities::refusal`] names a refusal for it,
+/// answers that `-32601` itself, before `rmcp` parses the params -- so the
+/// labelled reply never depends on a header only some clients send. Anything
+/// else (no body, not JSON, no `method`, a notification, a mixed batch) is
+/// passed through with its body restored.
+async fn refuse_unimplemented_methods(
+    State((state, enabled)): State<(Arc<AppState>, bool)>,
     req: Request<Body>,
     next: Next,
 ) -> Response {
-    let method = req
-        .headers()
-        .get("mcp-method")
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_string);
-    let resp = next.run(req).await;
-    let Some(method) = method else { return resp };
-    if !crate::capabilities::capability_for_method(&method).is_some_and(|c| !c.implemented) {
-        return resp;
+    if !enabled || req.method() != Method::POST {
+        return next.run(req).await;
     }
-    let is_json = resp
-        .headers()
-        .get(http::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|c| c.starts_with("application/json"));
-    // rmcp answers these with HTTP 400, hooks with 200: the status is kept.
-    if !is_json {
-        return resp;
-    }
-    let (mut parts, body) = resp.into_parts();
-    let Ok(bytes) = axum::body::to_bytes(body, 64 * 1024).await else {
-        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    let (parts, body) = req.into_parts();
+    let Ok(bytes) = axum::body::to_bytes(body, MAX_REQUEST_BODY_BYTES).await else {
+        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
     };
-    let mut doc: Value = match serde_json::from_slice(&bytes) {
-        Ok(v) => v,
-        Err(_) => return Response::from_parts(parts, Body::from(bytes)),
-    };
-    let bare = doc.get("error").is_some_and(|e| {
-        e.get("code").and_then(Value::as_i64) == Some(-32601) && e.get("data").is_none()
-    });
-    if !bare {
-        return Response::from_parts(parts, Body::from(bytes));
+    if let Ok(doc) = serde_json::from_slice::<Value>(&bytes) {
+        let refuse = |msg: &Value| -> Option<Value> {
+            let method = msg.get("method")?.as_str()?;
+            let id = msg.get("id")?.clone();
+            let err = crate::capabilities::refusal(method, Some(&state.public_url))?;
+            Some(json!({"jsonrpc": "2.0", "id": id, "error": err}))
+        };
+        let reply = match &doc {
+            Value::Array(items) if !items.is_empty() => {
+                items.iter().map(refuse).collect::<Option<Vec<Value>>>().map(Value::Array)
+            }
+            single => refuse(single),
+        };
+        if let Some(reply) = reply {
+            return (StatusCode::OK, Json(reply)).into_response();
+        }
     }
-    let err = crate::capabilities::unsupported_error(&method, Some(&state.public_url));
-    doc["error"] = serde_json::to_value(err).unwrap_or(Value::Null);
-    let out = serde_json::to_vec(&doc).unwrap_or_default();
-    parts.headers.remove(http::header::CONTENT_LENGTH);
-    Response::from_parts(parts, Body::from(out))
+    next.run(Request::from_parts(parts, Body::from(bytes))).await
 }
 
 /// PRD-mcphost-session-bound-tenant-after-signup requirement 1: the session
@@ -1941,6 +1926,17 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 /// stateless ... this PRD is blocked") turned into a reproducible test
 /// rather than an assertion in a changelog.
 pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode: bool) -> Router {
+    build_router_inner(state, legacy_session_mode, true)
+}
+
+/// Test-only seam (PRD-mcphost-capabilities-generated-from-dispatch AC1): the
+/// production router minus the pre-dispatch gate, so the premise -- a bare
+/// `-32601` for `roots/list {}` -- is reproduced against the same tree.
+pub fn build_router_without_method_gate(state: Arc<AppState>) -> Router {
+    build_router_inner(state, false, false)
+}
+
+fn build_router_inner(state: Arc<AppState>, legacy_session_mode: bool, method_gate: bool) -> Router {
     let config = StreamableHttpServerConfig::default()
         .with_json_response(crate::inband::PROD_JSON_RESPONSE)
         .with_legacy_session_mode(legacy_session_mode)
@@ -1982,6 +1978,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
     // itself (`handler::resolve_auth`), never from the URL path.
     let tenant_mcp_router = Router::new()
         .route_service("/t/{namespace}/mcp", service.clone())
+        .route_layer(middleware::from_fn_with_state((state.clone(), method_gate), refuse_unimplemented_methods))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             require_known_tenant_namespace,
@@ -2001,6 +1998,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
     // matched" reason.
     let url_mcp_router = Router::new()
         .route_service("/u/{secret}/mcp", service.clone())
+        .route_layer(middleware::from_fn_with_state((state.clone(), method_gate), refuse_unimplemented_methods))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             require_known_url_secret,
@@ -2016,6 +2014,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
     // `route_layer` shape as `url_mcp_router` above.
     let invite_mcp_router = Router::new()
         .route_service("/i/{code}/mcp", service.clone())
+        .route_layer(middleware::from_fn_with_state((state.clone(), method_gate), refuse_unimplemented_methods))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             require_live_invite_code,
@@ -2029,6 +2028,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
     // adds the membership row (`kind = 'org'` on the invite).
     let org_mcp_router = Router::new()
         .route_service("/o/{code}/mcp", service.clone())
+        .route_layer(middleware::from_fn_with_state((state.clone(), method_gate), refuse_unimplemented_methods))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             require_live_invite_code,
@@ -2042,6 +2042,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
     // client of the code's tenant (`handler::call_tool`'s join step).
     let join_mcp_router = Router::new()
         .route_service("/j/{code}/mcp", service.clone())
+        .route_layer(middleware::from_fn_with_state((state.clone(), method_gate), refuse_unimplemented_methods))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_live_join_code))
         .route_layer(middleware::from_fn_with_state(state.clone(), deliver_client_response))
         .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id))
@@ -2055,6 +2056,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
     // already documents: `.layer()` would wrap the default fallback too.
     let root_mcp_router = Router::new()
         .route_service("/mcp", service.clone())
+        .route_layer(middleware::from_fn_with_state((state.clone(), method_gate), refuse_unimplemented_methods))
         .route_layer(middleware::from_fn_with_state(state.clone(), deliver_client_response))
         .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id))
         .route_layer(middleware::from_fn_with_state(state.clone(), enrich_unsupported_errors));
@@ -2065,6 +2067,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
     // ever parses a body. Same `route_layer` shape as the routers above.
     let entry_mcp_router = Router::new()
         .route_service(crate::oauth::OAUTH_ENTRY_PATH, service.clone())
+        .route_layer(middleware::from_fn_with_state((state.clone(), method_gate), refuse_unimplemented_methods))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_entry_bearer))
         .route_layer(middleware::from_fn_with_state(state.clone(), deliver_client_response))
         .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id))
