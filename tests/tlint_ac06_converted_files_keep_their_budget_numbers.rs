@@ -15,6 +15,7 @@
 //!      test time). The `#[ignore]` `regenerate_pre_conversion_fixture`
 //!      rebuilds it from a full clone.
 
+use crate::common;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -237,6 +238,7 @@ fn every_converted_site_passes_with_and_without_perf_skip() {
                     cmd.arg(format!("{}::", site.file.trim_end_matches(".rs")));
                 }
                 cmd.arg("--test-threads=1");
+                common::strip_cargo_injected_env(&mut cmd);
                 if skip {
                     cmd.env("MCPHOST_PERF_SKIP", "1");
                 } else {

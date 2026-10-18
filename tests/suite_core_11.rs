@@ -476,6 +476,8 @@ mod verbfwd_ac06_hint_parity_underscore_form_resolves;
 mod verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota;
 #[path = "verbfwd_ac08_forward_stack_budget.rs"]
 mod verbfwd_ac08_forward_stack_budget;
+#[path = "vfxenv_ac01_build_env_inputs_are_not_outputs.rs"]
+mod vfxenv_ac01_build_env_inputs_are_not_outputs;
 #[path = "vord_ac01_falsifier.rs"]
 mod vord_ac01_falsifier;
 #[path = "vord_ac02_contract_order_enum.rs"]

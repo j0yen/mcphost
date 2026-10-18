@@ -25,6 +25,42 @@ use mcphost::secrets::SecretBox;
 use mcphost::state::AppState;
 use serde_json::{Value, json};
 
+/// Path a test should `Command::new` when it re-executes ITS OWN binary.
+/// On Linux `/proc/self/exe` execs the running inode even if the path in
+/// `target/` was unlinked and re-created underneath the suite (a nested
+/// `cargo` relink, the VFX flake class); elsewhere the plain
+/// `current_exe()` path is all there is.
+pub fn self_exe() -> PathBuf {
+    if cfg!(target_os = "linux") {
+        PathBuf::from("/proc/self/exe")
+    } else {
+        std::env::current_exe().expect("this test binary's own path")
+    }
+}
+
+/// Env names cargo INJECTS into the process of every test it runs (not user
+/// config such as `CARGO_HOME` / `CARGO_TARGET_DIR`).
+fn is_cargo_injected_env(name: &str) -> bool {
+    ["CARGO_PKG_", "CARGO_MANIFEST_", "CARGO_BIN_EXE_"].iter().any(|p| name.starts_with(p))
+        || ["CARGO_BIN_NAME", "CARGO_CRATE_NAME", "CARGO_PRIMARY_PACKAGE", "CARGO_TARGET_TMPDIR", "OUT_DIR"].contains(&name)
+}
+
+/// Call on every `Command` a test uses to run `cargo` (or a script that runs
+/// it) in the SAME target dir as the running suite. A third-party build
+/// script that tracks one of the injected names (`ring` tracks
+/// `CARGO_MANIFEST_DIR` and `OUT_DIR`) sees it "changed" from the outer build's unset to
+/// the nested cargo's inherited value, reruns, and rebuilds `mcphost` plus
+/// relinks `deps/suite_*` and `target/debug/mcphost` under the running suite
+/// (the VFX flake class, second cause).
+pub fn strip_cargo_injected_env(cmd: &mut std::process::Command) -> &mut std::process::Command {
+    for (k, _) in std::env::vars_os() {
+        if k.to_str().is_some_and(is_cargo_injected_env) {
+            cmd.env_remove(k);
+        }
+    }
+    cmd
+}
+
 /// Serializes the tests that read or rewrite the doc files
 /// `scripts/sandbox-api-doc-check.sh` owns: `--write` rewrites them in place
 /// and a concurrent copy or check can see a half-written file.

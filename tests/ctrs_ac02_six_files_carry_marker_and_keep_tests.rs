@@ -43,11 +43,10 @@ fn declared_tests(src: &str) -> Vec<String> {
 }
 
 fn list(suite: &str) -> String {
-    let out = Command::new(env!("CARGO"))
-        .args(["test", "--test", suite, "--", "--list"])
-        .current_dir(root())
-        .output()
-        .expect("run cargo test -- --list");
+    let mut cmd = Command::new(env!("CARGO"));
+    cmd.args(["test", "--test", suite, "--", "--list"]).current_dir(root());
+    crate::common::strip_cargo_injected_env(&mut cmd);
+    let out = cmd.output().expect("run cargo test -- --list");
     assert!(out.status.success(), "{suite} --list failed: {}", String::from_utf8_lossy(&out.stderr));
     String::from_utf8_lossy(&out.stdout).into_owned()
 }

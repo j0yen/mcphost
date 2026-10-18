@@ -14,6 +14,7 @@
 //! `tests/sessbind_ac08_binding_map_is_bounded_under_a_session_flood.rs`
 //! uses to isolate a process-level measurement from the rest of the suite.
 
+use crate::common;
 use std::process::Command;
 use std::time::Duration;
 
@@ -50,7 +51,7 @@ fn flakelint_ac06_subject_slow() {
 }
 
 fn run_subject(name: &str, envs: &[(&str, &str)], remove_envs: &[&str]) -> std::process::Output {
-    let exe = std::env::current_exe().expect("this test binary's own path");
+    let exe = common::self_exe();
     let mut cmd = Command::new(exe);
     cmd.args(["--exact", name, "--nocapture"]);
     for (k, v) in envs {
