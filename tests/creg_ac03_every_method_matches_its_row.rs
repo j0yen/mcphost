@@ -31,8 +31,9 @@ fn params_for(method: &str) -> Value {
 
 /// Methods this host SENDS to the client rather than receives: the row is
 /// implemented, but a client posting one gets rmcp's bare `-32601` by spec
-/// (PRD-mcphost-elicitation-with-ask-fallback flips `elicitation`).
-const SERVER_INITIATED: &[&str] = &["elicitation/create"];
+/// (PRD-mcphost-elicitation-with-ask-fallback flips `elicitation`,
+/// PRD-mcphost-sampling-from-tools flips `sampling`).
+const SERVER_INITIATED: &[&str] = &["elicitation/create", "sampling/createMessage"];
 
 /// The row-level precondition the drift test needs: a row names its methods.
 fn methods_problem(row: &Capability) -> Option<String> {

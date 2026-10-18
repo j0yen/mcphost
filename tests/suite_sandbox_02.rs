@@ -31,6 +31,8 @@ mod host;
 mod oauth;
 #[path = "support/rgpt.rs"]
 mod rgpt;
+#[path = "support/sampling_session.rs"]
+mod sampling_session;
 #[path = "support/serve.rs"]
 mod serve;
 #[path = "support/uptime_probes.rs"]
@@ -356,6 +358,20 @@ mod melc_ac06_job_run_has_no_client_and_records_the_code;
 mod melc_ac07_fourth_elicit_in_one_call_is_refused;
 #[path = "mrefub_ac03_status_json_last_refusal.rs"]
 mod mrefub_ac03_status_json_last_refusal;
+#[path = "msmp_ac01_ask_returns_client_answer_or_unsupported.rs"]
+mod msmp_ac01_ask_returns_client_answer_or_unsupported;
+#[path = "msmp_ac02_job_run_has_no_client_and_records_the_code.rs"]
+mod msmp_ac02_job_run_has_no_client_and_records_the_code;
+#[path = "msmp_ac03_wall_is_thirty_seconds_and_short_budget_fails_fast.rs"]
+mod msmp_ac03_wall_is_thirty_seconds_and_short_budget_fails_fast;
+#[path = "msmp_ac04_fifth_ask_in_one_call_is_refused.rs"]
+mod msmp_ac04_fifth_ask_in_one_call_is_refused;
+#[path = "msmp_ac05_daily_token_quota_refuses_before_asking.rs"]
+mod msmp_ac05_daily_token_quota_refuses_before_asking;
+#[path = "msmp_ac06_tool_logs_hold_counts_never_the_prompt.rs"]
+mod msmp_ac06_tool_logs_hold_counts_never_the_prompt;
+#[path = "msmp_ac07_bridge_modules_list_sampling_everywhere.rs"]
+mod msmp_ac07_bridge_modules_list_sampling_everywhere;
 #[path = "pgm_ac05_skip_when_semaphore_nearly_full.rs"]
 mod pgm_ac05_skip_when_semaphore_nearly_full;
 #[path = "plainenv_ac01_env_reaches_process.rs"]

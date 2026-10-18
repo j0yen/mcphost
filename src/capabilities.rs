@@ -83,10 +83,10 @@ pub const CAPABILITIES: &[Capability] = &[
     Capability {
         name: "sampling",
         methods: &["sampling/createMessage"],
-        implemented: false,
+        implemented: true,
         list_changed: false,
         subscribe: false,
-        ceiling: None,
+        ceiling: Some("sampling_tokens_per_day"),
         probe: "sampling",
         alternative: None,
         help_code: UNSUPPORTED_CODE,
@@ -129,9 +129,9 @@ pub const CAPABILITIES: &[Capability] = &[
 ];
 
 /// Rows that name a CLIENT capability this host consumes (it sends
-/// `elicitation/create` when the client advertised it): implemented, but
-/// never part of `ServerCapabilities`.
-pub const CLIENT_SIDE: &[&str] = &["elicitation"];
+/// `elicitation/create` / `sampling/createMessage` when the client advertised
+/// it): implemented, but never part of `ServerCapabilities`.
+pub const CLIENT_SIDE: &[&str] = &["elicitation", "sampling"];
 
 /// The row that owns `method`, if any.
 pub fn capability_for_method(method: &str) -> Option<&'static Capability> {
