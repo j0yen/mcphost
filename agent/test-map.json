@@ -2141,6 +2141,10 @@
       "AC6": "tests/srlp_ac06_warm_hit_keeps_plan_pids.rs",
       "AC7": "tests/srlp_ac07_tool_run_reports_resources_used.rs",
       "AC8": "deferred -- operator-provisioned: live curl of prod plans.json after deploy"
+    },
+    "plansjson": {
+      "_prd": "hotfix (no PRD): 949 live AC 8 -- /plans.json and billing.plans carry every ceilings_flat() key",
+      "AC1": "tests/plansjson_ac01_every_ceiling_reaches_the_public_catalog.rs"
     }
   }
 }

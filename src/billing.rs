@@ -1143,7 +1143,7 @@ pub fn plans_from_catalog(catalog: &crate::plans::PlanCatalog, billing_mode: &st
         .plans
         .iter()
         .map(|p| {
-            json!({
+            let mut obj = json!({
                 "name": p.name,
                 "price_usd_month": p.price_usd_month,
                 "tools_max": p.tools_max,
@@ -1156,7 +1156,24 @@ pub fn plans_from_catalog(catalog: &crate::plans::PlanCatalog, billing_mode: &st
                 "wait_max_s": crate::longpoll::WAIT_MAX_S,
                 "wait_default_s": crate::longpoll::WAIT_DEFAULT_S,
                 "description": p.description,
-            })
+            });
+            // Every ceiling `Plan::ceilings_flat()` reports (the sandbox
+            // cpu/memory/wall/pids caps, state/table/docs/blob quotas, the
+            // `budget.*` caps, ...) is merged in GENERATED, so a field added
+            // to `Plan` reaches `/plans.json` and `billing.plans` with no
+            // edit here (949 live AC 8: the hand-written list above never
+            // carried `sandbox_memory_mb_max`). Keys the literal above
+            // already sets (`tools_max`, `calls_per_day`, `secrets_max`,
+            // `org_members_max`) keep their existing value -- both come from
+            // the same `Plan` field -- and `tests/plansjson_ac01_*` asserts
+            // the two can never differ. Nested `budget_*` ceilings keep
+            // their dotted flat name (`budget.max_wall_ms`).
+            if let Some(map) = obj.as_object_mut() {
+                for (name, value) in p.ceilings_flat() {
+                    map.entry(name).or_insert_with(|| json!(value));
+                }
+            }
+            obj
         })
         .collect();
     json!({
