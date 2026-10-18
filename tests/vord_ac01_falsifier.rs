@@ -94,7 +94,7 @@ async fn runs_underfill(server: &TestServer) -> (bool, bool) {
     // rows hold none of them.
     let failing = vord_seed_runs(server, tenant.id, 60, 7).await;
 
-    let live = extract_structured(&client.tools_call("host.runs.list", json!({"verdict": "fail", "limit": 5})).await.expect("list"));
+    let live = extract_structured(&client.tools_call("host.runs.list", json!({"verdict": "exceeded", "limit": 5})).await.expect("list"));
     let live_rows = live["runs"].as_array().expect("runs").len();
     let live_underfilled = live_rows < 5 && live.get("next_cursor").is_none();
 

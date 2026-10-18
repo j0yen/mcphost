@@ -143,3 +143,28 @@ async fn no_host_tool_answers_a_structural_args_invalid_to_a_call_built_from_its
     }
     assert!(offenders.is_empty(), "structural args_invalid for a call built from the tool's own schema:\n{}", offenders.join("\n"));
 }
+
+/// PRD-mcphost-runs-list-filter-enums-generated R3: the admin descriptors that
+/// carry `x-mcphost-validated` (`admin.runs`) join the table, so the same
+/// drift test covers them. Only the checked ones are dispatched: an unchecked
+/// admin tool keeps its handler's own refusal and several are destructive.
+#[tokio::test]
+async fn no_checked_admin_tool_answers_a_structural_args_invalid_to_a_call_built_from_its_own_schema() {
+    let server = TestServer::start().await;
+    let admin = McpClient::with_bearer(&server.base_url, common::ADMIN_KEY);
+    let checked: Vec<_> = mcphost::handler::admin_tool_descriptors()
+        .into_iter()
+        .filter(|t| t.input_schema.get(mcphost::host_args::VALIDATED_KEY) == Some(&Value::Bool(true)))
+        .collect();
+    assert!(checked.iter().any(|t| t.name == "admin.runs"), "admin.runs must be a checked admin descriptor");
+    let mut offenders = Vec::new();
+    for tool in &checked {
+        let args = call_for(&tool.input_schema);
+        if let Err(err) = admin.tools_call(&tool.name, args.clone()).await
+            && structural(&err)
+        {
+            offenders.push(format!("{} {args}: {}", tool.name, err.message));
+        }
+    }
+    assert!(offenders.is_empty(), "structural args_invalid for a call built from the tool's own schema:\n{}", offenders.join("\n"));
+}

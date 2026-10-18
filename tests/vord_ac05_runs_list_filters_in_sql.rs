@@ -1,6 +1,6 @@
 //! PRD-mcphost-declared-ordering-per-verb
-//! AC5 (P0) -- Given 60 runs of which 7 have `verdict: "fail"`, When
-//! `host.runs.list(verdict="fail", limit=5)` is paged, Then page 1 has 5,
+//! AC5 (P0) -- Given 60 runs of which 7 have `verdict: "exceeded"`, When
+//! `host.runs.list(verdict="exceeded", limit=5)` is paged, Then page 1 has 5,
 //! page 2 has 2 with no `next_cursor`, and no row is read outside the filter.
 
 use crate::common;
@@ -10,7 +10,7 @@ use mcphost::paged::RunsOrder;
 use serde_json::json;
 
 async fn page(client: &McpClient, cursor: Option<&str>) -> serde_json::Value {
-    let mut args = json!({"verdict": "fail", "limit": 5});
+    let mut args = json!({"verdict": "exceeded", "limit": 5});
     if let Some(c) = cursor {
         args["cursor"] = json!(c);
     }
@@ -46,7 +46,7 @@ async fn verdict_filtered_runs_page_five_then_two_with_no_cursor() {
     // Newest first: created_desc is the default and created_asc reverses it.
     let asc = extract_structured(
         &client
-            .tools_call("host.runs.list", json!({"verdict": "fail", "limit": 7, "order": "created_asc"}))
+            .tools_call("host.runs.list", json!({"verdict": "exceeded", "limit": 7, "order": "created_asc"}))
             .await
             .expect("asc"),
     );
@@ -69,7 +69,7 @@ async fn no_row_outside_the_filter_leaves_the_database() {
     // The query layer is asked for limit + 1 = 6 rows and must hand back six
     // rows that all match: a post-filter would return fewer, or rows that do
     // not match.
-    let query = RunsPageQuery { verdict: Some("fail".to_string()), ..Default::default() };
+    let query = RunsPageQuery { verdict: Some("exceeded".to_string()), ..Default::default() };
     let rows = server
         .state
         .db
@@ -79,7 +79,7 @@ async fn no_row_outside_the_filter_leaves_the_database() {
     assert_eq!(rows.len(), 6);
     for row in &rows {
         let progress: serde_json::Value = serde_json::from_str(row.run.progress_json.as_deref().expect("progress")).expect("json");
-        assert_eq!(progress["budget"]["verdict"], json!("fail"), "row outside the filter: {:?}", row.run.id);
+        assert_eq!(progress["budget"]["verdict"], json!("exceeded"), "row outside the filter: {:?}", row.run.id);
     }
 }
 

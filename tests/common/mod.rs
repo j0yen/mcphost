@@ -2634,12 +2634,12 @@ pub fn vord_dups_and_skips(walked: &[String], pre_existing: &[String]) -> (usize
 }
 
 /// Insert `total` finished runs for `tenant_id`, oldest first; the first
-/// `fails` carry `progress.budget.verdict == "fail"`, the rest `"ok"`. Returns
+/// `fails` carry `progress.budget.verdict == "exceeded"`, the rest `"ok"`. Returns
 /// the ids of the failing runs.
 pub async fn vord_seed_runs(server: &TestServer, tenant_id: i64, total: usize, fails: usize) -> Vec<String> {
     let mut failing = Vec::new();
     for i in 0..total {
-        let verdict = if i < fails { "fail" } else { "ok" };
+        let verdict = if i < fails { "exceeded" } else { "ok" };
         let id = server
             .state
             .db

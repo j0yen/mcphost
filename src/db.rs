@@ -2380,6 +2380,17 @@ pub struct ComposedRun {
     pub end_user_method: Option<String>,
 }
 
+/// Params for [`Db::insert_run_row_for_test`].
+#[derive(Debug, Clone)]
+pub struct TestRunRow {
+    pub tenant_id: i64,
+    pub tool_name: String,
+    pub status: crate::run_enums::RunStatus,
+    pub trigger: crate::run_enums::RunTrigger,
+    pub parent_run_id: Option<String>,
+    pub progress_json: Option<String>,
+}
+
 /// PRD-mcphost-job-timeline-tool R2: the stored `status` of a composed child
 /// row whose step has started and not finished. Deliberately not `running`
 /// or `queued`: those two are what the executor counts against concurrency
@@ -10899,7 +10910,7 @@ impl Db {
                 "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, \
                  status, progress_json, result_ref, error_class, started_unix, finished_unix, \
                  duration_ms, deadline_s, attempt, end_user_subject, end_user_issuer, end_user_method) \
-                 VALUES (?1, ?2, ?3, 'call', NULL, NULL, ?4, NULL, NULL, ?5, ?6, ?7, ?8, NULL, 1, ?9, ?10, ?11)",
+                 VALUES (?1, ?2, ?3, ?12, NULL, NULL, ?4, NULL, NULL, ?5, ?6, ?7, ?8, NULL, 1, ?9, ?10, ?11)",
                 params![
                     run_id,
                     run_tenant_id,
@@ -10912,6 +10923,7 @@ impl Db {
                     end_user_subject,
                     end_user_issuer,
                     end_user_method,
+                    crate::run_enums::RunTrigger::Call.as_str(),
                 ],
             )?;
             if let Some(trace) = &trace {
@@ -11480,8 +11492,8 @@ impl Db {
                 "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, \
                  caller_tenant_id, status, deadline_s, attempt, args_json, manual, test_run, message_id, \
                  end_user_subject, end_user_issuer, end_user_method) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'queued', ?7, 1, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-                params![run_id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, deadline_s, args_json, manual, test, message_id, end_user_subject, end_user_issuer, end_user_method],
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?15, ?7, 1, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                params![run_id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, deadline_s, args_json, manual, test, message_id, end_user_subject, end_user_issuer, end_user_method, crate::run_enums::RunStatus::Queued.as_str()],
             )?;
             Ok(())
         })
@@ -11530,8 +11542,8 @@ impl Db {
             conn.execute(
                 "INSERT INTO runs (id, tenant_id, tool_name, trigger, status, started_unix, \
                  deadline_s, attempt, args_json) \
-                 VALUES (?1, ?2, ?3, 'job', 'running', ?4, ?5, 1, ?6)",
-                params![run_id, tenant_id, tool_name, now, deadline_s, args_json],
+                 VALUES (?1, ?2, ?3, ?7, ?8, ?4, ?5, 1, ?6)",
+                params![run_id, tenant_id, tool_name, now, deadline_s, args_json, crate::run_enums::RunTrigger::Job.as_str(), crate::run_enums::RunStatus::Running.as_str()],
             )?;
             Ok(StartExportRun::Started(run_id.clone()))
         })
@@ -11586,8 +11598,8 @@ impl Db {
             conn.execute(
                 "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, message_id, \
                  status, error_class, started_unix, finished_unix, duration_ms, attempt) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'rejected', ?7, ?8, ?8, 0, 1)",
-                params![run_id, tenant_id, tool_name, trigger, trigger_ref, message_id, error_class, now],
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?9, ?7, ?8, ?8, 0, 1)",
+                params![run_id, tenant_id, tool_name, trigger, trigger_ref, message_id, error_class, now, crate::run_enums::RunStatus::Rejected.as_str()],
             )?;
             Ok(())
         })
@@ -11758,11 +11770,12 @@ impl Db {
                 "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, parent_run_id, \
                  step_no, parent_tool, status, error_class, result_ref, started_unix, finished_unix, \
                  duration_ms, attempt, end_user_subject, end_user_issuer, end_user_method, item_index) \
-                 VALUES (?1, ?2, ?3, 'composition', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 1, ?14, ?15, ?16, ?17)",
+                 VALUES (?1, ?2, ?3, ?18, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 1, ?14, ?15, ?16, ?17)",
                 params![
                     run_id, tenant_id, tool_name, trigger_ref, parent_run_id, step_no,
                     parent_tool, status, error_class, result_ref, started_unix, finished_unix,
-                    duration_ms, end_user_subject, end_user_issuer, end_user_method, item_index
+                    duration_ms, end_user_subject, end_user_issuer, end_user_method, item_index,
+                    crate::run_enums::RunTrigger::Composition.as_str()
                 ],
             )?;
             Ok(())
@@ -11856,8 +11869,8 @@ impl Db {
             conn.execute(
                 "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, status, \
                  error_class, started_unix, finished_unix, duration_ms, attempt) \
-                 VALUES (?1, ?2, ?3, 'schedule', ?4, 'skipped', 'overlap', ?5, ?5, 0, 1)",
-                params![run_id, tenant_id, tool_name, trigger_ref, now],
+                 VALUES (?1, ?2, ?3, ?6, ?4, ?7, ?8, ?5, ?5, 0, 1)",
+                params![run_id, tenant_id, tool_name, trigger_ref, now, crate::run_enums::RunTrigger::Schedule.as_str(), crate::run_enums::RunStatus::Skipped.as_str(), "overlap"],
             )?;
             Ok(())
         })
@@ -11885,10 +11898,10 @@ impl Db {
             // gives true FIFO regardless of ulid collisions.
             let leased_id: Option<String> = conn
                 .query_row(
-                    "UPDATE runs SET status='running', started_unix=?1 \
+                    "UPDATE runs SET status=?3, started_unix=?1 \
                      WHERE id = (SELECT id FROM runs WHERE status='queued' AND tenant_id=?2 ORDER BY rowid LIMIT 1) \
                      RETURNING id",
-                    params![now, tenant_id],
+                    params![now, tenant_id, crate::run_enums::RunStatus::Running.as_str()],
                     |r| r.get(0),
                 )
                 .optional()?;
@@ -12064,9 +12077,9 @@ impl Db {
             }
             let tx = conn.unchecked_transaction()?;
             let affected = tx.execute(
-                "UPDATE runs SET status = 'cancelled', finished_unix = ?1 \
+                "UPDATE runs SET status = ?4, finished_unix = ?1 \
                  WHERE id = ?2 AND tenant_id = ?3 AND status IN ('queued', 'running')",
-                params![now, run_id, tenant_id],
+                params![now, run_id, tenant_id, crate::run_enums::RunStatus::Cancelled.as_str()],
             )?;
             if affected == 0 {
                 return Ok(None); // lost a race with the executor's own finalize.
@@ -12360,11 +12373,11 @@ impl Db {
                 stmt.query_map(params![now], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?
             };
             let affected = tx.execute(
-                "UPDATE runs SET status = 'error', error_class = 'interrupted', \
+                "UPDATE runs SET status = ?2, error_class = ?3, \
                  finished_unix = ?1, duration_ms = (?1 - started_unix) * 1000 \
                  WHERE status = 'running' AND deadline_s IS NOT NULL AND started_unix IS NOT NULL \
                  AND (started_unix + deadline_s) < ?1",
-                params![now],
+                params![now, crate::run_enums::RunStatus::Error.as_str(), "interrupted"],
             )?;
             // PRD-mcphost-delegation-bound-to-run-or-session R4: a reaped run is
             // terminal too, so its bound keys die with it.
@@ -12391,10 +12404,10 @@ impl Db {
                 stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?
             };
             let affected = tx.execute(
-                "UPDATE runs SET status = 'error', error_class = 'interrupted', \
+                "UPDATE runs SET status = ?2, error_class = ?3, \
                  finished_unix = ?1, duration_ms = (?1 - COALESCE(started_unix, ?1)) * 1000 \
                  WHERE status = 'running'",
-                params![now],
+                params![now, crate::run_enums::RunStatus::Error.as_str(), "interrupted"],
             )?;
             for (tenant_id, run_id) in &running {
                 crate::subkeys::revoke_bound_on(&tx, *tenant_id, ("run", run_id), "run_error", now)?;
@@ -12417,9 +12430,9 @@ impl Db {
     pub async fn requeue_interrupted_runs_once(&self) -> Result<i64, AppError> {
         self.with_conn(|conn| {
             let affected = conn.execute(
-                "UPDATE runs SET status = 'queued', started_unix = NULL, attempt = attempt + 1 \
+                "UPDATE runs SET status = ?1, started_unix = NULL, attempt = attempt + 1 \
                  WHERE status = 'running' AND attempt = 1",
-                [],
+                params![crate::run_enums::RunStatus::Queued.as_str()],
             )?;
             Ok(affected as i64)
         })
@@ -16304,8 +16317,41 @@ impl Db {
                 conn.execute(
                     "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, \
                      caller_tenant_id, status, started_unix, finished_unix, duration_ms, attempt) \
-                     VALUES (?1, ?2, ?3, 'call', NULL, ?4, 'done', ?5, ?5, 0, 1)",
-                    params![run_id, owner_tenant_id, local_tool_name, caller_tenant_id, started_unix],
+                     VALUES (?1, ?2, ?3, ?6, NULL, ?4, ?7, ?5, ?5, 0, 1)",
+                    params![run_id, owner_tenant_id, local_tool_name, caller_tenant_id, started_unix, crate::run_enums::RunTrigger::Call.as_str(), crate::run_enums::RunStatus::Done.as_str()],
+                )?;
+                Ok(())
+            }
+        })
+        .await?;
+        Ok(run_id)
+    }
+
+    /// PRD-mcphost-runs-list-filter-enums-generated AC3 test scaffolding:
+    /// inserts one run carrying exactly `status` and `trigger`, both written
+    /// through `as_str()` (the same path every production write takes), with
+    /// an optional parent and `progress_json`. Returns the new run id.
+    pub async fn insert_run_row_for_test(&self, row: TestRunRow) -> Result<String, AppError> {
+        let TestRunRow { tenant_id, tool_name, status, trigger, parent_run_id, progress_json } = row;
+        let run_id = crate::state::new_ulid();
+        let started_unix = now_unix();
+        self.with_conn({
+            let run_id = run_id.clone();
+            move |conn| {
+                conn.execute(
+                    "INSERT INTO runs (id, tenant_id, tool_name, trigger, parent_run_id, status, \
+                     progress_json, started_unix, finished_unix, duration_ms, attempt) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, 0, 1)",
+                    params![
+                        run_id,
+                        tenant_id,
+                        tool_name,
+                        trigger.as_str(),
+                        parent_run_id,
+                        status.as_str(),
+                        progress_json,
+                        started_unix
+                    ],
                 )?;
                 Ok(())
             }
@@ -16333,8 +16379,8 @@ impl Db {
                     "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, \
                      caller_tenant_id, status, progress_json, started_unix, finished_unix, \
                      duration_ms, attempt) \
-                     VALUES (?1, ?2, ?3, 'call', NULL, NULL, 'done', ?4, ?5, ?5, 0, 1)",
-                    params![run_id, tenant_id, tool_name, progress_json, started_unix],
+                     VALUES (?1, ?2, ?3, ?6, NULL, NULL, ?7, ?4, ?5, ?5, 0, 1)",
+                    params![run_id, tenant_id, tool_name, progress_json, started_unix, crate::run_enums::RunTrigger::Call.as_str(), crate::run_enums::RunStatus::Done.as_str()],
                 )?;
                 Ok(())
             }
