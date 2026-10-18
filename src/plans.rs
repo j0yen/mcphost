@@ -11,6 +11,26 @@ use serde::Serialize;
 
 use crate::errors::AppError;
 
+/// PRD-mcphost-sandbox-resource-limits-from-plan R2: the four sandbox
+/// ceilings of one plan, as the unsigned numbers `ResourceLimits` is built
+/// from. Carried on `CallCtx` so every sandboxed call (and every warm
+/// sandbox it promotes) is sized from the calling tenant's plan.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SandboxCeilings {
+    pub cpu_s: u64,
+    pub memory_mb: u64,
+    pub wall_s: u64,
+    pub pids: u64,
+}
+
+impl SandboxCeilings {
+    /// The host-wide caps (`pro`'s numbers): used by contexts with no tenant
+    /// plan (`CallCtx::for_test`, the conformance suite), the same
+    /// permissive default `egress_allowed: true` uses there.
+    pub const HOST_CAPS: SandboxCeilings =
+        SandboxCeilings { cpu_s: 60, memory_mb: 1024, wall_s: 62, pids: 64 };
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Plan {
     pub name: String,
@@ -369,6 +389,18 @@ pub struct Plan {
     pub perf_python_cold_p95_ms: i64,
     /// R1: p95 target (ms) for an http round trip against the host itself.
     pub perf_http_p95_ms: i64,
+    /// PRD-mcphost-sandbox-resource-limits-from-plan R1: CPU seconds a
+    /// sandboxed python call may burn (RLIMIT_CPU). "free 30, pro 60".
+    pub sandbox_cpu_s_max: i64,
+    /// R1: memory ceiling (MB) a sandbox call and a tool's `memory_mb` may
+    /// ask for. "free 256, pro 1024".
+    pub sandbox_memory_mb_max: i64,
+    /// R1: wall-clock seconds ceiling per call (spec timeout + 2, clamped).
+    /// "free 32, pro 62".
+    pub sandbox_wall_s_max: i64,
+    /// R1: process/thread ceiling (RLIMIT_NPROC) inside one sandbox.
+    /// "free 16, pro 64".
+    pub sandbox_pids_max: i64,
 }
 
 /// Numeric [`Plan`] fields that are not ceilings an agent can hit.
@@ -453,6 +485,17 @@ impl DataQuota {
 pub const BUDGET_FIELD_PREFIX: &str = "budget_";
 
 impl Plan {
+    /// R2: this plan's four sandbox ceilings (non-negative by clamp).
+    pub fn sandbox_ceilings(&self) -> SandboxCeilings {
+        let u = |v: i64| v.max(0) as u64;
+        SandboxCeilings {
+            cpu_s: u(self.sandbox_cpu_s_max),
+            memory_mb: u(self.sandbox_memory_mb_max),
+            wall_s: u(self.sandbox_wall_s_max),
+            pids: u(self.sandbox_pids_max),
+        }
+    }
+
     /// PRD-mcphost-plan-limits-generated: every numeric ceiling of this
     /// plan, derived from the struct's own serialisation (so a field added
     /// to [`Plan`] appears here with no edit). Flat names for most; the
@@ -690,6 +733,11 @@ impl PlanCatalog {
                     perf_echo_p95_ms: 150,
                     perf_python_cold_p95_ms: 1500,
                     perf_http_p95_ms: 800,
+                    // PRD-mcphost-sandbox-resource-limits-from-plan R1.
+                    sandbox_cpu_s_max: 30,
+                    sandbox_memory_mb_max: 256,
+                    sandbox_wall_s_max: 32,
+                    sandbox_pids_max: 16,
                 },
                 Plan {
                     name: "pro".to_string(),
@@ -820,6 +868,11 @@ impl PlanCatalog {
                     perf_echo_p95_ms: 100,
                     perf_python_cold_p95_ms: 800,
                     perf_http_p95_ms: 500,
+                    // PRD-mcphost-sandbox-resource-limits-from-plan R1.
+                    sandbox_cpu_s_max: 60,
+                    sandbox_memory_mb_max: 1024,
+                    sandbox_wall_s_max: 62,
+                    sandbox_pids_max: 64,
                 },
             ],
         }
@@ -827,6 +880,15 @@ impl PlanCatalog {
 
     pub fn get(&self, name: &str) -> Option<&Plan> {
         self.plans.iter().find(|p| p.name == name)
+    }
+
+    /// R2: `name`'s sandbox ceilings; an unknown plan name gets the
+    /// `free` row's (the catalog's own default for an unrecognized name).
+    pub fn sandbox_ceilings(&self, name: &str) -> SandboxCeilings {
+        self.get(name)
+            .or_else(|| self.get("free"))
+            .map(Plan::sandbox_ceilings)
+            .unwrap_or(SandboxCeilings::HOST_CAPS)
     }
 
     /// `$MCPHOST_PLANS_PATH`, defaulting to `<data_dir>/plans.toml`
@@ -993,6 +1055,10 @@ impl PlanCatalog {
                 p.perf_python_cold_p95_ms
             ));
             out.push_str(&format!("perf_http_p95_ms = {}\n", p.perf_http_p95_ms));
+            out.push_str(&format!("sandbox_cpu_s_max = {}\n", p.sandbox_cpu_s_max));
+            out.push_str(&format!("sandbox_memory_mb_max = {}\n", p.sandbox_memory_mb_max));
+            out.push_str(&format!("sandbox_wall_s_max = {}\n", p.sandbox_wall_s_max));
+            out.push_str(&format!("sandbox_pids_max = {}\n", p.sandbox_pids_max));
             out.push('\n');
         }
         out
@@ -1114,6 +1180,10 @@ impl PlanCatalog {
                 "perf_echo_p95_ms" => builder.perf_echo_p95_ms = Some(int_value()),
                 "perf_python_cold_p95_ms" => builder.perf_python_cold_p95_ms = Some(int_value()),
                 "perf_http_p95_ms" => builder.perf_http_p95_ms = Some(int_value()),
+                "sandbox_cpu_s_max" => builder.sandbox_cpu_s_max = Some(int_value()),
+                "sandbox_memory_mb_max" => builder.sandbox_memory_mb_max = Some(int_value()),
+                "sandbox_wall_s_max" => builder.sandbox_wall_s_max = Some(int_value()),
+                "sandbox_pids_max" => builder.sandbox_pids_max = Some(int_value()),
                 _ => {}
             }
         }
@@ -1224,6 +1294,10 @@ struct PlanBuilder {
     perf_echo_p95_ms: Option<i64>,
     perf_python_cold_p95_ms: Option<i64>,
     perf_http_p95_ms: Option<i64>,
+    sandbox_cpu_s_max: Option<i64>,
+    sandbox_memory_mb_max: Option<i64>,
+    sandbox_wall_s_max: Option<i64>,
+    sandbox_pids_max: Option<i64>,
 }
 
 impl PlanBuilder {
@@ -1321,6 +1395,10 @@ impl PlanBuilder {
             perf_echo_p95_ms: quota!(perf_echo_p95_ms),
             perf_python_cold_p95_ms: quota!(perf_python_cold_p95_ms),
             perf_http_p95_ms: quota!(perf_http_p95_ms),
+            sandbox_cpu_s_max: quota!(sandbox_cpu_s_max),
+            sandbox_memory_mb_max: quota!(sandbox_memory_mb_max),
+            sandbox_wall_s_max: quota!(sandbox_wall_s_max),
+            sandbox_pids_max: quota!(sandbox_pids_max),
         };
         Ok((plan, defaulted))
     }

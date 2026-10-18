@@ -1251,6 +1251,16 @@ impl CallLog for NullLog {
 /// alongside the rest of the call's metering.
 pub trait ResourceSink: Send + Sync {
     fn record(&self, cpu_ms: i64, peak_rss_kb: i64);
+
+    /// PRD-mcphost-sandbox-resource-limits-from-plan R4: the most sandbox
+    /// processes alive at once during the call (`resources_used.
+    /// pids_max_seen`). Default no-op: only a sandboxed kind samples it.
+    fn record_pids(&self, _pids_max_seen: i64) {}
+}
+
+/// A fresh [`NullResourceSink`] handle, for a caller that has no sink to hand.
+pub fn null_resources() -> Arc<dyn ResourceSink> {
+    Arc::new(NullResourceSink)
 }
 
 /// A resource sink that discards everything, for contexts (tests, kinds
@@ -1654,6 +1664,11 @@ pub struct CallCtx {
     /// `concurrent_calls_per_tenant`'s `usize::MAX` already uses for the
     /// same class of context.
     pub egress_allowed: bool,
+    /// PRD-mcphost-sandbox-resource-limits-from-plan R2: this call's
+    /// tenant's plan sandbox ceilings (cpu/memory/wall/pids), resolved once
+    /// at dispatch like `egress_allowed`; [`crate::plans::SandboxCeilings::
+    /// HOST_CAPS`] in contexts with no tenant plan.
+    pub sandbox_ceilings: crate::plans::SandboxCeilings,
     /// PRD-mcphost-end-user-identity requirement 1: the verified end user
     /// (if any) this call carries -- from the bearer token's `sub`/`iss`
     /// when the OAuth PRD validated it, or a verified `end_user_assertion`
@@ -1782,6 +1797,7 @@ impl CallCtx {
             progress: Arc::new(NullProgress),
             cancel_pid: Arc::new(crate::runs::CancelSlot::default()),
             egress_allowed: true,
+            sandbox_ceilings: crate::plans::SandboxCeilings::HOST_CAPS,
             end_user: None,
             vault_token: None,
             channel: Arc::new(NoChannel),
@@ -1994,6 +2010,7 @@ async fn compose_dispatch(
         // still that tenant's own plan, inherited rather than re-derived
         // since this call site has no `Tenant` to resolve it from.
         egress_allowed: ctx.egress_allowed,
+        sandbox_ceilings: ctx.sandbox_ceilings,
         // PRD-mcphost-end-user-identity: composition stays inside one
         // tenant AND one call's own identity -- same reasoning as
         // `state`/`table`/`docs` above -- so the child call carries

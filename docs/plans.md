@@ -67,6 +67,10 @@ Every numeric ceiling in the plan table, as `host.quickstart` `limits.plan` repo
 | `resource_read_bytes_max` | 1048576 | 1048576 |
 | `resources_max` | 8 | 64 |
 | `sampling_tokens_per_day` | 20000 | 500000 |
+| `sandbox_cpu_s_max` | 30 | 60 |
+| `sandbox_memory_mb_max` | 256 | 1024 |
+| `sandbox_pids_max` | 16 | 64 |
+| `sandbox_wall_s_max` | 32 | 62 |
 | `schedule_min_interval_s` | 300 | 60 |
 | `schedules_max` | 3 | 25 |
 | `secrets_max` | 2 | 20 |

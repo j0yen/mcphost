@@ -240,6 +240,8 @@ mod sreg_ac05_whoami_scopes_all_and_effective;
 mod sreg_ac06_oauth_scopes_registry_first;
 #[path = "sreg_ac07_unknown_scope_word_not_effective.rs"]
 mod sreg_ac07_unknown_scope_word_not_effective;
+#[path = "srlp_ac02_plan_ceilings_published.rs"]
+mod srlp_ac02_plan_ceilings_published;
 #[path = "state_ac01_kv_roundtrip.rs"]
 mod state_ac01_kv_roundtrip;
 #[path = "state_ac04_table_query.rs"]

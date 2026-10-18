@@ -1938,6 +1938,16 @@ pub async fn tool_publish(
         ))
     })?;
 
+    // PRD-mcphost-sandbox-resource-limits-from-plan R3: a python spec asking
+    // for more cpu/memory/wall than the tenant's plan allows is refused
+    // before any gate runs, naming the plan field and its ceiling.
+    if kind_name == "python"
+        && let Some((spec_field, requested, ceiling_field, ceiling)) =
+            crate::kinds::python::plan_ceiling_violation(&spec, plan)
+    {
+        return Err(AppError::plan_ceiling_exceeded(spec_field, requested, ceiling_field, ceiling, &plan.name));
+    }
+
     // gate: network -- PRD-mcphost-sandbox-egress-allowlist requirement 1
     // (AC1/AC2): a `free` tenant publishing `network: "public"` OR
     // `network: "egress"` is refused -- `network_policy::wants_egress`

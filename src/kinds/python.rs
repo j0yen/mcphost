@@ -110,6 +110,7 @@ use super::{
     CallCtx, DocsBackend, DriftBackend, Kind, KindError, KindExample, LineageBackend, OutputDecl,
     StateBackend, TableBackend, ToolDescriptor,
 };
+use crate::plans::SandboxCeilings;
 use crate::sandbox::{
     self, IsolationMechanism, NetworkMode, PersistentCallOutcome, PersistentSandbox,
     ResourceLimits, SandboxOutcome, SidecarBridge,
@@ -722,6 +723,53 @@ fn validate_spec_fields_all(parsed: &PythonSpec, own_domain: &str) -> Vec<KindEr
         )));
     }
     errors
+}
+
+/// PRD-mcphost-sandbox-resource-limits-from-plan R3: the first spec value
+/// above `plan`'s sandbox ceilings, as `(spec_field, requested, ceiling_field,
+/// ceiling)`; `None` when the spec fits. Only `memory_mb` is refused at
+/// publish: `timeout_s` is a wall-clock BUDGET (a tool waiting on a sampling
+/// or elicitation round-trip burns none of the plan's cpu), so a spec asking
+/// for more than the plan allows is accepted and clamped at call time by
+/// `limits_for` / `wall_clock_for` (`min(spec, plan)`, R2). Refusing it broke
+/// every published tool whose `timeout_s` outlives the free wall (`msmp_ac01`
+/// and `ac03`..`ac06` publish `timeout_s` 40/60 as a free tenant).
+pub fn plan_ceiling_violation(
+    spec: &Value,
+    plan: &crate::plans::Plan,
+) -> Option<(&'static str, i64, &'static str, i64)> {
+    let parsed = parse_spec(spec).ok()?;
+    if let Some(m) = parsed.memory_mb
+        && m as i64 > plan.sandbox_memory_mb_max
+    {
+        return Some(("memory_mb", m as i64, "sandbox_memory_mb_max", plan.sandbox_memory_mb_max));
+    }
+    None
+}
+
+/// PRD-mcphost-sandbox-resource-limits-from-plan R2: the one place a call's
+/// `ResourceLimits` are built (cold call, `host.tool_run`, warm promotion):
+/// `min(spec, plan)` for cpu and memory, the plan's number for pids.
+/// `warm` sizes `cpu_seconds` as the plan cpu x 1000 process-lifetime
+/// backstop instead of one call's budget.
+fn limits_for(ceilings: SandboxCeilings, parsed: &PythonSpec, warm: bool) -> ResourceLimits {
+    let cpu_seconds = if warm {
+        ceilings.cpu_s.saturating_mul(1000)
+    } else {
+        parsed.effective_timeout_s().min(ceilings.cpu_s)
+    };
+    ResourceLimits {
+        cpu_seconds,
+        memory_mb: parsed.effective_memory_mb().min(ceilings.memory_mb),
+        max_open_files: MAX_OPEN_FILES,
+        max_file_size_mb: MAX_FILE_SIZE_MB,
+        max_processes: ceilings.pids,
+    }
+}
+
+/// R2: `wall = min(spec timeout + 2, plan wall)`.
+fn wall_clock_for(ceilings: SandboxCeilings, parsed: &PythonSpec) -> Duration {
+    Duration::from_secs((parsed.effective_timeout_s() + 2).min(ceilings.wall_s))
 }
 
 fn validate_spec_fields(parsed: &PythonSpec, own_domain: &str) -> Result<(), KindError> {
@@ -5785,6 +5833,7 @@ impl PythonKind {
         crate::calltrace::mark_dispatch();
         let outcome = entry.sandbox.call(&payload, timeout, &bridge).await;
         ctx.cancel_pid.clear();
+        ctx.resources.record_pids(entry.sandbox.last_call_pids_peak());
         match outcome {
             Ok(PersistentCallOutcome::Responded {
                 line,
@@ -5869,6 +5918,9 @@ impl PythonKind {
         // its own `ctx.egress_allowed` this best-effort, fire-and-forget
         // path has no `CallCtx` to read).
         network: NetworkMode,
+        // R2: the promoting call's tenant's plan ceilings -- a warm sandbox
+        // is sized from the same fields a cold call is, never wider.
+        ceilings: SandboxCeilings,
     ) {
         if !self.warm.has_room(key.0) {
             return;
@@ -5886,18 +5938,12 @@ impl PythonKind {
             scratch_dir: scratch.clone(),
             read_only_dirs,
             stdin_payload: Vec::new(),
-            limits: ResourceLimits {
-                // Module doc's "warm-pool RLIMIT_CPU" note: this is a
-                // process-lifetime kernel backstop, not the per-call limit
-                // (that's the wall-clock timeout `try_warm` already passes
-                // to every `PersistentSandbox::call`).
-                cpu_seconds: parsed.effective_timeout_s().saturating_mul(1000),
-                memory_mb: parsed.effective_memory_mb(),
-                max_open_files: MAX_OPEN_FILES,
-                max_file_size_mb: MAX_FILE_SIZE_MB,
-                max_processes: MAX_PROCESSES,
-            },
-            wall_clock_timeout: Duration::from_secs(parsed.effective_timeout_s() + 2),
+            // Module doc's "warm-pool RLIMIT_CPU" note: `cpu_seconds` is a
+            // process-lifetime kernel backstop (plan cpu x 1000), not the
+            // per-call limit (that's the wall-clock timeout `try_warm`
+            // already passes to every `PersistentSandbox::call`).
+            limits: limits_for(ceilings, parsed, true),
+            wall_clock_timeout: wall_clock_for(ceilings, parsed),
             network,
             // PRD-mcphost-python-kind-plain-env requirement 1 (AC1/AC6):
             // `parsed.env` is already available on `parsed` here, so this
@@ -5951,6 +5997,8 @@ pub(crate) async fn run_cold_interactive(
     // contract as `try_warm`'s inline block above, for the cold path's own
     // freshly-spawned sandbox.
     cancel_pid: &Arc<crate::runs::CancelSlot>,
+    // R4: receives the call's `pids_max_seen` before the sandbox is reaped.
+    resources: &Arc<dyn super::ResourceSink>,
 ) -> std::io::Result<SandboxOutcome> {
     let wall_clock_timeout = run_spec.wall_clock_timeout;
     let mut sandbox = sandbox::spawn_persistent(run_spec).await?;
@@ -5963,6 +6011,7 @@ pub(crate) async fn run_cold_interactive(
     crate::calltrace::mark_dispatch();
     let call_outcome = sandbox.call(payload, wall_clock_timeout, bridge).await?;
     cancel_pid.clear();
+    resources.record_pids(sandbox.last_call_pids_peak());
     match call_outcome {
         PersistentCallOutcome::Responded {
             line,
@@ -6515,14 +6564,8 @@ impl Kind for PythonKind {
             scratch_dir: scratch.clone(),
             read_only_dirs,
             stdin_payload,
-            limits: ResourceLimits {
-                cpu_seconds: parsed.effective_timeout_s(),
-                memory_mb: parsed.effective_memory_mb(),
-                max_open_files: MAX_OPEN_FILES,
-                max_file_size_mb: MAX_FILE_SIZE_MB,
-                max_processes: MAX_PROCESSES,
-            },
-            wall_clock_timeout: Duration::from_secs(parsed.effective_timeout_s() + 2),
+            limits: limits_for(ctx.sandbox_ceilings, &parsed, false),
+            wall_clock_timeout: wall_clock_for(ctx.sandbox_ceilings, &parsed),
             network: network.clone(),
             // PRD-mcphost-python-kind-plain-env requirement 1 (AC1/AC6):
             // this spec's own `env` joins `secret_env` at the same
@@ -6540,7 +6583,7 @@ impl Kind for PythonKind {
         // a plain `SandboxOutcome` so nothing downstream of this line has
         // to change.
         let bridge = HostSidecarBridge { ctx };
-        let outcome = run_cold_interactive(&run_spec, &call_payload_bytes, &bridge, &ctx.cancel_pid).await;
+        let outcome = run_cold_interactive(&run_spec, &call_payload_bytes, &bridge, &ctx.cancel_pid, &ctx.resources).await;
         let _ = tokio::fs::remove_dir_all(&scratch).await;
         // Requirement 1/AC4: the cold-path number the AC's ≤5s budget is
         // judged against, logged before the spawn-error `?` so a genuine
@@ -6577,6 +6620,7 @@ impl Kind for PythonKind {
                 env_dir,
                 &secret_env,
                 network,
+                ctx.sandbox_ceilings,
             )
             .await;
         }
@@ -6722,14 +6766,8 @@ impl Kind for PythonKind {
             scratch_dir: scratch.clone(),
             read_only_dirs,
             stdin_payload,
-            limits: ResourceLimits {
-                cpu_seconds: parsed.effective_timeout_s(),
-                memory_mb: parsed.effective_memory_mb(),
-                max_open_files: MAX_OPEN_FILES,
-                max_file_size_mb: MAX_FILE_SIZE_MB,
-                max_processes: MAX_PROCESSES,
-            },
-            wall_clock_timeout: Duration::from_secs(parsed.effective_timeout_s() + 2),
+            limits: limits_for(ctx.sandbox_ceilings, &parsed, false),
+            wall_clock_timeout: wall_clock_for(ctx.sandbox_ceilings, &parsed),
             network,
             extra_env: merge_env(&secret_env, &plain_env),
             isolation: self.isolation,
@@ -6741,9 +6779,14 @@ impl Kind for PythonKind {
         // `mcphost.state` must behave identically whether it's reached
         // through an ordinary call or a debug `host.tool_run`.
         let bridge = HostSidecarBridge { ctx };
-        let outcome = run_cold_interactive(&run_spec, &call_payload_bytes, &bridge, &ctx.cancel_pid).await;
+        let outcome = run_cold_interactive(&run_spec, &call_payload_bytes, &bridge, &ctx.cancel_pid, &ctx.resources).await;
         let _ = tokio::fs::remove_dir_all(&scratch).await;
         let outcome = outcome.map_err(|e| KindError::Exec(format!("sandbox spawn failed: {e}")))?;
+        // PRD-mcphost-sandbox-resource-limits-from-plan R5: a debug run
+        // reports usage like a real call (but is not metered: no
+        // `cpu_budget` charge here).
+        let (cpu_ms, peak_rss_kb) = outcome_usage(&outcome);
+        ctx.resources.record(cpu_ms, peak_rss_kb);
 
         Ok(redact_value(
             &tool_run_response(outcome, &effective_schema, ctx.test_mode, &parsed.outputs),
@@ -7264,6 +7307,7 @@ mod tests {
             progress: Arc::new(crate::kinds::NullProgress),
             cancel_pid: Arc::new(crate::runs::CancelSlot::default()),
             egress_allowed: true,
+            sandbox_ceilings: crate::plans::SandboxCeilings::HOST_CAPS,
             end_user: None,
             vault_token: None,
             channel: Arc::new(crate::kinds::NoChannel),
@@ -7583,6 +7627,7 @@ mod tests {
             progress: Arc::new(crate::kinds::NullProgress),
             cancel_pid: Arc::new(crate::runs::CancelSlot::default()),
             egress_allowed: true,
+            sandbox_ceilings: crate::plans::SandboxCeilings::HOST_CAPS,
             end_user: None,
             vault_token: None,
             channel: Arc::new(crate::kinds::NoChannel),
