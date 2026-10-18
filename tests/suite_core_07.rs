@@ -717,6 +717,8 @@ mod ctrx_ac01_cited_tree_gap_is_real;
 mod ctrx_ac02_unmarked_registry_walker_is_flagged;
 #[path = "ctrx_ac03_stale_and_orphan_registry_markers_fail.rs"]
 mod ctrx_ac03_stale_and_orphan_registry_markers_fail;
+#[path = "ctrx_ac04_concat_manifest_dir_literal_is_a_read.rs"]
+mod ctrx_ac04_concat_manifest_dir_literal_is_a_read;
 #[path = "dbmw_ac02_db_maintenance_truncates_wal_and_vacuums.rs"]
 mod dbmw_ac02_db_maintenance_truncates_wal_and_vacuums;
 #[path = "dbmw_ac03_backup_lock_refuses_window.rs"]

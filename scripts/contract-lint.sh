@@ -155,7 +155,9 @@ def reads(text):
     found = set()
     for c in cands:
         c = c.lstrip("./") if c.startswith("./") else c
-        if not c or c.startswith(("tests/", "/")) or ".." in c.split("/") or " " in c:
+        # concat!(env!("CARGO_MANIFEST_DIR"), "/docs/x.md") joins a literal that starts with `/`.
+        c = c.lstrip("/")
+        if not c or c.startswith("tests/") or ".." in c.split("/") or " " in c:
             continue
         for root in roots():
             if os.path.isfile(os.path.join(root, c)):
@@ -180,7 +182,7 @@ def marker_paths(text):
     through a library constant, not a path, says so in its marker)."""
     out = set()
     for tok in re.findall(r"[A-Za-z0-9_./-]+", marker(text) or ""):
-        tok = tok.strip(".")
+        tok = tok.strip(".").lstrip("/")
         if tok and not tok.startswith("tests/") and any(
             os.path.isfile(os.path.join(r, tok)) for r in roots()
         ):
