@@ -9433,9 +9433,6 @@ impl McpHostHandler {
     /// PRD-mcphost-host-doctor-tool R2/R5/R6: `host.doctor`. `tenant` is
     /// `None` for the admin bearer, which must name the tenant to read.
     async fn doctor(&self, tenant: Option<&Tenant>, args: Value) -> Result<Value, AppError> {
-        if let Some(known) = known_control_plane_args("host.doctor", &self.state.kinds) {
-            crate::errors::check_unknown_argument(&args, "host.doctor", &known)?;
-        }
         let limit = match args.get("limit") {
             None | Some(Value::Null) => 50,
             Some(v) => v
@@ -9498,9 +9495,6 @@ impl McpHostHandler {
     /// `None` for the admin bearer, which may read any tenant's trace but
     /// never replays one (a replay runs as the call's owner).
     async fn call_trace(&self, tenant: Option<&Tenant>, args: Value) -> Result<Value, AppError> {
-        if let Some(known) = known_control_plane_args("host.call_trace", &self.state.kinds) {
-            crate::errors::check_unknown_argument(&args, "host.call_trace", &known)?;
-        }
         let call_id: i64 = match args.get("call_id") {
             Some(Value::String(s)) => s.trim().parse().ok(),
             Some(Value::Number(n)) => n.as_i64(),
@@ -10658,9 +10652,6 @@ impl McpHostHandler {
         auth_method: &str,
         end_user: Option<&crate::enduser::EndUser>,
     ) -> Result<Value, AppError> {
-        if let Some(known) = known_control_plane_args("host.uptime.create", &self.state.kinds) {
-            crate::errors::check_unknown_argument(&args, "host.uptime.create", &known)?;
-        }
         let plan = self.state.plans.get(&tenant.plan).ok_or_else(|| {
             AppError::Internal(format!(
                 "tenant's plan '{}' is not in the loaded plan catalog",
@@ -13027,8 +13018,18 @@ impl McpHostHandler {
             (Auth::Admin, "host.whoami") => Ok(control::whoami_admin(&self.state)),
             // PRD-mcphost-call-trace-replay R5: the admin bearer may read any
             // tenant's trace.
-            (Auth::Admin, "host.call_trace") => self.call_trace(None, args).await,
-            (Auth::Admin, "host.doctor") => self.doctor(None, args).await,
+            (Auth::Admin, "host.call_trace") => {
+                match crate::host_args::validate_host_args(&self.state.kinds, "host.call_trace", &args) {
+                    Ok(()) => self.call_trace(None, args).await,
+                    Err(e) => Err(e),
+                }
+            }
+            (Auth::Admin, "host.doctor") => {
+                match crate::host_args::validate_host_args(&self.state.kinds, "host.doctor", &args) {
+                    Ok(()) => self.doctor(None, args).await,
+                    Err(e) => Err(e),
+                }
+            }
             (Auth::Admin, "host.incidents.list") => crate::heal::incidents_list(&self.state, &args).await,
             (Auth::Admin, "host.help.gaps") => crate::help_search::gaps_call(&self.state.db, &args, now_unix()).await,
             (Auth::Admin, _) => Err(AppError::Forbidden),

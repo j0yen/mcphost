@@ -78,6 +78,9 @@ struct Compiled {
     validator: Option<Validator>,
     /// The descriptor's own `properties`, the `data.known` of `unknown_argument`.
     known: Vec<String>,
+    /// A clone published under another name of the same verb (an alias, the
+    /// flattened `a_b_c` form): not a verb of its own for `accepted_by`.
+    alias: bool,
 }
 
 type Table = Arc<HashMap<String, Compiled>>;
@@ -108,7 +111,8 @@ fn table_for(kinds: &KindRegistry) -> Table {
                 .and_then(Value::as_object)
                 .map(|p| p.keys().cloned().collect())
                 .unwrap_or_default();
-            Some((tool.name.to_string(), Compiled { schema, validator, known }))
+            let alias = tool.meta.as_ref().is_some_and(|m| m.0.contains_key("alias_of"));
+            Some((tool.name.to_string(), Compiled { schema, validator, known, alias }))
         })
         .collect();
     let table = Arc::new(compiled);
@@ -169,17 +173,48 @@ pub fn owned_by(owners: &[ArgOwner], tool: &str, at: &str, keyword: &str) -> boo
 pub fn validate_host_args(kinds: &KindRegistry, tool: &str, args: &Value) -> Result<(), AppError> {
     let table = table_for(kinds);
     let Some(compiled) = table.get(tool) else { return Ok(()) };
-    let Some(validator) = &compiled.validator else {
-        return crate::errors::check_unknown_argument(args, tool, &compiled.known);
-    };
+    if let Some(refusal) = schema_refusal(compiled, tool, args) {
+        return Err(refusal);
+    }
+    // The one dispatch-level `unknown_argument` call site (R5): the
+    // `additionalProperties` owner registered in `errors::ARG_OWNERS`, for every
+    // control-plane tool, validated or not.
+    crate::errors::check_unknown_argument(args, tool, &compiled.known).map_err(|e| with_remedy(e, &table, tool, compiled))
+}
+
+/// The `unknown_argument` refusal plus its GENERATED remedy: `accepted_by`, the
+/// verbs of the same family whose published `properties` include the key
+/// (from the same descriptors `known` comes from), and `did_you_mean`, the
+/// nearest declared property of the called verb (<= 3 edits, else null).
+fn with_remedy(err: AppError, table: &Table, tool: &str, compiled: &Compiled) -> AppError {
+    let AppError::Structured { code, message, mut data } = err else { return err };
+    let key = data.get("field").and_then(Value::as_str).unwrap_or_default().to_string();
+    let admin = tool.starts_with("admin.");
+    let mut accepted_by: Vec<&str> = table
+        .iter()
+        .filter(|(name, c)| {
+            !c.alias && name.as_str() != tool && name.starts_with("admin.") == admin && c.known.contains(&key)
+        })
+        .map(|(name, _)| name.as_str())
+        .collect();
+    accepted_by.sort_unstable();
+    let declared: Vec<&str> = compiled.known.iter().map(String::as_str).filter(|k| *k != "tenant_key").collect();
+    if let Some(obj) = data.as_object_mut() {
+        obj.insert("accepted_by".into(), json!(accepted_by));
+        obj.insert("did_you_mean".into(), json!(crate::paged::nearest_field(&key, &declared)));
+    }
+    AppError::Structured { code, message, data }
+}
+
+/// The `args_invalid` refusal for the first violation of `tool`'s descriptor
+/// that no [`ArgOwner`] owns, `None` when there is none (or the tool is not
+/// validated).
+fn schema_refusal(compiled: &Compiled, tool: &str, args: &Value) -> Option<AppError> {
+    let validator = compiled.validator.as_ref()?;
     let mut errors = validator
         .iter_errors(args)
         .filter(|e| !owned_by(arg_owners(), tool, e.instance_path.as_str(), &constraint_of(e.schema_path.as_str())));
-    let Some(first) = errors.next() else {
-        // The one dispatch-level `unknown_argument` call site (R5): the
-        // `additionalProperties` owner registered in `errors::ARG_OWNERS`.
-        return crate::errors::check_unknown_argument(args, tool, &compiled.known);
-    };
+    let first = errors.next()?;
     // A wrong-typed value also fails its `enum`; the type is the root cause, so
     // it is the violation reported (the same instance path, `type` first).
     let err = if constraint_of(first.schema_path.as_str()) == "type" {
@@ -209,7 +244,7 @@ pub fn validate_host_args(kinds: &KindRegistry, tool: &str, args: &Value) -> Res
         obj.insert("expected".into(), expected);
         obj.insert("docs".into(), json!(docs));
     }
-    Err(AppError::Structured {
+    Some(AppError::Structured {
         code: ARGS_INVALID,
         message: format!("{tool}: {} ({constraint} at {path}); see {docs}", err),
         data,
