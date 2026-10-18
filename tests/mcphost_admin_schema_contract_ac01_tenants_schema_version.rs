@@ -48,6 +48,7 @@ async fn tenants_listing_carries_schema_version_one_rows_unchanged() {
             "disabled",
             "disabled_reason",
             "display_name",
+            "owner_method",
             "owner_verified",
             "source_class",
             "synthetic",

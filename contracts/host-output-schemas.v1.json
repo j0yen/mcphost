@@ -2531,6 +2531,85 @@
     ],
     "type": "object"
   },
+  "host.claim.dns": {
+    "properties": {
+      "method": {
+        "type": "string"
+      },
+      "next": {
+        "type": "object"
+      },
+      "record": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      },
+      "value": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "method",
+      "record",
+      "type",
+      "value"
+    ],
+    "type": "object"
+  },
+  "host.claim.dns.check": {
+    "properties": {
+      "handle": {
+        "type": "string"
+      },
+      "method": {
+        "type": "string"
+      },
+      "verified": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "handle",
+      "method",
+      "verified"
+    ],
+    "type": "object"
+  },
+  "host.claim.github": {
+    "properties": {
+      "authorize_url": {
+        "type": "string"
+      },
+      "expires_in": {
+        "type": "integer"
+      },
+      "method": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "authorize_url",
+      "expires_in",
+      "method"
+    ],
+    "type": "object"
+  },
+  "host.claim.start": {
+    "properties": {
+      "claim_url": {
+        "type": "string"
+      },
+      "method": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "claim_url",
+      "method"
+    ],
+    "type": "object"
+  },
   "host.client.revoke": {
     "properties": {
       "clients_remaining": {

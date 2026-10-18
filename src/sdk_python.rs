@@ -320,7 +320,12 @@ fn render_ns(out: &mut String, node: &Node, path: &str, tools: &[ToolOut]) -> Re
     }
     for (method, idx) in &node.tools {
         let t = &tools[*idx];
-        if node.children.contains_key(method) {
+        // A tool that is also a family prefix (`host.claim.dns` beside
+        // `host.claim.dns.check`) keeps the namespace attribute; its method
+        // takes a trailing underscore.
+        let renamed = node.children.contains_key(method);
+        let method = &if renamed { format!("{method}_") } else { method.clone() };
+        if renamed && node.tools.iter().any(|(m, _)| m == method) {
             return Err(format!("{} is both a tool and a family prefix", t.name));
         }
         let mut sig = String::from("self, *");
