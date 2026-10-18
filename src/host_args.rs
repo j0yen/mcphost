@@ -73,7 +73,11 @@ pub fn handler_runs(namespace: &str, tool: &str) -> u64 {
 
 struct Compiled {
     schema: Value,
-    validator: Validator,
+    /// `None` for a tool named in [`UNVALIDATED`]: it keeps its handler's own
+    /// refusals, but still answers an unlisted argument as `unknown_argument`.
+    validator: Option<Validator>,
+    /// The descriptor's own `properties`, the `data.known` of `unknown_argument`.
+    known: Vec<String>,
 }
 
 type Table = Arc<HashMap<String, Compiled>>;
@@ -91,20 +95,20 @@ fn table_for(kinds: &KindRegistry) -> Table {
     let compiled: HashMap<String, Compiled> = host_tool_descriptors(kinds)
         .into_iter()
         .chain(admin_tool_descriptors())
-        .filter(|tool| tool.input_schema.get(VALIDATED_KEY) == Some(&Value::Bool(true)))
         .filter_map(|tool| {
-            let mut schema = Value::Object((*tool.input_schema).clone());
-            // A paged verb's `limit` above its max is CLAMPED and reported
-            // (`_meta.mcphost.limit_clamped`, PRD-mcphost-paged-trait-on-every-
-            // list-verb requirement 7), never refused: the published schema
-            // keeps `maximum` as documentation, the validator must not enforce it.
-            if crate::paged::paged_spec(tool.name.as_ref()).is_some()
-                && let Some(limit) = schema.pointer_mut("/properties/limit").and_then(Value::as_object_mut)
-            {
-                limit.remove("maximum");
-            }
-            let validator = jsonschema::validator_for(&schema).ok()?;
-            Some((tool.name.to_string(), Compiled { schema, validator }))
+            let schema = Value::Object((*tool.input_schema).clone());
+            let validator = if tool.input_schema.get(VALIDATED_KEY) == Some(&Value::Bool(true)) {
+                Some(jsonschema::validator_for(&schema).ok()?)
+            } else {
+                None
+            };
+            let known = tool
+                .input_schema
+                .get("properties")
+                .and_then(Value::as_object)
+                .map(|p| p.keys().cloned().collect())
+                .unwrap_or_default();
+            Some((tool.name.to_string(), Compiled { schema, validator, known }))
         })
         .collect();
     let table = Arc::new(compiled);
@@ -118,32 +122,58 @@ fn constraint_of(schema_path: &str) -> String {
     schema_path.rsplit('/').find(|s| !s.is_empty()).unwrap_or("schema").to_string()
 }
 
-/// Whether `err` is a violation of the generated `fields` property of a
-/// projecting verb. `paged::parse_fields` is the one owner of `fields`
-/// semantics -- an unknown name is `field_unknown {field, nearest, valid}`
-/// (the one set the fldp contract pins), duplicates collapse, an empty or
-/// malformed list is `args_invalid` -- and it runs first in the handler, so the
-/// validator leaves these to it exactly as it leaves `additionalProperties` to
-/// `check_unknown_argument`. The set of such verbs is `paged::fields_for`, the
-/// same source that generates the property, so a verb moved onto the checked
-/// path later keeps its `field_unknown` without a special case.
-fn left_to_projection(tool: &str, err: &jsonschema::ValidationError<'_>) -> bool {
-    let at = err.instance_path.as_str();
-    crate::paged::fields_for(tool).is_some() && (at == "/fields" || at.starts_with("/fields/"))
+/// PRD-mcphost-host-args-validated-by-default R3: a sub-contract a module owns
+/// and refuses (or clamps) itself, registered by the OWNER so the validator
+/// does not restate it. `validate_host_args` skips a violation only when some
+/// owner `applies` to the tool and the violation is at `path` (or below it)
+/// under one of `keywords` (`"*"` = any); `codes` are the error codes the
+/// owner answers with (empty: the owner succeeds, e.g. a clamped `limit`).
+/// `vbd_ac04` sends each owner a violating call on every tool it applies to
+/// and asserts the reply is the owner's own outcome, so a registration the
+/// owner does not honour cannot stand.
+#[derive(Clone, Copy)]
+pub struct ArgOwner {
+    pub applies: fn(&str) -> bool,
+    pub path: &'static str,
+    pub keywords: &'static [&'static str],
+    pub codes: &'static [&'static str],
+}
+
+/// Every registration, collected from the owning modules.
+pub fn arg_owners() -> &'static [ArgOwner] {
+    static OWNERS: OnceLock<Vec<ArgOwner>> = OnceLock::new();
+    OWNERS.get_or_init(|| crate::paged::ARG_OWNERS.iter().chain(crate::errors::ARG_OWNERS).copied().collect())
+}
+
+/// Whether `owner` owns a violation of `keyword` at the instance path `at` of `tool`.
+pub fn owner_covers(owner: &ArgOwner, tool: &str, at: &str, keyword: &str) -> bool {
+    (owner.applies)(tool)
+        && (owner.path.is_empty() || at == owner.path || at.strip_prefix(owner.path).is_some_and(|r| r.starts_with('/')))
+        && owner.keywords.iter().any(|k| *k == "*" || *k == keyword)
+}
+
+/// Whether any of `owners` owns the violation (the registry reader).
+pub fn owned_by(owners: &[ArgOwner], tool: &str, at: &str, keyword: &str) -> bool {
+    owners.iter().any(|o| owner_covers(o, tool, at, keyword))
 }
 
 /// Validates `args` against `tool`'s descriptor. `Ok` when the tool has no
-/// descriptor here (not a `host.*` tool) or the args satisfy it. An unlisted
-/// argument (`additionalProperties`) is left to `check_unknown_argument`'s own
-/// `unknown_argument` refusal, which names the known set.
+/// descriptor here (not a `host.*` tool) or the args satisfy it. A violation an
+/// [`ArgOwner`] owns is left to that owner.
 pub fn validate_host_args(kinds: &KindRegistry, tool: &str, args: &Value) -> Result<(), AppError> {
     let table = table_for(kinds);
     let Some(compiled) = table.get(tool) else { return Ok(()) };
-    let mut errors = compiled
-        .validator
+    let Some(validator) = &compiled.validator else {
+        return crate::errors::check_unknown_argument(args, tool, &compiled.known);
+    };
+    let mut errors = validator
         .iter_errors(args)
-        .filter(|e| constraint_of(e.schema_path.as_str()) != "additionalProperties" && !left_to_projection(tool, e));
-    let Some(first) = errors.next() else { return Ok(()) };
+        .filter(|e| !owned_by(arg_owners(), tool, e.instance_path.as_str(), &constraint_of(e.schema_path.as_str())));
+    let Some(first) = errors.next() else {
+        // The one dispatch-level `unknown_argument` call site (R5): the
+        // `additionalProperties` owner registered in `errors::ARG_OWNERS`.
+        return crate::errors::check_unknown_argument(args, tool, &compiled.known);
+    };
     // A wrong-typed value also fails its `enum`; the type is the root cause, so
     // it is the violation reported (the same instance path, `type` first).
     let err = if constraint_of(first.schema_path.as_str()) == "type" {

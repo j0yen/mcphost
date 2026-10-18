@@ -704,6 +704,8 @@ mod vaultst_ac09_live_vault_status_trailer;
 mod vbd_ac01_validated_by_default_coverage;
 #[path = "vbd_ac02_three_unvalidated_verbs_now_refuse.rs"]
 mod vbd_ac02_three_unvalidated_verbs_now_refuse;
+#[path = "vbd_ac03_skips_come_from_the_owner_registry.rs"]
+mod vbd_ac03_skips_come_from_the_owner_registry;
 #[path = "verbfwd_ac01_trigger_set_dotted_forwards.rs"]
 mod verbfwd_ac01_trigger_set_dotted_forwards;
 #[path = "verbfwd_ac02_every_spelling_forwards_identically.rs"]
