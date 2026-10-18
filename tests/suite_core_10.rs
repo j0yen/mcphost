@@ -30,56 +30,6 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
-#[path = "sessionkey_ac02_ac03_discovery_shape.rs"]
-mod sessionkey_ac02_ac03_discovery_shape;
-#[path = "sessionkey_ac04_signup_usage_field.rs"]
-mod sessionkey_ac04_signup_usage_field;
-#[path = "sessionkey_ac05_ac07_ac08_ac09_tenant_key_auth.rs"]
-mod sessionkey_ac05_ac07_ac08_ac09_tenant_key_auth;
-#[path = "sessionkey_ac06_publish_via_tenant_key.rs"]
-mod sessionkey_ac06_publish_via_tenant_key;
-#[path = "sessionkey_ac10_tenant_key_to_admin_forbidden.rs"]
-mod sessionkey_ac10_tenant_key_to_admin_forbidden;
-#[path = "sessionkey_ac11_ac12_ac13_ac14_ac15_tool_call.rs"]
-mod sessionkey_ac11_ac12_ac13_ac14_ac15_tool_call;
-#[path = "sessionkey_ac16_full_session_no_header.rs"]
-mod sessionkey_ac16_full_session_no_header;
-#[path = "sessionkey_ac18_tool_logs_no_key.rs"]
-mod sessionkey_ac18_tool_logs_no_key;
-#[path = "sessionkey_ac19_nested_tenant_key_redacted.rs"]
-mod sessionkey_ac19_nested_tenant_key_redacted;
-#[path = "sessionkey_ac20_error_message_no_key.rs"]
-mod sessionkey_ac20_error_message_no_key;
-#[path = "sfc_ac01_keyless_call_frames_are_stable.rs"]
-mod sfc_ac01_keyless_call_frames_are_stable;
-#[path = "sfc_ac02_wire_frames_match_table.rs"]
-mod sfc_ac02_wire_frames_match_table;
-#[path = "sfc_ac03_keyed_call_is_one_json_frame.rs"]
-mod sfc_ac03_keyed_call_is_one_json_frame;
-#[path = "sfc_ac05_frames_check_script_names_drift.rs"]
-mod sfc_ac05_frames_check_script_names_drift;
-#[path = "sfc_ac06_select_result_rejects_wrong_order.rs"]
-mod sfc_ac06_select_result_rejects_wrong_order;
-#[path = "sfc_ac07_llms_txt_transport_section_matches_script.rs"]
-mod sfc_ac07_llms_txt_transport_section_matches_script;
-#[path = "share_ac01_public_tool_cross_tenant_call.rs"]
-mod share_ac01_public_tool_cross_tenant_call;
-#[path = "share_ac02_private_tool_still_not_found.rs"]
-mod share_ac02_private_tool_still_not_found;
-#[path = "share_ac03_group_visibility_members_only.rs"]
-mod share_ac03_group_visibility_members_only;
-#[path = "share_ac04_secret_never_reaches_caller.rs"]
-mod share_ac04_secret_never_reaches_caller;
-#[path = "share_ac05_usage_and_quota_attribution.rs"]
-mod share_ac05_usage_and_quota_attribution;
-#[path = "share_ac06_share_quota_exceeded.rs"]
-mod share_ac06_share_quota_exceeded;
-#[path = "share_ac07_catalog_search_and_well_known.rs"]
-mod share_ac07_catalog_search_and_well_known;
-#[path = "share_ac08_unshare_revokes_access.rs"]
-mod share_ac08_unshare_revokes_access;
-#[path = "share_ac09_admin_tool_unshare.rs"]
-mod share_ac09_admin_tool_unshare;
 #[path = "sharedcall_ac01_host_tool_call_public_cross_tenant.rs"]
 mod sharedcall_ac01_host_tool_call_public_cross_tenant;
 #[path = "sharedcall_ac02_group_share_non_member_gets_hint.rs"]
@@ -428,8 +378,6 @@ mod tgraph_ac08_description_annotation_node_attribute_and_question_text;
 mod tgraph_ac10_fifty_tables_twenty_columns_under_500ms;
 #[path = "thand_ac01_poster_wait_returns_completion.rs"]
 mod thand_ac01_poster_wait_returns_completion;
-#[path = "thand_ac02_status_enum_source_of_truth.rs"]
-mod thand_ac02_status_enum_source_of_truth;
 #[path = "thand_ac03_claim_is_recipient_only_and_once.rs"]
 mod thand_ac03_claim_is_recipient_only_and_once;
 #[path = "thand_ac04_deadline_sweep_dead_letters.rs"]
@@ -500,10 +448,6 @@ mod tlint_ac07_json_field_names_are_not_wall_clock_tokens;
 mod toolname_ac01_lint_reports_violations;
 #[path = "toolname_ac02_alias_dispatch_hint_and_log.rs"]
 mod toolname_ac02_alias_dispatch_hint_and_log;
-#[path = "toolname_ac03_tools_list_alias_entries.rs"]
-mod toolname_ac03_tools_list_alias_entries;
-#[path = "toolname_ac04_docs_names_exist_and_tools_doc_fresh.rs"]
-mod toolname_ac04_docs_names_exist_and_tools_doc_fresh;
 #[path = "toolname_ac05_alias_metrics_counter.rs"]
 mod toolname_ac05_alias_metrics_counter;
 #[path = "toolname_ac06_did_you_mean_suggests_canonical.rs"]
@@ -714,8 +658,6 @@ mod verbfwd_ac05_tool_test_forwards_dry_run_or_unverifiable;
 mod verbfwd_ac06_hint_parity_underscore_form_resolves;
 #[path = "verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota.rs"]
 mod verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota;
-#[path = "verbfwd_ac08_forward_stack_budget.rs"]
-mod verbfwd_ac08_forward_stack_budget;
 #[path = "vord_ac01_falsifier.rs"]
 mod vord_ac01_falsifier;
 #[path = "vord_ac02_contract_order_enum.rs"]

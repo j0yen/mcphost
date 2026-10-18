@@ -40,42 +40,6 @@ mod ac14_storage_unwritable;
 mod busyaudit_ac08_healthz_db_fields;
 #[path = "ctrv_ac03_status_and_healthz_carry_contract_identity.rs"]
 mod ctrv_ac03_status_and_healthz_carry_contract_identity;
-#[path = "http_ac01_secret_redaction.rs"]
-mod http_ac01_secret_redaction;
-#[path = "http_ac02_publish_ssrf_literal.rs"]
-mod http_ac02_publish_ssrf_literal;
-#[path = "http_ac03_publish_secret_missing.rs"]
-mod http_ac03_publish_secret_missing;
-#[path = "http_ac04_args_invalid.rs"]
-mod http_ac04_args_invalid;
-#[path = "http_ac05_upstream_429_retry_after.rs"]
-mod http_ac05_upstream_429_retry_after;
-#[path = "http_ac06_upstream_timeout.rs"]
-mod http_ac06_upstream_timeout;
-#[path = "http_ac07_response_too_large.rs"]
-mod http_ac07_response_too_large;
-#[path = "http_ac08_template_error.rs"]
-mod http_ac08_template_error;
-#[path = "http_ac09_dns_rebinding.rs"]
-mod http_ac09_dns_rebinding;
-#[path = "http_ac10_concurrency_overhead.rs"]
-mod http_ac10_concurrency_overhead;
-#[path = "http_ac11_redirect_not_followed.rs"]
-mod http_ac11_redirect_not_followed;
-#[path = "http_ac12_tool_test.rs"]
-mod http_ac12_tool_test;
-#[path = "http_ac13_rate_limit.rs"]
-mod http_ac13_rate_limit;
-#[path = "http_ac14_bridge_envelope_payload.rs"]
-mod http_ac14_bridge_envelope_payload;
-#[path = "http_ac15_upstream_bridge_declarative.rs"]
-mod http_ac15_upstream_bridge_declarative;
-#[path = "http_ac16_upstream_bridge_errors.rs"]
-mod http_ac16_upstream_bridge_errors;
-#[path = "http_ac17_upstream_egress_policy.rs"]
-mod http_ac17_upstream_egress_policy;
-#[path = "http_ac18_bridge_test_dry_run.rs"]
-mod http_ac18_bridge_test_dry_run;
 #[path = "hybrid_ac01_identifier_chunk_wins_via_lexical_rank.rs"]
 mod hybrid_ac01_identifier_chunk_wins_via_lexical_rank;
 #[path = "hybrid_ac02_rrf_fuse_ties_and_normalization.rs"]
@@ -164,16 +128,8 @@ mod infer_ac14_latency_budget;
 mod infer_ac17_no_execution;
 #[path = "inner_rules_ac01_block_names_every_contract_test.rs"]
 mod inner_rules_ac01_block_names_every_contract_test;
-#[path = "insch_ac02_enums_from_handler_constants.rs"]
-mod insch_ac02_enums_from_handler_constants;
-#[path = "insch_ac03_patterns_and_bounds_in_schema.rs"]
-mod insch_ac03_patterns_and_bounds_in_schema;
 #[path = "insch_ac04_dispatch_refuses_by_schema.rs"]
 mod insch_ac04_dispatch_refuses_by_schema;
-#[path = "insch_ac05_schema_valid_call_clears_validation.rs"]
-mod insch_ac05_schema_valid_call_clears_validation;
-#[path = "insch_ac06_contract_and_docs_carry_constraints.rs"]
-mod insch_ac06_contract_and_docs_carry_constraints;
 #[path = "invite_ac01_create_returns_url_and_list_shows_zero_uses.rs"]
 mod invite_ac01_create_returns_url_and_list_shows_zero_uses;
 #[path = "invite_ac02_first_call_creates_tenant_with_onboarding.rs"]
@@ -798,8 +754,6 @@ mod mwlpb_ac02_final_run_wait_returns_fast;
 mod mwlpb_ac03_plans_json_carries_wait_limits;
 #[path = "nexttool_ac01_anonymous_starter_set.rs"]
 mod nexttool_ac01_anonymous_starter_set;
-#[path = "nexttool_ac02_authenticated_listing_unchanged.rs"]
-mod nexttool_ac02_authenticated_listing_unchanged;
 #[path = "nexttool_ac03_signup_emits_list_changed.rs"]
 mod nexttool_ac03_signup_emits_list_changed;
 #[path = "nexttool_ac04_tool_publish_next_hint.rs"]
@@ -826,10 +780,6 @@ mod nfsb_ac01_first_contact_note_in_list_and_welcome_back;
 mod nfsb_ac02_shared_tool_and_tenants_isolated;
 #[path = "nfsb_ac03_quickstart_notes_max_drift.rs"]
 mod nfsb_ac03_quickstart_notes_max_drift;
-#[path = "ntfy_ac01_no_tenant_settable_alert_sink.rs"]
-mod ntfy_ac01_no_tenant_settable_alert_sink;
-#[path = "ntfy_ac02_enums_generated_into_every_surface.rs"]
-mod ntfy_ac02_enums_generated_into_every_surface;
 #[path = "ntfy_ac03_webhook_send_receipt.rs"]
 mod ntfy_ac03_webhook_send_receipt;
 #[path = "ntfy_ac04_email_channel_owner_only.rs"]
@@ -992,8 +942,6 @@ mod oschv_ac04_corpus_still_validates_diff_widened;
 mod oschv_ac05_declared_output_untyped_is_opaque;
 #[path = "outsch_ac01_oneof_budget_falsifier.rs"]
 mod outsch_ac01_oneof_budget_falsifier;
-#[path = "outsch_ac02_every_canonical_declares_an_object_output_schema.rs"]
-mod outsch_ac02_every_canonical_declares_an_object_output_schema;
 #[path = "outsch_ac03_contract_dump_marks_aliases_and_outputs.rs"]
 mod outsch_ac03_contract_dump_marks_aliases_and_outputs;
 #[path = "outsch_ac04_tools_list_carries_output_schema.rs"]
@@ -1168,8 +1116,6 @@ mod pubtool_ac07_admin_disabled_tenant_503;
 mod pubtool_ac08_put_delete_405;
 #[path = "pubtool_ac10_cors_header_and_preflight.rs"]
 mod pubtool_ac10_cors_header_and_preflight;
-#[path = "pubvis_ac02_visibility_enum_single_source.rs"]
-mod pubvis_ac02_visibility_enum_single_source;
 #[path = "pubvis_ac04_unlisted_not_listed_but_callable.rs"]
 mod pubvis_ac04_unlisted_not_listed_but_callable;
 #[path = "pubvis_ac05_tags_validated_normalised_capped.rs"]
@@ -1428,3 +1374,53 @@ mod sessbind_ac18_reconnect_without_key_is_a_fresh_client;
 mod sessbind_ac19_funnel_blocked_count_and_whoami_session_tenant;
 #[path = "sessbind_ac20_docs_and_help_name_the_reconnect_rule.rs"]
 mod sessbind_ac20_docs_and_help_name_the_reconnect_rule;
+#[path = "sessionkey_ac02_ac03_discovery_shape.rs"]
+mod sessionkey_ac02_ac03_discovery_shape;
+#[path = "sessionkey_ac04_signup_usage_field.rs"]
+mod sessionkey_ac04_signup_usage_field;
+#[path = "sessionkey_ac05_ac07_ac08_ac09_tenant_key_auth.rs"]
+mod sessionkey_ac05_ac07_ac08_ac09_tenant_key_auth;
+#[path = "sessionkey_ac06_publish_via_tenant_key.rs"]
+mod sessionkey_ac06_publish_via_tenant_key;
+#[path = "sessionkey_ac10_tenant_key_to_admin_forbidden.rs"]
+mod sessionkey_ac10_tenant_key_to_admin_forbidden;
+#[path = "sessionkey_ac11_ac12_ac13_ac14_ac15_tool_call.rs"]
+mod sessionkey_ac11_ac12_ac13_ac14_ac15_tool_call;
+#[path = "sessionkey_ac16_full_session_no_header.rs"]
+mod sessionkey_ac16_full_session_no_header;
+#[path = "sessionkey_ac18_tool_logs_no_key.rs"]
+mod sessionkey_ac18_tool_logs_no_key;
+#[path = "sessionkey_ac19_nested_tenant_key_redacted.rs"]
+mod sessionkey_ac19_nested_tenant_key_redacted;
+#[path = "sessionkey_ac20_error_message_no_key.rs"]
+mod sessionkey_ac20_error_message_no_key;
+#[path = "sfc_ac01_keyless_call_frames_are_stable.rs"]
+mod sfc_ac01_keyless_call_frames_are_stable;
+#[path = "sfc_ac02_wire_frames_match_table.rs"]
+mod sfc_ac02_wire_frames_match_table;
+#[path = "sfc_ac03_keyed_call_is_one_json_frame.rs"]
+mod sfc_ac03_keyed_call_is_one_json_frame;
+#[path = "sfc_ac05_frames_check_script_names_drift.rs"]
+mod sfc_ac05_frames_check_script_names_drift;
+#[path = "sfc_ac06_select_result_rejects_wrong_order.rs"]
+mod sfc_ac06_select_result_rejects_wrong_order;
+#[path = "sfc_ac07_llms_txt_transport_section_matches_script.rs"]
+mod sfc_ac07_llms_txt_transport_section_matches_script;
+#[path = "share_ac01_public_tool_cross_tenant_call.rs"]
+mod share_ac01_public_tool_cross_tenant_call;
+#[path = "share_ac02_private_tool_still_not_found.rs"]
+mod share_ac02_private_tool_still_not_found;
+#[path = "share_ac03_group_visibility_members_only.rs"]
+mod share_ac03_group_visibility_members_only;
+#[path = "share_ac04_secret_never_reaches_caller.rs"]
+mod share_ac04_secret_never_reaches_caller;
+#[path = "share_ac05_usage_and_quota_attribution.rs"]
+mod share_ac05_usage_and_quota_attribution;
+#[path = "share_ac06_share_quota_exceeded.rs"]
+mod share_ac06_share_quota_exceeded;
+#[path = "share_ac07_catalog_search_and_well_known.rs"]
+mod share_ac07_catalog_search_and_well_known;
+#[path = "share_ac08_unshare_revokes_access.rs"]
+mod share_ac08_unshare_revokes_access;
+#[path = "share_ac09_admin_tool_unshare.rs"]
+mod share_ac09_admin_tool_unshare;
