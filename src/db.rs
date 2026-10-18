@@ -18276,16 +18276,45 @@ impl Db {
         .await
     }
 
-    /// AC1: `GET /.well-known/oauth-protected-resource`'s
-    /// `authorization_servers` -- the distinct issuer URLs currently
-    /// registered, across every tenant, never a tenant id or namespace
-    /// (Technical considerations: "the metadata document ... must not
-    /// enumerate tenants").
-    pub async fn list_distinct_oauth_issuer_urls(&self) -> Result<Vec<String>, AppError> {
+    /// `GET /.well-known/oauth-protected-resource`'s candidate rows
+    /// (`(id, issuer)`, issuer-sorted): every stored issuer whose owning
+    /// tenant exists and is not disabled (PRD-mcphost-oauth-discovery-
+    /// document-contract R2) -- an orphan or disabled-tenant row never
+    /// reaches a document. Never a tenant id or namespace in the document
+    /// itself (Technical considerations: "must not enumerate tenants");
+    /// the id is only for the per-build rejection log.
+    pub async fn list_document_issuer_rows(&self) -> Result<Vec<(i64, String)>, AppError> {
         self.with_conn(move |conn| {
-            let mut stmt = conn.prepare("SELECT issuer FROM oauth_issuers ORDER BY issuer")?;
+            let mut stmt = conn.prepare(
+                "SELECT o.id, o.issuer FROM oauth_issuers o \
+                 JOIN tenants t ON t.id = o.tenant_id WHERE t.disabled = 0 ORDER BY o.issuer",
+            )?;
             let rows = stmt
-                .query_map([], |r| r.get::<_, String>(0))?
+                .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// `host.doctor`'s `oauth_issuers` section: every stored row as
+    /// `(id, tenant_id, issuer, tenant_disabled)`, `tenant_disabled` being
+    /// `None` when the tenant row no longer exists (an orphan).
+    pub async fn list_oauth_issuer_health_rows(&self) -> Result<Vec<(i64, i64, String, Option<bool>)>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT o.id, o.tenant_id, o.issuer, t.disabled FROM oauth_issuers o \
+                 LEFT JOIN tenants t ON t.id = o.tenant_id ORDER BY o.id",
+            )?;
+            let rows = stmt
+                .query_map([], |r| {
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        r.get::<_, i64>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, Option<i64>>(3)?.map(|d| d != 0),
+                    ))
+                })?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             Ok(rows)
         })

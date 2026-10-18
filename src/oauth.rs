@@ -129,6 +129,85 @@ pub fn valid_issuer_url(issuer: &str) -> bool {
     }
 }
 
+/// PRD-mcphost-oauth-discovery-document-contract R1/R4: the machine reason
+/// a stored issuer fails [`valid_issuer_url`] -- `host.doctor`'s `reason`
+/// and the read filter share it, so they cannot disagree.
+pub const ISSUER_REASON_NOT_HTTPS_URL: &str = "not_https_url";
+/// `host.doctor` reason for a row whose tenant row no longer exists.
+pub const ISSUER_REASON_TENANT_MISSING: &str = "tenant_missing";
+
+/// PRD-mcphost-oauth-discovery-document-contract R5: the validator's
+/// rejection table -- `(case name, issuer value)`, every shape
+/// [`valid_issuer_url`] must refuse. The one list the write-vs-read parity
+/// test (`oauthdoc_ac03`) feeds to both the write verb and the read filter;
+/// a shape added here is checked on both sides at once.
+pub const ISSUER_REJECTION_CASES: &[(&str, &str)] = &[
+    ("bare_word_probe", "toolconf-probe"),
+    ("empty", ""),
+    ("scheme_only", "https://"),
+    ("ftp_scheme", "ftp://x"),
+    ("javascript_scheme", "javascript:alert(1)"),
+    ("relative_path", "/oauth/issuer"),
+    ("http_non_loopback", "http://idp.example.com"),
+    ("userinfo", "https://user:pw@idp.example.com"),
+    ("query", "https://idp.example.com/?a=b"),
+    ("fragment", "https://idp.example.com/#frag"),
+    ("whitespace", "https://idp.example.com/a b"),
+    ("control_char", "https://idp.example.com/a\u{7}b"),
+];
+
+/// `None` when `issuer` may be listed in a public document.
+pub fn issuer_reject_reason(issuer: &str) -> Option<&'static str> {
+    if valid_issuer_url(issuer) { None } else { Some(ISSUER_REASON_NOT_HTTPS_URL) }
+}
+
+/// The read filter every document builder runs stored `(id, issuer)` rows
+/// through: keeps the valid ones (deduplicated, order kept) and logs the
+/// rejected row ids once per build -- never the value.
+pub fn listable_issuers(rows: Vec<(i64, String)>) -> Vec<String> {
+    let mut rejected: Vec<i64> = Vec::new();
+    let mut out: Vec<String> = Vec::new();
+    for (id, issuer) in rows {
+        if issuer_reject_reason(&issuer).is_some() {
+            rejected.push(id);
+        } else if !out.contains(&issuer) {
+            out.push(issuer);
+        }
+    }
+    if !rejected.is_empty() {
+        tracing::warn!(
+            code = "issuer_row_rejected",
+            row_ids = ?rejected,
+            "stored OAuth issuer rows fail the issuer URL validator and are omitted from this document"
+        );
+    }
+    out
+}
+
+/// `host.doctor`'s `oauth_issuers` section: `{rows, invalid: [{id,
+/// tenant_id, reason}]}` from the same validator the write side and the
+/// document builders use. `scope_tenant` limits a tenant caller to its own
+/// rows; the admin caller (`None`) sees every row, orphans included.
+pub async fn doctor_report(state: &AppState, scope_tenant: Option<i64>) -> Result<Value, AppError> {
+    let mut rows = 0usize;
+    let mut invalid: Vec<Value> = Vec::new();
+    for (id, tenant_id, issuer, tenant_disabled) in state.db.list_oauth_issuer_health_rows().await? {
+        if scope_tenant.is_some_and(|t| t != tenant_id) {
+            continue;
+        }
+        rows += 1;
+        let reason = if tenant_disabled.is_none() {
+            Some(ISSUER_REASON_TENANT_MISSING)
+        } else {
+            issuer_reject_reason(&issuer)
+        };
+        if let Some(reason) = reason {
+            invalid.push(json!({"id": id, "tenant_id": tenant_id, "reason": reason}));
+        }
+    }
+    Ok(json!({"rows": rows, "invalid": invalid}))
+}
+
 /// Validate a tenant-registered issuer string with [`valid_issuer_url`];
 /// refused with the structured code `issuer_url_invalid`.
 pub(crate) fn require_https_issuer(issuer: &str) -> Result<(), AppError> {
@@ -798,14 +877,62 @@ pub async fn issuer_set(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
     Ok(json!({"issuer": issuer, "audience": audience, "jwks_url": jwks_url}))
 }
 
+/// Audit event name for a removed issuer row (`host.oauth.audit`).
+pub const AUDIT_EVENT_ISSUER_REMOVED: &str = "issuer_removed";
+
+/// The one removal path behind `host.oauth.issuer_remove` and
+/// `admin.oauth.issuer_remove`. The row delete is a single atomic statement
+/// and only the caller whose delete matched a row writes the audit row, so
+/// two concurrent removals of the same issuer yield exactly one
+/// `{removed: true}`, one `issuer_not_found`, and one audit row. The audit
+/// row names the tenant and carries `method` (`tenant` or `admin`), the
+/// issuer (first 64 chars, in `client_id`) and, for an admin, the reason.
+async fn remove_issuer_audited(
+    state: &AppState,
+    tenant_id: i64,
+    issuer: String,
+    method: &str,
+    reason: Option<&str>,
+) -> Result<Value, AppError> {
+    if !state.db.remove_oauth_issuer(tenant_id, issuer.clone()).await? {
+        return Err(AppError::IssuerNotFound(issuer));
+    }
+    let shown: String = issuer.chars().take(64).collect();
+    let _ = crate::oauth_policy::record_audit(
+        state,
+        Some(tenant_id),
+        AUDIT_EVENT_ISSUER_REMOVED,
+        Some(shown.as_str()),
+        Some(method),
+        None,
+        reason,
+        None,
+    )
+    .await;
+    Ok(json!({"removed": true, "issuer": issuer}))
+}
+
 /// `host.oauth.issuer_remove {issuer}`.
 pub async fn issuer_remove(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let issuer = arg_str(args, "issuer")?;
-    let removed = state.db.remove_oauth_issuer(tenant.id, issuer.clone()).await?;
-    if !removed {
-        return Err(AppError::IssuerNotFound(issuer));
+    remove_issuer_audited(state, tenant.id, issuer, "tenant", None).await
+}
+
+/// `admin.oauth.issuer_remove {tenant_id, issuer, reason}`: removes one
+/// tenant's issuer row -- the way out for an invalid row the tenant cannot
+/// (or will not) remove itself. `reason` is required and lands in the
+/// tenant's audit row.
+pub async fn admin_issuer_remove(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let tenant_id = args
+        .get("tenant_id")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| AppError::InvalidArgs("missing required integer argument 'tenant_id'".into()))?;
+    let issuer = arg_str(args, "issuer")?;
+    let reason = arg_str(args, "reason")?;
+    if reason.trim().is_empty() {
+        return Err(AppError::InvalidArgs("reason must not be empty".into()));
     }
-    Ok(json!({"removed": true, "issuer": issuer}))
+    remove_issuer_audited(state, tenant_id, issuer, "admin", Some(reason.as_str())).await
 }
 
 fn issuer_row_json(row: &OauthIssuerRow) -> Value {
@@ -1148,11 +1275,11 @@ pub async fn warn_invalid_stored_issuers(state: &AppState) -> Result<usize, AppE
 /// so the host's own URL sorts wherever it falls lexicographically rather
 /// than depending on insertion order.
 pub async fn protected_resource_metadata(state: &AppState) -> Result<Value, AppError> {
-    let mut issuers = state.db.list_distinct_oauth_issuer_urls().await?;
     // PRD-mcphost-oauth-metadata-lists-hosted-as R2: a stored row the issuer
     // validator rejects (a legacy `toolconf-probe`) never reaches a public
-    // document; it stays in the table.
-    issuers.retain(|i| valid_issuer_url(i));
+    // document; it stays in the table. PRD-mcphost-oauth-discovery-document-
+    // contract R2: the row's tenant must also exist and be enabled.
+    let mut issuers = listable_issuers(state.db.list_document_issuer_rows().await?);
     let own = state.public_url.trim_end_matches('/').to_string();
     if !issuers.iter().any(|i| i == &own) {
         issuers.push(own);
@@ -1203,9 +1330,9 @@ pub async fn protected_resource_metadata_for_tenant(state: &AppState, tenant: &T
     let rows = state.db.list_oauth_issuers_by_tenant(tenant.id).await?;
     let own = state.public_url.trim_end_matches('/').to_string();
     let mut issuers: Vec<String> = vec![own];
-    for row in rows {
-        if valid_issuer_url(&row.issuer) && !issuers.contains(&row.issuer) {
-            issuers.push(row.issuer);
+    for issuer in listable_issuers(rows.into_iter().map(|r| (r.id, r.issuer)).collect()) {
+        if !issuers.contains(&issuer) {
+            issuers.push(issuer);
         }
     }
     // PRD-mcphost-tool-scopes-and-consent requirement 3 (AC7): `mcp`
