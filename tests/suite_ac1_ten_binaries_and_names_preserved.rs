@@ -1,8 +1,9 @@
 //! PRD-mcphost-test-suite-consolidation
 //! AC1 (P0) -- Given the repo at HEAD, When `gen-test-suites.sh` runs and
-//! `cargo nextest list` runs, Then at most ten test binaries are listed (twelve
-//! since 2026-10-18: the solo ctrs_ac06 suite and a third normal core bucket,
-//! `MAX_SUITES` in scripts/gen-test-suites.sh) and
+//! `cargo nextest list` runs, Then at most ten test binaries are listed (the
+//! cap is `MAX_SUITES` in scripts/gen-test-suites.sh, read from there: twelve
+//! since 2026-10-18 for the solo ctrs_ac06 suite and a third normal core
+//! bucket, thirteen for a fourth) and
 //! the set of test names (suite prefix stripped) equals the set listed at
 //! the parent commit.
 //!
@@ -53,9 +54,18 @@ fn at_most_ten_suites_and_none_drifted() {
         "no generated suite_core_*/suite_sandbox_*.rs files found -- has \
          scripts/gen-test-suites.sh been run?"
     );
+    // The cap is ONE definition: the `^MAX_SUITES = N` line the generator and
+    // ci-test-partition.sh also read, never a copy of the number here.
+    let generator = std::fs::read_to_string(root.join("scripts/gen-test-suites.sh"))
+        .expect("read scripts/gen-test-suites.sh");
+    let max_suites: usize = generator
+        .lines()
+        .find_map(|l| l.strip_prefix("MAX_SUITES = "))
+        .and_then(|n| n.trim().parse().ok())
+        .expect("scripts/gen-test-suites.sh has no `MAX_SUITES = N` line");
     assert!(
-        suite_count <= 12,
-        "P0 requirement: at most twelve test binaries (MAX_SUITES in scripts/gen-test-suites.sh); found {suite_count} \
+        suite_count <= max_suites,
+        "P0 requirement: at most MAX_SUITES={max_suites} test binaries (MAX_SUITES in scripts/gen-test-suites.sh); found {suite_count} \
          tests/suite_*.rs files. Either MAX_PER_SUITE in \
          scripts/gen-test-suites.sh needs raising, or tests/ has grown \
          enough that the area table needs a look."
