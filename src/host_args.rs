@@ -139,12 +139,19 @@ fn left_to_projection(tool: &str, err: &jsonschema::ValidationError<'_>) -> bool
 pub fn validate_host_args(kinds: &KindRegistry, tool: &str, args: &Value) -> Result<(), AppError> {
     let table = table_for(kinds);
     let Some(compiled) = table.get(tool) else { return Ok(()) };
-    let Some(err) = compiled
+    let mut errors = compiled
         .validator
         .iter_errors(args)
-        .find(|e| constraint_of(e.schema_path.as_str()) != "additionalProperties" && !left_to_projection(tool, e))
-    else {
-        return Ok(());
+        .filter(|e| constraint_of(e.schema_path.as_str()) != "additionalProperties" && !left_to_projection(tool, e));
+    let Some(first) = errors.next() else { return Ok(()) };
+    // A wrong-typed value also fails its `enum`; the type is the root cause, so
+    // it is the violation reported (the same instance path, `type` first).
+    let err = if constraint_of(first.schema_path.as_str()) == "type" {
+        first
+    } else {
+        let at = first.instance_path.as_str().to_string();
+        let typed = errors.find(|e| e.instance_path.as_str() == at && constraint_of(e.schema_path.as_str()) == "type");
+        typed.unwrap_or(first)
     };
     let args_err = describe_args_error(&err);
     let constraint = constraint_of(err.schema_path.as_str());

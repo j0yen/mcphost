@@ -8134,6 +8134,15 @@ impl McpHostHandler {
         // `call_tool_inner` runs for `host.*` -- one validator, one more
         // call site.
         crate::host_args::validate_host_args(&self.state.kinds, name, &args)?;
+        // Counted after the validator passed, keyed by the `tenant` (else
+        // `prefix`) argument -- empty for "every tenant" -- so concurrent
+        // tests cannot disturb each other's count.
+        let counted_for = args
+            .get("tenant")
+            .or_else(|| args.get("prefix"))
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        crate::host_args::note_handler_run(counted_for, name);
         let result = match name {
             "admin.tenants" => admin::tenants(&self.state, &args).await,
             "admin.tenant_disable" => admin::tenant_disable(&self.state, &args).await,

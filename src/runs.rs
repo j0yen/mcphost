@@ -920,10 +920,6 @@ pub async fn wait(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
 
 /// `admin.runs(tenant?, status?, limit?)`.
 pub async fn admin_runs(state: &AppState, args: &Value) -> Result<Value, AppError> {
-    // Counted after the descriptor validator passed, keyed by the `tenant`
-    // argument (empty for "every tenant") so concurrent tests cannot disturb
-    // each other's count.
-    crate::host_args::note_handler_run(&arg_str_opt(args, "tenant").unwrap_or_default(), "admin.runs");
     let tenant_id = if let Some(ns) = arg_str_opt(args, "tenant") {
         let tenant = state
             .db

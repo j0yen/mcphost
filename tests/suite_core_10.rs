@@ -702,6 +702,8 @@ mod vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green;
 mod vaultst_ac09_live_vault_status_trailer;
 #[path = "vbd_ac01_validated_by_default_coverage.rs"]
 mod vbd_ac01_validated_by_default_coverage;
+#[path = "vbd_ac02_three_unvalidated_verbs_now_refuse.rs"]
+mod vbd_ac02_three_unvalidated_verbs_now_refuse;
 #[path = "verbfwd_ac01_trigger_set_dotted_forwards.rs"]
 mod verbfwd_ac01_trigger_set_dotted_forwards;
 #[path = "verbfwd_ac02_every_spelling_forwards_identically.rs"]
