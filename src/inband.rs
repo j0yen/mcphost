@@ -407,3 +407,64 @@ pub fn log_ask(kind: &'static str, gate: Option<&CallGate>, channel: &'static st
         _ => tracing::info!(channel, session_present, session_unknown, capability_shape = shape, outcome, "elicit"),
     }
 }
+
+#[cfg(test)]
+mod inbandsec_tests {
+    use super::*;
+    use crate::session_bind::SessionBindings;
+
+    fn waiter(stores: &Arc<InBandStores>, session: &str, id: i64) -> Reservation {
+        let reservation = stores.reserve(session).expect("slot free");
+        reservation.bind(RequestId::Number(id as _));
+        reservation
+    }
+
+    fn answer() -> Answer {
+        Ok(serde_json::json!({"action": "accept"}))
+    }
+
+    #[test]
+    fn inbandsec_deliver_is_keyed_by_session_and_request_id() {
+        let bindings = SessionBindings::new();
+        let stores = Arc::new(InBandStores::default());
+        let (s1, s2) = (bindings.issue(), bindings.issue());
+        assert_ne!(s1, s2);
+        let mut w1 = waiter(&stores, &s1, 7);
+
+        // Another server-issued session, same request id: refused, waiter untouched.
+        assert!(!stores.deliver(&s2, &RequestId::Number(7 as _), answer()));
+        assert!(w1.rx.try_recv().is_err(), "a foreign session must not resolve the waiter");
+        // Right session, wrong request id: refused, waiter untouched.
+        assert!(!stores.deliver(&s1, &RequestId::Number(8 as _), answer()));
+        assert!(w1.rx.try_recv().is_err(), "a different request id must not resolve the waiter");
+        // Right session and id: delivered exactly once.
+        assert!(stores.deliver(&s1, &RequestId::Number(7 as _), answer()));
+        assert_eq!(w1.rx.try_recv().expect("resolved"), answer());
+        assert!(!stores.deliver(&s1, &RequestId::Number(7 as _), answer()), "a second answer is refused");
+    }
+
+    #[test]
+    fn inbandsec_a_waiter_in_another_session_is_not_resolved_by_a_cross_answer() {
+        let bindings = SessionBindings::new();
+        let stores = Arc::new(InBandStores::default());
+        let (s1, s2) = (bindings.issue(), bindings.issue());
+        let mut w1 = waiter(&stores, &s1, 7);
+        let mut w2 = waiter(&stores, &s2, 7);
+        assert!(stores.deliver(&s2, &RequestId::Number(7 as _), answer()));
+        assert!(w2.rx.try_recv().is_ok());
+        assert!(w1.rx.try_recv().is_err(), "S2's answer never reaches S1's waiter");
+    }
+
+    #[test]
+    fn inbandsec_a_session_with_nothing_in_flight_takes_no_answer() {
+        let bindings = SessionBindings::new();
+        let stores = Arc::new(InBandStores::default());
+        let s1 = bindings.issue();
+        assert!(!stores.has_inflight(&s1));
+        assert!(!stores.deliver(&s1, &RequestId::Number(7 as _), answer()));
+        let w = waiter(&stores, &s1, 7);
+        assert!(stores.has_inflight(&s1));
+        drop(w);
+        assert!(!stores.has_inflight(&s1), "a dropped reservation frees the slot");
+    }
+}

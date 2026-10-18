@@ -6667,12 +6667,6 @@ pub struct McpHostHandler {
 }
 
 impl McpHostHandler {
-    /// `-32601` + `capability_unsupported` data for a method of an
-    /// unimplemented capability row (see `crate::capabilities`).
-    fn capability_unsupported(&self, method: &str) -> McpError {
-        crate::capabilities::unsupported_error(method, Some(&self.state.public_url))
-    }
-
     pub fn new(state: Arc<AppState>) -> Self {
         Self { state }
     }
@@ -11180,54 +11174,6 @@ impl ServerHandler for McpHostHandler {
         .with_instructions(instructions)
     }
 
-    // PRD-mcphost-server-capabilities-from-registry requirement 2: rmcp's
-    // defaults answer an empty list (or a bare `-32601` with no `data`) for
-    // primitives this host does not advertise. Each hook of an unimplemented
-    // `capabilities::CAPABILITIES` row answers `-32601` with
-    // `data.{code,capability,method,alternative,help_url}` instead; a sibling
-    // PRD that implements a row replaces that row's hooks below.
-    async fn list_resources(
-        &self,
-        _request: Option<PaginatedRequestParams>,
-        _ctx: RequestContext<RoleServer>,
-    ) -> Result<rmcp::model::ListResourcesResult, McpError> {
-        Err(self.capability_unsupported("resources/list"))
-    }
-
-    async fn list_resource_templates(
-        &self,
-        _request: Option<PaginatedRequestParams>,
-        _ctx: RequestContext<RoleServer>,
-    ) -> Result<rmcp::model::ListResourceTemplatesResult, McpError> {
-        Err(self.capability_unsupported("resources/templates/list"))
-    }
-
-    async fn read_resource(
-        &self,
-        _request: rmcp::model::ReadResourceRequestParams,
-        _ctx: RequestContext<RoleServer>,
-    ) -> Result<rmcp::model::ReadResourceResponse, McpError> {
-        Err(self.capability_unsupported("resources/read"))
-    }
-
-    #[allow(deprecated)]
-    async fn subscribe(
-        &self,
-        _request: rmcp::model::SubscribeRequestParams,
-        _ctx: RequestContext<RoleServer>,
-    ) -> Result<(), McpError> {
-        Err(self.capability_unsupported("resources/subscribe"))
-    }
-
-    #[allow(deprecated)]
-    async fn unsubscribe(
-        &self,
-        _request: rmcp::model::UnsubscribeRequestParams,
-        _ctx: RequestContext<RoleServer>,
-    ) -> Result<(), McpError> {
-        Err(self.capability_unsupported("resources/unsubscribe"))
-    }
-
     async fn list_prompts(
         &self,
         _request: Option<PaginatedRequestParams>,
@@ -11299,23 +11245,6 @@ impl ServerHandler for McpHostHandler {
         crate::prompts::render_recipe(name, &args)
             .map(rmcp::model::GetPromptResponse::from)
             .map_err(crate::prompts::PromptError::into_mcp)
-    }
-
-    async fn complete(
-        &self,
-        _request: rmcp::model::CompleteRequestParams,
-        _ctx: RequestContext<RoleServer>,
-    ) -> Result<rmcp::model::CompleteResult, McpError> {
-        Err(self.capability_unsupported("completion/complete"))
-    }
-
-    #[allow(deprecated)]
-    async fn set_level(
-        &self,
-        _request: rmcp::model::SetLevelRequestParams,
-        _ctx: RequestContext<RoleServer>,
-    ) -> Result<(), McpError> {
-        Err(self.capability_unsupported("logging/setLevel"))
     }
 
     async fn list_tools(

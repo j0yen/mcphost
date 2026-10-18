@@ -218,11 +218,15 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // PRD-mcphost-python-sdk-generated added its own "sdk-python" lane
     // (routes the generated sdk-python/** to its regenerate-and-diff check) --
     // an intended addition since the baseline, not drift.
+    // PRD-mcphost-capabilities-generated-from-dispatch added its own
+    // "capabilities-wire-check" lane (routes scripts/capabilities-wire-check.sh
+    // to a proof lane) -- an intended addition since the baseline.
     assert_eq!(
         added,
         vec![
             "admin-schemas",
             "blobguard-fixtures",
+            "capabilities-wire-check",
             "checkcompat-race-soak",
             "child-proc-lint",
             "contracts",
@@ -255,7 +259,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "vendor",
             "wasm-fixtures",
         ],
-        "only admin-schemas, blobguard-fixtures, checkcompat-race-soak, child-proc-lint, contracts, docs-links, docsearch-fixtures, \
+        "only admin-schemas, blobguard-fixtures, capabilities-wire-check, checkcompat-race-soak, child-proc-lint, contracts, docs-links, docsearch-fixtures, \
          event-trigger-self-test-fixtures, example-manifest, examples, flake-lint, heal-config, heal-docs, host-pressure-doc-check, launch-docs, \
          loop-config, oauthconf-data, output-schemas, plugin, registry-manifest, required-checks, sandbox-api-docs, sdk-python, sharing-docs, \
          spec-fields-doc-check, tool-naming, vendor, and wasm-fixtures may have been added since \
