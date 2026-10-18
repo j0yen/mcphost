@@ -1688,6 +1688,8 @@ mod verbfwd_ac05_tool_test_forwards_dry_run_or_unverifiable;
 mod verbfwd_ac06_hint_parity_underscore_form_resolves;
 #[path = "verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota.rs"]
 mod verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota;
+#[path = "verbfwd_ac08_forward_stack_budget.rs"]
+mod verbfwd_ac08_forward_stack_budget;
 #[path = "vord_ac01_falsifier.rs"]
 mod vord_ac01_falsifier;
 #[path = "vord_ac02_contract_order_enum.rs"]
