@@ -2835,6 +2835,24 @@
   },
   "host.doctor": {
     "properties": {
+      "error_envelope": {
+        "properties": {
+          "skipped": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "validated": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "skipped",
+          "validated"
+        ],
+        "type": "object"
+      },
       "groups": {
         "items": {
           "properties": {

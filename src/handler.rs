@@ -9101,6 +9101,10 @@ impl McpHostHandler {
                 "last_ts": rows.first().map(|r| r.started_at.clone()),
             },
             "groups": crate::doctor::build_groups(&rows),
+            "error_envelope": {
+                "validated": crate::output_schemas::error_envelope_report().validated,
+                "skipped": crate::output_schemas::error_envelope_report().skipped,
+            },
         });
         if rows.is_empty() {
             out["next"] = json!(crate::doctor::empty_next(limit));
@@ -11203,7 +11207,13 @@ impl ServerHandler for McpHostHandler {
                 let rendered = kind
                     .render_prompt(&row.spec, &args)
                     .unwrap_or_else(|| Err(KindError::InvalidSpec(format!("kind `{}` cannot render a prompt", row.kind))))
-                    .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+                    .map_err(|e| {
+                        crate::errors::error_envelope(
+                            rmcp::model::ErrorCode::INVALID_PARAMS,
+                            e.to_string(),
+                            serde_json::json!({"error_code": crate::errors::INVALID_SPEC}),
+                        )
+                    })?;
                 let result = rmcp::model::GetPromptResult::new(vec![rmcp::model::PromptMessage::new_text(
                     rmcp::model::Role::User,
                     rendered,

@@ -1121,6 +1121,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Returns**
 
+- `error_envelope`: object | null
 - `groups`: array<object> (always)
 - `hint`: string | null
 - `next`: string | null
