@@ -77,6 +77,7 @@ pub const UNSPECCED: &[&str] = &[
     "/plans.html",
     "/llms.txt",
     "/llms-full.txt",
+    "/retry_policy.json",
     "/skill.md",
     "/llms-install.md",
     "/sitemap.xml",

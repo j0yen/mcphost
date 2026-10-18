@@ -2090,6 +2090,17 @@
       "AC5": "tests/msmp_ac05_daily_token_quota_refuses_before_asking.rs",
       "AC6": "tests/msmp_ac06_tool_logs_hold_counts_never_the_prompt.rs",
       "AC7": "tests/msmp_ac07_bridge_modules_list_sampling_everywhere.rs"
+    },
+    "rpol": {
+      "_prd": "PRD-mcphost-retry-policy-table-generated.md (test_prefix: rpol)",
+      "AC1": "tests/rpol_ac01_non_retryable_stops_resends.rs",
+      "AC2": "tests/rpol_ac02_every_code_has_exactly_one_row.rs",
+      "AC3": "tests/rpol_ac03_retry_after_wins_over_backoff.rs",
+      "AC4": "tests/rpol_ac04_attempts_exhausted_flips_retryable.rs",
+      "AC5": "tests/rpol_ac05_chain_retry_on_validated_against_table.rs",
+      "AC6": "tests/rpol_ac06_retry_policy_check_names_the_edited_file.rs",
+      "AC7": "deferred -- operator-provisioned: synthorg repo vendoring and digest; not in this repo.",
+      "AC8": "deferred -- operator-provisioned: Live AC against prod after deploy."
     }
   }
 }

@@ -541,6 +541,9 @@ jobs:
       - name: mcphost llms-txt --check
         run: cargo run --quiet --bin mcphost -- llms-txt --check
 
+      - name: mcphost retry-policy --check
+        run: cargo run --quiet --bin mcphost -- retry-policy --check
+
   # PRD-mcphost-python-sdk-generated R5 (AC7). `sdk/python/mcphost_sdk` is
   # RENDERED from contracts/host-tools.v1.json by `mcphost gen sdk python`;
   # a PR that changes the contract (a tool description, a field) without
