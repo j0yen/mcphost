@@ -234,10 +234,27 @@ def walked_dirs(text):
 if "--artifacts" in FLAGS:
     for a in sorted(defines):
         print(a)
+    for n in sorted(registries):
+        print(f"registry {n}")
     sys.exit(0)
 
 FIX = "--fix" in FLAGS
 bad = 0
+# Every registry a marker names must resolve; a follower needs a definer.
+for f, t, m in files:
+    if not m:
+        continue
+    is_def, names = registry_names(t)
+    for n in names:
+        if not resolve(n):
+            print(f"contract-lint: {f} names registry {n} but src/ has no pub fn|const|static {n.split('::')[-1]} (stale marker)")
+            bad = 1
+        elif not is_def and n not in registries:
+            print(f"contract-lint: {f} has no definer for registry {n}; promote the line to 'registry {n}' in the test that owns it")
+            bad = 1
+if bad:
+    print("contract-lint: FAILED")
+    sys.exit(1)
 for f, t, m in files:
     if m:
         continue
