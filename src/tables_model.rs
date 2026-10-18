@@ -429,7 +429,7 @@ fn compute_model_sync(conn: &Connection, table: &str) -> Result<Value, AppError>
 }
 
 /// requirement 6: the only keys `host.table.model_set` accepts.
-const ANNOTATION_KEYS: &[&str] = &["role", "unit", "description", "hidden"];
+pub const ANNOTATION_KEYS: &[&str] = &["role", "unit", "description", "hidden"];
 
 /// requirement 4: "annotations merged (annotation wins over inference for
 /// `role`, adds `unit`, `description`)". A table-level annotation

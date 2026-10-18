@@ -273,12 +273,22 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `source`: string (always)
 - `url`: string (always)
 
+**Arguments**
+
+- `plan`: string
+- `source`: string
+- `tenant_key`: string
+
 ### `billing.plans`
 
 **Returns**
 
 - `billing_mode`: string (always)
 - `plans`: array<object> (always)
+
+**Arguments**
+
+- `tenant_key`: string
 
 ### `billing.status`
 
@@ -291,6 +301,10 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `receipt`: object | null
 - `usage`: object (always)
 
+**Arguments**
+
+- `tenant_key`: string
+
 ### `host.agent.contact_accept`
 
 **Returns**
@@ -300,6 +314,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `request_id`: string (always)
 - `status`: string (always)
 
+**Arguments**
+
+- `request_id`: string, required
+- `tenant_key`: string
+
 ### `host.agent.contact_deny`
 
 **Returns**
@@ -307,6 +326,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `address`: string (always)
 - `request_id`: string (always)
 - `status`: string (always)
+
+**Arguments**
+
+- `request_id`: string, required
+- `tenant_key`: string
 
 ### `host.agent.contact_request`
 
@@ -318,6 +342,12 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `request_id`: string (always)
 - `status`: string (always)
 
+**Arguments**
+
+- `address`: string, required
+- `note`: string
+- `tenant_key`: string
+
 ### `host.agent.contacts`
 
 **Returns**
@@ -327,11 +357,22 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `next`: object | null
 - `outgoing`: array<object> (always)
 
+**Arguments**
+
+- `status`: string
+  - `status` enum: `pending`, `accepted`, `denied`, `expired`
+- `tenant_key`: string
+
 ### `host.agent.contacts_import`
 
 **Returns**
 
 - `results`: array<object> (always)
+
+**Arguments**
+
+- `addresses`: array, required
+- `tenant_key`: string
 
 ### `host.agent.lookup`
 
@@ -349,12 +390,22 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `synthetic`: boolean (always)
 - `tags`: array (always)
 
+**Arguments**
+
+- `address`: string, required
+- `tenant_key`: string
+
 ### `host.agent.mute`
 
 **Returns**
 
 - `address`: string (always)
 - `muted`: boolean (always)
+
+**Arguments**
+
+- `address`: string, required
+- `tenant_key`: string
 
 ### `host.agent.profile_set`
 
@@ -369,6 +420,17 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `tags`: array<string> (always)
 - `welcome_back`: boolean (always)
 
+**Arguments**
+
+- `contact_policy`: string
+  - `contact_policy` enum: `open`, `contacts`, `closed`
+- `description`: string | null
+- `dry_run`: boolean
+- `handle`: string | null
+- `hints`: boolean
+- `tags`: array
+- `tenant_key`: string
+
 ### `host.agent.search`
 
 **Returns**
@@ -376,12 +438,25 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `agents`: array<object> (always)
 - `cursor`: string | null
 
+**Arguments**
+
+- `cursor`: string
+- `limit`: integer
+- `query`: string
+- `tag`: string
+- `tenant_key`: string
+
 ### `host.agent.unmute`
 
 **Returns**
 
 - `address`: string (always)
 - `unmuted`: boolean (always)
+
+**Arguments**
+
+- `address`: string, required
+- `tenant_key`: string
 
 ### `host.agent.whoami`
 
@@ -394,6 +469,10 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `next`: object | null
 - `plan`: string (always)
 
+**Arguments**
+
+- `tenant_key`: string
+
 ### `host.ask.create`
 
 **Returns**
@@ -404,6 +483,18 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `next_call`: string (always)
 - `notified`: boolean (always)
 - `url`: string (always)
+
+**Arguments**
+
+- `context`: string
+- `dry_run`: boolean
+- `notify`: boolean
+- `options`: array, required
+  - `options` minItems: 2
+  - `options` maxItems: 6
+- `question`: string, required
+- `tenant_key`: string
+- `ttl_s`: integer
 
 ### `host.ask.get`
 
@@ -421,11 +512,23 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `status`: string (always)
 - `waited_total_ms`: integer (always)
 
+**Arguments**
+
+- `ask_id`: string, required
+- `tenant_key`: string
+
 ### `host.ask.list`
 
 **Returns**
 
 - `asks`: array<object> (always)
+
+**Arguments**
+
+- `limit`: integer
+- `status`: string
+  - `status` enum: `pending`, `answered`, `expired`
+- `tenant_key`: string
 
 ### `host.ask.wait`
 
@@ -437,6 +540,12 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `status`: string (always)
 - `waited_ms`: integer (always)
 
+**Arguments**
+
+- `ask_id`: string, required
+- `tenant_key`: string
+- `timeout_s`: integer
+
 ### `host.audit.chain`
 
 **Returns**
@@ -445,12 +554,25 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `returned_count`: integer (always)
 - `withheld_count`: integer (always)
 
+**Arguments**
+
+- `before_id`: integer
+- `limit`: integer
+- `subject`: string
+- `tenant_key`: string
+
 ### `host.audit.verify`
 
 **Returns**
 
 - `first_broken_id`: integer | null (always)
 - `intact`: boolean (always)
+
+**Arguments**
+
+- `from_id`: integer, required
+- `tenant_key`: string
+- `to_id`: integer, required
 
 ### `host.blob.delete`
 
@@ -462,6 +584,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `id`: string (always)
 - `name`: string (always)
 
+**Arguments**
+
+- `id`: string, required
+- `tenant_key`: string
+
 ### `host.blob.gc`
 
 **Returns**
@@ -472,6 +599,12 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `data`: object (always)
 - `deleted`: integer | null
 - `expiring`: array<object> | null
+
+**Arguments**
+
+- `dry_run`: boolean
+- `tenant_key`: string
+- `within_s`: integer
 
 ### `host.blob.get`
 
@@ -489,6 +622,15 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `url`: string (always)
 - `version`: integer (always)
 
+**Arguments**
+
+- one of (anyOf): `id` | `name`
+- `as`: string
+  - `as` enum: `url`, `base64`
+- `id`: string
+- `name`: string
+- `tenant_key`: string
+
 ### `host.blob.list`
 
 **Returns**
@@ -498,6 +640,12 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `data`: object (always)
 - `total_bytes`: integer (always)
 
+**Arguments**
+
+- `limit`: integer
+- `prefix`: string
+- `tenant_key`: string
+
 ### `host.blob.policy`
 
 **Returns**
@@ -506,6 +654,13 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `default_ttl_s`: integer | null (always)
 - `keep_latest_versions`: integer | null (always)
 - `notify_before_s`: integer (always)
+
+**Arguments**
+
+- `default_ttl_s`: integer | null
+- `keep_latest_versions`: integer | null
+- `notify_before_s`: integer
+- `tenant_key`: string
 
 ### `host.blob.put`
 
@@ -522,6 +677,16 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `url`: string (always)
 - `version`: integer (always)
 
+**Arguments**
+
+- one of (anyOf): `content_base64` | `url`
+- `content_base64`: string
+- `mime`: string
+- `name`: string, required
+- `tenant_key`: string
+- `ttl_s`: integer
+- `url`: string
+
 ### `host.blob.touch`
 
 **Returns**
@@ -530,6 +695,12 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `expires_at`: integer (always)
 - `id`: string (always)
 - `name`: string (always)
+
+**Arguments**
+
+- `id`: string, required
+- `tenant_key`: string
+- `ttl_s`: integer, required
 
 ### `host.blob.url`
 
@@ -541,6 +712,12 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `name`: string (always)
 - `url`: string (always)
 
+**Arguments**
+
+- `id`: string, required
+- `tenant_key`: string
+- `ttl_s`: integer
+
 ### `host.bridge.test`
 
 **Returns**
@@ -548,6 +725,12 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `request`: object (always)
 - `response`: object (always)
 - `schema`: object (always)
+
+**Arguments**
+
+- `args`: object, required
+- `spec`: object, required
+- `tenant_key`: string
 
 ### `host.call_trace`
 
@@ -566,6 +749,12 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `timings`: object (always)
 - `tool`: string (always)
 
+**Arguments**
+
+- `call_id`: string, required
+- `replay`: object
+- `tenant_key`: string
+
 ### `host.calls.export`
 
 **Returns**
@@ -578,6 +767,12 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `signature`: string (always)
 - `signature_der`: string (always)
 
+**Arguments**
+
+- `since`: string
+- `tenant_key`: string
+- `until`: string
+
 ### `host.calls.list`
 
 **Returns**
@@ -585,6 +780,25 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `calls`: array<object> (always)
 - `next_cursor`: string | null
 - `truncated`: boolean | null
+
+**Arguments**
+
+- `credential`: string
+- `cursor`: string
+- `fields`: array
+  - `fields` minItems: 1
+  - `fields[]` enum: `ts`, `credential`, `key_label`, `tool`, `outcome`, `error_class`, `duration_ms`, `bytes_in`, `bytes_out`, `end_user_subject`, `run_id`
+- `key_label`: string
+- `limit`: integer
+  - `limit` minimum: 1
+  - `limit` maximum: 500
+- `order`: string
+  - `order` enum: `newest_first`
+- `outcome`: string
+- `since`: string
+- `tenant_key`: string
+- `tool`: string
+- `until`: string
 
 ### `host.catalog.get`
 
@@ -600,6 +814,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `owner`: string (always)
 - `visibility`: string (always)
 
+**Arguments**
+
+- `full_name`: string, required
+- `tenant_key`: string
+
 ### `host.catalog.search`
 
 **Returns**
@@ -607,6 +826,12 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `next`: object | null
 - `onboarding`: object | null
 - `tools`: array<object> (always)
+
+**Arguments**
+
+- `limit`: integer
+- `q`: string
+- `tenant_key`: string
 
 ### `host.changelog`
 
@@ -625,6 +850,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `renamed`: array<object> (always)
 - `since`: string | null (always)
 
+**Arguments**
+
+- `since`: string
+- `tenant_key`: string
+
 ### `host.channel.close`
 
 **Returns**
@@ -632,12 +862,22 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `channel_id`: string (always)
 - `closed`: boolean (always)
 
+**Arguments**
+
+- `channel_id`: string, required
+- `tenant_key`: string
+
 ### `host.channel.freeze`
 
 **Returns**
 
 - `channel_id`: string (always)
 - `frozen`: boolean (always)
+
+**Arguments**
+
+- `channel_id`: string, required
+- `tenant_key`: string
 
 ### `host.channel.open`
 
@@ -647,6 +887,13 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `created_at`: string (always)
 - `group`: string | null
 - `name`: string | null
+
+**Arguments**
+
+- one of (anyOf): `name` | `group`
+- `group`: string
+- `name`: string
+- `tenant_key`: string
 
 ### `host.channel.post`
 
@@ -658,12 +905,34 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `post_id`: string (always)
 - `seq`: integer (always)
 
+**Arguments**
+
+- `body`: string, required
+- `channel`: string, required
+- `data`: object
+- `tenant_key`: string
+
 ### `host.channel.read`
 
 **Returns**
 
 - `next_cursor`: string | null
 - `posts`: array<object> (always)
+
+**Arguments**
+
+- `ack`: boolean
+- `channel_id`: string, required
+- `cursor`: string
+- `fields`: array
+  - `fields` minItems: 1
+  - `fields[]` enum: `post_id`, `channel_id`, `seq`, `from_address`, `body`, `data`, `created_at`
+- `limit`: integer
+  - `limit` minimum: 1
+  - `limit` maximum: 100
+- `order`: string
+  - `order` enum: `seq_asc`
+- `tenant_key`: string
 
 ### `host.channel.unfreeze`
 
@@ -672,12 +941,22 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `channel_id`: string (always)
 - `frozen`: boolean (always)
 
+**Arguments**
+
+- `channel_id`: string, required
+- `tenant_key`: string
+
 ### `host.client.revoke`
 
 **Returns**
 
 - `clients_remaining`: integer (always)
 - `revoked`: string (always)
+
+**Arguments**
+
+- `client_id`: string, required
+- `tenant_key`: string
 
 ### `host.docs.delete`
 
@@ -686,6 +965,14 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `deleted`: boolean (always)
 - `id`: string (always)
 - `seq`: integer (always)
+
+**Arguments**
+
+- one of (anyOf): `id` | `name`
+- `dry_run`: boolean
+- `id`: string
+- `name`: string
+- `tenant_key`: string
 
 ### `host.docs.get`
 
@@ -704,12 +991,30 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `updated_at`: integer (always)
 - `version`: integer (always)
 
+**Arguments**
+
+- one of (anyOf): `id` | `name`
+- `id`: string
+- `name`: string
+- `tenant_key`: string
+- `text`: boolean
+- `version`: integer
+
 ### `host.docs.index_config`
 
 **Returns**
 
 - `provider`: string (always)
 - `rebuilding`: boolean | null
+
+**Arguments**
+
+- `dims`: integer
+- `endpoint`: string
+- `model`: string
+- `provider`: string, required
+- `secret`: string
+- `tenant_key`: string
 
 ### `host.docs.list`
 
@@ -718,6 +1023,21 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `documents`: array<object> (always)
 - `next_cursor`: string | null
 
+**Arguments**
+
+- `cursor`: string
+- `fields`: array
+  - `fields` minItems: 1
+  - `fields[]` enum: `id`, `name`, `version`, `mime`, `bytes`, `text_bytes`, `metadata`, `seq`, `created_at`, `updated_at`, `deleted`
+- `limit`: integer
+  - `limit` minimum: 1
+  - `limit` maximum: 1000
+- `order`: string
+  - `order` enum: `created_desc`, `created_asc`, `name_asc`
+- `prefix`: string
+- `since`: integer
+- `tenant_key`: string
+
 ### `host.docs.purge`
 
 **Returns**
@@ -725,6 +1045,15 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `id`: string (always)
 - `kept_from_version`: integer (always)
 - `purged_versions`: integer (always)
+
+**Arguments**
+
+- one of (anyOf): `id` | `name`
+- `dry_run`: boolean
+- `id`: string
+- `name`: string
+- `older_than_versions`: integer, required
+- `tenant_key`: string
 
 ### `host.docs.put`
 
@@ -736,11 +1065,27 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `text_bytes`: integer (always)
 - `version`: integer (always)
 
+**Arguments**
+
+- one of (anyOf): `content` | `content_base64`
+- `content`: string
+- `content_base64`: string
+- `dry_run`: boolean
+- `metadata`: any
+- `mime`: string
+- `name`: string, required
+- `tenant_key`: string
+
 ### `host.docs.reindex`
 
 **Returns**
 
 - `rebuilding`: boolean (always)
+
+**Arguments**
+
+- `document_id`: string
+- `tenant_key`: string
 
 ### `host.docs.search`
 
@@ -748,6 +1093,14 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 - `index`: object (always)
 - `results`: array (always)
+
+**Arguments**
+
+- `filter`: object
+- `k`: integer
+- `mode`: string
+- `query`: string, required
+- `tenant_key`: string
 
 ### `host.docs.status`
 
@@ -760,6 +1113,10 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `text_bytes`: integer (always)
 - `watermark`: integer (always)
 
+**Arguments**
+
+- `tenant_key`: string
+
 ### `host.doctor`
 
 **Returns**
@@ -768,6 +1125,17 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `hint`: string | null
 - `next`: string | null
 - `window`: object (always)
+
+**Arguments**
+
+- `limit`: integer
+  - `limit` minimum: 1
+  - `limit` maximum: 200
+- `since_s`: integer
+  - `since_s` minimum: 1
+- `tenant`: string
+- `tenant_key`: string
+- `tool`: string
 
 ### `host.drift.check`
 
@@ -778,12 +1146,23 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `target`: string (always)
 - `trigger_version`: integer (always)
 
+**Arguments**
+
+- `target`: string, required
+- `tenant_key`: string
+
 ### `host.drift.resolve`
 
 **Returns**
 
 - `item_id`: string (always)
 - `resolved`: boolean (always)
+
+**Arguments**
+
+- `item_id`: string, required
+- `reason`: string, required
+- `tenant_key`: string
 
 ### `host.drift.review`
 
@@ -801,11 +1180,22 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `target`: string (always)
 - `timestamp`: integer (always)
 
+**Arguments**
+
+- `item_id`: string, required
+- `tenant_key`: string
+
 ### `host.drift.reviews`
 
 **Returns**
 
 - `reviews`: array<object> (always)
+
+**Arguments**
+
+- `limit`: integer
+- `open_only`: boolean
+- `tenant_key`: string
 
 ### `host.enduser.assertion_secret_rotate`
 
@@ -814,6 +1204,10 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `rotated`: boolean (always)
 - `secret`: string (always)
 
+**Arguments**
+
+- `tenant_key`: string
+
 ### `host.enduser.audit`
 
 **Returns**
@@ -821,12 +1215,25 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `cursor`: string | null
 - `entries`: array<object> (always)
 
+**Arguments**
+
+- `cursor`: string
+- `limit`: integer
+- `since`: integer
+- `subject`: string, required
+- `tenant_key`: string
+
 ### `host.enduser.export`
 
 **Returns**
 
 - `run_id`: string (always)
 - `status`: string (always)
+
+**Arguments**
+
+- `subject`: string, required
+- `tenant_key`: string
 
 ### `host.enduser.get`
 
@@ -844,12 +1251,25 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `subject`: string (always)
 - `vault_connections`: integer (always)
 
+**Arguments**
+
+- `subject`: string, required
+- `tenant_key`: string
+
 ### `host.enduser.list`
 
 **Returns**
 
 - `cursor`: string | null
 - `end_users`: array<object> (always)
+
+**Arguments**
+
+- `cursor`: string
+- `limit`: integer
+- `revoked`: boolean
+- `since`: integer
+- `tenant_key`: string
 
 ### `host.enduser.purge`
 
@@ -859,6 +1279,12 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `subject`: string (always)
 - `vault_tokens`: integer (always)
 
+**Arguments**
+
+- `dry_run`: boolean
+- `subject`: string, required
+- `tenant_key`: string
+
 ### `host.enduser.revoke`
 
 **Returns**
@@ -866,12 +1292,25 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `revoked`: boolean (always)
 - `subject`: string (always)
 
+**Arguments**
+
+- `dry_run`: boolean
+- `reason`: string
+- `subject`: string, required
+- `tenant_key`: string
+
 ### `host.enduser.unrevoke`
 
 **Returns**
 
 - `revoked`: boolean (always)
 - `subject`: string (always)
+
+**Arguments**
+
+- `dry_run`: boolean
+- `subject`: string, required
+- `tenant_key`: string
 
 ### `host.enduser.whoami`
 
@@ -883,6 +1322,10 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `name`: string | null (always)
 - `subject`: string (always)
 - `verified_at`: integer (always)
+
+**Arguments**
+
+- `tenant_key`: string
 
 ### `host.errors`
 
@@ -899,6 +1342,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `retryable`: boolean | null
 - `version`: string | null
 
+**Arguments**
+
+- `code`: string
+- `tenant_key`: string
+
 ### `host.estimate`
 
 **Returns**
@@ -912,6 +1360,22 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `see`: string (always)
 - `units`: object (always)
 
+**Arguments**
+
+- `args`: object
+- `budget`: object
+  - `budget.max_child_calls` minimum: 1
+  - `budget.max_child_calls` maximum: 20
+  - `budget.max_est_tokens` minimum: 1
+  - `budget.max_est_tokens` maximum: 200000
+  - `budget.max_tool_latency_ms` minimum: 1
+  - `budget.max_tool_latency_ms` maximum: 30000
+  - `budget.max_wall_ms` minimum: 1
+  - `budget.max_wall_ms` maximum: 60000
+- `name`: string, required
+- `tenant_key`: string
+- `version`: integer
+
 ### `host.example.fork`
 
 **Returns**
@@ -923,12 +1387,25 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `secrets_needed`: array<string> (always)
 - `tools`: array<object> (always)
 
+**Arguments**
+
+- `name`: string, required
+- `tenant_key`: string
+
 ### `host.example.list`
 
 **Returns**
 
 - `count`: integer (always)
 - `examples`: array<object> (always)
+
+**Arguments**
+
+- `client`: string
+  - `client` enum: `claude_code`, `claude_ai`, `chatgpt`, `cursor`, `copilot_vscode`, `codex`, `gemini_cli`, `any`
+- `tenant_key`: string
+- `use_case`: string
+  - `use_case` enum: `uptime`, `database`, `docs-qa`, `webhook`, `chart`, `memory`, `share`, `first-run`
 
 ### `host.example.proposal_status`
 
@@ -946,6 +1423,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `tool`: string (always)
 - `version`: integer (always)
 
+**Arguments**
+
+- `id`: integer, required
+- `tenant_key`: string
+
 ### `host.example.propose`
 
 **Returns**
@@ -956,6 +1438,19 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `secrets_needed`: array<string> (always)
 - `status`: string (always)
 
+**Arguments**
+
+- `clients`: array
+  - `clients[]` enum: `claude_code`, `claude_ai`, `chatgpt`, `cursor`, `copilot_vscode`, `codex`, `gemini_cli`, `any`
+- `proof_call`: object, required
+- `summary`: string
+- `tenant_key`: string
+- `title`: string, required
+- `tool`: string, required
+- `use_case`: array, required
+  - `use_case` minItems: 1
+  - `use_case[]` enum: `uptime`, `database`, `docs-qa`, `webhook`, `chart`, `memory`, `share`, `first-run`
+
 ### `host.export`
 
 **Returns**
@@ -963,6 +1458,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `onboarding`: object | null
 - `run_id`: string (always)
 - `status`: string (always)
+
+**Arguments**
+
+- `tenant_key`: string
+- `tools`: array
 
 ### `host.feedback.get`
 
@@ -977,6 +1477,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `text`: string (always)
 - `theme_id`: string | null (always)
 
+**Arguments**
+
+- `feedback_id`: string, required
+- `tenant_key`: string
+
 ### `host.feedback.list`
 
 **Returns**
@@ -985,12 +1490,25 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `feedback`: array<object> (always)
 - `note`: string | null
 
+**Arguments**
+
+- `limit`: integer
+- `tenant_key`: string
+
 ### `host.feedback.send`
 
 **Returns**
 
 - `feedback_id`: string (always)
 - `kind`: string (always)
+
+**Arguments**
+
+- `context`: object
+- `kind`: string, required
+  - `kind` enum: `missing_tool`, `wrong_error`, `docs_gap`, `bug`, `praise`
+- `tenant_key`: string
+- `text`: string, required
 
 ### `host.group.add`
 
@@ -1000,12 +1518,24 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `name`: string (always)
 - `namespace`: string (always)
 
+**Arguments**
+
+- `name`: string, required
+- `namespace`: string, required
+- `tenant_key`: string
+
 ### `host.group.create`
 
 **Returns**
 
 - `created`: boolean (always)
 - `name`: string (always)
+
+**Arguments**
+
+- `dry_run`: boolean
+- `name`: string, required
+- `tenant_key`: string
 
 ### `host.group.list`
 
@@ -1014,6 +1544,10 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `groups`: array (always)
 - `onboarding`: object | null
 
+**Arguments**
+
+- `tenant_key`: string
+
 ### `host.group.remove`
 
 **Returns**
@@ -1021,6 +1555,13 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `name`: string (always)
 - `namespace`: string (always)
 - `removed`: boolean (always)
+
+**Arguments**
+
+- `dry_run`: boolean
+- `name`: string, required
+- `namespace`: string, required
+- `tenant_key`: string
 
 ### `host.help.get`
 
@@ -1033,6 +1574,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `text`: string (always)
 - `title`: string (always)
 
+**Arguments**
+
+- `anchor`: string, required
+- `tenant_key`: string
+
 ### `host.help.search`
 
 **Returns**
@@ -1042,12 +1588,29 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `index_version`: string (always)
 - `total`: integer (always)
 
+**Arguments**
+
+- `k`: integer
+  - `k` minimum: 1
+  - `k` maximum: 5
+- `kind`: string
+  - `kind` enum: `echo`
+- `q`: string, required
+- `tenant_key`: string
+
 ### `host.import`
 
 **Returns**
 
 - `run_id`: string (always)
 - `status`: string (always)
+
+**Arguments**
+
+- `dry_run`: boolean
+- `run_id`: string
+- `tenant_key`: string
+- `url`: string
 
 ### `host.index.create`
 
@@ -1057,6 +1620,18 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `sources`: integer (always)
 - `status`: string (always)
 
+**Arguments**
+
+- `chunking`: object
+- `dry_run`: boolean
+- `name`: string, required
+  - `name` pattern: `^[a-z0-9][a-z0-9_-]{0,63}$`
+- `sources`: array, required
+  - `sources` minItems: 1
+  - `sources` maxItems: 20
+  - `sources[].kind` enum: `doc`, `table`, `url`
+- `tenant_key`: string
+
 ### `host.index.delete`
 
 **Returns**
@@ -1065,11 +1640,21 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `deleted`: boolean (always)
 - `name`: string (always)
 
+**Arguments**
+
+- `dry_run`: boolean
+- `name`: string, required
+- `tenant_key`: string
+
 ### `host.index.list`
 
 **Returns**
 
 - `indexes`: array<object> (always)
+
+**Arguments**
+
+- `tenant_key`: string
 
 ### `host.index.query`
 
@@ -1078,11 +1663,24 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `index`: object (always)
 - `results`: array<object> (always)
 
+**Arguments**
+
+- `k`: integer
+- `name`: string, required
+- `query`: string, required
+- `tenant_key`: string
+
 ### `host.index.refresh`
 
 **Returns**
 
 - `queued`: integer (always)
+
+**Arguments**
+
+- `name`: string, required
+- `source`: string
+- `tenant_key`: string
 
 ### `host.index.status`
 
@@ -1095,6 +1693,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `quota`: object (always)
 - `sources`: array<object> (always)
 - `stale_sources`: array<object> | null
+
+**Arguments**
+
+- `name`: string, required
+- `tenant_key`: string
 
 ### `host.invite.create`
 
@@ -1110,11 +1713,24 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `welcome_back`: object | null
 - `would`: object | null
 
+**Arguments**
+
+- `caller_limit_per_day`: integer
+- `dry_run`: boolean
+- `expires_in_days`: integer
+- `max_uses`: integer
+- `share`: array
+- `tenant_key`: string
+
 ### `host.invite.list`
 
 **Returns**
 
 - `invites`: array<object> (always)
+
+**Arguments**
+
+- `tenant_key`: string
 
 ### `host.invite.revoke`
 
@@ -1123,6 +1739,12 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `code`: string (always)
 - `invite_url`: string | null
 - `revoked`: boolean (always)
+
+**Arguments**
+
+- `code`: string, required
+- `dry_run`: boolean
+- `tenant_key`: string
 
 ### `host.job.timeline`
 
@@ -1133,6 +1755,13 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `steps`: array<object> | null
 - `text`: string | null
 - `totals`: object | null
+
+**Arguments**
+
+- `format`: string
+  - `format` enum: `json`, `text`
+- `run_id`: string, required
+- `tenant_key`: string
 
 ### `host.key.delegate`
 
@@ -1148,11 +1777,30 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `tools`: array<string> | null
 - `usage`: string | null
 
+**Arguments**
+
+- `bind`: object
+- `can_delegate`: boolean
+- `label`: string
+- `scopes`: array
+  - `scopes` minItems: 1
+  - `scopes[]` enum: `mcp`, `tools:call`, `tools:write`
+- `tenant_key`: string
+- `tools`: array
+  - `tools` minItems: 1
+  - `tools` maxItems: 64
+- `ttl_s`: integer
+  - `ttl_s` minimum: 60
+
 ### `host.key.list`
 
 **Returns**
 
 - `keys`: array<object> (always)
+
+**Arguments**
+
+- `tenant_key`: string
 
 ### `host.key.mint`
 
@@ -1164,6 +1812,17 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `tools`: array<string> (always)
 - `usage`: string (always)
 
+**Arguments**
+
+- `label`: string
+- `tenant_key`: string
+- `tools`: array, required
+  - `tools` minItems: 1
+  - `tools` maxItems: 64
+- `ttl_s`: integer
+  - `ttl_s` minimum: 60
+  - `ttl_s` maximum: 7776000
+
 ### `host.key.revoke`
 
 **Returns**
@@ -1172,6 +1831,12 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `labels`: array<string> | null
 - `revoked`: integer | null
 - `revoked_at`: integer (always)
+
+**Arguments**
+
+- `cascade`: boolean
+- `label`: string, required
+- `tenant_key`: string
 
 ### `host.key.rotate`
 
@@ -1187,12 +1852,25 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `usage`: string (always)
 - `welcome_back`: object | null
 
+**Arguments**
+
+- `all`: boolean
+- `tenant_key`: string
+
 ### `host.lineage.blast_radius`
 
 **Returns**
 
 - `impacted`: array<object> (always)
 - `truncated`: boolean (always)
+
+**Arguments**
+
+- `change_kind`: string, required
+- `id`: string, required
+- `max_depth`: integer
+- `tenant_key`: string
+- `top_n`: integer
 
 ### `host.lineage.trace`
 
@@ -1208,6 +1886,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `upstream`: array (always)
 - `uses`: integer | null
 
+**Arguments**
+
+- `id`: string, required
+- `tenant_key`: string
+
 ### `host.lineage.trace_page`
 
 **Returns**
@@ -1217,11 +1900,22 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `offset`: integer (always)
 - `total`: integer (always)
 
+**Arguments**
+
+- `handle`: string, required
+- `offset`: integer
+- `tenant_key`: string
+
 ### `host.msg.ack`
 
 **Returns**
 
 - `acked`: integer (always)
+
+**Arguments**
+
+- `message_ids`: array, required
+- `tenant_key`: string
 
 ### `host.msg.block`
 
@@ -1230,12 +1924,31 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `address`: string (always)
 - `blocked`: boolean (always)
 
+**Arguments**
+
+- `address`: string, required
+- `tenant_key`: string
+
 ### `host.msg.inbox`
 
 **Returns**
 
 - `messages`: array<object> (always)
 - `next_cursor`: string | null
+
+**Arguments**
+
+- `cursor`: string
+- `fields`: array
+  - `fields` minItems: 1
+  - `fields[]` enum: `message_id`, `thread_id`, `seq`, `from_address`, `body`, `data`, `in_reply_to`, `synthetic`, `source_class`, `created_at`, `read_at`, `urgent`
+- `limit`: integer
+  - `limit` minimum: 1
+  - `limit` maximum: 100
+- `order`: string
+  - `order` enum: `created_asc`
+- `tenant_key`: string
+- `unread_only`: boolean
 
 ### `host.msg.reply`
 
@@ -1247,6 +1960,15 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `seq`: integer (always)
 - `thread_id`: string (always)
 
+**Arguments**
+
+- `body`: string, required
+- `data`: object
+- `dedupe_key`: string
+- `in_reply_to`: string
+- `tenant_key`: string
+- `thread_id`: string, required
+
 ### `host.msg.send`
 
 **Returns**
@@ -1257,11 +1979,35 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `seq`: integer (always)
 - `thread_id`: string (always)
 
+**Arguments**
+
+- `body`: string, required
+- `data`: object
+- `dedupe_key`: string
+- `tenant_key`: string
+- `thread_id`: string
+- `to`: array, required
+- `urgent`: boolean
+
 ### `host.msg.thread`
 
 **Returns**
 
 - `messages`: array<object> (always)
+
+**Arguments**
+
+- `cursor`: string
+- `fields`: array
+  - `fields` minItems: 1
+  - `fields[]` enum: `message_id`, `thread_id`, `seq`, `from_address`, `body`, `data`, `in_reply_to`, `synthetic`, `source_class`, `created_at`, `read_at`, `urgent`
+- `limit`: integer
+  - `limit` minimum: 1
+  - `limit` maximum: 100
+- `order`: string
+  - `order` enum: `seq_asc`
+- `tenant_key`: string
+- `thread_id`: string, required
 
 ### `host.msg.unblock`
 
@@ -1270,12 +2016,24 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `address`: string (always)
 - `unblocked`: boolean (always)
 
+**Arguments**
+
+- `address`: string, required
+- `tenant_key`: string
+
 ### `host.msg.wait`
 
 **Returns**
 
 - `messages`: array<object> (always)
 - `next_cursor`: string | null
+
+**Arguments**
+
+- `cursor`: string
+- `tenant_key`: string
+- `timeout_s`: integer
+- `unread_only`: boolean
 
 ### `host.note.delete`
 
@@ -1285,12 +2043,26 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `deleted`: boolean (always)
 - `key`: string (always)
 
+**Arguments**
+
+- `key`: string, required
+- `tenant_key`: string
+
 ### `host.note.list`
 
 **Returns**
 
 - `next_cursor`: string | null
 - `notes`: array<object> (always)
+
+**Arguments**
+
+- `attach_to`: object
+- `cursor`: string
+- `limit`: integer
+  - `limit` minimum: 1
+  - `limit` maximum: 100
+- `tenant_key`: string
 
 ### `host.note.put`
 
@@ -1301,6 +2073,15 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `key`: string (always)
 - `visible_in`: string (always)
 
+**Arguments**
+
+- `attach_to`: object
+- `tenant_key`: string
+- `text`: string, required
+- `ttl_s`: integer
+  - `ttl_s` minimum: 60
+  - `ttl_s` maximum: 7776000
+
 ### `host.notify.channel_add`
 
 **Returns**
@@ -1309,11 +2090,22 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `kind`: string (always)
 - `target_hint`: string (always)
 
+**Arguments**
+
+- `kind`: string, required
+  - `kind` enum: `email`, `webhook`, `slack`
+- `target`: string, required
+- `tenant_key`: string
+
 ### `host.notify.channel_list`
 
 **Returns**
 
 - `channels`: array<object> (always)
+
+**Arguments**
+
+- `tenant_key`: string
 
 ### `host.notify.channel_remove`
 
@@ -1322,11 +2114,22 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `channel_id`: string (always)
 - `removed`: boolean (always)
 
+**Arguments**
+
+- `channel_id`: string, required
+- `tenant_key`: string
+
 ### `host.notify.receipts`
 
 **Returns**
 
 - `receipts`: array<object> (always)
+
+**Arguments**
+
+- `notify_id`: string
+- `since_unix`: integer
+- `tenant_key`: string
 
 ### `host.notify.send`
 
@@ -1334,6 +2137,14 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 - `channels`: integer (always)
 - `notify_id`: string (always)
+
+**Arguments**
+
+- `level`: string, required
+  - `level` enum: `info`, `warn`, `action`
+- `link`: string
+- `tenant_key`: string
+- `text`: string, required
 
 ### `host.oauth.audit`
 
@@ -1343,11 +2154,26 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `events`: array<object> (always)
 - `onboarding`: object | null
 
+**Arguments**
+
+- `cursor`: string
+- `event`: string
+- `limit`: integer
+- `since`: integer
+- `tenant_key`: string
+- `until`: integer
+
 ### `host.oauth.audit_export`
 
 **Returns**
 
 - `lines`: array<string> (always)
+
+**Arguments**
+
+- `since`: integer, required
+- `tenant_key`: string
+- `until`: integer, required
 
 ### `host.oauth.client_approve`
 
@@ -1356,6 +2182,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `approved`: boolean (always)
 - `client_id`: string (always)
 
+**Arguments**
+
+- `client_id`: string, required
+- `tenant_key`: string
+
 ### `host.oauth.client_deny`
 
 **Returns**
@@ -1363,11 +2194,20 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `client_id`: string (always)
 - `denied`: boolean (always)
 
+**Arguments**
+
+- `client_id`: string, required
+- `tenant_key`: string
+
 ### `host.oauth.doctor`
 
 **Returns**
 
 - `checks`: array<object> (always)
+
+**Arguments**
+
+- `tenant_key`: string
 
 ### `host.oauth.grant_revoke`
 
@@ -1376,11 +2216,21 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `id`: integer (always)
 - `revoked`: boolean (always)
 
+**Arguments**
+
+- `dry_run`: boolean
+- `id`: integer, required
+- `tenant_key`: string
+
 ### `host.oauth.grants`
 
 **Returns**
 
 - `grants`: array<object> (always)
+
+**Arguments**
+
+- `tenant_key`: string
 
 ### `host.oauth.issuer_remove`
 
@@ -1388,6 +2238,12 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 - `issuer`: string (always)
 - `removed`: boolean (always)
+
+**Arguments**
+
+- `dry_run`: boolean
+- `issuer`: string, required
+- `tenant_key`: string
 
 ### `host.oauth.issuer_set`
 
@@ -1397,17 +2253,33 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `issuer`: string (always)
 - `jwks_url`: string (always)
 
+**Arguments**
+
+- `audience`: string, required
+- `dry_run`: boolean
+- `issuer`: string, required
+- `jwks_url`: string, required
+- `tenant_key`: string
+
 ### `host.oauth.issuers`
 
 **Returns**
 
 - `issuers`: array (always)
 
+**Arguments**
+
+- `tenant_key`: string
+
 ### `host.oauth.pending`
 
 **Returns**
 
 - `pending`: array<object> (always)
+
+**Arguments**
+
+- `tenant_key`: string
 
 ### `host.oauth.policy`
 
@@ -1419,6 +2291,10 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `max_grant_age_s`: any (always)
 - `reconsent_after_s`: any (always)
 - `refresh_ttl_s`: integer (always)
+
+**Arguments**
+
+- `tenant_key`: string
 
 ### `host.oauth.policy_set`
 
@@ -1432,6 +2308,18 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `reconsent_after_s`: integer | null
 - `refresh_ttl_s`: integer | null
 - `would`: object | null
+
+**Arguments**
+
+- `access_ttl_s`: integer
+- `allowlist`: array
+- `clients`: string
+  - `clients` enum: `any`, `allowlist`, `approve`
+- `dry_run`: boolean
+- `max_grant_age_s`: integer
+- `reconsent_after_s`: integer
+- `refresh_ttl_s`: integer
+- `tenant_key`: string
 
 ### `host.oauth.provider`
 
@@ -1448,11 +2336,19 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `scopes`: string (always)
 - `token_endpoint`: string (always)
 
+**Arguments**
+
+- `tenant_key`: string
+
 ### `host.oauth.provider_remove`
 
 **Returns**
 
 - `removed`: boolean (always)
+
+**Arguments**
+
+- `tenant_key`: string
 
 ### `host.oauth.provider_set`
 
@@ -1469,12 +2365,28 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `scopes`: string (always)
 - `token_endpoint`: string (always)
 
+**Arguments**
+
+- `claims_map`: object
+- `client_id`: string, required
+- `client_secret`: string, required
+- `issuer`: string, required
+- `owner_login`: boolean
+- `require_verified_email`: boolean
+- `scopes`: array
+- `tenant_key`: string
+
 ### `host.oauth.revoke_all`
 
 **Returns**
 
 - `revoked_grants`: integer (always)
 - `revoked_pending`: integer (always)
+
+**Arguments**
+
+- `dry_run`: boolean
+- `tenant_key`: string
 
 ### `host.oauth.scope_set`
 
@@ -1483,11 +2395,22 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `description`: string (always)
 - `name`: string (always)
 
+**Arguments**
+
+- `description`: string, required
+- `dry_run`: boolean
+- `name`: string, required
+- `tenant_key`: string
+
 ### `host.oauth.scopes`
 
 **Returns**
 
 - `scopes`: array (always)
+
+**Arguments**
+
+- `tenant_key`: string
 
 ### `host.oauth.trusted_issuer_remove`
 
@@ -1495,6 +2418,12 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 - `issuer`: string (always)
 - `removed`: boolean (always)
+
+**Arguments**
+
+- `dry_run`: boolean
+- `issuer`: string, required
+- `tenant_key`: string
 
 ### `host.oauth.trusted_issuer_set`
 
@@ -1505,11 +2434,24 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `issuer`: string (always)
 - `jwks_url`: string (always)
 
+**Arguments**
+
+- `audience`: string
+- `client_id`: string, required
+- `dry_run`: boolean
+- `issuer`: string, required
+- `jwks_url`: string, required
+- `tenant_key`: string
+
 ### `host.oauth.trusted_issuers`
 
 **Returns**
 
 - `issuers`: array (always)
+
+**Arguments**
+
+- `tenant_key`: string
 
 ### `host.org.create`
 
@@ -1519,6 +2461,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `org`: string (always)
 - `role`: string (always)
 
+**Arguments**
+
+- `name`: string, required
+- `tenant_key`: string
+
 ### `host.org.join`
 
 **Returns**
@@ -1526,11 +2473,20 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `org`: string (always)
 - `role`: string (always)
 
+**Arguments**
+
+- `code`: string, required
+- `tenant_key`: string
+
 ### `host.org.leave`
 
 **Returns**
 
 - `left`: string (always)
+
+**Arguments**
+
+- `tenant_key`: string
 
 ### `host.org.members`
 
@@ -1541,11 +2497,22 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `org`: string (always)
 - `role`: string (always)
 
+**Arguments**
+
+- `role`: string
+  - `role` enum: `owner`, `member`
+- `tenant_key`: string
+
 ### `host.org.remove`
 
 **Returns**
 
 - `removed`: string (always)
+
+**Arguments**
+
+- `member`: string, required
+- `tenant_key`: string
 
 ### `host.policy.attrs_set`
 
@@ -1554,11 +2521,22 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `attrs`: object (always)
 - `subject`: string (always)
 
+**Arguments**
+
+- `attrs`: object, required
+- `dry_run`: boolean
+- `subject`: string, required
+- `tenant_key`: string
+
 ### `host.policy.list`
 
 **Returns**
 
 - `policies`: array (always)
+
+**Arguments**
+
+- `tenant_key`: string
 
 ### `host.policy.set`
 
@@ -1568,12 +2546,29 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `target`: object (always)
 - `version`: integer (always)
 
+**Arguments**
+
+- `dry_run`: boolean
+- `replace`: boolean
+- `rule`: any, required
+- `target`: object, required
+  - `target.<propertyNames>` enum: `table`, `doc_prefix`
+- `tenant_key`: string
+
 ### `host.progress`
 
 **Returns**
 
 - `counters`: object (always)
 - `run_id`: string (always)
+
+**Arguments**
+
+- `counters`: object
+- `msg`: string
+- `pct`: integer
+- `run_id`: string, required
+- `tenant_key`: string
 
 ### `host.quickstart`
 
@@ -1611,6 +2606,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `verdict`: string | null
 - `welcome_back`: object | null
 
+**Arguments**
+
+- `kind`: string
+- `tenant_key`: string
+
 ### `host.redeem`
 
 **Returns**
@@ -1619,6 +2619,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `next`: string (always)
 - `session_bound`: boolean (always)
 - `usage`: string (always)
+
+**Arguments**
+
+- `handoff_token`: string, required
+- `tenant_key`: string
 
 ### `host.registry.publish`
 
@@ -1630,6 +2635,10 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `server_json`: object (always)
 - `well_known_url`: string (always)
 
+**Arguments**
+
+- `tenant_key`: string
+
 ### `host.runs.cancel`
 
 **Returns**
@@ -1637,6 +2646,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `cancelled`: boolean (always)
 - `killed`: boolean (always)
 - `run_id`: string (always)
+
+**Arguments**
+
+- `run_id`: string, required
+- `tenant_key`: string
 
 ### `host.runs.get`
 
@@ -1667,11 +2681,38 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `trigger`: string (always)
 - `trigger_ref`: string | null (always)
 
+**Arguments**
+
+- `as_fixtures`: boolean
+- `run_id`: string, required
+- `tenant_key`: string
+
 ### `host.runs.list`
 
 **Returns**
 
 - `runs`: array<object> (always)
+
+**Arguments**
+
+- `cursor`: string
+- `end_user_subject`: string
+- `fields`: array
+  - `fields` minItems: 1
+  - `fields[]` enum: `run_id`, `tool`, `trigger`, `trigger_ref`, `status`, `progress`, `counters`, `result`, `result_ref`, `purged`, `error_class`, `error`, `started_unix`, `finished_unix`, `duration_ms`, `deadline_s`, `attempt`, `manual`, `test`, `end_user`, `parent_run_id`, `step_no`, `parent_tool`, `children`
+- `include_children`: boolean
+- `include_result`: boolean
+- `limit`: integer
+  - `limit` minimum: 1
+  - `limit` maximum: 200
+- `order`: string
+  - `order` enum: `created_desc`, `created_asc`
+- `parent_run_id`: string
+- `status`: string
+- `tenant_key`: string
+- `tool`: string
+- `trigger`: string
+- `verdict`: string
 
 ### `host.runs.part`
 
@@ -1682,11 +2723,23 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `n`: integer (always)
 - `parts`: integer (always)
 
+**Arguments**
+
+- `n`: integer
+- `run_id`: string, required
+- `tenant_key`: string
+
 ### `host.runs.purge`
 
 **Returns**
 
 - `purged`: integer (always)
+
+**Arguments**
+
+- `before_unix`: integer, required
+- `dry_run`: boolean
+- `tenant_key`: string
 
 ### `host.runs.wait`
 
@@ -1716,12 +2769,29 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `trigger`: string (always)
 - `trigger_ref`: string | null (always)
 
+**Arguments**
+
+- `run_id`: string, required
+- `tenant_key`: string
+- `timeout_s`: integer
+- `until`: object
+
 ### `host.schedule_receipts`
 
 **Returns**
 
 - `rows`: array<object> (always)
 - `summary`: object (always)
+
+**Arguments**
+
+- `limit`: integer
+  - `limit` minimum: 1
+  - `limit` maximum: 50
+- `since_unix`: integer
+- `tenant_key`: string
+- `tool`: string
+- `trigger_id`: string
 
 ### `host.secret.list`
 
@@ -1731,12 +2801,23 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `next`: object | null
 - `onboarding`: object | null
 
+**Arguments**
+
+- `tenant_key`: string
+
 ### `host.secret.set`
 
 **Returns**
 
 - `name`: string (always)
 - `set`: boolean (always)
+
+**Arguments**
+
+- `dry_run`: boolean
+- `name`: string, required
+- `tenant_key`: string
+- `value`: string, required
 
 ### `host.self.offboard`
 
@@ -1749,6 +2830,10 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `next`: object | null
 - `tenant`: string (always)
 
+**Arguments**
+
+- `tenant_key`: string
+
 ### `host.share.caller_limit`
 
 **Returns**
@@ -1757,6 +2842,13 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `calls_per_day`: integer (always)
 - `tool`: string (always)
 
+**Arguments**
+
+- `caller_tenant`: string, required
+- `calls_per_day`: integer, required
+- `tenant_key`: string
+- `tool`: string, required
+
 ### `host.share.caller_limit_remove`
 
 **Returns**
@@ -1764,6 +2856,13 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `caller_tenant`: string | integer | null
 - `removed`: boolean (always)
 - `tool`: string (always)
+
+**Arguments**
+
+- `caller_tenant`: string, required
+- `dry_run`: boolean
+- `tenant_key`: string
+- `tool`: string, required
 
 ### `host.spec.test`
 
@@ -1776,6 +2875,14 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `requirements`: array (always)
 - `tool_lint`: array<object> | null
 
+**Arguments**
+
+- `invocations`: array
+  - `invocations` maxItems: 5
+- `kind`: string, required
+- `spec`: object, required
+- `tenant_key`: string
+
 ### `host.state.delete`
 
 **Returns**
@@ -1783,6 +2890,13 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `bytes_delta`: integer (always)
 - `deleted`: boolean (always)
 - `key`: string (always)
+
+**Arguments**
+
+- `dry_run`: boolean
+- `end_user`: string | null
+- `key`: string, required
+- `tenant_key`: string
 
 ### `host.state.delete_rows`
 
@@ -1795,6 +2909,14 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `table`: string | null
 - `would`: object | null
 
+**Arguments**
+
+- `dry_run`: boolean
+- `end_user`: string | null
+- `table`: string, required
+- `tenant_key`: string
+- `where`: string
+
 ### `host.state.get`
 
 **Returns**
@@ -1804,6 +2926,12 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `key`: string (always)
 - `updated_unix`: integer | null
 - `value`: object | string | integer | null (always)
+
+**Arguments**
+
+- `end_user`: string | null
+- `key`: string, required
+- `tenant_key`: string
 
 ### `host.state.insert`
 
@@ -1815,6 +2943,14 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `next`: object | null
 - `table`: string (always)
 
+**Arguments**
+
+- `dry_run`: boolean
+- `end_user`: string | null
+- `rows`: object | array, required
+- `table`: string, required
+- `tenant_key`: string
+
 ### `host.state.list`
 
 **Returns**
@@ -1822,12 +2958,28 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `data`: object | null
 - `keys`: array<object> (always)
 
+**Arguments**
+
+- `end_user`: string | null
+- `limit`: integer
+- `prefix`: string
+- `tenant_key`: string
+
 ### `host.state.query`
 
 **Returns**
 
 - `rows`: array<object> (always)
 - `table`: string (always)
+
+**Arguments**
+
+- `end_user`: string | null
+- `limit`: integer
+- `order_by`: string
+- `table`: string, required
+- `tenant_key`: string
+- `where`: string
 
 ### `host.state.set`
 
@@ -1837,6 +2989,14 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `impersonated`: boolean | null
 - `key`: string (always)
 - `set`: boolean (always)
+
+**Arguments**
+
+- `dry_run`: boolean
+- `end_user`: string | null
+- `key`: string, required
+- `tenant_key`: string
+- `value`: any, required
 
 ### `host.state.table_create`
 
@@ -1848,6 +3008,14 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `next`: object | null
 - `onboarding`: object | null
 
+**Arguments**
+
+- `dry_run`: boolean
+- `name`: string, required
+- `primary_key`: string
+- `schema`: object, required
+- `tenant_key`: string
+
 ### `host.state.table_drop`
 
 **Returns**
@@ -1856,6 +3024,12 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `dropped`: boolean (always)
 - `name`: string (always)
 
+**Arguments**
+
+- `dry_run`: boolean
+- `name`: string, required
+- `tenant_key`: string
+
 ### `host.table.append`
 
 **Returns**
@@ -1863,6 +3037,13 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `appended`: integer (always)
 - `ids`: array<integer> (always)
 - `table`: string (always)
+
+**Arguments**
+
+- `dry_run`: boolean
+- `rows`: object | array, required
+- `table`: string, required
+- `tenant_key`: string
 
 ### `host.table.chart`
 
@@ -1878,11 +3059,23 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `title`: string | null (always)
 - `vega_lite`: object (always)
 
+**Arguments**
+
+- `mark`: string
+- `share`: boolean
+- `sql`: string, required
+- `tenant_key`: string
+- `title`: string
+
 ### `host.table.charts`
 
 **Returns**
 
 - `charts`: array<object> (always)
+
+**Arguments**
+
+- `tenant_key`: string
 
 ### `host.table.count`
 
@@ -1891,6 +3084,12 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `count`: integer (always)
 - `exact`: boolean (always)
 - `ms`: integer (always)
+
+**Arguments**
+
+- `table`: string, required
+- `tenant_key`: string
+- `where`: string
 
 ### `host.table.create`
 
@@ -1901,6 +3100,15 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `data`: object | null
 - `name`: string | null
 - `would`: object | null
+
+**Arguments**
+
+- `columns`: object, required
+- `dry_run`: boolean
+- `name`: string, required
+  - `name` pattern: `^[A-Za-z_][A-Za-z0-9_]{0,63}$`
+- `primary_key`: string
+- `tenant_key`: string
 
 ### `host.table.describe`
 
@@ -1919,6 +3127,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `table`: string (always)
 - `version`: integer (always)
 
+**Arguments**
+
+- `table`: string, required
+- `tenant_key`: string
+
 ### `host.table.drop`
 
 **Returns**
@@ -1928,6 +3141,13 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `dropped`: boolean | null
 - `name`: string | null
 - `would`: object | null
+
+**Arguments**
+
+- `confirm`: boolean
+- `dry_run`: boolean
+- `name`: string, required
+- `tenant_key`: string
 
 ### `host.table.graph`
 
@@ -1940,12 +3160,24 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `stale`: boolean (always)
 - `version`: integer (always)
 
+**Arguments**
+
+- `hops`: integer
+- `table`: string
+- `tenant_key`: string
+
 ### `host.table.handle_drop`
 
 **Returns**
 
 - `dropped`: boolean (always)
 - `handle`: string (always)
+
+**Arguments**
+
+- `dry_run`: boolean
+- `handle`: string, required
+- `tenant_key`: string
 
 ### `host.table.handle_export`
 
@@ -1954,11 +3186,20 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `run_id`: string (always)
 - `status`: string (always)
 
+**Arguments**
+
+- `handle`: string, required
+- `tenant_key`: string
+
 ### `host.table.handles`
 
 **Returns**
 
 - `handles`: array<object> (always)
+
+**Arguments**
+
+- `tenant_key`: string
 
 ### `host.table.join_paths`
 
@@ -1970,12 +3211,22 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `paths`: array<object> (always)
 - `to`: string (always)
 
+**Arguments**
+
+- `from`: string, required
+- `tenant_key`: string
+- `to`: string, required
+
 ### `host.table.list`
 
 **Returns**
 
 - `bytes_used`: integer (always)
 - `tables`: array<object> (always)
+
+**Arguments**
+
+- `tenant_key`: string
 
 ### `host.table.model_set`
 
@@ -1985,11 +3236,25 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `set`: boolean (always)
 - `table`: string (always)
 
+**Arguments**
+
+- `column`: string
+- `dry_run`: boolean
+- `key`: string, required
+  - `key` enum: `role`, `unit`, `description`, `hidden`
+- `table`: string, required
+- `tenant_key`: string
+- `value`: any, required
+
 ### `host.table.models`
 
 **Returns**
 
 - `tables`: array<object> (always)
+
+**Arguments**
+
+- `tenant_key`: string
 
 ### `host.table.next_questions`
 
@@ -1997,6 +3262,12 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 - `questions`: array<object> (always)
 - `table`: string (always)
+
+**Arguments**
+
+- `limit`: integer
+- `table`: string, required
+- `tenant_key`: string
 
 ### `host.table.query`
 
@@ -2014,6 +3285,15 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `stats`: object | null
 - `table`: string | null
 
+**Arguments**
+
+- `handle`: boolean
+- `limit`: integer
+  - `limit` minimum: 1
+- `sql`: string, required
+- `tenant_key`: string
+- `ttl_s`: integer
+
 ### `host.table.query_diagnose`
 
 **Returns**
@@ -2022,11 +3302,22 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `hint`: string (always)
 - `log_id`: integer (always)
 
+**Arguments**
+
+- `log_id`: integer, required
+- `tenant_key`: string
+
 ### `host.table.query_log`
 
 **Returns**
 
 - `rows`: array<object> (always)
+
+**Arguments**
+
+- `before_id`: integer
+- `limit`: integer
+- `tenant_key`: string
 
 ### `host.table.query_stats`
 
@@ -2042,6 +3333,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `result_rows_total`: integer (always)
 - `top_hints`: array (always)
 
+**Arguments**
+
+- `tenant_key`: string
+- `window_s`: integer
+
 ### `host.table.schema`
 
 **Returns**
@@ -2051,6 +3347,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `description`: string | null
 - `rows`: integer (always)
 - `table`: string (always)
+
+**Arguments**
+
+- `table`: string, required
+- `tenant_key`: string
 
 ### `host.task.claim`
 
@@ -2062,6 +3363,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `task_id`: string (always)
 - `thread_id`: string | null (always)
 
+**Arguments**
+
+- `task_id`: string, required
+- `tenant_key`: string
+
 ### `host.task.complete`
 
 **Returns**
@@ -2072,12 +3378,22 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `task_id`: string (always)
 - `thread_id`: string | null (always)
 
+**Arguments**
+
+- `result`: object, required
+- `task_id`: string, required
+- `tenant_key`: string
+
 ### `host.task.dead_letters`
 
 **Returns**
 
 - `dead_letters`: array<object> (always)
 - `limit`: integer (always)
+
+**Arguments**
+
+- `tenant_key`: string
 
 ### `host.task.get`
 
@@ -2096,6 +3412,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `task_id`: string (always)
 - `thread_id`: string | null (always)
 
+**Arguments**
+
+- `task_id`: string, required
+- `tenant_key`: string
+
 ### `host.task.post`
 
 **Returns**
@@ -2104,6 +3425,16 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `status`: string (always)
 - `task_id`: string (always)
 - `thread_id`: string | null (always)
+
+**Arguments**
+
+- `deadline_s`: integer, required
+  - `deadline_s` minimum: 60
+  - `deadline_s` maximum: 86400
+- `dedupe_key`: string
+- `payload`: object, required
+- `tenant_key`: string
+- `to`: string, required
 
 ### `host.tool.call`
 
@@ -2153,6 +3484,24 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `verify`: object | null
 - `welcome_back`: object | null
 
+**Arguments**
+
+- `args`: object, required
+- `async`: boolean
+- `budget`: object
+  - `budget.max_child_calls` minimum: 1
+  - `budget.max_child_calls` maximum: 20
+  - `budget.max_est_tokens` minimum: 1
+  - `budget.max_est_tokens` maximum: 200000
+  - `budget.max_tool_latency_ms` minimum: 1
+  - `budget.max_tool_latency_ms` maximum: 30000
+  - `budget.max_wall_ms` minimum: 1
+  - `budget.max_wall_ms` maximum: 60000
+- `dry_run`: boolean
+- `name`: string, required
+- `tenant_key`: string
+- `version`: integer
+
 ### `host.tool.diff`
 
 **Returns**
@@ -2162,12 +3511,24 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `name`: string (always)
 - `to`: integer (always)
 
+**Arguments**
+
+- `from`: integer, required
+- `name`: string, required
+- `tenant_key`: string
+- `to`: integer, required
+
 ### `host.tool.history`
 
 **Returns**
 
 - `name`: string (always)
 - `versions`: array<object> (always)
+
+**Arguments**
+
+- `name`: string, required
+- `tenant_key`: string
 
 ### `host.tool.list`
 
@@ -2178,6 +3539,16 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `tools`: array<object> (always)
 - `welcome_back`: object | null
 
+**Arguments**
+
+- `fields`: array
+  - `fields` minItems: 1
+  - `fields[]` enum: `name`, `kind`, `created_at`, `visibility`, `share_description`, `unshared_by`, `env`, `advisories`, `expose_spec`, `exposed_at`, `spec_reads`, `scopes`, `stub`, `tags`, `tested_version`, `stale_test`
+- `limit`: integer
+  - `limit` minimum: 1
+  - `limit` maximum: 1000
+- `tenant_key`: string
+
 ### `host.tool.list_shared`
 
 **Returns**
@@ -2185,12 +3556,24 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `tools`: array<object> (always)
 - `truncated`: boolean (always)
 
+**Arguments**
+
+- `limit`: integer
+- `q`: string
+- `tenant_key`: string
+
 ### `host.tool.logs`
 
 **Returns**
 
 - `lines`: array<string> (always)
 - `name`: string (always)
+
+**Arguments**
+
+- `limit`: integer
+- `name`: string, required
+- `tenant_key`: string
 
 ### `host.tool.publish`
 
@@ -2216,6 +3599,20 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `version`: integer | null
 - `welcome_back`: object | null
 
+**Arguments**
+
+- `dry_run`: boolean
+- `kind`: string, required
+  - `kind` enum: `echo`, `event`, `events`, `webhook`, `webhooks`, `inbound`, `trigger`, `inbox`, `cron`, `schedule`, `scheduled`, `doc`, `docs`, `document`, `documents`, `message`, `messages`, `msg`, `database`, `db`, `table`, `tables`, `csv`, `sql`, `schedules`, `uptime`, `probe`, `probes`, `memory`, `memories`
+- `name`: string, required
+  - `name` pattern: `^[a-z][a-z0-9_]{1,40}$`
+- `scopes`: array
+- `spec`: object, required
+- `tags`: array
+- `tenant_key`: string
+- `visibility`: string
+  - `visibility` enum: `private`, `unlisted`, `public`
+
 ### `host.tool.remove`
 
 **Returns**
@@ -2223,12 +3620,24 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `removed`: string (always)
 - `triggers_disabled`: integer (always)
 
+**Arguments**
+
+- `dry_run`: boolean
+- `name`: string, required
+- `tenant_key`: string
+
 ### `host.tool.rollback`
 
 **Returns**
 
 - `name`: string (always)
 - `version`: integer (always)
+
+**Arguments**
+
+- `name`: string, required
+- `tenant_key`: string
+- `version`: integer, required
 
 ### `host.tool.run`
 
@@ -2243,6 +3652,13 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `stderr`: string (always)
 - `stdout`: string (always)
 
+**Arguments**
+
+- `args`: object, required
+- `name`: string, required
+- `tenant_key`: string
+- `test`: boolean
+
 ### `host.tool.share`
 
 **Returns**
@@ -2256,6 +3672,17 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `visibility`: string (always)
 - `welcome_back`: object | null
 
+**Arguments**
+
+- `description`: string
+- `expose_spec`: boolean
+- `group`: string
+- `name`: string, required
+- `tags`: array
+- `tenant_key`: string
+- `visibility`: string, required
+  - `visibility` enum: `unlisted`, `group`, `public`, `url`
+
 ### `host.tool.spec_shared`
 
 **Returns**
@@ -2264,6 +3691,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `kind`: string (always)
 - `spec`: object (always)
 - `tool`: string (always)
+
+**Arguments**
+
+- `tenant_key`: string
+- `tool`: string, required
 
 ### `host.tool.test`
 
@@ -2313,12 +3745,24 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `warnings`: array<string> | null
 - `welcome_back`: object | null
 
+**Arguments**
+
+- `args`: object
+- `fixtures`: object
+- `name`: string, required
+- `tenant_key`: string
+
 ### `host.tool.unshare`
 
 **Returns**
 
 - `name`: string (always)
 - `visibility`: string (always)
+
+**Arguments**
+
+- `name`: string, required
+- `tenant_key`: string
 
 ### `host.trigger.dead_letters`
 
@@ -2328,6 +3772,15 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `dropped_count`: integer (always)
 - `limit`: integer (always)
 
+**Arguments**
+
+- `limit`: integer
+  - `limit` minimum: 1
+  - `limit` maximum: 200
+- `since`: integer
+- `tenant_key`: string
+- `trigger`: string
+
 ### `host.trigger.fire`
 
 **Returns**
@@ -2335,6 +3788,13 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `manual`: boolean (always)
 - `run_id`: string (always)
 - `status`: string (always)
+
+**Arguments**
+
+- one of (anyOf): `id` | `name`
+- `id`: string
+- `name`: string
+- `tenant_key`: string
 
 ### `host.trigger.get`
 
@@ -2360,11 +3820,23 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `url`: string | null
 - `verify`: object | string | null
 
+**Arguments**
+
+- one of (anyOf): `id` | `name`
+- `id`: string
+- `name`: string
+- `tenant_key`: string
+
 ### `host.trigger.list`
 
 **Returns**
 
 - `triggers`: array<object> (always)
+
+**Arguments**
+
+- `tenant_key`: string
+- `tool`: string
 
 ### `host.trigger.pause`
 
@@ -2374,12 +3846,28 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `id`: string (always)
 - `name`: string (always)
 
+**Arguments**
+
+- one of (anyOf): `id` | `name`
+- `dry_run`: boolean
+- `id`: string
+- `name`: string
+- `tenant_key`: string
+
 ### `host.trigger.remove`
 
 **Returns**
 
 - `name`: string (always)
 - `removed`: string (always)
+
+**Arguments**
+
+- one of (anyOf): `id` | `name`
+- `dry_run`: boolean
+- `id`: string
+- `name`: string
+- `tenant_key`: string
 
 ### `host.trigger.replay`
 
@@ -2390,6 +3878,16 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `run_id`: string (always)
 - `status`: string (always)
 
+**Arguments**
+
+- one of (anyOf): `run_id` | `dead_letter_id` | `row_id`
+- `dead_letter_id`: string
+- `id`: string
+- `name`: string
+- `row_id`: integer
+- `run_id`: string
+- `tenant_key`: string
+
 ### `host.trigger.resume`
 
 **Returns**
@@ -2397,6 +3895,14 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `enabled`: boolean (always)
 - `id`: string (always)
 - `name`: string (always)
+
+**Arguments**
+
+- one of (anyOf): `id` | `name`
+- `dry_run`: boolean
+- `id`: string
+- `name`: string
+- `tenant_key`: string
 
 ### `host.trigger.set`
 
@@ -2427,6 +3933,22 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `verify`: object | string | null
 - `welcome_back`: object | null
 
+**Arguments**
+
+- `args`: object
+- `channel_id`: string
+- `dedupe_header`: string
+- `dry_run`: boolean
+- `from`: string
+- `kind`: string
+- `name`: string
+- `schedule`: string
+- `secret`: string
+- `tenant_key`: string
+- `tool`: string, required
+- `tz`: string
+- `verify`: any
+
 ### `host.trigger.test`
 
 **Returns**
@@ -2436,6 +3958,17 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `signed`: object | null
 - `status`: string | null
 - `test`: boolean (always)
+
+**Arguments**
+
+- one of (anyOf): `id` | `name`
+- `body`: any
+- `data`: any
+- `from`: string
+- `headers`: object
+- `id`: string
+- `name`: string
+- `tenant_key`: string
 
 ### `host.uptime.create`
 
@@ -2449,6 +3982,13 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `probe_tool`: string (always)
 - `schedule_id`: string (always)
 - `status_tool`: string (always)
+
+**Arguments**
+
+- `every_s`: integer
+- `name`: string, required
+- `tenant_key`: string
+- `urls`: array, required
 
 ### `host.usage`
 
@@ -2477,11 +4017,26 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `state_bytes`: integer | null
 - `window`: string (always)
 
+**Arguments**
+
+- `by`: string
+- `cursor`: string
+- `limit`: integer
+- `tenant_key`: string
+- `tool`: string
+- `window`: string
+
 ### `host.vault.connect_link`
 
 **Returns**
 
 - `connect_link`: string (always)
+
+**Arguments**
+
+- `end_user`: string, required
+- `provider`: string, required
+- `tenant_key`: string
 
 ### `host.vault.disconnect`
 
@@ -2490,12 +4045,23 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `disconnected`: boolean (always)
 - `provider`: string (always)
 
+**Arguments**
+
+- `end_user`: string, required
+- `provider`: string, required
+- `tenant_key`: string
+
 ### `host.vault.provider_remove`
 
 **Returns**
 
 - `name`: string (always)
 - `removed`: boolean (always)
+
+**Arguments**
+
+- `name`: string, required
+- `tenant_key`: string
 
 ### `host.vault.provider_set`
 
@@ -2504,17 +4070,38 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `name`: string (always)
 - `set`: boolean (always)
 
+**Arguments**
+
+- one of (anyOf): `auth_url` + `token_url` | `preset`
+- `auth_url`: string
+- `client_id`: string, required
+- `client_secret`: string, required
+- `name`: string, required
+- `preset`: string
+- `scopes`: array, required
+- `tenant_key`: string
+- `token_url`: string
+
 ### `host.vault.providers`
 
 **Returns**
 
 - `providers`: array<object> (always)
 
+**Arguments**
+
+- `tenant_key`: string
+
 ### `host.vault.status`
 
 **Returns**
 
 - `providers`: array<object> (always)
+
+**Arguments**
+
+- `end_user`: string, required
+- `tenant_key`: string
 
 ### `host.webhook_inbox.create`
 
@@ -2529,6 +4116,14 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `url`: string (always)
 - `verify`: string (always)
 - `wait`: object (always)
+
+**Arguments**
+
+- `name`: string, required
+- `rotate`: boolean
+- `tenant_key`: string
+- `verify`: string
+  - `verify` enum: `hmac`, `github`, `stripe`
 
 ### `host.whoami`
 
@@ -2572,3 +4167,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `subject`: string | null
 - `tenant`: string | null
 - `welcome_back`: object | null
+
+**Arguments**
+
+- `tenant_key`: string

@@ -258,6 +258,10 @@ fn plan_of<'a>(state: &'a AppState, plan_name: &str) -> Result<&'a Plan, AppErro
 /// `^[a-z][a-z0-9_]{1,40}$` convention uses, widened to allow an
 /// underscore-leading or upper-case identifier (schema column names are
 /// caller-chosen, not this host's own tool-naming surface).
+/// The identifier pattern [`is_valid_ident`] enforces; `host.table.create`'s
+/// `name.pattern` is this string.
+pub const IDENT_PATTERN: &str = "^[A-Za-z_][A-Za-z0-9_]{0,63}$";
+
 fn is_valid_ident(s: &str) -> bool {
     let mut chars = s.chars();
     let Some(first) = chars.next() else {

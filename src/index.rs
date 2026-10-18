@@ -35,6 +35,9 @@ pub const URL_TIMEOUT: Duration = Duration::from_secs(10);
 const URL_MAX_REDIRECTS: usize = 3;
 /// Most sources one index may name.
 pub const SOURCES_MAX: usize = 20;
+/// The index-name pattern [`valid_name`] enforces; the `host.index.create`
+/// descriptor's `name.pattern` is this string.
+pub const NAME_PATTERN: &str = "^[a-z0-9][a-z0-9_-]{0,63}$";
 /// R4: a url source's `refresh_s` when the caller names none, floored by
 /// the plan's `schedule_min_interval_s`.
 pub const DEFAULT_URL_REFRESH_S: i64 = 3600;
@@ -83,6 +86,8 @@ pub fn kinds_list() -> String {
 pub fn sources_schema() -> Value {
     json!({
         "type": "array",
+        "minItems": 1,
+        "maxItems": SOURCES_MAX,
         "description": format!(
             "What to index, one object per source; kind is one of: {}. doc: {{prefix}} indexes \
              this tenant's documents whose name starts with prefix; table: {{table, columns}} \

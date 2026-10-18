@@ -744,6 +744,7 @@ fn tool_publish_props(kinds: &KindRegistry) -> Value {
     json!({
         "name": {
             "type": "string",
+            "pattern": crate::drafter::TOOL_NAME_REGEX,
             "description": "Local name for the new tool; must match ^[a-z][a-z0-9_]{1,40}$.",
         },
         "kind": {
@@ -919,6 +920,40 @@ fn host_schema(mut props: Value, required: &[&str]) -> Map<String, Value> {
         );
     }
     schema(props, required)
+}
+
+/// PRD-mcphost-input-schema-is-the-validator R1: `host_schema` plus an
+/// `anyOf` of one `{required: [alt]}` branch per alternative, for a tool
+/// whose handler wants "one of these arguments" -- the shape `required`
+/// alone cannot state. `alternatives` is the exact set the handler's
+/// either-or check names.
+fn host_schema_any(props: Value, required: &[&str], alternatives: &[&str]) -> Map<String, Value> {
+    host_schema_extra(props, required, json!({"anyOf": any_of_required(alternatives)}))
+}
+
+/// `host_schema` plus extra top-level schema keywords (`anyOf` with
+/// multi-argument branches, `allOf` with an `if`/`then`) for the
+/// requirements `required` alone cannot state.
+fn host_schema_extra(props: Value, required: &[&str], extra: Value) -> Map<String, Value> {
+    let mut obj = host_schema(props, required);
+    if let Value::Object(extra) = extra {
+        obj.extend(extra);
+    }
+    obj.insert(crate::host_args::VALIDATED_KEY.to_string(), json!(true));
+    obj
+}
+
+/// `host_schema` for a tool whose descriptor has been checked against its
+/// handler and is therefore the validator for it (see [`crate::host_args`]):
+/// the schema carries [`crate::host_args::VALIDATED_KEY`] and dispatch refuses
+/// by it before the handler runs.
+fn host_schema_checked(props: Value, required: &[&str]) -> Map<String, Value> {
+    host_schema_extra(props, required, json!({}))
+}
+
+/// `[{"required": [a]}, {"required": [b]}, ...]`, one branch per alternative.
+pub(crate) fn any_of_required(alternatives: &[&str]) -> Value {
+    Value::Array(alternatives.iter().map(|a| json!({"required": [a]})).collect())
 }
 
 /// PRD-mcphost-status-feed requirement 2: the `mcp` self-probe's
@@ -1852,7 +1887,7 @@ fn host_tools_part_02() -> Vec<Tool> {
              or with a named group this tenant owns (visibility: \"group\", group: <name>). \
              The tool keeps running in this tenant's own sandbox with this tenant's own \
              secrets; a caller reaches it as <this tenant's namespace>.<name>.",
-            host_schema(
+            host_schema_checked(
                 json!({
                     "name": {"type": "string", "description": "Local name of the tool to share."},
                     "visibility": {
@@ -2339,6 +2374,7 @@ fn host_tools_part_04() -> Vec<Tool> {
                 json!({
                     "table": {"type": "string", "description": "Name of the declared table to insert into."},
                     "rows": {
+                        "type": ["object", "array"],
                         "description": "One row (an object) or several (an array of objects), each \
                             validated against the table's schema.",
                     },
@@ -2404,10 +2440,11 @@ fn host_tools_part_04() -> Vec<Tool> {
              read-only queries) over rows. columns is {\"column\": \"text\"|\"integer\"|\"real\"| \
              \"timestamp\"|\"boolean\"|\"json\"}; primary_key, if given, must name one of \
              columns's own entries.",
-            host_schema(
+            host_schema_checked(
                 json!({
                     "name": {
                         "type": "string",
+                        "pattern": crate::tables::IDENT_PATTERN,
                         "description": "Table name to declare.",
                     },
                     "columns": {
@@ -2428,10 +2465,11 @@ fn host_tools_part_04() -> Vec<Tool> {
             "Append one row (an object) or several (an array of objects) to a declared table. \
              Each row is validated against the table's schema first -- a type mismatch fails \
              the whole call with table_schema_violation and writes nothing.",
-            host_schema(
+            host_schema_checked(
                 json!({
                     "table": {"type": "string", "description": "Name of the declared table to append to."},
                     "rows": {
+                        "type": ["object", "array"],
                         "description": "One row (an object) or several (an array of objects), each \
                             validated against the table's schema.",
                     },
@@ -2736,7 +2774,7 @@ fn host_tools_part_05() -> Vec<Tool> {
              (or content_base64 for arbitrary bytes) must be at most MCPHOST_DOC_MAX_BYTES \
              (default 2 MiB). Identical content to the current version is a no-op that repeats \
              the current version.",
-            host_schema(
+            host_schema_any(
                 json!({
                     "name": {"type": "string", "description": "Document name; same name on a later put creates a new version of the same id."},
                     "content": {"type": "string", "description": "Document content as text; use content_base64 instead for arbitrary bytes."},
@@ -2745,6 +2783,7 @@ fn host_tools_part_05() -> Vec<Tool> {
                     "metadata": {"description": "Arbitrary caller metadata stored alongside the document; any JSON value."},
                 }),
                 &["name"],
+                &["content", "content_base64"],
             ),
         ),
         // PRD-mcphost-blob-put-get-signed-url R1: any file, stored in one
@@ -2760,7 +2799,7 @@ fn host_tools_part_05() -> Vec<Tool> {
              outstanding urls. Give exactly one of content_base64 or url (the host fetches it, \
              so the bytes never pass through your context). Ceilings: blob_max_bytes per file, blob_bytes_max in total, \
              blobs_max files -- see host.quickstart limits.plan.",
-            host_schema(
+            host_schema_any(
                 json!({
                     "name": {"type": "string", "description": "File name; the same name on a later put creates a new version of the same id."},
                     "content_base64": {"type": "string", "description": "The file's bytes, base64-encoded; use url instead to have the host fetch them."},
@@ -2769,6 +2808,7 @@ fn host_tools_part_05() -> Vec<Tool> {
                     "ttl_s": {"type": "integer", "description": "Seconds until the file expires, 1-31536000 (365 days); omitted = never. After it host.blob.get answers blob_expired and the url answers 410."},
                 }),
                 &["name"],
+                &["content_base64", "url"],
             ),
         ),
         Tool::new(
@@ -2815,13 +2855,14 @@ fn host_tools_part_05() -> Vec<Tool> {
             "Read a stored file by id or name. as: \"url\" (default) returns the metadata and a \
              fresh signed url, costing no read; as: \"base64\" also returns content_base64, \
              refused with blob_too_large_inline (use host.blob.url) for a file over 1 MiB.",
-            host_schema(
+            host_schema_any(
                 json!({
                     "id": {"type": "string", "description": "Blob id; use name instead if you don't have it."},
                     "name": {"type": "string", "description": "Blob name; use id instead if you have it."},
                     "as": {"type": "string", "enum": ["url", "base64"], "description": "\"url\" (default) or \"base64\" (files up to 1 MiB)."},
                 }),
                 &[],
+                &["id", "name"],
             ),
         ),
         Tool::new(
@@ -2861,7 +2902,7 @@ fn host_tools_part_05() -> Vec<Tool> {
             "host.docs.get",
             "Read a document by id or name -- version defaults to the current one; text: true \
              also returns the extracted plain text this document's mime produced at put time.",
-            host_schema(
+            host_schema_any(
                 json!({
                     "id": {"type": "string", "description": "Document id to read; use name instead if you don't have it."},
                     "name": {"type": "string", "description": "Document name to read; use id instead if you have it."},
@@ -2869,6 +2910,7 @@ fn host_tools_part_05() -> Vec<Tool> {
                     "text": {"type": "boolean", "description": "Also return the extracted plain text; default false."},
                 }),
                 &[],
+                &["id", "name"],
             ),
         ),
     ]
@@ -2896,12 +2938,13 @@ fn host_tools_part_06() -> Vec<Tool> {
             "host.docs.delete",
             "Soft-delete a document by id or name; still visible via host.docs.list {since} \
              with deleted: true.",
-            host_schema(
+            host_schema_any(
                 json!({
                     "id": {"type": "string", "description": "Document id to delete; use name instead if you don't have it."},
                     "name": {"type": "string", "description": "Document name to delete; use id instead if you have it."},
                 }),
                 &[],
+                &["id", "name"],
             ),
         ),
         // PRD-mcphost-index-create-from-sources R1/R4: a named index over
@@ -2912,9 +2955,9 @@ fn host_tools_part_06() -> Vec<Tool> {
              once ({name, sources, status: \"building\"}); the background indexer chunks every \
              source with byte offsets. Poll host.index.status for progress. A fourth index on \
              the free plan is refused quota_index_max.",
-            host_schema(
+            host_schema_checked(
                 json!({
-                    "name": {"type": "string", "description": "Index name, ^[a-z0-9][a-z0-9_-]{0,63}$."},
+                    "name": {"type": "string", "pattern": crate::index::NAME_PATTERN, "description": "Index name, ^[a-z0-9][a-z0-9_-]{0,63}$."},
                     "sources": crate::index::sources_schema(),
                     "chunking": {
                         "type": "object",
@@ -3054,13 +3097,14 @@ fn host_tools_part_06() -> Vec<Tool> {
             "host.docs.purge",
             "Drop stored versions of a document older than older_than_versions versions back \
              from its current one -- get {version: <a dropped version>} then reads not found.",
-            host_schema(
+            host_schema_any(
                 json!({
                     "id": {"type": "string", "description": "Document id to purge old versions of; use name instead if you don't have it."},
                     "name": {"type": "string", "description": "Document name to purge old versions of; use id instead if you have it."},
                     "older_than_versions": {"type": "integer", "description": "How many versions back from the current one to keep."},
                 }),
                 &["older_than_versions"],
+                &["id", "name"],
             ),
         ),
         // PRD-mcphost-drift-review requirement 7: when a table note, a
@@ -3154,7 +3198,7 @@ fn host_tools_part_07() -> Vec<Tool> {
              back in (an annotation's role wins over the inferred one; unit/description are \
              added; hidden marks a column to omit from a summary). key must be one of role, \
              unit, description, hidden.",
-            host_schema(
+            host_schema_checked(
                 json!({
                     "table": {"type": "string", "description": "Name of the declared table to annotate."},
                     "column": {
@@ -3163,6 +3207,7 @@ fn host_tools_part_07() -> Vec<Tool> {
                     },
                     "key": {
                         "type": "string",
+                        "enum": crate::tables_model::ANNOTATION_KEYS,
                         "description": "One of role, unit, description, hidden.",
                     },
                     "value": {"description": "The annotation's value."},
@@ -3534,7 +3579,7 @@ fn host_tools_part_08() -> Vec<Tool> {
              event_triggers_max (shared by event and message triggers) or a too-short schedule \
              interval (trigger_interval_too_short) on create only -- an update never consumes a \
              slot; an invalid expression or verify config fails trigger_invalid naming the field.",
-            host_schema(
+            host_schema_extra(
                 json!({
                     "tool": {"type": "string", "description": "The published tool this trigger runs."},
                     "kind": {"type": "string", "description": "\"schedule\" (default), \"event\", \"message\" or \"webhook\"."},
@@ -3591,6 +3636,8 @@ fn host_tools_part_08() -> Vec<Tool> {
                     "tz": {"type": "string", "description": "kind=\"schedule\" P1: only \"UTC\" (or omitted) works today."},
                 }),
                 &["tool"],
+                // kind=\"event\" needs `verify` (hooks::set_event_trigger).
+                json!({"allOf": [{"if": {"properties": {"kind": {"const": "event"}}, "required": ["kind"]}, "then": {"required": ["verify"]}}]}),
             ),
         ),
         Tool::new(
@@ -3606,58 +3653,63 @@ fn host_tools_part_08() -> Vec<Tool> {
         Tool::new(
             "host.trigger.get",
             "Read one trigger's current schedule, next_unix, last_run_id and last_status.",
-            host_schema(
+            host_schema_any(
                 json!({
                     "id": {"type": "string", "description": "The trigger id."},
                     "name": {"type": "string", "description": "The trigger's name, instead of id."},
                 }),
                 &[],
+                &["id", "name"],
             ),
         ),
         Tool::new(
             "host.trigger.pause",
             "Stop a trigger from firing until resumed; still counts toward schedules_max.",
-            host_schema(
+            host_schema_any(
                 json!({
                     "id": {"type": "string", "description": "The trigger id."},
                     "name": {"type": "string", "description": "The trigger's name, instead of id."},
                 }),
                 &[],
+                &["id", "name"],
             ),
         ),
         Tool::new(
             "host.trigger.resume",
             "Re-enable a paused trigger; if its scheduled time already passed, the next tick \
              fires it once (a missed firing is never replayed).",
-            host_schema(
+            host_schema_any(
                 json!({
                     "id": {"type": "string", "description": "The trigger id."},
                     "name": {"type": "string", "description": "The trigger's name, instead of id."},
                 }),
                 &[],
+                &["id", "name"],
             ),
         ),
         Tool::new(
             "host.trigger.remove",
             "Delete a trigger outright (frees its schedules_max slot, unlike pause).",
-            host_schema(
+            host_schema_any(
                 json!({
                     "id": {"type": "string", "description": "The trigger id."},
                     "name": {"type": "string", "description": "The trigger's name, instead of id."},
                 }),
                 &[],
+                &["id", "name"],
             ),
         ),
         Tool::new(
             "host.trigger.fire",
             "Run a schedule once right now, for testing -- recorded as trigger: \"schedule\" with \
              manual: true, independent of next_unix or pause state.",
-            host_schema(
+            host_schema_any(
                 json!({
                     "id": {"type": "string", "description": "The trigger id."},
                     "name": {"type": "string", "description": "The trigger's name, instead of id."},
                 }),
                 &[],
+                &["id", "name"],
             ),
         ),
         // PRD-mcphost-scheduled-job-receipts R2: one call answers "is my
@@ -3692,7 +3744,7 @@ fn host_tools_part_08() -> Vec<Tool> {
              one run). The run is marked test: true. PRD-mcphost-dry-run-side-effects: the fired \
              tool's own writes are rolled back and reported under dry_run, nothing delivered. A \
              wrong signature fails signature_invalid, naming the header it checked.",
-            host_schema(
+            host_schema_any(
                 json!({
                     "id": {"type": "string", "description": "The event, message or webhook trigger id."},
                     "name": {"type": "string", "description": "The trigger's name, instead of id."},
@@ -3702,6 +3754,7 @@ fn host_tools_part_08() -> Vec<Tool> {
                     "data": {"description": "kind=\"message\": the synthetic envelope's data payload."},
                 }),
                 &[],
+                &["id", "name"],
             ),
         ),
         Tool::new(
@@ -3714,7 +3767,7 @@ fn host_tools_part_08() -> Vec<Tool> {
              Pass dead_letter_id (from host.trigger.dead_letters) to re-deliver a refused or \
              failed event with its stored body and headers, skipping the rate limit and the \
              signature check; every replay is a new run, never deduped.",
-            host_schema(
+            host_schema_any(
                 json!({
                     "run_id": {"type": "string", "description": "The event- or message-triggered run id to replay."},
                     "dead_letter_id": {"type": "string", "description": "A dl_ id from host.trigger.dead_letters: re-run that letter's stored event."},
@@ -3723,6 +3776,7 @@ fn host_tools_part_08() -> Vec<Tool> {
                     "row_id": {"type": "integer", "description": "kind=\"webhook\" only: the inbox_<name> row id to replay (paired with id)."},
                 }),
                 &[],
+                &["run_id", "dead_letter_id", "row_id"],
             ),
         ),
         Tool::new(
@@ -3913,6 +3967,7 @@ fn host_tools_part_09() -> Vec<Tool> {
                     "use_case": {
                         "type": "array",
                         "items": {"type": "string", "enum": crate::examples::EXAMPLE_USE_CASES},
+                        "minItems": 1,
                         "description": "One or more use-case tags.",
                     },
                     "clients": {
@@ -4131,7 +4186,7 @@ fn host_tools_part_10() -> Vec<Tool> {
              later returns the claim and the completion (data.task.status, data.task.result). \
              The same dedupe_key within 24h returns the original ids. A recipient that refuses \
              you is the call's error (agent_not_found, contact_refused, recipient_inbox_full).",
-            host_schema(
+            host_schema_checked(
                 json!({
                     "to": {"type": "string", "description": "One @handle or t_... namespace."},
                     "payload": {"type": "object", "description": "The work, as a JSON object (within msg_body_bytes_max)."},
@@ -4198,14 +4253,14 @@ fn host_tools_part_10() -> Vec<Tool> {
              option; the first answer wins and a later one is refused 409 ask_answered. Then call \
              host.ask.wait until it returns answered or fails ask_expired -- never act on a \
              missing answer. Refused with asks_limit at the plan's asks_open_max.",
-            host_schema(
+            host_schema_checked(
                 json!({
                     "question": {"type": "string", "description": "What to ask, at most 500 characters."},
                     "options": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "minItems": 2,
-                        "maxItems": 6,
+                        "minItems": crate::asks::OPTIONS_MIN,
+                        "maxItems": crate::asks::OPTIONS_MAX,
                         "description": "2 to 6 distinct button labels, each at most 40 characters.",
                     },
                     "ttl_s": {"type": "integer", "description": "Seconds the link stays answerable; default 3600, at most 604800."},
@@ -4299,7 +4354,7 @@ fn host_tools_part_10() -> Vec<Tool> {
                 crate::notify::TEXT_MAX_BYTES,
                 crate::notify::Level::names().join("|")
             ),
-            host_schema(
+            host_schema_checked(
                 json!({
                     "text": {"type": "string", "description": format!("The message, at most {} bytes.", crate::notify::TEXT_MAX_BYTES)},
                     "level": {"type": "string", "enum": crate::notify::Level::names(), "description": "How urgent."},
@@ -4431,12 +4486,13 @@ fn host_tools_part_11() -> Vec<Tool> {
              and group, and both are fully readable: host.channel.post/read/close/freeze/ \
              unfreeze all resolve a named or a group channel's id (or a named channel's own \
              name) the same way. Refuses channels_max (quota_exceeded) past the plan's cap.",
-            host_schema(
+            host_schema_any(
                 json!({
                     "name": {"type": "string", "description": "Channel name to create or look up."},
                     "group": {"type": "string", "description": "A group you own (host.group.create); open its one channel instead."},
                 }),
                 &[],
+                &["name", "group"],
             ),
         ),
         Tool::new(
@@ -4777,9 +4833,15 @@ fn host_tools_part_12() -> Vec<Tool> {
              list of {column_or_attr, op: \"eq\"|\"in\", value: {\"literal\": <json>} | \
              {\"attr\": \"<end_user_attr>\"}}. Refused as policy_widening if it would widen an \
              existing literal-valued rule on the same column without replace: true.",
-            host_schema(
+            host_schema_checked(
                 json!({
                     "target": {
+                        "type": "object",
+                        // Exactly one key, and it is one of the target kinds.
+                        "propertyNames": {"enum": crate::rowpolicy::policy::PolicyTarget::KINDS},
+                        "minProperties": 1,
+                        "maxProperties": 1,
+                        "additionalProperties": {"type": "string"},
                         "description": "{\"table\": \"<name>\"} or {\"doc_prefix\": \"<prefix>\"}.",
                     },
                     "rule": {
@@ -4808,10 +4870,10 @@ fn host_tools_part_13() -> Vec<Tool> {
             "host.policy.attrs_set",
             "Set (merge) attributes on an end-user subject -- the values a policy's Attr(name) \
              rule compiles against for that subject.",
-            host_schema(
+            host_schema_checked(
                 json!({
                     "subject": {"type": "string", "description": "The end-user subject to set attributes on."},
-                    "attrs": {"description": "An object of attribute name -> value to merge in."},
+                    "attrs": {"type": "object", "description": "An object of attribute name -> value to merge in."},
                 }),
                 &["subject", "attrs"],
             ),
@@ -4936,7 +4998,7 @@ fn host_tools_part_13() -> Vec<Tool> {
             "Register or update a tenant's upstream OAuth provider (e.g. \"slack\") so end \
              users can connect it; client_secret is stored encrypted and never returned by \
              host.vault.providers. Per-plan vault_providers_max caps distinct provider names.",
-            host_schema(
+            host_schema_extra(
                 json!({
                     "name": {
                         "type": "string",
@@ -4975,6 +5037,8 @@ fn host_tools_part_13() -> Vec<Tool> {
                     },
                 }),
                 &["name", "client_id", "client_secret", "scopes"],
+                // auth_url and token_url, each from a preset when not given.
+                json!({"anyOf": [{"required": ["auth_url", "token_url"]}, {"required": ["preset"]}]}),
             ),
         ),
         // PRD-mcphost-upstream-token-vault requirement 2 (AC9): client_secret
@@ -7162,6 +7226,10 @@ impl McpHostHandler {
         // PRD-mcphost-fields-projection-on-list-verbs R4: `fields` on an
         // excused (`unpaged_reason`) verb is refused, never silently ignored.
         crate::paged::refuse_fields_on_unprojected(name, &args)?;
+        // PRD-mcphost-input-schema-is-the-validator R3: the descriptor is the
+        // validator -- a structural violation is refused before any handler.
+        crate::host_args::validate_host_args(&self.state.kinds, name, &args)?;
+        crate::host_args::note_handler_run(&tenant.namespace, name);
         match name {
             "host.whoami" => {
                 let session_tenant = self.session_tenant_namespace(session_id).await;

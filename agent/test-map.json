@@ -2048,6 +2048,15 @@
       "AC6": "tests/pysdk_ac06_result_shape_error_and_extra_fields.rs",
       "AC7": "tests/pysdk_ac07_ci_diff_fails_on_stale_sdk.rs",
       "AC8": "tests/test_live_smoke.py"
+    },
+    "insch": {
+      "_prd": "PRD-mcphost-input-schema-is-the-validator.md (test_prefix: insch)",
+      "AC1": "tests/insch_ac01_either_or_required_in_schema.rs",
+      "AC2": "tests/insch_ac02_enums_from_handler_constants.rs",
+      "AC3": "tests/insch_ac03_patterns_and_bounds_in_schema.rs",
+      "AC4": "tests/insch_ac04_dispatch_refuses_by_schema.rs",
+      "AC5": "tests/insch_ac05_schema_valid_call_clears_validation.rs",
+      "AC6": "tests/insch_ac06_contract_and_docs_carry_constraints.rs"
     }
   }
 }

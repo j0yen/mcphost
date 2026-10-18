@@ -1586,7 +1586,8 @@
           "question",
           "options"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.ask.create",
       "output_schema": {
@@ -2305,6 +2306,18 @@
       "description": "Read a stored file by id or name. as: \"url\" (default) returns the metadata and a fresh signed url, costing no read; as: \"base64\" also returns content_base64, refused with blob_too_large_inline (use host.blob.url) for a file over 1 MiB.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "name"
+            ]
+          }
+        ],
         "properties": {
           "as": {
             "description": "\"url\" (default) or \"base64\" (files up to 1 MiB).",
@@ -2328,7 +2341,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.blob.get",
       "output_schema": {
@@ -2749,6 +2763,18 @@
       "description": "Store a file of any type under this tenant and get back {id, name, bytes, mime, sha256, url, expires, version}; url is a signed link (valid 24h) that serves the bytes with the stored Content-Type. mime is the explicit one, else sniffed from the name and magic bytes (pdf, png, jpeg, gif, webp, zip, gzip, xlsx, docx, csv, json, txt, md), else application/octet-stream. The same name stores a new version of the same id; identical bytes are a no-op. Rotating the tenant key invalidates outstanding urls. Give exactly one of content_base64 or url (the host fetches it, so the bytes never pass through your context). Ceilings: blob_max_bytes per file, blob_bytes_max in total, blobs_max files -- see host.quickstart limits.plan.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "content_base64"
+            ]
+          },
+          {
+            "required": [
+              "url"
+            ]
+          }
+        ],
         "properties": {
           "content_base64": {
             "description": "The file's bytes, base64-encoded; use url instead to have the host fetch them.",
@@ -2778,7 +2804,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.blob.put",
       "output_schema": {
@@ -4294,6 +4321,18 @@
       "description": "Create a named channel, or return the existing one of that name; or, with group instead of name, open (idempotently) the one channel for a group you own -- every current member can then host.channel.post/read it. Two channel kinds exist, named and group, and both are fully readable: host.channel.post/read/close/freeze/ unfreeze all resolve a named or a group channel's id (or a named channel's own name) the same way. Refuses channels_max (quota_exceeded) past the plan's cap.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "name"
+            ]
+          },
+          {
+            "required": [
+              "group"
+            ]
+          }
+        ],
         "properties": {
           "group": {
             "description": "A group you own (host.group.create); open its one channel instead.",
@@ -4309,7 +4348,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.channel.open",
       "output_schema": {
@@ -4624,6 +4664,18 @@
       "description": "Soft-delete a document by id or name; still visible via host.docs.list {since} with deleted: true. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "name"
+            ]
+          }
+        ],
         "properties": {
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
@@ -4643,7 +4695,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.docs.delete",
       "output_schema": {
@@ -4671,6 +4724,18 @@
       "description": "Read a document by id or name -- version defaults to the current one; text: true also returns the extracted plain text this document's mime produced at put time.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "name"
+            ]
+          }
+        ],
         "properties": {
           "id": {
             "description": "Document id to read; use name instead if you don't have it.",
@@ -4694,7 +4759,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.docs.get",
       "output_schema": {
@@ -4984,6 +5050,18 @@
       "description": "Drop stored versions of a document older than older_than_versions versions back from its current one -- get {version: <a dropped version>} then reads not found. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "name"
+            ]
+          }
+        ],
         "properties": {
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
@@ -5009,7 +5087,8 @@
         "required": [
           "older_than_versions"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.docs.purge",
       "output_schema": {
@@ -5037,6 +5116,18 @@
       "description": "Write (or, for an already-used name, create a new version of) a document in this tenant's document store. mime is detected from name and content when omitted; allowed mimes are text/plain, text/markdown, application/json, text/csv. content (or content_base64 for arbitrary bytes) must be at most MCPHOST_DOC_MAX_BYTES (default 2 MiB). Identical content to the current version is a no-op that repeats the current version.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "content"
+            ]
+          },
+          {
+            "required": [
+              "content_base64"
+            ]
+          }
+        ],
         "properties": {
           "content": {
             "description": "Document content as text; use content_base64 instead for arbitrary bytes.",
@@ -5069,7 +5160,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.docs.put",
       "output_schema": {
@@ -6935,6 +7027,7 @@
               ],
               "type": "string"
             },
+            "minItems": 1,
             "type": "array"
           }
         },
@@ -7742,6 +7835,7 @@
           },
           "name": {
             "description": "Index name, ^[a-z0-9][a-z0-9_-]{0,63}$.",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
             "type": "string"
           },
           "sources": {
@@ -7785,6 +7879,8 @@
               ],
               "type": "object"
             },
+            "maxItems": 20,
+            "minItems": 1,
             "type": "array"
           },
           "tenant_key": {
@@ -7796,7 +7892,8 @@
           "name",
           "sources"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.index.create",
       "output_schema": {
@@ -10867,7 +10964,8 @@
           "text",
           "level"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.notify.send",
       "output_schema": {
@@ -12328,7 +12426,8 @@
         "additionalProperties": false,
         "properties": {
           "attrs": {
-            "description": "An object of attribute name -> value to merge in."
+            "description": "An object of attribute name -> value to merge in.",
+            "type": "object"
           },
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
@@ -12347,7 +12446,8 @@
           "subject",
           "attrs"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.policy.attrs_set",
       "output_schema": {
@@ -12420,7 +12520,19 @@
             "description": "A list of {column_or_attr, op, value} rules, ANDed together."
           },
           "target": {
-            "description": "{\"table\": \"<name>\"} or {\"doc_prefix\": \"<prefix>\"}."
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "{\"table\": \"<name>\"} or {\"doc_prefix\": \"<prefix>\"}.",
+            "maxProperties": 1,
+            "minProperties": 1,
+            "propertyNames": {
+              "enum": [
+                "table",
+                "doc_prefix"
+              ]
+            },
+            "type": "object"
           },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
@@ -12431,7 +12543,8 @@
           "target",
           "rule"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.policy.set",
       "output_schema": {
@@ -17098,7 +17211,11 @@
             ]
           },
           "rows": {
-            "description": "One row (an object) or several (an array of objects), each validated against the table's schema."
+            "description": "One row (an object) or several (an array of objects), each validated against the table's schema.",
+            "type": [
+              "object",
+              "array"
+            ]
           },
           "table": {
             "description": "Name of the declared table to insert into.",
@@ -17884,7 +18001,11 @@
             "type": "boolean"
           },
           "rows": {
-            "description": "One row (an object) or several (an array of objects), each validated against the table's schema."
+            "description": "One row (an object) or several (an array of objects), each validated against the table's schema.",
+            "type": [
+              "object",
+              "array"
+            ]
           },
           "table": {
             "description": "Name of the declared table to append to.",
@@ -17899,7 +18020,8 @@
           "table",
           "rows"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.table.append",
       "output_schema": {
@@ -18437,6 +18559,7 @@
           },
           "name": {
             "description": "Table name to declare.",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
             "type": "string"
           },
           "primary_key": {
@@ -18452,7 +18575,8 @@
           "name",
           "columns"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.table.create",
       "output_schema": {
@@ -20405,6 +20529,12 @@
           },
           "key": {
             "description": "One of role, unit, description, hidden.",
+            "enum": [
+              "role",
+              "unit",
+              "description",
+              "hidden"
+            ],
             "type": "string"
           },
           "table": {
@@ -20424,7 +20554,8 @@
           "key",
           "value"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.table.model_set",
       "output_schema": {
@@ -21842,7 +21973,8 @@
           "payload",
           "deadline_s"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.task.post",
       "output_schema": {
@@ -23068,6 +23200,7 @@
           },
           "name": {
             "description": "Local name for the new tool; must match ^[a-z][a-z0-9_]{1,40}$.",
+            "pattern": "^[a-z][a-z0-9_]{1,40}$",
             "type": "string"
           },
           "scopes": {
@@ -23919,7 +24052,8 @@
           "name",
           "visibility"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.tool.share",
       "output_schema": {
@@ -25595,6 +25729,7 @@
           },
           "name": {
             "description": "Local name for the new tool; must match ^[a-z][a-z0-9_]{1,40}$.",
+            "pattern": "^[a-z][a-z0-9_]{1,40}$",
             "type": "string"
           },
           "scopes": {
@@ -25794,7 +25929,8 @@
         "x-deprecated": {
           "replaced_by": "host.tool.share",
           "sunset": "2026-12-31"
-        }
+        },
+        "x-mcphost-validated": true
       },
       "name": "host.tool_share",
       "since": "0.58.0"
@@ -26017,6 +26153,18 @@
       "description": "Run a schedule once right now, for testing -- recorded as trigger: \"schedule\" with manual: true, independent of next_unix or pause state.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "name"
+            ]
+          }
+        ],
         "properties": {
           "id": {
             "description": "The trigger id.",
@@ -26032,7 +26180,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.trigger.fire",
       "output_schema": {
@@ -26060,6 +26209,18 @@
       "description": "Read one trigger's current schedule, next_unix, last_run_id and last_status.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "name"
+            ]
+          }
+        ],
         "properties": {
           "id": {
             "description": "The trigger id.",
@@ -26075,7 +26236,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.trigger.get",
       "output_schema": {
@@ -26367,6 +26529,18 @@
       "description": "Stop a trigger from firing until resumed; still counts toward schedules_max.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "name"
+            ]
+          }
+        ],
         "properties": {
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
@@ -26386,7 +26560,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.trigger.pause",
       "output_schema": {
@@ -26414,6 +26589,18 @@
       "description": "Delete a trigger outright (frees its schedules_max slot, unlike pause). Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "name"
+            ]
+          }
+        ],
         "properties": {
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
@@ -26433,7 +26620,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.trigger.remove",
       "output_schema": {
@@ -26457,6 +26645,23 @@
       "description": "Re-run a past event- or message-triggered run's exact stored event/envelope (no re-verification -- the original delivery already passed it). The new run's trigger_ref names the original run id. For a webhook trigger, pass id (the trigger) and row_id (an inbox_<name> row id, e.g. from POST /hook/...'s own response or host.state.query) instead of run_id -- a paused delivery has no run to replay from. Pass dead_letter_id (from host.trigger.dead_letters) to re-deliver a refused or failed event with its stored body and headers, skipping the rate limit and the signature check; every replay is a new run, never deduped.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "run_id"
+            ]
+          },
+          {
+            "required": [
+              "dead_letter_id"
+            ]
+          },
+          {
+            "required": [
+              "row_id"
+            ]
+          }
+        ],
         "properties": {
           "dead_letter_id": {
             "description": "A dl_ id from host.trigger.dead_letters: re-run that letter's stored event.",
@@ -26484,7 +26689,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.trigger.replay",
       "output_schema": {
@@ -26520,6 +26726,18 @@
       "description": "Re-enable a paused trigger; if its scheduled time already passed, the next tick fires it once (a missed firing is never replayed).",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "name"
+            ]
+          }
+        ],
         "properties": {
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
@@ -26539,7 +26757,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.trigger.resume",
       "output_schema": {
@@ -26567,6 +26786,25 @@
       "description": "Run a published tool on a cron schedule (5-field: minute hour day-of-month month day-of-week, UTC), give it a public webhook URL (kind=\"event\"): a signed POST to that URL runs the tool with the event as its argument, fire it whenever this tenant receives a message (kind=\"message\"): the tool runs with the message envelope as its argument, or give it an inbound-inbox URL (kind=\"webhook\"): a verified POST lands as a row in state table inbox_<name> and fires the tool with that row as its argument -- the response carries {url, secret} once (host.trigger.get afterwards never returns the secret again). name is this trigger's identity, unique per tenant (default \"<kind>:<tool>\"): calling set again with the same name updates that trigger in place (same id, same hook URL, next_unix recomputed for a changed schedule) instead of creating a duplicate -- safe to re-run a setup script any number of times -- and returns {created: false, changed: [...changed fields]}; a name that already names a different kind fails trigger_kind_mismatch. Each firing/delivery is a run visible in host.runs.list(trigger=\"schedule\"|\"event\"|\"message\"|\"webhook\"). Refuses schedules_max (trigger_quota_exceeded, shared by schedule and webhook triggers), event_triggers_max (shared by event and message triggers) or a too-short schedule interval (trigger_interval_too_short) on create only -- an update never consumes a slot; an invalid expression or verify config fails trigger_invalid naming the field.",
       "input_schema": {
         "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "event"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "required": [
+                "verify"
+              ]
+            }
+          }
+        ],
         "properties": {
           "args": {
             "description": "Arguments passed to the tool on each firing/delivery (kind=\"schedule\"/\"event\" only -- a message trigger's whole argument is the message envelope and a webhook trigger's whole argument is the stored inbox row).",
@@ -26623,7 +26861,8 @@
         "required": [
           "tool"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.trigger.set",
       "output_schema": {
@@ -26840,6 +27079,18 @@
       "description": "Dry-run an event trigger's verify config against a payload you supply, without exposing its real URL -- verifies the signature exactly as POST /hooks/... would, then runs the tool with the event as its argument. On a message trigger, runs the tool with a synthetic envelope (test: true, no messages row created). On a webhook trigger, builds and self-signs a synthetic body exactly like a real sender would, then stores and fires it through the same path POST /hook/... uses (one inbox row, one run). The run is marked test: true. PRD-mcphost-dry-run-side-effects: the fired tool's own writes are rolled back and reported under dry_run, nothing delivered. A wrong signature fails signature_invalid, naming the header it checked.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "name"
+            ]
+          }
+        ],
         "properties": {
           "body": {
             "description": "kind=\"event\"/\"webhook\": the payload to verify and run with -- any JSON value. kind=\"message\": the synthetic envelope's body text."
@@ -26869,7 +27120,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.trigger.test",
       "output_schema": {
@@ -27675,6 +27927,19 @@
       "description": "Register or update a tenant's upstream OAuth provider (e.g. \"slack\") so end users can connect it; client_secret is stored encrypted and never returned by host.vault.providers. Per-plan vault_providers_max caps distinct provider names.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "auth_url",
+              "token_url"
+            ]
+          },
+          {
+            "required": [
+              "preset"
+            ]
+          }
+        ],
         "properties": {
           "auth_url": {
             "description": "OAuth authorization URL. Required unless preset supplies it.",
@@ -27718,7 +27983,8 @@
           "client_secret",
           "scopes"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.vault.provider_set",
       "output_schema": {
@@ -28901,7 +29167,8 @@
           "question",
           "options"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_ask_create",
       "since": "0.107.36"
@@ -29096,6 +29363,18 @@
       "description": "Read a stored file by id or name. as: \"url\" (default) returns the metadata and a fresh signed url, costing no read; as: \"base64\" also returns content_base64, refused with blob_too_large_inline (use host.blob.url) for a file over 1 MiB.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "name"
+            ]
+          }
+        ],
         "properties": {
           "as": {
             "description": "\"url\" (default) or \"base64\" (files up to 1 MiB).",
@@ -29119,7 +29398,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_blob_get",
       "since": "0.107.47"
@@ -29189,6 +29469,18 @@
       "description": "Store a file of any type under this tenant and get back {id, name, bytes, mime, sha256, url, expires, version}; url is a signed link (valid 24h) that serves the bytes with the stored Content-Type. mime is the explicit one, else sniffed from the name and magic bytes (pdf, png, jpeg, gif, webp, zip, gzip, xlsx, docx, csv, json, txt, md), else application/octet-stream. The same name stores a new version of the same id; identical bytes are a no-op. Rotating the tenant key invalidates outstanding urls. Give exactly one of content_base64 or url (the host fetches it, so the bytes never pass through your context). Ceilings: blob_max_bytes per file, blob_bytes_max in total, blobs_max files -- see host.quickstart limits.plan.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "content_base64"
+            ]
+          },
+          {
+            "required": [
+              "url"
+            ]
+          }
+        ],
         "properties": {
           "content_base64": {
             "description": "The file's bytes, base64-encoded; use url instead to have the host fetch them.",
@@ -29218,7 +29510,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_blob_put",
       "since": "0.107.47"
@@ -29566,6 +29859,18 @@
       "description": "Create a named channel, or return the existing one of that name; or, with group instead of name, open (idempotently) the one channel for a group you own -- every current member can then host.channel.post/read it. Two channel kinds exist, named and group, and both are fully readable: host.channel.post/read/close/freeze/ unfreeze all resolve a named or a group channel's id (or a named channel's own name) the same way. Refuses channels_max (quota_exceeded) past the plan's cap.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "name"
+            ]
+          },
+          {
+            "required": [
+              "group"
+            ]
+          }
+        ],
         "properties": {
           "group": {
             "description": "A group you own (host.group.create); open its one channel instead.",
@@ -29581,7 +29886,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_channel_open",
       "since": "0.103.1"
@@ -29733,6 +30039,18 @@
       "description": "Soft-delete a document by id or name; still visible via host.docs.list {since} with deleted: true. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "name"
+            ]
+          }
+        ],
         "properties": {
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
@@ -29752,7 +30070,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_docs_delete",
       "since": "0.103.1"
@@ -29762,6 +30081,18 @@
       "description": "Read a document by id or name -- version defaults to the current one; text: true also returns the extracted plain text this document's mime produced at put time.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "name"
+            ]
+          }
+        ],
         "properties": {
           "id": {
             "description": "Document id to read; use name instead if you don't have it.",
@@ -29785,7 +30116,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_docs_get",
       "since": "0.103.1"
@@ -29902,6 +30234,18 @@
       "description": "Drop stored versions of a document older than older_than_versions versions back from its current one -- get {version: <a dropped version>} then reads not found. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "name"
+            ]
+          }
+        ],
         "properties": {
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
@@ -29927,7 +30271,8 @@
         "required": [
           "older_than_versions"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_docs_purge",
       "since": "0.103.1"
@@ -29937,6 +30282,18 @@
       "description": "Write (or, for an already-used name, create a new version of) a document in this tenant's document store. mime is detected from name and content when omitted; allowed mimes are text/plain, text/markdown, application/json, text/csv. content (or content_base64 for arbitrary bytes) must be at most MCPHOST_DOC_MAX_BYTES (default 2 MiB). Identical content to the current version is a no-op that repeats the current version.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "content"
+            ]
+          },
+          {
+            "required": [
+              "content_base64"
+            ]
+          }
+        ],
         "properties": {
           "content": {
             "description": "Document content as text; use content_base64 instead for arbitrary bytes.",
@@ -29969,7 +30326,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_docs_put",
       "since": "0.103.1"
@@ -30668,6 +31026,7 @@
               ],
               "type": "string"
             },
+            "minItems": 1,
             "type": "array"
           }
         },
@@ -31006,6 +31365,7 @@
           },
           "name": {
             "description": "Index name, ^[a-z0-9][a-z0-9_-]{0,63}$.",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
             "type": "string"
           },
           "sources": {
@@ -31049,6 +31409,8 @@
               ],
               "type": "object"
             },
+            "maxItems": 20,
+            "minItems": 1,
             "type": "array"
           },
           "tenant_key": {
@@ -31060,7 +31422,8 @@
           "name",
           "sources"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_index_create",
       "since": "0.107.85"
@@ -32101,7 +32464,8 @@
           "text",
           "level"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_notify_send",
       "since": "0.108.71"
@@ -32794,7 +33158,8 @@
         "additionalProperties": false,
         "properties": {
           "attrs": {
-            "description": "An object of attribute name -> value to merge in."
+            "description": "An object of attribute name -> value to merge in.",
+            "type": "object"
           },
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
@@ -32813,7 +33178,8 @@
           "subject",
           "attrs"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_policy_attrs_set",
       "since": "0.103.1"
@@ -32853,7 +33219,19 @@
             "description": "A list of {column_or_attr, op, value} rules, ANDed together."
           },
           "target": {
-            "description": "{\"table\": \"<name>\"} or {\"doc_prefix\": \"<prefix>\"}."
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "{\"table\": \"<name>\"} or {\"doc_prefix\": \"<prefix>\"}.",
+            "maxProperties": 1,
+            "minProperties": 1,
+            "propertyNames": {
+              "enum": [
+                "table",
+                "doc_prefix"
+              ]
+            },
+            "type": "object"
           },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
@@ -32864,7 +33242,8 @@
           "target",
           "rule"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_policy_set",
       "since": "0.103.1"
@@ -33526,7 +33905,11 @@
             ]
           },
           "rows": {
-            "description": "One row (an object) or several (an array of objects), each validated against the table's schema."
+            "description": "One row (an object) or several (an array of objects), each validated against the table's schema.",
+            "type": [
+              "object",
+              "array"
+            ]
           },
           "table": {
             "description": "Name of the declared table to insert into.",
@@ -33732,7 +34115,11 @@
             "type": "boolean"
           },
           "rows": {
-            "description": "One row (an object) or several (an array of objects), each validated against the table's schema."
+            "description": "One row (an object) or several (an array of objects), each validated against the table's schema.",
+            "type": [
+              "object",
+              "array"
+            ]
           },
           "table": {
             "description": "Name of the declared table to append to.",
@@ -33747,7 +34134,8 @@
           "table",
           "rows"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_table_append",
       "since": "0.103.1"
@@ -33847,6 +34235,7 @@
           },
           "name": {
             "description": "Table name to declare.",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
             "type": "string"
           },
           "primary_key": {
@@ -33862,7 +34251,8 @@
           "name",
           "columns"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_table_create",
       "since": "0.103.1"
@@ -34074,6 +34464,12 @@
           },
           "key": {
             "description": "One of role, unit, description, hidden.",
+            "enum": [
+              "role",
+              "unit",
+              "description",
+              "hidden"
+            ],
             "type": "string"
           },
           "table": {
@@ -34093,7 +34489,8 @@
           "key",
           "value"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_table_model_set",
       "since": "0.103.1"
@@ -34395,7 +34792,8 @@
           "payload",
           "deadline_s"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_task_post",
       "since": "0.107.89"
@@ -34731,6 +35129,7 @@
           },
           "name": {
             "description": "Local name for the new tool; must match ^[a-z][a-z0-9_]{1,40}$.",
+            "pattern": "^[a-z][a-z0-9_]{1,40}$",
             "type": "string"
           },
           "scopes": {
@@ -34910,7 +35309,8 @@
           "name",
           "visibility"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_tool_share",
       "since": "0.103.1"
@@ -35028,6 +35428,18 @@
       "description": "Run a schedule once right now, for testing -- recorded as trigger: \"schedule\" with manual: true, independent of next_unix or pause state.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "name"
+            ]
+          }
+        ],
         "properties": {
           "id": {
             "description": "The trigger id.",
@@ -35043,7 +35455,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_trigger_fire",
       "since": "0.103.1"
@@ -35053,6 +35466,18 @@
       "description": "Read one trigger's current schedule, next_unix, last_run_id and last_status.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "name"
+            ]
+          }
+        ],
         "properties": {
           "id": {
             "description": "The trigger id.",
@@ -35068,7 +35493,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_trigger_get",
       "since": "0.103.1"
@@ -35099,6 +35525,18 @@
       "description": "Stop a trigger from firing until resumed; still counts toward schedules_max.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "name"
+            ]
+          }
+        ],
         "properties": {
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
@@ -35118,7 +35556,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_trigger_pause",
       "since": "0.103.1"
@@ -35128,6 +35567,18 @@
       "description": "Delete a trigger outright (frees its schedules_max slot, unlike pause). Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "name"
+            ]
+          }
+        ],
         "properties": {
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
@@ -35147,7 +35598,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_trigger_remove",
       "since": "0.103.1"
@@ -35157,6 +35609,23 @@
       "description": "Re-run a past event- or message-triggered run's exact stored event/envelope (no re-verification -- the original delivery already passed it). The new run's trigger_ref names the original run id. For a webhook trigger, pass id (the trigger) and row_id (an inbox_<name> row id, e.g. from POST /hook/...'s own response or host.state.query) instead of run_id -- a paused delivery has no run to replay from. Pass dead_letter_id (from host.trigger.dead_letters) to re-deliver a refused or failed event with its stored body and headers, skipping the rate limit and the signature check; every replay is a new run, never deduped.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "run_id"
+            ]
+          },
+          {
+            "required": [
+              "dead_letter_id"
+            ]
+          },
+          {
+            "required": [
+              "row_id"
+            ]
+          }
+        ],
         "properties": {
           "dead_letter_id": {
             "description": "A dl_ id from host.trigger.dead_letters: re-run that letter's stored event.",
@@ -35184,7 +35653,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_trigger_replay",
       "since": "0.103.1"
@@ -35194,6 +35664,18 @@
       "description": "Re-enable a paused trigger; if its scheduled time already passed, the next tick fires it once (a missed firing is never replayed).",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "name"
+            ]
+          }
+        ],
         "properties": {
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
@@ -35213,7 +35695,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_trigger_resume",
       "since": "0.103.1"
@@ -35223,6 +35706,25 @@
       "description": "Run a published tool on a cron schedule (5-field: minute hour day-of-month month day-of-week, UTC), give it a public webhook URL (kind=\"event\"): a signed POST to that URL runs the tool with the event as its argument, fire it whenever this tenant receives a message (kind=\"message\"): the tool runs with the message envelope as its argument, or give it an inbound-inbox URL (kind=\"webhook\"): a verified POST lands as a row in state table inbox_<name> and fires the tool with that row as its argument -- the response carries {url, secret} once (host.trigger.get afterwards never returns the secret again). name is this trigger's identity, unique per tenant (default \"<kind>:<tool>\"): calling set again with the same name updates that trigger in place (same id, same hook URL, next_unix recomputed for a changed schedule) instead of creating a duplicate -- safe to re-run a setup script any number of times -- and returns {created: false, changed: [...changed fields]}; a name that already names a different kind fails trigger_kind_mismatch. Each firing/delivery is a run visible in host.runs.list(trigger=\"schedule\"|\"event\"|\"message\"|\"webhook\"). Refuses schedules_max (trigger_quota_exceeded, shared by schedule and webhook triggers), event_triggers_max (shared by event and message triggers) or a too-short schedule interval (trigger_interval_too_short) on create only -- an update never consumes a slot; an invalid expression or verify config fails trigger_invalid naming the field.",
       "input_schema": {
         "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "event"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            "then": {
+              "required": [
+                "verify"
+              ]
+            }
+          }
+        ],
         "properties": {
           "args": {
             "description": "Arguments passed to the tool on each firing/delivery (kind=\"schedule\"/\"event\" only -- a message trigger's whole argument is the message envelope and a webhook trigger's whole argument is the stored inbox row).",
@@ -35279,7 +35781,8 @@
         "required": [
           "tool"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_trigger_set",
       "since": "0.103.1"
@@ -35289,6 +35792,18 @@
       "description": "Dry-run an event trigger's verify config against a payload you supply, without exposing its real URL -- verifies the signature exactly as POST /hooks/... would, then runs the tool with the event as its argument. On a message trigger, runs the tool with a synthetic envelope (test: true, no messages row created). On a webhook trigger, builds and self-signs a synthetic body exactly like a real sender would, then stores and fires it through the same path POST /hook/... uses (one inbox row, one run). The run is marked test: true. PRD-mcphost-dry-run-side-effects: the fired tool's own writes are rolled back and reported under dry_run, nothing delivered. A wrong signature fails signature_invalid, naming the header it checked.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "id"
+            ]
+          },
+          {
+            "required": [
+              "name"
+            ]
+          }
+        ],
         "properties": {
           "body": {
             "description": "kind=\"event\"/\"webhook\": the payload to verify and run with -- any JSON value. kind=\"message\": the synthetic envelope's body text."
@@ -35318,7 +35833,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_trigger_test",
       "since": "0.103.1"
@@ -35479,6 +35995,19 @@
       "description": "Register or update a tenant's upstream OAuth provider (e.g. \"slack\") so end users can connect it; client_secret is stored encrypted and never returned by host.vault.providers. Per-plan vault_providers_max caps distinct provider names.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "auth_url",
+              "token_url"
+            ]
+          },
+          {
+            "required": [
+              "preset"
+            ]
+          }
+        ],
         "properties": {
           "auth_url": {
             "description": "OAuth authorization URL. Required unless preset supplies it.",
@@ -35522,7 +36051,8 @@
           "client_secret",
           "scopes"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_vault_provider_set",
       "since": "0.103.1"
