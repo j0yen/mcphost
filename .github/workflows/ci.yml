@@ -431,7 +431,7 @@ jobs:
   recipes-golden-path:
     name: recipes-golden-path
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 12  # r7 10-18: measured 5:00 (f06ea66c) and 5:03 (a2d79e93) before #425, then cancelled at the 6-min cap on 32ad49c3 and 3591bd3a -- a timeout cancel hides this job's verdict on every merge; cap = ~2.4x the last green wall
     steps:
       - name: checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
