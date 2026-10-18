@@ -27,6 +27,8 @@ mod gdrain;
 #[path = "support/host.rs"]
 #[allow(dead_code)]
 mod host;
+#[path = "support/inband_client.rs"]
+mod inband_client;
 #[path = "support/oauth.rs"]
 mod oauth;
 #[path = "support/promptkind.rs"]
@@ -158,6 +160,20 @@ mod dryrun_ac03_trigger_test_channel_post_short_circuited;
 mod dryrun_ac04_tool_run_test_state_write;
 #[path = "dryrun_ac07_quota_real_error_table_unchanged.rs"]
 mod dryrun_ac07_quota_real_error_table_unchanged;
+#[path = "elib_ac01_form_elicitation_rides_the_calls_own_stream.rs"]
+mod elib_ac01_form_elicitation_rides_the_calls_own_stream;
+#[path = "elib_ac02_bare_capability_and_sampling_ride_in_band.rs"]
+mod elib_ac02_bare_capability_and_sampling_ride_in_band;
+#[path = "elib_ac03_clients_without_the_channel_keep_the_link_reply.rs"]
+mod elib_ac03_clients_without_the_channel_keep_the_link_reply;
+#[path = "elib_ac04_guardrails_json_stays_json_and_sse_streams.rs"]
+mod elib_ac04_guardrails_json_stays_json_and_sse_streams;
+#[path = "elib_ac05_transport_contract_is_derived_from_build_router.rs"]
+mod elib_ac05_transport_contract_is_derived_from_build_router;
+#[path = "elib_ac06_silence_times_out_and_stray_answers_deliver_nothing.rs"]
+mod elib_ac06_silence_times_out_and_stray_answers_deliver_nothing;
+#[path = "elib_ac07_concurrent_sessions_never_cross_and_the_store_is_bounded.rs"]
+mod elib_ac07_concurrent_sessions_never_cross_and_the_store_is_bounded;
 #[path = "ematt_ac02_attachments_become_blobs_a_tool_reads.rs"]
 mod ematt_ac02_attachments_become_blobs_a_tool_reads;
 #[path = "enduser_ac01_oauth_python_env_and_calls_row.rs"]

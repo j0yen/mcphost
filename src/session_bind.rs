@@ -50,6 +50,13 @@ pub const SESSION_ID_HEADER: &str = "mcp-session-id";
 #[derive(Debug, Clone)]
 pub struct RequestSessionId(pub String);
 
+/// PRD-mcphost-elicitation-in-band-on-stateless-transport R7: whether the
+/// request presented a session id this process minted (`true`), or got a fresh
+/// one because it sent none / an unknown one (`false`). Rides next to
+/// [`RequestSessionId`] so a log line can say which.
+#[derive(Debug, Clone, Copy)]
+pub struct SessionPresented(pub bool);
+
 /// Requirement 4: "at most 10,000 sessions, least-recently-used eviction".
 pub const MAX_BOUND_SESSIONS: usize = 10_000;
 
@@ -136,6 +143,10 @@ impl Inner {
 pub struct SessionBindings {
     secret: Arc<[u8; 32]>,
     inner: Arc<Mutex<Inner>>,
+    /// PRD-mcphost-elicitation-in-band-on-stateless-transport: the
+    /// capability store and response route keyed by the ids this mints. One
+    /// per process, shared by every map over the same secret.
+    inband: Arc<crate::inband::InBandStores>,
 }
 
 impl std::fmt::Debug for SessionBindings {
@@ -171,6 +182,7 @@ impl SessionBindings {
         Self {
             secret: other.secret.clone(),
             inner: Arc::new(Mutex::new(Inner::default())),
+            inband: other.inband.clone(),
         }
     }
 
@@ -180,7 +192,13 @@ impl SessionBindings {
         Self {
             secret: Arc::new(secret),
             inner: Arc::new(Mutex::new(Inner::default())),
+            inband: Arc::default(),
         }
+    }
+
+    /// The in-band capability store and response route of this process.
+    pub fn inband(&self) -> &Arc<crate::inband::InBandStores> {
+        &self.inband
     }
 
     /// HMAC-SHA256 of `data` under this process's secret -- the same

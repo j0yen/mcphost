@@ -45,6 +45,7 @@ pub mod docs_index;
 pub mod index;
 pub mod drift;
 pub mod elicit;
+pub mod inband;
 pub mod dryrun;
 pub mod write_verbs;
 pub mod email;

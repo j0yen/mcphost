@@ -905,6 +905,8 @@ mod edp_ac02_no_literal_anchors_outside_doc_anchors;
 mod edp_ac03_help_get_returns_the_section;
 #[path = "edp_ac04_error_anchor_beside_help_url.rs"]
 mod edp_ac04_error_anchor_beside_help_url;
+#[path = "elib_r08_capabilities_row_names_its_transport.rs"]
+mod elib_r08_capabilities_row_names_its_transport;
 #[path = "ematt_ac03_too_large_part_is_refused_others_stored.rs"]
 mod ematt_ac03_too_large_part_is_refused_others_stored;
 #[path = "ematt_ac04_tenant_at_blob_bytes_max_refuses_the_part.rs"]

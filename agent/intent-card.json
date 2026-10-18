@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-oauth-discovery-document-contract.md",
-  "intent_slug": "mcphost-oauth-discovery-document-contract",
-  "root_motivation": "From 2026-10-05 07:01 UTC to 2026-10-13 9:09 pm PDT the root document `https://mcphost.dev/.well-known/oauth-protected-resource` listed `\"toolconf-probe\"` beside `https://mcphost.dev` as an authorization server: one `oauth_issuers` row (id 9, tenant 3539, the only row in the table) written by a probe. The root builder (`src/oauth.rs:1012\u20131037`) publishes `list_distinct_oauth_issuer_urls()` over all tenants with no filter; the write side accepted any string until PR #261 (10-13) added the `https://` check at `src/oauth.rs:48\u201360`. Nothing removed the row \u2014 no verb exists to delete an issuer \u2014 and nothing read the document: the chain's explore OAuth cohort failed 42 of 42 at bootstrap each night for 8 nights before anyone looked (`wiki/answers/2026-10-13-oauth-discovery-pollution-toolconf-probe-five-whys.md`, levels 1\u20135). Who: every OAuth-first MCP client and the chain. What: discovery that names a server that does not exist. Why they cannot today: the document is a shared, d...",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-elicitation-in-band-on-stateless-transport.md",
+  "intent_slug": "mcphost-elicitation-in-band-on-stateless-transport",
+  "root_motivation": "**Who:** the agent in Claude Code, VS Code Copilot or Cursor whose deployed tool calls `mcphost.elicit(\"Rotate the production key now?\", {confirm: {type: \"boolean\"}})`; the human sitting in that client, who should see a form, not a link; the nightly conformance link that measures whether the host speaks what it advertises. **What:** the tool should receive `{action: \"accept\", content: {confirm: true}}` within the same `tools/call`, through the client's own form UI, whenever the client declared `elicitation` at `initialize`. **Why not today:** on prod 0.108.213 the tool always receives `{action: \"pending\", ask_id, url}` after ~25 s, as a single `application/json` reply, and the client never receives `elicitation/create` \u2014 observed by hand from the r7 seat at 10:2x pm PDT 10-17 for `{\"elicitation\":{\"form\":{}}}` and for `{}`, for `host.tool_call` and for direct `tools/call` alike; the conformance link records the same as `elicitation_pending_despite_capability` on every elicitation-c...",
   "user_persona": "An agent that runs host.note.put {text, attach_to: {tool}} once and reads the note on that tool's description in every later session; the same user's second client sees it too.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -12,46 +12,46 @@
   },
   "acceptance_criteria": [
     {
+      "id": "AC1",
+      "level": "MUST",
+      "description": "Given `TestServer` and a client declaring `{\"elicitation\":{\"form\":{}}}` that echoes `Mcp-Session-Id` and answers `accept {confirm:true}`, When a tool calls `mcphost.elicit` in `tools/call`, Then the client gets `elicitation/create` on the call's own stream and the tool gets the accepted `content` in < 2 s measured from the first non-`tool_building` `tools/call`, one `channel: client` audit row, no `url` row \u2014 RED at 0fdd8e53 today (prod answers `pending`, zero server\u2192client requests).",
+      "test": "tests/elib_ac01_form_elicitation_rides_the_calls_own_stream.rs"
+    },
+    {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given an `oauth_issuers` row with issuer `toolconf-probe` inserted directly into the test database, When the root and per-tenant documents are built, Then neither lists it and `host.doctor` reports one invalid row with that id and reason `not_https_url`.",
-      "test": "tests/oauthdoc_ac02_non_url_row_leaves_documents_and_doctor_reports_it.rs"
+      "description": "Given AC 1's client declaring the bare `{\"elicitation\":{}}`, When the tool elicits, Then AC 1's in-band path is taken; Given a `TestServer` client declaring `sampling` that answers `sampling/createMessage` with the fixture text, When a tool calls `mcphost.sampling.ask`, Then the frame rides the call's own stream and the tool gets that text \u2014 RED today (`sampling_unsupported`); a parser table test covers `{}`/`{\"form\":{}}` \u2192 form, `{\"url\":{}}`/absent \u2192 link, `sampling` present/absent.",
+      "test": "tests/elib_ac02_bare_capability_and_sampling_ride_in_band.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the validator's rejection table, When the generated test feeds each case to the write verb and to the read filter, Then both reject the same set and the test fails on the first divergence, naming the case.",
-      "test": "tests/oauthdoc_ac03_write_and_read_reject_the_same_set.rs"
+      "description": "Given a client that advertises nothing, or one that never echoes `Mcp-Session-Id` (the Claude Agent SDK replay shape), When the tool elicits and nobody answers the link within the wait, Then the `tools/call` response is one `application/json` body carrying `{action:\"pending\",ask_id,url,expires_unix}` exactly as today, and `melc_ac02`, `melc_ac05`, `melc_ac06`, `melc_ac07` pass unmodified.",
+      "test": "tests/elib_ac03_clients_without_the_channel_keep_the_link_reply.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a tenant with two valid issuers, When `host.oauth.issuer_remove` names one, Then the row is gone, the per-tenant and root documents no longer list it, an audit row exists, and the response is `{removed: true}`.",
-      "test": "tests/oauthdoc_ac04_tenant_issuer_remove_updates_documents_and_audits.rs"
+      "description": "Given the same binary, When `compat_ac11_ac12_claude_sdk_replay` and `sessbind_ac01`..`ac11` run, Then they pass unchanged, a non-eliciting `tools/call` from an elicitation-advertising session is still one `application/json` body (no SSE) with the same status and headers as before, and a `text/event-stream` body served through `build_router` on `/mcp` delivers its first event before the stream closes (R0: `oauth_401_upgrade` buffers only `application/json`).",
+      "test": "tests/elib_ac04_guardrails_json_stays_json_and_sse_streams.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given an admin and a tenant's invalid issuer, When `admin.oauth.issuer_remove` runs with a reason, Then the row is removed, the audit row carries the reason, and the tenant's own documents rebuild without it.",
-      "test": "tests/oauthdoc_ac05_admin_issuer_remove_clears_invalid_row_with_reason.rs"
+      "description": "Given the suite, When run, Then every in-band test serves the handler via `build_router` (no second router under `tests/`), a sandbox-free contract test (no `require_user_namespaces_or_ci_skip`; fails on GitHub CI) asserts prod's `(json_response, legacy_session_mode)` source is `(true, false)` and built the in-band server, and a second asserts each `/capabilities.json` row `true` for `elicitation`/`sampling` renders from the in-band gate function and has a raw-client exerciser.",
+      "test": "tests/elib_ac05_transport_contract_is_derived_from_build_router.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a disabled tenant and an orphan row whose tenant id no longer exists, When the root document is built, Then neither row is listed and the doctor reports the orphan with reason `tenant_missing`.",
-      "test": "tests/oauthdoc_ac06_orphan_and_disabled_tenant_rows_are_not_listed.rs"
+      "description": "Given an in-band elicitation in flight, When the client never answers, Then `elicit_timeout` is returned at `timeout_s` inside the tool's budget and the stream closes with the tool's result; Given a POSTed response whose request id is unknown or already completed, or whose `Mcp-Session-Id` belongs to another session, Then the server answers `202`, delivers nothing, and the in-flight call is unaffected.",
+      "test": "tests/elib_ac06_silence_times_out_and_stray_answers_deliver_nothing.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given two concurrent `issuer_remove` calls for the same issuer, When both complete, Then exactly one returns `{removed: true}`, the other `not_found`, and no panic or duplicate audit row occurs.",
-      "test": "tests/oauthdoc_ac07_concurrent_issuer_remove_has_one_winner.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "SHOULD",
-      "description": "Given an empty `oauth_issuers` table, When the root document is built, Then it lists exactly the hosted authorization server and the doctor reports `{rows: 0, invalid: []}`. - iter_log: 2026-10-14T22:45:05Z amended by /dream (build_priority high \u2192 normal, carbon controller; Joe 10-14 3:4x pm \"prioritize the mcphost PRDs that are blocking synthorg PRDs. have them go next.\") \u2014 yields the high tier to the 8 synthorg-blocking mcphost PRDs; re-raise when those have landed; frontmatter only",
-      "test": "tests/oauthdoc_ac08_empty_table_lists_only_hosted_as.rs"
+      "description": "Given 8 concurrent sessions eliciting at once and answering in shuffled order, When all complete, Then each call receives only its own session's `content`; Given two concurrent eliciting `tools/call`s on ONE session, Then the first gets its own `content` and the second returns `pending`, with no cross-delivery; Given `initialize` floods beyond the capability store's ceiling, Then the store never exceeds it, the oldest entries are evicted and the newest still elicit in-band.",
+      "test": "tests/elib_ac07_concurrent_sessions_never_cross_and_the_store_is_bounded.rs"
     }
   ],
   "scope": [

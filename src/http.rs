@@ -1155,6 +1155,17 @@ async fn oauth_401_upgrade(State(state): State<Arc<AppState>>, req: Request<Body
         return next.run(req).await;
     };
     let response = next.run(req).await;
+    // PRD-mcphost-elicitation-in-band-on-stateless-transport R0: only a JSON
+    // body can carry a JSON-RPC auth refusal; an SSE `tools/call` (an
+    // in-band elicitation) must stream, not be buffered until it closes.
+    let is_json = response
+        .headers()
+        .get(http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|ct| ct.starts_with("application/json"));
+    if !is_json {
+        return response;
+    }
     let (parts, body) = response.into_parts();
     let Ok(bytes) = axum::body::to_bytes(body, usize::MAX).await else {
         return Response::from_parts(parts, Body::empty());
@@ -1847,14 +1858,51 @@ async fn issue_session_id(
     {
         tracing::warn!(error = %e, "failed to revoke session-bound keys on session close");
     }
+    if req.method() == http::Method::DELETE
+        && let Some(ended) = &presented
+    {
+        state.session_bindings.inband().forget(ended);
+    }
+    let session_present = presented.is_some();
     let session_id = presented.unwrap_or_else(|| state.session_bindings.issue());
     req.extensions_mut()
         .insert(crate::session_bind::RequestSessionId(session_id.clone()));
+    req.extensions_mut().insert(crate::session_bind::SessionPresented(session_present));
     let mut response = next.run(req).await;
     if let Ok(value) = HeaderValue::from_str(&session_id) {
         response.headers_mut().insert(header, value);
     }
     response
+}
+
+/// PRD-mcphost-elicitation-in-band-on-stateless-transport R3: rmcp's
+/// stateless transport answers a POSTed client JSON-RPC *response* `202` and
+/// drops it, so the answer to an in-band `elicitation/create` /
+/// `sampling/createMessage` is taken here instead and handed to the waiting
+/// call, keyed by (session id, request id). Runs inside
+/// [`issue_session_id`], so the session id is the verified one. Only a
+/// session with a request in flight has its body read; every other request
+/// -- and every body that is not a response -- is forwarded unchanged. An
+/// answer whose id is unknown or already completed is answered `202` and
+/// delivered nowhere.
+async fn deliver_client_response(State(state): State<Arc<AppState>>, req: Request<Body>, next: Next) -> Response {
+    let session = req
+        .extensions()
+        .get::<crate::session_bind::RequestSessionId>()
+        .map(|s| s.0.clone());
+    let stores = state.session_bindings.inband();
+    let Some(session) = session.filter(|s| req.method() == Method::POST && stores.has_inflight(s)) else {
+        return next.run(req).await;
+    };
+    let (parts, body) = req.into_parts();
+    let Ok(bytes) = axum::body::to_bytes(body, MAX_REQUEST_BODY_BYTES).await else {
+        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    };
+    if let Some((id, answer)) = crate::inband::client_response(&bytes) {
+        stores.deliver(&session, &id, answer);
+        return StatusCode::ACCEPTED.into_response();
+    }
+    next.run(Request::from_parts(parts, Body::from(bytes))).await
 }
 
 /// PRD-mcphost-reachability-alt-host requirement 4 / AC4: `Strict-
@@ -1878,7 +1926,7 @@ async fn hsts(State(state): State<Arc<AppState>>, req: Request<Body>, next: Next
 }
 
 pub fn build_router(state: Arc<AppState>) -> Router {
-    build_router_with_session_mode(state, false)
+    build_router_with_session_mode(state, crate::inband::PROD_LEGACY_SESSION_MODE)
 }
 
 /// PRD-mcphost-session-bound-tenant-after-signup: test-only seam behind
@@ -1894,7 +1942,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 /// rather than an assertion in a changelog.
 pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode: bool) -> Router {
     let config = StreamableHttpServerConfig::default()
-        .with_json_response(true)
+        .with_json_response(crate::inband::PROD_JSON_RESPONSE)
         .with_legacy_session_mode(legacy_session_mode)
         .with_max_request_body_bytes(MAX_REQUEST_BODY_BYTES)
         // This endpoint's security boundary is the bearer key, not the Host
@@ -1941,6 +1989,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         // PRD-mcphost-session-bound-tenant-after-signup requirement 1: a
         // `/t/{ns}/mcp` connection gets a session identity on exactly the
         // same terms as `/mcp` -- see `root_mcp_router` below.
+        .route_layer(middleware::from_fn_with_state(state.clone(), deliver_client_response))
         .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id))
         .route_layer(middleware::from_fn_with_state(state.clone(), enrich_unsupported_errors));
 
@@ -1956,6 +2005,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
             state.clone(),
             require_known_url_secret,
         ))
+        .route_layer(middleware::from_fn_with_state(state.clone(), deliver_client_response))
         .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id))
         .route_layer(middleware::from_fn_with_state(state.clone(), enrich_unsupported_errors));
 
@@ -1970,6 +2020,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
             state.clone(),
             require_live_invite_code,
         ))
+        .route_layer(middleware::from_fn_with_state(state.clone(), deliver_client_response))
         .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id))
         .route_layer(middleware::from_fn_with_state(state.clone(), enrich_unsupported_errors));
 
@@ -1982,6 +2033,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
             state.clone(),
             require_live_invite_code,
         ))
+        .route_layer(middleware::from_fn_with_state(state.clone(), deliver_client_response))
         .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id))
         .route_layer(middleware::from_fn_with_state(state.clone(), enrich_unsupported_errors));
 
@@ -1991,6 +2043,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
     let join_mcp_router = Router::new()
         .route_service("/j/{code}/mcp", service.clone())
         .route_layer(middleware::from_fn_with_state(state.clone(), require_live_join_code))
+        .route_layer(middleware::from_fn_with_state(state.clone(), deliver_client_response))
         .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id))
         .route_layer(middleware::from_fn_with_state(state.clone(), enrich_unsupported_errors));
 
@@ -2002,6 +2055,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
     // already documents: `.layer()` would wrap the default fallback too.
     let root_mcp_router = Router::new()
         .route_service("/mcp", service.clone())
+        .route_layer(middleware::from_fn_with_state(state.clone(), deliver_client_response))
         .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id))
         .route_layer(middleware::from_fn_with_state(state.clone(), enrich_unsupported_errors));
 
@@ -2012,6 +2066,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
     let entry_mcp_router = Router::new()
         .route_service(crate::oauth::OAUTH_ENTRY_PATH, service.clone())
         .route_layer(middleware::from_fn_with_state(state.clone(), require_entry_bearer))
+        .route_layer(middleware::from_fn_with_state(state.clone(), deliver_client_response))
         .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id))
         .route_layer(middleware::from_fn_with_state(state.clone(), enrich_unsupported_errors));
 
