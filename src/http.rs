@@ -465,6 +465,11 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
             );
         }
         obj.insert("network_denied".to_string(), Value::Object(network_denied));
+        // PRD-mcphost-secret-non-exfiltration-proof R5: blocks in the last 24 h.
+        obj.insert(
+            "secret_leak_blocked_24h".to_string(),
+            json!(state.db.secret_leak_blocks_since(since).await.unwrap_or(0)),
+        );
     }
     // PRD-mcphost-human-claim-magic-link requirement 5 / AC6: whether the
     // claim flow can actually send a magic link on this host --

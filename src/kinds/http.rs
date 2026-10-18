@@ -30,6 +30,7 @@ use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
+use crate::leakguard;
 use super::contract::{
     BudgetDim, CASE_BUDGET_EXCEEDED, CASE_CALL, CASE_ERROR_WITH_SOURCE_POSITION, CASE_SECRET_REDACTION, CONFORMANCE_SECRET_NAME, CaseSkip, ConformanceFixtures, KindContract, SourcePosition, UPSTREAM_FAMILY, codes, key,
 };
@@ -856,6 +857,15 @@ impl RateLimiter {
 
 // ---- redaction (requirement 6, AC1 / AC12) --------------------------------
 
+/// The name of the first secret whose value `raw` carries
+/// (PRD-mcphost-secret-non-exfiltration-proof R2).
+fn leaked_secret<'a>(raw: &Value, named: &'a [(String, String)]) -> Option<&'a str> {
+    named
+        .iter()
+        .find(|(_, v)| leakguard::value_contains_secret(raw, v))
+        .map(|(n, _)| n.as_str())
+}
+
 /// Replaces every occurrence of any resolved secret value with `***` in a
 /// string that could leave the host (a result, a log line, an error body).
 /// Longest-first so one secret value that happens to be a substring of
@@ -865,7 +875,7 @@ fn redact_str(input: &str, secrets: &[String]) -> String {
     ordered.sort_by_key(|s| std::cmp::Reverse(s.len()));
     let mut out = input.to_string();
     for secret in ordered {
-        out = out.replace(secret.as_str(), "***");
+        out = crate::leakguard::redact_secret(&out, secret);
     }
     out
 }
@@ -972,6 +982,10 @@ pub struct HttpKind {
     allow_http: bool,
     client: reqwest::Client,
     limiter: RateLimiter,
+    /// Test-only flag (PRD-mcphost-secret-non-exfiltration-proof AC5): skips
+    /// the outbound secret check so `host.secret.leak_test` can prove it
+    /// reports `LEAKED` when the block is missing. Never set by `new`.
+    outbound_check_disabled: bool,
 }
 
 impl HttpKind {
@@ -1058,7 +1072,17 @@ impl HttpKind {
             allow_http,
             client,
             limiter: RateLimiter::new(rate_limit_per_minute),
+            outbound_check_disabled: false,
         })
+    }
+
+    /// Test flag: build this kind without the outbound secret check, so the
+    /// self-test (`host.secret.leak_test`) can be shown to fail when a leak
+    /// is not blocked. Result-side blocking is unaffected.
+    #[doc(hidden)]
+    pub fn with_outbound_check_disabled(mut self) -> Self {
+        self.outbound_check_disabled = true;
+        self
     }
 
     fn scheme_allowed(&self, scheme: &str) -> bool {
@@ -1375,6 +1399,14 @@ impl Kind for HttpKind {
                 secret_map.insert(name.clone(), Value::String(value));
             }
         }
+        let secret_pairs: Vec<(String, Value)> =
+            secret_map.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        // Every value the result side must not carry, with the name the
+        // block reports (PRD-mcphost-secret-non-exfiltration-proof R2).
+        let mut named_secrets: Vec<(String, String)> = secret_pairs
+            .iter()
+            .filter_map(|(n, v)| v.as_str().map(|v| (n.clone(), v.to_string())))
+            .collect();
 
         let mut known: BTreeSet<String> = args_obj.keys().cloned().collect();
         for name in secret_map.keys() {
@@ -1459,6 +1491,7 @@ impl Kind for HttpKind {
                     // to echo it back -- same redaction list every
                     // `secret.<name>` template value already rides on.
                     secret_values.push(token.clone());
+                    named_secrets.push(("vault".to_string(), token.clone()));
                 }
                 None => {
                     return Err(KindError::structured(
@@ -1507,6 +1540,52 @@ impl Kind for HttpKind {
             .map(|b| render_body(&env, &context, b, "body"))
             .transpose()?;
 
+        // PRD-mcphost-secret-non-exfiltration-proof R3: a resolved secret
+        // value in the url, a header or the body may only go to a host the
+        // secret is bound to; an unbound secret goes out (and is reported).
+        // `host.secret.leak_test`'s default echo leg targets a reserved host
+        // that is answered in-process (nothing leaves the host), so only the
+        // fixture tools it publishes may name it.
+        let in_process_echo = host.eq_ignore_ascii_case(leakguard::LEAK_ECHO_HOST)
+            && ctx
+                .tool_name
+                .as_deref()
+                .is_some_and(|n| n.starts_with(leakguard::FIXTURE_PREFIX));
+        for (name, value) in secret_pairs.iter().filter(|_| !self.outbound_check_disabled) {
+            let Some(secret) = value.as_str() else { continue };
+            let in_url = leakguard::contains_secret(&rendered_url, secret)
+                || query_pairs
+                    .iter()
+                    .any(|(k, v)| leakguard::contains_secret(k, secret) || leakguard::contains_secret(v, secret));
+            let in_header = header_map
+                .values()
+                .any(|v| v.to_str().is_ok_and(|v| leakguard::contains_secret(v, secret)));
+            let in_body = rendered_body
+                .as_ref()
+                .is_some_and(|b| leakguard::value_contains_secret(b, secret));
+            let Some(where_) = [(in_url, "url"), (in_header, "header"), (in_body, "body")]
+                .into_iter()
+                .find_map(|(hit, w)| hit.then_some(w))
+            else {
+                continue;
+            };
+            match ctx.secrets.bound_hosts(name) {
+                Some(bound) if !in_process_echo && !leakguard::host_allowed(&bound, host) => {
+                    ctx.log.log(&format!(
+                        "{method_str} {host} secret_leak_blocked where={where_} secret={name}"
+                    ));
+                    return Err(leakguard::blocked(
+                        where_,
+                        name,
+                        json!({"host": host, "bound_hosts": bound}),
+                    ));
+                }
+                Some(_) => {}
+                None if !in_process_echo => leakguard::note_unbound_sent(name),
+                None => {}
+            }
+        }
+
         let request_summary = if ctx.test_mode {
             let query_json: Map<String, Value> = query_pairs
                 .iter()
@@ -1525,6 +1604,21 @@ impl Kind for HttpKind {
         } else {
             None
         };
+
+        if in_process_echo {
+            let raw = json!({
+                "status": 200,
+                "headers": {"content-type": "application/json"},
+                "body": rendered_body.clone().unwrap_or(Value::Null),
+            });
+            if let Some(name) = leaked_secret(&raw, &named_secrets) {
+                ctx.log.log(&format!(
+                    "{method_str} {host} 200 0ms secret_leak_blocked where=result secret={name}"
+                ));
+                return Err(leakguard::blocked("result", name, json!({"host": host})));
+            }
+            return Ok(raw);
+        }
 
         let mut builder = self
             .client
@@ -1607,12 +1701,33 @@ impl Kind for HttpKind {
             None
         };
 
+        // PRD-mcphost-secret-non-exfiltration-proof R2: an error body that
+        // carries a secret is a block, not a redacted upstream error. The
+        // log line is still written (redacted).
+        let leaked_excerpt = if error_excerpt.is_some() {
+            let raw = String::from_utf8_lossy(&buf[..buf.len().min(512)]).to_string();
+            named_secrets
+                .iter()
+                .find(|(_, v)| leakguard::contains_secret(&raw, v))
+                .map(|(n, _)| n.clone())
+        } else {
+            None
+        };
+
         ctx.log.log(&match &error_excerpt {
             Some(excerpt) => {
                 format!("{method_str} {host} {} {duration_ms}ms body={excerpt}", status.as_u16())
             }
             None => format!("{method_str} {host} {} {duration_ms}ms", status.as_u16()),
         });
+
+        if let Some(name) = leaked_excerpt {
+            return Err(leakguard::blocked(
+                "excerpt",
+                &name,
+                json!({"host": host, (key::UPSTREAM_STATUS): status.as_u16()}),
+            ));
+        }
 
         if let Some(excerpt) = error_excerpt {
             let remedy = remedy_for(status.as_u16());
@@ -1651,14 +1766,21 @@ impl Kind for HttpKind {
             }
         }
 
-        let mut result = redact_value(
-            &json!({
-                "status": status.as_u16(),
-                "headers": Value::Object(headers_out),
-                "body": body_value,
-            }),
-            &secret_values,
-        );
+        let raw_result = json!({
+            "status": status.as_u16(),
+            "headers": Value::Object(headers_out),
+            "body": body_value,
+        });
+        // PRD-mcphost-secret-non-exfiltration-proof R2: wherever redaction
+        // would replace a value in the result, the call fails instead.
+        if let Some(name) = leaked_secret(&raw_result, &named_secrets) {
+            ctx.log.log(&format!(
+                "{method_str} {host} {} {duration_ms}ms secret_leak_blocked where=result secret={name}",
+                status.as_u16()
+            ));
+            return Err(leakguard::blocked("result", name, json!({"host": host})));
+        }
+        let mut result = redact_value(&raw_result, &secret_values);
         // PRD-mcphost-rest-bridge AC1/AC2: every call additionally carries
         // its (already-redacted) response body at `result.payload` -- the
         // flat, no-wrapper location a python-kind tool's own return value

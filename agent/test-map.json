@@ -37,6 +37,16 @@
     "AC7": "tests/mprm_ac07_capabilities_advertise_prompts.rs"
   },
   "ac_test_map_by_prefix": {
+    "snp": {
+      "_prd": "PRD-mcphost-secret-non-exfiltration-proof.md (test_prefix: snp)",
+      "AC1": "tests/snp_ac01_url_to_unbound_host_is_blocked.rs",
+      "AC2": "tests/snp_ac02_echoed_secret_in_result_is_blocked.rs",
+      "AC3": "tests/snp_ac03_unbound_secret_is_sent_and_reported.rs",
+      "AC4": "tests/snp_ac04_leak_test_proves_both_legs_blocked.rs",
+      "AC5": "tests/snp_ac05_leak_test_cannot_pass_by_accident.rs",
+      "AC6": "tests/snp_ac06_short_secret_blocks_whole_tokens_only.rs",
+      "AC7": "tests/snp_ac07_blocks_reach_audit_log_and_healthz.rs"
+    },
     "oschv": {
       "_prd": "PRD-mcphost-output-schema-tenant-values-opaque.md (test_prefix: oschv)",
       "AC1": "tests/oschv_ac01_opaque_pointers_resolve.rs",

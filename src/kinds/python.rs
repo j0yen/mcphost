@@ -105,7 +105,7 @@ use super::contract::{
     BudgetDim, COMPOSE_FAMILY, CONFORMANCE_SECRET_NAME, ConformanceFixtures, ErrorFamily, KindContract, SourcePosition, TOOL_LIMIT_FAMILY, TOOL_STATE_FAMILY, UPSTREAM_FAMILY, codes, key,
 };
 use super::infer;
-use super::secretenv::{environment_report, merge_env, redact_kind_error, redact_value, secret_env};
+use super::secretenv::{block_result_leak, environment_report, merge_env, redact_kind_error, redact_value, secret_env};
 use super::{
     CallCtx, DocsBackend, DriftBackend, Kind, KindError, KindExample, LineageBackend, OutputDecl,
     StateBackend, TableBackend, ToolDescriptor,
@@ -5633,6 +5633,7 @@ impl PythonKind {
         ctx: &CallCtx,
         effective_schema: &Value,
         secret_values: &[String],
+        secret_env: &[(String, String)],
         // PRD-mcphost-surface-fluidity requirement 5 (Goal 4, AC6): the cold
         // path (below) already runs every response through
         // `apply_declared_outputs` before wrapping; this warm-reuse path
@@ -5692,6 +5693,9 @@ impl PythonKind {
                 self.warm.offer(key.clone(), entry).await;
                 Some(match result {
                     Ok(value) => {
+                        if let Err(e) = block_result_leak(&value, secret_env) {
+                            return Some(Err(e));
+                        }
                         let redacted = redact_value(&value, secret_values);
                         let redacted = apply_declared_outputs(redacted, declared);
                         if ctx.test_mode {
@@ -6314,6 +6318,7 @@ impl Kind for PythonKind {
                     ctx,
                     &effective_schema,
                     &secret_values,
+                    &secret_env,
                     &parsed.outputs,
                 )
                 .await
@@ -6473,6 +6478,7 @@ impl Kind for PythonKind {
         // while debugging), not just an error/traceback.
         match map_sandbox_outcome(outcome, ctx.run_id.is_some(), &self.own_domain) {
             Ok(value) => {
+                block_result_leak(&value, &secret_env)?;
                 let redacted = redact_value(&value, &secret_values);
                 // PRD-mcphost-result-envelope-contract requirement 1/3,
                 // AC2/AC3: declared output fields promoted to

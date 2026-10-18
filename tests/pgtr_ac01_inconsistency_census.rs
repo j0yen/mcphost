@@ -105,10 +105,13 @@ async fn census_counts_list_verbs_cursors_and_end_of_list_conventions() {
     // window with a note-key cursor, registered unpaged in
     // `paged::UNPAGED_VERBS`),
     // plus host.notify.channel_list and host.notify.receipts
-    // (PRD-mcphost-notify-user-channel, both registered unpaged).
+    // (PRD-mcphost-notify-user-channel, both registered unpaged),
+    // minus host.secret.list (PRD-mcphost-secret-non-exfiltration-proof R1:
+    // its response now carries `secrets` rows beside `names`, so it is a
+    // record with two arrays, no longer a pure single-array list).
     assert_eq!(
         list_shaped.len(),
-        39,
+        38,
         "list-shaped verbs drifted from the PRD baseline 32 + host.ask.list + host.key.list + host.calls.list + host.index.list + host.note.list + host.notify.channel_list + host.notify.receipts: {list_shaped:?}"
     );
     assert_eq!(

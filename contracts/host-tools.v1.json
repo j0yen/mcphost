@@ -15933,6 +15933,62 @@
       "unpaged_reason": "limit-only window over a bounded recent set; no keyset cursor is offered yet"
     },
     {
+      "description": "Prove a secret cannot leave: publishes a transient http fixture that tries to echo the secret in a result and to send it to an off-host canary, calls both, removes the fixture, and returns {echo, egress, bound_hosts, checked_at} where each verdict is blocked or LEAKED. LEAKED fails the call with leak_test_failed.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "echo_url": {
+            "description": "Optional http(s) URL of an upstream that echoes its request body; the secret is sent there, so it must be bound to that host (or unbound). Omit to use the host's in-process echo.",
+            "type": "string"
+          },
+          "name": {
+            "description": "The secret to test (host.secret.set).",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host.secret.leak_test",
+      "output_schema": {
+        "properties": {
+          "bound_hosts": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "checked_at": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "echo": {
+            "type": "string"
+          },
+          "egress": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "echo",
+          "egress"
+        ],
+        "type": "object"
+      },
+      "since": "0.108.206"
+    },
+    {
       "description": "List this tenant's secret names (never their values).",
       "input_schema": {
         "additionalProperties": false,
@@ -16017,6 +16073,38 @@
               "object",
               "null"
             ]
+          },
+          "secrets": {
+            "items": {
+              "properties": {
+                "bound": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "hosts": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           }
         },
         "required": [
@@ -16028,13 +16116,20 @@
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
     {
-      "description": "Store an encrypted secret value under this tenant's namespace.",
+      "description": "Store an encrypted secret value under this tenant's namespace, optionally bound to the hosts it may be sent to.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
             "type": "boolean"
+          },
+          "hosts": {
+            "description": "Hostnames this secret may be sent to (api.example.com, or *.example.com). A call that would send the value to any other host fails secret_leak_blocked. Omit to keep an existing binding; [] clears it.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "name": {
             "description": "Secret name, referenced from a spec as secret.<name>.",
@@ -16058,6 +16153,21 @@
       "name": "host.secret.set",
       "output_schema": {
         "properties": {
+          "bound": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "hosts": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "name": {
             "type": "string"
           },
@@ -16097,13 +16207,20 @@
     },
     {
       "alias_of": "host.secret.set",
-      "description": "Store an encrypted secret value under this tenant's namespace.",
+      "description": "Store an encrypted secret value under this tenant's namespace, optionally bound to the hosts it may be sent to.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
             "type": "boolean"
+          },
+          "hosts": {
+            "description": "Hostnames this secret may be sent to (api.example.com, or *.example.com). A call that would send the value to any other host fails secret_leak_blocked. Omit to keep an existing binding; [] clears it.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "name": {
             "description": "Secret name, referenced from a spec as secret.<name>.",
@@ -32888,6 +33005,33 @@
       "since": "0.107.80"
     },
     {
+      "alias_of": "host.secret.leak_test",
+      "description": "Prove a secret cannot leave: publishes a transient http fixture that tries to echo the secret in a result and to send it to an off-host canary, calls both, removes the fixture, and returns {echo, egress, bound_hosts, checked_at} where each verdict is blocked or LEAKED. LEAKED fails the call with leak_test_failed.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "echo_url": {
+            "description": "Optional http(s) URL of an upstream that echoes its request body; the secret is sent there, so it must be bound to that host (or unbound). Omit to use the host's in-process echo.",
+            "type": "string"
+          },
+          "name": {
+            "description": "The secret to test (host.secret.set).",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host_secret_leak_test",
+      "since": "0.108.206"
+    },
+    {
       "alias_of": "host.secret.list",
       "description": "List this tenant's secret names (never their values).",
       "input_schema": {
@@ -32906,13 +33050,20 @@
     },
     {
       "alias_of": "host.secret.set",
-      "description": "Store an encrypted secret value under this tenant's namespace.",
+      "description": "Store an encrypted secret value under this tenant's namespace, optionally bound to the hosts it may be sent to.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
             "type": "boolean"
+          },
+          "hosts": {
+            "description": "Hostnames this secret may be sent to (api.example.com, or *.example.com). A call that would send the value to any other host fails secret_leak_blocked. Omit to keep an existing binding; [] clears it.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "name": {
             "description": "Secret name, referenced from a spec as secret.<name>.",

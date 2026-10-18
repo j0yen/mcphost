@@ -2797,6 +2797,25 @@ pub async fn secret_set(
 ) -> Result<Value, AppError> {
     let name = arg_str(args, "name")?;
     let value = arg_str(args, "value")?;
+    // PRD-mcphost-secret-non-exfiltration-proof R1: `hosts` binds the secret
+    // to the hosts it may be sent to; omitted keeps an existing binding,
+    // `[]` clears it.
+    let hosts: Option<Vec<String>> = match args.get("hosts") {
+        None | Some(Value::Null) => None,
+        Some(Value::Array(items)) => {
+            let mut out = Vec::with_capacity(items.len());
+            for item in items {
+                let raw = item.as_str().unwrap_or_default();
+                out.push(crate::leakguard::normalize_host(raw).ok_or_else(|| {
+                    AppError::InvalidArgs(format!(
+                        "hosts: '{raw}' is not a bare hostname (no scheme, port or path)"
+                    ))
+                })?);
+            }
+            Some(out)
+        }
+        Some(_) => return Err(AppError::InvalidArgs("hosts: must be an array of hostnames".into())),
+    };
 
     // PRD-mcphost-end-user-identity requirement 2: the reserved secret name
     // `assertion_secret_rotate` alone writes to -- a tenant setting this
@@ -2855,12 +2874,27 @@ pub async fn secret_set(
         .db
         .upsert_secret(tenant.id, name.clone(), ct, nonce)
         .await?;
-    Ok(json!({ "name": name, "set": true }))
+    if let Some(hosts) = hosts {
+        let stored = (!hosts.is_empty()).then_some(hosts);
+        state.db.set_secret_hosts(tenant.id, name.clone(), stored).await?;
+    }
+    let bound = state.db.secret_hosts(tenant.id).await?.remove(&name);
+    Ok(json!({ "name": name, "set": true, "hosts": bound.clone().unwrap_or_default(), "bound": bound.is_some() }))
 }
 
 pub async fn secret_list(state: &AppState, tenant: &Tenant) -> Result<Value, AppError> {
     let names = state.db.list_secret_names(tenant.id).await?;
-    Ok(json!({ "names": names }))
+    let bindings = state.db.secret_hosts(tenant.id).await?;
+    // PRD-mcphost-secret-non-exfiltration-proof R1: `secrets` rows carry the
+    // binding next to the name; `names` stays for existing readers.
+    let secrets: Vec<Value> = names
+        .iter()
+        .map(|n| {
+            let hosts = bindings.get(n).cloned().unwrap_or_default();
+            json!({"name": n, "hosts": hosts, "bound": bindings.contains_key(n)})
+        })
+        .collect();
+    Ok(json!({ "names": names, "secrets": secrets }))
 }
 
 /// AC19 / requirement 15: publish this tenant's `server.json` to the

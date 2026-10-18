@@ -366,6 +366,9 @@ const MIGRATION_0120: &str = include_str!("../migrations/0120_sampling_usage.sql
 const MIGRATION_0115: &str = include_str!("../migrations/0115_example_proofs.sql");
 const MIGRATION_PUBVIS: &str = include_str!("../migrations/0119_publish_visibility_tags.sql");
 
+/// PRD-mcphost-secret-non-exfiltration-proof R1: `secrets.hosts_json`.
+const MIGRATION_SECRET_HOSTS: &str = include_str!("../migrations/0121_secret_host_binding.sql");
+
 /// PRD-mcphost-org-model R1/R4: `orgs`, `org_members`, `invites.kind = 'org'`.
 const MIGRATION_0116: &str = include_str!("../migrations/0116_orgs.sql");
 
@@ -3185,6 +3188,19 @@ impl Db {
         Self::migrate_0119_publish_visibility_tags(&conn)?;
         // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0120)?;
+        Self::migrate_0121_secret_host_binding(&conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-secret-non-exfiltration-proof R1: gated on
+    /// `secrets.hosts_json` (the batch is an `ALTER`, so a rerun must skip it).
+    fn migrate_0121_secret_host_binding(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('secrets') WHERE name = 'hosts_json'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_SECRET_HOSTS)?;
+        }
         Ok(())
     }
 
@@ -7822,6 +7838,20 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-secret-non-exfiltration-proof R5: blocks recorded since
+    /// `since_unix`, for admin healthz's `secret_leak_blocked_24h`.
+    pub async fn secret_leak_blocks_since(&self, since_unix: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM admin_audit WHERE action = ?1 AND created_unix >= ?2",
+                params![crate::leakguard::AUDIT_ACTION, since_unix],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
     /// `admin.audit_log` (requirement 4): newest-first, paged read of
     /// `admin_audit`; `before_id` (when given) restricts to rows older
     /// than that id, so a caller can page backward through the log.
@@ -9341,6 +9371,46 @@ impl Db {
                 params![tenant_id, name, value_enc, nonce, created_at],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-secret-non-exfiltration-proof R1: store (or clear, with
+    /// `None`) the host binding of an existing secret.
+    pub async fn set_secret_hosts(
+        &self,
+        tenant_id: i64,
+        name: String,
+        hosts: Option<Vec<String>>,
+    ) -> Result<(), AppError> {
+        let json = hosts.map(|h| serde_json::to_string(&h).unwrap_or_else(|_| "[]".to_string()));
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE secrets SET hosts_json = ?3 WHERE tenant_id = ?1 AND name = ?2",
+                params![tenant_id, name, json],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-secret-non-exfiltration-proof R1: name -> bound hosts for
+    /// every bound secret of the tenant (unbound secrets are absent).
+    pub async fn secret_hosts(
+        &self,
+        tenant_id: i64,
+    ) -> Result<std::collections::HashMap<String, Vec<String>>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT name, hosts_json FROM secrets WHERE tenant_id = ?1 AND hosts_json IS NOT NULL",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows
+                .into_iter()
+                .filter_map(|(n, j)| serde_json::from_str::<Vec<String>>(&j).ok().map(|h| (n, h)))
+                .collect())
         })
         .await
     }

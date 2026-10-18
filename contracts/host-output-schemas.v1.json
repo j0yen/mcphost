@@ -8305,6 +8305,29 @@
           }
         },
         "type": "object"
+      },
+      "secrets": {
+        "items": {
+          "properties": {
+            "bound": {
+              "type": "boolean"
+            },
+            "hosts": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
+        },
+        "type": "array"
       }
     },
     "required": [
@@ -8314,6 +8337,15 @@
   },
   "host.secret.set": {
     "properties": {
+      "bound": {
+        "type": "boolean"
+      },
+      "hosts": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
       "name": {
         "type": "string"
       },
@@ -15001,6 +15033,30 @@
     },
     "required": [
       "left"
+    ],
+    "type": "object"
+  },
+  "host.secret.leak_test": {
+    "properties": {
+      "bound_hosts": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "checked_at": {
+        "type": "integer"
+      },
+      "echo": {
+        "type": "string"
+      },
+      "egress": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "echo",
+      "egress"
     ],
     "type": "object"
   }

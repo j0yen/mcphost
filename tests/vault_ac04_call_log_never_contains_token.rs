@@ -144,7 +144,10 @@ async fn tool_logs_never_carry_the_vault_token() {
         )
         .await
         .expect_err("upstream 401 must surface as a call error");
-    assert_eq!(err.error_code.as_deref(), Some("upstream_auth"));
+    // PRD-mcphost-secret-non-exfiltration-proof R2: an error body that echoes
+    // the token is a block (it used to surface as a redacted `upstream_auth`).
+    assert_eq!(err.error_code.as_deref(), Some("secret_leak_blocked"));
+    assert_eq!(err.data["where"], "excerpt");
     // The error's own structured data proves the upstream really did echo
     // the token back, and that the existing redaction already scrubs it
     // from the surface the caller sees directly.

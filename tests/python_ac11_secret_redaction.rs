@@ -55,28 +55,23 @@ async fn secret_present_and_redacted_when_declared() {
         .await
         .expect("publish ok");
 
-    let result = poll_until_ready(
+    // PRD-mcphost-secret-non-exfiltration-proof R2: the echo that used to be
+    // redacted to `***` and returned ok is now a `secret_leak_blocked`.
+    let err = poll_until_ready(
         &client,
         &format!("{ns}.leaker"),
         json!({}),
         Duration::from_secs(10),
     )
     .await
-    .unwrap_or_else(|e| panic!("call must succeed: {} {}", e.code, e.message));
-    let structured = extract_structured(&result);
-    assert_eq!(
-        structured["present"],
-        json!(true),
-        "SECRET_TOKEN must be present when 'token' is declared in secrets"
-    );
-    let echoed = structured["echoed"].as_str().unwrap_or("");
-    assert_ne!(
-        echoed, SECRET_VALUE,
-        "the raw secret value must never appear verbatim in a result that leaves the host"
-    );
+    .expect_err("a result carrying the raw secret must be blocked");
+    assert_eq!(err.error_code.as_deref(), Some("secret_leak_blocked"), "{err:?}");
+    assert_eq!(err.data["where"], "result");
+    assert_eq!(err.data["secret"], "token");
+    let dump = format!("{} {}", err.message, err.data);
     assert!(
-        echoed.contains("***"),
-        "the redacted echo should show the '***' marker, got: {echoed}"
+        !dump.contains(SECRET_VALUE),
+        "the raw secret value must never appear in an error that leaves the host: {dump}"
     );
 }
 

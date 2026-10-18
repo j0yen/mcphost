@@ -9,6 +9,7 @@ pub mod agents;
 pub mod alerts;
 pub mod api_contract;
 pub mod asks;
+pub mod leakguard;
 pub mod longpoll;
 pub mod confirm;
 pub mod assertion;
