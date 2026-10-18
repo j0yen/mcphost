@@ -43,12 +43,25 @@ pub(crate) fn merge_env(secret_env: &[(String, String)], env: &[(String, String)
     combined
 }
 
+/// PRD-mcphost-secret-non-exfiltration-proof R2: a sandboxed tool's result
+/// that carries one of its `SECRET_<NAME>` values fails `secret_leak_blocked
+/// {where: "result"}` instead of being returned redacted.
+pub(crate) fn block_result_leak(value: &Value, secret_env: &[(String, String)]) -> Result<(), KindError> {
+    for (env_name, secret) in secret_env {
+        if crate::leakguard::value_contains_secret(value, secret) {
+            let name = env_name.strip_prefix("SECRET_").unwrap_or(env_name).to_ascii_lowercase();
+            return Err(crate::leakguard::blocked("result", &name, json!({})));
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn redact_str(input: &str, secrets: &[String]) -> String {
     let mut ordered: Vec<&String> = secrets.iter().filter(|s| !s.is_empty()).collect();
     ordered.sort_by_key(|s| std::cmp::Reverse(s.len()));
     let mut out = input.to_string();
     for secret in ordered {
-        out = out.replace(secret.as_str(), "***");
+        out = crate::leakguard::redact_secret(&out, secret);
     }
     out
 }

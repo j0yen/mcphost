@@ -1214,6 +1214,12 @@ pub struct KindExample {
 /// Resolves one of the calling tenant's stored secrets by name.
 pub trait SecretResolver: Send + Sync {
     fn resolve(&self, name: &str) -> Option<String>;
+
+    /// PRD-mcphost-secret-non-exfiltration-proof R1: the hosts `name` is
+    /// bound to, or `None` for an unbound secret (the default).
+    fn bound_hosts(&self, _name: &str) -> Option<Vec<String>> {
+        None
+    }
 }
 
 /// A resolver with no secrets, for contexts (like the conformance suite)

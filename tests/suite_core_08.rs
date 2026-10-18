@@ -1246,6 +1246,20 @@ mod skillsrc_ac03_missing_skill_md_is_stale_and_recreated;
 mod skillsrc_ac04_gen_docs_idempotent;
 #[path = "skillsrc_ac05_output_list_and_drift_test_kept.rs"]
 mod skillsrc_ac05_output_list_and_drift_test_kept;
+#[path = "snp_ac01_url_to_unbound_host_is_blocked.rs"]
+mod snp_ac01_url_to_unbound_host_is_blocked;
+#[path = "snp_ac02_echoed_secret_in_result_is_blocked.rs"]
+mod snp_ac02_echoed_secret_in_result_is_blocked;
+#[path = "snp_ac03_unbound_secret_is_sent_and_reported.rs"]
+mod snp_ac03_unbound_secret_is_sent_and_reported;
+#[path = "snp_ac04_leak_test_proves_both_legs_blocked.rs"]
+mod snp_ac04_leak_test_proves_both_legs_blocked;
+#[path = "snp_ac05_leak_test_cannot_pass_by_accident.rs"]
+mod snp_ac05_leak_test_cannot_pass_by_accident;
+#[path = "snp_ac06_short_secret_blocks_whole_tokens_only.rs"]
+mod snp_ac06_short_secret_blocks_whole_tokens_only;
+#[path = "snp_ac07_blocks_reach_audit_log_and_healthz.rs"]
+mod snp_ac07_blocks_reach_audit_log_and_healthz;
 #[path = "soff_ac01_header_and_arg_returns_success_envelope.rs"]
 mod soff_ac01_header_and_arg_returns_success_envelope;
 #[path = "soff_ac02_header_only_returns_success_and_whoami_disabled.rs"]

@@ -1039,14 +1039,25 @@ pub async fn audit_log(state: &AppState, args: &Value) -> Result<Value, AppError
     let entries: Vec<Value> = rows
         .into_iter()
         .map(|r| {
-            json!({
+            let mut entry = json!({
                 "id": r.id,
                 "actor_key_id": r.actor_key_id,
                 "action": r.action,
                 "target": r.target,
                 "detail": r.detail,
                 "created_unix": r.created_unix,
-            })
+            });
+            // PRD-mcphost-secret-non-exfiltration-proof R5: a block row
+            // carries `tenant`, `tool`, `where` and `secret` as fields, not
+            // only inside `detail`.
+            if r.action == crate::leakguard::AUDIT_ACTION
+                && let Some(Value::Object(fields)) =
+                    r.detail.as_deref().and_then(|d| serde_json::from_str::<Value>(d).ok())
+                && let Some(obj) = entry.as_object_mut()
+            {
+                obj.extend(fields);
+            }
+            entry
         })
         .collect();
     Ok(json!({ "entries": entries }))

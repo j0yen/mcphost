@@ -628,6 +628,15 @@
     },
     {
       "backoff": {
+        "kind": "none"
+      },
+      "code": "leak_test_failed",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
         "kind": "fixed",
         "ms": 5000
       },
@@ -717,6 +726,15 @@
       "code": "sampling_unsupported",
       "max_attempts": 1,
       "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "secret_leak_blocked",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
       "retryable": false
     },
     {

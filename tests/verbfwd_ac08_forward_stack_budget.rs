@@ -205,6 +205,12 @@ async fn run_one(id: &str, args: Value) -> String {
         )
         .await
         .expect("publish the placeholder tool");
+    // ...and one secret named `xx`, so `host.secret.leak_test` (which takes the
+    // name of an existing secret) gets past its lookup and its body is measured.
+    client
+        .tools_call("host.secret.set", json!({"name": PLACEHOLDER, "value": PLACEHOLDER}))
+        .await
+        .expect("set the placeholder secret");
     // The wrapper's `name` is the dotted verb as an agent writes it (no `host.`).
     let name = verb.strip_prefix("host.").unwrap_or(verb);
     let wrapper = if via == "test" { "host.tool_test" } else { "host.tool_call" };
