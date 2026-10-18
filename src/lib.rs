@@ -97,6 +97,7 @@ pub mod notify;
 pub mod paged;
 pub mod usage;
 pub mod preflight;
+pub mod prompts;
 pub mod protocol;
 pub mod delegation;
 pub mod scopes;
