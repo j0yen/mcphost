@@ -929,6 +929,42 @@ impl TestServer {
         .await
     }
 
+    /// PRD-mcphost-send-email-from-tool: a server with the python kind (data
+    /// under `envs_dir`) and a caller-supplied, inspectable fake email client
+    /// -- what a tool's `mcphost.email.send` and `host.email.send` reach.
+    pub async fn start_python_with_email(
+        envs_dir: &std::path::Path,
+        email_client: Arc<mcphost::email::FakeEmailClient>,
+    ) -> Self {
+        Self::start_full_with_email(
+            Some(ADMIN_KEY.to_string()),
+            python_kind_registry(envs_dir),
+            mcphost::state::CALL_TIMEOUT,
+            None,
+            mcphost::state::SIGNUP_RATE_LIMIT_PER_HOUR,
+            mcphost::billing::BillingConfig::default(),
+            Arc::new(mcphost::billing::FakeBillingClient::new(
+                mcphost::state::now_unix(),
+            )),
+            Vec::new(),
+            mcphost::email::EmailConfig {
+                api_url: Some("https://email.invalid/send".to_string()),
+                api_key: Some("test-email-key".to_string()),
+                from: Some("noreply@mcphost.invalid".to_string()),
+                provider: mcphost::email::EmailProvider::default(),
+            },
+            email_client,
+            mcphost::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,
+            mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
+            mcphost::db::DbConfig::from_env(),
+            mcphost::alerts::AlertConfig::default(),
+            mcphost::state::FleetIps::empty(),
+            mcphost::state::VerifiedClientIds::empty(),
+            Vec::new(),
+        )
+        .await
+    }
+
     /// PRD-mcphost-reachability-alt-host: same shape as
     /// [`Self::start_with_email`] (a caller-supplied, inspectable fake
     /// email client) plus `alt_public_urls` set directly on `AppState` --
