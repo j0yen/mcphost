@@ -86,5 +86,6 @@ exactly the same modules.
 - `mcphost.channel` -- post to or read a tenant channel (same store host.channel.* uses)
 - `mcphost.msg` -- send or read direct messages (same store host.msg.* uses)
 - `mcphost.sampling` -- ask the calling client's own model one question mid-call (sampling/createMessage), metered against the plan's sampling_tokens_per_day
+- `mcphost.email` -- send an email from this tool's own address (same verb host.email.send is)
 - `mcphost.elicit` -- ask the user a typed question mid-call: the client's form when it can, the ask-user link otherwise
 <!-- mcphost-bridge-modules:end -->

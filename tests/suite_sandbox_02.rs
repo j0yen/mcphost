@@ -176,6 +176,12 @@ mod elib_ac06_silence_times_out_and_stray_answers_deliver_nothing;
 mod elib_ac07_concurrent_sessions_never_cross_and_the_store_is_bounded;
 #[path = "ematt_ac02_attachments_become_blobs_a_tool_reads.rs"]
 mod ematt_ac02_attachments_become_blobs_a_tool_reads;
+#[path = "emsnd_ac01_tool_reply_is_recorded_from_the_tool.rs"]
+mod emsnd_ac01_tool_reply_is_recorded_from_the_tool;
+#[path = "emsnd_ac02_tool_sender_reply_to_inbound_and_sent_row.rs"]
+mod emsnd_ac02_tool_sender_reply_to_inbound_and_sent_row;
+#[path = "emsnd_ac07_send_status_and_bridge_module_cannot_drift.rs"]
+mod emsnd_ac07_send_status_and_bridge_module_cannot_drift;
 #[path = "enduser_ac01_oauth_python_env_and_calls_row.rs"]
 mod enduser_ac01_oauth_python_env_and_calls_row;
 #[path = "enduser_ac04_no_identity_env_unset_and_calls_row_null.rs"]

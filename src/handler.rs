@@ -4407,6 +4407,45 @@ fn host_tools_part_10() -> Vec<Tool> {
             ),
         ),
         Tool::new(
+            "host.email.send",
+            format!(
+                "Send one email from your own address: {{to (an address or at most {} addresses), subject \
+                 (at most {} bytes), text (at most {} bytes), html?, reply_to_message_id?}} returns {{id, \
+                 provider_message_id, from, sent_at}}. From is <tool>@<tenant>.<domain> when a tool sends \
+                 (mcphost.email.send) and agent@<tenant>.<domain> when you do. Every attempt is a row in \
+                 host.email.sends with status one of {}.",
+                crate::email_send::TO_MAX,
+                crate::email_send::SUBJECT_MAX_BYTES,
+                crate::email_send::TEXT_MAX_BYTES,
+                crate::email_send::SendStatus::names().join(", ")
+            ),
+            host_schema_checked(
+                json!({
+                    "to": {"description": format!("One address, or an array of at most {}.", crate::email_send::TO_MAX), "oneOf": [
+                        {"type": "string"},
+                        {"type": "array", "items": {"type": "string"}},
+                    ]},
+                    "subject": {"type": "string", "description": format!("One line, at most {} bytes.", crate::email_send::SUBJECT_MAX_BYTES)},
+                    "text": {"type": "string", "description": format!("Plain-text body, at most {} bytes.", crate::email_send::TEXT_MAX_BYTES)},
+                    "html": {"type": "string", "description": format!("Optional HTML body, at most {} bytes.", crate::email_send::HTML_MAX_BYTES)},
+                    "reply_to_message_id": {"type": "string", "description": "Optional Message-ID this answers; copied into In-Reply-To."},
+                }),
+                &["to", "subject", "text"],
+            ),
+        ),
+        Tool::new(
+            "host.email.sends",
+            format!(
+                "List this tenant's email send rows, newest first: {{sends: [{{id, tool, from, to, subject, status, \
+                 provider_message_id, error, sent_at}}]}}, status one of {}.",
+                crate::email_send::SendStatus::names().join(", ")
+            ),
+            host_schema(
+                json!({"limit": {"type": "integer", "description": format!("1 to {}; default 20.", crate::email_send::SENDS_MAX)}}),
+                &[],
+            ),
+        ),
+        Tool::new(
             "host.notify.receipts",
             "List per-channel delivery receipts: {receipts: [{notify_id, channel_id, kind, status, upstream_status, attempts, delivered_unix}]}, status one of queued, delivered, failed, rate_limited.",
             host_schema(
@@ -6496,6 +6535,9 @@ impl MsgBackend for TenantMsgBridge {
         let result = match op {
             "send" => messaging::send(&self.state, &self.tenant, &args).await,
             "inbox" => messaging::inbox(&self.state, &self.tenant, &args).await,
+            // PRD-mcphost-send-email-from-tool R7: `mcphost.email.send` rides this backend (see
+            // `kinds::python::EmailSidecarBridge`), which adds the calling tool's name.
+            "email_send" => crate::email_send::send_from_bridge(&self.state, &self.tenant, &args).await,
             other => Err(AppError::InvalidArgs(format!("unknown msg op '{other}'"))),
         };
         result.map_err(app_error_to_kind_error)
@@ -7707,6 +7749,9 @@ impl McpHostHandler {
             "host.notify.channel_remove" => crate::notify::channel_remove(&self.state, tenant, &args).await,
             "host.notify.send" => crate::notify::send(&self.state, tenant, &args).await,
             "host.notify.receipts" => crate::notify::receipts(&self.state, tenant, &args).await,
+            // PRD-mcphost-send-email-from-tool.
+            "host.email.send" => crate::email_send::send(&self.state, tenant, None, &args).await,
+            "host.email.sends" => crate::email_send::sends(&self.state, tenant, &args).await,
             "host.task.post" => crate::tasks::post(&self.state, tenant, &args).await,
             "host.task.claim" => crate::tasks::claim(&self.state, tenant, &args).await,
             "host.task.complete" => crate::tasks::complete(&self.state, tenant, &args).await,
