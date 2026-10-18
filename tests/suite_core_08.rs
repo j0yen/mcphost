@@ -1196,6 +1196,12 @@ mod soff_ac05_matrix_exhaustive_auth_shapes;
 mod soff_ac06_non_lifecycle_verb_still_refused;
 #[path = "soff_ac07_docs_document_already_offboarded.rs"]
 mod soff_ac07_docs_document_already_offboarded;
+#[path = "sorel_ac01_offboard_releases_session_fresh_signup.rs"]
+mod sorel_ac01_offboard_releases_session_fresh_signup;
+#[path = "sorel_ac02_self_offboard_remedy_and_idempotent.rs"]
+mod sorel_ac02_self_offboard_remedy_and_idempotent;
+#[path = "sorel_ac03_admin_disable_remedy_unchanged.rs"]
+mod sorel_ac03_admin_disable_remedy_unchanged;
 #[path = "specpath_ac01_map_form_normalizes_and_publishes.rs"]
 mod specpath_ac01_map_form_normalizes_and_publishes;
 #[path = "specpath_ac02_outputs_map_value_type_error.rs"]

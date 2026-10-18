@@ -2048,6 +2048,12 @@
       "AC4": "tests/insch_ac04_dispatch_refuses_by_schema.rs",
       "AC5": "tests/insch_ac05_schema_valid_call_clears_validation.rs",
       "AC6": "tests/insch_ac06_contract_and_docs_carry_constraints.rs"
+    },
+    "sorel": {
+      "_prd": "PRD-mcphost-self-offboard-releases-session.md (test_prefix: sorel)",
+      "AC1": "tests/sorel_ac01_offboard_releases_session_fresh_signup.rs",
+      "AC2": "tests/sorel_ac02_self_offboard_remedy_and_idempotent.rs",
+      "AC3": "tests/sorel_ac03_admin_disable_remedy_unchanged.rs"
     }
   }
 }
