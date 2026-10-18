@@ -151,6 +151,7 @@ pub mod tasks;
 pub mod timeline;
 pub mod tenant_state;
 pub mod tool_aliases;
+pub mod tooldir;
 pub mod triggers;
 pub mod uptime;
 pub mod vault;

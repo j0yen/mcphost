@@ -65,6 +65,16 @@
       "AC4": "tests/oschv_ac04_corpus_still_validates_diff_widened.rs",
       "AC5": "tests/oschv_ac05_declared_output_untyped_is_opaque.rs"
     },
+    "tdf": {
+      "_prd": "PRD-mcphost-tool-directory-format.md (test_prefix: tdf)",
+      "AC1": "tests/tdf_ac01_round_trip_every_kind.rs",
+      "AC2": "tests/tdf_ac02_lint_names_unknown_field.rs",
+      "AC3": "tests/tdf_ac03_doc_drift.rs",
+      "AC4": "tests/tdf_ac04_pack_rejects_empty.rs",
+      "AC5": "tests/tdf_ac05_example_hello_py_packs.rs",
+      "AC6": "tests/tdf_ac06_as_mcp_call_publishes.rs",
+      "AC7": "tests/tdf_ac07_unpack_unknown_kind.rs"
+    },
     "nfs": {
       "_prd": "PRD-mcphost-notes-to-future-self.md (test_prefix: nfs)",
       "AC1": "tests/nfs_ac01_put_emits_list_changed_and_suffix.rs",

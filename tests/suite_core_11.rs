@@ -140,6 +140,18 @@ mod tablemodel_ac09_drop_removes_model_and_annotations;
 mod tablemodel_ac10_empty_table_reports_unknown_types_no_error;
 #[path = "tables_ac07_tenant_delete_cascade.rs"]
 mod tables_ac07_tenant_delete_cascade;
+#[path = "tdf_ac01_round_trip_every_kind.rs"]
+mod tdf_ac01_round_trip_every_kind;
+#[path = "tdf_ac02_lint_names_unknown_field.rs"]
+mod tdf_ac02_lint_names_unknown_field;
+#[path = "tdf_ac03_doc_drift.rs"]
+mod tdf_ac03_doc_drift;
+#[path = "tdf_ac04_pack_rejects_empty.rs"]
+mod tdf_ac04_pack_rejects_empty;
+#[path = "tdf_ac05_example_hello_py_packs.rs"]
+mod tdf_ac05_example_hello_py_packs;
+#[path = "tdf_ac07_unpack_unknown_kind.rs"]
+mod tdf_ac07_unpack_unknown_kind;
 #[path = "tenant_delete_ac01_cascade_delete.rs"]
 mod tenant_delete_ac01_cascade_delete;
 #[path = "tenant_delete_ac02_forbidden.rs"]

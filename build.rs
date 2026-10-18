@@ -69,6 +69,8 @@ fn stale_reason(root: &std::path::Path, index: &serde_json::Value) -> Option<Str
             rd.filter_map(|e| e.ok())
                 .filter(|e| e.path().is_dir())
                 .map(|e| e.file_name().to_string_lossy().into_owned())
+                // Mirrors `examples::NON_RECIPE_DIRS`: tool-directory samples, not recipes.
+                .filter(|n| n != "tools")
                 .collect()
         })
         .unwrap_or_default();

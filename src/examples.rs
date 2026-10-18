@@ -334,12 +334,19 @@ pub fn load_with(
     })
 }
 
-/// Every immediate subdirectory of `examples_dir`, sorted by name.
+/// Subdirectories of `examples/` that are not recipes (no `example.toml`):
+/// `tools/` holds the tool-directory format's checked-in samples
+/// (PRD-mcphost-tool-directory-format R5), linted by `mcphost tool lint`.
+/// `build.rs` repeats this list for its staleness scan.
+pub const NON_RECIPE_DIRS: &[&str] = &["tools"];
+
+/// Every immediate recipe subdirectory of `examples_dir`, sorted by name.
 pub fn example_dirs(examples_dir: &Path) -> std::io::Result<Vec<PathBuf>> {
     let mut dirs: Vec<PathBuf> = std::fs::read_dir(examples_dir)?
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| p.is_dir())
+        .filter(|p| !p.file_name().is_some_and(|n| NON_RECIPE_DIRS.iter().any(|d| n == *d)))
         .collect();
     dirs.sort();
     Ok(dirs)

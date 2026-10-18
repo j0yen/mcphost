@@ -225,6 +225,17 @@ enum Command {
         /// (`scripts/kind-contract-doc-check.sh`).
         #[arg(long)]
         kinds_only: bool,
+        /// PRD-mcphost-tool-directory-format R4: render `docs/tool-directory.md`
+        /// from `tool_publish_props` and every kind's `known_spec_fields`
+        /// (with `--check`, exit 1 naming the first differing line).
+        #[arg(long)]
+        tool_directory: bool,
+    },
+    /// PRD-mcphost-tool-directory-format: a tool as a directory
+    /// (`tool.toml` + `tool.py`/`tool.wasm` + `tests/`).
+    Tool {
+        #[command(subcommand)]
+        action: ToolCommand,
     },
     /// PRD-mcphost-call-cli-from-contract: call a host tool from the shell.
     /// The subcommands and flags come from the embedded contract
@@ -518,6 +529,21 @@ enum AdminCommand {
     /// Idempotent: a second run changes zero rows. Prints the counts
     /// changed and, per table, the post-run `funnel_origin` breakdown.
     BackfillOrigin,
+}
+
+#[derive(Subcommand)]
+enum ToolCommand {
+    /// Print the `host.tool_publish` payload for a tool directory.
+    Pack {
+        dir: PathBuf,
+        /// Wrap the payload in a JSON-RPC `tools/call` body for bare `/mcp`.
+        #[arg(long)]
+        as_mcp_call: bool,
+    },
+    /// Write a payload (a file, or `-` for stdin) back to a tool directory.
+    Unpack { payload: PathBuf, dir: PathBuf },
+    /// Run the server's own spec validators over a tool directory.
+    Lint { dir: PathBuf },
 }
 
 /// `mcphost gen-docs <target>`: a generated-docs family with its own flags.
@@ -1448,6 +1474,60 @@ async fn main() -> anyhow::Result<()> {
             }
             if stale {
                 std::process::exit(1);
+            }
+            Ok(())
+        }
+        Command::Tool { action } => {
+            // Plain stdout/exit-code, no `init_tracing()`, like `GenDocs`.
+            let kinds = mcphost::kinds::production_registry();
+            let result = match action {
+                ToolCommand::Pack { dir, as_mcp_call } => mcphost::tooldir::pack(&dir)
+                    .map(|p| if as_mcp_call { mcphost::tooldir::as_mcp_call(&p) } else { p }),
+                ToolCommand::Unpack { payload, dir } => {
+                    let text = if payload.as_os_str() == "-" {
+                        std::io::read_to_string(std::io::stdin())?
+                    } else {
+                        std::fs::read_to_string(&payload)?
+                    };
+                    match serde_json::from_str::<serde_json::Value>(&text) {
+                        Ok(v) => mcphost::tooldir::unpack(&v, &dir, &kinds)
+                            .map(|files| serde_json::json!({"ok": true, "wrote": files})),
+                        Err(e) => Err(mcphost::tooldir::TooldirError {
+                            code: mcphost::errors::INVALID_SPEC,
+                            message: format!("payload: not valid JSON: {e}"),
+                            error_code: None,
+                            data: serde_json::Value::Null,
+                        }),
+                    }
+                }
+                ToolCommand::Lint { dir } => mcphost::tooldir::lint(&dir, &kinds).map(|()| serde_json::json!({"ok": true})),
+            };
+            match result {
+                Ok(v) => {
+                    println!("{v}");
+                    Ok(())
+                }
+                Err(e) => {
+                    println!("{}", e.to_json());
+                    std::process::exit(1);
+                }
+            }
+        }
+        Command::GenDocs { check, tool_directory: true, .. } => {
+            let kinds = mcphost::kinds::production_registry();
+            let path = std::path::Path::new(mcphost::tooldir::DOC_PATH);
+            if check {
+                let committed = std::fs::read_to_string(path).unwrap_or_default();
+                match mcphost::tooldir::check_doc(&kinds, &committed) {
+                    Ok(()) => println!("gen-docs --tool-directory --check: {} is up to date", path.display()),
+                    Err(why) => {
+                        eprintln!("gen-docs --tool-directory --check: {why}");
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                std::fs::write(path, mcphost::tooldir::render_docs(&kinds))?;
+                println!("gen-docs --tool-directory: wrote {}", path.display());
             }
             Ok(())
         }
