@@ -6,7 +6,7 @@
 //! tenant across a public share instead of the owner itself.
 
 use crate::common;
-use common::{McpClient, TestServer, extract_structured, http_kind_registry, signup};
+use common::{McpClient, TestServer, http_kind_registry, signup};
 use serde_json::json;
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -66,17 +66,18 @@ async fn cross_tenant_call_never_leaks_owners_secret_to_caller() {
     let (_ns_b, key_b) = signup(&server.base_url, "Tenant B").await;
     let client_b = McpClient::with_bearer(&server.base_url, &key_b);
 
-    let result = client_b
+    // PRD-mcphost-secret-non-exfiltration-proof R2: the upstream echoes A's
+    // secret back, so B's call is blocked (it used to come back redacted);
+    // either way nothing B receives contains the value.
+    let err = client_b
         .tools_call(
             &format!("{ns_a}.stripe_customer_get"),
             json!({"id": "cus_123"}),
         )
         .await
-        .expect("B calls A's shared tool");
-    let structured = extract_structured(&result);
-    assert_eq!(structured["status"], 200);
-
-    let dump = structured.to_string();
+        .expect_err("B's call must be blocked, not return A's echoed secret");
+    assert_eq!(err.error_code.as_deref(), Some("secret_leak_blocked"), "{err:?}");
+    let dump = format!("{} {}", err.message, err.data);
     assert!(
         !dump.contains("sk_live_canary_secret_value"),
         "secret value leaked into B's result: {dump}"

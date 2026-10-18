@@ -54,32 +54,26 @@ async fn upstream_receives_secret_and_result_has_it_redacted() {
         .await
         .expect("publish ok");
 
-    let result = client
+    // PRD-mcphost-secret-non-exfiltration-proof R2: the stub upstream
+    // deliberately echoes the secret back, which used to be redacted to
+    // `***` and returned ok; it is now a block. The matcher above still
+    // proves the upstream received the real value (a request without it
+    // 404s, which would surface as `upstream_status`, not as the block).
+    let err = client
         .tools_call(
             &format!("{ns}.stripe_customer_get"),
             json!({"id": "cus_123"}),
         )
         .await
-        .expect("call ok");
-    let structured = extract_structured(&result);
+        .expect_err("an upstream that echoes the secret must be blocked");
+    assert_eq!(err.error_code.as_deref(), Some("secret_leak_blocked"), "{err:?}");
+    assert_eq!(err.data["where"], "result");
 
-    // The upstream really did receive the secret (the matcher above would
-    // have 404'd otherwise, which would show up as an `upstream_status`
-    // error rather than success) -- so this is a real end-to-end proof, not
-    // an assumption.
-    assert_eq!(structured["status"], 200);
-    assert_eq!(structured["body"]["id"], "cus_123");
-
-    // Guardrail: the secret value appears nowhere in the tool's own result,
-    // even though the stub upstream deliberately echoed it back.
-    let dump = structured.to_string();
+    // Guardrail: the secret value appears nowhere in the error.
+    let dump = format!("{} {}", err.message, err.data);
     assert!(
         !dump.contains("sk_live_canary_secret_value"),
-        "secret value leaked into the tool result: {dump}"
-    );
-    assert!(
-        dump.contains("***"),
-        "expected the echoed secret to be redacted to ***: {dump}"
+        "secret value leaked into the error: {dump}"
     );
 
     // Guardrail: the secret never appears in `host.tool_logs` either.

