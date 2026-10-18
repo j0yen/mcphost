@@ -11,3 +11,8 @@ Cargo.lock.bk
 
 # gate producers write their receipts into the worktree root; the post-rebase regen commit must never stage them (vti-plan unrouted, wm-build runs 847/858, 2026-10-15)
 gate-receipts/
+sdk/python/.venv/
+sdk/python/dist/
+__pycache__/
+.mypy_cache/
+.pytest_cache/

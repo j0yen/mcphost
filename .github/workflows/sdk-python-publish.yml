@@ -1,0 +1,41 @@
+name: sdk-python-publish
+
+# PRD-mcphost-python-sdk-generated R5: on a `v*` tag, build the wheel and
+# publish it to PyPI with the trusted publisher. Until the PyPI project
+# `mcphost-sdk` exists and trusts this repo (open question, owner: Joe) the
+# publish step fails; `continue-on-error` turns that into a warning, never a
+# failed release.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: sdk-python publish
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: build the wheel
+        working-directory: sdk/python
+        run: uv build
+
+      - name: publish to PyPI
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+        with:
+          packages-dir: sdk/python/dist
