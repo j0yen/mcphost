@@ -98,7 +98,8 @@ CORE_SHARDS="${CORE_SHARDS:-5}"
 # Recorded seconds per sandbox suite (and `lib`); overridable for tests.
 WEIGHTS_FILE="${CI_SUITE_WEIGHTS_FILE:-$REPO_ROOT/scripts/ci-suite-weights.json}"
 WEIGHTS_REL="scripts/ci-suite-weights.json"
-# Max MEASURED CI seconds per suite, written ONLY by scripts/ci-refresh-weights.sh
+# Max MEASURED CI seconds per suite, written by scripts/ci-refresh-weights.sh (and
+# rescaled by gen-test-suites.sh when a re-pack resizes a suite, like its weight)
 # (the `suite=<name> measured=<s>s` lines of a CI run log; the same script also
 # rewrites the recorded weights from them). `check` reads this committed file, so
 # it needs no network and runs on every PR.
