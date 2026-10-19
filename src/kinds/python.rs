@@ -747,6 +747,65 @@ pub fn plan_ceiling_violation(
     None
 }
 
+crate::err_code! {
+    pub TIMEOUT_CLAMPED,
+    code: "timeout_clamped", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Lower timeout_s to data.ceiling (the plan's sandbox_cpu_s_max) or upgrade the plan; calls already run with the ceiling.",
+}
+
+/// PRD-mcphost-sandbox-timeout-clamp-visible R2: a spec value the plan will
+/// clamp at call time. One shape feeds the publish response, the
+/// `host.tool.publish` output schema (`ClampWarning::FIELDS`, injected at
+/// registry load) and the drift test.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct ClampWarning {
+    pub code: &'static str,
+    pub field: &'static str,
+    pub requested: i64,
+    pub ceiling: i64,
+    pub ceiling_field: &'static str,
+    pub effective: i64,
+    pub plan: String,
+    pub message: String,
+}
+
+impl ClampWarning {
+    /// Every key of a serialised `ClampWarning`; all required.
+    pub const FIELDS: &'static [&'static str] =
+        &["code", "field", "requested", "ceiling", "ceiling_field", "effective", "plan", "message"];
+    /// The `code` set.
+    pub const CODES: &'static [&'static str] = &[TIMEOUT_CLAMPED];
+}
+
+/// R2: every spec value `plan` will clamp at call time (empty when the spec
+/// fits). One row for `timeout_s` against `sandbox_cpu_s_max`; the wall
+/// ceiling rides in `timings.limits.wall_s`.
+pub fn clamp_warnings(spec: &Value, plan: &crate::plans::Plan) -> Vec<ClampWarning> {
+    let Ok(parsed) = parse_spec(spec) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    if let Some(t) = parsed.timeout_s
+        && t as i64 > plan.sandbox_cpu_s_max
+    {
+        let ceiling = plan.sandbox_cpu_s_max;
+        out.push(ClampWarning {
+            code: TIMEOUT_CLAMPED,
+            field: "timeout_s",
+            requested: t as i64,
+            ceiling,
+            ceiling_field: "sandbox_cpu_s_max",
+            effective: ceiling,
+            plan: plan.name.clone(),
+            message: format!(
+                "timeout_s {t} exceeds sandbox_cpu_s_max {ceiling} on the {} plan; calls run with {ceiling}",
+                plan.name
+            ),
+        });
+    }
+    out
+}
+
 /// PRD-mcphost-sandbox-resource-limits-from-plan R2: the one place a call's
 /// `ResourceLimits` are built (cold call, `host.tool_run`, warm promotion):
 /// `min(spec, plan)` for cpu and memory, the plan's number for pids.
@@ -764,6 +823,20 @@ fn limits_for(ceilings: SandboxCeilings, parsed: &PythonSpec, warm: bool) -> Res
         max_open_files: MAX_OPEN_FILES,
         max_file_size_mb: MAX_FILE_SIZE_MB,
         max_processes: ceilings.pids,
+    }
+}
+
+/// R6: the limits a call runs under, from the same `limits_for` /
+/// `wall_clock_for` the sandbox is built with, so record and enforcement
+/// cannot differ.
+fn effective_limits(ceilings: SandboxCeilings, parsed: &PythonSpec) -> super::EffectiveLimits {
+    let requested = parsed.effective_timeout_s();
+    let effective = limits_for(ceilings, parsed, false).cpu_seconds;
+    super::EffectiveLimits {
+        timeout_s_requested: requested,
+        timeout_s_effective: effective,
+        wall_s: wall_clock_for(ceilings, parsed).as_secs(),
+        clamped: if requested > effective { vec!["timeout_s"] } else { Vec::new() },
     }
 }
 
@@ -6371,6 +6444,7 @@ impl Kind for PythonKind {
 
     async fn call(&self, spec: &Value, args: Value, ctx: &CallCtx) -> Result<Value, KindError> {
         let parsed = parse_spec(spec)?;
+        ctx.resources.record_limits(&effective_limits(ctx.sandbox_ceilings, &parsed));
         validate_spec_fields(&parsed, &self.own_domain)?;
 
         // PRD-mcphost-sandbox-egress-allowlist requirement 2/3 (AC3/AC6):
@@ -6687,6 +6761,7 @@ impl Kind for PythonKind {
     /// intended throughput bound for this RPC).
     async fn tool_run(&self, spec: &Value, args: Value, ctx: &CallCtx) -> Result<Value, KindError> {
         let parsed = parse_spec(spec)?;
+        ctx.resources.record_limits(&effective_limits(ctx.sandbox_ceilings, &parsed));
         validate_spec_fields(&parsed, &self.own_domain)?;
 
         // PRD-mcphost-sandbox-egress-allowlist requirement 2/3: same

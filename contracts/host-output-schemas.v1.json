@@ -12599,6 +12599,23 @@
         "description": "The tool's version after this publish (1 for a first publish).",
         "type": "integer"
       },
+      "warnings": {
+        "items": {
+          "properties": {
+            "ceiling": {"type": "integer"},
+            "ceiling_field": {"type": "string"},
+            "code": {"type": "string"},
+            "effective": {"type": "integer"},
+            "field": {"type": "string"},
+            "message": {"type": "string"},
+            "plan": {"type": "string"},
+            "requested": {"type": "integer"}
+          },
+          "required": ["ceiling", "ceiling_field", "code", "effective", "field", "message", "plan", "requested"],
+          "type": "object"
+        },
+        "type": "array"
+      },
       "welcome_back": {
         "properties": {
           "last_note": {

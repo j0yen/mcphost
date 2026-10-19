@@ -6275,9 +6275,13 @@ impl CallLog for BufferedLog {
 ///
 /// PRD-mcphost-sandbox-resource-limits-from-plan R4: the second slot holds
 /// the call's `pids_max_seen` (`-1` until the sandbox samples it).
+///
+/// PRD-mcphost-sandbox-timeout-clamp-visible R6: the third slot holds the
+/// limits the call ran under after the plan's clamp.
 pub(crate) struct CellResourceSink(
     pub(crate) std::sync::Mutex<Option<(i64, i64)>>,
     std::sync::atomic::AtomicI64,
+    std::sync::Mutex<Option<crate::kinds::EffectiveLimits>>,
 );
 /// PRD-mcphost-sandbox-resource-limits-from-plan R4/R5: the in-flight marker
 /// key the three python-call paths leave `resources_used` under. It is taken
@@ -6289,7 +6293,7 @@ pub(crate) const RESOURCES_USED_KEY: &str = "__resources_used";
 
 impl CellResourceSink {
     pub(crate) fn new() -> Self {
-        Self(std::sync::Mutex::new(None), std::sync::atomic::AtomicI64::new(-1))
+        Self(std::sync::Mutex::new(None), std::sync::atomic::AtomicI64::new(-1), std::sync::Mutex::new(None))
     }
 
     /// R4: `{cpu_ms, peak_rss_mb, wall_ms, pids_max_seen}` for the call this
@@ -6298,11 +6302,28 @@ impl CellResourceSink {
     pub(crate) fn resources_used(&self, wall_ms: i64) -> Option<Value> {
         let (cpu_ms, peak_rss_kb) = (*self.0.lock().ok()?)?;
         let pids = self.1.load(std::sync::atomic::Ordering::Relaxed);
-        Some(json!({
+        let mut used = json!({
             "cpu_ms": cpu_ms,
             "peak_rss_mb": (peak_rss_kb.max(0) + 1023) / 1024,
             "wall_ms": wall_ms,
             "pids_max_seen": (pids >= 0).then_some(pids),
+        });
+        if let Some(limits) = self.2.lock().ok().and_then(|g| g.clone()) {
+            used["timeout_s_effective"] = json!(limits.timeout_s_effective);
+            used["clamped"] = json!(limits.clamped);
+        }
+        Some(used)
+    }
+
+    /// R6: `{timeout_s_requested, timeout_s_effective, wall_s, clamped}` for
+    /// `call_traces.timings_json` -- `None` when no limits were recorded.
+    pub(crate) fn limits_json(&self) -> Option<Value> {
+        let limits = self.2.lock().ok()?.clone()?;
+        Some(json!({
+            "timeout_s_requested": limits.timeout_s_requested,
+            "timeout_s_effective": limits.timeout_s_effective,
+            "wall_s": limits.wall_s,
+            "clamped": limits.clamped,
         }))
     }
 }
@@ -6315,6 +6336,12 @@ impl ResourceSink for CellResourceSink {
 
     fn record_pids(&self, pids_max_seen: i64) {
         self.1.store(pids_max_seen, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn record_limits(&self, limits: &crate::kinds::EffectiveLimits) {
+        if let Ok(mut guard) = self.2.lock() {
+            *guard = Some(limits.clone());
+        }
     }
 }
 
@@ -8658,7 +8685,10 @@ impl McpHostHandler {
                 Err(_) => Some(json!({"code": "call_timeout"})),
                 Ok(Ok(_)) => None,
             };
-            crate::calltrace::build_trace(&secret_map, local_name, &trace_args, capture.as_ref(), error)
+            let mut trace =
+                crate::calltrace::build_trace(&secret_map, local_name, &trace_args, capture.as_ref(), error);
+            crate::calltrace::attach_limits(&mut trace, resources.limits_json());
+            trace
         });
         let (cpu_ms, peak_rss_kb) = resources.0.lock().map(|g| *g).unwrap_or_default().unzip();
         // requirement 6 (AC6): whichever host step (if any) this call's own

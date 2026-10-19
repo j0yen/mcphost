@@ -2166,6 +2166,15 @@
       "AC7": "tests/srlp_ac07_tool_run_reports_resources_used.rs",
       "AC8": "deferred -- operator-provisioned: live curl of prod plans.json after deploy"
     },
+    "stcv": {
+      "_prd": "PRD-mcphost-sandbox-timeout-clamp-visible.md (test_prefix: stcv)",
+      "AC1": "tests/stcv_ac01_shipped_r3_pinned.rs",
+      "AC2": "tests/stcv_ac02_publish_warns_on_clamped_timeout.rs",
+      "AC3": "tests/stcv_ac03_clamp_warning_contract_cannot_drift.rs",
+      "AC4": "tests/stcv_ac04_call_records_effective_limits.rs",
+      "AC5": "tests/stcv_ac05_no_clamp_no_warning.rs",
+      "AC6": "deferred -- operator-provisioned: live `scripts/live/timeout-clamp.sh https://mcphost.dev` against prod after deploy."
+    },
     "shsc": {
       "_prd": "PRD-mcphost-scoped-tool-share.md (test_prefix: shsc)",
       "AC1": "tests/shsc_ac01_scope_enum_source_of_truth.rs",

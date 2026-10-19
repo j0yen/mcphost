@@ -2079,6 +2079,10 @@ pub async fn tool_publish(
         let mut report = json!({"ok": gates_ok, "gates": gates});
         if kind_name == "python" {
             report["tool_lint"] = json!(crate::kinds::python_lint::lint_spec(&spec));
+            let warnings = crate::kinds::python::clamp_warnings(&spec, plan);
+            if !warnings.is_empty() {
+                report["warnings"] = json!(warnings);
+            }
         }
         return Ok(report);
     }
@@ -2245,6 +2249,11 @@ pub async fn tool_publish(
     // clean; a lint never changes whether the publish succeeded.
     if let (true, Value::Object(map)) = (kind_name == "python", &mut response) {
         map.insert("tool_lint".to_string(), json!(crate::kinds::python_lint::lint_spec(&spec)));
+        // PRD-mcphost-sandbox-timeout-clamp-visible R5: non-empty only.
+        let warnings = crate::kinds::python::clamp_warnings(&spec, plan);
+        if !warnings.is_empty() {
+            map.insert("warnings".to_string(), json!(warnings));
+        }
     }
     // requirement 1 (user story): "host.tool_publish returns lock:
     // {packages: 7, hashes: true}" -- present only for a python tool that
