@@ -590,6 +590,7 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
         claim_rate_limit_per_hour: mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
         email_config: mcphost::email::EmailConfig::default(),
         email_client: Arc::new(mcphost::email::FakeEmailClient::new()),
+        owner_verify: Default::default(),
         drafter: None,
         bans: mcphost::bans::BanCache::new(),
         ban_denials_threshold: mcphost::bans::BAN_DENIALS_THRESHOLD_DEFAULT,
@@ -645,6 +646,41 @@ impl TestServer {
     pub async fn start_with_plans(mutate: impl FnOnce(&mut mcphost::plans::PlanCatalog)) -> Self {
         let (mut state, data_dir) = bare_app_state().await;
         mutate(&mut state.plans);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind ephemeral port");
+        let addr = listener.local_addr().expect("local addr");
+        state.public_url = format!("http://{addr}");
+        let state = Arc::new(state);
+        let serve_state = state.clone();
+        tokio::spawn(async move {
+            let _ = mcphost::http::serve_on_listener(listener, serve_state).await;
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        Self { base_url: format!("http://{addr}"), data_dir, state }
+    }
+
+    /// PRD-mcphost-owner-verification-paths: a server whose AppState carries
+    /// `owner_verify` (a stubbed GitHub app and/or a fake DNS resolver).
+    pub async fn start_with_owner_verify(owner_verify: mcphost::verify::OwnerVerify) -> Self {
+        Self::start_with_owner_verify_and_email(owner_verify, Arc::new(mcphost::email::FakeEmailClient::new())).await
+    }
+
+    /// [`Self::start_with_owner_verify`] over a configured, inspectable fake
+    /// email client, so the email path of the same tenant can be driven too.
+    pub async fn start_with_owner_verify_and_email(
+        owner_verify: mcphost::verify::OwnerVerify,
+        email_client: Arc<mcphost::email::FakeEmailClient>,
+    ) -> Self {
+        let (mut state, data_dir) = bare_app_state().await;
+        state.owner_verify = owner_verify;
+        state.email_config = mcphost::email::EmailConfig {
+            api_url: Some("https://email.invalid/send".to_string()),
+            api_key: Some("test-email-key".to_string()),
+            from: Some("noreply@mcphost.invalid".to_string()),
+            provider: mcphost::email::EmailProvider::default(),
+        };
+        state.email_client = email_client;
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind ephemeral port");
@@ -1335,6 +1371,7 @@ impl TestServer {
             claim_rate_limit_per_hour,
             email_config,
             email_client,
+            owner_verify: Default::default(),
             drafter: None,
             bans: mcphost::bans::BanCache::new(),
             ban_denials_threshold: mcphost::bans::BAN_DENIALS_THRESHOLD_DEFAULT,
@@ -2147,6 +2184,7 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
         claim_rate_limit_per_hour: mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
         email_config: mcphost::email::EmailConfig::default(),
         email_client: std::sync::Arc::new(mcphost::email::FakeEmailClient::new()),
+        owner_verify: Default::default(),
         drafter: None,
         bans: mcphost::bans::BanCache::new(),
         ban_denials_threshold: mcphost::bans::BAN_DENIALS_THRESHOLD_DEFAULT,

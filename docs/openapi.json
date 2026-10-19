@@ -553,7 +553,7 @@
     "description": "Every non-MCP HTTP route mcphost serves, generated from the router's own route table.",
     "title": "mcphost HTTP API",
     "version": "0.110.3",
-    "x-contract-version": "1.b9499e110f50"
+    "x-contract-version": "1.4dd2eee6a32e"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -1101,6 +1101,88 @@
           "assets"
         ],
         "x-mcphost-auth": "token"
+      }
+    },
+    "/claim/github/callback": {
+      "get": {
+        "operationId": "get_claim_github_callback",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "502": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          }
+        },
+        "summary": "GitHub OAuth callback that verifies the tenant owner",
+        "tags": [
+          "claim"
+        ],
+        "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/claim/methods.json": {
+      "get": {
+        "operationId": "get_claim_methods_json",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenObject"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Owner verification methods and whether this host can run each",
+        "tags": [
+          "claim"
+        ],
+        "x-mcphost-auth": "anonymous"
       }
     },
     "/claim/verify/{code}": {

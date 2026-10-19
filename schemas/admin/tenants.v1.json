@@ -50,7 +50,8 @@
         },
         "client_name": { "type": ["string", "null"] },
         "client_version": { "type": ["string", "null"] },
-        "owner_verified": { "type": "boolean" }
+        "owner_verified": { "type": "boolean" },
+        "owner_method": { "type": ["string", "null"] }
       }
     }
   }

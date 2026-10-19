@@ -155,6 +155,7 @@ pub mod tooldir;
 pub mod triggers;
 pub mod uptime;
 pub mod vault;
+pub mod verify;
 pub mod verbforward;
 pub mod peer_recent;
 pub mod webhook_inbox;

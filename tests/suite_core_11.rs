@@ -9,6 +9,8 @@
 mod common;
 #[path = "support/assertion.rs"]
 mod assertion;
+#[path = "support/busyaudit.rs"]
+mod busyaudit;
 #[path = "support/oauth.rs"]
 mod oauth;
 #[path = "support/oauthclient.rs"]
@@ -26,6 +28,90 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "state_ac01_kv_roundtrip.rs"]
+mod state_ac01_kv_roundtrip;
+#[path = "state_ac04_table_query.rs"]
+mod state_ac04_table_query;
+#[path = "state_ac05_schema_violation.rs"]
+mod state_ac05_schema_violation;
+#[path = "state_ac06_quota_exceeded.rs"]
+mod state_ac06_quota_exceeded;
+#[path = "state_ac08_tenant_isolation.rs"]
+mod state_ac08_tenant_isolation;
+#[path = "state_ac09_cascade_delete.rs"]
+mod state_ac09_cascade_delete;
+#[path = "statusfeed_ac02_exec_disabled_degrades.rs"]
+mod statusfeed_ac02_exec_disabled_degrades;
+#[path = "statusfeed_ac03_major_incident_outage.rs"]
+mod statusfeed_ac03_major_incident_outage;
+#[path = "statusfeed_ac04_incident_timeline_and_close.rs"]
+mod statusfeed_ac04_incident_timeline_and_close;
+#[path = "statusfeed_ac05_daily_rollup_uptime.rs"]
+mod statusfeed_ac05_daily_rollup_uptime;
+#[path = "statusfeed_ac06_external_sample_source_preserved.rs"]
+mod statusfeed_ac06_external_sample_source_preserved;
+#[path = "statusfeed_ac07_prune_keeps_rollup.rs"]
+mod statusfeed_ac07_prune_keeps_rollup;
+#[path = "statusfeed_ac08_status_html_renders.rs"]
+mod statusfeed_ac08_status_html_renders;
+#[path = "statusfeed_ac10_component_days_query.rs"]
+mod statusfeed_ac10_component_days_query;
+#[path = "stgl_ac01_grantee_list_names_group_share.rs"]
+mod stgl_ac01_grantee_list_names_group_share;
+#[path = "stgl_ac02_one_accessor_for_list_and_call.rs"]
+mod stgl_ac02_one_accessor_for_list_and_call;
+#[path = "stgl_ac03_public_share_not_in_tools_list.rs"]
+mod stgl_ac03_public_share_not_in_tools_list;
+#[path = "stgl_ac04_no_shares_list_unchanged.rs"]
+mod stgl_ac04_no_shares_list_unchanged;
+#[path = "stgl_ac05_unshare_removes_entry.rs"]
+mod stgl_ac05_unshare_removes_entry;
+#[path = "stgl_ac06_subkey_hides_shared_entries.rs"]
+mod stgl_ac06_subkey_hides_shared_entries;
+#[path = "stgl_ac07_share_reports_grantees_notified.rs"]
+mod stgl_ac07_share_reports_grantees_notified;
+#[path = "suite_ac1_ten_binaries_and_names_preserved.rs"]
+mod suite_ac1_ten_binaries_and_names_preserved;
+#[path = "suite_ac3_mod_common_declared_once.rs"]
+mod suite_ac3_mod_common_declared_once;
+#[path = "suite_ac5_disk_size_budget.rs"]
+mod suite_ac5_disk_size_budget;
+#[path = "suite_ac6_wall_time_budget.rs"]
+mod suite_ac6_wall_time_budget;
+#[path = "suite_ac7_junit_per_test_timing.rs"]
+mod suite_ac7_junit_per_test_timing;
+#[path = "suite_ac9_selftest_named_and_green.rs"]
+mod suite_ac9_selftest_named_and_green;
+#[path = "support_ac01_bearer_invalid_help_url.rs"]
+mod support_ac01_bearer_invalid_help_url;
+#[path = "support_ac02_internal_error_generic_and_logged.rs"]
+mod support_ac02_internal_error_generic_and_logged;
+#[path = "support_ac03_disk_floor_and_5xx_messages_generic.rs"]
+mod support_ac03_disk_floor_and_5xx_messages_generic;
+#[path = "support_ac04_plans_doc_and_json_consistent.rs"]
+mod support_ac04_plans_doc_and_json_consistent;
+#[path = "support_ac06_served_pages_from_docs_and_readme.rs"]
+mod support_ac06_served_pages_from_docs_and_readme;
+#[path = "support_ac07_whoami_links_resolve.rs"]
+mod support_ac07_whoami_links_resolve;
+#[path = "support_ac08_release_artifact_includes_www.rs"]
+mod support_ac08_release_artifact_includes_www;
+#[path = "surface_ac02_dry_run_descriptions.rs"]
+mod surface_ac02_dry_run_descriptions;
+#[path = "surface_ac03_args_invalid_unified.rs"]
+mod surface_ac03_args_invalid_unified;
+#[path = "surface_ac04_required_field_descriptions.rs"]
+mod surface_ac04_required_field_descriptions;
+#[path = "surface_ac05_llms_txt_tool_parity.rs"]
+mod surface_ac05_llms_txt_tool_parity;
+#[path = "surface_ac07_tool_publish_description_length.rs"]
+mod surface_ac07_tool_publish_description_length;
+#[path = "surface_ac08_get_info_mentions_try_before_call.rs"]
+mod surface_ac08_get_info_mentions_try_before_call;
+#[path = "surface_tool_description_min_length.rs"]
+mod surface_tool_description_min_length;
+#[path = "surface_vault_tools_registered.rs"]
+mod surface_vault_tools_registered;
 #[path = "synthetic_ac01_migration_null_default.rs"]
 mod synthetic_ac01_migration_null_default;
 #[path = "synthetic_ac02_signup_header_sets_label.rs"]
@@ -142,6 +228,8 @@ mod tgraph_ac08_description_annotation_node_attribute_and_question_text;
 mod tgraph_ac10_fifty_tables_twenty_columns_under_500ms;
 #[path = "thand_ac01_poster_wait_returns_completion.rs"]
 mod thand_ac01_poster_wait_returns_completion;
+#[path = "thand_ac02_status_enum_source_of_truth.rs"]
+mod thand_ac02_status_enum_source_of_truth;
 #[path = "thand_ac03_claim_is_recipient_only_and_once.rs"]
 mod thand_ac03_claim_is_recipient_only_and_once;
 #[path = "thand_ac04_deadline_sweep_dead_letters.rs"]
@@ -212,6 +300,10 @@ mod tlint_ac07_json_field_names_are_not_wall_clock_tokens;
 mod toolname_ac01_lint_reports_violations;
 #[path = "toolname_ac02_alias_dispatch_hint_and_log.rs"]
 mod toolname_ac02_alias_dispatch_hint_and_log;
+#[path = "toolname_ac03_tools_list_alias_entries.rs"]
+mod toolname_ac03_tools_list_alias_entries;
+#[path = "toolname_ac04_docs_names_exist_and_tools_doc_fresh.rs"]
+mod toolname_ac04_docs_names_exist_and_tools_doc_fresh;
 #[path = "toolname_ac05_alias_metrics_counter.rs"]
 mod toolname_ac05_alias_metrics_counter;
 #[path = "toolname_ac06_did_you_mean_suggests_canonical.rs"]
@@ -422,6 +514,8 @@ mod verbfwd_ac05_tool_test_forwards_dry_run_or_unverifiable;
 mod verbfwd_ac06_hint_parity_underscore_form_resolves;
 #[path = "verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota.rs"]
 mod verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota;
+#[path = "verbfwd_ac08_forward_stack_budget.rs"]
+mod verbfwd_ac08_forward_stack_budget;
 #[path = "vfxenv_ac01_build_env_inputs_are_not_outputs.rs"]
 mod vfxenv_ac01_build_env_inputs_are_not_outputs;
 #[path = "vord_ac01_falsifier.rs"]
