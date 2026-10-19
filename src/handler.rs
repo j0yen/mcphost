@@ -3992,6 +3992,12 @@ fn host_tools_part_09() -> Vec<Tool> {
                             next hint for this tenant; true turns it back on. Omit to leave \
                             unchanged (default true).",
                     },
+                    "welcome_back": {
+                        "type": "boolean",
+                        "description": "false permanently stops a new session's first result from \
+                            carrying this tenant's welcome_back envelope; true turns it back on. \
+                            Omit to leave unchanged (default true).",
+                    },
                 }),
                 &[],
             ),

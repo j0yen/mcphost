@@ -438,6 +438,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `hints`: boolean
 - `tags`: array
 - `tenant_key`: string
+- `welcome_back`: boolean
 
 ### `host.agent.search`
 
