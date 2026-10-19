@@ -406,6 +406,14 @@ mod plainenv_ac07_docs_and_tool_list;
 mod plainenv_ac08_warm_pool_invalidates_on_env_change;
 #[path = "plainenv_ac10_admin_reports_env_names_and_size.rs"]
 mod plainenv_ac10_admin_reports_env_names_and_size;
+#[path = "pshd_ac01_second_push_is_unchanged.rs"]
+mod pshd_ac01_second_push_is_unchanged;
+#[path = "pshd_ac02_red_test_blocks_publish.rs"]
+mod pshd_ac02_red_test_blocks_publish;
+#[path = "pshd_ac03_json_carries_tool_version_tests_call_proof.rs"]
+mod pshd_ac03_json_carries_tool_version_tests_call_proof;
+#[path = "pshd_ac07_watch_pushes_on_change.rs"]
+mod pshd_ac07_watch_pushes_on_change;
 #[path = "publishfirsttry_ac03_ac04_quickstart.rs"]
 mod publishfirsttry_ac03_ac04_quickstart;
 #[path = "publishfirsttry_ac06_docs_shared_source.rs"]

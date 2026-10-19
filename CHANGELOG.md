@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.111.4 — 2026-10-19
+
+Released by wm-build land: loop: mcphost-push-from-directory.
+
 ## v0.110.1 — 2026-10-19
 
 Released by wm-build land: loop: mcphost-tool-directory-format.

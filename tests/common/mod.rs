@@ -2931,3 +2931,54 @@ pub fn run_gen_docs(dir: &Path, args: &[&str]) -> process::Output {
         .output()
         .expect("run mcphost gen-docs")
 }
+
+/// PRD-mcphost-push-from-directory: signs up a fresh tenant and returns its
+/// personal `/u/<secret>/mcp` URL (what `mcphost push --url` takes).
+pub async fn tenant_url(base_url: &str) -> String {
+    let session = McpClient::new(base_url).with_session_continuity();
+    session
+        .tools_call("signup", json!({"name": "Push Tenant"}))
+        .await
+        .expect("signup");
+    let rotated = session.tools_call("host.key_rotate", json!({})).await.expect("host.key_rotate");
+    extract_structured(&rotated)["url"].as_str().expect("key_rotate url").to_string()
+}
+
+/// A scratch tool directory under the OS temp dir, removed on drop.
+pub struct ToolDirFixture(pub PathBuf);
+
+impl ToolDirFixture {
+    /// Copies `examples/tools/<example>` into a fresh scratch directory.
+    pub fn from_example(example: &str) -> Self {
+        let scratch = TempDataDir::new();
+        let dir = scratch.0.clone();
+        std::mem::forget(scratch);
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/tools").join(example);
+        copy_tree(&src, &dir);
+        Self(dir)
+    }
+
+    pub fn write(&self, rel: &str, body: &str) {
+        let p = self.0.join(rel);
+        std::fs::create_dir_all(p.parent().expect("parent")).expect("mkdir");
+        std::fs::write(p, body).expect("write fixture file");
+    }
+}
+
+impl Drop for ToolDirFixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn copy_tree(src: &Path, dst: &Path) {
+    std::fs::create_dir_all(dst).expect("mkdir");
+    for entry in std::fs::read_dir(src).expect("read_dir").flatten() {
+        let to = dst.join(entry.file_name());
+        if entry.path().is_dir() {
+            copy_tree(&entry.path(), &to);
+        } else {
+            std::fs::copy(entry.path(), to).expect("copy");
+        }
+    }
+}

@@ -287,8 +287,7 @@ pub fn classify(failure: &RpcFailure) -> CallError {
         }
         RpcFailure::Unparsed { status, detail, body } => CallError {
             exit: if *status >= 500 { 5 } else { 1 },
-            error_code: if *status >= 500 { "host_unavailable" } else { "bad_response" }
-                .to_string(),
+            error_code: if *status >= 500 { HOST_UNAVAILABLE } else { BAD_RESPONSE }.to_string(),
             message: detail.clone(),
             data: json!({"status": status, "body": body.chars().take(512).collect::<String>()}),
         },
@@ -305,6 +304,12 @@ crate::err_code! {
     pub HOST_UNAVAILABLE,
     code: "host_unavailable", family: Upstream, class: UpstreamFault, retryable: true,
     remedy: "The host did not answer; retry later or check /healthz.",
+}
+
+crate::err_code! {
+    pub BAD_RESPONSE,
+    code: "bad_response", family: Upstream, class: UpstreamFault, retryable: false,
+    remedy: "The host answered with a body that is not a JSON-RPC message; check the URL points at an mcphost /mcp endpoint.",
 }
 
 crate::err_code! {

@@ -164,6 +164,15 @@ pub fn pack(dir: &Path) -> Result<Value, TooldirError> {
     Ok(canonical(&Value::Object(payload)))
 }
 
+/// The `source_sha256` a host stores for a published `spec`: sha256 of its
+/// serialized JSON. `Db::upsert_tool` and `mcphost push` both call this one
+/// function, so the client's idempotency check cannot drift from the server.
+pub fn content_hash(spec: &Value) -> String {
+    use sha2::{Digest, Sha256};
+    let text = serde_json::to_string(spec).unwrap_or_default();
+    Sha256::digest(text.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
+}
+
 /// Recursively key-sorted copy, so output order never depends on which
 /// serde_json features the build unified.
 pub fn canonical(value: &Value) -> Value {

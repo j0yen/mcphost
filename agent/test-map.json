@@ -75,6 +75,16 @@
       "AC6": "tests/tdf_ac06_as_mcp_call_publishes.rs",
       "AC7": "tests/tdf_ac07_unpack_unknown_kind.rs"
     },
+    "pshd": {
+      "_prd": "PRD-mcphost-push-from-directory.md (test_prefix: pshd)",
+      "AC1": "tests/pshd_ac01_second_push_is_unchanged.rs",
+      "AC2": "tests/pshd_ac02_red_test_blocks_publish.rs",
+      "AC3": "tests/pshd_ac03_json_carries_tool_version_tests_call_proof.rs",
+      "AC4": "tests/pshd_ac04_signup_keeps_url_in_config_file.rs",
+      "AC5": "tests/pshd_ac05_refused_publish_exits_2_verbatim.rs",
+      "AC6": "tests/pshd_ac06_unreachable_host_exits_3_writes_no_state.rs",
+      "AC7": "tests/pshd_ac07_watch_pushes_on_change.rs"
+    },
     "nfs": {
       "_prd": "PRD-mcphost-notes-to-future-self.md (test_prefix: nfs)",
       "AC1": "tests/nfs_ac01_put_emits_list_changed_and_suffix.rs",

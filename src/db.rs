@@ -8241,7 +8241,7 @@ impl Db {
         let created_unix = now_unix();
         let spec_text = serde_json::to_string(&spec)
             .map_err(|e| AppError::Internal(format!("spec serialize: {e}")))?;
-        let source_sha256 = sha256_hex(spec_text.as_bytes());
+        let source_sha256 = crate::tooldir::content_hash(&spec);
         let scopes_text = serde_json::to_string(&scopes)
             .map_err(|e| AppError::Internal(format!("scopes serialize: {e}")))?;
         self.with_conn(move |conn| {

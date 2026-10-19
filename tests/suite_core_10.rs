@@ -432,6 +432,12 @@ mod proxy_ac4_rate_limit_keys_on_resolved_address;
 mod proxy_ac5_signup_event_stores_forwarded_address;
 #[path = "proxy_ac6_healthz_distinct_source_ips.rs"]
 mod proxy_ac6_healthz_distinct_source_ips;
+#[path = "pshd_ac04_signup_keeps_url_in_config_file.rs"]
+mod pshd_ac04_signup_keeps_url_in_config_file;
+#[path = "pshd_ac05_refused_publish_exits_2_verbatim.rs"]
+mod pshd_ac05_refused_publish_exits_2_verbatim;
+#[path = "pshd_ac06_unreachable_host_exits_3_writes_no_state.rs"]
+mod pshd_ac06_unreachable_host_exits_3_writes_no_state;
 #[path = "publishfirsttry_ac01_tool_publish_description.rs"]
 mod publishfirsttry_ac01_tool_publish_description;
 #[path = "publishfirsttry_ac02_structured_error_fields.rs"]
