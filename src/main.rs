@@ -237,6 +237,23 @@ enum Command {
         #[command(subcommand)]
         action: ToolCommand,
     },
+    /// PRD-mcphost-push-from-directory: publish a tool directory to a tenant.
+    Push {
+        dir: PathBuf,
+        /// Tenant URL (`/u/<secret>/mcp`); falls back to `$MCPHOST_URL`.
+        #[arg(long)]
+        url: Option<String>,
+        /// Print one JSON object instead of the text line.
+        #[arg(long)]
+        json: bool,
+        /// Create a throwaway tenant first; its URL goes to
+        /// `$XDG_CONFIG_HOME/mcphost/tenant.url` (0600), never to stdout.
+        #[arg(long)]
+        signup: bool,
+        /// Re-push whenever the directory changes; an unchanged push is silent.
+        #[arg(long)]
+        watch: bool,
+    },
     /// PRD-mcphost-call-cli-from-contract: call a host tool from the shell.
     /// The subcommands and flags come from the embedded contract
     /// (`mcphost call --list`); handled before this parser runs.
@@ -1476,6 +1493,14 @@ async fn main() -> anyhow::Result<()> {
                 std::process::exit(1);
             }
             Ok(())
+        }
+        Command::Push { dir, url, json, signup, watch } => {
+            let opts = mcphost::push::Opts { dir, url, json, signup, watch };
+            if opts.watch {
+                std::process::exit(mcphost::push::watch(&opts).await);
+            }
+            let report = mcphost::push::push_once(&opts).await;
+            std::process::exit(mcphost::push::emit(&report, opts.json));
         }
         Command::Tool { action } => {
             // Plain stdout/exit-code, no `init_tracing()`, like `GenDocs`.

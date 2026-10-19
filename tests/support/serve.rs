@@ -20,6 +20,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStderr, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use tokio::io::{AsyncBufReadExt, BufReader, Lines};
+use tokio::process::{Child as AsyncChild, ChildStdout};
+use tokio::time::error::Elapsed;
 
 /// Per-probe HTTP timeout inside the readiness loop. A server that accepts
 /// the connection but never answers must not stall the loop past its
@@ -220,5 +223,37 @@ impl Drop for ServeChild {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+    }
+}
+
+/// A long-running child whose stdout is read line by line while it is still
+/// alive (`mcphost push --watch`), the streaming counterpart of
+/// [`ServeChild`], whose diagnostics kill before they read. The stdout pipe
+/// never leaves this struct and every wait is bounded by the caller's
+/// deadline. Dropping it kills the child (`kill_on_drop`).
+pub struct ServeLines {
+    _child: AsyncChild,
+    lines: Lines<BufReader<ChildStdout>>,
+}
+
+impl ServeLines {
+    /// Start `cmd` with stdout piped and kill-on-drop; stdin, stderr and the
+    /// rest of its configuration are the caller's.
+    pub fn spawn_lines(mut cmd: tokio::process::Command) -> ServeLines {
+        cmd.stdout(Stdio::piped()).kill_on_drop(true);
+        let mut child = cmd.spawn().expect("spawn child process");
+        let out = child.stdout.take().expect("stdout was piped");
+        ServeLines {
+            _child: child,
+            lines: BufReader::new(out).lines(),
+        }
+    }
+
+    /// The child's next stdout line: `Ok(Some(line))`, `Ok(None)` at EOF, or
+    /// `Err(Elapsed)` when nothing arrived within `within`.
+    pub async fn next_line(&mut self, within: Duration) -> Result<Option<String>, Elapsed> {
+        tokio::time::timeout(within, self.lines.next_line())
+            .await
+            .map(|line| line.expect("read child stdout"))
     }
 }
