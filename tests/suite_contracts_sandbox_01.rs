@@ -6,8 +6,33 @@
 // below; it declares no tests of its own. Every included file keeps its
 // original name, path, and test names (nextest's test list, with this
 // suite's prefix stripped, is unchanged from before consolidation).
+mod common;
 #[path = "support/lanecov.rs"]
 mod lanecov;
 
+#[path = "aliastruth_ac05_contract_next_hints_are_advertised.rs"]
+mod aliastruth_ac05_contract_next_hints_are_advertised;
+#[path = "bridgedisc_ac01_sandbox_api_source_of_truth.rs"]
+mod bridgedisc_ac01_sandbox_api_source_of_truth;
+#[path = "emsnd_ac07_send_status_and_bridge_module_cannot_drift.rs"]
+mod emsnd_ac07_send_status_and_bridge_module_cannot_drift;
+#[path = "kdr_ac01_kind_doc_from_data.rs"]
+mod kdr_ac01_kind_doc_from_data;
+#[path = "kindroute_ac05_startup_aliases_and_recipe_tools_are_registered.rs"]
+mod kindroute_ac05_startup_aliases_and_recipe_tools_are_registered;
 #[path = "lanecov_ac04_existing_lanes_unchanged.rs"]
 mod lanecov_ac04_existing_lanes_unchanged;
+#[path = "melc_ac04_schema_subset_one_const_three_renderings.rs"]
+mod melc_ac04_schema_subset_one_const_three_renderings;
+#[path = "msmp_ac07_bridge_modules_list_sampling_everywhere.rs"]
+mod msmp_ac07_bridge_modules_list_sampling_everywhere;
+#[path = "retshape_ac01_return_shape_table_parity.rs"]
+mod retshape_ac01_return_shape_table_parity;
+#[path = "retshape_ac02_runner_docstrings_carry_returns.rs"]
+mod retshape_ac02_runner_docstrings_carry_returns;
+#[path = "retshape_ac06_quickstart_carries_bridge_returns.rs"]
+mod retshape_ac06_quickstart_carries_bridge_returns;
+#[path = "retshape_ac07_handle_query_shape_in_table.rs"]
+mod retshape_ac07_handle_query_shape_in_table;
+#[path = "tfd_ac02_prompt_is_generated_contract_only.rs"]
+mod tfd_ac02_prompt_is_generated_contract_only;

@@ -1,3 +1,4 @@
+//! contract: reads scripts/contract-lint.sh
 //! PRD-mcphost-contract-suite-markers AC4 -- an unmarked test that walks a
 //! `CARGO_MANIFEST_DIR`-joined tree outside tests/ with a directory listing
 //! fails `scripts/contract-lint.sh <dir>` naming the file and the tree-walk

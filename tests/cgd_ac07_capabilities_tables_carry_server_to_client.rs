@@ -1,3 +1,4 @@
+//! contract: reads scripts/sandbox-api-doc-check.sh
 //! PRD-mcphost-capabilities-generated-from-dispatch
 //! AC7 (P1) -- Given `www/llms.txt` and `docs/protocol/capabilities.md`, When
 //! `scripts/sandbox-api-doc-check.sh` runs, Then it exits 0 only if both

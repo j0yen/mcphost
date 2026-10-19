@@ -1,3 +1,4 @@
+//! contract: reads registry handler::host_tool_descriptors
 //! PRD-mcphost-input-schema-is-the-validator
 //! AC3 (P0) -- Given host.index.create, host.task.post, host.ask.create,
 //! host.table.append, host.policy.attrs_set, host.table.create and

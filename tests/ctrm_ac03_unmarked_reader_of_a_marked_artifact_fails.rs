@@ -1,3 +1,4 @@
+//! contract: reads scripts/contract-lint.sh
 //! PRD-mcphost-contract-suite-markers AC3 -- given a marked test reading an
 //! artifact through a `CARGO_MANIFEST_DIR` join and an unmarked test reading the
 //! same path, `scripts/contract-lint.sh <dir>` exits 1 naming the unmarked file,

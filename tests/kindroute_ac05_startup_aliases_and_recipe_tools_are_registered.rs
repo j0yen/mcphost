@@ -1,3 +1,4 @@
+//! contract: reads registry handler::host_tool_descriptors
 //! PRD-mcphost-unknown-kind-routes-to-recipe
 //! AC5 (P0) -- Given the alias table, When the `kindroute` startup test
 //! runs, Then every alias resolves to a kind in the registered list and

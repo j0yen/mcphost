@@ -1,3 +1,4 @@
+//! contract: reads scripts/sandbox-api-doc-check.sh
 //! PRD-mcphost-dry-run-on-write-verbs
 //! AC6 -- Given `host.key.rotate {dry_run: true}`, When called, Then it fails
 //! with `args_invalid` and `data.no_dry_run_reason == "external_effect"`, and

@@ -1,3 +1,4 @@
+//! contract: reads registry tool_aliases::TOOL_ALIASES
 //! PRD-mcphost-tools-list-alias-truth
 //! AC5 — Given the contract test, When run, Then tools/list ⊇ alias table ∪
 //! flattened forms and every `next:` hint in quickstart, publish, and test

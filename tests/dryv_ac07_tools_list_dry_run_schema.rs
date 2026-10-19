@@ -1,3 +1,4 @@
+//! contract: reads registry write_verbs::DRY_RUN_VERBS
 //! PRD-mcphost-dry-run-on-write-verbs
 //! AC7 -- Given `tools/list` for a keyed tenant, When read, Then every
 //! `Supported` verb's `inputSchema.properties.dry_run` exists with type

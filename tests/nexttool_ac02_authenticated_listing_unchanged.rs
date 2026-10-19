@@ -1,3 +1,4 @@
+//! contract: reads registry handler::host_tool_descriptors
 //! PRD-mcphost-one-next-tool AC2 (P0) — Given a session authenticated by
 //! `tenant_key`, `Authorization` header, or `/u/<secret>/mcp`, When
 //! `tools/list` is called, Then the listing is byte-identical to the

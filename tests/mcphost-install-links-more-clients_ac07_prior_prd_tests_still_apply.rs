@@ -24,7 +24,8 @@ fn all_suites() -> String {
                 && (n.starts_with("suite_core_")
                     || n.starts_with("suite_sandbox_")
                     || n.starts_with("suite_env_")
-                    || n.starts_with("suite_contracts_"))
+                    || n.starts_with("suite_contracts_")
+                    || n.starts_with("suite_cargo_"))
         })
         .collect();
     names.sort();

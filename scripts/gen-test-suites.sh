@@ -709,7 +709,7 @@ def classify(path):
 # selftests are named tests/suite_ac<N>_*.rs (verified-completed.sh's
 # `prefix:<p>` rule needs that exact shape) and must never be mistaken for
 # generated output, or a regen would silently delete them as "stray".
-GENERATED_SUITE_RE = re.compile(r'^suite_(?:core|sandbox|env_core|env_sandbox|contracts_core|contracts_sandbox)_[0-9]+\.rs$')
+GENERATED_SUITE_RE = re.compile(r'^suite_(?:core|sandbox|env_core|env_sandbox|contracts_core|contracts_sandbox|cargo_core|cargo_sandbox)_[0-9]+\.rs$')
 
 AC_PREFIX_RE = re.compile(r'^(ac[0-9]+)_')
 PREFIX_RE = re.compile(r'^([a-z0-9]+)_')
@@ -767,6 +767,33 @@ CONTRACT_RE = re.compile(r'^//!\s*contract:')
 
 def is_contract(content):
     return any(CONTRACT_RE.match(l) for l in content.split("\n")[:10])
+
+
+# PRD-mcphost-contract-suite-registry-axis-b requirement 5: two kinds of test
+# cannot share a process. One that RE-RUNS cargo in the shared target/ (spawns
+# `cargo test ... --list`, which rebuilds and re-uplifts target/debug/mcphost by
+# unlink-then-hard-link) and one that EXECS the built binary through
+# `env!("CARGO_BIN_EXE_...")`: the exec'd path is missing for a moment, so the
+# second dies `NotFound` (CI probe 39163232421: `exmf_ac01/ac02` inside the
+# window of `ctrs_ac02`'s cargo). Both are derivable from the file's own source,
+# so a file that spawns cargo (unless it is already a singleton binary, like a
+# `solo-suite`) is routed into `suite_cargo_<core|sandbox>_NN.rs` and `--check` fails any generated binary that holds both kinds.
+SPAWNS_CARGO_RE = re.compile(r'Command::new\(\s*(?:env!\("CARGO"\)|"cargo")\s*\)')
+EXECS_BIN_RE = re.compile(r'CARGO_BIN_EXE_')
+
+
+def code_lines(content):
+    """The file with `//` comment lines (docs included) removed: a doc that
+    mentions `CARGO_BIN_EXE_` neither execs nor spawns anything."""
+    return "\n".join(l for l in content.split("\n") if not l.lstrip().startswith("//"))
+
+
+def spawns_cargo(content):
+    return bool(SPAWNS_CARGO_RE.search(code_lines(content)))
+
+
+def execs_bin(content):
+    return bool(EXECS_BIN_RE.search(code_lines(content)))
 
 
 # A single test that alone runs for minutes (ctrs_ac06 re-runs every contract
@@ -883,6 +910,10 @@ MOD_COMMON_RE = re.compile(r'^mod\s+common\s*;\s*$')
 MOD_CI_SANDBOX_RE = re.compile(r'^mod\s+ci_sandbox_support\s*;\s*$')
 USE_COMMON_RE = re.compile(r'^use\s+crate::common\s*;\s*$')
 USE_CI_SANDBOX_RE = re.compile(r'^use\s+crate::ci_sandbox_support\s*;\s*$')
+# A member that names `crate::common::x` / `crate::ci_sandbox_support::x` by full path (no `use` line)
+# needs the suite to declare the module too, or it fails E0433 once it sits in a suite with no other user.
+FQ_COMMON_RE = re.compile(r'\bcrate::common::')
+FQ_CI_SANDBOX_RE = re.compile(r'\bcrate::ci_sandbox_support::')
 PATH_MOD_RE = re.compile(r'^#\[path\s*=\s*"(support/(\w+)\.rs)"\]\s*$')
 MOD_NAME_RE = re.compile(r'^mod\s+(\w+)\s*;\s*$')
 USE_ANY_RE = re.compile(r'^use\s+crate::(\w+)\s*;\s*$')
@@ -966,9 +997,9 @@ def migrate_content(content):
             out.append("use crate::ci_sandbox_support;")
             i += 1
             continue
-        if USE_COMMON_RE.match(line):
+        if USE_COMMON_RE.match(line) or FQ_COMMON_RE.search(line):
             needs_common = True
-        if USE_CI_SANDBOX_RE.match(line):
+        if USE_CI_SANDBOX_RE.match(line) or FQ_CI_SANDBOX_RE.search(line):
             needs_ci_sandbox = True
         m = PATH_MOD_RE.match(line)
         if m:
@@ -1026,6 +1057,8 @@ def suite_content(members_meta):
 ENV_MAX_PER_SUITE = {"core": 500, "sandbox": 500}
 # Contract suites are a handful of files; one generous cap, never retuned.
 CONTRACT_MAX_PER_SUITE = {"core": 500, "sandbox": 500}
+# Cargo-spawning suites: a couple of files, one generous cap.
+CARGO_MAX_PER_SUITE = {"core": 500, "sandbox": 500}
 
 
 def plan_buckets(stems, exclusive, cap):
@@ -1075,6 +1108,8 @@ def compute_plan():
     env_exclusive_by_partition = {"core": [], "sandbox": []}
     contract_by_partition = {"core": [], "sandbox": []}
     contract_exclusive_by_partition = {"core": [], "sandbox": []}
+    cargo_by_partition = {"core": [], "sandbox": []}
+    cargo_exclusive_by_partition = {"core": [], "sandbox": []}
     for f in all_files:
         with open(f, encoding="utf-8") as fh:
             content = fh.read()
@@ -1091,6 +1126,9 @@ def compute_plan():
         exclusive = is_exclusive_global(content) or solo is not None
         if is_contract(content):
             (contract_exclusive_by_partition if exclusive else contract_by_partition)[part].append(stem)
+        elif spawns_cargo(content) and not exclusive:
+            # an exclusive / solo-suite spawner is already a singleton binary: it shares a process with nothing
+            cargo_by_partition[part].append(stem)
         elif env and exclusive:
             env_exclusive_by_partition[part].append(stem)
         elif env:
@@ -1106,7 +1144,8 @@ def compute_plan():
     # shrink to SHARDS minus however many env sandbox suites exist.
     env_names = build_suites("suite_env", ENV_MAX_PER_SUITE, env_by_partition, env_exclusive_by_partition, migrations, {})
     contract_names = build_suites("suite_contracts", CONTRACT_MAX_PER_SUITE, contract_by_partition, contract_exclusive_by_partition, migrations, {})
-    min_buckets = {"core": 1, "sandbox": max(1, sandbox_shard_count() - len(env_names["sandbox"]) - len(contract_names["sandbox"]))}
+    cargo_names = build_suites("suite_cargo", CARGO_MAX_PER_SUITE, cargo_by_partition, cargo_exclusive_by_partition, migrations, {})
+    min_buckets = {"core": 1, "sandbox": max(1, sandbox_shard_count() - len(env_names["sandbox"]) - len(contract_names["sandbox"]) - len(cargo_names["sandbox"]))}
     def n_buckets(part, cap):
         return len(plan_buckets(by_partition[part], exclusive_by_partition[part], cap))
 
@@ -1150,12 +1189,17 @@ def compute_plan():
         "suite_contracts", CONTRACT_MAX_PER_SUITE, contract_by_partition, contract_exclusive_by_partition, migrations, suite_files
     )
 
+    cargo_suite_names_by_partition = build_suites(
+        "suite_cargo", CARGO_MAX_PER_SUITE, cargo_by_partition, cargo_exclusive_by_partition, migrations, suite_files
+    )
+
     check_affinity(suite_files)
 
     all_suite_names = sorted(
         suite_names_by_partition["core"] + suite_names_by_partition["sandbox"]
         + contract_suite_names_by_partition["core"] + contract_suite_names_by_partition["sandbox"]
         + env_suite_names_by_partition["core"] + env_suite_names_by_partition["sandbox"]
+        + cargo_suite_names_by_partition["core"] + cargo_suite_names_by_partition["sandbox"]
     )
 
     with open("Cargo.toml", encoding="utf-8") as fh:
@@ -1443,6 +1487,30 @@ def check_plan(migrations, suite_files, new_cargo_toml, all_files):
             if not is_contract_suite and marked.get(m, False):
                 problems.append(f"tests/{m} carries `//! contract:` but is included by {sbase}, not a suite_contracts_<core|sandbox>_NN.rs (run gen-test-suites.sh)")
 
+    # Packing axis: no generated binary holds a file that spawns cargo beside a
+    # file that execs the built binary (the uplift race).
+    for suite_path in sorted(glob.glob("tests/suite_*.rs")):
+        sbase = os.path.basename(suite_path)
+        if not GENERATED_SUITE_RE.match(sbase):
+            continue
+        with open(suite_path, encoding="utf-8") as fh:
+            members = [m for m in re.findall(r'#\[path\s*=\s*"([^"]+\.rs)"\]', fh.read()) if "/" not in m]
+        spawners, execers = [], []
+        for m in members:
+            try:
+                with open(os.path.join("tests", m), encoding="utf-8") as fh:
+                    text = fh.read()
+            except OSError:
+                continue
+            if spawns_cargo(text):
+                spawners.append(m)
+            if execs_bin(text):
+                execers.append(m)
+        for a in spawners:
+            for b in execers:
+                if a != b:
+                    problems.append(f"tests/{a} (spawns cargo) and tests/{b} (execs CARGO_BIN_EXE_) share {sbase[:-3]}")
+
     for path, (new_content, _c, _s, _h) in migrations.items():
         if not os.path.exists(path):
             problems.append(f"{path} missing")
@@ -1511,12 +1579,12 @@ def core_shard_count():
 
 migrations, suite_files, new_cargo_toml, all_files = compute_plan()
 SHARDS = sandbox_shard_count()
-SANDBOX_SUITES = [n for n in suite_files if re.match(r"suite(_env|_contracts)?_sandbox_\d+\.rs$", os.path.basename(n))]
+SANDBOX_SUITES = [n for n in suite_files if re.match(r"suite(_env|_contracts|_cargo)?_sandbox_\d+\.rs$", os.path.basename(n))]
 if len(SANDBOX_SUITES) < SHARDS:
     die(f"{len(SANDBOX_SUITES)} sandbox suites cannot fill {SHARDS} shards "
         "(SANDBOX_SHARDS in scripts/ci-test-partition.sh): lower it")
 CORE_SHARDS = core_shard_count()
-CORE_SUITES = [n for n in suite_files if re.match(r"suite(_env|_contracts)?_core_\d+\.rs$", os.path.basename(n))]
+CORE_SUITES = [n for n in suite_files if re.match(r"suite(_env|_contracts|_cargo)?_core_\d+\.rs$", os.path.basename(n))]
 if len(CORE_SUITES) < CORE_SHARDS:
     die(f"{len(CORE_SUITES)} core suites cannot fill {CORE_SHARDS} shards "
         "(CORE_SHARDS in scripts/ci-test-partition.sh): lower it")

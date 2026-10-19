@@ -1,3 +1,4 @@
+//! contract: reads scripts/contract-lint.sh
 //! PRD-mcphost-contract-suite-markers AC6 -- on the committed tree
 //! `scripts/contract-lint.sh tests` exits 0 and prints the count of marked
 //! files, and `scripts/flake-lint.sh` still invokes it.
@@ -31,7 +32,7 @@ fn ctrm_ac06_committed_tree_is_clean_and_reports_the_marked_count() {
         .filter(|e| e.path().extension().is_some_and(|x| x == "rs"))
         .filter(|e| {
             let name = e.file_name().to_string_lossy().into_owned();
-            !["suite_core_", "suite_sandbox_", "suite_env_", "suite_contracts_"].iter().any(|p| name.starts_with(p))
+            !["suite_core_", "suite_sandbox_", "suite_env_", "suite_contracts_", "suite_cargo_"].iter().any(|p| name.starts_with(p))
         })
         .filter(|e| fs::read_to_string(e.path()).unwrap().lines().take(10).any(|l| l.starts_with("//! contract:")))
         .count();

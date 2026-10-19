@@ -1,3 +1,4 @@
+//! contract: reads registry kinds::python::BRIDGE_MODULES
 //! PRD-mcphost-sandbox-return-shape-contract
 //! AC7 (P1) -- Given `handle=True` query paths, When the parity test runs,
 //! Then their shapes are in the table and match the real return.

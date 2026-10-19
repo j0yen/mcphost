@@ -9,16 +9,16 @@
 mod common;
 #[path = "support/chart_fixture.rs"]
 mod chart_fixture;
-#[path = "support/exprf.rs"]
-mod exprf;
-#[path = "support/exprp.rs"]
-mod exprp;
 #[path = "support/federation.rs"]
 mod federation;
 #[path = "support/lanecov.rs"]
 mod lanecov;
+#[path = "support/mrefu.rs"]
+mod mrefu;
 #[path = "support/oauth.rs"]
 mod oauth;
+#[path = "support/promptkind.rs"]
+mod promptkind;
 #[path = "support/serve.rs"]
 mod serve;
 #[path = "support/xlinks_cli.rs"]
@@ -30,48 +30,6 @@ mod ac14_storage_unwritable;
 mod busyaudit_ac08_healthz_db_fields;
 #[path = "ctrv_ac03_status_and_healthz_carry_contract_identity.rs"]
 mod ctrv_ac03_status_and_healthz_carry_contract_identity;
-#[path = "exargs_ac02_generator_values.rs"]
-mod exargs_ac02_generator_values;
-#[path = "exargs_ac03_tool_test_runs_the_example.rs"]
-mod exargs_ac03_tool_test_runs_the_example;
-#[path = "exargs_ac04_unsatisfiable_schema_is_refused.rs"]
-mod exargs_ac04_unsatisfiable_schema_is_refused;
-#[path = "exargs_ac05_publish_dry_run_and_spec_test_run_one_example.rs"]
-mod exargs_ac05_publish_dry_run_and_spec_test_run_one_example;
-#[path = "exargs_ac06_depth_limit.rs"]
-mod exargs_ac06_depth_limit;
-#[path = "exmf_ac01_seven_manifests_check_green.rs"]
-mod exmf_ac01_seven_manifests_check_green;
-#[path = "exmf_ac02_bad_manifest_exits_two_index_untouched.rs"]
-mod exmf_ac02_bad_manifest_exits_two_index_untouched;
-#[path = "exmf_ac04_stale_index_fails_the_build.rs"]
-mod exmf_ac04_stale_index_fails_the_build;
-#[path = "exmf_ac05_schema_matches_committed_file.rs"]
-mod exmf_ac05_schema_matches_committed_file;
-#[path = "exmf_ac06_zero_manifests_exits_two.rs"]
-mod exmf_ac06_zero_manifests_exits_two;
-#[path = "exprf_ac02_failing_proof_hides_the_example.rs"]
-mod exprf_ac02_failing_proof_hides_the_example;
-#[path = "exprf_ac03_green_report_unhides_and_resolves.rs"]
-mod exprf_ac03_green_report_unhides_and_resolves;
-#[path = "exprf_ac04_second_red_appends_to_one_incident.rs"]
-mod exprf_ac04_second_red_appends_to_one_incident;
-#[path = "exprf_ac05_unknown_name_and_non_admin_refused.rs"]
-mod exprf_ac05_unknown_name_and_non_admin_refused;
-#[path = "exprf_ac06_status_json_examples_block.rs"]
-mod exprf_ac06_status_json_examples_block;
-#[path = "exprf_ac07_only_dry_run_prints_and_executes_nothing.rs"]
-mod exprf_ac07_only_dry_run_prints_and_executes_nothing;
-#[path = "exprp_ac02_literal_secret_value_is_refused.rs"]
-mod exprp_ac02_literal_secret_value_is_refused;
-#[path = "exprp_ac03_non_portable_and_failing_proof_are_refused.rs"]
-mod exprp_ac03_non_portable_and_failing_proof_are_refused;
-#[path = "exprp_ac04_admin_decides_and_the_proposer_sees_it.rs"]
-mod exprp_ac04_admin_decides_and_the_proposer_sees_it;
-#[path = "exprp_ac05_pull_writes_the_clone_commits_and_merges.rs"]
-mod exprp_ac05_pull_writes_the_clone_commits_and_merges;
-#[path = "exprp_ac06_name_collision_and_open_proposal_cap.rs"]
-mod exprp_ac06_name_collision_and_open_proposal_cap;
 #[path = "fbeh_ac02_hint_on_every_variant.rs"]
 mod fbeh_ac02_hint_on_every_variant;
 #[path = "fbeh_ac03_missing_mapping_is_named.rs"]
@@ -106,8 +64,6 @@ mod fbtl_ac03_text_limits_and_control_chars;
 mod fbtl_ac04_anonymous_send_cap;
 #[path = "fbtl_ac05_keyed_call_ids_and_list.rs"]
 mod fbtl_ac05_keyed_call_ids_and_list;
-#[path = "fbtl_ac06_kinds_cannot_drift.rs"]
-mod fbtl_ac06_kinds_cannot_drift;
 #[path = "fbtl_ac07_cli_list.rs"]
 mod fbtl_ac07_cli_list;
 #[path = "fcgift_ac01_remember_persists_and_memory_line.rs"]
@@ -300,8 +256,6 @@ mod healb_ac02_pre_ledger_rows_render_action_null;
 mod healb_ac03_incidents_list_admin_only;
 #[path = "hidx_ac02_three_sources_build_with_offsets.rs"]
 mod hidx_ac02_three_sources_build_with_offsets;
-#[path = "hidx_ac03_source_kinds_one_set.rs"]
-mod hidx_ac03_source_kinds_one_set;
 #[path = "hidx_ac04_index_max_quota.rs"]
 mod hidx_ac04_index_max_quota;
 #[path = "hidxb_ac01_url_refusal_and_503.rs"]
@@ -388,8 +342,6 @@ mod hrfr_ac03_query_carries_stale_sources_while_ticking;
 mod hrfr_ac04_url_conditional_refresh_and_floor;
 #[path = "hrfr_ac05_rechunk_keeps_vectors_of_unchanged_chunks.rs"]
 mod hrfr_ac05_rechunk_keeps_vectors_of_unchanged_chunks;
-#[path = "hrfr_ac06_table_write_verbs_bump_change_counter.rs"]
-mod hrfr_ac06_table_write_verbs_bump_change_counter;
 #[path = "hrfr_ac07_failing_url_pauses_until_refreshed.rs"]
 mod hrfr_ac07_failing_url_pauses_until_refreshed;
 #[path = "hsr_ac01_top10_errors_have_fix_anchor.rs"]
@@ -526,18 +478,8 @@ mod infer_ac05_ac06_ac07_http_schema;
 mod infer_ac14_latency_budget;
 #[path = "infer_ac17_no_execution.rs"]
 mod infer_ac17_no_execution;
-#[path = "inner_rules_ac01_block_names_every_contract_test.rs"]
-mod inner_rules_ac01_block_names_every_contract_test;
-#[path = "insch_ac02_enums_from_handler_constants.rs"]
-mod insch_ac02_enums_from_handler_constants;
-#[path = "insch_ac03_patterns_and_bounds_in_schema.rs"]
-mod insch_ac03_patterns_and_bounds_in_schema;
 #[path = "insch_ac04_dispatch_refuses_by_schema.rs"]
 mod insch_ac04_dispatch_refuses_by_schema;
-#[path = "insch_ac05_schema_valid_call_clears_validation.rs"]
-mod insch_ac05_schema_valid_call_clears_validation;
-#[path = "insch_ac06_contract_and_docs_carry_constraints.rs"]
-mod insch_ac06_contract_and_docs_carry_constraints;
 #[path = "invite_ac01_create_returns_url_and_list_shows_zero_uses.rs"]
 mod invite_ac01_create_returns_url_and_list_shows_zero_uses;
 #[path = "invite_ac02_first_call_creates_tenant_with_onboarding.rs"]
@@ -1018,9 +960,77 @@ mod mcphost_webhook_inbox_ac09_concurrent_deliveries_all_land;
 mod mcphost_webhook_inbox_ac11_trigger_test_stores_and_fires_synthetic_delivery;
 #[path = "mcphost_webhook_inbox_ac12_stripe_verify_scheme_accepted.rs"]
 mod mcphost_webhook_inbox_ac12_stripe_verify_scheme_accepted;
+#[path = "meshops_ac01_stats_real_vs_synthetic_volume.rs"]
+mod meshops_ac01_stats_real_vs_synthetic_volume;
+#[path = "meshops_ac02_threads_no_bodies.rs"]
+mod meshops_ac02_threads_no_bodies;
+#[path = "meshops_ac03_thread_read_bodies_and_audit.rs"]
+mod meshops_ac03_thread_read_bodies_and_audit;
+#[path = "meshops_ac04_freeze_blocks_sends_not_reads_or_tools.rs"]
+mod meshops_ac04_freeze_blocks_sends_not_reads_or_tools;
+#[path = "meshops_ac05_unfreeze_restores_sending.rs"]
+mod meshops_ac05_unfreeze_restores_sending;
+#[path = "meshops_ac06_purge_dry_run_then_real.rs"]
+mod meshops_ac06_purge_dry_run_then_real;
+#[path = "meshops_ac07_tenant_delete_cascade_across_mesh_tables.rs"]
+mod meshops_ac07_tenant_delete_cascade_across_mesh_tables;
+#[path = "meshops_ac08_healthz_mesh_counters.rs"]
+mod meshops_ac08_healthz_mesh_counters;
+#[path = "meshops_ac09_stats_refusals_by_code_per_sender.rs"]
+mod meshops_ac09_stats_refusals_by_code_per_sender;
+#[path = "metering_ac01_stripe_customer_id_null_default.rs"]
+mod metering_ac01_stripe_customer_id_null_default;
+#[path = "metering_ac02_webhook_stores_stripe_customer_id.rs"]
+mod metering_ac02_webhook_stores_stripe_customer_id;
+#[path = "metering_ac03_checkout_metered_line_item.rs"]
+mod metering_ac03_checkout_metered_line_item;
+#[path = "metering_ac04_emits_pro_calls_only.rs"]
+mod metering_ac04_emits_pro_calls_only;
+#[path = "metering_ac05_crash_replay.rs"]
+mod metering_ac05_crash_replay;
+#[path = "metering_ac06_failure_leaves_state_unmoved.rs"]
+mod metering_ac06_failure_leaves_state_unmoved;
+#[path = "metering_ac07_batches_cap_at_100.rs"]
+mod metering_ac07_batches_cap_at_100;
+#[path = "metering_ac08_healthz_meter_lag.rs"]
+mod metering_ac08_healthz_meter_lag;
+#[path = "metering_ac09_deploy_units_verify.rs"]
+mod metering_ac09_deploy_units_verify;
+#[path = "metering_ac11_admin_meter_status.rs"]
+mod metering_ac11_admin_meter_status;
+#[path = "metering_ac12_billing_status_stripe_reported_usage.rs"]
+mod metering_ac12_billing_status_stripe_reported_usage;
+#[path = "metering_billing_status_emitted_this_month.rs"]
+mod metering_billing_status_emitted_this_month;
 #[path = "minimal_ac1_anonymous_ok_only.rs"]
 mod minimal_ac1_anonymous_ok_only;
+#[path = "minimal_ac2_admin_full_document.rs"]
+mod minimal_ac2_admin_full_document;
+#[path = "minimal_ac3_wrong_bearer_matches_anonymous.rs"]
+mod minimal_ac3_wrong_bearer_matches_anonymous;
 #[path = "minimal_ac4_liveness_failure_returns_5xx.rs"]
 mod minimal_ac4_liveness_failure_returns_5xx;
 #[path = "minimal_ac5_tenant_bearer_gets_anonymous_body.rs"]
 mod minimal_ac5_tenant_bearer_gets_anonymous_body;
+#[path = "mprm_ac01_recipes_listed_and_rendered.rs"]
+mod mprm_ac01_recipes_listed_and_rendered;
+#[path = "mprm_ac02_missing_argument_and_unknown_prompt.rs"]
+mod mprm_ac02_missing_argument_and_unknown_prompt;
+#[path = "mprm_ac03_prompt_kind_tool_listed_and_rendered.rs"]
+mod mprm_ac03_prompt_kind_tool_listed_and_rendered;
+#[path = "mprm_ac04_oauth_scope_filters_prompt_tools.rs"]
+mod mprm_ac04_oauth_scope_filters_prompt_tools;
+#[path = "mprm_ac07_capabilities_advertise_prompts.rs"]
+mod mprm_ac07_capabilities_advertise_prompts;
+#[path = "mrefu_ac01_breaking_migration_refuses_with_report.rs"]
+mod mrefu_ac01_breaking_migration_refuses_with_report;
+#[path = "mrefu_ac02_compatible_migration_reports_ok.rs"]
+mod mrefu_ac02_compatible_migration_reports_ok;
+#[path = "mrefu_ac03_schema_is_generated_and_drift_tested.rs"]
+mod mrefu_ac03_schema_is_generated_and_drift_tested;
+#[path = "mrefu_ac04_previous_up_failure_exits_4_with_tables_changed.rs"]
+mod mrefu_ac04_previous_up_failure_exits_4_with_tables_changed;
+#[path = "mrefub_ac01_unwritable_report_exits_5.rs"]
+mod mrefub_ac01_unwritable_report_exits_5;
+#[path = "mrefub_ac02_remedy_table_contract.rs"]
+mod mrefub_ac02_remedy_table_contract;

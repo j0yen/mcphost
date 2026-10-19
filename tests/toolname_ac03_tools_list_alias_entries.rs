@@ -1,3 +1,4 @@
+//! contract: reads registry tool_aliases::TOOL_ALIASES
 //! PRD-mcphost-tool-naming-convention-and-aliases
 //! AC3 — Given `tools/list`, When fetched, Then every canonical name is
 //! present, every alias is present with `x-deprecated.replaced_by` equal

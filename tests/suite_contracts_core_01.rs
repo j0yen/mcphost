@@ -11,18 +11,34 @@ mod ci_sandbox_support;
 
 #[path = "ac01_extended_gates_prd_path_resolves_and_matches_card.rs"]
 mod ac01_extended_gates_prd_path_resolves_and_matches_card;
+#[path = "aliastruth_ac01_tools_list_has_every_name.rs"]
+mod aliastruth_ac01_tools_list_has_every_name;
+#[path = "aliastruth_ac06_contract_and_docs_list_the_same_names.rs"]
+mod aliastruth_ac06_contract_and_docs_list_the_same_names;
+#[path = "aliastruth_ac07_alias_entries_carry_alias_of.rs"]
+mod aliastruth_ac07_alias_entries_carry_alias_of;
 #[path = "argmsg_ac06_sites_render_from_one_args_error.rs"]
 mod argmsg_ac06_sites_render_from_one_args_error;
 #[path = "askd_ac03_wait_ceiling_single_source.rs"]
 mod askd_ac03_wait_ceiling_single_source;
+#[path = "bridgedisc_ac07_sandbox_api_doc_check.rs"]
+mod bridgedisc_ac07_sandbox_api_doc_check;
 #[path = "cae_ac01_credential_on_every_call_row.rs"]
 mod cae_ac01_credential_on_every_call_row;
+#[path = "ccli_ac06_cli_tree_equals_contract.rs"]
+mod ccli_ac06_cli_tree_equals_contract;
+#[path = "cclib_ac02_cli_tree_equals_contract.rs"]
+mod cclib_ac02_cli_tree_equals_contract;
+#[path = "cgd_ac07_capabilities_tables_carry_server_to_client.rs"]
+mod cgd_ac07_capabilities_tables_carry_server_to_client;
 #[path = "checkcompat_race_ac03_inherited_listener_token_matches.rs"]
 mod checkcompat_race_ac03_inherited_listener_token_matches;
 #[path = "checkcompat_race_ac08_deferral_is_justified.rs"]
 mod checkcompat_race_ac08_deferral_is_justified;
 #[path = "chg_ac01_changelog_headings_parse.rs"]
 mod chg_ac01_changelog_headings_parse;
+#[path = "chg_ac03_changelog_renamed_lists_every_alias.rs"]
+mod chg_ac03_changelog_renamed_lists_every_alias;
 #[path = "ci_sandbox_ac06_sandbox_suites_run_as_a_parallel_job.rs"]
 mod ci_sandbox_ac06_sandbox_suites_run_as_a_parallel_job;
 #[path = "cishard_ac01_balanced_shards_from_recorded_weights.rs"]
@@ -39,18 +55,68 @@ mod cishard_ac05_core_timeouts_and_cache_key;
 mod cishard_ac06_core_predicted_shard_under_limit;
 #[path = "cishard_ac07_stale_weight_fails_check.rs"]
 mod cishard_ac07_stale_weight_fails_check;
+#[path = "cnfm_ac05_tools_list_marks_destructive_verbs.rs"]
+mod cnfm_ac05_tools_list_marks_destructive_verbs;
 #[path = "compat_ac04_ac05_admin_and_tenant_cache_fields.rs"]
 mod compat_ac04_ac05_admin_and_tenant_cache_fields;
 #[path = "creg_ac02_initialize_capabilities_from_registry.rs"]
 mod creg_ac02_initialize_capabilities_from_registry;
+#[path = "creg_ac05_capabilities_docs_in_sync.rs"]
+mod creg_ac05_capabilities_docs_in_sync;
+#[path = "ctrm_ac03_unmarked_reader_of_a_marked_artifact_fails.rs"]
+mod ctrm_ac03_unmarked_reader_of_a_marked_artifact_fails;
+#[path = "ctrm_ac04_unmarked_tree_walk_fails_the_lint.rs"]
+mod ctrm_ac04_unmarked_tree_walk_fails_the_lint;
+#[path = "ctrm_ac05_artifacts_printed_and_derived_not_listed.rs"]
+mod ctrm_ac05_artifacts_printed_and_derived_not_listed;
+#[path = "ctrm_ac06_lint_clean_on_committed_tree_prints_marked_count.rs"]
+mod ctrm_ac06_lint_clean_on_committed_tree_prints_marked_count;
+#[path = "ctrm_ac07_fix_prints_the_marker_line_and_edits_nothing.rs"]
+mod ctrm_ac07_fix_prints_the_marker_line_and_edits_nothing;
+#[path = "ctrx_ac01_cited_tree_gap_is_real.rs"]
+mod ctrx_ac01_cited_tree_gap_is_real;
+#[path = "ctrx_ac02_unmarked_registry_walker_is_flagged.rs"]
+mod ctrx_ac02_unmarked_registry_walker_is_flagged;
+#[path = "ctrx_ac03_cargo_spawners_never_share_a_binary_with_bin_execs.rs"]
+mod ctrx_ac03_cargo_spawners_never_share_a_binary_with_bin_execs;
+#[path = "ctrx_ac04_concat_manifest_dir_literal_is_a_read.rs"]
+mod ctrx_ac04_concat_manifest_dir_literal_is_a_read;
+#[path = "ctrx_ac07_rules_block_is_generated_from_definers.rs"]
+mod ctrx_ac07_rules_block_is_generated_from_definers;
+#[path = "dlrec_ac05_readme_recipe_block_checked.rs"]
+mod dlrec_ac05_readme_recipe_block_checked;
 #[path = "docsqa_ac10_deferral_is_justified.rs"]
 mod docsqa_ac10_deferral_is_justified;
+#[path = "dryv_ac02_write_verb_registry_drift.rs"]
+mod dryv_ac02_write_verb_registry_drift;
+#[path = "dryv_ac06_key_rotate_refuses_dry_run.rs"]
+mod dryv_ac06_key_rotate_refuses_dry_run;
+#[path = "dryv_ac07_tools_list_dry_run_schema.rs"]
+mod dryv_ac07_tools_list_dry_run_schema;
 #[path = "edead_ac07_reason_table_cannot_drift.rs"]
 mod edead_ac07_reason_table_cannot_drift;
+#[path = "evkr_ac04_bad_kind_args_invalid.rs"]
+mod evkr_ac04_bad_kind_args_invalid;
 #[path = "exmf_ac03_index_matches_directories.rs"]
 mod exmf_ac03_index_matches_directories;
+#[path = "fbtl_ac06_kinds_cannot_drift.rs"]
+mod fbtl_ac06_kinds_cannot_drift;
+#[path = "hidx_ac03_source_kinds_one_set.rs"]
+mod hidx_ac03_source_kinds_one_set;
+#[path = "hrfr_ac06_table_write_verbs_bump_change_counter.rs"]
+mod hrfr_ac06_table_write_verbs_bump_change_counter;
+#[path = "inner_rules_ac01_block_names_every_contract_test.rs"]
+mod inner_rules_ac01_block_names_every_contract_test;
 #[path = "insch_ac01_either_or_required_in_schema.rs"]
 mod insch_ac01_either_or_required_in_schema;
+#[path = "insch_ac02_enums_from_handler_constants.rs"]
+mod insch_ac02_enums_from_handler_constants;
+#[path = "insch_ac03_patterns_and_bounds_in_schema.rs"]
+mod insch_ac03_patterns_and_bounds_in_schema;
+#[path = "insch_ac05_schema_valid_call_clears_validation.rs"]
+mod insch_ac05_schema_valid_call_clears_validation;
+#[path = "insch_ac06_contract_and_docs_carry_constraints.rs"]
+mod insch_ac06_contract_and_docs_carry_constraints;
 #[path = "kdr_ac02_python_page_tables_generated.rs"]
 mod kdr_ac02_python_page_tables_generated;
 #[path = "kdr_ac03_check_names_stale_block.rs"]
@@ -65,10 +131,22 @@ mod mcphost_chain_run_lineage_ac13_deferral_is_justified;
 mod mcphost_event_trigger_self_test_ac11_deferral_is_justified;
 #[path = "migration_compat_headers.rs"]
 mod migration_compat_headers;
+#[path = "mprm_ac06_docs_table_and_quickstart_share_recipes.rs"]
+mod mprm_ac06_docs_table_and_quickstart_share_recipes;
 #[path = "mwlp_ac02_wait_ceiling_drift.rs"]
 mod mwlp_ac02_wait_ceiling_drift;
+#[path = "nexttool_ac02_authenticated_listing_unchanged.rs"]
+mod nexttool_ac02_authenticated_listing_unchanged;
+#[path = "ntfy_ac01_no_tenant_settable_alert_sink.rs"]
+mod ntfy_ac01_no_tenant_settable_alert_sink;
+#[path = "ntfy_ac02_enums_generated_into_every_surface.rs"]
+mod ntfy_ac02_enums_generated_into_every_surface;
 #[path = "oauthentry_ac06_path_contract_docs_router_quickstart.rs"]
 mod oauthentry_ac06_path_contract_docs_router_quickstart;
+#[path = "outsch_ac02_every_canonical_declares_an_object_output_schema.rs"]
+mod outsch_ac02_every_canonical_declares_an_object_output_schema;
+#[path = "pubvis_ac02_visibility_enum_single_source.rs"]
+mod pubvis_ac02_visibility_enum_single_source;
 #[path = "revdebt_ac1_intent_card_pointers_resolve.rs"]
 mod revdebt_ac1_intent_card_pointers_resolve;
 #[path = "rlfe_ac05_run_writes_pass_as_str.rs"]
@@ -89,7 +167,15 @@ mod suite_ac2_check_catches_unregistered_file;
 mod suite_ac4_archived_prd_pointers_resolve;
 #[path = "suitecap_ac01_plan_never_exceeds_max_suites_and_weights_follow.rs"]
 mod suitecap_ac01_plan_never_exceeds_max_suites_and_weights_follow;
+#[path = "thand_ac02_status_enum_source_of_truth.rs"]
+mod thand_ac02_status_enum_source_of_truth;
+#[path = "toolname_ac03_tools_list_alias_entries.rs"]
+mod toolname_ac03_tools_list_alias_entries;
+#[path = "toolname_ac04_docs_names_exist_and_tools_doc_fresh.rs"]
+mod toolname_ac04_docs_names_exist_and_tools_doc_fresh;
 #[path = "toolname_ac08_tools_list_counts_updated.rs"]
 mod toolname_ac08_tools_list_counts_updated;
 #[path = "vaultst_ac09_deferral_is_justified.rs"]
 mod vaultst_ac09_deferral_is_justified;
+#[path = "verbfwd_ac08_forward_stack_budget.rs"]
+mod verbfwd_ac08_forward_stack_budget;

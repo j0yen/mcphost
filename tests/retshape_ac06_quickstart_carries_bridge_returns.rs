@@ -1,3 +1,4 @@
+//! contract: reads registry kinds::python::BRIDGE_MODULES
 //! PRD-mcphost-sandbox-return-shape-contract
 //! AC6 (P1) -- Given `host.quickstart(kind: python)`, When called, Then the
 //! response carries `bridge_returns` mapping every bridge function to its

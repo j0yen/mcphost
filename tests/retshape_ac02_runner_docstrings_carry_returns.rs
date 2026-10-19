@@ -1,3 +1,4 @@
+//! contract: reads registry kinds::python::BRIDGE_MODULES
 //! PRD-mcphost-sandbox-return-shape-contract
 //! AC2 (P0) -- Given the rendered runner script, When its docstrings are
 //! re-parsed by the test, Then every function in `BRIDGE_MODULES` carries a

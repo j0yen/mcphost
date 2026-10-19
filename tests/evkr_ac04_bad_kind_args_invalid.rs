@@ -1,3 +1,4 @@
+//! contract: reads registry handler::host_tool_descriptors
 //! PRD-mcphost-event-kinds-registry-generated AC4: a tool embedding
 //! `events::schema_enum()` that is called with `kind: "run.finished"` answers
 //! `args_invalid` with `data.expected_one_of == ALL` and

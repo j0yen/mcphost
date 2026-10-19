@@ -1,3 +1,4 @@
+//! contract: reads registry handler::host_tool_descriptors
 //! PRD-mcphost-input-schema-is-the-validator
 //! AC2 (P0) -- Given host.notify.send, host.table.model_set, host.policy.set
 //! and host.tool.share, When their schemas are read, Then `level`, `key`,

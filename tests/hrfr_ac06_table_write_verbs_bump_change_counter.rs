@@ -1,3 +1,4 @@
+//! contract: reads registry write_verbs::WRITE_VERBS
 //! PRD-mcphost-index-refresh-on-change
 //! AC6 -- Given `TABLE_WRITE_VERBS`, When the test calls each verb on a
 //! fixture table, Then `change_counter` increments once per call and the

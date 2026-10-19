@@ -1,3 +1,4 @@
+//! contract: reads registry handler::host_tool_descriptors
 //! PRD-mcphost-notify-user-channel
 //! AC2 -- Given `ChannelKind` and `Level`, When the tool schemas, llms.txt,
 //! delivery dispatch and `/help/notify_kind_unknown` are rendered, Then each

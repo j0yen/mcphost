@@ -1,3 +1,4 @@
+//! contract: reads registry handler::host_tool_descriptors
 //! PRD-mcphost-tool-naming-convention-and-aliases
 //! AC4 — Given `docs/**` and `plugin/**` at the landing commit, When the
 //! docs-names test runs, Then every `host.*`/`billing.*`/`signup` literal

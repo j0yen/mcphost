@@ -1,3 +1,4 @@
+//! contract: reads scripts/sandbox-api-doc-check.sh
 //! AC6 (P0) -- PRD-mcphost-prompts-from-published-tools.
 //! `docs/protocol/prompts.md` equals `render_prompts_doc()` (built from
 //! `recipe_prompts()`) and `scripts/sandbox-api-doc-check.sh` passes only

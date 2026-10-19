@@ -1,3 +1,4 @@
+//! contract: reads registry kinds::python::BRIDGE_MODULES
 //! AC2 (P0) -- Given a configured drafter, When `host.tool_from_description
 //! {description}` runs, Then the prompt contains every entry of
 //! `BRIDGE_MODULES`, the kind's `KindExample.spec`, and the description, and
