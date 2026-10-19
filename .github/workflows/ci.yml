@@ -733,6 +733,7 @@ jobs:
           }
           check ./scripts/gen-test-suites.sh --check
           check ./scripts/ci-test-partition.sh check
+          check ./scripts/gen-dispatch-table.sh --check
           check ./scripts/contract-lint.sh
           check ./scripts/gen-docs-sharing.sh --check
           check ./scripts/gen-oauth-scenarios-doc.sh --check

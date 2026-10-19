@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-resources-for-tenant-data.md",
-  "intent_slug": "mcphost-resources-for-tenant-data",
-  "root_motivation": "**Who:** the agent whose client renders resources (Claude Code `@mcphost:\u2026`, VS Code Copilot \"Add Context\", Cursor); the human user who wants the run log in the chat without asking the agent to fetch it. **What:** read a table, a doc, a run log or a tool spec by URI, and be told when it changes. **Why not today:** prod answers `resources/list` with `{\"resources\":[]}` (rmcp default); after PRD-mcphost-server-capabilities-from-registry it answers `-32601`. Every read is a `tools/call` with `tenant_key` in `arguments`; the resource methods have no arguments slot for a key, so the auth that `list_tools` performs (`handler.rs:7838-7850`: path secret first, then `resolve_auth` over header and connection) is the only auth available \u2014 nothing today proves it reaches `read_resource`. **Consequence:** the explore personas re-implement reads as tool calls (`usecases.py` 10-08: 26 `budget.max_tool_latency_ms` refusals came from agents polling `host.table.query` for data a subscription would...",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-generated-dispatch-table-stack-budget.md",
+  "intent_slug": "mcphost-generated-dispatch-table-stack-budget",
+  "root_motivation": "**Who:** the builder whose PR adds one host verb and a 40-line arm, and whose CI shard then dies with SIGABRT in a test about a different verb (run 326, `verbfwd_ac01_trigger_set_dotted_forwards`; runs 953 and 945, same class, 10-17); the operator who redrives those runs; the agent on prod whose forwarded calls carry the same frames in release builds.",
   "user_persona": "An agent that runs host.note.put {text, attach_to: {tool}} once and reads the note on that tool's description in every later session; the same user's second client sees it too.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,44 +14,50 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given an in-process server with a path-bound tenant `/u/{secret}/mcp` that owns table `orders` with 3 rows, When `resources/read mcphost://table/orders` is sent on that connection, Then the result's single content is `application/json` with 3 rows; Given a keyless connection that never signed up, When the same URI is read, Then `-32002` is returned and the tenants table gained 0 rows.",
-      "test": "tests/mres_ac01_read_authorises_like_list_tools.rs"
+      "description": "Given mcphost main containing PR #413, When `scripts/gen-dispatch-table.sh --write` runs and then `--check` runs inside `regen-check`'s generator list, Then `src/dispatch_table.rs` exists with one sorted row per canonical dotted `host.*` verb of `mcphost contract dump` minus `tool_aliases`, each row naming `arm_<verb>`, `--check` exits 0 on a clean tree and 1 naming the stale file after any registry change without a regen.",
+      "test": "tests/fwdtab_ac01_generated_dispatch_table.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given `RESOURCE_TEMPLATES`, When `resources/templates/list` is sent keyless, Then it lists exactly the const's rows with `uriTemplate` and `mimeType`; Given `docs/protocol/resources.md`, Then its table equals the const byte-for-byte.",
-      "test": "tests/mres_ac02_templates_list_equals_const_and_docs.rs"
+      "description": "Given the table and `host_tool_descriptors(&KindRegistry::with_builtin())`, When `fwdtab_ac02` compares the table's names with the registry's canonical dotted `host.*` names, Then the sets are equal; and given one descriptor temporarily removed from the registry in the test, Then the test fails naming that verb as table-only (and a removed row fails naming it as registry-only).",
+      "test": "tests/fwdtab_ac02_table_matches_registry.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a tenant with 2 tables, 1 doc, 1 run, 2 tools, When `resources/list` is sent with the key in the Authorization header, Then 6 entries are returned; Given an OAuth session scoped `tables:read`, Then exactly the 2 table entries.",
-      "test": "tests/mres_ac03_list_counts_and_scope_filter.rs"
+      "description": "Given a forwarded `host.whoami` on a debug build, When `scripts/fwd-stack-measure.sh --frame dispatch_tenant_tool_inner` measures the dispatcher's poll frame after every arm body moved into its `arm_*` function returning `Pin<Box<dyn Future>>`, Then the frame is \u2264 65,536 B (was 454 K) and `dispatch_tenant_tool_inner` contains no `match name` arm bodies, only the pre-checks, the lookup, the call, and the `unknown_host_tool` fallthrough.",
+      "test": "tests/fwdtab_ac03_dispatcher_frame_bounded.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a subscription on `mcphost://table/orders`, When `host.table.append` commits 2 rows, Then one `notifications/resources/updated {uri}` reaches the peer within 500 ms; Given `unsubscribe`, Then a further append sends nothing.",
-      "test": "tests/mres_ac04_subscribe_gets_updated_on_append.rs"
+      "description": "Given the same forwarded call, When the inline arms of `call_tool_inner`'s `match (auth, name)` for `host.quickstart`, `host.help.search`, `host.help.get`, `host.errors`, `host.feedback.*`, `host.call_trace`, `host.doctor` have moved into boxed helpers, Then `call_tool_inner`'s poll frame is \u2264 163,840 B (was 260\u2013310 K) and `tests/verbfwd_ac0[1-7]*` plus the quickstart, help, errors and feedback suites pass unchanged.",
+      "test": "tests/fwdtab_ac04_call_tool_inner_frame_bounded.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a free tenant with 8 open subscriptions, When the 9th `resources/subscribe` arrives, Then `resources_max` is returned with `data.limit: 8`; Given the connection closes, Then all 8 entries are gone and a new connection may open 8 again.",
-      "test": "tests/mres_ac05_ninth_subscription_hits_resources_max.rs"
+      "description": "Given the guard `verbfwd_ac08_forward_stack_budget` with its registry walk and `SHALLOW` list unchanged, When `scripts/fwd-stack-measure.sh all` binary-searches all 226 ids on the debug build, Then the maximum is \u2264 1,048,576 B, `FORWARD_STACK_BUDGET` equals that maximum + 25 % and is \u2264 1,310,720 B, its doc comment names the maximum, its ids and the date, and the guard passes at that budget.",
+      "test": "tests/fwdtab_ac05_budget_lowered_on_the_measurement.rs"
     },
     {
       "id": "AC6",
-      "level": "MUST",
-      "description": "Given a table whose JSON exceeds `resource_read_bytes_max`, When read, Then the body is cut at the last complete row under the ceiling and `_meta.truncated` is `true`; Given another tenant's table name, Then `-32002`, never `forbidden`.",
-      "test": "tests/mres_ac06_read_truncates_at_a_row_and_hides_other_tenants.rs"
+      "level": "SHOULD",
+      "description": "Given 200 sequential `host.tool_call name=\"host.whoami\"` calls against the in-process server, When `fwdtab_ac06` prints p50 and p95 on `origin/main` (with #413) and on the branch on the same host with the same `-j`, Then the branch p95 is \u2264 1.05 \u00d7 the main p95 and both printed values appear in the PR body.",
+      "test": "tests/fwdtab_ac06_forwarded_whoami_latency.rs"
     },
     {
       "id": "AC7",
+      "level": "SHOULD",
+      "description": "Given `cargo test --release` of the guard binary, When `scripts/fwd-stack-measure.sh --release test:host.trigger.set call:host.uptime.create call:host.table.chart` runs on `origin/main` (with #413) and on the branch, Then each id's release-profile minimum stack on the branch is \u2264 its value on main and all six numbers appear in the PR body.",
+      "test": "tests/fwdtab_ac07_release_stack_does_not_grow.rs"
+    },
+    {
+      "id": "AC8",
       "level": "MUST",
-      "description": "Given `capabilities.rs`, When `initialize` is answered, Then `capabilities.resources` is `{listChanged: true, subscribe: true}` and `/capabilities.json` shows `resources.implemented == true`, `probe == \"resources\"`.",
-      "test": "tests/mres_ac07_capabilities_row_flips_to_implemented.rs"
+      "description": "Given the PR with `FORWARD_STACK_BUDGET` \u2264 1,310,720 merged to main, When CI runs the core-suites shard that contains `suite_core_08` on the merge commit, Then that shard's log contains `verbfwd_ac08_forward_stack_budget::every_dotted_verb_forwards_within_the_stack_budget ... ok` and the shard is green (Live; evidence: `gh run view <merge-commit run> --log` of the `cargo test (core suites, shard N/M)` job containing that line)",
+      "test": "deferred: Live (the merge commit's core-suites shard log must contain the verbfwd_ac08 line; no tests/fwdtab_ac08 file)"
     }
   ],
   "scope": [

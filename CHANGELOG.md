@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.112.0 — 2026-10-19
+
+Released by wm-build land: loop: mcphost-generated-dispatch-table-stack-budget.
+
 ## v0.111.4 — 2026-10-19
 
 Released by wm-build land: loop: mcphost-push-from-directory.
