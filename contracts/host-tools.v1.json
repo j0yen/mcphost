@@ -6075,7 +6075,8 @@
             "enum": [
               "email",
               "github",
-              "dns"
+              "dns",
+              "admin"
             ],
             "type": "string"
           },
@@ -6163,7 +6164,8 @@
             "enum": [
               "email",
               "github",
-              "dns"
+              "dns",
+              "admin"
             ],
             "type": "string"
           },
@@ -6254,7 +6256,8 @@
             "enum": [
               "email",
               "github",
-              "dns"
+              "dns",
+              "admin"
             ],
             "type": "string"
           },
@@ -6333,7 +6336,8 @@
             "enum": [
               "email",
               "github",
-              "dns"
+              "dns",
+              "admin"
             ],
             "type": "string"
           },
@@ -38477,7 +38481,8 @@
             "enum": [
               "email",
               "github",
-              "dns"
+              "dns",
+              "admin"
             ],
             "type": "string"
           },
@@ -38512,7 +38517,8 @@
             "enum": [
               "email",
               "github",
-              "dns"
+              "dns",
+              "admin"
             ],
             "type": "string"
           },
@@ -38540,7 +38546,8 @@
             "enum": [
               "email",
               "github",
-              "dns"
+              "dns",
+              "admin"
             ],
             "type": "string"
           },
@@ -38566,7 +38573,8 @@
             "enum": [
               "email",
               "github",
-              "dns"
+              "dns",
+              "admin"
             ],
             "type": "string"
           },

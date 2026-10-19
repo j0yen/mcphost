@@ -966,7 +966,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 - `domain`: string, required
 - `method`: string
-  - `method` enum: `email`, `github`, `dns`
+  - `method` enum: `email`, `github`, `dns`, `admin`
 - `tenant_key`: string
 
 ### `host.claim.dns.start`
@@ -983,7 +983,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 - `domain`: string, required
 - `method`: string
-  - `method` enum: `email`, `github`, `dns`
+  - `method` enum: `email`, `github`, `dns`, `admin`
 - `tenant_key`: string
 
 ### `host.claim.github`
@@ -997,7 +997,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `method`: string
-  - `method` enum: `email`, `github`, `dns`
+  - `method` enum: `email`, `github`, `dns`, `admin`
 - `tenant_key`: string
 
 ### `host.claim.start`
@@ -1010,7 +1010,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `method`: string
-  - `method` enum: `email`, `github`, `dns`
+  - `method` enum: `email`, `github`, `dns`, `admin`
 - `tenant_key`: string
 
 ### `host.client.revoke`

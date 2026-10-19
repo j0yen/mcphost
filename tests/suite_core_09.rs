@@ -9,6 +9,8 @@
 mod common;
 #[path = "support/chart_fixture.rs"]
 mod chart_fixture;
+#[path = "support/exprp.rs"]
+mod exprp;
 #[path = "support/federation.rs"]
 mod federation;
 #[path = "support/lanecov.rs"]
@@ -28,6 +30,16 @@ mod ac14_storage_unwritable;
 mod busyaudit_ac08_healthz_db_fields;
 #[path = "ctrv_ac03_status_and_healthz_carry_contract_identity.rs"]
 mod ctrv_ac03_status_and_healthz_carry_contract_identity;
+#[path = "exprp_ac02_literal_secret_value_is_refused.rs"]
+mod exprp_ac02_literal_secret_value_is_refused;
+#[path = "exprp_ac03_non_portable_and_failing_proof_are_refused.rs"]
+mod exprp_ac03_non_portable_and_failing_proof_are_refused;
+#[path = "exprp_ac04_admin_decides_and_the_proposer_sees_it.rs"]
+mod exprp_ac04_admin_decides_and_the_proposer_sees_it;
+#[path = "exprp_ac05_pull_writes_the_clone_commits_and_merges.rs"]
+mod exprp_ac05_pull_writes_the_clone_commits_and_merges;
+#[path = "exprp_ac06_name_collision_and_open_proposal_cap.rs"]
+mod exprp_ac06_name_collision_and_open_proposal_cap;
 #[path = "fbeh_ac02_hint_on_every_variant.rs"]
 mod fbeh_ac02_hint_on_every_variant;
 #[path = "fbeh_ac03_missing_mapping_is_named.rs"]
