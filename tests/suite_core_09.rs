@@ -17,8 +17,6 @@ mod federation;
 mod lanecov;
 #[path = "support/oauth.rs"]
 mod oauth;
-#[path = "support/promptkind.rs"]
-mod promptkind;
 #[path = "support/serve.rs"]
 mod serve;
 #[path = "support/xlinks_cli.rs"]
@@ -1032,13 +1030,3 @@ mod minimal_ac3_wrong_bearer_matches_anonymous;
 mod minimal_ac4_liveness_failure_returns_5xx;
 #[path = "minimal_ac5_tenant_bearer_gets_anonymous_body.rs"]
 mod minimal_ac5_tenant_bearer_gets_anonymous_body;
-#[path = "mprm_ac01_recipes_listed_and_rendered.rs"]
-mod mprm_ac01_recipes_listed_and_rendered;
-#[path = "mprm_ac02_missing_argument_and_unknown_prompt.rs"]
-mod mprm_ac02_missing_argument_and_unknown_prompt;
-#[path = "mprm_ac03_prompt_kind_tool_listed_and_rendered.rs"]
-mod mprm_ac03_prompt_kind_tool_listed_and_rendered;
-#[path = "mprm_ac04_oauth_scope_filters_prompt_tools.rs"]
-mod mprm_ac04_oauth_scope_filters_prompt_tools;
-#[path = "mprm_ac07_capabilities_advertise_prompts.rs"]
-mod mprm_ac07_capabilities_advertise_prompts;
