@@ -1,0 +1,11 @@
+[tool]
+name = "hello"
+kind = "echo"
+description = "Echoes the message it is given."
+
+[spec.schema]
+type = "object"
+required = ["msg"]
+
+[spec.schema.properties.msg]
+type = "string"

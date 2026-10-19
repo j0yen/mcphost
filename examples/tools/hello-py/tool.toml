@@ -1,0 +1,11 @@
+[tool]
+name = "hello_py"
+kind = "python"
+description = "Greets a name."
+
+[spec.args_schema]
+type = "object"
+required = ["name"]
+
+[spec.args_schema.properties.name]
+type = "string"

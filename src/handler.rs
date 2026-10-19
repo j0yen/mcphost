@@ -767,7 +767,7 @@ pub fn admin_tool_descriptors() -> Vec<Tool> {
 /// manifest entry), factored out so both its own `Tool::new` descriptor
 /// below and [`tool_publish_input_schema`] build from the exact same
 /// literal -- a hand-copied twin here would drift the moment either changed.
-fn tool_publish_props(kinds: &KindRegistry) -> Value {
+pub(crate) fn tool_publish_props(kinds: &KindRegistry) -> Value {
     json!({
         "name": {
             "type": "string",
