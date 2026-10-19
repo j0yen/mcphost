@@ -2094,6 +2094,7 @@ async fn main() -> anyhow::Result<()> {
                 claim_rate_limit_per_hour,
                 email_config,
                 email_client,
+                owner_verify: mcphost::verify::OwnerVerify::from_env(),
                 drafter,
                 bans: mcphost::bans::BanCache::new(),
                 ban_denials_threshold: mcphost::bans::ban_denials_threshold_from_env(),

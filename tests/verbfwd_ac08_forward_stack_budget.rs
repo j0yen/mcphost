@@ -102,10 +102,15 @@ fn libtest_name() -> String {
 const PLACEHOLDER: &str = "xx";
 
 /// A minimal valid-looking value for a JSON-schema fragment: first enum
-/// member, else a type-appropriate scalar, objects carrying their required
+/// member, else first `examples` entry, else a type-appropriate scalar, objects carrying their required
 /// properties. Generated from the descriptor, never listed by hand.
 fn sample(schema: &Value) -> Value {
     if let Some(first) = schema.get("enum").and_then(Value::as_array).and_then(|a| a.first()) {
+        return first.clone();
+    }
+    // A property whose shape a type cannot say (a domain name) publishes `examples`
+    // from the same const its validator is tested against.
+    if let Some(first) = schema.get("examples").and_then(Value::as_array).and_then(|a| a.first()) {
         return first.clone();
     }
     // `host.email.send`'s `to` declares `format: email`: a string with no `@` stops at

@@ -322,6 +322,18 @@ mod ownmt_ac05_claim_email_configured_signal;
 mod ownmt_ac06_claim_round_trip_for_journey_claim_step;
 #[path = "ownmt_ac07_claim_page_shows_remember_note.rs"]
 mod ownmt_ac07_claim_page_shows_remember_note;
+#[path = "ownv_ac02_method_table_drift.rs"]
+mod ownv_ac02_method_table_drift;
+#[path = "ownv_ac03_github_callback_verifies.rs"]
+mod ownv_ac03_github_callback_verifies;
+#[path = "ownv_ac04_github_unset_is_method_unavailable.rs"]
+mod ownv_ac04_github_unset_is_method_unavailable;
+#[path = "ownv_ac05_already_verified_by_email.rs"]
+mod ownv_ac05_already_verified_by_email;
+#[path = "ownv_ac06_concurrent_dns_check_single_winner.rs"]
+mod ownv_ac06_concurrent_dns_check_single_winner;
+#[path = "ownv_ac07_quickstart_next_names_every_method.rs"]
+mod ownv_ac07_quickstart_next_names_every_method;
 #[path = "pgm_ac02_ceilings_carry_perf_fields.rs"]
 mod pgm_ac02_ceilings_carry_perf_fields;
 #[path = "pgm_ac03_hourly_task_writes_two_rows_per_plan_path.rs"]
@@ -1010,19 +1022,3 @@ mod support_ac06_served_pages_from_docs_and_readme;
 mod support_ac07_whoami_links_resolve;
 #[path = "support_ac08_release_artifact_includes_www.rs"]
 mod support_ac08_release_artifact_includes_www;
-#[path = "surface_ac02_dry_run_descriptions.rs"]
-mod surface_ac02_dry_run_descriptions;
-#[path = "surface_ac03_args_invalid_unified.rs"]
-mod surface_ac03_args_invalid_unified;
-#[path = "surface_ac04_required_field_descriptions.rs"]
-mod surface_ac04_required_field_descriptions;
-#[path = "surface_ac05_llms_txt_tool_parity.rs"]
-mod surface_ac05_llms_txt_tool_parity;
-#[path = "surface_ac07_tool_publish_description_length.rs"]
-mod surface_ac07_tool_publish_description_length;
-#[path = "surface_ac08_get_info_mentions_try_before_call.rs"]
-mod surface_ac08_get_info_mentions_try_before_call;
-#[path = "surface_tool_description_min_length.rs"]
-mod surface_tool_description_min_length;
-#[path = "surface_vault_tools_registered.rs"]
-mod surface_vault_tools_registered;
