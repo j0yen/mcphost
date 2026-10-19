@@ -2151,7 +2151,11 @@
       "AC5": "tests/shsc_ac05_fork_copies_a_fork_scoped_tool.rs",
       "AC6": "tests/shsc_ac06_url_shares_allow_only_call.rs",
       "AC7": "tests/shsc_ac07_migration_backfills_shared_rows.rs",
-      "AC8": "deferred -- operator-provisioned: live `scripts/share-scope-live.sh https://mcphost.dev` against prod after deploy."
+      "AC8": "deferred -- operator-provisioned: Live check of prod via scripts/share-scope-live.sh (landed; `ssh orch bash ~/wintermute/mcphost/scripts/share-scope-live.sh https://mcphost.dev` prints call: ok, revoked_after_ms: <1000, code: share_revoked, tenants_left: 0)."
+    },
+    "plansjson": {
+      "_prd": "hotfix (no PRD): 949 live AC 8 -- /plans.json and billing.plans carry every ceilings_flat() key",
+      "AC1": "tests/plansjson_ac01_every_ceiling_reaches_the_public_catalog.rs"
     }
   }
 }
