@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.110.1 — 2026-10-19
+
+Released by wm-build land: loop: mcphost-tool-directory-format.
+
 ## v0.108.0 — 2026-10-15
 
 Released by wm-build land: train 8: mcphost-host-changelog-since-b.
