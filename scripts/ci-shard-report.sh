@@ -37,13 +37,13 @@ case "${1:-}" in
   sandbox|core) partition="$1"; shift ;;
 esac
 
-case "$partition" in
-  # 10-17 slow hosted runners measured suite_core_08 559 s and suite_core_07 438 s
-  # against the then-recorded 375/341 s; the weights are the max measured seconds
-  # since 10-18 (ci-test-partition.sh CORE_SHARD_PREDICT_LIMIT = this warn line).
-  core)    WARN_AT=540; FAIL_ABOVE=720 ;;
-  *)       WARN_AT=240; FAIL_ABOVE=300 ;;
-esac
+# WARN_AT / FAIL_ABOVE are NOT restated here: ci-test-partition.sh `limits` is the one
+# definition (its `check` applies the same two lines to the predicted heaviest core
+# shard). 10-17 slow hosted runners measured suite_core_08 559 s and suite_core_07
+# 438 s against the then-recorded 375/341 s; the core weights are the max measured
+# seconds since 10-18.
+read -r WARN_AT FAIL_ABOVE < <("$REPO_ROOT/scripts/ci-test-partition.sh" limits "$partition") \
+  || { echo "ci-shard-report: cannot read the $partition limits from ci-test-partition.sh" >&2; exit 2; }
 
 n="${1:?usage: ci-shard-report.sh [sandbox|core] <n> <of> <build_s> <run_s> <log> [<status>]}"
 of="${2:?}" build_s="${3:?}" run_s="${4:?}" log="${5:?}" status="${6:-0}"

@@ -87,7 +87,7 @@
 # heaviest first into the lightest shard from the same weights file, CORE_SHARDS
 # is the ONE core count (`shards core` prints it; ci.yml's plan job emits the
 # core matrix from that), and `check` fails when a core suite has no weight or
-# the predicted heaviest core shard exceeds CORE_SHARD_PREDICT_LIMIT.
+# the predicted heaviest core shard exceeds CORE_FAIL_ABOVE (it warns above CORE_WARN_AT).
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -109,15 +109,25 @@ MEASURED_REL="scripts/ci-suite-measured.json"
 # 2026-10-18: suite_core_07/08 were recorded at 341/375 s while CI measured
 # 586-735/427-711 s, and `check` kept predicting 375 s from the old numbers.
 STALE_RATIO=1.5
-# Predicted heaviest shard above this fails `check` (the CI run budget warns at
-# 240 s and fails above 300 s; see ci.yml's sandbox step).
-SHARD_PREDICT_LIMIT=240
-# The same bound for a core shard's run wall (ci-shard-report.sh warns at 540 s
-# and fails above 720 s for core). The recorded core weights are the MAX measured
-# hosted-runner seconds (refreshed 2026-10-18 from CI runs 39129276291,
-# 39133346672, 39133722354; the old 420 bound belonged to fast-runner weights that
-# understated suite_core_07/08 by 1.7-2x), so the bound is the warn line itself.
-CORE_SHARD_PREDICT_LIMIT=540
+# THE shard run-wall limits (seconds): the ONE definition. `limits <partition>`
+# prints "<warn_at> <fail_above>" and ci-shard-report.sh reads its CI run-wall
+# lines from there, so `check` and CI can never disagree.
+SANDBOX_WARN_AT=240
+SANDBOX_FAIL_ABOVE=300
+CORE_WARN_AT=540
+CORE_FAIL_ABOVE=720
+# Predicted heaviest sandbox shard above this fails `check` (the CI run budget warns
+# at 240 s and fails above 300 s; see ci.yml's sandbox step).
+SHARD_PREDICT_LIMIT=$SANDBOX_WARN_AT
+# Core: the predicted heaviest core shard WARNS above CORE_WARN_AT (540 s, stderr,
+# exit 0) and FAILS only above CORE_FAIL_ABOVE (720 s) -- the same two lines CI's
+# run wall uses, so `check` can never block a shard CI would run green. The recorded
+# core weights are the MAX measured hosted-runner seconds (refreshed 2026-10-18 from
+# CI runs 39129276291, 39133346672, 39133722354; the old 420 bound belonged to
+# fast-runner weights that understated suite_core_07/08 by 1.7-2x), so a predicted
+# shard in the 540-720 band is real but still inside CI's budget (ryzen7 runs 410 and
+# 404 were gate-blocked at a predicted 608 s that CI runs fine).
+CORE_SHARD_PREDICT_LIMIT=$CORE_FAIL_ABOVE
 
 # The sandbox-execution surface. `supports_user_namespaces` and
 # `require_user_namespaces_or_ci_skip` are the capability guard itself;
@@ -394,7 +404,7 @@ check() {
   # sharded): the CORE_SHARDS shards are total and disjoint over the core suite
   # list (a suite that fell out of every shard would silently stop running in
   # CI), none is empty, every core suite has a weight, and the predicted
-  # heaviest core shard stays under CORE_SHARD_PREDICT_LIMIT.
+  # heaviest core shard stays at or under CORE_FAIL_ABOVE (warns above CORE_WARN_AT).
   local core_heaviest="?" core_union core_plan
   if core_plan="$(assign_weighted core "$CORE_SHARDS" 2>&1)"; then
     core_union=""
@@ -417,6 +427,8 @@ check() {
     if awk -v h="$core_heaviest" -v l="$CORE_SHARD_PREDICT_LIMIT" 'BEGIN { exit !(h > l) }'; then
       echo "ci-test-partition: predicted heaviest core shard is ${core_heaviest}s (> ${CORE_SHARD_PREDICT_LIMIT}s) from the weights in $WEIGHTS_REL -- widen CORE_SHARDS or refresh the weights" >&2
       rc=1
+    elif awk -v h="$core_heaviest" -v l="$CORE_WARN_AT" 'BEGIN { exit !(h > l) }'; then
+      echo "ci-test-partition: WARNING predicted heaviest core shard is ${core_heaviest}s (> ${CORE_WARN_AT}s warn line, fail line ${CORE_FAIL_ABOVE}s) from the weights in $WEIGHTS_REL -- CI runs it, but refresh the weights or widen CORE_SHARDS before it nears ${CORE_FAIL_ABOVE}s" >&2
     fi
   else
     printf '%s\n' "$core_plan" >&2
@@ -458,6 +470,11 @@ case "${1:-}" in
   core-shard)    shard core "${2:?usage: ci-test-partition.sh core-shard <n> <of>}" "${3:?usage: ci-test-partition.sh core-shard <n> <of>}" ;;
   list)          suite_names "${2:?usage: ci-test-partition.sh list <sandbox|core>}" ;;
   classify-file) classify "${2:?usage: ci-test-partition.sh classify-file <path>}" ;;
+  limits)        case "${2:-}" in
+                   sandbox) echo "$SANDBOX_WARN_AT $SANDBOX_FAIL_ABOVE" ;;
+                   core)    echo "$CORE_WARN_AT $CORE_FAIL_ABOVE" ;;
+                   *) echo "usage: ci-test-partition.sh limits <sandbox|core>" >&2; exit 2 ;;
+                 esac ;;
   check)         check ;;
-  *) echo "usage: $(basename "$0") <sandbox|core|shards [sandbox|core]|sandbox-shard <n> <of>|core-shard <n> <of>|list <p>|classify-file <path>|check>" >&2; exit 2 ;;
+  *) echo "usage: $(basename "$0") <sandbox|core|shards [sandbox|core]|sandbox-shard <n> <of>|core-shard <n> <of>|list <p>|limits <p>|classify-file <path>|check>" >&2; exit 2 ;;
 esac

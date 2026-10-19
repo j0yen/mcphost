@@ -2068,12 +2068,6 @@
       "AC3": "tests/errjson_ac03_errors_json_route.rs",
       "AC4": "tests/errjson_ac04_host_errors_tool.rs"
     },
-    "orgmb": {
-      "_prd": "PRD-mcphost-org-model-b.md (test_prefix: orgmb)",
-      "AC1": "tests/orgmb_ac01_owner_removes_member.rs",
-      "AC2": "tests/orgmb_ac02_concurrent_create_one_winner.rs",
-      "AC3": "tests/orgmb_ac03_llms_txt_and_quickstart_name_org_verbs.rs"
-    },
     "sibl": {
       "_prd": "PRD-mcphost-same-user-second-agent.md (test_prefix: sibl)",
       "AC1": "tests/sibl_ac01_second_connection_joins_same_namespace.rs",
@@ -2176,6 +2170,10 @@
     "plansjson": {
       "_prd": "hotfix (no PRD): 949 live AC 8 -- /plans.json and billing.plans carry every ceilings_flat() key",
       "AC1": "tests/plansjson_ac01_every_ceiling_reaches_the_public_catalog.rs"
+    },
+    "tmapdup": {
+      "_prd": "hotfix (no PRD): agent/test-map.json repeated the orgmb key; JSON tools keep only the last copy",
+      "AC1": "tests/tmapdup_ac01_test_map_has_no_duplicate_keys.rs"
     }
   }
 }

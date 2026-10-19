@@ -224,6 +224,8 @@ mod tlint_ac05_landed_tree_has_zero_offenders;
 mod tlint_ac06_converted_files_keep_their_budget_numbers;
 #[path = "tlint_ac07_json_field_names_are_not_wall_clock_tokens.rs"]
 mod tlint_ac07_json_field_names_are_not_wall_clock_tokens;
+#[path = "tmapdup_ac01_test_map_has_no_duplicate_keys.rs"]
+mod tmapdup_ac01_test_map_has_no_duplicate_keys;
 #[path = "toolname_ac01_lint_reports_violations.rs"]
 mod toolname_ac01_lint_reports_violations;
 #[path = "toolname_ac02_alias_dispatch_hint_and_log.rs"]
