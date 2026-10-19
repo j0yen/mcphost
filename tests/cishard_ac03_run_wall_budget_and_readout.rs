@@ -1,3 +1,4 @@
+//! contract: reads scripts/ci-test-partition.sh
 //! PRD-mcphost-ci-sandbox-shards-balanced AC3 -- a sandbox shard job reports
 //! `build wall` and `run wall` in the step summary, warns at run wall >= 240 s,
 //! fails only above 300 s, and on warn or fail prints one
@@ -144,8 +145,9 @@ fn ci_yml_times_build_and_run_apart_and_calls_the_report() {
 }
 
 // PRD-mcphost-ci-core-suites-sharded AC6 (readout half): the core shards use the
-// same script with the `core` partition, a 540 s warn line and a 720 s fail line,
-// and always print one `suite=` line per suite.
+// same script with the `core` partition, the warn and fail lines printed by
+// `ci-test-partition.sh limits core` (the one definition), and always print one
+// `suite=` line per suite.
 const CORE_LOG: &str = "\
      Running unittests src/main.rs (target/debug/deps/mcphost-aaaa)
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
@@ -192,16 +194,32 @@ fn a_core_shard_always_reports_build_run_and_every_suite_to_the_summary() {
     }
 }
 
+/// The core run-wall lines `(warn_at, fail_above)` from `ci-test-partition.sh limits core`,
+/// so this test follows the one definition instead of restating its seconds.
+fn core_limits() -> (u32, u32) {
+    let o = Command::new(root().join("scripts/ci-test-partition.sh"))
+        .args(["limits", "core"])
+        .current_dir(root())
+        .output()
+        .expect("run ci-test-partition.sh limits core");
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let text = String::from_utf8_lossy(&o.stdout).into_owned();
+    let v: Vec<u32> = text.split_whitespace().map(|n| n.parse().expect("limits core prints integers")).collect();
+    (v[0], v[1])
+}
+
 #[test]
-fn warns_at_540_passes_through_720_and_fails_above_it() {
-    let (below, _) = core_report("539", 539);
+fn warns_at_the_warn_line_passes_through_the_fail_line_and_fails_above_it() {
+    let (warn, fail) = core_limits();
+    assert!(warn < fail, "warn line {warn} must sit below fail line {fail}");
+    let (below, _) = core_report("below", warn - 1);
     assert!(!String::from_utf8_lossy(&below.stdout).contains("::warning::"));
-    let (at, _) = core_report("540", 540);
+    let (at, _) = core_report("at", warn);
     assert!(at.status.success());
     assert!(String::from_utf8_lossy(&at.stdout).contains("::warning::"));
-    let (top, _) = core_report("720", 720);
-    assert!(top.status.success(), "720 s is not above 720 s");
-    let (over, _) = core_report("721", 721);
-    assert!(!over.status.success(), "721 s must fail");
+    let (top, _) = core_report("top", fail);
+    assert!(top.status.success(), "{fail} s is not above {fail} s");
+    let (over, _) = core_report("over", fail + 1);
+    assert!(!over.status.success(), "{} s must fail", fail + 1);
     assert!(String::from_utf8_lossy(&over.stdout).contains("::error::"));
 }

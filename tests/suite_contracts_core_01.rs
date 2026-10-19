@@ -49,6 +49,8 @@ mod cishard_ac01_core_partition_total_disjoint_weighted;
 mod cishard_ac02_core_count_one_source_and_aggregator;
 #[path = "cishard_ac02_one_shard_count_source.rs"]
 mod cishard_ac02_one_shard_count_source;
+#[path = "cishard_ac03_run_wall_budget_and_readout.rs"]
+mod cishard_ac03_run_wall_budget_and_readout;
 #[path = "cishard_ac05_core_timeouts_and_cache_key.rs"]
 mod cishard_ac05_core_timeouts_and_cache_key;
 #[path = "cishard_ac06_core_predicted_shard_under_limit.rs"]

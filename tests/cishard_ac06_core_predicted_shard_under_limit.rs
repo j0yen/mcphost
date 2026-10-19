@@ -1,8 +1,8 @@
 //! contract: the heaviest predicted core shard stays under its limit
 //! PRD-mcphost-ci-core-suites-sharded AC6 -- from the recorded weights `check`
-//! computes the heaviest predicted core shard and it is <= 720 s (CORE_FAIL_ABOVE,
-//! the CI fail line; above 540 s, CORE_WARN_AT, it only WARNS on stderr, exit 0; both
-//! limits are read from `ci-test-partition.sh limits core`). (The other
+//! computes the heaviest predicted core shard and it is <= CORE_FAIL_ABOVE (the CI
+//! fail line; above CORE_WARN_AT it only WARNS on stderr, exit 0; both limits are read
+//! from `ci-test-partition.sh limits core`, never restated here). (The other
 //! half of AC6, a shard run printing build wall, run wall and per-suite
 //! measured vs recorded seconds, is pinned in
 //! cishard_ac03_run_wall_budget_and_readout.rs beside the sandbox readout.)
@@ -114,15 +114,16 @@ fn a_weight_over_the_limit_fails_check_naming_the_figure() {
 
 #[test]
 fn a_prediction_between_the_warn_and_fail_lines_warns_and_passes() {
-    // 600 s is above the 540 s warn line and below the 720 s fail line (ryzen7 runs
-    // 410 and 404 were gate-blocked at a predicted 608 s that CI runs fine).
+    // A weight one second over the warn line, derived from `limits core` (ryzen7 runs 410
+    // and 404 were gate-blocked at a predicted 608 s that CI ran fine): it must warn and pass.
     let (warn, fail) = (limit("CORE_WARN_AT"), limit("CORE_FAIL_ABOVE"));
-    assert!(warn < 600.0 && 600.0 <= fail, "600 must sit between {warn} and {fail}");
-    let o = check_with_first_core_weight("600", 600);
+    let w = warn as u32 + 1;
+    assert!((w as f64) < fail, "{w} must sit between {warn} and {fail}");
+    let o = check_with_first_core_weight("midband", w);
     let err = String::from_utf8_lossy(&o.stderr);
-    assert!(o.status.success(), "a 600 s prediction must pass: {err}");
+    assert!(o.status.success(), "a {w} s prediction must pass: {err}");
     // The packer may place another core suite in the same shard, so the figure is
-    // 600 s plus whatever shares it: assert it is at least 600 and still between the lines.
+    // w plus whatever shares it: assert it is at least w and still between the lines.
     let figure: f64 = err
         .split("WARNING predicted heaviest core shard is ")
         .nth(1)
@@ -130,16 +131,17 @@ fn a_prediction_between_the_warn_and_fail_lines_warns_and_passes() {
         .and_then(|n| n.trim().parse().ok())
         .unwrap_or_else(|| panic!("the warning must name the shard figure: {err}"));
     assert!(
-        figure >= 600.0 && figure > warn && figure <= fail && err.contains(&format!("> {warn}s warn line")),
-        "the warning must name a figure >= 600 between the warn and fail lines, and the warn line: {err}"
+        figure >= w as f64 && figure > warn && figure <= fail && err.contains(&format!("> {warn}s warn line")),
+        "the warning must name a figure >= {w} between the warn and fail lines, and the warn line: {err}"
     );
 }
 
 #[test]
 fn a_prediction_above_the_fail_line_fails() {
-    assert!(limit("CORE_FAIL_ABOVE") < 730.0);
-    let o = check_with_first_core_weight("730", 730);
-    assert!(!o.status.success(), "a 730 s prediction must fail");
+    // Ten seconds over the fail line from `limits core`, never a restated number.
+    let w = limit("CORE_FAIL_ABOVE") as u32 + 10;
+    let o = check_with_first_core_weight("overfail", w);
+    assert!(!o.status.success(), "a {w} s prediction must fail");
     let err = String::from_utf8_lossy(&o.stderr);
-    assert!(err.contains("predicted heaviest core shard is 730s"), "{err}");
+    assert!(err.contains(&format!("predicted heaviest core shard is {w}s")), "{err}");
 }
