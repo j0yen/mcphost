@@ -1,4 +1,4 @@
-//! solo-suite: 423 one test re-runs every contract suite through pin-tests.sh (330-423 s on a hosted runner, the max of CI runs 39129276291, 39133346672, 39133722354)
+//! solo-suite: 770 one test re-runs every contract suite through pin-tests.sh (585-770 s on a hosted runner, the max of CI runs 39196582126, 39200390250, 39203293144)
 //! PRD-mcphost-contract-suite-generated AC6 -- on a warm cargo target
 //! `scripts/pin-tests.sh` finishes every contract suite within the hard budget
 //! (900 s) and prints a per-binary timing line for each.
@@ -21,9 +21,9 @@ use std::time::Instant;
 /// Hard budget: catches a hang or runaway, not a slow runner.
 const BUDGET_SECS: u64 = 900;
 /// Target: exceeding it only emits a `::warning::`.
-// measured 477 s on CI run 39186972671 (main, pin-tests suite_contracts_core_01) + 25 %, rounded up to a minute
+// measured 611 s on CI run 39200390250 (PR #446, suite_contracts_core_01) + 25 %, rounded up to a minute
 // Raising this again needs a new measured number in this comment (reviewer's check).
-const TARGET_SECS: u64 = 600;
+const TARGET_SECS: u64 = 780;
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

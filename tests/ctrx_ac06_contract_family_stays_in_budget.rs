@@ -1,7 +1,7 @@
 //! PRD-mcphost-contract-suite-registry-axis-b AC6 (static half) -- the contract
 //! family the registry axis grew stays inside its budget: the recorded weights of
 //! the `suite_contracts_*` binaries sum to <= `ctrs_ac06`'s `TARGET_SECS` (read from
-//! that file, the one place the number lives; measured 362 s on run 39163232421
+//! that file, the one place the number lives; measured 611 s on run 39200390250
 //! + 25 %), `BUDGET_SECS` stays 900, the `contract-suite` check still
 //! runs `./scripts/pin-tests.sh` with `wall_minutes = 25`, and CI's `contract
 //! suites` step runs the same script. The CI-log half (`pin-tests: pass <bin>`
@@ -48,7 +48,7 @@ fn ctrx_ac06_budget_constants_and_check_are_unchanged() {
     let ctrs = read("tests/ctrs_ac06_contract_suites_finish_within_budget.rs");
     let at = ctrs.find("const TARGET_SECS").unwrap();
     let comment: Vec<&str> = ctrs[..at].lines().rev().take(3).collect();
-    assert!(comment.iter().any(|l| l.contains("measured 477 s on CI run 39186972671")), "{comment:?}");
+    assert!(comment.iter().any(|l| l.contains("measured 611 s on CI run 39200390250")), "{comment:?}");
     let toml = read("wm-build-ci.toml");
     let check = toml.split("[[check]]").find(|c| c.contains("name = \"contract-suite\"")).expect("contract-suite check");
     assert!(check.contains("cmd = \"./scripts/pin-tests.sh\""), "{check}");

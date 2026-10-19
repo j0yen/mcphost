@@ -1,15 +1,16 @@
 {
-  "suite_contracts_core_01": 586.4,
-  "suite_core_01": 1.72,
+  "suite_cargo_core_01": 0.63,
+  "suite_contracts_core_01": 52.98,
+  "suite_core_01": 1.83,
   "suite_core_02": 0.8,
-  "suite_core_03": 0.7,
-  "suite_core_04": 260.41,
-  "suite_core_05": 0.58,
-  "suite_core_06": 0.53,
-  "suite_core_07": 0.6,
-  "suite_core_08": 309.57,
-  "suite_core_09": 209.99,
-  "suite_core_10": 376.81,
-  "suite_core_11": 314.37,
-  "suite_env_core_01": 40.61
+  "suite_core_03": 2.11,
+  "suite_core_04": 769.04,
+  "suite_core_05": 1.77,
+  "suite_core_06": 0.91,
+  "suite_core_07": 1.38,
+  "suite_core_08": 315.54,
+  "suite_core_09": 234.77,
+  "suite_core_10": 260.45,
+  "suite_core_11": 277.58,
+  "suite_env_core_01": 46.5
 }

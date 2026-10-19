@@ -114,18 +114,22 @@ STALE_RATIO=1.5
 # lines from there, so `check` and CI can never disagree.
 SANDBOX_WARN_AT=240
 SANDBOX_FAIL_ABOVE=300
-CORE_WARN_AT=540
-CORE_FAIL_ABOVE=720
+# 10-19: core lines 540/720 -> 720/900. The fail line must cover the largest SOLO
+# suite's own contract budget: suite_core_04 is ctrs_ac06 alone (re-runs every contract
+# suite through pin-tests.sh, BUDGET_SECS 900) and measured 770 s on run 39196582126
+# (585 s on main 39203293144), so a 720 s wall failed a suite its own contract passes.
+CORE_WARN_AT=720
+CORE_FAIL_ABOVE=900
 # Predicted heaviest sandbox shard above this fails `check` (the CI run budget warns
 # at 240 s and fails above 300 s; see ci.yml's sandbox step).
 SHARD_PREDICT_LIMIT=$SANDBOX_WARN_AT
-# Core: the predicted heaviest core shard WARNS above CORE_WARN_AT (540 s, stderr,
-# exit 0) and FAILS only above CORE_FAIL_ABOVE (720 s) -- the same two lines CI's
+# Core: the predicted heaviest core shard WARNS above CORE_WARN_AT (stderr,
+# exit 0) and FAILS only above CORE_FAIL_ABOVE -- the same two lines CI's
 # run wall uses, so `check` can never block a shard CI would run green. The recorded
 # core weights are the MAX measured hosted-runner seconds (refreshed 2026-10-18 from
 # CI runs 39129276291, 39133346672, 39133722354; the old 420 bound belonged to
 # fast-runner weights that understated suite_core_07/08 by 1.7-2x), so a predicted
-# shard in the 540-720 band is real but still inside CI's budget (ryzen7 runs 410 and
+# shard in the warn-fail band is real but still inside CI's budget (ryzen7 runs 410 and
 # 404 were gate-blocked at a predicted 608 s that CI runs fine).
 CORE_SHARD_PREDICT_LIMIT=$CORE_FAIL_ABOVE
 
