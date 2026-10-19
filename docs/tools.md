@@ -969,6 +969,23 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
   - `method` enum: `email`, `github`, `dns`
 - `tenant_key`: string
 
+### `host.claim.dns.start`
+
+**Returns**
+
+- `method`: string (always)
+- `next`: object | null
+- `record`: string (always)
+- `type`: string (always)
+- `value`: string (always)
+
+**Arguments**
+
+- `domain`: string, required
+- `method`: string
+  - `method` enum: `email`, `github`, `dns`
+- `tenant_key`: string
+
 ### `host.claim.github`
 
 **Returns**
