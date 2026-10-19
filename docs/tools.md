@@ -3734,6 +3734,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `tool_lint`: array<object> | null
 - `verdict`: string | null
 - `version`: integer | null
+- `warnings`: array<object> | null
 - `welcome_back`: object | null
 
 **Arguments**

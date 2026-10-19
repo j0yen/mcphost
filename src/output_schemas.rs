@@ -53,6 +53,33 @@ fn registry() -> &'static Registry {
         {
             status.insert("enum".to_string(), serde_json::json!(crate::email_send::SendStatus::names()));
         }
+        // PRD-mcphost-sandbox-timeout-clamp-visible R3: a publish warning's
+        // keys and `code` set are `ClampWarning`'s own, never a typed copy.
+        if let Some(items) = parsed
+            .get_mut("host.tool.publish")
+            .and_then(|schema| schema.get_mut("properties"))
+            .and_then(|props| props.get_mut("warnings"))
+            .and_then(|warnings| warnings.get_mut("items"))
+            .and_then(Value::as_object_mut)
+        {
+            use crate::kinds::python::ClampWarning;
+            let declared = items.get("properties").and_then(Value::as_object).cloned().unwrap_or_default();
+            let props: Map<String, Value> = ClampWarning::FIELDS
+                .iter()
+                .map(|f| ((*f).to_string(), declared.get(*f).cloned().unwrap_or_else(|| serde_json::json!({}))))
+                .collect();
+            items.insert("properties".to_string(), Value::Object(props));
+            let mut required: Vec<&str> = ClampWarning::FIELDS.to_vec();
+            required.sort_unstable();
+            items.insert("required".to_string(), serde_json::json!(required));
+            if let Some(code) = items
+                .get_mut("properties")
+                .and_then(|p| p.get_mut("code"))
+                .and_then(Value::as_object_mut)
+            {
+                code.insert("enum".to_string(), serde_json::json!(ClampWarning::CODES));
+            }
+        }
         if let Err(bad) = widen_opaque(&mut parsed, OPAQUE_FIELDS) {
             panic!("OPAQUE_FIELDS: {bad}"); // allowlist: a renamed field must fail the build, never silently drop the rule; `oschv_ac01` asserts every pointer resolves
         }

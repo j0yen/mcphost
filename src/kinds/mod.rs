@@ -1256,6 +1256,21 @@ pub trait ResourceSink: Send + Sync {
     /// processes alive at once during the call (`resources_used.
     /// pids_max_seen`). Default no-op: only a sandboxed kind samples it.
     fn record_pids(&self, _pids_max_seen: i64) {}
+
+    /// PRD-mcphost-sandbox-timeout-clamp-visible R6: the limits this call
+    /// runs under after the plan's clamp. Default no-op: only a sandboxed
+    /// kind reports it.
+    fn record_limits(&self, _limits: &EffectiveLimits) {}
+}
+
+/// R6: what a python call's spec asked for against what the plan allowed.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EffectiveLimits {
+    pub timeout_s_requested: u64,
+    pub timeout_s_effective: u64,
+    pub wall_s: u64,
+    /// Spec fields the plan clamped (`[]` when the spec fits).
+    pub clamped: Vec<&'static str>,
 }
 
 /// A fresh [`NullResourceSink`] handle, for a caller that has no sink to hand.

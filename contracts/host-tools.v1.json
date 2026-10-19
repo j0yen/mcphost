@@ -31261,6 +31261,54 @@
               "null"
             ]
           },
+          "warnings": {
+            "items": {
+              "properties": {
+                "ceiling": {
+                  "type": "integer"
+                },
+                "ceiling_field": {
+                  "type": "string"
+                },
+                "code": {
+                  "enum": [
+                    "timeout_clamped"
+                  ],
+                  "type": "string"
+                },
+                "effective": {
+                  "type": "integer"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "plan": {
+                  "type": "string"
+                },
+                "requested": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "ceiling",
+                "ceiling_field",
+                "code",
+                "effective",
+                "field",
+                "message",
+                "plan",
+                "requested"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "welcome_back": {
             "properties": {
               "last_note": {},

@@ -560,6 +560,16 @@ mod statusfeed_ac01_operational_after_three_minutes;
 mod statusfeed_ac09_alert_and_auto_incident;
 #[path = "statusfeed_ac11_live_status_trailer.rs"]
 mod statusfeed_ac11_live_status_trailer;
+#[path = "stcv_ac01_shipped_r3_pinned.rs"]
+mod stcv_ac01_shipped_r3_pinned;
+#[path = "stcv_ac02_publish_warns_on_clamped_timeout.rs"]
+mod stcv_ac02_publish_warns_on_clamped_timeout;
+#[path = "stcv_ac03_clamp_warning_contract_cannot_drift.rs"]
+mod stcv_ac03_clamp_warning_contract_cannot_drift;
+#[path = "stcv_ac04_call_records_effective_limits.rs"]
+mod stcv_ac04_call_records_effective_limits;
+#[path = "stcv_ac05_no_clamp_no_warning.rs"]
+mod stcv_ac05_no_clamp_no_warning;
 #[path = "stdlibpseudo_ac1_future_import_empty_requirements.rs"]
 mod stdlibpseudo_ac1_future_import_empty_requirements;
 #[path = "stdlibpseudo_ac2_dunder_main_no_requirement.rs"]

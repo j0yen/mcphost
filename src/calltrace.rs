@@ -377,6 +377,18 @@ pub fn build_trace(
     }
 }
 
+/// PRD-mcphost-sandbox-timeout-clamp-visible R6: the limits the call ran
+/// under ride the untyped `timings_json` blob as `limits`.
+pub fn attach_limits(trace: &mut crate::db::NewCallTrace, limits: Option<Value>) {
+    let Some(limits) = limits else { return };
+    if let Ok(mut timings) = serde_json::from_str::<Value>(&trace.timings_json)
+        && let Some(map) = timings.as_object_mut()
+    {
+        map.insert("limits".to_string(), limits);
+        trace.timings_json = timings.to_string();
+    }
+}
+
 /// Resolves `{{ secret.NAME }}` placeholders in a replay's arguments from the
 /// tenant's own secrets, in place. Returns the key of the first value that
 /// cannot be restored: one still masked as `***`, or one naming a secret the
