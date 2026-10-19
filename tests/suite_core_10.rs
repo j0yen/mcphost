@@ -11,16 +11,12 @@ mod common;
 mod busyaudit;
 #[path = "support/fake_as.rs"]
 mod fake_as;
-#[path = "support/mrefu.rs"]
-mod mrefu;
 #[path = "support/msrvlock.rs"]
 mod msrvlock;
 #[path = "support/oauth.rs"]
 mod oauth;
 #[path = "support/oauthclient.rs"]
 mod oauthclient;
-#[path = "support/promptkind.rs"]
-mod promptkind;
 #[path = "support/pysdk.rs"]
 mod pysdk;
 #[path = "support/rgpt.rs"]
@@ -30,76 +26,6 @@ mod serve;
 #[path = "support/sjrc.rs"]
 mod sjrc;
 
-#[path = "meshops_ac01_stats_real_vs_synthetic_volume.rs"]
-mod meshops_ac01_stats_real_vs_synthetic_volume;
-#[path = "meshops_ac02_threads_no_bodies.rs"]
-mod meshops_ac02_threads_no_bodies;
-#[path = "meshops_ac03_thread_read_bodies_and_audit.rs"]
-mod meshops_ac03_thread_read_bodies_and_audit;
-#[path = "meshops_ac04_freeze_blocks_sends_not_reads_or_tools.rs"]
-mod meshops_ac04_freeze_blocks_sends_not_reads_or_tools;
-#[path = "meshops_ac05_unfreeze_restores_sending.rs"]
-mod meshops_ac05_unfreeze_restores_sending;
-#[path = "meshops_ac06_purge_dry_run_then_real.rs"]
-mod meshops_ac06_purge_dry_run_then_real;
-#[path = "meshops_ac07_tenant_delete_cascade_across_mesh_tables.rs"]
-mod meshops_ac07_tenant_delete_cascade_across_mesh_tables;
-#[path = "meshops_ac08_healthz_mesh_counters.rs"]
-mod meshops_ac08_healthz_mesh_counters;
-#[path = "meshops_ac09_stats_refusals_by_code_per_sender.rs"]
-mod meshops_ac09_stats_refusals_by_code_per_sender;
-#[path = "metering_ac01_stripe_customer_id_null_default.rs"]
-mod metering_ac01_stripe_customer_id_null_default;
-#[path = "metering_ac02_webhook_stores_stripe_customer_id.rs"]
-mod metering_ac02_webhook_stores_stripe_customer_id;
-#[path = "metering_ac03_checkout_metered_line_item.rs"]
-mod metering_ac03_checkout_metered_line_item;
-#[path = "metering_ac04_emits_pro_calls_only.rs"]
-mod metering_ac04_emits_pro_calls_only;
-#[path = "metering_ac05_crash_replay.rs"]
-mod metering_ac05_crash_replay;
-#[path = "metering_ac06_failure_leaves_state_unmoved.rs"]
-mod metering_ac06_failure_leaves_state_unmoved;
-#[path = "metering_ac07_batches_cap_at_100.rs"]
-mod metering_ac07_batches_cap_at_100;
-#[path = "metering_ac08_healthz_meter_lag.rs"]
-mod metering_ac08_healthz_meter_lag;
-#[path = "metering_ac09_deploy_units_verify.rs"]
-mod metering_ac09_deploy_units_verify;
-#[path = "metering_ac11_admin_meter_status.rs"]
-mod metering_ac11_admin_meter_status;
-#[path = "metering_ac12_billing_status_stripe_reported_usage.rs"]
-mod metering_ac12_billing_status_stripe_reported_usage;
-#[path = "metering_billing_status_emitted_this_month.rs"]
-mod metering_billing_status_emitted_this_month;
-#[path = "minimal_ac2_admin_full_document.rs"]
-mod minimal_ac2_admin_full_document;
-#[path = "minimal_ac3_wrong_bearer_matches_anonymous.rs"]
-mod minimal_ac3_wrong_bearer_matches_anonymous;
-#[path = "mprm_ac01_recipes_listed_and_rendered.rs"]
-mod mprm_ac01_recipes_listed_and_rendered;
-#[path = "mprm_ac02_missing_argument_and_unknown_prompt.rs"]
-mod mprm_ac02_missing_argument_and_unknown_prompt;
-#[path = "mprm_ac03_prompt_kind_tool_listed_and_rendered.rs"]
-mod mprm_ac03_prompt_kind_tool_listed_and_rendered;
-#[path = "mprm_ac04_oauth_scope_filters_prompt_tools.rs"]
-mod mprm_ac04_oauth_scope_filters_prompt_tools;
-#[path = "mprm_ac06_docs_table_and_quickstart_share_recipes.rs"]
-mod mprm_ac06_docs_table_and_quickstart_share_recipes;
-#[path = "mprm_ac07_capabilities_advertise_prompts.rs"]
-mod mprm_ac07_capabilities_advertise_prompts;
-#[path = "mrefu_ac01_breaking_migration_refuses_with_report.rs"]
-mod mrefu_ac01_breaking_migration_refuses_with_report;
-#[path = "mrefu_ac02_compatible_migration_reports_ok.rs"]
-mod mrefu_ac02_compatible_migration_reports_ok;
-#[path = "mrefu_ac03_schema_is_generated_and_drift_tested.rs"]
-mod mrefu_ac03_schema_is_generated_and_drift_tested;
-#[path = "mrefu_ac04_previous_up_failure_exits_4_with_tables_changed.rs"]
-mod mrefu_ac04_previous_up_failure_exits_4_with_tables_changed;
-#[path = "mrefub_ac01_unwritable_report_exits_5.rs"]
-mod mrefub_ac01_unwritable_report_exits_5;
-#[path = "mrefub_ac02_remedy_table_contract.rs"]
-mod mrefub_ac02_remedy_table_contract;
 #[path = "mres_ac01_read_authorises_like_list_tools.rs"]
 mod mres_ac01_read_authorises_like_list_tools;
 #[path = "mres_ac02_templates_list_equals_const_and_docs.rs"]
@@ -168,8 +94,6 @@ mod mwlpb_ac02_final_run_wait_returns_fast;
 mod mwlpb_ac03_plans_json_carries_wait_limits;
 #[path = "nexttool_ac01_anonymous_starter_set.rs"]
 mod nexttool_ac01_anonymous_starter_set;
-#[path = "nexttool_ac02_authenticated_listing_unchanged.rs"]
-mod nexttool_ac02_authenticated_listing_unchanged;
 #[path = "nexttool_ac03_signup_emits_list_changed.rs"]
 mod nexttool_ac03_signup_emits_list_changed;
 #[path = "nexttool_ac04_tool_publish_next_hint.rs"]
@@ -196,10 +120,6 @@ mod nfsb_ac01_first_contact_note_in_list_and_welcome_back;
 mod nfsb_ac02_shared_tool_and_tenants_isolated;
 #[path = "nfsb_ac03_quickstart_notes_max_drift.rs"]
 mod nfsb_ac03_quickstart_notes_max_drift;
-#[path = "ntfy_ac01_no_tenant_settable_alert_sink.rs"]
-mod ntfy_ac01_no_tenant_settable_alert_sink;
-#[path = "ntfy_ac02_enums_generated_into_every_surface.rs"]
-mod ntfy_ac02_enums_generated_into_every_surface;
 #[path = "ntfy_ac03_webhook_send_receipt.rs"]
 mod ntfy_ac03_webhook_send_receipt;
 #[path = "ntfy_ac04_email_channel_owner_only.rs"]
@@ -362,8 +282,6 @@ mod oschv_ac04_corpus_still_validates_diff_widened;
 mod oschv_ac05_declared_output_untyped_is_opaque;
 #[path = "outsch_ac01_oneof_budget_falsifier.rs"]
 mod outsch_ac01_oneof_budget_falsifier;
-#[path = "outsch_ac02_every_canonical_declares_an_object_output_schema.rs"]
-mod outsch_ac02_every_canonical_declares_an_object_output_schema;
 #[path = "outsch_ac03_contract_dump_marks_aliases_and_outputs.rs"]
 mod outsch_ac03_contract_dump_marks_aliases_and_outputs;
 #[path = "outsch_ac04_tools_list_carries_output_schema.rs"]
@@ -552,8 +470,6 @@ mod pubtool_ac07_admin_disabled_tenant_503;
 mod pubtool_ac08_put_delete_405;
 #[path = "pubtool_ac10_cors_header_and_preflight.rs"]
 mod pubtool_ac10_cors_header_and_preflight;
-#[path = "pubvis_ac02_visibility_enum_single_source.rs"]
-mod pubvis_ac02_visibility_enum_single_source;
 #[path = "pubvis_ac04_unlisted_not_listed_but_callable.rs"]
 mod pubvis_ac04_unlisted_not_listed_but_callable;
 #[path = "pubvis_ac05_tags_validated_normalised_capped.rs"]
@@ -1038,3 +954,71 @@ mod sreg_ac06_oauth_scopes_registry_first;
 mod sreg_ac07_unknown_scope_word_not_effective;
 #[path = "srlp_ac02_plan_ceilings_published.rs"]
 mod srlp_ac02_plan_ceilings_published;
+#[path = "state_ac01_kv_roundtrip.rs"]
+mod state_ac01_kv_roundtrip;
+#[path = "state_ac04_table_query.rs"]
+mod state_ac04_table_query;
+#[path = "state_ac05_schema_violation.rs"]
+mod state_ac05_schema_violation;
+#[path = "state_ac06_quota_exceeded.rs"]
+mod state_ac06_quota_exceeded;
+#[path = "state_ac08_tenant_isolation.rs"]
+mod state_ac08_tenant_isolation;
+#[path = "state_ac09_cascade_delete.rs"]
+mod state_ac09_cascade_delete;
+#[path = "statusfeed_ac02_exec_disabled_degrades.rs"]
+mod statusfeed_ac02_exec_disabled_degrades;
+#[path = "statusfeed_ac03_major_incident_outage.rs"]
+mod statusfeed_ac03_major_incident_outage;
+#[path = "statusfeed_ac04_incident_timeline_and_close.rs"]
+mod statusfeed_ac04_incident_timeline_and_close;
+#[path = "statusfeed_ac05_daily_rollup_uptime.rs"]
+mod statusfeed_ac05_daily_rollup_uptime;
+#[path = "statusfeed_ac06_external_sample_source_preserved.rs"]
+mod statusfeed_ac06_external_sample_source_preserved;
+#[path = "statusfeed_ac07_prune_keeps_rollup.rs"]
+mod statusfeed_ac07_prune_keeps_rollup;
+#[path = "statusfeed_ac08_status_html_renders.rs"]
+mod statusfeed_ac08_status_html_renders;
+#[path = "statusfeed_ac10_component_days_query.rs"]
+mod statusfeed_ac10_component_days_query;
+#[path = "stgl_ac01_grantee_list_names_group_share.rs"]
+mod stgl_ac01_grantee_list_names_group_share;
+#[path = "stgl_ac02_one_accessor_for_list_and_call.rs"]
+mod stgl_ac02_one_accessor_for_list_and_call;
+#[path = "stgl_ac03_public_share_not_in_tools_list.rs"]
+mod stgl_ac03_public_share_not_in_tools_list;
+#[path = "stgl_ac04_no_shares_list_unchanged.rs"]
+mod stgl_ac04_no_shares_list_unchanged;
+#[path = "stgl_ac05_unshare_removes_entry.rs"]
+mod stgl_ac05_unshare_removes_entry;
+#[path = "stgl_ac06_subkey_hides_shared_entries.rs"]
+mod stgl_ac06_subkey_hides_shared_entries;
+#[path = "stgl_ac07_share_reports_grantees_notified.rs"]
+mod stgl_ac07_share_reports_grantees_notified;
+#[path = "suite_ac1_ten_binaries_and_names_preserved.rs"]
+mod suite_ac1_ten_binaries_and_names_preserved;
+#[path = "suite_ac3_mod_common_declared_once.rs"]
+mod suite_ac3_mod_common_declared_once;
+#[path = "suite_ac5_disk_size_budget.rs"]
+mod suite_ac5_disk_size_budget;
+#[path = "suite_ac6_wall_time_budget.rs"]
+mod suite_ac6_wall_time_budget;
+#[path = "suite_ac7_junit_per_test_timing.rs"]
+mod suite_ac7_junit_per_test_timing;
+#[path = "suite_ac9_selftest_named_and_green.rs"]
+mod suite_ac9_selftest_named_and_green;
+#[path = "support_ac01_bearer_invalid_help_url.rs"]
+mod support_ac01_bearer_invalid_help_url;
+#[path = "support_ac02_internal_error_generic_and_logged.rs"]
+mod support_ac02_internal_error_generic_and_logged;
+#[path = "support_ac03_disk_floor_and_5xx_messages_generic.rs"]
+mod support_ac03_disk_floor_and_5xx_messages_generic;
+#[path = "support_ac04_plans_doc_and_json_consistent.rs"]
+mod support_ac04_plans_doc_and_json_consistent;
+#[path = "support_ac06_served_pages_from_docs_and_readme.rs"]
+mod support_ac06_served_pages_from_docs_and_readme;
+#[path = "support_ac07_whoami_links_resolve.rs"]
+mod support_ac07_whoami_links_resolve;
+#[path = "support_ac08_release_artifact_includes_www.rs"]
+mod support_ac08_release_artifact_includes_www;
