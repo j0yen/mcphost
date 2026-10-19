@@ -31,6 +31,10 @@ use crate::state::{
 };
 use crate::{admin, agents, channels, consent, control, docs, messaging, tables, tenant_state};
 
+mod arms;
+mod preauth;
+pub use arms::{ArmCtx, ArmFut};
+
 /// Who is making this request, resolved once per request from the bearer
 /// key (or its absence).
 enum Auth {
@@ -6865,16 +6869,21 @@ impl StateBackend for CountingStateBackend {
 /// The stack, in bytes, every forwarded dotted host verb must complete its real
 /// `host.tool_call` / `host.tool_test` call in on a debug build (profile and
 /// test thread as CI's `cargo test`). GENERATED MEASUREMENT: the measured
-/// maximum over all 226 forwardable ids is 1,560,576 B (every id within a few
-/// KiB of it: `test:host.trigger.set`, `call:host.vault.status`, ...,
-/// binary-searched on a thread of exactly that size, 10-17, after this fix, on
-/// origin/main a5c0ef6c) and the budget is that + 25 % = 1,950,720 B (1.86 MiB),
-/// so CI's 2 MiB test thread keeps >= 7 % over it and the next fat frame fails
+/// maximum over all 230 forwardable ids is 978,944 B (every id measures it:
+/// `test:host.trigger.set`, `call:host.whoami`,
+/// `call:host.webhook_inbox.create`, `call:host.vault.status`, ...,
+/// `scripts/fwd-stack-measure.sh all`, 2026-10-18, after the dispatch table
+/// (`src/dispatch_table.rs`) and the boxed `call_tool_inner` helpers; the shared
+/// level rose from 823,296 B on 10-17 with main's own frames, chiefly rmcp's
+/// `handle_request` poll frame, 48 -> 137 KiB, while `host.doctor` stopped
+/// compiling its error-envelope report on the caller's stack) and the
+/// budget is that + 25 % = 1,223,680 B, so CI's 2 MiB test thread keeps
+/// 40 % of it free and the next fat frame fails
 /// `tests/verbfwd_ac08_forward_stack_budget.rs`, naming the verb, instead of SIGABRTing a shard (run 326 `verbfwd_ac01`, run
 /// 953; both 10-17, both `has overflowed its stack`). The boundary is
 /// `dispatch_tenant_tool` / `forward_host_verb`, where a dotted verb re-enters
 /// the dispatcher. Re-measure and tighten as the dispatch frames shrink.
-pub const FORWARD_STACK_BUDGET: usize = 1_950_720;
+pub const FORWARD_STACK_BUDGET: usize = 1_223_680;
 
 /// Verbs whose handler forwards a call back into `dispatch_tenant_tool`; see the
 /// comment there. Canonical dotted names (an alias is resolved before dispatch).
@@ -7624,344 +7633,23 @@ impl McpHostHandler {
         // validator -- a structural violation is refused before any handler.
         crate::host_args::validate_host_args(&self.state.kinds, name, &args)?;
         crate::host_args::note_handler_run(&tenant.namespace, name);
-        match name {
-            "host.whoami" => {
-                let session_tenant = self.session_tenant_namespace(session_id).await;
-                let mut me =
-                    control::whoami(&self.state, tenant, subject, auth_method, session_tenant.as_deref()).await?;
-                let siblings = crate::tenant_clients::whoami_fields(
-                    &self.state,
-                    tenant,
-                    crate::tenant_clients::current_client().as_deref(),
-                )
-                .await?;
-                if let (Some(obj), Some(extra)) = (me.as_object_mut(), siblings.as_object()) {
-                    for (k, v) in extra {
-                        obj.insert(k.clone(), v.clone());
-                    }
-                }
-                if let (Some(mut key), Some(obj)) =
-                    (crate::subkeys::whoami_key(&self.state, session_id).await?, me.as_object_mut())
-                {
-                    // PRD-mcphost-delegation-recipes-and-quickstart R6: the
-                    // helper hint rides top-level, not inside `key`.
-                    if let Some(hint) = key.as_object_mut().and_then(|k| k.remove("hint")) {
-                        obj.insert("hint".to_string(), hint);
-                    }
-                    obj.insert("key".to_string(), key);
-                }
-                // PRD-mcphost-scope-registry-generated R5: the registry and
-                // the caller's own effective set.
-                let call_scope = crate::scopes::CALL_SCOPE.try_with(|s| s.clone()).ok().flatten();
-                let catalog: Vec<String> = self
-                    .state
-                    .db
-                    .list_oauth_scopes(tenant.id)
-                    .await?
-                    .into_iter()
-                    .map(|r| r.name)
-                    .collect();
-                if let Some(obj) = me.as_object_mut() {
-                    obj.insert("scopes".to_string(), crate::scopes::whoami_json(call_scope.as_deref(), &catalog));
-                }
-                Ok(me)
-            }
-            "host.key.rotate" => {
-                // PRD-mcphost-same-user-second-agent R5: a sibling rotates
-                // only its own secret; `all: true` rotates every sibling and
-                // the join code. Client 0 alone keeps today's shape.
-                let all = args.get("all").and_then(Value::as_bool).unwrap_or(false);
-                let first = crate::tenant_clients::first_client_id(tenant.id);
-                let client = crate::tenant_clients::current_client().unwrap_or_else(|| first.clone());
-                if all || client != first {
-                    crate::tenant_clients::rotate(&self.state, tenant, &client, all).await
-                } else {
-                    control::key_rotate(&self.state, tenant).await
-                }
-            }
-            "host.client.revoke" => crate::tenant_clients::revoke(&self.state, tenant, &args).await,
-            "host.calls.list" => crate::calllog::list(&self.state, tenant, &args).await,
-            "host.calls.export" => crate::calllog::export(&self.state, tenant, &args).await,
-            "host.key.mint" => crate::subkeys::mint(&self.state, tenant, &args).await,
-            "host.key.delegate" => crate::subkeys::delegate(&self.state, tenant, &args, session_id).await,
-            "host.key.list" => crate::subkeys::list(&self.state, tenant).await,
-            "host.key.revoke" => crate::subkeys::revoke(&self.state, tenant, &args).await,
-            "host.self.offboard" => control::self_offboard(&self.state, tenant, session_id).await,
-            "host.tool.publish" => self.tool_publish_with_example(tenant, args).await,
-            "host.tool.list" => control::tool_list(&self.state, tenant, &args).await,
-            "host.tool.remove" => control::tool_remove(&self.state, tenant, &args).await,
-            "host.tool.logs" => control::tool_logs(&self.state, tenant, &args).await,
-            "host.bridge.test" => self.bridge_test(tenant, args).await,
-            "host.spec.test" => self.spec_test(tenant, args).await,
-            "host.tool_from_description" => self.tool_from_description(tenant, args).await,
-            "host.tool.run" => self.tool_run(tenant, args).await,
-            // The forwarding wrappers: also reached, ahead of this match, by
-            // `dispatch_tenant_tool` (see `FORWARDING_WRAPPERS`).
-            "host.tool.call" | "host.tool.test" | "host.estimate" => {
-                self.forwarding_wrapper(tenant, calls_auth_method, end_user, name, args).await
-            }
-            "host.uptime.create" => self.uptime_create(tenant, args, calls_auth_method, end_user).await,
-            "host.call_trace" => self.call_trace(Some(tenant), args).await,
-            "host.doctor" => self.doctor(Some(tenant), args).await,
-            "host.webhook_inbox.create" => crate::webhook_inbox::create(&self.state, tenant, &args).await,
-            "host.tool.history" => control::tool_history(&self.state, tenant, &args).await,
-            "host.tool.rollback" => control::tool_rollback(&self.state, tenant, &args).await,
-            "host.tool.diff" => control::tool_diff(&self.state, tenant, &args).await,
-            "host.usage" => control::usage(&self.state, tenant, &args).await,
-            "host.changelog" => control::changelog(&self.state, tenant, &args),
-            "host.export" => crate::export::export(&self.state, tenant, &args).await,
-            "host.import" => crate::import::import(&self.state, tenant, &args).await,
-            "host.tool.share" => self.tool_share_tested(tenant, args).await,
-            "host.tool.spec_shared" => self.tool_spec_shared(tenant, args).await,
-            "host.tool.list_shared" => crate::sharing::list_shared(&self.state, tenant, &args).await,
-            "host.tool.fork" => crate::sharing::tool_fork(&self.state, tenant, &args).await,
-            "host.tool.unshare" => crate::sharing::tool_unshare(&self.state, tenant, &args).await,
-            "host.share.caller_limit" => {
-                crate::sharing::caller_limit(&self.state, tenant, &args).await
-            }
-            "host.share.caller_limit_remove" => {
-                crate::sharing::caller_limit_remove(&self.state, tenant, &args).await
-            }
-            "host.group.create" => crate::sharing::group_create(&self.state, tenant, &args).await,
-            "host.group.add" => crate::sharing::group_add(&self.state, tenant, &args).await,
-            "host.group.remove" => crate::sharing::group_remove(&self.state, tenant, &args).await,
-            "host.group.list" => crate::sharing::group_list(&self.state, tenant).await,
-            "host.catalog.search" => crate::sharing::catalog_search(&self.state, &args).await,
-            "host.catalog.get" => crate::sharing::catalog_get(&self.state, Some(tenant), &args).await,
-            "host.invite.create" => crate::invites::create(&self.state, tenant, &args).await,
-            "host.invite.list" => crate::invites::list(&self.state, tenant).await,
-            "host.invite.revoke" => crate::invites::revoke(&self.state, tenant, &args).await,
-            "host.org.create" => crate::org::create(&self.state, tenant, &args).await,
-            "host.org.join" => crate::org::join(&self.state, tenant, &args).await,
-            "host.org.members" => crate::org::members(&self.state, tenant, &args).await,
-            "host.org.remove" => crate::org::remove(&self.state, tenant, &args).await,
-            "host.org.leave" => crate::org::leave(&self.state, tenant, &args).await,
-            "host.secret.set" => control::secret_set(&self.state, tenant, &args).await,
-            "host.secret.list" => control::secret_list(&self.state, tenant).await,
-            "host.secret.leak_test" => {
-                self.secret_leak_test(tenant, args, calls_auth_method, end_user).await
-            }
-            "host.registry.publish" => control::registry_publish(&self.state, tenant, &args).await,
-            "host.state.get" => tenant_state::state_get(&self.state, tenant, &args, end_user).await,
-            "host.state.set" => tenant_state::state_set(&self.state, tenant, &args, end_user).await,
-            "host.state.delete" => {
-                tenant_state::state_delete(&self.state, tenant, &args, end_user).await
-            }
-            "host.state.list" => tenant_state::state_list(&self.state, tenant, &args, end_user).await,
-            "host.note.put" => crate::notes::put(&self.state, tenant, &args).await,
-            "host.note.list" => crate::notes::list(&self.state, tenant, &args).await,
-            "host.note.delete" => crate::notes::delete(&self.state, tenant, &args).await,
-            "host.state.table_create" => {
-                tenant_state::state_table_create(&self.state, tenant, &args).await
-            }
-            "host.state.table_drop" => {
-                tenant_state::state_table_drop(&self.state, tenant, &args).await
-            }
-            "host.state.insert" => {
-                tenant_state::state_insert(&self.state, tenant, &args, end_user).await
-            }
-            "host.state.query" => {
-                tenant_state::state_query(&self.state, tenant, &args, end_user).await
-            }
-            "host.state.delete_rows" => {
-                tenant_state::state_delete_rows(&self.state, tenant, &args, end_user).await
-            }
-            // PRD-mcphost-row-policy requirement 7: tenant-key only.
-            "host.policy.set" => crate::rowpolicy::policy_set(&self.state, tenant, &args, end_user).await,
-            "host.policy.list" => crate::rowpolicy::policy_list(&self.state, tenant, end_user).await,
-            "host.policy.attrs_set" => {
-                crate::rowpolicy::policy_attrs_set(&self.state, tenant, &args, end_user).await
-            }
-            "host.audit.chain" => crate::rowpolicy::audit_chain(&self.state, tenant, &args, end_user).await,
-            "host.audit.verify" => crate::rowpolicy::audit_verify(&self.state, tenant, &args, end_user).await,
-            "host.enduser.whoami" => Ok(crate::enduser::whoami(end_user)),
-            "host.enduser.assertion_secret_rotate" => {
-                crate::enduser::assertion_secret_rotate(&self.state, tenant, &args).await
-            }
-            "host.vault.provider_set" => crate::vault::provider_set(&self.state, tenant, &args).await,
-            "host.vault.providers" => crate::vault::providers(&self.state, tenant).await,
-            "host.vault.connect_link" => {
-                crate::vault::connect_link(&self.state, tenant, &args, end_user).await
-            }
-            "host.vault.disconnect" => crate::vault::disconnect(&self.state, tenant, &args, end_user).await,
-            "host.vault.status" => crate::vault::status(&self.state, tenant, &args, end_user).await,
-            "host.vault.provider_remove" => crate::vault::provider_remove(&self.state, tenant, &args).await,
-            // PRD-mcphost-owner-verification-paths R1: one arm per `host.claim.*` tool.
-            "host.claim.start" => crate::verify::claim_start(&self.state, tenant, &args).await,
-            "host.claim.github" => crate::verify::claim_github(&self.state, tenant, &args).await,
-            "host.claim.dns.start" => crate::verify::claim_dns(&self.state, tenant, &args).await,
-            "host.claim.dns.check" => crate::verify::claim_dns_check(&self.state, tenant, &args).await,
-            // PRD-mcphost-end-user-audit-and-revoke requirement 2 (AC1/AC10).
-            "host.enduser.list" => crate::enduserctl::list(&self.state, tenant, &args).await,
-            // PRD-mcphost-end-user-audit-and-revoke requirement 2 (AC2).
-            "host.enduser.get" => crate::enduserctl::get(&self.state, tenant, &args).await,
-            // PRD-mcphost-end-user-audit-and-revoke requirement 3 (AC3/AC7).
-            "host.enduser.audit" => crate::enduserctl::audit(&self.state, tenant, &args).await,
-            // PRD-mcphost-end-user-audit-and-revoke requirement 4 (AC4/AC7).
-            "host.enduser.revoke" => crate::enduserctl::revoke(&self.state, tenant, &args).await,
-            "host.enduser.unrevoke" => crate::enduserctl::unrevoke(&self.state, tenant, &args).await,
-            // PRD-mcphost-end-user-audit-and-revoke requirement 5 (AC5/AC6).
-            "host.enduser.purge" => crate::enduserctl::purge(&self.state, tenant, &args).await,
-            // PRD-mcphost-end-user-audit-and-revoke requirement 6 (AC8).
-            "host.enduser.export" => crate::export::enduser_export(&self.state, tenant, &args).await,
-            "host.table.create" => tables::table_create(&self.state, tenant, &args).await,
-            "host.table.append" => tables::table_append(&self.state, tenant, &args).await,
-            "host.table.query" => tables::table_query(&self.state, tenant, &args, end_user).await,
-            "host.table.query_diagnose" => tables::table_query_diagnose(&self.state, tenant, &args).await,
-            "host.table.query_stats" => tables::table_query_stats(&self.state, tenant, &args).await,
-            "host.table.list" => tables::table_list(&self.state, tenant, &args).await,
-            "host.table.drop" => tables::table_drop(&self.state, tenant, &args).await,
-            "host.lineage.blast_radius" => crate::lineage::blast_radius(&self.state, tenant, &args).await,
-            "host.lineage.trace" => crate::lineage::trace(&self.state, tenant, &args).await,
-            "host.lineage.trace_page" => crate::lineage::trace_page(&self.state, tenant, &args).await,
-            "host.table.schema" => tables::table_schema(&self.state, tenant, &args).await,
-            "host.table.chart" => {
-                crate::chart::table_chart(&self.state, tenant, &args, end_user).await
-            }
-            "host.table.charts" => crate::chart::table_charts_list(&self.state, tenant, &args).await,
-            "host.table.query_log" => tables::table_query_log(&self.state, tenant, &args).await,
-            "host.table.count" => tables::table_count(&self.state, tenant, &args).await,
-            "host.table.handles" => tables::table_handles(&self.state, tenant, &args).await,
-            "host.table.handle_drop" => tables::table_handle_drop(&self.state, tenant, &args).await,
-            "host.table.handle_export" => crate::export::handle_export(&self.state, tenant, &args).await,
-            "host.docs.put" => docs::doc_put(&self.state, tenant, &args).await,
-            "host.blob.put" => crate::blobs::blob_put(&self.state, tenant, &args).await,
-            "host.blob.get" => crate::blobs::blob_get(&self.state, tenant, &args).await,
-            "host.blob.list" => crate::blobs::blob_list(&self.state, tenant, &args).await,
-            "host.blob.delete" => crate::blobs::blob_delete(&self.state, tenant, &args).await,
-            "host.blob.url" => crate::blobs::blob_url(&self.state, tenant, &args).await,
-            "host.blob.touch" => crate::blobs::blob_touch(&self.state, tenant, &args).await,
-            "host.blob.policy" => crate::blobs::blob_policy(&self.state, tenant, &args).await,
-            "host.blob.gc" => crate::blobs::blob_gc(&self.state, tenant, &args).await,
-            "host.docs.get" => docs::doc_get(&self.state, tenant, &args).await,
-            "host.docs.list" => docs::doc_list(&self.state, tenant, &args).await,
-            "host.docs.delete" => docs::doc_delete(&self.state, tenant, &args).await,
-            "host.docs.status" => docs::doc_status(&self.state, tenant, &args).await,
-            "host.docs.purge" => docs::doc_purge(&self.state, tenant, &args).await,
-            "host.table.describe" => crate::tables_model::table_describe(&self.state, tenant, &args).await,
-            "host.table.model_set" => crate::tables_model::model_set(&self.state, tenant, &args).await,
-            "host.table.models" => crate::tables_model::table_models_list(&self.state, tenant, &args).await,
-            "host.table.graph" => crate::tables_graph::table_graph(&self.state, tenant, &args).await,
-            "host.table.join_paths" => crate::tables_graph::join_paths(&self.state, tenant, &args).await,
-            "host.table.next_questions" => crate::tables_graph::next_questions(&self.state, tenant, &args).await,
-            "host.docs.search" => docs::doc_search(&self.state, tenant, &args, end_user).await,
-            "host.docs.index_config" => docs::doc_index_config(&self.state, tenant, &args).await,
-            "host.docs.reindex" => docs::doc_reindex(&self.state, tenant, &args).await,
-            "host.index.create" => crate::index::index_create(&self.state, tenant, &args).await,
-            "host.index.status" => crate::index::index_status(&self.state, tenant, &args).await,
-            "host.index.list" => crate::index::index_list(&self.state, tenant, &args).await,
-            "host.index.delete" => crate::index::index_delete(&self.state, tenant, &args).await,
-            "host.index.query" => crate::index::index_query(&self.state, tenant, &args).await,
-            "host.index.refresh" => crate::index::index_refresh(&self.state, tenant, &args).await,
-            "host.drift.reviews" => crate::drift::reviews(&self.state, tenant, &args).await,
-            "host.drift.review" => crate::drift::review_item(&self.state, tenant, &args).await,
-            "host.drift.resolve" => crate::drift::resolve(&self.state, tenant, &args).await,
-            "host.drift.check" => crate::drift::check(&self.state, tenant, &args).await,
-            "host.runs.get" => crate::runs::get(&self.state, tenant, &args).await,
-            "host.runs.list" => crate::runs::list(&self.state, tenant, &args).await,
-            "host.runs.cancel" => crate::runs::cancel(&self.state, tenant, &args).await,
-            "host.runs.purge" => crate::runs::purge(&self.state, tenant, &args).await,
-            "host.runs.wait" => crate::runs::wait(&self.state, tenant, &args).await,
-            "host.runs.part" => crate::runs::part(&self.state, tenant, &args).await,
-            "host.job.timeline" => crate::timeline::job_timeline(&self.state, tenant, &args).await,
-            "host.progress" => crate::runs::progress(&self.state, tenant, &args).await,
-            "host.trigger.set" => crate::triggers::set(&self.state, tenant, &args).await,
-            "host.trigger.list" => crate::triggers::list(&self.state, tenant, &args).await,
-            "host.trigger.get" => crate::triggers::get(&self.state, tenant, &args).await,
-            "host.trigger.pause" => crate::triggers::pause(&self.state, tenant, &args).await,
-            "host.trigger.resume" => crate::triggers::resume(&self.state, tenant, &args).await,
-            "host.trigger.remove" => crate::triggers::remove(&self.state, tenant, &args).await,
-            "host.trigger.fire" => crate::triggers::fire(&self.state, tenant, &args).await,
-            "host.schedule_receipts" => crate::receipts::schedule_receipts(&self.state, tenant, &args).await,
-            "host.trigger.test" => crate::hooks::test(&self.state, tenant, &args).await,
-            "host.trigger.replay" => crate::hooks::replay(&self.state, tenant, &args).await,
-            "host.trigger.dead_letters" => crate::deadletters::list(&self.state, tenant, &args).await,
-            "billing.status" => crate::billing::status(&self.state, tenant).await,
-            "billing.checkout" => crate::billing::checkout(&self.state, tenant, &args).await,
-            // PRD-mcphost-agent-directory requirements 2-5.
-            "host.agent.whoami" => agents::whoami(&self.state, tenant).await,
-            "host.agent.profile_set" => agents::profile_set(&self.state, tenant, &args).await,
-            "host.agent.lookup" => agents::lookup(&self.state, &args).await,
-            "host.agent.search" => agents::search(&self.state, &args).await,
-            // PRD-mcphost-agent-inbox requirements 2-5, 9.
-            "host.example.propose" => self.example_propose(tenant, args).await,
-            "host.example.proposal_status" => crate::example_propose::proposal_status(&self.state, tenant, &args).await,
-            "host.example.list" => crate::example_proofs::list(&self.state, &args).await,
-            "host.example.fork" => crate::example_proofs::fork(&self.state, &args).await,
-            "host.msg.send" => messaging::send(&self.state, tenant, &args).await,
-            "host.msg.reply" => messaging::reply(&self.state, tenant, &args).await,
-            "host.msg.inbox" => messaging::inbox(&self.state, tenant, &args).await,
-            "host.msg.wait" => messaging::wait(&self.state, tenant, &args).await,
-            "host.msg.thread" => messaging::thread(&self.state, tenant, &args).await,
-            "host.msg.ack" => messaging::ack(&self.state, tenant, &args).await,
-            // PRD-mcphost-ask-user-decision.
-            "host.ask.create" => crate::asks::create(&self.state, tenant, &args).await,
-            "host.ask.wait" => crate::asks::wait(&self.state, tenant, &args).await,
-            "host.ask.get" => crate::asks::get(&self.state, tenant, &args).await,
-            "host.ask.list" => crate::asks::list(&self.state, tenant, &args).await,
-            // PRD-mcphost-notify-user-channel.
-            "host.notify.channel_add" => crate::notify::channel_add(&self.state, tenant, &args).await,
-            "host.notify.channel_list" => crate::notify::channel_list(&self.state, tenant, &args).await,
-            "host.notify.channel_remove" => crate::notify::channel_remove(&self.state, tenant, &args).await,
-            "host.notify.send" => crate::notify::send(&self.state, tenant, &args).await,
-            "host.notify.receipts" => crate::notify::receipts(&self.state, tenant, &args).await,
-            // PRD-mcphost-send-email-from-tool.
-            "host.email.send" => crate::email_send::send(&self.state, tenant, None, &args).await,
-            "host.email.sends" => crate::email_send::sends(&self.state, tenant, &args).await,
-            "host.task.post" => crate::tasks::post(&self.state, tenant, &args).await,
-            "host.task.claim" => crate::tasks::claim(&self.state, tenant, &args).await,
-            "host.task.complete" => crate::tasks::complete(&self.state, tenant, &args).await,
-            "host.task.get" => crate::tasks::get(&self.state, tenant, &args).await,
-            "host.task.dead_letters" => crate::tasks::dead_letters(&self.state, tenant, &args).await,
-            "host.msg.block" => messaging::block(&self.state, tenant, &args).await,
-            "host.msg.unblock" => messaging::unblock(&self.state, tenant, &args).await,
-            // PRD-mcphost-agent-consent requirements 2, 3, 5, 10.
-            "host.agent.contact_request" => consent::contact_request(&self.state, tenant, &args).await,
-            "host.agent.contacts" => consent::contacts(&self.state, tenant, &args).await,
-            "host.agent.contact_accept" => consent::contact_accept(&self.state, tenant, &args).await,
-            "host.agent.contact_deny" => consent::contact_deny(&self.state, tenant, &args).await,
-            "host.agent.mute" => consent::mute(&self.state, tenant, &args).await,
-            "host.agent.unmute" => consent::unmute(&self.state, tenant, &args).await,
-            "host.agent.contacts_import" => consent::contacts_import(&self.state, tenant, &args).await,
-            // PRD-mcphost-agent-mesh-ops: the minimal `host.channel.*` slice.
-            "host.channel.open" => channels::open(&self.state, tenant, &args).await,
-            "host.channel.post" => channels::post(&self.state, tenant, &args).await,
-            "host.channel.read" => channels::read(&self.state, tenant, &args).await,
-            "host.channel.close" => channels::close(&self.state, tenant, &args).await,
-            "host.channel.freeze" => channels::freeze(&self.state, tenant, &args).await,
-            "host.channel.unfreeze" => channels::unfreeze(&self.state, tenant, &args).await,
-            // PRD-mcphost-oauth-resource-server requirement 3.
-            "host.oauth.issuer_set" => crate::oauth::issuer_set(&self.state, tenant, &args).await,
-            "host.oauth.issuer_remove" => crate::oauth::issuer_remove(&self.state, tenant, &args).await,
-            "host.oauth.issuers" => crate::oauth::issuers_list(&self.state, tenant).await,
-            "host.oauth.scope_set" => crate::oauth::scope_set(&self.state, tenant, &args).await,
-            "host.oauth.scopes" => crate::oauth::scopes_list(&self.state, tenant).await,
-            "host.oauth.grants" => crate::authz::grants_list(&self.state, tenant).await,
-            "host.oauth.grant_revoke" => crate::authz::grant_revoke(&self.state, tenant, &args).await,
-            // PRD-mcphost-oauth-client-policy requirements 1-4 (AC1-AC6).
-            "host.oauth.policy_set" => crate::oauth_policy::policy_set(&self.state, tenant, &args).await,
-            "host.oauth.policy" => crate::oauth_policy::policy_get(&self.state, tenant).await,
-            "host.oauth.pending" => crate::oauth_policy::pending_list(&self.state, tenant).await,
-            "host.oauth.client_approve" => crate::oauth_policy::client_approve(&self.state, tenant, &args).await,
-            "host.oauth.client_deny" => crate::oauth_policy::client_deny(&self.state, tenant, &args).await,
-            "host.oauth.revoke_all" => crate::oauth_policy::revoke_all(&self.state, tenant).await,
-            "host.oauth.audit" => crate::oauth_policy::audit(&self.state, tenant, &args).await,
-            "host.oauth.audit_export" => crate::oauth_policy::audit_export(&self.state, tenant, &args).await,
-            "host.oauth.provider_set" => crate::federation::provider_set(&self.state, tenant, &args).await,
-            "host.oauth.provider" => crate::federation::provider(&self.state, tenant).await,
-            "host.oauth.provider_remove" => crate::federation::provider_remove(&self.state, tenant, &args).await,
-            "host.oauth.doctor" => crate::federation::doctor(&self.state, tenant, &args).await,
-            "host.oauth.trusted_issuer_set" => crate::oauth::trusted_issuer_set(&self.state, tenant, &args).await,
-            "host.oauth.trusted_issuer_remove" => crate::oauth::trusted_issuer_remove(&self.state, tenant, &args).await,
-            "host.oauth.trusted_issuers" => crate::oauth::trusted_issuers_list(&self.state, tenant).await,
-            // PRD-mcphost-tool-naming-convention-and-aliases requirement 6
-            // (AC6): `did_you_mean` against every *canonical* control-plane
-            // name (never a deprecated alias -- see
-            // `AppError::host_tool_not_found`'s own doc), not the bare
-            // `ToolNotFound` every other unmatched-name case in this crate
-            // still uses (those have no "nearby real name" universe this
-            // cheap to compute at the call site).
-            other => Err(unknown_host_tool(&self.state.kinds, other)),
+        let ctx = ArmCtx { tenant, subject, auth_method, calls_auth_method, end_user, session_id, name, args };
+        // The verb table is generated from the descriptor registry
+        // (`scripts/gen-dispatch-table.sh`); each row's function builds its future on
+        // the heap, so this frame holds one pointer, not one future per verb.
+        if let Some(arm) = crate::dispatch_table::lookup(name) {
+            return arm(self, ctx).await;
+        }
+        match self.arm_unadvertised(ctx) {
+            Some(fut) => fut.await,
+                // PRD-mcphost-tool-naming-convention-and-aliases requirement 6
+                // (AC6): `did_you_mean` against every *canonical* control-plane
+                // name (never a deprecated alias -- see
+                // `AppError::host_tool_not_found`'s own doc), not the bare
+                // `ToolNotFound` every other unmatched-name case in this crate
+                // still uses (those have no "nearby real name" universe this
+                // cheap to compute at the call site).
+            None => Err(unknown_host_tool(&self.state.kinds, name)),
         }
     }
 
@@ -9457,6 +9145,14 @@ impl McpHostHandler {
         };
         let since_unix = since_s.map(|s| now_unix() - s);
         let (rows, calls) = self.state.db.doctor_failed_calls(target_id, limit, tool, since_unix).await?;
+        // The first call compiles every verb's error-branch schema (`jsonschema::validator_for`,
+        // a deep recursion): +152 KiB of stack on the caller's thread, measured against every other
+        // forwarded verb (fwdtab AC5, 2026-10-18). A blocking-pool thread has its own stack, and the
+        // report is computed once (`OnceLock`), so later calls read it back at no depth.
+        let envelope = match tokio::task::spawn_blocking(crate::output_schemas::error_envelope_report).await {
+            Ok(report) => report,
+            Err(_) => crate::output_schemas::error_envelope_report(),
+        };
         let mut out = json!({
             "window": {
                 "calls": calls,
@@ -9466,8 +9162,8 @@ impl McpHostHandler {
             },
             "groups": crate::doctor::build_groups(&rows),
             "error_envelope": {
-                "validated": crate::output_schemas::error_envelope_report().validated,
-                "skipped": crate::output_schemas::error_envelope_report().skipped,
+                "validated": envelope.validated,
+                "skipped": envelope.skipped,
             },
             "oauth_issuers": crate::oauth::doctor_report(&self.state, tenant.map(|t| t.id)).await?,
         });
@@ -12736,111 +12432,26 @@ impl McpHostHandler {
             // tenant data. Deliberately checked before the blanket
             // Anonymous/Invalid -> auth-error arm below, the same way
             // `signup` itself is.
-            (Auth::Tenant(tenant, _), "host.quickstart") => {
-                // PRD-mcphost-client-install-links P0 requirement 3 (AC3):
-                // `Some` only when THIS call authenticated over
-                // `/u/{secret}/mcp` -- see `control::quickstart`'s own doc
-                // comment on `path_url_secret` for why this is the only
-                // auth path that can supply one.
-                let path_url_secret = url_path_secret(parts);
-                match control::quickstart(&self.state, Some(tenant), &args, path_url_secret) {
-                    Ok(mut result) => {
-                        // PRD-mcphost-quickstart-by-client R3/R6: the
-                        // `client` block for the surface asking, rendered
-                        // for the caller's own personal URL when this call
-                        // came over `/u/{secret}/mcp`; the detected id is
-                        // written to `tenants.client_name` when the
-                        // tenant has none (best-effort, never overwrites).
-                        let detected = quickstart_detection(&ctx, parts);
-                        let public = self.state.public_url.trim_end_matches('/');
-                        let base = path_url_secret.map_or_else(|| public.to_string(), |secret| format!("{public}/u/{secret}"));
-                        result["client"] = crate::install_links::client_block(&base, detected);
-                        if tenant.client_name.is_none()
-                            && let Some((id, _)) = detected
-                        {
-                            let _ = self.state.db.set_tenant_client_info(tenant.id, id.to_string(), String::new()).await;
-                        }
-                        // PRD-mcphost-composition requirement 6: once this
-                        // tenant has at least two tools of its own,
-                        // `host.quickstart(kind="chain")`'s example wires
-                        // the placeholder two-step spec onto them by name
-                        // instead of `ChainKind::example`'s static example
-                        // (PRD-mcphost-chain-host-steps requirement 5: the
-                        // python starter plus `host.table.append`) -- still
-                        // just an example (`host.tool_publish` still has to
-                        // be called to actually create it), but one that
-                        // calls something the tenant already published.
-                        // Best-effort: any lookup failure just leaves the
-                        // generic placeholder spec.
-                        if args.get("kind").and_then(Value::as_str) == Some("chain")
-                            && let Ok(tools) = self.state.db.list_tools(tenant.id).await
-                        {
-                            let names: Vec<String> = tools
-                                .into_iter()
-                                .filter(|t| t.kind != "chain")
-                                .map(|t| t.name)
-                                .take(2)
-                                .collect();
-                            if let [first, second] = names.as_slice() {
-                                result["steps"][0]["arguments"]["spec"] = json!({
-                                    "steps": [
-                                        {"tool": first, "args": {}},
-                                        {"tool": second, "args": {}},
-                                    ],
-                                });
-                            }
-                        }
-                        // PRD-mcphost-data-quota-in-every-response R2: the
-                        // keyed tenant's full data-quota object, from the
-                        // renderer every data verb's response uses.
-                        if let Ok(Some(quota)) = control::data_quota_for(&self.state, tenant).await
-                            && let Some(limits) = result.get_mut("limits").and_then(Value::as_object_mut)
-                        {
-                            limits.insert("quota".to_string(), quota);
-                        }
-                        Ok(result)
-                    }
-                    Err(e) => Err(e),
-                }
-            }
-            (_, "host.quickstart") => control::quickstart(&self.state, None, &args, None).map(|mut result| {
-                // PRD-mcphost-quickstart-by-client R3: anonymous callers get
-                // the same `client` block, rendered for the public endpoint.
-                result["client"] =
-                    crate::install_links::client_block(&self.state.public_url, quickstart_detection(&ctx, parts));
-                result
-            }),
+            (Auth::Tenant(tenant, _), "host.quickstart") => self.quickstart_tenant_boxed(tenant, &args, &ctx, parts).await,
+            (_, "host.quickstart") => self.quickstart_anonymous(&args, &ctx, parts),
             // PRD-mcphost-help-search-tool R4: public text, no tenant data --
             // reachable anonymously (never implicit-signs-up) or as a tenant.
             // PRD-mcphost-docs-telemetry-failed-after-search R2: one
             // `help_search_events` row per call, `tenant_id` NULL when anonymous.
             (_, "host.help.search") => {
-                match crate::help_search::call_observed(&self.state.kinds, &args) {
-                    Ok((body, obs)) => {
-                        if let Some(obs) = obs {
-                            let tenant_id = match &auth {
-                                Auth::Tenant(t, _) => Some(t.id),
-                                _ => None,
-                            };
-                            // Best-effort: telemetry never fails the search.
-                            let _ = self
-                                .state
-                                .db
-                                .record_help_search(tenant_id, obs.query_norm, obs.top_anchor, now_unix())
-                                .await;
-                        }
-                        Ok(body)
-                    }
-                    Err(e) => Err(e),
-                }
+                let tenant_id = match &auth {
+                    Auth::Tenant(t, _) => Some(t.id),
+                    _ => None,
+                };
+                self.help_search_boxed(tenant_id, &args).await
             }
             // PRD-mcphost-emitted-doc-pointers-resolve R3: the section an
             // emitted anchor points at; same public, anonymous reach.
-            (_, "host.help.get") => crate::doc_anchors::help_get(&args),
+            (_, "host.help.get") => self.help_get_boxed(&args).await,
             // PRD-mcphost-errors-json-contract R4: public registry, no tenant
             // data -- the same object `GET /errors.json` serves, reachable
             // anonymously (never implicit-signs-up) or as a tenant.
-            (_, "host.errors") => crate::error_registry::call(&self.state.public_url, &args),
+            (_, "host.errors") => self.errors_boxed(&args).await,
             // PRD-mcphost-feedback-tool-and-ledger requirement 3: reachable
             // anonymously (never implicit-signs-up) or as a tenant.
             (Auth::Anonymous | Auth::Tenant(..), "host.feedback.send" | "host.feedback.list" | "host.feedback.get")
@@ -12850,33 +12461,7 @@ impl McpHostHandler {
                     Auth::Tenant(t, _) => Some(t.id),
                     _ => None,
                 };
-                let (client_name, client_version) = match peer_client_info(&ctx) {
-                    Some((n, v)) => (Some(n), Some(v)),
-                    None => (None, None),
-                };
-                let sender = crate::feedback::Sender {
-                    tenant_id,
-                    source_ip: &source,
-                    client_name,
-                    client_version,
-                    ring_key: feedback_ring_key.clone(),
-                };
-                if body_name == "host.feedback.send" {
-                    // PRD-mcphost-dry-run-on-write-verbs: this pre-auth arm
-                    // runs before the generic `dry_run` intercept, so the
-                    // registry's NoDryRun refusal is applied here by hand.
-                    if let Some(verb) = crate::write_verbs::lookup("host.feedback.send")
-                        && crate::write_verbs::dry_run_requested(&args)
-                        && let crate::write_verbs::DryRun::NoDryRun(reason) = verb.dry_run
-                    {
-                        return Err(crate::write_verbs::no_dry_run_error(verb, reason).into_error_data());
-                    }
-                    crate::feedback::send(&self.state, &sender, &args).await
-                } else if body_name == "host.feedback.get" {
-                    crate::feedback::get(&self.state, &sender, &args).await
-                } else {
-                    crate::feedback::list(&self.state, &sender, &args).await
-                }
+                self.feedback_boxed(tenant_id, &ctx, &source, &feedback_ring_key, &body_name, &args).await?
             }
             // PRD-grand-loop-billing AC1: "billing.plans (anonymous and
             // tenant)" -- reachable exactly like host.quickstart, before
@@ -12946,7 +12531,7 @@ impl McpHostHandler {
                     && tenant_path_namespace(parts).is_none() =>
             {
                 let dispatch_name = alias_canonical.unwrap_or(name);
-                self.implicit_signup_and_dispatch(
+                self.implicit_signup_boxed(
                     &ctx,
                     parts,
                     &source,
@@ -12988,7 +12573,7 @@ impl McpHostHandler {
                 Err(err)
             }
             (Auth::Admin, name) if name.starts_with("admin.") => {
-                self.dispatch_admin_tool(name, args).await
+                self.dispatch_admin_boxed(name, args).await
             }
             // PRD-mcphost-admin-schema-contract P2 requirement 7 (AC7): the
             // one host.* tool an admin-scoped caller (the admin key, not a
@@ -12998,8 +12583,8 @@ impl McpHostHandler {
             (Auth::Admin, "host.whoami") => Ok(control::whoami_admin(&self.state)),
             // PRD-mcphost-call-trace-replay R5: the admin bearer may read any
             // tenant's trace.
-            (Auth::Admin, "host.call_trace") => self.call_trace(None, args).await,
-            (Auth::Admin, "host.doctor") => self.doctor(None, args).await,
+            (Auth::Admin, "host.call_trace") => self.call_trace_admin_boxed(args).await,
+            (Auth::Admin, "host.doctor") => self.doctor_admin_boxed(args).await,
             (Auth::Admin, "host.incidents.list") => crate::heal::incidents_list(&self.state, &args).await,
             (Auth::Admin, "host.help.gaps") => crate::help_search::gaps_call(&self.state.db, &args, now_unix()).await,
             (Auth::Admin, _) => Err(AppError::Forbidden),
@@ -13043,28 +12628,19 @@ impl McpHostHandler {
                 } else {
                     None
                 };
-                // `Box::pin`: the prompt-list bookkeeping lives in its own
-                // boxed future, not in this fn's frame -- this fn's debug
-                // poll frame sits under every dotted-verb forward, and
-                // inlining that bookkeeping here overflowed a 2 MB test
-                // thread stack (verbfwd_ac01).
                 let call_scope = oauth_caller.as_ref().and_then(|o| o.scope.clone());
-                let (result, prompts_changed) = crate::scopes::CALL_SCOPE
-                    .scope(
+                let (result, prompts_changed) = self
+                    .dispatch_tenant_scoped_boxed(
                         call_scope,
-                        crate::tenant_clients::CALL_CLIENT.scope(
-                            call_client,
-                            Box::pin(self.dispatch_tenant_tool_tracking_prompts(
-                                tenant,
-                                subject,
-                                auth_method,
-                                calls_method,
-                                end_user.as_ref(),
-                                session_id.as_deref(),
-                                dispatch_name,
-                                args,
-                            )),
-                        ),
+                        call_client,
+                        tenant,
+                        subject,
+                        auth_method,
+                        calls_method,
+                        end_user.as_ref(),
+                        session_id.as_deref(),
+                        dispatch_name,
+                        args,
                     )
                     .await;
                 // PRD-mcphost-notes-to-future-self R3: a tool-attached note
@@ -13088,13 +12664,11 @@ impl McpHostHandler {
             (Auth::Tenant(tenant, oauth_caller), name) => match name.split_once('.') {
                 Some((ns, local)) if ns == tenant.namespace => {
                     let token_scope = oauth_caller.as_ref().and_then(|o| o.scope.as_deref());
-                    self.call_published_tool(
+                    self.call_own_published_boxed(
                         tenant,
                         local,
                         args,
                         mismatch,
-                        None,
-                        None,
                         end_user.as_ref(),
                         calls_auth_method(oauth_caller.as_ref(), via_session_binding, via_url_secret),
                         token_scope,
@@ -13121,7 +12695,7 @@ impl McpHostHandler {
                         }
                         other => (None, other),
                     };
-                    self.call_shared_tool(
+                    self.call_shared_boxed(
                         tenant,
                         ns,
                         local,

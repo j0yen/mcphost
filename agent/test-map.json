@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-runs-list-filter-enums-generated.md (test_prefix: rlfe)",
+  "ac_test_map_prd": "PRD-mcphost-generated-dispatch-table-stack-budget.md (test_prefix: fwdtab)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,13 +28,14 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/rlfe_ac01_unknown_status_refused_with_set.rs",
-    "AC2": "tests/rlfe_ac02_trigger_and_verdict_refused_before_handler.rs",
-    "AC3": "tests/rlfe_ac03_every_value_filters_exactly_its_rows.rs",
-    "AC4": "tests/rlfe_ac04_descriptor_enums_and_prose_set_drift.rs",
-    "AC5": "tests/rlfe_ac05_run_writes_pass_as_str.rs",
-    "AC6": "tests/rlfe_ac06_limit_clamp_and_children_preserved.rs",
-    "AC7": "tests/rlfe_ac07_admin_runs_refused_through_the_shared_validator.rs"
+    "AC1": "tests/fwdtab_ac01_generated_dispatch_table.rs",
+    "AC2": "tests/fwdtab_ac02_table_matches_registry.rs",
+    "AC3": "tests/fwdtab_ac03_dispatcher_frame_bounded.rs",
+    "AC4": "tests/fwdtab_ac04_call_tool_inner_frame_bounded.rs",
+    "AC5": "tests/fwdtab_ac05_budget_lowered_on_the_measurement.rs",
+    "AC6": "tests/fwdtab_ac06_forwarded_whoami_latency.rs",
+    "AC7": "tests/fwdtab_ac07_release_stack_does_not_grow.rs",
+    "AC8": "deferred: Live (the merge commit's core-suites shard log must contain the verbfwd_ac08 line; no tests/fwdtab_ac08 file)"
   },
   "ac_test_map_by_prefix": {
     "snp": {
@@ -2193,6 +2194,27 @@
     "tmapdup": {
       "_prd": "hotfix (no PRD): agent/test-map.json repeated the orgmb key; JSON tools keep only the last copy",
       "AC1": "tests/tmapdup_ac01_test_map_has_no_duplicate_keys.rs"
+    },
+    "rpol": {
+      "_prd": "PRD-mcphost-retry-policy-table-generated.md (test_prefix: rpol)",
+      "AC1": "tests/rpol_ac01_non_retryable_stops_resends.rs",
+      "AC2": "tests/rpol_ac02_every_code_has_exactly_one_row.rs",
+      "AC3": "tests/rpol_ac03_retry_after_wins_over_backoff.rs",
+      "AC4": "tests/rpol_ac04_attempts_exhausted_flips_retryable.rs",
+      "AC5": "tests/rpol_ac05_chain_retry_on_validated_against_table.rs",
+      "AC6": "tests/rpol_ac06_retry_policy_check_names_the_edited_file.rs",
+      "AC7": "deferred -- operator-provisioned: synthorg repo vendoring and digest; not in this repo.",
+      "AC8": "deferred -- operator-provisioned: Live AC against prod after deploy."
+    },
+    "rlfe": {
+      "_prd": "PRD-mcphost-runs-list-filter-enums-generated.md (test_prefix: rlfe)",
+      "AC1": "tests/rlfe_ac01_unknown_status_refused_with_set.rs",
+      "AC2": "tests/rlfe_ac02_trigger_and_verdict_refused_before_handler.rs",
+      "AC3": "tests/rlfe_ac03_every_value_filters_exactly_its_rows.rs",
+      "AC4": "tests/rlfe_ac04_descriptor_enums_and_prose_set_drift.rs",
+      "AC5": "tests/rlfe_ac05_run_writes_pass_as_str.rs",
+      "AC6": "tests/rlfe_ac06_limit_clamp_and_children_preserved.rs",
+      "AC7": "tests/rlfe_ac07_admin_runs_refused_through_the_shared_validator.rs"
     }
   }
 }

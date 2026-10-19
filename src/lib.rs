@@ -71,6 +71,7 @@ pub mod form_page;
 pub mod funnel;
 pub mod gendocs;
 pub mod sandbox_libs;
+pub mod dispatch_table;
 pub mod handler;
 pub mod doctor;
 pub mod heal;

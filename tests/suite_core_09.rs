@@ -13,8 +13,6 @@ mod chart_fixture;
 mod federation;
 #[path = "support/lanecov.rs"]
 mod lanecov;
-#[path = "support/mrefu.rs"]
-mod mrefu;
 #[path = "support/oauth.rs"]
 mod oauth;
 #[path = "support/promptkind.rs"]
@@ -180,6 +178,16 @@ mod funnel_ac05_claim_and_plan_backfill;
 mod funnel_ac06_median_null_under_three;
 #[path = "funnel_ac07_invited_split_and_k.rs"]
 mod funnel_ac07_invited_split_and_k;
+#[path = "fwdtab_ac01_generated_dispatch_table.rs"]
+mod fwdtab_ac01_generated_dispatch_table;
+#[path = "fwdtab_ac03_dispatcher_frame_bounded.rs"]
+mod fwdtab_ac03_dispatcher_frame_bounded;
+#[path = "fwdtab_ac04_call_tool_inner_frame_bounded.rs"]
+mod fwdtab_ac04_call_tool_inner_frame_bounded;
+#[path = "fwdtab_ac06_forwarded_whoami_latency.rs"]
+mod fwdtab_ac06_forwarded_whoami_latency;
+#[path = "fwdtab_ac07_release_stack_does_not_grow.rs"]
+mod fwdtab_ac07_release_stack_does_not_grow;
 #[path = "gatedebt_4f1112d_ac4_no_test_reads_gate_receipts.rs"]
 mod gatedebt_4f1112d_ac4_no_test_reads_gate_receipts;
 #[path = "gatedebt_4f1112d_ac5_no_flake_audit_selftest_names.rs"]
@@ -1022,15 +1030,3 @@ mod mprm_ac03_prompt_kind_tool_listed_and_rendered;
 mod mprm_ac04_oauth_scope_filters_prompt_tools;
 #[path = "mprm_ac07_capabilities_advertise_prompts.rs"]
 mod mprm_ac07_capabilities_advertise_prompts;
-#[path = "mrefu_ac01_breaking_migration_refuses_with_report.rs"]
-mod mrefu_ac01_breaking_migration_refuses_with_report;
-#[path = "mrefu_ac02_compatible_migration_reports_ok.rs"]
-mod mrefu_ac02_compatible_migration_reports_ok;
-#[path = "mrefu_ac03_schema_is_generated_and_drift_tested.rs"]
-mod mrefu_ac03_schema_is_generated_and_drift_tested;
-#[path = "mrefu_ac04_previous_up_failure_exits_4_with_tables_changed.rs"]
-mod mrefu_ac04_previous_up_failure_exits_4_with_tables_changed;
-#[path = "mrefub_ac01_unwritable_report_exits_5.rs"]
-mod mrefub_ac01_unwritable_report_exits_5;
-#[path = "mrefub_ac02_remedy_table_contract.rs"]
-mod mrefub_ac02_remedy_table_contract;

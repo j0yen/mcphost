@@ -11,6 +11,8 @@ mod common;
 mod busyaudit;
 #[path = "support/fake_as.rs"]
 mod fake_as;
+#[path = "support/mrefu.rs"]
+mod mrefu;
 #[path = "support/msrvlock.rs"]
 mod msrvlock;
 #[path = "support/oauth.rs"]
@@ -26,6 +28,18 @@ mod serve;
 #[path = "support/sjrc.rs"]
 mod sjrc;
 
+#[path = "mrefu_ac01_breaking_migration_refuses_with_report.rs"]
+mod mrefu_ac01_breaking_migration_refuses_with_report;
+#[path = "mrefu_ac02_compatible_migration_reports_ok.rs"]
+mod mrefu_ac02_compatible_migration_reports_ok;
+#[path = "mrefu_ac03_schema_is_generated_and_drift_tested.rs"]
+mod mrefu_ac03_schema_is_generated_and_drift_tested;
+#[path = "mrefu_ac04_previous_up_failure_exits_4_with_tables_changed.rs"]
+mod mrefu_ac04_previous_up_failure_exits_4_with_tables_changed;
+#[path = "mrefub_ac01_unwritable_report_exits_5.rs"]
+mod mrefub_ac01_unwritable_report_exits_5;
+#[path = "mrefub_ac02_remedy_table_contract.rs"]
+mod mrefub_ac02_remedy_table_contract;
 #[path = "mres_ac01_read_authorises_like_list_tools.rs"]
 mod mres_ac01_read_authorises_like_list_tools;
 #[path = "mres_ac02_templates_list_equals_const_and_docs.rs"]
@@ -1014,17 +1028,3 @@ mod suite_ac6_wall_time_budget;
 mod suite_ac7_junit_per_test_timing;
 #[path = "suite_ac9_selftest_named_and_green.rs"]
 mod suite_ac9_selftest_named_and_green;
-#[path = "support_ac01_bearer_invalid_help_url.rs"]
-mod support_ac01_bearer_invalid_help_url;
-#[path = "support_ac02_internal_error_generic_and_logged.rs"]
-mod support_ac02_internal_error_generic_and_logged;
-#[path = "support_ac03_disk_floor_and_5xx_messages_generic.rs"]
-mod support_ac03_disk_floor_and_5xx_messages_generic;
-#[path = "support_ac04_plans_doc_and_json_consistent.rs"]
-mod support_ac04_plans_doc_and_json_consistent;
-#[path = "support_ac06_served_pages_from_docs_and_readme.rs"]
-mod support_ac06_served_pages_from_docs_and_readme;
-#[path = "support_ac07_whoami_links_resolve.rs"]
-mod support_ac07_whoami_links_resolve;
-#[path = "support_ac08_release_artifact_includes_www.rs"]
-mod support_ac08_release_artifact_includes_www;

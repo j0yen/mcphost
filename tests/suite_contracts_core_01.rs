@@ -103,6 +103,10 @@ mod evkr_ac04_bad_kind_args_invalid;
 mod exmf_ac03_index_matches_directories;
 #[path = "fbtl_ac06_kinds_cannot_drift.rs"]
 mod fbtl_ac06_kinds_cannot_drift;
+#[path = "fwdtab_ac02_table_matches_registry.rs"]
+mod fwdtab_ac02_table_matches_registry;
+#[path = "fwdtab_ac05_budget_lowered_on_the_measurement.rs"]
+mod fwdtab_ac05_budget_lowered_on_the_measurement;
 #[path = "hidx_ac03_source_kinds_one_set.rs"]
 mod hidx_ac03_source_kinds_one_set;
 #[path = "hrfr_ac06_table_write_verbs_bump_change_counter.rs"]
