@@ -75,12 +75,13 @@ async fn tenant_agent_reads_literal_subject_same_view_as_self() {
     let slack = providers.iter().find(|p| p["name"] == json!("slack")).expect("slack entry");
     assert_eq!(slack["connected"], json!(true), "{slack:?}");
 
-    // `end_user` omitted -> invalid_params.
+    // `end_user` omitted -> the descriptor's `required` refuses it.
     let err = client
         .tools_call("host.vault.status", json!({}))
         .await
         .expect_err("omitted end_user must be rejected");
-    assert_eq!(err.error_code.as_deref(), Some("invalid_params"), "{err:?}");
+    assert_eq!(err.error_code.as_deref(), Some("args_invalid"), "{err:?}");
+    assert_eq!(err.data["path"], json!("/end_user"), "{err:?}");
 
     // `end_user: "self"` with no verified identity on the call ->
     // upstream_not_connected, matching connect_link's own not-connected

@@ -270,14 +270,10 @@ async fn trigger_to_json_inner(state: &AppState, tenant: &Tenant, row: TriggerRo
 /// of which takes the resolved `name` and the existing row (`None` on
 /// create, `Some` on update) rather than doing its own lookup.
 pub async fn set(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    // PRD-mcphost-spec-unknown-field-rejection requirement 2 (AC4): refused
-    // before the tool lookup/any kind-specific dispatch below -- an
-    // argument key this tool doesn't define must never silently create a
+    // PRD-mcphost-spec-unknown-field-rejection requirement 2 (AC4): an argument
+    // key this tool doesn't define is refused at dispatch (`host_args::
+    // validate_host_args`), before this runs, so it can never silently create a
     // trigger shaped differently than the caller intended.
-    if let Some(known) = crate::handler::known_control_plane_args("host.trigger.set", &state.kinds)
-    {
-        crate::errors::check_unknown_argument(args, "host.trigger.set", &known)?;
-    }
     let tool = arg_str(args, "tool")?;
     let kind = arg_str_opt(args, "kind").unwrap_or_else(|| "schedule".to_string());
     state

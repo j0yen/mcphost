@@ -63,6 +63,10 @@ pub enum Severity {
     Critical,
 }
 
+/// The `severity` values, as `admin.alerts.raise`'s descriptor enum publishes
+/// them (the names [`Severity::parse`] accepts).
+pub const SEVERITIES: &[&str] = &["info", "warn", "critical"];
+
 impl Severity {
     pub fn as_str(self) -> &'static str {
         match self {

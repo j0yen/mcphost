@@ -331,7 +331,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "billing.checkout",
       "output_schema": {
@@ -409,7 +410,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "billing.plans",
       "output_schema": {
@@ -535,7 +537,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "billing.status",
       "output_schema": {
@@ -793,7 +796,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "billing_checkout",
       "since": "0.103.1"
@@ -810,7 +814,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "billing_plans",
       "since": "0.103.1"
@@ -827,7 +832,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "billing_status",
       "since": "0.103.1"
@@ -849,7 +855,8 @@
         "required": [
           "request_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.agent.contact_accept",
       "output_schema": {
@@ -929,7 +936,8 @@
         "required": [
           "request_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.agent.contact_deny",
       "output_schema": {
@@ -1009,7 +1017,8 @@
         "required": [
           "address"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.agent.contact_request",
       "output_schema": {
@@ -1100,7 +1109,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.agent.contacts",
       "output_schema": {
@@ -1300,7 +1310,8 @@
         "required": [
           "addresses"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.agent.contacts_import",
       "output_schema": {
@@ -1385,7 +1396,8 @@
         "required": [
           "address"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.agent.lookup",
       "output_schema": {
@@ -1504,7 +1516,8 @@
         "required": [
           "address"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.agent.mute",
       "output_schema": {
@@ -1608,7 +1621,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.agent.profile_set",
       "output_schema": {
@@ -1740,7 +1754,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.agent.search",
       "output_schema": {
@@ -1877,7 +1892,8 @@
         "required": [
           "address"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.agent.unmute",
       "output_schema": {
@@ -1943,7 +1959,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.agent.whoami",
       "output_schema": {
@@ -2173,7 +2190,8 @@
         "required": [
           "ask_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.ask.get",
       "output_schema": {
@@ -2312,7 +2330,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.ask.list",
       "output_schema": {
@@ -2435,7 +2454,8 @@
         "required": [
           "ask_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.ask.wait",
       "output_schema": {
@@ -2525,7 +2545,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.audit.chain",
       "output_schema": {
@@ -2666,7 +2687,8 @@
           "from_id",
           "to_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.audit.verify",
       "output_schema": {
@@ -2741,7 +2763,8 @@
         "required": [
           "id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.blob.delete",
       "output_schema": {
@@ -2895,7 +2918,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.blob.gc",
       "output_schema": {
@@ -3295,7 +3319,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.blob.list",
       "output_schema": {
@@ -3497,7 +3522,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.blob.policy",
       "output_schema": {
@@ -3860,7 +3886,8 @@
           "id",
           "ttl_s"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.blob.touch",
       "output_schema": {
@@ -4012,7 +4039,8 @@
         "required": [
           "id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.blob.url",
       "output_schema": {
@@ -4169,7 +4197,8 @@
           "spec",
           "args"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.bridge.test",
       "output_schema": {
@@ -4342,7 +4371,8 @@
         "x-deprecated": {
           "replaced_by": "host.bridge.test",
           "sunset": "2026-12-31"
-        }
+        },
+        "x-mcphost-validated": true
       },
       "name": "host.bridge_test",
       "since": "0.58.0"
@@ -4374,7 +4404,8 @@
         "required": [
           "call_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.call_trace",
       "output_schema": {
@@ -4574,7 +4605,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.calls.export",
       "output_schema": {
@@ -4738,7 +4770,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.calls.list",
       "output_schema": {
@@ -4890,7 +4923,8 @@
         "required": [
           "full_name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.catalog.get",
       "output_schema": {
@@ -5074,7 +5108,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.catalog.search",
       "output_schema": {
@@ -5241,7 +5276,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.changelog",
       "output_schema": {
@@ -5485,7 +5521,8 @@
         "required": [
           "channel_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.channel.close",
       "output_schema": {
@@ -5557,7 +5594,8 @@
         "required": [
           "channel_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.channel.freeze",
       "output_schema": {
@@ -5737,7 +5775,8 @@
           "channel",
           "body"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.channel.post",
       "output_schema": {
@@ -5873,7 +5912,8 @@
         "required": [
           "channel_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.channel.read",
       "output_schema": {
@@ -6003,7 +6043,8 @@
         "required": [
           "channel_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.channel.unfreeze",
       "output_schema": {
@@ -6087,7 +6128,8 @@
         "required": [
           "domain"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.claim.dns.check",
       "output_schema": {
@@ -6175,7 +6217,8 @@
         "required": [
           "domain"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.claim.dns.start",
       "output_schema": {
@@ -6264,7 +6307,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.claim.github",
       "output_schema": {
@@ -6343,7 +6387,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.claim.start",
       "output_schema": {
@@ -6415,7 +6460,8 @@
         "required": [
           "client_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.client.revoke",
       "output_schema": {
@@ -6734,7 +6780,8 @@
         "required": [
           "provider"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.docs.index_config",
       "output_schema": {
@@ -6866,7 +6913,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.docs.list",
       "output_schema": {
@@ -7228,7 +7276,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.docs.reindex",
       "output_schema": {
@@ -7318,7 +7367,8 @@
         "required": [
           "query"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.docs.search",
       "output_schema": {
@@ -7405,7 +7455,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.docs.status",
       "output_schema": {
@@ -7564,7 +7615,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.doctor",
       "output_schema": {
@@ -7786,7 +7838,8 @@
         "required": [
           "target"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.drift.check",
       "output_schema": {
@@ -7871,7 +7924,8 @@
           "item_id",
           "reason"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.drift.resolve",
       "output_schema": {
@@ -7943,7 +7997,8 @@
         "required": [
           "item_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.drift.review",
       "output_schema": {
@@ -8150,7 +8205,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.drift.reviews",
       "output_schema": {
@@ -8419,7 +8475,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.email.sends",
       "output_schema": {
@@ -8535,7 +8592,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.enduser.assertion_secret_rotate",
       "output_schema": {
@@ -8619,7 +8677,8 @@
         "required": [
           "subject"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.enduser.audit",
       "output_schema": {
@@ -8747,7 +8806,8 @@
         "required": [
           "subject"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.enduser.export",
       "output_schema": {
@@ -8819,7 +8879,8 @@
         "required": [
           "subject"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.enduser.get",
       "output_schema": {
@@ -8944,7 +9005,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.enduser.list",
       "output_schema": {
@@ -9056,7 +9118,8 @@
         "required": [
           "subject"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.enduser.purge",
       "output_schema": {
@@ -9139,7 +9202,8 @@
         "required": [
           "subject"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.enduser.revoke",
       "output_schema": {
@@ -9215,7 +9279,8 @@
         "required": [
           "subject"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.enduser.unrevoke",
       "output_schema": {
@@ -9281,7 +9346,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.enduser.whoami",
       "output_schema": {
@@ -9373,7 +9439,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.errors",
       "output_schema": {
@@ -9572,7 +9639,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.estimate",
       "output_schema": {
@@ -9773,7 +9841,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.example.fork",
       "output_schema": {
@@ -9892,7 +9961,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.example.list",
       "output_schema": {
@@ -9968,7 +10038,8 @@
         "required": [
           "id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.example.proposal_status",
       "output_schema": {
@@ -10147,7 +10218,8 @@
           "title",
           "use_case"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.example.propose",
       "output_schema": {
@@ -10254,7 +10326,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.export",
       "output_schema": {
@@ -10370,7 +10443,8 @@
         "required": [
           "feedback_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.feedback.get",
       "output_schema": {
@@ -10473,7 +10547,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.feedback.list",
       "output_schema": {
@@ -10604,7 +10679,8 @@
           "kind",
           "text"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.feedback.send",
       "output_schema": {
@@ -10681,7 +10757,8 @@
           "name",
           "namespace"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.group.add",
       "output_schema": {
@@ -10761,7 +10838,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.group.create",
       "output_schema": {
@@ -10827,7 +10905,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.group.list",
       "output_schema": {
@@ -10949,7 +11028,8 @@
           "name",
           "namespace"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.group.remove",
       "output_schema": {
@@ -11025,7 +11105,8 @@
         "required": [
           "anchor"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.help.get",
       "output_schema": {
@@ -11141,7 +11222,8 @@
         "required": [
           "q"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.help.search",
       "output_schema": {
@@ -11287,7 +11369,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.import",
       "output_schema": {
@@ -11503,7 +11586,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.index.delete",
       "output_schema": {
@@ -11573,7 +11657,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.index.list",
       "output_schema": {
@@ -11678,7 +11763,8 @@
           "name",
           "query"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.index.query",
       "output_schema": {
@@ -11845,7 +11931,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.index.refresh",
       "output_schema": {
@@ -11913,7 +12000,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.index.status",
       "output_schema": {
@@ -12102,7 +12190,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.invite.create",
       "output_schema": {
@@ -12295,7 +12384,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.invite.list",
       "output_schema": {
@@ -12421,7 +12511,8 @@
         "required": [
           "code"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.invite.revoke",
       "output_schema": {
@@ -12507,7 +12598,8 @@
         "required": [
           "run_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.job.timeline",
       "output_schema": {
@@ -12758,7 +12850,8 @@
         "x-deprecated": {
           "replaced_by": "host.job.timeline",
           "sunset": "2026-12-31"
-        }
+        },
+        "x-mcphost-validated": true
       },
       "name": "host.job_timeline",
       "since": "0.107.98"
@@ -12821,7 +12914,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.key.delegate",
       "output_schema": {
@@ -12927,7 +13021,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.key.list",
       "output_schema": {
@@ -13083,7 +13178,8 @@
         "required": [
           "tools"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.key.mint",
       "output_schema": {
@@ -13174,7 +13270,8 @@
         "required": [
           "label"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.key.revoke",
       "output_schema": {
@@ -13259,7 +13356,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.key.rotate",
       "output_schema": {
@@ -13441,7 +13539,8 @@
         "x-deprecated": {
           "replaced_by": "host.key.rotate",
           "sunset": "2026-12-31"
-        }
+        },
+        "x-mcphost-validated": true
       },
       "name": "host.key_rotate",
       "since": "0.58.0"
@@ -13476,7 +13575,8 @@
           "id",
           "change_kind"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.lineage.blast_radius",
       "output_schema": {
@@ -13607,7 +13707,8 @@
         "required": [
           "id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.lineage.trace",
       "output_schema": {
@@ -13758,7 +13859,8 @@
         "required": [
           "handle"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.lineage.trace_page",
       "output_schema": {
@@ -13879,7 +13981,8 @@
         "required": [
           "message_ids"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.msg.ack",
       "output_schema": {
@@ -13947,7 +14050,8 @@
         "required": [
           "address"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.msg.block",
       "output_schema": {
@@ -14073,7 +14177,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.msg.inbox",
       "output_schema": {
@@ -14270,7 +14375,8 @@
           "thread_id",
           "body"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.msg.reply",
       "output_schema": {
@@ -14381,7 +14487,8 @@
           "to",
           "body"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.msg.send",
       "output_schema": {
@@ -14555,7 +14662,8 @@
         "required": [
           "thread_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.msg.thread",
       "output_schema": {
@@ -14691,7 +14799,8 @@
         "required": [
           "address"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.msg.unblock",
       "output_schema": {
@@ -14769,7 +14878,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.msg.wait",
       "output_schema": {
@@ -14937,7 +15047,8 @@
         "required": [
           "key"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.note.delete",
       "output_schema": {
@@ -15046,7 +15157,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.note.list",
       "output_schema": {
@@ -15186,7 +15298,8 @@
         "required": [
           "text"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.note.put",
       "output_schema": {
@@ -15295,7 +15408,8 @@
           "kind",
           "target"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.notify.channel_add",
       "output_schema": {
@@ -15365,7 +15479,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.notify.channel_list",
       "output_schema": {
@@ -15457,7 +15572,8 @@
         "required": [
           "channel_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.notify.channel_remove",
       "output_schema": {
@@ -15531,7 +15647,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.notify.receipts",
       "output_schema": {
@@ -15739,7 +15856,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.oauth.audit",
       "output_schema": {
@@ -15911,7 +16029,8 @@
           "since",
           "until"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.oauth.audit_export",
       "output_schema": {
@@ -15983,7 +16102,8 @@
         "required": [
           "client_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.oauth.client_approve",
       "output_schema": {
@@ -16055,7 +16175,8 @@
         "required": [
           "client_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.oauth.client_deny",
       "output_schema": {
@@ -16121,7 +16242,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.oauth.doctor",
       "output_schema": {
@@ -16222,7 +16344,8 @@
         "required": [
           "id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.oauth.grant_revoke",
       "output_schema": {
@@ -16288,7 +16411,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.oauth.grants",
       "output_schema": {
@@ -16414,7 +16538,8 @@
         "required": [
           "issuer"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.oauth.issuer_remove",
       "output_schema": {
@@ -16475,7 +16600,7 @@
         "additionalProperties": false,
         "properties": {
           "audience": {
-            "description": "The JWT `aud` claim value to require.",
+            "description": "The JWT `aud` claim value to require; defaults to this tenant's own canonical resource URI.",
             "type": "string"
           },
           "dry_run": {
@@ -16497,10 +16622,10 @@
         },
         "required": [
           "issuer",
-          "audience",
           "jwks_url"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.oauth.issuer_set",
       "output_schema": {
@@ -16570,7 +16695,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.oauth.issuers",
       "output_schema": {
@@ -16633,7 +16759,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.oauth.pending",
       "output_schema": {
@@ -16720,7 +16847,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.oauth.policy",
       "output_schema": {
@@ -16829,7 +16957,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.oauth.policy_set",
       "output_schema": {
@@ -16969,7 +17098,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.oauth.provider",
       "output_schema": {
@@ -17068,7 +17198,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.oauth.provider_remove",
       "output_schema": {
@@ -17165,7 +17296,8 @@
           "client_id",
           "client_secret"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.oauth.provider_set",
       "output_schema": {
@@ -17268,7 +17400,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.oauth.revoke_all",
       "output_schema": {
@@ -17349,7 +17482,8 @@
           "name",
           "description"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.oauth.scope_set",
       "output_schema": {
@@ -17415,7 +17549,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.oauth.scopes",
       "output_schema": {
@@ -17488,7 +17623,8 @@
         "required": [
           "issuer"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.oauth.trusted_issuer_remove",
       "output_schema": {
@@ -17578,7 +17714,8 @@
           "jwks_url",
           "client_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.oauth.trusted_issuer_set",
       "output_schema": {
@@ -17650,7 +17787,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.oauth.trusted_issuers",
       "output_schema": {
@@ -17719,7 +17857,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.org.create",
       "output_schema": {
@@ -17795,7 +17934,8 @@
         "required": [
           "code"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.org.join",
       "output_schema": {
@@ -17861,7 +18001,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.org.leave",
       "output_schema": {
@@ -17931,7 +18072,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.org.members",
       "output_schema": {
@@ -18042,7 +18184,8 @@
         "required": [
           "member"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.org.remove",
       "output_schema": {
@@ -18194,7 +18337,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.policy.list",
       "output_schema": {
@@ -18420,7 +18564,8 @@
         "required": [
           "run_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.progress",
       "output_schema": {
@@ -18544,7 +18689,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.quickstart",
       "output_schema": {
@@ -20077,7 +20223,8 @@
         "required": [
           "handoff_token"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.redeem",
       "output_schema": {
@@ -20151,7 +20298,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.registry.publish",
       "output_schema": {
@@ -20277,7 +20425,8 @@
         "x-deprecated": {
           "replaced_by": "host.registry.publish",
           "sunset": "2026-12-31"
-        }
+        },
+        "x-mcphost-validated": true
       },
       "name": "host.registry_publish",
       "since": "0.58.0"
@@ -20299,7 +20448,8 @@
         "required": [
           "run_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.runs.cancel",
       "output_schema": {
@@ -20379,7 +20529,8 @@
         "required": [
           "run_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.runs.get",
       "output_schema": {
@@ -21444,7 +21595,8 @@
         "required": [
           "run_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.runs.part",
       "output_schema": {
@@ -21526,7 +21678,8 @@
         "required": [
           "before_unix"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.runs.purge",
       "output_schema": {
@@ -21602,7 +21755,8 @@
         "required": [
           "run_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.runs.wait",
       "output_schema": {
@@ -21975,7 +22129,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.schedule_receipts",
       "output_schema": {
@@ -22144,7 +22299,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.secret.leak_test",
       "output_schema": {
@@ -22225,7 +22381,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.secret.list",
       "output_schema": {
@@ -22409,7 +22566,8 @@
           "name",
           "value"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.secret.set",
       "output_schema": {
@@ -22495,7 +22653,8 @@
         "x-deprecated": {
           "replaced_by": "host.secret.list",
           "sunset": "2026-12-31"
-        }
+        },
+        "x-mcphost-validated": true
       },
       "name": "host.secret_list",
       "since": "0.58.0",
@@ -22539,7 +22698,8 @@
         "x-deprecated": {
           "replaced_by": "host.secret.set",
           "sunset": "2026-12-31"
-        }
+        },
+        "x-mcphost-validated": true
       },
       "name": "host.secret_set",
       "since": "0.58.0"
@@ -22555,7 +22715,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.self.offboard",
       "output_schema": {
@@ -22663,7 +22824,8 @@
         "x-deprecated": {
           "replaced_by": "host.self.offboard",
           "sunset": "2026-12-31"
-        }
+        },
+        "x-mcphost-validated": true
       },
       "name": "host.self_offboard",
       "since": "0.58.0"
@@ -22695,7 +22857,8 @@
           "caller_tenant",
           "calls_per_day"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.share.caller_limit",
       "output_schema": {
@@ -22780,7 +22943,8 @@
           "tool",
           "caller_tenant"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.share.caller_limit_remove",
       "output_schema": {
@@ -22872,7 +23036,8 @@
           "kind",
           "spec"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.spec.test",
       "output_schema": {
@@ -23258,7 +23423,8 @@
         "x-deprecated": {
           "replaced_by": "host.spec.test",
           "sunset": "2026-12-31"
-        }
+        },
+        "x-mcphost-validated": true
       },
       "name": "host.spec_test",
       "since": "0.58.0"
@@ -23291,7 +23457,8 @@
         "required": [
           "key"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.state.delete",
       "output_schema": {
@@ -23382,7 +23549,8 @@
         "required": [
           "table"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.state.delete_rows",
       "output_schema": {
@@ -23606,7 +23774,8 @@
         "required": [
           "key"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.state.get",
       "output_schema": {
@@ -23711,7 +23880,8 @@
           "table",
           "rows"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.state.insert",
       "output_schema": {
@@ -23823,7 +23993,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.state.list",
       "output_schema": {
@@ -24004,7 +24175,8 @@
         "required": [
           "table"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.state.query",
       "output_schema": {
@@ -24093,7 +24265,8 @@
           "key",
           "value"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.state.set",
       "output_schema": {
@@ -24188,7 +24361,8 @@
           "name",
           "schema"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.state.table_create",
       "output_schema": {
@@ -24332,7 +24506,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.state.table_drop",
       "output_schema": {
@@ -24514,7 +24689,8 @@
         "required": [
           "sql"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.table.chart",
       "output_schema": {
@@ -24927,7 +25103,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.table.charts",
       "output_schema": {
@@ -25024,7 +25201,8 @@
         "required": [
           "table"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.table.count",
       "output_schema": {
@@ -25334,7 +25512,8 @@
         "required": [
           "table"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.table.describe",
       "output_schema": {
@@ -26506,7 +26685,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.table.drop",
       "output_schema": {
@@ -26732,7 +26912,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.table.graph",
       "output_schema": {
@@ -26909,7 +27090,8 @@
         "required": [
           "handle"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.table.handle_drop",
       "output_schema": {
@@ -26981,7 +27163,8 @@
         "required": [
           "handle"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.table.handle_export",
       "output_schema": {
@@ -27047,7 +27230,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.table.handles",
       "output_schema": {
@@ -27168,7 +27352,8 @@
           "from",
           "to"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.table.join_paths",
       "output_schema": {
@@ -27296,7 +27481,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.table.list",
       "output_schema": {
@@ -27519,7 +27705,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.table.models",
       "output_schema": {
@@ -27627,7 +27814,8 @@
         "required": [
           "table"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.table.next_questions",
       "output_schema": {
@@ -27756,7 +27944,8 @@
         "required": [
           "sql"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.table.query",
       "output_schema": {
@@ -28272,7 +28461,8 @@
         "required": [
           "log_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.table.query_diagnose",
       "output_schema": {
@@ -28399,7 +28589,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.table.query_log",
       "output_schema": {
@@ -28557,7 +28748,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.table.query_stats",
       "output_schema": {
@@ -28666,7 +28858,8 @@
         "required": [
           "table"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.table.schema",
       "output_schema": {
@@ -28787,7 +28980,8 @@
         "required": [
           "task_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.task.claim",
       "output_schema": {
@@ -28886,7 +29080,8 @@
           "task_id",
           "result"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.task.complete",
       "output_schema": {
@@ -28977,7 +29172,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.task.dead_letters",
       "output_schema": {
@@ -29097,7 +29293,8 @@
         "required": [
           "task_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.task.get",
       "output_schema": {
@@ -29385,10 +29582,10 @@
           }
         },
         "required": [
-          "name",
-          "args"
+          "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.tool.call",
       "output_schema": {
@@ -29920,7 +30117,8 @@
           "from",
           "to"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.tool.diff",
       "output_schema": {
@@ -30010,7 +30208,8 @@
           "tool",
           "as"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.tool.fork",
       "output_schema": {
@@ -30090,7 +30289,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.tool.history",
       "output_schema": {
@@ -30238,7 +30438,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.tool.list",
       "output_schema": {
@@ -30512,7 +30713,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.tool.list_shared",
       "output_schema": {
@@ -30610,7 +30812,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.tool.logs",
       "output_schema": {
@@ -30730,6 +30933,10 @@
         "properties": {
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "force": {
+            "description": "Publish a chain whose mapping can never resolve (verdict will_fail) anyway; the response's gates entry then carries forced: true. Default false.",
             "type": "boolean"
           },
           "kind": {
@@ -31391,7 +31598,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.tool.remove",
       "output_schema": {
@@ -31468,7 +31676,8 @@
           "name",
           "version"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.tool.rollback",
       "output_schema": {
@@ -31549,7 +31758,8 @@
           "name",
           "args"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.tool.run",
       "output_schema": {
@@ -31951,7 +32161,8 @@
         "required": [
           "tool"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.tool.spec_shared",
       "output_schema": {
@@ -32079,7 +32290,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.tool.test",
       "output_schema": {
@@ -32992,7 +33204,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.tool.unshare",
       "output_schema": {
@@ -33109,14 +33322,14 @@
           }
         },
         "required": [
-          "name",
-          "args"
+          "name"
         ],
         "type": "object",
         "x-deprecated": {
           "replaced_by": "host.tool.call",
           "sunset": "2026-12-31"
-        }
+        },
+        "x-mcphost-validated": true
       },
       "name": "host.tool_call",
       "since": "0.58.0"
@@ -33153,7 +33366,8 @@
         "x-deprecated": {
           "replaced_by": "host.tool.diff",
           "sunset": "2026-12-31"
-        }
+        },
+        "x-mcphost-validated": true
       },
       "name": "host.tool_diff",
       "since": "0.60.0"
@@ -33190,7 +33404,8 @@
         "x-deprecated": {
           "replaced_by": "host.tool.fork",
           "sunset": "2026-12-31"
-        }
+        },
+        "x-mcphost-validated": true
       },
       "name": "host.tool_fork",
       "since": "0.108.156"
@@ -33217,7 +33432,8 @@
         "x-deprecated": {
           "replaced_by": "host.tool.history",
           "sunset": "2026-12-31"
-        }
+        },
+        "x-mcphost-validated": true
       },
       "name": "host.tool_history",
       "since": "0.60.0"
@@ -33291,7 +33507,8 @@
         "x-deprecated": {
           "replaced_by": "host.tool.list",
           "sunset": "2026-12-31"
-        }
+        },
+        "x-mcphost-validated": true
       },
       "name": "host.tool_list",
       "since": "0.58.0",
@@ -33321,7 +33538,8 @@
         "x-deprecated": {
           "replaced_by": "host.tool.list_shared",
           "sunset": "2026-12-31"
-        }
+        },
+        "x-mcphost-validated": true
       },
       "name": "host.tool_list_shared",
       "since": "0.108.153",
@@ -33353,7 +33571,8 @@
         "x-deprecated": {
           "replaced_by": "host.tool.logs",
           "sunset": "2026-12-31"
-        }
+        },
+        "x-mcphost-validated": true
       },
       "name": "host.tool_logs",
       "since": "0.58.0"
@@ -33421,6 +33640,10 @@
         "properties": {
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "force": {
+            "description": "Publish a chain whose mapping can never resolve (verdict will_fail) anyway; the response's gates entry then carries forced: true. Default false.",
             "type": "boolean"
           },
           "kind": {
@@ -33536,7 +33759,8 @@
         "x-deprecated": {
           "replaced_by": "host.tool.remove",
           "sunset": "2026-12-31"
-        }
+        },
+        "x-mcphost-validated": true
       },
       "name": "host.tool_remove",
       "since": "0.58.0"
@@ -33568,7 +33792,8 @@
         "x-deprecated": {
           "replaced_by": "host.tool.rollback",
           "sunset": "2026-12-31"
-        }
+        },
+        "x-mcphost-validated": true
       },
       "name": "host.tool_rollback",
       "since": "0.60.0"
@@ -33604,7 +33829,8 @@
         "x-deprecated": {
           "replaced_by": "host.tool.run",
           "sunset": "2026-12-31"
-        }
+        },
+        "x-mcphost-validated": true
       },
       "name": "host.tool_run",
       "since": "0.58.0"
@@ -33705,7 +33931,8 @@
         "x-deprecated": {
           "replaced_by": "host.tool.spec_shared",
           "sunset": "2026-12-31"
-        }
+        },
+        "x-mcphost-validated": true
       },
       "name": "host.tool_spec_shared",
       "since": "0.60.34"
@@ -33740,7 +33967,8 @@
         "x-deprecated": {
           "replaced_by": "host.tool.test",
           "sunset": "2026-12-31"
-        }
+        },
+        "x-mcphost-validated": true
       },
       "name": "host.tool_test",
       "since": "0.58.0"
@@ -33767,7 +33995,8 @@
         "x-deprecated": {
           "replaced_by": "host.tool.unshare",
           "sunset": "2026-12-31"
-        }
+        },
+        "x-mcphost-validated": true
       },
       "name": "host.tool_unshare",
       "since": "0.58.0"
@@ -33797,7 +34026,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.trigger.dead_letters",
       "output_schema": {
@@ -34262,7 +34492,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.trigger.list",
       "output_schema": {
@@ -35320,7 +35551,8 @@
           "name",
           "urls"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.uptime.create",
       "output_schema": {
@@ -35506,7 +35738,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.usage",
       "output_schema": {
@@ -35996,7 +36229,8 @@
           "provider",
           "end_user"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.vault.connect_link",
       "output_schema": {
@@ -36069,7 +36303,8 @@
           "provider",
           "end_user"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.vault.disconnect",
       "output_schema": {
@@ -36141,7 +36376,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.vault.provider_remove",
       "output_schema": {
@@ -36323,7 +36559,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.vault.providers",
       "output_schema": {
@@ -36433,7 +36670,8 @@
         "required": [
           "end_user"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.vault.status",
       "output_schema": {
@@ -36562,7 +36800,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.webhook_inbox.create",
       "output_schema": {
@@ -36717,7 +36956,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host.whoami",
       "output_schema": {
@@ -37289,7 +37529,8 @@
         "required": [
           "request_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_agent_contact_accept",
       "since": "0.103.1"
@@ -37312,7 +37553,8 @@
         "required": [
           "request_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_agent_contact_deny",
       "since": "0.103.1"
@@ -37339,7 +37581,8 @@
         "required": [
           "address"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_agent_contact_request",
       "since": "0.103.1"
@@ -37366,7 +37609,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_agent_contacts",
       "since": "0.103.1"
@@ -37392,7 +37636,8 @@
         "required": [
           "addresses"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_agent_contacts_import",
       "since": "0.103.1"
@@ -37415,7 +37660,8 @@
         "required": [
           "address"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_agent_lookup",
       "since": "0.103.1"
@@ -37438,7 +37684,8 @@
         "required": [
           "address"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_agent_mute",
       "since": "0.103.1"
@@ -37493,7 +37740,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_agent_profile_set",
       "since": "0.103.1"
@@ -37526,7 +37774,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_agent_search",
       "since": "0.103.1"
@@ -37549,7 +37798,8 @@
         "required": [
           "address"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_agent_unmute",
       "since": "0.103.1"
@@ -37566,7 +37816,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_agent_whoami",
       "since": "0.103.1"
@@ -37639,7 +37890,8 @@
         "required": [
           "ask_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_ask_get",
       "since": "0.107.36"
@@ -37669,7 +37921,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_ask_list",
       "since": "0.107.36"
@@ -37696,7 +37949,8 @@
         "required": [
           "ask_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_ask_wait",
       "since": "0.107.36"
@@ -37725,7 +37979,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_audit_chain",
       "since": "0.103.1"
@@ -37753,7 +38008,8 @@
           "from_id",
           "to_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_audit_verify",
       "since": "0.103.1"
@@ -37776,7 +38032,8 @@
         "required": [
           "id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_blob_delete",
       "since": "0.107.47"
@@ -37801,7 +38058,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_blob_gc",
       "since": "0.107.47"
@@ -37872,7 +38130,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_blob_list",
       "since": "0.107.47"
@@ -37907,7 +38166,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_blob_policy",
       "since": "0.107.47"
@@ -37987,7 +38247,8 @@
           "id",
           "ttl_s"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_blob_touch",
       "since": "0.107.47"
@@ -38014,7 +38275,8 @@
         "required": [
           "id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_blob_url",
       "since": "0.107.47"
@@ -38042,7 +38304,8 @@
           "spec",
           "args"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_bridge_test",
       "since": "0.103.1"
@@ -38075,7 +38338,8 @@
         "required": [
           "call_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_call_trace",
       "since": "0.107.38"
@@ -38100,7 +38364,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_calls_export",
       "since": "0.108.6"
@@ -38182,7 +38447,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_calls_list",
       "since": "0.108.6"
@@ -38205,7 +38471,8 @@
         "required": [
           "full_name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_catalog_get",
       "since": "0.103.1"
@@ -38230,7 +38497,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_catalog_search",
       "since": "0.103.1"
@@ -38251,7 +38519,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_changelog",
       "since": "0.103.1"
@@ -38274,7 +38543,8 @@
         "required": [
           "channel_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_channel_close",
       "since": "0.103.1"
@@ -38297,7 +38567,8 @@
         "required": [
           "channel_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_channel_freeze",
       "since": "0.103.1"
@@ -38367,7 +38638,8 @@
           "channel",
           "body"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_channel_post",
       "since": "0.103.1"
@@ -38431,7 +38703,8 @@
         "required": [
           "channel_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_channel_read",
       "since": "0.103.1"
@@ -38454,7 +38727,8 @@
         "required": [
           "channel_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_channel_unfreeze",
       "since": "0.103.1"
@@ -38489,7 +38763,8 @@
         "required": [
           "domain"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_claim_dns_check",
       "since": "0.108.230"
@@ -38524,7 +38799,8 @@
         "required": [
           "domain"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_claim_dns_start",
       "since": "0.110.2"
@@ -38550,7 +38826,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_claim_github",
       "since": "0.108.230"
@@ -38576,7 +38853,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_claim_start",
       "since": "0.108.230"
@@ -38599,7 +38877,8 @@
         "required": [
           "client_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_client_revoke",
       "since": "0.108.131"
@@ -38726,7 +39005,8 @@
         "required": [
           "provider"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_docs_index_config",
       "since": "0.103.1"
@@ -38794,7 +39074,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_docs_list",
       "since": "0.103.1"
@@ -38918,7 +39199,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_docs_reindex",
       "since": "0.103.1"
@@ -38963,7 +39245,8 @@
         "required": [
           "query"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_docs_search",
       "since": "0.103.1"
@@ -38980,7 +39263,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_docs_status",
       "since": "0.103.1"
@@ -39016,7 +39300,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_doctor",
       "since": "0.58.0"
@@ -39039,7 +39324,8 @@
         "required": [
           "target"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_drift_check",
       "since": "0.103.1"
@@ -39067,7 +39353,8 @@
           "item_id",
           "reason"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_drift_resolve",
       "since": "0.103.1"
@@ -39090,7 +39377,8 @@
         "required": [
           "item_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_drift_review",
       "since": "0.103.1"
@@ -39115,7 +39403,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_drift_reviews",
       "since": "0.103.1"
@@ -39190,7 +39479,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_email_sends",
       "since": "0.108.206"
@@ -39207,7 +39497,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_enduser_assertion_secret_rotate",
       "since": "0.103.1"
@@ -39242,7 +39533,8 @@
         "required": [
           "subject"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_enduser_audit",
       "since": "0.103.1"
@@ -39265,7 +39557,8 @@
         "required": [
           "subject"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_enduser_export",
       "since": "0.103.1"
@@ -39288,7 +39581,8 @@
         "required": [
           "subject"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_enduser_get",
       "since": "0.103.1"
@@ -39321,7 +39615,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_enduser_list",
       "since": "0.103.1"
@@ -39348,7 +39643,8 @@
         "required": [
           "subject"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_enduser_purge",
       "since": "0.103.1"
@@ -39378,7 +39674,8 @@
         "required": [
           "subject"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_enduser_revoke",
       "since": "0.103.1"
@@ -39405,7 +39702,8 @@
         "required": [
           "subject"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_enduser_unrevoke",
       "since": "0.103.1"
@@ -39422,7 +39720,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_enduser_whoami",
       "since": "0.103.1"
@@ -39443,7 +39742,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_errors",
       "since": "0.108.28"
@@ -39504,7 +39804,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_estimate",
       "since": "0.107.33"
@@ -39527,7 +39828,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_example_fork",
       "since": "0.108.42"
@@ -39572,7 +39874,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_example_list",
       "since": "0.108.42"
@@ -39595,7 +39898,8 @@
         "required": [
           "id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_example_proposal_status",
       "since": "0.107.66"
@@ -39681,7 +39985,8 @@
           "title",
           "use_case"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_example_propose",
       "since": "0.107.66"
@@ -39705,7 +40010,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_export",
       "since": "0.103.1"
@@ -39728,7 +40034,8 @@
         "required": [
           "feedback_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_feedback_get",
       "since": "0.58.0"
@@ -39749,7 +40056,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_feedback_list",
       "since": "0.107.43"
@@ -39788,7 +40096,8 @@
           "kind",
           "text"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_feedback_send",
       "since": "0.107.43"
@@ -39816,7 +40125,8 @@
           "name",
           "namespace"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_group_add",
       "since": "0.103.1"
@@ -39843,7 +40153,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_group_create",
       "since": "0.103.1"
@@ -39860,7 +40171,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_group_list",
       "since": "0.103.1"
@@ -39892,7 +40204,8 @@
           "name",
           "namespace"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_group_remove",
       "since": "0.103.1"
@@ -39915,7 +40228,8 @@
         "required": [
           "anchor"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_help_get",
       "since": "0.108.13"
@@ -39952,7 +40266,8 @@
         "required": [
           "q"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_help_search",
       "since": "0.58.0"
@@ -39981,7 +40296,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_import",
       "since": "0.107.50"
@@ -40095,7 +40411,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_index_delete",
       "since": "0.108.25"
@@ -40112,7 +40429,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_index_list",
       "since": "0.108.25"
@@ -40144,7 +40462,8 @@
           "name",
           "query"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_index_query",
       "since": "0.107.98"
@@ -40171,7 +40490,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_index_refresh",
       "since": "0.107.98"
@@ -40194,7 +40514,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_index_status",
       "since": "0.107.85"
@@ -40234,7 +40555,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_invite_create",
       "since": "0.103.1"
@@ -40251,7 +40573,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_invite_list",
       "since": "0.103.1"
@@ -40278,7 +40601,8 @@
         "required": [
           "code"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_invite_revoke",
       "since": "0.103.1"
@@ -40309,7 +40633,8 @@
         "required": [
           "run_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_job_timeline",
       "since": "0.107.98"
@@ -40373,7 +40698,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_key_delegate",
       "since": "0.108.22"
@@ -40390,7 +40716,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_key_list",
       "since": "0.107.93"
@@ -40428,7 +40755,8 @@
         "required": [
           "tools"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_key_mint",
       "since": "0.107.93"
@@ -40455,7 +40783,8 @@
         "required": [
           "label"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_key_revoke",
       "since": "0.107.93"
@@ -40476,7 +40805,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_key_rotate",
       "since": "0.103.1"
@@ -40512,7 +40842,8 @@
           "id",
           "change_kind"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_lineage_blast_radius",
       "since": "0.103.1"
@@ -40535,7 +40866,8 @@
         "required": [
           "id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_lineage_trace",
       "since": "0.103.1"
@@ -40562,7 +40894,8 @@
         "required": [
           "handle"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_lineage_trace_page",
       "since": "0.103.1"
@@ -40588,7 +40921,8 @@
         "required": [
           "message_ids"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_msg_ack",
       "since": "0.103.1"
@@ -40611,7 +40945,8 @@
         "required": [
           "address"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_msg_block",
       "since": "0.103.1"
@@ -40674,7 +41009,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_msg_inbox",
       "since": "0.103.1"
@@ -40714,7 +41050,8 @@
           "thread_id",
           "body"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_msg_reply",
       "since": "0.103.1"
@@ -40761,7 +41098,8 @@
           "to",
           "body"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_msg_send",
       "since": "0.103.1"
@@ -40826,7 +41164,8 @@
         "required": [
           "thread_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_msg_thread",
       "since": "0.103.1"
@@ -40849,7 +41188,8 @@
         "required": [
           "address"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_msg_unblock",
       "since": "0.103.1"
@@ -40878,7 +41218,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_msg_wait",
       "since": "0.103.1"
@@ -40901,7 +41242,8 @@
         "required": [
           "key"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_note_delete",
       "since": "0.108.62"
@@ -40940,7 +41282,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_note_list",
       "since": "0.108.62"
@@ -40982,7 +41325,8 @@
         "required": [
           "text"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_note_put",
       "since": "0.108.62"
@@ -41015,7 +41359,8 @@
           "kind",
           "target"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_notify_channel_add",
       "since": "0.108.71"
@@ -41032,7 +41377,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_notify_channel_list",
       "since": "0.108.71"
@@ -41055,7 +41401,8 @@
         "required": [
           "channel_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_notify_channel_remove",
       "since": "0.108.71"
@@ -41080,7 +41427,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_notify_receipts",
       "since": "0.108.71"
@@ -41150,7 +41498,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_oauth_audit",
       "since": "0.103.1"
@@ -41178,7 +41527,8 @@
           "since",
           "until"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_oauth_audit_export",
       "since": "0.103.1"
@@ -41201,7 +41551,8 @@
         "required": [
           "client_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_oauth_client_approve",
       "since": "0.103.1"
@@ -41224,7 +41575,8 @@
         "required": [
           "client_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_oauth_client_deny",
       "since": "0.103.1"
@@ -41241,7 +41593,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_oauth_doctor",
       "since": "0.103.1"
@@ -41268,7 +41621,8 @@
         "required": [
           "id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_oauth_grant_revoke",
       "since": "0.103.1"
@@ -41285,7 +41639,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_oauth_grants",
       "since": "0.103.1"
@@ -41312,7 +41667,8 @@
         "required": [
           "issuer"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_oauth_issuer_remove",
       "since": "0.103.1"
@@ -41324,7 +41680,7 @@
         "additionalProperties": false,
         "properties": {
           "audience": {
-            "description": "The JWT `aud` claim value to require.",
+            "description": "The JWT `aud` claim value to require; defaults to this tenant's own canonical resource URI.",
             "type": "string"
           },
           "dry_run": {
@@ -41346,10 +41702,10 @@
         },
         "required": [
           "issuer",
-          "audience",
           "jwks_url"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_oauth_issuer_set",
       "since": "0.103.1"
@@ -41366,7 +41722,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_oauth_issuers",
       "since": "0.103.1"
@@ -41383,7 +41740,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_oauth_pending",
       "since": "0.103.1"
@@ -41400,7 +41758,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_oauth_policy",
       "since": "0.103.1"
@@ -41447,7 +41806,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_oauth_policy_set",
       "since": "0.103.1"
@@ -41464,7 +41824,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_oauth_provider",
       "since": "0.103.1"
@@ -41481,7 +41842,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_oauth_provider_remove",
       "since": "0.103.1"
@@ -41533,7 +41895,8 @@
           "client_id",
           "client_secret"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_oauth_provider_set",
       "since": "0.103.1"
@@ -41554,7 +41917,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_oauth_revoke_all",
       "since": "0.103.1"
@@ -41586,7 +41950,8 @@
           "name",
           "description"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_oauth_scope_set",
       "since": "0.103.1"
@@ -41603,7 +41968,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_oauth_scopes",
       "since": "0.103.1"
@@ -41630,7 +41996,8 @@
         "required": [
           "issuer"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_oauth_trusted_issuer_remove",
       "since": "0.103.1"
@@ -41671,7 +42038,8 @@
           "jwks_url",
           "client_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_oauth_trusted_issuer_set",
       "since": "0.103.1"
@@ -41688,7 +42056,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_oauth_trusted_issuers",
       "since": "0.103.1"
@@ -41711,7 +42080,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_org_create",
       "since": "0.108.110"
@@ -41734,7 +42104,8 @@
         "required": [
           "code"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_org_join",
       "since": "0.108.110"
@@ -41751,7 +42122,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_org_leave",
       "since": "0.108.121"
@@ -41776,7 +42148,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_org_members",
       "since": "0.108.110"
@@ -41799,7 +42172,8 @@
         "required": [
           "member"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_org_remove",
       "since": "0.108.121"
@@ -41849,7 +42223,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_policy_list",
       "since": "0.103.1"
@@ -41931,7 +42306,8 @@
         "required": [
           "run_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_progress",
       "since": "0.103.1"
@@ -41952,7 +42328,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_quickstart",
       "since": "0.103.1"
@@ -41975,7 +42352,8 @@
         "required": [
           "handoff_token"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_redeem",
       "since": "0.103.1"
@@ -41992,7 +42370,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_registry_publish",
       "since": "0.103.1"
@@ -42015,7 +42394,8 @@
         "required": [
           "run_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_runs_cancel",
       "since": "0.103.1"
@@ -42042,7 +42422,8 @@
         "required": [
           "run_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_runs_get",
       "since": "0.103.1"
@@ -42201,7 +42582,8 @@
         "required": [
           "run_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_runs_part",
       "since": "0.103.1"
@@ -42228,7 +42610,8 @@
         "required": [
           "before_unix"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_runs_purge",
       "since": "0.103.1"
@@ -42259,7 +42642,8 @@
         "required": [
           "run_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_runs_wait",
       "since": "0.103.1"
@@ -42294,7 +42678,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_schedule_receipts",
       "since": "0.107.80"
@@ -42321,7 +42706,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_secret_leak_test",
       "since": "0.108.206"
@@ -42338,7 +42724,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_secret_list",
       "since": "0.103.1"
@@ -42377,7 +42764,8 @@
           "name",
           "value"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_secret_set",
       "since": "0.103.1"
@@ -42394,7 +42782,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_self_offboard",
       "since": "0.103.1"
@@ -42427,7 +42816,8 @@
           "caller_tenant",
           "calls_per_day"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_share_caller_limit",
       "since": "0.103.1"
@@ -42459,7 +42849,8 @@
           "tool",
           "caller_tenant"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_share_caller_limit_remove",
       "since": "0.103.1"
@@ -42495,7 +42886,8 @@
           "kind",
           "spec"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_spec_test",
       "since": "0.103.1"
@@ -42529,7 +42921,8 @@
         "required": [
           "key"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_state_delete",
       "since": "0.103.1"
@@ -42567,7 +42960,8 @@
         "required": [
           "table"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_state_delete_rows",
       "since": "0.103.1"
@@ -42597,7 +42991,8 @@
         "required": [
           "key"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_state_get",
       "since": "0.103.1"
@@ -42639,7 +43034,8 @@
           "table",
           "rows"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_state_insert",
       "since": "0.103.1"
@@ -42671,7 +43067,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_state_list",
       "since": "0.103.1"
@@ -42713,7 +43110,8 @@
         "required": [
           "table"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_state_query",
       "since": "0.103.1"
@@ -42751,7 +43149,8 @@
           "key",
           "value"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_state_set",
       "since": "0.103.1"
@@ -42787,7 +43186,8 @@
           "name",
           "schema"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_state_table_create",
       "since": "0.103.1"
@@ -42814,7 +43214,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_state_table_drop",
       "since": "0.103.1"
@@ -42885,7 +43286,8 @@
         "required": [
           "sql"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_table_chart",
       "since": "0.103.1"
@@ -42902,7 +43304,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_table_charts",
       "since": "0.103.1"
@@ -42929,7 +43332,8 @@
         "required": [
           "table"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_table_count",
       "since": "0.108.6"
@@ -42990,7 +43394,8 @@
         "required": [
           "table"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_table_describe",
       "since": "0.103.1"
@@ -43021,7 +43426,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_table_drop",
       "since": "0.103.1"
@@ -43046,7 +43452,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_table_graph",
       "since": "0.103.1"
@@ -43073,7 +43480,8 @@
         "required": [
           "handle"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_table_handle_drop",
       "since": "0.103.1"
@@ -43096,7 +43504,8 @@
         "required": [
           "handle"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_table_handle_export",
       "since": "0.103.1"
@@ -43113,7 +43522,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_table_handles",
       "since": "0.103.1"
@@ -43141,7 +43551,8 @@
           "from",
           "to"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_table_join_paths",
       "since": "0.103.1"
@@ -43158,7 +43569,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_table_list",
       "since": "0.103.1"
@@ -43222,7 +43634,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_table_models",
       "since": "0.103.1"
@@ -43249,7 +43662,8 @@
         "required": [
           "table"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_table_next_questions",
       "since": "0.103.1"
@@ -43285,7 +43699,8 @@
         "required": [
           "sql"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_table_query",
       "since": "0.103.1"
@@ -43308,7 +43723,8 @@
         "required": [
           "log_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_table_query_diagnose",
       "since": "0.103.1"
@@ -43333,7 +43749,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_table_query_log",
       "since": "0.103.1"
@@ -43354,7 +43771,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_table_query_stats",
       "since": "0.103.1"
@@ -43377,7 +43795,8 @@
         "required": [
           "table"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_table_schema",
       "since": "0.103.1"
@@ -43400,7 +43819,8 @@
         "required": [
           "task_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_task_claim",
       "since": "0.107.89"
@@ -43428,7 +43848,8 @@
           "task_id",
           "result"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_task_complete",
       "since": "0.107.89"
@@ -43445,7 +43866,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_task_dead_letters",
       "since": "0.107.89"
@@ -43468,7 +43890,8 @@
         "required": [
           "task_id"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_task_get",
       "since": "0.107.89"
@@ -43575,10 +43998,10 @@
           }
         },
         "required": [
-          "name",
-          "args"
+          "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_tool_call",
       "since": "0.103.1"
@@ -43611,7 +44034,8 @@
           "from",
           "to"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_tool_diff",
       "since": "0.103.1"
@@ -43644,7 +44068,8 @@
           "tool",
           "as"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_tool_fork",
       "since": "0.108.156"
@@ -43667,7 +44092,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_tool_history",
       "since": "0.103.1"
@@ -43718,7 +44144,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_tool_list",
       "since": "0.103.1"
@@ -43743,7 +44170,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_tool_list_shared",
       "since": "0.108.153"
@@ -43770,7 +44198,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_tool_logs",
       "since": "0.103.1"
@@ -43838,6 +44267,10 @@
         "properties": {
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "force": {
+            "description": "Publish a chain whose mapping can never resolve (verdict will_fail) anyway; the response's gates entry then carries forced: true. Default false.",
             "type": "boolean"
           },
           "kind": {
@@ -43945,7 +44378,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_tool_remove",
       "since": "0.103.1"
@@ -43973,7 +44407,8 @@
           "name",
           "version"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_tool_rollback",
       "since": "0.103.1"
@@ -44005,7 +44440,8 @@
           "name",
           "args"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_tool_run",
       "since": "0.103.1"
@@ -44098,7 +44534,8 @@
         "required": [
           "tool"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_tool_spec_shared",
       "since": "0.103.1"
@@ -44129,7 +44566,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_tool_test",
       "since": "0.103.1"
@@ -44152,7 +44590,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_tool_unshare",
       "since": "0.103.1"
@@ -44183,7 +44622,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_trigger_dead_letters",
       "since": "0.107.44"
@@ -44280,7 +44720,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_trigger_list",
       "since": "0.103.1"
@@ -44634,7 +45075,8 @@
           "name",
           "urls"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_uptime_create",
       "since": "0.107.11"
@@ -44671,7 +45113,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_usage",
       "since": "0.103.1"
@@ -44699,7 +45142,8 @@
           "provider",
           "end_user"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_vault_connect_link",
       "since": "0.103.1"
@@ -44727,7 +45171,8 @@
           "provider",
           "end_user"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_vault_disconnect",
       "since": "0.103.1"
@@ -44750,7 +45195,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_vault_provider_remove",
       "since": "0.103.1"
@@ -44834,7 +45280,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_vault_providers",
       "since": "0.103.1"
@@ -44857,7 +45304,8 @@
         "required": [
           "end_user"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_vault_status",
       "since": "0.103.1"
@@ -44893,7 +45341,8 @@
         "required": [
           "name"
         ],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_webhook_inbox_create",
       "since": "0.107.18"
@@ -44910,7 +45359,8 @@
           }
         },
         "required": [],
-        "type": "object"
+        "type": "object",
+        "x-mcphost-validated": true
       },
       "name": "host_whoami",
       "since": "0.103.1"

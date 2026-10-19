@@ -25,7 +25,7 @@ async fn limit_above_fifty_is_args_invalid_and_a_tool_without_triggers_is_empty(
         .await
         .expect_err("limit 51 must be refused");
     assert_eq!(err.error_code.as_deref(), Some("args_invalid"), "{err:?}");
-    assert!(err.message.contains("limit ≤ 50"), "the error must name the ceiling: {err:?}");
+    assert!(err.message.contains("maximum of 50"), "the error must name the ceiling: {err:?}");
 
     let ok = extract_structured(
         &client

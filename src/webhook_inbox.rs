@@ -106,9 +106,6 @@ fn signing_note(verify: &str) -> &'static str {
 
 /// `host.webhook_inbox.create(name, verify?, rotate?)`.
 pub async fn create(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    if let Some(known) = crate::handler::known_control_plane_args("host.webhook_inbox.create", &state.kinds) {
-        crate::errors::check_unknown_argument(args, "host.webhook_inbox.create", &known)?;
-    }
     let name = args
         .get("name")
         .and_then(Value::as_str)

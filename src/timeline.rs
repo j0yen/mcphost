@@ -14,6 +14,9 @@ use crate::state::AppState;
 
 /// `(field, source)` for every key of a timeline `steps` entry; `source` names
 /// the `RunRow` column or the derivation the value comes from.
+/// The `format` values of `host.job.timeline`, as the descriptor's enum publishes them.
+pub const FORMATS: &[&str] = &["json", "text"];
+
 pub const TIMELINE_FIELDS: &[(&str, &str)] = &[
     ("step", "step_no (1 for a run with no children)"),
     ("tool", "tool_name"),

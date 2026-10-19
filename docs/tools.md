@@ -2354,7 +2354,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Arguments**
 
-- `audience`: string, required
+- `audience`: string
 - `dry_run`: boolean
 - `issuer`: string, required
 - `jwks_url`: string, required
@@ -3607,7 +3607,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Arguments**
 
-- `args`: object, required
+- `args`: object
 - `async`: boolean
 - `budget`: object
   - `budget.max_child_calls` minimum: 1
@@ -3740,6 +3740,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `dry_run`: boolean
+- `force`: boolean
 - `kind`: string, required
   - `kind` enum: `echo`, `event`, `events`, `webhook`, `webhooks`, `inbound`, `trigger`, `inbox`, `cron`, `schedule`, `scheduled`, `doc`, `docs`, `document`, `documents`, `message`, `messages`, `msg`, `database`, `db`, `table`, `tables`, `csv`, `sql`, `schedules`, `uptime`, `probe`, `probes`, `memory`, `memories`
 - `name`: string, required

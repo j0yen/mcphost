@@ -22,7 +22,8 @@ async fn ac7_forged_from_argument_is_rejected_and_stores_nothing() {
         )
         .await
         .expect_err("forged from must be rejected");
-    assert_eq!(err.error_code.as_deref(), Some("args_invalid"), "{err:?}");
+    // `from` is no property of `host.msg.send`: the dispatch-level check refuses it.
+    assert_eq!(err.error_code.as_deref(), Some("unknown_argument"), "{err:?}");
 
     let inbox_raw = client_b.tools_call("host.msg.inbox", json!({})).await.expect("B inbox");
     let inbox = extract_structured(&inbox_raw);
