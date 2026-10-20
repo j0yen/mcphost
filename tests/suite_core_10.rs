@@ -652,6 +652,18 @@ mod rpol_ac04_attempts_exhausted_flips_retryable;
 mod rpol_ac05_chain_retry_on_validated_against_table;
 #[path = "rpol_ac06_retry_policy_check_names_the_edited_file.rs"]
 mod rpol_ac06_retry_policy_check_names_the_edited_file;
+#[path = "rsm_ac01_resume_fits_the_free_plan_ceilings.rs"]
+mod rsm_ac01_resume_fits_the_free_plan_ceilings;
+#[path = "rsm_ac02_tools_carry_their_newest_call.rs"]
+mod rsm_ac02_tools_carry_their_newest_call;
+#[path = "rsm_ac03_changes_since_the_last_call_version.rs"]
+mod rsm_ac03_changes_since_the_last_call_version;
+#[path = "rsm_ac05_anonymous_resume_creates_no_tenant.rs"]
+mod rsm_ac05_anonymous_resume_creates_no_tenant;
+#[path = "rsm_ac06_welcome_back_points_at_resume.rs"]
+mod rsm_ac06_welcome_back_points_at_resume;
+#[path = "rsm_ac07_usage_reports_the_resume_first_call_rate.rs"]
+mod rsm_ac07_usage_reports_the_resume_first_call_rate;
 #[path = "run_metrics_handoff_glob_regression.rs"]
 mod run_metrics_handoff_glob_regression;
 #[path = "runoverflow_ac03_progress_counter_monotonic_validation.rs"]
@@ -1028,15 +1040,3 @@ mod stgl_ac05_unshare_removes_entry;
 mod stgl_ac06_subkey_hides_shared_entries;
 #[path = "stgl_ac07_share_reports_grantees_notified.rs"]
 mod stgl_ac07_share_reports_grantees_notified;
-#[path = "suite_ac1_ten_binaries_and_names_preserved.rs"]
-mod suite_ac1_ten_binaries_and_names_preserved;
-#[path = "suite_ac3_mod_common_declared_once.rs"]
-mod suite_ac3_mod_common_declared_once;
-#[path = "suite_ac5_disk_size_budget.rs"]
-mod suite_ac5_disk_size_budget;
-#[path = "suite_ac6_wall_time_budget.rs"]
-mod suite_ac6_wall_time_budget;
-#[path = "suite_ac7_junit_per_test_timing.rs"]
-mod suite_ac7_junit_per_test_timing;
-#[path = "suite_ac9_selftest_named_and_green.rs"]
-mod suite_ac9_selftest_named_and_green;

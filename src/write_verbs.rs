@@ -141,6 +141,8 @@ pub const WRITE_VERBS: &[WriteVerb] = &[
     // revoke runs its own BEGIN IMMEDIATE/COMMIT, which a dry-run savepoint scope cannot roll back.
     nd("host.client.revoke", Kind::Revoke, "irreversible_by_design"),
     nd("host.org.leave", Kind::Remove, "irreversible_by_design"),
+    // `resume` is a read: the name matches the write pattern (host.trigger.resume), the verb writes nothing.
+    nd("host.resume", Kind::Write, "read_only_shape"),
 ];
 
 const fn count_where(supported: bool) -> usize {

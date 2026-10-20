@@ -20536,6 +20536,196 @@
       "since": "0.58.0"
     },
     {
+      "description": "Resume where you left off in one call (at most 4096 bytes): your tools with each one's last call status, unfinished runs, your newest notes, what changed on the host since your last call, and one suggested next_call. truncated names any section that was cut -- call that section's own tool (host.tool.list, host.runs.list, host.note.list, host.changelog) for the rest. Read-only. An unauthenticated caller gets the onboarding block and creates no tenant.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.resume",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "host": {
+            "properties": {
+              "changes": {
+                "items": {
+                  "type": "object"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "version": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "version_at_last_call": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "last_seen": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "next_call": {
+            "properties": {
+              "args": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "tool": {
+                "type": "string"
+              },
+              "why": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "tool"
+            ],
+            "type": "object"
+          },
+          "notes": {
+            "items": {
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "onboarding": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "runs_open": {
+            "items": {
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "tenant": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tools": {
+            "items": {
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "truncated": {
+            "properties": {
+              "changes": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "notes": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "runs_open": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "tools": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              }
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "next_call"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.112.2",
+      "unpaged_reason": "one byte-budgeted summary (resume::ResumeBudget): every section is cut to its cap and truncated names the cut, so no page cursor applies"
+    },
+    {
       "description": "Stop a queued or running job: its sandbox process is killed within ~2s and the run reads cancelled. A run that already finished fails with run_not_cancellable.",
       "input_schema": {
         "additionalProperties": false,
@@ -36214,6 +36404,32 @@
               "null"
             ]
           },
+          "resume": {
+            "properties": {
+              "first_call_rate_7d": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "over_budget_total": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "sessions_7d": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
           "retention_days": {
             "properties": {
               "calls": {
@@ -42653,6 +42869,24 @@
       },
       "name": "host_registry_publish",
       "since": "0.103.1"
+    },
+    {
+      "alias_of": "host.resume",
+      "description": "Resume where you left off in one call (at most 4096 bytes): your tools with each one's last call status, unfinished runs, your newest notes, what changed on the host since your last call, and one suggested next_call. truncated names any section that was cut -- call that section's own tool (host.tool.list, host.runs.list, host.note.list, host.changelog) for the rest. Read-only. An unauthenticated caller gets the onboarding block and creates no tenant.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_resume",
+      "since": "0.112.2"
     },
     {
       "alias_of": "host.runs.cancel",

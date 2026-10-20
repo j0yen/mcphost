@@ -1054,6 +1054,7 @@ const STARTER_TOOL_NAMES: &[&str] = &[
     "host.tool_share",
     "host.feedback.send",
     "host.feedback.list",
+    "host.resume",
 ];
 
 /// A filter over [`host_tools`]'s full descriptor set, not a second source
@@ -1888,6 +1889,18 @@ fn host_tools_part_02() -> Vec<Tool> {
                 }),
                 &[],
             ),
+        ),
+        // PRD-mcphost-resume-tool R1: "what was I doing?" in one bounded
+        // response -- see `resume.rs`.
+        Tool::new(
+            "host.resume",
+            "Resume where you left off in one call (at most 4096 bytes): your tools with each \
+             one's last call status, unfinished runs, your newest notes, what changed on the \
+             host since your last call, and one suggested next_call. truncated names any \
+             section that was cut -- call that section's own tool (host.tool.list, \
+             host.runs.list, host.note.list, host.changelog) for the rest. Read-only. An \
+             unauthenticated caller gets the onboarding block and creates no tenant.",
+            host_schema(json!({}), &[]),
         ),
         // PRD-mcphost-tenant-data-export P0 requirements 1-3: the pair of
         // "leave the way you joined" (host.self_offboard) is "take what you
@@ -7060,7 +7073,8 @@ impl McpHostHandler {
         if let Err(e) = self.state.db.resolve_pending_hint(tenant.id, called.to_string()).await {
             tracing::warn!(tenant = %tenant.namespace, error = %e, "resolve_pending_hint failed");
         }
-        if !header_authenticated && value.get("next").is_none() {
+        // PRD-mcphost-resume-tool R6: host.resume carries its own `next_call`.
+        if !header_authenticated && called != crate::resume::TOOL_NAME && value.get("next").is_none() {
             match self.state.db.agent_profile(tenant.id).await {
                 Ok(profile) if profile.hints => {
                     match self.state.db.count_distinct_host_tools_used(tenant.id).await {
@@ -7151,6 +7165,11 @@ impl McpHostHandler {
         if !self.state.invite_hints.mark_first(&format!("welcome_back:{sid}")) {
             return;
         }
+        // PRD-mcphost-resume-tool R6: the resume IS the welcome back; marking
+        // the session above keeps a later host.* call from repeating it.
+        if called == crate::resume::TOOL_NAME {
+            return;
+        }
         let profile = match self.state.db.agent_profile(tenant.id).await {
             Ok(p) => p,
             Err(e) => {
@@ -7186,6 +7205,8 @@ impl McpHostHandler {
                 "notes": notes,
                 "last_note": last_note,
                 "last_seen": crate::state::rfc3339_from_unix(last_seen_unix),
+                // PRD-mcphost-resume-tool R6: the one call that answers "what was I doing?".
+                "next": crate::resume::TOOL_NAME,
             });
             if let Some(since_you_left) = since_you_left
                 && let Some(envelope_obj) = envelope.as_object_mut()
@@ -12045,7 +12066,7 @@ impl McpHostHandler {
         if via_tenant_key_arg
             && matches!(auth, Auth::Anonymous)
             && (body_name.starts_with("host.") || body_name.starts_with("billing."))
-            && !matches!(body_name.as_str(), "host.quickstart" | "host.help.search" | "host.help.get" | "host.errors" | "host.redeem" | "billing.plans")
+            && !crate::resume::ANON_SAFE_TOOLS.contains(&body_name.as_str())
             && !is_feedback_tool(&body_name)
             && tenant_path_namespace(parts).is_none()
             && crate::invites::invite_path_code(parts).is_none()
@@ -12540,6 +12561,11 @@ impl McpHostHandler {
             // `signup` itself is.
             (Auth::Tenant(tenant, _), "host.quickstart") => self.quickstart_tenant_boxed(tenant, &args, &ctx, parts).await,
             (_, "host.quickstart") => self.quickstart_anonymous(&args, &ctx, parts),
+            // PRD-mcphost-resume-tool R5: a caller with no tenant gets the
+            // onboarding block, never an implicit signup (`ANON_SAFE_TOOLS`).
+            (Auth::Anonymous, "host.resume") if tenant_path_namespace(parts).is_none() => {
+                self.quickstart_anonymous(&args, &ctx, parts).map(crate::resume::anonymous)
+            }
             // PRD-mcphost-help-search-tool R4: public text, no tenant data --
             // reachable anonymously (never implicit-signs-up) or as a tenant.
             // PRD-mcphost-docs-telemetry-failed-after-search R2: one

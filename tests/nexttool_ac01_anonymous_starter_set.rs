@@ -1,11 +1,11 @@
 //! PRD-mcphost-one-next-tool AC1 (P0) — Given a fresh anonymous session on
-//! `/mcp`, When `tools/list` is called, Then exactly the 16 starter tools
+//! `/mcp`, When `tools/list` is called, Then exactly the starter tools (+ host.resume, PRD-mcphost-resume-tool)
 //! are returned and `signup` is first.
 
 use crate::common;
 use common::{McpClient, TestServer};
 
-const EXPECTED_STARTER_SET: [&str; 17] = [
+const EXPECTED_STARTER_SET: [&str; 18] = [
     "signup",
     "host.quickstart",
     "host.help.search",
@@ -23,6 +23,7 @@ const EXPECTED_STARTER_SET: [&str; 17] = [
     "host.tool_share",
     "host.feedback.send",
     "host.feedback.list",
+    "host.resume",
 ];
 
 #[tokio::test]
@@ -48,8 +49,8 @@ async fn anonymous_tools_list_is_exactly_the_starter_set_signup_first() {
     );
     assert_eq!(
         tool_names.len(),
-        17,
-        "exactly the 17 starter tools, nothing more: {tool_names:?}"
+        18,
+        "exactly the 18 starter tools, nothing more: {tool_names:?}"
     );
     for expected in EXPECTED_STARTER_SET {
         assert!(

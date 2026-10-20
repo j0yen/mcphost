@@ -165,6 +165,7 @@ pub const DISPATCH_TABLE: &[(&str, Arm)] = &[
     ("host.quickstart", McpHostHandler::arm_host_quickstart),
     ("host.redeem", McpHostHandler::arm_host_redeem),
     ("host.registry.publish", McpHostHandler::arm_host_registry_publish),
+    ("host.resume", McpHostHandler::arm_host_resume),
     ("host.runs.cancel", McpHostHandler::arm_host_runs_cancel),
     ("host.runs.get", McpHostHandler::arm_host_runs_get),
     ("host.runs.list", McpHostHandler::arm_host_runs_list),

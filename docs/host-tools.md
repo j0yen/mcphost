@@ -86,6 +86,7 @@ Regenerate with `scripts/sandbox-api-doc-check.sh --write`.
 | `host.org.remove` | remove | refused | `irreversible_by_design` |
 | `host.client.revoke` | revoke | refused | `irreversible_by_design` |
 | `host.org.leave` | remove | refused | `irreversible_by_design` |
+| `host.resume` | write | refused | `read_only_shape` |
 
 ### Confirm rule
 

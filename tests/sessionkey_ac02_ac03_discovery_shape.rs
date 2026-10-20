@@ -51,11 +51,11 @@ async fn every_host_star_descriptor_declares_an_optional_tenant_key() {
         .collect();
     assert_eq!(
         host_tools.len(),
-        15,
-        "PRD-mcphost-one-next-tool requirement 1 (AC1): the anonymous starter set carries fifteen \
+        16, // +1: host.resume (PRD-mcphost-resume-tool)
+        "PRD-mcphost-one-next-tool requirement 1 (AC1): the anonymous starter set carries sixteen \
          host.* tools (host.quickstart, host.help.search, host.help.get, host.errors, host.redeem, host.whoami, host.tool_publish, \
          host.tool_call, host.tool_test, host.state.set, host.state.get, host.state.list, \
-         host.tool_share, host.feedback.send, host.feedback.list) -- billing.plans and signup are the starter set's other two \
+         host.tool_share, host.feedback.send, host.feedback.list, host.resume) -- billing.plans and signup are the starter set's other two \
          entries, neither host.*-prefixed; host.policy.*/host.audit.* (PRD-mcphost-row-policy) \
          are tenant-key-only and not in it: {entries:?}"
     );

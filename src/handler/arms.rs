@@ -332,6 +332,13 @@ impl McpHostHandler {
         })
     }
 
+    pub(crate) fn arm_host_resume<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::resume::resume(&self.state, tenant, &args).await
+        })
+    }
+
     pub(crate) fn arm_host_export<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
         box_arm(async move {
             let ArmCtx { tenant, args, .. } = c;

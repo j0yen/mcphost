@@ -111,6 +111,7 @@ pub mod calllog;
 pub mod metering;
 pub mod network_policy;
 pub mod notes;
+pub mod resume;
 pub mod perf;
 pub mod oauth;
 pub mod openapi;
