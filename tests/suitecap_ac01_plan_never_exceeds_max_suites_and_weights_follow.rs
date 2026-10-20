@@ -181,6 +181,20 @@ fn an_overflowing_core_plan_is_packed_into_max_suites_with_weights() {
 
     let c = run(&dir, "gen-test-suites.sh", &["--check"]);
     assert!(c.status.success(), "{}", text(&c));
+    // A fresh plan has no measurements yet: `check` names every suite nobody measured...
+    let unmeasured = run(&dir, "ci-test-partition.sh", &["check"]);
+    assert!(!unmeasured.status.success(), "a plan with no measured entries must fail check\n{}", text(&unmeasured));
+    assert!(String::from_utf8_lossy(&unmeasured.stderr).contains("unmeasured suite: "), "{}", text(&unmeasured));
+    // ...and passes once a CI refresh has measured each required suite (the emitter's keys) at its recorded weight.
+    let req = run(&dir, "ci-test-partition.sh", &["list", "measured-required"]);
+    assert!(req.status.success(), "{}", text(&req));
+    let w = weights(&dir);
+    let mut m = serde_json::Map::new();
+    for k in String::from_utf8_lossy(&req.stdout).lines() {
+        m.insert(k.to_string(), w[k].clone());
+    }
+    assert_eq!(m.len(), all_suites(&dir).len(), "the emitter lists every generated suite and not lib");
+    fs::write(dir.join("scripts/ci-suite-measured.json"), serde_json::to_string_pretty(&m).unwrap() + "\n").unwrap();
     let p = run(&dir, "ci-test-partition.sh", &["check"]);
     assert!(p.status.success(), "ci-test-partition.sh check refused the generated plan\n{}", text(&p));
     fs::remove_dir_all(&dir).ok();
