@@ -1805,6 +1805,10 @@ impl Kind for ChainKind {
     /// follow-up, not this field list's concern. Kept a plain literal:
     /// `scripts/spec-fields-doc-check.sh` parses it straight out of this
     /// file (the chain SPEC's field, not a context key).
+    fn minimal_specs(&self) -> Vec<Value> {
+        vec![json!({ (CONTEXT_KEYS.steps): [{"tool": "step_one", "args": {}}] })]
+    }
+
     fn known_spec_fields(&self) -> &'static [&'static str] {
         &["steps"]
     }

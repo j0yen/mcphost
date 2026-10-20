@@ -1194,6 +1194,13 @@ impl Kind for HttpKind {
         ]
     }
 
+    fn minimal_specs(&self) -> Vec<Value> {
+        vec![
+            json!({"method": "GET", "url": "https://api.example.com/v1/things"}),
+            json!({"upstream": {"url": "https://api.example.com/v1/things", "method": "GET"}}),
+        ]
+    }
+
     fn ceiling_fields(&self) -> &'static [&'static str] {
         &["budget.max_tool_latency_ms", "budget.max_wall_ms"]
     }

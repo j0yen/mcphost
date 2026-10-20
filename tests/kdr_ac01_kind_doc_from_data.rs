@@ -2,6 +2,7 @@
 //! PRD-mcphost-kind-docs-from-registry AC1: `KindDoc` is built from Rust
 //! data for every registered kind, with nothing left empty.
 
+use mcphost::kinds::kinddoc::{Requiredness, derive_requiredness};
 use mcphost::kinds::production_registry;
 use mcphost::plans::PlanCatalog;
 
@@ -32,8 +33,9 @@ fn kdr_ac01_kind_doc_from_data() {
         for e in &doc.error_codes {
             assert!(!e.when.is_empty(), "kind={name}: error_codes `{}` has no `when`", e.code);
         }
-        let has_required = doc.spec_fields.iter().any(|f| f.required);
-        assert_eq!(has_required, kind.required_spec_field().is_some(), "kind={name}: required flag");
+        let has_required = doc.spec_fields.iter().any(|f| f.required != Requiredness::Never);
+        let derived_required = derive_requiredness(kind.as_ref()).iter().any(|(_, r)| *r != Requiredness::Never);
+        assert_eq!(has_required, derived_required, "kind={name}: required flag");
         // Only the source kinds (python, js) carry bridge modules.
         assert_eq!(doc.bridge_modules.is_some(), name == "python" || name == "js", "kind={name}: bridge_modules");
         if name != "echo" {

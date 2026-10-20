@@ -990,7 +990,8 @@ pub const KIND_PAGES_DIR: &str = "docs/kinds";
 
 /// The generated blocks of a kind page, in page order. Each is wrapped in
 /// `<!-- <name>:start -->` / `<!-- <name>:end -->`.
-pub const KIND_BLOCKS: [&str; 4] = ["kind-fields", "kind-ceilings", "kind-errors", "kind-example"];
+pub const KIND_BLOCKS: [&str; 5] =
+    ["kind-fields", "kind-ceilings", "kind-errors", "kind-example", "kind-minimal-specs"];
 
 fn escape_cell(text: &str) -> String {
     text.replace('|', "\\|").replace('\n', " ")
@@ -1006,7 +1007,7 @@ pub fn render_kind_block(doc: &KindDoc, block: &str) -> String {
                     "| `{}` | {} | {} | {} |\n",
                     f.name,
                     escape_cell(&f.ty),
-                    if f.required { "yes" } else { "no" },
+                    f.required.cell(),
                     escape_cell(&f.meaning)
                 ));
             }
@@ -1036,6 +1037,12 @@ pub fn render_kind_block(doc: &KindDoc, block: &str) -> String {
             "```json\n{}\n```\n",
             serde_json::to_string_pretty(&doc.example).unwrap_or_default()
         ),
+        "kind-minimal-specs" => doc
+            .minimal_specs
+            .iter()
+            .map(|spec| format!("```json\n{}\n```\n", serde_json::to_string_pretty(spec).unwrap_or_default()))
+            .collect::<Vec<_>>()
+            .join("\n"),
         other => unreachable!("unknown kind block {other}"),
     }
 }
@@ -1049,6 +1056,7 @@ fn block_heading(block: &str) -> &'static str {
         "kind-fields" => "Spec fields",
         "kind-ceilings" => "Kind ceilings",
         "kind-errors" => "Error codes",
+        "kind-minimal-specs" => "Minimal specs",
         _ => "Canonical example",
     }
 }
@@ -1065,6 +1073,32 @@ fn splice_kind_block(page: &str, block: &str, body: &str) -> String {
     let mut out = page.trim_end().to_string();
     out.push_str(&format!("\n\n## {}\n\n{start}\n{body}{end}\n", block_heading(block)));
     out
+}
+
+/// PRD-mcphost-kind-field-docs-required-from-parse-spec R4: `None` when the
+/// `kind-fields` table in `page` equals what `doc` renders; otherwise a
+/// message naming the kind and the first row that differs.
+pub fn kind_fields_drift(kind: &str, doc: &KindDoc, page: &str) -> Option<String> {
+    let (start, end) = block_markers("kind-fields");
+    let committed = match (page.find(&start), page.find(&end)) {
+        (Some(s), Some(e)) if s < e => &page[s + start.len()..e],
+        _ => return Some(format!("kind {kind}: page has no kind-fields markers")),
+    };
+    let generated = format!("\n{}", render_kind_block(doc, "kind-fields"));
+    if committed == generated {
+        return None;
+    }
+    let have: Vec<&str> = committed.lines().filter(|l| !l.is_empty()).collect();
+    let want: Vec<&str> = generated.lines().filter(|l| !l.is_empty()).collect();
+    for i in 0..have.len().max(want.len()) {
+        let (h, w) = (have.get(i).copied().unwrap_or("<missing row>"), want.get(i).copied().unwrap_or("<extra row>"));
+        if h != w {
+            return Some(format!(
+                "kind {kind}: kind-fields row differs (run `mcphost gen-docs kinds --write`)\n  committed: {h}\n  generated: {w}"
+            ));
+        }
+    }
+    Some(format!("kind {kind}: kind-fields block differs"))
 }
 
 /// One page block that differs from what the registry renders.

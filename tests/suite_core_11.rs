@@ -30,6 +30,12 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "sorel_ac01_offboard_releases_session_fresh_signup.rs"]
+mod sorel_ac01_offboard_releases_session_fresh_signup;
+#[path = "sorel_ac02_self_offboard_remedy_and_idempotent.rs"]
+mod sorel_ac02_self_offboard_remedy_and_idempotent;
+#[path = "sorel_ac03_admin_disable_remedy_unchanged.rs"]
+mod sorel_ac03_admin_disable_remedy_unchanged;
 #[path = "specpath_ac01_map_form_normalizes_and_publishes.rs"]
 mod specpath_ac01_map_form_normalizes_and_publishes;
 #[path = "specpath_ac02_outputs_map_value_type_error.rs"]

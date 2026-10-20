@@ -472,6 +472,10 @@ impl Kind for JqKind {
         compile(&parsed.program).map(|_| ())
     }
 
+    fn minimal_specs(&self) -> Vec<Value> {
+        vec![json!({"program": "."})]
+    }
+
     fn known_spec_fields(&self) -> &'static [&'static str] {
         &["program", "args_schema", "timeout_s", "max_output_bytes", "description", "outputs"]
     }

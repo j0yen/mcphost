@@ -852,6 +852,10 @@ impl Kind for JsKind {
         validate_fields_all(&parsed).into_iter().next().map_or(Ok(()), Err)
     }
 
+    fn minimal_specs(&self) -> Vec<Value> {
+        vec![json!({"source": "function main(args) { return args; }"})]
+    }
+
     fn known_spec_fields(&self) -> &'static [&'static str] {
         &[
             "source",
