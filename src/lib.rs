@@ -37,6 +37,7 @@ pub mod cron;
 pub mod db;
 pub mod deadletters;
 pub mod deps;
+pub mod devserver;
 pub mod difftext;
 pub mod blobs;
 pub mod docs;

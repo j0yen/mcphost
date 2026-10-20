@@ -2764,6 +2764,30 @@ pub fn production_registry() -> KindRegistry {
     registry
 }
 
+/// The kinds `serve` registers, rooted at `data_dir` with the python
+/// isolation chosen by the caller (`None` = auto-detect, as `serve` does) --
+/// the one constructor `mcphost dev` uses, so the emulator runs the same
+/// kind set production does. Returns the registry and the python kind's
+/// mechanism name, for the `emulator.sandbox` stamp.
+pub fn dev_registry(
+    data_dir: &std::path::Path,
+    isolation: Option<crate::sandbox::IsolationMechanism>,
+) -> Result<(KindRegistry, &'static str), KindError> {
+    let own_domain = http::own_domain_from_url("https://mcphost.dev");
+    let mut registry = KindRegistry::with_builtin();
+    registry.register(Arc::new(http::HttpKind::new(own_domain.clone())?));
+    let python_kind = python::PythonKind::with_isolation(
+        data_dir,
+        isolation.unwrap_or_else(crate::sandbox::detect_mechanism),
+    )
+    .with_own_domain(own_domain);
+    let mechanism = python_kind.mechanism();
+    registry.register(Arc::new(python_kind));
+    registry.register(Arc::new(js::JsKind::new(data_dir)));
+    register_host_side_kinds(&mut registry);
+    Ok((registry, mechanism))
+}
+
 impl KindRegistry {
     pub fn new() -> Self {
         Self::default()

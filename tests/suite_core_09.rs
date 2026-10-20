@@ -30,6 +30,12 @@ mod ac14_storage_unwritable;
 mod busyaudit_ac08_healthz_db_fields;
 #[path = "ctrv_ac03_status_and_healthz_carry_contract_identity.rs"]
 mod ctrv_ac03_status_and_healthz_carry_contract_identity;
+#[path = "evkrb_ac01_llms_txt_events_section_checked.rs"]
+mod evkrb_ac01_llms_txt_events_section_checked;
+#[path = "evkrb_ac02_quickstart_events_pointer.rs"]
+mod evkrb_ac02_quickstart_events_pointer;
+#[path = "evkrb_ac03_events_json_stable_and_cached.rs"]
+mod evkrb_ac03_events_json_stable_and_cached;
 #[path = "exargs_ac02_generator_values.rs"]
 mod exargs_ac02_generator_values;
 #[path = "exargs_ac03_tool_test_runs_the_example.rs"]

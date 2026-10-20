@@ -239,6 +239,25 @@ enum Command {
         #[command(subcommand)]
         action: ToolCommand,
     },
+    /// PRD-mcphost-dev-emulator: run a tool directory locally through the
+    /// host's own kinds and error mappers.
+    Dev {
+        dir: PathBuf,
+        /// Run python without bubblewrap; every response then carries
+        /// `emulator.sandbox = "none"`.
+        #[arg(long)]
+        no_sandbox: bool,
+        /// Plan whose ceilings apply (`free` or `pro`).
+        #[arg(long, default_value = "free")]
+        plan: String,
+        /// Port for `http://127.0.0.1:<port>/mcp` (0 picks a free one).
+        #[arg(long, default_value_t = 7390)]
+        port: u16,
+        /// Run one call (`--call <tool> <json>`), print the envelope as JSON
+        /// and exit 0, or 1 on an error envelope.
+        #[arg(long, num_args = 2, value_names = ["TOOL", "JSON"])]
+        call: Vec<String>,
+    },
     /// PRD-mcphost-push-from-directory: publish a tool directory to a tenant.
     Push {
         dir: PathBuf,
@@ -1503,6 +1522,34 @@ async fn main() -> anyhow::Result<()> {
             }
             let report = mcphost::push::push_once(&opts).await;
             std::process::exit(mcphost::push::emit(&report, opts.json));
+        }
+        Command::Dev { dir, no_sandbox, plan, port, call } => {
+            let opts = mcphost::devserver::DevOpts { dir, no_sandbox, plan };
+            let dev = match mcphost::devserver::Dev::open(&opts).await {
+                Ok(dev) => dev,
+                Err(e) => {
+                    println!("{}", e.to_json());
+                    std::process::exit(1);
+                }
+            };
+            let [tool, args] = call.as_slice() else {
+                println!("mcphost dev: sandbox={} plan={}", dev.stamp()["sandbox"].as_str().unwrap_or("?"), opts.plan);
+                let dev = std::sync::Arc::new(dev);
+                let (addr, task) = mcphost::devserver::serve(dev, port).await?;
+                println!("mcphost dev: serving http://{addr}/mcp");
+                let _ = task.await;
+                return Ok(());
+            };
+            let args: serde_json::Value = match serde_json::from_str(args) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("mcphost dev: --call json: {e}");
+                    std::process::exit(2);
+                }
+            };
+            let out = dev.call(tool, args).await;
+            println!("{out}");
+            std::process::exit(i32::from(out.get("error").is_some()));
         }
         Command::Tool { action } => {
             // Plain stdout/exit-code, no `init_tracing()`, like `GenDocs`.

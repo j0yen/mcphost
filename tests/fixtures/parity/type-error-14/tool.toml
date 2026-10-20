@@ -1,0 +1,7 @@
+[tool]
+name = "type_error_14"
+kind = "python"
+description = "Raises a TypeError at tool.py line 14 (mcphost dev parity fixture)."
+
+[spec]
+args_schema = { type = "object", properties = { rows = { type = "array" } } }
