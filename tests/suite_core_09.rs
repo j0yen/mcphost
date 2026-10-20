@@ -30,6 +30,24 @@ mod ac14_storage_unwritable;
 mod busyaudit_ac08_healthz_db_fields;
 #[path = "ctrv_ac03_status_and_healthz_carry_contract_identity.rs"]
 mod ctrv_ac03_status_and_healthz_carry_contract_identity;
+#[path = "errreg_ac01_err_code_declares_and_registers.rs"]
+mod errreg_ac01_err_code_declares_and_registers;
+#[path = "errreg_ac02_registry_surfaces_byte_identical_snapshot.rs"]
+mod errreg_ac02_registry_surfaces_byte_identical_snapshot;
+#[path = "errreg_ac03_scanner_fails_bare_literal_names_site.rs"]
+mod errreg_ac03_scanner_fails_bare_literal_names_site;
+#[path = "errreg_ac04_scanner_fails_duplicate_and_format_codes.rs"]
+mod errreg_ac04_scanner_fails_duplicate_and_format_codes;
+#[path = "errreg_ac05_hand_table_empty_and_backstop_passes.rs"]
+mod errreg_ac05_hand_table_empty_and_backstop_passes;
+#[path = "errreg_ac06_five_10_17_codes_declared_at_emit_site.rs"]
+mod errreg_ac06_five_10_17_codes_declared_at_emit_site;
+#[path = "evkr_ac01_no_second_spelling.rs"]
+mod evkr_ac01_no_second_spelling;
+#[path = "evkr_ac02_renderings_equal_enum.rs"]
+mod evkr_ac02_renderings_equal_enum;
+#[path = "evkr_ac03_description_and_fields.rs"]
+mod evkr_ac03_description_and_fields;
 #[path = "evkrb_ac01_llms_txt_events_section_checked.rs"]
 mod evkrb_ac01_llms_txt_events_section_checked;
 #[path = "evkrb_ac02_quickstart_events_pointer.rs"]
@@ -734,14 +752,6 @@ mod mcphost_install_links_more_clients_ac06_docs_block_regenerates_from_table;
 mod mcphost_install_links_more_clients_ac07_prior_prd_tests_still_apply;
 #[path = "mcphost-llms-install-doc_ac01_generator_sections.rs"]
 mod mcphost_llms_install_doc_ac01_generator_sections;
-#[path = "mcphost-llms-install-doc_ac02_served_unauthenticated.rs"]
-mod mcphost_llms_install_doc_ac02_served_unauthenticated;
-#[path = "mcphost-llms-install-doc_ac03_committed_copy_drift.rs"]
-mod mcphost_llms_install_doc_ac03_committed_copy_drift;
-#[path = "mcphost-llms-install-doc_ac04_linked_from_every_entry_point.rs"]
-mod mcphost_llms_install_doc_ac04_linked_from_every_entry_point;
-#[path = "mcphost-llms-install-doc_ac06_install_doc_funnel_event.rs"]
-mod mcphost_llms_install_doc_ac06_install_doc_funnel_event;
 #[path = "mcphost_admin_schema_contract_ac01_tenants_schema_version.rs"]
 mod mcphost_admin_schema_contract_ac01_tenants_schema_version;
 #[path = "mcphost_admin_schema_contract_ac02_listings_validate_v1_schema.rs"]

@@ -277,7 +277,7 @@ pub async fn audit_verify(
     let rows = state.db.audit_chain_range(tenant.id, from_id, to_id).await?;
     let records: Vec<audit::RetrievalAuditRecord> = rows.into_iter().map(Into::into).collect();
     let result = audit::verify_chain(&records);
-    Ok(json!({"intact": result.intact, "first_broken_id": result.first_broken_id}))
+    Ok(json!({"intact": result.intact, "ok": result.intact, "first_broken_id": result.first_broken_id}))
 }
 
 /// requirement 7 (AC8): `host.audit.chain(subject?, limit?, before_id?)` --
@@ -300,7 +300,7 @@ pub async fn audit_chain(
     let records_json: Vec<Value> = records
         .into_iter()
         .map(|r| {
-            json!({
+            let mut rec = json!({
                 "id": r.id,
                 "subject": r.subject,
                 "plane": r.plane,
@@ -310,7 +310,21 @@ pub async fn audit_chain(
                 "withheld_count": r.withheld_count,
                 "timestamp": r.timestamp_unix,
                 "request_id": r.request_id,
-            })
+            });
+            // PRD-mcphost-acting-for-in-ledger-and-audit: present only on
+            // records that carry them (the field is absent, not null).
+            if let Some(obj) = rec.as_object_mut() {
+                if let Some(a) = &r.action {
+                    obj.insert("action".to_string(), json!(a));
+                }
+                if let Some(d) = r.detail.as_deref().and_then(|d| serde_json::from_str::<Value>(d).ok()) {
+                    obj.insert("detail".to_string(), d);
+                }
+                if let Some(af) = r.acting_for.as_deref().and_then(|d| serde_json::from_str::<Value>(d).ok()) {
+                    obj.insert("acting_for".to_string(), af);
+                }
+            }
+            rec
         })
         .collect();
     Ok(json!({"records": records_json, "returned_count": returned_count, "withheld_count": withheld_count}))

@@ -30,6 +30,14 @@ mod serve;
 #[path = "support/sjrc.rs"]
 mod sjrc;
 
+#[path = "mcphost-llms-install-doc_ac02_served_unauthenticated.rs"]
+mod mcphost_llms_install_doc_ac02_served_unauthenticated;
+#[path = "mcphost-llms-install-doc_ac03_committed_copy_drift.rs"]
+mod mcphost_llms_install_doc_ac03_committed_copy_drift;
+#[path = "mcphost-llms-install-doc_ac04_linked_from_every_entry_point.rs"]
+mod mcphost_llms_install_doc_ac04_linked_from_every_entry_point;
+#[path = "mcphost-llms-install-doc_ac06_install_doc_funnel_event.rs"]
+mod mcphost_llms_install_doc_ac06_install_doc_funnel_event;
 #[path = "meshops_ac01_stats_real_vs_synthetic_volume.rs"]
 mod meshops_ac01_stats_real_vs_synthetic_volume;
 #[path = "meshops_ac02_threads_no_bodies.rs"]
