@@ -44,10 +44,12 @@ fn the_committed_weights_split_into_three_total_disjoint_shards() {
     let weights = root().join("scripts/ci-suite-weights.json");
     let text = std::fs::read_to_string(&weights).expect("weights file exists");
     let json: serde_json::Value = serde_json::from_str(&text).expect("weights file is JSON");
-    assert_eq!(json["lib"], 6);
-    assert_eq!(json["suite_env_sandbox_01"], 7);
-    assert_eq!(json["suite_sandbox_01"], 110);
-    assert_eq!(json["suite_sandbox_02"], 152);
+    // No literal value pins: the weights are generated (ci-refresh-weights.sh) and
+    // their drift is guarded by gen-test-suites.sh --check + ci-test-partition.sh check.
+    assert!(
+        json.as_object().is_some_and(|m| !m.is_empty() && m.values().all(serde_json::Value::is_u64)),
+        "weights file is a non-empty map of whole seconds"
+    );
 
     let shards: Vec<String> = (1..=3)
         .map(|n| stdout(&partition(&["sandbox-shard", &n.to_string(), "3"], None)))

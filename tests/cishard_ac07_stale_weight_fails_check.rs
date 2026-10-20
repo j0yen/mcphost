@@ -127,6 +127,7 @@ fn the_refresh_script_is_the_writer_that_makes_a_stale_pair_pass_again() {
     let o = Command::new(root().join("scripts/ci-refresh-weights.sh"))
         .arg(&log)
         .env("CI_REFRESH_ROOT", &dir)
+        .env("CI_REFRESH_ALLOW_LOCAL", "1")
         .output()
         .unwrap();
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
@@ -161,6 +162,7 @@ fn a_log_missing_a_core_suite_line_fails_naming_it_and_writes_nothing() {
     let o = Command::new(root().join("scripts/ci-refresh-weights.sh"))
         .arg(&log)
         .env("CI_REFRESH_ROOT", &dir)
+        .env("CI_REFRESH_ALLOW_LOCAL", "1")
         .output()
         .unwrap();
     let err = String::from_utf8_lossy(&o.stderr).into_owned();
@@ -169,4 +171,33 @@ fn a_log_missing_a_core_suite_line_fails_naming_it_and_writes_nothing() {
     assert!(!o.status.success(), "a log lacking a core suite must fail");
     assert!(err.contains("suite_core_09"), "stderr names the missing suite: {err}");
     assert!(unchanged, "both json files stay byte-identical on a failed refresh");
+}
+
+#[test]
+fn a_local_log_without_allow_local_is_refused_and_writes_nothing() {
+    let dir = scratch("local");
+    std::fs::create_dir_all(dir.join("scripts")).unwrap();
+    let weights = json("scripts/ci-suite-weights.json");
+    let (w, m) = (dir.join("scripts/ci-suite-weights.json"), dir.join("scripts/ci-suite-measured.json"));
+    std::fs::write(&w, serde_json::to_string_pretty(&weights).unwrap()).unwrap();
+    std::fs::write(&m, "{}").unwrap();
+    let (w_before, m_before) = (std::fs::read(&w).unwrap(), std::fs::read(&m).unwrap());
+    let log = dir.join("local.log");
+    let body: String = core_suites(&weights)
+        .iter()
+        .map(|k| format!("2026-10-20T12:00:00Z suite={k} measured=1.00s recorded=1s\n"))
+        .collect();
+    std::fs::write(&log, body).unwrap();
+    let o = Command::new(root().join("scripts/ci-refresh-weights.sh"))
+        .arg(&log)
+        .env("CI_REFRESH_ROOT", &dir)
+        .env_remove("CI_REFRESH_ALLOW_LOCAL")
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&o.stderr).into_owned();
+    let unchanged = std::fs::read(&w).unwrap() == w_before && std::fs::read(&m).unwrap() == m_before;
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(!o.status.success(), "a local log must be refused without CI_REFRESH_ALLOW_LOCAL=1");
+    assert!(err.contains("CI_REFRESH_ALLOW_LOCAL"), "stderr names the override: {err}");
+    assert!(unchanged, "both json files stay byte-identical on a refused refresh");
 }
