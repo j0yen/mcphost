@@ -7,6 +7,7 @@
 //! through dispatch; a row marked `seed: db` seeds through direct `Db` calls
 //! only because its resource needs an external party. Plus the two
 //! `host.tool_test` paths that share the dry-run connection.
+//! contract: reads registry write_verbs::DRY_RUN_VERBS
 
 use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
