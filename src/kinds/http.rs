@@ -637,6 +637,16 @@ pub const UPSTREAM_REMEDIES: &[Remedy] = &[
         statuses: &[],
         hint: "call your own tools with host.tool_call; the http kind targets third-party APIs",
     },
+    Remedy {
+        code: crate::kinds::contract::key::OWN_HOOK_EVENT,
+        statuses: &[],
+        hint: "that URL is your own event trigger's endpoint, not a third-party API; exercise it with host.trigger.test, or re-run a past delivery with host.trigger.replay",
+    },
+    Remedy {
+        code: crate::kinds::contract::key::OWN_HOOK_INBOX,
+        statuses: &[],
+        hint: "that URL is your own webhook inbox endpoint, not a third-party API; exercise it with host.trigger.test, or re-run a past delivery with host.trigger.replay",
+    },
 ];
 // END UPSTREAM_REMEDIES
 
@@ -661,11 +671,36 @@ pub fn remedy_for(status: u16) -> &'static Remedy {
 /// A `host_not_allowed` error for the spec's `url` field, carrying the
 /// remedy row's hint (call your own tools with `host.tool_call`).
 fn host_not_allowed_error(message: impl Into<String>) -> KindError {
+    host_not_allowed_error_for(message, codes::HOST_NOT_ALLOWED)
+}
+
+/// [`host_not_allowed_error`] with the hint of the `UPSTREAM_REMEDIES` row
+/// named by `remedy_code` (an own-hook row when the refused URL is one).
+fn host_not_allowed_error_for(message: impl Into<String>, remedy_code: &str) -> KindError {
     KindError::structured_with(
         codes::HOST_NOT_ALLOWED,
         message.into(),
-        json!({"field": "url", (HINT_KEY): remedy_by_code(codes::HOST_NOT_ALLOWED).hint}),
+        json!({"field": "url", (HINT_KEY): remedy_by_code(remedy_code).hint}),
     )
+}
+
+/// The path (no query/fragment) of an `https://host/path` URL; `""` when none.
+pub(crate) fn url_path(url: &str) -> &str {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    let path = rest.find('/').map_or("", |i| &rest[i..]);
+    path.split(['?', '#']).next().unwrap_or("")
+}
+
+/// The remedy row code for a refused URL: an own-hook row when `host` is the
+/// host's own domain and `url`'s path has a hook route shape, else the
+/// generic `host_not_allowed` row.
+fn refusal_remedy_code(url: &str, host: &str, own_domain: &str) -> &'static str {
+    let host_lc = host.trim_end_matches('.').to_ascii_lowercase();
+    let own_lc = own_domain.trim_end_matches('.').to_ascii_lowercase();
+    let own = !own_lc.is_empty() && (host_lc == own_lc || host_lc.ends_with(&format!(".{own_lc}")));
+    own.then(|| crate::hooks::classify_own_hook_path(url_path(url)))
+        .flatten()
+        .map_or(codes::HOST_NOT_ALLOWED, |c| c.remedy_code())
 }
 
 /// Syntactic host checks that don't require DNS: a literal IP in a
@@ -1251,7 +1286,8 @@ impl Kind for HttpKind {
                 } else if !self.scheme_allowed(scheme) {
                     errors.push(host_not_allowed_error("url: must use https://"));
                 } else if is_disallowed_literal_host(host, &self.own_domain, self.allow_loopback) {
-                    errors.push(host_not_allowed_error(format!("url: host '{host}' is not a publicly callable host")));
+                    let remedy = refusal_remedy_code(&parsed.url, host, &self.own_domain);
+                    errors.push(host_not_allowed_error_for(format!("url: host '{host}' is not a publicly callable host"), remedy));
                 }
             }
         }

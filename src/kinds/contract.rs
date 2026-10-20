@@ -47,6 +47,9 @@ pub mod codes {
 
 /// Non-code strings that share a code prefix (field names, phases).
 pub mod key {
+    /// `UPSTREAM_REMEDIES` row keys that refine `host_not_allowed` (dotted, so not registry codes).
+    pub const OWN_HOOK_EVENT: &str = "host_not_allowed.own_hook_event";
+    pub const OWN_HOOK_INBOX: &str = "host_not_allowed.own_hook_inbox";
     pub const UPSTREAM_PROVIDER: &str = "upstream_provider";
     pub const UPSTREAM_MS: &str = "upstream_ms";
     pub const UPSTREAM_STATUS: &str = "upstream_status";
