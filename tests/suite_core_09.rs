@@ -30,6 +30,16 @@ mod ac14_storage_unwritable;
 mod busyaudit_ac08_healthz_db_fields;
 #[path = "ctrv_ac03_status_and_healthz_carry_contract_identity.rs"]
 mod ctrv_ac03_status_and_healthz_carry_contract_identity;
+#[path = "exmf_ac01_seven_manifests_check_green.rs"]
+mod exmf_ac01_seven_manifests_check_green;
+#[path = "exmf_ac02_bad_manifest_exits_two_index_untouched.rs"]
+mod exmf_ac02_bad_manifest_exits_two_index_untouched;
+#[path = "exmf_ac04_stale_index_fails_the_build.rs"]
+mod exmf_ac04_stale_index_fails_the_build;
+#[path = "exmf_ac05_schema_matches_committed_file.rs"]
+mod exmf_ac05_schema_matches_committed_file;
+#[path = "exmf_ac06_zero_manifests_exits_two.rs"]
+mod exmf_ac06_zero_manifests_exits_two;
 #[path = "exprf_ac02_failing_proof_hides_the_example.rs"]
 mod exprf_ac02_failing_proof_hides_the_example;
 #[path = "exprf_ac03_green_report_unhides_and_resolves.rs"]
