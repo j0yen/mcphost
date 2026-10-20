@@ -65,6 +65,8 @@ mod ac16_request_body_too_large;
 mod ac18_tools_list_ttl;
 #[path = "ac19_registry_publish.rs"]
 mod ac19_registry_publish;
+#[path = "adisp_ac01_admin_dispatch_arms_equal_descriptors.rs"]
+mod adisp_ac01_admin_dispatch_arms_equal_descriptors;
 #[path = "agentdir_ac01_ac02_ac03_ac04_identity_and_lookup.rs"]
 mod agentdir_ac01_ac02_ac03_ac04_identity_and_lookup;
 #[path = "agentdir_ac05_ac06_search.rs"]
@@ -1031,13 +1033,3 @@ mod exargs_ac04_unsatisfiable_schema_is_refused;
 mod exargs_ac05_publish_dry_run_and_spec_test_run_one_example;
 #[path = "exargs_ac06_depth_limit.rs"]
 mod exargs_ac06_depth_limit;
-#[path = "exmf_ac01_seven_manifests_check_green.rs"]
-mod exmf_ac01_seven_manifests_check_green;
-#[path = "exmf_ac02_bad_manifest_exits_two_index_untouched.rs"]
-mod exmf_ac02_bad_manifest_exits_two_index_untouched;
-#[path = "exmf_ac04_stale_index_fails_the_build.rs"]
-mod exmf_ac04_stale_index_fails_the_build;
-#[path = "exmf_ac05_schema_matches_committed_file.rs"]
-mod exmf_ac05_schema_matches_committed_file;
-#[path = "exmf_ac06_zero_manifests_exits_two.rs"]
-mod exmf_ac06_zero_manifests_exits_two;

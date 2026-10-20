@@ -5774,6 +5774,26 @@ fn admin_tools_raw() -> Vec<Tool> {
                 &[],
             ),
         ),
+        // PRD-mcphost-activation-funnel requirements 3, 6: the descriptor
+        // for the arm `dispatch_admin_tool` has had since that PRD; its keys
+        // are the four `admin::funnel` reads.
+        Tool::new(
+            "admin.funnel",
+            "Activation funnel for every tenant that signed up in the trailing days (default 7): \
+             per-stage counts, shares and medians, signups and signups_human, the breakdown by \
+             source and by origin, upgrades by trigger, install-link clicks and the by-surface \
+             probe report. Narrow it by source_class or signup_source, or split organic from \
+             invite-born tenants with invited, which also adds the invite k-factor.",
+            schema(
+                json!({
+                    "days": {"type": "integer", "description": "Trailing signup window in days; default 7, clamped to 1..365."},
+                    "source_class": {"type": "string", "description": "Count only tenants of this source class."},
+                    "signup_source": {"type": "string", "description": "Count only tenants that signed up through this source."},
+                    "invited": {"type": "boolean", "description": "true: only invite-born tenants; false: only organic ones; omitted: both."},
+                }),
+                &[],
+            ),
+        ),
         Tool::new(
             "admin.plan_set",
             "Support override: set a tenant's plan directly, ledgered as event_type \
