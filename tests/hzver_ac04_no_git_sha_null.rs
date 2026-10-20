@@ -20,7 +20,7 @@ fn build_rs_in_gitless_tree_emits_no_sha() {
     let exe = tmp.join("build_script");
     let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".into());
     // build.rs uses the crate's build-dependencies (serde_json, sha2 for the
-    // examples index), so hand rustc the already-built rlibs from this test
+    // examples index; toml for the providers.toml codegen), so hand rustc the already-built rlibs from this test
     // binary's own deps dir.
     let deps = std::env::current_exe().unwrap().parent().unwrap().to_path_buf();
     let rlib = |krate: &str| -> Vec<std::path::PathBuf> {
@@ -39,6 +39,7 @@ fn build_rs_in_gitless_tree_emits_no_sha() {
     let mut compiled = false;
     'try_all: for sj in rlib("serde_json") {
         for sh in rlib("sha2") {
+          for tm in rlib("toml") {
             let status = Command::new(&rustc)
                 .args(["--edition", "2024", "-o"])
                 .arg(&exe)
@@ -49,6 +50,8 @@ fn build_rs_in_gitless_tree_emits_no_sha() {
                 .arg(format!("serde_json={}", sj.display()))
                 .arg("--extern")
                 .arg(format!("sha2={}", sh.display()))
+                .arg("--extern")
+                .arg(format!("toml={}", tm.display()))
                 .stderr(std::process::Stdio::null())
                 .status()
                 .expect("compile build.rs");
@@ -56,9 +59,10 @@ fn build_rs_in_gitless_tree_emits_no_sha() {
                 compiled = true;
                 break 'try_all;
             }
+          }
         }
     }
-    assert!(compiled, "build.rs did not compile against any serde_json/sha2 rlib in {}", deps.display());
+    assert!(compiled, "build.rs did not compile against any serde_json/sha2/toml rlib in {}", deps.display());
 
     let workdir = tmp.join("tree");
     std::fs::create_dir_all(&workdir).unwrap();

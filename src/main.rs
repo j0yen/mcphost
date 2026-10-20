@@ -2133,6 +2133,7 @@ async fn main() -> anyhow::Result<()> {
                 db,
                 kinds,
                 contract,
+                connect_providers: mcphost::connect::ConnectProviders::from_env(),
                 secrets: SecretBox::from_passphrase(&secret_key),
                 admin_key,
                 public_url,

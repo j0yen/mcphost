@@ -1,73 +1,73 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-generated-code-map.md",
-  "intent_slug": "mcphost-generated-code-map",
-  "root_motivation": "**Who:** the Sonnet inner coders wm-build runs on RedBaron and ryzen7 for every mcphost PRD, and the hand coders on hotfixes.",
-  "user_persona": "An agent that runs host.note.put {text, attach_to: {tool}} once and reads the note on that tool's description in every later session; the same user's second client sees it too.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-connection-provider-registry.md",
+  "intent_slug": "mcphost-connection-provider-registry",
+  "root_motivation": "Who: the agent asking which upstream providers it can connect, with which scope names; Joe adding a provider; the builder of every later connection PRD. What: one providers.toml describes a provider and every surface derives from it. Why not today: vault.rs hardcoded three presets, llms.txt repeated the names by hand and no surface said which scopes a provider accepts or whether the host had credentials for it.",
+  "user_persona": "An agent that calls host.connect.providers and picks a provider that is available before promising its user anything; Operator Joe who adds a [name] block to providers.toml plus two env vars and deploys.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 4
+    "target": 7
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the repo at the build's tip, When `scripts/gen-codemap.sh` runs, Then `CODEMAP.md` lists every path in `git ls-files 'src/**/*.rs'` exactly once, each with a size class and a non-empty `//!` summary, contains no `:<digits>` line reference, and is under 40,000 bytes (`tests/cmap_ac01.rs`)",
-      "test": "tests/cmap_ac01_codemap_lists_every_source_file.rs"
+      "description": "Given providers.toml with testprov added, When the crate builds and the five surfaces are read, Then host.connect.providers, the provider enum, docs/connections.md, www/llms.txt and the callback route table all contain testprov with no edit outside providers.toml.",
+      "test": "tests/cprov_ac01_one_providers_toml_edit_reaches_every_surface.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given `src/db.rs` with its `// ---- <name> ----` banners, When the map is generated, Then the db.rs entry lists every banner name in file order, and a fixture file of 5,000+ lines with no banner appears under \"large files without sections\" (`tests/cmap_ac02.rs`)",
-      "test": "tests/cmap_ac02_db_banners_and_large_files_without_sections.rs"
+      "description": "Given a hand edit that adds fakeprov to any one of the five surfaces, When the drift test runs, Then it fails naming the surface and the extra name.",
+      "test": "tests/cprov_ac02_provider_surfaces_cannot_drift.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a fixture tree with a top-level `pub const FOO: &[&str]` registry, When the map is generated, Then the Registries section lists `FOO` with its file (`tests/cmap_ac03.rs`)",
-      "test": "tests/cmap_ac03_registries_section_lists_array_consts.rs"
+      "description": "Given MCPHOST_CONNECT_GITHUB_CLIENT_ID set and the secret unset, When host.connect.providers runs, Then github has available false, reason client_secret_not_configured and the response contains neither env value.",
+      "test": "tests/cprov_ac03_availability_comes_from_env_and_never_leaks.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a fixture source file with no `//!` line in its first 5 lines, When the generator runs, Then it exits non-zero, names that file, and leaves `CODEMAP.md` unchanged; and the real tree passes (`tests/cmap_ac04.rs`)",
-      "test": "tests/cmap_ac04_missing_module_doc_fails_naming_file.rs"
+      "description": "Given Provider::GOOGLE, When validate_scopes is given a valid spreadsheets.readonly URL and bogus, Then it returns Err([bogus]).",
+      "test": "tests/cprov_ac04_validate_scopes_names_the_unknown.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a fixture copy with one source file added after generation, When `scripts/gen-codemap.sh --check` runs, Then it exits 1 naming the added path; on a freshly generated copy it exits 0; and ci.yml's `regen-check` job invokes `scripts/gen-codemap.sh --check` (`tests/cmap_ac05.rs`)",
-      "test": "tests/cmap_ac05_check_mode_names_added_path.rs"
+      "description": "Given host.vault.provider_set with preset zzz, When it runs, Then the error is invalid_params and its message lists every name in Provider::ALL.",
+      "test": "tests/cprov_ac05_unknown_preset_lists_every_provider.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given the build merged to origin/main, When a fresh shallow clone of origin/main's tip runs `scripts/gen-codemap.sh --check` against its committed `CODEMAP.md`, Then it exits 0 and the clone carries `CLAUDE.md` naming `CODEMAP.md` (Live; evidence: `cmd:d=$(mktemp -d) && git clone -q --depth 1 https://github.com/j0yen/mcphost \"$d\" && cd \"$d\" && test -f CODEMAP.md && grep -q CODEMAP.md CLAUDE.md && ./scripts/gen-codemap.sh --check && echo codemap-live-ok` prints `codemap-live-ok`; today the clo...",
-      "test": "deferred: Live (fresh clone of origin/main tip runs scripts/gen-codemap.sh --check green and CLAUDE.md names CODEMAP.md; evidence path scripts/gen-codemap.sh)"
+      "description": "Given an anonymous host.quickstart, When it runs, Then connections.providers_available and providers_unavailable are present and partition Provider::ALL.",
+      "test": "tests/cprov_ac06_quickstart_partitions_providers.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given the repo root, When `CLAUDE.md` is read, Then it is under 30 lines and contains the strings `CODEMAP.md` and `scripts/gen-codemap.sh`, and that script path exists and is executable (`tests/cmap_ac07.rs`)",
-      "test": "tests/cmap_ac07_claude_md_points_at_codemap.rs"
+      "description": "Given a providers.toml row missing token_url, When the crate builds, Then build.rs fails naming the provider and the field.",
+      "test": "tests/cprov_ac07_missing_field_fails_the_build_naming_it.rs"
     },
     {
       "id": "AC8",
-      "level": "SHOULD",
-      "description": "Given a fixture copy where only one function body in a 2,000+ line file changes (same line-count class, no banner, `//!` or registry change), When the map is regenerated, Then `CODEMAP.md` is byte-identical (`tests/cmap_ac08.rs`)",
-      "test": "tests/cmap_ac08_body_edit_leaves_map_identical.rs"
+      "level": "MUST",
+      "description": "Given prod after this lands, When llms.txt is fetched, Then the Upstream connections section names host.connect.providers and every provider in the table (Live; deferred, operator-provisioned).",
+      "test": "deferred -- operator-provisioned: live curl of prod llms.txt after deploy."
     }
   ],
   "scope": [
-    "src/notes.rs: host.note.put/list/delete over the notes/ prefix of tenant_state_kv; the tools/list description suffix.",
-    "src/handler.rs, src/protocol/frames.rs: tools, dispatch, list_changed on a tool-attached put/delete (keyed row allows list_changed).",
-    "src/plans.rs, src/retention.rs, src/db.rs: notes_max plan field; expired-note sweep.",
-    "contracts/, docs/, www/: regenerated tool contract, output schemas, docs."
+    "providers.toml (single source) + build.rs/src/connect/codegen.rs generate connect::Provider, ALL, parse and the SPECS table.",
+    "src/connect/mod.rs: availability from env (AppState.connect_providers), validate_scopes, renderers for docs/connections.md, the llms.txt section, the provider enum and the callback route table.",
+    "host.connect.providers tool, host.quickstart connections block, host.vault.provider_set presets via Provider::parse (preset_urls deleted).",
+    "scripts/connections-doc-check.sh and tests/cprov_ac02 drift test."
   ],
   "non_goals": [
-    "Notes attached to runs surfaced in host.runs.get (R6), attached_to in host.resume/welcome_back (R5), pin (R7); shared notebooks across tenants."
+    "The connect flow itself (PRD 2); per-tenant BYOO providers; real provider registrations; R8 /connections.json (P2, no AC)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -76,16 +76,31 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "engine_form": "mcphost-qjs subprocess in the python bwrap profile; cold_p95_ms measured by jsk_ac01"
+      "testprov": "AC1 appends the testprov row to a copy of providers.toml in the test; the committed table never lists it, so prod's list cannot show it."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does the next session repeat a mistake the last one learned from?",
-      "a": "The only write path is remember at signup; nothing pins a note to the tool it is about."
+      "q": "Why could a provider be named on one surface and missing on another?",
+      "a": "Each surface kept its own hand-written list (vault.rs presets, llms.txt prose)."
+    },
+    {
+      "why": 2,
+      "q": "Why were there hand lists?",
+      "a": "No table existed that carried a provider's urls, scopes and credentials together."
+    },
+    {
+      "why": 3,
+      "q": "Why does a generated table fix it?",
+      "a": "Every surface reads one table and a drift test fails any surface whose set differs."
     }
   ],
-  "created_at": "2026-10-16T00:00:00Z",
-  "ambiguities_resolved": []
+  "created_at": "2026-10-11T00:00:00Z",
+  "ambiguities_resolved": [
+    {
+      "question": "Where does testprov live (cfg test-support vs providers.toml)?",
+      "resolution": "Test-only: AC1 appends it to the toml text and drives the same generator and renderers; the committed table has no testprov."
+    }
+  ]
 }

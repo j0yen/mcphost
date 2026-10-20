@@ -1,0 +1,75 @@
+# providers.toml -- the single source for every upstream OAuth provider
+# (PRD-mcphost-connection-provider-registry). `build.rs` generates the
+# `connect::Provider` enum and table from this file; `host.connect.providers`,
+# the `provider` schema enum, `docs/connections.md`, the `## Upstream
+# connections` section of `www/llms.txt`, scope validation and the callback
+# route table all read that table. Adding a provider is one new `[name]`
+# block here plus `MCPHOST_CONNECT_<NAME>_CLIENT_ID` / `_CLIENT_SECRET` in
+# the host's environment; nothing else is edited.
+#
+# Per row: auth_url, token_url, scopes (exact strings sent to the provider,
+# stored verbatim), refresh (rotating | offline_access | none),
+# client_id_env, client_secret_env, extra_authorize_params, docs_url.
+
+[github]
+auth_url = "https://github.com/login/oauth/authorize"
+token_url = "https://github.com/login/oauth/access_token"
+refresh = "none"
+client_id_env = "MCPHOST_CONNECT_GITHUB_CLIENT_ID"
+client_secret_env = "MCPHOST_CONNECT_GITHUB_CLIENT_SECRET"
+docs_url = "https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps"
+scopes = [
+  { name = "repo", purpose = "Read and write code, issues and pull requests in private and public repositories" },
+  { name = "read:user", purpose = "Read the user's profile" },
+  { name = "user:email", purpose = "Read the user's email addresses" },
+  { name = "read:org", purpose = "Read organization membership" },
+  { name = "gist", purpose = "Create and read gists" },
+]
+
+[google]
+auth_url = "https://accounts.google.com/o/oauth2/v2/auth"
+token_url = "https://oauth2.googleapis.com/token"
+refresh = "offline_access"
+client_id_env = "MCPHOST_CONNECT_GOOGLE_CLIENT_ID"
+client_secret_env = "MCPHOST_CONNECT_GOOGLE_CLIENT_SECRET"
+docs_url = "https://developers.google.com/identity/protocols/oauth2/scopes"
+scopes = [
+  { name = "https://www.googleapis.com/auth/spreadsheets.readonly", purpose = "Read Google Sheets" },
+  { name = "https://www.googleapis.com/auth/spreadsheets", purpose = "Read and write Google Sheets" },
+  { name = "https://www.googleapis.com/auth/drive.readonly", purpose = "Read files in Google Drive" },
+  { name = "https://www.googleapis.com/auth/drive.file", purpose = "Read and write only the Drive files this app creates or opens" },
+  { name = "https://www.googleapis.com/auth/gmail.readonly", purpose = "Read Gmail messages" },
+  { name = "https://www.googleapis.com/auth/calendar.readonly", purpose = "Read Google Calendar events" },
+]
+
+[google.extra_authorize_params]
+access_type = "offline"
+prompt = "consent"
+
+[notion]
+auth_url = "https://api.notion.com/v1/oauth/authorize"
+token_url = "https://api.notion.com/v1/oauth/token"
+refresh = "none"
+client_id_env = "MCPHOST_CONNECT_NOTION_CLIENT_ID"
+client_secret_env = "MCPHOST_CONNECT_NOTION_CLIENT_SECRET"
+docs_url = "https://developers.notion.com/docs/authorization"
+# Notion grants access per page the user picks, not by scope name.
+scopes = []
+
+[notion.extra_authorize_params]
+owner = "user"
+
+[slack]
+auth_url = "https://slack.com/oauth/v2/authorize"
+token_url = "https://slack.com/api/oauth.v2.access"
+refresh = "rotating"
+client_id_env = "MCPHOST_CONNECT_SLACK_CLIENT_ID"
+client_secret_env = "MCPHOST_CONNECT_SLACK_CLIENT_SECRET"
+docs_url = "https://api.slack.com/scopes"
+scopes = [
+  { name = "channels:read", purpose = "List public channels" },
+  { name = "channels:history", purpose = "Read messages in public channels" },
+  { name = "chat:write", purpose = "Post messages" },
+  { name = "users:read", purpose = "Read workspace members" },
+  { name = "files:read", purpose = "Read files shared in the workspace" },
+]

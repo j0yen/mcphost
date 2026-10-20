@@ -138,6 +138,14 @@ impl McpHostHandler {
         })
     }
 
+    // PRD-mcphost-connection-provider-registry: `host.connect.providers`.
+    pub(crate) fn arm_host_connect_providers<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { args, .. } = c;
+            crate::connect::providers_tool(&self.state, &args)
+        })
+    }
+
     pub(crate) fn arm_host_calls_list<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
         box_arm(async move {
             let ArmCtx { tenant, args, .. } = c;
