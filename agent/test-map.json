@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-dev-emulator.md (test_prefix: demu)",
+  "ac_test_map_prd": "PRD-mcphost-acting-for-in-ledger-and-audit.md (test_prefix: actfor)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,14 +28,13 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/demu_ac01_type_error_parity.rs",
-    "AC2": "tests/demu_ac02_args_invalid_text.rs",
-    "AC3": "tests/demu_ac03_sandbox_marker.rs",
-    "AC4": "tests/demu_ac04_plan_ceilings.rs",
-    "AC5": "tests/demu_ac05_host_verbs_unsupported.rs",
-    "AC6": "tests/demu_ac06_lint_failure_exits_before_bind.rs",
-    "AC7": "tests/demu_ac07_file_watch.rs",
-    "AC8": "deferred: Live (scripts/dev-parity-prod.sh against prod prints `parity: ok code=tool_exception line=14`; operator-provisioned)"
+    "AC1": "tests/actfor_ac01_acting_for_on_row_and_meta.rs",
+    "AC2": "tests/actfor_ac02_acting_for_on_structured_errors.rs",
+    "AC3": "tests/actfor_ac03_cascade_revoke_chain_records.rs",
+    "AC4": "tests/actfor_ac04_usage_by_key.rs",
+    "AC5": "tests/actfor_ac05_audit_chain_hash_differs_for_child.rs",
+    "AC6": "tests/actfor_ac06_tool_logs_prefix.rs",
+    "AC7": "tests/actfor_ac07_acting_for_keys_and_redaction.rs"
   },
   "ac_test_map_by_prefix": {
     "snp": {
@@ -2276,6 +2275,27 @@
       "AC7": "tests/cmap_ac07_claude_md_points_at_codemap.rs",
       "AC8": "tests/cmap_ac08_body_edit_leaves_map_identical.rs",
       "AC6": "deferred: Live (fresh clone of origin/main tip runs scripts/gen-codemap.sh --check green and CLAUDE.md names CODEMAP.md; evidence path scripts/gen-codemap.sh)"
+    },
+    "actfor": {
+      "_prd": "PRD-mcphost-acting-for-in-ledger-and-audit.md (test_prefix: actfor)",
+      "AC1": "tests/actfor_ac01_acting_for_on_row_and_meta.rs",
+      "AC2": "tests/actfor_ac02_acting_for_on_structured_errors.rs",
+      "AC3": "tests/actfor_ac03_cascade_revoke_chain_records.rs",
+      "AC4": "tests/actfor_ac04_usage_by_key.rs",
+      "AC5": "tests/actfor_ac05_audit_chain_hash_differs_for_child.rs",
+      "AC6": "tests/actfor_ac06_tool_logs_prefix.rs",
+      "AC7": "tests/actfor_ac07_acting_for_keys_and_redaction.rs"
+    },
+    "demu": {
+      "_prd": "PRD-mcphost-dev-emulator.md (test_prefix: demu)",
+      "AC1": "tests/demu_ac01_type_error_parity.rs",
+      "AC2": "tests/demu_ac02_args_invalid_text.rs",
+      "AC3": "tests/demu_ac03_sandbox_marker.rs",
+      "AC4": "tests/demu_ac04_plan_ceilings.rs",
+      "AC5": "tests/demu_ac05_host_verbs_unsupported.rs",
+      "AC6": "tests/demu_ac06_lint_failure_exits_before_bind.rs",
+      "AC7": "tests/demu_ac07_file_watch.rs",
+      "AC8": "deferred: Live (scripts/dev-parity-prod.sh against prod prints `parity: ok code=tool_exception line=14`; operator-provisioned)"
     }
   }
 }

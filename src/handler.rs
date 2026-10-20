@@ -1327,6 +1327,28 @@ fn confirm_stripped(args: &Value) -> Value {
     args
 }
 
+/// PRD-mcphost-acting-for-in-ledger-and-audit R1: `_meta.acting_for` on a
+/// completed call, `data.acting_for` on a failed one.
+fn attach_acting_for(
+    result: Result<CallToolResponse, McpError>,
+    af: &crate::subkeys::ActingFor,
+) -> Result<CallToolResponse, McpError> {
+    match result {
+        Ok(CallToolResponse::Complete(mut r)) => {
+            r.meta.get_or_insert_with(Default::default).0.insert("acting_for".to_string(), af.to_json());
+            Ok(CallToolResponse::Complete(r))
+        }
+        Err(mut e) => {
+            let data = e.data.get_or_insert_with(|| json!({}));
+            if let Some(obj) = data.as_object_mut() {
+                obj.insert("acting_for".to_string(), af.to_json());
+            }
+            Err(e)
+        }
+        other => other,
+    }
+}
+
 /// R5: marks a scratch tenant's response `_meta.scratch: true`.
 fn mark_scratch(value: &mut Value) {
     if let Some(obj) = value.as_object_mut() {
@@ -7029,21 +7051,21 @@ impl StateBackend for CountingStateBackend {
 /// The stack, in bytes, every forwarded dotted host verb must complete its real
 /// `host.tool_call` / `host.tool_test` call in on a debug build (profile and
 /// test thread as CI's `cargo test`). GENERATED MEASUREMENT: the measured
-/// maximum over all 230 forwardable ids is 978,944 B (every id measures it:
+/// maximum over all 230 forwardable ids is 983,040 B (every id measures it:
 /// `test:host.trigger.set`, `call:host.whoami`,
 /// `call:host.webhook_inbox.create`, `call:host.vault.status`, ...,
-/// `scripts/fwd-stack-measure.sh all`, 2026-10-18, after the dispatch table
+/// `scripts/fwd-stack-measure.sh all`, 2026-10-18 (re-measured 2026-10-20 with the sub-key `acting_for` lineage on the call path), after the dispatch table
 /// (`src/dispatch_table.rs`) and the boxed `call_tool_inner` helpers; the shared
 /// level rose from 823,296 B on 10-17 with main's own frames, chiefly rmcp's
 /// `handle_request` poll frame, 48 -> 137 KiB, while `host.doctor` stopped
 /// compiling its error-envelope report on the caller's stack) and the
-/// budget is that + 25 % = 1,223,680 B, so CI's 2 MiB test thread keeps
+/// budget is that + 25 % = 1,228,800 B, so CI's 2 MiB test thread keeps
 /// 40 % of it free and the next fat frame fails
 /// `tests/verbfwd_ac08_forward_stack_budget.rs`, naming the verb, instead of SIGABRTing a shard (run 326 `verbfwd_ac01`, run
 /// 953; both 10-17, both `has overflowed its stack`). The boundary is
 /// `dispatch_tenant_tool` / `forward_host_verb`, where a dotted verb re-enters
 /// the dispatcher. Re-measure and tighten as the dispatch frames shrink.
-pub const FORWARD_STACK_BUDGET: usize = 1_223_680;
+pub const FORWARD_STACK_BUDGET: usize = 1_228_800;
 
 /// The validator's registration for what `host.spec.test` owns (R3): more
 /// than `MAX_TEST_INVOCATIONS` invocations is refused `too_many_invocations`
@@ -7071,7 +7093,46 @@ pub struct McpHostHandler {
     pub state: Arc<AppState>,
 }
 
+/// The boxed future `McpHostHandler::record_acting_for` returns: `Some` carries the
+/// lookup error to surface, `None` means the lineage (if any) was recorded.
+type ActingForLookup<'a> =
+    std::pin::Pin<Box<dyn std::future::Future<Output = Option<Box<McpError>>> + Send + 'a>>;
+
 impl McpHostHandler {
+    /// PRD-mcphost-acting-for-in-ledger-and-audit: a sub-key's call says who it
+    /// acted for on its response `_meta` and its error `data`. Out of line and
+    /// boxed so `call_tool`'s forwarded-call frame does not grow
+    /// (`tests/fwdtab_ac05_budget_lowered_on_the_measurement.rs`).
+    fn call_tool_acting_for(
+        &self,
+        request: CallToolRequestParams,
+        ctx: RequestContext<RoleServer>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<CallToolResponse, McpError>> + Send + '_>> {
+        Box::pin(crate::subkeys::CALL_ACTING_FOR.scope(std::cell::RefCell::new(None), async move {
+            let result = Box::pin(self.call_tool_inner(request, ctx)).await;
+            match crate::subkeys::current_acting_for() {
+                Some(af) => attach_acting_for(result, &af),
+                None => result,
+            }
+        }))
+    }
+
+    /// Renders the sub-key's lineage into `CALL_ACTING_FOR`. Boxed and out of
+    /// line so `call_tool_inner`'s forwarded-call stack frame does not grow
+    /// (`tests/fwdtab_ac05_budget_lowered_on_the_measurement.rs`).
+    fn record_acting_for(&self, key_id: i64) -> ActingForLookup<'_> {
+        Box::pin(async move {
+            match self.state.db.acting_for_for_key(key_id).await {
+                Ok(Some(af)) => {
+                    let _ = crate::subkeys::CALL_ACTING_FOR.try_with(|c| *c.borrow_mut() = Some(af));
+                    None
+                }
+                Ok(None) => None,
+                Err(e) => Some(Box::new(e.into_error_data_at(Some(&self.state.public_url)))),
+            }
+        })
+    }
+
     pub fn new(state: Arc<AppState>) -> Self {
         Self { state }
     }
@@ -11886,7 +11947,7 @@ impl ServerHandler for McpHostHandler {
         let inner = crate::leakguard::UNBOUND_SENT.scope(
             Default::default(),
             crate::subkeys::CALL_KEY
-                .scope(std::cell::Cell::new(None), Box::pin(self.call_tool_inner(request, ctx))),
+                .scope(std::cell::Cell::new(None), Box::pin(self.call_tool_acting_for(request, ctx))),
         );
         let inner = crate::sampling::SAMPLING_CLIENT
             .scope(crate::sampling::SamplingClient { peer: sampling_peer, session_id: gate.session_id.clone() }, inner);
@@ -12340,6 +12401,11 @@ impl McpHostHandler {
         // dispatch below runs.
         if let (Some(sk), Auth::Tenant(tenant, _)) = (&sub_key, &auth) {
             let _ = crate::subkeys::CALL_KEY.try_with(|c| c.set(Some(sk.id)));
+            // PRD-mcphost-acting-for-in-ledger-and-audit R1: the lineage is
+            // rendered once here and read by every decorator below.
+            if let Some(e) = self.record_acting_for(sk.id).await {
+                return Err(*e);
+            }
             let canonical = crate::tool_aliases::resolve(&body_name).unwrap_or(&body_name);
             // `host.key.delegate` skips the allowlist: it answers
             // `permission_denied can_delegate=false` itself.

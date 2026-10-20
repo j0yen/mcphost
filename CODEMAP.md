@@ -43,7 +43,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `src/control.rs` (~3k) Business logic for `signup` and the `host.*` control plane.
   - sections: next-hint (PRD-mcphost-one-next-tool requirement 4)
 - `src/cron.rs` (<1k) PRD-mcphost-schedules P0 requirement 2: a hand-rolled five-field cron parser and its `next_after` occurrenc...
-- `src/db.rs` (~24k) SQLite storage.
+- `src/db.rs` (~25k) SQLite storage.
   - sections: consent (PRD-mcphost-agent-consent) | messaging (PRD-mcphost-agent-inbox) | connection factory and startup pragma audit | contention counters | PRD-mcphost-drift-review row types | PRD-mcphost-hosted-authorization-server row types | PRD-mcphost-federated-end-user-login row types | invites (PRD-mcphost-invite-links) | row policy (PRD-mcphost-row-policy)
 - `src/deadletters.rs` (<1k) PRD-mcphost-event-trigger-from-webhook: every refused `POST /hooks/...` delivery and every event-fired run...
 - `src/delegation.rs` (<1k) PRD-mcphost-key-delegate-child-keys R2: the subset rule.
