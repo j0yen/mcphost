@@ -6271,6 +6271,10 @@ impl Kind for PythonKind {
     /// set [`PythonSpecRaw`]/[`python_field_hint`] already enumerate --
     /// `_dependency_lock` excluded (reserved, host-injected after
     /// validation, never a field a tenant writes themselves).
+    fn minimal_specs(&self) -> Vec<Value> {
+        vec![json!({"source": "def main(args):\n    return args\n"})]
+    }
+
     fn known_spec_fields(&self) -> &'static [&'static str] {
         &[
             "source",

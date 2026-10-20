@@ -108,3 +108,18 @@ A step may fan out: add `"for_each": "$.prev.result.items"` (any mapping path to
 | bridges | none |
 | secret redaction | no |
 <!-- kind-contract:end -->
+
+## Minimal specs
+
+<!-- kind-minimal-specs:start -->
+```json
+{
+  "steps": [
+    {
+      "args": {},
+      "tool": "step_one"
+    }
+  ]
+}
+```
+<!-- kind-minimal-specs:end -->

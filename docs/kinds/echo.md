@@ -71,3 +71,15 @@ This kind returns no kind-specific error codes.
 | bridges | none |
 | secret redaction | no |
 <!-- kind-contract:end -->
+
+## Minimal specs
+
+<!-- kind-minimal-specs:start -->
+```json
+{
+  "schema": {
+    "type": "object"
+  }
+}
+```
+<!-- kind-minimal-specs:end -->

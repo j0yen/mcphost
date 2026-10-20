@@ -82,6 +82,10 @@ impl Kind for EchoKind {
             .map_or(Ok(()), Err)
     }
 
+    fn minimal_specs(&self) -> Vec<Value> {
+        vec![json!({"schema": {"type": "object"}})]
+    }
+
     fn known_spec_fields(&self) -> &'static [&'static str] {
         &["schema"]
     }

@@ -2307,6 +2307,16 @@
       "AC6": "tests/ohur_ac06_route_shape_drift.rs",
       "AC7": "tests/ohur_ac07_hook_hints_name_real_tools.rs",
       "AC8": "deferred: Live (prod /mcp transcript after deploy; evidence: client transcript in the run note)"
+    },
+    "kreqd": {
+      "_prd": "PRD-mcphost-kind-field-docs-required-from-parse-spec.md (test_prefix: kreqd)",
+      "AC1": "tests/kreqd_ac01_http_requiredness_derived.rs",
+      "AC2": "tests/kreqd_ac02_minimal_specs_are_minimal.rs",
+      "AC3": "tests/kreqd_ac03_kind_pages_required_column.rs",
+      "AC4": "tests/kreqd_ac04_planted_method_row_drift.rs",
+      "AC5": "tests/kreqd_ac05_rejection_names_required_field.rs",
+      "AC6": "tests/kreqd_ac06_minimal_specs_section.rs",
+      "AC7": "deferred: Live (prod /mcp host_help_get transcript on orch; evidence: ~/.local/state/mcphost-live/kreqd-ac07.jsonl)"
     }
   }
 }

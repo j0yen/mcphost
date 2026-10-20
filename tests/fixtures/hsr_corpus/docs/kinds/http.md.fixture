@@ -28,8 +28,8 @@ Publish error `url: host '<host>' is not a publicly callable host` (code `host_n
 <!-- kind-fields:start -->
 | field | type | required | meaning |
 |---|---|---|---|
-| `method` | string | no | HTTP method of the upstream request |
-| `url` | string | no | upstream URL; `{name}` placeholders are filled from call arguments |
+| `method` | string | unless `upstream` | HTTP method of the upstream request |
+| `url` | string | unless `upstream` | upstream URL; `{name}` placeholders are filled from call arguments |
 | `headers` | object | no | request headers; values may reference secrets |
 | `query` | object | no | query-string parameters |
 | `body` | object | no | request body template |
@@ -37,8 +37,9 @@ Publish error `url: host '<host>' is not a publicly callable host` (code `host_n
 | `timeout_s` | integer | no | seconds the upstream call may take |
 | `response` | object | no | how to shape the upstream response into the tool result |
 | `description` | string | no | human-readable text shown in `tools/list` |
-| `upstream` | string | no | name of a connected upstream provider to call instead of `method` + `url` |
+| `upstream` | string | unless `method`, `url` | name of a connected upstream provider to call instead of `method` + `url` |
 | `upstream_provider` | string | no | provider the `upstream` connection belongs to |
+| `description` | string | no | human-readable text shown in `tools/list` |
 | `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind) |
 | `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
 | `ui` | object | no | optional presentation hints for clients that render a tool's result |
@@ -78,3 +79,23 @@ Publish error `url: host '<host>' is not a publicly callable host` (code `host_n
 }
 ```
 <!-- kind-example:end -->
+
+## Minimal specs
+
+<!-- kind-minimal-specs:start -->
+```json
+{
+  "method": "GET",
+  "url": "https://api.example.com/v1/things"
+}
+```
+
+```json
+{
+  "upstream": {
+    "method": "GET",
+    "url": "https://api.example.com/v1/things"
+  }
+}
+```
+<!-- kind-minimal-specs:end -->

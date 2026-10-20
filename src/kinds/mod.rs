@@ -2525,6 +2525,16 @@ pub trait Kind: Send + Sync {
         &[]
     }
 
+    /// PRD-mcphost-kind-field-docs-required-from-parse-spec R1: one entry per
+    /// accepted spec shape, each the smallest spec `validate` accepts.
+    /// [`kinddoc::derive_requiredness`] probes `validate` with these to learn
+    /// which fields are required, so requiredness is never hand-written.
+    /// Empty (the default) for a test-only kind; every registered kind
+    /// overrides it, which `kreqd_ac02` enforces.
+    fn minimal_specs(&self) -> Vec<Value> {
+        Vec::new()
+    }
+
     /// The plan ceilings (`Plan::ceilings_flat` names) that bound a call to
     /// this kind, rendered with their free and pro values on its page.
     fn ceiling_fields(&self) -> &'static [&'static str] {
@@ -2539,15 +2549,32 @@ pub trait Kind: Send + Sync {
 
     /// Everything this kind's page tables are generated from.
     fn doc(&self, plans: &crate::plans::PlanCatalog) -> kinddoc::KindDoc {
+        // PRD-mcphost-kind-field-docs-required-from-parse-spec R2/R3: the
+        // `required` column is probed from `validate`, never hand-written. A
+        // kind with no minimal specs (a test-only kind) falls back to its
+        // single `required_spec_field()`.
+        let requiredness: Vec<(&'static str, kinddoc::Requiredness)> =
+            if self.minimal_specs().is_empty() {
+                self.known_spec_fields()
+                    .iter()
+                    .map(|f| {
+                        let always = self.required_spec_field() == Some(*f);
+                        (*f, if always { kinddoc::Requiredness::Always } else { kinddoc::Requiredness::Never })
+                    })
+                    .collect()
+            } else {
+                kinddoc::derive_requiredness(self).into_iter().map(|(d, r)| (d.name, r)).collect()
+            };
         kinddoc::assemble(
             self.name(),
             self.example(),
             self.known_spec_fields(),
-            self.required_spec_field(),
+            requiredness,
             self.field_docs(),
             self.ceiling_fields(),
             self.contract(),
             self.bridge_modules(),
+            self.minimal_specs(),
             plans,
         )
     }

@@ -30,6 +30,18 @@ mod serve;
 #[path = "support/sjrc.rs"]
 mod sjrc;
 
+#[path = "mcphost-install-links-more-clients_ac03_connect_page_groups_every_surface.rs"]
+mod mcphost_install_links_more_clients_ac03_connect_page_groups_every_surface;
+#[path = "mcphost-install-links-more-clients_ac04_connect_go_every_id.rs"]
+mod mcphost_install_links_more_clients_ac04_connect_go_every_id;
+#[path = "mcphost-install-links-more-clients_ac05_quickstart_twelve_personal_surfaces.rs"]
+mod mcphost_install_links_more_clients_ac05_quickstart_twelve_personal_surfaces;
+#[path = "mcphost-install-links-more-clients_ac06_docs_block_regenerates_from_table.rs"]
+mod mcphost_install_links_more_clients_ac06_docs_block_regenerates_from_table;
+#[path = "mcphost-install-links-more-clients_ac07_prior_prd_tests_still_apply.rs"]
+mod mcphost_install_links_more_clients_ac07_prior_prd_tests_still_apply;
+#[path = "mcphost-llms-install-doc_ac01_generator_sections.rs"]
+mod mcphost_llms_install_doc_ac01_generator_sections;
 #[path = "mcphost-llms-install-doc_ac02_served_unauthenticated.rs"]
 mod mcphost_llms_install_doc_ac02_served_unauthenticated;
 #[path = "mcphost-llms-install-doc_ac03_committed_copy_drift.rs"]
@@ -1028,9 +1040,3 @@ mod soff_ac05_matrix_exhaustive_auth_shapes;
 mod soff_ac06_non_lifecycle_verb_still_refused;
 #[path = "soff_ac07_docs_document_already_offboarded.rs"]
 mod soff_ac07_docs_document_already_offboarded;
-#[path = "sorel_ac01_offboard_releases_session_fresh_signup.rs"]
-mod sorel_ac01_offboard_releases_session_fresh_signup;
-#[path = "sorel_ac02_self_offboard_remedy_and_idempotent.rs"]
-mod sorel_ac02_self_offboard_remedy_and_idempotent;
-#[path = "sorel_ac03_admin_disable_remedy_unchanged.rs"]
-mod sorel_ac03_admin_disable_remedy_unchanged;
