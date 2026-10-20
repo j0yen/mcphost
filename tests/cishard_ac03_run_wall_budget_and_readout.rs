@@ -1,7 +1,7 @@
 //! contract: reads scripts/ci-test-partition.sh
 //! PRD-mcphost-ci-sandbox-shards-balanced AC3 -- a sandbox shard job reports
 //! `build wall` and `run wall` in the step summary, warns at run wall >= 240 s,
-//! fails only above 300 s, and on warn or fail prints one
+//! fails only above 300 s, and at EVERY level (warn, fail or neither) prints one
 //! `suite=<name> measured=<s>s recorded=<s>s` line per suite.
 
 use std::path::PathBuf;
@@ -65,12 +65,21 @@ fn the_step_summary_carries_build_wall_and_run_wall() {
 }
 
 #[test]
-fn under_240_s_is_silent_no_warning_no_suite_lines() {
+fn under_240_s_raises_no_warning_but_still_reports_every_suite() {
+    // A sandbox shard under its warn line used to record nothing, so a suite recorded at
+    // 152 s that really ran ~300 s alarmed nothing: every level now prints the suite lines.
     let r = report("quiet", 400, 239, 0);
     assert!(r.out.status.success());
     let out = stdout(&r);
     assert!(!out.contains("::warning::") && !out.contains("::error::"), "{out}");
-    assert!(!out.contains("suite="), "{out}");
+    for (suite, measured) in [("lib", "5.70"), ("suite_sandbox_02", "152.20"), ("suite_env_sandbox_01", "7.10")] {
+        let line = format!("suite={suite} measured={measured}s recorded={}s", recorded(suite));
+        let line = line.as_str();
+        assert!(out.contains(line), "missing `{line}` in:\n{out}");
+        assert!(r.summary.contains(line), "summary missing `{line}`:\n{}", r.summary);
+    }
+    assert_eq!(out.matches("suite=").count(), 3 + 3, "3 stdout lines + 3 in the readout annotation: {out}");
+    assert!(out.contains("::notice title=sandbox shard 2/3 readout::"), "{out}");
 }
 
 #[test]
@@ -92,7 +101,7 @@ fn at_240_s_warns_and_passes_with_one_line_per_suite() {
         assert!(out.contains(line), "missing `{line}` in:\n{out}");
         assert!(r.summary.contains(line), "summary missing `{line}`:\n{}", r.summary);
     }
-    assert_eq!(out.matches("suite=").count(), 3, "{out}");
+    assert_eq!(out.matches("suite=").count(), 3 + 3, "3 stdout lines + 3 in the readout annotation: {out}");
 }
 
 #[test]

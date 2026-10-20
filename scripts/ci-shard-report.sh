@@ -13,10 +13,12 @@
 #   <partition> shard N/M build wall: <s>s
 #   <partition> shard N/M run wall: <s>s
 # warns at run wall >= WARN_AT, fails above FAIL_ABOVE (sandbox 240/300 s, core
-# 540/720 s), and prints one line per suite:
+# 720/900 s), and ALWAYS (every partition, every level) prints one line per suite:
 #   suite=<name> measured=<s>s recorded=<s>s
-# on warn or fail for the sandbox partition and ALWAYS for core (the core
-# readout is the evidence the weights are refreshed from).
+# plus one `::notice title=... readout` annotation carrying them all. The readout is
+# the evidence scripts/ci-refresh-weights.sh refreshes the weights from, so a suite
+# that ran under its warn line must still report: a sandbox shard under 240 s used to
+# print nothing, and suite_sandbox_02 stayed recorded at 152 s while it ran ~300 s.
 # measured = the suite's `finished in` seconds from the log, recorded = its
 # weight in scripts/ci-suite-weights.json (CI_SUITE_WEIGHTS_FILE overrides).
 #
@@ -75,40 +77,36 @@ elif [ "$level" = warn ]; then
   echo "::warning::$label run wall ${run_s}s is at or above ${WARN_AT}s (fails above ${FAIL_ABOVE}s) -- compare measured and recorded below"
 fi
 
-if [ "$level" != ok ] || [ "$partition" = core ]; then
-  # Suite name for each `Running` line, then the `finished in` that follows it.
-  # `Running unittests src/lib.rs` is the `lib` weight; any other unit-test
-  # binary (core's `--bins`) is named by its source path.
-  suite_lines="$(plain_log | awk '
-    /^[[:space:]]*Running unittests / {
-      name = $3
-      if (name ~ /(^|\/)src\/lib\.rs$/) name = "lib"; else name = "bin:" name
-      next
+# Suite name for each `Running` line, then the `finished in` that follows it.
+# `Running unittests src/lib.rs` is the `lib` weight; any other unit-test
+# binary (core's `--bins`) is named by its source path.
+suite_lines="$(plain_log | awk '
+  /^[[:space:]]*Running unittests / {
+    name = $3
+    if (name ~ /(^|\/)src\/lib\.rs$/) name = "lib"; else name = "bin:" name
+    next
+  }
+  /^[[:space:]]*Running tests\// {
+    name = $2; sub(/^tests\//, "", name); sub(/\.rs$/, "", name); next
+  }
+  /^test result:/ && name != "" {
+    if (match($0, /finished in [0-9.]+s/)) {
+      t = substr($0, RSTART + 12, RLENGTH - 13)
+      printf "%s %s\n", name, t
     }
-    /^[[:space:]]*Running tests\// {
-      name = $2; sub(/^tests\//, "", name); sub(/\.rs$/, "", name); next
-    }
-    /^test result:/ && name != "" {
-      if (match($0, /finished in [0-9.]+s/)) {
-        t = substr($0, RSTART + 12, RLENGTH - 13)
-        printf "%s %s\n", name, t
-      }
-      name = ""
-    }' | while read -r name measured; do
-    recorded="$(jq -r --arg k "$name" '.[$k] // "unrecorded"' "$WEIGHTS_FILE" 2>/dev/null || echo unrecorded)"
-    unit=s; [ "$recorded" = unrecorded ] && unit=""
-    echo "suite=$name measured=${measured}s recorded=${recorded}${unit}"
-  done)"
-  if [ -n "$suite_lines" ]; then
-    while IFS= read -r line; do say "$line"; done <<<"$suite_lines"
-  fi
-  if [ "$partition" = core ]; then
-    # One annotation carries the whole readout: the step summary and the job
-    # log are not always retrievable (a hosted log can be cut mid-suite), an
-    # annotation is, so the weights can still be refreshed from a red run.
-    echo "::notice title=$label readout::build ${build_s}s; run ${run_s}s; $(printf '%s' "$suite_lines" | tr '\n' ';')"
-  fi
+    name = ""
+  }' | while read -r name measured; do
+  recorded="$(jq -r --arg k "$name" '.[$k] // "unrecorded"' "$WEIGHTS_FILE" 2>/dev/null || echo unrecorded)"
+  unit=s; [ "$recorded" = unrecorded ] && unit=""
+  echo "suite=$name measured=${measured}s recorded=${recorded}${unit}"
+done)"
+if [ -n "$suite_lines" ]; then
+  while IFS= read -r line; do say "$line"; done <<<"$suite_lines"
 fi
+# One annotation carries the whole readout: the step summary and the job
+# log are not always retrievable (a hosted log can be cut mid-suite), an
+# annotation is, so the weights can still be refreshed from a red run.
+echo "::notice title=$label readout::build ${build_s}s; run ${run_s}s; $(printf '%s' "$suite_lines" | tr '\n' ';')"
 
 if [ "$status" -ne 0 ]; then
   failed="$(plain_log | awk '

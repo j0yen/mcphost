@@ -1386,8 +1386,15 @@ def plan_measured(suite_files, new_weights):
     suite belong to the member set CI ran: a resized suite's entry is scaled by
     the factor plan_weights applied to its recorded weight (new / old recorded
     seconds), so their ratio -- what the stale check reads -- survives the
-    re-pack whatever per-file costs moved; a suite this plan drops or creates has
-    no entry until the next refresh.
+    re-pack whatever per-file costs moved; a suite this plan drops has no entry. A
+    suite this plan CREATES is seeded from the suites its files came from: each member
+    file carries its source suite's measured / recorded ratio (weighted by the file's
+    share of that source's recorded seconds), and the new suite's entry is its new
+    recorded weight times that ratio -- for a split from ONE source, exactly
+    measured x w_new / w_old, the scaling a resized suite gets above. Without the seed
+    a created suite had no entry until the next refresh, and a `check` that requires
+    an entry for every suite would fail every shard before its tests print the lines
+    the refresh reads (a deadlock after any future split).
     Otherwise ci-test-partition.sh check compares the OLD set's seconds with the
     NEW set's weight (ryzen7 run 404, 10-18: core_08 re-packed to recorded 223 s
     against measured 398 s, and the land precheck refused)."""
@@ -1399,11 +1406,14 @@ def plan_measured(suite_files, new_weights):
     if not isinstance(old, dict):
         return None
     old_counts = {}
+    old_members = {}
     for path in glob.glob("tests/suite_*.rs"):
         base = os.path.basename(path)
         if GENERATED_SUITE_RE.match(base):
             with open(path, encoding="utf-8") as fh:
-                old_counts[base[:-3]] = suite_member_count(fh.read())
+                text = fh.read()
+            old_counts[base[:-3]] = suite_member_count(text)
+            old_members[base[:-3]] = [m for m in re.findall(r'#\[path\s*=\s*"([^"]+\.rs)"\]', text) if "/" not in m]
     new_counts = {os.path.basename(p)[:-3]: suite_member_count(c) for p, c in suite_files.items()}
     old_weights = read_weights() or {}
     out = {}
@@ -1420,6 +1430,24 @@ def plan_measured(suite_files, new_weights):
         w_old, w_new = old_weights.get(name), new_weights.get(name)
         if isinstance(w_old, (int, float)) and w_old > 0 and isinstance(w_new, (int, float)):
             out[name] = round(secs * w_new / w_old, 2)
+    # created suites: seeded from the old suites their member files came from
+    ratio_of_file = {}  # member file -> (share of its source's recorded seconds, source measured / recorded)
+    for name, secs in old.items():
+        w_old = old_weights.get(name)
+        if name in old_members and old_counts.get(name) and isinstance(secs, (int, float)) \
+                and isinstance(w_old, (int, float)) and w_old > 0:
+            for m in old_members[name]:
+                ratio_of_file[m] = (w_old / old_counts[name], secs / w_old)
+    for path, content in suite_files.items():
+        name = os.path.basename(path)[:-3]
+        w_new = new_weights.get(name)
+        if name in old_counts or name in out or not isinstance(w_new, (int, float)):
+            continue
+        members = [m for m in re.findall(r'#\[path\s*=\s*"([^"]+\.rs)"\]', content) if "/" not in m]
+        den = sum(ratio_of_file[m][0] for m in members if m in ratio_of_file)
+        if den > 0:
+            num = sum(ratio_of_file[m][0] * ratio_of_file[m][1] for m in members if m in ratio_of_file)
+            out[name] = round(w_new * num / den, 2)
     return dict(sorted(out.items()))
 
 
