@@ -215,3 +215,5 @@ mod vbd_ac05_unknown_argument_everywhere;
 mod vbd_ac06_descriptor_enums_from_constants;
 #[path = "verbfwd_ac08_forward_stack_budget.rs"]
 mod verbfwd_ac08_forward_stack_budget;
+#[path = "ndeadb_ac02_single_site_schema_args.rs"]
+mod ndeadb_ac02_single_site_schema_args;
