@@ -65,6 +65,20 @@ mod ac16_request_body_too_large;
 mod ac18_tools_list_ttl;
 #[path = "ac19_registry_publish.rs"]
 mod ac19_registry_publish;
+#[path = "actfor_ac01_acting_for_on_row_and_meta.rs"]
+mod actfor_ac01_acting_for_on_row_and_meta;
+#[path = "actfor_ac02_acting_for_on_structured_errors.rs"]
+mod actfor_ac02_acting_for_on_structured_errors;
+#[path = "actfor_ac03_cascade_revoke_chain_records.rs"]
+mod actfor_ac03_cascade_revoke_chain_records;
+#[path = "actfor_ac04_usage_by_key.rs"]
+mod actfor_ac04_usage_by_key;
+#[path = "actfor_ac05_audit_chain_hash_differs_for_child.rs"]
+mod actfor_ac05_audit_chain_hash_differs_for_child;
+#[path = "actfor_ac06_tool_logs_prefix.rs"]
+mod actfor_ac06_tool_logs_prefix;
+#[path = "actfor_ac07_acting_for_keys_and_redaction.rs"]
+mod actfor_ac07_acting_for_keys_and_redaction;
 #[path = "adisp_ac01_admin_dispatch_arms_equal_descriptors.rs"]
 mod adisp_ac01_admin_dispatch_arms_equal_descriptors;
 #[path = "agentdir_ac01_ac02_ac03_ac04_identity_and_lookup.rs"]
@@ -1023,21 +1037,3 @@ mod errjson_ac02_error_data_carries_the_registry_row;
 mod errjson_ac03_errors_json_route;
 #[path = "errjson_ac04_host_errors_tool.rs"]
 mod errjson_ac04_host_errors_tool;
-#[path = "errreg_ac01_err_code_declares_and_registers.rs"]
-mod errreg_ac01_err_code_declares_and_registers;
-#[path = "errreg_ac02_registry_surfaces_byte_identical_snapshot.rs"]
-mod errreg_ac02_registry_surfaces_byte_identical_snapshot;
-#[path = "errreg_ac03_scanner_fails_bare_literal_names_site.rs"]
-mod errreg_ac03_scanner_fails_bare_literal_names_site;
-#[path = "errreg_ac04_scanner_fails_duplicate_and_format_codes.rs"]
-mod errreg_ac04_scanner_fails_duplicate_and_format_codes;
-#[path = "errreg_ac05_hand_table_empty_and_backstop_passes.rs"]
-mod errreg_ac05_hand_table_empty_and_backstop_passes;
-#[path = "errreg_ac06_five_10_17_codes_declared_at_emit_site.rs"]
-mod errreg_ac06_five_10_17_codes_declared_at_emit_site;
-#[path = "evkr_ac01_no_second_spelling.rs"]
-mod evkr_ac01_no_second_spelling;
-#[path = "evkr_ac02_renderings_equal_enum.rs"]
-mod evkr_ac02_renderings_equal_enum;
-#[path = "evkr_ac03_description_and_fields.rs"]
-mod evkr_ac03_description_and_fields;
