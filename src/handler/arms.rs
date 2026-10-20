@@ -674,6 +674,13 @@ impl McpHostHandler {
         })
     }
 
+    pub(crate) fn arm_host_audit_export<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::audit_export::export(&self.state, tenant, &args).await
+        })
+    }
+
     pub(crate) fn arm_host_audit_verify<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
         box_arm(async move {
             let ArmCtx { tenant, end_user, args, .. } = c;

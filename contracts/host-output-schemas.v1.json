@@ -882,6 +882,43 @@
     ],
     "type": "object"
   },
+  "host.audit.export": {
+    "properties": {
+      "alg": {
+        "type": "string"
+      },
+      "csv": {
+        "type": "string"
+      },
+      "format": {
+        "type": "string"
+      },
+      "jsonl": {
+        "type": "string"
+      },
+      "kid": {
+        "type": "string"
+      },
+      "root_hash": {
+        "type": "string"
+      },
+      "rows": {
+        "type": "integer"
+      },
+      "signature": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "alg",
+      "format",
+      "kid",
+      "root_hash",
+      "rows",
+      "signature"
+    ],
+    "type": "object"
+  },
   "host.audit.verify": {
     "properties": {
       "first_broken_id": {
@@ -892,12 +929,17 @@
       },
       "intact": {
         "type": "boolean"
+      },
+      "rows": {
+        "type": "integer"
+      },
+      "through_unix": {
+        "type": "integer"
+      },
+      "verified": {
+        "type": "boolean"
       }
     },
-    "required": [
-      "first_broken_id",
-      "intact"
-    ],
     "type": "object"
   },
   "host.blob.delete": {

@@ -221,10 +221,14 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // PRD-mcphost-capabilities-generated-from-dispatch added its own
     // "capabilities-wire-check" lane (routes scripts/capabilities-wire-check.sh
     // to a proof lane) -- an intended addition since the baseline.
+    // PRD-mcphost-audit-export-tamper-evident added its own "audit-export" lane
+    // (routes scripts/audit-verify.py and its vector test to a proof lane) --
+    // an intended addition since the baseline.
     assert_eq!(
         added,
         vec![
             "admin-schemas",
+            "audit-export",
             "blobguard-fixtures",
             "capabilities-wire-check",
             "checkcompat-race-soak",

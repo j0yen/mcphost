@@ -374,7 +374,7 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
 pub const EXPORT_ROWS_MAX: i64 = 50_000;
 
 /// One RFC 4180 CSV field.
-fn csv_field(out: &mut String, value: &str) {
+pub(crate) fn csv_field(out: &mut String, value: &str) {
     if value.contains([',', '"', '\n', '\r']) {
         out.push('"');
         out.push_str(&value.replace('"', "\"\""));

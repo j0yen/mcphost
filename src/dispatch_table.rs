@@ -30,6 +30,7 @@ pub const DISPATCH_TABLE: &[(&str, Arm)] = &[
     ("host.ask.list", McpHostHandler::arm_host_ask_list),
     ("host.ask.wait", McpHostHandler::arm_host_ask_wait),
     ("host.audit.chain", McpHostHandler::arm_host_audit_chain),
+    ("host.audit.export", McpHostHandler::arm_host_audit_export),
     ("host.audit.verify", McpHostHandler::arm_host_audit_verify),
     ("host.blob.delete", McpHostHandler::arm_host_blob_delete),
     ("host.blob.gc", McpHostHandler::arm_host_blob_gc),

@@ -5087,15 +5087,36 @@ fn host_tools_part_13() -> Vec<Tool> {
             ),
         ),
         Tool::new(
+            "host.audit.export",
+            "Export every audit row of this tenant (audit_chain, tenant_audit, oauth_audit) as one \
+             hash-chained JSONL: a header line, one line per row in (ts, table, id) order each \
+             carrying prev and hash, and a trailer with root_hash, rows and an ES256 signature \
+             verifiable with /.well-known/jwks.json and scripts/audit-verify.py. More than 50000 rows \
+             refuses export_too_large {rows}. format csv renders the same lines. A read tool: a read-only \
+             scope may call it.",
+            host_schema(
+                json!({
+                    "since": {"type": ["integer", "string"], "description": "Start of the window (inclusive): unix seconds, YYYY-MM-DD, RFC 3339 or -24h."},
+                    "until": {"type": ["integer", "string"], "description": "End of the window (exclusive), same forms as since."},
+                    "limit": {"type": "integer", "description": "Refuse export_too_large past this many rows, 1-50000; default 50000."},
+                    "format": {"type": "string", "enum": crate::audit_export::EXPORT_FORMATS, "description": "Default jsonl."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
             "host.audit.verify",
             "Recompute the hash-chained audit log over [from_id, to_id] and report whether it's \
-             intact, naming the first broken id if not.",
+             intact, naming the first broken id if not. With root_hash (from host.audit.export) it \
+             recomputes that export's window instead and answers {verified, rows, through_unix}; an \
+             unknown root is not_found. With no arguments it verifies the whole chain.",
             host_schema(
                 json!({
                     "from_id": {"type": "integer", "description": "First audit record id to verify, inclusive."},
                     "to_id": {"type": "integer", "description": "Last audit record id to verify, inclusive."},
+                    "root_hash": {"type": "string", "description": "The root_hash of an earlier host.audit.export."},
                 }),
-                &["from_id", "to_id"],
+                &[],
             ),
         ),
         // PRD-mcphost-end-user-audit-and-revoke requirement 2 (AC1/AC10).

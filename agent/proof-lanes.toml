@@ -417,3 +417,11 @@ required_commands = [
   "scripts/gen-codemap.sh --check",
   "cargo test --workspace cmap_ac",
 ]
+
+[[lane]]
+id = "audit-export"
+description = "PRD-mcphost-audit-export-tamper-evident: scripts/audit-verify.py (the offline verifier of a host.audit.export JSONL: stdlib + cryptography) and tests/test_audit_vectors.py (loads tests/fixtures/audit_vectors.json, which tests/audx_ac04_*.rs generates from the Rust canonical form). Given its own lane since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane."
+globs = ["scripts/audit-verify.py", "tests/test_audit_vectors.py"]
+required_commands = [
+  "cargo test --workspace audx_ac",
+]

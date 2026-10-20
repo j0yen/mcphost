@@ -257,12 +257,6 @@ pub async fn policy_attrs_set(
     Ok(json!({"subject": subject, "attrs": attrs}))
 }
 
-fn arg_i64(args: &Value, name: &str) -> Result<i64, AppError> {
-    args.get(name)
-        .and_then(Value::as_i64)
-        .ok_or_else(|| AppError::InvalidArgs(format!("missing required argument '{name}'")))
-}
-
 /// requirement 7: `host.audit.verify(from_id, to_id)` -- recomputes the
 /// chain over `[from_id, to_id]` and reports whether it's intact, naming
 /// the first broken id if not (AC7).
@@ -273,8 +267,13 @@ pub async fn audit_verify(
     end_user: Option<&EndUser>,
 ) -> Result<Value, AppError> {
     require_tenant_key(end_user)?;
-    let from_id = arg_i64(args, "from_id")?;
-    let to_id = arg_i64(args, "to_id")?;
+    // PRD-mcphost-audit-export-tamper-evident R3: a `root_hash` verifies a stored export instead.
+    if args.get("root_hash").is_some() {
+        return crate::audit_export::verify_root(state, tenant, args).await;
+    }
+    // No bounds verifies the whole chain.
+    let from_id = args.get("from_id").and_then(Value::as_i64).unwrap_or(0);
+    let to_id = args.get("to_id").and_then(Value::as_i64).unwrap_or(i64::MAX);
     let rows = state.db.audit_chain_range(tenant.id, from_id, to_id).await?;
     let records: Vec<audit::RetrievalAuditRecord> = rows.into_iter().map(Into::into).collect();
     let result = audit::verify_chain(&records);

@@ -81,6 +81,17 @@ pub fn compute_record_hash(
     )
 }
 
+/// PRD-mcphost-audit-export-tamper-evident R1: the hash of one export line --
+/// the same sha256 hex primitive [`compute_record_hash`] ends in, over the
+/// previous line's hash followed by the line's canonical JSON (every field
+/// but `hash`). The first line's `prev` is [`GENESIS_HASH`].
+pub fn compute_export_line_hash(prev: &str, canonical: &[u8]) -> String {
+    let mut input = Vec::with_capacity(prev.len() + canonical.len());
+    input.extend_from_slice(prev.as_bytes());
+    input.extend_from_slice(canonical);
+    crate::billing::sha256_hex(&input)
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChainVerifyResult {
     pub intact: bool,
