@@ -887,6 +887,8 @@ mod dryspt_ac02_with_tx_nested;
 mod dryspt_ac03_txn_lint_scanner;
 #[path = "dryspt_ac04_txn_allowlist.rs"]
 mod dryspt_ac04_txn_allowlist;
+#[path = "dryspt_ac06_transaction_nested_code.rs"]
+mod dryspt_ac06_transaction_nested_code;
 #[path = "dryv_ac01_table_drop_survives_savepoint.rs"]
 mod dryv_ac01_table_drop_survives_savepoint;
 #[path = "dryv_ac03_table_drop_dry_run_would.rs"]
