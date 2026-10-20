@@ -26,7 +26,7 @@ strip = true
 [package]
 autotests = false  # gen-test-suites.sh: explicit [[test]] suites below
 name = "mcphost"
-version = "0.112.23"
+version = "0.112.24"
 edition = "2024"
 rust-version = "1.95"
 description = "Hosted MCP runtime where your agent publishes its own tools by tool call and keeps working."
@@ -179,6 +179,8 @@ jaq-json = { version = "2.0.3", features = ["serde"] }
 # PRD-mcphost-example-manifest-contract R4: build.rs reads examples/index.json.
 serde_json = "1"
 sha2 = "0.10"
+# PRD-mcphost-connection-provider-registry: build.rs parses providers.toml.
+toml = "0.8"
 
 [features]
 # PRD-mcphost-classify-precision: gates PythonKind's test-only selftest

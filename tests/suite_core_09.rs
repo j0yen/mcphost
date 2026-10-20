@@ -30,6 +30,14 @@ mod ac14_storage_unwritable;
 mod busyaudit_ac08_healthz_db_fields;
 #[path = "ctrv_ac03_status_and_healthz_carry_contract_identity.rs"]
 mod ctrv_ac03_status_and_healthz_carry_contract_identity;
+#[path = "errjson_ac01_every_emitted_code_is_a_registry_row.rs"]
+mod errjson_ac01_every_emitted_code_is_a_registry_row;
+#[path = "errjson_ac02_error_data_carries_the_registry_row.rs"]
+mod errjson_ac02_error_data_carries_the_registry_row;
+#[path = "errjson_ac03_errors_json_route.rs"]
+mod errjson_ac03_errors_json_route;
+#[path = "errjson_ac04_host_errors_tool.rs"]
+mod errjson_ac04_host_errors_tool;
 #[path = "errreg_ac01_err_code_declares_and_registers.rs"]
 mod errreg_ac01_err_code_declares_and_registers;
 #[path = "errreg_ac02_registry_surfaces_byte_identical_snapshot.rs"]
@@ -744,14 +752,6 @@ mod mcphost_chatgpt_submission_pack_ac02_check_detects_drift;
 mod mcphost_chatgpt_submission_pack_ac03_descriptions_identical;
 #[path = "mcphost-chatgpt-submission-pack_ac04_chatgpt_surface_everywhere.rs"]
 mod mcphost_chatgpt_submission_pack_ac04_chatgpt_surface_everywhere;
-#[path = "mcphost-chatgpt-submission-pack_ac05_chatgpt_profile_empty_tenant_table.rs"]
-mod mcphost_chatgpt_submission_pack_ac05_chatgpt_profile_empty_tenant_table;
-#[path = "mcphost-chatgpt-submission-pack_ac06_reviewer_notes_first_call.rs"]
-mod mcphost_chatgpt_submission_pack_ac06_reviewer_notes_first_call;
-#[path = "mcphost-install-links-more-clients_ac01_twelve_surfaces.rs"]
-mod mcphost_install_links_more_clients_ac01_twelve_surfaces;
-#[path = "mcphost-install-links-more-clients_ac02_command_artefacts_carry_url_once.rs"]
-mod mcphost_install_links_more_clients_ac02_command_artefacts_carry_url_once;
 #[path = "mcphost_admin_schema_contract_ac01_tenants_schema_version.rs"]
 mod mcphost_admin_schema_contract_ac01_tenants_schema_version;
 #[path = "mcphost_admin_schema_contract_ac02_listings_validate_v1_schema.rs"]

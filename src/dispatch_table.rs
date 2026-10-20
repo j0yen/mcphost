@@ -58,6 +58,7 @@ pub const DISPATCH_TABLE: &[(&str, Arm)] = &[
     ("host.claim.github", McpHostHandler::arm_host_claim_github),
     ("host.claim.start", McpHostHandler::arm_host_claim_start),
     ("host.client.revoke", McpHostHandler::arm_host_client_revoke),
+    ("host.connect.providers", McpHostHandler::arm_host_connect_providers),
     ("host.docs.delete", McpHostHandler::arm_host_docs_delete),
     ("host.docs.get", McpHostHandler::arm_host_docs_get),
     ("host.docs.index_config", McpHostHandler::arm_host_docs_index_config),

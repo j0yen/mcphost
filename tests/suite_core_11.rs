@@ -30,6 +30,20 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "soff_ac01_header_and_arg_returns_success_envelope.rs"]
+mod soff_ac01_header_and_arg_returns_success_envelope;
+#[path = "soff_ac02_header_only_returns_success_and_whoami_disabled.rs"]
+mod soff_ac02_header_only_returns_success_and_whoami_disabled;
+#[path = "soff_ac03_arg_only_returns_success_envelope.rs"]
+mod soff_ac03_arg_only_returns_success_envelope;
+#[path = "soff_ac04_already_offboarded_idempotent_all_shapes.rs"]
+mod soff_ac04_already_offboarded_idempotent_all_shapes;
+#[path = "soff_ac05_matrix_exhaustive_auth_shapes.rs"]
+mod soff_ac05_matrix_exhaustive_auth_shapes;
+#[path = "soff_ac06_non_lifecycle_verb_still_refused.rs"]
+mod soff_ac06_non_lifecycle_verb_still_refused;
+#[path = "soff_ac07_docs_document_already_offboarded.rs"]
+mod soff_ac07_docs_document_already_offboarded;
 #[path = "sorel_ac01_offboard_releases_session_fresh_signup.rs"]
 mod sorel_ac01_offboard_releases_session_fresh_signup;
 #[path = "sorel_ac02_self_offboard_remedy_and_idempotent.rs"]
