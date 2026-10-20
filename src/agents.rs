@@ -81,11 +81,16 @@ fn validate_tags(raw: &[Value]) -> Result<Vec<String>, AppError> {
     Ok(tags)
 }
 
+/// The `contact_policy` values: the descriptor's enum and [`validate_contact_policy`]
+/// read this one list.
+pub const CONTACT_POLICIES: &[&str] = &["open", "contacts", "closed"];
+
 fn validate_contact_policy(raw: &str) -> Result<String, AppError> {
     match raw {
-        "open" | "contacts" | "closed" => Ok(raw.to_string()),
+        policy if CONTACT_POLICIES.contains(&policy) => Ok(raw.to_string()),
         other => Err(AppError::InvalidArgs(format!(
-            "contact_policy: must be one of open, contacts, closed; got '{other}'"
+            "contact_policy: must be one of {}; got '{other}'",
+            CONTACT_POLICIES.join(", ")
         ))),
     }
 }

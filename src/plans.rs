@@ -1586,3 +1586,16 @@ made_up_key = \"ignored\"
         assert_eq!(catalog.plans[0].name, "free");
     }
 }
+
+/// The validator's registration for what `plans` owns (R3): a call's `budget`
+/// above the CALLER'S plan ceiling is refused `budget_ceiling_exceeded` (with
+/// `ceiling`/`requested`/`see`) by the dispatch, and a larger plan's caller may
+/// send what the default catalog's published `maximum` documents as the free
+/// ceiling -- so the schema's `maximum` under `/budget` is not enforced
+/// by the descriptor validator.
+pub const ARG_OWNERS: &[crate::host_args::ArgOwner] = &[crate::host_args::ArgOwner {
+    applies: |tool| matches!(tool.replace('_', ".").as_str(), "host.tool.call" | "host.estimate"),
+    path: "/budget",
+    keywords: &["maximum", "type", "minimum"],
+    codes: &["budget_ceiling_exceeded", "args_invalid"],
+}];

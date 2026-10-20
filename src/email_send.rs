@@ -195,13 +195,6 @@ fn parse_args(args: &Value) -> Result<SendArgs, AppError> {
     Ok(SendArgs { to: deduped, subject, text, html, reply_to_message_id })
 }
 
-fn check_args(state: &AppState, args: &Value, verb: &str) -> Result<(), AppError> {
-    if let Some(known) = crate::handler::known_control_plane_args(verb, &state.kinds) {
-        crate::errors::check_unknown_argument(args, verb, &known)?;
-    }
-    Ok(())
-}
-
 /// One `email_sends` row to insert.
 struct Row<'a> {
     id: &'a str,
@@ -273,7 +266,6 @@ async fn send_with_retry(state: &AppState, message: &EmailMessage) -> Result<cra
 /// `host.email.send` and the bridge's op: `tool` is the calling tool run's
 /// name, `None` for the agent itself.
 pub async fn send(state: &AppState, tenant: &Tenant, tool: Option<&str>, args: &Value) -> Result<Value, AppError> {
-    check_args(state, args, "host.email.send")?;
     let parsed = parse_args(args)?;
     let sender = tool.filter(|t| !t.is_empty()).unwrap_or(AGENT_SENDER);
     let from = from_address(sender, &tenant_slug(tenant), &send_domain());
@@ -461,7 +453,6 @@ pub async fn send_from_bridge(state: &AppState, tenant: &Tenant, args: &Value) -
 
 /// `host.email.sends {limit}`: this tenant's rows, newest first.
 pub async fn sends(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    check_args(state, args, "host.email.sends")?;
     let limit = match args.get("limit") {
         None | Some(Value::Null) => 20,
         Some(v) => v

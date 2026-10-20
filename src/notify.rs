@@ -208,13 +208,6 @@ fn arg_str(args: &Value, name: &str) -> Result<String, AppError> {
         .ok_or_else(|| AppError::InvalidArgs(format!("missing required argument '{name}'")))
 }
 
-fn check_args(state: &AppState, args: &Value, verb: &str) -> Result<(), AppError> {
-    if let Some(known) = crate::handler::known_control_plane_args(verb, &state.kinds) {
-        crate::errors::check_unknown_argument(args, verb, &known)?;
-    }
-    Ok(())
-}
-
 fn plan_for<'a>(state: &'a AppState, tenant: &Tenant) -> Result<&'a crate::plans::Plan, AppError> {
     state
         .plans
@@ -301,7 +294,6 @@ async fn check_owner_email(state: &AppState, tenant: &Tenant, target: &str) -> R
 
 /// `host.notify.channel_add {kind, target}`.
 pub async fn channel_add(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    check_args(state, args, "host.notify.channel_add")?;
     let kind_name = arg_str(args, "kind")?;
     let kind = ChannelKind::parse(&kind_name).ok_or_else(|| kind_unknown(&kind_name))?;
     let target = arg_str(args, "target")?.trim().to_string();
@@ -348,8 +340,7 @@ pub async fn channel_add(state: &AppState, tenant: &Tenant, args: &Value) -> Res
 }
 
 /// `host.notify.channel_list`.
-pub async fn channel_list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    check_args(state, args, "host.notify.channel_list")?;
+pub async fn channel_list(state: &AppState, tenant: &Tenant, _args: &Value) -> Result<Value, AppError> {
     let tenant_id = tenant.id;
     let channels = state
         .db
@@ -382,7 +373,6 @@ pub async fn channel_list(state: &AppState, tenant: &Tenant, args: &Value) -> Re
 
 /// `host.notify.channel_remove {channel_id}`.
 pub async fn channel_remove(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    check_args(state, args, "host.notify.channel_remove")?;
     let channel_id = arg_str(args, "channel_id")?;
     let (tenant_id, id) = (tenant.id, channel_id.clone());
     let removed = state
@@ -416,7 +406,6 @@ struct LiveChannel {
 /// limit, writes the notify and one queued receipt per live channel, spawns
 /// delivery, and returns -- nothing on this path waits on the network.
 pub async fn send(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    check_args(state, args, "host.notify.send")?;
     let text = arg_str(args, "text")?;
     if text.trim().is_empty() {
         return Err(AppError::InvalidArgs("text: must be non-empty".to_string()));
@@ -708,7 +697,6 @@ async fn note_outcome(state: &AppState, tenant_id: i64, channel_id: &str, delive
 /// `host.notify.receipts {notify_id?, since_unix?}`: newest first, at most
 /// [`RECEIPTS_MAX`] rows.
 pub async fn receipts(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    check_args(state, args, "host.notify.receipts")?;
     let notify_id = args.get("notify_id").and_then(Value::as_str).map(str::to_string);
     let since = args.get("since_unix").and_then(Value::as_i64).unwrap_or(0);
     let tenant_id = tenant.id;

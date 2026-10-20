@@ -741,6 +741,28 @@ pub const PROJECTED_WINDOWS: &[(&str, &str, &[&str])] = &[
     ("host.tool.list", "tools", TOOL_LIST_FIELDS),
 ];
 
+/// What `paged` owns of a call, registered for the validator (R3). `fields`:
+/// `parse_fields` is the one owner of its semantics -- an unknown name is
+/// `field_unknown {field, nearest, valid}`, duplicates collapse, an empty or
+/// malformed list is `args_invalid` -- and it runs first in the handler, for
+/// every verb `fields_for` names. `limit`: above its max it is CLAMPED and
+/// reported (`_meta.mcphost.limit_clamped`), never refused, so the published
+/// `maximum` documents the clamp and the validator does not enforce it.
+pub const ARG_OWNERS: &[crate::host_args::ArgOwner] = &[
+    crate::host_args::ArgOwner {
+        applies: |tool| fields_for(tool).is_some(),
+        path: "/fields",
+        keywords: &["*"],
+        codes: &["field_unknown", "args_invalid"],
+    },
+    crate::host_args::ArgOwner {
+        applies: |tool| paged_spec(tool).is_some(),
+        path: "/limit",
+        keywords: &["maximum"],
+        codes: &[],
+    },
+];
+
 /// The set of row fields `verb` accepts in `fields`, `None` for a verb that
 /// does not project. Generated into the contract as `fields_enum`.
 pub fn fields_for(verb: &str) -> Option<&'static [&'static str]> {

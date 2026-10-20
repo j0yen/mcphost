@@ -749,21 +749,24 @@ fn schema(props: Value, required: &[&str]) -> Map<String, Value> {
     }))
 }
 
-/// [`schema`] for an `admin.*` tool whose descriptor is the validator for it:
-/// the schema carries [`crate::host_args::VALIDATED_KEY`] and
-/// `dispatch_admin_tool` refuses by it (through the same
-/// `host_args::validate_host_args` the `host.*` verbs use) before the handler
-/// runs.
+/// [`schema`] for an `admin.*` tool; validated like every other descriptor
+/// (the key is written once, by [`crate::host_args::mark_validated`]).
 fn schema_checked(props: Value, required: &[&str]) -> Map<String, Value> {
-    let mut obj = schema(props, required);
-    obj.insert(crate::host_args::VALIDATED_KEY.to_string(), json!(true));
-    obj
+    schema(props, required)
 }
 
 /// The `admin.*` descriptors, for `host_args` to compile the checked ones
 /// beside [`host_tool_descriptors`].
 pub fn admin_tool_descriptors() -> Vec<Tool> {
     admin_tools()
+}
+
+/// The `admin.*` descriptors with [`crate::host_args::VALIDATED_KEY`]
+/// written by the one post-pass.
+fn admin_tools() -> Vec<Tool> {
+    let mut tools = admin_tools_raw();
+    crate::host_args::mark_validated(&mut tools);
+    tools
 }
 
 /// `host.tool_publish`'s own properties (minus `host_schema`'s
@@ -891,8 +894,20 @@ fn tool_publish_spec_branches(kinds: &KindRegistry) -> Value {
 /// `host.tool_publish`'s input schema (`schema` + the per-kind `allOf`
 /// branches), optionally wrapped by `host_schema` for the `tenant_key`.
 fn tool_publish_schema(kinds: &KindRegistry, with_tenant_key: bool) -> Map<String, Value> {
-    let props = tool_publish_props(kinds);
+    let mut props = tool_publish_props(kinds);
     let mut out = if with_tenant_key {
+        // `force` is a call-time switch of the control-plane verb, not part of a
+        // manifest entry, so it is declared only on the verb's own descriptor.
+        if let Some(obj) = props.as_object_mut() {
+            obj.insert(
+                "force".to_string(),
+                json!({
+                    "type": "boolean",
+                    "description": "Publish a chain whose mapping can never resolve (verdict will_fail) anyway; \
+                        the response's gates entry then carries forced: true. Default false.",
+                }),
+            );
+        }
         host_schema(props, TOOL_PUBLISH_REQUIRED)
     } else {
         schema(props, TOOL_PUBLISH_REQUIRED)
@@ -970,7 +985,6 @@ fn host_schema_extra(props: Value, required: &[&str], extra: Value) -> Map<Strin
     if let Value::Object(extra) = extra {
         obj.extend(extra);
     }
-    obj.insert(crate::host_args::VALIDATED_KEY.to_string(), json!(true));
     obj
 }
 
@@ -1007,6 +1021,13 @@ pub(crate) fn self_check_tools_list(state: &AppState) -> usize {
 /// may use without being implicitly signed up.
 fn is_feedback_tool(name: &str) -> bool {
     matches!(name, "host.feedback.send" | "host.feedback.list" | "host.feedback.get")
+}
+
+/// The control-plane verbs `call_tool_inner` answers before (and without)
+/// `dispatch_tenant_tool_inner`, because they are reachable with no tenant.
+fn is_pre_dispatch_tool(name: &str) -> bool {
+    is_feedback_tool(name)
+        || matches!(name, "host.quickstart" | "host.help.search" | "host.help.get" | "host.errors" | "billing.plans" | "host.redeem")
 }
 
 /// PRD-mcphost-one-next-tool requirement 1 (AC1): the starter set an
@@ -1181,7 +1202,7 @@ fn tool_from_description_tool() -> Tool {
             json!({
                 "description": {"type": "string", "description": "What the tool should do, in one sentence."},
                 "name": {"type": "string", "description": "Optional tool name; default is the model's proposal."},
-                "kind": {"type": "string", "enum": ["python"], "description": "Only python is drafted."},
+                "kind": {"type": "string", "enum": crate::drafter::DRAFT_KINDS, "description": "Only python is drafted."},
                 "share": {"type": "boolean", "description": "Mint a public url (default true)."},
             }),
             &["description"],
@@ -1479,8 +1500,8 @@ fn host_tools_part_01(kinds: &KindRegistry) -> Vec<Tool> {
              sees only its own rows.",
             host_schema(
                 json!({
-                    "since": {"type": "string", "description": "Window start: \"-24h\", \"-30d\", a YYYY-MM-DD day or an RFC 3339 instant (default -24h)."},
-                    "until": {"type": "string", "description": "Window end, same forms (default now)."},
+                    "since": {"type": ["string", "integer"], "description": "Window start: \"-24h\", \"-30d\", a YYYY-MM-DD day, an RFC 3339 instant or Unix epoch seconds (default -24h)."},
+                    "until": {"type": ["string", "integer"], "description": "Window end, same forms (default now)."},
                     "key_label": {"type": "string", "description": "Only calls made with the sub-key labelled so."},
                     "tool": {"type": "string", "description": "Only calls to this tool."},
                     "outcome": {"type": "string", "description": "Only calls with this outcome (ok, error, refused, ...)."},
@@ -1497,8 +1518,8 @@ fn host_tools_part_01(kinds: &KindRegistry) -> Vec<Tool> {
              verify with the JWK named by kid at /.well-known/jwks.json. Primary key only.",
             host_schema(
                 json!({
-                    "since": {"type": "string", "description": "Window start: \"-24h\", \"-30d\", a YYYY-MM-DD day or an RFC 3339 instant (default -24h)."},
-                    "until": {"type": "string", "description": "Window end, same forms (default now)."},
+                    "since": {"type": ["string", "integer"], "description": "Window start: \"-24h\", \"-30d\", a YYYY-MM-DD day, an RFC 3339 instant or Unix epoch seconds (default -24h)."},
+                    "until": {"type": ["string", "integer"], "description": "Window end, same forms (default now)."},
                 }),
                 &[],
             ),
@@ -1761,7 +1782,7 @@ fn host_tools_part_02() -> Vec<Tool> {
                             {fits, units, remaining, refusal}; same as host.estimate. Default false.",
                     },
                 }),
-                &["name", "args"],
+                &["name"],
             ),
         ),
         // PRD-mcphost-tool-versions P0 requirements 3/4, P2 requirement 8:
@@ -2516,9 +2537,10 @@ fn host_tools_part_04() -> Vec<Tool> {
                         "description": "Name of the declared table to delete rows from.",
                     },
                     "where": {
-                        "type": "string",
-                        "description": "Optional filter, same grammar as host.state.query; \
-                            omit to delete every row.",
+                        "type": ["string", "object"],
+                        "description": "Optional filter: a string in host.state.query's grammar, or \
+                            an object of field equalities ({\"status\": \"done\"}); omit to delete \
+                            every row.",
                     },
                     "end_user": end_user_arg_schema(),
                 }),
@@ -2958,7 +2980,7 @@ fn host_tools_part_05() -> Vec<Tool> {
                 json!({
                     "id": {"type": "string", "description": "Blob id; use name instead if you don't have it."},
                     "name": {"type": "string", "description": "Blob name; use id instead if you have it."},
-                    "as": {"type": "string", "enum": ["url", "base64"], "description": "\"url\" (default) or \"base64\" (files up to 1 MiB)."},
+                    "as": {"type": "string", "enum": crate::blobs::GET_AS, "description": "\"url\" (default) or \"base64\" (files up to 1 MiB)."},
                 }),
                 &[],
                 &["id", "name"],
@@ -3394,7 +3416,7 @@ fn host_tools_part_07() -> Vec<Tool> {
             host_schema(
                 json!({
                     "name": {"type": "string", "description": "Inbox name; also the reader tool's name (^[a-z][a-z0-9_]{1,40}$)."},
-                    "verify": {"type": "string", "enum": ["hmac", "github", "stripe"], "description": "How a POST is signed; default hmac (X-Mcphost-Signature: sha256=<hex hmac of the body>)."},
+                    "verify": {"type": "string", "enum": crate::webhook_inbox::VERIFY_SCHEMES, "description": "How a POST is signed; default hmac (X-Mcphost-Signature: sha256=<hex hmac of the body>)."},
                     "rotate": {"type": "boolean", "description": "On an existing inbox, mint and return a new secret; the url never changes."},
                 }),
                 &["name"],
@@ -3480,6 +3502,11 @@ fn host_tools_part_07() -> Vec<Tool> {
                         "description": "Also return `fixtures` ({\"<step>\": <child result>}) built from a chain \
                             run's child rows, ready to pass to host.tool_test's `fixtures`; steps whose result \
                             exceeds one part are listed under `truncated`.",
+                    },
+                    "include_children": {
+                        "type": "boolean",
+                        "description": "Accepted for parity with host.runs.list; host.runs.get always \
+                            returns the run's direct children under `children`.",
                     },
                 }),
                 &["run_id"],
@@ -3647,7 +3674,7 @@ fn host_tools_part_08() -> Vec<Tool> {
                     "run_id": {"type": "string", "description": "The run id to read the timeline of."},
                     "format": {
                         "type": "string",
-                        "enum": ["json", "text"],
+                        "enum": crate::timeline::FORMATS,
                         "description": "json (default) or text: {format, text} with one line per step and a totals line."
                     }
                 }),
@@ -3962,7 +3989,7 @@ fn host_tools_part_09() -> Vec<Tool> {
                     },
                     "contact_policy": {
                         "type": "string",
-                        "enum": ["open", "contacts", "closed"],
+                        "enum": crate::agents::CONTACT_POLICIES,
                         "description": "What contact this tenant accepts; enforced by the inbox PRD.",
                     },
                     "hints": {
@@ -3970,6 +3997,12 @@ fn host_tools_part_09() -> Vec<Tool> {
                         "description": "false permanently stops host.* results from carrying a \
                             next hint for this tenant; true turns it back on. Omit to leave \
                             unchanged (default true).",
+                    },
+                    "welcome_back": {
+                        "type": "boolean",
+                        "description": "false permanently stops a new session's first result from \
+                            carrying this tenant's welcome_back envelope; true turns it back on. \
+                            Omit to leave unchanged (default true).",
                     },
                 }),
                 &[],
@@ -4405,7 +4438,7 @@ fn host_tools_part_10() -> Vec<Tool> {
              and how long the agent waited. Rows persist 30 days after expiry.",
             host_schema(
                 json!({
-                    "status": {"type": "string", "enum": ["pending", "answered", "expired"], "description": "Only asks in this state."},
+                    "status": {"type": "string", "enum": crate::asks::STATUSES, "description": "Only asks in this state."},
                     "limit": {"type": "integer", "description": "At most this many rows; default 50, at most 100."},
                 }),
                 &[],
@@ -4541,7 +4574,7 @@ fn host_tools_part_10() -> Vec<Tool> {
                 json!({
                     "status": {
                         "type": "string",
-                        "enum": ["pending", "accepted", "denied", "expired"],
+                        "enum": crate::consent::STATUSES,
                         "description": "Filter incoming/outgoing requests to this status; omit for all.",
                     },
                 }),
@@ -4706,10 +4739,10 @@ fn host_tools_part_11() -> Vec<Tool> {
             host_schema(
                 json!({
                     "issuer": {"type": "string", "description": "The JWT `iss` claim value to match, e.g. https://issuer.example.com."},
-                    "audience": {"type": "string", "description": "The JWT `aud` claim value to require."},
+                    "audience": {"type": "string", "description": "The JWT `aud` claim value to require; defaults to this tenant's own canonical resource URI."},
                     "jwks_url": {"type": "string", "description": "URL this host fetches the issuer's JWKS from."},
                 }),
-                &["issuer", "audience", "jwks_url"],
+                &["issuer", "jwks_url"],
             ),
         ),
         Tool::new(
@@ -4782,7 +4815,7 @@ fn host_tools_part_11() -> Vec<Tool> {
              and the next authorize shows consent again; null clears it).",
             host_schema(
                 json!({
-                    "clients": {"type": "string", "enum": ["any", "allowlist", "approve"]},
+                    "clients": {"type": "string", "enum": crate::oauth_policy::CLIENTS_MODES},
                     "allowlist": {"type": "array", "items": {"type": "string"}},
                     "access_ttl_s": {"type": "integer"},
                     "refresh_ttl_s": {"type": "integer"},
@@ -5364,6 +5397,15 @@ fn host_tools_part_13() -> Vec<Tool> {
     // verb added to `WRITE_VERBS` is annotated with no further code.
     for tool in tools.iter_mut() {
         if crate::confirm::gated_name(&tool.name) {
+            // The token argument the description asks for, declared so the
+            // validator knows it (a measured re-dispatch carries `confirm:
+            // true`; undeclared, it was refused and the gate measured nothing).
+            if let Some(props) = Arc::make_mut(&mut tool.input_schema)
+                .get_mut("properties")
+                .and_then(Value::as_object_mut)
+            {
+                props.entry("confirm".to_string()).or_insert_with(crate::confirm::confirm_property);
+            }
             let mut annotations = rmcp::model::ToolAnnotations::default();
             annotations.destructive_hint = Some(true);
             annotations.idempotent_hint = Some(false);
@@ -5372,6 +5414,9 @@ fn host_tools_part_13() -> Vec<Tool> {
             tool.description = Some(Cow::Owned(format!("{existing} {}", crate::confirm::CONFIRM_SENTENCE)));
         }
     }
+    // PRD-mcphost-host-args-validated-by-default R1: the one writer of
+    // `VALIDATED_KEY`, before the alias clones are made so they carry it too.
+    crate::host_args::mark_validated(&mut tools);
     apply_tool_aliases(&mut tools);
     tools
 }
@@ -5542,7 +5587,7 @@ fn flattened_to_canonical(kinds: &KindRegistry, name: &str) -> Option<String> {
     .cloned()
 }
 
-fn admin_tools() -> Vec<Tool> {
+fn admin_tools_raw() -> Vec<Tool> {
     vec![
         Tool::new(
             "admin.tenants",
@@ -5553,7 +5598,7 @@ fn admin_tools() -> Vec<Tool> {
             schema(
                 json!({
                     "prefix": {"type": "string"},
-                    "synthetic": {"type": "string", "enum": ["true", "false", "all"]},
+                    "synthetic": {"type": "string", "enum": crate::admin::SYNTHETIC_FILTERS},
                 }),
                 &[],
             ),
@@ -5571,8 +5616,8 @@ fn admin_tools() -> Vec<Tool> {
             schema(
                 json!({
                     "tenant": {"type": "string", "description": "The tenant's namespace."},
-                    "since": {"type": "string", "description": "Window start: \"-24h\", YYYY-MM-DD or an RFC 3339 instant (default -24h)."},
-                    "until": {"type": "string", "description": "Window end, same forms (default now)."},
+                    "since": {"type": ["string", "integer"], "description": "Window start: \"-24h\", YYYY-MM-DD, an RFC 3339 instant or Unix epoch seconds (default -24h)."},
+                    "until": {"type": ["string", "integer"], "description": "Window end, same forms (default now)."},
                 }),
                 &["tenant"],
             ),
@@ -5941,13 +5986,13 @@ fn admin_tools() -> Vec<Tool> {
              otherwise it never does.",
             schema(
                 json!({
-                    "subject_kind": {"type": "string", "enum": ["key", "addr", "email_domain"]},
+                    "subject_kind": {"type": "string", "enum": crate::admin::BAN_SUBJECT_KINDS},
                     "subject": {
                         "type": "string",
                         "description": "The raw tenant key, a literal address, or an email domain.",
                     },
                     "ttl": {"type": "string", "description": "e.g. \"30m\", \"24h\", \"7d\"."},
-                    "permanent": {"type": "boolean"},
+                    "permanent": {"description": "Only the literal boolean true counts; any other value is treated as absent (then ttl is required)."},
                     "reason": {"type": "string"},
                     "public": {"type": "boolean", "description": "Include reason in the refusal; default false."},
                 }),
@@ -5969,7 +6014,7 @@ fn admin_tools() -> Vec<Tool> {
             schema(
                 json!({
                     "active_only": {"type": "boolean"},
-                    "subject_kind": {"type": "string", "enum": ["key", "addr", "email_domain"]},
+                    "subject_kind": {"type": "string", "enum": crate::admin::BAN_SUBJECT_KINDS},
                 }),
                 &[],
             ),
@@ -6086,11 +6131,11 @@ fn admin_tools() -> Vec<Tool> {
              `mcphost examples proposals pull`) marks an approved one merged with its pr_url.",
             schema(
                 json!({
-                    "action": {"type": "string", "enum": ["list", "approve", "reject", "merge"]},
+                    "action": {"type": "string", "enum": crate::admin::PROPOSAL_ACTIONS},
                     "id": {"type": "integer"},
                     "reason": {"type": "string"},
                     "pr_url": {"type": "string"},
-                    "status": {"type": "string", "enum": ["pending", "approved", "rejected", "merged"]},
+                    "status": {"type": "string", "enum": crate::admin::PROPOSAL_STATUSES},
                 }),
                 &["action"],
             ),
@@ -6125,7 +6170,7 @@ fn admin_tools() -> Vec<Tool> {
             schema(
                 json!({
                     "key": {"type": "string"},
-                    "severity": {"type": "string", "enum": ["info", "warn", "critical"]},
+                    "severity": {"type": "string", "enum": crate::alerts::SEVERITIES},
                     "title": {"type": "string"},
                     "body": {"type": "object"},
                 }),
@@ -6141,7 +6186,7 @@ fn admin_tools() -> Vec<Tool> {
             schema(
                 json!({
                     "title": {"type": "string"},
-                    "impact": {"type": "string", "enum": ["minor", "partial", "major"]},
+                    "impact": {"type": "string", "enum": crate::admin::INCIDENT_IMPACTS},
                     "components": {"type": "array", "items": {"type": "string"}},
                 }),
                 &["title", "impact", "components"],
@@ -6170,7 +6215,7 @@ fn admin_tools() -> Vec<Tool> {
              into the status feed -- one status_samples row, source preserved verbatim.",
             schema(
                 json!({
-                    "component": {"type": "string", "enum": ["mcp", "exec", "billing", "claim"]},
+                    "component": {"type": "string", "enum": crate::statusfeed::COMPONENTS},
                     "ok": {"type": "boolean"},
                     "latency_ms": {"type": "integer"},
                     "source": {"type": "string"},
@@ -6899,6 +6944,16 @@ impl StateBackend for CountingStateBackend {
 /// the dispatcher. Re-measure and tighten as the dispatch frames shrink.
 pub const FORWARD_STACK_BUDGET: usize = 1_223_680;
 
+/// The validator's registration for what `host.spec.test` owns (R3): more
+/// than `MAX_TEST_INVOCATIONS` invocations is refused `too_many_invocations`
+/// (`data.limit`) by the handler, ahead of any run.
+pub const ARG_OWNERS: &[crate::host_args::ArgOwner] = &[crate::host_args::ArgOwner {
+    applies: |tool| tool.replace('_', ".") == "host.spec.test",
+    path: "/invocations",
+    keywords: &["maxItems"],
+    codes: &["too_many_invocations"],
+}];
+
 /// Verbs whose handler forwards a call back into `dispatch_tenant_tool`; see the
 /// comment there. Canonical dotted names (an alias is resolved before dispatch).
 const FORWARDING_WRAPPERS: &[&str] = &["host.tool.call", "host.tool.test", "host.estimate"];
@@ -7202,8 +7257,15 @@ impl McpHostHandler {
         // straight through to `inner`, whose first line is the `fields` check
         // repeated here. run 326 / run 953 (10-17), FORWARD_STACK_BUDGET.
         let result = if FORWARDING_WRAPPERS.contains(&name) {
-            match crate::paged::refuse_fields_on_unprojected(name, &args) {
-                Ok(()) => self.forwarding_wrapper(tenant, calls_auth_method, end_user, name, args).await,
+            // The same two checks `dispatch_tenant_tool_inner` makes first: the
+            // wrapper's descriptor validates its own call like every other verb.
+            match crate::paged::refuse_fields_on_unprojected(name, &args)
+                .and_then(|()| crate::host_args::validate_host_args(&self.state.kinds, name, &args))
+            {
+                Ok(()) => {
+                    crate::host_args::note_handler_run(&tenant.namespace, name);
+                    self.forwarding_wrapper(tenant, calls_auth_method, end_user, name, args).await
+                }
                 Err(e) => Err(e),
             }
         } else {
@@ -7864,6 +7926,15 @@ impl McpHostHandler {
         // `call_tool_inner` runs for `host.*` -- one validator, one more
         // call site.
         crate::host_args::validate_host_args(&self.state.kinds, name, &args)?;
+        // Counted after the validator passed, keyed by the `tenant` (else
+        // `prefix`) argument -- empty for "every tenant" -- so concurrent
+        // tests cannot disturb each other's count.
+        let counted_for = args
+            .get("tenant")
+            .or_else(|| args.get("prefix"))
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        crate::host_args::note_handler_run(counted_for, name);
         let result = match name {
             "admin.tenants" => admin::tenants(&self.state, &args).await,
             "admin.tenant_disable" => admin::tenant_disable(&self.state, &args).await,
@@ -9122,9 +9193,6 @@ impl McpHostHandler {
     /// PRD-mcphost-host-doctor-tool R2/R5/R6: `host.doctor`. `tenant` is
     /// `None` for the admin bearer, which must name the tenant to read.
     async fn doctor(&self, tenant: Option<&Tenant>, args: Value) -> Result<Value, AppError> {
-        if let Some(known) = known_control_plane_args("host.doctor", &self.state.kinds) {
-            crate::errors::check_unknown_argument(&args, "host.doctor", &known)?;
-        }
         let limit = match args.get("limit") {
             None | Some(Value::Null) => 50,
             Some(v) => v
@@ -9195,9 +9263,6 @@ impl McpHostHandler {
     /// `None` for the admin bearer, which may read any tenant's trace but
     /// never replays one (a replay runs as the call's owner).
     async fn call_trace(&self, tenant: Option<&Tenant>, args: Value) -> Result<Value, AppError> {
-        if let Some(known) = known_control_plane_args("host.call_trace", &self.state.kinds) {
-            crate::errors::check_unknown_argument(&args, "host.call_trace", &known)?;
-        }
         let call_id: i64 = match args.get("call_id") {
             Some(Value::String(s)) => s.trim().parse().ok(),
             Some(Value::Number(n)) => n.as_i64(),
@@ -9924,7 +9989,7 @@ impl McpHostHandler {
             .ok_or_else(|| AppError::InvalidArgs("missing required argument 'description'".into()))?
             .to_string();
         let kind_name = args.get("kind").and_then(Value::as_str).unwrap_or("python");
-        if kind_name != "python" {
+        if !crate::drafter::DRAFT_KINDS.contains(&kind_name) {
             return Err(AppError::InvalidArgs(format!(
                 "host.tool_from_description drafts python tools only; got kind '{kind_name}'"
             )));
@@ -10355,9 +10420,6 @@ impl McpHostHandler {
         auth_method: &str,
         end_user: Option<&crate::enduser::EndUser>,
     ) -> Result<Value, AppError> {
-        if let Some(known) = known_control_plane_args("host.uptime.create", &self.state.kinds) {
-            crate::errors::check_unknown_argument(&args, "host.uptime.create", &known)?;
-        }
         let plan = self.state.plans.get(&tenant.plan).ok_or_else(|| {
             AppError::Internal(format!(
                 "tenant's plan '{}' is not in the loaded plan catalog",
@@ -12411,9 +12473,38 @@ impl McpHostHandler {
                 _ => {}
             }
         }
+        // PRD-mcphost-host-args-validated-by-default R5 (open question 3): the
+        // verbs the match below answers WITHOUT `dispatch_tenant_tool_inner`
+        // (reachable before signup) are validated by the same descriptor here.
+        // A `NoDryRun` write verb answers `dry_run: true` with its refusal
+        // (`data.no_dry_run_reason`) before the descriptor validator, the same
+        // order `dispatch_tenant_tool_dry_run` keeps for every other verb
+        // (dryv_ac02: `host.feedback.send` is pre-dispatch and `external_effect`).
+        let no_dry_run_refusal = crate::write_verbs::lookup(&body_name).and_then(|verb| match verb.dry_run {
+            crate::write_verbs::DryRun::NoDryRun(reason) if crate::write_verbs::dry_run_requested(&args) => {
+                Some(crate::write_verbs::no_dry_run_error(verb, reason))
+            }
+            _ => None,
+        });
+        let pre_dispatch_gate: Result<(), AppError> = if let Some(err) = no_dry_run_refusal
+            && is_pre_dispatch_tool(&body_name)
+        {
+            Err(err)
+        } else if is_pre_dispatch_tool(&body_name) {
+            let namespace = match &auth {
+                Auth::Tenant(tenant, _) => tenant.namespace.as_str(),
+                _ => "",
+            };
+            crate::host_args::validate_host_args(&self.state.kinds, &body_name, &args)
+                .inspect(|()| crate::host_args::note_handler_run(namespace, &body_name))
+        } else {
+            Ok(())
+        };
         let outcome: Result<Value, AppError> = if let Some(replayed) = replay_outcome {
             replayed
         } else if let Some(err) = end_user_err {
+            Err(err)
+        } else if let Err(err) = pre_dispatch_gate {
             Err(err)
         } else {
             match (&auth, body_name.as_str()) {
