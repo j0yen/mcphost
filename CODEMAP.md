@@ -168,6 +168,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `src/registry.rs` (<1k) `host.registry_publish` support (PRD requirement 15 / AC19): building an MCP registry `server.json` documen...
 - `src/registry_manifest.rs` (<1k) `mcphost registry-manifest` (PRD-mcphost-registry-listing P0 requirements 1/2): generates the public MCP re...
 - `src/resources.rs` (<1k) PRD-mcphost-resources-for-tenant-data: a tenant's tables, docs, run logs and tool specs as MCP resources at...
+- `src/resume.rs` (<1k) PRD-mcphost-resume-tool: `host.resume {}` -- one call that answers "what was I doing?" for a returning agen...
 - `src/retention.rs` (<1k) PRD-mcphost-data-retention: per-table retention windows, the nightly prune, and the disk-floor write guard.
 - `src/retry_policy.rs` (<1k) PRD-mcphost-retry-policy-table-generated: the one table that answers "is this error worth retrying, how soo...
 - `src/returns.rs` (<1k) PRD-mcphost-second-session-nudge: the daily sweep that gives a one-and-done tenant one message back.
@@ -303,6 +304,8 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `RECIPES` in `src/prompts.rs`
 - `FRAME_SEQUENCES` in `src/protocol/frames.rs`
 - `RESOURCE_TEMPLATES` in `src/resources.rs`
+- `ANON_SAFE_TOOLS` in `src/resume.rs`
+- `RESUME_NEXT` in `src/resume.rs`
 - `POLICY_TABLES` in `src/retention.rs`
 - `RETRY_POLICY` in `src/retry_policy.rs`
 - `SAMPLING_ERROR_CODES` in `src/sampling.rs`
