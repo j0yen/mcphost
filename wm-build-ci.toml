@@ -62,3 +62,5 @@ name = "bad-rust-audit"
 cmd = "./scripts/audit.sh"
 where = "host"
 wall_minutes = 10
+receipt = "target/autobuilder/receipts/risk-gate.json"
+fail_marker = "audit: BLOCKING"

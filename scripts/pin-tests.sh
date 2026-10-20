@@ -39,7 +39,8 @@ if [ "${1:-}" = "--cargo-free" ]; then
   start=$SECONDS
   failed=0
   for chk in "gen-test-suites --check:scripts/gen-test-suites.sh --check" \
-             "ci-test-partition check:scripts/ci-test-partition.sh check"; do
+             "ci-test-partition check:scripts/ci-test-partition.sh check" \
+             "audit-marker-check:scripts/audit-marker-check.sh"; do
     name=${chk%%:*}
     cmd=${chk#*:}
     t0=$SECONDS
@@ -56,10 +57,10 @@ if [ "${1:-}" = "--cargo-free" ]; then
     fi
   done
   if [ "$failed" -ne 0 ]; then
-    echo "pin-tests: FAILED (2 checks, $((SECONDS - start))s)"
+    echo "pin-tests: FAILED (3 checks, $((SECONDS - start))s)"
     exit 1
   fi
-  echo "pin-tests: ok (2 checks, $((SECONDS - start))s)"
+  echo "pin-tests: ok (3 checks, $((SECONDS - start))s)"
   exit 0
 fi
 
