@@ -10899,6 +10899,10 @@ impl McpHostHandler {
             // A storage/internal failure is not an admission verdict.
             Err(err) if matches!(err.code(), "storage" | "internal") => return Err(err),
             Err(err) => {
+                // PRD-mcphost-onboarding-dead-ends-zero R1: the same
+                // `data.tool` (so the same `next_call`) the real call's
+                // `ran_tool` gives this refusal.
+                let err = err.with_tool(crate::next_call::caller_tool_name(&tenant.namespace, name));
                 let data = err.into_error_data_at(Some(&self.state.public_url));
                 json!({
                     "code": data.data.as_ref().and_then(|d| d.get("error_code")).cloned().unwrap_or(Value::Null),
@@ -12609,6 +12613,28 @@ impl McpHostHandler {
         } else {
             Ok(())
         };
+        // PRD-mcphost-onboarding-dead-ends-zero R1: the tool a running verb
+        // targets, so a kind-level error from it (`args_invalid`,
+        // `tool_exception`, `upstream_status`) can name it in `next_call`.
+        let ran_tool: Option<String> = match body_name.as_str() {
+            "host.tool.call" | "host.tool_call" | "host.tool.test" | "host.tool_test" | "host.tool.run"
+            | "host.tool_run" => args.get("name").and_then(Value::as_str).map(str::to_string),
+            name if name.starts_with("host.")
+                || name.starts_with("billing.")
+                || name.starts_with("admin.")
+                || name == "signup" =>
+            {
+                None
+            }
+            name => Some(name.to_string()),
+        };
+        let ran_tool = ran_tool.map(|tool| {
+            let namespace = match &auth {
+                Auth::Tenant(tenant, _) => tenant.namespace.as_str(),
+                _ => "",
+            };
+            crate::next_call::caller_tool_name(namespace, &tool).to_string()
+        });
         let outcome: Result<Value, AppError> = if let Some(replayed) = replay_outcome {
             replayed
         } else if let Some(err) = end_user_err {
@@ -12935,6 +12961,10 @@ impl McpHostHandler {
         // PRD-mcphost-idempotency-key-on-call R6: a `tool_timeout` names the
         // key (or null) and the retry hint.
         let outcome = outcome.map_err(|e| crate::idempotency::annotate_timeout(e, idem_key.as_deref()));
+        let outcome = outcome.map_err(|e| match &ran_tool {
+            Some(tool) => e.with_tool(tool),
+            None => e,
+        });
         // PRD-mcphost-usage-in-every-response R2: `_meta.usage` is built BEFORE
         // the idempotency store captures the response, so a replay returns the
         // first response's usage verbatim (no replay-path query). A replay

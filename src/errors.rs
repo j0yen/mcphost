@@ -1473,6 +1473,12 @@ impl AppError {
         // A payload that already names its own `docs` (`args_invalid` ->
         // `host.tool_test`) keeps it.
         obj.entry("docs".to_string()).or_insert(json!("host.quickstart"));
+        // PRD-mcphost-onboarding-dead-ends-zero R3: the one place every
+        // error gets its `next_call`; a payload naming its own keeps it.
+        if !obj.contains_key("next_call") {
+            let ctx = crate::next_call::ErrorCtx::from_error(&self);
+            obj.insert("next_call".to_string(), self.next_call(&ctx).to_json());
+        }
         // PRD-mcphost-first-hour-support-surface requirement 1 (AC1):
         // every payload carries its own correlation id, not just
         // `Internal`'s (which also folds it into `message` above, unchanged

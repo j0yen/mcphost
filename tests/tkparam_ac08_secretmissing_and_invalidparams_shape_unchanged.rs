@@ -36,8 +36,8 @@ fn secret_missing_data_keys_are_unchanged() {
     // base URL, none here -- so those three fold in the same way.
     assert_eq!(
         keys(&data),
-        BTreeSet::from(["error_code", "field", "expected", "docs", "request_id", "feedback_hint", "class", "family", "remedy", "retry"].map(String::from)),
-        "secret_missing data keys must be exactly error_code/field/expected/docs/request_id/feedback_hint + registry class/family/remedy + retry, no example: {data:?}"
+        BTreeSet::from(["error_code", "field", "expected", "docs", "request_id", "feedback_hint", "next_call", "class", "family", "remedy", "retry"].map(String::from)),
+        "secret_missing data keys must be exactly error_code/field/expected/docs/request_id/feedback_hint/next_call + registry class/family/remedy + retry, no example: {data:?}"
     );
 }
 
@@ -52,7 +52,7 @@ fn invalid_params_data_keys_are_unchanged() {
     // and errors-json registry `class`/`family`/`remedy`.
     assert_eq!(
         keys(&data),
-        BTreeSet::from(["error_code", "docs", "request_id", "feedback_hint", "class", "family", "remedy", "retry"].map(String::from)),
-        "invalid_params data keys must be exactly error_code/docs/request_id/feedback_hint + registry class/family/remedy + retry, no field/expected/example: {data:?}"
+        BTreeSet::from(["error_code", "docs", "request_id", "feedback_hint", "next_call", "class", "family", "remedy", "retry"].map(String::from)),
+        "invalid_params data keys must be exactly error_code/docs/request_id/feedback_hint/next_call + registry class/family/remedy + retry, no field/expected/example: {data:?}"
     );
 }
