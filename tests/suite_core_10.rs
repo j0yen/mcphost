@@ -164,6 +164,10 @@ mod mwlpb_ac01_timeout_clamp_and_args_invalid;
 mod mwlpb_ac02_final_run_wait_returns_fast;
 #[path = "mwlpb_ac03_plans_json_carries_wait_limits.rs"]
 mod mwlpb_ac03_plans_json_carries_wait_limits;
+#[path = "ndead_ac02_journey10_zero_dead_ends.rs"]
+mod ndead_ac02_journey10_zero_dead_ends;
+#[path = "ndead_ac03_unknown_kind_names_registry_kind.rs"]
+mod ndead_ac03_unknown_kind_names_registry_kind;
 #[path = "nexttool_ac01_anonymous_starter_set.rs"]
 mod nexttool_ac01_anonymous_starter_set;
 #[path = "nexttool_ac03_signup_emits_list_changed.rs"]

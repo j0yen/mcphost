@@ -161,6 +161,8 @@ mod msmp_ac04_fifth_ask_in_one_call_is_refused;
 mod msmp_ac05_daily_token_quota_refuses_before_asking;
 #[path = "msmp_ac06_tool_logs_hold_counts_never_the_prompt.rs"]
 mod msmp_ac06_tool_logs_hold_counts_never_the_prompt;
+#[path = "ndead_ac04_python_args_invalid_coerces_example.rs"]
+mod ndead_ac04_python_args_invalid_coerces_example;
 #[path = "pgm_ac05_skip_when_semaphore_nearly_full.rs"]
 mod pgm_ac05_skip_when_semaphore_nearly_full;
 #[path = "plainenv_ac01_env_reaches_process.rs"]
@@ -241,5 +243,3 @@ mod rgpt_first_run_golden_path;
 mod rgpt_team_memory_golden_path;
 #[path = "rgpt_webhook_inbox_golden_path.rs"]
 mod rgpt_webhook_inbox_golden_path;
-#[path = "rowpol_ac12_python_bridge_threads_end_user_through_table_query.rs"]
-mod rowpol_ac12_python_bridge_threads_end_user_through_table_query;
