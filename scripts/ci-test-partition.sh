@@ -61,6 +61,10 @@
 #   ci-test-partition.sh core-shard <n> <of>  # this shard's slice of the core
 #                                              # suite list (`--bins` on shard 1)
 #   ci-test-partition.sh list <sandbox|core>   # bare SUITE names, one per line
+#   ci-test-partition.sh list measured-required  # the suite keys that MUST have a measured
+#                                                # entry: the weights file's keys minus `lib`
+#                                                # and `bin:*` (one emitter; ci-refresh-weights.sh,
+#                                                # `check` and the tests all read it)
 #   ci-test-partition.sh classify-file <path>  # "sandbox" or "core" for one file
 #   ci-test-partition.sh classify-files <path>...  # the same, one line per path, one grep
 #   ci-test-partition.sh classify-agree  # exit 0 iff classify-files == classify-file over tests/*.rs
@@ -263,6 +267,15 @@ validate_shard_args() { # <idx> <count> -> exit 0 iff both are ints and 1<=idx<=
 
 weight_of() { # <name> -> recorded seconds, empty when absent
   jq -r --arg k "$1" '.[$k] // empty' "$WEIGHTS_FILE" 2>/dev/null
+}
+
+# measured_required -> the suite keys scripts/ci-suite-measured.json must carry one entry
+# for: every key of the weights file except `lib` and `bin:*`. DERIVED from the weights
+# file (which gen-test-suites.sh keeps in sync with the suite files), never a literal
+# list; ci-refresh-weights.sh's completeness rule, `check` and the tests all call
+# `ci-test-partition.sh list measured-required`, so they cannot drift.
+measured_required() {
+  jq -r 'keys[] | select(. != "lib" and (startswith("bin:") | not))' "$WEIGHTS_FILE"
 }
 
 # assign_weighted <sandbox|core> <count> -> "<shard> <name> <weight>" lines for
@@ -541,7 +554,10 @@ case "${1:-}" in
                  esac ;;
   sandbox-shard) shard sandbox "${2:?usage: ci-test-partition.sh sandbox-shard <n> <of>}" "${3:?usage: ci-test-partition.sh sandbox-shard <n> <of>}" ;;
   core-shard)    shard core "${2:?usage: ci-test-partition.sh core-shard <n> <of>}" "${3:?usage: ci-test-partition.sh core-shard <n> <of>}" ;;
-  list)          suite_names "${2:?usage: ci-test-partition.sh list <sandbox|core>}" ;;
+  list)          case "${2:-}" in
+                   measured-required) measured_required ;;
+                   *) suite_names "${2:?usage: ci-test-partition.sh list <sandbox|core|measured-required>}" ;;
+                 esac ;;
   classify-file) classify "${2:?usage: ci-test-partition.sh classify-file <path>}" ;;
   classify-files) shift; classify_files "$@" ;;
   classify-agree) classify_agree ;;
@@ -551,5 +567,5 @@ case "${1:-}" in
                    *) echo "usage: ci-test-partition.sh limits <sandbox|core>" >&2; exit 2 ;;
                  esac ;;
   check)         check ;;
-  *) echo "usage: $(basename "$0") <sandbox|core|shards [sandbox|core]|sandbox-shard <n> <of>|core-shard <n> <of>|list <p>|limits <p>|classify-file <path>|classify-files <path>...|classify-agree|check>" >&2; exit 2 ;;
+  *) echo "usage: $(basename "$0") <sandbox|core|shards [sandbox|core]|sandbox-shard <n> <of>|core-shard <n> <of>|list <p|measured-required>|limits <p>|classify-file <path>|classify-files <path>...|classify-agree|check>" >&2; exit 2 ;;
 esac

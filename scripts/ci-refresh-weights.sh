@@ -3,9 +3,10 @@
 # the recorded seconds in scripts/ci-suite-weights.json.
 #
 # Reads the `suite=<name> measured=<s>s recorded=...` lines that
-# scripts/ci-shard-report.sh prints into every core shard log (and into a sandbox
-# shard log at or above its warn line), takes the MAX measured seconds per suite
-# over every input, then:
+# scripts/ci-shard-report.sh prints into every shard log (core AND sandbox, at every
+# level: a sandbox shard under its warn line used to print none, so a suite recorded
+# at 152 s that really ran ~300 s alarmed nothing), takes the MAX measured seconds per
+# suite over every input, then:
 #   1. writes scripts/ci-suite-measured.json   (suite -> max measured seconds)
 #   2. sets each suite's recorded weight to ceil(measured) in
 #      scripts/ci-suite-weights.json, except a SOLO suite (its weight is declared
@@ -22,15 +23,17 @@
 #                                                  job's log mid-shard (run 39163386677 lost shard 3/5,
 #                                                  incl. suite_core_09), dropping suites silently.
 #   then: scripts/gen-test-suites.sh && scripts/ci-test-partition.sh check
-# Completeness: every CORE suite key in scripts/ci-suite-weights.json (not `lib`, `bin:*`, or a
-# sandbox suite, which reports only above its warn line) must have a `suite=<name> measured=` line
-# in the input; otherwise this exits 1 naming the missing suites and writes NOTHING.
+# Completeness: every suite key of `ci-test-partition.sh list measured-required` (the keys of
+# scripts/ci-suite-weights.json except `lib` and `bin:*`: core AND sandbox suites) must have a
+# `suite=<name> measured=` line in the input; otherwise this exits 1 naming the missing suites and
+# writes NOTHING.
 # Env: CI_REFRESH_REPO (default j0yen/mcphost); CI_REFRESH_ROOT (default this checkout; tests use a scratch root);
 #   CI_REFRESH_ALLOW_LOCAL=1 to accept a local <log-file> (a coder's local timing must never become the
 #   recorded measurement: without it only a CI run id is accepted and a file argument writes NOTHING).
 set -uo pipefail
-cd "${CI_REFRESH_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}" || exit 2
-[ "$#" -ge 1 ] || { sed -n '2,31p' "$0" >&2; exit 2; }
+SELF_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${CI_REFRESH_ROOT:-$SELF_ROOT}" || exit 2
+[ "$#" -ge 1 ] || { sed -n '2,32p' "$0" >&2; exit 2; }
 if [ "${CI_REFRESH_ALLOW_LOCAL:-}" != 1 ]; then
   for arg in "$@"; do
     [ -f "$arg" ] && { echo "ci-refresh-weights: $arg is a local log file; only a CI run id is a measurement (set CI_REFRESH_ALLOW_LOCAL=1 to override); nothing written" >&2; exit 2; }
@@ -50,7 +53,11 @@ for arg in "$@"; do
   fi
 done
 
-python3 - "$tmp" <<'PY'
+# The required key set has ONE emitter (ci-test-partition.sh), read against THIS root's weights file.
+required="$(CI_SUITE_WEIGHTS_FILE="$PWD/scripts/ci-suite-weights.json" "$SELF_ROOT/scripts/ci-test-partition.sh" list measured-required)" \
+  || { echo "ci-refresh-weights: cannot read the required suite list from ci-test-partition.sh" >&2; exit 2; }
+
+python3 - "$tmp" "$required" <<'PY'
 import glob, json, os, re, sys
 
 LINE = re.compile(r'\bsuite=(\S+) measured=([0-9.]+)s\b')
@@ -66,12 +73,13 @@ if not measured:
 W, M = "scripts/ci-suite-weights.json", "scripts/ci-suite-measured.json"
 weights = json.load(open(W))
 
-# COMPLETENESS (generated from the weights file, never a hand list): every core suite must be
-# measured in the input, else a truncated log silently drops suites from the measured file.
-core = [k for k in weights if k != "lib" and not k.startswith("bin:") and "sandbox" not in k]
-missing = sorted(k for k in core if k not in measured)
+# COMPLETENESS (the one emitter `ci-test-partition.sh list measured-required`, never a hand list):
+# every required suite, core and sandbox, must be measured in the input, else a truncated log (or a
+# shard that printed nothing) silently drops suites from the measured file.
+required = sys.argv[2].split()
+missing = sorted(k for k in required if k not in measured)
 if missing:
-    sys.exit("ci-refresh-weights: input lacks a `suite=<name> measured=` line for core suite(s): "
+    sys.exit("ci-refresh-weights: input lacks a `suite=<name> measured=` line for suite(s): "
              + ", ".join(missing) + " (truncated log? nothing written)")
 old_m = json.load(open(M)) if os.path.exists(M) else {}
 
