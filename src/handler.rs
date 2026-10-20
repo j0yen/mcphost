@@ -977,6 +977,14 @@ fn host_schema_any(props: Value, required: &[&str], alternatives: &[&str]) -> Ma
     host_schema_extra(props, required, json!({"anyOf": any_of_required(alternatives)}))
 }
 
+/// `schema` plus an `anyOf` of one `{required: [alt]}` branch per alternative:
+/// the either-or counterpart of [`host_schema_any`] for an `admin.*` tool.
+fn schema_any(props: Value, required: &[&str], alternatives: &[&str]) -> Map<String, Value> {
+    let mut obj = schema(props, required);
+    obj.insert("anyOf".to_string(), any_of_required(alternatives));
+    obj
+}
+
 /// `host_schema` plus extra top-level schema keywords (`anyOf` with
 /// multi-argument branches, `allOf` with an `if`/`then`) for the
 /// requirements `required` alone cannot state.
@@ -1532,13 +1540,13 @@ fn host_tools_part_01(kinds: &KindRegistry) -> Vec<Tool> {
              subsets of your own, depth at most 3. Asking for more fails scope_escalation naming \
              the first excess item. Needs can_delegate (the primary always has it). Returns the \
              key once.",
-            host_schema(
+            host_schema_any(
                 json!({
                     "scopes": {
                         "type": "array",
                         "items": {"type": "string", "enum": crate::scopes::all_names()},
                         "minItems": 1,
-                        "description": "Scopes the child holds; each must be implied by yours (required unless bind is given; then default mcp).",
+                        "description": "Scopes the child holds; each must be implied by yours (default mcp when bind is given).",
                     },
                     "tools": {
                         "type": "array",
@@ -1566,6 +1574,7 @@ fn host_tools_part_01(kinds: &KindRegistry) -> Vec<Tool> {
                     },
                 }),
                 &[],
+                &["scopes", "bind"],
             ),
         ),
         // PRD-mcphost-tenant-self-offboard P0 requirement 1 / AC1-4:
@@ -1941,7 +1950,7 @@ fn host_tools_part_02() -> Vec<Tool> {
              values are never exported: the result's secrets_to_set names the ones to set again. \
              Runs as a background job (poll host.runs.get: entries_done / entries_total); \
              dry_run: true validates and returns the entry counts and bytes without writing.",
-            host_schema(
+            host_schema_any(
                 json!({
                     "run_id": {
                         "type": "string",
@@ -1957,6 +1966,7 @@ fn host_tools_part_02() -> Vec<Tool> {
                     },
                 }),
                 &[],
+                &["run_id", "url"],
             ),
         ),
         // PRD-mcphost-sharing P0 requirement 1: a tool can be made
@@ -6067,19 +6077,24 @@ fn admin_tools_raw() -> Vec<Tool> {
             "admin.oauth.client_block",
             "Block a client (by exact client_id) or every client from a CIMD host, across every \
              tenant: register/authorize/exchange all refuse client_blocked from then on.",
-            schema(
+            schema_any(
                 json!({
                     "client_id": {"type": "string"},
                     "cimd_host": {"type": "string"},
                     "reason": {"type": "string"},
                 }),
                 &[],
+                &["client_id", "cimd_host"],
             ),
         ),
         Tool::new(
             "admin.oauth.client_unblock",
             "Remove a prior admin.oauth.client_block entry (exact client_id or cimd_host match).",
-            schema(json!({"client_id": {"type": "string"}, "cimd_host": {"type": "string"}}), &[]),
+            schema_any(
+                json!({"client_id": {"type": "string"}, "cimd_host": {"type": "string"}}),
+                &[],
+                &["client_id", "cimd_host"],
+            ),
         ),
         Tool::new(
             "admin.oauth.blocked",

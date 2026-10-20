@@ -97,6 +97,18 @@ mod dryv_ac02_write_verb_registry_drift;
 mod dryv_ac06_key_rotate_refuses_dry_run;
 #[path = "dryv_ac07_tools_list_dry_run_schema.rs"]
 mod dryv_ac07_tools_list_dry_run_schema;
+#[path = "ecs_ac01_either_or_in_schema.rs"]
+mod ecs_ac01_either_or_in_schema;
+#[path = "ecs_ac02_empty_call_router_and_validator_agree.rs"]
+mod ecs_ac02_empty_call_router_and_validator_agree;
+#[path = "ecs_ac03_empty_call_refused_by_validator.rs"]
+mod ecs_ac03_empty_call_refused_by_validator;
+#[path = "ecs_ac04_handlers_keep_their_own_refusal.rs"]
+mod ecs_ac04_handlers_keep_their_own_refusal;
+#[path = "ecs_ac05_docs_and_contract_carry_the_either_or.rs"]
+mod ecs_ac05_docs_and_contract_carry_the_either_or;
+#[path = "ecs_ac06_empty_call_script_selftest.rs"]
+mod ecs_ac06_empty_call_script_selftest;
 #[path = "edead_ac07_reason_table_cannot_drift.rs"]
 mod edead_ac07_reason_table_cannot_drift;
 #[path = "evkr_ac04_bad_kind_args_invalid.rs"]
