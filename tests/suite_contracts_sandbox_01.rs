@@ -14,6 +14,8 @@ mod lanecov;
 mod aliastruth_ac05_contract_next_hints_are_advertised;
 #[path = "bridgedisc_ac01_sandbox_api_source_of_truth.rs"]
 mod bridgedisc_ac01_sandbox_api_source_of_truth;
+#[path = "dryspt_ac05_sweep.rs"]
+mod dryspt_ac05_sweep;
 #[path = "emsnd_ac07_send_status_and_bridge_module_cannot_drift.rs"]
 mod emsnd_ac07_send_status_and_bridge_module_cannot_drift;
 #[path = "kdr_ac01_kind_doc_from_data.rs"]
