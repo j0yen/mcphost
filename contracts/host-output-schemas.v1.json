@@ -2667,6 +2667,60 @@
     ],
     "type": "object"
   },
+  "host.connect.providers": {
+    "properties": {
+      "count": {
+        "type": "integer"
+      },
+      "providers": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "available": {
+              "type": "boolean"
+            },
+            "docs_url": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "refresh": {
+              "type": "string"
+            },
+            "scope_purposes": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "scopes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "available",
+            "docs_url",
+            "name",
+            "refresh",
+            "scopes"
+          ]
+        }
+      }
+    },
+    "required": [
+      "count",
+      "providers"
+    ],
+    "type": "object"
+  },
   "host.docs.delete": {
     "properties": {
       "deleted": {

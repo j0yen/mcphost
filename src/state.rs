@@ -189,6 +189,10 @@ pub struct AppState {
     /// PRD-mcphost-contract-version-reported R1: sha/version/bytes of the
     /// contract dump, computed once when the state is built.
     pub contract: std::sync::Arc<crate::api_contract::ContractSnapshot>,
+    /// PRD-mcphost-connection-provider-registry R3: which `providers.toml`
+    /// providers have both a client id and secret in the environment,
+    /// snapshotted once at startup. Holds verdicts only, never the values.
+    pub connect_providers: crate::connect::ConnectProviders,
     pub secrets: SecretBox,
     pub admin_key: Option<String>,
     pub public_url: String,

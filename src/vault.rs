@@ -21,6 +21,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::auth::{generate_key, hash_key};
+use crate::connect::Provider;
 use crate::db::{Tenant, VaultHandoffOutcome};
 use crate::enduser::EndUser;
 use crate::errors::AppError;
@@ -62,32 +63,6 @@ fn arg_scopes(args: &Value) -> Result<String, AppError> {
 
 // ---- host.vault.* tools -----------------------------------------------
 
-/// `host.vault.provider_set`'s three OAuth presets (P1 requirement 4,
-/// AC7): an explicit `auth_url`/`token_url` in the call always overrides
-/// the matching preset value, field by field, not as an all-or-nothing
-/// choice. An unrecognized preset is `invalid_params` -- the wire code
-/// AC7 itself pins, distinct from [`AppError::InvalidArgs`]'s own
-/// `args_invalid`.
-fn preset_urls(preset: &str) -> Result<(&'static str, &'static str), AppError> {
-    match preset {
-        "slack" => Ok((
-            "https://slack.com/oauth/v2/authorize",
-            "https://slack.com/api/oauth.v2.access",
-        )),
-        "github" => Ok((
-            "https://github.com/login/oauth/authorize",
-            "https://github.com/login/oauth/access_token",
-        )),
-        "google" => Ok((
-            "https://accounts.google.com/o/oauth2/v2/auth",
-            "https://oauth2.googleapis.com/token",
-        )),
-        other => Err(AppError::InvalidParams(format!(
-            "unknown preset '{other}': expected 'slack', 'github', or 'google'"
-        ))),
-    }
-}
-
 /// `host.vault.provider_set` (requirement 2, AC11; P1 requirement 4, AC7): a
 /// re-set of an already registered provider name never counts against
 /// `vault_providers_max`, same "existing name is free" convention
@@ -96,7 +71,19 @@ pub async fn provider_set(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     let name = arg_str(args, "name")?;
     let preset = match args.get("preset") {
         None | Some(Value::Null) => None,
-        Some(Value::String(s)) => Some(preset_urls(s)?),
+        // PRD-mcphost-connection-provider-registry R6: a preset is a
+        // `providers.toml` row, resolved through `Provider::parse`. An
+        // unknown one is `invalid_params` (AC7's wire code, distinct from
+        // `args_invalid`) listing every `Provider::ALL` name.
+        Some(Value::String(s)) => {
+            let Some(p) = Provider::parse(s) else {
+                return Err(AppError::InvalidParams(format!(
+                    "unknown preset '{s}': expected one of {}",
+                    crate::connect::provider_names_csv()
+                )));
+            };
+            Some((&*p.spec().auth_url, &*p.spec().token_url))
+        }
         Some(_) => return Err(AppError::InvalidArgs("preset must be a string".to_string())),
     };
     let auth_url = match args.get("auth_url").and_then(Value::as_str) {
