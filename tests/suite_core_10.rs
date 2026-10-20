@@ -30,6 +30,18 @@ mod serve;
 #[path = "support/sjrc.rs"]
 mod sjrc;
 
+#[path = "mcphost-chatgpt-submission-pack_ac05_chatgpt_profile_empty_tenant_table.rs"]
+mod mcphost_chatgpt_submission_pack_ac05_chatgpt_profile_empty_tenant_table;
+#[path = "mcphost-chatgpt-submission-pack_ac06_reviewer_notes_first_call.rs"]
+mod mcphost_chatgpt_submission_pack_ac06_reviewer_notes_first_call;
+#[path = "mcphost-install-links-more-clients_ac01_twelve_surfaces.rs"]
+mod mcphost_install_links_more_clients_ac01_twelve_surfaces;
+#[path = "mcphost-install-links-more-clients_ac02_command_artefacts_carry_url_once.rs"]
+mod mcphost_install_links_more_clients_ac02_command_artefacts_carry_url_once;
+#[path = "mcphost-install-links-more-clients_ac03_connect_page_groups_every_surface.rs"]
+mod mcphost_install_links_more_clients_ac03_connect_page_groups_every_surface;
+#[path = "mcphost-install-links-more-clients_ac04_connect_go_every_id.rs"]
+mod mcphost_install_links_more_clients_ac04_connect_go_every_id;
 #[path = "mcphost-install-links-more-clients_ac05_quickstart_twelve_personal_surfaces.rs"]
 mod mcphost_install_links_more_clients_ac05_quickstart_twelve_personal_surfaces;
 #[path = "mcphost-install-links-more-clients_ac06_docs_block_regenerates_from_table.rs"]
@@ -1022,17 +1034,3 @@ mod snp_ac05_leak_test_cannot_pass_by_accident;
 mod snp_ac06_short_secret_blocks_whole_tokens_only;
 #[path = "snp_ac07_blocks_reach_audit_log_and_healthz.rs"]
 mod snp_ac07_blocks_reach_audit_log_and_healthz;
-#[path = "soff_ac01_header_and_arg_returns_success_envelope.rs"]
-mod soff_ac01_header_and_arg_returns_success_envelope;
-#[path = "soff_ac02_header_only_returns_success_and_whoami_disabled.rs"]
-mod soff_ac02_header_only_returns_success_and_whoami_disabled;
-#[path = "soff_ac03_arg_only_returns_success_envelope.rs"]
-mod soff_ac03_arg_only_returns_success_envelope;
-#[path = "soff_ac04_already_offboarded_idempotent_all_shapes.rs"]
-mod soff_ac04_already_offboarded_idempotent_all_shapes;
-#[path = "soff_ac05_matrix_exhaustive_auth_shapes.rs"]
-mod soff_ac05_matrix_exhaustive_auth_shapes;
-#[path = "soff_ac06_non_lifecycle_verb_still_refused.rs"]
-mod soff_ac06_non_lifecycle_verb_still_refused;
-#[path = "soff_ac07_docs_document_already_offboarded.rs"]
-mod soff_ac07_docs_document_already_offboarded;

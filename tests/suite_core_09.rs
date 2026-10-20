@@ -674,6 +674,18 @@ mod kindroute_ac07_http_database_query_publish_carries_hint;
 mod kindroute_ac07_quickstart_no_kind_lists_kinds_aliases_recipes;
 #[path = "kindroute_ac08_full_suite_green_at_landing.rs"]
 mod kindroute_ac08_full_suite_green_at_landing;
+#[path = "kreqd_ac01_http_requiredness_derived.rs"]
+mod kreqd_ac01_http_requiredness_derived;
+#[path = "kreqd_ac02_minimal_specs_are_minimal.rs"]
+mod kreqd_ac02_minimal_specs_are_minimal;
+#[path = "kreqd_ac03_kind_pages_required_column.rs"]
+mod kreqd_ac03_kind_pages_required_column;
+#[path = "kreqd_ac04_planted_method_row_drift.rs"]
+mod kreqd_ac04_planted_method_row_drift;
+#[path = "kreqd_ac05_rejection_names_required_field.rs"]
+mod kreqd_ac05_rejection_names_required_field;
+#[path = "kreqd_ac06_minimal_specs_section.rs"]
+mod kreqd_ac06_minimal_specs_section;
 #[path = "kst_ac01_subkey_authenticates_as_tenant.rs"]
 mod kst_ac01_subkey_authenticates_as_tenant;
 #[path = "kst_ac02_subkey_lists_and_denies_by_allowlist.rs"]
@@ -740,18 +752,6 @@ mod mcphost_chatgpt_submission_pack_ac02_check_detects_drift;
 mod mcphost_chatgpt_submission_pack_ac03_descriptions_identical;
 #[path = "mcphost-chatgpt-submission-pack_ac04_chatgpt_surface_everywhere.rs"]
 mod mcphost_chatgpt_submission_pack_ac04_chatgpt_surface_everywhere;
-#[path = "mcphost-chatgpt-submission-pack_ac05_chatgpt_profile_empty_tenant_table.rs"]
-mod mcphost_chatgpt_submission_pack_ac05_chatgpt_profile_empty_tenant_table;
-#[path = "mcphost-chatgpt-submission-pack_ac06_reviewer_notes_first_call.rs"]
-mod mcphost_chatgpt_submission_pack_ac06_reviewer_notes_first_call;
-#[path = "mcphost-install-links-more-clients_ac01_twelve_surfaces.rs"]
-mod mcphost_install_links_more_clients_ac01_twelve_surfaces;
-#[path = "mcphost-install-links-more-clients_ac02_command_artefacts_carry_url_once.rs"]
-mod mcphost_install_links_more_clients_ac02_command_artefacts_carry_url_once;
-#[path = "mcphost-install-links-more-clients_ac03_connect_page_groups_every_surface.rs"]
-mod mcphost_install_links_more_clients_ac03_connect_page_groups_every_surface;
-#[path = "mcphost-install-links-more-clients_ac04_connect_go_every_id.rs"]
-mod mcphost_install_links_more_clients_ac04_connect_go_every_id;
 #[path = "mcphost_admin_schema_contract_ac01_tenants_schema_version.rs"]
 mod mcphost_admin_schema_contract_ac01_tenants_schema_version;
 #[path = "mcphost_admin_schema_contract_ac02_listings_validate_v1_schema.rs"]
