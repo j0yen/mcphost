@@ -229,6 +229,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "capabilities-wire-check",
             "checkcompat-race-soak",
             "child-proc-lint",
+            "codemap",
             "contracts",
             "docs-links",
             "docsearch-fixtures",

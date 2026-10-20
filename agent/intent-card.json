@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-generated-dispatch-table-stack-budget.md",
-  "intent_slug": "mcphost-generated-dispatch-table-stack-budget",
-  "root_motivation": "**Who:** the builder whose PR adds one host verb and a 40-line arm, and whose CI shard then dies with SIGABRT in a test about a different verb (run 326, `verbfwd_ac01_trigger_set_dotted_forwards`; runs 953 and 945, same class, 10-17); the operator who redrives those runs; the agent on prod whose forwarded calls carry the same frames in release builds.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-generated-code-map.md",
+  "intent_slug": "mcphost-generated-code-map",
+  "root_motivation": "**Who:** the Sonnet inner coders wm-build runs on RedBaron and ryzen7 for every mcphost PRD, and the hand coders on hotfixes.",
   "user_persona": "An agent that runs host.note.put {text, attach_to: {tool}} once and reads the note on that tool's description in every later session; the same user's second client sees it too.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,50 +14,50 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given mcphost main containing PR #413, When `scripts/gen-dispatch-table.sh --write` runs and then `--check` runs inside `regen-check`'s generator list, Then `src/dispatch_table.rs` exists with one sorted row per canonical dotted `host.*` verb of `mcphost contract dump` minus `tool_aliases`, each row naming `arm_<verb>`, `--check` exits 0 on a clean tree and 1 naming the stale file after any registry change without a regen.",
-      "test": "tests/fwdtab_ac01_generated_dispatch_table.rs"
+      "description": "Given the repo at the build's tip, When `scripts/gen-codemap.sh` runs, Then `CODEMAP.md` lists every path in `git ls-files 'src/**/*.rs'` exactly once, each with a size class and a non-empty `//!` summary, contains no `:<digits>` line reference, and is under 40,000 bytes (`tests/cmap_ac01.rs`)",
+      "test": "tests/cmap_ac01_codemap_lists_every_source_file.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the table and `host_tool_descriptors(&KindRegistry::with_builtin())`, When `fwdtab_ac02` compares the table's names with the registry's canonical dotted `host.*` names, Then the sets are equal; and given one descriptor temporarily removed from the registry in the test, Then the test fails naming that verb as table-only (and a removed row fails naming it as registry-only).",
-      "test": "tests/fwdtab_ac02_table_matches_registry.rs"
+      "description": "Given `src/db.rs` with its `// ---- <name> ----` banners, When the map is generated, Then the db.rs entry lists every banner name in file order, and a fixture file of 5,000+ lines with no banner appears under \"large files without sections\" (`tests/cmap_ac02.rs`)",
+      "test": "tests/cmap_ac02_db_banners_and_large_files_without_sections.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a forwarded `host.whoami` on a debug build, When `scripts/fwd-stack-measure.sh --frame dispatch_tenant_tool_inner` measures the dispatcher's poll frame after every arm body moved into its `arm_*` function returning `Pin<Box<dyn Future>>`, Then the frame is \u2264 65,536 B (was 454 K) and `dispatch_tenant_tool_inner` contains no `match name` arm bodies, only the pre-checks, the lookup, the call, and the `unknown_host_tool` fallthrough.",
-      "test": "tests/fwdtab_ac03_dispatcher_frame_bounded.rs"
+      "description": "Given a fixture tree with a top-level `pub const FOO: &[&str]` registry, When the map is generated, Then the Registries section lists `FOO` with its file (`tests/cmap_ac03.rs`)",
+      "test": "tests/cmap_ac03_registries_section_lists_array_consts.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given the same forwarded call, When the inline arms of `call_tool_inner`'s `match (auth, name)` for `host.quickstart`, `host.help.search`, `host.help.get`, `host.errors`, `host.feedback.*`, `host.call_trace`, `host.doctor` have moved into boxed helpers, Then `call_tool_inner`'s poll frame is \u2264 163,840 B (was 260\u2013310 K) and `tests/verbfwd_ac0[1-7]*` plus the quickstart, help, errors and feedback suites pass unchanged.",
-      "test": "tests/fwdtab_ac04_call_tool_inner_frame_bounded.rs"
+      "description": "Given a fixture source file with no `//!` line in its first 5 lines, When the generator runs, Then it exits non-zero, names that file, and leaves `CODEMAP.md` unchanged; and the real tree passes (`tests/cmap_ac04.rs`)",
+      "test": "tests/cmap_ac04_missing_module_doc_fails_naming_file.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the guard `verbfwd_ac08_forward_stack_budget` with its registry walk and `SHALLOW` list unchanged, When `scripts/fwd-stack-measure.sh all` binary-searches all 226 ids on the debug build, Then the maximum is \u2264 1,048,576 B, `FORWARD_STACK_BUDGET` equals that maximum + 25 % and is \u2264 1,310,720 B, its doc comment names the maximum, its ids and the date, and the guard passes at that budget.",
-      "test": "tests/fwdtab_ac05_budget_lowered_on_the_measurement.rs"
+      "description": "Given a fixture copy with one source file added after generation, When `scripts/gen-codemap.sh --check` runs, Then it exits 1 naming the added path; on a freshly generated copy it exits 0; and ci.yml's `regen-check` job invokes `scripts/gen-codemap.sh --check` (`tests/cmap_ac05.rs`)",
+      "test": "tests/cmap_ac05_check_mode_names_added_path.rs"
     },
     {
       "id": "AC6",
-      "level": "SHOULD",
-      "description": "Given 200 sequential `host.tool_call name=\"host.whoami\"` calls against the in-process server, When `fwdtab_ac06` prints p50 and p95 on `origin/main` (with #413) and on the branch on the same host with the same `-j`, Then the branch p95 is \u2264 1.05 \u00d7 the main p95 and both printed values appear in the PR body.",
-      "test": "tests/fwdtab_ac06_forwarded_whoami_latency.rs"
+      "level": "MUST",
+      "description": "Given the build merged to origin/main, When a fresh shallow clone of origin/main's tip runs `scripts/gen-codemap.sh --check` against its committed `CODEMAP.md`, Then it exits 0 and the clone carries `CLAUDE.md` naming `CODEMAP.md` (Live; evidence: `cmd:d=$(mktemp -d) && git clone -q --depth 1 https://github.com/j0yen/mcphost \"$d\" && cd \"$d\" && test -f CODEMAP.md && grep -q CODEMAP.md CLAUDE.md && ./scripts/gen-codemap.sh --check && echo codemap-live-ok` prints `codemap-live-ok`; today the clo...",
+      "test": "deferred: Live (fresh clone of origin/main tip runs scripts/gen-codemap.sh --check green and CLAUDE.md names CODEMAP.md; evidence path scripts/gen-codemap.sh)"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given `cargo test --release` of the guard binary, When `scripts/fwd-stack-measure.sh --release test:host.trigger.set call:host.uptime.create call:host.table.chart` runs on `origin/main` (with #413) and on the branch, Then each id's release-profile minimum stack on the branch is \u2264 its value on main and all six numbers appear in the PR body.",
-      "test": "tests/fwdtab_ac07_release_stack_does_not_grow.rs"
+      "level": "MUST",
+      "description": "Given the repo root, When `CLAUDE.md` is read, Then it is under 30 lines and contains the strings `CODEMAP.md` and `scripts/gen-codemap.sh`, and that script path exists and is executable (`tests/cmap_ac07.rs`)",
+      "test": "tests/cmap_ac07_claude_md_points_at_codemap.rs"
     },
     {
       "id": "AC8",
-      "level": "MUST",
-      "description": "Given the PR with `FORWARD_STACK_BUDGET` \u2264 1,310,720 merged to main, When CI runs the core-suites shard that contains `suite_core_08` on the merge commit, Then that shard's log contains `verbfwd_ac08_forward_stack_budget::every_dotted_verb_forwards_within_the_stack_budget ... ok` and the shard is green (Live; evidence: `gh run view <merge-commit run> --log` of the `cargo test (core suites, shard N/M)` job containing that line)",
-      "test": "deferred: Live (the merge commit's core-suites shard log must contain the verbfwd_ac08 line; no tests/fwdtab_ac08 file)"
+      "level": "SHOULD",
+      "description": "Given a fixture copy where only one function body in a 2,000+ line file changes (same line-count class, no banner, `//!` or registry change), When the map is regenerated, Then `CODEMAP.md` is byte-identical (`tests/cmap_ac08.rs`)",
+      "test": "tests/cmap_ac08_body_edit_leaves_map_identical.rs"
     }
   ],
   "scope": [

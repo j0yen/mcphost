@@ -16,12 +16,12 @@ mod busyaudit;
 mod chart_fixture;
 #[path = "support/child_proc_lint.rs"]
 mod child_proc_lint;
+#[path = "support/codemap.rs"]
+mod codemap;
 #[path = "support/ctrace.rs"]
 mod ctrace;
 #[path = "support/docs_qa.rs"]
 mod docs_qa;
-#[path = "support/exprf.rs"]
-mod exprf;
 #[path = "support/oauth.rs"]
 mod oauth;
 #[path = "support/serve.rs"]
@@ -543,6 +543,20 @@ mod clink_ac06_digest_install_link_clicks_humans_only;
 mod clive_ac01_complete_fixture_keyless_envelope;
 #[path = "clive_ac03_empty_params_gets_bare_minus_32601.rs"]
 mod clive_ac03_empty_params_gets_bare_minus_32601;
+#[path = "cmap_ac01_codemap_lists_every_source_file.rs"]
+mod cmap_ac01_codemap_lists_every_source_file;
+#[path = "cmap_ac02_db_banners_and_large_files_without_sections.rs"]
+mod cmap_ac02_db_banners_and_large_files_without_sections;
+#[path = "cmap_ac03_registries_section_lists_array_consts.rs"]
+mod cmap_ac03_registries_section_lists_array_consts;
+#[path = "cmap_ac04_missing_module_doc_fails_naming_file.rs"]
+mod cmap_ac04_missing_module_doc_fails_naming_file;
+#[path = "cmap_ac05_check_mode_names_added_path.rs"]
+mod cmap_ac05_check_mode_names_added_path;
+#[path = "cmap_ac07_claude_md_points_at_codemap.rs"]
+mod cmap_ac07_claude_md_points_at_codemap;
+#[path = "cmap_ac08_body_edit_leaves_map_identical.rs"]
+mod cmap_ac08_body_edit_leaves_map_identical;
 #[path = "cnfm_ac02_confirm_required_over_threshold.rs"]
 mod cnfm_ac02_confirm_required_over_threshold;
 #[path = "cnfm_ac03_token_deletes_once.rs"]
@@ -1027,15 +1041,3 @@ mod exmf_ac04_stale_index_fails_the_build;
 mod exmf_ac05_schema_matches_committed_file;
 #[path = "exmf_ac06_zero_manifests_exits_two.rs"]
 mod exmf_ac06_zero_manifests_exits_two;
-#[path = "exprf_ac02_failing_proof_hides_the_example.rs"]
-mod exprf_ac02_failing_proof_hides_the_example;
-#[path = "exprf_ac03_green_report_unhides_and_resolves.rs"]
-mod exprf_ac03_green_report_unhides_and_resolves;
-#[path = "exprf_ac04_second_red_appends_to_one_incident.rs"]
-mod exprf_ac04_second_red_appends_to_one_incident;
-#[path = "exprf_ac05_unknown_name_and_non_admin_refused.rs"]
-mod exprf_ac05_unknown_name_and_non_admin_refused;
-#[path = "exprf_ac06_status_json_examples_block.rs"]
-mod exprf_ac06_status_json_examples_block;
-#[path = "exprf_ac07_only_dry_run_prints_and_executes_nothing.rs"]
-mod exprf_ac07_only_dry_run_prints_and_executes_nothing;

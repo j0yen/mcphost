@@ -9,6 +9,8 @@
 mod common;
 #[path = "support/chart_fixture.rs"]
 mod chart_fixture;
+#[path = "support/exprf.rs"]
+mod exprf;
 #[path = "support/exprp.rs"]
 mod exprp;
 #[path = "support/federation.rs"]
@@ -28,6 +30,18 @@ mod ac14_storage_unwritable;
 mod busyaudit_ac08_healthz_db_fields;
 #[path = "ctrv_ac03_status_and_healthz_carry_contract_identity.rs"]
 mod ctrv_ac03_status_and_healthz_carry_contract_identity;
+#[path = "exprf_ac02_failing_proof_hides_the_example.rs"]
+mod exprf_ac02_failing_proof_hides_the_example;
+#[path = "exprf_ac03_green_report_unhides_and_resolves.rs"]
+mod exprf_ac03_green_report_unhides_and_resolves;
+#[path = "exprf_ac04_second_red_appends_to_one_incident.rs"]
+mod exprf_ac04_second_red_appends_to_one_incident;
+#[path = "exprf_ac05_unknown_name_and_non_admin_refused.rs"]
+mod exprf_ac05_unknown_name_and_non_admin_refused;
+#[path = "exprf_ac06_status_json_examples_block.rs"]
+mod exprf_ac06_status_json_examples_block;
+#[path = "exprf_ac07_only_dry_run_prints_and_executes_nothing.rs"]
+mod exprf_ac07_only_dry_run_prints_and_executes_nothing;
 #[path = "exprp_ac02_literal_secret_value_is_refused.rs"]
 mod exprp_ac02_literal_secret_value_is_refused;
 #[path = "exprp_ac03_non_portable_and_failing_proof_are_refused.rs"]
@@ -996,36 +1010,8 @@ mod meshops_ac07_tenant_delete_cascade_across_mesh_tables;
 mod meshops_ac08_healthz_mesh_counters;
 #[path = "meshops_ac09_stats_refusals_by_code_per_sender.rs"]
 mod meshops_ac09_stats_refusals_by_code_per_sender;
-#[path = "metering_ac01_stripe_customer_id_null_default.rs"]
-mod metering_ac01_stripe_customer_id_null_default;
-#[path = "metering_ac02_webhook_stores_stripe_customer_id.rs"]
-mod metering_ac02_webhook_stores_stripe_customer_id;
-#[path = "metering_ac03_checkout_metered_line_item.rs"]
-mod metering_ac03_checkout_metered_line_item;
-#[path = "metering_ac04_emits_pro_calls_only.rs"]
-mod metering_ac04_emits_pro_calls_only;
-#[path = "metering_ac05_crash_replay.rs"]
-mod metering_ac05_crash_replay;
-#[path = "metering_ac06_failure_leaves_state_unmoved.rs"]
-mod metering_ac06_failure_leaves_state_unmoved;
-#[path = "metering_ac07_batches_cap_at_100.rs"]
-mod metering_ac07_batches_cap_at_100;
-#[path = "metering_ac08_healthz_meter_lag.rs"]
-mod metering_ac08_healthz_meter_lag;
-#[path = "metering_ac09_deploy_units_verify.rs"]
-mod metering_ac09_deploy_units_verify;
-#[path = "metering_ac11_admin_meter_status.rs"]
-mod metering_ac11_admin_meter_status;
-#[path = "metering_ac12_billing_status_stripe_reported_usage.rs"]
-mod metering_ac12_billing_status_stripe_reported_usage;
-#[path = "metering_billing_status_emitted_this_month.rs"]
-mod metering_billing_status_emitted_this_month;
 #[path = "minimal_ac1_anonymous_ok_only.rs"]
 mod minimal_ac1_anonymous_ok_only;
-#[path = "minimal_ac2_admin_full_document.rs"]
-mod minimal_ac2_admin_full_document;
-#[path = "minimal_ac3_wrong_bearer_matches_anonymous.rs"]
-mod minimal_ac3_wrong_bearer_matches_anonymous;
 #[path = "minimal_ac4_liveness_failure_returns_5xx.rs"]
 mod minimal_ac4_liveness_failure_returns_5xx;
 #[path = "minimal_ac5_tenant_bearer_gets_anonymous_body.rs"]

@@ -743,6 +743,7 @@ jobs:
           check ./scripts/spec-fields-doc-check.sh
           check ./scripts/sandbox-api-doc-check.sh
           check ./scripts/gen-llms-full.sh --check
+          check ./scripts/gen-codemap.sh --check
           # .github/required-checks.toml is the render of the workflow files.
           check bash -c 'diff <(./scripts/required-checks.sh --print) .github/required-checks.toml'
           # sdk/python/mcphost_sdk is the render of contracts/host-tools.v1.json

@@ -30,6 +30,34 @@ mod serve;
 #[path = "support/sjrc.rs"]
 mod sjrc;
 
+#[path = "metering_ac01_stripe_customer_id_null_default.rs"]
+mod metering_ac01_stripe_customer_id_null_default;
+#[path = "metering_ac02_webhook_stores_stripe_customer_id.rs"]
+mod metering_ac02_webhook_stores_stripe_customer_id;
+#[path = "metering_ac03_checkout_metered_line_item.rs"]
+mod metering_ac03_checkout_metered_line_item;
+#[path = "metering_ac04_emits_pro_calls_only.rs"]
+mod metering_ac04_emits_pro_calls_only;
+#[path = "metering_ac05_crash_replay.rs"]
+mod metering_ac05_crash_replay;
+#[path = "metering_ac06_failure_leaves_state_unmoved.rs"]
+mod metering_ac06_failure_leaves_state_unmoved;
+#[path = "metering_ac07_batches_cap_at_100.rs"]
+mod metering_ac07_batches_cap_at_100;
+#[path = "metering_ac08_healthz_meter_lag.rs"]
+mod metering_ac08_healthz_meter_lag;
+#[path = "metering_ac09_deploy_units_verify.rs"]
+mod metering_ac09_deploy_units_verify;
+#[path = "metering_ac11_admin_meter_status.rs"]
+mod metering_ac11_admin_meter_status;
+#[path = "metering_ac12_billing_status_stripe_reported_usage.rs"]
+mod metering_ac12_billing_status_stripe_reported_usage;
+#[path = "metering_billing_status_emitted_this_month.rs"]
+mod metering_billing_status_emitted_this_month;
+#[path = "minimal_ac2_admin_full_document.rs"]
+mod minimal_ac2_admin_full_document;
+#[path = "minimal_ac3_wrong_bearer_matches_anonymous.rs"]
+mod minimal_ac3_wrong_bearer_matches_anonymous;
 #[path = "mprm_ac01_recipes_listed_and_rendered.rs"]
 mod mprm_ac01_recipes_listed_and_rendered;
 #[path = "mprm_ac02_missing_argument_and_unknown_prompt.rs"]
@@ -1010,33 +1038,3 @@ mod state_ac06_quota_exceeded;
 mod state_ac08_tenant_isolation;
 #[path = "state_ac09_cascade_delete.rs"]
 mod state_ac09_cascade_delete;
-#[path = "statusfeed_ac02_exec_disabled_degrades.rs"]
-mod statusfeed_ac02_exec_disabled_degrades;
-#[path = "statusfeed_ac03_major_incident_outage.rs"]
-mod statusfeed_ac03_major_incident_outage;
-#[path = "statusfeed_ac04_incident_timeline_and_close.rs"]
-mod statusfeed_ac04_incident_timeline_and_close;
-#[path = "statusfeed_ac05_daily_rollup_uptime.rs"]
-mod statusfeed_ac05_daily_rollup_uptime;
-#[path = "statusfeed_ac06_external_sample_source_preserved.rs"]
-mod statusfeed_ac06_external_sample_source_preserved;
-#[path = "statusfeed_ac07_prune_keeps_rollup.rs"]
-mod statusfeed_ac07_prune_keeps_rollup;
-#[path = "statusfeed_ac08_status_html_renders.rs"]
-mod statusfeed_ac08_status_html_renders;
-#[path = "statusfeed_ac10_component_days_query.rs"]
-mod statusfeed_ac10_component_days_query;
-#[path = "stgl_ac01_grantee_list_names_group_share.rs"]
-mod stgl_ac01_grantee_list_names_group_share;
-#[path = "stgl_ac02_one_accessor_for_list_and_call.rs"]
-mod stgl_ac02_one_accessor_for_list_and_call;
-#[path = "stgl_ac03_public_share_not_in_tools_list.rs"]
-mod stgl_ac03_public_share_not_in_tools_list;
-#[path = "stgl_ac04_no_shares_list_unchanged.rs"]
-mod stgl_ac04_no_shares_list_unchanged;
-#[path = "stgl_ac05_unshare_removes_entry.rs"]
-mod stgl_ac05_unshare_removes_entry;
-#[path = "stgl_ac06_subkey_hides_shared_entries.rs"]
-mod stgl_ac06_subkey_hides_shared_entries;
-#[path = "stgl_ac07_share_reports_grantees_notified.rs"]
-mod stgl_ac07_share_reports_grantees_notified;
