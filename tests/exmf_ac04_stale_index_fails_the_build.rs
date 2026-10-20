@@ -32,12 +32,18 @@ fn scratch(tag: &str) -> PathBuf {
     std::fs::write(tmp.join("src/lib.rs"), "").unwrap();
     std::fs::write(
         tmp.join("Cargo.toml"),
-        "[package]\nname = \"scratch\"\nversion = \"0.0.0\"\nedition = \"2024\"\nbuild = \"build.rs\"\n\n[workspace]\n\n[build-dependencies]\nserde_json = \"1\"\nsha2 = \"0.10\"\n",
+        "[package]\nname = \"scratch\"\nversion = \"0.0.0\"\nedition = \"2024\"\nbuild = \"build.rs\"\n\n[workspace]\n\n[build-dependencies]\nserde_json = \"1\"\nsha2 = \"0.10\"\ntoml = \"0.8\"\n",
     )
     .unwrap();
     std::fs::copy(root().join("Cargo.lock"), tmp.join("Cargo.lock")).unwrap();
     std::fs::copy(root().join("build.rs"), tmp.join("build.rs")).unwrap();
     std::fs::copy(root().join("src/doc_scan.rs"), tmp.join("src/doc_scan.rs")).unwrap();
+    // build.rs also generates the provider table (it `#[path]`-includes codegen.rs).
+    std::fs::create_dir_all(tmp.join("src/connect")).unwrap();
+    std::fs::copy(root().join("src/connect/codegen.rs"), tmp.join("src/connect/codegen.rs")).unwrap();
+    for f in ["providers.toml", "providers_test_support.toml"] {
+        std::fs::copy(root().join(f), tmp.join(f)).unwrap();
+    }
     std::fs::copy(root().join("rust-toolchain.toml"), tmp.join("rust-toolchain.toml")).unwrap();
     copy_dir(&root().join("examples"), &tmp.join("examples"));
     tmp

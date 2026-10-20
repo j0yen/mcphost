@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.112.10 — 2026-10-20
+
+`providers.toml` is the single source for upstream OAuth providers (PRD-mcphost-connection-provider-registry): the new `host.connect.providers` tool, its `provider` enum, `docs/connections.md`, `www/llms.txt` and the callback routes derive from it. Initial rows: github, google, slack, notion.
+
 ## v0.112.0 — 2026-10-19
 
 Released by wm-build land: loop: mcphost-generated-dispatch-table-stack-budget.
@@ -148,7 +152,6 @@ report counts `executed`, `fixtured` and `skipped`. A fixture carrying none of a
 tool fail `fixtures_not_applicable`; over 256 KiB fail `fixtures_too_large` (`data.limit_bytes`).
 `host.runs.get(run_id, as_fixtures=true)` returns a chain run's child results as `fixtures`.
 `host.quickstart(kind="chain")` prints both calls.
-
 ## v0.107.13 — 2026-10-10
 
 `host.webhook_inbox.create(name, verify?, rotate?)` makes a webhook inbox one call
