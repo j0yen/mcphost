@@ -636,7 +636,7 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # tail across two buckets: 4 normal core buckets of ~502/500/503/269 files, which the
 # per-file seconds of the files' previous suites put at ~235/253/366/369 s.
 # 7 singletons + 4 normal + 2 sandbox = 13 = MAX_SUITES.
-# 2026-10-20 (sandbox shard 1/3 over the 300 s run wall on main 39417934601 and PR runs:
+# 2026-10-20 (the first of three sandbox shards over the 300 s run wall on main 39417934601 and PR runs:
 # suite_sandbox_02 alone measured 302-316 s against recorded 152 s, its 320 files having
 # auto-grown past the 220 cap because a third sandbox bucket would exceed MAX_SUITES): the
 # sandbox cap 220 -> 110 splits it into three normal buckets (~119/114/91 files, ~109/107/87 s

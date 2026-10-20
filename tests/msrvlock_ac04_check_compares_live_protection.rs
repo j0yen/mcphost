@@ -32,12 +32,13 @@ fn msrvlock_ac04_two_current_entries_name_the_seven_missing() {
         &["static analysis + core suites", "sandbox suites (all shards)"],
     );
     assert_eq!(code, 1, "{out}");
-    let missing: Vec<&str> = support::CONTEXTS
+    let all = support::contexts();
+    let missing: Vec<&str> = all
         .iter()
-        .copied()
+        .map(String::as_str)
         .filter(|c| *c != "static analysis + core suites" && *c != "sandbox suites (all shards)")
         .collect();
-    assert_eq!(missing.len(), 11);
+    assert_eq!(missing.len(), all.len() - 2);
     for c in missing {
         assert!(out.contains(c), "missing context not named: {c}\n{out}");
     }
@@ -46,13 +47,16 @@ fn msrvlock_ac04_two_current_entries_name_the_seven_missing() {
 
 #[test]
 fn msrvlock_ac04_all_nine_exit_zero() {
-    let (code, out) = check("ac04b", &support::CONTEXTS);
+    let all = support::contexts();
+    let all: Vec<&str> = all.iter().map(String::as_str).collect();
+    let (code, out) = check("ac04b", &all);
     assert_eq!(code, 0, "{out}");
 }
 
 #[test]
 fn msrvlock_ac04_stale_extra_is_named() {
-    let mut all: Vec<&str> = support::CONTEXTS.to_vec();
+    let owned = support::contexts();
+    let mut all: Vec<&str> = owned.iter().map(String::as_str).collect();
     all.push("ancient job that no longer exists");
     let (code, out) = check("ac04c", &all);
     assert_eq!(code, 1, "{out}");

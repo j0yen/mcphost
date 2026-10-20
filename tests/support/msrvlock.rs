@@ -102,7 +102,8 @@ pub fn toml_equals_generate(workflows: &Path, toml: &Path) -> Result<(), String>
     }
 }
 
-pub const CONTEXTS: [&str; 13] = [
+/// The contexts that do not depend on the sandbox shard count.
+pub const FIXED_CONTEXTS: [&str; 10] = [
     "docs client blocks match docs/clients.toml",
     "docs external links resolve",
     "flake-lint (env-mutation, single-shot-perf, receipt-read)",
@@ -112,8 +113,25 @@ pub const CONTEXTS: [&str; 13] = [
     "registry-manifest --check + schema validation",
     "sandbox shard plan",
     "sandbox suites (all shards)",
-    "sandbox suites (user namespaces, shard 1/3)",
-    "sandbox suites (user namespaces, shard 2/3)",
-    "sandbox suites (user namespaces, shard 3/3)",
     "static analysis + core suites",
 ];
+
+/// The one sandbox shard count (`ci-test-partition.sh shards`, from `SANDBOX_SHARDS`).
+pub fn sandbox_shards() -> u32 {
+    let o = std::process::Command::new(repo_root().join("scripts/ci-test-partition.sh"))
+        .arg("shards")
+        .current_dir(repo_root())
+        .env_remove("SANDBOX_SHARDS")
+        .output()
+        .expect("run ci-test-partition.sh shards");
+    String::from_utf8_lossy(&o.stdout).trim().parse().expect("`shards` prints a count")
+}
+
+/// Every PR context: the fixed ones plus one per sandbox shard, derived from the
+/// shard count rather than typed, so a re-shard cannot leave this list stale.
+pub fn contexts() -> Vec<String> {
+    let n = sandbox_shards();
+    let mut all: Vec<String> = FIXED_CONTEXTS.iter().map(|s| s.to_string()).collect();
+    all.extend((1..=n).map(|i| format!("sandbox suites (user namespaces, shard {i}/{n})")));
+    all
+}

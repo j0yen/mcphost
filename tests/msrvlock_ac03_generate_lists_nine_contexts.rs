@@ -16,9 +16,9 @@ fn msrvlock_ac03_generate_writes_exactly_nine_contexts() {
     );
     assert!(o.status.success(), "--generate failed:\n{}", support::text(&o));
     let got = support::toml_contexts(&std::fs::read_to_string(&out_toml).expect("read toml"));
-    let mut want: Vec<String> = support::CONTEXTS.iter().map(|s| s.to_string()).collect();
+    let mut want: Vec<String> = support::contexts();
     want.sort();
-    assert_eq!(got, want, "generated contexts differ from the 13 expected (the 9 PR contexts + the sandbox plan job + the third shard + regen-check + recipes-golden-path)");
+    assert_eq!(got, want, "generated contexts differ from the fixed contexts plus one per sandbox shard");
     assert!(
         !got.iter().any(|c| c.contains("publish to the MCP registry")),
         "tag-only `publish` job must be omitted: {got:?}"
@@ -37,7 +37,8 @@ fn msrvlock_ac03_generate_writes_exactly_nine_contexts() {
 fn msrvlock_ac03_script_names_no_job() {
     let script = std::fs::read_to_string(support::repo_root().join("scripts/required-checks.sh"))
         .expect("read script");
-    let mut names: Vec<&str> = support::CONTEXTS.to_vec();
+    let all = support::contexts();
+    let mut names: Vec<&str> = all.iter().map(String::as_str).collect();
     names.push("publish to the MCP registry");
     names.push("determinism (two cold release builds");
     for n in names {

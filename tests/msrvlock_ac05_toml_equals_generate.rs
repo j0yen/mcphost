@@ -48,14 +48,17 @@ fn msrvlock_ac05_matrix_gaining_a_shard_fails_naming_the_new_context() {
     let ci = wf.join("ci.yml");
     let text = std::fs::read_to_string(&ci).unwrap();
     // The matrix is derived from the plan job; pin a wider literal one here.
+    let n = support::sandbox_shards();
+    let wider: Vec<String> = (1..=n + 1).map(|i| i.to_string()).collect();
     let grown = text.replace(
         "matrix: ${{ fromJson(needs.plan.outputs.matrix) }}",
-        "matrix:\n        shard: [1, 2, 3, 4]",
+        &format!("matrix:\n        shard: [{}]", wider.join(", ")),
     );
     assert_ne!(text, grown, "fixture matrix change must change ci.yml");
     std::fs::write(&ci, grown).unwrap();
 
     let err = support::toml_equals_generate(&wf, &committed_toml()).unwrap_err();
-    assert!(err.contains("shard 4/3"), "{err}");
+    let new_context = format!("shard {}/{n}", n + 1);
+    assert!(err.contains(&new_context), "{err}");
     let _ = std::fs::remove_dir_all(wf.parent().unwrap());
 }
