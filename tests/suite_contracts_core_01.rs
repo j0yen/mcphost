@@ -155,6 +155,8 @@ mod migration_compat_headers;
 mod mprm_ac06_docs_table_and_quickstart_share_recipes;
 #[path = "mwlp_ac02_wait_ceiling_drift.rs"]
 mod mwlp_ac02_wait_ceiling_drift;
+#[path = "ndead_ac01_next_call_table_exhaustive.rs"]
+mod ndead_ac01_next_call_table_exhaustive;
 #[path = "nexttool_ac02_authenticated_listing_unchanged.rs"]
 mod nexttool_ac02_authenticated_listing_unchanged;
 #[path = "ntfy_ac01_no_tenant_settable_alert_sink.rs"]
