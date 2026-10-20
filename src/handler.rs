@@ -4511,7 +4511,7 @@ fn host_tools_part_10() -> Vec<Tool> {
             host_schema_checked(
                 json!({
                     "to": {"description": format!("One address, or an array of at most {}.", crate::email_send::TO_MAX), "oneOf": [
-                        {"type": "string", "format": "email"},
+                        {"type": "string"},
                         {"type": "array", "items": {"type": "string", "format": "email"}},
                     ]},
                     "subject": {"type": "string", "description": format!("One line, at most {} bytes.", crate::email_send::SUBJECT_MAX_BYTES)},
