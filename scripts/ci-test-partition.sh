@@ -94,7 +94,7 @@ set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-SANDBOX_SHARDS="${SANDBOX_SHARDS:-3}"
+SANDBOX_SHARDS="${SANDBOX_SHARDS:-4}"
 CORE_SHARDS="${CORE_SHARDS:-5}"
 
 # Recorded seconds per sandbox suite (and `lib`); overridable for tests.
