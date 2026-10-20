@@ -151,6 +151,8 @@ mod ntfy_ac02_enums_generated_into_every_surface;
 mod oauthentry_ac06_path_contract_docs_router_quickstart;
 #[path = "outsch_ac02_every_canonical_declares_an_object_output_schema.rs"]
 mod outsch_ac02_every_canonical_declares_an_object_output_schema;
+#[path = "ptbatch_ac01_classify_files_agrees_with_classify.rs"]
+mod ptbatch_ac01_classify_files_agrees_with_classify;
 #[path = "pubvis_ac02_visibility_enum_single_source.rs"]
 mod pubvis_ac02_visibility_enum_single_source;
 #[path = "revdebt_ac1_intent_card_pointers_resolve.rs"]

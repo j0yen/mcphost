@@ -62,6 +62,8 @@
 #                                              # suite list (`--bins` on shard 1)
 #   ci-test-partition.sh list <sandbox|core>   # bare SUITE names, one per line
 #   ci-test-partition.sh classify-file <path>  # "sandbox" or "core" for one file
+#   ci-test-partition.sh classify-files <path>...  # the same, one line per path, one grep
+#   ci-test-partition.sh classify-agree  # exit 0 iff classify-files == classify-file over tests/*.rs
 #   ci-test-partition.sh check     # exit 0 iff total, disjoint, and unshadowed
 #
 # AC6 follow-up: even run as its own job, the sandbox partition alone measured
@@ -156,6 +158,59 @@ SANDBOX_SURFACE='require_user_namespaces_or_ci_skip|supports_user_namespaces|Pyt
 
 classify() { # <file> -> prints "sandbox" or "core"
   if grep -qE "$SANDBOX_SURFACE" "$1"; then echo sandbox; else echo core; fi
+}
+
+# classify_files <file>... -> one "sandbox"/"core" line per argument, in order:
+# classify() for many files with ONE grep. 2026-10-19: `check` and
+# gen-test-suites.sh ran classify() once per tests/*.rs file (2220 files,
+# three subprocess greps each), 58 s per `check` on a 4-CPU builder; a dozen
+# contract tests call `check`, which took suite_contracts_core_01 to 905 s on
+# CI run 39349170227 and past core-static's 20-minute cap.
+classify_files() {
+  local -A hit=()
+  local f
+  while IFS= read -r f; do
+    [ -n "$f" ] && hit["$f"]=1
+  done < <(grep -lE "$SANDBOX_SURFACE" "$@" 2>/dev/null)
+  for f in "$@"; do
+    if [ -n "${hit[$f]:-}" ]; then echo sandbox; else echo core; fi
+  done
+}
+
+# classify_agree -> exit 0 iff classify_files gives, for every non-suite
+# tests/*.rs file, the verdict classify() gives for that file alone. The
+# batched path is what `check` and gen-test-suites.sh use; classify() is the
+# per-file definition. A contract test runs this so the two cannot drift.
+classify_agree() {
+  local -a files=() batch=() single=()
+  local f i bad=0
+  for f in "$REPO_ROOT"/tests/*.rs; do
+    [ -e "$f" ] || continue
+    case "${f##*/}" in
+      suite_*.rs) continue ;;
+    esac
+    files+=("$f")
+  done
+  mapfile -t batch < <(classify_files "${files[@]}")
+  mapfile -t single < <(for f in "${files[@]}"; do classify "$f"; done)
+  if [ "${#batch[@]}" -ne "${#files[@]}" ] || [ "${#single[@]}" -ne "${#files[@]}" ]; then
+    echo "classify-agree: ${#files[@]} files, classify_files gave ${#batch[@]} verdicts, classify() gave ${#single[@]}" >&2
+    return 1
+  fi
+  for i in "${!files[@]}"; do
+    if [ "${batch[$i]}" != "${single[$i]}" ]; then
+      echo "classify-agree: ${files[$i]#"$REPO_ROOT"/}: classify() says ${single[$i]}, classify_files says ${batch[$i]}" >&2
+      bad=1
+    fi
+  done
+  [ "$bad" -eq 0 ] || return 1
+  echo "classify-agree: ok (${#files[@]} files)"
+}
+
+# path_members <suite file>... -> the "#[path = \"<base>\"]" bases those files
+# include, one per line (the literal `check` used to grep for, per file).
+path_members() {
+  cat "$@" 2>/dev/null | grep -oE '#\[path = "[^"]*"\]' | sed -E 's/^#\[path = "(.*)"\]$/\1/'
 }
 
 # suite_names <sandbox|core> -> bare suite binary names, one per line, sorted
@@ -328,17 +383,31 @@ check() {
   # must agree with which partition's suite file(s) actually include it. This
   # is the guard against a suite silently mixing sandbox-needing and
   # core-only files (which would hand one job's job a capability mismatch).
+  # One classify_files grep and one #[path] read per partition, then lookups
+  # (was three subprocess greps per member file).
+  local -a members=() verdicts=()
+  local -A core_member=() sandbox_member=() want_of=()
+  local m i
   for f in "$REPO_ROOT"/tests/*.rs; do
     [ -e "$f" ] || continue
     case "$(basename "$f")" in
       suite_*.rs) continue ;;
     esac
+    members+=("$f")
+  done
+  if [ "${#members[@]}" -gt 0 ]; then
+    mapfile -t verdicts < <(classify_files "${members[@]}")
+    for i in "${!members[@]}"; do want_of["${members[$i]}"]="${verdicts[$i]}"; done
+  fi
+  while IFS= read -r m; do [ -n "$m" ] && core_member["$m"]=1; done < <(path_members "$REPO_ROOT"/tests/suite_core_*.rs "$REPO_ROOT"/tests/suite_env_core_*.rs "$REPO_ROOT"/tests/suite_contracts_core_*.rs "$REPO_ROOT"/tests/suite_cargo_core_*.rs)
+  while IFS= read -r m; do [ -n "$m" ] && sandbox_member["$m"]=1; done < <(path_members "$REPO_ROOT"/tests/suite_sandbox_*.rs "$REPO_ROOT"/tests/suite_env_sandbox_*.rs "$REPO_ROOT"/tests/suite_contracts_sandbox_*.rs "$REPO_ROOT"/tests/suite_cargo_sandbox_*.rs)
+  for f in "${members[@]}"; do
     local base want in_core in_sandbox
-    base="$(basename "$f")"
-    want="$(classify "$f")"
+    base="${f##*/}"
+    want="${want_of[$f]}"
     in_core=0; in_sandbox=0
-    grep -qF "#[path = \"$base\"]" "$REPO_ROOT"/tests/suite_core_*.rs "$REPO_ROOT"/tests/suite_env_core_*.rs "$REPO_ROOT"/tests/suite_contracts_core_*.rs "$REPO_ROOT"/tests/suite_cargo_core_*.rs 2>/dev/null && in_core=1
-    grep -qF "#[path = \"$base\"]" "$REPO_ROOT"/tests/suite_sandbox_*.rs "$REPO_ROOT"/tests/suite_env_sandbox_*.rs "$REPO_ROOT"/tests/suite_contracts_sandbox_*.rs "$REPO_ROOT"/tests/suite_cargo_sandbox_*.rs 2>/dev/null && in_sandbox=1
+    [ -n "${core_member[$base]:-}" ] && in_core=1
+    [ -n "${sandbox_member[$base]:-}" ] && in_sandbox=1
     if [ "$in_core" -eq 1 ] && [ "$in_sandbox" -eq 1 ]; then
       echo "ci-test-partition: $base is included in BOTH a core and a sandbox suite" >&2
       rc=1
@@ -474,11 +543,13 @@ case "${1:-}" in
   core-shard)    shard core "${2:?usage: ci-test-partition.sh core-shard <n> <of>}" "${3:?usage: ci-test-partition.sh core-shard <n> <of>}" ;;
   list)          suite_names "${2:?usage: ci-test-partition.sh list <sandbox|core>}" ;;
   classify-file) classify "${2:?usage: ci-test-partition.sh classify-file <path>}" ;;
+  classify-files) shift; classify_files "$@" ;;
+  classify-agree) classify_agree ;;
   limits)        case "${2:-}" in
                    sandbox) echo "$SANDBOX_WARN_AT $SANDBOX_FAIL_ABOVE" ;;
                    core)    echo "$CORE_WARN_AT $CORE_FAIL_ABOVE" ;;
                    *) echo "usage: ci-test-partition.sh limits <sandbox|core>" >&2; exit 2 ;;
                  esac ;;
   check)         check ;;
-  *) echo "usage: $(basename "$0") <sandbox|core|shards [sandbox|core]|sandbox-shard <n> <of>|core-shard <n> <of>|list <p>|limits <p>|classify-file <path>|check>" >&2; exit 2 ;;
+  *) echo "usage: $(basename "$0") <sandbox|core|shards [sandbox|core]|sandbox-shard <n> <of>|core-shard <n> <of>|list <p>|limits <p>|classify-file <path>|classify-files <path>...|classify-agree|check>" >&2; exit 2 ;;
 esac
