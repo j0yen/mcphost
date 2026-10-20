@@ -1206,6 +1206,9 @@ fn id_or_name(args: &Value) -> (Option<String>, Option<String>) {
     (get("id"), get("name"))
 }
 
+/// The `as` values of `host.blob.get`, as the descriptor's enum publishes them.
+pub const GET_AS: &[&str] = &["url", "base64"];
+
 /// R3: `host.blob.get {id | name, as: "base64" | "url" (default)}`.
 pub async fn blob_get(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let (id, name) = id_or_name(args);

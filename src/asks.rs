@@ -265,9 +265,6 @@ fn parse_create(args: &Value) -> Result<CreateArgs, AppError> {
 /// `host.ask.create {question, options, ttl_s?, context?, notify?}` ->
 /// `{ask_id, url, expires_unix, next_call, next_args, notified}`.
 pub async fn create(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    if let Some(known) = crate::handler::known_control_plane_args("host.ask.create", &state.kinds) {
-        crate::errors::check_unknown_argument(args, "host.ask.create", &known)?;
-    }
     let parsed = parse_create(args)?;
     let id = new_ulid().to_ascii_lowercase();
     let now = now_unix();
@@ -366,9 +363,6 @@ pub async fn record_client_elicit(
 /// expired, or `timeout_s` (default [`WAIT_DEFAULT_S`], clamped
 /// `1..=`[`WAIT_MAX_S`]) elapses.
 pub async fn wait(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    if let Some(known) = crate::handler::known_control_plane_args("host.ask.wait", &state.kinds) {
-        crate::errors::check_unknown_argument(args, "host.ask.wait", &known)?;
-    }
     let ask_id = args
         .get("ask_id")
         .and_then(Value::as_str)
@@ -508,9 +502,6 @@ pub(crate) fn prune_old(conn: &Connection, now: i64) -> Result<(), AppError> {
 /// `host.ask.get {ask_id}`: the audit row plus its `events`
 /// (`created`, then one `answered` or `expired`).
 pub async fn get(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    if let Some(known) = crate::handler::known_control_plane_args("host.ask.get", &state.kinds) {
-        crate::errors::check_unknown_argument(args, "host.ask.get", &known)?;
-    }
     let ask_id = args
         .get("ask_id")
         .and_then(Value::as_str)
@@ -541,16 +532,17 @@ pub async fn get(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Valu
     Ok(out)
 }
 
+/// The `status` values of `host.ask.list`: the descriptor's enum and
+/// [`list`]'s own check read this one list.
+pub const STATUSES: &[&str] = &["pending", "answered", "expired"];
+
 /// `host.ask.list {status?, limit?}`: this tenant's asks, newest first.
 pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    if let Some(known) = crate::handler::known_control_plane_args("host.ask.list", &state.kinds) {
-        crate::errors::check_unknown_argument(args, "host.ask.list", &known)?;
-    }
     let status = match args.get("status") {
         None | Some(Value::Null) => None,
         Some(v) => match v.as_str() {
-            Some(s @ ("pending" | "answered" | "expired")) => Some(s.to_string()),
-            _ => return Err(invalid("status: one of pending, answered, expired".into())),
+            Some(s) if STATUSES.contains(&s) => Some(s.to_string()),
+            _ => return Err(invalid(format!("status: one of {}", STATUSES.join(", ")))),
         },
     };
     let limit = args.get("limit").and_then(Value::as_i64).unwrap_or(LIST_DEFAULT).clamp(1, LIST_MAX);

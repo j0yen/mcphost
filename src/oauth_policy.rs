@@ -64,6 +64,10 @@ pub enum ClientsMode {
     Approve,
 }
 
+/// The `clients` values, as the descriptor's enum publishes them (the names
+/// [`ClientsMode::parse`] accepts).
+pub const CLIENTS_MODES: &[&str] = &["any", "allowlist", "approve"];
+
 impl ClientsMode {
     pub fn as_str(self) -> &'static str {
         match self {

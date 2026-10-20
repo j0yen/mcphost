@@ -92,6 +92,16 @@ pub fn diff_hash(notes: &[(&'static str, Value)]) -> String {
     hash_value(&Value::Array(notes.iter().map(|(c, v)| json!([c, v])).collect()))
 }
 
+/// The `confirm` property every gated verb's schema carries: the token string
+/// a `dry_run: true` call returned, or the boolean a measured re-dispatch
+/// passes for the verb's own lineage gate.
+pub fn confirm_property() -> Value {
+    json!({
+        "type": ["string", "boolean"],
+        "description": "The confirm token a dry_run: true call with the same arguments returned; required when the call affects at least the plan's confirm_rows_min rows.",
+    })
+}
+
 /// The `confirm` argument of `args`, if a string.
 pub fn confirm_arg(args: &Value) -> Option<&str> {
     args.get("confirm").and_then(Value::as_str)

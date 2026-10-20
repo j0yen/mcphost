@@ -438,6 +438,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `hints`: boolean
 - `tags`: array
 - `tenant_key`: string
+- `welcome_back`: boolean
 
 ### `host.agent.search`
 
@@ -777,9 +778,9 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Arguments**
 
-- `since`: string
+- `since`: string | integer
 - `tenant_key`: string
-- `until`: string
+- `until`: string | integer
 
 ### `host.calls.list`
 
@@ -803,10 +804,10 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `order`: string
   - `order` enum: `newest_first`
 - `outcome`: string
-- `since`: string
+- `since`: string | integer
 - `tenant_key`: string
 - `tool`: string
-- `until`: string
+- `until`: string | integer
 
 ### `host.catalog.get`
 
@@ -1036,6 +1037,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - one of (anyOf): `id` | `name`
+- `confirm`: string | boolean
 - `dry_run`: boolean
 - `id`: string
 - `name`: string
@@ -1116,6 +1118,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - one of (anyOf): `id` | `name`
+- `confirm`: string | boolean
 - `dry_run`: boolean
 - `id`: string
 - `name`: string
@@ -1380,6 +1383,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Arguments**
 
+- `confirm`: string | boolean
 - `dry_run`: boolean
 - `subject`: string, required
 - `tenant_key`: string
@@ -1393,6 +1397,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Arguments**
 
+- `confirm`: string | boolean
 - `dry_run`: boolean
 - `reason`: string
 - `subject`: string, required
@@ -1407,6 +1412,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Arguments**
 
+- `confirm`: string | boolean
 - `dry_run`: boolean
 - `subject`: string, required
 - `tenant_key`: string
@@ -1657,6 +1663,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Arguments**
 
+- `confirm`: string | boolean
 - `dry_run`: boolean
 - `name`: string, required
 - `namespace`: string, required
@@ -1741,6 +1748,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Arguments**
 
+- `confirm`: string | boolean
 - `dry_run`: boolean
 - `name`: string, required
 - `tenant_key`: string
@@ -1842,6 +1850,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `code`: string, required
+- `confirm`: string | boolean
 - `dry_run`: boolean
 - `tenant_key`: string
 
@@ -2317,6 +2326,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Arguments**
 
+- `confirm`: string | boolean
 - `dry_run`: boolean
 - `id`: integer, required
 - `tenant_key`: string
@@ -2340,6 +2350,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Arguments**
 
+- `confirm`: string | boolean
 - `dry_run`: boolean
 - `issuer`: string, required
 - `tenant_key`: string
@@ -2354,7 +2365,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Arguments**
 
-- `audience`: string, required
+- `audience`: string
 - `dry_run`: boolean
 - `issuer`: string, required
 - `jwks_url`: string, required
@@ -2484,6 +2495,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Arguments**
 
+- `confirm`: string | boolean
 - `dry_run`: boolean
 - `tenant_key`: string
 
@@ -2520,6 +2532,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Arguments**
 
+- `confirm`: string | boolean
 - `dry_run`: boolean
 - `issuer`: string, required
 - `tenant_key`: string
@@ -2783,6 +2796,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `as_fixtures`: boolean
+- `include_children`: boolean
 - `run_id`: string, required
 - `tenant_key`: string
 
@@ -2840,6 +2854,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `before_unix`: integer, required
+- `confirm`: string | boolean
 - `dry_run`: boolean
 - `tenant_key`: string
 
@@ -2981,6 +2996,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `caller_tenant`: string, required
+- `confirm`: string | boolean
 - `dry_run`: boolean
 - `tenant_key`: string
 - `tool`: string, required
@@ -3014,6 +3030,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Arguments**
 
+- `confirm`: string | boolean
 - `dry_run`: boolean
 - `end_user`: string | null
 - `key`: string, required
@@ -3032,11 +3049,12 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Arguments**
 
+- `confirm`: string | boolean
 - `dry_run`: boolean
 - `end_user`: string | null
 - `table`: string, required
 - `tenant_key`: string
-- `where`: string
+- `where`: string | object
 
 ### `host.state.get`
 
@@ -3147,6 +3165,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Arguments**
 
+- `confirm`: string | boolean
 - `dry_run`: boolean
 - `name`: string, required
 - `tenant_key`: string
@@ -3296,6 +3315,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Arguments**
 
+- `confirm`: string | boolean
 - `dry_run`: boolean
 - `handle`: string, required
 - `tenant_key`: string
@@ -3607,7 +3627,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Arguments**
 
-- `args`: object, required
+- `args`: object
 - `async`: boolean
 - `budget`: object
   - `budget.max_child_calls` minimum: 1
@@ -3740,6 +3760,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `dry_run`: boolean
+- `force`: boolean
 - `kind`: string, required
   - `kind` enum: `echo`, `event`, `events`, `webhook`, `webhooks`, `inbound`, `trigger`, `inbox`, `cron`, `schedule`, `scheduled`, `doc`, `docs`, `document`, `documents`, `message`, `messages`, `msg`, `database`, `db`, `table`, `tables`, `csv`, `sql`, `schedules`, `uptime`, `probe`, `probes`, `memory`, `memories`
 - `name`: string, required
@@ -3760,6 +3781,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Arguments**
 
+- `confirm`: string | boolean
 - `dry_run`: boolean
 - `name`: string, required
 - `tenant_key`: string
@@ -4005,6 +4027,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - one of (anyOf): `id` | `name`
+- `confirm`: string | boolean
 - `dry_run`: boolean
 - `id`: string
 - `name`: string

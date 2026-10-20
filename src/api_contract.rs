@@ -589,6 +589,20 @@ fn schema_type(schema: &Value) -> Option<&Value> {
     schema.get("type")
 }
 
+/// `true` iff the `new` type accepts every JSON type `old` did: one name or an
+/// array of names, compared as sets (`"string"` -> `["string", "integer"]`
+/// widens, the reverse narrows).
+fn type_accepts_all(old: &Value, new: &Value) -> bool {
+    fn names(v: &Value) -> Vec<&Value> {
+        match v {
+            Value::Array(a) => a.iter().collect(),
+            other => vec![other],
+        }
+    }
+    let new_names = names(new);
+    names(old).iter().all(|t| new_names.contains(t))
+}
+
 fn schema_enum(schema: &Value) -> Option<&Vec<Value>> {
     schema.get("enum").and_then(Value::as_array)
 }
@@ -632,7 +646,7 @@ fn narrowing_reason(old: &Value, new: &Value, was_required: bool, is_required: b
         return Some("became required".to_string());
     }
     if let (Some(old_type), Some(new_type)) = (schema_type(old), schema_type(new))
-        && old_type != new_type
+        && !type_accepts_all(old_type, new_type)
     {
         return Some(format!("type changed from {old_type} to {new_type}"));
     }
@@ -1100,6 +1114,9 @@ mod tests {
         assert!(narrowing_reason(&string_schema, &string_schema, false, true).is_some());
         assert!(narrowing_reason(&string_schema, &string_schema, false, false).is_none());
         assert!(narrowing_reason(&string_schema, &string_schema, true, true).is_none());
+        let string_or_integer = json!({"type": ["string", "integer"]});
+        assert!(narrowing_reason(&string_schema, &string_or_integer, false, false).is_none());
+        assert!(narrowing_reason(&string_or_integer, &string_schema, false, false).is_some());
     }
 
     #[test]

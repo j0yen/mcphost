@@ -67,6 +67,10 @@ impl DrafterConfig {
     }
 }
 
+/// The kinds `host.tool_from_description` drafts: the descriptor's `kind` enum
+/// and the handler's own check read this one list.
+pub const DRAFT_KINDS: &[&str] = &["python"];
+
 /// A model's answer: the python spec, the invocations to test it with, and
 /// the token counts the call cost.
 #[derive(Debug, Clone, Default, Deserialize)]

@@ -189,6 +189,16 @@ fn did_you_mean(
     out
 }
 
+/// The validator's registration for what this module owns (R3): an unlisted
+/// top-level argument (`additionalProperties`) on any control-plane tool is
+/// refused by [`check_unknown_argument`] as `unknown_argument`.
+pub const ARG_OWNERS: &[crate::host_args::ArgOwner] = &[crate::host_args::ArgOwner {
+    applies: |_| true,
+    path: "",
+    keywords: &["additionalProperties"],
+    codes: &["unknown_argument"],
+}];
+
 /// PRD-mcphost-spec-unknown-field-rejection requirement 2 (AC4): refuses a
 /// top-level `args` key that isn't in `known` with `unknown_argument` --
 /// `tenant_key` is always known (requirement 2's own carve-out: every
