@@ -1771,6 +1771,8 @@ impl Kind for HttpKind {
                 (key::UPSTREAM_STATUS): status.as_u16(),
                 "body_excerpt": excerpt,
                 (HINT_KEY): remedy.hint,
+                // `next_call` reads these: the secret a 401/403 should be fixed with.
+                "secrets": referenced.iter().collect::<Vec<_>>(),
             });
             if let Some(retry) = retry_after_s {
                 data["retry_after_s"] = json!(retry);

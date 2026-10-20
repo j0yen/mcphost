@@ -2793,6 +2793,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `kind`: string
+- `retry_after_s`: integer
 - `tenant_key`: string
 
 ### `host.redeem`

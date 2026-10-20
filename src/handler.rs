@@ -1638,6 +1638,11 @@ fn host_tools_part_01(kinds: &KindRegistry) -> Vec<Tool> {
                             cron, ...) for its recipe. Omit to see every kind, alias and \
                             recipe name.",
                     },
+                    "retry_after_s": {
+                        "type": "integer",
+                        "description": "Seconds a rate-limited signup said to wait; an error's \
+                            next_call carries it back here. Informational, never required.",
+                    },
                 }),
                 &[],
             ),
