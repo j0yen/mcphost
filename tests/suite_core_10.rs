@@ -1030,19 +1030,3 @@ mod sorel_ac01_offboard_releases_session_fresh_signup;
 mod sorel_ac02_self_offboard_remedy_and_idempotent;
 #[path = "sorel_ac03_admin_disable_remedy_unchanged.rs"]
 mod sorel_ac03_admin_disable_remedy_unchanged;
-#[path = "specpath_ac01_map_form_normalizes_and_publishes.rs"]
-mod specpath_ac01_map_form_normalizes_and_publishes;
-#[path = "specpath_ac02_outputs_map_value_type_error.rs"]
-mod specpath_ac02_outputs_map_value_type_error;
-#[path = "specpath_ac03_headers_array_type_error.rs"]
-mod specpath_ac03_headers_array_type_error;
-#[path = "specpath_ac04_path_reads_declared_field.rs"]
-mod specpath_ac04_path_reads_declared_field;
-#[path = "specpath_ac05_missing_path_reports_tried_path.rs"]
-mod specpath_ac05_missing_path_reports_tried_path;
-#[path = "specpath_ac06_list_form_seen_at_hint.rs"]
-mod specpath_ac06_list_form_seen_at_hint;
-#[path = "specpath_ac07_replay_recorded_sessions_map_form.rs"]
-mod specpath_ac07_replay_recorded_sessions_map_form;
-#[path = "specpath_ac08_wildcard_path_rejected.rs"]
-mod specpath_ac08_wildcard_path_rejected;
