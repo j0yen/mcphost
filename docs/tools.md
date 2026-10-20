@@ -1714,6 +1714,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Arguments**
 
+- one of (anyOf): `run_id` | `url`
 - `dry_run`: boolean
 - `run_id`: string
 - `tenant_key`: string
@@ -1888,6 +1889,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Arguments**
 
+- one of (anyOf): `scopes` | `bind`
 - `bind`: object
 - `can_delegate`: boolean
 - `label`: string

@@ -11412,6 +11412,18 @@
       "description": "Restore a completed host.export of this tenant into an EMPTY tenant: tools (through the host.tool_publish validators), state, host.table.* tables and rows, table notes and documents. Pass run_id (a finished host.export run) or url (its signed download URL). A tenant that already holds a tool, state key, table or document is refused as tenant_not_empty naming what exists; an archive larger than this plan's export_bytes_max is refused as quota_exceeded before anything is written. Secret values are never exported: the result's secrets_to_set names the ones to set again. Runs as a background job (poll host.runs.get: entries_done / entries_total); dry_run: true validates and returns the entry counts and bytes without writing.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "run_id"
+            ]
+          },
+          {
+            "required": [
+              "url"
+            ]
+          }
+        ],
         "properties": {
           "dry_run": {
             "description": "Validate and report entry counts and bytes; write nothing.",
@@ -12936,6 +12948,18 @@
       "description": "Mint a child key that can do strictly less than yours: scopes, tools and lifetime are subsets of your own, depth at most 3. Asking for more fails scope_escalation naming the first excess item. Needs can_delegate (the primary always has it). Returns the key once.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "scopes"
+            ]
+          },
+          {
+            "required": [
+              "bind"
+            ]
+          }
+        ],
         "properties": {
           "bind": {
             "description": "Tie the child to one unit of work: {run_id} (an open run of yours; the key dies with it and expires no later than its deadline) or {session: \"current\"} / {session_id} (this connection; the key dies when it closes or sits idle 30 min). Refused key_bound_elsewhere anywhere else.",
@@ -12950,7 +12974,7 @@
             "type": "string"
           },
           "scopes": {
-            "description": "Scopes the child holds; each must be implied by yours (required unless bind is given; then default mcp).",
+            "description": "Scopes the child holds; each must be implied by yours (default mcp when bind is given).",
             "items": {
               "enum": [
                 "mcp",
@@ -40729,6 +40753,18 @@
       "description": "Restore a completed host.export of this tenant into an EMPTY tenant: tools (through the host.tool_publish validators), state, host.table.* tables and rows, table notes and documents. Pass run_id (a finished host.export run) or url (its signed download URL). A tenant that already holds a tool, state key, table or document is refused as tenant_not_empty naming what exists; an archive larger than this plan's export_bytes_max is refused as quota_exceeded before anything is written. Secret values are never exported: the result's secrets_to_set names the ones to set again. Runs as a background job (poll host.runs.get: entries_done / entries_total); dry_run: true validates and returns the entry counts and bytes without writing.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "run_id"
+            ]
+          },
+          {
+            "required": [
+              "url"
+            ]
+          }
+        ],
         "properties": {
           "dry_run": {
             "description": "Validate and report entry counts and bytes; write nothing.",
@@ -41110,6 +41146,18 @@
       "description": "Mint a child key that can do strictly less than yours: scopes, tools and lifetime are subsets of your own, depth at most 3. Asking for more fails scope_escalation naming the first excess item. Needs can_delegate (the primary always has it). Returns the key once.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "scopes"
+            ]
+          },
+          {
+            "required": [
+              "bind"
+            ]
+          }
+        ],
         "properties": {
           "bind": {
             "description": "Tie the child to one unit of work: {run_id} (an open run of yours; the key dies with it and expires no later than its deadline) or {session: \"current\"} / {session_id} (this connection; the key dies when it closes or sits idle 30 min). Refused key_bound_elsewhere anywhere else.",
@@ -41124,7 +41172,7 @@
             "type": "string"
           },
           "scopes": {
-            "description": "Scopes the child holds; each must be implied by yours (required unless bind is given; then default mcp).",
+            "description": "Scopes the child holds; each must be implied by yours (default mcp when bind is given).",
             "items": {
               "enum": [
                 "mcp",

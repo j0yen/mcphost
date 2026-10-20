@@ -2235,6 +2235,15 @@
       "AC5": "tests/rsm_ac05_anonymous_resume_creates_no_tenant.rs",
       "AC6": "tests/rsm_ac06_welcome_back_points_at_resume.rs",
       "AC7": "tests/rsm_ac07_usage_reports_the_resume_first_call_rate.rs"
+    },
+    "ecs": {
+      "_prd": "PRD-mcphost-empty-call-refusal-stated-in-schema.md (test_prefix: ecs)",
+      "AC1": "tests/ecs_ac01_either_or_in_schema.rs",
+      "AC2": "tests/ecs_ac02_empty_call_router_and_validator_agree.rs",
+      "AC3": "tests/ecs_ac03_empty_call_refused_by_validator.rs",
+      "AC4": "tests/ecs_ac04_handlers_keep_their_own_refusal.rs",
+      "AC5": "tests/ecs_ac05_docs_and_contract_carry_the_either_or.rs",
+      "AC6": "tests/ecs_ac06_empty_call_script_selftest.rs"
     }
   }
 }
