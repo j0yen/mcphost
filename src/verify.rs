@@ -28,12 +28,31 @@ use crate::errors::AppError;
 use crate::state::{AppState, now_unix};
 
 /// `(method, the tool that starts it)`. The single source for the `method`
-/// enum, `/claim/methods.json`, the quickstart steps and the migration CHECK.
+/// enum, `/claim/methods.json`, the quickstart steps, the migration CHECK and
+/// the `tenant_audit` kinds ([`audit_kinds`]). `admin` is the operator path
+/// (PRD-mcphost-email-send-live-proof R5): an agent cannot start it, so every
+/// surface an agent reads lists only [`agent_startable`] entries.
 pub const VERIFICATION_METHODS: &[(&str, &str)] = &[
     ("email", "host.claim.start"),
     ("github", "host.claim.github"),
     ("dns", "host.claim.dns.start"),
+    ("admin", "admin.tenant_verify_owner"),
 ];
+
+/// The table entries an agent can start: the `host.*` tools.
+pub fn agent_startable() -> impl Iterator<Item = &'static (&'static str, &'static str)> {
+    VERIFICATION_METHODS.iter().filter(|(_, tool)| tool.starts_with("host."))
+}
+
+/// The `tenant_audit.action` a method's verification writes.
+pub fn audit_kind(method: &str) -> String {
+    format!("claim.{method}")
+}
+
+/// Every audit kind the table can write, in table order.
+pub fn audit_kinds() -> Vec<String> {
+    VERIFICATION_METHODS.iter().map(|(name, _)| audit_kind(name)).collect()
+}
 
 /// The tool that checks a published DNS record (a sibling of `host.claim.dns.start`).
 pub const DNS_CHECK_TOOL: &str = "host.claim.dns.check";
@@ -54,6 +73,12 @@ crate::err_code! {
     pub ALREADY_VERIFIED,
     code: "already_verified", family: Auth, class: HostRefusal, retryable: false,
     remedy: "This tenant is already verified; nothing was written. The data names the method that verified it.",
+}
+
+crate::err_code! {
+    pub OWNER_VERIFIED_BY_OTHER_METHOD,
+    code: "owner_verified_by_other_method", family: Auth, class: HostRefusal, retryable: false,
+    remedy: "This tenant's owner already proved themselves by another method; the admin path never overwrites a human's or a domain's proof. Nothing was written.",
 }
 
 crate::err_code! {
@@ -171,8 +196,7 @@ impl OwnerVerify {
 
 /// `GET /claim/methods.json`: the method table plus whether this host can run each.
 pub fn methods_json(state: &AppState) -> Value {
-    let methods: Vec<Value> = VERIFICATION_METHODS
-        .iter()
+    let methods: Vec<Value> = agent_startable()
         .map(|(name, tool)| {
             json!({"name": name, "tool": tool, "available": state.owner_verify.available(state, name)})
         })
@@ -186,8 +210,7 @@ pub async fn methods_json_route(State(state): State<Arc<AppState>>) -> Response 
 
 /// The unverified-tenant `host.quickstart` steps, one per method, from the table.
 pub fn next_steps() -> Vec<Value> {
-    VERIFICATION_METHODS
-        .iter()
+    agent_startable()
         .map(|(name, tool)| {
             json!({
                 "call": tool,
@@ -250,11 +273,11 @@ pub(crate) fn tools() -> Vec<Tool> {
 
 // ---- tool handlers --------------------------------------------------------
 
-fn structured(code: &'static str, message: String, data: Value) -> AppError {
+pub(crate) fn structured(code: &'static str, message: String, data: Value) -> AppError {
     AppError::Structured { code, message, data }
 }
 
-fn already_verified(method: &str) -> AppError {
+pub(crate) fn already_verified(method: &str) -> AppError {
     structured(
         ALREADY_VERIFIED,
         format!("this tenant is already verified by {method}"),

@@ -1,14 +1,15 @@
 {
-  "suite_contracts_core_01": 60.9,
-  "suite_core_01": 1.13,
+  "suite_contracts_core_01": 301.93,
+  "suite_core_01": 1.72,
   "suite_core_02": 0.8,
-  "suite_core_03": 1.05,
-  "suite_core_04": 375.79,
-  "suite_core_05": 0.78,
-  "suite_core_06": 0.8,
-  "suite_core_07": 0.56,
-  "suite_core_08": 234.92,
-  "suite_core_09": 256.0,
-  "suite_core_10": 349.82,
-  "suite_env_core_01": 43.12
+  "suite_core_03": 0.7,
+  "suite_core_04": 260.41,
+  "suite_core_05": 0.58,
+  "suite_core_06": 0.53,
+  "suite_core_07": 0.6,
+  "suite_core_08": 311.57,
+  "suite_core_09": 122.45,
+  "suite_core_10": 373.81,
+  "suite_core_11": 318.36,
+  "suite_env_core_01": 40.61
 }

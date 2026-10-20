@@ -22,8 +22,6 @@ mod ctrace;
 mod docs_qa;
 #[path = "support/exprf.rs"]
 mod exprf;
-#[path = "support/exprp.rs"]
-mod exprp;
 #[path = "support/oauth.rs"]
 mod oauth;
 #[path = "support/serve.rs"]
@@ -889,6 +887,18 @@ mod emin_ac03_csv_part_becomes_a_blob_and_redelivery_is_idempotent;
 mod emin_ac04_invalid_payload_is_400;
 #[path = "emin_ac07_status_json_counts_inbound.rs"]
 mod emin_ac07_status_json_counts_inbound;
+#[path = "emslp_ac01_usage_and_self_cleaning_tenant.rs"]
+mod emslp_ac01_usage_and_self_cleaning_tenant;
+#[path = "emslp_ac02_send_verb_proves_a_sent_row.rs"]
+mod emslp_ac02_send_verb_proves_a_sent_row;
+#[path = "emslp_ac03_admin_tenant_verify_owner.rs"]
+mod emslp_ac03_admin_tenant_verify_owner;
+#[path = "emslp_ac04_method_table_drift_with_admin.rs"]
+mod emslp_ac04_method_table_drift_with_admin;
+#[path = "emslp_ac05_dns_verify_path_and_unavailable.rs"]
+mod emslp_ac05_dns_verify_path_and_unavailable;
+#[path = "emslp_ac06_provider_error_is_a_red_proof.rs"]
+mod emslp_ac06_provider_error_is_a_red_proof;
 #[path = "emsnd_ac03_html_and_text_reach_the_resend_body.rs"]
 mod emsnd_ac03_html_and_text_reach_the_resend_body;
 #[path = "emsnd_ac04_free_tenant_51st_send_is_email_quota_exceeded.rs"]
@@ -1029,13 +1039,3 @@ mod exprf_ac05_unknown_name_and_non_admin_refused;
 mod exprf_ac06_status_json_examples_block;
 #[path = "exprf_ac07_only_dry_run_prints_and_executes_nothing.rs"]
 mod exprf_ac07_only_dry_run_prints_and_executes_nothing;
-#[path = "exprp_ac02_literal_secret_value_is_refused.rs"]
-mod exprp_ac02_literal_secret_value_is_refused;
-#[path = "exprp_ac03_non_portable_and_failing_proof_are_refused.rs"]
-mod exprp_ac03_non_portable_and_failing_proof_are_refused;
-#[path = "exprp_ac04_admin_decides_and_the_proposer_sees_it.rs"]
-mod exprp_ac04_admin_decides_and_the_proposer_sees_it;
-#[path = "exprp_ac05_pull_writes_the_clone_commits_and_merges.rs"]
-mod exprp_ac05_pull_writes_the_clone_commits_and_merges;
-#[path = "exprp_ac06_name_collision_and_open_proposal_cap.rs"]
-mod exprp_ac06_name_collision_and_open_proposal_cap;

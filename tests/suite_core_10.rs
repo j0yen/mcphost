@@ -19,6 +19,8 @@ mod msrvlock;
 mod oauth;
 #[path = "support/oauthclient.rs"]
 mod oauthclient;
+#[path = "support/promptkind.rs"]
+mod promptkind;
 #[path = "support/pysdk.rs"]
 mod pysdk;
 #[path = "support/rgpt.rs"]
@@ -28,6 +30,16 @@ mod serve;
 #[path = "support/sjrc.rs"]
 mod sjrc;
 
+#[path = "mprm_ac01_recipes_listed_and_rendered.rs"]
+mod mprm_ac01_recipes_listed_and_rendered;
+#[path = "mprm_ac02_missing_argument_and_unknown_prompt.rs"]
+mod mprm_ac02_missing_argument_and_unknown_prompt;
+#[path = "mprm_ac03_prompt_kind_tool_listed_and_rendered.rs"]
+mod mprm_ac03_prompt_kind_tool_listed_and_rendered;
+#[path = "mprm_ac04_oauth_scope_filters_prompt_tools.rs"]
+mod mprm_ac04_oauth_scope_filters_prompt_tools;
+#[path = "mprm_ac07_capabilities_advertise_prompts.rs"]
+mod mprm_ac07_capabilities_advertise_prompts;
 #[path = "mrefu_ac01_breaking_migration_refuses_with_report.rs"]
 mod mrefu_ac01_breaking_migration_refuses_with_report;
 #[path = "mrefu_ac02_compatible_migration_reports_ok.rs"]

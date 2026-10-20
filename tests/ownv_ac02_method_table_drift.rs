@@ -6,7 +6,7 @@
 
 use crate::common;
 use common::{McpClient, TestServer, signup};
-use mcphost::verify::{DNS_CHECK_TOOL, VERIFICATION_METHODS, method_names};
+use mcphost::verify::{DNS_CHECK_TOOL, VERIFICATION_METHODS, agent_startable, method_names};
 use serde_json::{Value, json};
 
 #[tokio::test]
@@ -43,7 +43,7 @@ async fn ownv_ac02_descriptor_enums_and_methods_json_equal_the_const() {
         .iter()
         .filter(|t| t["name"].as_str().is_some_and(|n| n.starts_with("host.claim.")))
         .collect();
-    for (_, tool) in VERIFICATION_METHODS {
+    for (_, tool) in agent_startable() {
         assert!(claim_tools.iter().any(|t| t["name"] == *tool), "{tool} missing from tools/list");
     }
     assert!(claim_tools.iter().any(|t| t["name"] == DNS_CHECK_TOOL), "{DNS_CHECK_TOOL} missing");
@@ -64,13 +64,13 @@ async fn ownv_ac02_descriptor_enums_and_methods_json_equal_the_const() {
         .expect("json body");
     let names: Vec<&str> = doc["methods"].as_array().expect("methods").iter().map(|m| m["name"].as_str().unwrap()).collect();
     let tools: Vec<&str> = doc["methods"].as_array().unwrap().iter().map(|m| m["tool"].as_str().unwrap()).collect();
-    assert_eq!(names, VERIFICATION_METHODS.iter().map(|(n, _)| *n).collect::<Vec<_>>());
-    assert_eq!(tools, VERIFICATION_METHODS.iter().map(|(_, t)| *t).collect::<Vec<_>>());
+    assert_eq!(names, agent_startable().map(|(n, _)| *n).collect::<Vec<_>>());
+    assert_eq!(tools, agent_startable().map(|(_, t)| *t).collect::<Vec<_>>());
 }
 
 #[test]
 fn ownv_ac02_migration_check_equals_the_const() {
-    let sql = include_str!("../migrations/0124_owner_verification_method.sql");
+    let sql = include_str!("../migrations/0125_owner_method_admin.sql");
     let check = sql
         .lines()
         .find(|l| l.contains("owner_method TEXT CHECK"))

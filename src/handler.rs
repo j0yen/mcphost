@@ -5661,6 +5661,20 @@ fn admin_tools() -> Vec<Tool> {
             ),
         ),
         Tool::new(
+            "admin.tenant_verify_owner",
+            "Mark a tenant's owner verified without an inbox (method \"admin\"): sets owner_email, \
+             owner_verified_at and owner_method in the single-winner UPDATE every verification path \
+             shares, and appends a claim.admin audit row naming the admin key. A tenant already \
+             verified by email, github or dns is refused with owner_verified_by_other_method.",
+            schema(
+                json!({
+                    "tenant": {"type": "string"},
+                    "email": {"type": "string", "description": "The owner address to record; never mailed."},
+                }),
+                &["tenant", "email"],
+            ),
+        ),
+        Tool::new(
             "admin.sandbox_recheck",
             "Re-run the sandbox self-test immediately (rather than waiting for the periodic \
              recheck) and return the fresh SandboxStatus -- call after fixing whatever made \
@@ -7868,6 +7882,7 @@ impl McpHostHandler {
             "admin.tenant_verify_namespace" => {
                 admin::tenant_verify_namespace(&self.state, &args).await
             }
+            "admin.tenant_verify_owner" => admin::tenant_verify_owner(&self.state, &args).await,
             "admin.sandbox_recheck" => admin::sandbox_recheck(&self.state).await,
             "admin.billing_ledger" => admin::billing_ledger(&self.state, &args).await,
             "admin.plan_set" => admin::plan_set(&self.state, &args).await,

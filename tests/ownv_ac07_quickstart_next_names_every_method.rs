@@ -4,7 +4,6 @@
 
 use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
-use mcphost::verify::VERIFICATION_METHODS;
 use serde_json::json;
 
 #[tokio::test]
@@ -15,7 +14,7 @@ async fn ownv_ac07_unverified_quickstart_next_lists_every_method_from_the_table(
 
     let quickstart = extract_structured(&client.tools_call("host.quickstart", json!({"kind": "echo"})).await.expect("quickstart"));
     let next = quickstart["next"].as_array().expect("next array");
-    for (method, tool) in VERIFICATION_METHODS {
+    for (method, tool) in mcphost::verify::agent_startable() {
         assert!(
             next.iter().any(|step| step["method"] == *method && step["call"] == *tool),
             "next must name {method} via {tool}: {next:?}"
