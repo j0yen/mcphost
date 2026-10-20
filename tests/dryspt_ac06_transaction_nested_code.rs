@@ -33,7 +33,7 @@ async fn dryspt_ac06() {
     let converted = AppError::from(e);
     let (message, data) = data_of(converted);
     assert_eq!(data["error_code"], "transaction_nested", "{data}");
-    assert_eq!(data["retryable"], false, "{data}");
+    assert_eq!(data["retry"]["retryable"], false, "{data}");
     assert!(data["request_id"].as_str().is_some_and(|s| !s.is_empty()), "request_id is set: {data}");
     assert!(!message.to_lowercase().contains("sqlite") && !message.contains("within a transaction"), "no SQLite text: {message}");
     assert!(HOST_FAULT_CODES.contains(&"transaction_nested"));
