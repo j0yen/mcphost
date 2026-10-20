@@ -15,7 +15,32 @@
 //! Also embeds `examples/index.json` (PRD-mcphost-example-manifest-contract
 //! R4): writes `$OUT_DIR/examples_embedded.rs`, which `src/examples.rs`
 //! `include!`s as `EXAMPLES`.
+//!
+//! Also generates the `connect::Provider` table from `providers.toml`
+//! (PRD-mcphost-connection-provider-registry) -- a malformed row fails the
+//! build naming the provider and the field.
 use std::process::Command;
+
+#[path = "src/connect/codegen.rs"]
+mod codegen;
+
+fn generate_providers() {
+    println!("cargo:rerun-if-changed=providers.toml");
+    println!("cargo:rerun-if-changed=src/connect/codegen.rs");
+    println!("cargo:rerun-if-changed=providers_test_support.toml");
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
+    let root = std::path::Path::new(&manifest_dir);
+    let committed = std::fs::read_to_string(root.join("providers.toml")).expect("read providers.toml");
+    let test_only =
+        std::fs::read_to_string(root.join("providers_test_support.toml")).expect("read providers_test_support.toml");
+    let text = codegen::effective_table(&committed, &test_only, std::env::var_os("CARGO_FEATURE_TEST_SUPPORT").is_some());
+    let rows = match codegen::parse_table(&text) {
+        Ok(rows) => rows,
+        Err(e) => panic!("{e}"),
+    };
+    let out = std::path::Path::new(&std::env::var("OUT_DIR").expect("OUT_DIR")).join("providers_gen.rs");
+    std::fs::write(out, codegen::render_rust(&rows)).expect("write providers_gen.rs");
+}
 
 #[path = "src/doc_scan.rs"]
 mod doc_scan;
@@ -187,6 +212,7 @@ fn embed_migrations_index() {
 }
 
 fn main() {
+    generate_providers();
     embed_examples();
     embed_help_docs();
     embed_doc_anchors();

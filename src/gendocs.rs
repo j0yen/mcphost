@@ -77,6 +77,7 @@ pub const SUPPORT_SPLICED_DOCS: &[&str] =
 /// tool the registry doesn't have (AC4's own docs-names test checks the
 /// reverse direction: every name docs/plugin mention exists here).
 pub const TOOLS_DOC_PATH: &str = "docs/tools.md";
+pub const CONNECTIONS_DOC_PATH: &str = "docs/connections.md";
 
 /// PRD-mcphost-blob-virus-and-type-guard R8: the accepted-types doc,
 /// [`render_blob_types_doc`] over [`crate::blobs::BLOB_TYPES`].
@@ -862,6 +863,16 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
     // -- chained onto that splice's own output (not re-read from disk), so
     // this function's one write to README.md below carries both splices'
     // effects rather than one clobbering the other.
+    // PRD-mcphost-connection-provider-registry R4: the generated
+    // `## Upstream connections` section of www/llms.txt.
+    for (path, _current, spliced) in &mut support_docs {
+        if *path == "www/llms.txt" {
+            *spliced = crate::connect::splice_llms_section(
+                spliced.as_str(),
+                &crate::connect::render_llms_section(&crate::connect::committed_specs()),
+            );
+        }
+    }
     for (path, _current, spliced) in &mut support_docs {
         if *path == "README.md" || *path == "www/llms.txt" {
             *spliced = crate::install_links::splice_install_links_section(
@@ -899,6 +910,10 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
         (Path::new(crate::events::EVENTS_DOC_PATH), crate::events::render_events_doc()),
         (Path::new(crate::events::EVENTS_JSON_PATH), crate::events::render_event_kinds_json()),
         (Path::new(RETRIEVAL_DOC_PATH), crate::index::render_retrieval_doc()),
+        (
+            Path::new(CONNECTIONS_DOC_PATH),
+            crate::connect::render_connections_doc(&crate::connect::committed_specs()),
+        ),
         (
             Path::new(INSTALL_DOC_PATH),
             crate::install_links::render_install_doc(crate::install_links::CANONICAL_PUBLIC_URL),

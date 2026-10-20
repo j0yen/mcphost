@@ -65,6 +65,8 @@ mod cishard_ac07_stale_weight_fails_check;
 mod cnfm_ac05_tools_list_marks_destructive_verbs;
 #[path = "compat_ac04_ac05_admin_and_tenant_cache_fields.rs"]
 mod compat_ac04_ac05_admin_and_tenant_cache_fields;
+#[path = "cprov_ac02_provider_surfaces_cannot_drift.rs"]
+mod cprov_ac02_provider_surfaces_cannot_drift;
 #[path = "creg_ac02_initialize_capabilities_from_registry.rs"]
 mod creg_ac02_initialize_capabilities_from_registry;
 #[path = "creg_ac05_capabilities_docs_in_sync.rs"]

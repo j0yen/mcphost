@@ -655,6 +655,18 @@ mod cproc_ac07_flake_lint_job_runs_child_proc_lint;
 mod cprocb_ac02_real_tree_clean_and_six_files_use_helper;
 #[path = "cprocb_ac03_flake_lint_job_fails_on_raw_spawn_before_toolchain.rs"]
 mod cprocb_ac03_flake_lint_job_fails_on_raw_spawn_before_toolchain;
+#[path = "cprov_ac01_one_providers_toml_edit_reaches_every_surface.rs"]
+mod cprov_ac01_one_providers_toml_edit_reaches_every_surface;
+#[path = "cprov_ac03_availability_comes_from_env_and_never_leaks.rs"]
+mod cprov_ac03_availability_comes_from_env_and_never_leaks;
+#[path = "cprov_ac04_validate_scopes_names_the_unknown.rs"]
+mod cprov_ac04_validate_scopes_names_the_unknown;
+#[path = "cprov_ac05_unknown_preset_lists_every_provider.rs"]
+mod cprov_ac05_unknown_preset_lists_every_provider;
+#[path = "cprov_ac06_quickstart_partitions_providers.rs"]
+mod cprov_ac06_quickstart_partitions_providers;
+#[path = "cprov_ac07_missing_field_fails_the_build_naming_it.rs"]
+mod cprov_ac07_missing_field_fails_the_build_naming_it;
 #[path = "creg_ac01_premise_two_truths_then_minus_32601.rs"]
 mod creg_ac01_premise_two_truths_then_minus_32601;
 #[path = "creg_ac03_every_method_matches_its_row.rs"]
@@ -1027,11 +1039,3 @@ mod errenv_ac05_chain_verifier_fixture_fails_old_passes_new;
 mod errenv_ac06_invalid_tenant_key_envelope_has_reason;
 #[path = "errenv_ac07_doctor_reports_error_envelope.rs"]
 mod errenv_ac07_doctor_reports_error_envelope;
-#[path = "errjson_ac01_every_emitted_code_is_a_registry_row.rs"]
-mod errjson_ac01_every_emitted_code_is_a_registry_row;
-#[path = "errjson_ac02_error_data_carries_the_registry_row.rs"]
-mod errjson_ac02_error_data_carries_the_registry_row;
-#[path = "errjson_ac03_errors_json_route.rs"]
-mod errjson_ac03_errors_json_route;
-#[path = "errjson_ac04_host_errors_tool.rs"]
-mod errjson_ac04_host_errors_tool;
