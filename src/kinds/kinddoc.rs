@@ -22,6 +22,106 @@ pub struct FieldDoc {
     pub meaning: &'static str,
 }
 
+/// Whether a spec field must be present, as learned by probing the kind's
+/// own validator (PRD-mcphost-kind-field-docs-required-from-parse-spec R1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Requiredness {
+    Always,
+    Never,
+    /// Required unless one of these (sorted) fields is declared instead.
+    Unless(Vec<&'static str>),
+}
+
+impl Requiredness {
+    /// The `required` cell of a kind page's field table.
+    pub fn cell(&self) -> String {
+        match self {
+            Requiredness::Always => "yes".to_string(),
+            Requiredness::Never => "no".to_string(),
+            Requiredness::Unless(fields) => format!(
+                "unless {}",
+                fields.iter().map(|f| format!("`{f}`")).collect::<Vec<_>>().join(", ")
+            ),
+        }
+    }
+}
+
+fn spec_keys(spec: &Value) -> Vec<String> {
+    spec.as_object().map(|o| o.keys().cloned().collect()).unwrap_or_default()
+}
+
+/// Every way `kind`'s minimal specs fail to be minimal: a spec that does not
+/// validate as-is, or one that still validates with one of its own fields
+/// removed. Each line names the kind, the spec index and the field.
+pub fn minimality_failures<K: super::Kind + ?Sized>(kind: &K) -> Vec<String> {
+    let mut out = Vec::new();
+    let name = kind.name();
+    let specs = kind.minimal_specs();
+    if specs.is_empty() {
+        out.push(format!("kind {name}: minimal_specs() is empty"));
+    }
+    for (i, spec) in specs.iter().enumerate() {
+        if let Err(e) = kind.validate(spec) {
+            out.push(format!("kind {name}: minimal spec #{i} does not parse as-is: {e}"));
+            continue;
+        }
+        for field in spec_keys(spec) {
+            let mut minus = spec.clone();
+            if let Some(obj) = minus.as_object_mut() {
+                obj.remove(&field);
+            }
+            if kind.validate(&minus).is_ok() {
+                out.push(format!(
+                    "kind {name}: minimal spec #{i} still parses without field `{field}`"
+                ));
+            }
+        }
+    }
+    out
+}
+
+/// Probes `kind`'s validator with its [`super::Kind::minimal_specs`] to learn
+/// each documented field's [`Requiredness`]. A field no minimal spec carries
+/// is `Never`; one every spec carries is `Always`; otherwise it is required
+/// `Unless` a field of a spec that lacks it is declared instead (fields every
+/// spec shares are not alternatives). Panics, naming kind/spec/field, if a
+/// minimal spec is not minimal.
+pub fn derive_requiredness<K: super::Kind + ?Sized>(kind: &K) -> Vec<(FieldDoc, Requiredness)> {
+    let failures = minimality_failures(kind);
+    assert!(failures.is_empty(), "{}", failures.join("; "));
+    let specs: Vec<Vec<String>> = kind.minimal_specs().iter().map(spec_keys).collect();
+    let common: Vec<&String> = specs
+        .first()
+        .map(|first| first.iter().filter(|k| specs.iter().all(|s| s.contains(k))).collect())
+        .unwrap_or_default();
+    let docs = kind.field_docs();
+    let name_of = |key: &str| docs.iter().find(|d| d.name == key).map(|d| d.name);
+    kind.field_docs()
+        .iter()
+        .map(|doc| {
+            let with: Vec<&Vec<String>> =
+                specs.iter().filter(|s| s.iter().any(|k| k == doc.name)).collect();
+            let req = if with.is_empty() {
+                Requiredness::Never
+            } else if with.len() == specs.len() {
+                Requiredness::Always
+            } else {
+                let mut alts: Vec<&'static str> = specs
+                    .iter()
+                    .filter(|s| !s.iter().any(|k| k == doc.name))
+                    .flatten()
+                    .filter(|k| !common.contains(k))
+                    .filter_map(|k| name_of(k))
+                    .collect();
+                alts.sort_unstable();
+                alts.dedup();
+                Requiredness::Unless(alts)
+            };
+            (*doc, req)
+        })
+        .collect()
+}
+
 /// [`UNIVERSAL_SPEC_FIELDS`]' meaning rows, shared by every kind.
 pub const UNIVERSAL_FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {
@@ -81,7 +181,7 @@ pub const ERROR_WHEN: &[(&str, &str)] = &[
 pub struct SpecFieldDoc {
     pub name: String,
     pub ty: String,
-    pub required: bool,
+    pub required: Requiredness,
     pub meaning: String,
 }
 
@@ -116,6 +216,8 @@ pub struct KindDoc {
     pub bridge_modules: Option<Vec<BridgeDoc>>,
     pub error_codes: Vec<ErrorDoc>,
     pub example: Value,
+    /// One accepted shape each (`Kind::minimal_specs`).
+    pub minimal_specs: Vec<Value>,
 }
 
 /// Assembles one kind's [`KindDoc`]; `Kind::doc`'s default body.
@@ -124,11 +226,12 @@ pub fn assemble(
     name: &str,
     example: KindExample,
     known: &'static [&'static str],
-    required: Option<&'static str>,
+    requiredness: Vec<(&'static str, Requiredness)>,
     field_docs: &'static [FieldDoc],
     ceiling_fields: &'static [&'static str],
     contract: &'static KindContract,
     bridges: Option<&'static [BridgeModule]>,
+    minimal_specs: Vec<Value>,
     plans: &PlanCatalog,
 ) -> KindDoc {
     let spec_fields = known
@@ -142,7 +245,11 @@ pub fn assemble(
             SpecFieldDoc {
                 name: (*field).to_string(),
                 ty: doc.map(|d| d.ty).unwrap_or_default().to_string(),
-                required: required == Some(*field),
+                required: requiredness
+                    .iter()
+                    .find(|(n, _)| n == field)
+                    .map(|(_, r)| r.clone())
+                    .unwrap_or(Requiredness::Never),
                 meaning: doc.map(|d| d.meaning).unwrap_or_default().to_string(),
             }
         })
@@ -196,5 +303,6 @@ pub fn assemble(
         }),
         error_codes,
         example: example.spec,
+        minimal_specs,
     }
 }

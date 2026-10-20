@@ -82,3 +82,13 @@ Result envelope contract: a call's output always lands at `result.payload`; an o
 | bridges | none |
 | secret redaction | no |
 <!-- kind-contract:end -->
+
+## Minimal specs
+
+<!-- kind-minimal-specs:start -->
+```json
+{
+  "component": "AGFzbQ0AAQA="
+}
+```
+<!-- kind-minimal-specs:end -->

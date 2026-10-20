@@ -139,3 +139,13 @@ A js tool reaches this tenant's data through the global `mcphost` object. Its me
 | bridges | state, table, docs, lineage, channel, msg |
 | secret redaction | yes |
 <!-- kind-contract:end -->
+
+## Minimal specs
+
+<!-- kind-minimal-specs:start -->
+```json
+{
+  "source": "function main(args) { return args; }"
+}
+```
+<!-- kind-minimal-specs:end -->

@@ -241,3 +241,13 @@ The distinction is visible, not doctrinal: `host.tool_test` renders both in one 
 | bridges | state, table, docs, lineage, channel, msg |
 | secret redaction | yes |
 <!-- kind-contract:end -->
+
+## Minimal specs
+
+<!-- kind-minimal-specs:start -->
+```json
+{
+  "source": "def main(args):\n    return args\n"
+}
+```
+<!-- kind-minimal-specs:end -->

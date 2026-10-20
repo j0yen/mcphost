@@ -27,6 +27,8 @@ Optional fields: `args_schema` (a JSON Schema for the call arguments; defaults t
 | `max_output_bytes` | integer | no | bytes of output a call may return (1 KiB-1 MiB, default 256 KiB) |
 | `description` | string | no | text shown to callers in the tool listing |
 | `outputs` | array or object | no | fields a caller can rely on in `result.payload` |
+| `description` | string | no | text shown to callers in the tool listing |
+| `outputs` | array or object | no | fields a caller can rely on in `result.payload` |
 | `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
 | `ui` | object | no | optional presentation hints for clients that render a tool's result |
 <!-- kind-fields:end -->
@@ -73,3 +75,13 @@ Optional fields: `args_schema` (a JSON Schema for the call arguments; defaults t
 | bridges | none |
 | secret redaction | no |
 <!-- kind-contract:end -->
+
+## Minimal specs
+
+<!-- kind-minimal-specs:start -->
+```json
+{
+  "program": "."
+}
+```
+<!-- kind-minimal-specs:end -->
