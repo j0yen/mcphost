@@ -79,6 +79,8 @@ mod actfor_ac05_audit_chain_hash_differs_for_child;
 mod actfor_ac06_tool_logs_prefix;
 #[path = "actfor_ac07_acting_for_keys_and_redaction.rs"]
 mod actfor_ac07_acting_for_keys_and_redaction;
+#[path = "adisp_ac01_admin_dispatch_arms_equal_descriptors.rs"]
+mod adisp_ac01_admin_dispatch_arms_equal_descriptors;
 #[path = "agentdir_ac01_ac02_ac03_ac04_identity_and_lookup.rs"]
 mod agentdir_ac01_ac02_ac03_ac04_identity_and_lookup;
 #[path = "agentdir_ac05_ac06_search.rs"]
@@ -167,6 +169,20 @@ mod attrib_ac6_whoami_source_class;
 mod attribdefault_ac1_bare_signup_client_info_is_null;
 #[path = "attribdefault_ac2_real_clientinfo_still_captured.rs"]
 mod attribdefault_ac2_real_clientinfo_still_captured;
+#[path = "audx_ac01_chain_is_real_coverage_is_one_of_three.rs"]
+mod audx_ac01_chain_is_real_coverage_is_one_of_three;
+#[path = "audx_ac02_export_nine_rows_three_tables.rs"]
+mod audx_ac02_export_nine_rows_three_tables;
+#[path = "audx_ac03_offline_verifier_ok_and_fail_lines.rs"]
+mod audx_ac03_offline_verifier_ok_and_fail_lines;
+#[path = "audx_ac04_vectors_generated_from_rust.rs"]
+mod audx_ac04_vectors_generated_from_rust;
+#[path = "audx_ac05_verify_by_root_and_zero_rows.rs"]
+mod audx_ac05_verify_by_root_and_zero_rows;
+#[path = "audx_ac06_export_cap_and_read_scope.rs"]
+mod audx_ac06_export_cap_and_read_scope;
+#[path = "audx_ac07_csv_format_matches_jsonl.rs"]
+mod audx_ac07_csv_format_matches_jsonl;
 #[path = "autherr_ac1_tenant_key_missing.rs"]
 mod autherr_ac1_tenant_key_missing;
 #[path = "autherr_ac2_tenant_key_invalid.rs"]
@@ -1023,15 +1039,3 @@ mod errreg_ac04_scanner_fails_duplicate_and_format_codes;
 mod errreg_ac05_hand_table_empty_and_backstop_passes;
 #[path = "errreg_ac06_five_10_17_codes_declared_at_emit_site.rs"]
 mod errreg_ac06_five_10_17_codes_declared_at_emit_site;
-#[path = "evkr_ac01_no_second_spelling.rs"]
-mod evkr_ac01_no_second_spelling;
-#[path = "evkr_ac02_renderings_equal_enum.rs"]
-mod evkr_ac02_renderings_equal_enum;
-#[path = "evkr_ac03_description_and_fields.rs"]
-mod evkr_ac03_description_and_fields;
-#[path = "evkrb_ac01_llms_txt_events_section_checked.rs"]
-mod evkrb_ac01_llms_txt_events_section_checked;
-#[path = "evkrb_ac02_quickstart_events_pointer.rs"]
-mod evkrb_ac02_quickstart_events_pointer;
-#[path = "evkrb_ac03_events_json_stable_and_cached.rs"]
-mod evkrb_ac03_events_json_stable_and_cached;
