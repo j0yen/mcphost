@@ -65,6 +65,8 @@ mod ac16_request_body_too_large;
 mod ac18_tools_list_ttl;
 #[path = "ac19_registry_publish.rs"]
 mod ac19_registry_publish;
+#[path = "adisp_ac01_admin_dispatch_arms_equal_descriptors.rs"]
+mod adisp_ac01_admin_dispatch_arms_equal_descriptors;
 #[path = "agentdir_ac01_ac02_ac03_ac04_identity_and_lookup.rs"]
 mod agentdir_ac01_ac02_ac03_ac04_identity_and_lookup;
 #[path = "agentdir_ac05_ac06_search.rs"]
