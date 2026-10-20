@@ -18186,6 +18186,150 @@
       "since": "0.108.110"
     },
     {
+      "description": "Owner only: email the org's 7-day usage digest to the verified owner address now. At most once an hour; a second call answers rate_limited.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.org.digest.send",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "org": {
+            "type": "string"
+          },
+          "sent": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "org",
+          "sent"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.112.7"
+    },
+    {
+      "description": "Owner only: opt your org's weekly usage digest email in or out. The digest goes to the verified owner address every Monday 07:00 UTC and is on by default.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "enabled": {
+            "description": "true to receive the weekly digest, false to stop it.",
+            "type": "boolean"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.org.digest.set",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "digest_enabled": {
+            "type": "boolean"
+          },
+          "org": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "org",
+          "digest_enabled"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.112.7"
+    },
+    {
       "description": "Join an org with the tenant you already have, using the code from its org invite url. Your key, namespace, url and tools are untouched; you become a member.",
       "input_schema": {
         "additionalProperties": false,
@@ -18503,6 +18647,185 @@
         }
       },
       "since": "0.108.121"
+    },
+    {
+      "description": "Per-member and per-tool usage for your org over a window: calls, errors, seconds, state_bytes and est_cost_usd for each member, plus org totals. Figures are the same ones each member's own host.usage reports. A member sees only its own row and the totals.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "window": {
+            "description": "Look-back window such as 24h or 7d (default 7d, at most 90d).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.org.usage",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "members": {
+            "items": {
+              "properties": {
+                "calls": {
+                  "type": "integer"
+                },
+                "errors": {
+                  "type": "integer"
+                },
+                "est_cost_usd": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "namespace": {
+                  "type": "string"
+                },
+                "removed": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "role": {
+                  "type": "string"
+                },
+                "seconds": {
+                  "type": "integer"
+                },
+                "state_bytes": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "namespace",
+                "role",
+                "calls",
+                "errors",
+                "seconds",
+                "state_bytes",
+                "est_cost_usd"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "org": {
+            "type": "string"
+          },
+          "tools": {
+            "items": {
+              "properties": {
+                "callers": {
+                  "type": "integer"
+                },
+                "calls": {
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "publisher": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "publisher",
+                "calls",
+                "callers"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "totals": {
+            "properties": {
+              "calls": {
+                "type": "integer"
+              },
+              "errors": {
+                "type": "integer"
+              },
+              "est_cost_usd": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "seconds": {
+                "type": "integer"
+              },
+              "state_bytes": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "calls",
+              "errors",
+              "seconds",
+              "state_bytes",
+              "est_cost_usd"
+            ],
+            "type": "object"
+          },
+          "window": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "org",
+          "window",
+          "members",
+          "totals"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.112.7"
     },
     {
       "description": "Set (merge) attributes on an end-user subject -- the values a policy's Attr(name) rule compiles against for that subject.",
@@ -42814,6 +43137,52 @@
       "since": "0.108.110"
     },
     {
+      "alias_of": "host.org.digest.send",
+      "description": "Owner only: email the org's 7-day usage digest to the verified owner address now. At most once an hour; a second call answers rate_limited.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_org_digest_send",
+      "since": "0.112.7"
+    },
+    {
+      "alias_of": "host.org.digest.set",
+      "description": "Owner only: opt your org's weekly usage digest email in or out. The digest goes to the verified owner address every Monday 07:00 UTC and is on by default.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "description": "return the diff this call would make and commit nothing",
+            "type": "boolean"
+          },
+          "enabled": {
+            "description": "true to receive the weekly digest, false to stop it.",
+            "type": "boolean"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_org_digest_set",
+      "since": "0.112.7"
+    },
+    {
       "alias_of": "host.org.join",
       "description": "Join an org with the tenant you already have, using the code from its org invite url. Your key, namespace, url and tools are untouched; you become a member.",
       "input_schema": {
@@ -42904,6 +43273,28 @@
       },
       "name": "host_org_remove",
       "since": "0.108.121"
+    },
+    {
+      "alias_of": "host.org.usage",
+      "description": "Per-member and per-tool usage for your org over a window: calls, errors, seconds, state_bytes and est_cost_usd for each member, plus org totals. Figures are the same ones each member's own host.usage reports. A member sees only its own row and the totals.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "window": {
+            "description": "Look-back window such as 24h or 7d (default 7d, at most 90d).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_org_usage",
+      "since": "0.112.7"
     },
     {
       "alias_of": "host.policy.attrs_set",

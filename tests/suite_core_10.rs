@@ -328,6 +328,20 @@ mod oauthsig_ac04_admin_oauth_stats_funnel;
 mod oauthsig_ac05_healthz_cache_and_p95;
 #[path = "oauthsig_ac06_conformance_script_writes_receipt.rs"]
 mod oauthsig_ac06_conformance_script_writes_receipt;
+#[path = "orgc_ac01_member_rows_equal_host_usage.rs"]
+mod orgc_ac01_member_rows_equal_host_usage;
+#[path = "orgc_ac02_member_sees_only_own_row.rs"]
+mod orgc_ac02_member_sees_only_own_row;
+#[path = "orgc_ac03_tools_rows_sorted_by_calls.rs"]
+mod orgc_ac03_tools_rows_sorted_by_calls;
+#[path = "orgc_ac04_weekly_job_skips_unverified_and_disabled.rs"]
+mod orgc_ac04_weekly_job_skips_unverified_and_disabled;
+#[path = "orgc_ac05_digest_send_one_request_rate_limited.rs"]
+mod orgc_ac05_digest_send_one_request_rate_limited;
+#[path = "orgc_ac06_org_required_for_a_tenant_outside_any_org.rs"]
+mod orgc_ac06_org_required_for_a_tenant_outside_any_org;
+#[path = "orgc_ac07_removed_member_row_keeps_calls_up_to_removal.rs"]
+mod orgc_ac07_removed_member_row_keeps_calls_up_to_removal;
 #[path = "orgm_ac01_join_keeps_tenant_bytes.rs"]
 mod orgm_ac01_join_keeps_tenant_bytes;
 #[path = "orgm_ac02_org_url_mints_member_tenant.rs"]
@@ -1006,27 +1020,3 @@ mod specpath_ac06_list_form_seen_at_hint;
 mod specpath_ac07_replay_recorded_sessions_map_form;
 #[path = "specpath_ac08_wildcard_path_rejected.rs"]
 mod specpath_ac08_wildcard_path_rejected;
-#[path = "sqlpass_ac01_table_level_description_in_schema.rs"]
-mod sqlpass_ac01_table_level_description_in_schema;
-#[path = "sqlpass_ac02_column_description_in_schema.rs"]
-mod sqlpass_ac02_column_description_in_schema;
-#[path = "sqlpass_ac03_no_annotations_shape_unchanged.rs"]
-mod sqlpass_ac03_no_annotations_shape_unchanged;
-#[path = "sqlpass_ac04_group_by_logs_row_count_and_duration.rs"]
-mod sqlpass_ac04_group_by_logs_row_count_and_duration;
-#[path = "sqlpass_ac05_update_refused_logs_error_code.rs"]
-mod sqlpass_ac05_update_refused_logs_error_code;
-#[path = "sqlpass_ac06_query_log_tenant_isolated_and_limit_capped.rs"]
-mod sqlpass_ac06_query_log_tenant_isolated_and_limit_capped;
-#[path = "sqlpass_ac07_query_log_capped_at_1000_bytes_used_includes_log.rs"]
-mod sqlpass_ac07_query_log_capped_at_1000_bytes_used_includes_log;
-#[path = "sqlpass_ac08_proof_sh_sql_questions_no_publish.rs"]
-mod sqlpass_ac08_proof_sh_sql_questions_no_publish;
-#[path = "sqlpass_ac09_llms_txt_sql_path_under_70_lines.rs"]
-mod sqlpass_ac09_llms_txt_sql_path_under_70_lines;
-#[path = "sqlpass_ac11_concurrent_queries_produce_ten_log_rows.rs"]
-mod sqlpass_ac11_concurrent_queries_produce_ten_log_rows;
-#[path = "sqlpass_ac12_empty_table_zero_rows_null_error_code.rs"]
-mod sqlpass_ac12_empty_table_zero_rows_null_error_code;
-#[path = "sqlpass_ac13_long_sql_truncated_in_log_not_refused.rs"]
-mod sqlpass_ac13_long_sql_truncated_in_log_not_refused;

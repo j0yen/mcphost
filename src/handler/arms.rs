@@ -504,6 +504,27 @@ impl McpHostHandler {
         })
     }
 
+    pub(crate) fn arm_host_org_digest_set<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::org_digest::set(&self.state, tenant, &args).await
+        })
+    }
+
+    pub(crate) fn arm_host_org_digest_send<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::org_digest::send(&self.state, tenant, &args).await
+        })
+    }
+
+    pub(crate) fn arm_host_org_usage<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::org_usage::usage(&self.state, tenant, &args).await
+        })
+    }
+
     // PRD-mcphost-send-email-from-tool.
     pub(crate) fn arm_host_email_send<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
         box_arm(async move {

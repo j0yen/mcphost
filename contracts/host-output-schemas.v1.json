@@ -15358,6 +15358,153 @@
     ],
     "type": "object"
   },
+  "host.org.usage": {
+    "properties": {
+      "org": {
+        "type": "string"
+      },
+      "window": {
+        "type": "string"
+      },
+      "members": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "namespace": {
+              "type": "string"
+            },
+            "role": {
+              "type": "string"
+            },
+            "calls": {
+              "type": "integer"
+            },
+            "errors": {
+              "type": "integer"
+            },
+            "seconds": {
+              "type": "integer"
+            },
+            "state_bytes": {
+              "type": "integer"
+            },
+            "est_cost_usd": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "removed": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "namespace",
+            "role",
+            "calls",
+            "errors",
+            "seconds",
+            "state_bytes",
+            "est_cost_usd"
+          ]
+        }
+      },
+      "tools": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "publisher": {
+              "type": "string"
+            },
+            "calls": {
+              "type": "integer"
+            },
+            "callers": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "name",
+            "publisher",
+            "calls",
+            "callers"
+          ]
+        }
+      },
+      "totals": {
+        "type": "object",
+        "properties": {
+          "calls": {
+            "type": "integer"
+          },
+          "errors": {
+            "type": "integer"
+          },
+          "seconds": {
+            "type": "integer"
+          },
+          "state_bytes": {
+            "type": "integer"
+          },
+          "est_cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "calls",
+          "errors",
+          "seconds",
+          "state_bytes",
+          "est_cost_usd"
+        ]
+      }
+    },
+    "required": [
+      "org",
+      "window",
+      "members",
+      "totals"
+    ],
+    "type": "object"
+  },
+  "host.org.digest.set": {
+    "type": "object",
+    "properties": {
+      "org": {
+        "type": "string"
+      },
+      "digest_enabled": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "org",
+      "digest_enabled"
+    ]
+  },
+  "host.org.digest.send": {
+    "type": "object",
+    "properties": {
+      "org": {
+        "type": "string"
+      },
+      "sent": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "org",
+      "sent"
+    ]
+  },
   "host.secret.leak_test": {
     "properties": {
       "bound_hosts": {

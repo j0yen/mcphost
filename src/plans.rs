@@ -403,6 +403,17 @@ pub struct Plan {
     pub sandbox_pids_max: i64,
 }
 
+impl Plan {
+    /// Estimated spend for `calls`: calls x the plan's per-call price
+    /// (`overage_usd_per_1000_calls` / 1000), or `None` when the plan has no
+    /// per-call price (free). Shared by `host.org.usage` and any other
+    /// surface that prices calls, so the formula lives beside the price fields.
+    pub fn est_cost_usd(&self, calls: i64) -> Option<f64> {
+        (self.overage_usd_per_1000_calls > 0)
+            .then(|| calls as f64 * self.overage_usd_per_1000_calls as f64 / 1000.0)
+    }
+}
+
 /// Numeric [`Plan`] fields that are not ceilings an agent can hit.
 pub const NON_CEILING_FIELDS: &[&str] =
     &["price_usd_month", "calls_included_month", "overage_usd_per_1000_calls"];
