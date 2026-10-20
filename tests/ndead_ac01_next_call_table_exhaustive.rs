@@ -35,9 +35,11 @@ fn ndead_ac01_every_variant_and_kind_code_names_a_listed_tool() {
     let ctx = ErrorCtx::default();
     for err in &errors {
         let next = err.next_call(&ctx);
-        assert!(listed.contains(next.tool), "{} -> {} is not in tools/list", err.code(), next.tool);
+        // A deprecated alias is a valid name (PRD-b R4: host_tools ∪ aliases).
+        let canonical = mcphost::tool_aliases::resolve(next.tool).unwrap_or(next.tool);
+        assert!(listed.contains(canonical), "{} -> {} is not in tools/list", err.code(), next.tool);
         // args keys must be properties of the named tool's input schema.
-        let tool = descriptors.iter().find(|t| t.name.as_ref() == next.tool);
+        let tool = descriptors.iter().find(|t| t.name.as_ref() == canonical);
         if let (Some(tool), Some(args)) = (tool, next.args.as_object()) {
             let props = tool.input_schema.get("properties").and_then(Value::as_object);
             for key in args.keys() {

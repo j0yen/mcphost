@@ -176,6 +176,10 @@ mod mwlpb_ac03_plans_json_carries_wait_limits;
 mod ndead_ac02_journey10_zero_dead_ends;
 #[path = "ndead_ac03_unknown_kind_names_registry_kind.rs"]
 mod ndead_ac03_unknown_kind_names_registry_kind;
+#[path = "ndeadb_ac01_upstream_403_next_call.rs"]
+mod ndeadb_ac01_upstream_403_next_call;
+#[path = "ndeadb_ac03_signup_rate_limited_next_call.rs"]
+mod ndeadb_ac03_signup_rate_limited_next_call;
 #[path = "nexttool_ac01_anonymous_starter_set.rs"]
 mod nexttool_ac01_anonymous_starter_set;
 #[path = "nexttool_ac03_signup_emits_list_changed.rs"]
