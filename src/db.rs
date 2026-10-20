@@ -370,6 +370,7 @@ const MIGRATION_0124: &str = include_str!("../migrations/0124_owner_verification
 const MIGRATION_0125: &str = include_str!("../migrations/0125_owner_method_admin.sql");
 /// PRD-mcphost-audit-export-tamper-evident R3: the `audit_exports` table.
 const MIGRATION_0126: &str = include_str!("../migrations/0126_audit_exports.sql");
+const MIGRATION_0127: &str = include_str!("../migrations/0127_org_digest.sql");
 
 /// PRD-mcphost-example-proof-nightly-and-hide R2: the `example_proofs` table.
 const MIGRATION_0115: &str = include_str!("../migrations/0115_example_proofs.sql");
@@ -3247,6 +3248,19 @@ impl Db {
         Self::migrate_0125_owner_method_admin(&conn)?;
         // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0126)?;
+        Self::migrate_0127_org_digest(&conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-org-cost-attribution R3: gated on `orgs.digest_enabled`
+    /// (the batch is an `ALTER`, so a rerun must skip it).
+    fn migrate_0127_org_digest(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('orgs') WHERE name = 'digest_enabled'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0127)?;
+        }
         Ok(())
     }
 
@@ -12828,14 +12842,27 @@ impl Db {
     }
 
     pub async fn usage(&self, tenant_id: i64, window_secs: i64) -> Result<UsageStats, AppError> {
+        self.usage_until(tenant_id, window_secs, None).await
+    }
+
+    /// [`Self::usage`] counting only calls started at or before `until_unix`
+    /// (`None`: no upper bound) -- an org's view of a member it later removed
+    /// (PRD-mcphost-org-cost-attribution R6).
+    pub async fn usage_until(
+        &self,
+        tenant_id: i64,
+        window_secs: i64,
+        until_unix: Option<i64>,
+    ) -> Result<UsageStats, AppError> {
         let since = now_unix() - window_secs;
         self.with_conn(move |conn| {
             let mut stmt = conn.prepare(
                 "SELECT duration_ms, ok, error_class, error_code FROM calls \
-                 WHERE tenant_id = ?1 AND started_unix >= ?2 AND outcome IS NOT 'test'",
+                 WHERE tenant_id = ?1 AND started_unix >= ?2 AND outcome IS NOT 'test' \
+                 AND (?3 IS NULL OR started_unix <= ?3)",
             )?;
             let rows = stmt
-                .query_map(params![tenant_id, since], |r| {
+                .query_map(params![tenant_id, since, until_unix], |r| {
                     Ok((
                         r.get::<_, i64>(0)?,
                         r.get::<_, i64>(1)? != 0,

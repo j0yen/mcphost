@@ -25,6 +25,9 @@ pub const TOOLS: &[&str] = &[
     "host.org.members",
     "host.org.remove",
     "host.org.leave",
+    "host.org.usage",
+    "host.org.digest.set",
+    "host.org.digest.send",
 ];
 
 /// `ROLES` as a SQL `IN (...)` list body: `'owner', 'member'`.
@@ -411,7 +414,7 @@ impl Db {
     }
 }
 
-fn not_in_org_error() -> AppError {
+pub(crate) fn not_in_org_error() -> AppError {
     AppError::Structured {
         code: NOT_IN_ORG,
         message: "this tenant does not belong to an org".to_string(),
@@ -419,7 +422,7 @@ fn not_in_org_error() -> AppError {
     }
 }
 
-fn not_owner_error() -> AppError {
+pub(crate) fn not_owner_error() -> AppError {
     AppError::Structured {
         code: NOT_OWNER,
         message: "only the org owner can do this".to_string(),
@@ -468,6 +471,16 @@ pub async fn join(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         .join_org(tenant.id, crate::auth::hash_key(&code), OrgCaps::from_state(state))
         .await?;
     Ok(json!({"org": name, "role": "member"}))
+}
+
+/// `org_required`: an org verb that reads org figures, called by a tenant in
+/// no org; `data.next_call` is the verb that creates one.
+pub(crate) fn org_required_error() -> AppError {
+    AppError::Structured {
+        code: ORG_REQUIRED,
+        message: "this tenant belongs to no org; host.org.usage reads an org's figures".to_string(),
+        data: json!({"next_call": "host.org.create", "hint": "Call host.org.create {name} to start an org, or host.org.join {code} to join one."}),
+    }
 }
 
 /// `host.org.members {role?}`: every live member, for the owner and for
@@ -580,3 +593,9 @@ crate::err_code! {
     remedy: "The owner cannot be removed from its own org; remove other members or delete the org instead.",
 }
 
+
+crate::err_code! {
+    pub ORG_REQUIRED,
+    code: "org_required", family: Share, class: AgentFault, retryable: false,
+    remedy: "Call host.org.create (or host.org.join) first; org usage needs an org.",
+}

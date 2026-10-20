@@ -88,6 +88,8 @@ pub mod http;
 pub mod install_links;
 pub mod invites;
 pub mod org;
+pub mod org_digest;
+pub mod org_usage;
 pub mod tenant_clients;
 pub mod kinds;
 pub mod host_args;

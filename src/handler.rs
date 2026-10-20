@@ -2293,6 +2293,38 @@ fn host_tools_part_03() -> Vec<Tool> {
             host_schema(json!({}), &[]),
         ),
         Tool::new(
+            "host.org.usage",
+            "Per-member and per-tool usage for your org over a window: calls, errors, seconds, \
+             state_bytes and est_cost_usd for each member, plus org totals. Figures are the \
+             same ones each member's own host.usage reports. A member sees only its own row \
+             and the totals.",
+            host_schema(
+                json!({
+                    "window": {"type": "string", "description": "Look-back window such as \
+                        24h or 7d (default 7d, at most 90d)."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.org.digest.set",
+            "Owner only: opt your org's weekly usage digest email in or out. The digest goes \
+             to the verified owner address every Monday 07:00 UTC and is on by default.",
+            host_schema(
+                json!({
+                    "enabled": {"type": "boolean", "description": "true to receive the weekly \
+                        digest, false to stop it."},
+                }),
+                &["enabled"],
+            ),
+        ),
+        Tool::new(
+            "host.org.digest.send",
+            "Owner only: email the org's 7-day usage digest to the verified owner address now. \
+             At most once an hour; a second call answers rate_limited.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
             "host.secret.set",
             "Store an encrypted secret value under this tenant's namespace, optionally bound to the hosts it may be sent to.",
             host_schema(

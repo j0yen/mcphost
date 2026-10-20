@@ -2024,6 +2024,17 @@
       "AC6": "deferred -- owned by PRD-mcphost-shared-tools-in-grantee-list",
       "AC7": "deferred -- operator-provisioned: live curl against prod after deploy."
     },
+    "orgc": {
+      "_prd": "PRD-mcphost-org-cost-attribution.md (test_prefix: orgc)",
+      "AC1": "tests/orgc_ac01_member_rows_equal_host_usage.rs",
+      "AC2": "tests/orgc_ac02_member_sees_only_own_row.rs",
+      "AC3": "tests/orgc_ac03_tools_rows_sorted_by_calls.rs",
+      "AC4": "tests/orgc_ac04_weekly_job_skips_unverified_and_disabled.rs",
+      "AC5": "tests/orgc_ac05_digest_send_one_request_rate_limited.rs",
+      "AC6": "tests/orgc_ac06_org_required_for_a_tenant_outside_any_org.rs",
+      "AC7": "tests/orgc_ac07_removed_member_row_keeps_calls_up_to_removal.rs",
+      "AC8": "deferred -- operator-provisioned: live curl of prod llms.txt after deploy."
+    },
     "orgm": {
       "_prd": "PRD-mcphost-org-model.md (test_prefix: orgm)",
       "AC1": "tests/orgm_ac01_join_keeps_tenant_bytes.rs",

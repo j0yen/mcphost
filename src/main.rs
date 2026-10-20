@@ -2198,6 +2198,8 @@ async fn main() -> anyhow::Result<()> {
             // retention tick, started once here alongside the other
             // background tasks.
             mcphost::channels::spawn_channel_retention((*state).clone());
+            // PRD-mcphost-org-cost-attribution R3: the Monday 07:00 UTC org digest.
+            mcphost::org_digest::spawn_weekly((*state).clone());
             // PRD-mcphost-task-handoff-tool requirement 5: the deadline sweep,
             // at most one cadence late.
             mcphost::tasks::spawn_sweep((*state).clone());

@@ -26,7 +26,7 @@ async fn orgmb_ac03() {
         .filter(|n| n.starts_with("host.org."))
         .map(str::to_string)
         .collect();
-    assert_eq!(listed.len(), 5, "tools/list must carry exactly five host.org.* verbs: {listed:?}");
+    assert_eq!(listed.len(), mcphost::org::TOOLS.len(), "tools/list must carry exactly the host.org.* verbs in org::TOOLS: {listed:?}");
 
     let quickstart = extract_structured(
         &client.tools_call("host.quickstart", json!({"kind": "echo"})).await.expect("host.quickstart"),
