@@ -145,6 +145,8 @@ mod dryrun_ac03_trigger_test_channel_post_short_circuited;
 mod dryrun_ac04_tool_run_test_state_write;
 #[path = "dryrun_ac07_quota_real_error_table_unchanged.rs"]
 mod dryrun_ac07_quota_real_error_table_unchanged;
+#[path = "dryspt_ac05_sweep.rs"]
+mod dryspt_ac05_sweep;
 #[path = "elib_ac01_form_elicitation_rides_the_calls_own_stream.rs"]
 mod elib_ac01_form_elicitation_rides_the_calls_own_stream;
 #[path = "elib_ac02_bare_capability_and_sampling_ride_in_band.rs"]

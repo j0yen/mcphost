@@ -26,7 +26,7 @@ pub const FORWARD_DENYLIST: &[&str] = &[
 /// call, no job enqueue, nothing a background task could act on before the
 /// rollback lands. Every other host verb has no dry run yet: `host.tool_test`
 /// on it returns `unverifiable` instead of forwarding a real write.
-pub const DRY_RUN_FORWARDABLE: &[&str] = &["host.trigger.set"];
+pub const DRY_RUN_FORWARDABLE: &[&str] = &["host.trigger.set", "host.state.table_drop"];
 
 /// Folds a wire-spelled verb name to a form comparable against a canonical
 /// dotted name regardless of which separator (`.` or `_`) the caller used
