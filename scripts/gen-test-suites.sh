@@ -691,7 +691,31 @@ def die(msg, code=1):
     sys.exit(code)
 
 
+# path -> verdict, filled by classify_all() with ONE classify-files call (was
+# one ci-test-partition.sh process per tests/*.rs file: 2220 spawns, ~18 s).
+_CLASSIFIED = {}
+
+
+def classify_all(paths):
+    paths = list(paths)
+    if not paths:
+        return
+    out = subprocess.run(
+        [CLASSIFY_SCRIPT, "classify-files", *paths],
+        capture_output=True, text=True, check=True,
+    )
+    verdicts = out.stdout.split()
+    if len(verdicts) != len(paths):
+        die(f"ci-test-partition.sh classify-files returned {len(verdicts)} verdicts for {len(paths)} paths")
+    for path, verdict in zip(paths, verdicts):
+        if verdict not in ("sandbox", "core"):
+            die(f"ci-test-partition.sh classify-files {path!r} returned {verdict!r}")
+        _CLASSIFIED[path] = verdict
+
+
 def classify(path):
+    if path in _CLASSIFIED:
+        return _CLASSIFIED[path]
     out = subprocess.run(
         [CLASSIFY_SCRIPT, "classify-file", path],
         capture_output=True, text=True, check=True,
@@ -1110,6 +1134,7 @@ def compute_plan():
     contract_exclusive_by_partition = {"core": [], "sandbox": []}
     cargo_by_partition = {"core": [], "sandbox": []}
     cargo_exclusive_by_partition = {"core": [], "sandbox": []}
+    classify_all(all_files)
     for f in all_files:
         with open(f, encoding="utf-8") as fh:
             content = fh.read()

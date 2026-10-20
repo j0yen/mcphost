@@ -1,4 +1,4 @@
-//! solo-suite: 770 one test re-runs every contract suite through pin-tests.sh (585-770 s on a hosted runner, the max of CI runs 39196582126, 39200390250, 39203293144)
+//! solo-suite: 770 one test re-runs every contract suite through pin-tests.sh where timing is measured (585-770 s on a hosted runner, the max of CI runs 39196582126, 39200390250, 39203293144; CI now skips the re-run, the weight is kept until a refresh measures the skip)
 //! PRD-mcphost-contract-suite-generated AC6 -- on a warm cargo target
 //! `scripts/pin-tests.sh` finishes every contract suite within the hard budget
 //! (900 s) and prints a per-binary timing line for each.
@@ -13,6 +13,16 @@
 //! built the crate, and `pin-tests.sh` builds the two contract binaries once
 //! up front outside the timed section (a cold link is not what the budget
 //! measures).
+//!
+//! 2026-10-19: CI's core shards set `MCPHOST_PERF_SKIP=1` ("timing budgets are
+//! the gate's truth, not CI's", ci.yml), and core-static's `contract suites`
+//! step already runs every contract suite on every CI run. So under the skip
+//! this test checks the derived list and stops: in CI run 39336980749 (PR
+//! #448) core-static ran suite_contracts_core_01 in 892 s and this re-run took
+//! 966 s (budget 900 s; the core shard run wall also fails above 900 s), while
+//! the same suite takes 546 s (main) and 556 s (#448) on one 4-CPU builder
+//! with 8 threads -- runner variance on a doubled run, not a regression.
+//! The gate and the inner (var unset) keep the 900 s budget and the target.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -57,6 +67,13 @@ fn ctrs_ac06_pin_tests_runs_all_contract_suites_within_budget_and_prints_timings
         .unwrap();
     let bins: Vec<String> = String::from_utf8_lossy(&list.stdout).lines().map(str::to_string).collect();
     assert!(!bins.is_empty());
+
+    // Same switch as tests/common/mod.rs `perf_skipped()` (suite_core_04 has no
+    // `mod common`): on CI the suites run in core-static, unbudgeted.
+    if std::env::var("MCPHOST_PERF_SKIP").ok().as_deref() == Some("1") {
+        eprintln!("perf skipped (load): {} contract suites run by core-static's `contract suites` step; budget {BUDGET_SECS}s is the gate's", bins.len());
+        return;
+    }
 
     // warm the target (compile only), untimed
     for b in &bins {
