@@ -45,6 +45,9 @@ pub struct ScopeSpec {
     pub purpose: Cow<'static, str>,
 }
 
+/// Extra query parameters appended to a provider's authorize URL.
+pub type AuthorizeParams = Cow<'static, [(Cow<'static, str>, Cow<'static, str>)]>;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderSpec {
     pub name: Cow<'static, str>,
@@ -54,7 +57,7 @@ pub struct ProviderSpec {
     pub refresh: Refresh,
     pub client_id_env: Cow<'static, str>,
     pub client_secret_env: Cow<'static, str>,
-    pub extra_authorize_params: Cow<'static, [(Cow<'static, str>, Cow<'static, str>)]>,
+    pub extra_authorize_params: AuthorizeParams,
     pub docs_url: Cow<'static, str>,
 }
 
