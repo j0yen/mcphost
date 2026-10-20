@@ -4,7 +4,10 @@
 //! and `check` kept passing on the old numbers. `scripts/ci-suite-measured.json`
 //! (written only by `scripts/ci-refresh-weights.sh`, from a CI log's
 //! `suite=<name> measured=<s>s` lines) holds the max measured seconds, and `check`
-//! fails, naming the suite, when measured >= 1.5 x recorded.
+//! fails, naming the suite, when measured >= 1.5 x recorded. It also fails, naming the
+//! suite, when a weights key (the `list measured-required` emitter: minus lib/bin:*) has no
+//! measured entry at all: a sandbox suite under its warn line used to record nothing, so
+//! its wrong weight passed silently.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -270,4 +273,29 @@ fn the_measured_required_emitter_is_the_weights_keys_minus_lib_and_bin() {
     got.sort();
     let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(got, want);
+}
+
+#[test]
+fn a_sandbox_suite_missing_from_the_measured_file_fails_check_naming_it() {
+    let dir = scratch("unmeasured");
+    let weights = json("scripts/ci-suite-weights.json");
+    let silent = required_suites().into_iter().find(|k| k.contains("sandbox")).expect("a sandbox suite is required");
+    let mut measured = json("scripts/ci-suite-measured.json");
+    assert!(measured.get(&silent).is_some(), "the committed measured file carries {silent}");
+    measured.as_object_mut().unwrap().remove(&silent);
+    let (w, m) = (dir.join("weights.json"), dir.join("measured.json"));
+    std::fs::write(&w, weights.to_string()).unwrap();
+    std::fs::write(&m, measured.to_string()).unwrap();
+    let o = check_with(&w, &m);
+    let err = String::from_utf8_lossy(&o.stderr).into_owned();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(!o.status.success(), "a weights key with no measured entry must fail check");
+    assert!(err.contains(&format!("unmeasured suite: {silent} ")), "{err}");
+}
+
+#[test]
+fn every_required_suite_has_a_measured_entry_in_the_committed_file() {
+    let measured = json("scripts/ci-suite-measured.json");
+    let missing: Vec<String> = required_suites().into_iter().filter(|k| measured.get(k).is_none()).collect();
+    assert!(missing.is_empty(), "committed measured file lacks: {missing:?}");
 }

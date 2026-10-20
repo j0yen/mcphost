@@ -1,7 +1,7 @@
 {
   "lib": 6,
   "suite_cargo_core_01": 1,
-  "suite_contracts_core_01": 67,
+  "suite_contracts_core_01": 318,
   "suite_contracts_sandbox_01": 5,
   "suite_core_01": 1,
   "suite_core_02": 1,
@@ -10,14 +10,14 @@
   "suite_core_05": 2,
   "suite_core_06": 2,
   "suite_core_07": 2,
-  "suite_core_08": 320,
-  "suite_core_09": 261,
-  "suite_core_10": 278,
-  "suite_core_11": 349,
+  "suite_core_08": 311,
+  "suite_core_09": 238,
+  "suite_core_10": 273,
+  "suite_core_11": 336,
   "suite_env_core_01": 47,
-  "suite_env_sandbox_01": 7,
-  "suite_sandbox_01": 110,
-  "suite_sandbox_02": 102,
-  "suite_sandbox_03": 110,
-  "suite_sandbox_04": 91
+  "suite_env_sandbox_01": 12,
+  "suite_sandbox_01": 2,
+  "suite_sandbox_02": 112,
+  "suite_sandbox_03": 103,
+  "suite_sandbox_04": 86
 }

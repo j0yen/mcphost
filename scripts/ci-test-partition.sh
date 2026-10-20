@@ -43,8 +43,9 @@
 # (`autotests = false` + explicit `[[test]]`s, the OPPOSITE of the pre-PRD
 # assumption this script used to assert), that every suite's membership
 # agrees with `classify()` (no sandbox file inside a core suite or vice
-# versa), and that the sandbox shard split is total+disjoint over the sandbox
-# SUITE list.
+# versa), that the sandbox shard split is total+disjoint over the sandbox
+# SUITE list, and that every weights key (minus lib/bin:*) has an entry in
+# scripts/ci-suite-measured.json (a suite nobody measured is a weight nobody checked).
 #
 # Doctests are NOT in either list: cargo rejects `--doc` combined with any
 # other target selector, so the workflow runs `cargo test --doc` as its own
@@ -539,6 +540,21 @@ check() {
       echo "ci-test-partition: stale weight: $line in $WEIGHTS_REL -- run scripts/ci-refresh-weights.sh on a CI run log" >&2
     done <<<"$stale"
     rc=1
+  fi
+
+  # Completeness guard: a suite with a recorded weight but no measurement is exactly what hid
+  # suite_sandbox_02 recorded at 152 s while it ran ~300 s (a shard under its warn line used to
+  # report nothing, and the guard above only compares keys that are present). The required key
+  # set is `list measured-required` (the weights file's keys minus lib/bin:*), never a literal list.
+  local unmeasured
+  if [ -f "$MEASURED_FILE" ] && jq -e . "$MEASURED_FILE" >/dev/null 2>&1; then
+    unmeasured="$(measured_required | jq -R -r --slurpfile m "$MEASURED_FILE" '. as $k | select(($m[0] | has($k)) | not)')"
+    if [ -n "$unmeasured" ]; then
+      while IFS= read -r line; do
+        echo "ci-test-partition: unmeasured suite: $line has a recorded weight in $WEIGHTS_REL but no entry in $MEASURED_REL -- run scripts/ci-refresh-weights.sh <CI run id> (every shard reports every suite)" >&2
+      done <<<"$unmeasured"
+      rc=1
+    fi
   fi
 
   [ "$rc" -eq 0 ] && echo "ci-test-partition: ok ($(printf '%s\n' "$sandbox_files" | wc -l) sandbox suites across $SANDBOX_SHARDS shards, predicted heaviest shard ${heaviest}s, $(printf '%s\n' "$core_files" | wc -l) core suites across $CORE_SHARDS shards, predicted heaviest core shard ${core_heaviest}s)"
