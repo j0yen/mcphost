@@ -7093,6 +7093,11 @@ pub struct McpHostHandler {
     pub state: Arc<AppState>,
 }
 
+/// The boxed future `McpHostHandler::record_acting_for` returns: `Some` carries the
+/// lookup error to surface, `None` means the lineage (if any) was recorded.
+type ActingForLookup<'a> =
+    std::pin::Pin<Box<dyn std::future::Future<Output = Option<Box<McpError>>> + Send + 'a>>;
+
 impl McpHostHandler {
     /// PRD-mcphost-acting-for-in-ledger-and-audit: a sub-key's call says who it
     /// acted for on its response `_meta` and its error `data`. Out of line and
@@ -7115,7 +7120,7 @@ impl McpHostHandler {
     /// Renders the sub-key's lineage into `CALL_ACTING_FOR`. Boxed and out of
     /// line so `call_tool_inner`'s forwarded-call stack frame does not grow
     /// (`tests/fwdtab_ac05_budget_lowered_on_the_measurement.rs`).
-    fn record_acting_for(&self, key_id: i64) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<Box<McpError>>> + Send + '_>> {
+    fn record_acting_for(&self, key_id: i64) -> ActingForLookup<'_> {
         Box::pin(async move {
             match self.state.db.acting_for_for_key(key_id).await {
                 Ok(Some(af)) => {
