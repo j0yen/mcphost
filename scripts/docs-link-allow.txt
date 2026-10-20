@@ -12,6 +12,9 @@ example.com  # reserved example domain (RFC 2606)
 docs/benchmarks/  # measurement dumps, not maintained prose
 https://mcphost.dev  # our own origin; the uptime probes check it
 example.test  # reserved .test TLD (RFC 2606) used in doc examples
+https://github.com/login/oauth/access_token  # OAuth token endpoint (POST only; 404 to a GET), listed in docs/connections.md
+https://oauth2.googleapis.com/token  # OAuth token endpoint (POST only; 404 to a GET), listed in docs/connections.md
+https://api.notion.com/v1/oauth/token  # OAuth token endpoint (POST only; 400 to a GET), listed in docs/connections.md
 https://api.stripe.com/v1/balance  # example upstream API call in a spec snippet; needs a bearer key (401 unauthenticated)
 docs/launch/wave1-checklist.md  # submission checklist: the listing pages it names do not exist until submitted; the site is bot-walled (403 to scripts)
 https://registry.modelcontextprotocol.io/v0.1/servers/dev.mcphost%2Fmcphost/versions/latest  # registry latest-version lookup; times out from GitHub runners (2026-10-12 PR #223 twice); the registry-manifest --check job validates the listing

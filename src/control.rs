@@ -1017,6 +1017,10 @@ fn quickstart_inner(
         // every registered kind, alias and recipe name, the dry-run table
         // and the limits -- read-only, creating no tenant. A named `kind`
         // keeps the signup-first response above, unchanged.
+        // PRD-mcphost-connection-provider-registry R7 (AC6).
+        if let Value::Object(map) = &mut response {
+            map.insert("connections".to_string(), crate::connect::quickstart_connections(&state.connect_providers));
+        }
         if arg_str_opt(args, "kind").is_none()
             && let Value::Object(map) = &mut response
         {
@@ -1213,6 +1217,8 @@ fn quickstart_inner(
         // PRD-mcphost-oauth-first-entry-url requirement 6: the URL to give an
         // OAuth-only client (Claude.ai, ChatGPT).
         map.insert("oauth_entry_url".to_string(), json!(crate::oauth::entry_resource_uri(&state.public_url)));
+        // PRD-mcphost-connection-provider-registry R7 (AC6).
+        map.insert("connections".to_string(), crate::connect::quickstart_connections(&state.connect_providers));
     }
     // PRD-mcphost-client-install-links P0 requirement 3 (AC3): the same
     // four install forms `/connect` renders, now for the caller's own

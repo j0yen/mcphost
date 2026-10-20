@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-dev-emulator.md (test_prefix: demu)",
+  "ac_test_map_prd": "PRD-mcphost-connection-provider-registry.md (test_prefix: cprov)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,16 +28,27 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/demu_ac01_type_error_parity.rs",
-    "AC2": "tests/demu_ac02_args_invalid_text.rs",
-    "AC3": "tests/demu_ac03_sandbox_marker.rs",
-    "AC4": "tests/demu_ac04_plan_ceilings.rs",
-    "AC5": "tests/demu_ac05_host_verbs_unsupported.rs",
-    "AC6": "tests/demu_ac06_lint_failure_exits_before_bind.rs",
-    "AC7": "tests/demu_ac07_file_watch.rs",
-    "AC8": "deferred: Live (scripts/dev-parity-prod.sh against prod prints `parity: ok code=tool_exception line=14`; operator-provisioned)"
+    "AC1": "tests/cprov_ac01_one_providers_toml_edit_reaches_every_surface.rs",
+    "AC2": "tests/cprov_ac02_provider_surfaces_cannot_drift.rs",
+    "AC3": "tests/cprov_ac03_availability_comes_from_env_and_never_leaks.rs",
+    "AC4": "tests/cprov_ac04_validate_scopes_names_the_unknown.rs",
+    "AC5": "tests/cprov_ac05_unknown_preset_lists_every_provider.rs",
+    "AC6": "tests/cprov_ac06_quickstart_partitions_providers.rs",
+    "AC7": "tests/cprov_ac07_missing_field_fails_the_build_naming_it.rs",
+    "AC8": "deferred -- operator-provisioned: live curl of prod's llms.txt after deploy."
   },
   "ac_test_map_by_prefix": {
+    "fwdtab": {
+      "_prd": "PRD-mcphost-generated-dispatch-table-stack-budget.md (test_prefix: fwdtab)",
+      "AC1": "tests/cmap_ac01_codemap_lists_every_source_file.rs",
+      "AC2": "tests/cmap_ac02_db_banners_and_large_files_without_sections.rs",
+      "AC3": "tests/cmap_ac03_registries_section_lists_array_consts.rs",
+      "AC4": "tests/cmap_ac04_missing_module_doc_fails_naming_file.rs",
+      "AC5": "tests/cmap_ac05_check_mode_names_added_path.rs",
+      "AC7": "tests/cmap_ac07_claude_md_points_at_codemap.rs",
+      "AC8": "tests/cmap_ac08_body_edit_leaves_map_identical.rs",
+      "AC6": "deferred: Live (fresh clone of origin/main tip runs scripts/gen-codemap.sh --check green and CLAUDE.md names CODEMAP.md; evidence path scripts/gen-codemap.sh)"
+    },
     "snp": {
       "_prd": "PRD-mcphost-secret-non-exfiltration-proof.md (test_prefix: snp)",
       "AC1": "tests/snp_ac01_url_to_unbound_host_is_blocked.rs",
@@ -2276,6 +2287,17 @@
       "AC7": "tests/cmap_ac07_claude_md_points_at_codemap.rs",
       "AC8": "tests/cmap_ac08_body_edit_leaves_map_identical.rs",
       "AC6": "deferred: Live (fresh clone of origin/main tip runs scripts/gen-codemap.sh --check green and CLAUDE.md names CODEMAP.md; evidence path scripts/gen-codemap.sh)"
+    },
+    "demu": {
+      "_prd": "PRD-mcphost-dev-emulator.md (test_prefix: demu)",
+      "AC1": "tests/demu_ac01_type_error_parity.rs",
+      "AC2": "tests/demu_ac02_args_invalid_text.rs",
+      "AC3": "tests/demu_ac03_sandbox_marker.rs",
+      "AC4": "tests/demu_ac04_plan_ceilings.rs",
+      "AC5": "tests/demu_ac05_host_verbs_unsupported.rs",
+      "AC6": "tests/demu_ac06_lint_failure_exits_before_bind.rs",
+      "AC7": "tests/demu_ac07_file_watch.rs",
+      "AC8": "deferred: Live (scripts/dev-parity-prod.sh against prod prints `parity: ok code=tool_exception line=14`; operator-provisioned)"
     }
   }
 }

@@ -6677,6 +6677,129 @@
       "since": "0.108.131"
     },
     {
+      "description": "List the upstream OAuth providers this host can connect (from providers.toml): name, exact scope names, refresh semantics, docs_url, and available true|false with a reason (client_id_not_configured | client_secret_not_configured) when the host has no credentials for it yet. Never returns a client id or secret.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "description": "Only this provider's row; omit to list every provider.",
+            "enum": [
+              "github",
+              "google",
+              "notion",
+              "slack"
+            ],
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.connect.providers",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "providers": {
+            "items": {
+              "properties": {
+                "available": {
+                  "type": "boolean"
+                },
+                "docs_url": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "refresh": {
+                  "type": "string"
+                },
+                "scope_purposes": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "object",
+                    "null"
+                  ]
+                },
+                "scopes": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "available",
+                "docs_url",
+                "name",
+                "refresh",
+                "scopes"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "providers"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.58.0",
+      "unpaged_reason": "fixed set read whole from providers.toml at build time, a handful of rows; no cursor applies"
+    },
+    {
       "description": "Soft-delete a document by id or name; still visible via host.docs.list {since} with deleted: true. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
       "input_schema": {
         "additionalProperties": false,
@@ -37344,7 +37467,7 @@
             "type": "string"
           },
           "preset": {
-            "description": "One of slack, github, google -- prefills auth_url/token_url. An explicit auth_url/token_url below always overrides the matching preset value, field by field.",
+            "description": "One of github, google, notion, slack (host.connect.providers lists them) -- prefills auth_url/token_url. An explicit auth_url/token_url below always overrides the matching preset value, field by field.",
             "type": "string"
           },
           "scopes": {
@@ -39824,6 +39947,34 @@
       },
       "name": "host_client_revoke",
       "since": "0.108.131"
+    },
+    {
+      "alias_of": "host.connect.providers",
+      "description": "List the upstream OAuth providers this host can connect (from providers.toml): name, exact scope names, refresh semantics, docs_url, and available true|false with a reason (client_id_not_configured | client_secret_not_configured) when the host has no credentials for it yet. Never returns a client id or secret.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "description": "Only this provider's row; omit to list every provider.",
+            "enum": [
+              "github",
+              "google",
+              "notion",
+              "slack"
+            ],
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_connect_providers",
+      "since": "0.58.0"
     },
     {
       "alias_of": "host.docs.delete",
@@ -46436,7 +46587,7 @@
             "type": "string"
           },
           "preset": {
-            "description": "One of slack, github, google -- prefills auth_url/token_url. An explicit auth_url/token_url below always overrides the matching preset value, field by field.",
+            "description": "One of github, google, notion, slack (host.connect.providers lists them) -- prefills auth_url/token_url. An explicit auth_url/token_url below always overrides the matching preset value, field by field.",
             "type": "string"
           },
           "scopes": {

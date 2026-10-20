@@ -641,6 +641,18 @@ mod cproc_ac07_flake_lint_job_runs_child_proc_lint;
 mod cprocb_ac02_real_tree_clean_and_six_files_use_helper;
 #[path = "cprocb_ac03_flake_lint_job_fails_on_raw_spawn_before_toolchain.rs"]
 mod cprocb_ac03_flake_lint_job_fails_on_raw_spawn_before_toolchain;
+#[path = "cprov_ac01_one_providers_toml_edit_reaches_every_surface.rs"]
+mod cprov_ac01_one_providers_toml_edit_reaches_every_surface;
+#[path = "cprov_ac03_availability_comes_from_env_and_never_leaks.rs"]
+mod cprov_ac03_availability_comes_from_env_and_never_leaks;
+#[path = "cprov_ac04_validate_scopes_names_the_unknown.rs"]
+mod cprov_ac04_validate_scopes_names_the_unknown;
+#[path = "cprov_ac05_unknown_preset_lists_every_provider.rs"]
+mod cprov_ac05_unknown_preset_lists_every_provider;
+#[path = "cprov_ac06_quickstart_partitions_providers.rs"]
+mod cprov_ac06_quickstart_partitions_providers;
+#[path = "cprov_ac07_missing_field_fails_the_build_naming_it.rs"]
+mod cprov_ac07_missing_field_fails_the_build_naming_it;
 #[path = "creg_ac01_premise_two_truths_then_minus_32601.rs"]
 mod creg_ac01_premise_two_truths_then_minus_32601;
 #[path = "creg_ac03_every_method_matches_its_row.rs"]
@@ -1021,21 +1033,3 @@ mod errjson_ac02_error_data_carries_the_registry_row;
 mod errjson_ac03_errors_json_route;
 #[path = "errjson_ac04_host_errors_tool.rs"]
 mod errjson_ac04_host_errors_tool;
-#[path = "errreg_ac01_err_code_declares_and_registers.rs"]
-mod errreg_ac01_err_code_declares_and_registers;
-#[path = "errreg_ac02_registry_surfaces_byte_identical_snapshot.rs"]
-mod errreg_ac02_registry_surfaces_byte_identical_snapshot;
-#[path = "errreg_ac03_scanner_fails_bare_literal_names_site.rs"]
-mod errreg_ac03_scanner_fails_bare_literal_names_site;
-#[path = "errreg_ac04_scanner_fails_duplicate_and_format_codes.rs"]
-mod errreg_ac04_scanner_fails_duplicate_and_format_codes;
-#[path = "errreg_ac05_hand_table_empty_and_backstop_passes.rs"]
-mod errreg_ac05_hand_table_empty_and_backstop_passes;
-#[path = "errreg_ac06_five_10_17_codes_declared_at_emit_site.rs"]
-mod errreg_ac06_five_10_17_codes_declared_at_emit_site;
-#[path = "evkr_ac01_no_second_spelling.rs"]
-mod evkr_ac01_no_second_spelling;
-#[path = "evkr_ac02_renderings_equal_enum.rs"]
-mod evkr_ac02_renderings_equal_enum;
-#[path = "evkr_ac03_description_and_fields.rs"]
-mod evkr_ac03_description_and_fields;
