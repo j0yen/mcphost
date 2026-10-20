@@ -1075,6 +1075,32 @@ fn validate_rows(
     Ok(coerced)
 }
 
+/// PRD-mcphost-table-conflict-structured-error: a constraint violation that
+/// `From<rusqlite::Error>` classified as `table_row_conflict` gets the table
+/// (each tenant has its own DB, so the caller's name beats SQLite's text),
+/// the 0-based `row_index` of the failing row, and the agent-facing message.
+/// Any other error passes through unchanged.
+fn row_conflict_at(err: AppError, table: &str, row_index: usize) -> AppError {
+    match err {
+        AppError::Structured { code, data, .. } if code == TABLE_ROW_CONFLICT => {
+            let column = data.get("column").cloned().unwrap_or(Value::Null);
+            let constraint = data.get("constraint").and_then(Value::as_str).unwrap_or("other").to_string();
+            let on = column.as_str().map(|c| format!(" on {c}")).unwrap_or_default();
+            AppError::Structured {
+                code,
+                message: format!("row {row_index} conflicts{on} ({constraint}) in table {table}"),
+                data: json!({
+                    "table": table,
+                    "column": column,
+                    "constraint": constraint,
+                    "row_index": row_index,
+                }),
+            }
+        }
+        other => other,
+    }
+}
+
 fn insert_rows_sync(
     conn: &Connection,
     table: &str,
@@ -1099,7 +1125,7 @@ fn insert_rows_sync(
     }
     let outcome: Result<Vec<i64>, AppError> = (|| {
         let mut ids = Vec::with_capacity(rows.len());
-        for row in rows {
+        for (row_index, row) in rows.iter().enumerate() {
             let mut cols = Vec::with_capacity(row.len());
             let mut placeholders = Vec::with_capacity(row.len());
             let mut values: Vec<Box<dyn rusqlite::ToSql>> = Vec::with_capacity(row.len());
@@ -1116,7 +1142,8 @@ fn insert_rows_sync(
                 placeholders.join(", "),
             );
             let params_ref: Vec<&dyn rusqlite::ToSql> = values.iter().map(|b| b.as_ref()).collect();
-            conn.execute(&sql, params_ref.as_slice())?;
+            conn.execute(&sql, params_ref.as_slice())
+                .map_err(|e| row_conflict_at(AppError::from(e), table, row_index))?;
             ids.push(conn.last_insert_rowid());
         }
         Ok(ids)
@@ -3090,6 +3117,12 @@ crate::err_code! {
     pub TABLE_ALREADY_EXISTS,
     code: "table_already_exists", family: Storage, class: AgentFault, retryable: false,
     remedy: "Use a different table name or drop the existing one.",
+}
+
+crate::err_code! {
+    pub TABLE_ROW_CONFLICT,
+    code: "table_row_conflict", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Change the conflicting value in data.column or query the table first; nothing was appended.",
 }
 
 crate::err_code! {

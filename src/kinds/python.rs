@@ -2725,6 +2725,20 @@ pub fn render_bridge_docs_block() -> String {
     for m in BRIDGE_MODULES {
         out.push_str(&format!("- `mcphost.{}` -- {}\n", m.name, m.purpose));
     }
+    // PRD-mcphost-table-conflict-structured-error: the `TableError.code`
+    // values a tool can catch are the registry's `table_*` rows, never a
+    // second list (a new row appears here on the next `--write`).
+    let mut table_codes: Vec<&str> = crate::error_registry::REGISTERED
+        .iter()
+        .map(|e| e.code)
+        .filter(|c| c.starts_with("table_"))
+        .collect();
+    table_codes.sort_unstable();
+    let listed: Vec<String> = table_codes.iter().map(|c| format!("`{c}`")).collect();
+    out.push_str(&format!(
+        "- `mcphost.table.TableError` -- `.code` is one of {}; `.data` carries the details (e.g. `data.column` on `table_row_conflict`)\n",
+        listed.join(", ")
+    ));
     out.push_str(BRIDGE_DOCS_END);
     out
 }
@@ -3203,6 +3217,9 @@ class McphostTableError(Exception):
         super().__init__(message)
         self.code = code
         self.data = data or {}
+
+    def __str__(self):
+        return self.code + ": " + str(self.args[0])
 
 def _table_call(op, **kwargs):
     _real_stdout.write(json.dumps({"__mcphost_table__": True, "op": op, "args": kwargs}))
@@ -4199,6 +4216,20 @@ fn map_envelope_error_untagged(envelope: &Value, stderr_tail: &str, own_domain: 
                 return KindError::structured_with(
                     code,
                     message.to_string(),
+                    json!({"phase": key::PHASE_TOOL_CODE, "exception_class": error}),
+                );
+            }
+            // PRD-mcphost-table-conflict-structured-error: an uncaught
+            // `mcphost.table` refusal keeps its registry code (`McphostTableError`
+            // renders `"<code>: <message>"`), so a duplicate key is
+            // `table_row_conflict`, not an anonymous `tool_exception`.
+            if error == "McphostTableError"
+                && let Some((code, rest)) = message.split_once(": ")
+                && let Some(entry) = crate::error_registry::lookup(code)
+            {
+                return KindError::structured_with(
+                    entry.code,
+                    rest.to_string(),
                     json!({"phase": key::PHASE_TOOL_CODE, "exception_class": error}),
                 );
             }

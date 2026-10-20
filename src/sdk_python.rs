@@ -294,11 +294,15 @@ pub fn canonical_names(contract_bytes: &[u8]) -> Result<Vec<String>, String> {
     schema_ir::canonical_names(contract_bytes)
 }
 
-/// Every wire error code the host knows (sorted, deduplicated).
+/// Every wire error code the host knows (sorted, deduplicated), the `err_code!` registry included.
 pub fn error_codes() -> Vec<String> {
     let mut codes: BTreeSet<String> = crate::errors::all_variants_for_test().iter().map(|e| e.code().to_string()).collect();
     codes.extend(crate::feedback::CODE_TO_KIND.iter().map(|(c, _)| c.to_string()));
     codes.extend(crate::feedback::KIND_LEVEL_CODES.iter().map(|c| c.to_string()));
+    // PRD-mcphost-table-conflict-structured-error: every `err_code!` row is a
+    // code the host can emit, so each gets a generated class (a code declared
+    // at its emit site never needs a second list here).
+    codes.extend(crate::error_registry::REGISTERED.iter().map(|e| e.code.to_string()));
     codes.into_iter().filter(|c| !c.is_empty() && c.chars().all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_')).collect()
 }
 

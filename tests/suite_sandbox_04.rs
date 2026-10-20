@@ -132,6 +132,10 @@ mod surface_ac06_python_outputs_by_path;
 mod tables_ac05_python_sandbox_table_access;
 #[path = "tables_ac08_docs_and_kv_vs_table_sentence.rs"]
 mod tables_ac08_docs_and_kv_vs_table_sentence;
+#[path = "tcse_ac05_python_catches_table_error.rs"]
+mod tcse_ac05_python_catches_table_error;
+#[path = "tcse_ac06_uncaught_table_error_keeps_code.rs"]
+mod tcse_ac06_uncaught_table_error_keeps_code;
 #[path = "tdf_ac06_as_mcp_call_publishes.rs"]
 mod tdf_ac06_as_mcp_call_publishes;
 #[path = "testtruth_ac04_python_compose_unverifiable_in_dry_run.rs"]
