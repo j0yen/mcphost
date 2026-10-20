@@ -30,6 +30,24 @@ mod serve;
 #[path = "support/sjrc.rs"]
 mod sjrc;
 
+#[path = "meshops_ac01_stats_real_vs_synthetic_volume.rs"]
+mod meshops_ac01_stats_real_vs_synthetic_volume;
+#[path = "meshops_ac02_threads_no_bodies.rs"]
+mod meshops_ac02_threads_no_bodies;
+#[path = "meshops_ac03_thread_read_bodies_and_audit.rs"]
+mod meshops_ac03_thread_read_bodies_and_audit;
+#[path = "meshops_ac04_freeze_blocks_sends_not_reads_or_tools.rs"]
+mod meshops_ac04_freeze_blocks_sends_not_reads_or_tools;
+#[path = "meshops_ac05_unfreeze_restores_sending.rs"]
+mod meshops_ac05_unfreeze_restores_sending;
+#[path = "meshops_ac06_purge_dry_run_then_real.rs"]
+mod meshops_ac06_purge_dry_run_then_real;
+#[path = "meshops_ac07_tenant_delete_cascade_across_mesh_tables.rs"]
+mod meshops_ac07_tenant_delete_cascade_across_mesh_tables;
+#[path = "meshops_ac08_healthz_mesh_counters.rs"]
+mod meshops_ac08_healthz_mesh_counters;
+#[path = "meshops_ac09_stats_refusals_by_code_per_sender.rs"]
+mod meshops_ac09_stats_refusals_by_code_per_sender;
 #[path = "metering_ac01_stripe_customer_id_null_default.rs"]
 mod metering_ac01_stripe_customer_id_null_default;
 #[path = "metering_ac02_webhook_stores_stripe_customer_id.rs"]
@@ -1012,29 +1030,3 @@ mod sqlpass_ac11_concurrent_queries_produce_ten_log_rows;
 mod sqlpass_ac12_empty_table_zero_rows_null_error_code;
 #[path = "sqlpass_ac13_long_sql_truncated_in_log_not_refused.rs"]
 mod sqlpass_ac13_long_sql_truncated_in_log_not_refused;
-#[path = "sreg_ac02_every_host_tool_declares_a_scope.rs"]
-mod sreg_ac02_every_host_tool_declares_a_scope;
-#[path = "sreg_ac03_implied_scopes_gate_tool_calls.rs"]
-mod sreg_ac03_implied_scopes_gate_tool_calls;
-#[path = "sreg_ac04_llms_txt_scopes_table_generated.rs"]
-mod sreg_ac04_llms_txt_scopes_table_generated;
-#[path = "sreg_ac05_whoami_scopes_all_and_effective.rs"]
-mod sreg_ac05_whoami_scopes_all_and_effective;
-#[path = "sreg_ac06_oauth_scopes_registry_first.rs"]
-mod sreg_ac06_oauth_scopes_registry_first;
-#[path = "sreg_ac07_unknown_scope_word_not_effective.rs"]
-mod sreg_ac07_unknown_scope_word_not_effective;
-#[path = "srlp_ac02_plan_ceilings_published.rs"]
-mod srlp_ac02_plan_ceilings_published;
-#[path = "state_ac01_kv_roundtrip.rs"]
-mod state_ac01_kv_roundtrip;
-#[path = "state_ac04_table_query.rs"]
-mod state_ac04_table_query;
-#[path = "state_ac05_schema_violation.rs"]
-mod state_ac05_schema_violation;
-#[path = "state_ac06_quota_exceeded.rs"]
-mod state_ac06_quota_exceeded;
-#[path = "state_ac08_tenant_isolation.rs"]
-mod state_ac08_tenant_isolation;
-#[path = "state_ac09_cascade_delete.rs"]
-mod state_ac09_cascade_delete;

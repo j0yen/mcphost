@@ -30,6 +30,16 @@ mod ac14_storage_unwritable;
 mod busyaudit_ac08_healthz_db_fields;
 #[path = "ctrv_ac03_status_and_healthz_carry_contract_identity.rs"]
 mod ctrv_ac03_status_and_healthz_carry_contract_identity;
+#[path = "exargs_ac02_generator_values.rs"]
+mod exargs_ac02_generator_values;
+#[path = "exargs_ac03_tool_test_runs_the_example.rs"]
+mod exargs_ac03_tool_test_runs_the_example;
+#[path = "exargs_ac04_unsatisfiable_schema_is_refused.rs"]
+mod exargs_ac04_unsatisfiable_schema_is_refused;
+#[path = "exargs_ac05_publish_dry_run_and_spec_test_run_one_example.rs"]
+mod exargs_ac05_publish_dry_run_and_spec_test_run_one_example;
+#[path = "exargs_ac06_depth_limit.rs"]
+mod exargs_ac06_depth_limit;
 #[path = "exmf_ac01_seven_manifests_check_green.rs"]
 mod exmf_ac01_seven_manifests_check_green;
 #[path = "exmf_ac02_bad_manifest_exits_two_index_untouched.rs"]
@@ -1002,24 +1012,6 @@ mod mcphost_webhook_inbox_ac09_concurrent_deliveries_all_land;
 mod mcphost_webhook_inbox_ac11_trigger_test_stores_and_fires_synthetic_delivery;
 #[path = "mcphost_webhook_inbox_ac12_stripe_verify_scheme_accepted.rs"]
 mod mcphost_webhook_inbox_ac12_stripe_verify_scheme_accepted;
-#[path = "meshops_ac01_stats_real_vs_synthetic_volume.rs"]
-mod meshops_ac01_stats_real_vs_synthetic_volume;
-#[path = "meshops_ac02_threads_no_bodies.rs"]
-mod meshops_ac02_threads_no_bodies;
-#[path = "meshops_ac03_thread_read_bodies_and_audit.rs"]
-mod meshops_ac03_thread_read_bodies_and_audit;
-#[path = "meshops_ac04_freeze_blocks_sends_not_reads_or_tools.rs"]
-mod meshops_ac04_freeze_blocks_sends_not_reads_or_tools;
-#[path = "meshops_ac05_unfreeze_restores_sending.rs"]
-mod meshops_ac05_unfreeze_restores_sending;
-#[path = "meshops_ac06_purge_dry_run_then_real.rs"]
-mod meshops_ac06_purge_dry_run_then_real;
-#[path = "meshops_ac07_tenant_delete_cascade_across_mesh_tables.rs"]
-mod meshops_ac07_tenant_delete_cascade_across_mesh_tables;
-#[path = "meshops_ac08_healthz_mesh_counters.rs"]
-mod meshops_ac08_healthz_mesh_counters;
-#[path = "meshops_ac09_stats_refusals_by_code_per_sender.rs"]
-mod meshops_ac09_stats_refusals_by_code_per_sender;
 #[path = "minimal_ac1_anonymous_ok_only.rs"]
 mod minimal_ac1_anonymous_ok_only;
 #[path = "minimal_ac4_liveness_failure_returns_5xx.rs"]

@@ -368,6 +368,8 @@ const MIGRATION_0123: &str = include_str!("../migrations/0123_share_scopes.sql")
 const MIGRATION_0124: &str = include_str!("../migrations/0124_owner_verification_method.sql");
 /// PRD-mcphost-email-send-live-proof R5: the `owner_method` CHECK gains `admin`.
 const MIGRATION_0125: &str = include_str!("../migrations/0125_owner_method_admin.sql");
+/// PRD-mcphost-audit-export-tamper-evident R3: the `audit_exports` table.
+const MIGRATION_0126: &str = include_str!("../migrations/0126_audit_exports.sql");
 
 /// PRD-mcphost-example-proof-nightly-and-hide R2: the `example_proofs` table.
 const MIGRATION_0115: &str = include_str!("../migrations/0115_example_proofs.sql");
@@ -3243,6 +3245,8 @@ impl Db {
         Self::migrate_0123_share_scopes(&conn)?;
         Self::migrate_0124_owner_verification_method(&conn)?;
         Self::migrate_0125_owner_method_admin(&conn)?;
+        // Wholly new table, `IF NOT EXISTS` throughout: idempotent as-is.
+        conn.execute_batch(MIGRATION_0126)?;
         Ok(())
     }
 
@@ -24681,6 +24685,119 @@ impl Db {
                 id, tenant_id, subject, plane, policy_hash, applied, returned_count,
                 withheld_count, timestamp_unix, request_id, prior_record_hash, record_hash,
             })
+        })
+        .await
+    }
+
+    /// PRD-mcphost-audit-export-tamper-evident AC1: the column names of one
+    /// audit table, so a test can prove which of the three carry a hash.
+    pub async fn audit_table_columns_for_test(&self, table: &'static str) -> Result<Vec<String>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare("SELECT name FROM pragma_table_info(?1) ORDER BY cid")?;
+            let rows = stmt.query_map(params![table], |r| r.get::<_, String>(0))?;
+            Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-audit-export-tamper-evident: the window's row count over all
+    /// three audit tables (`since` inclusive, `until` exclusive, either open).
+    pub async fn audit_export_count(&self, tenant_id: i64, since: Option<i64>, until: Option<i64>) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            let mut total = 0i64;
+            for (table, ts) in [("audit_chain", "timestamp_unix"), ("tenant_audit", "created_unix"), ("oauth_audit", "ts")] {
+                total += conn.query_row(
+                    &format!(
+                        "SELECT COUNT(*) FROM {table} WHERE tenant_id = ?1 \
+                         AND (?2 IS NULL OR {ts} >= ?2) AND (?3 IS NULL OR {ts} < ?3)"
+                    ),
+                    params![tenant_id, since, until],
+                    |r| r.get::<_, i64>(0),
+                )?;
+            }
+            Ok(total)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-audit-export-tamper-evident: every audit row of the window
+    /// as export lines (unhashed), merged by `(ts, table, id)`.
+    pub async fn audit_export_rows(
+        &self,
+        tenant_id: i64,
+        since: Option<i64>,
+        until: Option<i64>,
+    ) -> Result<Vec<crate::audit_export::RawAuditRow>, AppError> {
+        use crate::audit_export::RawAuditRow;
+        self.with_conn(move |conn| {
+            let mut out: Vec<RawAuditRow> = Vec::new();
+            let mut stmt = conn.prepare(&format!(
+                "SELECT {AUDIT_RECORD_COLS} FROM audit_chain WHERE tenant_id = ?1 \
+                 AND (?2 IS NULL OR timestamp_unix >= ?2) AND (?3 IS NULL OR timestamp_unix < ?3)"
+            ))?;
+            for r in stmt.query_map(params![tenant_id, since, until], audit_record_row_from_row)? {
+                out.push(RawAuditRow::from_chain(r?));
+            }
+            let mut stmt = conn.prepare(
+                "SELECT id, subject, action, detail, created_unix FROM tenant_audit WHERE tenant_id = ?1 \
+                 AND (?2 IS NULL OR created_unix >= ?2) AND (?3 IS NULL OR created_unix < ?3)",
+            )?;
+            let rows = stmt.query_map(params![tenant_id, since, until], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, Option<String>>(3)?, r.get::<_, i64>(4)?))
+            })?;
+            for r in rows {
+                let (id, subject, action, detail, ts) = r?;
+                out.push(RawAuditRow::from_tenant(id, subject, action, detail, ts));
+            }
+            let mut stmt = conn.prepare(
+                "SELECT id, tenant_id, ts, event, client_id, method, end_user_subject, reason, ip_hash, scopes \
+                 FROM oauth_audit WHERE tenant_id = ?1 \
+                 AND (?2 IS NULL OR ts >= ?2) AND (?3 IS NULL OR ts < ?3)",
+            )?;
+            for r in stmt.query_map(params![tenant_id, since, until], oauth_audit_from_row)? {
+                out.push(RawAuditRow::from_oauth(r?));
+            }
+            out.sort_by(|a, b| (a.ts, a.table, a.id).cmp(&(b.ts, b.table, b.id)));
+            Ok(out)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-audit-export-tamper-evident R3: remember one export's root and window.
+    pub async fn audit_export_store(&self, e: crate::audit_export::StoredExport) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT OR IGNORE INTO audit_exports (tenant_id, root_hash, since, until, rows, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![e.tenant_id, e.root_hash, e.since, e.until, e.rows, e.created_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Test-only (PRD-mcphost-audit-export-tamper-evident AC6): how many exports are stored.
+    pub async fn audit_exports_count_for_test(&self, tenant_id: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            Ok(conn.query_row("SELECT COUNT(*) FROM audit_exports WHERE tenant_id = ?1", params![tenant_id], |r| r.get(0))?)
+        })
+        .await
+    }
+
+    /// The stored window of one export root: `(since, until, rows, created_unix)`.
+    pub async fn audit_export_get(
+        &self,
+        tenant_id: i64,
+        root_hash: String,
+    ) -> Result<Option<(Option<i64>, Option<i64>, i64, i64)>, AppError> {
+        self.with_conn(move |conn| {
+            Ok(conn
+                .query_row(
+                    "SELECT since, until, rows, created_unix FROM audit_exports WHERE tenant_id = ?1 AND root_hash = ?2",
+                    params![tenant_id, root_hash],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+                )
+                .optional()?)
         })
         .await
     }

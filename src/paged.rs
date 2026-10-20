@@ -653,6 +653,7 @@ pub const UNPAGED_VERBS: &[(&str, &str)] = &[
     ("host.notify.receipts", UNPAGED_WINDOW),
     ("host.email.sends", UNPAGED_WINDOW),
     ("host.audit.chain", UNPAGED_WINDOW),
+    ("host.audit.export", UNPAGED_EXPORT),
     ("host.blob.gc", UNPAGED_BOUNDED),
     ("host.blob.list", UNPAGED_NAME_WINDOW),
     ("host.catalog.search", UNPAGED_WINDOW),

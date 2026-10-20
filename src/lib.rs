@@ -108,6 +108,7 @@ pub mod delegation;
 pub mod scopes;
 pub mod subkeys;
 pub mod calllog;
+pub mod audit_export;
 pub mod metering;
 pub mod network_policy;
 pub mod notes;

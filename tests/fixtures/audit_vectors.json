@@ -1,0 +1,105 @@
+{
+  "canonical": [
+    "{\"action\":\"filtered_read:sql\",\"detail\":{\"applied\":\"region = 'eu'\",\"returned_count\":5,\"stored_hash\":\"ab\",\"withheld_count\":null},\"id\":1,\"prev\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"subject\":\"alice\",\"table\":\"audit_chain\",\"ts\":1760000000}",
+    "{\"action\":\"token\",\"detail\":{\"client_id\":\"cid\",\"reason\":null,\"scopes\":\"read write\"},\"id\":1,\"prev\":\"afe0aa921b057cadfb3dbbc7878d3bf88c2cfaef42308ebd64cf3e9b8d8b58df\",\"subject\":\"\",\"table\":\"oauth_audit\",\"ts\":1760000000}",
+    "{\"action\":\"key_rotate\",\"detail\":\"détail \\\"q\\\"\\n\\ttab \\u0001 日本語 🔑\",\"id\":1,\"prev\":\"171cdc14dacd84cb8ad8c5e67821e4ebbabc90ef202a334e7f745fde95f92a42\",\"subject\":\"bob\",\"table\":\"tenant_audit\",\"ts\":1760000001}",
+    "{\"action\":\"offboard\",\"detail\":null,\"id\":2,\"prev\":\"c30543918b3c60896ce860b7f4e8ed8949fe85b6dc2d335095211c5e3eac2a41\",\"subject\":\"bob\",\"table\":\"tenant_audit\",\"ts\":1760000002}",
+    "{\"action\":\"filtered_read:docs\",\"detail\":{\"applied\":\"a\\\\b\",\"returned_count\":0,\"stored_hash\":\"cd\",\"withheld_count\":3},\"id\":2,\"prev\":\"7ed2070ae05d0f15a84ebd00c76e4d6334ffb9ac12f263ac4930d5e435743f61\",\"subject\":\"ünï\",\"table\":\"audit_chain\",\"ts\":1760000003}"
+  ],
+  "genesis": "0000000000000000000000000000000000000000000000000000000000000000",
+  "header": {
+    "host_version": "vectors",
+    "kid": "ec3a1bbc675c681a",
+    "since": null,
+    "tenant_ns": "t_vectors",
+    "until": null
+  },
+  "jwks": {
+    "keys": [
+      {
+        "alg": "ES256",
+        "crv": "P-256",
+        "kid": "ec3a1bbc675c681a",
+        "kty": "EC",
+        "use": "sig",
+        "x": "P8V9aOeIe9RhWqZxccjrzykrDR5RGOlxXV0pe4crqS8",
+        "y": "r5fqjI4vczsKzs0HUPxbn583uVY_BcgLpLX8qKK-HXA"
+      }
+    ]
+  },
+  "lines": [
+    {
+      "action": "filtered_read:sql",
+      "detail": {
+        "applied": "region = 'eu'",
+        "returned_count": 5,
+        "stored_hash": "ab",
+        "withheld_count": null
+      },
+      "hash": "afe0aa921b057cadfb3dbbc7878d3bf88c2cfaef42308ebd64cf3e9b8d8b58df",
+      "id": 1,
+      "prev": "0000000000000000000000000000000000000000000000000000000000000000",
+      "subject": "alice",
+      "table": "audit_chain",
+      "ts": 1760000000
+    },
+    {
+      "action": "token",
+      "detail": {
+        "client_id": "cid",
+        "reason": null,
+        "scopes": "read write"
+      },
+      "hash": "171cdc14dacd84cb8ad8c5e67821e4ebbabc90ef202a334e7f745fde95f92a42",
+      "id": 1,
+      "prev": "afe0aa921b057cadfb3dbbc7878d3bf88c2cfaef42308ebd64cf3e9b8d8b58df",
+      "subject": "",
+      "table": "oauth_audit",
+      "ts": 1760000000
+    },
+    {
+      "action": "key_rotate",
+      "detail": "détail \"q\"\n\ttab \u0001 日本語 🔑",
+      "hash": "c30543918b3c60896ce860b7f4e8ed8949fe85b6dc2d335095211c5e3eac2a41",
+      "id": 1,
+      "prev": "171cdc14dacd84cb8ad8c5e67821e4ebbabc90ef202a334e7f745fde95f92a42",
+      "subject": "bob",
+      "table": "tenant_audit",
+      "ts": 1760000001
+    },
+    {
+      "action": "offboard",
+      "detail": null,
+      "hash": "7ed2070ae05d0f15a84ebd00c76e4d6334ffb9ac12f263ac4930d5e435743f61",
+      "id": 2,
+      "prev": "c30543918b3c60896ce860b7f4e8ed8949fe85b6dc2d335095211c5e3eac2a41",
+      "subject": "bob",
+      "table": "tenant_audit",
+      "ts": 1760000002
+    },
+    {
+      "action": "filtered_read:docs",
+      "detail": {
+        "applied": "a\\b",
+        "returned_count": 0,
+        "stored_hash": "cd",
+        "withheld_count": 3
+      },
+      "hash": "5b2e864e89591c4209e28dd54a5a80843b8c9d477427532634e0f6a52f6464ec",
+      "id": 2,
+      "prev": "7ed2070ae05d0f15a84ebd00c76e4d6334ffb9ac12f263ac4930d5e435743f61",
+      "subject": "ünï",
+      "table": "audit_chain",
+      "ts": 1760000003
+    }
+  ],
+  "root_hash": "5b2e864e89591c4209e28dd54a5a80843b8c9d477427532634e0f6a52f6464ec",
+  "rows": 5,
+  "signed_message": "5b2e864e89591c4209e28dd54a5a80843b8c9d477427532634e0f6a52f6464ec5",
+  "trailer": {
+    "kid": "ec3a1bbc675c681a",
+    "root_hash": "5b2e864e89591c4209e28dd54a5a80843b8c9d477427532634e0f6a52f6464ec",
+    "rows": 5,
+    "signature": "cejffztLrmPyubnKYF4hM6M9XTc9KoEqjTXChBobpKYHwiD_1lV2uBqqp2dnCQ6Bulg7Q8Dst_idxOSjludT3w"
+  }
+}

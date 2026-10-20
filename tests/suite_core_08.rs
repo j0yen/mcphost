@@ -155,6 +155,20 @@ mod attrib_ac6_whoami_source_class;
 mod attribdefault_ac1_bare_signup_client_info_is_null;
 #[path = "attribdefault_ac2_real_clientinfo_still_captured.rs"]
 mod attribdefault_ac2_real_clientinfo_still_captured;
+#[path = "audx_ac01_chain_is_real_coverage_is_one_of_three.rs"]
+mod audx_ac01_chain_is_real_coverage_is_one_of_three;
+#[path = "audx_ac02_export_nine_rows_three_tables.rs"]
+mod audx_ac02_export_nine_rows_three_tables;
+#[path = "audx_ac03_offline_verifier_ok_and_fail_lines.rs"]
+mod audx_ac03_offline_verifier_ok_and_fail_lines;
+#[path = "audx_ac04_vectors_generated_from_rust.rs"]
+mod audx_ac04_vectors_generated_from_rust;
+#[path = "audx_ac05_verify_by_root_and_zero_rows.rs"]
+mod audx_ac05_verify_by_root_and_zero_rows;
+#[path = "audx_ac06_export_cap_and_read_scope.rs"]
+mod audx_ac06_export_cap_and_read_scope;
+#[path = "audx_ac07_csv_format_matches_jsonl.rs"]
+mod audx_ac07_csv_format_matches_jsonl;
 #[path = "autherr_ac1_tenant_key_missing.rs"]
 mod autherr_ac1_tenant_key_missing;
 #[path = "autherr_ac2_tenant_key_invalid.rs"]
@@ -1023,13 +1037,3 @@ mod evkrb_ac01_llms_txt_events_section_checked;
 mod evkrb_ac02_quickstart_events_pointer;
 #[path = "evkrb_ac03_events_json_stable_and_cached.rs"]
 mod evkrb_ac03_events_json_stable_and_cached;
-#[path = "exargs_ac02_generator_values.rs"]
-mod exargs_ac02_generator_values;
-#[path = "exargs_ac03_tool_test_runs_the_example.rs"]
-mod exargs_ac03_tool_test_runs_the_example;
-#[path = "exargs_ac04_unsatisfiable_schema_is_refused.rs"]
-mod exargs_ac04_unsatisfiable_schema_is_refused;
-#[path = "exargs_ac05_publish_dry_run_and_spec_test_run_one_example.rs"]
-mod exargs_ac05_publish_dry_run_and_spec_test_run_one_example;
-#[path = "exargs_ac06_depth_limit.rs"]
-mod exargs_ac06_depth_limit;

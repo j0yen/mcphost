@@ -2244,6 +2244,16 @@
       "AC4": "tests/ecs_ac04_handlers_keep_their_own_refusal.rs",
       "AC5": "tests/ecs_ac05_docs_and_contract_carry_the_either_or.rs",
       "AC6": "tests/ecs_ac06_empty_call_script_selftest.rs"
+    },
+    "audx": {
+      "_prd": "PRD-mcphost-audit-export-tamper-evident.md (test_prefix: audx)",
+      "AC1": "tests/audx_ac01_chain_is_real_coverage_is_one_of_three.rs",
+      "AC2": "tests/audx_ac02_export_nine_rows_three_tables.rs",
+      "AC3": "tests/audx_ac03_offline_verifier_ok_and_fail_lines.rs",
+      "AC4": "tests/audx_ac04_vectors_generated_from_rust.rs",
+      "AC5": "tests/audx_ac05_verify_by_root_and_zero_rows.rs",
+      "AC6": "tests/audx_ac06_export_cap_and_read_scope.rs",
+      "AC7": "tests/audx_ac07_csv_format_matches_jsonl.rs"
     }
   }
 }
