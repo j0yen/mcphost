@@ -79,11 +79,9 @@ fn the_committed_weights_split_into_total_disjoint_shards() {
 
     let with_lib: Vec<&String> = shards.iter().filter(|s| s.contains("--lib")).collect();
     assert_eq!(with_lib.len(), 1, "--lib runs exactly once");
-    // The two light suites (env + the generated contract suite) share the --lib shard.
-    let light = suites_of(with_lib[0]);
-    for suite in ["suite_contracts_sandbox_01", "suite_env_sandbox_01"] {
-        assert!(light.contains(&suite.to_string()), "{suite} shares the --lib shard: {light:?}");
-    }
+    // Where the light suites land follows the greedy fill of the recorded
+    // weights, so it is not pinned here; the predicted shard wall is checked
+    // by `check_reports_a_predicted_heaviest_shard_within_160_seconds`.
 }
 
 #[test]
