@@ -47,7 +47,7 @@ fn the_committed_weights_split_into_three_total_disjoint_shards() {
     assert_eq!(json["lib"], 6);
     assert_eq!(json["suite_env_sandbox_01"], 7);
     assert_eq!(json["suite_sandbox_01"], 110);
-    assert_eq!(json["suite_sandbox_02"], 152);
+    assert_eq!(json["suite_sandbox_02"], 153);
 
     let shards: Vec<String> = (1..=3)
         .map(|n| stdout(&partition(&["sandbox-shard", &n.to_string(), "3"], None)))

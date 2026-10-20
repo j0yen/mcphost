@@ -58,6 +58,7 @@ pub mod error_scan;
 pub mod resources;
 pub mod sampling;
 pub mod errors;
+pub mod next_call;
 pub mod events;
 pub mod example_proofs;
 pub mod example_propose;

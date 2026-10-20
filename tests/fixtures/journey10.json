@@ -1,0 +1,122 @@
+{
+  "journey": "journey10",
+  "note": "Ten calls of a fresh agent's first minutes, each made once in a wrong variant. auth: anonymous = no key, bound = the signed-up tenant key, bad_key = a bearer the host never issued. follow_auth is the identity that executes the error's next_call (an auth failure is followed by an agent that drops the bad credential).",
+  "setup_tool": {
+    "name": "j10_echo",
+    "kind": "echo",
+    "spec": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "n": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "n"
+        ]
+      }
+    }
+  },
+  "steps": [
+    {
+      "n": 1,
+      "tool": "host.quickstart",
+      "auth": "bound",
+      "follow_auth": "bound",
+      "args": {
+        "kind": "nope"
+      },
+      "wrong": "unregistered kind"
+    },
+    {
+      "n": 2,
+      "tool": "host.whoami",
+      "auth": "anonymous",
+      "follow_auth": "anonymous",
+      "args": {
+        "tenant_key": "mk_never_issued_by_this_host"
+      },
+      "wrong": "unissued tenant_key argument"
+    },
+    {
+      "n": 3,
+      "tool": "host.tool_publish",
+      "auth": "bound",
+      "follow_auth": "bound",
+      "args": {
+        "name": "Bad Name!",
+        "kind": "echo"
+      },
+      "wrong": "invalid tool name"
+    },
+    {
+      "n": 4,
+      "tool": "host.tool_publish",
+      "auth": "bound",
+      "follow_auth": "bound",
+      "args": {
+        "name": "j10_other",
+        "kind": "nope"
+      },
+      "wrong": "unregistered kind"
+    },
+    {
+      "n": 5,
+      "tool": "host.tool_test",
+      "auth": "bound",
+      "follow_auth": "bound",
+      "args": {
+        "name": "missing_tool"
+      },
+      "wrong": "unknown tool"
+    },
+    {
+      "n": 6,
+      "tool": "host.tool_call",
+      "auth": "bound",
+      "follow_auth": "bound",
+      "args": {
+        "name": "j10_echo",
+        "args": {
+          "n": "four"
+        }
+      },
+      "wrong": "string where integer expected"
+    },
+    {
+      "n": 7,
+      "tool": "host.state.set",
+      "auth": "bound",
+      "follow_auth": "bound",
+      "args": {},
+      "wrong": "no key or value"
+    },
+    {
+      "n": 8,
+      "tool": "host.state.get",
+      "auth": "bound",
+      "follow_auth": "bound",
+      "args": {},
+      "wrong": "no key"
+    },
+    {
+      "n": 9,
+      "tool": "host.tool_share",
+      "auth": "bound",
+      "follow_auth": "bound",
+      "args": {
+        "name": "missing_tool"
+      },
+      "wrong": "unknown tool"
+    },
+    {
+      "n": 10,
+      "tool": "host.key.rotate",
+      "auth": "bad_key",
+      "follow_auth": "anonymous",
+      "args": {},
+      "wrong": "unissued bearer"
+    }
+  ]
+}
