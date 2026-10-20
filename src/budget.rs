@@ -248,6 +248,28 @@ pub fn resolve_and_validate(
     plan: &Plan,
     requested: Option<&Value>,
 ) -> Result<BudgetLimits, AppError> {
+    resolve_with(plan, requested, |key, requested_value, ceiling| {
+        crate::billing::next_upgrade(
+            &state.plans,
+            state.billing_config.billing_mode(),
+            &plan.name,
+            key,
+            requested_value,
+            ceiling,
+            None,
+        )
+    })
+}
+
+/// [`resolve_and_validate`] without an `AppState`: `next_for` supplies the
+/// `next` upgrade hint for a refusal (`mcphost dev` has no billing state and
+/// passes `Value::Null`). The one place the ceiling text is built, so the
+/// emulator and the host cannot word it differently.
+pub fn resolve_with(
+    plan: &Plan,
+    requested: Option<&Value>,
+    next_for: impl Fn(&str, i64, i64) -> Value,
+) -> Result<BudgetLimits, AppError> {
     let defaults = plan.budget_defaults();
     let Some(requested) = requested.filter(|v| !v.is_null()) else {
         return Ok(defaults);
@@ -264,15 +286,7 @@ pub fn resolve_and_validate(
                 })?;
                 let ceiling = defaults.$slot.unwrap_or(i64::MAX);
                 if requested_value > ceiling {
-                    let next = crate::billing::next_upgrade(
-                        &state.plans,
-                        state.billing_config.billing_mode(),
-                        &plan.name,
-                        $key,
-                        requested_value,
-                        ceiling,
-                        None,
-                    );
+                    let next = next_for($key, requested_value, ceiling);
                     return Err(AppError::Structured {
                         code: BUDGET_CEILING_EXCEEDED,
                         message: format!(

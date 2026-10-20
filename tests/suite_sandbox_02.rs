@@ -112,6 +112,10 @@ mod ctrace_ac04_trace_has_tails_line_and_phase_timings;
 mod ctrace_ac07_replay_dry_runs_with_edited_args;
 #[path = "ctraceb_ac03_replay_dry_runs_with_edited_args.rs"]
 mod ctraceb_ac03_replay_dry_runs_with_edited_args;
+#[path = "demu_ac01_type_error_parity.rs"]
+mod demu_ac01_type_error_parity;
+#[path = "demu_ac03_sandbox_marker.rs"]
+mod demu_ac03_sandbox_marker;
 #[path = "docsqa_ac01_recipe_end_to_end.rs"]
 mod docsqa_ac01_recipe_end_to_end;
 #[path = "docsqa_ac02_quota_inside_free_plan_knobs.rs"]

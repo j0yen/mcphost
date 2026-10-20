@@ -425,3 +425,11 @@ globs = ["scripts/audit-verify.py", "tests/test_audit_vectors.py"]
 required_commands = [
   "cargo test --workspace audx_ac",
 ]
+
+[[lane]]
+id = "dev-parity-live"
+description = "PRD-mcphost-dev-emulator AC8 (Live): scripts/dev-parity-prod.sh publishes a tool directory to a throwaway prod tenant, calls it, and compares the envelope with `mcphost dev --call`. Added project-locally: the scaffold has no lane for a live-proof script; the emulator behavior it compares is proven offline by the demu_ac integration tests, so the required command is a name-filtered cargo test over those."
+globs = ["scripts/dev-parity-prod.sh"]
+required_commands = [
+  "cargo test --workspace demu_ac",
+]
