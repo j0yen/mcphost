@@ -1,3 +1,5 @@
+//! The `mcphost` binary: CLI entry point that wires the database, kinds and servers.
+
 use std::path::PathBuf;
 use std::sync::Arc;
 

@@ -28,14 +28,14 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/fwdtab_ac01_generated_dispatch_table.rs",
-    "AC2": "tests/fwdtab_ac02_table_matches_registry.rs",
-    "AC3": "tests/fwdtab_ac03_dispatcher_frame_bounded.rs",
-    "AC4": "tests/fwdtab_ac04_call_tool_inner_frame_bounded.rs",
-    "AC5": "tests/fwdtab_ac05_budget_lowered_on_the_measurement.rs",
-    "AC6": "tests/fwdtab_ac06_forwarded_whoami_latency.rs",
-    "AC7": "tests/fwdtab_ac07_release_stack_does_not_grow.rs",
-    "AC8": "deferred: Live (the merge commit's core-suites shard log must contain the verbfwd_ac08 line; no tests/fwdtab_ac08 file)"
+    "AC1": "tests/cmap_ac01_codemap_lists_every_source_file.rs",
+    "AC2": "tests/cmap_ac02_db_banners_and_large_files_without_sections.rs",
+    "AC3": "tests/cmap_ac03_registries_section_lists_array_consts.rs",
+    "AC4": "tests/cmap_ac04_missing_module_doc_fails_naming_file.rs",
+    "AC5": "tests/cmap_ac05_check_mode_names_added_path.rs",
+    "AC7": "tests/cmap_ac07_claude_md_points_at_codemap.rs",
+    "AC8": "tests/cmap_ac08_body_edit_leaves_map_identical.rs",
+    "AC6": "deferred: Live (fresh clone of origin/main tip runs scripts/gen-codemap.sh --check green and CLAUDE.md names CODEMAP.md; evidence path scripts/gen-codemap.sh)"
   },
   "ac_test_map_by_prefix": {
     "snp": {
