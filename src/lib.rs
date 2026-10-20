@@ -162,6 +162,7 @@ pub mod tool_aliases;
 pub mod push;
 pub mod tooldir;
 pub mod triggers;
+pub mod txn;
 pub mod uptime;
 pub mod vault;
 pub mod verify;

@@ -877,6 +877,8 @@ mod drift_ac10_manual_check_produces_review_without_version_change;
 mod dryrun_ac05_chain_host_table_append_step;
 #[path = "dryrun_ac06_tools_list_mentions_dry_run.rs"]
 mod dryrun_ac06_tools_list_mentions_dry_run;
+#[path = "dryspt_ac01_with_tx_autocommit.rs"]
+mod dryspt_ac01_with_tx_autocommit;
 #[path = "dryv_ac01_table_drop_survives_savepoint.rs"]
 mod dryv_ac01_table_drop_survives_savepoint;
 #[path = "dryv_ac03_table_drop_dry_run_would.rs"]
