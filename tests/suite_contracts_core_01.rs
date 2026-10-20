@@ -159,6 +159,8 @@ mod mprm_ac06_docs_table_and_quickstart_share_recipes;
 mod mwlp_ac02_wait_ceiling_drift;
 #[path = "ndead_ac01_next_call_table_exhaustive.rs"]
 mod ndead_ac01_next_call_table_exhaustive;
+#[path = "ndeadb_ac02_single_site_schema_args.rs"]
+mod ndeadb_ac02_single_site_schema_args;
 #[path = "nexttool_ac02_authenticated_listing_unchanged.rs"]
 mod nexttool_ac02_authenticated_listing_unchanged;
 #[path = "ntfy_ac01_no_tenant_settable_alert_sink.rs"]
@@ -215,5 +217,3 @@ mod vbd_ac05_unknown_argument_everywhere;
 mod vbd_ac06_descriptor_enums_from_constants;
 #[path = "verbfwd_ac08_forward_stack_budget.rs"]
 mod verbfwd_ac08_forward_stack_budget;
-#[path = "ndeadb_ac02_single_site_schema_args.rs"]
-mod ndeadb_ac02_single_site_schema_args;
