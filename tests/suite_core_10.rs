@@ -340,6 +340,20 @@ mod oauthsig_ac04_admin_oauth_stats_funnel;
 mod oauthsig_ac05_healthz_cache_and_p95;
 #[path = "oauthsig_ac06_conformance_script_writes_receipt.rs"]
 mod oauthsig_ac06_conformance_script_writes_receipt;
+#[path = "ohur_ac01_event_url_refusal_names_trigger.rs"]
+mod ohur_ac01_event_url_refusal_names_trigger;
+#[path = "ohur_ac02_other_tenant_refusal_is_generic.rs"]
+mod ohur_ac02_other_tenant_refusal_is_generic;
+#[path = "ohur_ac03_inbox_url_refusal_names_bound_trigger.rs"]
+mod ohur_ac03_inbox_url_refusal_names_bound_trigger;
+#[path = "ohur_ac04_non_hook_own_domain_hint_unchanged.rs"]
+mod ohur_ac04_non_hook_own_domain_hint_unchanged;
+#[path = "ohur_ac05_publish_matches_bridge_test.rs"]
+mod ohur_ac05_publish_matches_bridge_test;
+#[path = "ohur_ac06_route_shape_drift.rs"]
+mod ohur_ac06_route_shape_drift;
+#[path = "ohur_ac07_hook_hints_name_real_tools.rs"]
+mod ohur_ac07_hook_hints_name_real_tools;
 #[path = "orgc_ac01_member_rows_equal_host_usage.rs"]
 mod orgc_ac01_member_rows_equal_host_usage;
 #[path = "orgc_ac02_member_sees_only_own_row.rs"]
