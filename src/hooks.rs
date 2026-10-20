@@ -576,14 +576,118 @@ async fn resolve_secret(
     Ok(Some(state.secrets.decrypt(&enc, &nonce)?))
 }
 
+/// The event-delivery route shape: the one place the path is written. The
+/// axum mount (`http/routes.rs`), [`event_url`] and [`classify_own_hook_path`]
+/// all derive from it (PRD-mcphost-own-hook-url-refusal-names-trigger-verbs).
+pub const EVENT_ROUTE: &str = "/hooks/{namespace}/{tool}";
+
+/// The webhook-inbox route shape (`webhooks.rs`' `POST /hook/{id}`).
+pub const INBOX_ROUTE: &str = "/hook/{id}";
+
+/// What an own-domain URL's path addresses, per the hook route shapes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OwnHookPath {
+    /// `EVENT_ROUTE`: `namespace` and `tool` as written in the URL.
+    Event { namespace: String, tool: String },
+    /// `INBOX_ROUTE`: the opaque inbox `id`.
+    Inbox { id: String },
+}
+
+impl OwnHookPath {
+    /// The `UPSTREAM_REMEDIES` row code that answers this class.
+    pub fn remedy_code(&self) -> &'static str {
+        match self {
+            OwnHookPath::Event { .. } => crate::kinds::contract::key::OWN_HOOK_EVENT,
+            OwnHookPath::Inbox { .. } => crate::kinds::contract::key::OWN_HOOK_INBOX,
+        }
+    }
+}
+
+/// The `{name}` captures of `path` against `template`, or `None` when the
+/// segment count or a literal segment differs (or a capture is empty).
+fn match_route(template: &str, path: &str) -> Option<Vec<(String, String)>> {
+    let path = path.split(['?', '#']).next().unwrap_or("");
+    let tmpl: Vec<&str> = template.trim_matches('/').split('/').collect();
+    let segs: Vec<&str> = path.trim_matches('/').split('/').collect();
+    if tmpl.len() != segs.len() {
+        return None;
+    }
+    let mut caps = Vec::new();
+    for (t, s) in tmpl.iter().zip(&segs) {
+        if let Some(name) = t.strip_prefix('{').and_then(|t| t.strip_suffix('}')) {
+            if s.is_empty() {
+                return None;
+            }
+            caps.push((name.to_string(), (*s).to_string()));
+        } else if t != s {
+            return None;
+        }
+    }
+    Some(caps)
+}
+
+/// Classifies the path of an own-domain URL against the hook route shapes.
+pub fn classify_own_hook_path(path: &str) -> Option<OwnHookPath> {
+    let cap = |caps: &[(String, String)], name: &str| caps.iter().find(|(n, _)| n == name).map(|(_, v)| v.clone());
+    if let Some(caps) = match_route(EVENT_ROUTE, path) {
+        return Some(OwnHookPath::Event { namespace: cap(&caps, "namespace")?, tool: cap(&caps, "tool")? });
+    }
+    let caps = match_route(INBOX_ROUTE, path)?;
+    Some(OwnHookPath::Inbox { id: cap(&caps, "id")? })
+}
+
+/// Enriches a `host_not_allowed` refusal of one of the caller's own hook
+/// URLs (`spec.url`) with the caller's trigger: `data.trigger` = `{name,
+/// kind, tool}` and the exact `host.trigger.test` call appended to the hint
+/// (an unbound inbox says so instead). Only a trigger in the CALLER's tenant
+/// is named; any other error, URL or tenant leaves `err` untouched, so no
+/// cross-tenant fact is disclosed.
+pub async fn enrich_own_hook_refusal(state: &AppState, tenant: &Tenant, spec: &Value, err: AppError) -> AppError {
+    match err {
+        AppError::MultiInvalid { message, errors } => {
+            let mut out = Vec::with_capacity(errors.len());
+            for e in errors {
+                out.push(Box::pin(enrich_own_hook_refusal(state, tenant, spec, e)).await);
+            }
+            AppError::MultiInvalid { message, errors: out }
+        }
+        AppError::Structured { code, message, mut data } if code == crate::kinds::contract::codes::HOST_NOT_ALLOWED => {
+            let url = spec.get("url").and_then(Value::as_str).unwrap_or("");
+            let (trigger, unbound_inbox) = match classify_own_hook_path(crate::kinds::http::url_path(url)) {
+                Some(OwnHookPath::Event { namespace, tool }) if namespace == tenant.namespace => {
+                    let ts = state.db.list_triggers(tenant.id, Some(tool)).await.unwrap_or_default();
+                    (ts.into_iter().find(|t| t.kind == "event"), None)
+                }
+                Some(OwnHookPath::Inbox { id }) => {
+                    let bound = state.db.find_trigger_by_hook_id(id.clone()).await.ok().flatten();
+                    let bound = bound.filter(|t| t.tenant_id == tenant.id && t.kind == "webhook");
+                    let unbound = bound.is_none().then_some(id);
+                    (bound, unbound)
+                }
+                _ => (None, None),
+            };
+            if let Some(obj) = data.as_object_mut() {
+                let hint = obj.get("hint").and_then(Value::as_str).unwrap_or("").to_string();
+                if let Some(t) = trigger {
+                    obj.insert("hint".into(), json!(format!("{hint}; for this URL run host.trigger.test name={}", t.name)));
+                    obj.insert("trigger".into(), json!({"name": t.name, "kind": t.kind, "tool": t.tool_name}));
+                } else if let Some(id) = unbound_inbox {
+                    obj.insert("hint".into(), json!(format!("{hint}; no trigger bound to inbox {id}")));
+                }
+            }
+            AppError::Structured { code, message, data }
+        }
+        other => other,
+    }
+}
+
 /// `https://<public_url>/hooks/<namespace>/<tool>` (technical
 /// considerations).
 pub fn event_url(state: &AppState, namespace: &str, tool: &str) -> String {
     format!(
-        "{}/hooks/{}/{}",
+        "{}{}",
         state.public_url.trim_end_matches('/'),
-        namespace,
-        tool
+        EVENT_ROUTE.replace("{namespace}", namespace).replace("{tool}", tool)
     )
 }
 

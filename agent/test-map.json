@@ -2276,6 +2276,17 @@
       "AC7": "tests/cmap_ac07_claude_md_points_at_codemap.rs",
       "AC8": "tests/cmap_ac08_body_edit_leaves_map_identical.rs",
       "AC6": "deferred: Live (fresh clone of origin/main tip runs scripts/gen-codemap.sh --check green and CLAUDE.md names CODEMAP.md; evidence path scripts/gen-codemap.sh)"
+    },
+    "ohur": {
+      "_prd": "PRD-mcphost-own-hook-url-refusal-names-trigger-verbs.md (test_prefix: ohur)",
+      "AC1": "tests/ohur_ac01_event_url_refusal_names_trigger.rs",
+      "AC2": "tests/ohur_ac02_other_tenant_refusal_is_generic.rs",
+      "AC3": "tests/ohur_ac03_inbox_url_refusal_names_bound_trigger.rs",
+      "AC4": "tests/ohur_ac04_non_hook_own_domain_hint_unchanged.rs",
+      "AC5": "tests/ohur_ac05_publish_matches_bridge_test.rs",
+      "AC6": "tests/ohur_ac06_route_shape_drift.rs",
+      "AC7": "tests/ohur_ac07_hook_hints_name_real_tools.rs",
+      "AC8": "deferred: Live (prod /mcp transcript after deploy; evidence: client transcript in the run note)"
     }
   }
 }

@@ -9536,7 +9536,7 @@ impl McpHostHandler {
         // that would be rejected at publish time fails identically here,
         // before any request is attempted.
         if let Err(e) = kind.validate(&spec) {
-            return Err(AppError::from(e));
+            return Err(crate::hooks::enrich_own_hook_refusal(&self.state, tenant, &spec, AppError::from(e)).await);
         }
 
         let descriptor = kind.describe(&spec);

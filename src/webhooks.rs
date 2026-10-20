@@ -171,7 +171,7 @@ pub(crate) fn inbox_table_name(name: &str) -> String {
 /// `https://<public_url>/hook/<hook_id>` (technical considerations: "the
 /// opaque id maps to tenant + trigger in one indexed lookup").
 pub fn webhook_url(state: &AppState, hook_id: &str) -> String {
-    format!("{}/hook/{}", state.public_url.trim_end_matches('/'), hook_id)
+    format!("{}{}", state.public_url.trim_end_matches('/'), crate::hooks::INBOX_ROUTE.replace("{id}", hook_id))
 }
 
 // ---- host.trigger.set(kind="webhook") ----------------------------------

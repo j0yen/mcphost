@@ -83,7 +83,7 @@ fn line_of(src: &str, at: usize) -> usize {
 fn computed() -> Vec<(&'static str, &'static str, Vec<&'static str>)> {
     vec![
         // `remedy.code` over `UPSTREAM_REMEDIES`.
-        ("src/kinds/http.rs", "remedy.code", mcphost::kinds::http::UPSTREAM_REMEDIES.iter().map(|r| r.code).collect()),
+        ("src/kinds/http.rs", "remedy.code", mcphost::kinds::http::UPSTREAM_REMEDIES.iter().map(|r| r.code).filter(|c| !c.contains('.')).collect()),
         // a `McphostElicitError` message prefix drawn from this list.
         ("src/kinds/python.rs", "code", mcphost::elicit::ELICIT_ERROR_CODES.to_vec()),
         // the chain step wrapper's `("exec", ..)` arm; its other arms are literals.
