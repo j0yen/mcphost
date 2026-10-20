@@ -1024,3 +1024,5 @@ mod minimal_ac1_anonymous_ok_only;
 mod minimal_ac4_liveness_failure_returns_5xx;
 #[path = "minimal_ac5_tenant_bearer_gets_anonymous_body.rs"]
 mod minimal_ac5_tenant_bearer_gets_anonymous_body;
+#[path = "ndeadb_ac03_signup_rate_limited_next_call.rs"]
+mod ndeadb_ac03_signup_rate_limited_next_call;

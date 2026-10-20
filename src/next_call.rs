@@ -177,6 +177,10 @@ fn by_code(code: &str, ctx: &ErrorCtx) -> NextCall {
         "end_user_required" | "end_user_explicit_forbidden" => {
             NextCall::new("host.enduser.whoami", json!({}))
         }
+        "signup_rate_limited" => match ctx.retry_after_s {
+            Some(s) => NextCall::new("host.quickstart", json!({"retry_after_s": s})),
+            None => quickstart(ctx),
+        },
         "rate_limited" => NextCall::wait("host.whoami", ctx.retry_after_s.unwrap_or(5)),
         "plan_limit" => NextCall::new("billing.plans", json!({})),
         c if c == "upstream_status" || c.starts_with("upstream_") => upstream(c, ctx),
