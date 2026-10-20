@@ -31,6 +31,7 @@ A step may fan out: add `"for_each": "$.prev.result.items"` (any mapping path to
 | field | type | required | meaning |
 |---|---|---|---|
 | `steps` | array of object | yes | ordered steps, each naming a `tool` and an `args` mapping (`$.input`, `$.prev.result`, `$.steps[i].result` paths or literals) |
+| `description` | string | no | the tool's description in `tools/list` (every kind) |
 | `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind) |
 | `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
 | `ui` | object | no | optional presentation hints for clients that render a tool's result |
@@ -95,3 +96,18 @@ A step may fan out: add `"for_each": "$.prev.result.items"` (any mapping path to
 }
 ```
 <!-- kind-example:end -->
+
+## Minimal specs
+
+<!-- kind-minimal-specs:start -->
+```json
+{
+  "steps": [
+    {
+      "args": {},
+      "tool": "step_one"
+    }
+  ]
+}
+```
+<!-- kind-minimal-specs:end -->

@@ -585,6 +585,11 @@ impl Kind for WasmKind {
 
     /// PRD-mcphost-spec-unknown-field-rejection requirement 1/4: the exact
     /// set [`parse_spec`] reads.
+    fn minimal_specs(&self) -> Vec<Value> {
+        // The 8-byte empty component (`\0asm`, version 0xd, component layer 1).
+        vec![json!({"component": "AGFzbQ0AAQA="})]
+    }
+
     fn known_spec_fields(&self) -> &'static [&'static str] {
         &["component", "args_schema", "timeout_s", "memory_mb"]
     }

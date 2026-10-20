@@ -1124,6 +1124,21 @@ A step may fan out: add `"for_each": "$.prev.result.items"` (any mapping path to
 | secret redaction | no |
 <!-- kind-contract:end -->
 
+## Minimal specs
+
+<!-- kind-minimal-specs:start -->
+```json
+{
+  "steps": [
+    {
+      "args": {},
+      "tool": "step_one"
+    }
+  ]
+}
+```
+<!-- kind-minimal-specs:end -->
+
 ## Kind: echo
 
 spec.schema is any JSON Schema; a call echoes back the arguments it was given, validated against it.
@@ -1200,6 +1215,18 @@ This kind returns no kind-specific error codes.
 | secret redaction | no |
 <!-- kind-contract:end -->
 
+## Minimal specs
+
+<!-- kind-minimal-specs:start -->
+```json
+{
+  "schema": {
+    "type": "object"
+  }
+}
+```
+<!-- kind-minimal-specs:end -->
+
 ## Kind: http
 
 url must be an absolute https URL; method and url are the only required fields -- args_schema is inferred from the url/header/body templates when omitted.
@@ -1232,8 +1259,8 @@ Publish error `url: host '<host>' is not a publicly callable host` (code `host_n
 <!-- kind-fields:start -->
 | field | type | required | meaning |
 |---|---|---|---|
-| `method` | string | no | HTTP method of the upstream request |
-| `url` | string | no | upstream URL; `{name}` placeholders are filled from call arguments |
+| `method` | string | unless `upstream` | HTTP method of the upstream request |
+| `url` | string | unless `upstream` | upstream URL; `{name}` placeholders are filled from call arguments |
 | `headers` | object | no | request headers; values may reference secrets |
 | `query` | object | no | query-string parameters |
 | `body` | object | no | request body template |
@@ -1241,7 +1268,7 @@ Publish error `url: host '<host>' is not a publicly callable host` (code `host_n
 | `timeout_s` | integer | no | seconds the upstream call may take |
 | `response` | object | no | how to shape the upstream response into the tool result |
 | `description` | string | no | human-readable text shown in `tools/list` |
-| `upstream` | string | no | name of a connected upstream provider to call instead of `method` + `url` |
+| `upstream` | string | unless `method`, `url` | name of a connected upstream provider to call instead of `method` + `url` |
 | `upstream_provider` | string | no | provider the `upstream` connection belongs to |
 | `description` | string | no | human-readable text shown in `tools/list` |
 | `outputs` | array or object | no | fields a caller can rely on in `result.payload`, optionally with a `$.a.b` path each (every kind) |
@@ -1296,6 +1323,26 @@ Publish error `url: host '<host>' is not a publicly callable host` (code `host_n
 | secret redaction | yes |
 <!-- kind-contract:end -->
 
+## Minimal specs
+
+<!-- kind-minimal-specs:start -->
+```json
+{
+  "method": "GET",
+  "url": "https://api.example.com/v1/things"
+}
+```
+
+```json
+{
+  "upstream": {
+    "method": "GET",
+    "url": "https://api.example.com/v1/things"
+  }
+}
+```
+<!-- kind-minimal-specs:end -->
+
 ## Kind: jq
 
 A jq program is a tool: spec.program runs in-process over the call arguments (`.`), and `$prev` holds the previous chain step's result.
@@ -1325,6 +1372,8 @@ Optional fields: `args_schema` (a JSON Schema for the call arguments; defaults t
 | `args_schema` | object | no | JSON Schema for the call arguments (defaults to `{"type": "object"}`) |
 | `timeout_s` | integer | no | seconds the program may run (1-10, default 2) |
 | `max_output_bytes` | integer | no | bytes of output a call may return (1 KiB-1 MiB, default 256 KiB) |
+| `description` | string | no | text shown to callers in the tool listing |
+| `outputs` | array or object | no | fields a caller can rely on in `result.payload` |
 | `description` | string | no | text shown to callers in the tool listing |
 | `outputs` | array or object | no | fields a caller can rely on in `result.payload` |
 | `reads` | array of string | no | tables this tool reads, recorded for lineage and blast-radius reports |
@@ -1373,6 +1422,16 @@ Optional fields: `args_schema` (a JSON Schema for the call arguments; defaults t
 | bridges | none |
 | secret redaction | no |
 <!-- kind-contract:end -->
+
+## Minimal specs
+
+<!-- kind-minimal-specs:start -->
+```json
+{
+  "program": "."
+}
+```
+<!-- kind-minimal-specs:end -->
 
 ## Kind: js
 
@@ -1517,6 +1576,16 @@ A js tool reaches this tenant's data through the global `mcphost` object. Its me
 | bridges | state, table, docs, lineage, channel, msg |
 | secret redaction | yes |
 <!-- kind-contract:end -->
+
+## Minimal specs
+
+<!-- kind-minimal-specs:start -->
+```json
+{
+  "source": "function main(args) { return args; }"
+}
+```
+<!-- kind-minimal-specs:end -->
 
 ## Kind: python
 
@@ -1764,6 +1833,16 @@ The distinction is visible, not doctrinal: `host.tool_test` renders both in one 
 | secret redaction | yes |
 <!-- kind-contract:end -->
 
+## Minimal specs
+
+<!-- kind-minimal-specs:start -->
+```json
+{
+  "source": "def main(args):\n    return args\n"
+}
+```
+<!-- kind-minimal-specs:end -->
+
 ## Kind: wasm
 
 component is a base64-encoded WebAssembly component (component-model, not a core module) exporting `call: func(args: string) -> result<string, string>`; args_schema is optional (defaults to accepting any object).
@@ -1850,6 +1929,16 @@ Result envelope contract: a call's output always lands at `result.payload`; an o
 | bridges | none |
 | secret redaction | no |
 <!-- kind-contract:end -->
+
+## Minimal specs
+
+<!-- kind-minimal-specs:start -->
+```json
+{
+  "component": "AGFzbQ0AAQA="
+}
+```
+<!-- kind-minimal-specs:end -->
 
 ## Benchmark: measure-0.26.3-20260908T085001Z.md
 
