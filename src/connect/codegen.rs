@@ -170,23 +170,23 @@ pub fn render_rust(rows: &[Row]) -> String {
     let _ = writeln!(o, "pub static SPECS: [ProviderSpec; {}] = [", rows.len());
     for r in rows {
         o.push_str("    ProviderSpec {\n");
-        let _ = writeln!(o, "        name: {:?},", r.name);
-        let _ = writeln!(o, "        auth_url: {:?},", r.auth_url);
-        let _ = writeln!(o, "        token_url: {:?},", r.token_url);
-        o.push_str("        scopes: &[\n");
+        let _ = writeln!(o, "        name: Cow::Borrowed({:?}),", r.name);
+        let _ = writeln!(o, "        auth_url: Cow::Borrowed({:?}),", r.auth_url);
+        let _ = writeln!(o, "        token_url: Cow::Borrowed({:?}),", r.token_url);
+        o.push_str("        scopes: Cow::Borrowed(&[\n");
         for (n, p) in &r.scopes {
-            let _ = writeln!(o, "            ScopeSpec {{ name: {n:?}, purpose: {p:?} }},");
+            let _ = writeln!(o, "            ScopeSpec {{ name: Cow::Borrowed({n:?}), purpose: Cow::Borrowed({p:?}) }},");
         }
-        o.push_str("        ],\n");
+        o.push_str("        ]),\n");
         let _ = writeln!(o, "        refresh: {},", refresh_variant(&r.refresh));
-        let _ = writeln!(o, "        client_id_env: {:?},", r.client_id_env);
-        let _ = writeln!(o, "        client_secret_env: {:?},", r.client_secret_env);
-        o.push_str("        extra_authorize_params: &[\n");
+        let _ = writeln!(o, "        client_id_env: Cow::Borrowed({:?}),", r.client_id_env);
+        let _ = writeln!(o, "        client_secret_env: Cow::Borrowed({:?}),", r.client_secret_env);
+        o.push_str("        extra_authorize_params: Cow::Borrowed(&[\n");
         for (k, v) in &r.extra_authorize_params {
-            let _ = writeln!(o, "            ({k:?}, {v:?}),");
+            let _ = writeln!(o, "            (Cow::Borrowed({k:?}), Cow::Borrowed({v:?})),");
         }
-        o.push_str("        ],\n");
-        let _ = writeln!(o, "        docs_url: {:?},", r.docs_url);
+        o.push_str("        ]),\n");
+        let _ = writeln!(o, "        docs_url: Cow::Borrowed({:?}),", r.docs_url);
         o.push_str("    },\n");
     }
     o.push_str("];\n");

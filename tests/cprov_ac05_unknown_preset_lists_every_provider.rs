@@ -68,6 +68,6 @@ async fn a_providers_toml_only_row_works_as_a_preset() {
         .as_array()
         .and_then(|a| a.iter().find(|p| p["name"] == "nt"))
         .unwrap_or_else(|| panic!("nt listed: {body}"));
-    assert_eq!(row["auth_url"], Provider::NOTION.spec().auth_url);
-    assert_eq!(row["token_url"], Provider::NOTION.spec().token_url);
+    assert_eq!(row["auth_url"], &*Provider::NOTION.spec().auth_url);
+    assert_eq!(row["token_url"], &*Provider::NOTION.spec().token_url);
 }

@@ -82,7 +82,7 @@ pub async fn provider_set(state: &AppState, tenant: &Tenant, args: &Value) -> Re
                     crate::connect::provider_names_csv()
                 )));
             };
-            Some((p.spec().auth_url, p.spec().token_url))
+            Some((&*p.spec().auth_url, &*p.spec().token_url))
         }
         Some(_) => return Err(AppError::InvalidArgs("preset must be a string".to_string())),
     };

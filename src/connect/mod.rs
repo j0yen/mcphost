@@ -15,6 +15,7 @@
 //! so a test can feed it a table with an extra row.
 
 use serde_json::{Value, json};
+use std::borrow::Cow;
 use std::collections::BTreeSet;
 
 pub mod codegen;
@@ -36,23 +37,25 @@ impl Refresh {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Strings are `Cow<'static, str>`: the generated static table borrows
+/// literals, a table parsed at runtime (tests) owns its `String`s.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScopeSpec {
-    pub name: &'static str,
-    pub purpose: &'static str,
+    pub name: Cow<'static, str>,
+    pub purpose: Cow<'static, str>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderSpec {
-    pub name: &'static str,
-    pub auth_url: &'static str,
-    pub token_url: &'static str,
-    pub scopes: &'static [ScopeSpec],
+    pub name: Cow<'static, str>,
+    pub auth_url: Cow<'static, str>,
+    pub token_url: Cow<'static, str>,
+    pub scopes: Cow<'static, [ScopeSpec]>,
     pub refresh: Refresh,
-    pub client_id_env: &'static str,
-    pub client_secret_env: &'static str,
-    pub extra_authorize_params: &'static [(&'static str, &'static str)],
-    pub docs_url: &'static str,
+    pub client_id_env: Cow<'static, str>,
+    pub client_secret_env: Cow<'static, str>,
+    pub extra_authorize_params: Cow<'static, [(Cow<'static, str>, Cow<'static, str>)]>,
+    pub docs_url: Cow<'static, str>,
 }
 
 include!(concat!(env!("OUT_DIR"), "/providers_gen.rs"));
@@ -85,13 +88,13 @@ pub fn committed_specs() -> Vec<ProviderSpec> {
 
 impl Provider {
     pub fn name(self) -> &'static str {
-        self.spec().name
+        &self.spec().name
     }
 
     /// `Ok(())` when every scope is one of this provider's own scope names;
     /// otherwise `Err` with the unknown ones, in input order.
     pub fn validate_scopes(self, scopes: &[String]) -> Result<(), Vec<String>> {
-        let known = self.spec().scopes;
+        let known = &self.spec().scopes;
         let bad: Vec<String> = scopes
             .iter()
             .filter(|s| !known.iter().any(|k| k.name == s.as_str()))
@@ -119,18 +122,18 @@ pub fn public_provider_names_csv() -> String {
 }
 
 impl codegen::Row {
-    /// Leak a parsed row into a `ProviderSpec` (tests only need a handful;
+    /// An owned `ProviderSpec` for a parsed row (tests only need a handful;
     /// the real table is the generated static).
-    fn leak(&self) -> ProviderSpec {
-        fn s(v: &str) -> &'static str {
-            Box::leak(v.to_string().into_boxed_str())
+    fn to_spec(&self) -> ProviderSpec {
+        fn s(v: &str) -> Cow<'static, str> {
+            Cow::Owned(v.to_string())
         }
         let scopes: Vec<ScopeSpec> = self
             .scopes
             .iter()
             .map(|(n, p)| ScopeSpec { name: s(n), purpose: s(p) })
             .collect();
-        let extra: Vec<(&'static str, &'static str)> = self
+        let extra: Vec<(Cow<'static, str>, Cow<'static, str>)> = self
             .extra_authorize_params
             .iter()
             .map(|(k, v)| (s(k), s(v)))
@@ -139,7 +142,7 @@ impl codegen::Row {
             name: s(&self.name),
             auth_url: s(&self.auth_url),
             token_url: s(&self.token_url),
-            scopes: Box::leak(scopes.into_boxed_slice()),
+            scopes: Cow::Owned(scopes),
             refresh: match self.refresh.as_str() {
                 "rotating" => Refresh::Rotating,
                 "offline_access" => Refresh::OfflineAccess,
@@ -147,15 +150,15 @@ impl codegen::Row {
             },
             client_id_env: s(&self.client_id_env),
             client_secret_env: s(&self.client_secret_env),
-            extra_authorize_params: Box::leak(extra.into_boxed_slice()),
+            extra_authorize_params: Cow::Owned(extra),
             docs_url: s(&self.docs_url),
         }
     }
 }
 
-/// Specs for arbitrary `providers.toml` text (leaked; test use).
+/// Specs for arbitrary `providers.toml` text (owned; test use).
 pub fn specs_from_toml(text: &str) -> Result<Vec<ProviderSpec>, String> {
-    Ok(codegen::parse_table(text)?.iter().map(codegen::Row::leak).collect())
+    Ok(codegen::parse_table(text)?.iter().map(codegen::Row::to_spec).collect())
 }
 
 /// The compiled table as a slice.
@@ -173,7 +176,7 @@ pub const REASON_CLIENT_SECRET: &str = "client_secret_not_configured";
 #[derive(Debug, Clone, Default)]
 pub struct ConnectProviders {
     /// `(provider name, reason it is unavailable)`; `None` means available.
-    verdicts: Vec<(&'static str, Option<&'static str>)>,
+    verdicts: Vec<(Cow<'static, str>, Option<&'static str>)>,
 }
 
 impl ConnectProviders {
@@ -186,29 +189,29 @@ impl ConnectProviders {
         let verdicts = specs
             .iter()
             .map(|s| {
-                let reason = if !present(s.client_id_env) {
+                let reason = if !present(&s.client_id_env) {
                     Some(REASON_CLIENT_ID)
-                } else if !present(s.client_secret_env) {
+                } else if !present(&s.client_secret_env) {
                     Some(REASON_CLIENT_SECRET)
                 } else {
                     None
                 };
-                (s.name, reason)
+                (s.name.clone(), reason)
             })
             .collect();
         Self { verdicts }
     }
 
     pub fn reason(&self, name: &str) -> Option<&'static str> {
-        self.verdicts.iter().find(|(n, _)| *n == name).and_then(|(_, r)| *r)
+        self.verdicts.iter().find(|(n, _)| n.as_ref() == name).and_then(|(_, r)| *r)
     }
 
-    pub fn available(&self) -> Vec<&'static str> {
-        self.verdicts.iter().filter(|(_, r)| r.is_none()).map(|(n, _)| *n).collect()
+    pub fn available(&self) -> Vec<&str> {
+        self.verdicts.iter().filter(|(_, r)| r.is_none()).map(|(n, _)| n.as_ref()).collect()
     }
 
-    pub fn unavailable(&self) -> Vec<(&'static str, &'static str)> {
-        self.verdicts.iter().filter_map(|(n, r)| r.map(|r| (*n, r))).collect()
+    pub fn unavailable(&self) -> Vec<(&str, &'static str)> {
+        self.verdicts.iter().filter_map(|(n, r)| r.map(|r| (n.as_ref(), r))).collect()
     }
 }
 
@@ -260,13 +263,13 @@ pub fn providers_json(specs: &[ProviderSpec], status: &ConnectProviders) -> Vec<
         .map(|s| {
             let mut row = json!({
                 "name": s.name,
-                "scopes": s.scopes.iter().map(|x| x.name).collect::<Vec<_>>(),
-                "scope_purposes": s.scopes.iter().map(|x| (x.name.to_string(), json!(x.purpose))).collect::<serde_json::Map<_, _>>(),
+                "scopes": s.scopes.iter().map(|x| x.name.as_ref()).collect::<Vec<&str>>(),
+                "scope_purposes": s.scopes.iter().map(|x| (x.name.to_string(), json!(&x.purpose))).collect::<serde_json::Map<_, _>>(),
                 "refresh": s.refresh.as_str(),
                 "docs_url": s.docs_url,
-                "available": status.reason(s.name).is_none(),
+                "available": status.reason(&s.name).is_none(),
             });
-            if let (Some(reason), Value::Object(m)) = (status.reason(s.name), &mut row) {
+            if let (Some(reason), Value::Object(m)) = (status.reason(&s.name), &mut row) {
                 m.insert("reason".to_string(), json!(reason));
             }
             row
@@ -314,7 +317,7 @@ pub fn render_connections_doc(specs: &[ProviderSpec]) -> String {
         out.push_str(&format!("- client secret env: `{}`\n", s.client_secret_env));
         out.push_str(&format!("- callback: `/connect/{}/callback`\n", s.name));
         out.push_str(&format!("- docs: {}\n", s.docs_url));
-        for (k, v) in s.extra_authorize_params {
+        for (k, v) in s.extra_authorize_params.iter() {
             out.push_str(&format!("- authorize param: `{k}={v}`\n"));
         }
         out.push('\n');
@@ -322,8 +325,8 @@ pub fn render_connections_doc(specs: &[ProviderSpec]) -> String {
             out.push_str("No scope names; access is granted by the user at authorization time.\n\n");
         } else {
             out.push_str("| scope | purpose |\n|---|---|\n");
-            for sc in s.scopes {
-                out.push_str(&format!("| `{}` | {} |\n", scope_cell(sc.name), scope_cell(sc.purpose)));
+            for sc in s.scopes.iter() {
+                out.push_str(&format!("| `{}` | {} |\n", scope_cell(&sc.name), scope_cell(&sc.purpose)));
             }
             out.push('\n');
         }
