@@ -155,8 +155,7 @@ fn args_invalid(ctx: &ErrorCtx) -> NextCall {
 
 fn upstream(code: &str, ctx: &ErrorCtx) -> NextCall {
     match (code, ctx.secrets.first()) {
-        ("upstream_auth", Some(name)) => NextCall::new("host.secret.set", json!({"name": name})),
-        ("upstream_auth", None) => NextCall::new("host.secret.list", json!({})),
+        ("upstream_auth", Some(name)) => NextCall::new("host.secret_set", json!({"name": name})),
         (_, _) => match &ctx.tool {
             Some(tool) => NextCall::new("host.tool_test", json!({"name": tool})),
             None => NextCall::new("host.tool_test", json!({})),
@@ -227,7 +226,7 @@ impl AppError {
             }
             AppError::InvalidArgs(_) => args_invalid(ctx),
             AppError::VersionNotFound { .. } => NextCall::new("host.tool.history", json!({})),
-            AppError::SecretMissing(name) => NextCall::new("host.secret.set", json!({"name": name})),
+            AppError::SecretMissing(name) => NextCall::new("host.secret_set", json!({"name": name})),
             AppError::Structured { code, .. } => by_code(code, ctx),
             AppError::MultiInvalid { errors, .. } => match errors.first() {
                 Some(first) => first.next_call(ctx),

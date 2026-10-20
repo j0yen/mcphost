@@ -648,3 +648,5 @@ mod xlinks_ac06_default_set_resolves_and_dead_urls_replaced;
 mod xlinks_ac07_ci_docs_job_fails_on_a_404_and_stays_fast;
 #[path = "xlinks_r07_report_json.rs"]
 mod xlinks_r07_report_json;
+#[path = "ndeadb_ac01_upstream_403_next_call.rs"]
+mod ndeadb_ac01_upstream_403_next_call;
