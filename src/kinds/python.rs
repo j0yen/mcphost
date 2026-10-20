@@ -5360,6 +5360,12 @@ impl PythonKind {
     /// crate reads in `main.rs`, just read locally since `PythonKind::new`
     /// is this kind's one production entry point.
     pub fn new(data_dir: &Path) -> Self {
+        Self::with_isolation(data_dir, sandbox::detect_mechanism())
+    }
+
+    /// [`PythonKind::new`] with the isolation mechanism chosen by the caller
+    /// (`mcphost dev --no-sandbox` passes `IsolationMechanism::None`).
+    pub fn with_isolation(data_dir: &Path, isolation: IsolationMechanism) -> Self {
         let ttl = std::env::var("MCPHOST_PY_WARM_TTL")
             .ok()
             .and_then(|v| v.parse::<u64>().ok())
@@ -5375,7 +5381,7 @@ impl PythonKind {
             .unwrap_or(DEFAULT_WARM_MAX);
         Self::build(
             data_dir,
-            sandbox::detect_mechanism(),
+            isolation,
             DEFAULT_MAX_CONCURRENT_CALLS,
             DEFAULT_CPU_BUDGET_MS_PER_HOUR,
             ttl,

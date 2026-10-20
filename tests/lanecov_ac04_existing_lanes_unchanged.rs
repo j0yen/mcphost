@@ -224,6 +224,9 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // PRD-mcphost-audit-export-tamper-evident added its own "audit-export" lane
     // (routes scripts/audit-verify.py and its vector test to a proof lane) --
     // an intended addition since the baseline.
+    // PRD-mcphost-dev-emulator added its own "dev-parity-live" lane (routes
+    // scripts/dev-parity-prod.sh to the demu_ac proof tests) -- an intended
+    // addition since the baseline.
     assert_eq!(
         added,
         vec![
@@ -235,6 +238,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "child-proc-lint",
             "codemap",
             "contracts",
+            "dev-parity-live",
             "docs-links",
             "docsearch-fixtures",
             "elicit-docs",

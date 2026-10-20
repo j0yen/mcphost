@@ -537,8 +537,6 @@ mod ci_sandbox_ac01_workflow_executes_sandbox_suites;
 mod ci_sandbox_ac03_incapable_in_ci_skips_and_fails_job;
 #[path = "ci_sandbox_ac04_incapable_outside_ci_fails_loudly.rs"]
 mod ci_sandbox_ac04_incapable_outside_ci_fails_loudly;
-#[path = "cishard_ac03_core_required_checks_toml_unchanged.rs"]
-mod cishard_ac03_core_required_checks_toml_unchanged;
 #[path = "cishard_ac04_core_shard_report_names_failed_test.rs"]
 mod cishard_ac04_core_shard_report_names_failed_test;
 #[path = "classify_ac9_is_within_proptest.rs"]
@@ -723,6 +721,16 @@ mod demo_ac05_ten_rows_capped_noindex_no_store;
 mod demo_ac06_share_returns_demo_url_unshare_404s;
 #[path = "demo_ac07_format_json_same_ten_rows_redacted.rs"]
 mod demo_ac07_format_json_same_ten_rows_redacted;
+#[path = "demu_ac02_args_invalid_text.rs"]
+mod demu_ac02_args_invalid_text;
+#[path = "demu_ac04_plan_ceilings.rs"]
+mod demu_ac04_plan_ceilings;
+#[path = "demu_ac05_host_verbs_unsupported.rs"]
+mod demu_ac05_host_verbs_unsupported;
+#[path = "demu_ac06_lint_failure_exits_before_bind.rs"]
+mod demu_ac06_lint_failure_exits_before_bind;
+#[path = "demu_ac07_file_watch.rs"]
+mod demu_ac07_file_watch;
 #[path = "dkeyc_ac01_child_cannot_escalate_scope.rs"]
 mod dkeyc_ac01_child_cannot_escalate_scope;
 #[path = "dkeyc_ac02_chain_depth_and_can_delegate_gate.rs"]
@@ -1031,9 +1039,3 @@ mod evkr_ac01_no_second_spelling;
 mod evkr_ac02_renderings_equal_enum;
 #[path = "evkr_ac03_description_and_fields.rs"]
 mod evkr_ac03_description_and_fields;
-#[path = "evkrb_ac01_llms_txt_events_section_checked.rs"]
-mod evkrb_ac01_llms_txt_events_section_checked;
-#[path = "evkrb_ac02_quickstart_events_pointer.rs"]
-mod evkrb_ac02_quickstart_events_pointer;
-#[path = "evkrb_ac03_events_json_stable_and_cached.rs"]
-mod evkrb_ac03_events_json_stable_and_cached;

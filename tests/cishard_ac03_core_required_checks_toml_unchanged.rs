@@ -2,6 +2,7 @@
 //! --print` equals the committed .github/required-checks.toml byte for byte
 //! (10 fixed contexts plus one per sandbox shard), because the static and shard jobs carry the
 //! `# required-checks: exclude` marker; no admin `--apply` is needed.
+//! contract: reads scripts/ci-test-partition.sh
 
 use crate::ci_sandbox_support;
 use ci_sandbox_support as support;

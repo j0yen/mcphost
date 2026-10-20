@@ -16,6 +16,14 @@ mod oauth;
 #[path = "support/whin.rs"]
 mod whin;
 
+#[path = "runenvelope_ac1_call_and_tool_run_parity.rs"]
+mod runenvelope_ac1_call_and_tool_run_parity;
+#[path = "runenvelope_ac2_no_declared_outputs_raw_payload.rs"]
+mod runenvelope_ac2_no_declared_outputs_raw_payload;
+#[path = "runenvelope_ac3_descriptor_and_decision_table_name_envelope.rs"]
+mod runenvelope_ac3_descriptor_and_decision_table_name_envelope;
+#[path = "runenvelope_ac4_no_calls_row_with_payload.rs"]
+mod runenvelope_ac4_no_calls_row_with_payload;
 #[path = "runoverflow_ac01_python_async_result_overflows_to_parts.rs"]
 mod runoverflow_ac01_python_async_result_overflows_to_parts;
 #[path = "runoverflow_ac02_state_quota_error_preserves_counters.rs"]

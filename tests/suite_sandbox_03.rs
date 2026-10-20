@@ -23,6 +23,20 @@ mod serve;
 #[path = "support/uptime_probes.rs"]
 mod uptime_probes;
 
+#[path = "jsk_ac01_cold_start_bench.rs"]
+mod jsk_ac01_cold_start_bench;
+#[path = "jsk_ac02_syntax_error_position.rs"]
+mod jsk_ac02_syntax_error_position;
+#[path = "jsk_ac03_bridge_parity.rs"]
+mod jsk_ac03_bridge_parity;
+#[path = "jsk_ac04_exception_position.rs"]
+mod jsk_ac04_exception_position;
+#[path = "jsk_ac05_timeout_and_oom.rs"]
+mod jsk_ac05_timeout_and_oom;
+#[path = "jsk_ac06_network_none_blocks_fetch.rs"]
+mod jsk_ac06_network_none_blocks_fetch;
+#[path = "jsk_ac07_secret_redaction.rs"]
+mod jsk_ac07_secret_redaction;
 #[path = "kcon_ac02_every_registered_kind_passes.rs"]
 mod kcon_ac02_every_registered_kind_passes;
 #[path = "kcon_ac04_error_families_and_source_line.rs"]
@@ -229,11 +243,3 @@ mod rgpt_team_memory_golden_path;
 mod rgpt_webhook_inbox_golden_path;
 #[path = "rowpol_ac12_python_bridge_threads_end_user_through_table_query.rs"]
 mod rowpol_ac12_python_bridge_threads_end_user_through_table_query;
-#[path = "runenvelope_ac1_call_and_tool_run_parity.rs"]
-mod runenvelope_ac1_call_and_tool_run_parity;
-#[path = "runenvelope_ac2_no_declared_outputs_raw_payload.rs"]
-mod runenvelope_ac2_no_declared_outputs_raw_payload;
-#[path = "runenvelope_ac3_descriptor_and_decision_table_name_envelope.rs"]
-mod runenvelope_ac3_descriptor_and_decision_table_name_envelope;
-#[path = "runenvelope_ac4_no_calls_row_with_payload.rs"]
-mod runenvelope_ac4_no_calls_row_with_payload;
