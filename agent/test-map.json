@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-connect-start-and-callback.md (test_prefix: cstart)",
+  "ac_test_map_prd": "PRD-mcphost-acting-for-live-proof.md (test_prefix: actforlive)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,14 +28,8 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/cstart_ac01_tenant_connects_testprov_with_one_link.rs",
-    "AC2": "tests/cstart_ac02_unconfigured_provider_is_unavailable_and_writes_nothing.rs",
-    "AC3": "tests/cstart_ac03_unknown_scope_is_scope_unknown.rs",
-    "AC4": "tests/cstart_ac04_redeemed_link_is_gone_and_state_is_invalid.rs",
-    "AC5": "tests/cstart_ac05_access_denied_uses_the_handoff_and_stores_nothing.rs",
-    "AC6": "tests/cstart_ac06_revoke_is_idempotent_and_list_offers_reconnect.rs",
-    "AC7": "tests/cstart_ac07_concurrent_starts_leave_one_row_with_the_later_callback.rs",
-    "AC8": "deferred -- operator-provisioned: live curl of prod's /connections/callback/github with a bogus state after deploy."
+    "AC1": "tests/actforlive_ac01_control_verbs_uncounted.rs",
+    "AC2": "deferred: Live (prod receipt; evidence path ~/.cache/mcphost-live/actfor-live-proof.json)"
   },
   "ac_test_map_by_prefix": {
     "cprov": {
@@ -2349,6 +2343,11 @@
       "AC4": "tests/spkind_ac04_payload_size_cap.rs",
       "AC5": "tests/spkind_ac05_registry_carries_data_keys.rs",
       "AC6": "tests/spkind_ac06_unknown_secret_names_the_fix.rs"
+    },
+    "actforlive": {
+      "_prd": "PRD-mcphost-acting-for-live-proof.md (test_prefix: actforlive)",
+      "AC1": "tests/actforlive_ac01_control_verbs_uncounted.rs",
+      "AC2": "deferred: Live (prod receipt; evidence path ~/.cache/mcphost-live/actfor-live-proof.json)"
     }
   }
 }

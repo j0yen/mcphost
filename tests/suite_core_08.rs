@@ -79,6 +79,8 @@ mod actfor_ac05_audit_chain_hash_differs_for_child;
 mod actfor_ac06_tool_logs_prefix;
 #[path = "actfor_ac07_acting_for_keys_and_redaction.rs"]
 mod actfor_ac07_acting_for_keys_and_redaction;
+#[path = "actforlive_ac01_control_verbs_uncounted.rs"]
+mod actforlive_ac01_control_verbs_uncounted;
 #[path = "adisp_ac01_admin_dispatch_arms_equal_descriptors.rs"]
 mod adisp_ac01_admin_dispatch_arms_equal_descriptors;
 #[path = "agentdir_ac01_ac02_ac03_ac04_identity_and_lookup.rs"]
