@@ -27,4 +27,15 @@ if [ ! -x "$AUDIT" ]; then
   exit 1
 fi
 
-"$AUDIT" . > target/autobuilder/receipts/risk-gate.json
+# Capture the exit code without letting set -e abort, so the BLOCKING findings can be
+# named on stderr (rule_id path:line snippet): the gate keeps only the output tail, and
+# the JSON receipt alone left the 10-20 run 1011 finding as the NOTE line above.
+# The marker below is the `fail_marker` of the bad-rust-audit check in wm-build-ci.toml;
+# scripts/audit-marker-check.sh asserts the two cannot drift.
+rc=0
+"$AUDIT" . > target/autobuilder/receipts/risk-gate.json || rc=$?
+if [ "$rc" -ne 0 ]; then
+  jq -r '.findings[]? | select(.severity == "blocking") | "audit: BLOCKING \(.rule_id) \(.path):\(.line) \(.snippet)"' \
+    target/autobuilder/receipts/risk-gate.json >&2 || true
+fi
+exit "$rc"
