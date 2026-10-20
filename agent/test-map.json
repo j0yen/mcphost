@@ -2225,6 +2225,16 @@
       "AC5": "tests/rlfe_ac05_run_writes_pass_as_str.rs",
       "AC6": "tests/rlfe_ac06_limit_clamp_and_children_preserved.rs",
       "AC7": "tests/rlfe_ac07_admin_runs_refused_through_the_shared_validator.rs"
+    },
+    "rsm": {
+      "_prd": "PRD-mcphost-resume-tool.md (test_prefix: rsm)",
+      "AC1": "tests/rsm_ac01_resume_fits_the_free_plan_ceilings.rs",
+      "AC2": "tests/rsm_ac02_tools_carry_their_newest_call.rs",
+      "AC3": "tests/rsm_ac03_changes_since_the_last_call_version.rs",
+      "AC4": "tests/rsm_ac04_next_call_follows_the_state_table.rs",
+      "AC5": "tests/rsm_ac05_anonymous_resume_creates_no_tenant.rs",
+      "AC6": "tests/rsm_ac06_welcome_back_points_at_resume.rs",
+      "AC7": "tests/rsm_ac07_usage_reports_the_resume_first_call_rate.rs"
     }
   }
 }

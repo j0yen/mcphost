@@ -100,6 +100,8 @@ async fn usage_without_by_keeps_the_pre_prd_shape() {
         "plan",
         // PRD-mcphost-sampling-from-tools R4: additive.
         "sampling_tokens_today",
+        // PRD-mcphost-resume-tool R7: additive.
+        "resume",
     ]
     .into_iter()
     .collect();

@@ -2761,6 +2761,8 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
     } else {
         0.0
     };
+    // PRD-mcphost-resume-tool R7.
+    let resume_usage = crate::resume::usage_block(state, tenant.id, now_unix()).await?;
     let quota = data_quota_for(state, tenant).await?;
     // PRD-mcphost-usage-in-every-response R3: the same block every
     // successful result's `_meta.usage` carries, from the same function.
@@ -2823,6 +2825,7 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
         "first_contact": {
             "remember_rate_7d": remember_rate_7d,
         },
+        "resume": resume_usage,
     }))
 }
 

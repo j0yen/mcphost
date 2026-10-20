@@ -165,6 +165,8 @@ mod rlfe_ac05_run_writes_pass_as_str;
 mod rlfe_ac06_limit_clamp_and_children_preserved;
 #[path = "rlfe_ac07_admin_runs_refused_through_the_shared_validator.rs"]
 mod rlfe_ac07_admin_runs_refused_through_the_shared_validator;
+#[path = "rsm_ac04_next_call_follows_the_state_table.rs"]
+mod rsm_ac04_next_call_follows_the_state_table;
 #[path = "sfc_ac04_stray_notify_panics_in_debug.rs"]
 mod sfc_ac04_stray_notify_panics_in_debug;
 #[path = "sreg_ac01_registry_single_source.rs"]

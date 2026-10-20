@@ -7337,6 +7337,98 @@
     ],
     "type": "object"
   },
+  "host.resume": {
+    "properties": {
+      "host": {
+        "properties": {
+          "changes": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "version": {
+            "type": "string"
+          },
+          "version_at_last_call": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "last_seen": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "next_call": {
+        "properties": {
+          "args": {
+            "type": "object"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool"
+        ],
+        "type": "object"
+      },
+      "notes": {
+        "items": {
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "onboarding": {
+        "type": "object"
+      },
+      "runs_open": {
+        "items": {
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "tenant": {
+        "type": "string"
+      },
+      "tools": {
+        "items": {
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "truncated": {
+        "properties": {
+          "changes": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": "boolean"
+          },
+          "runs_open": {
+            "type": "boolean"
+          },
+          "tools": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "required": [
+      "next_call"
+    ],
+    "type": "object"
+  },
   "host.runs.cancel": {
     "properties": {
       "cancelled": {
@@ -14356,6 +14448,23 @@
             "type": "object"
           },
           "total": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "resume": {
+        "properties": {
+          "first_call_rate_7d": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "over_budget_total": {
+            "type": "integer"
+          },
+          "sessions_7d": {
             "type": "integer"
           }
         },

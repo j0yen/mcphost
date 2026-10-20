@@ -638,6 +638,8 @@ const UNPAGED_ECHO: &str =
     "not a list verb: the array is a field of a single-record or mutation response";
 const UNPAGED_STATIC: &str =
     "static registry returned whole in one response, bounded by the code table, so no page cursor applies";
+const UNPAGED_SUMMARY: &str =
+    "one byte-budgeted summary (resume::ResumeBudget): every section is cut to its cap and truncated names the cut, so no page cursor applies";
 const UNPAGED_WAIT: &str =
     "long-poll batch of at most 50 rows that advances the shared cursor; wait semantics, not page-through";
 
@@ -702,6 +704,7 @@ pub const UNPAGED_VERBS: &[(&str, &str)] = &[
     ("host.trigger.list", UNPAGED_BOUNDED),
     ("host.vault.providers", UNPAGED_BOUNDED),
     ("host.whoami", UNPAGED_ECHO),
+    ("host.resume", UNPAGED_SUMMARY),
 ];
 
 
