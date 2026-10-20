@@ -5879,8 +5879,7 @@ impl Db {
         welcome_back: Option<bool>,
     ) -> Result<SetProfileOutcome, AppError> {
         self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
-            let outcome: Result<SetProfileOutcome, AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 let current = Self::query_agent_profile(conn, tenant_id)?;
                 let new_handle = match &handle {
                     None => current.handle.clone(),
@@ -5939,16 +5938,7 @@ impl Db {
                     hints: new_hints,
                     welcome_back: new_welcome_back,
                 }))
-            })();
-            match &outcome {
-                Ok(SetProfileOutcome::Ok(_)) => {
-                    conn.execute("COMMIT", []).map_err(AppError::from)?;
-                }
-                Ok(SetProfileOutcome::HandleTaken) | Err(_) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                }
-            }
-            outcome
+            })
         })
         .await
     }
@@ -10536,8 +10526,7 @@ impl Db {
         table_name: String,
     ) -> Result<bool, AppError> {
         self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
-            let outcome: Result<bool, AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 let n = conn.execute(
                     "DELETE FROM tenant_state_tables WHERE tenant_id = ?1 AND table_name = ?2",
                     params![tenant_id, table_name],
@@ -10547,17 +10536,7 @@ impl Db {
                     params![tenant_id, table_name],
                 )?;
                 Ok(n > 0)
-            })();
-            match outcome {
-                Ok(existed) => {
-                    conn.execute("COMMIT", []).map_err(AppError::from)?;
-                    Ok(existed)
-                }
-                Err(e) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                    Err(e)
-                }
-            }
+            })
         })
         .await
     }
@@ -18145,8 +18124,7 @@ impl Db {
         // existing row (if any) by this name to decide new/bump/no-op.
         type ExistingByName = (String, i64, String, i64, Option<i64>);
         self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
-            let outcome: Result<DocPutOutcome, AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 let existing: Option<ExistingByName> = conn
                     .query_row(
                         "SELECT id, version, content_hash, seq, deleted_at FROM documents \
@@ -18241,17 +18219,7 @@ impl Db {
                         })
                     }
                 }
-            })();
-            match outcome {
-                Ok(v) => {
-                    conn.execute("COMMIT", []).map_err(AppError::from)?;
-                    Ok(v)
-                }
-                Err(e) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                    Err(e)
-                }
-            }
+            })
         })
         .await
     }
@@ -18265,8 +18233,7 @@ impl Db {
         now: i64,
     ) -> Result<Option<i64>, AppError> {
         self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
-            let outcome: Result<Option<i64>, AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 let live: bool = conn
                     .query_row(
                         "SELECT 1 FROM documents WHERE tenant_id = ?1 AND id = ?2 AND deleted_at IS NULL",
@@ -18288,17 +18255,7 @@ impl Db {
                     params![now, next_seq, tenant_id, id],
                 )?;
                 Ok(Some(next_seq))
-            })();
-            match outcome {
-                Ok(v) => {
-                    conn.execute("COMMIT", []).map_err(AppError::from)?;
-                    Ok(v)
-                }
-                Err(e) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                    Err(e)
-                }
-            }
+            })
         })
         .await
     }
@@ -20997,7 +20954,7 @@ impl Db {
     pub async fn purge_end_user(&self, tenant_id: i64, subject: String) -> Result<(i64, i64), AppError> {
         let now = now_unix();
         self.with_conn(move |conn| {
-            let tx = conn.unchecked_transaction()?;
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
             let rows_removed = tx.execute(
                 "DELETE FROM tenant_state_rows WHERE tenant_id = ?1 AND end_user_subject = ?2",
                 params![tenant_id, subject],
@@ -21034,8 +20991,8 @@ impl Db {
                     now
                 ],
             )?;
-            tx.commit()?;
             Ok((rows_removed + kv_removed, vault_removed))
+            })
         })
         .await
     }
@@ -22159,7 +22116,7 @@ impl Db {
         now: i64,
     ) -> Result<Vec<(i64, String)>, AppError> {
         self.with_conn(move |conn| {
-            let tx = conn.unchecked_transaction()?;
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
             let ids: Vec<(i64, String)> = {
                 let mut stmt = tx.prepare(
                     "SELECT id, client_id FROM oauth_grants WHERE tenant_id = ?1 AND revoked_unix IS NULL",
@@ -22181,8 +22138,8 @@ impl Db {
                     params![now, id],
                 )?;
             }
-            tx.commit()?;
             Ok(ids)
+            })
         })
         .await
     }
