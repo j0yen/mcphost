@@ -25,10 +25,17 @@
 # Completeness: every CORE suite key in scripts/ci-suite-weights.json (not `lib`, `bin:*`, or a
 # sandbox suite, which reports only above its warn line) must have a `suite=<name> measured=` line
 # in the input; otherwise this exits 1 naming the missing suites and writes NOTHING.
-# Env: CI_REFRESH_REPO (default j0yen/mcphost); CI_REFRESH_ROOT (default this checkout; tests use a scratch root).
+# Env: CI_REFRESH_REPO (default j0yen/mcphost); CI_REFRESH_ROOT (default this checkout; tests use a scratch root);
+#   CI_REFRESH_ALLOW_LOCAL=1 to accept a local <log-file> (a coder's local timing must never become the
+#   recorded measurement: without it only a CI run id is accepted and a file argument writes NOTHING).
 set -uo pipefail
 cd "${CI_REFRESH_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}" || exit 2
-[ "$#" -ge 1 ] || { sed -n '2,29p' "$0" >&2; exit 2; }
+[ "$#" -ge 1 ] || { sed -n '2,31p' "$0" >&2; exit 2; }
+if [ "${CI_REFRESH_ALLOW_LOCAL:-}" != 1 ]; then
+  for arg in "$@"; do
+    [ -f "$arg" ] && { echo "ci-refresh-weights: $arg is a local log file; only a CI run id is a measurement (set CI_REFRESH_ALLOW_LOCAL=1 to override); nothing written" >&2; exit 2; }
+  done
+fi
 
 tmp="$(mktemp)"; zip="$(mktemp)"; trap 'rm -f "$tmp" "$zip"' EXIT
 for arg in "$@"; do

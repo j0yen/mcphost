@@ -1,7 +1,8 @@
 //! PRD-mcphost-ci-core-suites-sharded AC3 -- `scripts/required-checks.sh
 //! --print` equals the committed .github/required-checks.toml byte for byte
-//! (13 contexts), because the static and shard jobs carry the
+//! (10 fixed contexts plus one per sandbox shard), because the static and shard jobs carry the
 //! `# required-checks: exclude` marker; no admin `--apply` is needed.
+//! contract: reads scripts/ci-test-partition.sh
 
 use crate::ci_sandbox_support;
 use ci_sandbox_support as support;
@@ -29,10 +30,21 @@ fn print_equals_the_committed_toml_byte_for_byte() {
 }
 
 #[test]
-fn the_toml_still_lists_the_aggregator_and_thirteen_contexts_and_no_shard() {
+fn the_toml_lists_the_aggregator_one_context_per_sandbox_shard_and_no_core_shard() {
     let toml = std::fs::read_to_string(root().join(".github/required-checks.toml")).unwrap();
     let contexts: Vec<&str> = toml.lines().filter(|l| l.starts_with("  \"")).collect();
-    assert_eq!(contexts.len(), 13, "{contexts:?}");
+    // The sandbox shard contexts follow the one SANDBOX_SHARDS definition; the
+    // other ten are fixed jobs.
+    let out = Command::new(root().join("scripts/ci-test-partition.sh"))
+        .arg("shards")
+        .current_dir(root())
+        .env_remove("SANDBOX_SHARDS")
+        .output()
+        .expect("run ci-test-partition.sh shards");
+    let shards: usize = String::from_utf8_lossy(&out.stdout).trim().parse().expect("`shards` prints a count");
+    let is_shard = |l: &str| l.contains("sandbox suites (user namespaces, shard ");
+    assert_eq!(contexts.iter().filter(|l| is_shard(l)).count(), shards, "{contexts:?}");
+    assert_eq!(contexts.iter().filter(|l| !is_shard(l)).count(), 10, "{contexts:?}");
     assert!(toml.contains("\"static analysis + core suites\""));
     assert!(!toml.contains("core suites (shard"), "a core shard must never be a required context");
     assert!(!toml.contains("\"static analysis\""), "the static job is covered by the aggregator");

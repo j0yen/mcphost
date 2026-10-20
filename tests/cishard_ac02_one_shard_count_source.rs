@@ -68,8 +68,14 @@ fn shards_prints_the_one_defined_count() {
         .filter(|l| l.trim_start().starts_with("SANDBOX_SHARDS="))
         .collect();
     assert_eq!(defs.len(), 1, "exactly one SANDBOX_SHARDS definition: {defs:?}");
-    assert_eq!(shards_cmd(None), "3");
-    assert_eq!(shards_cmd(Some("4")), "4", "the printed count comes from the definition");
+    let default = defs[0]
+        .split(":-")
+        .nth(1)
+        .and_then(|r| r.split('}').next())
+        .expect("SANDBOX_SHARDS=\"${SANDBOX_SHARDS:-<n>}\"");
+    assert!(default.parse::<u32>().is_ok_and(|n| n >= 1), "default {default:?} is a positive count");
+    assert_eq!(shards_cmd(None), default, "`shards` prints the definition's default");
+    assert_eq!(shards_cmd(Some("7")), "7", "the printed count comes from the definition");
 }
 
 #[test]

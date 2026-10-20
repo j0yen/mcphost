@@ -537,8 +537,6 @@ mod ci_sandbox_ac01_workflow_executes_sandbox_suites;
 mod ci_sandbox_ac03_incapable_in_ci_skips_and_fails_job;
 #[path = "ci_sandbox_ac04_incapable_outside_ci_fails_loudly.rs"]
 mod ci_sandbox_ac04_incapable_outside_ci_fails_loudly;
-#[path = "cishard_ac03_core_required_checks_toml_unchanged.rs"]
-mod cishard_ac03_core_required_checks_toml_unchanged;
 #[path = "cishard_ac04_core_shard_report_names_failed_test.rs"]
 mod cishard_ac04_core_shard_report_names_failed_test;
 #[path = "classify_ac9_is_within_proptest.rs"]

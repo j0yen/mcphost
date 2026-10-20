@@ -40,17 +40,21 @@ fn suites_of(flags: &str) -> Vec<String> {
 }
 
 #[test]
-fn the_committed_weights_split_into_three_total_disjoint_shards() {
+fn the_committed_weights_split_into_total_disjoint_shards() {
     let weights = root().join("scripts/ci-suite-weights.json");
     let text = std::fs::read_to_string(&weights).expect("weights file exists");
     let json: serde_json::Value = serde_json::from_str(&text).expect("weights file is JSON");
-    assert_eq!(json["lib"], 6);
-    assert_eq!(json["suite_env_sandbox_01"], 7);
-    assert_eq!(json["suite_sandbox_01"], 110);
-    assert_eq!(json["suite_sandbox_02"], 152);
+    // No literal value pins: the weights are generated (ci-refresh-weights.sh) and
+    // their drift is guarded by gen-test-suites.sh --check + ci-test-partition.sh check.
+    assert!(
+        json.as_object().is_some_and(|m| !m.is_empty() && m.values().all(serde_json::Value::is_u64)),
+        "weights file is a non-empty map of whole seconds"
+    );
 
-    let shards: Vec<String> = (1..=3)
-        .map(|n| stdout(&partition(&["sandbox-shard", &n.to_string(), "3"], None)))
+    let total = stdout(&partition(&["shards"], None)).trim().to_string();
+    let n_shards: u32 = total.parse().expect("`shards` prints a count");
+    let shards: Vec<String> = (1..=n_shards)
+        .map(|n| stdout(&partition(&["sandbox-shard", &n.to_string(), &total], None)))
         .collect();
 
     let mut union: Vec<String> = shards.iter().flat_map(|s| suites_of(s)).collect();
@@ -62,27 +66,22 @@ fn the_committed_weights_split_into_three_total_disjoint_shards() {
     listed.sort();
     assert_eq!(union, listed, "shards must be total and disjoint over the sandbox suites");
 
-    let heavy: Vec<&String> = shards
+    // The heaviest recorded sandbox suite (whichever it is today) sits alone.
+    let heaviest = listed
         .iter()
-        .filter(|s| suites_of(s).contains(&"suite_sandbox_02".to_string()))
-        .collect();
+        .max_by_key(|s| json[s.as_str()].as_u64().unwrap_or(0))
+        .expect("at least one sandbox suite")
+        .clone();
+    let heavy: Vec<&String> = shards.iter().filter(|s| suites_of(s).contains(&heaviest)).collect();
     assert_eq!(heavy.len(), 1);
-    assert_eq!(
-        suites_of(heavy[0]),
-        vec!["suite_sandbox_02".to_string()],
-        "suite_sandbox_02 must be alone on its shard"
-    );
+    assert_eq!(suites_of(heavy[0]), vec![heaviest.clone()], "{heaviest} must be alone on its shard");
     assert!(!heavy[0].contains("--lib"), "--lib must not sit with the heaviest shard");
 
     let with_lib: Vec<&String> = shards.iter().filter(|s| s.contains("--lib")).collect();
     assert_eq!(with_lib.len(), 1, "--lib runs exactly once");
-    // The two light suites (env + the generated contract suite) share the --lib shard.
-    let mut light = suites_of(with_lib[0]);
-    light.sort();
-    assert_eq!(
-        light,
-        vec!["suite_contracts_sandbox_01".to_string(), "suite_env_sandbox_01".to_string()]
-    );
+    // Where the light suites land follows the greedy fill of the recorded
+    // weights, so it is not pinned here; the predicted shard wall is checked
+    // by `check_reports_a_predicted_heaviest_shard_within_160_seconds`.
 }
 
 #[test]

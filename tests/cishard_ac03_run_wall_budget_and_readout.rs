@@ -45,6 +45,13 @@ fn report(tag: &str, build_s: u32, run_s: u32, status: u32) -> Run {
     Run { out, summary: summary_text }
 }
 
+/// The committed recorded weight of `suite`, as ci-shard-report.sh prints it.
+fn recorded(suite: &str) -> u64 {
+    let text = std::fs::read_to_string(root().join("scripts/ci-suite-weights.json")).expect("weights file");
+    let json: serde_json::Value = serde_json::from_str(&text).expect("weights JSON");
+    json[suite].as_u64().unwrap_or_else(|| panic!("{suite} has a recorded weight"))
+}
+
 fn stdout(r: &Run) -> String {
     String::from_utf8_lossy(&r.out.stdout).into_owned()
 }
@@ -79,11 +86,9 @@ fn at_240_s_warns_and_passes_with_one_line_per_suite() {
     let out = stdout(&r);
     assert!(out.contains("::warning::"), "{out}");
     assert!(!out.contains("::error::"), "{out}");
-    for line in [
-        "suite=lib measured=5.70s recorded=6s",
-        "suite=suite_sandbox_02 measured=152.20s recorded=152s",
-        "suite=suite_env_sandbox_01 measured=7.10s recorded=7s",
-    ] {
+    for (suite, measured) in [("lib", "5.70"), ("suite_sandbox_02", "152.20"), ("suite_env_sandbox_01", "7.10")] {
+        let line = format!("suite={suite} measured={measured}s recorded={}s", recorded(suite));
+        let line = line.as_str();
         assert!(out.contains(line), "missing `{line}` in:\n{out}");
         assert!(r.summary.contains(line), "summary missing `{line}`:\n{}", r.summary);
     }
@@ -100,7 +105,8 @@ fn exactly_300_s_passes_and_301_s_fails() {
     assert!(!over.out.status.success(), "301 s must fail");
     let out = stdout(&over);
     assert!(out.contains("::error::"), "{out}");
-    assert!(out.contains("suite=suite_sandbox_02 measured=152.20s recorded=152s"), "{out}");
+    let line = format!("suite=suite_sandbox_02 measured=152.20s recorded={}s", recorded("suite_sandbox_02"));
+    assert!(out.contains(&line), "{out}");
 }
 
 #[test]
