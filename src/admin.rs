@@ -334,6 +334,56 @@ pub async fn tenant_verify_namespace(state: &AppState, args: &Value) -> Result<V
     Ok(json!({ "tenant": tenant, "domain_namespace": domain_namespace, "verified": true }))
 }
 
+/// PRD-mcphost-email-send-live-proof R4: `admin.tenant_verify_owner {tenant, email}`
+/// marks a tenant's owner verified through the SAME single-winner UPDATE the
+/// email, GitHub and DNS paths use ([`crate::db::Db::verify_owner_as`]), with
+/// `owner_method = "admin"` and a `claim.admin` audit row whose subject is
+/// [`operator_identity`]. It never overwrites another method's proof.
+pub async fn tenant_verify_owner(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let tenant = arg_str(args, "tenant")?;
+    let email = arg_str(args, "email")?;
+    if !crate::claim::is_valid_email(&email) {
+        return Err(AppError::InvalidArgs("email: not a valid email address".to_string()));
+    }
+    let row = state
+        .db
+        .find_tenant_by_namespace(tenant.clone())
+        .await?
+        .ok_or_else(|| AppError::ToolNotFound(format!("tenant {tenant}")))?;
+    let refuse = |method: String, verified_at: Option<i64>| {
+        if method == "admin" {
+            return crate::verify::already_verified("admin");
+        }
+        crate::verify::structured(
+            crate::verify::OWNER_VERIFIED_BY_OTHER_METHOD,
+            format!("this tenant's owner is already verified by {method}"),
+            json!({"method": method, "verified_at": verified_at}),
+        )
+    };
+    if let Some(verified_at) = row.owner_verified_at {
+        let (method, _) = state.db.owner_provenance(row.id).await?;
+        return Err(refuse(method.unwrap_or_else(|| "email".to_string()), Some(verified_at)));
+    }
+    let outcome = state
+        .db
+        .verify_owner_as(
+            row.id,
+            "admin".to_string(),
+            email.clone(),
+            Some(crate::db::OperatorProof { email: email.clone(), actor: operator_identity(state) }),
+        )
+        .await?;
+    if let crate::db::OwnerVerifyOutcome::Already { method } = outcome {
+        return Err(refuse(method, None));
+    }
+    let verified_at = state
+        .db
+        .find_tenant_by_namespace(tenant.clone())
+        .await?
+        .and_then(|t| t.owner_verified_at);
+    Ok(json!({"tenant": tenant, "email": email, "method": "admin", "verified_at": verified_at}))
+}
+
 pub async fn usage(state: &AppState, args: &Value) -> Result<Value, AppError> {
     let window = arg_str_opt(args, "window").unwrap_or_else(|| "24h".to_string());
     let secs = crate::state::parse_window_secs(&window);
@@ -839,6 +889,11 @@ pub fn admin_audit_entry(
             args.get("domain_namespace")
                 .and_then(Value::as_str)
                 .map(String::from),
+        )),
+        "admin.tenant_verify_owner" => Some((
+            "tenant_verify_owner".into(),
+            args.get("tenant").and_then(Value::as_str).map(String::from),
+            None,
         )),
         "admin.plan_set" => Some((
             "plan_set".into(),

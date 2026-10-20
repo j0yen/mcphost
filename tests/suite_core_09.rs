@@ -9,14 +9,14 @@
 mod common;
 #[path = "support/chart_fixture.rs"]
 mod chart_fixture;
+#[path = "support/exprp.rs"]
+mod exprp;
 #[path = "support/federation.rs"]
 mod federation;
 #[path = "support/lanecov.rs"]
 mod lanecov;
 #[path = "support/oauth.rs"]
 mod oauth;
-#[path = "support/promptkind.rs"]
-mod promptkind;
 #[path = "support/serve.rs"]
 mod serve;
 #[path = "support/xlinks_cli.rs"]
@@ -28,6 +28,16 @@ mod ac14_storage_unwritable;
 mod busyaudit_ac08_healthz_db_fields;
 #[path = "ctrv_ac03_status_and_healthz_carry_contract_identity.rs"]
 mod ctrv_ac03_status_and_healthz_carry_contract_identity;
+#[path = "exprp_ac02_literal_secret_value_is_refused.rs"]
+mod exprp_ac02_literal_secret_value_is_refused;
+#[path = "exprp_ac03_non_portable_and_failing_proof_are_refused.rs"]
+mod exprp_ac03_non_portable_and_failing_proof_are_refused;
+#[path = "exprp_ac04_admin_decides_and_the_proposer_sees_it.rs"]
+mod exprp_ac04_admin_decides_and_the_proposer_sees_it;
+#[path = "exprp_ac05_pull_writes_the_clone_commits_and_merges.rs"]
+mod exprp_ac05_pull_writes_the_clone_commits_and_merges;
+#[path = "exprp_ac06_name_collision_and_open_proposal_cap.rs"]
+mod exprp_ac06_name_collision_and_open_proposal_cap;
 #[path = "fbeh_ac02_hint_on_every_variant.rs"]
 mod fbeh_ac02_hint_on_every_variant;
 #[path = "fbeh_ac03_missing_mapping_is_named.rs"]
@@ -1020,13 +1030,3 @@ mod minimal_ac3_wrong_bearer_matches_anonymous;
 mod minimal_ac4_liveness_failure_returns_5xx;
 #[path = "minimal_ac5_tenant_bearer_gets_anonymous_body.rs"]
 mod minimal_ac5_tenant_bearer_gets_anonymous_body;
-#[path = "mprm_ac01_recipes_listed_and_rendered.rs"]
-mod mprm_ac01_recipes_listed_and_rendered;
-#[path = "mprm_ac02_missing_argument_and_unknown_prompt.rs"]
-mod mprm_ac02_missing_argument_and_unknown_prompt;
-#[path = "mprm_ac03_prompt_kind_tool_listed_and_rendered.rs"]
-mod mprm_ac03_prompt_kind_tool_listed_and_rendered;
-#[path = "mprm_ac04_oauth_scope_filters_prompt_tools.rs"]
-mod mprm_ac04_oauth_scope_filters_prompt_tools;
-#[path = "mprm_ac07_capabilities_advertise_prompts.rs"]
-mod mprm_ac07_capabilities_advertise_prompts;

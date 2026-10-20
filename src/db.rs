@@ -366,6 +366,8 @@ const MIGRATION_0123: &str = include_str!("../migrations/0123_share_scopes.sql")
 /// PRD-mcphost-owner-verification-paths R2: `tenants.owner_method`/`owner_handle`
 /// plus the GitHub state and DNS challenge tables.
 const MIGRATION_0124: &str = include_str!("../migrations/0124_owner_verification_method.sql");
+/// PRD-mcphost-email-send-live-proof R5: the `owner_method` CHECK gains `admin`.
+const MIGRATION_0125: &str = include_str!("../migrations/0125_owner_method_admin.sql");
 
 /// PRD-mcphost-example-proof-nightly-and-hide R2: the `example_proofs` table.
 const MIGRATION_0115: &str = include_str!("../migrations/0115_example_proofs.sql");
@@ -1882,6 +1884,14 @@ pub struct VaultTenantStats {
     pub providers: Vec<VaultProviderStats>,
 }
 
+/// PRD-mcphost-email-send-live-proof R4: what an operator-run verification
+/// adds to [`Db::verify_owner_as`] -- the owner address to record and the
+/// admin key id the audit row names.
+pub struct OperatorProof {
+    pub email: String,
+    pub actor: String,
+}
+
 /// PRD-mcphost-owner-verification-paths R6: what [`Db::verify_owner`] did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OwnerVerifyOutcome {
@@ -3232,6 +3242,19 @@ impl Db {
         conn.execute_batch(MIGRATION_0122)?;
         Self::migrate_0123_share_scopes(&conn)?;
         Self::migrate_0124_owner_verification_method(&conn)?;
+        Self::migrate_0125_owner_method_admin(&conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-email-send-live-proof R5: gated on the CHECK text itself
+    /// (SQLite cannot alter a CHECK; the batch rebuilds the column, so a rerun must skip it).
+    fn migrate_0125_owner_method_admin(conn: &Connection) -> Result<(), AppError> {
+        let done: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE name = 'tenants' AND sql LIKE '%''dns'', ''admin''%'")?
+            .exists([])?;
+        if !done {
+            conn.execute_batch(MIGRATION_0125)?;
+        }
         Ok(())
     }
 
@@ -20968,14 +20991,34 @@ impl Db {
         method: String,
         handle: String,
     ) -> Result<OwnerVerifyOutcome, AppError> {
+        self.verify_owner_as(tenant_id, method, handle, None).await
+    }
+
+    /// [`Self::verify_owner`] with the two things only an operator path sets
+    /// ([`OperatorProof`]): `email` (written to `owner_email` in the same
+    /// UPDATE) and the audit row's `subject` (the admin key id instead of
+    /// `owner`). One statement shape for every path -- a second UPDATE would
+    /// be a second writer semantics.
+    pub async fn verify_owner_as(
+        &self,
+        tenant_id: i64,
+        method: String,
+        handle: String,
+        operator: Option<OperatorProof>,
+    ) -> Result<OwnerVerifyOutcome, AppError> {
         let now = now_unix();
+        let (email, audit_subject) = match operator {
+            Some(OperatorProof { email, actor }) => (Some(email), actor),
+            None => (None, "owner".to_string()),
+        };
         self.with_conn(move |conn| {
             let tx = conn.unchecked_transaction()?;
             let set = tx.execute(
                 "UPDATE tenants SET owner_verified_at = ?1, owner_method = ?2, owner_handle = ?3, \
+                 owner_email = COALESCE(?5, owner_email), \
                  claim_token_hash = NULL, claim_expires_at = NULL, claim_token_plain = NULL \
                  WHERE id = ?4 AND owner_verified_at IS NULL",
-                params![now, method, handle, tenant_id],
+                params![now, method, handle, tenant_id, email],
             )?;
             if set == 0 {
                 let seen: Option<String> = tx
@@ -20986,8 +21029,8 @@ impl Db {
             }
             tx.execute(
                 "INSERT INTO tenant_audit (tenant_id, subject, action, detail, created_unix) \
-                 VALUES (?1, 'owner', ?2, ?3, ?4)",
-                params![tenant_id, format!("claim.{method}"), handle, now],
+                 VALUES (?1, ?5, ?2, ?3, ?4)",
+                params![tenant_id, crate::verify::audit_kind(&method), handle, now, audit_subject],
             )?;
             tx.commit()?;
             Ok(OwnerVerifyOutcome::Verified)
