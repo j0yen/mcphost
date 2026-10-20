@@ -36,6 +36,62 @@ pub fn current_key_id() -> Option<i64> {
     CALL_KEY.try_with(|c| c.get()).ok().flatten()
 }
 
+/// PRD-mcphost-acting-for-in-ledger-and-audit R1: who a delegated key's call
+/// acted for -- labels and the row id only, never a key or a hash.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ActingFor {
+    pub key_id: i64,
+    pub label: String,
+    pub parent_label: Option<String>,
+    pub root_label: String,
+    pub depth: i64,
+}
+
+impl ActingFor {
+    /// The wire object; its five keys are the whole contract.
+    pub fn to_json(&self) -> Value {
+        json!({
+            "key_id": self.key_id,
+            "label": self.label,
+            "parent_label": self.parent_label,
+            "root_label": self.root_label,
+            "depth": self.depth,
+        })
+    }
+}
+
+tokio::task_local! {
+    /// The lineage of the sub-key the current `tools/call` authenticated
+    /// with, resolved once (one recursive query) by `call_tool_inner` and
+    /// read by the response/error decorators. `None` for the primary.
+    pub static CALL_ACTING_FOR: std::cell::RefCell<Option<ActingFor>>;
+}
+
+/// The `acting_for` of the call running on this task, if a sub-key made it.
+pub fn current_acting_for() -> Option<ActingFor> {
+    CALL_ACTING_FOR.try_with(|c| c.borrow().clone()).ok().flatten()
+}
+
+/// The recursive lineage query behind [`Db::acting_for_for_key`], for callers
+/// already holding the connection.
+pub fn acting_for_sync(conn: &rusqlite::Connection, id: i64) -> Result<Option<ActingFor>, AppError> {
+    let mut stmt = conn.prepare(
+        "WITH RECURSIVE up(id, label, parent_key_id, depth, lvl) AS (\
+           SELECT id, label, parent_key_id, depth, 0 FROM tenant_keys WHERE id = ?1 \
+           UNION ALL \
+           SELECT k.id, k.label, k.parent_key_id, k.depth, up.lvl + 1 \
+           FROM tenant_keys k JOIN up ON k.id = up.parent_key_id) \
+         SELECT id, label, depth FROM up ORDER BY lvl",
+    )?;
+    let chain = stmt
+        .query_map(params![id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+    let Some((key_id, label, depth)) = chain.first().cloned() else { return Ok(None) };
+    let parent_label = chain.get(1).map(|c| c.1.clone());
+    let root_label = chain.last().map(|c| c.1.clone()).unwrap_or_else(|| label.clone());
+    Ok(Some(ActingFor { key_id, label, parent_label, root_label, depth }))
+}
+
 /// One `tenant_keys` row.
 #[derive(Clone, Debug)]
 pub struct SubKey {
@@ -300,6 +356,12 @@ impl Db {
                 .map_err(AppError::from)
         })
         .await
+    }
+
+    /// R1: the `acting_for` lineage of key `id`, rendered by one recursive
+    /// query over `tenant_keys` (key, parent, ... root).
+    pub async fn acting_for_for_key(&self, id: i64) -> Result<Option<ActingFor>, AppError> {
+        self.with_conn(move |conn| acting_for_sync(conn, id)).await
     }
 
     pub async fn find_sub_key_by_id(&self, id: i64) -> Result<Option<SubKey>, AppError> {
@@ -722,9 +784,14 @@ pub async fn revoke(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
     };
     match state.db.revoke_sub_key_tree(tenant.id, label.to_string(), cascade, now_unix()).await? {
         Some(done) => {
-            if !done.labels.is_empty() {
-                let action = if cascade { "revoke_cascade" } else { "revoke" };
-                audit(state, tenant, label, action, json!({"label": label, "cascade": cascade})).await;
+            if cascade && !done.labels.is_empty() {
+                // PRD-mcphost-acting-for-in-ledger-and-audit R2: one record
+                // per revoked key, all under the cascade root's subject.
+                for revoked in &done.labels {
+                    audit_cascade_member(state, tenant, label, revoked, done.revoked_at).await;
+                }
+            } else if !done.labels.is_empty() {
+                audit(state, tenant, label, "revoke", json!({"label": label, "cascade": cascade})).await;
             }
             Ok(json!({
                 "label": label,
@@ -738,6 +805,33 @@ pub async fn revoke(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
             message: format!("no sub-key labelled '{label}'"),
             data: json!({"label": label}),
         }),
+    }
+}
+
+/// R2: one `revoke_cascade` record for `revoked`, in both `tenant_audit` and
+/// the hash-chained `audit_chain` (subject `key:<root>`, so
+/// `host.audit.chain {subject}` lists the whole cascade); best-effort.
+async fn audit_cascade_member(state: &AppState, tenant: &Tenant, root: &str, revoked: &str, at: i64) {
+    let detail = json!({"label": revoked, "revoked_by": root, "cascade": true});
+    audit(state, tenant, root, "revoke_cascade", detail.clone()).await;
+    if let Err(e) = state
+        .db
+        .audit_chain_append_event(
+            tenant.id,
+            format!("key:{root}"),
+            "key".to_string(),
+            String::new(),
+            "revoke_cascade".to_string(),
+            1,
+            None,
+            at,
+            crate::state::new_ulid(),
+            Some("revoke_cascade".to_string()),
+            Some(detail.to_string()),
+        )
+        .await
+    {
+        tracing::warn!(error = %e, tenant = %tenant.namespace, "failed to chain key revoke record");
     }
 }
 
