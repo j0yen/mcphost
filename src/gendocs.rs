@@ -60,6 +60,7 @@ pub fn output_paths() -> Vec<&'static str> {
         RETRIEVAL_DOC_PATH,
         INSTALL_DOC_PATH,
         INSTALL_DOC_WWW_PATH,
+        crate::install_links::SURFACES_JSON_PATH,
         SKILL_MD_PATH,
     ]
 }
@@ -925,6 +926,7 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
             Path::new(INSTALL_DOC_WWW_PATH),
             crate::install_links::render_install_doc(crate::install_links::CANONICAL_PUBLIC_URL),
         ),
+        (Path::new(crate::install_links::SURFACES_JSON_PATH), crate::install_links::render_surfaces_json()),
         (Path::new(SKILL_MD_PATH), PLUGIN_SKILL_MD.to_string()),
     ] {
         if check {

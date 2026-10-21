@@ -56,6 +56,8 @@ mod mcphost_install_links_more_clients_ac06_docs_block_regenerates_from_table;
 mod mcphost_install_links_more_clients_ac07_prior_prd_tests_still_apply;
 #[path = "mcphost-llms-install-doc_ac01_generator_sections.rs"]
 mod mcphost_llms_install_doc_ac01_generator_sections;
+#[path = "mcphost-llms-install-doc_ac02_sections_machine_readable.rs"]
+mod mcphost_llms_install_doc_ac02_sections_machine_readable;
 #[path = "mcphost-llms-install-doc_ac02_served_unauthenticated.rs"]
 mod mcphost_llms_install_doc_ac02_served_unauthenticated;
 #[path = "mcphost-llms-install-doc_ac03_committed_copy_drift.rs"]
@@ -64,6 +66,8 @@ mod mcphost_llms_install_doc_ac03_committed_copy_drift;
 mod mcphost_llms_install_doc_ac04_linked_from_every_entry_point;
 #[path = "mcphost-llms-install-doc_ac06_install_doc_funnel_event.rs"]
 mod mcphost_llms_install_doc_ac06_install_doc_funnel_event;
+#[path = "mcphost-llms-install-doc_ac07_install_surfaces_json.rs"]
+mod mcphost_llms_install_doc_ac07_install_surfaces_json;
 #[path = "mcphost_admin_schema_contract_ac01_tenants_schema_version.rs"]
 mod mcphost_admin_schema_contract_ac01_tenants_schema_version;
 #[path = "mcphost_admin_schema_contract_ac02_listings_validate_v1_schema.rs"]
