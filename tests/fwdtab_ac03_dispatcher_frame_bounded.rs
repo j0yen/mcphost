@@ -54,8 +54,7 @@ fn fwdtab_ac03_dispatcher_holds_no_arm_bodies() {
     assert!(!body.contains("match name"), "no `match name` arm bodies left in the dispatcher");
     assert!(!body.contains("=> crate::"), "no arm body left in the dispatcher");
     for needed in [
-        "refuse_fields_on_unprojected",
-        "validate_host_args",
+        "precheck_tenant_call",
         "note_handler_run",
         "dispatch_table::lookup",
         "unknown_host_tool",

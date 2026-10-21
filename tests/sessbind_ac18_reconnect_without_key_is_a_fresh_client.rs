@@ -31,7 +31,9 @@ async fn a_fresh_connection_after_disconnect_gets_its_own_new_tenant() {
 
     // A brand-new connection: no session, no header, no tenant_key -- a
     // fresh client by every definition.
-    let new_connection = McpClient::new(&server.base_url);
+    // A distinct User-Agent: a same-peer reconnect is refused and named
+    // (imos_ac04); this test is about a genuinely different client.
+    let new_connection = McpClient::new(&server.base_url).with_user_agent("sessbind-ac18-reconnect");
     let second = extract_structured(
         &new_connection
             .tools_call("host.whoami", json!({}))

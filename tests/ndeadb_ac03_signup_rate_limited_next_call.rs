@@ -21,8 +21,11 @@ async fn ndeadb_ac03_signup_rate_limited_next_call() {
         .await
         .expect("the first implicit signup takes the one slot");
 
+    // A distinct User-Agent: the limiter is reached, not the same-peer block
+    // (PRD-mcphost-implicit-signup-mints-only-on-success R3).
     let err = McpClient::new(&server.base_url)
         .with_session_continuity()
+        .with_user_agent("ndeadb-ac03-second")
         .tools_call("host.tool_publish", publish)
         .await
         .expect_err("the second anonymous session is over the cap");
