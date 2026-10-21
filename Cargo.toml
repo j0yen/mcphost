@@ -292,6 +292,10 @@ name = "suite_core_11"
 path = "tests/suite_core_11.rs"
 
 [[test]]
+name = "suite_core_12"
+path = "tests/suite_core_12.rs"
+
+[[test]]
 name = "suite_env_core_01"
 path = "tests/suite_env_core_01.rs"
 
@@ -310,9 +314,5 @@ path = "tests/suite_sandbox_02.rs"
 [[test]]
 name = "suite_sandbox_03"
 path = "tests/suite_sandbox_03.rs"
-
-[[test]]
-name = "suite_sandbox_04"
-path = "tests/suite_sandbox_04.rs"
 
 # END gen-test-suites.sh generated suites

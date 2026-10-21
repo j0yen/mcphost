@@ -8,5 +8,5 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 
-#[path = "synthetic_ac03_invalid_and_missing_header.rs"]
-mod synthetic_ac03_invalid_and_missing_header;
+#[path = "sublis_ac06_listen_scale_and_shutdown.rs"]
+mod sublis_ac06_listen_scale_and_shutdown;
