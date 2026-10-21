@@ -25828,6 +25828,629 @@
       "since": "0.58.0"
     },
     {
+      "description": "Mirror an external dataset into a host table on a schedule: register the source and return {sync_id, table, next_run_unix, status, existing} at once. The table is created when absent. The same (kind, ref, table) again returns the existing sync with existing: true. Errors: args_invalid (lists the valid source kinds), host_not_allowed, connection_missing {provider, hint}, schedule_too_frequent {min_seconds}, quota_syncs_max {limit, used}.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "every": {
+            "description": "Five-field cron schedule, UTC (default */15 * * * *); never faster than every 300 seconds.",
+            "type": "string"
+          },
+          "mode": {
+            "description": "Direction (default pull). Only pull runs today; push and two_way are accepted and wait with status pending_mode.",
+            "enum": [
+              "pull",
+              "push",
+              "two_way"
+            ],
+            "type": "string"
+          },
+          "primary_key": {
+            "description": "Column that identifies a row across pulls.",
+            "type": "string"
+          },
+          "source": {
+            "description": "Where the data lives: {kind, ref, secret?}. ref is what kind names (see the Data sync section of /llms.txt); secret is the NAME of a host.secret that holds the source credential, never the value.",
+            "properties": {
+              "kind": {
+                "description": "Which source type.",
+                "enum": [
+                  "csv_url",
+                  "google_sheet",
+                  "airtable",
+                  "notion_db",
+                  "http_json"
+                ],
+                "type": "string"
+              },
+              "ref": {
+                "description": "The dataset reference for that kind.",
+                "examples": [
+                  "https://data.example.com/orders.csv"
+                ],
+                "maxLength": 2048,
+                "type": "string"
+              },
+              "secret": {
+                "description": "Name of a host.secret holding the source credential.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "ref"
+            ],
+            "type": "object"
+          },
+          "table": {
+            "description": "The host table that mirrors the source; created if it does not exist.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "table"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.sync.create",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "created_unix": {
+            "type": "integer"
+          },
+          "every": {
+            "type": "string"
+          },
+          "existing": {
+            "type": "boolean"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "next_run_unix": {
+            "type": "integer"
+          },
+          "primary_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ref": {
+            "type": "string"
+          },
+          "secret": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "sync_id": {
+            "type": "string"
+          },
+          "table": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "created_unix",
+          "every",
+          "existing",
+          "kind",
+          "mode",
+          "next_run_unix",
+          "ref",
+          "status",
+          "sync_id",
+          "table"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.112.33"
+    },
+    {
+      "description": "Delete a sync and its receipts. The mirrored table and its rows stay and keep answering host.table.query.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "sync_id": {
+            "description": "The sync_id host.sync.create returned.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sync_id"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.sync.delete",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "sync_id": {
+            "type": "string"
+          },
+          "table": {
+            "type": "string"
+          },
+          "table_kept": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "deleted",
+          "sync_id",
+          "table",
+          "table_kept"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.112.33"
+    },
+    {
+      "description": "One sync by id: its row plus last_run, the newest receipt {run_id, started_unix, duration_ms, status, rows_added, rows_updated, rows_deleted, bytes, change_detected, error}, or null before the first run.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "sync_id": {
+            "description": "The sync_id host.sync.create returned.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sync_id"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.sync.get",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "created_unix": {
+            "type": "integer"
+          },
+          "every": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "last_run": {
+            "properties": {
+              "bytes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "change_detected": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "duration_ms": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "rows_added": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "rows_deleted": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "rows_updated": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "run_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "started_unix": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "mode": {
+            "type": "string"
+          },
+          "next_run_unix": {
+            "type": "integer"
+          },
+          "primary_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ref": {
+            "type": "string"
+          },
+          "secret": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "sync_id": {
+            "type": "string"
+          },
+          "table": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "created_unix",
+          "every",
+          "kind",
+          "last_run",
+          "mode",
+          "next_run_unix",
+          "ref",
+          "status",
+          "sync_id",
+          "table"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.112.33"
+    },
+    {
+      "description": "List this tenant's syncs, oldest first: {syncs: [{sync_id, kind, ref, table, mode, every, status, created_unix, next_run_unix}]}.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.sync.list",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "syncs": {
+            "items": {
+              "properties": {
+                "created_unix": {
+                  "type": "integer"
+                },
+                "every": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "next_run_unix": {
+                  "type": "integer"
+                },
+                "primary_key": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ref": {
+                  "type": "string"
+                },
+                "secret": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "type": "string"
+                },
+                "sync_id": {
+                  "type": "string"
+                },
+                "table": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "created_unix",
+                "every",
+                "kind",
+                "mode",
+                "next_run_unix",
+                "ref",
+                "status",
+                "sync_id",
+                "table"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "syncs"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.112.33",
+      "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
+    },
+    {
+      "description": "Make a sync due now: next_run_unix becomes the current time and the scheduler picks it up on its next pass. Returns {sync_id, next_run_unix}.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "sync_id": {
+            "description": "The sync_id host.sync.create returned.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sync_id"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.sync.run_now",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "next_run_unix": {
+            "type": "integer"
+          },
+          "sync_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "next_run_unix",
+          "sync_id"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.112.33"
+    },
+    {
       "description": "Append one row (an object) or several (an array of objects) to a declared table. Each row is validated against the table's schema first -- a type mismatch fails the whole call with table_schema_violation and writes nothing.",
       "input_schema": {
         "additionalProperties": false,
@@ -44938,6 +45561,171 @@
       },
       "name": "host_state_table_drop",
       "since": "0.103.1"
+    },
+    {
+      "alias_of": "host.sync.create",
+      "description": "Mirror an external dataset into a host table on a schedule: register the source and return {sync_id, table, next_run_unix, status, existing} at once. The table is created when absent. The same (kind, ref, table) again returns the existing sync with existing: true. Errors: args_invalid (lists the valid source kinds), host_not_allowed, connection_missing {provider, hint}, schedule_too_frequent {min_seconds}, quota_syncs_max {limit, used}.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "every": {
+            "description": "Five-field cron schedule, UTC (default */15 * * * *); never faster than every 300 seconds.",
+            "type": "string"
+          },
+          "mode": {
+            "description": "Direction (default pull). Only pull runs today; push and two_way are accepted and wait with status pending_mode.",
+            "enum": [
+              "pull",
+              "push",
+              "two_way"
+            ],
+            "type": "string"
+          },
+          "primary_key": {
+            "description": "Column that identifies a row across pulls.",
+            "type": "string"
+          },
+          "source": {
+            "description": "Where the data lives: {kind, ref, secret?}. ref is what kind names (see the Data sync section of /llms.txt); secret is the NAME of a host.secret that holds the source credential, never the value.",
+            "properties": {
+              "kind": {
+                "description": "Which source type.",
+                "enum": [
+                  "csv_url",
+                  "google_sheet",
+                  "airtable",
+                  "notion_db",
+                  "http_json"
+                ],
+                "type": "string"
+              },
+              "ref": {
+                "description": "The dataset reference for that kind.",
+                "examples": [
+                  "https://data.example.com/orders.csv"
+                ],
+                "maxLength": 2048,
+                "type": "string"
+              },
+              "secret": {
+                "description": "Name of a host.secret holding the source credential.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "ref"
+            ],
+            "type": "object"
+          },
+          "table": {
+            "description": "The host table that mirrors the source; created if it does not exist.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "table"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_sync_create",
+      "since": "0.112.33"
+    },
+    {
+      "alias_of": "host.sync.delete",
+      "description": "Delete a sync and its receipts. The mirrored table and its rows stay and keep answering host.table.query.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "sync_id": {
+            "description": "The sync_id host.sync.create returned.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sync_id"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_sync_delete",
+      "since": "0.112.33"
+    },
+    {
+      "alias_of": "host.sync.get",
+      "description": "One sync by id: its row plus last_run, the newest receipt {run_id, started_unix, duration_ms, status, rows_added, rows_updated, rows_deleted, bytes, change_detected, error}, or null before the first run.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "sync_id": {
+            "description": "The sync_id host.sync.create returned.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sync_id"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_sync_get",
+      "since": "0.112.33"
+    },
+    {
+      "alias_of": "host.sync.list",
+      "description": "List this tenant's syncs, oldest first: {syncs: [{sync_id, kind, ref, table, mode, every, status, created_unix, next_run_unix}]}.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_sync_list",
+      "since": "0.112.33"
+    },
+    {
+      "alias_of": "host.sync.run_now",
+      "description": "Make a sync due now: next_run_unix becomes the current time and the scheduler picks it up on its next pass. Returns {sync_id, next_run_unix}.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "sync_id": {
+            "description": "The sync_id host.sync.create returned.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sync_id"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_sync_run_now",
+      "since": "0.112.33"
     },
     {
       "alias_of": "host.table.append",

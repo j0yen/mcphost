@@ -36,7 +36,7 @@ const ERRORS_PRELUDE_PY: &str = include_str!("sdk_python_tmpl/errors_prelude.py"
 /// (R1). `/errors.json` (PRD-mcphost-errors-json-contract) has not landed and
 /// the contract carries no `error_code` enum, so the codes come from the
 /// host's own registries.
-pub const ERROR_SOURCE: &str = "AppError::code() + feedback::CODE_TO_KIND + feedback::KIND_LEVEL_CODES (no /errors.json yet)";
+pub const ERROR_SOURCE: &str = "AppError::code() + feedback::CODE_TO_KIND + feedback::KIND_LEVEL_CODES + error_registry::ERROR_CODES (no /errors.json yet)";
 
 const PY_KEYWORDS: &[&str] = &[
     "False", "None", "True", "and", "as", "assert", "async", "await", "break", "class", "continue", "def", "del",
@@ -301,10 +301,14 @@ pub fn data_keys_of(code: &str) -> &'static [&'static str] {
 }
 
 /// Every wire error code the host knows (sorted, deduplicated).
-pub fn error_codes() -> Vec<String> {
+pub fn all_error_codes() -> Vec<String> {
     let mut codes: BTreeSet<String> = crate::errors::all_variants_for_test().iter().map(|e| e.code().to_string()).collect();
     codes.extend(crate::feedback::CODE_TO_KIND.iter().map(|(c, _)| c.to_string()));
     codes.extend(crate::feedback::KIND_LEVEL_CODES.iter().map(|c| c.to_string()));
+    // A code declared with `err_code!` outside `AppError` (the sync verbs'
+    // `connection_missing`, `quota_syncs_max`, `schedule_too_frequent`) is
+    // still one the host returns, so both SDKs get a class for it.
+    codes.extend(crate::error_registry::ERROR_CODES.iter().map(|e| e.code.to_string()));
     codes.into_iter().filter(|c| !c.is_empty() && c.chars().all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_')).collect()
 }
 
@@ -414,7 +418,7 @@ pub fn render(contract_bytes: &[u8]) -> Result<BTreeMap<String, String>, String>
     files.insert("models.py".to_string(), m.replace("\n\n\n__all__", "\n\n__all__"));
 
     // errors.py: header, the shared prelude, one subclass per code, the registry
-    let codes = error_codes();
+    let codes = all_error_codes();
     let mut e = format!("{hdr}# error codes: {ERROR_SOURCE}\n{ERRORS_PRELUDE_PY}\n\n");
     for c in &codes {
         let class = camel(c);
@@ -483,4 +487,23 @@ pub fn write(out: &Path, contract_bytes: &[u8]) -> Result<Vec<PathBuf>, String> 
         written.push(p);
     }
     Ok(written)
+}
+
+#[cfg(test)]
+mod all_error_codes_tests {
+    use super::all_error_codes;
+
+    /// Every registry code reaches both SDK generators (they share
+    /// [`all_error_codes`]), so a code declared with `err_code!` outside
+    /// `AppError` cannot be missing from the generated `errors.py` / `errors.ts`.
+    #[test]
+    fn error_codes_registry_is_a_subset_of_all_error_codes() {
+        let all = all_error_codes();
+        let missing: Vec<&str> = crate::error_registry::ERROR_CODES
+            .iter()
+            .map(|e| e.code)
+            .filter(|c| !c.is_empty() && !all.iter().any(|a| a == c))
+            .collect();
+        assert!(missing.is_empty(), "registry codes missing from all_error_codes(): {missing:?}");
+    }
 }

@@ -16,7 +16,7 @@ fn pysdk_ac04_args_invalid_is_typed_and_unknown_code_is_the_base_class() {
 #[test]
 fn pysdk_ac04_every_host_error_code_has_a_generated_class() {
     let errors_py = std::fs::read_to_string(pysdk::sdk_dir().join("mcphost_sdk/errors.py")).unwrap();
-    let codes = mcphost::sdk_python::error_codes();
+    let codes = mcphost::sdk_python::all_error_codes();
     assert!(codes.contains(&"args_invalid".to_string()));
     for code in &codes {
         let class = mcphost::sdk_python::camel(code);

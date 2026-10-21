@@ -506,6 +506,16 @@ mod synthetic_ac08_admin_tenants_field;
 mod synthetic_ac09_metering_filter;
 #[path = "synthetic_ac10_healthz_paying_real.rs"]
 mod synthetic_ac10_healthz_paying_real;
+#[path = "syreg_ac03_create_returns_sync_id_and_next_run.rs"]
+mod syreg_ac03_create_returns_sync_id_and_next_run;
+#[path = "syreg_ac04_create_validation_errors.rs"]
+mod syreg_ac04_create_validation_errors;
+#[path = "syreg_ac05_sixth_sync_hits_syncs_max.rs"]
+mod syreg_ac05_sixth_sync_hits_syncs_max;
+#[path = "syreg_ac06_tick_writes_one_receipt_per_slot.rs"]
+mod syreg_ac06_tick_writes_one_receipt_per_slot;
+#[path = "syreg_ac07_delete_keeps_the_table.rs"]
+mod syreg_ac07_delete_keeps_the_table;
 #[path = "tablemodel_ac01_key_id_measure_category_date_roles.rs"]
 mod tablemodel_ac01_key_id_measure_category_date_roles;
 #[path = "tablemodel_ac02_foreign_key_detected_against_customers_id.rs"]
