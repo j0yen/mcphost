@@ -347,7 +347,7 @@ crate::err_code! {
 crate::err_code! {
     pub SECRET_UNAVAILABLE,
     code: "secret_unavailable", family: Call, class: AgentFault, retryable: false,
-    remedy: "Set the missing secret with host.secret_set, then retry.",
+    remedy: "Set the missing secret with host.secret.set, then retry.",
 }
 
 crate::err_code! {
