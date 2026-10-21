@@ -76,6 +76,9 @@ Regenerate with `scripts/sandbox-api-doc-check.sh --write`.
 | `host.uptime.create` | write | refused | `external_effect` |
 | `host.webhook_inbox.create` | write | refused | `external_effect` |
 | `host.connect.revoke` | revoke | refused | `external_effect` |
+| `host.sync.create` | write | refused | `external_effect` |
+| `host.sync.delete` | delete | refused | `external_effect` |
+| `host.sync.run_now` | write | refused | `external_effect` |
 | `host.vault.provider_set` | write | refused | `external_effect` |
 | `host.vault.provider_remove` | remove | refused | `external_effect` |
 | `host.oauth.provider_set` | write | refused | `external_effect` |

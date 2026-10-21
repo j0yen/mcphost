@@ -329,6 +329,10 @@ pub struct Plan {
     /// tenant may have pending (unanswered, unexpired) at once -- a further
     /// create refuses with `asks_limit`. "free 5, pro 100".
     pub asks_open_max: i64,
+    /// PRD-mcphost-sync-source-registry-and-create R4: how many
+    /// `host.sync.create` mirrors a tenant may hold at once -- a further
+    /// create refuses with `quota_syncs_max`. "free 5, pro 50".
+    pub syncs_max: i64,
     /// PRD-mcphost-notify-user-channel R4: how many `host.notify.channel_add`
     /// channels a tenant may hold ("free 2, pro 10"); one more refuses with
     /// `notify_channel_limit`.
@@ -724,6 +728,7 @@ impl PlanCatalog {
                     invites_max: 3,
                     org_members_max: 3,
                     asks_open_max: 5,
+                    syncs_max: 5,
                     notify_channels_max: 2,
                     notifies_per_day: 20,
                     emails_per_day: 50,
@@ -855,6 +860,7 @@ impl PlanCatalog {
                     invites_max: 25,
                     org_members_max: 25,
                     asks_open_max: 100,
+                    syncs_max: 50,
                     notify_channels_max: 10,
                     notifies_per_day: 1000,
                     emails_per_day: 2_000,
@@ -1036,6 +1042,7 @@ impl PlanCatalog {
             out.push_str(&format!("invites_max = {}\n", p.invites_max));
             out.push_str(&format!("org_members_max = {}\n", p.org_members_max));
             out.push_str(&format!("asks_open_max = {}\n", p.asks_open_max));
+            out.push_str(&format!("syncs_max = {}\n", p.syncs_max));
             out.push_str(&format!("notify_channels_max = {}\n", p.notify_channels_max));
             out.push_str(&format!("notifies_per_day = {}\n", p.notifies_per_day));
             out.push_str(&format!("emails_per_day = {}\n", p.emails_per_day));
@@ -1174,6 +1181,7 @@ impl PlanCatalog {
                 "invites_max" => builder.invites_max = Some(int_value()),
                 "org_members_max" => builder.org_members_max = Some(int_value()),
                 "asks_open_max" => builder.asks_open_max = Some(int_value()),
+                "syncs_max" => builder.syncs_max = Some(int_value()),
                 "notify_channels_max" => builder.notify_channels_max = Some(int_value()),
                 "notifies_per_day" => builder.notifies_per_day = Some(int_value()),
                 "emails_per_day" => builder.emails_per_day = Some(int_value()),
@@ -1290,6 +1298,7 @@ struct PlanBuilder {
     invites_max: Option<i64>,
     org_members_max: Option<i64>,
     asks_open_max: Option<i64>,
+    syncs_max: Option<i64>,
     notify_channels_max: Option<i64>,
     notifies_per_day: Option<i64>,
     emails_per_day: Option<i64>,
@@ -1391,6 +1400,7 @@ impl PlanBuilder {
             invites_max: quota!(invites_max),
             org_members_max: quota!(org_members_max),
             asks_open_max: quota!(asks_open_max),
+            syncs_max: quota!(syncs_max),
             notify_channels_max: quota!(notify_channels_max),
             notifies_per_day: quota!(notifies_per_day),
             emails_per_day: quota!(emails_per_day),

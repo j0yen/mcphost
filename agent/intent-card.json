@@ -1,72 +1,60 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-connect-start-and-callback.md",
-  "intent_slug": "mcphost-connect-start-and-callback",
-  "root_motivation": "Who: the autonomous agent holding only a tenant key, whose user said 'list my open GitHub issues'; the user, who should click one link. What: connect a provider at tenant level with the host's own OAuth app. Why not today: vault connect_link needs end_user self and a tenant-registered OAuth app, so prod held zero vault_tokens rows.",
-  "user_persona": "An agent that calls host.connect.start, hands the returned url to its user, and polls host.connect.list until the provider shows connected; Operator Joe who sets MCPHOST_CONNECT_<PROVIDER>_CLIENT_ID/_SECRET on the host.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-sync-source-registry-and-create.md",
+  "intent_slug": "mcphost-sync-source-registry-and-create",
+  "root_motivation": "Who: an agent whose user says 'the truth is this Google Sheet'. What: one host.sync.create call that registers a scheduled mirror of an external dataset into a host table. Why not today: host.table.create makes an empty table, append cannot update a row and host.trigger.set only calls a published tool, so the agent would own a sync loop forever.",
+  "user_persona": "An agent that calls host.sync.create with a source kind and ref, gets a sync_id, and never writes a fetch loop; Operator Joe who reads docs/tools.md and llms.txt rendered from the SourceKind enum.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 7
+    "target": 6
   },
   "acceptance_criteria": [
     {
-      "id": "AC1",
-      "level": "MUST",
-      "description": "Given a fresh implicit-signup tenant with no end user and no vault_providers row, When host.connect.start {provider: testprov} is followed through the test OAuth server and the callback runs, Then host.connect.list shows testprov connected with the default scope and vault_tokens holds one row with end_user_subject tenant and a non-null refresh_enc.",
-      "test": "tests/cstart_ac01_tenant_connects_testprov_with_one_link.rs"
-    },
-    {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given github with MCPHOST_CONNECT_GITHUB_CLIENT_ID unset, When host.connect.start {provider: github} runs, Then the error is provider_unavailable {provider, reason: client_id_not_configured} and no handoff row is written.",
-      "test": "tests/cstart_ac02_unconfigured_provider_is_unavailable_and_writes_nothing.rs"
+      "description": "Given SourceKind::ALL, When a test renders the tool schema, docs/tools.md, www/llms.txt and reads the puller dispatch arms, Then every kind appears in each exactly once and gen-docs --check exits 1 naming the file after any one copy is hand-edited.",
+      "test": "tests/syreg_ac02_kinds_rendered_from_the_registry.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given host.connect.start {provider: testprov, scopes: [bogus]}, When it runs, Then the error is scope_unknown {unknown: [bogus]}.",
-      "test": "tests/cstart_ac03_unknown_scope_is_scope_unknown.rs"
+      "description": "Given a keyed free tenant, When host.sync.create {source: {kind: csv_url, ref}, table: orders} is called, Then the response carries sync_id, next_run_unix within 15 minutes, host.sync.list shows one row with status active, and the call took under 100 ms.",
+      "test": "tests/syreg_ac03_create_returns_a_scheduled_sync.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a redeemed handoff token, When /connections/go/<token> is opened again, Then it returns 410 and no second authorization starts; When the callback is called with that state, Then it returns 400 state_invalid.",
-      "test": "tests/cstart_ac04_redeemed_link_is_gone_and_state_is_invalid.rs"
+      "description": "Given kind excel_online, a csv_url ref of http://10.0.0.1/x.csv, and google_sheet on a tenant with no Google connection, When each is created, Then the errors are args_invalid listing the five kinds, host_not_allowed, and connection_missing {provider: google}, and no syncs row exists.",
+      "test": "tests/syreg_ac04_create_time_validation.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the test server redirects with ?error=access_denied, When the callback runs, Then the page names access_denied, the handoff is used, and vault_tokens has no row.",
-      "test": "tests/cstart_ac05_access_denied_uses_the_handoff_and_stores_nothing.rs"
+      "description": "Given a free tenant with 5 syncs, When a sixth is created, Then quota_syncs_max {limit: 5, used: 5} is returned and host.quickstart.limits.plan.syncs_max reads 5 from the same Plan field.",
+      "test": "tests/syreg_ac05_syncs_max_quota.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a connected testprov, When host.connect.revoke runs twice, Then both calls succeed, the row has revoked_reason tenant_revoke, and host.connect.list carries a reconnect_url.",
-      "test": "tests/cstart_ac06_revoke_is_idempotent_and_list_offers_reconnect.rs"
+      "description": "Given an active sync whose next_run_unix is in the past, When tick_once runs, Then one sync_runs receipt exists for it, next_run_unix moved to the next cron slot, and a second tick_once within the same slot writes no second receipt.",
+      "test": "tests/syreg_ac06_tick_runs_due_syncs_once_per_slot.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given two concurrent host.connect.start calls for the same provider, When both callbacks complete, Then exactly one vault_tokens row exists and it holds the tokens of the later callback.",
-      "test": "tests/cstart_ac07_concurrent_starts_leave_one_row_with_the_later_callback.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Given prod after this lands, When the callback is hit with a bogus state, Then it answers 400 and the body names state_invalid (Live; deferred, operator-provisioned).",
-      "test": "deferred -- operator-provisioned: live curl of prod's /connections/callback/github with a bogus state after deploy."
+      "description": "Given a sync, When host.sync.delete runs, Then host.sync.list is empty, the table still answers host.table.query, and a second host.sync.create with the same (kind, ref, table) returns a new sync_id.",
+      "test": "tests/syreg_ac07_delete_keeps_the_table.rs"
     }
   ],
   "scope": [
-    "src/connect/flow.rs: host.connect.start/list/revoke and the GET /connections/go/{token} and /connections/callback/{provider} routes.",
-    "ConnectProviders carries the host-owned client credentials (never printed); vault_tokens rows use end_user_subject 'tenant' and vault_handoff_tokens the same single-use PKCE handoff as the vault.",
-    "providers.toml gains an optional revoke_url; tests/common/testoauth.rs is the in-repo test OAuth server behind testprov."
+    "src/sync/mod.rs: SourceKind registry, host.sync.create/list/get/delete/run_now, the scheduler pass and the not_implemented run stub.",
+    "migrations/0130_syncs.sql: syncs and sync_runs tables.",
+    "src/plans.rs: syncs_max (free 5, pro 50); src/triggers.rs: tick_once calls the sync pass; src/gendocs.rs renders the sync-sources table and llms.txt section."
   ],
   "non_goals": [
-    "Using the stored token in a tool; scope enforcement at publish; audit rows; changing the end-user vault path."
+    "Fetching rows (the pull PRD); push or conflict handling; type inference beyond text columns; any new OAuth flow."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -75,35 +63,46 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "no_schema_change": "The handoff row's oauth_state column carries '<random>:<scopes>' and a 'used:' prefix once the callback consumed it; vault_tokens' UNIQUE key admits the 'tenant' subject."
+      "no_pull": "sync::run is a stub that writes a not_implemented receipt; the pull PRD replaces it.",
+      "db": "syncs and sync_runs live in the main database (migration 0130), not the per-tenant table files."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can an agent with only a tenant key not connect GitHub?",
-      "a": "connect_link requires a verified end user and a tenant-registered OAuth app."
+      "q": "Why can an agent not mirror a Google Sheet into a host table today?",
+      "a": "host.table.create makes an empty table and host.table.append cannot update a row."
     },
     {
       "why": 2,
-      "q": "Why does it need those?",
-      "a": "The vault was built for end-user tokens with the tenant's own client credentials."
+      "q": "Why not a trigger plus a published puller tool?",
+      "a": "host.trigger.set only calls a published tool on a cron, so the agent owns the sync loop, token and diff forever."
     },
     {
       "why": 3,
-      "q": "Why does a tenant-level subject fix it?",
-      "a": "A sentinel subject plus the host's own client ids needs neither an end user nor an app."
-    }
-  ],
-  "created_at": "2026-10-20T00:00:00Z",
-  "ambiguities_resolved": [
-    {
-      "question": "Is the OAuth state the handoff token itself?",
-      "resolution": "Yes (PRD R2); the callback looks the row up by its hash, requires /connections/go to have redeemed it, and marks it used with an oauth_state prefix, so no new column."
+      "q": "Why does the host need a registry of source kinds?",
+      "a": "the kind set appears in the tool schema, the docs, llms.txt and the puller dispatch, and four typed copies drift."
     },
     {
-      "question": "Why is the provider argument not a schema enum?",
-      "resolution": "The committed contract is the prod one while a test-support build also accepts testprov; Provider::parse is the same registry and answers invalid_params listing the names."
+      "why": 4,
+      "q": "Why generate them from one enum?",
+      "a": "prose at a boundary drifts; a derived contract cannot."
+    },
+    {
+      "why": 5,
+      "q": "Why store and schedule before pulling?",
+      "a": "the create surface, validation, quota and tick ownership ship independently of the pull PRD, which only fills sync_runs."
+    }
+  ],
+  "created_at": "2026-10-21T00:00:00Z",
+  "ambiguities_resolved": [
+    {
+      "question": "Where do syncs and sync_runs live?",
+      "resolution": "The main database next to the tenants table (migration 0130): the tick selects due rows across tenants in one query, and tenant deletion cascades."
+    },
+    {
+      "question": "What does mode push or two_way do at create?",
+      "resolution": "Accepted, stored with status pending_mode, and never run (the PRD's default)."
     }
   ]
 }

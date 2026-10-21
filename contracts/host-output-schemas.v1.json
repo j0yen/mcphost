@@ -12920,16 +12920,41 @@
       "warnings": {
         "items": {
           "properties": {
-            "ceiling": {"type": "integer"},
-            "ceiling_field": {"type": "string"},
-            "code": {"type": "string"},
-            "effective": {"type": "integer"},
-            "field": {"type": "string"},
-            "message": {"type": "string"},
-            "plan": {"type": "string"},
-            "requested": {"type": "integer"}
+            "ceiling": {
+              "type": "integer"
+            },
+            "ceiling_field": {
+              "type": "string"
+            },
+            "code": {
+              "type": "string"
+            },
+            "effective": {
+              "type": "integer"
+            },
+            "field": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "plan": {
+              "type": "string"
+            },
+            "requested": {
+              "type": "integer"
+            }
           },
-          "required": ["ceiling", "ceiling_field", "code", "effective", "field", "message", "plan", "requested"],
+          "required": [
+            "ceiling",
+            "ceiling_field",
+            "code",
+            "effective",
+            "field",
+            "message",
+            "plan",
+            "requested"
+          ],
           "type": "object"
         },
         "type": "array"
@@ -15811,6 +15836,339 @@
     },
     "required": [
       "sends"
+    ]
+  },
+  "host.sync.create": {
+    "type": "object",
+    "properties": {
+      "created_unix": {
+        "type": "integer"
+      },
+      "every": {
+        "type": "string"
+      },
+      "existing": {
+        "type": "boolean"
+      },
+      "mode": {
+        "type": "string"
+      },
+      "next": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
+      },
+      "next_run_unix": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "primary_key": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "source": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "ref"
+        ]
+      },
+      "status": {
+        "type": "string"
+      },
+      "sync_id": {
+        "type": "string"
+      },
+      "table": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "created_unix",
+      "every",
+      "mode",
+      "next_run_unix",
+      "primary_key",
+      "source",
+      "status",
+      "sync_id",
+      "table"
+    ]
+  },
+  "host.sync.delete": {
+    "type": "object",
+    "properties": {
+      "sync_id": {
+        "type": "string"
+      },
+      "deleted": {
+        "type": "boolean"
+      },
+      "table": {
+        "type": "string"
+      },
+      "table_kept": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "deleted",
+      "sync_id",
+      "table",
+      "table_kept"
+    ]
+  },
+  "host.sync.get": {
+    "type": "object",
+    "properties": {
+      "created_unix": {
+        "type": "integer"
+      },
+      "every": {
+        "type": "string"
+      },
+      "last_run": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "run_id": {
+            "type": "string"
+          },
+          "started_unix": {
+            "type": "integer"
+          },
+          "duration_ms": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "rows_added": {
+            "type": "integer"
+          },
+          "rows_updated": {
+            "type": "integer"
+          },
+          "rows_deleted": {
+            "type": "integer"
+          },
+          "bytes": {
+            "type": "integer"
+          },
+          "change_detected": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "mode": {
+        "type": "string"
+      },
+      "next_run_unix": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "primary_key": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "source": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "ref"
+        ]
+      },
+      "status": {
+        "type": "string"
+      },
+      "sync_id": {
+        "type": "string"
+      },
+      "table": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "created_unix",
+      "every",
+      "last_run",
+      "mode",
+      "next_run_unix",
+      "primary_key",
+      "source",
+      "status",
+      "sync_id",
+      "table"
+    ]
+  },
+  "host.sync.list": {
+    "type": "object",
+    "properties": {
+      "syncs": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "created_unix": {
+              "type": "integer"
+            },
+            "every": {
+              "type": "string"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "next_run_unix": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "primary_key": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "ref": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "ref"
+              ]
+            },
+            "status": {
+              "type": "string"
+            },
+            "sync_id": {
+              "type": "string"
+            },
+            "table": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "created_unix",
+            "every",
+            "mode",
+            "next_run_unix",
+            "primary_key",
+            "source",
+            "status",
+            "sync_id",
+            "table"
+          ]
+        }
+      }
+    },
+    "required": [
+      "syncs"
+    ]
+  },
+  "host.sync.run_now": {
+    "type": "object",
+    "properties": {
+      "created_unix": {
+        "type": "integer"
+      },
+      "every": {
+        "type": "string"
+      },
+      "mode": {
+        "type": "string"
+      },
+      "next_run_unix": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "primary_key": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "queued": {
+        "type": "boolean"
+      },
+      "source": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "ref"
+        ]
+      },
+      "status": {
+        "type": "string"
+      },
+      "sync_id": {
+        "type": "string"
+      },
+      "table": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "created_unix",
+      "every",
+      "mode",
+      "next_run_unix",
+      "primary_key",
+      "queued",
+      "source",
+      "status",
+      "sync_id",
+      "table"
     ]
   }
 }
