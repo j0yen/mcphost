@@ -448,6 +448,8 @@ mod stgl_ac06_subkey_hides_shared_entries;
 mod stgl_ac07_share_reports_grantees_notified;
 #[path = "sublis_ac01_listen_ack_and_keepalive.rs"]
 mod sublis_ac01_listen_ack_and_keepalive;
+#[path = "sublis_ac02_publish_notifies_the_tenants_streams.rs"]
+mod sublis_ac02_publish_notifies_the_tenants_streams;
 #[path = "suite_ac1_ten_binaries_and_names_preserved.rs"]
 mod suite_ac1_ten_binaries_and_names_preserved;
 #[path = "suite_ac3_mod_common_declared_once.rs"]

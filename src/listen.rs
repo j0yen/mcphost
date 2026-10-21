@@ -132,3 +132,166 @@ impl Drop for ListenGuard {
         }
     }
 }
+
+// ---- TOOLS_LIST_OPS: the one list of what changes tools/list --------------
+
+use serde_json::Value;
+
+use crate::db::Tenant;
+use crate::state::AppState;
+
+/// What a verb in [`TOOLS_LIST_OPS`] changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Effect {
+    /// The tenant's `tools/list`.
+    Tools,
+    /// The tenant's prompt list (prompt-kind tools).
+    Prompts,
+    /// The tenant's `Tool` resources (`resources::write_hint`).
+    Resource,
+}
+
+/// Whose `tools/list` a verb changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Affected {
+    /// The calling tenant.
+    Caller,
+    /// The tenant named by argument `arg` (a namespace), e.g. `namespace` on `host.group.add`.
+    Target(&'static str),
+    /// The members of the group named by argument `arg`, or of the group the
+    /// tool's grant row named before the call (a re-share, or an unshare).
+    GroupMembers(&'static str),
+}
+
+/// Reads a verb's name and result: did this call change the list?
+pub type WhenFn = fn(&str, &Value) -> bool;
+
+/// One verb that changes a tools/list.
+#[derive(Debug)]
+pub struct ToolsListOp {
+    /// The canonical verb; an alias such as `host.tool_publish` resolves to it first.
+    pub verb: &'static str,
+    pub effects: &'static [Effect],
+    /// A set: a verb may change more than one tenant's list.
+    pub affected: &'static [Affected],
+    /// A verb that only sometimes changes the list reads its result.
+    pub when: Option<WhenFn>,
+}
+
+const TOOLS_AND_PROMPTS_AND_RESOURCE: &[Effect] = &[Effect::Tools, Effect::Prompts, Effect::Resource];
+const TOOLS_AND_RESOURCE: &[Effect] = &[Effect::Tools, Effect::Resource];
+const TOOLS_ONLY: &[Effect] = &[Effect::Tools];
+const CALLER: &[Affected] = &[Affected::Caller];
+
+/// Every verb that writes a tool row, a tool's visibility or a group
+/// membership. `resources::write_hint`, the prompt tracking in
+/// `dispatch_tenant_tool_tracking_prompts` and the hub broadcast all read it;
+/// in debug builds the db write seam asserts a tool-table write happens under
+/// one of these verbs.
+pub const TOOLS_LIST_OPS: &[ToolsListOp] = &[
+    ToolsListOp { verb: "host.tool.publish", effects: TOOLS_AND_PROMPTS_AND_RESOURCE, affected: CALLER, when: None },
+    ToolsListOp { verb: "host.tool.remove", effects: TOOLS_AND_PROMPTS_AND_RESOURCE, affected: CALLER, when: None },
+    ToolsListOp { verb: "host.tool.rollback", effects: TOOLS_AND_RESOURCE, affected: CALLER, when: None },
+    ToolsListOp { verb: "host.tool.fork", effects: TOOLS_AND_RESOURCE, affected: CALLER, when: None },
+    ToolsListOp { verb: "host.import", effects: TOOLS_AND_RESOURCE, affected: CALLER, when: None },
+    // Hands back the tool sources to publish; it writes no row itself, so it
+    // changes nobody's list (the follow-up `host.tool.publish` does).
+    ToolsListOp { verb: "host.example.fork", effects: &[], affected: &[], when: None },
+    ToolsListOp {
+        verb: "host.tool.share",
+        effects: TOOLS_ONLY,
+        affected: &[Affected::Caller, Affected::GroupMembers("group")],
+        when: None,
+    },
+    ToolsListOp {
+        verb: "host.tool.unshare",
+        effects: TOOLS_ONLY,
+        affected: &[Affected::Caller, Affected::GroupMembers("group")],
+        when: None,
+    },
+    ToolsListOp { verb: "host.group.add", effects: TOOLS_ONLY, affected: &[Affected::Target("namespace")], when: None },
+    ToolsListOp { verb: "host.group.remove", effects: TOOLS_ONLY, affected: &[Affected::Target("namespace")], when: None },
+    ToolsListOp { verb: "host.note.put", effects: TOOLS_ONLY, affected: CALLER, when: Some(crate::notes::changes_tool_list) },
+    ToolsListOp { verb: "host.note.delete", effects: TOOLS_ONLY, affected: CALLER, when: Some(crate::notes::changes_tool_list) },
+    // Verbs that publish or remove tools through `control::tool_publish` /
+    // `Db::remove_tool` on the caller's behalf.
+    ToolsListOp { verb: "host.tool_from_description", effects: TOOLS_AND_RESOURCE, affected: CALLER, when: None },
+    ToolsListOp { verb: "host.uptime.create", effects: TOOLS_AND_RESOURCE, affected: CALLER, when: None },
+    ToolsListOp { verb: "host.webhook_inbox.create", effects: TOOLS_AND_RESOURCE, affected: CALLER, when: None },
+    ToolsListOp { verb: "host.secret.leak_test", effects: TOOLS_AND_RESOURCE, affected: CALLER, when: None },
+];
+
+/// The canonical form of `verb`: an alias resolves to its target.
+pub fn canonical_verb(verb: &str) -> &str {
+    crate::tool_aliases::resolve(verb).unwrap_or(verb)
+}
+
+/// The row for `verb` (aliases resolve first), if it is one.
+pub fn op_for(verb: &str) -> Option<&'static ToolsListOp> {
+    let verb = canonical_verb(verb);
+    TOOLS_LIST_OPS.iter().find(|op| op.verb == verb)
+}
+
+/// What a verb needs remembered from before it ran.
+pub struct Pending {
+    op: &'static ToolsListOp,
+    args: Value,
+    /// The group the tool was shared to before the call.
+    grant_group: Option<String>,
+}
+
+impl Pending {
+    /// Called before the verb runs. `None` for a verb not in the table, a dry
+    /// run (nothing is written) and a host with no open stream.
+    pub async fn begin(state: &AppState, tenant: &Tenant, verb: &str, args: &Value) -> Option<Box<Self>> {
+        let op = op_for(verb)?;
+        if op.effects.is_empty() || crate::write_verbs::dry_run_requested(args) || state.listen_hub.entries() == 0 {
+            return None;
+        }
+        let mut grant_group = None;
+        if op.affected.iter().any(|a| matches!(a, Affected::GroupMembers(_)))
+            && let Some(name) = args.get("name").and_then(Value::as_str)
+            && let Ok(Some(row)) = state.db.get_tool(tenant.id, name.to_string()).await
+            && row.visibility == "group"
+        {
+            grant_group = row.shared_group;
+        }
+        Some(Box::new(Self { op, args: args.clone(), grant_group }))
+    }
+
+    /// Called with a successful verb's result, after its write committed.
+    pub async fn finish(self: Box<Self>, state: &AppState, tenant: &Tenant, out: &Value) {
+        if let Some(when) = self.op.when
+            && !when(self.op.verb, out)
+        {
+            return;
+        }
+        let mut tenants = std::collections::BTreeSet::new();
+        for affected in self.op.affected {
+            match *affected {
+                Affected::Caller => {
+                    tenants.insert(tenant.id);
+                }
+                Affected::Target(arg) => {
+                    let Some(ns) = self.args.get(arg).and_then(Value::as_str) else { continue };
+                    if let Ok(Some(target)) = state.db.find_tenant_by_namespace(ns.to_string()).await {
+                        tenants.insert(target.id);
+                    }
+                }
+                Affected::GroupMembers(arg) => {
+                    let named = self.args.get(arg).and_then(Value::as_str).map(str::to_string);
+                    for group in named.into_iter().chain(self.grant_group.clone()) {
+                        if let Ok(ids) = state.db.group_member_ids(tenant.id, group).await {
+                            tenants.extend(ids);
+                        }
+                    }
+                }
+            }
+        }
+        for id in tenants {
+            if self.op.effects.contains(&Effect::Tools) {
+                state.listen_hub.notify(id, ListChange::Tools);
+            }
+        }
+    }
+}

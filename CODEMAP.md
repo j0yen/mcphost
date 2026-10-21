@@ -299,6 +299,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `BRIDGE_MODULES` in `src/kinds/python.rs`
 - `BRIDGE_RETURNS` in `src/kinds/python.rs`
 - `LINT_RULES` in `src/kinds/python_lint.rs`
+- `TOOLS_LIST_OPS` in `src/listen.rs`
 - `NETWORK_VALUES` in `src/network_policy.rs`
 - `VERBS` in `src/notify.rs`
 - `ISSUER_REJECTION_CASES` in `src/oauth.rs`

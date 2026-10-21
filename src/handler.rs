@@ -7553,7 +7553,11 @@ impl McpHostHandler {
     ) -> Result<Value, AppError> {
         // PRD-mcphost-resources-for-tenant-data requirements 4 and 6: the
         // one place a committed write tells resource subscribers.
-        let hint = crate::resources::write_hint(name, &args);
+        // Boxed: this frame is re-entered once per forwarding level (FORWARD_STACK_BUDGET).
+        let hint = crate::resources::write_hint(name, &args).map(Box::new);
+        // PRD-mcphost-subscriptions-listen R4: what a tools/list-changing verb
+        // needs remembered from before it ran; boxed so this frame stays small.
+        let listen = Box::pin(crate::listen::Pending::begin(&self.state, tenant, name, &args)).await;
         // The forwarding boundary. A wrapper verb (`FORWARDING_WRAPPERS`) re-enters
         // this dispatcher with the verb it forwards, so it is on the stack UNDER
         // the forwarded verb. Dispatched the usual way it would hold the
@@ -7592,7 +7596,10 @@ impl McpHostHandler {
             .await
         };
         if let (Some(hint), Ok(out)) = (hint, &result) {
-            crate::resources::after_write(&self.state, tenant.id, hint, out);
+            crate::resources::after_write(&self.state, tenant.id, *hint, out);
+        }
+        if let (Some(listen), Ok(out)) = (listen, &result) {
+            Box::pin(listen.finish(&self.state, tenant, out)).await;
         }
         self.attach_data_quota(tenant, name, result).await
     }
@@ -11602,6 +11609,59 @@ async fn notify_prompt_list_changed(peer: &Peer<RoleServer>, namespace: &str) {
     }
 }
 
+impl McpHostHandler {
+    /// PRD-mcphost-subscriptions-listen R2/R6: the body of `ServerHandler::listen`.
+    async fn listen_stream(&self, context: rmcp::service::SubscriptionContext) -> Result<(), McpError> {
+        let base = Some(self.state.public_url.as_str());
+        let parts = get_parts(context.request_context())?;
+        let mut sub_key = None;
+        let auth = match resolve_path_secret_auth(&self.state, parts, "")
+            .await
+            .map_err(|e| e.into_error_data_at(base))?
+        {
+            Some(a) => a,
+            None => resolve_auth(&self.state, parts, &mut sub_key, "")
+                .await
+                .map_err(|e| e.into_error_data_at(base))?,
+        };
+        let tenant = match auth {
+            Auth::Tenant(tenant, _) => tenant,
+            Auth::Invalid => return Err(AppError::TenantKeyInvalid.into_error_data_at(base)),
+            // No key: nothing to listen for. The graceful result closes the stream.
+            Auth::Anonymous | Auth::Admin => return Ok(()),
+        };
+        if let Some(ns) = tenant_path_namespace(parts)
+            && tenant.namespace != ns
+        {
+            return Err(AppError::WrongTenant.into_error_data_at(base));
+        }
+        let mut guard = self.state.listen_hub.open(tenant.id);
+        let sink = context.sink().clone();
+        let mut pending = Vec::new();
+        loop {
+            let change = tokio::select! {
+                _ = context.cancelled() => return Ok(()),
+                change = guard.next(&mut pending) => match change {
+                    Some(change) => change,
+                    None => return Ok(()),
+                },
+            };
+            let sent = match change {
+                crate::listen::ListChange::Tools => sink.notify_tool_list_changed().await,
+                crate::listen::ListChange::Prompts => sink.notify_prompt_list_changed().await,
+            };
+            match sent {
+                // The client did not ask for this list.
+                Ok(()) | Err(rmcp::service::SubscriptionSendError::NotificationNotAccepted(_)) => {}
+                Err(e) => {
+                    tracing::debug!(tenant = %tenant.namespace, error = %e, "listen stream ended on send");
+                    return Ok(());
+                }
+            }
+        }
+    }
+}
+
 impl ServerHandler for McpHostHandler {
     /// PRD-mcphost-elicitation-in-band-on-stateless-transport R1: the default
     /// `initialize` plus remembering what the client advertised, under the
@@ -11728,54 +11788,13 @@ impl ServerHandler for McpHostHandler {
     /// the Authorization header names, until the client closes it or the server
     /// shuts down. Resolution is read-only: no tenant is created and no
     /// session memory is written.
-    async fn listen(&self, context: rmcp::service::SubscriptionContext) -> Result<(), McpError> {
-        let base = Some(self.state.public_url.as_str());
-        let parts = get_parts(context.request_context())?;
-        let mut sub_key = None;
-        let auth = match resolve_path_secret_auth(&self.state, parts, "")
-            .await
-            .map_err(|e| e.into_error_data_at(base))?
-        {
-            Some(a) => a,
-            None => resolve_auth(&self.state, parts, &mut sub_key, "")
-                .await
-                .map_err(|e| e.into_error_data_at(base))?,
-        };
-        let tenant = match auth {
-            Auth::Tenant(tenant, _) => tenant,
-            Auth::Invalid => return Err(AppError::TenantKeyInvalid.into_error_data_at(base)),
-            // No key: nothing to listen for. The graceful result closes the stream.
-            Auth::Anonymous | Auth::Admin => return Ok(()),
-        };
-        if let Some(ns) = tenant_path_namespace(parts)
-            && tenant.namespace != ns
-        {
-            return Err(AppError::WrongTenant.into_error_data_at(base));
-        }
-        let mut guard = self.state.listen_hub.open(tenant.id);
-        let sink = context.sink().clone();
-        let mut pending = Vec::new();
-        loop {
-            let change = tokio::select! {
-                _ = context.cancelled() => return Ok(()),
-                change = guard.next(&mut pending) => match change {
-                    Some(change) => change,
-                    None => return Ok(()),
-                },
-            };
-            let sent = match change {
-                crate::listen::ListChange::Tools => sink.notify_tool_list_changed().await,
-                crate::listen::ListChange::Prompts => sink.notify_prompt_list_changed().await,
-            };
-            match sent {
-                // The client did not ask for this list.
-                Ok(()) | Err(rmcp::service::SubscriptionSendError::NotificationNotAccepted(_)) => {}
-                Err(e) => {
-                    tracing::debug!(tenant = %tenant.namespace, error = %e, "listen stream ended on send");
-                    return Ok(());
-                }
-            }
-        }
+    fn listen(
+        &self,
+        context: rmcp::service::SubscriptionContext,
+    ) -> impl std::future::Future<Output = Result<(), McpError>> + Send + '_ {
+        // Boxed: rmcp's `handle_request` poll frame holds every arm's future, and
+        // this one is large (FORWARD_STACK_BUDGET's shared level).
+        Box::pin(self.listen_stream(context))
     }
 
     // PRD-mcphost-resources-for-tenant-data requirement 2: one entry per
