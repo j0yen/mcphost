@@ -322,6 +322,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `SAMPLING_ERROR_CODES` in `src/sampling.rs`
 - `OVERRIDES` in `src/sdk_python.rs`
 - `ALWAYS_LISTED` in `src/subkeys.rs`
+- `SYNC_MODES` in `src/sync/mod.rs`
 - `TABLE_WRITE_VERBS` in `src/tables.rs`
 - `ANNOTATION_KEYS` in `src/tables_model.rs`
 - `STATUS_TOOLS` in `src/tasks.rs`

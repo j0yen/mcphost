@@ -25865,6 +25865,9 @@
               },
               "ref": {
                 "description": "What identifies the dataset for that kind.",
+                "examples": [
+                  "https://example.com/data.csv"
+                ],
                 "type": "string"
               },
               "secret": {
@@ -25895,6 +25898,117 @@
         "x-mcphost-validated": true
       },
       "name": "host.sync.create",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "created_unix": {
+            "type": "integer"
+          },
+          "every": {
+            "type": "string"
+          },
+          "existing": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "mode": {
+            "type": "string"
+          },
+          "next": {
+            "items": {
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next_run_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "primary_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "ref": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "ref"
+            ],
+            "type": "object"
+          },
+          "status": {
+            "type": "string"
+          },
+          "sync_id": {
+            "type": "string"
+          },
+          "table": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "created_unix",
+          "every",
+          "mode",
+          "next_run_unix",
+          "primary_key",
+          "source",
+          "status",
+          "sync_id",
+          "table"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
       "since": "0.112.26"
     },
     {
@@ -25918,6 +26032,64 @@
         "x-mcphost-validated": true
       },
       "name": "host.sync.delete",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "sync_id": {
+            "type": "string"
+          },
+          "table": {
+            "type": "string"
+          },
+          "table_kept": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "deleted",
+          "sync_id",
+          "table",
+          "table_kept"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
       "since": "0.112.26"
     },
     {
@@ -25941,6 +26113,171 @@
         "x-mcphost-validated": true
       },
       "name": "host.sync.get",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "created_unix": {
+            "type": "integer"
+          },
+          "every": {
+            "type": "string"
+          },
+          "last_run": {
+            "properties": {
+              "bytes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "change_detected": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "duration_ms": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "rows_added": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "rows_deleted": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "rows_updated": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "run_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "started_unix": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "status": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "mode": {
+            "type": "string"
+          },
+          "next_run_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "primary_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "ref": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "ref"
+            ],
+            "type": "object"
+          },
+          "status": {
+            "type": "string"
+          },
+          "sync_id": {
+            "type": "string"
+          },
+          "table": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "created_unix",
+          "every",
+          "last_run",
+          "mode",
+          "next_run_unix",
+          "primary_key",
+          "source",
+          "status",
+          "sync_id",
+          "table"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
       "since": "0.112.26"
     },
     {
@@ -25958,6 +26295,113 @@
         "x-mcphost-validated": true
       },
       "name": "host.sync.list",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "syncs": {
+            "items": {
+              "properties": {
+                "created_unix": {
+                  "type": "integer"
+                },
+                "every": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "next_run_unix": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "primary_key": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "source": {
+                  "properties": {
+                    "kind": {
+                      "type": "string"
+                    },
+                    "ref": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "ref"
+                  ],
+                  "type": "object"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "sync_id": {
+                  "type": "string"
+                },
+                "table": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "created_unix",
+                "every",
+                "mode",
+                "next_run_unix",
+                "primary_key",
+                "source",
+                "status",
+                "sync_id",
+                "table"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "syncs"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
       "since": "0.112.26",
       "unpaged_reason": "tenant-quota-bounded set returned whole in one response, never more than a plan-capped few hundred rows"
     },
@@ -25982,6 +26426,106 @@
         "x-mcphost-validated": true
       },
       "name": "host.sync.run_now",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "created_unix": {
+            "type": "integer"
+          },
+          "every": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "next_run_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "primary_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "queued": {
+            "type": "boolean"
+          },
+          "source": {
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "ref": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "ref"
+            ],
+            "type": "object"
+          },
+          "status": {
+            "type": "string"
+          },
+          "sync_id": {
+            "type": "string"
+          },
+          "table": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "created_unix",
+          "every",
+          "mode",
+          "next_run_unix",
+          "primary_key",
+          "queued",
+          "source",
+          "status",
+          "sync_id",
+          "table"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
       "since": "0.112.26"
     },
     {
@@ -45135,6 +45679,9 @@
               },
               "ref": {
                 "description": "What identifies the dataset for that kind.",
+                "examples": [
+                  "https://example.com/data.csv"
+                ],
                 "type": "string"
               },
               "secret": {
