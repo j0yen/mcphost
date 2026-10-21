@@ -1,0 +1,37 @@
+# Consumer task for the synthorg mcphost corpus (RedBaron's
+# corpora/mcphost/consumer-tasks.yaml, see its own header comment for the
+# id/segments/task/gold schema and the call_check mini-grammar). Proposed
+# addition for the "Give Claude a database in one minute" recipe
+# (www/llms.txt, examples/database-in-a-minute/proof.sh) -- not merged
+# into that file by this PRD, since RedBaron's corpus lives in a separate
+# repository outside this worktree's scope (build_into: mcphost only). A
+# maintainer of that corpus can fold this block into
+# consumer-tasks.yaml's own `tasks:` list.
+#
+# Segment: spreadsheet_owner (incumbent: pasting the CSV into every
+# conversation, or standing up Airtable/Notion plus its own MCP server,
+# problem statement). This task proves the alternative: one declared
+# table, one batched append, no published tool -- the question is asked
+# straight in SQL through `host.table.query`, scored on whether the GROUP
+# BY answer matches the fixture's known value (PRD user story 1;
+# PRD-mcphost-table-context-and-sql-passthrough requirement 6 updates this
+# task's steps and gold onto the SQL path -- the task id stays the same so
+# the vision's satisfaction row continues under it).
+tasks:
+  - id: spreadsheet-owner-database-in-a-minute
+    segments: [spreadsheet_owner]
+    task: >
+      You have a CSV and want Claude to answer questions about your own
+      rows without pasting the file into every conversation. Sign up,
+      create an `expenses` table with `host.table.create` (columns
+      id integer, category text, amount real, day integer), append the
+      fixture's 1,000 rows in batches of 200 with `host.table.append`,
+      and ask `host.table.query` for the total amount spent on "produce"
+      (`SELECT SUM(amount) AS total FROM expenses WHERE category =
+      'produce'`) -- the result should show `total: 57165.0`.
+    gold:
+      tool_name: host.table.query
+      call_check: "result.rows.0.total == 57165.0"
+      kind: host
+    recipe: database-in-a-minute
+    wall_budget_s: 60

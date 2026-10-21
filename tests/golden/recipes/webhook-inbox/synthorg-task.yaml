@@ -1,0 +1,19 @@
+# Consumer task for the synthorg mcphost corpus (see corpora/mcphost/consumer-tasks.yaml
+# there for the id/segments/task/gold schema and the call_check mini-grammar).
+# Generated from recipes/webhook-inbox.toml -- the "Webhook inbox in one call"
+# recipe (www/llms.txt): one create call, one signed POST, read the event.
+tasks:
+  - id: webhook-inbox-one-call
+    segments: [integration_builder]
+    task: >
+      Your user wants to see a webhook arrive without you writing a server.
+      Sign up, create an inbox named `inbox` with `host.webhook_inbox.create`,
+      POST a JSON body `{"id": "evt-1"}` signed with the returned secret
+      (HMAC-SHA256, `X-Mcphost-Signature: sha256=<hex>`) to the returned
+      `url`, and read the event back with `host.tool_call(name="inbox")`.
+    gold:
+      tool_name: inbox
+      call_check: "result.rows contains evt-1"
+      kind: python
+    recipe: webhook-inbox
+    wall_budget_s: 90

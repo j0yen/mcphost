@@ -1004,6 +1004,8 @@ mod rgpt_ac06_task_sync_check_flags_wall_budget_drift;
 mod rgpt_ac07_ci_job_fails_on_the_broken_recipe_only;
 #[path = "rgpt_chart_in_a_minute_golden_path.rs"]
 mod rgpt_chart_in_a_minute_golden_path;
+#[path = "rgpt_data_sync_golden_path.rs"]
+mod rgpt_data_sync_golden_path;
 #[path = "rgpt_database_in_a_minute_golden_path.rs"]
 mod rgpt_database_in_a_minute_golden_path;
 #[path = "rgpt_share_a_tool_golden_path.rs"]
