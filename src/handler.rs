@@ -7189,21 +7189,21 @@ impl StateBackend for CountingStateBackend {
 /// The stack, in bytes, every forwarded dotted host verb must complete its real
 /// `host.tool_call` / `host.tool_test` call in on a debug build (profile and
 /// test thread as CI's `cargo test`). GENERATED MEASUREMENT: the measured
-/// maximum over all 230 forwardable ids is 983,040 B (every id measures it:
+/// maximum over all 230 forwardable ids is 987,136 B (every id measures it:
 /// `test:host.trigger.set`, `call:host.whoami`,
 /// `call:host.webhook_inbox.create`, `call:host.vault.status`, ...,
-/// `scripts/fwd-stack-measure.sh all`, 2026-10-18 (re-measured 2026-10-20 with the sub-key `acting_for` lineage on the call path), after the dispatch table
+/// `scripts/fwd-stack-measure.sh all`, 2026-10-18 (re-measured 2026-10-20 with the sub-key `acting_for` lineage on the call path, and 2026-10-21 with the subscriptions-listen branch's frames: 983,040 -> 987,136 B, one 4 KiB step), after the dispatch table
 /// (`src/dispatch_table.rs`) and the boxed `call_tool_inner` helpers; the shared
 /// level rose from 823,296 B on 10-17 with main's own frames, chiefly rmcp's
 /// `handle_request` poll frame, 48 -> 137 KiB, while `host.doctor` stopped
 /// compiling its error-envelope report on the caller's stack) and the
-/// budget is that + 25 % = 1,228,800 B, so CI's 2 MiB test thread keeps
+/// budget is that + 25 % = 1,233,920 B, so CI's 2 MiB test thread keeps
 /// 40 % of it free and the next fat frame fails
 /// `tests/verbfwd_ac08_forward_stack_budget.rs`, naming the verb, instead of SIGABRTing a shard (run 326 `verbfwd_ac01`, run
 /// 953; both 10-17, both `has overflowed its stack`). The boundary is
 /// `dispatch_tenant_tool` / `forward_host_verb`, where a dotted verb re-enters
 /// the dispatcher. Re-measure and tighten as the dispatch frames shrink.
-pub const FORWARD_STACK_BUDGET: usize = 1_228_800;
+pub const FORWARD_STACK_BUDGET: usize = 1_233_920;
 
 /// The validator's registration for what `host.spec.test` owns (R3): more
 /// than `MAX_TEST_INVOCATIONS` invocations is refused `too_many_invocations`
