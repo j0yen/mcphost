@@ -1012,6 +1012,12 @@ export class MethodUnavailable extends MCPHostError {
   }
 }
 
+export class MethodUnknown extends MCPHostError {
+  constructor(message: string, data: ErrorData = {}) {
+    super("method_unknown", message, data);
+  }
+}
+
 export class MsgUnavailable extends MCPHostError {
   constructor(message: string, data: ErrorData = {}) {
     super("msg_unavailable", message, data);
@@ -2070,6 +2076,7 @@ export const ERRORS_BY_CODE: Record<string, new (message: string, data?: ErrorDa
   meter_emit_locked: MeterEmitLocked,
   method_server_to_client: MethodServerToClient,
   method_unavailable: MethodUnavailable,
+  method_unknown: MethodUnknown,
   msg_unavailable: MsgUnavailable,
   namespace_unverified: NamespaceUnverified,
   no_channel: NoChannel,

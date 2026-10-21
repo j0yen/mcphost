@@ -962,6 +962,10 @@ mod refrow_ac04_insufficient_scope_row_has_token_auth_method;
 mod refrow_ac05_host_usage_reports_refused;
 #[path = "refrow_ac06_unwritable_db_refusal_still_returned.rs"]
 mod refrow_ac06_unwritable_db_refusal_still_returned;
+#[path = "refst_ac01_unimplemented_method_status_by_revision.rs"]
+mod refst_ac01_unimplemented_method_status_by_revision;
+#[path = "refst_ac03_refusal_status_rule_and_batch.rs"]
+mod refst_ac03_refusal_status_rule_and_batch;
 #[path = "reglist_ac01_manifest_fields_match_cargo_and_endpoint.rs"]
 mod reglist_ac01_manifest_fields_match_cargo_and_endpoint;
 #[path = "reglist_ac02_check_detects_drift.rs"]

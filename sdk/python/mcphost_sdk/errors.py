@@ -856,6 +856,11 @@ class MethodUnavailable(MCPHostError):
         super().__init__("method_unavailable", message, data)
 
 
+class MethodUnknown(MCPHostError):
+    def __init__(self, message: str, data: Optional[ErrorData] = None) -> None:
+        super().__init__("method_unknown", message, data)
+
+
 class MsgUnavailable(MCPHostError):
     def __init__(self, message: str, data: Optional[ErrorData] = None) -> None:
         super().__init__("msg_unavailable", message, data)
@@ -1766,6 +1771,7 @@ ERRORS_BY_CODE: dict[str, type[MCPHostError]] = {
     "meter_emit_locked": MeterEmitLocked,
     "method_server_to_client": MethodServerToClient,
     "method_unavailable": MethodUnavailable,
+    "method_unknown": MethodUnknown,
     "msg_unavailable": MsgUnavailable,
     "namespace_unverified": NamespaceUnverified,
     "no_channel": NoChannel,

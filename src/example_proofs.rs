@@ -307,7 +307,11 @@ async fn run_proof(example: &Example, opts: &RunOpts) -> ProofRun {
         duration_s: started.elapsed().as_secs_f64(),
         log_excerpt: tail_lines(&log, EXCERPT_LINES),
     };
-    let dir = std::env::temp_dir().join(format!("mcphost-prove-{}-{}-{}", std::process::id(), example.name, now_unix()));
+    // A per-process counter keeps concurrent runs of the same example (one test
+    // binary, one second) from sharing, and then deleting, one directory.
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("mcphost-prove-{}-{}-{}-{seq}", std::process::id(), example.name, now_unix()));
     if let Err(e) = std::fs::create_dir_all(&dir).map_err(|e| e.to_string()).and_then(|_| extract(example, opts.files_dir.as_deref(), &dir)) {
         let _ = std::fs::remove_dir_all(&dir);
         return fail(format!("extract failed: {e}"));

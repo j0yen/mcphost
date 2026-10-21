@@ -12,6 +12,29 @@ use serde_json::{Value, json};
 /// The help code every unimplemented-capability `-32601` carries.
 pub const UNSUPPORTED_CODE: &str = "capability_unsupported";
 
+/// First protocol revision whose Streamable HTTP transport requires HTTP 404
+/// for a method the server does not implement.
+pub const NOT_FOUND_STATUS_FROM: &str = "2026-07-28";
+
+/// The `_meta` key a 2026-07-28 request carries its protocol version under.
+pub const META_PROTOCOL_VERSION_KEY: &str = "io.modelcontextprotocol/protocolVersion";
+
+/// Methods this host dispatches that rmcp 3.3.0 refuses from
+/// [`NOT_FOUND_STATUS_FROM`] on ("legacy-only": `subscriptions/listen` replaces
+/// the two resource subscription methods, and `ping` is gone).
+pub const LEGACY_ONLY_METHODS: &[&str] = &["ping", "resources/subscribe", "resources/unsubscribe"];
+
+/// The [`CORE_METHODS`] rmcp routes but this host's handler leaves at rmcp's
+/// default method-not-found, so the allowlist omits them (the R9c drift test
+/// fails when one starts answering, or when a listed one stops).
+pub const CORE_NOT_HANDLED: &[&str] = &["subscriptions/listen", "tasks/get", "tasks/update", "tasks/cancel"];
+
+crate::err_code! {
+    pub METHOD_UNKNOWN,
+    code: "method_unknown", family: Spec, class: AgentFault, retryable: false,
+    remedy: "Do not post this method: the host does not dispatch it on this protocol revision. Read /capabilities.json for the methods it implements.",
+}
+
 crate::err_code! {
     pub METHOD_SERVER_TO_CLIENT,
     code: "method_server_to_client", family: Spec, class: AgentFault, retryable: false,
@@ -205,6 +228,52 @@ pub fn refusal(method: &str, base_url: Option<&str>) -> Option<McpError> {
     } else {
         None
     }
+}
+
+/// PRD-mcphost-unimplemented-method-status R9: the HTTP status of a `-32601`
+/// refusal. 404 from 2026-07-28 on (the transport's "Protocol Version Header"
+/// section); 200 on every earlier revision, where a 404 inside a session tells
+/// the client to drop it, and when the revision is unknown. Keyed on the
+/// protocol version alone.
+pub fn refusal_status(protocol_version: Option<&str>) -> http::StatusCode {
+    match protocol_version {
+        Some(v) if v >= NOT_FOUND_STATUS_FROM => http::StatusCode::NOT_FOUND,
+        _ => http::StatusCode::OK,
+    }
+}
+
+/// True when the host dispatches `method` on `protocol_version`: the generated
+/// allowlist, [`CORE_METHODS`] plus the client-to-server methods of implemented
+/// rows, minus [`LEGACY_ONLY_METHODS`] from [`NOT_FOUND_STATUS_FROM`] on.
+pub fn dispatches(method: &str, protocol_version: Option<&str>) -> bool {
+    if refusal_status(protocol_version) == http::StatusCode::NOT_FOUND && LEGACY_ONLY_METHODS.contains(&method) {
+        return false;
+    }
+    (CORE_METHODS.contains(&method) && !CORE_NOT_HANDLED.contains(&method))
+        || capability_for_method(method).is_some_and(|c| c.implemented && !c.server_to_client.contains(&method))
+}
+
+/// `-32601` for a method outside the allowlist that no refusal names.
+pub fn unknown_method_error(method: &str, base_url: Option<&str>) -> McpError {
+    let cap = capability_for_method(method);
+    let mut data = serde_json::Map::new();
+    data.insert("code".into(), json!(METHOD_UNKNOWN));
+    data.insert("capability".into(), json!(cap.map(|c| c.name)));
+    data.insert("method".into(), json!(method));
+    data.insert("alternative".into(), json!(cap.and_then(|c| c.alternative)));
+    if let Some(base) = base_url
+        && let Some(url) = crate::help::help_url(base, METHOD_UNKNOWN)
+    {
+        data.insert("help_url".into(), json!(url));
+    }
+    McpError::new(ErrorCode::METHOD_NOT_FOUND, format!("{method}: method not found"), Some(Value::Object(data)))
+}
+
+/// The error the pre-dispatch gate answers for `method` on `protocol_version`:
+/// the registry's [`refusal`], else [`unknown_method_error`] for any method the
+/// allowlist omits. `None` for a method the host dispatches.
+pub fn gate_error(method: &str, protocol_version: Option<&str>, base_url: Option<&str>) -> Option<McpError> {
+    refusal(method, base_url).or_else(|| (!dispatches(method, protocol_version)).then(|| unknown_method_error(method, base_url)))
 }
 
 /// `-32601` for a server-to-client method of an IMPLEMENTED row posted by a

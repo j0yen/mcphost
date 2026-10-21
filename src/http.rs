@@ -1765,6 +1765,12 @@ fn entry_unauthorized(state: &AppState, invalid: Option<&'static str>) -> Respon
     response
 }
 
+/// The protocol revision a message speaks: the `MCP-Protocol-Version` header,
+/// else the request's `_meta` protocol version, else `None`.
+fn message_version<'a>(msg: &'a Value, header: Option<&'a str>) -> Option<&'a str> {
+    header.or_else(|| msg.pointer("/params/_meta")?.get(crate::capabilities::META_PROTOCOL_VERSION_KEY)?.as_str())
+}
+
 /// PRD-mcphost-capabilities-generated-from-dispatch R1: the one pre-dispatch
 /// refusal site. Reads the JSON-RPC `method` of a POST body (each element of a
 /// batch) and, when [`crate::capabilities::refusal`] names a refusal for it,
@@ -1785,10 +1791,15 @@ async fn refuse_unimplemented_methods(
         return StatusCode::PAYLOAD_TOO_LARGE.into_response();
     };
     if let Ok(doc) = serde_json::from_slice::<Value>(&bytes) {
+        let header_version = parts
+            .headers
+            .get("mcp-protocol-version")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string);
         let refuse = |msg: &Value| -> Option<Value> {
             let method = msg.get("method")?.as_str()?;
             let id = msg.get("id")?.clone();
-            let err = crate::capabilities::refusal(method, Some(&state.public_url))?;
+            let err = crate::capabilities::gate_error(method, message_version(msg, header_version.as_deref()), Some(&state.public_url))?;
             Some(json!({"jsonrpc": "2.0", "id": id, "error": err}))
         };
         let reply = match &doc {
@@ -1798,7 +1809,8 @@ async fn refuse_unimplemented_methods(
             single => refuse(single),
         };
         if let Some(reply) = reply {
-            return (StatusCode::OK, Json(reply)).into_response();
+            let first = doc.as_array().and_then(|a| a.first()).unwrap_or(&doc);
+            return (crate::capabilities::refusal_status(message_version(first, header_version.as_deref())), Json(reply)).into_response();
         }
     }
     next.run(Request::from_parts(parts, Body::from(bytes))).await
