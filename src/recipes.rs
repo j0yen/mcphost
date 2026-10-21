@@ -98,6 +98,28 @@ pub struct Step {
 /// result moves at tick granularity, so polling faster only adds calls).
 pub const RETRY_UNTIL_EXPECT_POLL_S: u64 = 5;
 
+/// `tests/support/rgpt.rs` `MAX_RECIPE_WALL`: the in-process runner kills any
+/// recipe at this many seconds whatever its `wall_s`. A test reads the real
+/// constant out of that file and fails if the two differ.
+pub const RGPT_MAX_RECIPE_WALL_S: u64 = 60;
+/// Seconds the non-polling steps of a recipe take (measured: the data-sync
+/// proof's signup, create, run_now, list and delete ran in ~2 s on the
+/// in-process server).
+pub const RECIPE_NON_POLL_STEP_S: u64 = 2;
+/// Headroom kept under [`RGPT_MAX_RECIPE_WALL_S`] in the worst case.
+pub const RECIPE_WALL_MARGIN_S: u64 = 5;
+
+/// Worst-case seconds of a recipe with `retry_until_expect` steps: every such
+/// step runs its whole `retry_s` plus one poll of overshoot (the loop checks
+/// the deadline, then sleeps), plus the non-polling steps. 0 without such steps.
+pub fn retry_until_expect_worst_case_s(r: &Recipe) -> u64 {
+    let polled: Vec<u64> = r.steps.iter().filter(|s| s.retry_until_expect).map(|s| s.retry_s.unwrap_or(0)).collect();
+    if polled.is_empty() {
+        return 0;
+    }
+    polled.iter().map(|t| t + RETRY_UNTIL_EXPECT_POLL_S).sum::<u64>() + RECIPE_NON_POLL_STEP_S
+}
+
 fn default_tenant() -> String {
     "owner".to_string()
 }
@@ -248,9 +270,46 @@ pub fn validate(recipes: &[Recipe]) -> Result<(), RecipeError> {
             if !r.tenants.contains(&s.as_tenant) {
                 return Err(invalid(n, "as", format!("`{}` is not in tenants {:?}", s.as_tenant, r.tenants)));
             }
+            if s.llms_call.as_deref().is_some_and(|t| t.trim().is_empty()) {
+                return Err(invalid(n, "llms_call", "`llms_call` must not be empty (omit the key to render the call from `args`)".to_string()));
+            }
             if s.retry_until_expect {
                 if s.retry_s.is_none() {
                     return Err(invalid(n, "retry_until_expect", "`retry_until_expect` requires `retry_s`".to_string()));
+                }
+                let deadlines: std::collections::BTreeSet<u64> =
+                    r.steps.iter().filter(|x| x.retry_until_expect).filter_map(|x| x.retry_s).collect();
+                if deadlines.len() > 1 {
+                    return Err(invalid(
+                        n,
+                        "retry_s",
+                        format!("retry_until_expect steps must share one retry_s (the proof has one deadline variable), got {deadlines:?}"),
+                    ));
+                }
+                let worst = retry_until_expect_worst_case_s(r);
+                if worst + RECIPE_WALL_MARGIN_S > RGPT_MAX_RECIPE_WALL_S {
+                    return Err(invalid(
+                        n,
+                        "retry_s",
+                        format!(
+                            "worst case {worst} s (retry_s + {RETRY_UNTIL_EXPECT_POLL_S} s poll + {RECIPE_NON_POLL_STEP_S} s other steps) leaves under {RECIPE_WALL_MARGIN_S} s below the {RGPT_MAX_RECIPE_WALL_S} s in-process cap"
+                        ),
+                    ));
+                }
+                let deadline = s.retry_s.unwrap_or(0).to_string();
+                if r.proof.body.split(|c: char| !c.is_ascii_digit()).any(|t| t == deadline) {
+                    return Err(invalid(
+                        n,
+                        "retry_s",
+                        format!("the proof body hard-codes the deadline {deadline}; use $RETRY_UNTIL_EXPECT_DEADLINE_S (the generator defines it)"),
+                    ));
+                }
+                if !r.proof.body.contains("RETRY_UNTIL_EXPECT_DEADLINE_S") {
+                    return Err(invalid(
+                        n,
+                        "retry_until_expect",
+                        "the proof body must use $RETRY_UNTIL_EXPECT_DEADLINE_S (the generator defines it)".to_string(),
+                    ));
                 }
                 if !r.proof.body.contains("RETRY_UNTIL_EXPECT_POLL_S") {
                     return Err(invalid(
@@ -552,24 +611,25 @@ pub fn render_proof(r: &Recipe) -> String {
         out.push_str(&format!("#   {}. {what}\n", i + 1));
     }
     let mut body = with_prove_dry(&r.name, &r.proof.body);
-    if r.steps.iter().any(|s| s.retry_until_expect) {
-        body = with_poll_const(&body);
+    if let Some(deadline) = r.steps.iter().find(|s| s.retry_until_expect).and_then(|s| s.retry_s) {
+        body = with_poll_const(&body, deadline);
     }
     out.push_str(&body);
     out
 }
 
 /// Defines `RETRY_UNTIL_EXPECT_POLL_S` (the [`RETRY_UNTIL_EXPECT_POLL_S`]
-/// constant) right after the dry-run block, so a body that polls a
+/// constant) and `RETRY_UNTIL_EXPECT_DEADLINE_S` (the step's `retry_s`) right after the dry-run block, so a body that polls a
 /// `retry_until_expect` step cannot drift from the value the golden runner
 /// and the docs use.
-fn with_poll_const(body: &str) -> String {
+fn with_poll_const(body: &str, deadline_s: u64) -> String {
     let marker = "exit 0; }\n";
     let Some(at) = body.find(marker).map(|i| i + marker.len()) else { return body.to_string() };
     format!(
-        "{}# Seconds between re-issues of a retry_until_expect step (generated).\nRETRY_UNTIL_EXPECT_POLL_S={}\n{}",
+        "{}# Seconds between re-issues, and the step's retry_s, of a retry_until_expect step (generated).\nRETRY_UNTIL_EXPECT_POLL_S={}\nRETRY_UNTIL_EXPECT_DEADLINE_S={}\n{}",
         &body[..at],
         RETRY_UNTIL_EXPECT_POLL_S,
+        deadline_s,
         &body[at..]
     )
 }
@@ -669,8 +729,22 @@ pub fn render_golden_test(r: &Recipe) -> Result<String, RecipeError> {
         "//! GENERATED from recipes/{n}.toml by `cargo xtask recipes` -- do not hand-edit.\n\
          //! PRD-mcphost-recipe-golden-path-tests R4: the `{n}` recipe's exact calls, in\n\
          //! order, against an in-process `TestServer` with the recipe's fixture routes\n\
-         //! mounted; every `expect` must hold and the run must finish under 60 s.\n\n",
-        n = r.name
+         //! mounted; every `expect` must hold and the run must finish under {w} s.\n{cap}\n",
+        n = r.name,
+        // The runner enforces min(wall_s, MAX_RECIPE_WALL), so a 90 s recipe is
+        // still held to the cap.
+        w = u64::from(r.budget.wall_s).min(RGPT_MAX_RECIPE_WALL_S),
+        cap = if r.steps.iter().any(|s| s.retry_until_expect) {
+            format!(
+                "//! This recipe polls (retry_until_expect): wall_s is {wall} s, but the in-process runner\n\
+                 //! caps every recipe at MAX_RECIPE_WALL = {RGPT_MAX_RECIPE_WALL_S} s (tests/support/rgpt.rs), so the polling\n\
+                 //! worst case ({worst} s) is kept under that cap, not under wall_s.\n",
+                wall = r.budget.wall_s,
+                worst = retry_until_expect_worst_case_s(r),
+            )
+        } else {
+            String::new()
+        },
     ));
     out.push_str("use crate::rgpt;\n\n");
     out.push_str(&format!("const RECIPE: &str = r####\"{spec}\"####;\n\n"));

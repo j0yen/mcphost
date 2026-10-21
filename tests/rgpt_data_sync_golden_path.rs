@@ -2,6 +2,9 @@
 //! PRD-mcphost-recipe-golden-path-tests R4: the `data-sync` recipe's exact calls, in
 //! order, against an in-process `TestServer` with the recipe's fixture routes
 //! mounted; every `expect` must hold and the run must finish under 60 s.
+//! This recipe polls (retry_until_expect): wall_s is 90 s, but the in-process runner
+//! caps every recipe at MAX_RECIPE_WALL = 60 s (tests/support/rgpt.rs), so the polling
+//! worst case (52 s) is kept under that cap, not under wall_s.
 
 use crate::rgpt;
 
@@ -104,7 +107,7 @@ const RECIPE: &str = r####"{
         }
       ],
       "poll_s": 5,
-      "retry_s": 75,
+      "retry_s": 45,
       "retry_until_expect": true,
       "signed_post": null,
       "tool": "host.sync.get"
