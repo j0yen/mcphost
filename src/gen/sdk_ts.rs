@@ -38,7 +38,7 @@ const CLIENT_MEMBERS: &[&str] = &["ready", "call", "contractSkew", "toString", "
 
 /// Where the error-code list came from, recorded in `errors.ts`'s header.
 pub const ERROR_SOURCE: &str =
-    "AppError::code() + feedback::CODE_TO_KIND + feedback::KIND_LEVEL_CODES (no /errors.json yet)";
+    "AppError::code() + feedback::CODE_TO_KIND + feedback::KIND_LEVEL_CODES + error_registry::ERROR_CODES (no /errors.json yet)";
 
 const TS_RESERVED: &[&str] = &[
     "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do", "else", "enum",
@@ -283,7 +283,7 @@ pub fn render(contract_bytes: &[u8]) -> Result<BTreeMap<String, String>, String>
     );
 
     // errors.ts: header, the shared prelude, one subclass per code, the registry
-    let codes = crate::sdk_python::error_codes();
+    let codes = crate::sdk_python::all_error_codes();
     let mut e = format!("{hdr}// error codes: {ERROR_SOURCE}\n{ERRORS_PRELUDE_TS}\n");
     for c in &codes {
         let keys = crate::sdk_python::data_keys_of(c);

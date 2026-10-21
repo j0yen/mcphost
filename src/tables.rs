@@ -262,7 +262,7 @@ fn plan_of<'a>(state: &'a AppState, plan_name: &str) -> Result<&'a Plan, AppErro
 /// `name.pattern` is this string.
 pub const IDENT_PATTERN: &str = "^[A-Za-z_][A-Za-z0-9_]{0,63}$";
 
-fn is_valid_ident(s: &str) -> bool {
+pub(crate) fn is_valid_ident(s: &str) -> bool {
     let mut chars = s.chars();
     let Some(first) = chars.next() else {
         return false;

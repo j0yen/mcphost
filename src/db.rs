@@ -349,6 +349,8 @@ const MIGRATION_0109: &str = include_str!("../migrations/0109_key_delegation.sql
 const MIGRATION_0128: &str = include_str!("../migrations/0128_audit_chain_acting_for.sql");
 /// PRD-mcphost-acting-for-in-ledger-and-audit R5: `logs.key_id`.
 const MIGRATION_0129: &str = include_str!("../migrations/0129_logs_key_id.sql");
+/// PRD-mcphost-sync-source-registry-and-create R2/R6: the `syncs` and `sync_runs` tables.
+const MIGRATION_0130: &str = include_str!("../migrations/0130_syncs.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
@@ -3288,6 +3290,8 @@ impl Db {
         Self::migrate_0127_org_digest(&conn)?;
         Self::migrate_0128_audit_chain_acting_for(&conn)?;
         Self::migrate_0129_logs_key_id(&conn)?;
+        // Wholly new tables, `IF NOT EXISTS` throughout: idempotent as-is.
+        conn.execute_batch(MIGRATION_0130)?;
         Ok(())
     }
 

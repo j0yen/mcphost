@@ -51,3 +51,17 @@ fn spkind_ac05_registry_carries_data_keys() {
     let ts_files = mcphost::r#gen::sdk_ts::render(contract.as_bytes()).expect("render ts sdk");
     assert_eq!(ts_files["errors.ts"], ts, "sdk/ts errors.ts is stale");
 }
+
+/// Twin of the key check above for the class itself: every registry code has
+/// a generated class in BOTH SDKs (they share `sdk_python::all_error_codes`),
+/// so a code declared with `err_code!` outside `AppError` cannot be missing.
+#[test]
+fn spkind_ac05_every_registry_code_has_a_class_in_both_sdks() {
+    let py = read("sdk/python/mcphost_sdk/errors.py");
+    let ts = read("sdk/ts/src/errors.ts");
+    for entry in ERROR_CODES.iter() {
+        let class = mcphost::sdk_python::camel(entry.code);
+        assert!(py.contains(&format!("class {class}(MCPHostError)")), "python SDK has no class for {}", entry.code);
+        assert!(ts.contains(&format!("export class {class} extends MCPHostError")), "ts SDK has no class for {}", entry.code);
+    }
+}

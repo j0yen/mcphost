@@ -692,6 +692,7 @@ pub const UNPAGED_VERBS: &[(&str, &str)] = &[
     ("host.policy.list", UNPAGED_BOUNDED),
     ("host.secret.list", UNPAGED_BOUNDED),
     ("host.state.list", UNPAGED_WINDOW),
+    ("host.sync.list", UNPAGED_BOUNDED),
     ("host.state.query", UNPAGED_WINDOW),
     ("host.table.charts", UNPAGED_BOUNDED),
     ("host.table.graph", UNPAGED_BOUNDED),
