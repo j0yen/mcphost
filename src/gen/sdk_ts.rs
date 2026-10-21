@@ -286,8 +286,15 @@ pub fn render(contract_bytes: &[u8]) -> Result<BTreeMap<String, String>, String>
     let codes = crate::sdk_python::error_codes();
     let mut e = format!("{hdr}// error codes: {ERROR_SOURCE}\n{ERRORS_PRELUDE_TS}\n");
     for c in &codes {
+        let keys = crate::sdk_python::data_keys_of(c);
+        let keys_line = if keys.is_empty() {
+            String::new()
+        } else {
+            let items: Vec<String> = keys.iter().map(|k| js_str(k)).collect();
+            format!("  static readonly dataKeys: readonly string[] = [{}];\n", items.join(", "))
+        };
         e.push_str(&format!(
-            "export class {} extends MCPHostError {{\n  constructor(message: string, data: ErrorData = {{}}) {{\n    super({}, message, data);\n  }}\n}}\n\n",
+            "export class {} extends MCPHostError {{\n{keys_line}  constructor(message: string, data: ErrorData = {{}}) {{\n    super({}, message, data);\n  }}\n}}\n\n",
             camel(c),
             js_str(c)
         ));

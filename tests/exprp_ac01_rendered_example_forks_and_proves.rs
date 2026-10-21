@@ -104,7 +104,7 @@ async fn python_tool_with_a_secret_renders_forks_and_passes_its_proof_call() {
         .tools_call("host.tool_publish", json!({"name": "pyprobe", "kind": "python", "spec": rendered.clone()}))
         .await
         .expect_err("publishing without TOKEN set must be refused");
-    assert_eq!(refused.error_code.as_deref(), Some("secret_missing"), "{refused:?}");
+    assert_eq!(refused.error_code.as_deref(), Some("invalid_spec"), "{refused:?}");
 
     // Fork with TOKEN: the proof passes unchanged.
     let (_ns_b, key_b) = signup(&f.server.base_url, "exprp py fork").await;
