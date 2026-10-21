@@ -10,7 +10,7 @@ use rusqlite::Connection;
 
 /// Number of lines in `tests/txn_allowlist.txt` at landing. A later PRD may
 /// lower it, never raise it.
-pub const TXN_ALLOWLIST_CEILING: usize = 109;
+pub const TXN_ALLOWLIST_CEILING: usize = 106;
 
 /// Lock behaviour of the outermost transaction (ignored on the nested path).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

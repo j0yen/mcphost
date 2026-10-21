@@ -16,9 +16,6 @@ src/db.rs	contact_decide	ROLLBACK
 src/db.rs	contact_request	BEGIN
 src/db.rs	contact_request	COMMIT
 src/db.rs	contact_request	ROLLBACK
-src/db.rs	delete_tenant	BEGIN
-src/db.rs	delete_tenant	COMMIT
-src/db.rs	delete_tenant	ROLLBACK
 src/db.rs	doc_chunks_bulk_insert_for_test	unchecked_transaction(
 src/db.rs	doc_chunks_bulk_insert_with_vectors_for_test	unchecked_transaction(
 src/db.rs	doc_chunks_delete_for_document	BEGIN

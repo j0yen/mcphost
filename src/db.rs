@@ -7924,7 +7924,7 @@ impl Db {
     /// `admin_events` audit row. `None` if no such tenant exists --
     /// `admin.rs` turns that into `tenant_not_found`.
     ///
-    /// Uses a hand-rolled `BEGIN IMMEDIATE` / `COMMIT` (rather than
+    /// Runs the delete inside [`crate::txn::with_tx`] (rather than
     /// `Connection::transaction`, which needs `&mut Connection`) because
     /// this runs inside `with_conn`'s `&Connection` closure, behind the
     /// single shared connection's mutex.
@@ -7950,8 +7950,7 @@ impl Db {
             };
             let counts = Self::count_tenant_child_rows(conn, tenant.id)?;
 
-            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
-            let outcome: Result<(), AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 conn.execute("DELETE FROM tenants WHERE id = ?1", params![tenant.id])?;
                 let detail = json!({
                     "namespace": tenant.namespace,
@@ -7966,16 +7965,7 @@ impl Db {
                     params![now_rfc3339(), action, tenant.namespace, detail],
                 )?;
                 Ok(())
-            })();
-            match outcome {
-                Ok(()) => {
-                    conn.execute("COMMIT", []).map_err(AppError::from)?;
-                }
-                Err(e) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                    return Err(e);
-                }
-            }
+            })?;
             Ok(Some((tenant, counts)))
         })
         .await
