@@ -3027,6 +3027,7 @@ pub struct ListenStream {
     pub request_id: u64,
     resp: Option<reqwest::Response>,
     buf: String,
+    closed: bool,
 }
 
 impl ListenStream {
@@ -3057,7 +3058,7 @@ impl ListenStream {
             req = req.header("Authorization", format!("Bearer {key}"));
         }
         let resp = req.send().await.expect("send subscriptions/listen");
-        Self { status: resp.status().as_u16(), headers: resp.headers().clone(), request_id, resp: Some(resp), buf: String::new() }
+        Self { status: resp.status().as_u16(), headers: resp.headers().clone(), request_id, resp: Some(resp), buf: String::new(), closed: false }
     }
 
     /// [`Self::open_with`] for tools and prompts list changes.
@@ -3091,6 +3092,7 @@ impl ListenStream {
                 Ok(Ok(Some(chunk))) => self.buf.push_str(&String::from_utf8_lossy(&chunk)),
                 Ok(Ok(None)) | Ok(Err(_)) => {
                     self.resp = None;
+                    self.closed = true;
                     if self.buf.trim().is_empty() {
                         return None;
                     }
@@ -3122,5 +3124,10 @@ impl ListenStream {
     /// Close the stream from the client side.
     pub fn close(&mut self) {
         self.resp = None;
+    }
+
+    /// Whether the server ended the response.
+    pub fn is_closed(&self) -> bool {
+        self.closed
     }
 }

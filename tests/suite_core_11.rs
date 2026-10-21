@@ -454,6 +454,8 @@ mod sublis_ac01_listen_ack_and_keepalive;
 mod sublis_ac02_publish_notifies_the_tenants_streams;
 #[path = "sublis_ac03_drift.rs"]
 mod sublis_ac03_drift;
+#[path = "sublis_ac04_keyless_and_unknown_key_listens.rs"]
+mod sublis_ac04_keyless_and_unknown_key_listens;
 #[path = "suite_ac1_ten_binaries_and_names_preserved.rs"]
 mod suite_ac1_ten_binaries_and_names_preserved;
 #[path = "suite_ac3_mod_common_declared_once.rs"]
