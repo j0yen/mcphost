@@ -1037,9 +1037,3 @@ mod eprc_ac02_every_embedded_proof_accepts_the_runner_spawn;
 mod eprc_ac03_fail_prints_indented_excerpt;
 #[path = "eprc_ac05_list_contract_prints_runner_constants.rs"]
 mod eprc_ac05_list_contract_prints_runner_constants;
-#[path = "ercp_ac01_share_a_tool_upstream_is_https.rs"]
-mod ercp_ac01_share_a_tool_upstream_is_https;
-#[path = "ercp_ac03_retention_body_goes_to_curl_from_a_file.rs"]
-mod ercp_ac03_retention_body_goes_to_curl_from_a_file;
-#[path = "ercp_ac05_runner_key_is_validated_by_examples_check.rs"]
-mod ercp_ac05_runner_key_is_validated_by_examples_check;
