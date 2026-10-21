@@ -425,6 +425,9 @@ if [ "$MODE" = "write" ]; then
   # PRD-mcphost-dry-run-on-write-verbs R5: docs/host-tools.md, generated
   # from src/write_verbs.rs, rides along in both modes.
   "$(dirname "$0")/host-tools-doc-check.sh" --write || exit $?
+  # signup argument block in SKILL.md / www/skill.md, generated from
+  # control::SIGNUP_ARGS (the descriptor's own source).
+  "$(dirname "$0")/signup-args-doc-check.sh" --write || exit $?
   # PRD-mcphost-sse-frame-contract-generated: frames.md/frames.json and the
   # llms.txt Transport block, generated from FRAME_SEQUENCES.
   "$(dirname "$0")/protocol-frames-check.sh" --write || exit $?
@@ -533,6 +536,13 @@ fi
 
 if ! "$(dirname "$0")/host-tools-doc-check.sh" >/dev/null; then
   "$(dirname "$0")/host-tools-doc-check.sh" >&2
+  FAILURES=$((FAILURES + 1))
+fi
+
+# signup argument block (control::SIGNUP_ARGS) in plugin/skills/mcphost/SKILL.md
+# and www/skill.md: neither file is a TARGETS entry above.
+if ! "$(dirname "$0")/signup-args-doc-check.sh" >/dev/null; then
+  "$(dirname "$0")/signup-args-doc-check.sh" >&2
   FAILURES=$((FAILURES + 1))
 fi
 

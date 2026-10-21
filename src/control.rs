@@ -219,6 +219,72 @@ fn arg_str_opt(args: &Value, name: &str) -> Option<String> {
     args.get(name).and_then(Value::as_str).map(str::to_string)
 }
 
+/// One argument of the `signup` tool: the single source of truth the
+/// `signup` descriptor's `properties`/`required` (`handler::signup_tool`),
+/// the argument names [`signup`] reads, and the generated
+/// `<!-- mcphost-signup-args -->` block in `plugin/skills/mcphost/SKILL.md`
+/// and `www/skill.md` (`scripts/signup-args-doc-check.sh`) all derive from.
+pub struct SignupArg {
+    pub name: &'static str,
+    /// JSON-schema `type`.
+    pub ty: &'static str,
+    pub required: bool,
+    /// JSON-schema `pattern`, when the value is pattern-checked.
+    pub pattern: Option<&'static str>,
+    /// One line; the descriptor's `description` and the docs block's text.
+    pub description: &'static str,
+}
+
+/// `signup`'s argument names, read by [`signup`] only through these.
+pub const SIGNUP_ARG_NAME: &str = "name";
+pub const SIGNUP_ARG_HANDOFF: &str = "handoff";
+pub const SIGNUP_ARG_SOURCE: &str = "source";
+
+/// Every argument [`signup`] accepts. Adding an argument means adding a row
+/// here; the descriptor and the docs follow, and
+/// `tests/ssd_ac01_signup_descriptor_matches_signup_args.rs` fails if the
+/// handler reads a name that is not a row.
+pub const SIGNUP_ARGS: &[SignupArg] = &[
+    SignupArg {
+        name: SIGNUP_ARG_NAME,
+        ty: "string",
+        required: true,
+        pattern: None,
+        description: "display name",
+    },
+    SignupArg {
+        name: SIGNUP_ARG_HANDOFF,
+        ty: "boolean",
+        required: false,
+        pattern: None,
+        description: "Recommended: true to receive a handoff_token (redeem via host.redeem) instead of the raw key. Default false (raw key, unchanged).",
+    },
+    SignupArg {
+        name: SIGNUP_ARG_SOURCE,
+        ty: "string",
+        required: false,
+        pattern: Some(crate::state::SOURCE_PATTERN),
+        description: "Optional attribution tag for this signup (1-64 chars matching the pattern), e.g. \"plugin\", \"www\", \"cli\", \"hn\"; omit for none. Stored as the tenant's signup_source and counted in the signup-source funnel. Attribution only: whether a signup is real or synthetic is decided by the harness header and fleet IP, never by this value. \"synthorg\" is reserved for the discovery-chain harness.",
+    },
+];
+
+pub const SIGNUP_ARGS_DOCS_START: &str = "<!-- mcphost-signup-args:start -->";
+pub const SIGNUP_ARGS_DOCS_END: &str = "<!-- mcphost-signup-args:end -->";
+
+/// The marked block `plugin/skills/mcphost/SKILL.md` and `www/skill.md`
+/// carry: one bullet per [`SIGNUP_ARGS`] row, so the skill text and the
+/// descriptor list the same arguments because they read the same constant.
+pub fn render_signup_args_block() -> String {
+    let mut out = format!("{SIGNUP_ARGS_DOCS_START}\nThe `signup` arguments:\n\n");
+    for a in SIGNUP_ARGS {
+        let req = if a.required { "required" } else { "optional" };
+        let pattern = a.pattern.map(|p| format!(", pattern `{p}`")).unwrap_or_default();
+        out.push_str(&format!("- `{}` ({}, {req}{pattern}) -- {}\n", a.name, a.ty, a.description));
+    }
+    out.push_str(SIGNUP_ARGS_DOCS_END);
+    out
+}
+
 /// PRD-mcphost-signup-kill-switch-and-source requirement 1 / AC3: `signup`'s
 /// optional `source` argument -- absent or JSON `null` reads as `None`
 /// (requirement 1: "absent means `signup_source = NULL`"), any other
@@ -228,7 +294,7 @@ fn arg_str_opt(args: &Value, name: &str) -> Option<String> {
 /// malformed `source` needs to know it was rejected, not that it was
 /// quietly dropped.
 fn validate_source(args: &Value) -> Result<Option<String>, AppError> {
-    let Some(value) = args.get("source") else {
+    let Some(value) = args.get(SIGNUP_ARG_SOURCE) else {
         return Ok(None);
     };
     if value.is_null() {
@@ -241,7 +307,8 @@ fn validate_source(args: &Value) -> Result<Option<String>, AppError> {
         Ok(Some(raw.to_string()))
     } else {
         Err(AppError::InvalidArgs(format!(
-            "source: must be 1-64 chars matching ^[a-z0-9][a-z0-9._-]*$; got '{raw}'"
+            "source: must be 1-64 chars matching {}; got '{raw}'",
+            crate::state::SOURCE_PATTERN
         )))
     }
 }
@@ -402,7 +469,7 @@ pub async fn signup(
             state.disk_guard.floor_bytes(),
         ));
     }
-    let display_name = arg_str(args, "name")?;
+    let display_name = arg_str(args, SIGNUP_ARG_NAME)?;
     // PRD-mcphost-signup-kill-switch-and-source requirement 1 / AC3:
     // validated before the rate-limit admit/tenant insert below, so a
     // rejected `source` never consumes a rate-limit slot or creates a row.
@@ -567,7 +634,7 @@ pub async fn signup(
     // never a new key of its own) and stored alongside a single-use,
     // short-lived token; the caller redeems that token via `host.redeem`
     // to get `key` back exactly once.
-    if arg_bool(args, "handoff") {
+    if arg_bool(args, SIGNUP_ARG_HANDOFF) {
         let token = generate_handoff_token();
         let token_hash = hash_key(&token);
         let (key_enc, key_nonce) = state.secrets.encrypt(&key)?;

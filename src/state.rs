@@ -752,8 +752,16 @@ pub fn is_valid_synthetic_label(label: &str) -> bool {
     len_ok && first_ok && rest_ok
 }
 
+/// The one pattern string for `signup`'s `source` argument: what
+/// [`is_valid_signup_source`] enforces, what `signup`'s rejection message
+/// names, and the `pattern` the `signup` descriptor advertises (so a
+/// schema-aware client rejects a bad `source` before the call). Written in
+/// the subset where Rust `regex` and ECMA-262 agree; a test compares it to
+/// [`is_valid_signup_source`] over a corpus so the two cannot drift.
+pub const SOURCE_PATTERN: &str = "^[a-z0-9][a-z0-9._-]{0,63}$";
+
 /// PRD-mcphost-signup-kill-switch-and-source requirement 1:
-/// `^[a-z0-9][a-z0-9._-]*$`, 1-64 chars -- `signup`'s optional `source`
+/// [`SOURCE_PATTERN`] (`^[a-z0-9][a-z0-9._-]*$`, 1-64 chars) -- `signup`'s optional `source`
 /// argument. Same hand-rolled-byte-check shape as
 /// [`is_valid_synthetic_label`] just above (this crate has no regex
 /// dependency), with `.` added to the allowed body characters (a caller

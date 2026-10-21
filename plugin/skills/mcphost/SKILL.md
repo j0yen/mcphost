@@ -99,3 +99,11 @@ short-lived, single-use `handoff_token` -- **not** a bearer key. Call
 it as the `tenant_key` argument on every `host.*` call -- no reconnect
 needed. If you took this path, relay `claim_url` in step 6 instead of
 `onboarding.url`.
+
+<!-- mcphost-signup-args:start -->
+The `signup` arguments:
+
+- `name` (string, required) -- display name
+- `handoff` (boolean, optional) -- Recommended: true to receive a handoff_token (redeem via host.redeem) instead of the raw key. Default false (raw key, unchanged).
+- `source` (string, optional, pattern `^[a-z0-9][a-z0-9._-]{0,63}$`) -- Optional attribution tag for this signup (1-64 chars matching the pattern), e.g. "plugin", "www", "cli", "hn"; omit for none. Stored as the tenant's signup_source and counted in the signup-source funnel. Attribution only: whether a signup is real or synthetic is decided by the harness header and fleet IP, never by this value. "synthorg" is reserved for the discovery-chain harness.
+<!-- mcphost-signup-args:end -->

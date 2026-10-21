@@ -252,6 +252,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `EXIT_CODE_TABLE` in `src/client.rs`
 - `REFUSAL_TABLE` in `src/compat_report.rs`
 - `STATUSES` in `src/consent.rs`
+- `SIGNUP_ARGS` in `src/control.rs`
 - `DEAD_LETTER_REASONS` in `src/deadletters.rs`
 - `DISPATCH_TABLE` in `src/dispatch_table.rs`
 - `DOCTOR_FIXTURES` in `src/doctor.rs`

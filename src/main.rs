@@ -211,6 +211,11 @@ enum Command {
     /// carries (`kinds::python::render_bridge_docs_block`, markers included)
     /// for `scripts/sandbox-api-doc-check.sh`.
     BridgeDocsBlock,
+    /// Print the marked `<!-- mcphost-signup-args:start/end -->` block
+    /// `plugin/skills/mcphost/SKILL.md` and `www/skill.md` carry
+    /// (`control::render_signup_args_block`, markers included) for
+    /// `scripts/signup-args-doc-check.sh`.
+    SignupArgsBlock,
     /// PRD-mcphost-first-hour-support-surface requirement 3 (AC4):
     /// regenerate `docs/plans.md` from `billing::plans_from_catalog` over
     /// `PlanCatalog::default_catalog()` -- the exact data `billing.plans`
@@ -1424,6 +1429,10 @@ async fn main() -> anyhow::Result<()> {
         }
         Command::BridgeDocsBlock => {
             println!("{}", mcphost::kinds::python::render_bridge_docs_block());
+            Ok(())
+        }
+        Command::SignupArgsBlock => {
+            println!("{}", mcphost::control::render_signup_args_block());
             Ok(())
         }
         Command::RecipeSection => {
