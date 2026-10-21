@@ -488,7 +488,7 @@ crate::err_code! {
 crate::err_code! {
     pub UPSTREAM_AUTH,
     code: "upstream_auth", family: Upstream, class: UpstreamFault, retryable: false,
-    remedy: "Reconnect the upstream or fix the secret the tool sends; the upstream rejected the credential.",
+    remedy: "The upstream rejected the credential (HTTP 401/403). If the tool sends a secret, set or rotate it with host.secret.set, then retry; otherwise reconnect the upstream.",
 }
 
 crate::err_code! {
