@@ -379,3 +379,63 @@ pub fn check_subset(findings: &[Finding], allowlist: &str) -> Result<(), String>
         ))
     }
 }
+
+/// One `with_tx(` call: where it is, the fn that encloses it, and the
+/// `TxBehavior` variant named in its arguments.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct WithTxCall {
+    pub path: String,
+    pub line: usize,
+    pub func: String,
+    pub behavior: String,
+}
+
+/// PRD-mcphost-transactions-only-via-helper R4: every `with_tx(` call in one
+/// file's text, with the enclosing fn found by the same [`enclosing_fns`]
+/// scanner the raw-SQL lint uses (the one copy of that scanner).
+pub fn scan_with_tx_text(path: &str, text: &str) -> Vec<WithTxCall> {
+    let src: Vec<char> = text.chars().collect();
+    let (code, _) = lex(&src);
+    let fns = enclosing_fns(&code);
+    let needle: Vec<char> = "with_tx(".chars().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i + needle.len() <= code.len() {
+        if code[i..i + needle.len()] == needle[..] && (i == 0 || !is_word(code[i - 1])) {
+            let window: String = code[i..(i + 200).min(code.len())].iter().collect();
+            let behavior = ["Immediate", "Deferred"]
+                .iter()
+                .filter_map(|b| window.find(&format!("TxBehavior::{b}")).map(|at| (at, *b)))
+                .min()
+                .map(|(_, b)| b.to_string())
+                .unwrap_or_else(|| "?".to_string());
+            out.push(WithTxCall {
+                path: path.to_string(),
+                line: src[..i].iter().filter(|c| **c == '\n').count() + 1,
+                func: fns.get(i).cloned().flatten().unwrap_or_else(|| "<module>".to_string()),
+                behavior,
+            });
+            i += needle.len();
+        } else {
+            i += 1;
+        }
+    }
+    out
+}
+
+/// Every `with_tx(` call under `<root>/src` (the helper's own file holds the
+/// definition, which is not a call).
+pub fn scan_with_tx_src(root: &Path) -> Vec<WithTxCall> {
+    let mut files = Vec::new();
+    walk(&root.join("src"), &mut files);
+    let mut out = Vec::new();
+    for f in files {
+        let rel = f.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/");
+        if rel == "src/txn.rs" {
+            continue;
+        }
+        out.extend(scan_with_tx_text(&rel, &std::fs::read_to_string(&f).expect("read src file")));
+    }
+    out.sort();
+    out
+}

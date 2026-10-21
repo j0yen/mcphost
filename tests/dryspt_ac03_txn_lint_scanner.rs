@@ -65,5 +65,7 @@ fn dryspt_ac03() {
         let hits: Vec<_> = all.iter().filter(|f| f.path == path && f.func == func).collect();
         assert!(hits.is_empty(), "{path} fn {func} still holds raw transaction SQL: {hits:#?}");
     }
-    assert!(!all.is_empty(), "the 51 unmigrated sites are still found");
+    // PRD-mcphost-transactions-only-via-helper R3: the allow-list is closed,
+    // so no raw transaction SQL is left anywhere in `src/` outside the helper.
+    assert!(all.is_empty(), "raw transaction SQL left in src/: {all:#?}");
 }

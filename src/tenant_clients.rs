@@ -133,8 +133,7 @@ impl Db {
     pub async fn live_join_code(&self, tenant_id: i64) -> Result<JoinCode, AppError> {
         let now = now_unix();
         self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", [])?;
-            let out = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 let found = conn
                     .query_row(
                         "SELECT code_plain, max_uses, uses, expires_unix FROM join_codes \
@@ -155,8 +154,7 @@ impl Db {
                     Some(code) => Ok(code),
                     None => mint_join_code_sync(conn, tenant_id, now),
                 }
-            })();
-            finish_txn(conn, out)
+            })
         })
         .await
     }
@@ -166,15 +164,13 @@ impl Db {
     pub async fn rotate_join_code(&self, tenant_id: i64) -> Result<JoinCode, AppError> {
         let now = now_unix();
         self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", [])?;
-            let out = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 conn.execute(
                     "UPDATE join_codes SET revoked_unix = ?1 WHERE tenant_id = ?2 AND revoked_unix IS NULL",
                     params![now, tenant_id],
                 )?;
                 mint_join_code_sync(conn, tenant_id, now)
-            })();
-            finish_txn(conn, out)
+            })
         })
         .await
     }
@@ -222,8 +218,7 @@ impl Db {
     ) -> Result<(i64, Joined), AppError> {
         let now = now_unix();
         self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", [])?;
-            let out = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 let (code_id, tenant_id, max_uses, uses, expires, revoked): (i64, i64, i64, i64, i64, Option<i64>) = conn
                     .query_row(
                         "SELECT id, tenant_id, max_uses, uses, expires_unix, revoked_unix FROM join_codes \
@@ -260,8 +255,7 @@ impl Db {
                 let client = conn.query_row(&sql, params![id], client_from_row)?;
                 let siblings = live_count_sync(conn, tenant_id)?;
                 Ok((tenant_id, Joined { client, siblings }))
-            })();
-            finish_txn(conn, out)
+            })
         })
         .await
     }
@@ -328,8 +322,7 @@ impl Db {
     pub async fn add_oauth_client(&self, tenant_id: i64, client_name: Option<String>) -> Result<ClientRow, AppError> {
         let now = now_unix();
         self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", [])?;
-            let out = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 ensure_first_sync(conn, tenant_id, now)?;
                 let existing: i64 = conn.query_row(
                     "SELECT COUNT(*) FROM tenant_clients WHERE tenant_id = ?1",
@@ -345,8 +338,7 @@ impl Db {
                 )?;
                 let sql = format!("SELECT {CLIENT_COLUMNS} FROM tenant_clients WHERE id = ?1");
                 Ok(conn.query_row(&sql, params![id], client_from_row)?)
-            })();
-            finish_txn(conn, out)
+            })
         })
         .await
     }
@@ -437,8 +429,7 @@ impl Db {
     pub async fn revoke_client(&self, tenant_id: i64, client_id: String) -> Result<(), AppError> {
         let now = now_unix();
         self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", [])?;
-            let out = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 ensure_first_sync(conn, tenant_id, now)?;
                 let live: Option<i64> = conn
                     .query_row(
@@ -458,8 +449,7 @@ impl Db {
                     params![now, client_id],
                 )?;
                 Ok(())
-            })();
-            finish_txn(conn, out)
+            })
         })
         .await
     }
@@ -495,19 +485,6 @@ fn mint_join_code_sync(conn: &Connection, tenant_id: i64, now: i64) -> Result<Jo
         params![hash_key(&code), code, tenant_id, DEFAULT_JOIN_MAX_USES, expires, now],
     )?;
     Ok(JoinCode { code_plain: code, max_uses: DEFAULT_JOIN_MAX_USES, uses: 0, expires_unix: expires })
-}
-
-fn finish_txn<T>(conn: &Connection, out: Result<T, AppError>) -> Result<T, AppError> {
-    match out {
-        Ok(v) => {
-            conn.execute("COMMIT", [])?;
-            Ok(v)
-        }
-        Err(e) => {
-            let _ = conn.execute("ROLLBACK", []);
-            Err(e)
-        }
-    }
 }
 
 /// R3: the join side effect for an anonymous first `host.*` call on
