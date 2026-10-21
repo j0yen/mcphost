@@ -489,8 +489,7 @@ pub async fn sweep_at(state: &AppState, now_unix: i64) -> Result<usize, AppError
     state
         .db
         .with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", [])?;
-            let swept: Result<usize, AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 let due: Vec<(String, Option<String>, i64, i64)> = {
                     let mut stmt = conn.prepare(
                         "SELECT id, thread_id, poster_tenant_id, recipient_tenant_id FROM tasks \
@@ -509,14 +508,7 @@ pub async fn sweep_at(state: &AppState, now_unix: i64) -> Result<usize, AppError
                     }
                 }
                 Ok(due.len())
-            })();
-            match &swept {
-                Ok(_) => conn.execute("COMMIT", []).map(|_| ())?,
-                Err(_) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                }
-            }
-            swept
+            })
         })
         .await
 }

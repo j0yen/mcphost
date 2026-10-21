@@ -173,8 +173,7 @@ impl Db {
     ) -> Result<(), AppError> {
         let now = now_unix();
         self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", [])?;
-            let outcome: Result<(), AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 if let Some((_, current, _, _)) = membership_sync(conn, owner_tenant_id)? {
                     return Err(AppError::Structured {
                         code: ORG_MEMBER_ALREADY,
@@ -204,14 +203,7 @@ impl Db {
                     params![code_hash, owner_tenant_id, now, code_plain, org_id],
                 )?;
                 Ok(())
-            })();
-            match outcome {
-                Ok(()) => conn.execute("COMMIT", []).map(|_| ()).map_err(AppError::from),
-                Err(e) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                    Err(e)
-                }
-            }
+            })
         })
         .await
     }
@@ -226,8 +218,7 @@ impl Db {
     ) -> Result<String, AppError> {
         let now = now_unix();
         self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", [])?;
-            let outcome: Result<String, AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 let (org_id, name): (i64, String) = conn
                     .query_row(
                         "SELECT o.id, o.name FROM invites i JOIN orgs o ON o.id = i.org_id \
@@ -243,14 +234,7 @@ impl Db {
                 }
                 insert_member_sync(conn, Some(org_id), tenant_id, "member", now)?;
                 Ok(name)
-            })();
-            match outcome {
-                Ok(name) => conn.execute("COMMIT", []).map(|_| name).map_err(AppError::from),
-                Err(e) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                    Err(e)
-                }
-            }
+            })
         })
         .await
     }
@@ -301,8 +285,7 @@ impl Db {
     ) -> Result<(), AppError> {
         let now = now_unix();
         self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", [])?;
-            let outcome: Result<(), AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 let Some((org_id, _, role, _)) = membership_sync(conn, owner_tenant_id)? else {
                     return Err(not_owner_error());
                 };
@@ -341,14 +324,7 @@ impl Db {
                     params![owner_tenant_id, member_ns, now],
                 )?;
                 Ok(())
-            })();
-            match outcome {
-                Ok(()) => conn.execute("COMMIT", []).map(|_| ()).map_err(AppError::from),
-                Err(e) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                    Err(e)
-                }
-            }
+            })
         })
         .await
     }
@@ -358,8 +334,7 @@ impl Db {
     pub async fn leave_org(&self, tenant_id: i64, namespace: String) -> Result<String, AppError> {
         let now = now_unix();
         self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", [])?;
-            let outcome: Result<String, AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 let Some((org_id, name, role, _)) = membership_sync(conn, tenant_id)? else {
                     return Err(not_in_org_error());
                 };
@@ -385,14 +360,7 @@ impl Db {
                     params![owner_tenant_id, namespace, now],
                 )?;
                 Ok(name)
-            })();
-            match outcome {
-                Ok(name) => conn.execute("COMMIT", []).map(|_| name).map_err(AppError::from),
-                Err(e) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                    Err(e)
-                }
-            }
+            })
         })
         .await
     }

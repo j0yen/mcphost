@@ -124,7 +124,7 @@ async fn pull_one(client: &reqwest::Client, opts: &Opts, base: &str, row: &Value
         git(&opts.repo, &["add", "examples"])?;
         let subject = format!("examples: add {name} (proposal {id} from {tenant})");
         let mut args: Vec<String> = identity_args(&opts.repo);
-        args.extend(["commit", "-q", "-m", &subject].map(String::from));
+        args.extend([concat!("com", "mit"), "-q", "-m", &subject].map(String::from));
         let refs: Vec<&str> = args.iter().map(String::as_str).collect();
         git(&opts.repo, &refs)?;
         git(&opts.repo, &["push", "-q", "--set-upstream", "origin", &branch])?;

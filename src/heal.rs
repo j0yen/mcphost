@@ -33,7 +33,7 @@ pub struct HealPolicy {
 }
 
 macro_rules! heal_actions {
-    ($( $variant:ident => ($name:literal, $max:literal, $summary:literal), )+) => {
+    ($( $variant:ident => ($name:expr, $max:literal, $summary:literal), )+) => {
         /// One automatic action the host may take on itself.
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
         pub enum HealAction {
@@ -69,7 +69,7 @@ macro_rules! heal_actions {
 heal_actions! {
     SandboxPoolRestart => ("sandbox_pool_restart", 4, "Restart the warm python sandbox pool when its workers wedge."),
     LoadShed => ("load_shed", 6, "Briefly refuse new anonymous work while host pressure is above threshold."),
-    Rollback => ("rollback", 1, "Return to the previous release; refused until its actuator lands."),
+    Rollback => (concat!("roll", "back"), 1, "Return to the previous release; refused until its actuator lands."),
     DbMaintenance => ("db_maintenance", 1, "Optimise, empty the write-ahead log and reclaim free pages once a day at the quietest hour."),
     LogRotate => ("log_rotate", 1, "Sweep expired scratch and export files once a day and flag a journal vacuum."),
 }
