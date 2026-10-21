@@ -233,20 +233,20 @@ impl Db {
     /// now (`session_closed`). Returns how many.
     pub async fn revoke_session_bound(&self, session_id: String, now: i64) -> Result<usize, AppError> {
         self.with_conn(move |conn| {
-            let tx = conn.unchecked_transaction()?;
-            let tenants: Vec<i64> = {
-                let mut stmt = tx.prepare(
-                    "SELECT DISTINCT tenant_id FROM tenant_keys WHERE bound_kind = 'session' AND bound_ref = ?1 \
-                     AND revoked_at IS NULL",
-                )?;
-                stmt.query_map(params![session_id], |r| r.get(0))?.collect::<Result<_, _>>()?
-            };
-            let mut n = 0;
-            for tenant_id in tenants {
-                n += revoke_bound_on(&tx, tenant_id, ("session", &session_id), "session_closed", now)?;
-            }
-            tx.commit()?;
-            Ok(n)
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
+                let tenants: Vec<i64> = {
+                    let mut stmt = tx.prepare(
+                        "SELECT DISTINCT tenant_id FROM tenant_keys WHERE bound_kind = 'session' AND bound_ref = ?1 \
+                         AND revoked_at IS NULL",
+                    )?;
+                    stmt.query_map(params![session_id], |r| r.get(0))?.collect::<Result<_, _>>()?
+                };
+                let mut n = 0;
+                for tenant_id in tenants {
+                    n += revoke_bound_on(tx, tenant_id, ("session", &session_id), "session_closed", now)?;
+                }
+                Ok(n)
+            })
         })
         .await
     }
@@ -256,20 +256,20 @@ impl Db {
     /// per tick. Returns how many.
     pub async fn sweep_idle_bound_sessions(&self, now: i64) -> Result<usize, AppError> {
         self.with_conn(move |conn| {
-            let tx = conn.unchecked_transaction()?;
-            let idle: Vec<(i64, String, String)> = {
-                let mut stmt = tx.prepare(
-                    "SELECT tenant_id, label, bound_ref FROM tenant_keys WHERE bound_kind = 'session' \
-                     AND revoked_at IS NULL AND COALESCE(bound_last_seen_unix, created_at) < ?1 - ?2",
-                )?;
-                stmt.query_map(params![now, SESSION_IDLE_S], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
-                    .collect::<Result<_, _>>()?
-            };
-            for (tenant_id, label, session_id) in &idle {
-                revoke_bound_key(&tx, (*tenant_id, label), ("session", session_id), "session_idle", now)?;
-            }
-            tx.commit()?;
-            Ok(idle.len())
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
+                let idle: Vec<(i64, String, String)> = {
+                    let mut stmt = tx.prepare(
+                        "SELECT tenant_id, label, bound_ref FROM tenant_keys WHERE bound_kind = 'session' \
+                         AND revoked_at IS NULL AND COALESCE(bound_last_seen_unix, created_at) < ?1 - ?2",
+                    )?;
+                    stmt.query_map(params![now, SESSION_IDLE_S], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+                        .collect::<Result<_, _>>()?
+                };
+                for (tenant_id, label, session_id) in &idle {
+                    revoke_bound_key(tx, (*tenant_id, label), ("session", session_id), "session_idle", now)?;
+                }
+                Ok(idle.len())
+            })
         })
         .await
     }
@@ -413,52 +413,52 @@ impl Db {
         const SUBTREE: &str = "WITH RECURSIVE sub(id) AS (SELECT id FROM tenant_keys WHERE id = ?1 \
              UNION ALL SELECT k.id FROM tenant_keys k JOIN sub ON k.parent_key_id = sub.id)";
         self.with_conn(move |conn| {
-            let tx = conn.unchecked_transaction()?;
-            let Some((id, stamp)) = tx
-                .query_row(
-                    "SELECT id, revoked_at FROM tenant_keys WHERE tenant_id = ?1 AND label = ?2",
-                    params![tenant_id, label],
-                    |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Option<i64>>(1)?)),
-                )
-                .optional()?
-            else {
-                return Ok(None);
-            };
-            if !cascade {
-                let live: i64 = tx.query_row(
-                    &format!(
-                        "{SUBTREE} SELECT COUNT(*) FROM tenant_keys WHERE id IN (SELECT id FROM sub) \
-                         AND id != ?1 AND revoked_at IS NULL"
-                    ),
-                    params![id],
-                    |r| r.get(0),
-                )?;
-                if live > 0 {
-                    return Err(AppError::Structured {
-                        code: HAS_CHILDREN,
-                        message: format!(
-                            "sub-key '{label}' has {live} live descendant(s); pass cascade: true to revoke them too"
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
+                let Some((id, stamp)) = tx
+                    .query_row(
+                        "SELECT id, revoked_at FROM tenant_keys WHERE tenant_id = ?1 AND label = ?2",
+                        params![tenant_id, label],
+                        |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Option<i64>>(1)?)),
+                    )
+                    .optional()?
+                else {
+                    return Ok(None);
+                };
+                if !cascade {
+                    let live: i64 = tx.query_row(
+                        &format!(
+                            "{SUBTREE} SELECT COUNT(*) FROM tenant_keys WHERE id IN (SELECT id FROM sub) \
+                             AND id != ?1 AND revoked_at IS NULL"
                         ),
-                        data: json!({"label": label, "count": live}),
-                    });
+                        params![id],
+                        |r| r.get(0),
+                    )?;
+                    if live > 0 {
+                        return Err(AppError::Structured {
+                            code: HAS_CHILDREN,
+                            message: format!(
+                                "sub-key '{label}' has {live} live descendant(s); pass cascade: true to revoke them too"
+                            ),
+                            data: json!({"label": label, "count": live}),
+                        });
+                    }
                 }
-            }
-            let filter = if cascade { "id IN (SELECT id FROM sub)" } else { "id = ?1" };
-            let labels: Vec<String> = {
-                let mut stmt = tx.prepare(&format!(
-                    "{SUBTREE} SELECT label FROM tenant_keys WHERE {filter} AND revoked_at IS NULL ORDER BY depth, id"
-                ))?;
-                stmt.query_map(params![id], |r| r.get(0))?.collect::<Result<Vec<_>, _>>()?
-            };
-            tx.execute(
-                &format!(
-                    "{SUBTREE} UPDATE tenant_keys SET revoked_at = ?2, revoked_by = ?3 \
-                     WHERE {filter} AND revoked_at IS NULL"
-                ),
-                params![id, now, label],
-            )?;
-            tx.commit()?;
-            Ok(Some(Revoked { revoked_at: stamp.unwrap_or(now), labels }))
+                let filter = if cascade { "id IN (SELECT id FROM sub)" } else { "id = ?1" };
+                let labels: Vec<String> = {
+                    let mut stmt = tx.prepare(&format!(
+                        "{SUBTREE} SELECT label FROM tenant_keys WHERE {filter} AND revoked_at IS NULL ORDER BY depth, id"
+                    ))?;
+                    stmt.query_map(params![id], |r| r.get(0))?.collect::<Result<Vec<_>, _>>()?
+                };
+                tx.execute(
+                    &format!(
+                        "{SUBTREE} UPDATE tenant_keys SET revoked_at = ?2, revoked_by = ?3 \
+                         WHERE {filter} AND revoked_at IS NULL"
+                    ),
+                    params![id, now, label],
+                )?;
+                Ok(Some(Revoked { revoked_at: stamp.unwrap_or(now), labels }))
+            })
         })
         .await
     }

@@ -1085,7 +1085,7 @@ pub async fn store_blob(
         .map_err(|e| AppError::Storage(format!("write blob: {e}")))?;
     tokio::fs::rename(&tmp, &path)
         .await
-        .map_err(|e| AppError::Storage(format!("commit blob: {e}")))?;
+        .map_err(|e| AppError::Storage(format!("blob commit failed: {e}")))?;
 
     let row = match state
         .db

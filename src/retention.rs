@@ -13,6 +13,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use crate::errors::AppError;
 use rusqlite::{Connection, params};
 
 /// Requirement 2: delete in batches of 5,000 so one prune cycle never
@@ -298,7 +299,7 @@ pub fn purge_expired_blobs(
     data_dir: &Path,
     cutoff: i64,
     tenant: Option<i64>,
-) -> rusqlite::Result<BlobPurge> {
+) -> Result<BlobPurge, AppError> {
     let mut out = BlobPurge::default();
     loop {
         let batch: Vec<(i64, String, i64)> = {
@@ -309,8 +310,7 @@ pub fn purge_expired_blobs(
             stmt.query_map(params![cutoff, tenant, PRUNE_BATCH_SIZE], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
                 .collect::<rusqlite::Result<_>>()?
         };
-        conn.execute_batch("BEGIN IMMEDIATE")?;
-        let step = (|| -> rusqlite::Result<()> {
+        crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
             for (tid, id, bytes) in &batch {
                 unlink_quiet(&crate::blobs::blob_file(data_dir, *tid, id));
                 let versions: Vec<(i64, i64)> = {
@@ -330,14 +330,7 @@ pub fn purge_expired_blobs(
                 out.bytes += bytes;
             }
             Ok(())
-        })();
-        match step {
-            Ok(()) => conn.execute_batch("COMMIT")?,
-            Err(e) => {
-                let _ = conn.execute_batch("ROLLBACK");
-                return Err(e);
-            }
-        }
+        })?;
         if (batch.len() as i64) < PRUNE_BATCH_SIZE {
             break;
         }
@@ -353,8 +346,7 @@ pub fn purge_expired_blobs(
             })?
             .collect::<rusqlite::Result<_>>()?
         };
-        conn.execute_batch("BEGIN IMMEDIATE")?;
-        let step = (|| -> rusqlite::Result<()> {
+        crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
             for (tid, id, version, bytes) in &batch {
                 unlink_quiet(&crate::blobs::version_file(data_dir, *tid, id, *version));
                 conn.execute(
@@ -365,14 +357,7 @@ pub fn purge_expired_blobs(
                 out.bytes += bytes;
             }
             Ok(())
-        })();
-        match step {
-            Ok(()) => conn.execute_batch("COMMIT")?,
-            Err(e) => {
-                let _ = conn.execute_batch("ROLLBACK");
-                return Err(e);
-            }
-        }
+        })?;
         if (batch.len() as i64) < PRUNE_BATCH_SIZE {
             break;
         }
@@ -407,7 +392,7 @@ pub(crate) fn prune_blobs(
     data_dir: &Path,
     now_unix: i64,
     grace_days: i64,
-) -> rusqlite::Result<BlobsPrune> {
+) -> Result<BlobsPrune, AppError> {
     use std::collections::HashSet;
     let cutoff = now_unix - grace_days.saturating_mul(86_400);
     let purged = purge_expired_blobs(conn, data_dir, cutoff, None)?;
@@ -597,7 +582,6 @@ fn prune_sync_inner(
             deleted.insert("blobs_missing".to_string(), stats.missing);
         }
         Err(e) => {
-            crate::db::note_rusqlite_error(&e);
             return PruneOutcome { deleted, error: Some(format!("blobs: {e}")) };
         }
     }
