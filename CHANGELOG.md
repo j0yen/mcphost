@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.112.34 — 2026-10-21
+
+PRX: run_proof extracts into a process-wide AtomicU64 counter-named dir created exclusively (create_dir) under temp_dir() (same-second sibling tests in one suite binary shared mcphost-prove-{pid}-{example}-{secs}; exprf_ac07 flaked on PR 468).
+
 ## v0.112.10 — 2026-10-20
 
 `providers.toml` is the single source for upstream OAuth providers (PRD-mcphost-connection-provider-registry): the new `host.connect.providers` tool, its `provider` enum, `docs/connections.md`, `www/llms.txt` and the callback routes derive from it. Initial rows: github, google, slack, notion.

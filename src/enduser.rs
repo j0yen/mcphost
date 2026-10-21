@@ -350,10 +350,11 @@ mod tests {
     /// alongside the integration suite's fuller coverage).
     #[tokio::test]
     async fn verify_assertion_round_trips_a_freshly_signed_token() {
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
             "mcphost-enduser-test-{}-{}",
             std::process::id(),
-            now_unix()
+            SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let db = crate::db::Db::open(&dir).unwrap();
