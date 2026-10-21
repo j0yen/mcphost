@@ -95,7 +95,7 @@ async fn unauthenticated_quickstart_returns_signup_step_and_no_tenant_data() {
     let client = common::McpClient::new(&server.base_url);
 
     let result = client
-        .tools_call("host.quickstart", json!({"kind": "python"}))
+        .tools_call("host.quickstart", json!({"kind": "echo"}))
         .await
         .expect("quickstart is callable unauthenticated");
     let structured = extract_structured(&result);
