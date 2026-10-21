@@ -630,6 +630,7 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
         confirm_clock_offset_secs: Default::default(),
         onboarding_cache: Default::default(),
         resource_subs: Default::default(),
+        listen_hub: Default::default(),
         session_bindings,
     };
     (state, data_dir)
@@ -1431,6 +1432,7 @@ impl TestServer {
             confirm_clock_offset_secs: Default::default(),
             onboarding_cache: Default::default(),
             resource_subs: Default::default(),
+            listen_hub: Default::default(),
             session_bindings,
         });
 
@@ -2244,6 +2246,7 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
         confirm_clock_offset_secs: Default::default(),
         onboarding_cache: Default::default(),
         resource_subs: Default::default(),
+        listen_hub: Default::default(),
         session_bindings,
     }
 }
@@ -3004,5 +3007,120 @@ fn copy_tree(src: &Path, dst: &Path) {
         } else {
             std::fs::copy(entry.path(), to).expect("copy");
         }
+    }
+}
+
+/// One SSE event read off a `subscriptions/listen` stream.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ListenFrame {
+    /// A `data:` event carrying a JSON-RPC message.
+    Message(Value),
+    /// A `:` comment line (rmcp's keep-alive).
+    Comment(String),
+}
+
+/// PRD-mcphost-subscriptions-listen: a raw streaming client for one
+/// `subscriptions/listen` POST through the prod transport (`build_router`).
+pub struct ListenStream {
+    pub status: u16,
+    pub headers: reqwest::header::HeaderMap,
+    pub request_id: u64,
+    resp: Option<reqwest::Response>,
+    buf: String,
+}
+
+impl ListenStream {
+    /// Open a listen for `filter` (e.g. `{"toolsListChanged": true}`) as
+    /// request `request_id`; `key` goes in the Authorization header when set.
+    pub async fn open_with(base_url: &str, key: Option<&str>, request_id: u64, filter: Value) -> Self {
+        let body = json!({
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": "subscriptions/listen",
+            "params": {
+                "notifications": filter,
+                "_meta": {
+                    "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                    "io.modelcontextprotocol/clientCapabilities": {},
+                    "io.modelcontextprotocol/clientInfo": {"name": "mcphost-test", "version": "0.1.0"},
+                },
+            },
+        });
+        let mut req = reqwest::Client::new()
+            .post(format!("{base_url}/mcp"))
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json, text/event-stream")
+            .header("MCP-Protocol-Version", "2026-07-28")
+            .header("Mcp-Method", "subscriptions/listen")
+            .json(&body);
+        if let Some(key) = key {
+            req = req.header("Authorization", format!("Bearer {key}"));
+        }
+        let resp = req.send().await.expect("send subscriptions/listen");
+        Self { status: resp.status().as_u16(), headers: resp.headers().clone(), request_id, resp: Some(resp), buf: String::new() }
+    }
+
+    /// [`Self::open_with`] for tools and prompts list changes.
+    pub async fn open(base_url: &str, key: &str, request_id: u64) -> Self {
+        Self::open_with(base_url, Some(key), request_id, json!({"toolsListChanged": true, "promptsListChanged": true})).await
+    }
+
+    /// The next event within `within`, or `None` on timeout or end of stream.
+    pub async fn next_frame(&mut self, within: std::time::Duration) -> Option<ListenFrame> {
+        let deadline = tokio::time::Instant::now() + within;
+        loop {
+            if let Some(end) = self.buf.find("\n\n") {
+                let block: String = self.buf.drain(..end + 2).collect();
+                let block = block.replace("\r\n", "\n");
+                let data: Vec<&str> = block
+                    .lines()
+                    .filter_map(|l| l.strip_prefix("data: ").or_else(|| l.strip_prefix("data:")))
+                    .collect();
+                let data = data.join("\n");
+                if !data.trim().is_empty() {
+                    let msg = serde_json::from_str(&data).unwrap_or_else(|e| panic!("listen frame is not JSON: {e}: {data}"));
+                    return Some(ListenFrame::Message(msg));
+                }
+                if let Some(c) = block.lines().find_map(|l| l.strip_prefix(':')) {
+                    return Some(ListenFrame::Comment(c.trim().to_string()));
+                }
+                continue; // an empty priming event
+            }
+            let resp = self.resp.as_mut()?;
+            match tokio::time::timeout_at(deadline, resp.chunk()).await {
+                Ok(Ok(Some(chunk))) => self.buf.push_str(&String::from_utf8_lossy(&chunk)),
+                Ok(Ok(None)) | Ok(Err(_)) => {
+                    self.resp = None;
+                    if self.buf.trim().is_empty() {
+                        return None;
+                    }
+                    self.buf.push_str("\n\n");
+                }
+                Err(_) => return None,
+            }
+        }
+    }
+
+    /// Next JSON-RPC message, skipping keep-alive comments.
+    pub async fn next_message(&mut self, within: std::time::Duration) -> Option<Value> {
+        let deadline = tokio::time::Instant::now() + within;
+        loop {
+            let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+            match self.next_frame(left).await? {
+                ListenFrame::Message(m) => return Some(m),
+                ListenFrame::Comment(_) => continue,
+            }
+        }
+    }
+
+    /// The next `notifications/*` message's method, skipping keep-alives.
+    pub async fn next_method(&mut self, within: std::time::Duration) -> Option<(String, Value)> {
+        let msg = self.next_message(within).await?;
+        Some((msg.get("method").and_then(Value::as_str).unwrap_or_default().to_string(), msg))
+    }
+
+    /// Close the stream from the client side.
+    pub fn close(&mut self) {
+        self.resp = None;
     }
 }

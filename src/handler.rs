@@ -11707,6 +11707,77 @@ impl ServerHandler for McpHostHandler {
         .with_instructions(instructions)
     }
 
+    /// PRD-mcphost-subscriptions-listen R1: the list notifications this host
+    /// can deliver on a listen stream. rmcp intersects this with the request and
+    /// with `get_info`'s capabilities. Resource notifications stay out (Non-goals).
+    fn accepted_subscription_filter(
+        &self,
+        requested: &rmcp::model::SubscriptionFilter,
+    ) -> Option<rmcp::model::SubscriptionFilter> {
+        let mut filter = rmcp::model::SubscriptionFilter::builder();
+        if requested.tools_list_changed == Some(true) {
+            filter = filter.tools_list_changed();
+        }
+        if requested.prompts_list_changed == Some(true) {
+            filter = filter.prompts_list_changed();
+        }
+        Some(filter.build())
+    }
+
+    /// PRD-mcphost-subscriptions-listen R2/R6: hold one stream for the tenant
+    /// the Authorization header names, until the client closes it or the server
+    /// shuts down. Resolution is read-only: no tenant is created and no
+    /// session memory is written.
+    async fn listen(&self, context: rmcp::service::SubscriptionContext) -> Result<(), McpError> {
+        let base = Some(self.state.public_url.as_str());
+        let parts = get_parts(context.request_context())?;
+        let mut sub_key = None;
+        let auth = match resolve_path_secret_auth(&self.state, parts, "")
+            .await
+            .map_err(|e| e.into_error_data_at(base))?
+        {
+            Some(a) => a,
+            None => resolve_auth(&self.state, parts, &mut sub_key, "")
+                .await
+                .map_err(|e| e.into_error_data_at(base))?,
+        };
+        let tenant = match auth {
+            Auth::Tenant(tenant, _) => tenant,
+            Auth::Invalid => return Err(AppError::TenantKeyInvalid.into_error_data_at(base)),
+            // No key: nothing to listen for. The graceful result closes the stream.
+            Auth::Anonymous | Auth::Admin => return Ok(()),
+        };
+        if let Some(ns) = tenant_path_namespace(parts)
+            && tenant.namespace != ns
+        {
+            return Err(AppError::WrongTenant.into_error_data_at(base));
+        }
+        let mut guard = self.state.listen_hub.open(tenant.id);
+        let sink = context.sink().clone();
+        let mut pending = Vec::new();
+        loop {
+            let change = tokio::select! {
+                _ = context.cancelled() => return Ok(()),
+                change = guard.next(&mut pending) => match change {
+                    Some(change) => change,
+                    None => return Ok(()),
+                },
+            };
+            let sent = match change {
+                crate::listen::ListChange::Tools => sink.notify_tool_list_changed().await,
+                crate::listen::ListChange::Prompts => sink.notify_prompt_list_changed().await,
+            };
+            match sent {
+                // The client did not ask for this list.
+                Ok(()) | Err(rmcp::service::SubscriptionSendError::NotificationNotAccepted(_)) => {}
+                Err(e) => {
+                    tracing::debug!(tenant = %tenant.namespace, error = %e, "listen stream ended on send");
+                    return Ok(());
+                }
+            }
+        }
+    }
+
     // PRD-mcphost-resources-for-tenant-data requirement 2: one entry per
     // table, doc, run of the last 24 h and published tool of the authed
     // tenant; an anonymous or unresolvable caller gets an empty list (not an

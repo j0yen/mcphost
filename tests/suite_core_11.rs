@@ -446,6 +446,8 @@ mod stgl_ac05_unshare_removes_entry;
 mod stgl_ac06_subkey_hides_shared_entries;
 #[path = "stgl_ac07_share_reports_grantees_notified.rs"]
 mod stgl_ac07_share_reports_grantees_notified;
+#[path = "sublis_ac01_listen_ack_and_keepalive.rs"]
+mod sublis_ac01_listen_ack_and_keepalive;
 #[path = "suite_ac1_ten_binaries_and_names_preserved.rs"]
 mod suite_ac1_ten_binaries_and_names_preserved;
 #[path = "suite_ac3_mod_common_declared_once.rs"]
