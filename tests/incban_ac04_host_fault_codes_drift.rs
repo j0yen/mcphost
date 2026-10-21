@@ -13,6 +13,13 @@ fn error_code(err: AppError) -> String {
         .expect("data.error_code")
 }
 
+/// The refusal bundled SQLite gives a `BEGIN` inside a transaction.
+fn nested_begin_error() -> rusqlite::Error {
+    let conn = rusqlite::Connection::open_in_memory().unwrap();
+    conn.execute_batch("BEGIN").unwrap();
+    conn.execute_batch("BEGIN").expect_err("nested BEGIN is refused")
+}
+
 #[test]
 fn incban_ac04() {
     // One real AppError per host-fault code; the list below and
@@ -23,6 +30,7 @@ fn incban_ac04() {
         ("exec_unavailable", error_code(AppError::exec_unavailable("pool down"))),
         ("timeout", error_code(AppError::host_timeout("deadline"))),
         ("rate_limited_host", error_code(AppError::rate_limited_host())),
+        ("transaction_nested", error_code(AppError::from(nested_begin_error()))),
     ];
     for (listed, got) in &produced {
         assert_eq!(listed, got, "constructor for {listed} produced {got}");

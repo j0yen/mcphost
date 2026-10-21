@@ -412,8 +412,7 @@ pub async fn index_create(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     state
         .db
         .with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", [])?;
-            let outcome: Result<(), AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 let exists: Option<i64> = conn
                     .query_row(
                         "SELECT id FROM indexes WHERE tenant_id = ?1 AND name = ?2",
@@ -458,14 +457,7 @@ pub async fn index_create(state: &AppState, tenant: &Tenant, args: &Value) -> Re
                     )?;
                 }
                 Ok(())
-            })();
-            match outcome {
-                Ok(()) => conn.execute("COMMIT", []).map(|_| ()).map_err(AppError::from),
-                Err(e) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                    Err(e)
-                }
-            }
+            })
         })
         .await?;
     Ok(json!({"name": name, "sources": n_sources, "status": "building"}))
@@ -604,8 +596,7 @@ pub async fn index_delete(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     let removed = state
         .db
         .with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", [])?;
-            let outcome: Result<i64, AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 let index_id: i64 = conn
                     .query_row(
                         "SELECT id FROM indexes WHERE tenant_id = ?1 AND name = ?2",
@@ -618,14 +609,7 @@ pub async fn index_delete(state: &AppState, tenant: &Tenant, args: &Value) -> Re
                 conn.execute("DELETE FROM index_sources WHERE index_id = ?1", params![index_id])?;
                 conn.execute("DELETE FROM indexes WHERE id = ?1", params![index_id])?;
                 Ok(chunks as i64)
-            })();
-            match outcome {
-                Ok(n) => conn.execute("COMMIT", []).map(|_| n).map_err(AppError::from),
-                Err(e) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                    Err(e)
-                }
-            }
+            })
         })
         .await?;
     Ok(json!({"name": name, "deleted": true, "chunks_removed": removed}))

@@ -237,7 +237,8 @@ pub const INCIDENT_FIELD: &str = "incident";
 /// R1: the error codes that mean "this is the host, not the caller". While an
 /// incident is open, exactly these carry `data.<INCIDENT_FIELD>`; a test
 /// asserts each is produced as `data.error_code` by a real [`AppError`].
-pub const HOST_FAULT_CODES: &[&str] = &["storage", "internal", "exec_unavailable", "timeout", "rate_limited_host"];
+pub const HOST_FAULT_CODES: &[&str] =
+    &["storage", "internal", "exec_unavailable", "timeout", "rate_limited_host", "transaction_nested"];
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum AppError {
@@ -2240,8 +2241,35 @@ impl From<rusqlite::Error> for AppError {
         // error stays exactly what it was (AC5: "the caller receives the
         // existing structured error").
         crate::db::note_rusqlite_error(&e);
+        // PRD-mcphost-dry-run-inside-savepoint-for-transactional-verbs R5:
+        // the one refusal SQLite gives a raw `BEGIN` inside an open
+        // transaction. rusqlite 0.32 has no `ErrorCode` for SQLITE_ERROR
+        // (it falls to `Unknown`), so both the extended code and the pinned
+        // text must match; every other rusqlite error stays `storage`.
+        if let rusqlite::Error::SqliteFailure(f, Some(msg)) = &e
+            && f.extended_code == rusqlite::ffi::SQLITE_ERROR
+            && msg == NESTED_TRANSACTION_SQLITE_MESSAGE
+        {
+            return AppError::Structured {
+                code: TRANSACTION_NESTED,
+                message: "a write verb tried to open a transaction inside one that was already open; \
+                          retrying fails the same way"
+                    .to_string(),
+                data: json!({}),
+            };
+        }
         AppError::Storage(e.to_string())
     }
+}
+
+/// The text bundled SQLite gives a `BEGIN` inside a transaction, pinned
+/// against the bundled library by `dryspt_ac06`.
+pub const NESTED_TRANSACTION_SQLITE_MESSAGE: &str = "cannot start a transaction within a transaction";
+
+crate::err_code! {
+    pub TRANSACTION_NESTED => "transaction_nested",
+    Storage, HostFault, false,
+    "Retrying fails the same way; report data.request_id through the support link.",
 }
 
 crate::err_code! {

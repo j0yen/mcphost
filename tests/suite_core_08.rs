@@ -22,6 +22,8 @@ mod codemap;
 mod ctrace;
 #[path = "support/docs_qa.rs"]
 mod docs_qa;
+#[path = "support/dryspt_lint.rs"]
+mod dryspt_lint;
 #[path = "support/oauth.rs"]
 mod oauth;
 #[path = "support/serve.rs"]
@@ -893,6 +895,16 @@ mod drift_ac10_manual_check_produces_review_without_version_change;
 mod dryrun_ac05_chain_host_table_append_step;
 #[path = "dryrun_ac06_tools_list_mentions_dry_run.rs"]
 mod dryrun_ac06_tools_list_mentions_dry_run;
+#[path = "dryspt_ac01_with_tx_autocommit.rs"]
+mod dryspt_ac01_with_tx_autocommit;
+#[path = "dryspt_ac02_with_tx_nested.rs"]
+mod dryspt_ac02_with_tx_nested;
+#[path = "dryspt_ac03_txn_lint_scanner.rs"]
+mod dryspt_ac03_txn_lint_scanner;
+#[path = "dryspt_ac04_txn_allowlist.rs"]
+mod dryspt_ac04_txn_allowlist;
+#[path = "dryspt_ac06_transaction_nested_code.rs"]
+mod dryspt_ac06_transaction_nested_code;
 #[path = "dryv_ac01_table_drop_survives_savepoint.rs"]
 mod dryv_ac01_table_drop_survives_savepoint;
 #[path = "dryv_ac03_table_drop_dry_run_would.rs"]
@@ -1029,11 +1041,3 @@ mod enduserctl_ac10_list_100k_pages_under_50ms_stable_cursor;
 mod envelope_ac1_http_declared_output_promoted;
 #[path = "envelope_ac4_tool_test_reports_missing_declared_output.rs"]
 mod envelope_ac4_tool_test_reports_missing_declared_output;
-#[path = "eprc_ac01_runner_passes_url_as_argv.rs"]
-mod eprc_ac01_runner_passes_url_as_argv;
-#[path = "eprc_ac02_every_embedded_proof_accepts_the_runner_spawn.rs"]
-mod eprc_ac02_every_embedded_proof_accepts_the_runner_spawn;
-#[path = "eprc_ac03_fail_prints_indented_excerpt.rs"]
-mod eprc_ac03_fail_prints_indented_excerpt;
-#[path = "eprc_ac05_list_contract_prints_runner_constants.rs"]
-mod eprc_ac05_list_contract_prints_runner_constants;
