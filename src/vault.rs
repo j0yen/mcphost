@@ -29,7 +29,7 @@ use crate::state::{AppState, now_unix};
 
 /// requirement 3: how long a `host.vault.connect_link` token stays
 /// redeemable.
-const HANDOFF_TTL_SECS: i64 = 15 * 60;
+pub(crate) const HANDOFF_TTL_SECS: i64 = 15 * 60;
 
 /// requirement 4: a call refreshes inline once a stored token is within
 /// this many seconds of `expires_unix` (AC5's "expiring in 60 s" is well
@@ -501,18 +501,18 @@ pub async fn resolve_for_call(
 
 // ---- HTTP routes (requirement 3) ---------------------------------------
 
-fn html_response(status: StatusCode, body: String) -> Response {
+pub(crate) fn html_response(status: StatusCode, body: String) -> Response {
     (status, [("content-type", "text/html; charset=utf-8")], body).into_response()
 }
 
-fn page(title: &str, body: &str) -> String {
+pub(crate) fn page(title: &str, body: &str) -> String {
     format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
          <title>{title}</title></head><body>{body}</body></html>"
     )
 }
 
-fn render_expired() -> String {
+pub(crate) fn render_expired() -> String {
     page(
         "mcphost — link expired",
         "<h1>This link has expired or was already used</h1>",
@@ -528,14 +528,14 @@ fn render_connected() -> String {
     )
 }
 
-fn render_storage_error() -> String {
+pub(crate) fn render_storage_error() -> String {
     page(
         "mcphost — storage error",
         "<h1>Something went wrong</h1><p>Please try again in a minute.</p>",
     )
 }
 
-fn render_upstream_error() -> String {
+pub(crate) fn render_upstream_error() -> String {
     page(
         "mcphost — could not connect",
         "<h1>Could not connect</h1><p>Please ask your agent to try again.</p>",
@@ -546,7 +546,7 @@ fn render_upstream_error() -> String {
 /// value -- this crate has no `url`/`percent-encoding` dependency (the same
 /// "no new dependency for a small, self-contained thing" call
 /// `state::rfc3339_from_unix`'s hand-rolled calendar math already makes).
-fn percent_encode(input: &str) -> String {
+pub(crate) fn percent_encode(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     for b in input.bytes() {
         match b {
@@ -559,7 +559,7 @@ fn percent_encode(input: &str) -> String {
 
 /// PKCE S256: `BASE64URL-ENCODE(SHA256(ASCII(code_verifier)))`, no padding
 /// (RFC 7636 section 4.2).
-fn pkce_challenge_s256(verifier: &str) -> String {
+pub(crate) fn pkce_challenge_s256(verifier: &str) -> String {
     use base64::Engine as _;
     let digest = Sha256::digest(verifier.as_bytes());
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(digest)

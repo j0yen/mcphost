@@ -9987,6 +9987,126 @@ impl Db {
         .await
     }
 
+    /// How many `vault_handoff_tokens` rows a tenant holds (any provider, used or not).
+    pub async fn count_vault_handoff_tokens(&self, tenant_id: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM vault_handoff_tokens WHERE tenant_id = ?1",
+                params![tenant_id],
+                |r| r.get(0),
+            )?)
+        })
+        .await
+    }
+
+    /// How many tenant-level `vault_tokens` rows exist for one provider.
+    pub async fn count_tenant_vault_tokens(&self, tenant_id: i64, provider: String) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM vault_tokens \
+                 WHERE tenant_id = ?1 AND provider = ?2 AND end_user_subject = 'tenant'",
+                params![tenant_id, provider],
+                |r| r.get(0),
+            )?)
+        })
+        .await
+    }
+
+    /// `/connections/callback`'s lookup by the raw handoff token it carries as
+    /// `state` (PRD-mcphost-connect-start-and-callback R2/R6): no claim, the
+    /// row was already redeemed by `/connections/go`.
+    pub async fn find_vault_handoff_by_token_hash(
+        &self,
+        token_hash: String,
+    ) -> Result<Option<VaultHandoffRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT tenant_id, provider, end_user_subject, end_user_issuer, \
+                 pkce_verifier_enc, pkce_verifier_nonce, oauth_state, expires_unix, redeemed_unix \
+                 FROM vault_handoff_tokens WHERE token_hash = ?1",
+                params![token_hash],
+                |r| {
+                    Ok(VaultHandoffRow {
+                        tenant_id: r.get(0)?,
+                        provider: r.get(1)?,
+                        end_user_subject: r.get(2)?,
+                        end_user_issuer: r.get(3)?,
+                        pkce_verifier_enc: r.get(4)?,
+                        pkce_verifier_nonce: r.get(5)?,
+                        oauth_state: r.get(6)?,
+                        expires_unix: r.get(7)?,
+                        redeemed_unix: r.get(8)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Single-use claim of the callback half of a tenant-level handoff: only a
+    /// row `/connections/go` already redeemed and no callback has consumed yet
+    /// matches, and the `used:` prefix on `oauth_state` is the consumed mark,
+    /// so a second callback with the same `state` claims nothing.
+    pub async fn consume_vault_handoff_callback(&self, token_hash: String) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "UPDATE vault_handoff_tokens SET oauth_state = 'used:' || oauth_state \
+                 WHERE token_hash = ?1 AND redeemed_unix IS NOT NULL \
+                 AND oauth_state NOT LIKE 'used:%'",
+                params![token_hash],
+            )?;
+            Ok(n == 1)
+        })
+        .await
+    }
+
+    /// The tenant-level connect write (`end_user_subject = "tenant"`): like
+    /// [`Self::upsert_vault_token`] but a reconnect keeps the first
+    /// `connected_unix` (R7).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upsert_tenant_vault_token(
+        &self,
+        tenant_id: i64,
+        provider: String,
+        access_enc: Vec<u8>,
+        access_nonce: Vec<u8>,
+        refresh_enc: Option<Vec<u8>>,
+        refresh_nonce: Option<Vec<u8>>,
+        expires_unix: i64,
+        scopes: String,
+    ) -> Result<(), AppError> {
+        let connected_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO vault_tokens (tenant_id, provider, end_user_subject, \
+                 end_user_issuer, access_enc, access_nonce, refresh_enc, refresh_nonce, \
+                 expires_unix, scopes, connected_unix) \
+                 VALUES (?1, ?2, 'tenant', NULL, ?3, ?4, ?5, ?6, ?7, ?8, ?9) \
+                 ON CONFLICT(tenant_id, provider, end_user_subject) DO UPDATE SET \
+                     end_user_issuer = NULL, \
+                     access_enc = excluded.access_enc, access_nonce = excluded.access_nonce, \
+                     refresh_enc = excluded.refresh_enc, refresh_nonce = excluded.refresh_nonce, \
+                     expires_unix = excluded.expires_unix, scopes = excluded.scopes, \
+                     last_refreshed_unix = NULL, revoked_unix = NULL, revoked_reason = NULL",
+                params![
+                    tenant_id,
+                    provider,
+                    access_enc,
+                    access_nonce,
+                    refresh_enc,
+                    refresh_nonce,
+                    expires_unix,
+                    scopes,
+                    connected_unix
+                ],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
     /// The stored token row for one `(tenant, provider, end user)`,
     /// revoked or not -- callers (`vault::resolve_for_call`, and tests
     /// asserting on `revoked_unix`) decide what "connected" means from the
@@ -10202,6 +10322,33 @@ impl Db {
                 params![revoked_unix, reason, tenant_id, provider, end_user_subject],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// `host.connect.revoke`: marks the tenant-level row revoked with `reason`.
+    /// Idempotent: a row already revoked keeps its first `revoked_unix` and
+    /// reason. `true` when a row exists for the provider.
+    pub async fn revoke_tenant_vault_token(
+        &self,
+        tenant_id: i64,
+        provider: String,
+        reason: String,
+    ) -> Result<bool, AppError> {
+        let revoked_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE vault_tokens SET revoked_unix = ?1, revoked_reason = ?2 \
+                 WHERE tenant_id = ?3 AND provider = ?4 AND end_user_subject = 'tenant' \
+                 AND revoked_unix IS NULL",
+                params![revoked_unix, reason, tenant_id, provider],
+            )?;
+            Ok(conn
+                .prepare(
+                    "SELECT 1 FROM vault_tokens \
+                     WHERE tenant_id = ?1 AND provider = ?2 AND end_user_subject = 'tenant'",
+                )?
+                .exists(params![tenant_id, provider])?)
         })
         .await
     }

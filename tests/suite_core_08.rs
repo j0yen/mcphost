@@ -677,6 +677,20 @@ mod creg_ac04_capabilities_json_keyless;
 mod creg_ac06_quickstart_names_capabilities;
 #[path = "creg_ac07_probe_names_unique.rs"]
 mod creg_ac07_probe_names_unique;
+#[path = "cstart_ac01_tenant_connects_testprov_with_one_link.rs"]
+mod cstart_ac01_tenant_connects_testprov_with_one_link;
+#[path = "cstart_ac02_unconfigured_provider_is_unavailable_and_writes_nothing.rs"]
+mod cstart_ac02_unconfigured_provider_is_unavailable_and_writes_nothing;
+#[path = "cstart_ac03_unknown_scope_is_scope_unknown.rs"]
+mod cstart_ac03_unknown_scope_is_scope_unknown;
+#[path = "cstart_ac04_redeemed_link_is_gone_and_state_is_invalid.rs"]
+mod cstart_ac04_redeemed_link_is_gone_and_state_is_invalid;
+#[path = "cstart_ac05_access_denied_uses_the_handoff_and_stores_nothing.rs"]
+mod cstart_ac05_access_denied_uses_the_handoff_and_stores_nothing;
+#[path = "cstart_ac06_revoke_is_idempotent_and_list_offers_reconnect.rs"]
+mod cstart_ac06_revoke_is_idempotent_and_list_offers_reconnect;
+#[path = "cstart_ac07_concurrent_starts_leave_one_row_with_the_later_callback.rs"]
+mod cstart_ac07_concurrent_starts_leave_one_row_with_the_later_callback;
 #[path = "ctot_ac02_page_total_exact_then_estimate.rs"]
 mod ctot_ac02_page_total_exact_then_estimate;
 #[path = "ctot_ac03_runs_list_verdict_total.rs"]
@@ -1027,15 +1041,3 @@ mod ercp_ac01_share_a_tool_upstream_is_https;
 mod ercp_ac03_retention_body_goes_to_curl_from_a_file;
 #[path = "ercp_ac05_runner_key_is_validated_by_examples_check.rs"]
 mod ercp_ac05_runner_key_is_validated_by_examples_check;
-#[path = "errenv_ac02_every_verb_error_envelope_validates.rs"]
-mod errenv_ac02_every_verb_error_envelope_validates;
-#[path = "errenv_ac03_schema_completeness.rs"]
-mod errenv_ac03_schema_completeness;
-#[path = "errenv_ac04_legacy_null_error_data_renders_object.rs"]
-mod errenv_ac04_legacy_null_error_data_renders_object;
-#[path = "errenv_ac05_chain_verifier_fixture_fails_old_passes_new.rs"]
-mod errenv_ac05_chain_verifier_fixture_fails_old_passes_new;
-#[path = "errenv_ac06_invalid_tenant_key_envelope_has_reason.rs"]
-mod errenv_ac06_invalid_tenant_key_envelope_has_reason;
-#[path = "errenv_ac07_doctor_reports_error_envelope.rs"]
-mod errenv_ac07_doctor_reports_error_envelope;

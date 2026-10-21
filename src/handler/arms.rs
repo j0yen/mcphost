@@ -146,6 +146,28 @@ impl McpHostHandler {
         })
     }
 
+    // PRD-mcphost-connect-start-and-callback: tenant-level connections.
+    pub(crate) fn arm_host_connect_start<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::connect::flow::start(&self.state, tenant, &args).await
+        })
+    }
+
+    pub(crate) fn arm_host_connect_revoke<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::connect::flow::revoke(&self.state, tenant, &args).await
+        })
+    }
+
+    pub(crate) fn arm_host_connect_list<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, .. } = c;
+            crate::connect::flow::list(&self.state, tenant).await
+        })
+    }
+
     pub(crate) fn arm_host_calls_list<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
         box_arm(async move {
             let ArmCtx { tenant, args, .. } = c;

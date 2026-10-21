@@ -10,4 +10,5 @@ refresh = "rotating"
 client_id_env = "MCPHOST_CONNECT_TESTPROV_CLIENT_ID"
 client_secret_env = "MCPHOST_CONNECT_TESTPROV_CLIENT_SECRET"
 docs_url = "http://127.0.0.1:0/docs"
+revoke_url = "http://127.0.0.1:0/revoke"
 scopes = [{ name = "testprov.read", purpose = "Read the in-repo test OAuth server" }]

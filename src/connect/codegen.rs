@@ -19,6 +19,8 @@ pub struct Row {
     pub client_secret_env: String,
     pub extra_authorize_params: BTreeMap<String, String>,
     pub docs_url: String,
+    /// Optional RFC 7009 revocation endpoint (`host.connect.revoke` calls it).
+    pub revoke_url: Option<String>,
 }
 
 const REQUIRED_STRING_FIELDS: [&str; 6] = [
@@ -100,6 +102,17 @@ pub fn parse_table(text: &str) -> Result<Vec<Row>, String> {
                 extra.insert(k.clone(), v.to_string());
             }
         }
+        let revoke_url = match table.get("revoke_url") {
+            None => None,
+            Some(v) => match v.as_str() {
+                Some(u) if !u.is_empty() => Some(u.to_string()),
+                _ => {
+                    return Err(format!(
+                        "providers.toml: provider '{name}': field 'revoke_url' must be a non-empty string"
+                    ));
+                }
+            },
+        };
         rows.push(Row {
             name: name.clone(),
             auth_url: strings[0].clone(),
@@ -110,6 +123,7 @@ pub fn parse_table(text: &str) -> Result<Vec<Row>, String> {
             client_secret_env: strings[4].clone(),
             extra_authorize_params: extra,
             docs_url: strings[5].clone(),
+            revoke_url,
         });
     }
     if rows.is_empty() {
@@ -187,6 +201,12 @@ pub fn render_rust(rows: &[Row]) -> String {
         }
         o.push_str("        ]),\n");
         let _ = writeln!(o, "        docs_url: Cow::Borrowed({:?}),", r.docs_url);
+        match &r.revoke_url {
+            Some(u) => {
+                let _ = writeln!(o, "        revoke_url: Some(Cow::Borrowed({u:?})),");
+            }
+            None => o.push_str("        revoke_url: None,\n"),
+        }
         o.push_str("    },\n");
     }
     o.push_str("];\n");

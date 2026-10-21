@@ -9,7 +9,8 @@
 #
 # Per row: auth_url, token_url, scopes (exact strings sent to the provider,
 # stored verbatim), refresh (rotating | offline_access | none),
-# client_id_env, client_secret_env, extra_authorize_params, docs_url.
+# client_id_env, client_secret_env, extra_authorize_params, docs_url, and
+# optionally revoke_url (an RFC 7009 endpoint `host.connect.revoke` calls).
 
 [github]
 auth_url = "https://github.com/login/oauth/authorize"
