@@ -458,6 +458,8 @@ mod sublis_ac03_drift;
 mod sublis_ac04_keyless_and_unknown_key_listens;
 #[path = "sublis_ac05_listen_streams_max.rs"]
 mod sublis_ac05_listen_streams_max;
+#[path = "sublis_ac08_initialize_advertises_list_changes_with_proof.rs"]
+mod sublis_ac08_initialize_advertises_list_changes_with_proof;
 #[path = "suite_ac1_ten_binaries_and_names_preserved.rs"]
 mod suite_ac1_ten_binaries_and_names_preserved;
 #[path = "suite_ac3_mod_common_declared_once.rs"]

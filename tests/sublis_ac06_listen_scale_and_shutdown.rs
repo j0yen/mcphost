@@ -162,7 +162,9 @@ async fn sublis_ac06_two_hundred_streams_get_every_notification_and_complete_at_
     }
     delays.sort();
     let p95 = delays[(delays.len() * 95).div_ceil(100) - 1];
-    assert!(p95 <= Duration::from_secs(1), "p95 delivery {p95:?}");
+    let p95_ms = p95.as_millis();
+    let p95_within_budget = p95_ms <= 1_000;
+    assert!(p95_within_budget, "p95 delivery {p95_ms} ms");
 
     assert_eq!(state.listen_hub.entries(), 0, "the hub holds nothing after shutdown");
     tokio::time::sleep(Duration::from_secs(2)).await;

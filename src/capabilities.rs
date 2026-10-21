@@ -36,6 +36,9 @@ pub struct Capability {
     /// The tool to use instead while the capability is unimplemented.
     pub alternative: Option<&'static str>,
     pub help_code: &'static str,
+    /// The synthorg conformance cell that proves this row's `list_changed`
+    /// delivery. Every row with `list_changed: true` names one.
+    pub proving_cell: Option<&'static str>,
 }
 
 /// Methods every client may send that belong to no primitive row: the
@@ -55,6 +58,10 @@ pub const CORE_METHODS: &[&str] = &[
     "tasks/cancel",
 ];
 
+/// The synthorg conformance cell that proves `subscriptions/listen` delivers
+/// list changes (PRD-mcphost-subscriptions-listen R11b).
+pub const PROVING_CELL_LISTEN: &str = "subscriptions_listen";
+
 pub const CAPABILITIES: &[Capability] = &[
     Capability {
         name: "tools",
@@ -67,6 +74,7 @@ pub const CAPABILITIES: &[Capability] = &[
         probe: "tools",
         alternative: None,
         help_code: UNSUPPORTED_CODE,
+        proving_cell: Some(PROVING_CELL_LISTEN),
     },
     Capability {
         name: "resources",
@@ -79,12 +87,13 @@ pub const CAPABILITIES: &[Capability] = &[
         ],
         server_to_client: &[],
         implemented: true,
-        list_changed: true,
+        list_changed: false,
         subscribe: true,
         ceiling: Some("resources_max"),
         probe: "resources",
         alternative: Some("host.table.list"),
         help_code: UNSUPPORTED_CODE,
+        proving_cell: None,
     },
     Capability {
         name: "prompts",
@@ -97,6 +106,7 @@ pub const CAPABILITIES: &[Capability] = &[
         probe: "prompts",
         alternative: Some("host.quickstart"),
         help_code: UNSUPPORTED_CODE,
+        proving_cell: Some(PROVING_CELL_LISTEN),
     },
     Capability {
         name: "completions",
@@ -109,6 +119,7 @@ pub const CAPABILITIES: &[Capability] = &[
         probe: "completions",
         alternative: Some("host.help.search"),
         help_code: UNSUPPORTED_CODE,
+        proving_cell: None,
     },
     Capability {
         name: "sampling",
@@ -121,6 +132,7 @@ pub const CAPABILITIES: &[Capability] = &[
         probe: "sampling",
         alternative: None,
         help_code: UNSUPPORTED_CODE,
+        proving_cell: None,
     },
     Capability {
         name: "elicitation",
@@ -133,6 +145,7 @@ pub const CAPABILITIES: &[Capability] = &[
         probe: "elicitation",
         alternative: Some("host.ask.create"),
         help_code: UNSUPPORTED_CODE,
+        proving_cell: None,
     },
     // `logging` and `roots` are deprecated by SEP-2577 in rmcp 3.3.0:
     // registered so the table is complete, never built.
@@ -147,6 +160,7 @@ pub const CAPABILITIES: &[Capability] = &[
         probe: "logging",
         alternative: None,
         help_code: UNSUPPORTED_CODE,
+        proving_cell: None,
     },
     Capability {
         name: "roots",
@@ -159,6 +173,7 @@ pub const CAPABILITIES: &[Capability] = &[
         probe: "roots",
         alternative: None,
         help_code: UNSUPPORTED_CODE,
+        proving_cell: None,
     },
 ];
 
@@ -287,6 +302,7 @@ fn primitive_json(c: &Capability) -> Value {
         "alternative": c.alternative,
         "methods": c.methods,
         "server_to_client": c.server_to_client,
+        "proving_cell": c.proving_cell,
     });
     if let Some(transport) = transport_note(c.name) {
         row["transport"] = json!(transport);
@@ -326,9 +342,16 @@ mod tests {
             json!({
                 "tools": {"listChanged": true},
                 "prompts": {"listChanged": true},
-                "resources": {"listChanged": true, "subscribe": true}
+                "resources": {"subscribe": true}
             })
         );
+    }
+
+    #[test]
+    fn every_list_changed_row_names_a_proving_cell() {
+        for row in CAPABILITIES.iter().filter(|c| c.list_changed) {
+            assert!(row.proving_cell.is_some(), "row `{}` advertises list_changed with no proving_cell", row.name);
+        }
     }
 
     #[test]

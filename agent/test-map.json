@@ -28,14 +28,14 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "deferred: Live (operator premise check recorded in the PRD under Premise check result)",
-    "AC2": "tests/syreg_ac02_source_kinds_render_once_everywhere.rs",
-    "AC3": "tests/syreg_ac03_create_returns_sync_id_and_next_run.rs",
-    "AC4": "tests/syreg_ac04_create_validation_errors.rs",
-    "AC5": "tests/syreg_ac05_sixth_sync_hits_syncs_max.rs",
-    "AC6": "tests/syreg_ac06_tick_writes_one_receipt_per_slot.rs",
-    "AC7": "tests/syreg_ac07_delete_keeps_the_table.rs",
-    "AC8": "deferred: Live (prod; evidence: examples/data-sync/proof.sh --create-only prints sync_id=)"
+    "AC1": "tests/sublis_ac01_listen_ack_and_keepalive.rs",
+    "AC2": "tests/sublis_ac02_publish_notifies_the_tenants_streams.rs",
+    "AC3": "tests/sublis_ac03_drift.rs",
+    "AC4": "tests/sublis_ac04_keyless_and_unknown_key_listens.rs",
+    "AC5": "tests/sublis_ac05_listen_streams_max.rs",
+    "AC6": "tests/sublis_ac06_listen_scale_and_shutdown.rs",
+    "AC7": "deferred: Live (prod; evidence: AC 7 command in the PRD Live evidence commands)",
+    "AC8": "tests/sublis_ac08_initialize_advertises_list_changes_with_proof.rs"
   },
   "ac_test_map_by_prefix": {
     "cprov": {
