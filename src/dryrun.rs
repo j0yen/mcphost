@@ -122,6 +122,14 @@ impl DryRunCtx {
     /// leaves the tenant's data byte-identical regardless of the call's own
     /// outcome, so the caller runs this unconditionally once `Kind::call`/
     /// `Kind::tool_run` returns (success or error alike).
+    ///
+    /// A full `ROLLBACK`, not `ROLLBACK TO test_run; RELEASE test_run`: the
+    /// savepoint opened on an autocommit connection is the outermost
+    /// transaction, and `RELEASE` of it COMMITS -- writing the restored
+    /// pages as new WAL frames and invalidating the read snapshot of any
+    /// other connection mid-call (a nested dry-run scope, e.g. a confirm
+    /// gate's `dry_run_notes` inside `host.tool_test`, then made the outer
+    /// scope's first write fail `database is locked`).
     fn rollback(&self) {
         if let Some(conn) = self
             .state_conn
@@ -130,12 +138,12 @@ impl DryRunCtx {
             .take()
             && let Ok(conn) = conn.lock()
         {
-            let _ = conn.execute_batch("ROLLBACK TO test_run; RELEASE test_run;");
+            let _ = conn.execute_batch("ROLLBACK;");
         }
         let mut table_conns = self.table_conns.lock().unwrap_or_else(|e| e.into_inner());
         for (_, conn) in table_conns.drain() {
             if let Ok(conn) = conn.lock() {
-                let _ = conn.execute_batch("ROLLBACK TO test_run; RELEASE test_run;");
+                let _ = conn.execute_batch("ROLLBACK;");
             }
         }
     }

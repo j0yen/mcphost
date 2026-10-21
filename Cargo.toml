@@ -26,7 +26,7 @@ strip = true
 [package]
 autotests = false  # gen-test-suites.sh: explicit [[test]] suites below
 name = "mcphost"
-version = "0.112.30"
+version = "0.112.33"
 edition = "2024"
 rust-version = "1.95"
 description = "Hosted MCP runtime where your agent publishes its own tools by tool call and keeps working."
@@ -193,6 +193,9 @@ toml = "0.8"
 # self-referential `[dev-dependencies]` entry below. Must never be pulled
 # in by `default` (the existing supply-chain audit denies that).
 test-support = []
+# PRD-mcphost-dry-run-inside-savepoint-for-transactional-verbs R6: nested-path
+# `with_tx` call counter for the dry-run sweep; off by default and in release.
+test-counters = []
 
 [dev-dependencies]
 semver = "1"
@@ -228,7 +231,7 @@ boa_engine = "0.22.0"
 # Self-dependency (standard Cargo idiom): enables `test-support` only for
 # the lib crate integration tests (`tests/*.rs`) link against, without
 # leaking it into `default` for ordinary consumers/binaries.
-mcphost = { path = ".", features = ["test-support"] }
+mcphost = { path = ".", features = ["test-support", "test-counters"] }
 
 # BEGIN gen-test-suites.sh generated suites -- do not edit by hand
 

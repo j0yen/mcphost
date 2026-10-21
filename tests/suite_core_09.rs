@@ -30,6 +30,14 @@ mod ac14_storage_unwritable;
 mod busyaudit_ac08_healthz_db_fields;
 #[path = "ctrv_ac03_status_and_healthz_carry_contract_identity.rs"]
 mod ctrv_ac03_status_and_healthz_carry_contract_identity;
+#[path = "eprc_ac01_runner_passes_url_as_argv.rs"]
+mod eprc_ac01_runner_passes_url_as_argv;
+#[path = "eprc_ac02_every_embedded_proof_accepts_the_runner_spawn.rs"]
+mod eprc_ac02_every_embedded_proof_accepts_the_runner_spawn;
+#[path = "eprc_ac03_fail_prints_indented_excerpt.rs"]
+mod eprc_ac03_fail_prints_indented_excerpt;
+#[path = "eprc_ac05_list_contract_prints_runner_constants.rs"]
+mod eprc_ac05_list_contract_prints_runner_constants;
 #[path = "ercp_ac01_share_a_tool_upstream_is_https.rs"]
 mod ercp_ac01_share_a_tool_upstream_is_https;
 #[path = "ercp_ac03_retention_body_goes_to_curl_from_a_file.rs"]
