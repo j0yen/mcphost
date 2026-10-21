@@ -500,10 +500,13 @@ pub fn render_surfaces_json() -> String {
     out
 }
 
+/// One [`doc_extra`] entry: prose line, optional extra fenced block, second docs link.
+type DocExtra = (&'static str, Option<(&'static str, String)>, &'static str);
+
 /// Install-doc sections that say more than their [`Kind`] default: `(id,
 /// prose line, extra fenced block as (language, body) or None, second docs
 /// link)`. A surface with no entry renders the plain Kind form.
-fn doc_extra(id: &str, mcp_url: &str) -> Option<(&'static str, Option<(&'static str, String)>, &'static str)> {
+fn doc_extra(id: &str, mcp_url: &str) -> Option<DocExtra> {
     match id {
         "copilot_vscode" => Some((
             "Copilot Chat is the same VS Code client: add mcphost to `.vscode/mcp.json` (or use the VS Code install link above).",
