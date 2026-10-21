@@ -262,7 +262,7 @@ fn plan_of<'a>(state: &'a AppState, plan_name: &str) -> Result<&'a Plan, AppErro
 /// `name.pattern` is this string.
 pub const IDENT_PATTERN: &str = "^[A-Za-z_][A-Za-z0-9_]{0,63}$";
 
-fn is_valid_ident(s: &str) -> bool {
+pub(crate) fn is_valid_ident(s: &str) -> bool {
     let mut chars = s.chars();
     let Some(first) = chars.next() else {
         return false;
@@ -1081,23 +1081,10 @@ fn insert_rows_sync(
     schema: &LoadedSchema,
     rows: &[Map<String, Value>],
 ) -> Result<Vec<i64>, AppError> {
-    // PRD-mcphost-dry-run-side-effects: under `dryrun::DryRunCtx`, `conn`
-    // already has `SAVEPOINT test_run` open (requirement 2's "savepoint
-    // depth 1" -- this is the one nested level the DB layer already uses),
-    // so a plain `BEGIN IMMEDIATE` here would fail with "cannot start a
-    // transaction within a transaction". A nested `SAVEPOINT` is always
-    // legal whether or not an outer transaction is active, but it defers
-    // lock acquisition (unlike `BEGIN IMMEDIATE`'s eager one) -- so the
-    // ordinary (non-nested) path keeps `BEGIN IMMEDIATE`'s eager locking
-    // unchanged, and only the nested case (`!conn.is_autocommit()`) takes
-    // the savepoint form.
-    let nested = !conn.is_autocommit();
-    if nested {
-        conn.execute("SAVEPOINT insert_rows", [])?;
-    } else {
-        conn.execute("BEGIN IMMEDIATE", [])?;
-    }
-    let outcome: Result<Vec<i64>, AppError> = (|| {
+    // `with_tx` owns the nesting rule: a plain `BEGIN IMMEDIATE` on an
+    // autocommit connection, a nested `SAVEPOINT` under the dry-run
+    // connection's open `SAVEPOINT test_run`.
+    crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
         let mut ids = Vec::with_capacity(rows.len());
         for row in rows {
             let mut cols = Vec::with_capacity(row.len());
@@ -1120,26 +1107,7 @@ fn insert_rows_sync(
             ids.push(conn.last_insert_rowid());
         }
         Ok(ids)
-    })();
-    match outcome {
-        Ok(ids) => {
-            if nested {
-                conn.execute("RELEASE insert_rows", [])?;
-            } else {
-                conn.execute("COMMIT", [])?;
-            }
-            Ok(ids)
-        }
-        Err(e) => {
-            if nested {
-                let _ = conn.execute("ROLLBACK TO insert_rows", []);
-                let _ = conn.execute("RELEASE insert_rows", []);
-            } else {
-                let _ = conn.execute("ROLLBACK", []);
-            }
-            Err(e)
-        }
-    }
+    })
 }
 
 /// requirement 1/3: appends one row (an object) or several (an array of
@@ -1397,48 +1365,38 @@ fn log_query(conn: &Connection, sql: &str, log_outcome: QueryLogOutcome<'_>) {
         _ => e.code(),
     });
     let error_message = error.map(ToString::to_string);
-    let outcome: rusqlite::Result<()> = (|| {
-        conn.execute("BEGIN IMMEDIATE", [])?;
-        let write: rusqlite::Result<()> = (|| {
-            conn.execute(
-                &format!(
-                    "INSERT INTO {QUERY_LOG_TABLE} \
-                     (created_unix, sql, truncated, row_count, duration_ms, error_code, error_message, \
-                      sample_hash, diagnosis, hint, result_bytes, est_tokens) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)"
-                ),
-                params![
-                    crate::state::now_unix(),
-                    stored_sql,
-                    truncated as i64,
-                    row_count,
-                    duration_ms,
-                    error_code,
-                    error_message,
-                    sample_hash,
-                    diagnosis,
-                    hint,
-                    result_bytes,
-                    est_tokens,
-                ],
-            )?;
-            conn.execute(
-                &format!(
-                    "DELETE FROM {QUERY_LOG_TABLE} WHERE id NOT IN \
-                     (SELECT id FROM {QUERY_LOG_TABLE} ORDER BY id DESC LIMIT ?1)"
-                ),
-                params![QUERY_LOG_CAP],
-            )?;
-            Ok(())
-        })();
-        match write {
-            Ok(()) => conn.execute("COMMIT", []).map(|_| ()),
-            Err(e) => {
-                let _ = conn.execute("ROLLBACK", []);
-                Err(e)
-            }
-        }
-    })();
+    let outcome: Result<(), AppError> = crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
+        conn.execute(
+            &format!(
+                "INSERT INTO {QUERY_LOG_TABLE} \
+                 (created_unix, sql, truncated, row_count, duration_ms, error_code, error_message, \
+                  sample_hash, diagnosis, hint, result_bytes, est_tokens) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)"
+            ),
+            params![
+                crate::state::now_unix(),
+                stored_sql,
+                truncated as i64,
+                row_count,
+                duration_ms,
+                error_code,
+                error_message,
+                sample_hash,
+                diagnosis,
+                hint,
+                result_bytes,
+                est_tokens,
+            ],
+        )?;
+        conn.execute(
+            &format!(
+                "DELETE FROM {QUERY_LOG_TABLE} WHERE id NOT IN \
+                 (SELECT id FROM {QUERY_LOG_TABLE} ORDER BY id DESC LIMIT ?1)"
+            ),
+            params![QUERY_LOG_CAP],
+        )?;
+        Ok(())
+    });
     if let Err(e) = outcome {
         tracing::warn!(error = %e, "failed to write host.table.query log row");
     }
@@ -2185,8 +2143,7 @@ fn materialize_handle_sync(conn: &Connection, sql: &str, p: MaterializeParams<'_
 
     let handle = format!("{HANDLE_PREFIX}{}", generate_handle_id());
 
-    conn.execute("BEGIN IMMEDIATE", [])?;
-    let outcome: Result<Value, AppError> = (|| {
+    crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
         if let Err(e) = conn.execute(&format!("CREATE TABLE {} AS {sql}", quote_ident(&handle)), []) {
             if let rusqlite::Error::SqliteFailure(se, _) = &e
                 && se.code == rusqlite::ErrorCode::OperationInterrupted
@@ -2214,18 +2171,7 @@ fn materialize_handle_sync(conn: &Connection, sql: &str, p: MaterializeParams<'_
         )?;
 
         dataset_summary_sync(conn, &handle, sql, bytes, now + ttl_s)
-    })();
-
-    match outcome {
-        Ok(v) => {
-            conn.execute("COMMIT", [])?;
-            Ok(v)
-        }
-        Err(e) => {
-            let _ = conn.execute("ROLLBACK", []);
-            Err(e)
-        }
-    }
+    })
 }
 
 async fn table_query_materialize(

@@ -5116,6 +5116,66 @@ fn host_tools_part_12() -> Vec<Tool> {
     ]
 }
 
+/// PRD-mcphost-sync-source-registry-and-create R2/R5: the `host.sync.*` surface.
+#[inline(never)]
+fn host_tools_part_14() -> Vec<Tool> {
+    vec![
+        Tool::new(
+            "host.sync.create",
+            "Mirror an external dataset into a host table on a schedule: register the source and \
+             return {sync_id, table, next_run_unix, status, existing} at once. The table is created \
+             when absent. The same (kind, ref, table) again returns the existing sync with existing: \
+             true. Errors: args_invalid (lists the valid source kinds), host_not_allowed, \
+             connection_missing {provider, hint}, schedule_too_frequent {min_seconds}, \
+             quota_syncs_max {limit, used}.",
+            host_schema(
+                json!({
+                    "source": crate::sync::source_schema(),
+                    "table": {"type": "string", "description": "The host table that mirrors the source; created if it does not exist."},
+                    "mode": crate::sync::mode_schema(),
+                    "every": {"type": "string", "description": format!("Five-field cron schedule, UTC (default {}); never faster than every {} seconds.", crate::sync::DEFAULT_EVERY, crate::sync::MIN_INTERVAL_S)},
+                    "primary_key": {"type": "string", "description": "Column that identifies a row across pulls."},
+                }),
+                &["source", "table"],
+            ),
+        ),
+        Tool::new(
+            "host.sync.list",
+            "List this tenant's syncs, oldest first: {syncs: [{sync_id, kind, ref, table, mode, every, \
+             status, created_unix, next_run_unix}]}.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "host.sync.get",
+            "One sync by id: its row plus last_run, the newest receipt {run_id, started_unix, \
+             duration_ms, status, rows_added, rows_updated, rows_deleted, bytes, change_detected, \
+             error}, or null before the first run.",
+            host_schema(
+                json!({"sync_id": {"type": "string", "description": "The sync_id host.sync.create returned."}}),
+                &["sync_id"],
+            ),
+        ),
+        Tool::new(
+            "host.sync.delete",
+            "Delete a sync and its receipts. The mirrored table and its rows stay and keep \
+             answering host.table.query.",
+            host_schema(
+                json!({"sync_id": {"type": "string", "description": "The sync_id host.sync.create returned."}}),
+                &["sync_id"],
+            ),
+        ),
+        Tool::new(
+            "host.sync.run_now",
+            "Make a sync due now: next_run_unix becomes the current time and the scheduler picks \
+             it up on its next pass. Returns {sync_id, next_run_unix}.",
+            host_schema(
+                json!({"sync_id": {"type": "string", "description": "The sync_id host.sync.create returned."}}),
+                &["sync_id"],
+            ),
+        ),
+    ]
+}
+
 #[inline(never)]
 fn host_tools_part_13() -> Vec<Tool> {
     vec![
@@ -5488,6 +5548,7 @@ fn host_tools_part_13() -> Vec<Tool> {
     tools.extend(host_tools_part_11());
     tools.extend(host_tools_part_12());
     tools.extend(host_tools_part_13());
+    tools.extend(host_tools_part_14());
     tools.extend(crate::verify::tools());
     if authenticated {
         tools.push(Tool::new(

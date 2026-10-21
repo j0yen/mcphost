@@ -1,0 +1,51 @@
+src/db.rs	blob_upsert	BEGIN IMMEDIATE	Immediate
+src/db.rs	bulk_insert_addr_bans_for_test	unchecked_transaction(	Deferred
+src/db.rs	cancel_run	unchecked_transaction(	Deferred
+src/db.rs	channel_post_insert	BEGIN IMMEDIATE	Immediate
+src/db.rs	claim_invite	BEGIN IMMEDIATE	Immediate
+src/db.rs	contact_decide	BEGIN IMMEDIATE	Immediate
+src/db.rs	contact_request	BEGIN IMMEDIATE	Immediate
+src/db.rs	delete_tenant	BEGIN IMMEDIATE	Immediate
+src/db.rs	doc_chunks_bulk_insert_for_test	unchecked_transaction(	Deferred
+src/db.rs	doc_chunks_bulk_insert_with_vectors_for_test	unchecked_transaction(	Deferred
+src/db.rs	doc_chunks_delete_for_document	BEGIN IMMEDIATE	Immediate
+src/db.rs	doc_chunks_insert_batch	BEGIN IMMEDIATE	Immediate
+src/db.rs	finalize_run	unchecked_transaction(	Deferred
+src/db.rs	insert_calls_bulk_spread_for_test	unchecked_transaction(	Deferred
+src/db.rs	insert_calls_rows_bulk_for_test	unchecked_transaction(	Deferred
+src/db.rs	insert_dead_letter	unchecked_transaction(	Deferred
+src/db.rs	insert_end_users_bulk_for_test	unchecked_transaction(	Deferred
+src/db.rs	insert_oauth_audit_rows_bulk_for_test	unchecked_transaction(	Deferred
+src/db.rs	interrupt_running_runs	unchecked_transaction(	Deferred
+src/db.rs	is_writable	BEGIN IMMEDIATE	Immediate
+src/db.rs	merge_observed_outputs	unchecked_transaction(	Deferred
+src/db.rs	mesh_purge	BEGIN IMMEDIATE	Immediate
+src/db.rs	migrate_0116_orgs	BEGIN;	Deferred
+src/db.rs	msg_block	BEGIN IMMEDIATE	Immediate
+src/db.rs	msg_reply	BEGIN IMMEDIATE	Immediate
+src/db.rs	msg_send	BEGIN IMMEDIATE	Immediate
+src/db.rs	reap_expired_runs	unchecked_transaction(	Deferred
+src/db.rs	record_call_traced	unchecked_transaction(	Deferred
+src/db.rs	record_test_call	unchecked_transaction(	Deferred
+src/db.rs	remove_vault_provider	BEGIN IMMEDIATE	Immediate
+src/db.rs	verify_owner_as	unchecked_transaction(	Deferred
+src/feedback.rs	cluster_feedback	unchecked_transaction(	Deferred
+src/index.rs	commit_batch	BEGIN IMMEDIATE	Immediate
+src/org.rs	create_org	BEGIN IMMEDIATE	Immediate
+src/org.rs	join_org	BEGIN IMMEDIATE	Immediate
+src/org.rs	leave_org	BEGIN IMMEDIATE	Immediate
+src/org.rs	remove_org_member	BEGIN IMMEDIATE	Immediate
+src/retention.rs	purge_expired_blobs	BEGIN IMMEDIATE	Immediate
+src/retention.rs	purge_expired_blobs	BEGIN IMMEDIATE	Immediate
+src/subkeys.rs	revoke_session_bound	unchecked_transaction(	Deferred
+src/subkeys.rs	revoke_sub_key_tree	unchecked_transaction(	Deferred
+src/subkeys.rs	sweep_idle_bound_sessions	unchecked_transaction(	Deferred
+src/tables.rs	insert_rows_sync	BEGIN IMMEDIATE	Immediate
+src/tables.rs	log_query	BEGIN IMMEDIATE	Immediate
+src/tables.rs	materialize_handle_sync	BEGIN IMMEDIATE	Immediate
+src/tasks.rs	sweep_at	BEGIN IMMEDIATE	Immediate
+src/tenant_clients.rs	add_oauth_client	BEGIN IMMEDIATE	Immediate
+src/tenant_clients.rs	claim_join	BEGIN IMMEDIATE	Immediate
+src/tenant_clients.rs	live_join_code	BEGIN IMMEDIATE	Immediate
+src/tenant_clients.rs	revoke_client	BEGIN IMMEDIATE	Immediate
+src/tenant_clients.rs	rotate_join_code	BEGIN IMMEDIATE	Immediate

@@ -170,6 +170,42 @@ impl McpHostHandler {
         })
     }
 
+    // PRD-mcphost-sync-source-registry-and-create: scheduled dataset mirrors.
+    pub(crate) fn arm_host_sync_create<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::sync::create(&self.state, tenant, &args).await
+        })
+    }
+
+    pub(crate) fn arm_host_sync_list<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, .. } = c;
+            crate::sync::list(&self.state, tenant).await
+        })
+    }
+
+    pub(crate) fn arm_host_sync_get<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::sync::get(&self.state, tenant, &args).await
+        })
+    }
+
+    pub(crate) fn arm_host_sync_delete<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::sync::delete(&self.state, tenant, &args).await
+        })
+    }
+
+    pub(crate) fn arm_host_sync_run_now<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            crate::sync::run_now(&self.state, tenant, &args).await
+        })
+    }
+
     pub(crate) fn arm_host_calls_list<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
         box_arm(async move {
             let ArmCtx { tenant, args, .. } = c;

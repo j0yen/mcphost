@@ -782,67 +782,67 @@ impl crate::db::Db {
             if pending.is_empty() {
                 return Ok(ClusterStats::default());
             }
-            let tx = conn.unchecked_transaction()?;
-            let mut touched: HashMap<String, FeedbackTheme> = HashMap::new();
-            for (id, feedback_id, kind, text, context_json, tenant_id, call_ids, created) in &pending {
-                let (code, tool) = context_code_tool(context_json.as_deref());
-                let prefix = normalize(text);
-                let theme_id = theme_id_for_key(&format!("{kind}|{code}|{tool}|{prefix}"));
-                if !touched.contains_key(&theme_id) {
-                    let existing = tx
-                        .query_row(
-                            &format!("SELECT {THEME_COLS} FROM feedback_themes WHERE theme_id = ?1"),
-                            params![theme_id],
-                            FeedbackTheme::from_row,
-                        )
-                        .optional()?;
-                    let theme = existing.unwrap_or_else(|| FeedbackTheme {
-                        theme_id: theme_id.clone(),
-                        kind: kind.clone(),
-                        error_code: code.clone(),
-                        tool: tool.clone(),
-                        text_prefix: prefix.clone(),
-                        count: 0,
-                        tenants: Vec::new(),
-                        example_ids: Vec::new(),
-                        call_ids: Vec::new(),
-                        first_seen_unix: *created,
-                        last_seen_unix: *created,
-                        status: THEME_STATUS_OPEN.to_string(),
-                    });
-                    touched.insert(theme_id.clone(), theme);
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
+                let mut touched: HashMap<String, FeedbackTheme> = HashMap::new();
+                for (id, feedback_id, kind, text, context_json, tenant_id, call_ids, created) in &pending {
+                    let (code, tool) = context_code_tool(context_json.as_deref());
+                    let prefix = normalize(text);
+                    let theme_id = theme_id_for_key(&format!("{kind}|{code}|{tool}|{prefix}"));
+                    if !touched.contains_key(&theme_id) {
+                        let existing = tx
+                            .query_row(
+                                &format!("SELECT {THEME_COLS} FROM feedback_themes WHERE theme_id = ?1"),
+                                params![theme_id],
+                                FeedbackTheme::from_row,
+                            )
+                            .optional()?;
+                        let theme = existing.unwrap_or_else(|| FeedbackTheme {
+                            theme_id: theme_id.clone(),
+                            kind: kind.clone(),
+                            error_code: code.clone(),
+                            tool: tool.clone(),
+                            text_prefix: prefix.clone(),
+                            count: 0,
+                            tenants: Vec::new(),
+                            example_ids: Vec::new(),
+                            call_ids: Vec::new(),
+                            first_seen_unix: *created,
+                            last_seen_unix: *created,
+                            status: THEME_STATUS_OPEN.to_string(),
+                        });
+                        touched.insert(theme_id.clone(), theme);
+                    }
+                    let theme = touched.get_mut(&theme_id).expect("inserted above");
+                    theme.count += 1;
+                    theme.first_seen_unix = theme.first_seen_unix.min(*created);
+                    theme.last_seen_unix = theme.last_seen_unix.max(*created);
+                    push_capped(&mut theme.example_ids, feedback_id, THEME_EXAMPLES_MAX);
+                    if let Some(t) = tenant_id {
+                        push_capped(&mut theme.tenants, &format!("t{t}"), THEME_TENANTS_MAX);
+                    }
+                    for c in serde_json::from_str::<Vec<String>>(call_ids).unwrap_or_default() {
+                        push_capped(&mut theme.call_ids, &c, THEME_CALL_IDS_MAX);
+                    }
+                    tx.execute("UPDATE feedback SET theme_id = ?1 WHERE id = ?2", params![theme_id, id])?;
                 }
-                let theme = touched.get_mut(&theme_id).expect("inserted above");
-                theme.count += 1;
-                theme.first_seen_unix = theme.first_seen_unix.min(*created);
-                theme.last_seen_unix = theme.last_seen_unix.max(*created);
-                push_capped(&mut theme.example_ids, feedback_id, THEME_EXAMPLES_MAX);
-                if let Some(t) = tenant_id {
-                    push_capped(&mut theme.tenants, &format!("t{t}"), THEME_TENANTS_MAX);
+                for t in touched.values() {
+                    tx.execute(
+                        "INSERT INTO feedback_themes (theme_id, kind, error_code, tool, text_prefix, count, \
+                         tenants_json, example_ids_json, call_ids_json, first_seen_unix, last_seen_unix, status) \
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12) \
+                         ON CONFLICT(theme_id) DO UPDATE SET count = excluded.count, \
+                         tenants_json = excluded.tenants_json, example_ids_json = excluded.example_ids_json, \
+                         call_ids_json = excluded.call_ids_json, first_seen_unix = excluded.first_seen_unix, \
+                         last_seen_unix = excluded.last_seen_unix",
+                        params![
+                            t.theme_id, t.kind, t.error_code, t.tool, t.text_prefix, t.count,
+                            json!(t.tenants).to_string(), json!(t.example_ids).to_string(),
+                            json!(t.call_ids).to_string(), t.first_seen_unix, t.last_seen_unix, t.status
+                        ],
+                    )?;
                 }
-                for c in serde_json::from_str::<Vec<String>>(call_ids).unwrap_or_default() {
-                    push_capped(&mut theme.call_ids, &c, THEME_CALL_IDS_MAX);
-                }
-                tx.execute("UPDATE feedback SET theme_id = ?1 WHERE id = ?2", params![theme_id, id])?;
-            }
-            for t in touched.values() {
-                tx.execute(
-                    "INSERT INTO feedback_themes (theme_id, kind, error_code, tool, text_prefix, count, \
-                     tenants_json, example_ids_json, call_ids_json, first_seen_unix, last_seen_unix, status) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12) \
-                     ON CONFLICT(theme_id) DO UPDATE SET count = excluded.count, \
-                     tenants_json = excluded.tenants_json, example_ids_json = excluded.example_ids_json, \
-                     call_ids_json = excluded.call_ids_json, first_seen_unix = excluded.first_seen_unix, \
-                     last_seen_unix = excluded.last_seen_unix",
-                    params![
-                        t.theme_id, t.kind, t.error_code, t.tool, t.text_prefix, t.count,
-                        json!(t.tenants).to_string(), json!(t.example_ids).to_string(),
-                        json!(t.call_ids).to_string(), t.first_seen_unix, t.last_seen_unix, t.status
-                    ],
-                )?;
-            }
-            tx.commit()?;
-            Ok(ClusterStats { rows_clustered: pending.len(), themes_touched: touched.len() })
+                Ok(ClusterStats { rows_clustered: pending.len(), themes_touched: touched.len() })
+            })
         })
         .await
     }

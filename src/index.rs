@@ -257,7 +257,7 @@ struct SourceSpec {
 /// A loopback-hosted instance (local dev, the test harness) may fetch
 /// loopback urls; every real deployment keeps them refused. The instance's
 /// own domain is always refused (`mcphost.dev` fetching itself).
-fn url_policy(state: &AppState) -> (String, bool) {
+pub(crate) fn url_policy(state: &AppState) -> (String, bool) {
     let own_host = reqwest::Url::parse(&state.public_url)
         .ok()
         .and_then(|u| u.host_str().map(str::to_string))
@@ -1521,8 +1521,7 @@ async fn commit_batch(
     state
         .db
         .with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", [])?;
-            let outcome: Result<(), AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 if batch.reset {
                     conn.execute("DELETE FROM index_chunks WHERE source_id = ?1", params![source_id])?;
                 }
@@ -1631,14 +1630,7 @@ async fn commit_batch(
                     ],
                 )?;
                 Ok(())
-            })();
-            match outcome {
-                Ok(()) => conn.execute("COMMIT", []).map(|_| ()).map_err(AppError::from),
-                Err(e) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                    Err(e)
-                }
-            }
+            })
         })
         .await
 }

@@ -13,9 +13,21 @@ mod assertion;
 mod ctrace;
 #[path = "support/oauth.rs"]
 mod oauth;
+#[path = "support/rgpt.rs"]
+mod rgpt;
 #[path = "support/whin.rs"]
 mod whin;
 
+#[path = "rgpt_ac04_webhook_inbox_generated_and_passes.rs"]
+mod rgpt_ac04_webhook_inbox_generated_and_passes;
+#[path = "rgpt_docs_qa_golden_path.rs"]
+mod rgpt_docs_qa_golden_path;
+#[path = "rgpt_first_run_golden_path.rs"]
+mod rgpt_first_run_golden_path;
+#[path = "rgpt_team_memory_golden_path.rs"]
+mod rgpt_team_memory_golden_path;
+#[path = "rgpt_webhook_inbox_golden_path.rs"]
+mod rgpt_webhook_inbox_golden_path;
 #[path = "rowpol_ac12_python_bridge_threads_end_user_through_table_query.rs"]
 mod rowpol_ac12_python_bridge_threads_end_user_through_table_query;
 #[path = "runenvelope_ac1_call_and_tool_run_parity.rs"]

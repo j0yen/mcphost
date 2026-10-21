@@ -871,6 +871,9 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
                 spliced.as_str(),
                 &crate::connect::render_llms_section(&crate::connect::committed_specs()),
             );
+            // PRD-mcphost-sync-source-registry-and-create R1: the generated
+            // `## Data sync` section, one bullet per `SourceKind`.
+            *spliced = crate::sync::splice_llms_section(spliced.as_str(), &crate::sync::render_llms_section());
         }
     }
     for (path, _current, spliced) in &mut support_docs {

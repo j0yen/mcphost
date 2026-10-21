@@ -1,0 +1,2 @@
+{"created_unix":1792598105,"every":"*/15 * * * *","existing":false,"kind":"csv_url","mode":"pull","next_run_unix":1792598400,"primary_key":null,"ref":"https://data.example.com/0.csv","secret":null,"status":"active","sync_id":"01M5FJRQMVAHM7H24FRVPNB1HF","table":"t0"}
+{"created_unix":1792598105,"every":"*/15 * * * *","existing":true,"kind":"csv_url","mode":"pull","next_run_unix":1792598400,"primary_key":null,"ref":"https://data.example.com/orders.csv","secret":null,"status":"active","sync_id":"01M5FJRQMYG1KTDTRVEHMAMMGD","table":"orders"}

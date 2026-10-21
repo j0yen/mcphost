@@ -159,7 +159,7 @@ fn counts_json(counts: &TenantDeleteCounts) -> Value {
 }
 
 /// The one delete path (`tenant_delete` and an implicit signup's rollback):
-/// `Db::delete_tenant_as` records `action` in `admin_events`, then every kind's
+/// `Db::delete_tenant` records `action` in `admin_events`, then every kind's
 /// `on_tenant_removed` and the tenant's table store go. `None` when the tenant
 /// is already gone.
 pub(crate) async fn delete_tenant_cascade(
@@ -167,7 +167,7 @@ pub(crate) async fn delete_tenant_cascade(
     namespace: &str,
     action: &'static str,
 ) -> Result<Option<(crate::db::Tenant, TenantDeleteCounts)>, AppError> {
-    let Some((deleted, counts)) = state.db.delete_tenant_as(namespace.to_string(), action).await? else {
+    let Some((deleted, counts)) = state.db.delete_tenant(namespace.to_string(), action).await? else {
         return Ok(None);
     };
     // PRD-mcphost-code-tools-warm-pool requirement 2 / AC3: same guarantee
@@ -272,7 +272,7 @@ pub async fn tenant_delete_by_prefix(state: &AppState, args: &Value) -> Result<V
     let mut total = TenantDeleteCounts::default();
     let mut deleted = Vec::with_capacity(matches.len());
     for t in &matches {
-        if let Some((deleted_tenant, counts)) = state.db.delete_tenant(t.namespace.clone()).await? {
+        if let Some((deleted_tenant, counts)) = state.db.delete_tenant(t.namespace.clone(), "tenant_delete").await? {
             for k in state.kinds.all() {
                 k.on_tenant_removed(deleted_tenant.id).await;
             }

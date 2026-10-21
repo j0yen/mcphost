@@ -349,8 +349,10 @@ const MIGRATION_0109: &str = include_str!("../migrations/0109_key_delegation.sql
 const MIGRATION_0128: &str = include_str!("../migrations/0128_audit_chain_acting_for.sql");
 /// PRD-mcphost-acting-for-in-ledger-and-audit R5: `logs.key_id`.
 const MIGRATION_0129: &str = include_str!("../migrations/0129_logs_key_id.sql");
+/// PRD-mcphost-sync-source-registry-and-create R2/R6: the `syncs` and `sync_runs` tables.
+const MIGRATION_0130: &str = include_str!("../migrations/0130_syncs.sql");
 /// PRD-mcphost-implicit-signup-mints-only-on-success R4: `signup_events.tenant_id`.
-const MIGRATION_0130: &str = include_str!("../migrations/0130_signup_events_tenant_id.sql");
+const MIGRATION_0131: &str = include_str!("../migrations/0131_signup_events_tenant_id.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
@@ -449,6 +451,29 @@ const TENANT_COLUMNS: &str = "id, namespace, display_name, key_hash, created_at,
     url_secret_hash, url_rotated_at, invited_by_tenant_id, last_seen_unix, \
     first_call_unix, first_publish_unix, first_own_call_unix, second_session_unix, \
     claimed_unix, paid_unix, created_session_id, claim_token_plain, paid_test_unix, funnel_origin, last_seen_version";
+
+/// Sentinel the writability probe's closure returns so `with_tx` rolls the
+/// probe transaction back: the write lock is taken and released, nothing
+/// commits.
+const WRITABLE_PROBE_SENTINEL: &str = "writable probe: lock taken, rolled back";
+
+/// The sync body of [`Db::is_writable`]: `with_tx(Immediate)` takes the
+/// write lock (fails with `SQLITE_READONLY`/`SQLITE_BUSY` when it cannot)
+/// and a sentinel `Err` from the closure rolls it back. `Err` when called
+/// with a transaction already open: `with_tx` would take the nested
+/// `SAVEPOINT` path, which takes no write lock and would report writable
+/// whatever the lock state.
+pub fn is_writable(conn: &Connection) -> Result<bool, AppError> {
+    if !conn.is_autocommit() {
+        return Err(AppError::Internal(
+            "is_writable called inside an open transaction: the probe would take no write lock".to_string(),
+        ));
+    }
+    let probe = crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |_| {
+        Err::<(), _>(AppError::Internal(WRITABLE_PROBE_SENTINEL.to_string()))
+    });
+    Ok(matches!(probe, Err(AppError::Internal(m)) if m == WRITABLE_PROBE_SENTINEL))
+}
 
 fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
     Ok(Tenant {
@@ -3267,7 +3292,9 @@ impl Db {
         Self::migrate_0127_org_digest(&conn)?;
         Self::migrate_0128_audit_chain_acting_for(&conn)?;
         Self::migrate_0129_logs_key_id(&conn)?;
-        Self::migrate_0130_signup_events_tenant_id(&conn)?;
+        // Wholly new tables, `IF NOT EXISTS` throughout: idempotent as-is.
+        conn.execute_batch(MIGRATION_0130)?;
+        Self::migrate_0131_signup_events_tenant_id(&conn)?;
         Ok(())
     }
 
@@ -3358,7 +3385,8 @@ impl Db {
     /// PRD-mcphost-org-model R1/R4: gated on the `orgs` table. The batch
     /// rebuilds `invites`, so `foreign_keys` is OFF around it (a DROP with
     /// it ON would cascade-delete every `invite_joins` row).
-    fn migrate_0116_orgs(conn: &Connection) -> Result<(), AppError> {
+    #[doc(hidden)]
+    pub fn migrate_0116_orgs(conn: &Connection) -> Result<(), AppError> {
         let has_table: bool = conn
             .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'orgs'")?
             .exists([])?;
@@ -3366,12 +3394,11 @@ impl Db {
             return Ok(());
         }
         conn.pragma_update(None, "foreign_keys", "OFF")?;
-        let ran = conn
-            .execute_batch(&format!("BEGIN;\n{MIGRATION_0116}\nCOMMIT;"))
-            .map_err(AppError::from);
-        if ran.is_err() {
-            let _ = conn.execute_batch("ROLLBACK");
-        }
+        // The batch holds no transaction statements: `with_tx` owns the
+        // all-or-nothing apply (`Deferred` = what the old bare `BEGIN;` meant).
+        let ran = crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |conn| {
+            conn.execute_batch(MIGRATION_0116).map_err(AppError::from)
+        });
         conn.pragma_update(None, "foreign_keys", "ON")?;
         ran
     }
@@ -3449,12 +3476,12 @@ impl Db {
 
     /// PRD-mcphost-acting-for-in-ledger-and-audit R5: gated on the column
     /// (the batch is a single `ALTER`, so a rerun must skip it).
-    fn migrate_0130_signup_events_tenant_id(conn: &Connection) -> Result<(), AppError> {
+    fn migrate_0131_signup_events_tenant_id(conn: &Connection) -> Result<(), AppError> {
         let has_column: bool = conn
             .prepare("SELECT 1 FROM pragma_table_info('signup_events') WHERE name = 'tenant_id'")?
             .exists([])?;
         if !has_column {
-            conn.execute_batch(MIGRATION_0130)?;
+            conn.execute_batch(MIGRATION_0131)?;
         }
         Ok(())
     }
@@ -4984,12 +5011,7 @@ impl Db {
     /// database without needing filesystem-permission tricks that a stray
     /// open fd would ignore).
     pub async fn is_writable(&self) -> bool {
-        self.with_conn(|conn| {
-            let result = conn.execute_batch("BEGIN IMMEDIATE; ROLLBACK;");
-            Ok(result.is_ok())
-        })
-        .await
-        .unwrap_or(false)
+        self.with_conn(is_writable).await.unwrap_or(false)
     }
 
     /// PRD-mcphost-golden-signals-self-probe R2: one timed-by-the-caller
@@ -7928,17 +7950,10 @@ impl Db {
     /// `Connection::transaction`, which needs `&mut Connection`) because
     /// this runs inside `with_conn`'s `&Connection` closure, behind the
     /// single shared connection's mutex.
+    ///
+    /// `action` is the `admin_events.action` it records: an implicit signup's
+    /// rollback is `implicit_signup_rolled_back`, not a delete an operator made.
     pub async fn delete_tenant(
-        &self,
-        namespace: String,
-    ) -> Result<Option<(Tenant, TenantDeleteCounts)>, AppError> {
-        self.delete_tenant_as(namespace, "tenant_delete").await
-    }
-
-    /// [`Self::delete_tenant`] with the `admin_events.action` it records: an
-    /// implicit signup's rollback is `implicit_signup_rolled_back`, not a delete an
-    /// operator made.
-    pub async fn delete_tenant_as(
         &self,
         namespace: String,
         action: &'static str,
@@ -8503,34 +8518,34 @@ impl Db {
     ) -> Result<(), AppError> {
         let now = now_unix();
         self.with_conn(move |conn| {
-            let tx = conn.unchecked_transaction()?;
-            let prior: Option<String> = tx
-                .query_row(
-                    "SELECT observed_outputs_json FROM tools WHERE tenant_id = ?1 AND name = ?2",
-                    params![tenant_id, name],
-                    |r| r.get(0),
-                )
-                .optional()?
-                .flatten();
-            let mut merged = prior
-                .and_then(|t| serde_json::from_str::<ObservedOutputs>(&t).ok())
-                .unwrap_or_default();
-            for (k, ty) in shape {
-                if merged.keys.len() >= OBSERVED_KEYS_CAP && !merged.keys.contains_key(&k) {
-                    continue;
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
+                let prior: Option<String> = tx
+                    .query_row(
+                        "SELECT observed_outputs_json FROM tools WHERE tenant_id = ?1 AND name = ?2",
+                        params![tenant_id, name],
+                        |r| r.get(0),
+                    )
+                    .optional()?
+                    .flatten();
+                let mut merged = prior
+                    .and_then(|t| serde_json::from_str::<ObservedOutputs>(&t).ok())
+                    .unwrap_or_default();
+                for (k, ty) in shape {
+                    if merged.keys.len() >= OBSERVED_KEYS_CAP && !merged.keys.contains_key(&k) {
+                        continue;
+                    }
+                    merged.keys.insert(k, ty);
                 }
-                merged.keys.insert(k, ty);
-            }
-            merged.runs_sampled += 1;
-            merged.last_unix = now;
-            let text = serde_json::to_string(&merged)
-                .map_err(|e| AppError::Internal(format!("observed outputs serialize: {e}")))?;
-            tx.execute(
-                "UPDATE tools SET observed_outputs_json = ?1 WHERE tenant_id = ?2 AND name = ?3",
-                params![text, tenant_id, name],
-            )?;
-            tx.commit()?;
-            Ok(())
+                merged.runs_sampled += 1;
+                merged.last_unix = now;
+                let text = serde_json::to_string(&merged)
+                    .map_err(|e| AppError::Internal(format!("observed outputs serialize: {e}")))?;
+                tx.execute(
+                    "UPDATE tools SET observed_outputs_json = ?1 WHERE tenant_id = ?2 AND name = ?3",
+                    params![text, tenant_id, name],
+                )?;
+                Ok(())
+            })
         })
         .await
     }
@@ -10398,8 +10413,7 @@ impl Db {
                 return Ok(false);
             }
 
-            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
-            let outcome: Result<(), AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 conn.execute(
                     "DELETE FROM vault_providers WHERE tenant_id = ?1 AND name = ?2",
                     params![tenant_id, name],
@@ -10410,14 +10424,7 @@ impl Db {
                     params![revoked_unix, tenant_id, name],
                 )?;
                 Ok(())
-            })();
-            match outcome {
-                Ok(()) => conn.execute("COMMIT", []).map_err(AppError::from)?,
-                Err(e) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                    return Err(e);
-                }
-            };
+            })?;
             Ok(true)
         })
         .await
@@ -11487,38 +11494,38 @@ impl Db {
             _ => (tenant_id, tool_name.clone()),
         };
         self.with_conn(move |conn| {
-            let tx = conn.unchecked_transaction()?;
-            tx.execute(
-                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id, auth_method, step_tool, error_summary, key_id, credential) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
-                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone(), auth_method, step_tool, error_summary, key_id, credential],
-            )?;
-            let call_id = tx.last_insert_rowid();
-            tx.execute(
-                "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, \
-                 status, progress_json, result_ref, error_class, started_unix, finished_unix, \
-                 duration_ms, deadline_s, attempt, end_user_subject, end_user_issuer, end_user_method) \
-                 VALUES (?1, ?2, ?3, ?12, NULL, NULL, ?4, NULL, NULL, ?5, ?6, ?7, ?8, NULL, 1, ?9, ?10, ?11)",
-                params![
-                    run_id,
-                    run_tenant_id,
-                    run_tool_name,
-                    run_status,
-                    run_error_class,
-                    started_unix,
-                    started_unix + (duration_ms / 1000).max(0),
-                    duration_ms,
-                    end_user_subject,
-                    end_user_issuer,
-                    end_user_method,
-                    crate::run_enums::RunTrigger::Call.as_str(),
-                ],
-            )?;
-            if let Some(trace) = &trace {
-                insert_call_trace(&tx, call_id, trace_tenant_id, trace, started_unix)?;
-            }
-            tx.commit()?;
-            Ok(call_id)
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
+                tx.execute(
+                    "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id, auth_method, step_tool, error_summary, key_id, credential) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
+                    params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone(), auth_method, step_tool, error_summary, key_id, credential],
+                )?;
+                let call_id = tx.last_insert_rowid();
+                tx.execute(
+                    "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, \
+                     status, progress_json, result_ref, error_class, started_unix, finished_unix, \
+                     duration_ms, deadline_s, attempt, end_user_subject, end_user_issuer, end_user_method) \
+                     VALUES (?1, ?2, ?3, ?12, NULL, NULL, ?4, NULL, NULL, ?5, ?6, ?7, ?8, NULL, 1, ?9, ?10, ?11)",
+                    params![
+                        run_id,
+                        run_tenant_id,
+                        run_tool_name,
+                        run_status,
+                        run_error_class,
+                        started_unix,
+                        started_unix + (duration_ms / 1000).max(0),
+                        duration_ms,
+                        end_user_subject,
+                        end_user_issuer,
+                        end_user_method,
+                        crate::run_enums::RunTrigger::Call.as_str(),
+                    ],
+                )?;
+                if let Some(trace) = &trace {
+                    insert_call_trace(tx, call_id, trace_tenant_id, trace, started_unix)?;
+                }
+                Ok(call_id)
+            })
         })
         .await
     }
@@ -11545,18 +11552,18 @@ impl Db {
         let key_id = crate::subkeys::current_key_id();
         let credential = crate::calllog::resolve(None, key_id, None).as_str();
         self.with_conn(move |conn| {
-            let tx = conn.unchecked_transaction()?;
-            tx.execute(
-                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, outcome, origin, origin_detail, error_code, key_id, credential) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'test', ?8, ?9, ?7, ?10, ?11)",
-                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_code, origin, origin_detail, key_id, credential],
-            )?;
-            let call_id = tx.last_insert_rowid();
-            if let Some(trace) = &trace {
-                insert_call_trace(&tx, call_id, tenant_id, trace, started_unix)?;
-            }
-            tx.commit()?;
-            Ok(call_id)
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
+                tx.execute(
+                    "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, outcome, origin, origin_detail, error_code, key_id, credential) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'test', ?8, ?9, ?7, ?10, ?11)",
+                    params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_code, origin, origin_detail, key_id, credential],
+                )?;
+                let call_id = tx.last_insert_rowid();
+                if let Some(trace) = &trace {
+                    insert_call_trace(tx, call_id, tenant_id, trace, started_unix)?;
+                }
+                Ok(call_id)
+            })
         })
         .await
     }
@@ -12199,39 +12206,39 @@ impl Db {
     /// `max` (counting each in `dead_letter_drops`).
     pub async fn insert_dead_letter(&self, letter: NewDeadLetter, max: i64) -> Result<(), AppError> {
         self.with_conn(move |conn| {
-            let tx = conn.unchecked_transaction()?;
-            tx.execute(
-                "INSERT INTO dead_letters (id, tenant_id, trigger_id, received_unix, reason_code, \
-                 headers_json, body, truncated, run_id, error_class) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-                params![
-                    letter.id,
-                    letter.tenant_id,
-                    letter.trigger_id,
-                    letter.received_unix,
-                    letter.reason_code,
-                    letter.headers_json,
-                    letter.body,
-                    letter.truncated,
-                    letter.run_id,
-                    letter.error_class
-                ],
-            )?;
-            let evicted = tx.execute(
-                "DELETE FROM dead_letters WHERE tenant_id = ?1 AND rowid IN ( \
-                   SELECT rowid FROM dead_letters WHERE tenant_id = ?1 \
-                   ORDER BY received_unix DESC, rowid DESC LIMIT -1 OFFSET ?2)",
-                params![letter.tenant_id, max.max(0)],
-            )?;
-            if evicted > 0 {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
                 tx.execute(
-                    "INSERT INTO dead_letter_drops (tenant_id, dropped) VALUES (?1, ?2) \
-                     ON CONFLICT(tenant_id) DO UPDATE SET dropped = dropped + ?2",
-                    params![letter.tenant_id, evicted as i64],
+                    "INSERT INTO dead_letters (id, tenant_id, trigger_id, received_unix, reason_code, \
+                     headers_json, body, truncated, run_id, error_class) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                    params![
+                        letter.id,
+                        letter.tenant_id,
+                        letter.trigger_id,
+                        letter.received_unix,
+                        letter.reason_code,
+                        letter.headers_json,
+                        letter.body,
+                        letter.truncated,
+                        letter.run_id,
+                        letter.error_class
+                    ],
                 )?;
-            }
-            tx.commit()?;
-            Ok(())
+                let evicted = tx.execute(
+                    "DELETE FROM dead_letters WHERE tenant_id = ?1 AND rowid IN ( \
+                       SELECT rowid FROM dead_letters WHERE tenant_id = ?1 \
+                       ORDER BY received_unix DESC, rowid DESC LIMIT -1 OFFSET ?2)",
+                    params![letter.tenant_id, max.max(0)],
+                )?;
+                if evicted > 0 {
+                    tx.execute(
+                        "INSERT INTO dead_letter_drops (tenant_id, dropped) VALUES (?1, ?2) \
+                         ON CONFLICT(tenant_id) DO UPDATE SET dropped = dropped + ?2",
+                        params![letter.tenant_id, evicted as i64],
+                    )?;
+                }
+                Ok(())
+            })
         })
         .await
     }
@@ -12622,21 +12629,21 @@ impl Db {
         self.with_conn(move |conn| {
             // PRD-mcphost-delegation-bound-to-run-or-session R4: the run's
             // terminal write and its bound keys' revocation are one commit.
-            let tx = conn.unchecked_transaction()?;
-            let affected = tx.execute(
-                "UPDATE runs SET status = ?1, result_ref = ?2, error_class = ?3, \
-                 error_data_json = ?4, finished_unix = ?5, duration_ms = ?6 \
-                 WHERE id = ?7 AND tenant_id = ?8 AND status IN ('running', 'queued')",
-                params![
-                    status, result_ref, error_class, error_data_json, finished_unix, duration_ms,
-                    run_id, tenant_id
-                ],
-            )?;
-            if affected > 0 {
-                crate::subkeys::revoke_bound_on(&tx, tenant_id, ("run", &run_id), &format!("run_{status}"), finished_unix)?;
-            }
-            tx.commit()?;
-            Ok(affected > 0)
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
+                let affected = tx.execute(
+                    "UPDATE runs SET status = ?1, result_ref = ?2, error_class = ?3, \
+                     error_data_json = ?4, finished_unix = ?5, duration_ms = ?6 \
+                     WHERE id = ?7 AND tenant_id = ?8 AND status IN ('running', 'queued')",
+                    params![
+                        status, result_ref, error_class, error_data_json, finished_unix, duration_ms,
+                        run_id, tenant_id
+                    ],
+                )?;
+                if affected > 0 {
+                    crate::subkeys::revoke_bound_on(tx, tenant_id, ("run", &run_id), &format!("run_{status}"), finished_unix)?;
+                }
+                Ok(affected > 0)
+            })
         })
         .await
     }
@@ -12663,18 +12670,18 @@ impl Db {
             if before.status != "queued" && before.status != "running" {
                 return Ok(None);
             }
-            let tx = conn.unchecked_transaction()?;
-            let affected = tx.execute(
-                "UPDATE runs SET status = ?4, finished_unix = ?1 \
-                 WHERE id = ?2 AND tenant_id = ?3 AND status IN ('queued', 'running')",
-                params![now, run_id, tenant_id, crate::run_enums::RunStatus::Cancelled.as_str()],
-            )?;
-            if affected == 0 {
-                return Ok(None); // lost a race with the executor's own finalize.
-            }
-            crate::subkeys::revoke_bound_on(&tx, tenant_id, ("run", &run_id), "run_cancelled", now)?;
-            tx.commit()?;
-            Ok(Some(before))
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
+                let affected = tx.execute(
+                    "UPDATE runs SET status = ?4, finished_unix = ?1 \
+                     WHERE id = ?2 AND tenant_id = ?3 AND status IN ('queued', 'running')",
+                    params![now, run_id, tenant_id, crate::run_enums::RunStatus::Cancelled.as_str()],
+                )?;
+                if affected == 0 {
+                    return Ok(None); // lost a race with the executor's own finalize.
+                }
+                crate::subkeys::revoke_bound_on(tx, tenant_id, ("run", &run_id), "run_cancelled", now)?;
+                Ok(Some(before))
+            })
         })
         .await
     }
@@ -12951,29 +12958,29 @@ impl Db {
     pub async fn reap_expired_runs(&self) -> Result<i64, AppError> {
         let now = now_unix();
         self.with_conn(move |conn| {
-            let tx = conn.unchecked_transaction()?;
-            let reaped: Vec<(i64, String)> = {
-                let mut stmt = tx.prepare(
-                    "SELECT tenant_id, id FROM runs \
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
+                let reaped: Vec<(i64, String)> = {
+                    let mut stmt = tx.prepare(
+                        "SELECT tenant_id, id FROM runs \
+                         WHERE status = 'running' AND deadline_s IS NOT NULL AND started_unix IS NOT NULL \
+                         AND (started_unix + deadline_s) < ?1",
+                    )?;
+                    stmt.query_map(params![now], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?
+                };
+                let affected = tx.execute(
+                    "UPDATE runs SET status = ?2, error_class = ?3, \
+                     finished_unix = ?1, duration_ms = (?1 - started_unix) * 1000 \
                      WHERE status = 'running' AND deadline_s IS NOT NULL AND started_unix IS NOT NULL \
                      AND (started_unix + deadline_s) < ?1",
+                    params![now, crate::run_enums::RunStatus::Error.as_str(), "interrupted"],
                 )?;
-                stmt.query_map(params![now], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?
-            };
-            let affected = tx.execute(
-                "UPDATE runs SET status = ?2, error_class = ?3, \
-                 finished_unix = ?1, duration_ms = (?1 - started_unix) * 1000 \
-                 WHERE status = 'running' AND deadline_s IS NOT NULL AND started_unix IS NOT NULL \
-                 AND (started_unix + deadline_s) < ?1",
-                params![now, crate::run_enums::RunStatus::Error.as_str(), "interrupted"],
-            )?;
-            // PRD-mcphost-delegation-bound-to-run-or-session R4: a reaped run is
-            // terminal too, so its bound keys die with it.
-            for (tenant_id, run_id) in &reaped {
-                crate::subkeys::revoke_bound_on(&tx, *tenant_id, ("run", run_id), "run_error", now)?;
-            }
-            tx.commit()?;
-            Ok(affected as i64)
+                // PRD-mcphost-delegation-bound-to-run-or-session R4: a reaped run is
+                // terminal too, so its bound keys die with it.
+                for (tenant_id, run_id) in &reaped {
+                    crate::subkeys::revoke_bound_on(tx, *tenant_id, ("run", run_id), "run_error", now)?;
+                }
+                Ok(affected as i64)
+            })
         })
         .await
     }
@@ -12986,22 +12993,22 @@ impl Db {
     pub async fn interrupt_running_runs(&self) -> Result<i64, AppError> {
         let now = now_unix();
         self.with_conn(move |conn| {
-            let tx = conn.unchecked_transaction()?;
-            let running: Vec<(i64, String)> = {
-                let mut stmt = tx.prepare("SELECT tenant_id, id FROM runs WHERE status = 'running'")?;
-                stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?
-            };
-            let affected = tx.execute(
-                "UPDATE runs SET status = ?2, error_class = ?3, \
-                 finished_unix = ?1, duration_ms = (?1 - COALESCE(started_unix, ?1)) * 1000 \
-                 WHERE status = 'running'",
-                params![now, crate::run_enums::RunStatus::Error.as_str(), "interrupted"],
-            )?;
-            for (tenant_id, run_id) in &running {
-                crate::subkeys::revoke_bound_on(&tx, *tenant_id, ("run", run_id), "run_error", now)?;
-            }
-            tx.commit()?;
-            Ok(affected as i64)
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
+                let running: Vec<(i64, String)> = {
+                    let mut stmt = tx.prepare("SELECT tenant_id, id FROM runs WHERE status = 'running'")?;
+                    stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?
+                };
+                let affected = tx.execute(
+                    "UPDATE runs SET status = ?2, error_class = ?3, \
+                     finished_unix = ?1, duration_ms = (?1 - COALESCE(started_unix, ?1)) * 1000 \
+                     WHERE status = 'running'",
+                    params![now, crate::run_enums::RunStatus::Error.as_str(), "interrupted"],
+                )?;
+                for (tenant_id, run_id) in &running {
+                    crate::subkeys::revoke_bound_on(tx, *tenant_id, ("run", run_id), "run_error", now)?;
+                }
+                Ok(affected as i64)
+            })
         })
         .await
     }
@@ -14938,8 +14945,7 @@ impl Db {
         let now_ms = crate::state::now_unix_ms();
         let now = now_rfc3339();
         self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
-            let outcome: Result<SendOutcome, AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 if let Some(key) = &dedupe_key
                     && let Some(hit) = Self::dedupe_hit(conn, sender.id, key, now_ms)?
                 {
@@ -15036,14 +15042,7 @@ impl Db {
                     deduped: false,
                     created_at: now.clone(),
                 })
-            })();
-            match &outcome {
-                Ok(_) => conn.execute("COMMIT", []).map(|_| ()).map_err(AppError::from)?,
-                Err(_) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                }
-            }
-            outcome
+            })
         })
         .await
     }
@@ -15070,8 +15069,7 @@ impl Db {
         let now_ms = crate::state::now_unix_ms();
         let now = now_rfc3339();
         self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
-            let outcome: Result<SendOutcome, AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 if let Some(key) = &dedupe_key
                     && let Some(hit) = Self::dedupe_hit(conn, sender.id, key, now_ms)?
                 {
@@ -15141,14 +15139,7 @@ impl Db {
                     deduped: false,
                     created_at: now.clone(),
                 })
-            })();
-            match &outcome {
-                Ok(_) => conn.execute("COMMIT", []).map(|_| ()).map_err(AppError::from)?,
-                Err(_) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                }
-            }
-            outcome
+            })
         })
         .await
     }
@@ -15494,8 +15485,7 @@ impl Db {
         let now = now_rfc3339();
         let now_ms = crate::state::now_unix_ms();
         self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
-            let result: Result<(), AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 conn.execute(
                     "INSERT OR IGNORE INTO blocks (tenant_id, blocked_tenant_id, created_at) VALUES (?1, ?2, ?3)",
                     params![tenant_id, blocked_tenant_id, now],
@@ -15511,14 +15501,7 @@ impl Db {
                     params![tenant_id, blocked_tenant_id],
                 )?;
                 Ok(())
-            })();
-            match &result {
-                Ok(()) => conn.execute("COMMIT", []).map(|_| ()).map_err(AppError::from)?,
-                Err(_) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                }
-            }
-            result
+            })
         })
         .await
     }
@@ -15644,8 +15627,7 @@ impl Db {
         let now_ms = crate::state::now_unix_ms();
         let now = now_rfc3339();
         self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
-            let outcome: Result<crate::consent::ExistingPendingRequest, AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 let to_id: Option<i64> = if let Some(h) = to_address.strip_prefix('@') {
                     let handle = h.to_lowercase();
                     conn.query_row(
@@ -15725,14 +15707,7 @@ impl Db {
                     note,
                     created_at: now,
                 })
-            })();
-            match &outcome {
-                Ok(_) => conn.execute("COMMIT", []).map(|_| ()).map_err(AppError::from)?,
-                Err(_) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                }
-            }
-            outcome
+            })
         })
         .await
     }
@@ -15895,8 +15870,7 @@ impl Db {
         let now = now_rfc3339();
         let now_ms = crate::state::now_unix_ms();
         self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
-            let outcome: Result<ContactDecision, AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 type Row = (i64, i64, String, i64);
                 let row: Option<Row> = conn
                     .query_row(
@@ -15958,14 +15932,7 @@ impl Db {
                     other_address,
                     decided_at: now.clone(),
                 })
-            })();
-            match &outcome {
-                Ok(_) => conn.execute("COMMIT", []).map(|_| ()).map_err(AppError::from)?,
-                Err(_) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                }
-            }
-            outcome
+            })
         })
         .await
     }
@@ -16796,8 +16763,7 @@ impl Db {
         let now = now_rfc3339();
         let now_ms = crate::state::now_unix_ms();
         self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
-            let outcome: Result<ChannelPostOutcome, AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 let seq: i64 = conn.query_row(
                     "SELECT COALESCE(MAX(seq), 0) + 1 FROM channel_posts WHERE channel_id = ?1",
                     params![channel_id],
@@ -16824,14 +16790,7 @@ impl Db {
                     ],
                 )?;
                 Ok(ChannelPostOutcome { id: post_id, channel_id: channel_id.clone(), seq, created_at: now.clone() })
-            })();
-            match &outcome {
-                Ok(_) => conn.execute("COMMIT", []).map(|_| ()).map_err(AppError::from)?,
-                Err(_) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                }
-            }
-            outcome
+            })
         })
         .await
     }
@@ -17291,18 +17250,18 @@ impl Db {
     ) -> Result<(), AppError> {
         let started_at = crate::state::rfc3339_from_unix(started_unix);
         self.with_conn(move |conn| {
-            let tx = conn.unchecked_transaction()?;
-            {
-                let mut stmt = tx.prepare(
-                    "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, \
-                     duration_ms, ok, error_class, credential) VALUES (?1, 'test_tool', ?2, ?3, 0, 1, NULL, 'primary')",
-                )?;
-                for _ in 0..count {
-                    stmt.execute(params![tenant_id, started_at, started_unix])?;
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
+                {
+                    let mut stmt = tx.prepare(
+                        "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, \
+                         duration_ms, ok, error_class, credential) VALUES (?1, 'test_tool', ?2, ?3, 0, 1, NULL, 'primary')",
+                    )?;
+                    for _ in 0..count {
+                        stmt.execute(params![tenant_id, started_at, started_unix])?;
+                    }
                 }
-            }
-            tx.commit()?;
-            Ok(())
+                Ok(())
+            })
         })
         .await
     }
@@ -17376,19 +17335,19 @@ impl Db {
             })
             .collect();
         self.with_conn(move |conn| {
-            let tx = conn.unchecked_transaction()?;
-            {
-                let mut stmt = tx.prepare(
-                    "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, \
-                     duration_ms, ok, error_class, credential) VALUES (?1, ?2, ?3, ?4, 25, 1, NULL, 'primary')",
-                )?;
-                for i in 0..count {
-                    let (started_at, started_unix) = &days[(i % spread_days) as usize];
-                    stmt.execute(params![tenant_id, tool_name, started_at, started_unix])?;
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
+                {
+                    let mut stmt = tx.prepare(
+                        "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, \
+                         duration_ms, ok, error_class, credential) VALUES (?1, ?2, ?3, ?4, 25, 1, NULL, 'primary')",
+                    )?;
+                    for i in 0..count {
+                        let (started_at, started_unix) = &days[(i % spread_days) as usize];
+                        stmt.execute(params![tenant_id, tool_name, started_at, started_unix])?;
+                    }
                 }
-            }
-            tx.commit()?;
-            Ok(())
+                Ok(())
+            })
         })
         .await
     }
@@ -17415,8 +17374,7 @@ impl Db {
             if dry_run {
                 return Ok(MeshPurgeCounts { messages_removed, channel_posts_removed });
             }
-            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
-            let outcome: Result<(), AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 conn.execute("DELETE FROM messages WHERE created_unix_ms < ?1", params![cutoff_unix_ms])?;
                 conn.execute(
                     "DELETE FROM channel_posts WHERE created_unix_ms < ?1",
@@ -17450,14 +17408,7 @@ impl Db {
                     params![now_rfc3339(), "mesh.purge", detail],
                 )?;
                 Ok(())
-            })();
-            match &outcome {
-                Ok(()) => conn.execute("COMMIT", []).map(|_| ()).map_err(AppError::from)?,
-                Err(_) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                }
-            }
-            outcome?;
+            })?;
             Ok(MeshPurgeCounts { messages_removed, channel_posts_removed })
         })
         .await
@@ -17748,19 +17699,19 @@ impl Db {
     pub async fn bulk_insert_addr_bans_for_test(&self, count: i64, expires_at: i64) -> Result<(), AppError> {
         let created_at = now_unix();
         self.with_conn(move |conn| {
-            let tx = conn.unchecked_transaction()?;
-            {
-                let mut stmt = tx.prepare(
-                    "INSERT INTO bans (subject_kind, subject, reason, public, created_at, created_by, expires_at, auto, hits) \
-                     VALUES ('addr', ?1, 'load fixture', 0, ?2, 'test', ?3, 0, 0)",
-                )?;
-                for i in 0..count {
-                    let subject = format!("10.{}.{}.{}", (i >> 16) & 0xff, (i >> 8) & 0xff, i & 0xff);
-                    stmt.execute(params![subject, created_at, expires_at])?;
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
+                {
+                    let mut stmt = tx.prepare(
+                        "INSERT INTO bans (subject_kind, subject, reason, public, created_at, created_by, expires_at, auto, hits) \
+                         VALUES ('addr', ?1, 'load fixture', 0, ?2, 'test', ?3, 0, 0)",
+                    )?;
+                    for i in 0..count {
+                        let subject = format!("10.{}.{}.{}", (i >> 16) & 0xff, (i >> 8) & 0xff, i & 0xff);
+                        stmt.execute(params![subject, created_at, expires_at])?;
+                    }
                 }
-            }
-            tx.commit()?;
-            Ok(())
+                Ok(())
+            })
         })
         .await
     }
@@ -17774,28 +17725,28 @@ impl Db {
     pub async fn doc_chunks_bulk_insert_for_test(&self, tenant_id: i64, count: i64) -> Result<(), AppError> {
         let now = now_unix();
         self.with_conn(move |conn| {
-            let tx = conn.unchecked_transaction()?;
-            {
-                let mut stmt = tx.prepare(
-                    "INSERT INTO doc_chunks \
-                         (tenant_id, document_id, version, chunk_no, chunk_offset, len, text, vector, name, created_at) \
-                     VALUES (?1, ?2, 1, 0, 0, ?3, ?4, NULL, ?2, ?5)",
-                )?;
-                let mut fts_stmt = tx.prepare(
-                    "INSERT INTO doc_chunks_fts (text, tenant_id, document_id, chunk_no) VALUES (?1, ?2, ?3, 0)",
-                )?;
-                for i in 0..count {
-                    let document_id = format!("perfdoc{i}");
-                    let text = format!(
-                        "Filler passage content for load testing purposes, marker wordmarker{i} \
-                         sits here among ordinary prose words repeated for bulk padding."
-                    );
-                    stmt.execute(params![tenant_id, document_id, text.len() as i64, text, now])?;
-                    fts_stmt.execute(params![text, tenant_id, document_id])?;
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
+                {
+                    let mut stmt = tx.prepare(
+                        "INSERT INTO doc_chunks \
+                             (tenant_id, document_id, version, chunk_no, chunk_offset, len, text, vector, name, created_at) \
+                         VALUES (?1, ?2, 1, 0, 0, ?3, ?4, NULL, ?2, ?5)",
+                    )?;
+                    let mut fts_stmt = tx.prepare(
+                        "INSERT INTO doc_chunks_fts (text, tenant_id, document_id, chunk_no) VALUES (?1, ?2, ?3, 0)",
+                    )?;
+                    for i in 0..count {
+                        let document_id = format!("perfdoc{i}");
+                        let text = format!(
+                            "Filler passage content for load testing purposes, marker wordmarker{i} \
+                             sits here among ordinary prose words repeated for bulk padding."
+                        );
+                        stmt.execute(params![tenant_id, document_id, text.len() as i64, text, now])?;
+                        fts_stmt.execute(params![text, tenant_id, document_id])?;
+                    }
                 }
-            }
-            tx.commit()?;
-            Ok(())
+                Ok(())
+            })
         })
         .await
     }
@@ -17816,31 +17767,31 @@ impl Db {
     ) -> Result<(), AppError> {
         let now = now_unix();
         self.with_conn(move |conn| {
-            let tx = conn.unchecked_transaction()?;
-            {
-                let mut stmt = tx.prepare(
-                    "INSERT INTO doc_chunks \
-                         (tenant_id, document_id, version, chunk_no, chunk_offset, len, text, vector, name, created_at) \
-                     VALUES (?1, ?2, 1, 0, 0, ?3, ?4, ?5, ?2, ?6)",
-                )?;
-                let mut fts_stmt = tx.prepare(
-                    "INSERT INTO doc_chunks_fts (text, tenant_id, document_id, chunk_no) VALUES (?1, ?2, ?3, 0)",
-                )?;
-                for i in 0..count {
-                    let document_id = format!("hybridperfdoc{i}");
-                    let text = format!(
-                        "Filler passage content for load testing purposes, marker wordmarker{i} \
-                         sits here among ordinary prose words repeated for bulk padding."
-                    );
-                    let mut vector = vec![0.1f32; dims];
-                    vector[0] = (i % 97) as f32;
-                    let blob = crate::docs_index::encode_vector(&vector);
-                    stmt.execute(params![tenant_id, document_id, text.len() as i64, text, blob, now])?;
-                    fts_stmt.execute(params![text, tenant_id, document_id])?;
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
+                {
+                    let mut stmt = tx.prepare(
+                        "INSERT INTO doc_chunks \
+                             (tenant_id, document_id, version, chunk_no, chunk_offset, len, text, vector, name, created_at) \
+                         VALUES (?1, ?2, 1, 0, 0, ?3, ?4, ?5, ?2, ?6)",
+                    )?;
+                    let mut fts_stmt = tx.prepare(
+                        "INSERT INTO doc_chunks_fts (text, tenant_id, document_id, chunk_no) VALUES (?1, ?2, ?3, 0)",
+                    )?;
+                    for i in 0..count {
+                        let document_id = format!("hybridperfdoc{i}");
+                        let text = format!(
+                            "Filler passage content for load testing purposes, marker wordmarker{i} \
+                             sits here among ordinary prose words repeated for bulk padding."
+                        );
+                        let mut vector = vec![0.1f32; dims];
+                        vector[0] = (i % 97) as f32;
+                        let blob = crate::docs_index::encode_vector(&vector);
+                        stmt.execute(params![tenant_id, document_id, text.len() as i64, text, blob, now])?;
+                        fts_stmt.execute(params![text, tenant_id, document_id])?;
+                    }
                 }
-            }
-            tx.commit()?;
-            Ok(())
+                Ok(())
+            })
         })
         .await
     }
@@ -18089,8 +18040,7 @@ impl Db {
     ) -> Result<BlobRow, AppError> {
         let BlobWrite { name, mime, bytes, sha256, expires_at, keep_versions } = write;
         self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
-            let out: Result<BlobRow, AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 let existing: Option<BlobRow> = conn
                     .query_row(
                         &format!("SELECT {BLOB_COLS} FROM blobs WHERE tenant_id = ?1 AND name = ?2"),
@@ -18143,17 +18093,7 @@ impl Db {
                     blob_row_from,
                 )
                 .map_err(AppError::from)
-            })();
-            match out {
-                Ok(row) => {
-                    conn.execute("COMMIT", []).map_err(AppError::from)?;
-                    Ok(row)
-                }
-                Err(e) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                    Err(e)
-                }
-            }
+            })
         })
         .await
     }
@@ -18269,8 +18209,7 @@ impl Db {
     pub async fn blob_purge_expired(&self, tenant_id: i64, now: i64) -> Result<(i64, i64), AppError> {
         let data_dir = self.data_dir().to_path_buf();
         self.with_conn(move |conn| {
-            let out = crate::retention::purge_expired_blobs(conn, &data_dir, now, Some(tenant_id))
-                .map_err(AppError::from)?;
+            let out = crate::retention::purge_expired_blobs(conn, &data_dir, now, Some(tenant_id))?;
             Ok((out.rows, out.bytes))
         })
         .await
@@ -20657,8 +20596,7 @@ impl Db {
         document_id: String,
     ) -> Result<i64, AppError> {
         self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
-            let outcome: Result<i64, AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 conn.execute(
                     "DELETE FROM doc_chunks_fts WHERE tenant_id = ?1 AND document_id = ?2",
                     params![tenant_id, document_id],
@@ -20668,17 +20606,7 @@ impl Db {
                     params![tenant_id, document_id],
                 )?;
                 Ok(n as i64)
-            })();
-            match outcome {
-                Ok(v) => {
-                    conn.execute("COMMIT", []).map_err(AppError::from)?;
-                    Ok(v)
-                }
-                Err(e) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                    Err(e)
-                }
-            }
+            })
         })
         .await
     }
@@ -20710,8 +20638,7 @@ impl Db {
         now: i64,
     ) -> Result<(), AppError> {
         self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
-            let outcome: Result<(), AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 for (chunk_no, offset, len, text, vector) in &chunks {
                     conn.execute(
                         "INSERT INTO doc_chunks \
@@ -20730,17 +20657,7 @@ impl Db {
                     )?;
                 }
                 Ok(())
-            })();
-            match outcome {
-                Ok(()) => {
-                    conn.execute("COMMIT", []).map_err(AppError::from)?;
-                    Ok(())
-                }
-                Err(e) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                    Err(e)
-                }
-            }
+            })
         })
         .await
     }
@@ -20950,20 +20867,20 @@ impl Db {
         base_last_seen: i64,
     ) -> Result<(), AppError> {
         self.with_conn(move |conn| {
-            let tx = conn.unchecked_transaction()?;
-            {
-                let mut stmt = tx.prepare(
-                    "INSERT INTO end_users (tenant_id, subject, issuer, first_seen, last_seen, calls_total) \
-                     VALUES (?1, ?2, NULL, ?3, ?3, 1)",
-                )?;
-                for i in 0..count {
-                    let subject = format!("user{i:07}");
-                    let last_seen = base_last_seen - i;
-                    stmt.execute(params![tenant_id, subject, last_seen])?;
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
+                {
+                    let mut stmt = tx.prepare(
+                        "INSERT INTO end_users (tenant_id, subject, issuer, first_seen, last_seen, calls_total) \
+                         VALUES (?1, ?2, NULL, ?3, ?3, 1)",
+                    )?;
+                    for i in 0..count {
+                        let subject = format!("user{i:07}");
+                        let last_seen = base_last_seen - i;
+                        stmt.execute(params![tenant_id, subject, last_seen])?;
+                    }
                 }
-            }
-            tx.commit()?;
-            Ok(())
+                Ok(())
+            })
         })
         .await
     }
@@ -21384,28 +21301,28 @@ impl Db {
             None => (None, "owner".to_string()),
         };
         self.with_conn(move |conn| {
-            let tx = conn.unchecked_transaction()?;
-            let set = tx.execute(
-                "UPDATE tenants SET owner_verified_at = ?1, owner_method = ?2, owner_handle = ?3, \
-                 owner_email = COALESCE(?5, owner_email), \
-                 claim_token_hash = NULL, claim_expires_at = NULL, claim_token_plain = NULL \
-                 WHERE id = ?4 AND owner_verified_at IS NULL",
-                params![now, method, handle, tenant_id, email],
-            )?;
-            if set == 0 {
-                let seen: Option<String> = tx
-                    .query_row("SELECT owner_method FROM tenants WHERE id = ?1", params![tenant_id], |r| r.get(0))
-                    .optional()?
-                    .flatten();
-                return Ok(OwnerVerifyOutcome::Already { method: seen.unwrap_or_else(|| "email".to_string()) });
-            }
-            tx.execute(
-                "INSERT INTO tenant_audit (tenant_id, subject, action, detail, created_unix) \
-                 VALUES (?1, ?5, ?2, ?3, ?4)",
-                params![tenant_id, crate::verify::audit_kind(&method), handle, now, audit_subject],
-            )?;
-            tx.commit()?;
-            Ok(OwnerVerifyOutcome::Verified)
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
+                let set = tx.execute(
+                    "UPDATE tenants SET owner_verified_at = ?1, owner_method = ?2, owner_handle = ?3, \
+                     owner_email = COALESCE(?5, owner_email), \
+                     claim_token_hash = NULL, claim_expires_at = NULL, claim_token_plain = NULL \
+                     WHERE id = ?4 AND owner_verified_at IS NULL",
+                    params![now, method, handle, tenant_id, email],
+                )?;
+                if set == 0 {
+                    let seen: Option<String> = tx
+                        .query_row("SELECT owner_method FROM tenants WHERE id = ?1", params![tenant_id], |r| r.get(0))
+                        .optional()?
+                        .flatten();
+                    return Ok(OwnerVerifyOutcome::Already { method: seen.unwrap_or_else(|| "email".to_string()) });
+                }
+                tx.execute(
+                    "INSERT INTO tenant_audit (tenant_id, subject, action, detail, created_unix) \
+                     VALUES (?1, ?5, ?2, ?3, ?4)",
+                    params![tenant_id, crate::verify::audit_kind(&method), handle, now, audit_subject],
+                )?;
+                Ok(OwnerVerifyOutcome::Verified)
+            })
         })
         .await
     }
@@ -22630,18 +22547,18 @@ impl Db {
         let ts = now_unix();
         let padding = "x".repeat(pad_bytes);
         self.with_conn(move |conn| {
-            let tx = conn.unchecked_transaction()?;
-            {
-                let mut stmt = tx.prepare(
-                    "INSERT INTO oauth_audit (tenant_id, ts, event, client_id, method, reason) \
-                     VALUES (?1, ?2, 'token', 'bulk_test_client', 'dcr', ?3)",
-                )?;
-                for _ in 0..count {
-                    stmt.execute(params![tenant_id, ts, padding])?;
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
+                {
+                    let mut stmt = tx.prepare(
+                        "INSERT INTO oauth_audit (tenant_id, ts, event, client_id, method, reason) \
+                         VALUES (?1, ?2, 'token', 'bulk_test_client', 'dcr', ?3)",
+                    )?;
+                    for _ in 0..count {
+                        stmt.execute(params![tenant_id, ts, padding])?;
+                    }
                 }
-            }
-            tx.commit()?;
-            Ok(())
+                Ok(())
+            })
         })
         .await
     }
@@ -24634,8 +24551,7 @@ impl Db {
         let now = now_unix();
         let created_at = now_rfc3339();
         self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
-            let outcome: Result<ClaimedInvite, AppError> = (|| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
                 let sql = format!("SELECT {INVITE_COLUMNS} FROM invites WHERE code_hash = ?1");
                 let invite: InviteRow = conn
                     .query_row(&sql, params![code_hash], invite_row_from_row)
@@ -24800,17 +24716,7 @@ impl Db {
                 let sql = format!("SELECT {TENANT_COLUMNS} FROM tenants WHERE id = ?1");
                 let tenant = conn.query_row(&sql, params![tenant_id], tenant_from_row)?;
                 Ok(ClaimedInvite { tenant, inviter_namespace, shared })
-            })();
-            match outcome {
-                Ok(claimed) => {
-                    conn.execute("COMMIT", []).map_err(AppError::from)?;
-                    Ok(claimed)
-                }
-                Err(e) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                    Err(e)
-                }
-            }
+            })
         })
         .await
     }

@@ -11,6 +11,8 @@ mod common;
 mod assertion;
 #[path = "support/busyaudit.rs"]
 mod busyaudit;
+#[path = "support/dryspt_lint.rs"]
+mod dryspt_lint;
 #[path = "support/oauth.rs"]
 mod oauth;
 #[path = "support/oauthclient.rs"]
@@ -504,6 +506,16 @@ mod synthetic_ac08_admin_tenants_field;
 mod synthetic_ac09_metering_filter;
 #[path = "synthetic_ac10_healthz_paying_real.rs"]
 mod synthetic_ac10_healthz_paying_real;
+#[path = "syreg_ac03_create_returns_sync_id_and_next_run.rs"]
+mod syreg_ac03_create_returns_sync_id_and_next_run;
+#[path = "syreg_ac04_create_validation_errors.rs"]
+mod syreg_ac04_create_validation_errors;
+#[path = "syreg_ac05_sixth_sync_hits_syncs_max.rs"]
+mod syreg_ac05_sixth_sync_hits_syncs_max;
+#[path = "syreg_ac06_tick_writes_one_receipt_per_slot.rs"]
+mod syreg_ac06_tick_writes_one_receipt_per_slot;
+#[path = "syreg_ac07_delete_keeps_the_table.rs"]
+mod syreg_ac07_delete_keeps_the_table;
 #[path = "tablemodel_ac01_key_id_measure_category_date_roles.rs"]
 mod tablemodel_ac01_key_id_measure_category_date_roles;
 #[path = "tablemodel_ac02_foreign_key_detected_against_customers_id.rs"]
@@ -758,6 +770,16 @@ mod ttfs_ac05_under_five_tenants_shows_n_and_nulls;
 mod ttfs_ac06_admin_has_no_activation_and_unclassified_excluded;
 #[path = "ttfs_ac07_by_client_only_for_groups_of_five.rs"]
 mod ttfs_ac07_by_client_only_for_groups_of_five;
+#[path = "txnhelp_ac01_lint_zero.rs"]
+mod txnhelp_ac01_lint_zero;
+#[path = "txnhelp_ac02_lock_parity.rs"]
+mod txnhelp_ac02_lock_parity;
+#[path = "txnhelp_ac03_is_writable_probe.rs"]
+mod txnhelp_ac03_is_writable_probe;
+#[path = "txnhelp_ac04_migration_0116_atomic.rs"]
+mod txnhelp_ac04_migration_0116_atomic;
+#[path = "txnhelp_ac05_append_real_then_dry_run.rs"]
+mod txnhelp_ac05_append_real_then_dry_run;
 #[path = "umeta_ac01_meta_usage_matches_refusal_and_status.rs"]
 mod umeta_ac01_meta_usage_matches_refusal_and_status;
 #[path = "umeta_ac02_golden_echo_result_unchanged.rs"]

@@ -482,6 +482,8 @@ mod ndead_ac03_unknown_kind_names_registry_kind;
 mod ndeadb_ac01_upstream_403_next_call;
 #[path = "ndeadb_ac03_signup_rate_limited_next_call.rs"]
 mod ndeadb_ac03_signup_rate_limited_next_call;
+#[path = "ndeadc_ac01_anonymous_quickstart_unknown_kind.rs"]
+mod ndeadc_ac01_anonymous_quickstart_unknown_kind;
 #[path = "nexttool_ac01_anonymous_starter_set.rs"]
 mod nexttool_ac01_anonymous_starter_set;
 #[path = "nexttool_ac03_signup_emits_list_changed.rs"]
