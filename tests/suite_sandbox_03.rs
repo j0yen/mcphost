@@ -14,8 +14,6 @@ mod elicit_session;
 mod host;
 #[path = "support/promptkind.rs"]
 mod promptkind;
-#[path = "support/rgpt.rs"]
-mod rgpt;
 #[path = "support/sampling_session.rs"]
 mod sampling_session;
 #[path = "support/serve.rs"]
@@ -163,6 +161,8 @@ mod msmp_ac05_daily_token_quota_refuses_before_asking;
 mod msmp_ac06_tool_logs_hold_counts_never_the_prompt;
 #[path = "ndead_ac04_python_args_invalid_coerces_example.rs"]
 mod ndead_ac04_python_args_invalid_coerces_example;
+#[path = "ndeadc_ac02_anonymous_quickstart_valid_kinds.rs"]
+mod ndeadc_ac02_anonymous_quickstart_valid_kinds;
 #[path = "pgm_ac05_skip_when_semaphore_nearly_full.rs"]
 mod pgm_ac05_skip_when_semaphore_nearly_full;
 #[path = "plainenv_ac01_env_reaches_process.rs"]
@@ -233,13 +233,3 @@ mod retshape_ac03_list_access_is_a_named_will_fail;
 mod retshape_ac04_envelope_behaves_as_plain_dict;
 #[path = "retshape_ac05_starter_example_shows_rows_access.rs"]
 mod retshape_ac05_starter_example_shows_rows_access;
-#[path = "rgpt_ac04_webhook_inbox_generated_and_passes.rs"]
-mod rgpt_ac04_webhook_inbox_generated_and_passes;
-#[path = "rgpt_docs_qa_golden_path.rs"]
-mod rgpt_docs_qa_golden_path;
-#[path = "rgpt_first_run_golden_path.rs"]
-mod rgpt_first_run_golden_path;
-#[path = "rgpt_team_memory_golden_path.rs"]
-mod rgpt_team_memory_golden_path;
-#[path = "rgpt_webhook_inbox_golden_path.rs"]
-mod rgpt_webhook_inbox_golden_path;
