@@ -128,5 +128,8 @@ Generated from the error registry's `data_keys`; do not hand-edit. Keys a code's
 
 | code | data keys |
 |---|---|
+| `connection_missing` | `provider`, `hint` |
 | `invalid_spec` | `kind`, `field`, `reason`, `fields`, `minimal_specs`, `docs_url`, `fix`, `known_secret_names` |
+| `quota_syncs_max` | `limit`, `used` |
+| `schedule_too_frequent` | `min_seconds` |
 

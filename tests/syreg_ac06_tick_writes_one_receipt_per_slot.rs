@@ -42,4 +42,10 @@ async fn syreg_ac06_due_sync_gets_one_receipt_and_moves_to_the_next_slot() {
     // Same slot: nothing is due, so no second receipt.
     mcphost::triggers::tick_once(&server.state).await.expect("second tick");
     assert_eq!(mcphost::sync::receipt_count_for_test(&server.state, &sync_id).await.expect("count"), 1);
+
+    // `host.sync.run_now` makes the sync due again; this call also feeds the
+    // outsch harness capture the verb's real `structuredContent`.
+    let ran = call(&client, "host.sync.run_now", json!({"sync_id": sync_id})).await;
+    assert_eq!(ran["sync_id"], json!(sync_id), "{ran}");
+    assert!(ran["next_run_unix"].as_i64().is_some_and(|n| n >= now), "run_now stamps next_run_unix: {ran}");
 }

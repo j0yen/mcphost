@@ -1,0 +1,2 @@
+{"syncs":[]}
+{"syncs":[{"created_unix":1792598105,"every":"*/15 * * * *","kind":"csv_url","mode":"pull","next_run_unix":1792598400,"primary_key":null,"ref":"https://data.example.com/orders.csv","secret":null,"status":"active","sync_id":"01M5FJRQNC77GSEPGJNVP3HD4E","table":"orders"}]}
