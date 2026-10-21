@@ -8,6 +8,8 @@
 //! findings.
 #![allow(dead_code)]
 
+pub mod testoauth;
+
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
@@ -702,6 +704,25 @@ impl TestServer {
         let (mut state, data_dir) = bare_app_state().await;
         state.kinds = kinds;
         state.drafter = Some(drafter);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind ephemeral port");
+        let addr = listener.local_addr().expect("local addr");
+        state.public_url = format!("http://{addr}");
+        let state = Arc::new(state);
+        let serve_state = state.clone();
+        tokio::spawn(async move {
+            let _ = mcphost::http::serve_on_listener(listener, serve_state).await;
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        Self { base_url: format!("http://{addr}"), data_dir, state }
+    }
+
+    /// PRD-mcphost-connect-start-and-callback: a server whose AppState carries
+    /// `connect_providers` (host-owned OAuth credentials for `testprov`).
+    pub async fn start_with_connect_providers(connect_providers: mcphost::connect::ConnectProviders) -> Self {
+        let (mut state, data_dir) = bare_app_state().await;
+        state.connect_providers = connect_providers;
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind ephemeral port");

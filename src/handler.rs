@@ -5284,6 +5284,57 @@ fn host_tools_part_13() -> Vec<Tool> {
                 &[],
             ),
         ),
+        // PRD-mcphost-connect-start-and-callback R1/R4: tenant-level connections.
+        Tool::new(
+            "host.connect.start",
+            "Mint a one-time link (valid 15 min) a human opens to connect an upstream provider \
+             (host.connect.providers lists them) to this tenant with the host's own OAuth app; \
+             no end user and no OAuth app of your own needed. Give the url to your user, then \
+             poll host.connect.list until the provider shows connected: true. Never returns a \
+             token. Errors: provider_unavailable {provider, reason}, scope_unknown {unknown}.",
+            host_schema(
+                json!({
+                    // No `enum`: the handler resolves the name through `Provider::parse` (the
+                    // same registry the enum would copy), because the schema is the committed
+                    // prod contract while a `test-support` build also accepts `testprov`.
+                    "provider": {
+                        "type": "string",
+                        "description": format!("One of {} (host.connect.providers lists them).",
+                            crate::connect::public_provider_names_csv()),
+                    },
+                    "scopes": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Exact scope names from host.connect.providers; omit for the provider's default set.",
+                    },
+                }),
+                &["provider"],
+            ),
+        ),
+        Tool::new(
+            "host.connect.revoke",
+            "Disconnect an upstream provider from this tenant: marks the stored connection \
+             revoked (revoked_reason \"tenant_revoke\") and asks the provider to revoke the \
+             token when it supports that (provider_revoked true|false). Safe to repeat. \
+             host.connect.list then carries a reconnect_url.",
+            host_schema(
+                json!({
+                    "provider": {
+                        "type": "string",
+                        "description": format!("One of {} (host.connect.providers lists them).",
+                            crate::connect::public_provider_names_csv()),
+                    },
+                }),
+                &["provider"],
+            ),
+        ),
+        Tool::new(
+            "host.connect.list",
+            "List this tenant's upstream connections, one row per provider: connected, scopes, \
+             expires_at, connected_at, last_refreshed_at, revoked_at, revoked_reason, and a \
+             reconnect_url when revoked. Never returns a token or a client id.",
+            host_schema(json!({}), &[]),
+        ),
         // PRD-mcphost-upstream-token-vault requirement 2 (AC9, AC11): never
         // returns client_secret; re-setting an existing name is free
         // against vault_providers_max (see vault::provider_set).

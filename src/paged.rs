@@ -660,6 +660,7 @@ pub const UNPAGED_VERBS: &[(&str, &str)] = &[
     ("host.blob.list", UNPAGED_NAME_WINDOW),
     ("host.catalog.search", UNPAGED_WINDOW),
     ("host.changelog", UNPAGED_EXPORT),
+    ("host.connect.list", UNPAGED_REGISTRY),
     ("host.connect.providers", UNPAGED_REGISTRY),
     ("host.docs.search", UNPAGED_RANKED),
     ("host.doctor", UNPAGED_WINDOW),

@@ -56,6 +56,10 @@ const SHALLOW: &[&str] = &[
     "call:host.blob.put",
     "call:host.call_trace",
     "call:host.channel.open",
+    // `provider` is validated by `connect::Provider::parse`, not a schema `enum` (a test-support
+    // build also accepts `testprov`, which the committed contract must not list).
+    "call:host.connect.revoke",
+    "call:host.connect.start",
     "call:host.docs.delete",
     "call:host.docs.get",
     "call:host.docs.index_config",
@@ -85,7 +89,7 @@ const SHALLOW: &[&str] = &[
     "call:host.uptime.create",
     "call:host.vault.provider_set",
 ];
-const SHALLOW_CEILING: usize = 34;
+const SHALLOW_CEILING: usize = 36;
 
 /// The test fn's name as libtest lists it: a suite binary nests this file under
 /// its module (`verbfwd_ac08_forward_stack_budget::<fn>`), a standalone one does not.

@@ -2667,6 +2667,77 @@
     ],
     "type": "object"
   },
+  "host.connect.list": {
+    "properties": {
+      "providers": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "connected": {
+              "type": "boolean"
+            },
+            "connected_at": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "expires_at": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "last_refreshed_at": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "reconnect_url": {
+              "type": "string"
+            },
+            "revoked_at": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "revoked_reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scopes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "connected",
+            "connected_at",
+            "expires_at",
+            "last_refreshed_at",
+            "name",
+            "revoked_at",
+            "revoked_reason",
+            "scopes"
+          ]
+        }
+      }
+    },
+    "required": [
+      "providers"
+    ],
+    "type": "object"
+  },
   "host.connect.providers": {
     "properties": {
       "count": {
@@ -2718,6 +2789,65 @@
     "required": [
       "count",
       "providers"
+    ],
+    "type": "object"
+  },
+  "host.connect.revoke": {
+    "properties": {
+      "provider": {
+        "type": "string"
+      },
+      "provider_revoked": {
+        "type": "boolean"
+      },
+      "revoked": {
+        "type": "boolean"
+      },
+      "revoked_at": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "revoked_reason": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "required": [
+      "provider",
+      "provider_revoked",
+      "revoked",
+      "revoked_at",
+      "revoked_reason"
+    ],
+    "type": "object"
+  },
+  "host.connect.start": {
+    "properties": {
+      "expires_in_s": {
+        "type": "integer"
+      },
+      "provider": {
+        "type": "string"
+      },
+      "scopes": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "url": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "expires_in_s",
+      "provider",
+      "scopes",
+      "url"
     ],
     "type": "object"
   },

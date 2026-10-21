@@ -19,6 +19,7 @@ use std::borrow::Cow;
 use std::collections::BTreeSet;
 
 pub mod codegen;
+pub mod flow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refresh {
@@ -59,6 +60,8 @@ pub struct ProviderSpec {
     pub client_secret_env: Cow<'static, str>,
     pub extra_authorize_params: AuthorizeParams,
     pub docs_url: Cow<'static, str>,
+    /// Where `host.connect.revoke` asks the provider to revoke a token, when it has one.
+    pub revoke_url: Option<Cow<'static, str>>,
 }
 
 include!(concat!(env!("OUT_DIR"), "/providers_gen.rs"));
@@ -155,6 +158,7 @@ impl codegen::Row {
             client_secret_env: s(&self.client_secret_env),
             extra_authorize_params: Cow::Owned(extra),
             docs_url: s(&self.docs_url),
+            revoke_url: self.revoke_url.as_deref().map(s),
         }
     }
 }
@@ -174,12 +178,34 @@ pub fn all_specs() -> &'static [ProviderSpec] {
 pub const REASON_CLIENT_ID: &str = "client_id_not_configured";
 pub const REASON_CLIENT_SECRET: &str = "client_secret_not_configured";
 
+/// A provider's host-owned OAuth client credentials, snapshotted with the
+/// availability verdicts. `Debug` redacts both values.
+#[derive(Clone)]
+struct ClientCreds {
+    id: String,
+    secret: String,
+}
+
+impl std::fmt::Debug for ClientCreds {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ClientCreds(<redacted>)")
+    }
+}
+
 /// Which providers the host has credentials for, snapshotted once at startup
-/// (`AppState.connect_providers`). Holds only the verdict, never an env value.
+/// (`AppState.connect_providers`). Holds the verdicts and, for the tenant-level
+/// flow ([`flow`]), the client credentials themselves; neither is ever printed.
 #[derive(Debug, Clone, Default)]
 pub struct ConnectProviders {
     /// `(provider name, reason it is unavailable)`; `None` means available.
     verdicts: Vec<(Cow<'static, str>, Option<&'static str>)>,
+    /// `(provider name, credentials)` for every available provider.
+    creds: Vec<(Cow<'static, str>, ClientCreds)>,
+    /// `(provider name, auth_url, token_url)` replacing the registry's URLs;
+    /// only `test-support` builds can set one (see [`Self::with_test_endpoints`]).
+    endpoint_overrides: Vec<(String, String, String)>,
+    /// `(provider name, revoke_url)`, test-support only like the above.
+    revoke_overrides: Vec<(String, String)>,
 }
 
 impl ConnectProviders {
@@ -188,21 +214,60 @@ impl ConnectProviders {
     }
 
     pub fn from_lookup(specs: &[ProviderSpec], lookup: impl Fn(&str) -> Option<String>) -> Self {
-        let present = |k: &str| lookup(k).is_some_and(|v| !v.is_empty());
+        let value = |k: &str| lookup(k).filter(|v| !v.is_empty());
+        let mut creds = Vec::new();
         let verdicts = specs
             .iter()
             .map(|s| {
-                let reason = if !present(&s.client_id_env) {
-                    Some(REASON_CLIENT_ID)
-                } else if !present(&s.client_secret_env) {
-                    Some(REASON_CLIENT_SECRET)
-                } else {
-                    None
+                let (id, secret) = (value(&s.client_id_env), value(&s.client_secret_env));
+                let reason = match (id, secret) {
+                    (None, _) => Some(REASON_CLIENT_ID),
+                    (Some(_), None) => Some(REASON_CLIENT_SECRET),
+                    (Some(id), Some(secret)) => {
+                        creds.push((s.name.clone(), ClientCreds { id, secret }));
+                        None
+                    }
                 };
                 (s.name.clone(), reason)
             })
             .collect();
-        Self { verdicts }
+        Self { verdicts, creds, endpoint_overrides: Vec::new(), revoke_overrides: Vec::new() }
+    }
+
+    /// The host-owned `(client_id, client_secret)` for an available provider.
+    pub fn credentials(&self, name: &str) -> Option<(&str, &str)> {
+        self.creds.iter().find(|(n, _)| n.as_ref() == name).map(|(_, c)| (c.id.as_str(), c.secret.as_str()))
+    }
+
+    /// Point a `test-support`-only provider (`testprov`) at a local OAuth server.
+    #[cfg(feature = "test-support")]
+    pub fn with_test_endpoints(mut self, name: &str, auth_url: &str, token_url: &str) -> Self {
+        self.endpoint_overrides.push((name.to_string(), auth_url.to_string(), token_url.to_string()));
+        self
+    }
+
+    /// Give a `test-support`-only provider a revocation endpoint.
+    #[cfg(feature = "test-support")]
+    pub fn with_test_revoke_url(mut self, name: &str, revoke_url: &str) -> Self {
+        self.revoke_overrides.push((name.to_string(), revoke_url.to_string()));
+        self
+    }
+
+    /// The provider's revocation endpoint, if it has one.
+    pub fn revoke_url(&self, spec: &ProviderSpec) -> Option<String> {
+        match self.revoke_overrides.iter().find(|(n, _)| n.as_str() == spec.name.as_ref()) {
+            Some((_, u)) => Some(u.clone()),
+            None => spec.revoke_url.as_ref().map(|u| u.to_string()),
+        }
+    }
+
+    /// `(auth_url, token_url)` for a provider: the registry's, unless a test
+    /// override replaced them.
+    pub fn endpoints(&self, spec: &ProviderSpec) -> (String, String) {
+        match self.endpoint_overrides.iter().find(|(n, _, _)| n.as_str() == spec.name.as_ref()) {
+            Some((_, a, t)) => (a.clone(), t.clone()),
+            None => (spec.auth_url.to_string(), spec.token_url.to_string()),
+        }
     }
 
     pub fn reason(&self, name: &str) -> Option<&'static str> {

@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-connection-provider-registry.md",
-  "intent_slug": "mcphost-connection-provider-registry",
-  "root_motivation": "Who: the agent asking which upstream providers it can connect, with which scope names; Joe adding a provider; the builder of every later connection PRD. What: one providers.toml describes a provider and every surface derives from it. Why not today: vault.rs hardcoded three presets, llms.txt repeated the names by hand and no surface said which scopes a provider accepts or whether the host had credentials for it.",
-  "user_persona": "An agent that calls host.connect.providers and picks a provider that is available before promising its user anything; Operator Joe who adds a [name] block to providers.toml plus two env vars and deploys.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-connect-start-and-callback.md",
+  "intent_slug": "mcphost-connect-start-and-callback",
+  "root_motivation": "Who: the autonomous agent holding only a tenant key, whose user said 'list my open GitHub issues'; the user, who should click one link. What: connect a provider at tenant level with the host's own OAuth app. Why not today: vault connect_link needs end_user self and a tenant-registered OAuth app, so prod held zero vault_tokens rows.",
+  "user_persona": "An agent that calls host.connect.start, hands the returned url to its user, and polls host.connect.list until the provider shows connected; Operator Joe who sets MCPHOST_CONNECT_<PROVIDER>_CLIENT_ID/_SECRET on the host.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,60 +14,59 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given providers.toml with testprov added, When the crate builds and the five surfaces are read, Then host.connect.providers, the provider enum, docs/connections.md, www/llms.txt and the callback route table all contain testprov with no edit outside providers.toml.",
-      "test": "tests/cprov_ac01_one_providers_toml_edit_reaches_every_surface.rs"
+      "description": "Given a fresh implicit-signup tenant with no end user and no vault_providers row, When host.connect.start {provider: testprov} is followed through the test OAuth server and the callback runs, Then host.connect.list shows testprov connected with the default scope and vault_tokens holds one row with end_user_subject tenant and a non-null refresh_enc.",
+      "test": "tests/cstart_ac01_tenant_connects_testprov_with_one_link.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a hand edit that adds fakeprov to any one of the five surfaces, When the drift test runs, Then it fails naming the surface and the extra name.",
-      "test": "tests/cprov_ac02_provider_surfaces_cannot_drift.rs"
+      "description": "Given github with MCPHOST_CONNECT_GITHUB_CLIENT_ID unset, When host.connect.start {provider: github} runs, Then the error is provider_unavailable {provider, reason: client_id_not_configured} and no handoff row is written.",
+      "test": "tests/cstart_ac02_unconfigured_provider_is_unavailable_and_writes_nothing.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given MCPHOST_CONNECT_GITHUB_CLIENT_ID set and the secret unset, When host.connect.providers runs, Then github has available false, reason client_secret_not_configured and the response contains neither env value.",
-      "test": "tests/cprov_ac03_availability_comes_from_env_and_never_leaks.rs"
+      "description": "Given host.connect.start {provider: testprov, scopes: [bogus]}, When it runs, Then the error is scope_unknown {unknown: [bogus]}.",
+      "test": "tests/cstart_ac03_unknown_scope_is_scope_unknown.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given Provider::GOOGLE, When validate_scopes is given a valid spreadsheets.readonly URL and bogus, Then it returns Err([bogus]).",
-      "test": "tests/cprov_ac04_validate_scopes_names_the_unknown.rs"
+      "description": "Given a redeemed handoff token, When /connections/go/<token> is opened again, Then it returns 410 and no second authorization starts; When the callback is called with that state, Then it returns 400 state_invalid.",
+      "test": "tests/cstart_ac04_redeemed_link_is_gone_and_state_is_invalid.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given host.vault.provider_set with preset zzz, When it runs, Then the error is invalid_params and its message lists every name in Provider::ALL.",
-      "test": "tests/cprov_ac05_unknown_preset_lists_every_provider.rs"
+      "description": "Given the test server redirects with ?error=access_denied, When the callback runs, Then the page names access_denied, the handoff is used, and vault_tokens has no row.",
+      "test": "tests/cstart_ac05_access_denied_uses_the_handoff_and_stores_nothing.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given an anonymous host.quickstart, When it runs, Then connections.providers_available and providers_unavailable are present and partition Provider::ALL.",
-      "test": "tests/cprov_ac06_quickstart_partitions_providers.rs"
+      "description": "Given a connected testprov, When host.connect.revoke runs twice, Then both calls succeed, the row has revoked_reason tenant_revoke, and host.connect.list carries a reconnect_url.",
+      "test": "tests/cstart_ac06_revoke_is_idempotent_and_list_offers_reconnect.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given a providers.toml row missing token_url, When the crate builds, Then build.rs fails naming the provider and the field.",
-      "test": "tests/cprov_ac07_missing_field_fails_the_build_naming_it.rs"
+      "description": "Given two concurrent host.connect.start calls for the same provider, When both callbacks complete, Then exactly one vault_tokens row exists and it holds the tokens of the later callback.",
+      "test": "tests/cstart_ac07_concurrent_starts_leave_one_row_with_the_later_callback.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod after this lands, When llms.txt is fetched, Then the Upstream connections section names host.connect.providers and every provider in the table (Live; deferred, operator-provisioned).",
-      "test": "deferred -- operator-provisioned: live curl of prod llms.txt after deploy."
+      "description": "Given prod after this lands, When the callback is hit with a bogus state, Then it answers 400 and the body names state_invalid (Live; deferred, operator-provisioned).",
+      "test": "deferred -- operator-provisioned: live curl of prod's /connections/callback/github with a bogus state after deploy."
     }
   ],
   "scope": [
-    "providers.toml (single source) + build.rs/src/connect/codegen.rs generate connect::Provider, ALL, parse and the SPECS table.",
-    "src/connect/mod.rs: availability from env (AppState.connect_providers), validate_scopes, renderers for docs/connections.md, the llms.txt section, the provider enum and the callback route table.",
-    "host.connect.providers tool, host.quickstart connections block, host.vault.provider_set presets via Provider::parse (preset_urls deleted).",
-    "scripts/connections-doc-check.sh and tests/cprov_ac02 drift test."
+    "src/connect/flow.rs: host.connect.start/list/revoke and the GET /connections/go/{token} and /connections/callback/{provider} routes.",
+    "ConnectProviders carries the host-owned client credentials (never printed); vault_tokens rows use end_user_subject 'tenant' and vault_handoff_tokens the same single-use PKCE handoff as the vault.",
+    "providers.toml gains an optional revoke_url; tests/common/testoauth.rs is the in-repo test OAuth server behind testprov."
   ],
   "non_goals": [
-    "The connect flow itself (PRD 2); per-tenant BYOO providers; real provider registrations; R8 /connections.json (P2, no AC)."
+    "Using the stored token in a tool; scope enforcement at publish; audit rows; changing the end-user vault path."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -76,31 +75,35 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "testprov": "AC1 appends the testprov row to a copy of providers.toml in the test; the committed table never lists it, so prod's list cannot show it."
+      "no_schema_change": "The handoff row's oauth_state column carries '<random>:<scopes>' and a 'used:' prefix once the callback consumed it; vault_tokens' UNIQUE key admits the 'tenant' subject."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why could a provider be named on one surface and missing on another?",
-      "a": "Each surface kept its own hand-written list (vault.rs presets, llms.txt prose)."
+      "q": "Why can an agent with only a tenant key not connect GitHub?",
+      "a": "connect_link requires a verified end user and a tenant-registered OAuth app."
     },
     {
       "why": 2,
-      "q": "Why were there hand lists?",
-      "a": "No table existed that carried a provider's urls, scopes and credentials together."
+      "q": "Why does it need those?",
+      "a": "The vault was built for end-user tokens with the tenant's own client credentials."
     },
     {
       "why": 3,
-      "q": "Why does a generated table fix it?",
-      "a": "Every surface reads one table and a drift test fails any surface whose set differs."
+      "q": "Why does a tenant-level subject fix it?",
+      "a": "A sentinel subject plus the host's own client ids needs neither an end user nor an app."
     }
   ],
-  "created_at": "2026-10-11T00:00:00Z",
+  "created_at": "2026-10-20T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Where does testprov live (cfg test-support vs providers.toml)?",
-      "resolution": "Test-only: AC1 appends it to the toml text and drives the same generator and renderers; the committed table has no testprov."
+      "question": "Is the OAuth state the handoff token itself?",
+      "resolution": "Yes (PRD R2); the callback looks the row up by its hash, requires /connections/go to have redeemed it, and marks it used with an oauth_state prefix, so no new column."
+    },
+    {
+      "question": "Why is the provider argument not a schema enum?",
+      "resolution": "The committed contract is the prod one while a test-support build also accepts testprov; Provider::parse is the same registry and answers invalid_params listing the names."
     }
   ]
 }

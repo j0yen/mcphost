@@ -553,7 +553,7 @@
     "description": "Every non-MCP HTTP route mcphost serves, generated from the router's own route table.",
     "title": "mcphost HTTP API",
     "version": "0.112.24",
-    "x-contract-version": "1.ec774c92f978"
+    "x-contract-version": "1.4e543cea8990"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -1357,6 +1357,117 @@
           "onboarding"
         ],
         "x-mcphost-auth": "anonymous"
+      }
+    },
+    "/connections/callback/{provider}": {
+      "get": {
+        "operationId": "get_connections_callback_provider",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "502": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          }
+        },
+        "summary": "Tenant-level upstream connection code exchange",
+        "tags": [
+          "claim"
+        ],
+        "x-mcphost-auth": "token"
+      }
+    },
+    "/connections/go/{token}": {
+      "get": {
+        "operationId": "get_connections_go_token",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Found"
+          },
+          "410": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Gone"
+          }
+        },
+        "summary": "Redeem a one-time tenant-level upstream connection link",
+        "tags": [
+          "claim"
+        ],
+        "x-mcphost-auth": "token"
       }
     },
     "/contract.json": {

@@ -128,6 +128,7 @@ pub const WRITE_VERBS: &[WriteVerb] = &[
     nd("host.channel.post", Kind::Write, "external_effect"),
     nd("host.uptime.create", Kind::Write, "external_effect"),
     nd("host.webhook_inbox.create", Kind::Write, "external_effect"),
+    nd("host.connect.revoke", Kind::Revoke, "external_effect"),
     nd("host.vault.provider_set", Kind::Write, "external_effect"),
     nd("host.vault.provider_remove", Kind::Remove, "external_effect"),
     nd("host.oauth.provider_set", Kind::Write, "external_effect"),

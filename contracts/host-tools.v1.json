@@ -6677,6 +6677,133 @@
       "since": "0.108.131"
     },
     {
+      "description": "List this tenant's upstream connections, one row per provider: connected, scopes, expires_at, connected_at, last_refreshed_at, revoked_at, revoked_reason, and a reconnect_url when revoked. Never returns a token or a client id.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.connect.list",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "providers": {
+            "items": {
+              "properties": {
+                "connected": {
+                  "type": "boolean"
+                },
+                "connected_at": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "expires_at": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "last_refreshed_at": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "reconnect_url": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "revoked_at": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "revoked_reason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "scopes": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "connected",
+                "connected_at",
+                "expires_at",
+                "last_refreshed_at",
+                "name",
+                "revoked_at",
+                "revoked_reason",
+                "scopes"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "providers"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.112.24",
+      "unpaged_reason": "fixed set read whole from providers.toml at build time, a handful of rows; no cursor applies"
+    },
+    {
       "description": "List the upstream OAuth providers this host can connect (from providers.toml): name, exact scope names, refresh semantics, docs_url, and available true|false with a reason (client_id_not_configured | client_secret_not_configured) when the host has no credentials for it yet. Never returns a client id or secret.",
       "input_schema": {
         "additionalProperties": false,
@@ -6798,6 +6925,188 @@
       },
       "since": "0.58.0",
       "unpaged_reason": "fixed set read whole from providers.toml at build time, a handful of rows; no cursor applies"
+    },
+    {
+      "description": "Disconnect an upstream provider from this tenant: marks the stored connection revoked (revoked_reason \"tenant_revoke\") and asks the provider to revoke the token when it supports that (provider_revoked true|false). Safe to repeat. host.connect.list then carries a reconnect_url.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "description": "One of github, google, notion, slack (host.connect.providers lists them).",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.connect.revoke",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "provider_revoked": {
+            "type": "boolean"
+          },
+          "revoked": {
+            "type": "boolean"
+          },
+          "revoked_at": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "revoked_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "provider",
+          "provider_revoked",
+          "revoked",
+          "revoked_at",
+          "revoked_reason"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.112.24"
+    },
+    {
+      "description": "Mint a one-time link (valid 15 min) a human opens to connect an upstream provider (host.connect.providers lists them) to this tenant with the host's own OAuth app; no end user and no OAuth app of your own needed. Give the url to your user, then poll host.connect.list until the provider shows connected: true. Never returns a token. Errors: provider_unavailable {provider, reason}, scope_unknown {unknown}.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "description": "One of github, google, notion, slack (host.connect.providers lists them).",
+            "type": "string"
+          },
+          "scopes": {
+            "description": "Exact scope names from host.connect.providers; omit for the provider's default set.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.connect.start",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "expires_in_s": {
+            "type": "integer"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "expires_in_s",
+          "provider",
+          "scopes",
+          "url"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.112.24"
     },
     {
       "description": "Soft-delete a document by id or name; still visible via host.docs.list {since} with deleted: true. Calls affecting at least the plan's confirm_rows_min rows (host.quickstart limits.plan) or whole objects require `confirm` from a `dry_run: true` call with the same arguments (valid 10 min).",
@@ -39953,6 +40262,24 @@
       "since": "0.108.131"
     },
     {
+      "alias_of": "host.connect.list",
+      "description": "List this tenant's upstream connections, one row per provider: connected, scopes, expires_at, connected_at, last_refreshed_at, revoked_at, revoked_reason, and a reconnect_url when revoked. Never returns a token or a client id.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_connect_list",
+      "since": "0.112.24"
+    },
+    {
       "alias_of": "host.connect.providers",
       "description": "List the upstream OAuth providers this host can connect (from providers.toml): name, exact scope names, refresh semantics, docs_url, and available true|false with a reason (client_id_not_configured | client_secret_not_configured) when the host has no credentials for it yet. Never returns a client id or secret.",
       "input_schema": {
@@ -39979,6 +40306,61 @@
       },
       "name": "host_connect_providers",
       "since": "0.58.0"
+    },
+    {
+      "alias_of": "host.connect.revoke",
+      "description": "Disconnect an upstream provider from this tenant: marks the stored connection revoked (revoked_reason \"tenant_revoke\") and asks the provider to revoke the token when it supports that (provider_revoked true|false). Safe to repeat. host.connect.list then carries a reconnect_url.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "description": "One of github, google, notion, slack (host.connect.providers lists them).",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_connect_revoke",
+      "since": "0.112.24"
+    },
+    {
+      "alias_of": "host.connect.start",
+      "description": "Mint a one-time link (valid 15 min) a human opens to connect an upstream provider (host.connect.providers lists them) to this tenant with the host's own OAuth app; no end user and no OAuth app of your own needed. Give the url to your user, then poll host.connect.list until the provider shows connected: true. Never returns a token. Errors: provider_unavailable {provider, reason}, scope_unknown {unknown}.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "description": "One of github, google, notion, slack (host.connect.providers lists them).",
+            "type": "string"
+          },
+          "scopes": {
+            "description": "Exact scope names from host.connect.providers; omit for the provider's default set.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_connect_start",
+      "since": "0.112.24"
     },
     {
       "alias_of": "host.docs.delete",

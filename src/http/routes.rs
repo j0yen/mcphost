@@ -305,6 +305,13 @@ pub static ROUTES: &[RouteSpec] = &[
         query ["code", "state"] request None; cors false;
         responses [200 => Html]
         => || get(crate::vault::get_callback)),
+    route!("GET" "/connections/go/{token}" "claim" "Redeem a one-time tenant-level upstream connection link" Token
+        responses [302 => Empty, 410 => Html]
+        => || get(crate::connect::flow::get_go)),
+    route!("GET" "/connections/callback/{provider}" "claim" "Tenant-level upstream connection code exchange" Token
+        query ["code", "state", "error"] request None; cors false;
+        responses [200 => Html, 400 => Html, 502 => Html]
+        => || get(crate::connect::flow::get_callback)),
     // ---- onboarding ----------------------------------------------------------
     route!("GET" "/u/new" "onboarding" "One-button signup page" Anonymous
         responses [200 => Html]
