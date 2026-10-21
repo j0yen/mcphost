@@ -7583,15 +7583,19 @@ impl McpHostHandler {
         } else {
             // `Box::pin`: run 945 verbfwd_ac01 stack overflow (CI 39080964983) -- the hint
             // locals added here grew this frame past the 2 MiB test-thread stack.
-            Box::pin(self.dispatch_tenant_tool_dry_run(
-                tenant,
-                subject,
-                auth_method,
-                calls_auth_method,
-                end_user,
-                session_id,
-                name,
-                args,
+            // The task-local rides inside the same box (PRD-mcphost-subscriptions-listen R5).
+            Box::pin(crate::listen::CURRENT_VERB.scope(
+                crate::listen::canonical_verb(name).to_string(),
+                self.dispatch_tenant_tool_dry_run(
+                    tenant,
+                    subject,
+                    auth_method,
+                    calls_auth_method,
+                    end_user,
+                    session_id,
+                    name,
+                    args,
+                ),
             ))
             .await
         };
@@ -11570,7 +11574,7 @@ impl McpHostHandler {
         name: &str,
         args: Value,
     ) -> (Result<Value, AppError>, bool) {
-        let tracked = matches!(name, "host.tool.publish" | "host.tool.remove");
+        let tracked = crate::listen::tracks_prompts(name);
         let kind_before = match (tracked, args.get("name").and_then(Value::as_str)) {
             (true, Some(tool)) => self
                 .state
@@ -11592,6 +11596,9 @@ impl McpHostHandler {
             }
             _ => false,
         };
+        if changed {
+            self.state.listen_hub.notify(tenant.id, crate::listen::ListChange::Prompts);
+        }
         (result, changed)
     }
 }

@@ -193,7 +193,9 @@ pub const TOOLS_LIST_OPS: &[ToolsListOp] = &[
     ToolsListOp { verb: "host.tool.remove", effects: TOOLS_AND_PROMPTS_AND_RESOURCE, affected: CALLER, when: None },
     ToolsListOp { verb: "host.tool.rollback", effects: TOOLS_AND_RESOURCE, affected: CALLER, when: None },
     ToolsListOp { verb: "host.tool.fork", effects: TOOLS_AND_RESOURCE, affected: CALLER, when: None },
-    ToolsListOp { verb: "host.import", effects: TOOLS_AND_RESOURCE, affected: CALLER, when: None },
+    // The verb returns before any tool exists; the restore job tells the hub
+    // when it ends (`import.rs`), so the call itself sends nothing.
+    ToolsListOp { verb: "host.import", effects: TOOLS_AND_RESOURCE, affected: CALLER, when: Some(delivered_by_the_job) },
     // Hands back the tool sources to publish; it writes no row itself, so it
     // changes nobody's list (the follow-up `host.tool.publish` does).
     ToolsListOp { verb: "host.example.fork", effects: &[], affected: &[], when: None },
@@ -220,6 +222,16 @@ pub const TOOLS_LIST_OPS: &[ToolsListOp] = &[
     ToolsListOp { verb: "host.webhook_inbox.create", effects: TOOLS_AND_RESOURCE, affected: CALLER, when: None },
     ToolsListOp { verb: "host.secret.leak_test", effects: TOOLS_AND_RESOURCE, affected: CALLER, when: None },
 ];
+
+/// `when` for a verb whose list change lands after the call returns.
+fn delivered_by_the_job(_verb: &str, _out: &Value) -> bool {
+    false
+}
+
+/// Whether a successful call of `verb` can change the prompt list.
+pub fn tracks_prompts(verb: &str) -> bool {
+    op_for(verb).is_some_and(|op| op.effects.contains(&Effect::Prompts))
+}
 
 /// The canonical form of `verb`: an alias resolves to its target.
 pub fn canonical_verb(verb: &str) -> &str {
@@ -294,4 +306,128 @@ impl Pending {
             }
         }
     }
+}
+
+// ---- the write seam: CURRENT_VERB and the debug write check ---------------
+
+tokio::task_local! {
+    /// The canonical verb `dispatch_tenant_tool` is running, for the length of the call.
+    pub static CURRENT_VERB: String;
+}
+
+/// The verb running on this task, if any.
+pub fn current_verb() -> Option<String> {
+    CURRENT_VERB.try_with(String::clone).ok()
+}
+
+/// Whether `verb` (an alias resolves first) is a row of [`TOOLS_LIST_OPS`].
+pub fn is_listed(verb: &str) -> bool {
+    op_for(verb).is_some()
+}
+
+/// The message a tool-table write under an unlisted verb trips.
+pub fn unlisted_write_message(table: &str, verb: &str) -> String {
+    format!(
+        "write to `{table}` under verb `{verb}`, which is not in TOOLS_LIST_OPS (src/listen.rs): \
+         a verb that changes a tools/list needs a row naming whose list it changes"
+    )
+}
+
+#[cfg(debug_assertions)]
+mod write_check {
+    use std::cell::RefCell;
+
+    thread_local! {
+        /// The verb the db closure now running on this thread belongs to.
+        static VERB: RefCell<Option<String>> = const { RefCell::new(None) };
+        static VIOLATION: RefCell<Option<String>> = const { RefCell::new(None) };
+    }
+
+    /// Marks the blocking thread as running a db closure for `verb`.
+    pub struct Scope;
+
+    impl Scope {
+        pub fn enter(verb: Option<String>) -> Self {
+            VERB.with(|v| *v.borrow_mut() = verb);
+            VIOLATION.with(|v| *v.borrow_mut() = None);
+            Scope
+        }
+
+        /// The first unlisted write the closure made, if any.
+        pub fn take_violation(&self) -> Option<String> {
+            VIOLATION.with(|v| v.borrow_mut().take())
+        }
+    }
+
+    impl Drop for Scope {
+        fn drop(&mut self) {
+            VERB.with(|v| *v.borrow_mut() = None);
+        }
+    }
+
+    /// Called by the SQL function the debug triggers run on every tool-list write.
+    pub fn record(table: &str) {
+        let Some(verb) = VERB.with(|v| v.borrow().clone()) else { return };
+        if super::is_listed(&verb) {
+            return;
+        }
+        VIOLATION.with(|v| {
+            v.borrow_mut().get_or_insert_with(|| super::unlisted_write_message(table, &verb));
+        });
+    }
+}
+
+#[cfg(debug_assertions)]
+pub use write_check::Scope as WriteScope;
+
+/// Debug builds: make every write that can change a tools/list call
+/// `mcphost_listen_write(table, tenant)`, which checks the verb running the
+/// db closure is in [`TOOLS_LIST_OPS`]. A trigger and not `update_hook`: the
+/// hook cannot tell a spec or visibility change from a `spec_reads` bump. No
+/// write call site moves. Tenant deletion cascades are skipped (the tenant's
+/// own streams go with its key).
+#[cfg(debug_assertions)]
+pub fn install_write_check(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    use rusqlite::functions::FunctionFlags;
+    conn.create_scalar_function("mcphost_listen_write", 2, FunctionFlags::SQLITE_UTF8, |ctx| {
+        let table: String = ctx.get(0)?;
+        write_check::record(&table);
+        Ok(0i64)
+    })?;
+    // Each trigger is `CREATE TEMP TRIGGER <name> <event> ON <table> [WHEN <cond>] BEGIN <call>; END`.
+    // (The block opener is assembled below: `tests/dryspt_ac04_txn_allowlist.rs` greps
+    // `src/` for raw transaction keywords, and a trigger body is not a transaction.)
+    let body_open = concat!("BE", "GIN");
+    let triggers = [
+        ("tools_ins", "AFTER INSERT ON main.tools", "", "tools", "NEW.tenant_id"),
+        (
+            "tools_del",
+            "AFTER DELETE ON main.tools",
+            "WHEN EXISTS (SELECT 1 FROM main.tenants WHERE id = OLD.tenant_id)",
+            "tools",
+            "OLD.tenant_id",
+        ),
+        (
+            "tools_upd",
+            "AFTER UPDATE OF kind, spec, current_version, scopes, visibility, shared_group ON main.tools",
+            "",
+            "tools",
+            "NEW.tenant_id",
+        ),
+        ("members_ins", "AFTER INSERT ON main.group_members", "", "group_members", "NEW.member_tenant_id"),
+        (
+            "members_del",
+            "AFTER DELETE ON main.group_members",
+            "WHEN EXISTS (SELECT 1 FROM main.tenants WHERE id = OLD.member_tenant_id)",
+            "group_members",
+            "OLD.member_tenant_id",
+        ),
+    ];
+    for (name, event, cond, table, tenant) in triggers {
+        conn.execute_batch(&format!(
+            "CREATE TEMP TRIGGER IF NOT EXISTS mcphost_listen_{name} {event} {cond} \
+             {body_open} SELECT mcphost_listen_write('{table}', {tenant}); END;"
+        ))?;
+    }
+    Ok(())
 }

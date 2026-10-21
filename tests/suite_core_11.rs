@@ -17,6 +17,8 @@ mod dryspt_lint;
 mod oauth;
 #[path = "support/oauthclient.rs"]
 mod oauthclient;
+#[path = "support/promptkind.rs"]
+mod promptkind;
 #[path = "support/serve.rs"]
 mod serve;
 #[path = "support/sjrc.rs"]
@@ -450,6 +452,8 @@ mod stgl_ac07_share_reports_grantees_notified;
 mod sublis_ac01_listen_ack_and_keepalive;
 #[path = "sublis_ac02_publish_notifies_the_tenants_streams.rs"]
 mod sublis_ac02_publish_notifies_the_tenants_streams;
+#[path = "sublis_ac03_drift.rs"]
+mod sublis_ac03_drift;
 #[path = "suite_ac1_ten_binaries_and_names_preserved.rs"]
 mod suite_ac1_ten_binaries_and_names_preserved;
 #[path = "suite_ac3_mod_common_declared_once.rs"]

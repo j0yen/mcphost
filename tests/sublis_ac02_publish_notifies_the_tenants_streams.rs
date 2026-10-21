@@ -62,13 +62,12 @@ async fn sublis_ac02_publish_and_its_alias_notify_only_the_callers_streams() {
         .tools_call("host.tool.publish", json!({"name": "bad name!", "kind": "echo", "spec": echo_spec()}))
         .await;
     assert!(failed.is_err(), "an invalid tool name is refused");
-    assert!(a1.next_message(Duration::from_secs(2)).await.is_none(), "a failed publish notifies stream 1");
-    assert!(a2.next_message(Duration::from_secs(2)).await.is_none(), "a failed publish notifies stream 2");
+    let (quiet_1, quiet_2) = (a1.next_message(Duration::from_secs(2)).await, a2.next_message(Duration::from_secs(2)).await);
+    assert!(quiet_1.is_none(), "a failed publish notifies stream 1");
+    assert!(quiet_2.is_none(), "a failed publish notifies stream 2");
 
-    assert!(
-        b1.next_message(Duration::from_secs(5)).await.is_none(),
-        "tenant B hears nothing about tenant A's tools"
-    );
+    let b_heard = b1.next_message(Duration::from_secs(5)).await;
+    assert!(b_heard.is_none(), "tenant B hears nothing about tenant A's tools");
 
     let listed = client.tools_list().await.expect("tools/list");
     let names: Vec<&str> = listed["tools"].as_array().unwrap().iter().filter_map(|t| t["name"].as_str()).collect();
