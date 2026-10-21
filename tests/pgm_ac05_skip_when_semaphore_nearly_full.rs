@@ -8,8 +8,7 @@ use mcphost::kinds::{KindRegistry, python::PythonKind};
 use mcphost::perf::{self, ProbeFuture};
 use mcphost::state::AppState;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
-use tracing_subscriber::fmt::MakeWriter;
+use std::sync::Arc;
 
 static CALLS: AtomicUsize = AtomicUsize::new(0);
 
@@ -18,26 +17,6 @@ fn counting<'a>(_s: &'a AppState, _t: i64, _ns: &'a str) -> ProbeFuture<'a> {
         CALLS.fetch_add(1, Ordering::SeqCst);
         true
     })
-}
-
-#[derive(Clone, Default)]
-struct BufWriter(Arc<Mutex<Vec<u8>>>);
-
-impl std::io::Write for BufWriter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().expect("lock buf").extend_from_slice(buf);
-        Ok(buf.len())
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-impl<'a> MakeWriter<'a> for BufWriter {
-    type Writer = BufWriter;
-    fn make_writer(&'a self) -> Self::Writer {
-        self.clone()
-    }
 }
 
 #[tokio::test]
@@ -52,16 +31,14 @@ async fn pgm_ac05_cycle_skips_with_one_free_permit_and_runs_with_two() {
 
     // 3 permits, 2 held -> 1 free.
     let held = py.hold_admission_for_test(1, 4, 2);
-    let buf = BufWriter::default();
-    let subscriber = tracing_subscriber::fmt().with_writer(buf.clone()).with_ansi(false).finish();
-    // Thread-local default: this test runs on a current-thread runtime, so
-    // the `.await` below stays on the thread the guard covers.
-    let guard = tracing::subscriber::set_default(subscriber);
+    // Thread-keyed capture (`common::tracecap`): this test runs on a
+    // current-thread runtime, so the `.await` below stays on the thread the
+    // capture covers.
+    let buf = common::tracecap::capture_text();
     let ran = perf::run_cycle(&state, &probes).await.expect("cycle");
-    drop(guard);
+    let log = buf.finish();
     assert!(!ran, "cycle must report it skipped");
     assert_eq!(CALLS.load(Ordering::SeqCst), 0, "no probe call with 1 free permit");
-    let log = String::from_utf8(buf.0.lock().expect("buf").clone()).expect("utf8");
     let warns: Vec<&str> = log.lines().filter(|l| l.contains("WARN") && l.contains("perf probe cycle skipped")).collect();
     assert_eq!(warns.len(), 1, "exactly one WARN naming the skip: {log}");
 

@@ -9,6 +9,7 @@
 #![allow(dead_code)]
 
 pub mod testoauth;
+pub mod tracecap;
 
 use std::collections::HashMap;
 use std::net::IpAddr;
