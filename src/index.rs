@@ -257,7 +257,7 @@ struct SourceSpec {
 /// A loopback-hosted instance (local dev, the test harness) may fetch
 /// loopback urls; every real deployment keeps them refused. The instance's
 /// own domain is always refused (`mcphost.dev` fetching itself).
-fn url_policy(state: &AppState) -> (String, bool) {
+pub(crate) fn url_policy(state: &AppState) -> (String, bool) {
     let own_host = reqwest::Url::parse(&state.public_url)
         .ok()
         .and_then(|u| u.host_str().map(str::to_string))

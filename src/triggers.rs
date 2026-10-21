@@ -897,6 +897,11 @@ pub async fn tick_once(state: &AppState) -> Result<(), AppError> {
             .update_trigger_after_fire(row.id.clone(), next_unix, Some(run_id), now)
             .await?;
     }
+    // PRD-mcphost-sync-source-registry-and-create R6: the sync pass shares
+    // this tick; a failure there never fails the schedule triggers above.
+    if let Err(e) = crate::sync::tick(state, now).await {
+        tracing::warn!(error = %e, "sync pass failed");
+    }
     state.scheduler.record_tick(now);
     Ok(())
 }

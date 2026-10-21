@@ -1,7 +1,7 @@
 {
   "lib": 5.8,
   "suite_cargo_core_01": 0.66,
-  "suite_contracts_core_01": 342.44,
+  "suite_contracts_core_01": 345.44,
   "suite_contracts_sandbox_01": 4.66,
   "suite_core_01": 0.84,
   "suite_core_02": 0.8,
@@ -13,7 +13,7 @@
   "suite_core_08": 245.03,
   "suite_core_09": 268.75,
   "suite_core_10": 275.39,
-  "suite_core_11": 211.55,
+  "suite_core_11": 217.54,
   "suite_env_core_01": 43.89,
   "suite_env_sandbox_01": 10.44,
   "suite_sandbox_01": 1.02,

@@ -9719,6 +9719,266 @@
     ],
     "type": "object"
   },
+  "host.sync.create": {
+    "properties": {
+      "created_unix": {
+        "type": "integer"
+      },
+      "every": {
+        "type": "string"
+      },
+      "existing": {
+        "type": "boolean"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "mode": {
+        "type": "string"
+      },
+      "next_run_unix": {
+        "type": "integer"
+      },
+      "primary_key": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "ref": {
+        "type": "string"
+      },
+      "secret": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "status": {
+        "type": "string"
+      },
+      "sync_id": {
+        "type": "string"
+      },
+      "table": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "created_unix",
+      "every",
+      "existing",
+      "kind",
+      "mode",
+      "next_run_unix",
+      "ref",
+      "status",
+      "sync_id",
+      "table"
+    ],
+    "type": "object"
+  },
+  "host.sync.delete": {
+    "properties": {
+      "deleted": {
+        "type": "boolean"
+      },
+      "sync_id": {
+        "type": "string"
+      },
+      "table": {
+        "type": "string"
+      },
+      "table_kept": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "deleted",
+      "sync_id",
+      "table",
+      "table_kept"
+    ],
+    "type": "object"
+  },
+  "host.sync.get": {
+    "properties": {
+      "created_unix": {
+        "type": "integer"
+      },
+      "every": {
+        "type": "string"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "last_run": {
+        "properties": {
+          "bytes": {
+            "type": "integer"
+          },
+          "change_detected": {
+            "type": "boolean"
+          },
+          "duration_ms": {
+            "type": "integer"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rows_added": {
+            "type": "integer"
+          },
+          "rows_deleted": {
+            "type": "integer"
+          },
+          "rows_updated": {
+            "type": "integer"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "started_unix": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "type": [
+          "object",
+          "null"
+        ]
+      },
+      "mode": {
+        "type": "string"
+      },
+      "next_run_unix": {
+        "type": "integer"
+      },
+      "primary_key": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "ref": {
+        "type": "string"
+      },
+      "secret": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "status": {
+        "type": "string"
+      },
+      "sync_id": {
+        "type": "string"
+      },
+      "table": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "created_unix",
+      "every",
+      "kind",
+      "last_run",
+      "mode",
+      "next_run_unix",
+      "ref",
+      "status",
+      "sync_id",
+      "table"
+    ],
+    "type": "object"
+  },
+  "host.sync.list": {
+    "properties": {
+      "syncs": {
+        "items": {
+          "properties": {
+            "created_unix": {
+              "type": "integer"
+            },
+            "every": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "next_run_unix": {
+              "type": "integer"
+            },
+            "primary_key": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "ref": {
+              "type": "string"
+            },
+            "secret": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "status": {
+              "type": "string"
+            },
+            "sync_id": {
+              "type": "string"
+            },
+            "table": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "created_unix",
+            "every",
+            "kind",
+            "mode",
+            "next_run_unix",
+            "ref",
+            "status",
+            "sync_id",
+            "table"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "syncs"
+    ],
+    "type": "object"
+  },
+  "host.sync.run_now": {
+    "properties": {
+      "next_run_unix": {
+        "type": "integer"
+      },
+      "sync_id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "next_run_unix",
+      "sync_id"
+    ],
+    "type": "object"
+  },
   "host.table.append": {
     "properties": {
       "appended": {
