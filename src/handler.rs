@@ -9674,7 +9674,8 @@ impl McpHostHandler {
         // that would be rejected at publish time fails identically here,
         // before any request is attempted.
         if let Err(e) = kind.validate(&spec) {
-            return Err(crate::hooks::enrich_own_hook_refusal(&self.state, tenant, &spec, AppError::from(e)).await);
+            let err = crate::kinds::kinddoc::enrich_invalid_spec(kind.as_ref(), AppError::from(e));
+            return Err(crate::hooks::enrich_own_hook_refusal(&self.state, tenant, &spec, err).await);
         }
 
         let descriptor = kind.describe(&spec);
@@ -9994,9 +9995,11 @@ impl McpHostHandler {
         }
 
         if let Some(err) = AppError::from_kind_violations(kind.validate_all(&spec)) {
-            return Err(err);
+            return Err(crate::kinds::kinddoc::enrich_invalid_spec(kind.as_ref(), err));
         }
-        kind.validate_async(&spec).await?;
+        kind.validate_async(&spec)
+            .await
+            .map_err(|e| crate::kinds::kinddoc::enrich_invalid_spec(kind.as_ref(), e.into()))?;
 
         // PRD-mcphost-chain-host-steps requirement 4: `host.spec_test` on a
         // `chain` spec resolves every step exactly like `host.tool_publish`

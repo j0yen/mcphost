@@ -2340,6 +2340,15 @@
       "AC5": "tests/kreqd_ac05_rejection_names_required_field.rs",
       "AC6": "tests/kreqd_ac06_minimal_specs_section.rs",
       "AC7": "deferred: Live (prod /mcp host_help_get transcript on orch; evidence: ~/.local/state/mcphost-live/kreqd-ac07.jsonl)"
+    },
+    "spkind": {
+      "_prd": "PRD-mcphost-invalid-spec-error-carries-kind-fields.md (test_prefix: spkind)",
+      "AC1": "tests/spkind_ac01_http_missing_method.rs",
+      "AC2": "tests/spkind_ac02_every_kind_every_field.rs",
+      "AC3": "tests/spkind_ac03_same_data_across_verbs.rs",
+      "AC4": "tests/spkind_ac04_payload_size_cap.rs",
+      "AC5": "tests/spkind_ac05_registry_carries_data_keys.rs",
+      "AC6": "tests/spkind_ac06_unknown_secret_names_the_fix.rs"
     }
   }
 }

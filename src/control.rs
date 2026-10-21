@@ -1661,6 +1661,27 @@ fn publish_gate(gate: &'static str, ok: bool, message: Option<String>, fix: Opti
 /// asserts on) -- this only adds `gates`, so a caller sees every other
 /// simultaneously-failing gate too, not just the one this error is named
 /// for.
+/// PRD-mcphost-invalid-spec-error-carries-kind-fields R6: a spec that
+/// references `secret.<name>` the tenant has not set is an `invalid_spec`
+/// whose `data.field` is the top-level spec key holding the reference,
+/// `data.fix` the `host.secret.set` call that cures it and
+/// `data.known_secret_names` the tenant's existing secret names (names only,
+/// never values).
+fn unknown_secret_refusal(kind: &dyn Kind, spec: &Value, name: &str, known: Vec<String>) -> AppError {
+    let needle = format!("secret.{name}");
+    let field = spec
+        .as_object()
+        .and_then(|o| o.iter().find(|(_, v)| v.to_string().contains(&needle)).map(|(k, _)| k.clone()))
+        .unwrap_or_else(|| "spec".to_string());
+    let message = format!("spec references unknown secret '{name}'");
+    let mut data = crate::kinds::kinddoc::invalid_spec_data(kind, Some(&field), &message);
+    if let Some(map) = data.as_object_mut() {
+        map.insert("fix".to_string(), json!({"tool": "host.secret.set", "args": {"name": name}}));
+        map.insert("known_secret_names".to_string(), json!(known));
+    }
+    AppError::Structured { code: crate::errors::INVALID_SPEC, message: format!("invalid spec: {message}"), data }
+}
+
 fn attach_gates(err: AppError, gates: &[Value]) -> AppError {
     let code = err.code();
     let message = err.to_string();
@@ -1837,9 +1858,12 @@ pub async fn tool_publish(
     // Requirement 3 / AC2: every simultaneously-failing field is reported
     // at once, not just the first -- see `AppError::from_kind_violations`.
     if let Some(err) = AppError::from_kind_violations(kind.validate_all(&spec)) {
+        let err = crate::kinds::kinddoc::enrich_invalid_spec(kind.as_ref(), err);
         return Err(crate::hooks::enrich_own_hook_refusal(state, tenant, &spec, err).await);
     }
-    kind.validate_async(&spec).await?;
+    kind.validate_async(&spec)
+        .await
+        .map_err(|e| crate::kinds::kinddoc::enrich_invalid_spec(kind.as_ref(), e.into()))?;
 
     // PRD-mcphost-chain-host-steps requirement 4: a `chain` spec's every
     // step must resolve (a sibling tenant tool, or an allowlisted `host.*`
@@ -1900,10 +1924,11 @@ pub async fn tool_publish(
     // for them.
     let referenced = kind.referenced_secrets(&spec);
     let mut missing_secrets: Vec<String> = Vec::new();
+    let mut known_secret_names: Vec<String> = Vec::new();
     if !referenced.is_empty() {
-        let known = state.db.list_secret_names(tenant.id).await?;
+        known_secret_names = state.db.list_secret_names(tenant.id).await?;
         for secret_name in referenced {
-            if !known.contains(&secret_name) {
+            if !known_secret_names.contains(&secret_name) {
                 missing_secrets.push(secret_name);
             }
         }
@@ -2100,7 +2125,7 @@ pub async fn tool_publish(
         // as the top-level error while surfacing every other one too.
         if !missing_secrets.is_empty() {
             return Err(attach_gates(
-                AppError::SecretMissing(missing_secrets[0].clone()),
+                unknown_secret_refusal(kind.as_ref(), &spec, &missing_secrets[0], known_secret_names),
                 &gates,
             ));
         }

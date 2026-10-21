@@ -298,7 +298,21 @@ pub fn render_section() -> String {
 
 /// The whole of `docs/errors.md`.
 pub fn render_doc() -> String {
-    format!("# Error retry policy\n\n{}\n", render_section())
+    format!("# Error retry policy\n\n{}\n\n{}\n", render_section(), render_data_keys_section())
+}
+
+/// The `## Error data keys` section of `docs/errors.md`: one row per registry
+/// code that declares `data_keys` (`ErrorEntry::data_keys`), generated.
+pub fn render_data_keys_section() -> String {
+    let mut out = String::from(
+        "## Error data keys\n\nGenerated from the error registry's `data_keys`; do not hand-edit. \
+         Keys a code's `data` carries beyond the shared envelope ones.\n\n| code | data keys |\n|---|---|\n",
+    );
+    for e in crate::error_registry::ERROR_CODES.iter().filter(|e| !e.data_keys.is_empty()) {
+        let keys: Vec<String> = e.data_keys.iter().map(|k| format!("`{k}`")).collect();
+        out.push_str(&format!("| `{}` | {} |\n", e.code, keys.join(", ")));
+    }
+    out
 }
 
 /// `www/retry_policy.json`.

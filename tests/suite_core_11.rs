@@ -352,6 +352,18 @@ mod specpath_ac06_list_form_seen_at_hint;
 mod specpath_ac07_replay_recorded_sessions_map_form;
 #[path = "specpath_ac08_wildcard_path_rejected.rs"]
 mod specpath_ac08_wildcard_path_rejected;
+#[path = "spkind_ac01_http_missing_method.rs"]
+mod spkind_ac01_http_missing_method;
+#[path = "spkind_ac02_every_kind_every_field.rs"]
+mod spkind_ac02_every_kind_every_field;
+#[path = "spkind_ac03_same_data_across_verbs.rs"]
+mod spkind_ac03_same_data_across_verbs;
+#[path = "spkind_ac04_payload_size_cap.rs"]
+mod spkind_ac04_payload_size_cap;
+#[path = "spkind_ac05_registry_carries_data_keys.rs"]
+mod spkind_ac05_registry_carries_data_keys;
+#[path = "spkind_ac06_unknown_secret_names_the_fix.rs"]
+mod spkind_ac06_unknown_secret_names_the_fix;
 #[path = "sqlpass_ac01_table_level_description_in_schema.rs"]
 mod sqlpass_ac01_table_level_description_in_schema;
 #[path = "sqlpass_ac02_column_description_in_schema.rs"]
