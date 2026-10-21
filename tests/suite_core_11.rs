@@ -820,6 +820,8 @@ mod unkfield_ac05_tools_list_additional_properties_false;
 mod unkfield_ac07_spec_fields_doc_check_script;
 #[path = "upfam_ac01_auth_family_401_403.rs"]
 mod upfam_ac01_auth_family_401_403;
+#[path = "upfam_ac02_403_error_surface_names_secret_set.rs"]
+mod upfam_ac02_403_error_surface_names_secret_set;
 #[path = "upfam_ac02_rate_limited_retry_after.rs"]
 mod upfam_ac02_rate_limited_retry_after;
 #[path = "upfam_ac03_client_and_server_error_families.rs"]

@@ -1,6 +1,6 @@
 //! PRD-mcphost-onboarding-dead-ends-zero-b AC1 (P0) -- Given an http-kind tool
 //! whose spec references secret `API_TOKEN` and an upstream 403, When the
-//! error is built, Then `next_call == {tool: "host.secret_set", args: {name:
+//! error is built, Then `next_call == {tool: "host.secret.set", args: {name:
 //! "API_TOKEN"}}`; without a secret reference, `next_call.tool ==
 //! "host.tool_test"`.
 
@@ -47,7 +47,7 @@ async fn ndeadb_ac01_upstream_403_next_call() {
     assert_eq!(err.error_code.as_deref(), Some("upstream_auth"));
     assert_eq!(
         err.data["next_call"],
-        json!({"tool": "host.secret_set", "args": {"name": "API_TOKEN"}}),
+        json!({"tool": "host.secret.set", "args": {"name": "API_TOKEN"}}),
         "{}",
         err.data
     );
