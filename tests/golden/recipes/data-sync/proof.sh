@@ -34,8 +34,9 @@ cd "$(dirname "$0")"
 MCPHOST_URL="${MCPHOST_URL:-https://mcphost.dev/mcp}"
 # MCPHOST_PROVE_DRY=1: print the plan and exit 0 before any network call (the runner-contract test sets it).
 [[ -n "${MCPHOST_PROVE_DRY:-}" ]] && { echo "plan: data-sync proof against $MCPHOST_URL"; exit 0; }
-# Seconds between re-issues of a retry_until_expect step (generated).
+# Seconds between re-issues, and the step's retry_s, of a retry_until_expect step (generated).
 RETRY_UNTIL_EXPECT_POLL_S=5
+RETRY_UNTIL_EXPECT_DEADLINE_S=45
 DATA_SYNC_CSV_URL="${DATA_SYNC_CSV_URL:-https://raw.githubusercontent.com/j0yen/mcphost/main/examples/data-sync/orders.csv}"
 # `-` not `:-`: unset takes the default label, an explicit empty value stays empty.
 SYNTHETIC_HEADER="${SYNTHETIC_HEADER-recipe:data-sync}"
@@ -237,9 +238,9 @@ check "run_now_returns_next_run_unix" "$([[ -n "$RUN_NEXT" ]] && echo 1 || echo 
 echo "host.sync.run_now: next_run_unix=${RUN_NEXT}"
 
 # 4. Read it back by id, re-issuing until the tick has written a receipt for
-#    THIS sync (retry_until_expect, 75 s, every ${RETRY_UNTIL_EXPECT_POLL_S} s).
+#    THIS sync (retry_until_expect, for ${RETRY_UNTIL_EXPECT_DEADLINE_S} s, every ${RETRY_UNTIL_EXPECT_POLL_S} s).
 #    Status is deliberately not pinned (today 'not_implemented').
-GET_DEADLINE=$(( $(date +%s) + 75 ))
+GET_DEADLINE=$(( $(date +%s) + RETRY_UNTIL_EXPECT_DEADLINE_S ))
 get_args=$(python3 -c 'import json,sys; print(json.dumps({"sync_id": sys.argv[1]}))' "$SYNC_ID")
 while :; do
   get_resp=$(mcp_call "host.sync.get" "$get_args" "$OWNER_KEY")
@@ -256,7 +257,7 @@ while :; do
   fi
   [[ -z "$GET_WHY" ]] && break
   if [[ "$(date +%s)" -ge "$GET_DEADLINE" ]]; then
-    echo "host.sync.get: still failing after 75 s, last expect failure: ${GET_WHY}" >&2
+    echo "host.sync.get: still failing after ${RETRY_UNTIL_EXPECT_DEADLINE_S} s, last expect failure: ${GET_WHY}" >&2
     break
   fi
   sleep "$RETRY_UNTIL_EXPECT_POLL_S"

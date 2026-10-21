@@ -54,7 +54,7 @@ async fn dsproof_ac02_full_run_creates_then_deletes_the_sync_on_a_synthetic_tena
     let server = TestServer::start().await;
     // Async `Command`: a blocking `output()` would starve the in-process
     // server's own axum task.
-    // The get step polls for the tick's receipt (up to 75 s, tick every 30 s).
+    // The get step polls for the tick's receipt (up to the recipe retry_s, tick every 30 s).
     let out = crate::deadline_budget!(100_000, {
         proof().env("MCPHOST_URL", format!("{}/mcp", server.base_url)).output().await.expect("run proof.sh")
     });

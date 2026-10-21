@@ -4,6 +4,8 @@ plan_fit = "free"
 registry = "http"
 tenants = ["owner"]
 
+# calls = 6 counts logical steps (1 signup + the 5 steps below), not HTTP
+# attempts: the polled host.sync.get is one call however many times it re-issues.
 [budget]
 calls = 6
 wall_s = 90
@@ -27,7 +29,7 @@ expect = [{ path = "$.next_run_unix", exists = true }]
 tool = "host.sync.get"
 args = { sync_id = "${s1.sync_id}" }
 note = "the sync row; polled until the first receipt (`last_run`) exists"
-retry_s = 75
+retry_s = 45
 retry_until_expect = true
 expect = [{ path = "$.table", value = "orders" }, { path = "$.last_run.run_id", exists = true }, { path = "$.last_run.started_unix", exists = true }]
 
@@ -293,9 +295,9 @@ check "run_now_returns_next_run_unix" "$([[ -n "$RUN_NEXT" ]] && echo 1 || echo 
 echo "host.sync.run_now: next_run_unix=${RUN_NEXT}"
 
 # 4. Read it back by id, re-issuing until the tick has written a receipt for
-#    THIS sync (retry_until_expect, 75 s, every ${RETRY_UNTIL_EXPECT_POLL_S} s).
+#    THIS sync (retry_until_expect, for ${RETRY_UNTIL_EXPECT_DEADLINE_S} s, every ${RETRY_UNTIL_EXPECT_POLL_S} s).
 #    Status is deliberately not pinned (today 'not_implemented').
-GET_DEADLINE=$(( $(date +%s) + 75 ))
+GET_DEADLINE=$(( $(date +%s) + RETRY_UNTIL_EXPECT_DEADLINE_S ))
 get_args=$(python3 -c 'import json,sys; print(json.dumps({"sync_id": sys.argv[1]}))' "$SYNC_ID")
 while :; do
   get_resp=$(mcp_call "host.sync.get" "$get_args" "$OWNER_KEY")
@@ -312,7 +314,7 @@ while :; do
   fi
   [[ -z "$GET_WHY" ]] && break
   if [[ "$(date +%s)" -ge "$GET_DEADLINE" ]]; then
-    echo "host.sync.get: still failing after 75 s, last expect failure: ${GET_WHY}" >&2
+    echo "host.sync.get: still failing after ${RETRY_UNTIL_EXPECT_DEADLINE_S} s, last expect failure: ${GET_WHY}" >&2
     break
   fi
   sleep "$RETRY_UNTIL_EXPECT_POLL_S"
