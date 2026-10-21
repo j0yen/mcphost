@@ -73,7 +73,18 @@ pub struct Step {
     pub note: Option<String>,
     /// Re-issue the call for up to this many seconds while it errors (a
     /// python tool's first call may still be building its environment).
+    /// With `retry_until_expect` the same budget also covers a call that
+    /// succeeds but whose `expect`s do not hold yet.
     pub retry_s: Option<u64>,
+    /// Opt in (requires `retry_s`): re-issue the call while it errors OR any
+    /// `expect` fails, until the `retry_s` deadline, then fail with the LAST
+    /// expect failure text (never a bare timeout). The poll interval is
+    /// [`RETRY_UNTIL_EXPECT_POLL_S`]; the generated proof defines
+    /// `RETRY_UNTIL_EXPECT_POLL_S` for the body to sleep on, and the body must
+    /// use it. For a result another component produces on its own tick (a
+    /// sync receipt), where the first answer is legitimately not ready.
+    #[serde(default)]
+    pub retry_until_expect: bool,
     /// Replaces the call text of this step in the `www/llms.txt` block only
     /// (the golden test and the proof still use `args`). For a call whose
     /// literal args would repeat a token the contract tests count once in
@@ -82,6 +93,10 @@ pub struct Step {
     pub llms_call: Option<String>,
     pub signed_post: Option<SignedPost>,
 }
+
+/// Seconds between re-issues inside a `retry_until_expect` step (a tick-driven
+/// result moves at tick granularity, so polling faster only adds calls).
+pub const RETRY_UNTIL_EXPECT_POLL_S: u64 = 5;
 
 fn default_tenant() -> String {
     "owner".to_string()
@@ -232,6 +247,18 @@ pub fn validate(recipes: &[Recipe]) -> Result<(), RecipeError> {
             let n = i + 1;
             if !r.tenants.contains(&s.as_tenant) {
                 return Err(invalid(n, "as", format!("`{}` is not in tenants {:?}", s.as_tenant, r.tenants)));
+            }
+            if s.retry_until_expect {
+                if s.retry_s.is_none() {
+                    return Err(invalid(n, "retry_until_expect", "`retry_until_expect` requires `retry_s`".to_string()));
+                }
+                if !r.proof.body.contains("RETRY_UNTIL_EXPECT_POLL_S") {
+                    return Err(invalid(
+                        n,
+                        "retry_until_expect",
+                        "the proof body must poll with $RETRY_UNTIL_EXPECT_POLL_S (the generator defines it)".to_string(),
+                    ));
+                }
             }
             let Some(name) = s.tool.as_deref() else {
                 if s.signed_post.is_none() {
@@ -524,8 +551,27 @@ pub fn render_proof(r: &Recipe) -> String {
         let what = s.tool.clone().unwrap_or_else(|| "signed POST to the returned url".to_string());
         out.push_str(&format!("#   {}. {what}\n", i + 1));
     }
-    out.push_str(&with_prove_dry(&r.name, &r.proof.body));
+    let mut body = with_prove_dry(&r.name, &r.proof.body);
+    if r.steps.iter().any(|s| s.retry_until_expect) {
+        body = with_poll_const(&body);
+    }
+    out.push_str(&body);
     out
+}
+
+/// Defines `RETRY_UNTIL_EXPECT_POLL_S` (the [`RETRY_UNTIL_EXPECT_POLL_S`]
+/// constant) right after the dry-run block, so a body that polls a
+/// `retry_until_expect` step cannot drift from the value the golden runner
+/// and the docs use.
+fn with_poll_const(body: &str) -> String {
+    let marker = "exit 0; }\n";
+    let Some(at) = body.find(marker).map(|i| i + marker.len()) else { return body.to_string() };
+    format!(
+        "{}# Seconds between re-issues of a retry_until_expect step (generated).\nRETRY_UNTIL_EXPECT_POLL_S={}\n{}",
+        &body[..at],
+        RETRY_UNTIL_EXPECT_POLL_S,
+        &body[at..]
+    )
 }
 
 /// The PRD-mcphost-example-proof-runner-contract dry-run block: every proof
@@ -599,7 +645,15 @@ pub fn golden_spec(r: &Recipe) -> Value {
             "signed_post": s.signed_post.as_ref().map(|p| json!({
                 "url": p.url, "secret": p.signing_key, "body": p.body, "signed": p.signed, "status": p.status,
             })),
-        })).collect::<Vec<_>>(),
+        })).enumerate().map(|(i, mut v)| {
+            // Only an opted-in step carries the keys, so every other recipe's
+            // embedded spec (and generated test) stays byte-identical.
+            if r.steps[i].retry_until_expect {
+                v["retry_until_expect"] = json!(true);
+                v["poll_s"] = json!(RETRY_UNTIL_EXPECT_POLL_S);
+            }
+            v
+        }).collect::<Vec<_>>(),
         "budget": {"calls": r.budget.calls, "wall_s": r.budget.wall_s},
     })
 }

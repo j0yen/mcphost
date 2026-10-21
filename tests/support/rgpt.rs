@@ -206,6 +206,13 @@ async fn run_steps(spec: &Value) -> Trace {
         let args = subst(&step["args"], &ctx);
         let deadline = Instant::now() + Duration::from_secs(step["retry_s"].as_u64().unwrap_or(0));
         let expects = expects_of(step);
+        // retry_until_expect steps poll at the recipe's interval (the same
+        // RETRY_UNTIL_EXPECT_POLL_S the generated proof sleeps on); the loop
+        // below already re-issues on an expect failure and panics with the last one.
+        let poll = match step["poll_s"].as_u64() {
+            Some(s) if step["retry_until_expect"] == json!(true) => Duration::from_secs(s),
+            _ => Duration::from_millis(200),
+        };
         issued += 1;
         let structured = loop {
             let outcome = client.tools_call(&tool, args.clone()).await;
@@ -228,7 +235,7 @@ async fn run_steps(spec: &Value) -> Trace {
                 Some(why) if Instant::now() >= deadline => {
                     panic!("{name} step {n} `{tool}` (as {who}) failed: {why}\nargs: {args}");
                 }
-                Some(_) => tokio::time::sleep(Duration::from_millis(200)).await,
+                Some(_) => tokio::time::sleep(poll).await,
             }
         };
         calls.push(tool);

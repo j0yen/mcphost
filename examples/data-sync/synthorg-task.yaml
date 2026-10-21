@@ -16,4 +16,4 @@ tasks:
       call_check: "result.table == orders"
       kind: http
     recipe: data-sync
-    wall_budget_s: 60
+    wall_budget_s: 90

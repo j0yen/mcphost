@@ -5,8 +5,8 @@ registry = "http"
 tenants = ["owner"]
 
 [budget]
-calls = 5
-wall_s = 60
+calls = 6
+wall_s = 90
 
 [[steps]]
 tool = "host.sync.create"
@@ -16,10 +16,20 @@ note = "registers the source and creates the `orders` table; the host does not f
 expect = [{ path = "$.sync_id", exists = true }, { path = "$.next_run_unix", exists = true }, { path = "$.status", exists = true }, { path = "$.table", value = "orders" }, { path = "$.existing", value = false }]
 
 [[steps]]
+tool = "host.sync.run_now"
+args = { sync_id = "${s1.sync_id}" }
+note = "makes the sync due now; the trigger tick picks it up"
+expect = [{ path = "$.next_run_unix", exists = true }]
+
+# proves tick -> claim -> sync::run wrote a receipt for THIS sync; status is
+# deliberately not pinned (today 'not_implemented'; sync-pull PRD AC 8)
+[[steps]]
 tool = "host.sync.get"
 args = { sync_id = "${s1.sync_id}" }
-note = "the sync row, with `last_run` null until the first pull"
-expect = [{ path = "$.table", value = "orders" }]
+note = "the sync row; polled until the first receipt (`last_run`) exists"
+retry_s = 75
+retry_until_expect = true
+expect = [{ path = "$.table", value = "orders" }, { path = "$.last_run.run_id", exists = true }, { path = "$.last_run.started_unix", exists = true }]
 
 [[steps]]
 tool = "host.sync.list"
@@ -274,14 +284,46 @@ check "create_table_is_orders" "$([[ "$SYNC_TABLE" == "orders" ]] && echo 1 || e
 check "create_is_new" "$([[ "$EXISTING" == "false" ]] && echo 1 || echo 0)"
 echo "host.sync.create: sync_id=${SYNC_ID} table=${SYNC_TABLE} status=${SYNC_STATUS} next_run_unix=${NEXT_RUN} existing=${EXISTING}"
 
-# 3. Read it back by id.
-get_resp=$(mcp_call "host.sync.get" "$(python3 -c 'import json,sys; print(json.dumps({"sync_id": sys.argv[1]}))' "$SYNC_ID")" "$OWNER_KEY")
-check "get_succeeds" "$(has_error "$get_resp" && echo 0 || echo 1)"
-GET_TABLE=$(json_get "$(structured_of "$get_resp")" "table")
-check "get_table_is_orders" "$([[ "$GET_TABLE" == "orders" ]] && echo 1 || echo 0)"
-echo "host.sync.get: table=${GET_TABLE}"
+# 3. Make the sync due now. The trigger tick claims it and sync::run writes
+#    one receipt; two run_now before a tick coalesce, so this is issued once.
+run_resp=$(mcp_call "host.sync.run_now" "$(python3 -c 'import json,sys; print(json.dumps({"sync_id": sys.argv[1]}))' "$SYNC_ID")" "$OWNER_KEY")
+check "run_now_succeeds" "$(has_error "$run_resp" && echo 0 || echo 1)"
+RUN_NEXT=$(json_get "$(structured_of "$run_resp")" "next_run_unix")
+check "run_now_returns_next_run_unix" "$([[ -n "$RUN_NEXT" ]] && echo 1 || echo 0)"
+echo "host.sync.run_now: next_run_unix=${RUN_NEXT}"
 
-# 4. It is the tenant's one sync.
+# 4. Read it back by id, re-issuing until the tick has written a receipt for
+#    THIS sync (retry_until_expect, 75 s, every ${RETRY_UNTIL_EXPECT_POLL_S} s).
+#    Status is deliberately not pinned (today 'not_implemented').
+GET_DEADLINE=$(( $(date +%s) + 75 ))
+get_args=$(python3 -c 'import json,sys; print(json.dumps({"sync_id": sys.argv[1]}))' "$SYNC_ID")
+while :; do
+  get_resp=$(mcp_call "host.sync.get" "$get_args" "$OWNER_KEY")
+  get_struct=$(structured_of "$get_resp")
+  GET_ERR=0; has_error "$get_resp" && GET_ERR=1
+  GET_TABLE=$(json_get "$get_struct" "table")
+  GET_RUN_ID=$(json_get "$get_struct" "last_run.run_id")
+  GET_STARTED=$(json_get "$get_struct" "last_run.started_unix")
+  GET_WHY=""
+  if [[ "$GET_ERR" == "1" ]]; then GET_WHY="call errored"
+  elif [[ "$GET_TABLE" != "orders" ]]; then GET_WHY="table is '${GET_TABLE}', want orders"
+  elif [[ -z "$GET_RUN_ID" ]]; then GET_WHY="last_run.run_id is absent"
+  elif [[ -z "$GET_STARTED" ]]; then GET_WHY="last_run.started_unix is absent"
+  fi
+  [[ -z "$GET_WHY" ]] && break
+  if [[ "$(date +%s)" -ge "$GET_DEADLINE" ]]; then
+    echo "host.sync.get: still failing after 75 s, last expect failure: ${GET_WHY}" >&2
+    break
+  fi
+  sleep "$RETRY_UNTIL_EXPECT_POLL_S"
+done
+check "get_succeeds" "$([[ "$GET_ERR" == "0" ]] && echo 1 || echo 0)"
+check "get_table_is_orders" "$([[ "$GET_TABLE" == "orders" ]] && echo 1 || echo 0)"
+check "get_last_run_has_run_id" "$([[ -n "$GET_RUN_ID" ]] && echo 1 || echo 0)"
+check "get_last_run_has_started_unix" "$([[ -n "$GET_STARTED" ]] && echo 1 || echo 0)"
+echo "host.sync.get: table=${GET_TABLE} last_run.run_id=${GET_RUN_ID} last_run.started_unix=${GET_STARTED}"
+
+# 5. It is the tenant's one sync.
 list_resp=$(mcp_call "host.sync.list" '{}' "$OWNER_KEY")
 check "list_succeeds" "$(has_error "$list_resp" && echo 0 || echo 1)"
 LIST_STRUCT=$(structured_of "$list_resp")
@@ -291,7 +333,7 @@ check "list_first_table_is_orders" "$([[ "$LIST_TABLE" == "orders" ]] && echo 1 
 check "list_first_sync_is_the_created_one" "$([[ -n "$SYNC_ID" && "$LIST_ID" == "$SYNC_ID" ]] && echo 1 || echo 0)"
 echo "host.sync.list: syncs[0].table=${LIST_TABLE}"
 
-# 5. Delete it: a proof must not leave a schedule running on a throwaway tenant.
+# 6. Delete it: a proof must not leave a schedule running on a throwaway tenant.
 delete_resp=$(mcp_call "host.sync.delete" "$(python3 -c 'import json,sys; print(json.dumps({"sync_id": sys.argv[1]}))' "$SYNC_ID")" "$OWNER_KEY")
 check "delete_succeeds" "$(has_error "$delete_resp" && echo 0 || echo 1)"
 DELETED=$(json_get "$(structured_of "$delete_resp")" "deleted")

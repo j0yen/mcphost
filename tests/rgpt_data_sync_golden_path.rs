@@ -7,8 +7,8 @@ use crate::rgpt;
 
 const RECIPE: &str = r####"{
   "budget": {
-    "calls": 5,
-    "wall_s": 60
+    "calls": 6,
+    "wall_s": 90
   },
   "fixture_routes": [],
   "https_public": false,
@@ -69,12 +69,43 @@ const RECIPE: &str = r####"{
       "expect": [
         {
           "contains": null,
-          "exists": null,
-          "path": "$.table",
-          "value": "orders"
+          "exists": true,
+          "path": "$.next_run_unix",
+          "value": null
         }
       ],
       "retry_s": null,
+      "signed_post": null,
+      "tool": "host.sync.run_now"
+    },
+    {
+      "args": {
+        "sync_id": "${s1.sync_id}"
+      },
+      "as": "owner",
+      "expect": [
+        {
+          "contains": null,
+          "exists": null,
+          "path": "$.table",
+          "value": "orders"
+        },
+        {
+          "contains": null,
+          "exists": true,
+          "path": "$.last_run.run_id",
+          "value": null
+        },
+        {
+          "contains": null,
+          "exists": true,
+          "path": "$.last_run.started_unix",
+          "value": null
+        }
+      ],
+      "poll_s": 5,
+      "retry_s": 75,
+      "retry_until_expect": true,
       "signed_post": null,
       "tool": "host.sync.get"
     },

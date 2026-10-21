@@ -1962,15 +1962,19 @@ Sign up first (`signup`), once per tenant: `owner`.
    expect `$.status` is present
    expect `$.table` = "orders"
    expect `$.existing` = false
-2. `host.sync.get(sync_id="<step1.sync_id>")` -- the sync row, with `last_run` null until the first pull
+2. `host.sync.run_now(sync_id="<step1.sync_id>")` -- makes the sync due now; the trigger tick picks it up
+   expect `$.next_run_unix` is present
+3. `host.sync.get(sync_id="<step1.sync_id>")` -- the sync row; polled until the first receipt (`last_run`) exists
    expect `$.table` = "orders"
-3. `host.sync.list()`
+   expect `$.last_run.run_id` is present
+   expect `$.last_run.started_unix` is present
+4. `host.sync.list()`
    expect `$.syncs[0].table` = "orders"
-4. `host.sync.delete(sync_id="<step1.sync_id>")` -- stops the schedule; the `orders` table stays
+5. `host.sync.delete(sync_id="<step1.sync_id>")` -- stops the schedule; the `orders` table stays
    expect `$.deleted` = true
    expect `$.table_kept` = true
 
-Expected cost: 5 calls (the 1 signup included), within 60 s.
+Expected cost: 6 calls (the 1 signup included), within 90 s.
 <!-- recipe:data-sync end -->
 
 <!-- sync:start -->

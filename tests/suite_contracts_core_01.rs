@@ -177,6 +177,8 @@ mod outsch_ac02_every_canonical_declares_an_object_output_schema;
 mod ptbatch_ac01_classify_files_agrees_with_classify;
 #[path = "pubvis_ac02_visibility_enum_single_source.rs"]
 mod pubvis_ac02_visibility_enum_single_source;
+#[path = "recipes_render_golden.rs"]
+mod recipes_render_golden;
 #[path = "revdebt_ac1_intent_card_pointers_resolve.rs"]
 mod revdebt_ac1_intent_card_pointers_resolve;
 #[path = "rlfe_ac05_run_writes_pass_as_str.rs"]

@@ -54,7 +54,8 @@ async fn dsproof_ac02_full_run_creates_then_deletes_the_sync_on_a_synthetic_tena
     let server = TestServer::start().await;
     // Async `Command`: a blocking `output()` would starve the in-process
     // server's own axum task.
-    let out = crate::deadline_budget!(30_000, {
+    // The get step polls for the tick's receipt (up to 75 s, tick every 30 s).
+    let out = crate::deadline_budget!(100_000, {
         proof().env("MCPHOST_URL", format!("{}/mcp", server.base_url)).output().await.expect("run proof.sh")
     });
     let t = transcript(&out);
@@ -63,6 +64,10 @@ async fn dsproof_ac02_full_run_creates_then_deletes_the_sync_on_a_synthetic_tena
     assert!(stdout.contains("RESULT: PASS"), "{t}");
     let create = stdout.lines().find(|l| l.starts_with("host.sync.create: ")).unwrap_or_else(|| panic!("no create line:\n{t}"));
     assert!(create.contains("sync_id=") && create.contains(" table=orders ") && create.contains("existing=false"), "{create}");
+    assert!(stdout.contains("host.sync.run_now: next_run_unix="), "{t}");
+    // The tick wrote a receipt for this sync: both ids are non-empty.
+    let get = stdout.lines().find(|l| l.starts_with("host.sync.get: ")).unwrap_or_else(|| panic!("no get line:\n{t}"));
+    assert!(get.contains("table=orders ") && !get.contains("last_run.run_id= ") && !get.ends_with("last_run.started_unix="), "{get}");
     assert!(stdout.contains("host.sync.delete: deleted=true"), "{t}");
 
     // The proof's tenant carries the explicit synthetic stamp (a loopback
@@ -158,14 +163,14 @@ async fn dsproof_ac06_a_terminated_run_still_deletes_its_sync() {
             if let Some(n) = l.strip_prefix("OWNER_NS=") {
                 ns = Some(n.to_string());
             }
-            if l.starts_with("host.sync.create: ") {
+            if l.starts_with("host.sync.run_now: ") {
                 created = true;
                 break;
             }
         }
     });
-    assert!(created, "the proof never reached the create step:\n{seen}");
-    // SIGTERM once the sync exists: the EXIT trap must delete it.
+    assert!(created, "the proof never reached the run_now step:\n{seen}");
+    // SIGTERM once the sync exists and the proof is polling for its receipt: the EXIT trap must delete it.
     let st = Command::new("kill").arg("-TERM").arg(pid.to_string()).status().await.expect("kill");
     assert!(st.success() || child.try_wait().ok().flatten().is_some());
     crate::deadline_budget!(30_000, {
