@@ -1378,6 +1378,44 @@ def plan_weights(suite_files):
 
 
 MEASURED_REL = "scripts/ci-suite-measured.json"
+# The measured file is a flat suite -> seconds map. A suite seeded from its recorded
+# WEIGHT (no real measurement exists anywhere yet) is listed by name under this
+# reserved key; ci-test-partition.sh's stale-ratio check skips the listed names and
+# ci-refresh-weights.sh drops the key when it writes the real measurements.
+PROVISIONAL_KEY = "_provisional"
+# Test-only override of where the BRANCH's measured copy is read from (default: HEAD).
+BRANCH_MEASURED_ENV = "GEN_SUITES_BRANCH_MEASURED"
+
+
+def branch_measured():
+    """(suite -> seconds, provisional names) of the branch's own committed
+    scripts/ci-suite-measured.json: `git show HEAD:<file>`. wm-build's land.generated entry
+    runs `git checkout origin/main -- <measured> <weights>` before this script, and that
+    changes the worktree and index only, so HEAD still holds the branch's real
+    measurements -- which the main copy lacks for any suite only the branch generates.
+    ({}, set()) when there is no such copy (not a repo, no HEAD, no file, unreadable)."""
+    override = os.environ.get(BRANCH_MEASURED_ENV)
+    try:
+        if override:
+            with open(override, encoding="utf-8") as fh:
+                text = fh.read()
+        else:
+            top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+            if top.returncode != 0 or os.path.realpath(top.stdout.strip()) != os.path.realpath(REPO_ROOT):
+                return {}, set()  # an enclosing repo's HEAD is not this tree's branch
+            shown = subprocess.run(["git", "show", f"HEAD:{MEASURED_REL}"], capture_output=True, text=True)
+            if shown.returncode != 0:
+                return {}, set()
+            text = shown.stdout
+        data = json.loads(text)
+    except (OSError, ValueError):
+        return {}, set()
+    if not isinstance(data, dict):
+        return {}, set()
+    prov = data.get(PROVISIONAL_KEY)
+    prov = {n for n in prov if isinstance(n, str)} if isinstance(prov, list) else set()
+    vals = {k: v for k, v in data.items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
+    return vals, prov
 
 
 def plan_measured(suite_files, new_weights):
@@ -1397,7 +1435,14 @@ def plan_measured(suite_files, new_weights):
     the refresh reads (a deadlock after any future split).
     Otherwise ci-test-partition.sh check compares the OLD set's seconds with the
     NEW set's weight (ryzen7 run 404, 10-18: core_08 re-packed to recorded 223 s
-    against measured 398 s, and the land precheck refused)."""
+    against measured 398 s, and the land precheck refused).
+    Finally every suite of the GENERATED set still without an entry is seeded, so no
+    generated suite ever lacks one (run 1034, 10-21: the land's `git checkout origin/main --
+    <measured> <weights>` handed this script a main copy without suite_core_12, which the
+    branch generates, and `check` refused "unmeasured suite"; this loop only ever walked the
+    keys of the file it read). Source A: the branch's committed value (`branch_measured`).
+    Source B, when the branch has none either: the suite's computed weight, listed under
+    PROVISIONAL_KEY. One stdout line per seed."""
     try:
         with open(MEASURED_REL, encoding="utf-8") as fh:
             old = json.load(fh)
@@ -1405,6 +1450,8 @@ def plan_measured(suite_files, new_weights):
         return None
     if not isinstance(old, dict):
         return None
+    prov_old = old.pop(PROVISIONAL_KEY, [])  # not a suite: carried forward below
+    prov_old = {n for n in prov_old if isinstance(n, str)} if isinstance(prov_old, list) else set()
     old_counts = {}
     old_members = {}
     for path in glob.glob("tests/suite_*.rs"):
@@ -1448,6 +1495,26 @@ def plan_measured(suite_files, new_weights):
         if den > 0:
             num = sum(ratio_of_file[m][0] * ratio_of_file[m][1] for m in members if m in ratio_of_file)
             out[name] = round(w_new * num / den, 2)
+    # every generated suite still without an entry: the branch's committed value, else its weight (provisional)
+    prov = {n for n in prov_old if n in out}
+    head, head_prov = branch_measured()
+    for path in sorted(suite_files):
+        name = os.path.basename(path)[:-3]
+        if name in out:
+            continue
+        w_new = new_weights.get(name)
+        if name in head:
+            out[name], src = head[name], "head"
+            if name in head_prov:
+                prov.add(name)
+        elif isinstance(w_new, (int, float)):
+            out[name], src = w_new, "weight-provisional"
+            prov.add(name)
+        else:
+            continue
+        print(f"gen-test-suites: seeded measured {name} = {out[name]} (src={src})")
+    if prov:
+        out[PROVISIONAL_KEY] = sorted(prov)
     return dict(sorted(out.items()))
 
 

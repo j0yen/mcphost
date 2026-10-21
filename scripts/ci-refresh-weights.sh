@@ -93,6 +93,8 @@ for suite in glob.glob("tests/suite_*_[0-9]*.rs"):
         if any(SOLO.match(l) for l in head):
             solo.add(os.path.basename(suite)[:-3])
 
+# `_provisional` (suites gen-test-suites.sh seeded from their weight, not a measurement) is not a
+# weights key, so this comprehension drops the marker: the real numbers written below replace it.
 new_m = {k: v for k, v in old_m.items() if k in weights}
 for name, secs in measured.items():
     if name in weights:
