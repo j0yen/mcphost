@@ -526,12 +526,17 @@ check() {
   # the max measured CI seconds that scripts/ci-refresh-weights.sh also derives the
   # recorded weights from. A suite measured at >= STALE_RATIO x its recorded weight
   # fails here, so the weights can never again pass `check` on old numbers.
+  # A name under the reserved `_provisional` key was seeded from its recorded weight by
+  # gen-test-suites.sh (no CI run has measured it yet): it is no measurement, so it is skipped
+  # here (it still counts as an entry for the completeness guard below); ci-refresh-weights.sh
+  # drops the key when it writes the real numbers.
   local stale
   if [ ! -f "$MEASURED_FILE" ]; then
     echo "ci-test-partition: $MEASURED_REL is missing -- run scripts/ci-refresh-weights.sh <ci-log>..." >&2
     rc=1
   elif ! stale="$(jq -r --argjson r "$STALE_RATIO" --slurpfile w "$WEIGHTS_FILE" \
-        'to_entries[] | select(($w[0][.key] // null) != null and .value >= $r * $w[0][.key])
+        '(._provisional // []) as $p | to_entries[]
+         | .key as $k | select($k != "_provisional" and ($p | index($k)) == null and ($w[0][$k] // null) != null and .value >= $r * $w[0][$k])
          | "\(.key) measured \(.value)s >= \($r)x recorded \($w[0][.key])s"' "$MEASURED_FILE" 2>&1)"; then
     echo "ci-test-partition: cannot read $MEASURED_REL: $stale" >&2
     rc=1

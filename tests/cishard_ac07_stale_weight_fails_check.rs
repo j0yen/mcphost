@@ -7,7 +7,10 @@
 //! fails, naming the suite, when measured >= 1.5 x recorded. It also fails, naming the
 //! suite, when a weights key (the `list measured-required` emitter: minus lib/bin:*) has no
 //! measured entry at all: a sandbox suite under its warn line used to record nothing, so
-//! its wrong weight passed silently.
+//! its wrong weight passed silently. A suite gen-test-suites.sh seeded from its weight (no CI
+//! run has measured it: listed under the measured file's `_provisional` key) is no measurement,
+//! so the ratio check skips it while the completeness rule still counts it as an entry, and
+//! ci-refresh-weights.sh drops the marker when it writes real numbers.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -298,4 +301,64 @@ fn every_required_suite_has_a_measured_entry_in_the_committed_file() {
     let measured = json("scripts/ci-suite-measured.json");
     let missing: Vec<String> = required_suites().into_iter().filter(|k| measured.get(k).is_none()).collect();
     assert!(missing.is_empty(), "committed measured file lacks: {missing:?}");
+}
+
+#[test]
+fn a_provisional_entry_is_exempt_from_the_stale_ratio_but_a_real_one_is_not() {
+    let dir = scratch("provisional");
+    let weights = json("scripts/ci-suite-weights.json");
+    let rec = weights["suite_core_08"].as_f64().unwrap();
+    let mut measured = json("scripts/ci-suite-measured.json");
+    measured["suite_core_08"] = serde_json::json!(rec * 3.0);
+    let (w, m) = (dir.join("weights.json"), dir.join("measured.json"));
+    std::fs::write(&w, weights.to_string()).unwrap();
+
+    // unmarked: a stale pair, named
+    std::fs::write(&m, measured.to_string()).unwrap();
+    let red = check_with(&w, &m);
+    let red_err = String::from_utf8_lossy(&red.stderr).into_owned();
+    assert!(!red.status.success(), "an unmarked 3x entry is stale");
+    assert!(red_err.contains("stale weight: suite_core_08 measured"), "{red_err}");
+
+    // marked provisional: skipped by the ratio check, still an entry for the completeness rule
+    measured["_provisional"] = serde_json::json!(["suite_core_08"]);
+    std::fs::write(&m, measured.to_string()).unwrap();
+    let green = check_with(&w, &m);
+    let green_err = String::from_utf8_lossy(&green.stderr).into_owned();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(green.status.success(), "a provisional entry is not a measurement: {green_err}");
+}
+
+#[test]
+fn the_refresh_script_drops_the_provisional_marker_when_it_writes_real_measurements() {
+    let dir = scratch("provisional-refresh");
+    std::fs::create_dir_all(dir.join("scripts")).unwrap();
+    std::fs::write(
+        dir.join("scripts/ci-suite-weights.json"),
+        r#"{"lib": 5, "suite_core_01": 10, "suite_sandbox_01": 10}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("scripts/ci-suite-measured.json"),
+        r#"{"_provisional": ["suite_core_01"], "suite_core_01": 10, "suite_sandbox_01": 9.5}"#,
+    )
+    .unwrap();
+    let log = dir.join("ci.log");
+    std::fs::write(&log, "suite=suite_core_01 measured=11.5s recorded=10s
+suite=suite_sandbox_01 measured=9.5s recorded=10s
+").unwrap();
+    let o = Command::new(root().join("scripts/ci-refresh-weights.sh"))
+        .arg(&log)
+        .env("CI_REFRESH_ROOT", &dir)
+        .env("CI_REFRESH_ALLOW_LOCAL", "1")
+        .current_dir(root())
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&o.stderr).into_owned();
+    let got: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("scripts/ci-suite-measured.json")).unwrap()).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(o.status.success(), "{err}");
+    assert!(got.get("_provisional").is_none(), "the marker must not survive a real measurement: {got}");
+    assert_eq!(got["suite_core_01"].as_f64().unwrap(), 11.5);
 }
