@@ -199,6 +199,8 @@ mod suite_ac2_check_catches_unregistered_file;
 mod suite_ac4_archived_prd_pointers_resolve;
 #[path = "suitecap_ac01_plan_never_exceeds_max_suites_and_weights_follow.rs"]
 mod suitecap_ac01_plan_never_exceeds_max_suites_and_weights_follow;
+#[path = "syreg_ac02_kinds_rendered_from_the_registry.rs"]
+mod syreg_ac02_kinds_rendered_from_the_registry;
 #[path = "thand_ac02_status_enum_source_of_truth.rs"]
 mod thand_ac02_status_enum_source_of_truth;
 #[path = "toolname_ac03_tools_list_alias_entries.rs"]

@@ -664,6 +664,7 @@ pub fn render_tools_markdown(kinds: &KindRegistry) -> String {
     // PRD-mcphost-contract-output-schemas R7: one `Returns` block per tool,
     // rendered from the same `output_schema` the contract and `tools/list`
     // carry.
+    out.push_str(&crate::sync::render_tools_section());
     out.push_str("\n## Returns\n\n");
     out.push_str(
         "Top-level fields of each tool's `structuredContent`, from its `output_schema` \
@@ -871,6 +872,13 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
                 spliced.as_str(),
                 &crate::connect::render_llms_section(&crate::connect::committed_specs()),
             );
+        }
+    }
+    // PRD-mcphost-sync-source-registry-and-create R1: the generated
+    // `## Data sync` section of www/llms.txt.
+    for (path, _current, spliced) in &mut support_docs {
+        if *path == "www/llms.txt" {
+            *spliced = crate::sync::splice_llms_section(spliced.as_str(), &crate::sync::render_llms_section());
         }
     }
     for (path, _current, spliced) in &mut support_docs {

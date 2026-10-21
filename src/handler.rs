@@ -5335,6 +5335,64 @@ fn host_tools_part_13() -> Vec<Tool> {
              reconnect_url when revoked. Never returns a token or a client id.",
             host_schema(json!({}), &[]),
         ),
+        // PRD-mcphost-sync-source-registry-and-create R1/R2/R5: scheduled mirrors of
+        // an external dataset into a host table. The `source.kind` enum is
+        // `SourceKind::ALL`, never a literal list.
+        Tool::new(
+            "host.sync.create",
+            "Register a scheduled mirror of an external dataset into a host table and return \
+             {sync_id, table, next_run_unix}. The table is created if absent. Refuses an unknown \
+             source kind (args_invalid), a private host (host_not_allowed), a missing upstream \
+             connection (connection_missing), a schedule under 5 minutes (schedule_too_frequent) \
+             and a tenant past its plan's syncs_max (quota_syncs_max). The same source and table \
+             again returns the existing sync with existing: true.",
+            host_schema(
+                json!({
+                    "source": crate::sync::source_schema(),
+                    "table": {"type": "string", "description": "The host table that mirrors the source."},
+                    "mode": {
+                        "type": "string",
+                        "enum": crate::sync::SYNC_MODES,
+                        "description": "Direction of the sync; default pull.",
+                    },
+                    "every": {
+                        "type": "string",
+                        "description": "Five-field cron schedule, at most every 5 minutes; default */15 * * * *.",
+                    },
+                    "primary_key": {"type": "string", "description": "Column that identifies a row."},
+                }),
+                &["source", "table"],
+            ),
+        ),
+        Tool::new(
+            "host.sync.list",
+            "List this tenant's syncs: id, source, table, mode, schedule, status, next_run_unix.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "host.sync.get",
+            "Read one sync row plus last_run, its newest run receipt (null before the first run). Errors: sync_not_found.",
+            host_schema(
+                json!({"sync_id": {"type": "string", "description": "The id host.sync.create returned."}}),
+                &["sync_id"],
+            ),
+        ),
+        Tool::new(
+            "host.sync.delete",
+            "Delete a sync and its run receipts. The table and its rows stay.",
+            host_schema(
+                json!({"sync_id": {"type": "string", "description": "The id host.sync.create returned."}}),
+                &["sync_id"],
+            ),
+        ),
+        Tool::new(
+            "host.sync.run_now",
+            "Make a sync due now; the scheduler tick runs it on its next pass.",
+            host_schema(
+                json!({"sync_id": {"type": "string", "description": "The id host.sync.create returned."}}),
+                &["sync_id"],
+            ),
+        ),
         // PRD-mcphost-upstream-token-vault requirement 2 (AC9, AC11): never
         // returns client_secret; re-setting an existing name is free
         // against vault_providers_max (see vault::provider_set).

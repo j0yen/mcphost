@@ -112,6 +112,7 @@ pub mod protocol;
 pub mod delegation;
 pub mod scopes;
 pub mod subkeys;
+pub mod sync;
 pub mod calllog;
 pub mod audit_export;
 pub mod metering;
