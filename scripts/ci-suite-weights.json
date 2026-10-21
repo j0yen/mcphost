@@ -10,14 +10,14 @@
   "suite_core_05": 2,
   "suite_core_06": 60,
   "suite_core_07": 2,
-  "suite_core_08": 1,
-  "suite_core_09": 246,
-  "suite_core_10": 269,
-  "suite_core_11": 276,
-  "suite_core_12": 213,
+  "suite_core_08": 246,
+  "suite_core_09": 269,
+  "suite_core_10": 276,
+  "suite_core_11": 212,
+  "suite_core_12": 269,
   "suite_env_core_01": 44,
   "suite_env_sandbox_01": 11,
   "suite_sandbox_01": 2,
-  "suite_sandbox_02": 154,
-  "suite_sandbox_03": 128
+  "suite_sandbox_02": 108,
+  "suite_sandbox_03": 88
 }
