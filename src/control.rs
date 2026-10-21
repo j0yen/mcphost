@@ -987,6 +987,15 @@ fn quickstart_inner(
     args: &Value,
     path_url_secret: Option<&str>,
 ) -> Result<Value, AppError> {
+    // A named kind is validated before the anonymous/keyed fork, so both
+    // callers get the same `unknown_kind` error (and envelope `next_call`).
+    // An outcome word is not an error; the keyed branch answers it below.
+    if let Some(requested) = arg_str_opt(args, "kind")
+        && let Err(e) = resolve_kind(&state.kinds, &requested)
+        && crate::kinds::outcomes::find(&requested).is_none()
+    {
+        return Err(e);
+    }
     let Some(tenant) = tenant else {
         let mut response = json!({
             "authenticated": false,
@@ -1016,7 +1025,8 @@ fn quickstart_inner(
         // promise), so a caller with no tenant still gets the index --
         // every registered kind, alias and recipe name, the dry-run table
         // and the limits -- read-only, creating no tenant. A named `kind`
-        // keeps the signup-first response above, unchanged.
+        // is validated first (above); a valid one keeps the signup-first
+        // response, unchanged.
         // PRD-mcphost-connection-provider-registry R7 (AC6).
         if let Value::Object(map) = &mut response {
             map.insert("connections".to_string(), crate::connect::quickstart_connections(&state.connect_providers));
