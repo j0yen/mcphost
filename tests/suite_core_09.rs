@@ -546,6 +546,18 @@ mod idkeyb_ac01_args_key_stripped_and_replays;
 mod idkeyb_ac02_expired_row_reruns_and_is_replaced;
 #[path = "idkeyb_ac03_llms_txt_idempotency_paragraph_checked.rs"]
 mod idkeyb_ac03_llms_txt_idempotency_paragraph_checked;
+#[path = "imos_ac01_precheck_before_mint.rs"]
+mod imos_ac01_precheck_before_mint;
+#[path = "imos_ac02_precheck_is_the_only_door.rs"]
+mod imos_ac02_precheck_is_the_only_door;
+#[path = "imos_ac03_rollback_on_failure.rs"]
+mod imos_ac03_rollback_on_failure;
+#[path = "imos_ac04_one_tenant_per_peer.rs"]
+mod imos_ac04_one_tenant_per_peer;
+#[path = "imos_ac05_peer_rule_exemptions.rs"]
+mod imos_ac05_peer_rule_exemptions;
+#[path = "imos_ac06_funnel_counts.rs"]
+mod imos_ac06_funnel_counts;
 #[path = "implsign_ac01_bare_call_creates_implicit_tenant_with_onboarding.rs"]
 mod implsign_ac01_bare_call_creates_implicit_tenant_with_onboarding;
 #[path = "implsign_ac02_second_call_carries_no_onboarding.rs"]
