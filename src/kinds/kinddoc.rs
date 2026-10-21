@@ -122,6 +122,130 @@ pub fn derive_requiredness<K: super::Kind + ?Sized>(kind: &K) -> Vec<(FieldDoc, 
         .collect()
 }
 
+/// The keys an `invalid_spec` refusal's `data` carries beyond the shared
+/// envelope ones: the `err_code!` row for `invalid_spec` reads this, so
+/// `/errors.json`, `docs/errors.md` and both SDKs list exactly these.
+pub const INVALID_SPEC_DATA_KEYS: &[&str] =
+    &["kind", "field", "reason", "fields", "minimal_specs", "docs_url", "fix", "known_secret_names"];
+
+/// Cap on the serialized `fields` plus `minimal_specs` of an `invalid_spec`
+/// refusal (PRD-mcphost-invalid-spec-error-carries-kind-fields R5).
+pub const INVALID_SPEC_PAYLOAD_CAP: usize = 8 * 1024;
+
+/// A kind's full `fields` and `minimal_specs` before the cap applies. A kind whose
+/// probe cannot run (no minimal specs, or one that is not minimal) ships no
+/// rows rather than panicking on a request path.
+fn payload_parts<K: super::Kind + ?Sized>(kind: &K) -> (Vec<Value>, Vec<Value>) {
+    let specs = kind.minimal_specs();
+    let rows = if specs.is_empty() || !minimality_failures(kind).is_empty() {
+        Vec::new()
+    } else {
+        derive_requiredness(kind)
+            .into_iter()
+            .map(|(d, r)| serde_json::json!({"name": d.name, "ty": d.ty, "required": r.cell(), "meaning": d.meaning}))
+            .collect()
+    };
+    (rows, specs)
+}
+
+/// Strips the `spec.` prefix a validator message carries so `field` names the
+/// spec key itself (`spec.schema` -> `schema`).
+fn bare_field(path: &str) -> &str {
+    path.strip_prefix("spec.").unwrap_or(path)
+}
+
+/// Byte offset of the first place `text` names `name` as a whole identifier.
+fn first_identifier_at(text: &str, name: &str) -> Option<usize> {
+    let is_ident = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    text.match_indices(name)
+        .find(|(i, _)| {
+            !text[..*i].chars().next_back().is_some_and(is_ident)
+                && !text[i + name.len()..].chars().next().is_some_and(is_ident)
+        })
+        .map(|(i, _)| i)
+}
+
+/// Applies [`INVALID_SPEC_PAYLOAD_CAP`]: the pair as given when it fits, else
+/// only the row for `field` and no minimal specs (the refusal's `docs_url`
+/// carries the rest).
+pub fn fit_payload(rows: Vec<Value>, specs: Vec<Value>, field: Option<&str>) -> (Vec<Value>, Vec<Value>) {
+    if serde_json::to_vec(&(&rows, &specs)).map_or(0, |v| v.len()) <= INVALID_SPEC_PAYLOAD_CAP {
+        return (rows, specs);
+    }
+    let only = rows.into_iter().filter(|r| field.is_some() && field == r["name"].as_str()).collect();
+    (only, Vec::new())
+}
+
+/// The `data` an `invalid_spec` refusal for `kind` carries: `kind`, `field`
+/// (the dotted path the validator named, else the first documented field its
+/// text names, else null), `reason`, the generated `fields` table, the
+/// `minimal_specs`, and `docs_url`. Over [`INVALID_SPEC_PAYLOAD_CAP`] the
+/// payload is `docs_url` plus the single `field` row.
+pub fn invalid_spec_data<K: super::Kind + ?Sized>(kind: &K, named_field: Option<&str>, reason: &str) -> Value {
+    let (rows, specs) = payload_parts(kind);
+    // `spec` (or serde's root path `.`) means "the whole spec"; the field is then the documented
+    // one the text names first (`spec: missing field `method``).
+    let from_path = named_field
+        .map(bare_field)
+        .or_else(|| {
+            let (head, _) = reason.split_once(": ")?;
+            (!head.is_empty() && !head.contains(' ')).then(|| bare_field(head))
+        })
+        .filter(|f| !matches!(*f, "spec" | "." | ""))
+        .map(str::to_string);
+    let field: Option<String> = from_path.or_else(|| {
+        rows.iter()
+            .filter_map(|r| r["name"].as_str())
+            .filter_map(|n| first_identifier_at(reason, n).map(|at| (at, n)))
+            .min()
+            .map(|(_, n)| n.to_string())
+    });
+    let (rows, specs) = fit_payload(rows, specs, field.as_deref());
+    serde_json::json!({
+        "kind": kind.name(),
+        "field": field,
+        "reason": reason,
+        "fields": rows,
+        "minimal_specs": specs,
+        "docs_url": format!("https://mcphost.dev/docs/kinds/{}", kind.name()),
+    })
+}
+
+/// Merges [`invalid_spec_data`] into an `invalid_spec` refusal (a plain
+/// `InvalidSpec`, or a `Structured` one with that code, keeping its own
+/// `data` keys); any other error passes through. `MultiInvalid` enriches each
+/// member.
+pub fn enrich_invalid_spec(kind: &dyn super::Kind, err: crate::errors::AppError) -> crate::errors::AppError {
+    use crate::errors::AppError;
+    match err {
+        AppError::InvalidSpec(m) => {
+            let data = invalid_spec_data(kind, None, &m);
+            AppError::Structured {
+                code: crate::errors::INVALID_SPEC,
+                message: format!("invalid spec: {m}"),
+                data,
+            }
+        }
+        AppError::Structured { code, message, data } if code == crate::errors::INVALID_SPEC => {
+            let named = data.get("field").and_then(Value::as_str).map(str::to_string);
+            let mut merged = invalid_spec_data(kind, named.as_deref(), &message);
+            if let (Some(base), Some(extra)) = (merged.as_object_mut(), data.as_object()) {
+                for (k, v) in extra {
+                    if !base.contains_key(k) {
+                        base.insert(k.clone(), v.clone());
+                    }
+                }
+            }
+            AppError::Structured { code, message, data: merged }
+        }
+        AppError::MultiInvalid { message, errors } => AppError::MultiInvalid {
+            message,
+            errors: errors.into_iter().map(|e| enrich_invalid_spec(kind, e)).collect(),
+        },
+        other => other,
+    }
+}
+
 /// [`UNIVERSAL_SPEC_FIELDS`]' meaning rows, shared by every kind.
 pub const UNIVERSAL_FIELD_DOCS: &[FieldDoc] = &[
     FieldDoc {

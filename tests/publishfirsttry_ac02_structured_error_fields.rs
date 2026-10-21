@@ -58,7 +58,7 @@ async fn echo_missing_schema_carries_field_and_example_and_the_example_is_accept
         .await
         .expect_err("missing spec.schema must fail");
     assert_eq!(err.error_code.as_deref(), Some("invalid_spec"));
-    assert_eq!(err.data["field"], json!("spec.schema"));
+    assert_eq!(err.data["field"], json!("schema"));
     assert!(err.data["expected"].as_str().is_some(), "{:?}", err.data);
     let example = err.data["example"].clone();
     assert!(

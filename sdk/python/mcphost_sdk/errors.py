@@ -158,6 +158,8 @@ class InvalidParams(MCPHostError):
 
 
 class InvalidSpec(MCPHostError):
+    DATA_KEYS: tuple[str, ...] = ("kind", "field", "reason", "fields", "minimal_specs", "docs_url", "fix", "known_secret_names",)
+
     def __init__(self, message: str, data: Optional[ErrorData] = None) -> None:
         super().__init__("invalid_spec", message, data)
 
