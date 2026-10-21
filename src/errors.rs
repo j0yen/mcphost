@@ -956,7 +956,7 @@ impl AppError {
                 // caller-input-quota class as `state_quota_exceeded` above.
                 // PRD-mcphost-paged-trait-on-every-list-verb requirement 2: a
                 // cursor this process did not mint is a bad parameter.
-                "invites_quota_exceeded" | "org_members_max" | "resources_max" | "org_member_already" | "org_name_taken"
+                "invites_quota_exceeded" | "org_members_max" | "resources_max" | "listen_streams_max" | "org_member_already" | "org_name_taken"
                 | "not_in_org" | "last_client" | "client_not_found" | "cursor_invalid" | "field_unknown" | "idempotency_conflict" => {
                     ErrorCode::INVALID_PARAMS
                 }

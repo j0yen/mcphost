@@ -13,6 +13,15 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use tokio::sync::{broadcast, watch};
 
+use crate::err_code;
+
+err_code! {
+    /// A tenant already holds its plan's maximum number of open listen streams.
+    pub LISTEN_STREAMS_MAX,
+    code: "listen_streams_max", family: Plan, class: PlanLimit, retryable: false,
+    remedy: "Close an open subscriptions/listen stream or move to a plan with a higher listen_streams_max; data.limit is the plan maximum of open listen streams.",
+}
+
 /// Messages a lagging stream may drop: a list change is idempotent (the client
 /// re-reads the list), so a stream that falls this far behind gets one
 /// notification and not a backlog.
@@ -33,6 +42,9 @@ struct Entry {
 struct Inner {
     tenants: Mutex<HashMap<i64, Entry>>,
     shutdown: watch::Sender<bool>,
+    /// (unix seconds, fleet) of each listen refused for the plan ceiling, kept
+    /// for 24 h: what `admin.funnel` reports as `listen_refused_cap_24h`.
+    refusals: Mutex<Vec<(i64, bool)>>,
 }
 
 /// The per-tenant registry of open listen streams. Cheap to clone: every clone
@@ -42,7 +54,11 @@ pub struct ListenHub(Arc<Inner>);
 
 impl Default for ListenHub {
     fn default() -> Self {
-        Self(Arc::new(Inner { tenants: Mutex::new(HashMap::new()), shutdown: watch::channel(false).0 }))
+        Self(Arc::new(Inner {
+            tenants: Mutex::new(HashMap::new()),
+            shutdown: watch::channel(false).0,
+            refusals: Mutex::new(Vec::new()),
+        }))
     }
 }
 
@@ -54,13 +70,42 @@ impl ListenHub {
     /// Register one open stream for `tenant_id`. The returned guard removes the
     /// registration when it drops, whichever way the stream ends.
     pub fn open(&self, tenant_id: i64) -> ListenGuard {
+        self.open_within(tenant_id, i64::MAX).unwrap_or_else(|_| unreachable!("no ceiling"))
+    }
+
+    /// [`Self::open`] unless `tenant_id` already holds `limit` streams, in which
+    /// case the open count is the error. Checked and registered under one lock,
+    /// so concurrent listens cannot both take the last slot.
+    pub fn open_within(&self, tenant_id: i64, limit: i64) -> Result<ListenGuard, usize> {
         let mut tenants = self.lock();
+        if let Some(entry) = tenants.get(&tenant_id)
+            && entry.open as i64 >= limit
+        {
+            return Err(entry.open);
+        }
+        if limit <= 0 {
+            return Err(0);
+        }
         let entry = tenants.entry(tenant_id).or_insert_with(|| Entry {
             tx: broadcast::channel(CHANNEL_CAPACITY).0,
             open: 0,
         });
         entry.open += 1;
-        ListenGuard { hub: self.clone(), tenant_id, rx: entry.tx.subscribe() }
+        Ok(ListenGuard { hub: self.clone(), tenant_id, rx: entry.tx.subscribe() })
+    }
+
+    /// Count a listen refused for the plan ceiling (`fleet`: it came from a fleet IP).
+    pub fn record_refusal(&self, now_unix: i64, fleet: bool) {
+        let mut refusals = self.0.refusals.lock().unwrap_or_else(|p| p.into_inner());
+        refusals.retain(|(at, _)| *at > now_unix - 86_400);
+        refusals.push((now_unix, fleet));
+    }
+
+    /// Refusals in the last 24 h as `(fleet, external)`.
+    pub fn refused_24h(&self, now_unix: i64) -> (i64, i64) {
+        let refusals = self.0.refusals.lock().unwrap_or_else(|p| p.into_inner());
+        let recent = refusals.iter().filter(|(at, _)| *at > now_unix - 86_400);
+        recent.fold((0, 0), |(f, e), (_, fleet)| if *fleet { (f + 1, e) } else { (f, e + 1) })
     }
 
     /// Tell every open stream of `tenant_id` that `change` happened. A tenant

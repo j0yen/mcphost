@@ -105,6 +105,9 @@ pub struct Plan {
     /// requirement 5: bytes of one `resources/read` body before it is cut at
     /// the last complete row (1 MiB on every plan).
     pub resource_read_bytes_max: i64,
+    /// PRD-mcphost-subscriptions-listen R7: open `subscriptions/listen`
+    /// streams per tenant (free 16, every paid plan 64).
+    pub listen_streams_max: i64,
     /// PRD-mcphost-runs-and-jobs P0 requirement 4: the deadline (seconds) a
     /// job of this plan's tenants runs under, distinct from the ordinary
     /// call deadline ([`crate::state::CALL_TIMEOUT`]) -- the whole point of
@@ -657,6 +660,7 @@ impl PlanCatalog {
                     table_bytes_max: 10 * 1024 * 1024,
                     resources_max: 8,
                     resource_read_bytes_max: 1_048_576,
+                    listen_streams_max: 16,
                     // PRD-mcphost-runs-and-jobs open question, resolved at
                     // build: "free job_max_s 300 and jobs_concurrent 1".
                     job_max_s: 300,
@@ -783,6 +787,7 @@ impl PlanCatalog {
                     table_bytes_max: 500 * 1024 * 1024,
                     resources_max: 64,
                     resource_read_bytes_max: 1_048_576,
+                    listen_streams_max: 64,
                     // PRD-mcphost-runs-and-jobs: pro gets a longer deadline
                     // and more concurrent jobs than free, same free/pro
                     // scaling shape as every other quota above.
@@ -981,6 +986,7 @@ impl PlanCatalog {
             out.push_str(&format!("table_bytes_max = {}\n", p.table_bytes_max));
             out.push_str(&format!("resources_max = {}\n", p.resources_max));
             out.push_str(&format!("resource_read_bytes_max = {}\n", p.resource_read_bytes_max));
+            out.push_str(&format!("listen_streams_max = {}\n", p.listen_streams_max));
             out.push_str(&format!("job_max_s = {}\n", p.job_max_s));
             out.push_str(&format!("jobs_concurrent = {}\n", p.jobs_concurrent));
             out.push_str(&format!("schedules_max = {}\n", p.schedules_max));
@@ -1142,6 +1148,7 @@ impl PlanCatalog {
                 "table_bytes_max" => builder.table_bytes_max = Some(int_value()),
                 "resources_max" => builder.resources_max = Some(int_value()),
                 "resource_read_bytes_max" => builder.resource_read_bytes_max = Some(int_value()),
+                "listen_streams_max" => builder.listen_streams_max = Some(int_value()),
                 "job_max_s" => builder.job_max_s = Some(int_value()),
                 "jobs_concurrent" => builder.jobs_concurrent = Some(int_value()),
                 "schedules_max" => builder.schedules_max = Some(int_value()),
@@ -1261,6 +1268,7 @@ struct PlanBuilder {
     table_bytes_max: Option<i64>,
     resources_max: Option<i64>,
     resource_read_bytes_max: Option<i64>,
+    listen_streams_max: Option<i64>,
     job_max_s: Option<i64>,
     jobs_concurrent: Option<i64>,
     schedules_max: Option<i64>,
@@ -1363,6 +1371,7 @@ impl PlanBuilder {
             table_bytes_max: quota!(table_bytes_max),
             resources_max: quota!(resources_max),
             resource_read_bytes_max: quota!(resource_read_bytes_max),
+            listen_streams_max: quota!(listen_streams_max),
             job_max_s: quota!(job_max_s),
             jobs_concurrent: quota!(jobs_concurrent),
             schedules_max: quota!(schedules_max),

@@ -11642,7 +11642,26 @@ impl McpHostHandler {
         {
             return Err(AppError::WrongTenant.into_error_data_at(base));
         }
-        let mut guard = self.state.listen_hub.open(tenant.id);
+        let plan = self
+            .state
+            .plans
+            .get(&tenant.plan)
+            .ok_or_else(|| AppError::Internal(format!("tenant's plan '{}' is not in the loaded plan catalog", tenant.plan)))
+            .map_err(|e| e.into_error_data_at(base))?;
+        let limit = plan.listen_streams_max;
+        let mut guard = match self.state.listen_hub.open_within(tenant.id, limit) {
+            Ok(guard) => guard,
+            Err(used) => {
+                let fleet = self.state.fleet_ips.contains(&source_ip(parts));
+                self.state.listen_hub.record_refusal(crate::state::now_unix(), fleet);
+                return Err(AppError::Structured {
+                    code: crate::listen::LISTEN_STREAMS_MAX,
+                    message: format!("this tenant already has {used} open listen streams, the {} plan maximum", plan.name),
+                    data: json!({"limit": limit, "used": used, "plan": plan.name}),
+                }
+                .into_error_data_at(base));
+            }
+        };
         let sink = context.sink().clone();
         let mut pending = Vec::new();
         loop {
