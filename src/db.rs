@@ -349,6 +349,8 @@ const MIGRATION_0109: &str = include_str!("../migrations/0109_key_delegation.sql
 const MIGRATION_0128: &str = include_str!("../migrations/0128_audit_chain_acting_for.sql");
 /// PRD-mcphost-acting-for-in-ledger-and-audit R5: `logs.key_id`.
 const MIGRATION_0129: &str = include_str!("../migrations/0129_logs_key_id.sql");
+/// PRD-mcphost-implicit-signup-mints-only-on-success R4: `signup_events.tenant_id`.
+const MIGRATION_0130: &str = include_str!("../migrations/0130_signup_events_tenant_id.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
@@ -3265,6 +3267,7 @@ impl Db {
         Self::migrate_0127_org_digest(&conn)?;
         Self::migrate_0128_audit_chain_acting_for(&conn)?;
         Self::migrate_0129_logs_key_id(&conn)?;
+        Self::migrate_0130_signup_events_tenant_id(&conn)?;
         Ok(())
     }
 
@@ -3446,6 +3449,16 @@ impl Db {
 
     /// PRD-mcphost-acting-for-in-ledger-and-audit R5: gated on the column
     /// (the batch is a single `ALTER`, so a rerun must skip it).
+    fn migrate_0130_signup_events_tenant_id(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('signup_events') WHERE name = 'tenant_id'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0130)?;
+        }
+        Ok(())
+    }
+
     fn migrate_0129_logs_key_id(conn: &Connection) -> Result<(), AppError> {
         let has_column: bool = conn
             .prepare("SELECT 1 FROM pragma_table_info('logs') WHERE name = 'key_id'")?
@@ -7929,6 +7942,17 @@ impl Db {
         &self,
         namespace: String,
     ) -> Result<Option<(Tenant, TenantDeleteCounts)>, AppError> {
+        self.delete_tenant_as(namespace, "tenant_delete").await
+    }
+
+    /// [`Self::delete_tenant`] with the `admin_events.action` it records: an
+    /// implicit signup's rollback is `implicit_signup_rolled_back`, not a delete an
+    /// operator made.
+    pub async fn delete_tenant_as(
+        &self,
+        namespace: String,
+        action: &'static str,
+    ) -> Result<Option<(Tenant, TenantDeleteCounts)>, AppError> {
         self.with_conn(move |conn| {
             let tenant = match Self::query_tenant_by_namespace(conn, &namespace)? {
                 Some(t) => t,
@@ -7949,7 +7973,7 @@ impl Db {
                 .to_string();
                 conn.execute(
                     "INSERT INTO admin_events (ts, action, tenant, detail) VALUES (?1, ?2, ?3, ?4)",
-                    params![now_rfc3339(), "tenant_delete", tenant.namespace, detail],
+                    params![now_rfc3339(), action, tenant.namespace, detail],
                 )?;
                 Ok(())
             })();
@@ -8089,7 +8113,7 @@ impl Db {
         origin: String,
         origin_detail: Option<String>,
         ip_class: String,
-    ) -> Result<bool, AppError> {
+    ) -> Result<Option<i64>, AppError> {
         let ts = now_unix();
         self.with_conn(move |conn| {
             // PRD-mcphost-session-bound-tenant-key requirement 3: same
@@ -8104,7 +8128,7 @@ impl Db {
                         WHERE source_ip = ?1 AND created_unix >= ?5 AND kind = 'signup') < ?6",
                 params![source_ip, ts, synthetic, user_agent, since_unix, limit, origin, origin_detail, ip_class],
             )?;
-            Ok(inserted > 0)
+            Ok((inserted > 0).then(|| conn.last_insert_rowid()))
         })
         .await
     }
@@ -8246,6 +8270,121 @@ impl Db {
                 params![source_ip, ts],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-implicit-signup-mints-only-on-success R4: stamp the tenant an
+    /// implicit signup created onto the `signup_events` row that admitted it.
+    pub async fn set_signup_event_tenant(&self, event_id: i64, tenant_id: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE signup_events SET tenant_id = ?2 WHERE id = ?1",
+                params![event_id, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// R4: a fleet-bypassed implicit signup writes no admit row, so it writes
+    /// this one (kind `implicit_signup_bypassed`, which the limiter never
+    /// counts), already carrying the created tenant.
+    pub async fn record_implicit_signup_bypassed(
+        &self,
+        source_ip: String,
+        user_agent: Option<String>,
+        ip_class: String,
+        tenant_id: i64,
+    ) -> Result<(), AppError> {
+        let ts = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO signup_events (source_ip, created_unix, user_agent, ip_class, kind, tenant_id) \
+                 VALUES (?1, ?2, ?3, ?4, 'implicit_signup_bypassed', ?5)",
+                params![source_ip, ts, user_agent, ip_class, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// R4: an R3 refusal (the peer already holds an implicit tenant), kind
+    /// `implicit_peer_refused` so the limiter, which counts only `signup`, never
+    /// charges it.
+    pub async fn record_implicit_peer_refused(&self, source_ip: String, ip_class: String) -> Result<(), AppError> {
+        let ts = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO signup_events (source_ip, created_unix, ip_class, kind) \
+                 VALUES (?1, ?2, ?3, 'implicit_peer_refused')",
+                params![source_ip, ts, ip_class],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// R4: the source IP of every R3 refusal in the window (`admin.funnel` splits
+    /// them into `fleet` and `external` against the configured fleet IPs).
+    pub async fn implicit_peer_refused_ips(&self, since_unix: i64) -> Result<Vec<String>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT source_ip FROM signup_events WHERE kind = 'implicit_peer_refused' AND created_unix >= ?1",
+            )?;
+            let ips = stmt.query_map(params![since_unix], |r| r.get(0))?.collect::<Result<_, _>>()?;
+            Ok(ips)
+        })
+        .await
+    }
+
+    /// R4: `admin.funnel`'s `implicit_signup_rolled_back`.
+    pub async fn count_implicit_signup_rolled_back(&self, since_unix: i64) -> Result<i64, AppError> {
+        // `admin_events.ts` is `now_rfc3339`'s sortable `unix:<secs>.<nanos>` stamp.
+        let since = format!("unix:{since_unix}.000000000");
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM admin_events WHERE action = 'implicit_signup_rolled_back' AND ts >= ?1",
+                params![since],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// R4: `admin.funnel`'s `implicit_zero_ok_calls`: implicit, not disabled,
+    /// with no `calls` row where `ok = 1` and no `host_tool_usage` row.
+    pub async fn count_implicit_zero_ok_calls(&self) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM tenants t WHERE t.signup_source = 'implicit' AND t.disabled = 0 \
+                 AND NOT EXISTS (SELECT 1 FROM calls c WHERE c.tenant_id = t.id AND c.ok = 1) \
+                 AND NOT EXISTS (SELECT 1 FROM host_tool_usage h WHERE h.tenant_id = t.id)",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// R4: implicit tenants created in the window per `(source_ip, user_agent)`
+    /// peer, as `(max, p50, peers above 1)`. Reads only rows carrying a
+    /// `tenant_id` (post-fix); `(0, 0, 0)` when there are none.
+    pub async fn implicit_tenants_per_peer(&self, since_unix: i64) -> Result<(i64, i64, i64), AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT COUNT(*) FROM signup_events WHERE tenant_id IS NOT NULL AND created_unix >= ?1 \
+                 GROUP BY source_ip, COALESCE(user_agent, '') ORDER BY 1",
+            )?;
+            let counts: Vec<i64> = stmt
+                .query_map(params![since_unix], |r| r.get(0))?
+                .collect::<Result<_, _>>()?;
+            let max = counts.last().copied().unwrap_or(0);
+            let p50 = counts.get(counts.len().saturating_sub(1) / 2).copied().unwrap_or(0);
+            let above_one = counts.iter().filter(|c| **c > 1).count() as i64;
+            Ok((max, p50, above_one))
         })
         .await
     }
