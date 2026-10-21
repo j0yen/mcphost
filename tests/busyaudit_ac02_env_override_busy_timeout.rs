@@ -88,12 +88,25 @@ async fn overridden_busy_timeout_shows_250_in_the_audit_line_and_admin_db_stats(
     // "and admin.db.stats reports 250 for every role" -- the real RPC over
     // HTTP, which is how an operator reads this number.
     let admin = McpClient::with_bearer(&base_url, "busyaudit-ac02-admin-key");
-    let result = admin
-        .tools_call("admin.db.stats", json!({}))
-        .await
-        .expect("admin.db.stats");
-    let structured = extract_structured(&result);
-    let roles = structured["roles"].as_array().expect("roles array");
+    // A box shared with the whole suite can answer the first call(s) with a
+    // transient tool error (no `roles`); retry until the payload arrives and
+    // keep the raw result for the failure message.
+    let stats_deadline = Instant::now() + Duration::from_secs(20);
+    let (structured, roles) = loop {
+        let outcome = admin.tools_call("admin.db.stats", json!({})).await;
+        let raw = format!("{outcome:?}");
+        if let Ok(result) = outcome {
+            let structured = extract_structured(&result);
+            if let Some(roles) = structured["roles"].as_array().cloned() {
+                break (structured, roles);
+            }
+        }
+        assert!(
+            Instant::now() < stats_deadline,
+            "admin.db.stats never returned a roles array; last result: {raw}"
+        );
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    };
     assert_eq!(roles.len(), mcphost::db::ALL_ROLES.len(), "{structured:?}");
     for role in roles {
         assert_eq!(

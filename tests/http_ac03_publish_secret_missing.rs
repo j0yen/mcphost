@@ -1,5 +1,5 @@
 //! AC3 — Given a spec referencing `secret.missing`, When published, Then it
-//! is rejected with `secret_missing` naming the secret.
+//! is rejected with `invalid_spec` (PRD-mcphost-invalid-spec-error-carries-kind-fields R6) naming the secret.
 
 use crate::common;
 use common::{McpClient, TestServer, http_kind_registry, signup};
@@ -24,7 +24,7 @@ async fn unknown_secret_reference_is_rejected_at_publish() {
         )
         .await
         .expect_err("publishing a spec referencing an unset secret must be rejected");
-    assert_eq!(err.error_code.as_deref(), Some("secret_missing"));
+    assert_eq!(err.error_code.as_deref(), Some("invalid_spec"));
     assert!(
         err.message.contains("missing"),
         "error message should name the missing secret, got: {}",

@@ -294,6 +294,12 @@ pub fn canonical_names(contract_bytes: &[u8]) -> Result<Vec<String>, String> {
     schema_ir::canonical_names(contract_bytes)
 }
 
+/// The `data` keys the registry declares for `code` beyond the shared
+/// envelope ones (empty when none).
+pub fn data_keys_of(code: &str) -> &'static [&'static str] {
+    crate::error_registry::lookup(code).map_or(&[], |e| e.data_keys)
+}
+
 /// Every wire error code the host knows (sorted, deduplicated).
 pub fn error_codes() -> Vec<String> {
     let mut codes: BTreeSet<String> = crate::errors::all_variants_for_test().iter().map(|e| e.code().to_string()).collect();
@@ -412,8 +418,15 @@ pub fn render(contract_bytes: &[u8]) -> Result<BTreeMap<String, String>, String>
     let mut e = format!("{hdr}# error codes: {ERROR_SOURCE}\n{ERRORS_PRELUDE_PY}\n\n");
     for c in &codes {
         let class = camel(c);
+        let keys = data_keys_of(c);
+        let keys_line = if keys.is_empty() {
+            String::new()
+        } else {
+            let items: Vec<String> = keys.iter().map(|k| py_str(k)).collect();
+            format!("    DATA_KEYS: tuple[str, ...] = ({},)\n\n", items.join(", "))
+        };
         e.push_str(&format!(
-            "class {class}(MCPHostError):\n    def __init__(self, message: str, data: Optional[ErrorData] = None) -> None:\n        super().__init__({}, message, data)\n\n\n",
+            "class {class}(MCPHostError):\n{keys_line}    def __init__(self, message: str, data: Optional[ErrorData] = None) -> None:\n        super().__init__({}, message, data)\n\n\n",
             py_str(c)
         ));
     }

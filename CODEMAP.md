@@ -286,6 +286,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `UPSTREAM_REMEDIES` in `src/kinds/http.rs`
 - `EXCLUDED_BUILTINS` in `src/kinds/jq.rs`
 - `ERROR_WHEN` in `src/kinds/kinddoc.rs`
+- `INVALID_SPEC_DATA_KEYS` in `src/kinds/kinddoc.rs`
 - `UNIVERSAL_FIELD_DOCS` in `src/kinds/kinddoc.rs`
 - `HOST_STEPS_ALLOWED` in `src/kinds/mod.rs`
 - `UNIVERSAL_SPEC_FIELDS` in `src/kinds/mod.rs`

@@ -177,6 +177,7 @@ export class InvalidParams extends MCPHostError {
 }
 
 export class InvalidSpec extends MCPHostError {
+  static readonly dataKeys: readonly string[] = ["kind", "field", "reason", "fields", "minimal_specs", "docs_url", "fix", "known_secret_names"];
   constructor(message: string, data: ErrorData = {}) {
     super("invalid_spec", message, data);
   }

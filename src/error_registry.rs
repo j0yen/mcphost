@@ -129,14 +129,18 @@ pub struct ErrorEntry {
     pub remedy: &'static str,
     pub docs_anchor: DocAnchor,
     pub retryable: bool,
+    /// The keys this code's `data` carries beyond the shared envelope ones
+    /// (`error_code`, `class`, `retry`, ...); empty for a code that adds none.
+    pub data_keys: &'static [&'static str],
     /// `file:line` of the `err_code!` declaration (or hand row); never serialized.
     pub site: &'static str,
 }
 
 impl ErrorEntry {
-    /// The seven-field JSON row (`help_url` is built on `base`).
+    /// The seven-field JSON row (`help_url` is built on `base`), plus
+    /// `data_keys` for a code that declares any.
     pub fn json_row(&self, base: &str) -> Value {
-        json!({
+        let mut row = json!({
             "code": self.code,
             "family": self.family.as_str(),
             "class": self.class.as_str(),
@@ -144,7 +148,11 @@ impl ErrorEntry {
             "docs_anchor": self.docs_anchor.as_str(),
             "retryable": self.retryable,
             "help_url": format!("{}/help/{}", base.trim_end_matches('/'), self.code),
-        })
+        });
+        if !self.data_keys.is_empty() {
+            row["data_keys"] = json!(self.data_keys);
+        }
+        row
     }
 }
 
@@ -158,7 +166,7 @@ pub const fn row(
     retryable: bool,
     remedy: &'static str,
 ) -> ErrorEntry {
-    ErrorEntry { code, family, class, remedy, docs_anchor: family.docs_anchor(), retryable, site: "src/error_registry.rs" }
+    ErrorEntry { code, family, class, remedy, docs_anchor: family.docs_anchor(), retryable, data_keys: &[], site: "src/error_registry.rs" }
 }
 
 #[doc(hidden)]
@@ -186,7 +194,7 @@ macro_rules! err_code {
         $(#[$meta:meta])*
         $vis:vis $name:ident,
         code: $code:literal, family: $family:ident, class: $class:ident,
-        retryable: $retryable:literal, remedy: $remedy:expr $(,)?
+        retryable: $retryable:literal, remedy: $remedy:expr $(, data_keys: $dk:expr)? $(,)?
     ) => {
         $(#[$meta])*
         $vis const $name: &'static str = $code;
@@ -195,6 +203,7 @@ macro_rules! err_code {
             #[linkme(crate = $crate::error_registry::linkme)]
             static ENTRY: $crate::error_registry::ErrorEntry = $crate::error_registry::ErrorEntry {
                 site: concat!(file!(), ":", line!()),
+                $(data_keys: $dk,)?
                 ..$crate::error_registry::row(
                     $code,
                     $crate::error_registry::Family::$family,
@@ -210,12 +219,13 @@ macro_rules! err_code {
     (
         $(#[$meta:meta])*
         $vis:vis $name:ident => $code:literal,
-        $family:ident, $class:ident, $retryable:literal, $remedy:expr $(,)?
+        $family:ident, $class:ident, $retryable:literal, $remedy:expr $(, data_keys: $dk:expr)? $(,)?
     ) => {
         $crate::err_code! {
             $(#[$meta])* $vis $name,
             code: $code, family: $family, class: $class,
             retryable: $retryable, remedy: $remedy,
+            $(data_keys: $dk,)?
         }
     };
 }
