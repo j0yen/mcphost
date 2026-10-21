@@ -1956,7 +1956,7 @@ The exact calls, in order (generated from `recipes/data-sync.toml`; do not hand-
 
 Sign up first (`signup`), once per tenant: `owner`.
 
-1. `host.sync.create(mode="pull", source={"kind":"csv_url","ref":"https://raw.githubusercontent.com/j0yen/mcphost/main/examples/data-sync/orders.csv"}, table="orders")` -- registers the source and creates the `orders` table; the host does not fetch at create time
+1. `host.sync.create(source=<a csv-over-http source, ref = the public url of your CSV>, table="orders", mode="pull")` -- registers the source and creates the `orders` table; the host does not fetch at create time
    expect `$.sync_id` is present
    expect `$.next_run_unix` is present
    expect `$.status` is present

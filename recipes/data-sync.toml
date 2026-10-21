@@ -11,6 +11,7 @@ wall_s = 60
 [[steps]]
 tool = "host.sync.create"
 args = { source = { kind = "csv_url", ref = "https://raw.githubusercontent.com/j0yen/mcphost/main/examples/data-sync/orders.csv" }, table = "orders", mode = "pull" }
+llms_call = "`host.sync.create(source=<a csv-over-http source, ref = the public url of your CSV>, table=\"orders\", mode=\"pull\")`"
 note = "registers the source and creates the `orders` table; the host does not fetch at create time"
 expect = [{ path = "$.sync_id", exists = true }, { path = "$.next_run_unix", exists = true }, { path = "$.status", exists = true }, { path = "$.table", value = "orders" }, { path = "$.existing", value = false }]
 
@@ -85,15 +86,35 @@ DATA_SYNC_CSV_URL="${DATA_SYNC_CSV_URL:-https://raw.githubusercontent.com/j0yen/
 # `-` not `:-`: unset takes the default label, an explicit empty value stays empty.
 SYNTHETIC_HEADER="${SYNTHETIC_HEADER-recipe:data-sync}"
 
-# Refuse a bare signup against anything but a loopback host.
+# Refuse a bare signup against anything but a loopback host. Any `@` is refused
+# too: `http://127.0.0.1:80@evil.example/mcp` matches the loopback prefix below
+# but its host is evil.example.
 if [[ -z "$SYNTHETIC_HEADER" ]] \
-  && ! [[ "$MCPHOST_URL" =~ ^https?://(localhost|127\.[0-9]+\.[0-9]+\.[0-9]+|\[::1\])([:/]|$) ]]; then
+  && { [[ "$MCPHOST_URL" == *@* ]] \
+       || ! [[ "$MCPHOST_URL" =~ ^https?://(localhost|127\.[0-9]+\.[0-9]+\.[0-9]+|\[::1\])([:/]|$) ]]; }; then
   echo "SYNTHETIC_HEADER empty: refusing a bare signup against ${MCPHOST_URL}" >&2
   exit 2
 fi
 
 FAILURES=0
 START_EPOCH=$(python3 -c 'import time; print(time.time())')
+
+# The sync this run creates is deleted on any exit once it exists: a kill
+# between create and delete must not leave a schedule running on the tenant.
+SYNC_ID=""
+OWNER_KEY=""
+SYNC_DELETED=0
+cleanup() {
+  local rc=$?
+  trap - EXIT INT TERM
+  if [[ -n "$SYNC_ID" && -n "$OWNER_KEY" && "$SYNC_DELETED" != "1" ]]; then
+    mcp_call "host.sync.delete" "$(python3 -c 'import json,sys; print(json.dumps({"sync_id": sys.argv[1]}))' "$SYNC_ID")" "$OWNER_KEY" >/dev/null 2>&1 || true
+  fi
+  exit "$rc"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 check() {
   local desc="$1" ok="$2"
@@ -275,6 +296,7 @@ delete_resp=$(mcp_call "host.sync.delete" "$(python3 -c 'import json,sys; print(
 check "delete_succeeds" "$(has_error "$delete_resp" && echo 0 || echo 1)"
 DELETED=$(json_get "$(structured_of "$delete_resp")" "deleted")
 check "delete_reports_deleted" "$([[ "$DELETED" == "true" ]] && echo 1 || echo 0)"
+[[ "$DELETED" == "true" ]] && SYNC_DELETED=1
 echo "host.sync.delete: deleted=${DELETED}"
 
 END_EPOCH=$(python3 -c 'import time; print(time.time())')

@@ -74,6 +74,12 @@ pub struct Step {
     /// Re-issue the call for up to this many seconds while it errors (a
     /// python tool's first call may still be building its environment).
     pub retry_s: Option<u64>,
+    /// Replaces the call text of this step in the `www/llms.txt` block only
+    /// (the golden test and the proof still use `args`). For a call whose
+    /// literal args would repeat a token the contract tests count once in
+    /// `www/llms.txt` (a source kind, syreg_ac02) or a URL the docs link
+    /// check would fetch.
+    pub llms_call: Option<String>,
     pub signed_post: Option<SignedPost>,
 }
 
@@ -378,6 +384,9 @@ fn render_call(s: &Step) -> String {
             "unsigned"
         };
         return format!("POST `{}` to `{}`, {how}, expect HTTP {}", humanize(&p.body), humanize(&p.url), p.status);
+    }
+    if let Some(text) = &s.llms_call {
+        return text.clone();
     }
     let tool = s.tool.as_deref().unwrap_or_default();
     let args = match humanize_value(&s.args) {

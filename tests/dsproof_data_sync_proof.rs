@@ -116,3 +116,72 @@ async fn dsproof_ac04_empty_synthetic_header_against_a_real_host_is_refused() {
     );
     assert!(!String::from_utf8_lossy(&out.stdout).contains("CHECK "), "no check may run before the refusal:\n{t}");
 }
+
+#[tokio::test]
+async fn dsproof_ac05_userinfo_before_at_does_not_pass_the_loopback_guard() {
+    // `127.0.0.1:80@host` parses as host `host`; the guard must refuse it like
+    // any non-loopback URL when the synthetic header is empty.
+    let out = proof()
+        .env("SYNTHETIC_HEADER", "")
+        .env("MCPHOST_URL", "http://127.0.0.1:80@dsproof.invalid/mcp")
+        .output()
+        .await
+        .expect("run proof.sh");
+    let t = transcript(&out);
+    assert_eq!(out.status.code(), Some(2), "{t}");
+    assert!(String::from_utf8_lossy(&out.stderr).contains("SYNTHETIC_HEADER empty: refusing a bare signup"), "{t}");
+    assert!(!String::from_utf8_lossy(&out.stdout).contains("CHECK "), "no check may run before the refusal:\n{t}");
+}
+
+#[tokio::test]
+async fn dsproof_ac06_a_terminated_run_still_deletes_its_sync() {
+    use std::process::Stdio;
+    use tokio::io::{AsyncBufReadExt, BufReader};
+
+    let server = TestServer::start().await;
+    let mut child = proof()
+        .env("MCPHOST_URL", format!("{}/mcp", server.base_url))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .expect("spawn proof.sh");
+    let pid = child.id().expect("child pid");
+    let mut lines = BufReader::new(child.stdout.take().expect("piped stdout")).lines();
+    let mut ns = None;
+    let mut created = false;
+    let mut seen = String::new();
+    crate::deadline_budget!(30_000, {
+        while let Some(l) = lines.next_line().await.expect("read proof stdout") {
+            seen.push_str(&l);
+            seen.push('\n');
+            if let Some(n) = l.strip_prefix("OWNER_NS=") {
+                ns = Some(n.to_string());
+            }
+            if l.starts_with("host.sync.create: ") {
+                created = true;
+                break;
+            }
+        }
+    });
+    assert!(created, "the proof never reached the create step:\n{seen}");
+    // SIGTERM once the sync exists: the EXIT trap must delete it.
+    let st = Command::new("kill").arg("-TERM").arg(pid.to_string()).status().await.expect("kill");
+    assert!(st.success() || child.try_wait().ok().flatten().is_some());
+    crate::deadline_budget!(30_000, {
+        while lines.next_line().await.expect("drain proof stdout").is_some() {}
+        child.wait().await.expect("wait proof.sh");
+    });
+    let tenant = server
+        .state
+        .db
+        .find_tenant_by_namespace(ns.expect("OWNER_NS line"))
+        .await
+        .expect("query")
+        .expect("tenant exists");
+    let conn = rusqlite::Connection::open(server.data_dir.0.join("mcphost.db")).expect("open raw db");
+    let syncs: i64 = conn
+        .query_row("SELECT COUNT(*) FROM syncs WHERE tenant_id = ?1", params![tenant.id], |r| r.get(0))
+        .expect("count syncs");
+    assert_eq!(syncs, 0, "a terminated proof must not leave its sync behind");
+}
