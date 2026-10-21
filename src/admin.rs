@@ -158,18 +158,18 @@ fn counts_json(counts: &TenantDeleteCounts) -> Value {
     })
 }
 
-/// P0 requirement 1 (AC1/AC2/AC7): delete one tenant and cascade every row
-/// that references it, atomically, in `Db::delete_tenant`. Structured log
-/// line + `admin_events` row (requirement 4 / AC8) happen here and in
-/// `Db::delete_tenant` respectively -- the log is process-observability,
-/// the DB row is the durable audit trail.
-pub async fn tenant_delete(state: &AppState, args: &Value) -> Result<Value, AppError> {
-    let tenant = arg_str(args, "tenant")?;
-    let (deleted, counts) = state
-        .db
-        .delete_tenant(tenant.clone())
-        .await?
-        .ok_or_else(|| AppError::TenantNotFound(tenant.clone()))?;
+/// The one delete path (`tenant_delete` and an implicit signup's rollback):
+/// `Db::delete_tenant_as` records `action` in `admin_events`, then every kind's
+/// `on_tenant_removed` and the tenant's table store go. `None` when the tenant
+/// is already gone.
+pub(crate) async fn delete_tenant_cascade(
+    state: &AppState,
+    namespace: &str,
+    action: &'static str,
+) -> Result<Option<(crate::db::Tenant, TenantDeleteCounts)>, AppError> {
+    let Some((deleted, counts)) = state.db.delete_tenant_as(namespace.to_string(), action).await? else {
+        return Ok(None);
+    };
     // PRD-mcphost-code-tools-warm-pool requirement 2 / AC3: same guarantee
     // as `tenant_disable`, for an outright delete.
     for k in state.kinds.all() {
@@ -179,6 +179,19 @@ pub async fn tenant_delete(state: &AppState, args: &Value) -> Result<Value, AppE
     // `tenants` table's own foreign keys can't reach -- a tenant's table
     // store is a file, not a row.
     remove_tenant_tables(state, deleted.id);
+    Ok(Some((deleted, counts)))
+}
+
+/// P0 requirement 1 (AC1/AC2/AC7): delete one tenant and cascade every row
+/// that references it, atomically, in `Db::delete_tenant`. Structured log
+/// line + `admin_events` row (requirement 4 / AC8) happen here and in
+/// `Db::delete_tenant` respectively -- the log is process-observability,
+/// the DB row is the durable audit trail.
+pub async fn tenant_delete(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let tenant = arg_str(args, "tenant")?;
+    let (deleted, counts) = delete_tenant_cascade(state, &tenant, "tenant_delete")
+        .await?
+        .ok_or_else(|| AppError::TenantNotFound(tenant.clone()))?;
     tracing::info!(
         tenant = %deleted.namespace,
         action = "tenant_delete",
@@ -2073,11 +2086,33 @@ pub async fn funnel(state: &AppState, args: &Value) -> Result<Value, AppError> {
     let implicit_second_signup_blocked =
         state.db.count_implicit_second_signup_blocked(since_unix).await?;
 
+    // PRD-mcphost-implicit-signup-mints-only-on-success R4. `implicit_zero_ok_calls`
+    // is a point-in-time count over live tenants; the rest read the window.
+    let implicit_zero_ok_calls = state.db.count_implicit_zero_ok_calls().await?;
+    let implicit_signup_rolled_back = state.db.count_implicit_signup_rolled_back(since_unix).await?;
+    let (mut refused_fleet, mut refused_external) = (0_i64, 0_i64);
+    for ip in state.db.implicit_peer_refused_ips(since_unix).await? {
+        if state.fleet_ips.contains(&ip) {
+            refused_fleet += 1;
+        } else {
+            refused_external += 1;
+        }
+    }
+    let (per_peer_max, per_peer_p50, per_peer_above_one) = state.db.implicit_tenants_per_peer(since_unix).await?;
+
     let mut response = json!({
         "window": {"days": days, "since_unix": since_unix},
         "signups": signups,
         "signups_human": signups_human,
         "implicit_second_signup_blocked": implicit_second_signup_blocked,
+        "implicit_zero_ok_calls": implicit_zero_ok_calls,
+        "implicit_signup_rolled_back": implicit_signup_rolled_back,
+        "implicit_peer_refused": {"fleet": refused_fleet, "external": refused_external},
+        "implicit_tenants_per_peer": {
+            "max": per_peer_max,
+            "p50": per_peer_p50,
+            "peers_above_1": per_peer_above_one,
+        },
         "stages": funnel_stage_stats(&filtered, signups),
         "by_source": funnel_by_source(&by_source_rows),
         "by_origin": funnel_by_origin(&by_source_rows),
