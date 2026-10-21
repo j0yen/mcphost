@@ -120,6 +120,8 @@ mod exprf_ac05_unknown_name_and_non_admin_refused;
 mod exprf_ac06_status_json_examples_block;
 #[path = "exprf_ac07_only_dry_run_prints_and_executes_nothing.rs"]
 mod exprf_ac07_only_dry_run_prints_and_executes_nothing;
+#[path = "exprf_ac08_concurrent_run_proof_owns_its_extract_dir.rs"]
+mod exprf_ac08_concurrent_run_proof_owns_its_extract_dir;
 #[path = "exprp_ac02_literal_secret_value_is_refused.rs"]
 mod exprp_ac02_literal_secret_value_is_refused;
 #[path = "exprp_ac03_non_portable_and_failing_proof_are_refused.rs"]

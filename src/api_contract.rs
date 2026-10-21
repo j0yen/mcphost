@@ -1165,9 +1165,11 @@ mod tests {
 
     #[test]
     fn load_deprecations_missing_file_is_empty() {
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
-            "mcphost-deprecations-test-{}",
-            crate::state::now_unix()
+            "mcphost-deprecations-test-{}-{}",
+            std::process::id(),
+            SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         let path = dir.join("deprecations.json");
         assert_eq!(load_deprecations(&path).expect("no such file"), Vec::new());

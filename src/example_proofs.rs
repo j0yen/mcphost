@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
@@ -307,8 +308,13 @@ async fn run_proof(example: &Example, opts: &RunOpts) -> ProofRun {
         duration_s: started.elapsed().as_secs_f64(),
         log_excerpt: tail_lines(&log, EXCERPT_LINES),
     };
-    let dir = std::env::temp_dir().join(format!("mcphost-prove-{}-{}-{}", std::process::id(), example.name, now_unix()));
-    if let Err(e) = std::fs::create_dir_all(&dir).map_err(|e| e.to_string()).and_then(|_| extract(example, opts.files_dir.as_deref(), &dir)) {
+    // PRX: pid + a process-wide counter is unique per call; pid + second was
+    // shared by same-second sibling calls in one test binary. `create_dir`
+    // (not `create_dir_all`) refuses a pre-existing dir, so this call only
+    // ever extracts into, and removes, a dir it created itself.
+    static PROVE_SEQ: AtomicU64 = AtomicU64::new(0);
+    let dir = std::env::temp_dir().join(format!("mcphost-prove-{}-{}-{}", std::process::id(), example.name, PROVE_SEQ.fetch_add(1, Ordering::Relaxed)));
+    if let Err(e) = std::fs::create_dir(&dir).map_err(|e| e.to_string()).and_then(|_| extract(example, opts.files_dir.as_deref(), &dir)) {
         let _ = std::fs::remove_dir_all(&dir);
         return fail(format!("extract failed: {e}"));
     }

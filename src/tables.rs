@@ -3214,10 +3214,11 @@ mod tests {
     }
 
     fn scratch_dir(label: &str) -> PathBuf {
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
             "mcphost-tables-test-{label}-{}-{}",
             std::process::id(),
-            crate::state::now_unix_ms()
+            SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         std::fs::create_dir_all(&dir).expect("scratch dir");
         dir
