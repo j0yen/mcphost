@@ -1,0 +1,20 @@
+[example]
+name = "data-sync"
+title = "Data sync: mirror a CSV into a table"
+summary = "One host.sync.create call registers a CSV URL as a scheduled mirror into a host table; get, list and delete read it back."
+use_case = ["database"]
+clients = ["any"]
+since = "0.112.38"
+secrets_needed = []
+
+[first_call]
+tool = "host.sync.create"
+expect = "result.table == orders"
+
+[first_call.args]
+table = "orders"
+mode = "pull"
+
+[first_call.args.source]
+kind = "csv_url"
+ref = "https://raw.githubusercontent.com/j0yen/mcphost/main/examples/data-sync/orders.csv"

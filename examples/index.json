@@ -25,6 +25,34 @@
       }
     },
     {
+      "name": "data-sync",
+      "title": "Data sync: mirror a CSV into a table",
+      "summary": "One host.sync.create call registers a CSV URL as a scheduled mirror into a host table; get, list and delete read it back.",
+      "use_case": [
+        "database"
+      ],
+      "clients": [
+        "any"
+      ],
+      "since": "0.112.38",
+      "proof": "proof.sh",
+      "secrets_needed": [],
+      "manifest_sha256": "6b9696dc78c0ea54755092d4cc52667a0ef04f572085903c08fad97c3dc01c7d",
+      "tools": [],
+      "first_call": {
+        "tool": "host.sync.create",
+        "args": {
+          "mode": "pull",
+          "source": {
+            "kind": "csv_url",
+            "ref": "https://raw.githubusercontent.com/j0yen/mcphost/main/examples/data-sync/orders.csv"
+          },
+          "table": "orders"
+        },
+        "expect": "result.table == orders"
+      }
+    },
+    {
       "name": "database-in-a-minute",
       "title": "A database in one minute",
       "summary": "Create a table, load fixture.csv, and ask equality, range, count, GROUP BY and LIKE questions as plain SQL.",
