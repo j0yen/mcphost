@@ -26077,10 +26077,16 @@
       "since": "0.112.33"
     },
     {
-      "description": "One sync by id: its row plus last_run, the newest receipt {run_id, started_unix, duration_ms, status, rows_added, rows_updated, rows_deleted, bytes, change_detected, error}, or null before the first run.",
+      "description": "One sync by id: its row plus last_run, the newest receipt {run_id, started_unix, duration_ms, status, rows_added, rows_updated, rows_deleted, bytes, change_detected, provider_calls, error} (null before the first run), runs (the last `limit` receipts, newest first), and rows_in_table / last_snapshot_rows / drift. A receipt status is running, ok, error, rate_limited, auth_expired, suspicious_empty or deferred.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "limit": {
+            "description": "How many receipts runs carries (default 20).",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
           "sync_id": {
             "description": "The sync_id host.sync.create returned.",
             "type": "string"
@@ -45663,10 +45669,16 @@
     },
     {
       "alias_of": "host.sync.get",
-      "description": "One sync by id: its row plus last_run, the newest receipt {run_id, started_unix, duration_ms, status, rows_added, rows_updated, rows_deleted, bytes, change_detected, error}, or null before the first run.",
+      "description": "One sync by id: its row plus last_run, the newest receipt {run_id, started_unix, duration_ms, status, rows_added, rows_updated, rows_deleted, bytes, change_detected, provider_calls, error} (null before the first run), runs (the last `limit` receipts, newest first), and rows_in_table / last_snapshot_rows / drift. A receipt status is running, ok, error, rate_limited, auth_expired, suspicious_empty or deferred.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "limit": {
+            "description": "How many receipts runs carries (default 20).",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
           "sync_id": {
             "description": "The sync_id host.sync.create returned.",
             "type": "string"

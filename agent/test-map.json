@@ -44,6 +44,17 @@
       "AC7": "tests/syreg_ac07_delete_keeps_the_table.rs",
       "AC8": "deferred: Live (prod; evidence: examples/data-sync/proof.sh --create-only prints sync_id=)"
     },
+    "sypul": {
+      "_prd": "PRD-mcphost-sync-pull-with-change-detection.md (test_prefix: sypul)",
+      "AC1": "tests/sypul_ac01_unchanged_pull_writes_nothing.rs",
+      "AC2": "tests/sypul_ac02_second_fetch_304_writes_nothing.rs",
+      "AC3": "tests/sypul_ac03_row_diff_updates_in_place.rs",
+      "AC4": "tests/sypul_ac04_auth_expired_pauses_and_429_waits.rs",
+      "AC5": "tests/sypul_ac05_per_tick_provider_budget_defers_the_rest.rs",
+      "AC6": "tests/sypul_ac06_empty_body_over_a_full_table_is_suspicious.rs",
+      "AC7": "tests/sypul_ac07_every_source_kind_fetches_its_fixture.rs",
+      "AC8": "deferred: Live (prod; evidence: examples/data-sync/proof.sh run with the synthetic header)"
+    },
     "cprov": {
       "_prd": "PRD-mcphost-connection-provider-registry.md (test_prefix: cprov)",
       "AC1": "tests/cprov_ac01_one_providers_toml_edit_reaches_every_surface.rs",
