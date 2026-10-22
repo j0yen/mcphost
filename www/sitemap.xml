@@ -17,4 +17,5 @@
   <url><loc>https://mcphost.dev/frames.json</loc></url>
   <url><loc>https://mcphost.dev/event-kinds.json</loc></url>
   <url><loc>https://mcphost.dev/retry_policy.json</loc></url>
+  <url><loc>https://mcphost.dev/install-surfaces.json</loc></url>
 </urlset>

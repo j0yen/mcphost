@@ -54,6 +54,23 @@ vscode:mcp/install?%7B%22name%22%3A%22mcphost%22%2C%22type%22%3A%22http%22%2C%22
 
 Docs: <https://code.visualstudio.com/api/extension-guides/ai/mcp> (checked 2026-10-09)
 
+## GitHub Copilot in VS Code (`copilot_vscode`)
+
+Copilot Chat is the same VS Code client: add mcphost to `.vscode/mcp.json` (or use the VS Code install link above).
+
+```json
+{
+  "servers": {
+    "mcphost": {
+      "type": "http",
+      "url": "https://mcphost.dev/mcp"
+    }
+  }
+}
+```
+
+Docs: <https://code.visualstudio.com/docs/agent-customization/mcp-servers> (checked 2026-10-21) and <https://docs.github.com/copilot/customizing-copilot/using-model-context-protocol/extending-copilot-chat-with-mcp>
+
 ## Claude.ai (`claude_ai`)
 
 Follow these steps:
@@ -178,6 +195,24 @@ Merge this block into the client's MCP config file:
 ```
 
 Docs: <https://docs.cline.bot/mcp/configuring-mcp-servers> (checked 2026-10-09)
+
+## SDKs (`sdk`)
+
+From code, point an MCP client at the endpoint; the Anthropic MCP connector and the OpenAI Agents SDK both take a URL.
+
+```json
+{
+  "name": "mcphost",
+  "type": "url",
+  "url": "https://mcphost.dev/mcp"
+}
+```
+
+```python
+MCPServerStreamableHttp(params={"url": "https://mcphost.dev/mcp"})
+```
+
+Docs: <https://platform.claude.com/docs/en/agents-and-tools/mcp-connector> (checked 2026-10-21) and <https://openai.github.io/openai-agents-python/mcp/>
 
 ## First call
 

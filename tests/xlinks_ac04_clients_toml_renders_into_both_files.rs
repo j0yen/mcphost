@@ -43,7 +43,7 @@ fn committed_files_carry_the_render() {
 fn toml_docs_urls_equal_the_external_urls_in_both_blocks() {
     let toml_urls: std::collections::BTreeSet<String> =
         clients::builtin().client.iter().map(|c| c.docs_url.clone()).collect();
-    assert_eq!(toml_urls.len(), 13, "one docs_url per client");
+    assert_eq!(toml_urls.len(), 15, "one docs_url per client");
     for (name, doc) in [("README.md", README), ("www/llms.txt", LLMS_TXT)] {
         let block = clients::block_of(doc).unwrap_or_else(|| panic!("{name} has no clients block"));
         assert_eq!(clients::external_urls(block), toml_urls, "{name}'s block URL set differs from docs/clients.toml");

@@ -1467,7 +1467,7 @@ fn render_connect_page(links: &crate::install_links::Links) -> String {
 /// new funnel event kind") with [`crate::state::classify_funnel_origin`]'s
 /// verdict for this request's own source IP -- then 302s to the client's
 /// deep link (`deeplink` kind) or renders the surface's instruction page
-/// (every other kind). Any `client` outside the install table's twelve ids
+/// (every other kind). Any `client` outside the install table's ids
 /// is 404 and records nothing.
 #[derive(serde::Deserialize)]
 struct ConnectGoQuery {
@@ -2140,6 +2140,9 @@ fn build_router_inner(state: Arc<AppState>, legacy_session_mode: bool, method_ga
         // here, the same gap status.html/aup.html's own hotfix closed).
         .route("/skill.md", get(|| async { static_markdown_page(include_str!("../www/skill.md")) }))
         .route("/llms-install.md", get(llms_install_doc))
+        // The install-doc surface ids as JSON, generated from `SURFACE_IDS`
+        // (`mcphost gen-docs`); the install-walk reads its section list here.
+        .route("/install-surfaces.json", get(|| async { static_json_page(include_str!("../www/install-surfaces.json")) }))
         // PRD-mcphost-llms-install-doc requirement 5: the sitemap lists
         // `/llms-install.md`; served here so the file is not only a deploy
         // artefact.

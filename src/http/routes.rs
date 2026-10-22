@@ -80,6 +80,7 @@ pub const UNSPECCED: &[&str] = &[
     "/retry_policy.json",
     "/skill.md",
     "/llms-install.md",
+    "/install-surfaces.json",
     "/sitemap.xml",
     "/support.html",
 ];

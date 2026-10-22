@@ -295,6 +295,21 @@ Docs: <https://docs.cursor.com/en/tools/mcp> (checked 2026-10-09)
 
 Docs: <https://code.visualstudio.com/api/extension-guides/ai/mcp> (checked 2026-10-09)
 
+**GitHub Copilot in VS Code**
+
+```json
+{
+  "servers": {
+    "mcphost": {
+      "type": "http",
+      "url": "https://mcphost.dev/mcp"
+    }
+  }
+}
+```
+
+Docs: <https://code.visualstudio.com/docs/agent-customization/mcp-servers> (checked 2026-10-21)
+
 **Claude.ai**
 
 1. Open Settings, then Connectors, then Add custom connector.
@@ -391,6 +406,18 @@ Docs: <https://docs.windsurf.com/windsurf/cascade/mcp> (checked 2026-10-09)
 ```
 
 Docs: <https://docs.cline.bot/mcp/configuring-mcp-servers> (checked 2026-10-09)
+
+**SDKs**
+
+```json
+{
+  "name": "mcphost",
+  "type": "url",
+  "url": "https://mcphost.dev/mcp"
+}
+```
+
+Docs: <https://platform.claude.com/docs/en/agents-and-tools/mcp-connector> (checked 2026-10-21)
 <!-- install-links:end -->
 <!-- clients:end -->
 
