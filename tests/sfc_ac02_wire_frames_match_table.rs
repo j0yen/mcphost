@@ -159,13 +159,16 @@ async fn server_timing_t2_sse_mcp_response_carries_the_header_at_response_head()
 async fn server_timing_t3_refusals_before_and_after_dispatch_still_carry_the_header() {
     let server = TestServer::start().await;
 
-    // A tenant-requiring call with no key is refused in the handler
-    // (`tenant_key_missing`) and upgraded to 401 by the router-wide
-    // `oauth_401_upgrade`, which runs outside the route layers.
-    let resp = McpClient::new(&server.base_url)
-        .post_raw(request(1, "tools/call", json!({"name": "host.state.get", "arguments": {"key": "k"}})))
+    // A JWT-shaped bearer from an unregistered issuer is refused in the
+    // handler (`invalid_token`, `unknown_issuer`) and upgraded to 401 by the
+    // router-wide `oauth_401_upgrade`, which runs outside the route layers.
+    // (A keyless `host.*` call on bare `/mcp` implicitly signs up, so it never
+    // 401s here.)
+    let jwt = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL3VucmVnaXN0ZXJlZC1pc3N1ZXIuaW52YWxpZCJ9.c2ln";
+    let resp = McpClient::with_bearer(&server.base_url, jwt)
+        .post_raw(request(1, "tools/call", json!({"name": "host.whoami", "arguments": {}})))
         .await;
-    assert_eq!(resp.status().as_u16(), 401, "keyless tenant call");
+    assert_eq!(resp.status().as_u16(), 401, "unknown-issuer bearer");
     dur_ms(&resp);
 
     // A bad key is refused in the handler too (status is whatever the handler
