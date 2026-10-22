@@ -1,72 +1,72 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-sync-source-registry-and-create.md",
-  "intent_slug": "mcphost-sync-source-registry-and-create",
-  "root_motivation": "Who: an agent whose user says 'the truth is this Google Sheet'. What: one host.sync.create call that makes a host table mirror an external dataset on a schedule. Why not today: host.table.create makes an empty table, host.table.append cannot update a row, and host.trigger.set can only call a published tool, so the agent owns a sync loop forever.",
-  "user_persona": "An agent that calls host.sync.create with a source ref and gets a scheduled mirror in one call; Operator Joe who reads docs/tools.md and llms.txt and knows both were rendered from the SourceKind enum.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-external-class-positive-evidence.md",
+  "intent_slug": "mcphost-external-class-positive-evidence",
+  "root_motivation": "Who: Joe and the controller reading the PMF line. What: a count of real external users they can act on. Why not today: classify_source_class returns External by elimination, so 16 prod signups from carbon's unstamped refresh scripts on 2026-10-20 read as external and the line is untrustworthy. Fix: external must be earned by positive evidence (verified claim e-mail or a later-UTC-day return); the default becomes unattributed.",
+  "user_persona": "The PM reading status sees external N (claimed a, returned r), unattributed u, synthetic s and knows which number is a user; the controller reads tenants_confirmed from healthz; an operator who forgets the synthetic header lands in unattributed, not in the user count.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 6
+    "target": 7
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given this PRD has landed, When the operator runs the premise check recorded under 'Premise check (operator)', Then its result is written into the PRD (Live; deferred, operator-provisioned).",
-      "test": "deferred -- operator-provisioned: premise check over the last three truth-tier runs, recorded in the PRD."
+      "description": "Given a signup from a non-loopback, non-fleet IP with no X-Mcphost-Synthetic header, When the tenant row is written, Then origin='unattributed', origin_detail='no-positive-evidence' and healthz tenants_by_origin.unattributed rises by one.",
+      "test": "tests/mcphost-external-class-positive-evidence_ac01_unattributed_default.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given SourceKind::ALL, When a test renders the tool schema, docs/tools.md, www/llms.txt and reads the puller dispatch arms, Then every kind appears in each exactly once and gen-docs --check exits 1 naming the file after any one copy is hand-edited.",
-      "test": "tests/syreg_ac02_source_kinds_render_once_everywhere.rs"
+      "description": "Given an unattributed tenant, When its claim e-mail is verified, Then origin='external', origin_detail='claimed-email' and exactly one admin_audit origin_promoted row exists even when two verifications race (single-row UPDATE ... WHERE origin='unattributed').",
+      "test": "tests/mcphost-external-class-positive-evidence_ac02_claim_promotes_once.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a keyed free tenant, When host.sync.create {source: {kind: csv_url, ref}, table: orders} is called, Then the response carries sync_id and next_run_unix within 15 minutes, host.sync.list shows one active row, and the call took < 100 ms.",
-      "test": "tests/syreg_ac03_create_returns_sync_id_and_next_run.rs"
+      "description": "Given an unattributed tenant with no fleet-IP or header-stamped call in its history, When it makes a clean authenticated call on a later UTC date and >= 21,600 s after creation, Then origin='external' with detail returned:<n>d and the audit row carries the IP hash; midnight-crossing, fleet, stamped or tainted histories never promote.",
+      "test": "tests/mcphost-external-class-positive-evidence_ac03_later_day_return_promotes.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given kind excel_online, a csv_url ref of http://10.0.0.1/x.csv, and google_sheet on a tenant with no Google connection, When each is created, Then the errors are args_invalid (lists the five kinds), host_not_allowed and connection_missing {provider: google}, and no syncs row exists.",
-      "test": "tests/syreg_ac04_create_validation_errors.rs"
+      "description": "Given a synthetic tenant, When a claim is verified or a qualifying later-day call arrives, Then origin stays synthetic, no origin_promoted audit row is written and synthetic_promotion_refused increments and is readable in healthz.",
+      "test": "tests/mcphost-external-class-positive-evidence_ac04_synthetic_never_promoted.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a free tenant with 5 syncs, When a sixth is created, Then quota_syncs_max {limit: 5, used: 5} is returned and host.quickstart limits.plan.syncs_max reads 5 from the same Plan field.",
-      "test": "tests/syreg_ac05_sixth_sync_hits_syncs_max.rs"
+      "description": "Given one seeded tenant per case, When the migration runs, Then verified external becomes external/claimed-email, unverified external rows become unattributed/legacy-external-unverified, unclassified becomes unattributed/legacy-unclassified, synthetic is unchanged, no row is NULL and the journaled before/after counts sum equally.",
+      "test": "tests/mcphost-external-class-positive-evidence_ac05_migration_backfill.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given an active sync whose next_run_unix is in the past, When tick_once runs, Then one sync_runs receipt exists, next_run_unix moved to the next cron slot, and a second tick_once in the same slot writes no second receipt.",
-      "test": "tests/syreg_ac06_tick_writes_one_receipt_per_slot.rs"
+      "description": "Given an empty DB and a seeded DB, When healthz, mcphost funnel --json, admin funnel and scripts/ops/origin-counts.py are read, Then they report identical tenants_by_origin, external_by_evidence, tenants_real, tenants_confirmed and origin_unknown keys with the stated identities, and the script equals healthz.",
+      "test": "tests/mcphost-external-class-positive-evidence_ac06_surfaces_agree.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given a sync, When host.sync.delete runs, Then host.sync.list is empty, the table still answers host.table.query, and a second host.sync.create with the same (kind, ref, table) returns a new sync_id.",
-      "test": "tests/syreg_ac07_delete_keeps_the_table.rs"
+      "description": "Given the single Origin enum, When the generated-contract test runs, Then backfill, healthz and funnel value lists derive from Origin::as_str at compile time, the test fails on any extra or missing value, and each migration's SQL stays a static string.",
+      "test": "tests/mcphost-external-class-positive-evidence_ac07_generated_origin_contract.rs"
     },
     {
       "id": "AC8",
-      "level": "MUST",
-      "description": "Given prod after deploy, When the joe-test tenant calls host.sync.create for the public fixture CSV and then host.sync.get, Then the response carries sync_id and next_run_unix (Live; deferred, operator-provisioned).",
-      "test": "deferred -- operator-provisioned: examples/data-sync/proof.sh --create-only against prod after deploy."
+      "level": "SHOULD",
+      "description": "Given prod after deploy, When the operator runs scripts/ops/origin-counts.py on mcphost-1 as a counts-only ro read, Then it prints the counts line with n == a + b and the totals equal the pre-deploy tenant count (Live; deferred, operator-provisioned).",
+      "test": "deferred -- operator-provisioned: the script run on mcphost-1 sourcing /etc/mcphost/env, pasted into the run note."
     }
   ],
   "scope": [
-    "src/sync/mod.rs: the SourceKind registry, host.sync.create/list/get/delete/run_now, and the trigger tick's sync pass writing a not_implemented sync_runs receipt.",
-    "migrations/0130_syncs.sql: syncs and sync_runs tables; Plan.syncs_max (free 5, pro 50) and the quota_syncs_max, connection_missing and schedule_too_frequent error codes.",
-    "www/llms.txt gains a generated Data sync section and docs/tools.md the source.kind enum, both rendered from SourceKind."
+    "src/state.rs: the Origin enum (one macro-generated list), derive_origin -> unattributed, return_promotion_days.",
+    "src/db.rs: promote_origin_row (single-row UPDATE + audit), observe_call_origin, origin_report, migrations 0131 (taint column + origin_counters) and 0132 (one-shot journaled backfill).",
+    "src/handler.rs, src/http.rs, src/admin.rs, src/main.rs: call-path observation and the shared origin keys; scripts/ops/origin-counts.py."
   ],
   "non_goals": [
-    "Fetching rows (the pull PRD); push or conflict handling (the two-way PRD); type inference beyond text columns; any new OAuth flow."
+    "Offboarding or deleting any tenant; changing what counts as synthetic; a UI; rotating keys; changing signup rate limits; deciding whether returned counts toward PMF."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -75,35 +75,35 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "main_database_tables": "syncs and sync_runs live in the main database (migration 0130), not a per-tenant file, so the tick's sync pass is one indexed query across tenants."
+      "no_table_rebuild": "No CHECK constraint and no DEFAULT change on origin (a rebuild of tenants, signup_events and calls); new code always writes origin explicitly."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can an agent not keep a host table equal to a sheet?",
-      "a": "No verb registers an external source; the agent would own a puller, a token and a diff loop."
+      "q": "Why did 16 fleet signups read as external?",
+      "a": "Scripts called prod raw, no header, from a hotspot IP outside MCPHOST_FLEET_IPS."
     },
     {
       "why": 2,
-      "q": "Why is there no verb?",
-      "a": "host.table.append cannot update a row and host.trigger.set only calls a published tool."
+      "q": "Why was that external?",
+      "a": "classify_source_class returns External when nothing matches, and derive_origin wrote external for every non-synthetic row."
     },
     {
       "why": 3,
-      "q": "Why start with a registry?",
-      "a": "One SourceKind enum generates the schema, docs and dispatch, so the five kinds cannot drift."
+      "q": "Why fix the default?",
+      "a": "An allowlist of what is ours can never be complete; external must require positive evidence."
     }
   ],
   "created_at": "2026-10-21T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "What is source.secret?",
-      "resolution": "The NAME of a host.secret (stored as secret_name), never a value, so no secret-named field exists on a Debug struct."
+      "question": "Does returned count toward the PMF line?",
+      "resolution": "No: tenants_confirmed is claimed-email only; returned is exposed separately."
     },
     {
-      "question": "Do push and two_way modes run?",
-      "resolution": "They are accepted at create with status pending_mode (the PRD default) and the tick skips them."
+      "question": "Where is fleet/stamped call history kept, since calls has no ip_class?",
+      "resolution": "tenants.origin_taint_unix, stamped on the authenticated call path while the tenant is unattributed."
     }
   ]
 }
