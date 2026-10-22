@@ -424,6 +424,8 @@ mod sreg_ac06_oauth_scopes_registry_first;
 mod sreg_ac07_unknown_scope_word_not_effective;
 #[path = "srlp_ac02_plan_ceilings_published.rs"]
 mod srlp_ac02_plan_ceilings_published;
+#[path = "ssd_ac01_signup_descriptor_matches_signup_args.rs"]
+mod ssd_ac01_signup_descriptor_matches_signup_args;
 #[path = "state_ac01_kv_roundtrip.rs"]
 mod state_ac01_kv_roundtrip;
 #[path = "state_ac04_table_query.rs"]

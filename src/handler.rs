@@ -1108,18 +1108,28 @@ pub(crate) fn signup_tool() -> Tool {
          single-use handoff_token instead of the raw key -- redeem it once with host.redeem \
          to get the key, so a transcript of this call and the redeem call, if it leaks, \
          carries a dead credential. The raw-key path (handoff omitted) stays fully supported.",
-        schema(
-            json!({
-                "name": {"type": "string", "description": "display name"},
-                "handoff": {
-                    "type": "boolean",
-                    "description": "Recommended: true to receive a handoff_token (redeem via \
-                        host.redeem) instead of the raw key. Default false (raw key, unchanged).",
-                },
-            }),
-            &["name"],
-        ),
+        schema(signup_arg_properties(), &signup_required_args()),
     )
+}
+
+/// `signup`'s `properties`, one per [`control::SIGNUP_ARGS`] row.
+fn signup_arg_properties() -> Value {
+    let mut props = Map::new();
+    for a in control::SIGNUP_ARGS {
+        let mut prop = Map::new();
+        prop.insert("type".to_string(), json!(a.ty));
+        if let Some(pattern) = a.pattern {
+            prop.insert("pattern".to_string(), json!(pattern));
+        }
+        prop.insert("description".to_string(), json!(a.description));
+        props.insert(a.name.to_string(), Value::Object(prop));
+    }
+    Value::Object(props)
+}
+
+/// `signup`'s `required`, from [`control::SIGNUP_ARGS`].
+fn signup_required_args() -> Vec<&'static str> {
+    control::SIGNUP_ARGS.iter().filter(|a| a.required).map(|a| a.name).collect()
 }
 
 /// PRD-mcphost-publish-first-try requirement 1 (AC1) named `host.tool_test`

@@ -85,6 +85,9 @@ pub fn doc_check_scratch(label: &str) -> PathBuf {
     for rel in [
         "scripts/sandbox-api-doc-check.sh",
         "scripts/host-tools-doc-check.sh",
+        // the script also checks the generated signup argument block.
+        "scripts/signup-args-doc-check.sh",
+        "www/skill.md",
         "scripts/protocol-frames-check.sh",
         "src/protocol/frames.rs",
         "docs/protocol/frames.md",

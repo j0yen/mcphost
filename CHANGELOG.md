@@ -4,6 +4,8 @@
 
 `providers.toml` is the single source for upstream OAuth providers (PRD-mcphost-connection-provider-registry): the new `host.connect.providers` tool, its `provider` enum, `docs/connections.md`, `www/llms.txt` and the callback routes derive from it. Initial rows: github, google, slack, notion.
 
+`signup` now declares its `source` argument (hotfix signup-source-descriptor): the handler has accepted `source` since PRD-mcphost-signup-kill-switch-and-source, and plugin/skills/mcphost/SKILL.md and www/skill.md tell clients to send `signup(name, handoff: true, source: "plugin")`, but the served descriptor listed only `name` and `handoff` -- skill-walk reported `signup: unknown argument "source"` (19/21, chain run 211800Z). The descriptor's properties, the argument names `control::signup` reads, and a generated argument block in both skill files now all derive from one `control::SIGNUP_ARGS`; the `source` pattern is the one `state::SOURCE_PATTERN` that `is_valid_signup_source` enforces (a test compares them over a corpus). `source` is attribution only (`tenants.signup_source`); synthetic classification is unchanged and still comes from the harness header and fleet IP.
+
 ## v0.112.0 — 2026-10-19
 
 Released by wm-build land: loop: mcphost-generated-dispatch-table-stack-budget.
