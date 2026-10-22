@@ -433,3 +433,11 @@ globs = ["scripts/dev-parity-prod.sh"]
 required_commands = [
   "cargo test --workspace demu_ac",
 ]
+
+[[lane]]
+id = "signup-args-doc-check"
+description = "hotfix signup-source-descriptor: scripts/signup-args-doc-check.sh diffs the `<!-- mcphost-signup-args -->` block in plugin/skills/mcphost/SKILL.md and www/skill.md against `mcphost signup-args-block` (control::SIGNUP_ARGS, the same const the signup descriptor derives from), so the skill text cannot promise a signup argument the descriptor does not declare. Given its own lane since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane's required_commands as an immutable baseline (same reasoning as the host-pressure-doc-check lane above)."
+globs = ["scripts/signup-args-doc-check.sh"]
+required_commands = [
+  "scripts/signup-args-doc-check.sh",
+]

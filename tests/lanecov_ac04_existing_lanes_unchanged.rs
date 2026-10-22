@@ -227,6 +227,9 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // PRD-mcphost-dev-emulator added its own "dev-parity-live" lane (routes
     // scripts/dev-parity-prod.sh to the demu_ac proof tests) -- an intended
     // addition since the baseline.
+    // hotfix signup-source-descriptor added its own "signup-args-doc-check"
+    // lane (routes scripts/signup-args-doc-check.sh to its check mode) -- an
+    // intended addition since the baseline.
     assert_eq!(
         added,
         vec![
@@ -263,6 +266,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "sandbox-api-docs",
             "sdk-python",
             "sharing-docs",
+            "signup-args-doc-check",
             "spec-fields-doc-check",
             "tool-naming",
             "vendor",
