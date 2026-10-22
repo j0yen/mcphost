@@ -30,6 +30,7 @@
 # even when individual detectors fail.
 set -uo pipefail
 
+AUDIT_SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${1:-.}"
 cd "$PROJECT_ROOT"
 
@@ -175,6 +176,10 @@ grep_secret_in_debug_impl() {
   while IFS= read -r -d '' file; do
     awk '
       /#\[derive\([^)]*Debug[^)]*\)\]/ {pending=1; next}
+      # The derive applies only to the item right after its attribute/doc stack:
+      # the first line that is not an attribute, doc comment, blank or struct
+      # line (e.g. `pub enum`) clears the pending state.
+      pending && !/^[[:space:]]*(#\[|\/\/\/|\/\/!|$)/ && !/^[[:space:]]*(pub(\([^)]*\))? )?struct / {pending=0}
       pending && /^[[:space:]]*(pub(\([^)]*\))? )?struct / {struct=1; next}
       struct && /^[[:space:]]*\}/ {struct=0; pending=0; next}
       struct && /^[[:space:]]*(pub(\([^)]*\))? )?(secret|password|passwd|token|api_key|private_key|bearer)[[:space:]]*:/ {
@@ -445,7 +450,20 @@ clippy_restriction_lints() {
 
 # ---- Driver ----
 
+# Detector self-test: a broken detector must never pass the gate silently.
+# rules/tests/run.sh sources this file's functions (not main), so no recursion.
+audit_selftest() {
+  local runner="$AUDIT_SELF_DIR/tests/run.sh"
+  [ -f "$runner" ] || return 0   # a copy installed without its tests dir (host skill copy)
+  if ! bash "$runner" >&2; then
+    echo "BLOCKING AUDIT-SELFTEST rules/tests/run.sh failed" >&2
+    emit_finding "AUDIT-SELFTEST" "audit_selftest" "blocking" "rules/tests/run.sh" "0" "" \
+      "rules/tests/run.sh failed; a detector in this file is broken"
+  fi
+}
+
 main() {
+  audit_selftest
   grep_unsafe_without_safety_comment
   grep_unwrap_on_external_input
   grep_box_leak
