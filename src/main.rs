@@ -1042,6 +1042,9 @@ async fn main() -> anyhow::Result<()> {
                 if let Some(obj) = body.as_object_mut() {
                     obj.insert("by_surface".to_string(), by_surface);
                     obj.insert("probe".to_string(), probe);
+                    if let serde_json::Value::Object(report) = db.origin_report().await? {
+                        obj.extend(report);
+                    }
                 }
                 println!("{}", serde_json::to_string(&body)?);
             } else {

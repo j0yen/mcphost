@@ -168,6 +168,20 @@ mod mcphost_event_trigger_self_test_ac08_quickstart_and_llms_txt_name_triggers;
 mod mcphost_event_trigger_self_test_ac09_string_body_signed_byte_for_byte;
 #[path = "mcphost_event_trigger_self_test_ac10_healthz_self_test_counters.rs"]
 mod mcphost_event_trigger_self_test_ac10_healthz_self_test_counters;
+#[path = "mcphost_external_class_positive_evidence_ac01_unattributed_default.rs"]
+mod mcphost_external_class_positive_evidence_ac01_unattributed_default;
+#[path = "mcphost_external_class_positive_evidence_ac02_claim_promotes_once.rs"]
+mod mcphost_external_class_positive_evidence_ac02_claim_promotes_once;
+#[path = "mcphost_external_class_positive_evidence_ac03_return_promotes.rs"]
+mod mcphost_external_class_positive_evidence_ac03_return_promotes;
+#[path = "mcphost_external_class_positive_evidence_ac04_synthetic_never_promotes.rs"]
+mod mcphost_external_class_positive_evidence_ac04_synthetic_never_promotes;
+#[path = "mcphost_external_class_positive_evidence_ac05_migration_backfill.rs"]
+mod mcphost_external_class_positive_evidence_ac05_migration_backfill;
+#[path = "mcphost_external_class_positive_evidence_ac06_surfaces_agree.rs"]
+mod mcphost_external_class_positive_evidence_ac06_surfaces_agree;
+#[path = "mcphost_external_class_positive_evidence_ac07_origin_contract.rs"]
+mod mcphost_external_class_positive_evidence_ac07_origin_contract;
 #[path = "mcphost_host_tool_deprecation_ac01_contract_dump_deterministic.rs"]
 mod mcphost_host_tool_deprecation_ac01_contract_dump_deterministic;
 #[path = "mcphost_host_tool_deprecation_ac02_removed_field_without_deprecation_fails.rs"]

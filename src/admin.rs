@@ -2100,6 +2100,11 @@ pub async fn funnel(state: &AppState, args: &Value) -> Result<Value, AppError> {
     obj.insert("install_link_clicks".to_string(), Value::Object(install_link_clicks));
     obj.insert("by_surface".to_string(), by_surface);
     obj.insert("probe".to_string(), probe);
+    // PRD-mcphost-external-class-positive-evidence: the same origin report
+    // `/healthz` and `mcphost funnel --json` carry.
+    if let Value::Object(report) = state.db.origin_report().await? {
+        obj.extend(report);
+    }
     if let Some(sc) = &source_class {
         obj.insert("source_class".to_string(), json!(sc));
     }

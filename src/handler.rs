@@ -587,6 +587,32 @@ fn source_ip(parts: &http::request::Parts) -> String {
     crate::state::resolve_source_ip(peer.as_deref(), forwarded_for)
 }
 
+/// PRD-mcphost-external-class-positive-evidence AC3/AC4: feed one
+/// authenticated call into the tenant's origin evidence. Only `unattributed`
+/// (promotable) and `synthetic` (refusal counted) tenants are looked at, so
+/// every other tenant pays nothing. Loopback calls are neither evidence nor
+/// taint; a fleet-IP or `X-Mcphost-Synthetic` call taints the tenant for good.
+async fn observe_origin_evidence(state: &AppState, parts: &http::request::Parts, tenant: &Tenant) {
+    use crate::db::OriginCallObservation;
+    use crate::state::Origin;
+    if !matches!(Origin::parse(&tenant.origin), Some(Origin::Unattributed | Origin::Synthetic)) {
+        return;
+    }
+    let ip = source_ip(parts);
+    let observation = if parts.headers.contains_key("x-mcphost-synthetic") {
+        OriginCallObservation::Tainted("header")
+    } else if state.fleet_ips.contains(&ip) {
+        OriginCallObservation::Tainted("fleet-ip")
+    } else if crate::state::is_loopback_source_ip(&ip) {
+        return;
+    } else {
+        OriginCallObservation::Clean { ip_hash: crate::oauth_policy::ip_hash(state, &ip) }
+    };
+    if let Err(e) = state.db.observe_origin_call(tenant.id, now_unix(), observation).await {
+        tracing::warn!(error = %e, tenant = %tenant.namespace, "failed to record origin evidence");
+    }
+}
+
 /// PRD-mcphost-tenant-resource-metadata requirement 1: the `<ns>` segment
 /// of a `/t/{ns}/mcp` request, read straight off the original request's own
 /// URI (`http.rs::build_router` routes both `/mcp` and `/t/{ns}/mcp` to the
@@ -12275,6 +12301,14 @@ impl McpHostHandler {
             auth = bound;
             via_session_binding = true;
         }
+        // PRD-mcphost-external-class-positive-evidence AC3/AC4: the one place
+        // where the resolved tenant, the peer IP and the request headers are
+        // all in scope. Best-effort, like `touch_last_seen`.
+        if let Auth::Tenant(tenant, _) = &auth {
+            // Boxed: keeps the helper's frame off every forwarded call's stack
+            // (`FORWARD_STACK_BUDGET`).
+            Box::pin(observe_origin_evidence(&self.state, parts, tenant)).await;
+        }
         // PRD-mcphost-session-bound-tenant-key requirement 2/3 (AC2, AC3):
         // consulted only when every resolver above (header, `tenant_key`
         // argument, explicit signup/redeem session binding) still came back
@@ -13303,14 +13337,18 @@ impl McpHostHandler {
                     )
                     .await;
                     // requirement 2 (AC2): "first successful host.tool_publish"
-                    // -- gated on `origin == "external"` (never fleet, never
-                    // synthetic) and `owner_verified_at` still null;
+                    // -- gated on `origin` external or unattributed (never
+                    // fleet, never synthetic; an unattributed tenant is the
+                    // one a claim would promote) and `owner_verified_at` still null;
                     // `mark_claim_nudged_if_unset`'s own atomic `UPDATE ...
                     // WHERE claim_nudged_unix IS NULL` is what makes this
                     // "exactly once ever", not just "once per call".
                     if (body_name == "host.tool_publish" || body_name == "host.tool.publish")
                         && tenant.owner_verified_at.is_none()
-                        && tenant.origin == "external"
+                        && matches!(
+                            crate::state::Origin::parse(&tenant.origin),
+                            Some(crate::state::Origin::External | crate::state::Origin::Unattributed)
+                        )
                         && self
                             .state
                             .db

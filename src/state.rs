@@ -1098,6 +1098,10 @@ pub fn classify_source_class(
 /// already-derived origin) the call-recording path, instead of three rules
 /// that could drift (Technical considerations: "one contract, many
 /// callers").
+///
+/// PRD-mcphost-external-class-positive-evidence: `external` is never the
+/// default. A non-synthetic signup is `unattributed` until positive evidence
+/// ([`crate::db::Db::promote_origin`]) earns it `external`.
 pub fn derive_origin(
     source_class: SourceClass,
     synthetic_label: Option<&str>,
@@ -1106,14 +1110,70 @@ pub fn derive_origin(
         let detail = synthetic_label
             .map(str::to_string)
             .unwrap_or_else(|| source_class.as_str().to_string());
-        ("synthetic", Some(detail))
+        (Origin::Synthetic.as_str(), Some(detail))
     } else {
-        let detail = synthetic_label
-            .map(str::to_string)
-            .unwrap_or_else(|| "external-unverified".to_string());
-        ("external", Some(detail))
+        (Origin::Unattributed.as_str(), Some(DETAIL_NO_POSITIVE_EVIDENCE.to_string()))
     }
 }
+
+/// PRD-mcphost-external-class-positive-evidence: the ONE origin set. Every
+/// surface that lists origin values (the migration backfill's value list,
+/// `/healthz` keys, `mcphost funnel` keys, the admin funnel keys) derives
+/// them from [`Origin::as_str`] through [`Origin::NAMES`], so a surface
+/// cannot list a value the enum lacks or lack one it has.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Origin {
+    /// Header-stamped, fleet or loopback traffic.
+    Synthetic,
+    /// Host-internal tenants (`perf-*`, written by `perf.rs`).
+    Internal,
+    /// No evidence either way; the default for non-synthetic signups.
+    Unattributed,
+    /// Earned by positive evidence: a verified claim e-mail or a later-day return.
+    External,
+}
+
+impl Origin {
+    pub const ALL: [Origin; 4] =
+        [Origin::Synthetic, Origin::Internal, Origin::Unattributed, Origin::External];
+
+    /// `ALL` mapped through [`Origin::as_str`], built at compile time.
+    pub const NAMES: [&'static str; 4] = [
+        Origin::Synthetic.as_str(),
+        Origin::Internal.as_str(),
+        Origin::Unattributed.as_str(),
+        Origin::External.as_str(),
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Origin::Synthetic => "synthetic",
+            Origin::Internal => "internal",
+            Origin::Unattributed => "unattributed",
+            Origin::External => "external",
+        }
+    }
+
+    /// Position in [`Origin::ALL`]; the exhaustive match makes a new variant
+    /// a compile error until `ALL` and `NAMES` are extended too.
+    pub const fn ordinal(self) -> usize {
+        match self {
+            Origin::Synthetic => 0,
+            Origin::Internal => 1,
+            Origin::Unattributed => 2,
+            Origin::External => 3,
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Origin> {
+        Origin::ALL.into_iter().find(|o| o.as_str() == s)
+    }
+}
+
+pub const DETAIL_NO_POSITIVE_EVIDENCE: &str = "no-positive-evidence";
+pub const DETAIL_CLAIMED_EMAIL: &str = "claimed-email";
+/// `returned:<days>d`-style detail prefix for return-promoted tenants.
+pub const DETAIL_RETURNED_PREFIX: &str = "returned:";
 
 /// PRD-mcphost-funnel-truth P0 requirement 2: the three-way `human`/
 /// `fleet`/`probe` verdict every tenant, oauth funnel event, and

@@ -54,11 +54,11 @@ async fn healthz_splits_tenants_signups_calls_and_drops_legacy_real_fields() {
     assert_eq!(health["tenants"]["synthetic"], json!(1), "{health:?}");
 
     // Requirement 3: no field named "real" may aggregate both provenance
-    // classes -- the old unqualified fields must be gone entirely, not
-    // just renamed alongside the new ones.
-    assert!(
-        health.get("tenants_real").is_none(),
-        "legacy 'tenants_real' must not be present: {health:?}"
+    // classes. PRD-mcphost-external-class-positive-evidence re-introduces
+    // `tenants_real` with a narrower meaning: `external` rows only.
+    assert_eq!(
+        health["tenants_real"], health["tenants_by_origin"]["external"],
+        "tenants_real must be external-with-evidence only: {health:?}"
     );
     assert!(
         health.get("tenants_synthetic").is_none(),

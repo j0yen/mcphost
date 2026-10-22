@@ -353,6 +353,7 @@ const MIGRATION_0129: &str = include_str!("../migrations/0129_logs_key_id.sql");
 const MIGRATION_0130: &str = include_str!("../migrations/0130_syncs.sql");
 /// PRD-mcphost-sync-pull-with-change-detection R1/R3: `sync_runs.provider_calls` and `sync_cursors`.
 const MIGRATION_0131: &str = include_str!("../migrations/0131_sync_pull.sql");
+const MIGRATION_0132: &str = include_str!("../migrations/0132_origin_tristate.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
@@ -2097,6 +2098,133 @@ fn backfill_activation_claims_and_plans_sync(conn: &Connection) -> Result<(i64, 
     Ok((claimed as i64, paid))
 }
 
+/// PRD-mcphost-external-class-positive-evidence: the positive evidence that
+/// earns an `unattributed` tenant `external`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OriginEvidence {
+    /// `owner_verified_at` is set (a claim e-mail or other owner proof).
+    ClaimedEmail,
+    /// An authenticated, non-fleet, header-less call `days` UTC days after
+    /// signup; `ip_hash` is the hashed source IP, kept in the audit detail.
+    Returned { days: i64, ip_hash: String },
+}
+
+/// Minimum age of a tenant before a later-UTC-day call counts as a return
+/// (6 h): a call 15 s after creation across UTC midnight is not a return.
+pub const RETURN_FLOOR_SECS: i64 = 21_600;
+
+/// What one authenticated call says about its source.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OriginCallObservation {
+    /// A fleet-IP (`"fleet-ip"`) or synthetic-header (`"header"`) call.
+    Tainted(&'static str),
+    /// Non-loopback, non-fleet, header-less; `ip_hash` is the hashed source.
+    Clean { ip_hash: String },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PromoteOutcome {
+    /// This call changed the row (and wrote the one audit row).
+    Promoted,
+    /// The row was not `unattributed` (or its predicate did not hold).
+    Unchanged,
+    /// The tenant is `synthetic`; promotion refused and counted.
+    RefusedSynthetic,
+}
+
+/// Promotion is ONE `UPDATE ... WHERE origin='unattributed'`; the
+/// `origin_promoted` audit row is written only when that update changed a
+/// row, so racing promotions yield exactly one row. The claim predicate is
+/// conjunctive (`owner_verified_at IS NOT NULL`), never the column alone:
+/// `synthetic` rows may carry `owner_verified_at` and stay synthetic.
+fn promote_origin_sync(
+    conn: &Connection,
+    counters: &DbCounters,
+    tenant_id: i64,
+    evidence: &OriginEvidence,
+) -> Result<PromoteOutcome, AppError> {
+    use crate::state::{DETAIL_CLAIMED_EMAIL, DETAIL_RETURNED_PREFIX, Origin};
+    let (detail, audit_extra, needs_claim) = match evidence {
+        OriginEvidence::ClaimedEmail => (DETAIL_CLAIMED_EMAIL.to_string(), String::new(), true),
+        OriginEvidence::Returned { days, ip_hash } => (
+            format!("{DETAIL_RETURNED_PREFIX}{days}d"),
+            format!(" ip_hash={ip_hash}"),
+            false,
+        ),
+    };
+    let changed = conn.execute(
+        "UPDATE tenants SET origin = ?1, origin_detail = ?2 \
+         WHERE id = ?3 AND origin = ?4 AND (?5 = 0 OR owner_verified_at IS NOT NULL)",
+        params![
+            Origin::External.as_str(),
+            detail,
+            tenant_id,
+            Origin::Unattributed.as_str(),
+            if needs_claim { 1 } else { 0 }
+        ],
+    )?;
+    if changed == 1 {
+        let namespace: Option<String> = conn
+            .query_row("SELECT namespace FROM tenants WHERE id = ?1", params![tenant_id], |r| r.get(0))
+            .optional()?;
+        conn.execute(
+            "INSERT INTO admin_audit (actor_key_id, action, target, detail, created_unix) \
+             VALUES ('system:origin', 'origin_promoted', ?1, ?2, ?3)",
+            params![
+                namespace.unwrap_or_else(|| tenant_id.to_string()),
+                format!(
+                    "from={} to={} detail={detail}{audit_extra}",
+                    Origin::Unattributed.as_str(),
+                    Origin::External.as_str()
+                ),
+                now_unix()
+            ],
+        )?;
+        return Ok(PromoteOutcome::Promoted);
+    }
+    let current: Option<String> = conn
+        .query_row("SELECT origin FROM tenants WHERE id = ?1", params![tenant_id], |r| r.get(0))
+        .optional()?;
+    if current.as_deref() == Some(Origin::Synthetic.as_str()) {
+        counters.synthetic_promotion_refused.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        return Ok(PromoteOutcome::RefusedSynthetic);
+    }
+    Ok(PromoteOutcome::Unchanged)
+}
+
+/// PRD-mcphost-external-class-positive-evidence: tenant counts by origin
+/// and by `external` evidence kind, the one shape behind every surface.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OriginCounts {
+    /// One entry per `state::Origin::NAMES` member, 0 when absent.
+    pub by_origin: std::collections::BTreeMap<String, i64>,
+    pub claimed: i64,
+    pub returned: i64,
+    /// `unattributed` rows whose detail starts `legacy-`.
+    pub legacy: i64,
+    /// Rows whose origin is outside the enum (drift guard, expected 0).
+    pub unknown: i64,
+}
+
+impl OriginCounts {
+    pub fn external(&self) -> i64 {
+        self.by_origin.get(crate::state::Origin::External.as_str()).copied().unwrap_or(0)
+    }
+
+    /// The five shared keys: `tenants_by_origin`, `external_by_evidence`,
+    /// `tenants_real` (= external), `tenants_confirmed` (= claimed),
+    /// `origin_unknown`.
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "tenants_by_origin": self.by_origin,
+            "external_by_evidence": {"claimed": self.claimed, "returned": self.returned},
+            "tenants_real": self.external(),
+            "tenants_confirmed": self.claimed,
+            "origin_unknown": self.unknown,
+        })
+    }
+}
+
 fn backfill_provenance_sync(conn: &Connection) -> Result<ProvenanceBackfillCounts, AppError> {
     let mut counts = ProvenanceBackfillCounts::default();
 
@@ -2185,7 +2313,7 @@ fn backfill_provenance_sync(conn: &Connection) -> Result<ProvenanceBackfillCount
 /// `signup_events` carries no `tenant_id` (requirement 3's own note), so
 /// the matching `tenants` rows are found by `created_unix` equality
 /// instead -- verified exact against prod (83/83 rows, 0 collisions)
-/// before this PRD shipped. Only rows still `origin = 'external'` are
+/// before this PRD shipped. Only rows still `origin = 'external' or 'unattributed'` are
 /// touched at every step, which is what makes a second call a no-op
 /// (idempotent): nothing left to match once the first call already
 /// flipped them to `'synthetic'`.
@@ -2201,7 +2329,7 @@ fn reclassify_fleet_ips_sync(
     // 1. `signup_events` rows from a fleet IP, still `external`.
     let candidates: Vec<(i64, String, i64)> = {
         let mut stmt = conn.prepare(
-            "SELECT id, source_ip, created_unix FROM signup_events WHERE origin = 'external'",
+            "SELECT id, source_ip, created_unix FROM signup_events WHERE origin IN ('external', 'unattributed')",
         )?;
         stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
             .collect::<rusqlite::Result<Vec<_>>>()?
@@ -2231,7 +2359,7 @@ fn reclassify_fleet_ips_sync(
     if !created_unixes.is_empty() {
         let placeholders = created_unixes.iter().map(|_| "?").collect::<Vec<_>>().join(",");
         let sql = format!(
-            "SELECT id FROM tenants WHERE origin = 'external' AND created_unix IN ({placeholders})"
+            "SELECT id FROM tenants WHERE origin IN ('external', 'unattributed') AND created_unix IN ({placeholders})"
         );
         let mut stmt = conn.prepare(&sql)?;
         let bound: Vec<&dyn rusqlite::ToSql> =
@@ -2256,7 +2384,7 @@ fn reclassify_fleet_ips_sync(
         let placeholders = tenant_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
         let sql = format!(
             "UPDATE calls SET origin = 'synthetic', origin_detail = 'fleet' \
-             WHERE origin = 'external' AND tenant_id IN ({placeholders})"
+             WHERE origin IN ('external', 'unattributed') AND tenant_id IN ({placeholders})"
         );
         let bound: Vec<&dyn rusqlite::ToSql> =
             tenant_ids.iter().map(|c| c as &dyn rusqlite::ToSql).collect();
@@ -2778,6 +2906,9 @@ pub struct DbCounters {
     server: RoleCounters,
     prune: RoleCounters,
     tenant_table: RoleCounters,
+    /// PRD-mcphost-external-class-positive-evidence: promotions refused
+    /// because the tenant is `synthetic` (healthz `synthetic_promotion_refused`).
+    synthetic_promotion_refused: std::sync::atomic::AtomicU64,
 }
 
 impl DbCounters {
@@ -2795,6 +2926,10 @@ impl DbCounters {
 
     pub fn snapshot(&self, role: DbRole) -> RoleCounterSnapshot {
         self.for_role(role).snapshot()
+    }
+
+    pub fn synthetic_promotion_refused(&self) -> u64 {
+        self.synthetic_promotion_refused.load(std::sync::atomic::Ordering::Relaxed)
     }
 }
 
@@ -3295,6 +3430,30 @@ impl Db {
         // Wholly new tables, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0130)?;
         Self::migrate_0131_sync_pull(&conn)?;
+        Self::migrate_0132_origin_tristate(&conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-external-class-positive-evidence: gated on the journal
+    /// table not existing. The batch demotes `external` rows, so a rerun
+    /// would undo promotions the live path has earned since.
+    fn migrate_0132_origin_tristate(conn: &Connection) -> Result<(), AppError> {
+        let done: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'origin_tristate_journal'")?
+            .exists([])?;
+        if !done {
+            conn.execute_batch(MIGRATION_0132)?;
+            // Drift guard: the value list comes from the enum, not the SQL.
+            let known = crate::state::Origin::NAMES.map(|n| format!("'{n}'")).join(", ");
+            let outside: i64 = conn.query_row(
+                &format!("SELECT COUNT(*) FROM tenants WHERE origin NOT IN ({known})"),
+                [],
+                |r| r.get(0),
+            )?;
+            if outside > 0 {
+                tracing::warn!(outside, "tenants carry an origin outside state::Origin after 0132");
+            }
+        }
         Ok(())
     }
 
@@ -7055,6 +7214,7 @@ impl Db {
     /// code was validly consumed.
     pub async fn verify_claim_code(&self, code_hash: String) -> Result<ClaimVerifyOutcome, AppError> {
         let now = crate::state::now_unix();
+        let counters = self.counters.clone();
         self.with_conn(move |conn| {
             struct Row {
                 tenant_id: i64,
@@ -7107,6 +7267,7 @@ impl Db {
                  VALUES (?1, 'owner', 'claim.email', NULL, ?2)",
                 params![tenant_id, now],
             )?;
+            promote_origin_sync(conn, &counters, tenant_id, &OriginEvidence::ClaimedEmail)?;
             Ok(ClaimVerifyOutcome::Verified { tenant_id, email })
         })
         .await
@@ -7300,6 +7461,137 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-external-class-positive-evidence: earn an `unattributed`
+    /// tenant `external` (see [`promote_origin_sync`]).
+    pub async fn promote_origin(
+        &self,
+        tenant_id: i64,
+        evidence: OriginEvidence,
+    ) -> Result<PromoteOutcome, AppError> {
+        let counters = self.counters.clone();
+        self.with_conn(move |conn| promote_origin_sync(conn, &counters, tenant_id, &evidence)).await
+    }
+
+    /// PRD-mcphost-external-class-positive-evidence: one authenticated call's
+    /// bearing on the tenant's origin. A fleet-IP or synthetic-header call
+    /// ([`OriginCallObservation::Tainted`]) is recorded in
+    /// `tenant_origin_taint` and blocks return-promotion for good. A clean
+    /// call (non-loopback, non-fleet, header-less) on a UTC date after the
+    /// tenant's `created_unix` date AND at least [`RETURN_FLOOR_SECS`] after
+    /// it promotes an `unattributed` tenant; on a `synthetic` tenant the same
+    /// call is refused and counted. `now` is a parameter so tests can cross
+    /// UTC midnight deterministically.
+    pub async fn observe_origin_call(
+        &self,
+        tenant_id: i64,
+        now: i64,
+        observation: OriginCallObservation,
+    ) -> Result<PromoteOutcome, AppError> {
+        let counters = self.counters.clone();
+        self.with_conn(move |conn| {
+            use crate::state::Origin;
+            let row: Option<(String, i64)> = conn
+                .query_row(
+                    "SELECT origin, created_unix FROM tenants WHERE id = ?1",
+                    params![tenant_id],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .optional()?;
+            let Some((origin, created_unix)) = row else {
+                return Ok(PromoteOutcome::Unchanged);
+            };
+            match observation {
+                OriginCallObservation::Tainted(kind) => {
+                    if origin == Origin::Unattributed.as_str() {
+                        conn.execute(
+                            "INSERT OR IGNORE INTO tenant_origin_taint (tenant_id, kind, first_unix) \
+                             VALUES (?1, ?2, ?3)",
+                            params![tenant_id, kind, now],
+                        )?;
+                    }
+                    Ok(PromoteOutcome::Unchanged)
+                }
+                OriginCallObservation::Clean { ip_hash } => {
+                    let days = now.div_euclid(86_400) - created_unix.div_euclid(86_400);
+                    if days < 1 || now - created_unix < RETURN_FLOOR_SECS {
+                        return Ok(PromoteOutcome::Unchanged);
+                    }
+                    if origin == Origin::Synthetic.as_str() {
+                        counters
+                            .synthetic_promotion_refused
+                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        return Ok(PromoteOutcome::RefusedSynthetic);
+                    }
+                    let tainted: bool = conn
+                        .prepare("SELECT 1 FROM tenant_origin_taint WHERE tenant_id = ?1")?
+                        .exists(params![tenant_id])?;
+                    if tainted {
+                        return Ok(PromoteOutcome::Unchanged);
+                    }
+                    promote_origin_sync(
+                        conn,
+                        &counters,
+                        tenant_id,
+                        &OriginEvidence::Returned { days, ip_hash },
+                    )
+                }
+            }
+        })
+        .await
+    }
+
+    /// Count of promotions refused because the tenant is `synthetic`.
+    pub fn synthetic_promotion_refused(&self) -> u64 {
+        self.counters.synthetic_promotion_refused()
+    }
+
+    /// PRD-mcphost-external-class-positive-evidence: the origin report every
+    /// surface (`/healthz`, `mcphost funnel --json`, admin funnel) shares.
+    /// Keys come from `state::Origin::NAMES`, so an empty DB reports every
+    /// key as 0 and a value outside the enum lands in `origin_unknown`.
+    pub async fn origin_report(&self) -> Result<serde_json::Value, AppError> {
+        let c = self.origin_counts().await?;
+        Ok(c.to_json())
+    }
+
+    pub async fn origin_counts(&self) -> Result<OriginCounts, AppError> {
+        self.with_conn(|conn| {
+            let mut by_origin = std::collections::BTreeMap::new();
+            for name in crate::state::Origin::NAMES {
+                by_origin.insert(name.to_string(), 0i64);
+            }
+            let mut unknown = 0i64;
+            let mut stmt = conn.prepare("SELECT origin, COUNT(*) FROM tenants GROUP BY origin")?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            for (origin, n) in rows {
+                match by_origin.get_mut(&origin) {
+                    Some(slot) => *slot = n,
+                    None => unknown += n,
+                }
+            }
+            let external = crate::state::Origin::External.as_str();
+            let claimed: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM tenants WHERE origin = ?1 AND origin_detail = ?2",
+                params![external, crate::state::DETAIL_CLAIMED_EMAIL],
+                |r| r.get(0),
+            )?;
+            let returned: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM tenants WHERE origin = ?1 AND origin_detail LIKE ?2",
+                params![external, format!("{}%", crate::state::DETAIL_RETURNED_PREFIX)],
+                |r| r.get(0),
+            )?;
+            let legacy: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM tenants WHERE origin = ?1 AND origin_detail LIKE 'legacy-%'",
+                params![crate::state::Origin::Unattributed.as_str()],
+                |r| r.get(0),
+            )?;
+            Ok(OriginCounts { by_origin, claimed, returned, legacy, unknown })
+        })
+        .await
+    }
+
     /// PRD-mcphost-provenance-audit requirement 3: `/healthz`'s
     /// `signups.{external,synthetic}` split. Returns `(external, synthetic)`.
     pub async fn count_signup_events_by_origin(&self) -> Result<(i64, i64), AppError> {
@@ -7321,7 +7613,10 @@ impl Db {
     /// `NULL` sources excluded (requirement 2: "external only", and an
     /// unlabeled signup has nothing to group under). `since_unix: Some`
     /// restricts to tenants created at or after that time (the 24h
-    /// variant); `None` is all-time.
+    /// variant); `None` is all-time. "External" here is the signup channel
+    /// (every non-synthetic signup): `unattributed` tenants are included, since
+    /// PRD-mcphost-external-class-positive-evidence made `external` an earned
+    /// class while this breakdown reports where signups came from.
     pub async fn count_external_signups_by_source(
         &self,
         since_unix: Option<i64>,
@@ -7329,7 +7624,7 @@ impl Db {
         self.with_conn(move |conn| {
             let mut stmt = conn.prepare(
                 "SELECT signup_source, COUNT(*) FROM tenants \
-                 WHERE origin = 'external' AND signup_source IS NOT NULL \
+                 WHERE origin IN ('external', 'unattributed') AND signup_source IS NOT NULL \
                    AND (?1 IS NULL OR created_unix >= ?1) \
                  GROUP BY signup_source",
             )?;
@@ -21183,6 +21478,7 @@ impl Db {
             Some(OperatorProof { email, actor }) => (Some(email), actor),
             None => (None, "owner".to_string()),
         };
+        let counters = self.counters.clone();
         self.with_conn(move |conn| {
             crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
                 let set = tx.execute(
@@ -21204,6 +21500,7 @@ impl Db {
                      VALUES (?1, ?5, ?2, ?3, ?4)",
                     params![tenant_id, crate::verify::audit_kind(&method), handle, now, audit_subject],
                 )?;
+                promote_origin_sync(tx, &counters, tenant_id, &OriginEvidence::ClaimedEmail)?;
                 Ok(OwnerVerifyOutcome::Verified)
             })
         })

@@ -46,7 +46,10 @@ async fn external_signup_stamps_origin_external_and_increments_healthz_external(
         .await
         .expect("query")
         .expect("tenant exists");
-    assert_eq!(tenant.origin, "external");
+    // PRD-mcphost-external-class-positive-evidence: `external` is earned, so
+    // the by-elimination signup now lands `unattributed`; `tenants.external`
+    // still counts `source_class = 'external'` and rises as before.
+    assert_eq!(tenant.origin, "unattributed");
 
     let after = healthz(&server.base_url).await;
     let external_after = after["tenants"]["external"].as_i64().unwrap();

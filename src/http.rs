@@ -222,6 +222,15 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
     // both empty arrays (not absent) on a box with nothing classified yet.
     if let Some(obj) = body.as_object_mut() {
         obj.extend(state.build.json());
+        // PRD-mcphost-external-class-positive-evidence: tri-state origin
+        // counts; `tenants_real` is `external` only.
+        if let Ok(serde_json::Value::Object(report)) = state.db.origin_report().await {
+            obj.extend(report);
+        }
+        obj.insert(
+            "synthetic_promotion_refused".to_string(),
+            json!(state.db.synthetic_promotion_refused()),
+        );
         // PRD-mcphost-first-tool-from-description R6: whether a draft model
         // is configured, and the last day's drafts with their token cost.
         obj.insert("draft_configured".to_string(), json!(state.drafter.is_some()));
