@@ -1,0 +1,9 @@
+{
+  "range": "Orders!A1:C3",
+  "majorDimension": "ROWS",
+  "values": [
+    ["id", "name", "qty"],
+    ["1", "Widget", "4"],
+    ["2", "Gadget", "0"]
+  ]
+}

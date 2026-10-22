@@ -823,6 +823,49 @@ impl Resolve for VettingResolver {
     }
 }
 
+/// PRD-mcphost-sync-pull-with-change-detection R6: the client a sync pull
+/// fetches with. Production names go through the same [`VettingResolver`] as
+/// the `http` kind (a name resolving to a private address is refused at
+/// connect), and every redirect hop is re-checked with
+/// [`is_disallowed_literal_host`], at most 5 hops. `allow_loopback` (only a
+/// loopback `public_url`, i.e. a dev server or a test) skips the resolver.
+pub(crate) fn sync_client(
+    own_domain: &str,
+    allow_loopback: bool,
+    timeout: std::time::Duration,
+) -> Result<reqwest::Client, KindError> {
+    let (own, loopback) = (own_domain.to_string(), allow_loopback);
+    let policy = reqwest::redirect::Policy::custom(move |attempt| {
+        if attempt.previous().len() >= 5 {
+            return attempt.error("too many redirects");
+        }
+        let host = attempt
+            .url()
+            .host_str()
+            .unwrap_or("")
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .to_string();
+        if is_disallowed_literal_host(&host, &own, loopback) {
+            attempt.error(HostNotAllowed(host))
+        } else {
+            attempt.follow()
+        }
+    });
+    let mut builder = reqwest::Client::builder().redirect(policy).timeout(timeout);
+    if !allow_loopback {
+        let lookup: Arc<dyn NameLookup> = Arc::new(HickoryLookup::new()?);
+        builder = builder.dns_resolver(Arc::new(VettingResolver {
+            own_domain: own_domain.to_string(),
+            allow_loopback,
+            lookup,
+        }));
+    }
+    builder
+        .build()
+        .map_err(|e| KindError::Exec(format!("building the sync client: {e}")))
+}
+
 /// Walks a `reqwest::Error`'s source chain for the [`HostNotAllowed`]
 /// marker our resolver raises; falls back to timeout/generic-unreachable
 /// classification when it isn't there.

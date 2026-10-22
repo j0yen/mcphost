@@ -528,6 +528,20 @@ mod synthetic_ac08_admin_tenants_field;
 mod synthetic_ac09_metering_filter;
 #[path = "synthetic_ac10_healthz_paying_real.rs"]
 mod synthetic_ac10_healthz_paying_real;
+#[path = "sypul_ac01_unchanged_pull_writes_nothing.rs"]
+mod sypul_ac01_unchanged_pull_writes_nothing;
+#[path = "sypul_ac02_second_fetch_304_writes_nothing.rs"]
+mod sypul_ac02_second_fetch_304_writes_nothing;
+#[path = "sypul_ac03_row_diff_updates_in_place.rs"]
+mod sypul_ac03_row_diff_updates_in_place;
+#[path = "sypul_ac04_auth_expired_pauses_and_429_waits.rs"]
+mod sypul_ac04_auth_expired_pauses_and_429_waits;
+#[path = "sypul_ac05_per_tick_provider_budget_defers_the_rest.rs"]
+mod sypul_ac05_per_tick_provider_budget_defers_the_rest;
+#[path = "sypul_ac06_empty_body_over_a_full_table_is_suspicious.rs"]
+mod sypul_ac06_empty_body_over_a_full_table_is_suspicious;
+#[path = "sypul_ac07_every_source_kind_fetches_its_fixture.rs"]
+mod sypul_ac07_every_source_kind_fetches_its_fixture;
 #[path = "syreg_ac03_create_returns_sync_id_and_next_run.rs"]
 mod syreg_ac03_create_returns_sync_id_and_next_run;
 #[path = "syreg_ac04_create_validation_errors.rs"]

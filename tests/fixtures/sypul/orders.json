@@ -1,0 +1,4 @@
+[
+  {"id": 1, "name": "Widget", "qty": 4, "tags": ["a", "b"]},
+  {"id": 2, "name": "Gadget", "qty": 0, "tags": []}
+]
