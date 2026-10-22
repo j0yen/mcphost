@@ -1,0 +1,17 @@
+{
+  "object": "list",
+  "has_more": false,
+  "next_cursor": null,
+  "results": [
+    {
+      "object": "page",
+      "id": "page-1",
+      "properties": {
+        "Name": {"id": "title", "type": "title", "title": [{"plain_text": "Widget"}]},
+        "Qty": {"id": "n", "type": "number", "number": 4},
+        "Status": {"id": "s", "type": "select", "select": {"name": "open"}},
+        "Done": {"id": "d", "type": "checkbox", "checkbox": false}
+      }
+    }
+  ]
+}

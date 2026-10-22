@@ -5159,9 +5159,14 @@ fn host_tools_part_14() -> Vec<Tool> {
             "host.sync.get",
             "One sync by id: its row plus last_run, the newest receipt {run_id, started_unix, \
              duration_ms, status, rows_added, rows_updated, rows_deleted, bytes, change_detected, \
-             error}, or null before the first run.",
+             provider_calls, error} (null before the first run), runs (the last `limit` receipts, \
+             newest first), and rows_in_table / last_snapshot_rows / drift. A receipt status is \
+             running, ok, error, rate_limited, auth_expired, suspicious_empty or deferred.",
             host_schema(
-                json!({"sync_id": {"type": "string", "description": "The sync_id host.sync.create returned."}}),
+                json!({
+                    "sync_id": {"type": "string", "description": "The sync_id host.sync.create returned."},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 100, "description": "How many receipts runs carries (default 20)."},
+                }),
                 &["sync_id"],
             ),
         ),

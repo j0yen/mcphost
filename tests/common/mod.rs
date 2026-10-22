@@ -8,6 +8,7 @@
 //! findings.
 #![allow(dead_code)]
 
+pub mod sypul;
 pub mod testoauth;
 
 use std::collections::HashMap;
