@@ -6,10 +6,16 @@
 //! Frames are split exactly as `compat_check.rs` splits them (`\n\n` blocks,
 //! `data:` lines) via `frames::split_sse_frames`, so parser and test cannot
 //! diverge. A row with no request below fails the test naming it.
+//!
+//! The `server_timing_t*` tests below pin the `Server-Timing: app;dur=<ms>`
+//! header on `/mcp` (hotfix, no PRD): T1 JSON response, T2 SSE response, T3
+//! refusals before and after dispatch (the layer is the outermost route layer).
 
 use crate::common;
 use common::{McpClient, TestServer, signup};
-use mcphost::protocol::frames::{FRAME_SEQUENCES, FrameRow, body_matches_row, observed_methods, split_sse_frames};
+use mcphost::protocol::frames::{
+    FRAME_SEQUENCES, FrameRow, SERVER_TIMING_HEADER, SERVER_TIMING_METRIC, body_matches_row, observed_methods, split_sse_frames,
+};
 use serde_json::{Value, json};
 
 const META: &str = "io.modelcontextprotocol/";
@@ -96,4 +102,80 @@ async fn every_row_of_the_table_matches_the_real_wire() {
         }
     }
     assert!(failures.is_empty(), "wire drifted from FRAME_SEQUENCES:\n{}", failures.join("\n"));
+}
+
+/// The header's `dur` in ms, after checking the metric name is the const.
+fn dur_ms(resp: &reqwest::Response) -> f64 {
+    let raw = resp
+        .headers()
+        .get(SERVER_TIMING_HEADER)
+        .unwrap_or_else(|| panic!("no {SERVER_TIMING_HEADER} header on {} response: {:?}", resp.status(), resp.headers()))
+        .to_str()
+        .expect("header is ASCII");
+    let (name, param) = raw.split_once(';').unwrap_or_else(|| panic!("no `;` in {raw:?}"));
+    assert_eq!(name, SERVER_TIMING_METRIC, "{raw:?}");
+    let dur = param.strip_prefix("dur=").unwrap_or_else(|| panic!("no dur= in {raw:?}"));
+    let ms: f64 = dur.parse().unwrap_or_else(|e| panic!("dur {dur:?} is not a number: {e}"));
+    assert!(ms.is_finite() && ms >= 0.0, "dur must be finite and >= 0: {raw:?}");
+    ms
+}
+
+#[tokio::test]
+async fn server_timing_t1_json_mcp_response_carries_app_dur_and_healthz_does_not() {
+    let server = TestServer::start().await;
+    let (_ns, key) = signup(&server.base_url, "Stim T1").await;
+
+    let init = json!({"protocolVersion": "2026-07-28", "capabilities": {}, "clientInfo": {"name": "stim", "version": "0.1.0"}});
+    let resp = McpClient::new(&server.base_url).post_raw(request(1, "initialize", init)).await;
+    assert!(resp.status().is_success(), "{}", resp.status());
+    dur_ms(&resp);
+
+    let resp = McpClient::with_bearer(&server.base_url, &key).post_raw(request(2, "tools/list", json!({}))).await;
+    assert!(resp.status().is_success(), "{}", resp.status());
+    assert_eq!(
+        resp.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).map(|s| s.split(';').next().unwrap_or("")),
+        Some("application/json")
+    );
+    dur_ms(&resp);
+
+    let health = reqwest::get(format!("{}/healthz", server.base_url)).await.expect("healthz");
+    assert!(health.headers().get(SERVER_TIMING_HEADER).is_none(), "only /mcp is timed");
+}
+
+#[tokio::test]
+async fn server_timing_t2_sse_mcp_response_carries_the_header_at_response_head() {
+    let server = TestServer::start().await;
+    let args = json!({"name": "stimt2", "kind": "echo", "spec": {"schema": {"type": "object", "properties": {}, "required": []}}});
+    let resp = McpClient::new(&server.base_url)
+        .post_raw(request(5, "tools/call", json!({"name": "host.tool_publish", "arguments": args})))
+        .await;
+    let content_type = resp.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or_default().to_string();
+    assert!(content_type.starts_with("text/event-stream"), "premise: a keyless publish streams, got {content_type:?}");
+    dur_ms(&resp);
+    let _ = resp.text().await;
+}
+
+#[tokio::test]
+async fn server_timing_t3_refusals_before_and_after_dispatch_still_carry_the_header() {
+    let server = TestServer::start().await;
+
+    // A bad key is refused in the handler and upgraded to 401 by the router-wide
+    // `oauth_401_upgrade`, which runs outside the route layers.
+    let resp = McpClient::with_bearer(&server.base_url, "mch_not_a_real_key")
+        .post_raw(request(1, "tools/call", json!({"name": "host.whoami", "arguments": {}})))
+        .await;
+    assert_eq!(resp.status().as_u16(), 401, "bad key");
+    dur_ms(&resp);
+
+    // The pre-dispatch method gate answers `roots/list` itself, before auth or
+    // the service run: only a layer outside it times that response.
+    let resp = reqwest::Client::new()
+        .post(format!("{}/mcp", server.base_url))
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json, text/event-stream")
+        .body(json!({"jsonrpc": "2.0", "id": 1, "method": "roots/list", "params": {}}).to_string())
+        .send()
+        .await
+        .expect("POST /mcp roots/list");
+    dur_ms(&resp);
 }
