@@ -1,0 +1,6 @@
+{
+  "records": [
+    {"id": "rec1", "createdTime": "2026-10-01T00:00:00.000Z", "fields": {"Name": "Widget", "Qty": 4, "Tags": ["a", "b"]}},
+    {"id": "rec2", "createdTime": "2026-10-01T00:00:00.000Z", "fields": {"Name": "Gadget", "Qty": 0}}
+  ]
+}

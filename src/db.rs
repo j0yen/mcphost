@@ -351,6 +351,8 @@ const MIGRATION_0128: &str = include_str!("../migrations/0128_audit_chain_acting
 const MIGRATION_0129: &str = include_str!("../migrations/0129_logs_key_id.sql");
 /// PRD-mcphost-sync-source-registry-and-create R2/R6: the `syncs` and `sync_runs` tables.
 const MIGRATION_0130: &str = include_str!("../migrations/0130_syncs.sql");
+/// PRD-mcphost-sync-pull-with-change-detection R1/R3: `sync_runs.provider_calls` and `sync_cursors`.
+const MIGRATION_0131: &str = include_str!("../migrations/0131_sync_pull.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
@@ -3292,6 +3294,19 @@ impl Db {
         Self::migrate_0129_logs_key_id(&conn)?;
         // Wholly new tables, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0130)?;
+        Self::migrate_0131_sync_pull(&conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-sync-pull-with-change-detection: gated on
+    /// `sync_runs.provider_calls` (the batch starts with an `ALTER`).
+    fn migrate_0131_sync_pull(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('sync_runs') WHERE name = 'provider_calls'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0131)?;
+        }
         Ok(())
     }
 

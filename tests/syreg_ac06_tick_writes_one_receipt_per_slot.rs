@@ -19,7 +19,8 @@ async fn syreg_ac06_due_sync_gets_one_receipt_and_moves_to_the_next_slot() {
     let created = call(
         &client,
         "host.sync.create",
-        json!({"source": {"kind": "csv_url", "ref": "https://data.example.com/orders.csv"}, "table": "orders"}),
+        // Nothing listens on port 9: the pull ends in an `error` receipt at once.
+        json!({"source": {"kind": "csv_url", "ref": "http://127.0.0.1:9/orders.csv"}, "table": "orders"}),
     )
     .await;
     let sync_id = created["sync_id"].as_str().expect("sync_id").to_string();
@@ -34,7 +35,7 @@ async fn syreg_ac06_due_sync_gets_one_receipt_and_moves_to_the_next_slot() {
     assert_eq!(mcphost::sync::receipt_count_for_test(&server.state, &sync_id).await.expect("count"), 1);
 
     let got = call(&client, "host.sync.get", json!({"sync_id": sync_id})).await;
-    assert_eq!(got["last_run"]["status"], "not_implemented", "{got}");
+    assert_eq!(got["last_run"]["status"], "error", "{got}");
     let next = got["next_run_unix"].as_i64().expect("next_run_unix");
     assert!(next > now && next <= now + 15 * 60 + 60, "next_run_unix {next} is the next */15 slot after {now}: {got}");
     assert_eq!(next % (15 * 60), 0, "a */15 slot sits on a quarter hour: {got}");

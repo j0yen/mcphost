@@ -373,6 +373,11 @@ pub struct Plan {
     /// `free` plan's own default when a hand-edited `plans.toml` predates
     /// this key.
     pub syncs_max: i64,
+    /// PRD-mcphost-sync-pull-with-change-detection R5: how many provider
+    /// requests one trigger tick may spend across a tenant's due syncs (free
+    /// 20, pro 200); the rest are `deferred` to the next tick. Defaults to the
+    /// `free` plan's own default when a hand-edited `plans.toml` predates this key.
+    pub sync_provider_calls_per_tick: i64,
     /// PRD-mcphost-run-budget-governor requirement 2: a run's default
     /// `budget.max_child_calls`, clamped to
     /// [`crate::kinds::COMPOSE_CHILDREN_MAX`] by [`Plan::budget_defaults`].
@@ -741,6 +746,7 @@ impl PlanCatalog {
                     table_handle_bytes_max: 64 * 1024 * 1024,
                     notes_max: 200,
                     syncs_max: 5,
+                    sync_provider_calls_per_tick: 20,
                     // PRD-mcphost-run-budget-governor requirement 2: "free:
                     // 20 child calls, 200,000 est tokens, 30,000 ms tool
                     // latency, 60,000 ms wall".
@@ -877,6 +883,7 @@ impl PlanCatalog {
                     table_handle_bytes_max: 512 * 1024 * 1024,
                     notes_max: 5_000,
                     syncs_max: 50,
+                    sync_provider_calls_per_tick: 200,
                     // PRD-mcphost-run-budget-governor requirement 2: "pro:
                     // 50 child calls, 2,000,000 est tokens, 120,000 ms tool
                     // latency, 600,000 ms wall".
@@ -1056,6 +1063,7 @@ impl PlanCatalog {
             ));
             out.push_str(&format!("notes_max = {}\n", p.notes_max));
             out.push_str(&format!("syncs_max = {}\n", p.syncs_max));
+            out.push_str(&format!("sync_provider_calls_per_tick = {}\n", p.sync_provider_calls_per_tick));
             out.push_str(&format!(
                 "budget_max_child_calls = {}\n",
                 p.budget_max_child_calls
@@ -1192,6 +1200,7 @@ impl PlanCatalog {
                 "table_handle_bytes_max" => builder.table_handle_bytes_max = Some(int_value()),
                 "notes_max" => builder.notes_max = Some(int_value()),
                 "syncs_max" => builder.syncs_max = Some(int_value()),
+                "sync_provider_calls_per_tick" => builder.sync_provider_calls_per_tick = Some(int_value()),
                 "budget_max_child_calls" => builder.budget_max_child_calls = Some(int_value()),
                 "budget_max_est_tokens" => builder.budget_max_est_tokens = Some(int_value()),
                 "budget_max_tool_latency_ms" => {
@@ -1309,6 +1318,7 @@ struct PlanBuilder {
     table_handle_bytes_max: Option<i64>,
     notes_max: Option<i64>,
     syncs_max: Option<i64>,
+    sync_provider_calls_per_tick: Option<i64>,
     budget_max_child_calls: Option<i64>,
     budget_max_est_tokens: Option<i64>,
     budget_max_tool_latency_ms: Option<i64>,
@@ -1411,6 +1421,7 @@ impl PlanBuilder {
             table_handle_bytes_max: quota!(table_handle_bytes_max),
             notes_max: quota!(notes_max),
             syncs_max: quota!(syncs_max),
+            sync_provider_calls_per_tick: quota!(sync_provider_calls_per_tick),
             budget_max_child_calls: quota!(budget_max_child_calls),
             budget_max_est_tokens: quota!(budget_max_est_tokens),
             budget_max_tool_latency_ms: quota!(budget_max_tool_latency_ms),
