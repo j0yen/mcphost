@@ -1042,6 +1042,11 @@ async fn main() -> anyhow::Result<()> {
                 if let Some(obj) = body.as_object_mut() {
                     obj.insert("by_surface".to_string(), by_surface);
                     obj.insert("probe".to_string(), probe);
+                    // PRD-mcphost-external-class-positive-evidence: same
+                    // keys as /healthz and admin.funnel.
+                    if let Some(origin_fields) = db.origin_report().await?.to_json().as_object() {
+                        obj.extend(origin_fields.clone());
+                    }
                 }
                 println!("{}", serde_json::to_string(&body)?);
             } else {

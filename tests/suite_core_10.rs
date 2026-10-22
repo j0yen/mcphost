@@ -40,6 +40,20 @@ mod mcphost_chatgpt_submission_pack_ac04_chatgpt_surface_everywhere;
 mod mcphost_chatgpt_submission_pack_ac05_chatgpt_profile_empty_tenant_table;
 #[path = "mcphost-chatgpt-submission-pack_ac06_reviewer_notes_first_call.rs"]
 mod mcphost_chatgpt_submission_pack_ac06_reviewer_notes_first_call;
+#[path = "mcphost-external-class-positive-evidence_ac01_unattributed_default.rs"]
+mod mcphost_external_class_positive_evidence_ac01_unattributed_default;
+#[path = "mcphost-external-class-positive-evidence_ac02_claim_promotes_once.rs"]
+mod mcphost_external_class_positive_evidence_ac02_claim_promotes_once;
+#[path = "mcphost-external-class-positive-evidence_ac03_later_day_return_promotes.rs"]
+mod mcphost_external_class_positive_evidence_ac03_later_day_return_promotes;
+#[path = "mcphost-external-class-positive-evidence_ac04_synthetic_never_promoted.rs"]
+mod mcphost_external_class_positive_evidence_ac04_synthetic_never_promoted;
+#[path = "mcphost-external-class-positive-evidence_ac05_migration_backfill.rs"]
+mod mcphost_external_class_positive_evidence_ac05_migration_backfill;
+#[path = "mcphost-external-class-positive-evidence_ac06_surfaces_agree.rs"]
+mod mcphost_external_class_positive_evidence_ac06_surfaces_agree;
+#[path = "mcphost-external-class-positive-evidence_ac07_generated_origin_contract.rs"]
+mod mcphost_external_class_positive_evidence_ac07_generated_origin_contract;
 #[path = "mcphost-install-links-more-clients_ac01_twelve_surfaces.rs"]
 mod mcphost_install_links_more_clients_ac01_twelve_surfaces;
 #[path = "mcphost-install-links-more-clients_ac02_command_artefacts_carry_url_once.rs"]

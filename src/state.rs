@@ -1098,6 +1098,11 @@ pub fn classify_source_class(
 /// already-derived origin) the call-recording path, instead of three rules
 /// that could drift (Technical considerations: "one contract, many
 /// callers").
+///
+/// PRD-mcphost-external-class-positive-evidence: `external` is EARNED, not
+/// the default. A non-synthetic signup is `unattributed`/`no-positive-evidence`
+/// until a claimed e-mail or a later-day return promotes it
+/// ([`crate::db::Db::promote_origin`]).
 pub fn derive_origin(
     source_class: SourceClass,
     synthetic_label: Option<&str>,
@@ -1106,13 +1111,83 @@ pub fn derive_origin(
         let detail = synthetic_label
             .map(str::to_string)
             .unwrap_or_else(|| source_class.as_str().to_string());
-        ("synthetic", Some(detail))
+        (Origin::Synthetic.as_str(), Some(detail))
     } else {
-        let detail = synthetic_label
-            .map(str::to_string)
-            .unwrap_or_else(|| "external-unverified".to_string());
-        ("external", Some(detail))
+        (Origin::Unattributed.as_str(), Some(DETAIL_NO_POSITIVE_EVIDENCE.to_string()))
     }
+}
+
+/// `origin_detail` of a fresh non-synthetic signup (AC1).
+pub const DETAIL_NO_POSITIVE_EVIDENCE: &str = "no-positive-evidence";
+/// `origin_detail` of a tenant promoted by a verified claim e-mail (AC2).
+pub const DETAIL_CLAIMED_EMAIL: &str = "claimed-email";
+/// Prefix of `origin_detail` of a tenant promoted by a later-day return:
+/// `returned:<days>d`, e.g. `returned:1d` (AC3).
+pub const DETAIL_RETURNED_PREFIX: &str = "returned:";
+
+/// Declares [`Origin`], [`Origin::ALL`] and [`Origin::as_str`] from ONE list,
+/// so a variant cannot exist without being in `ALL` and having a name.
+macro_rules! origins {
+    ($($(#[$meta:meta])* $variant:ident => $name:literal),+ $(,)?) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum Origin {
+            $($(#[$meta])* $variant),+
+        }
+
+        impl Origin {
+            pub const ALL: [Origin; [$(Origin::$variant),+].len()] = [$(Origin::$variant),+];
+
+            pub const fn as_str(self) -> &'static str {
+                match self {
+                    $(Origin::$variant => $name),+
+                }
+            }
+        }
+    };
+}
+
+// PRD-mcphost-external-class-positive-evidence: the ONE tri-state (plus
+// `internal`) set of `tenants.origin` values. Every surface that lists
+// origin values (healthz, `mcphost funnel`, admin funnel, the ops counts
+// script, the migration journal) derives its list from [`Origin::ALL`] /
+// [`ORIGIN_NAMES`] -- a generated contract, never a second hand-kept list.
+origins! {
+    Synthetic => "synthetic",
+    /// Existing prod value (perf tenants, `perf.rs`): never promoted, never
+    /// migrated, has its own healthz key.
+    Internal => "internal",
+    Unattributed => "unattributed",
+    External => "external",
+}
+
+/// A tenant must be at least this old (6 h) on top of the later UTC date for
+/// a return to count as evidence (`returned:<n>d`).
+pub const RETURN_PROMOTION_MIN_AGE_SECS: i64 = 21_600;
+
+/// Days between the UTC dates of `created_unix` and `now_unix` when a call at
+/// `now_unix` qualifies as a return: a strictly later UTC date AND at least
+/// [`RETURN_PROMOTION_MIN_AGE_SECS`] after creation (a call 15 s after
+/// creation across UTC midnight never qualifies).
+pub fn return_promotion_days(created_unix: i64, now_unix: i64) -> Option<i64> {
+    let days = now_unix.div_euclid(86_400) - created_unix.div_euclid(86_400);
+    (days >= 1 && now_unix - created_unix >= RETURN_PROMOTION_MIN_AGE_SECS).then_some(days)
+}
+
+/// [`Origin::ALL`] spelled as strings, computed at compile time from
+/// [`Origin::as_str`].
+pub const ORIGIN_NAMES: [&str; Origin::ALL.len()] = {
+    let mut names = [""; Origin::ALL.len()];
+    let mut i = 0;
+    while i < Origin::ALL.len() {
+        names[i] = Origin::ALL[i].as_str();
+        i += 1;
+    }
+    names
+};
+
+/// `'a','b',...` over [`ORIGIN_NAMES`], for `origin IN (...)` / `NOT IN`.
+pub fn origin_sql_list() -> String {
+    ORIGIN_NAMES.iter().map(|n| format!("'{n}'")).collect::<Vec<_>>().join(",")
 }
 
 /// PRD-mcphost-funnel-truth P0 requirement 2: the three-way `human`/
