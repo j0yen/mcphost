@@ -159,12 +159,20 @@ async fn server_timing_t2_sse_mcp_response_carries_the_header_at_response_head()
 async fn server_timing_t3_refusals_before_and_after_dispatch_still_carry_the_header() {
     let server = TestServer::start().await;
 
-    // A bad key is refused in the handler and upgraded to 401 by the router-wide
+    // A tenant-requiring call with no key is refused in the handler
+    // (`tenant_key_missing`) and upgraded to 401 by the router-wide
     // `oauth_401_upgrade`, which runs outside the route layers.
-    let resp = McpClient::with_bearer(&server.base_url, "mch_not_a_real_key")
-        .post_raw(request(1, "tools/call", json!({"name": "host.whoami", "arguments": {}})))
+    let resp = McpClient::new(&server.base_url)
+        .post_raw(request(1, "tools/call", json!({"name": "host.state.get", "arguments": {"key": "k"}})))
         .await;
-    assert_eq!(resp.status().as_u16(), 401, "bad key");
+    assert_eq!(resp.status().as_u16(), 401, "keyless tenant call");
+    dur_ms(&resp);
+
+    // A bad key is refused in the handler too (status is whatever the handler
+    // chooses); the header rides on it either way.
+    let resp = McpClient::with_bearer(&server.base_url, "mch_not_a_real_key")
+        .post_raw(request(2, "tools/call", json!({"name": "host.whoami", "arguments": {}})))
+        .await;
     dur_ms(&resp);
 
     // The pre-dispatch method gate answers `roots/list` itself, before auth or
