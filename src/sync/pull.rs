@@ -86,7 +86,7 @@ impl std::fmt::Display for SourceError {
 pub struct SourceCtx<'a> {
     pub client: &'a reqwest::Client,
     pub reference: &'a str,
-    pub token: Option<&'a str>,
+    pub token: Option<&'a str>, // allowlist: HLT-010 false positive -- SourceCtx has no Debug impl; the audit awk leaves pending=1 after derive(Debug) on enum SourceError (:66); rules fix = mcphost hand PR (awk pending); bearer secret, never print
     pub api_base: Option<&'a str>,
 }
 
