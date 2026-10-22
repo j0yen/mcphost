@@ -744,6 +744,8 @@ mod tooltest_ac6_quota_and_metering;
 mod tooltest_ac7_too_many_invocations;
 #[path = "tooltest_ac9_ac10_listing_and_auth.rs"]
 mod tooltest_ac9_ac10_listing_and_auth;
+#[path = "tracecap_ac01_no_bare_tracing_default_in_tests.rs"]
+mod tracecap_ac01_no_bare_tracing_default_in_tests;
 #[path = "trigidem_ac01_webhook_set_twice_idempotent.rs"]
 mod trigidem_ac01_webhook_set_twice_idempotent;
 #[path = "trigidem_ac02_webhook_update_tool_keeps_id_and_url.rs"]

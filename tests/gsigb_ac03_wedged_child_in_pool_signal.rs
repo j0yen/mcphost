@@ -3,38 +3,15 @@
 //! `sandbox_pool.value == 0.333`; the wedged child's key is in the tracing
 //! line and not in `/status.json`.
 //!
-//! Thread-local subscriber, as in `sessbind_ac10`: `#[tokio::test]` runs the
-//! tick on this thread. One throwaway tick runs first so the tick's call
-//! sites are registered before the subscriber asks `tracing` to rebuild
-//! interest.
+//! Captured through `common::tracecap` (thread-keyed capture on the one
+//! global subscriber; `#[tokio::test]` runs the tick on this thread).
 
 use crate::common;
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use mcphost::kinds::python::PythonKind;
-use tracing_subscriber::fmt::MakeWriter;
-
-#[derive(Clone, Default)]
-struct BufWriter(Arc<Mutex<Vec<u8>>>);
-
-impl std::io::Write for BufWriter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().expect("lock buf").extend_from_slice(buf);
-        Ok(buf.len())
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-impl<'a> MakeWriter<'a> for BufWriter {
-    type Writer = BufWriter;
-    fn make_writer(&'a self) -> Self::Writer {
-        self.clone()
-    }
-}
 
 #[tokio::test]
 async fn one_wedged_of_three_children_reads_a_third_with_the_key_only_in_the_log() {
@@ -47,13 +24,11 @@ async fn one_wedged_of_three_children_reads_a_third_with_the_key_only_in_the_log
     let _healthy_a = python.hold_test_flight("7/healthy_a", timeout * 1000, Duration::ZERO);
     let _healthy_b = python.hold_test_flight("7/healthy_b", timeout * 1000, Duration::ZERO);
 
-    // Registers the tick's tracing call sites before the subscriber exists.
-    mcphost::statusfeed::tick_once(&state).await.expect("warm-up tick");
+    // The signal needs two ticks ("after two ticks" below): the first is untimed
+    // and uncaptured, the second runs under the capture.
+    mcphost::statusfeed::tick_once(&state).await.expect("first tick");
 
-    let buf = BufWriter::default();
-    let subscriber = tracing_subscriber::fmt().with_writer(buf.clone()).with_ansi(false).finish();
-    let _guard = tracing::subscriber::set_default(subscriber);
-    tracing::callsite::rebuild_interest_cache();
+    let buf = common::tracecap::capture_text();
 
     mcphost::statusfeed::tick_once(&state).await.expect("tick");
 
@@ -63,7 +38,7 @@ async fn one_wedged_of_three_children_reads_a_third_with_the_key_only_in_the_log
     assert!((value - 0.333).abs() <= 0.01, "sandbox_pool: {pool}");
     assert!(!status.to_string().contains("wedged_tool_zq"), "key leaked into /status.json signals: {status}");
 
-    let logged = String::from_utf8(buf.0.lock().expect("lock buf").clone()).expect("utf8 log");
+    let logged = buf.text();
     let line = logged
         .lines()
         .find(|l| l.contains("signal=sandbox_pool"))
