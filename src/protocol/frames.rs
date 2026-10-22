@@ -20,6 +20,19 @@ use serde_json::Value;
 /// The MCP protocol version the host negotiates and `frames.json` reports.
 pub const PROTOCOL_VERSION: &str = "2026-07-28";
 
+/// The response header carrying the host's own handling time on `POST /mcp`.
+/// The one place the name is spelled; `src/http.rs` and the generated docs
+/// (`scripts/protocol-frames-check.sh`) read it from here.
+pub const SERVER_TIMING_HEADER: &str = "Server-Timing";
+
+/// The `Server-Timing` metric name: `app;dur=<ms>`. `dur` is the wall time
+/// from the request reaching the `/mcp` route to the response head being
+/// ready, in milliseconds (decimal, three places), so auth, rate-limit and
+/// handler time are inside it and Caddy/TLS/network time is not. For a
+/// `text/event-stream` response it is time to response head, not to the last
+/// frame.
+pub const SERVER_TIMING_METRIC: &str = "app";
+
 /// A frame the host can put on a response body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FrameKind {

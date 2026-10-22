@@ -28,6 +28,7 @@ use serde_json::{Value, json};
 pub mod routes;
 
 use crate::handler::McpHostHandler;
+use crate::protocol::frames::{SERVER_TIMING_HEADER, SERVER_TIMING_METRIC};
 use crate::state::{AppState, MAX_REQUEST_BODY_BYTES};
 
 /// The `MCP-Protocol-Version` value this server advertises, derived from
@@ -1918,6 +1919,29 @@ async fn deliver_client_response(State(state): State<Arc<AppState>>, req: Reques
 /// floor.
 const HSTS_HEADER_VALUE: &str = "max-age=15552000; includeSubDomains";
 
+/// Time to response head on `/mcp`, as `Server-Timing: app;dur=<ms>`
+/// (names: [`SERVER_TIMING_HEADER`], [`SERVER_TIMING_METRIC`]). The `/mcp`
+/// router adds it as its LAST `route_layer`, so it is the outermost route
+/// layer: the pre-dispatch method gate, session issue, auth and rate-limit
+/// work all fall inside the measured span. `next.run` returns once the
+/// response head is ready, so a streaming (SSE) body is not waited for; the
+/// `oauth_401_upgrade` rewrite of an auth refusal to 401 runs outside this
+/// layer and keeps the header. Caddy/TLS time is not included. The other
+/// MCP route families (`/t/..`, `/u/..`, `/i/..`, `/o/..`, `/j/..`, the OAuth
+/// entry path) and every non-MCP route are untouched.
+async fn server_timing(req: Request<Body>, next: Next) -> Response {
+    let start = Instant::now();
+    let mut response = next.run(req).await;
+    let dur_ms = start.elapsed().as_secs_f64() * 1000.0;
+    if let (Ok(name), Ok(value)) = (
+        http::HeaderName::from_bytes(SERVER_TIMING_HEADER.as_bytes()),
+        HeaderValue::from_str(&format!("{SERVER_TIMING_METRIC};dur={dur_ms:.3}")),
+    ) {
+        response.headers_mut().append(name, value);
+    }
+    response
+}
+
 async fn hsts(State(state): State<Arc<AppState>>, req: Request<Body>, next: Next) -> Response {
     let mut response = next.run(req).await;
     if state.public_url.starts_with("https://") {
@@ -2071,7 +2095,9 @@ fn build_router_inner(state: Arc<AppState>, legacy_session_mode: bool, method_ga
         .route_service("/mcp", service.clone())
         .route_layer(middleware::from_fn_with_state((state.clone(), method_gate), refuse_unimplemented_methods))
         .route_layer(middleware::from_fn_with_state(state.clone(), deliver_client_response))
-        .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id));
+        .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id))
+        // Added last: the outermost route layer (see `server_timing`).
+        .route_layer(middleware::from_fn(server_timing));
 
     // PRD-mcphost-oauth-first-entry-url requirement 2: `OAUTH_ENTRY_PATH`
     // serves the identical streamable-HTTP service as `/mcp`, behind a gate
