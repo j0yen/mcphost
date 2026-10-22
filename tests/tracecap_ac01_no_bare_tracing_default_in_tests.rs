@@ -20,6 +20,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::common::tracecap;
+
 fn needles() -> [String; 3] {
     [
         ["set_", "default("].concat(),
@@ -107,4 +109,23 @@ fn tracecap_ac01_scan_flags_each_needle_and_skips_comments_and_the_helper() {
     assert!(found[0].starts_with("tests/a_set.rs:1:"), "{found:?}");
     assert!(found[1].starts_with("tests/b_with.rs:1:"), "{found:?}");
     assert!(found[2].starts_with("tests/c_rebuild.rs:1:"), "{found:?}");
+}
+
+/// One callsite, so both calls below register and hit the same `Interest`.
+fn emit_probe_line() {
+    tracing::info!("tracecap-callsite-probe");
+}
+
+#[test]
+fn tracecap_ac01_callsite_first_hit_by_an_uncapturing_thread_is_still_captured() {
+    // Installs the global subscriber and opens a capture on THIS thread only.
+    let capture = tracecap::capture_text();
+    // The callsite is registered for the first time by a thread with no
+    // capture open. A static `filter_fn` caches "never" here and drops the
+    // line below (CI run 39692988549, `support_ac02`).
+    std::thread::spawn(emit_probe_line).join().expect("probe thread");
+    emit_probe_line();
+    let text = capture.finish();
+    let hits = text.lines().filter(|l| l.contains("tracecap-callsite-probe")).count();
+    assert_eq!(hits, 1, "expected exactly the capturing thread's probe line, got:\n{text}");
 }

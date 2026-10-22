@@ -17,9 +17,15 @@
 //!
 //! The fix is to never touch the dispatcher after process start. The first
 //! [`capture_json`]/[`capture_text`] call installs a global `Registry` with
-//! two `fmt` layers (JSON and plain text). Their per-layer filter is a
-//! `filter_fn` (a dynamic filter: its callsite interest is "sometimes", so
-//! it is consulted per event and the cache is never poisoned to "never").
+//! two `fmt` layers (JSON and plain text). Their per-layer filter MUST be a
+//! `dynamic_filter_fn`, never `filter_fn`: `filter_fn` is a STATIC filter, so
+//! `tracing_subscriber` evaluates it once per callsite, on whichever thread
+//! registers the callsite first, and caches `always`/`never` for the process.
+//! A first hit from a thread with no capture open (any test that merely
+//! runs the code path) would cache "never" for the callsite and every later
+//! capture of that line would read 0 lines (CI run 39692988549, shard 5/5,
+//! `support_ac02`). `dynamic_filter_fn` registers as "sometimes", so the
+//! closure runs per event on the emitting thread.
 //! Each [`Capture`] registers a sink on the CALLING THREAD's stack; an event
 //! is formatted only when its emitting thread has a capture open, and is
 //! written only into that thread's innermost capture. That is exactly the
@@ -46,7 +52,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use tracing::Level;
 use tracing_subscriber::Layer;
-use tracing_subscriber::filter::filter_fn;
+use tracing_subscriber::filter::dynamic_filter_fn;
 use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::layer::SubscriberExt;
 
@@ -110,11 +116,11 @@ fn install() {
             .json()
             .with_target(false)
             .with_writer(HubWriter)
-            .with_filter(filter_fn(|m| wants(Format::Json, m.level())));
+            .with_filter(dynamic_filter_fn(|m, _cx| wants(Format::Json, m.level())));
         let text = tracing_subscriber::fmt::layer()
             .with_ansi(false)
             .with_writer(HubWriter)
-            .with_filter(filter_fn(|m| wants(Format::Text, m.level())));
+            .with_filter(dynamic_filter_fn(|m, _cx| wants(Format::Text, m.level())));
         tracing::subscriber::set_global_default(tracing_subscriber::registry().with(json).with(text)).expect(
             "tracecap: a global tracing subscriber is already installed in this test binary; \
              a test file that calls set_global_default belongs in its own singleton suite \
