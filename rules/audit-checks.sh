@@ -176,10 +176,10 @@ grep_secret_in_debug_impl() {
   while IFS= read -r -d '' file; do
     awk '
       /#\[derive\([^)]*Debug[^)]*\)\]/ {pending=1; next}
-      # The derive applies only to the item right after its attribute/doc stack:
-      # the first line that is not an attribute, doc comment, blank or struct
-      # line (e.g. `pub enum`) clears the pending state.
-      pending && !/^[[:space:]]*(#\[|\/\/\/|\/\/!|$)/ && !/^[[:space:]]*(pub(\([^)]*\))? )?struct / {pending=0}
+      # The derive applies only to the item right after its attribute/comment stack:
+      # the first line that is not an attribute, comment (`//`, `/* */`), blank or
+      # struct line (e.g. `pub enum`) clears the pending state.
+      pending && !/^[[:space:]]*(#\[|\/\/|\/\*|\*|$)/ && !/\*\/[[:space:]]*$/ && !/^[[:space:]]*(pub(\([^)]*\))? )?struct / {pending=0}
       pending && /^[[:space:]]*(pub(\([^)]*\))? )?struct / {struct=1; next}
       struct && /^[[:space:]]*\}/ {struct=0; pending=0; next}
       struct && /^[[:space:]]*(pub(\([^)]*\))? )?(secret|password|passwd|token|api_key|private_key|bearer)[[:space:]]*:/ {

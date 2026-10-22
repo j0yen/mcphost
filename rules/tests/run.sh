@@ -72,6 +72,17 @@ pub struct S {
 }
 EOF2
 
+run_case "case4 REGRESSION GUARD: derive(Debug) + plain // and block comments before the struct still flagged" 1 <<'EOF2'
+#[derive(Debug)]
+// note
+/* block start
+ * block middle
+ */
+pub struct S {
+    pub token: String,
+}
+EOF2
+
 if [ "$fails" -gt 0 ]; then
   echo "rules/tests/run.sh: $fails of $n case(s) FAILED"
   exit 1
