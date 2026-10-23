@@ -1783,6 +1783,10 @@ async fn main() -> anyhow::Result<()> {
                             for member in mcphost::api_contract::missing_envelope_fields(&committed) {
                                 eprintln!("  - output_envelope_fields is missing `{member}`");
                             }
+                            let live = mcphost::api_contract::dump_contract(&kinds);
+                            for key in mcphost::api_contract::drifted_top_level_keys(&committed, &live) {
+                                eprintln!("  - drifted key: {key}");
+                            }
                         }
                         std::process::exit(1);
                     }

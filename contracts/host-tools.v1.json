@@ -316,6 +316,24 @@
     "duration_ms",
     "state"
   ],
+  "resources": {
+    "name_field": {
+      "doc": "doc:{id}",
+      "run": "run_log:{id}",
+      "table": "table:{name}",
+      "tool": "tool_spec:{name}"
+    },
+    "title_field": {
+      "doc": "title",
+      "run": "title"
+    },
+    "uri_scheme": {
+      "doc": "mcphost://doc/{id}",
+      "run": "mcphost://run/{id}/log",
+      "table": "mcphost://table/{name}",
+      "tool": "mcphost://tool/{name}/spec"
+    }
+  },
   "tools": [
     {
       "description": "Create (or reuse an open one for the same plan) a Stripe Checkout URL to upgrade this tenant, defaulting to the pro plan. Returns billing_unavailable if this host has no Stripe key configured -- call billing.plans first to check.",

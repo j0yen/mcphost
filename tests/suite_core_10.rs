@@ -23,8 +23,6 @@ mod oauthclient;
 mod promptkind;
 #[path = "support/pysdk.rs"]
 mod pysdk;
-#[path = "support/rgpt.rs"]
-mod rgpt;
 #[path = "support/serve.rs"]
 mod serve;
 
@@ -256,6 +254,20 @@ mod mcphost_oauth_unverified_client_consent_warning_ac07_caution_links_to_explai
 mod mcphost_oauth_unverified_client_consent_warning_ac08_consent_record_notes_unverified;
 #[path = "mcphost_oauth_unverified_client_consent_warning_ac09_verified_flow_unchanged.rs"]
 mod mcphost_oauth_unverified_client_consent_warning_ac09_verified_flow_unchanged;
+#[path = "mcphost_resource_listing_shape_in_contract_ac01_resources_section_keyed_by_kind.rs"]
+mod mcphost_resource_listing_shape_in_contract_ac01_resources_section_keyed_by_kind;
+#[path = "mcphost_resource_listing_shape_in_contract_ac02_dump_equals_committed_and_values.rs"]
+mod mcphost_resource_listing_shape_in_contract_ac02_dump_equals_committed_and_values;
+#[path = "mcphost_resource_listing_shape_in_contract_ac03_check_names_drifted_resources_key.rs"]
+mod mcphost_resource_listing_shape_in_contract_ac03_check_names_drifted_resources_key;
+#[path = "mcphost_resource_listing_shape_in_contract_ac04_listed_names_follow_name_field.rs"]
+mod mcphost_resource_listing_shape_in_contract_ac04_listed_names_follow_name_field;
+#[path = "mcphost_resource_listing_shape_in_contract_ac05_title_field_for_doc_only.rs"]
+mod mcphost_resource_listing_shape_in_contract_ac05_title_field_for_doc_only;
+#[path = "mcphost_resource_listing_shape_in_contract_ac06_contract_json_serves_resources.rs"]
+mod mcphost_resource_listing_shape_in_contract_ac06_contract_json_serves_resources;
+#[path = "mcphost_resource_listing_shape_in_contract_ac07_shape_readable_before_any_resource.rs"]
+mod mcphost_resource_listing_shape_in_contract_ac07_shape_readable_before_any_resource;
 #[path = "mcphost_sandbox_egress_allowlist_ac05_none_network_unshare_all.rs"]
 mod mcphost_sandbox_egress_allowlist_ac05_none_network_unshare_all;
 #[path = "mcphost_sandbox_egress_allowlist_ac09_readme_documents_proxy_and_deny_list.rs"]
@@ -1008,33 +1020,3 @@ mod regone_ac05_no_publish_without_ok_makes_no_write;
 mod regone_ac06_one_search_url_in_docs;
 #[path = "regone_ac07_live_json.rs"]
 mod regone_ac07_live_json;
-#[path = "rgpt_ac01_recipes_generator_idempotent.rs"]
-mod rgpt_ac01_recipes_generator_idempotent;
-#[path = "rgpt_ac02_drift_names_file_recipe_and_line.rs"]
-mod rgpt_ac02_drift_names_file_recipe_and_line;
-#[path = "rgpt_ac03_unknown_tool_or_arg_exits_2.rs"]
-mod rgpt_ac03_unknown_tool_or_arg_exits_2;
-#[path = "rgpt_ac05_every_golden_test_runs_its_calls_in_order.rs"]
-mod rgpt_ac05_every_golden_test_runs_its_calls_in_order;
-#[path = "rgpt_ac06_task_sync_check_flags_wall_budget_drift.rs"]
-mod rgpt_ac06_task_sync_check_flags_wall_budget_drift;
-#[path = "rgpt_ac07_ci_job_fails_on_the_broken_recipe_only.rs"]
-mod rgpt_ac07_ci_job_fails_on_the_broken_recipe_only;
-#[path = "rgpt_chart_in_a_minute_golden_path.rs"]
-mod rgpt_chart_in_a_minute_golden_path;
-#[path = "rgpt_data_sync_golden_path.rs"]
-mod rgpt_data_sync_golden_path;
-#[path = "rgpt_database_in_a_minute_golden_path.rs"]
-mod rgpt_database_in_a_minute_golden_path;
-#[path = "rgpt_share_a_tool_golden_path.rs"]
-mod rgpt_share_a_tool_golden_path;
-#[path = "rgpt_uptime_probes_golden_path.rs"]
-mod rgpt_uptime_probes_golden_path;
-#[path = "rlfe_ac01_unknown_status_refused_with_set.rs"]
-mod rlfe_ac01_unknown_status_refused_with_set;
-#[path = "rlfe_ac02_trigger_and_verdict_refused_before_handler.rs"]
-mod rlfe_ac02_trigger_and_verdict_refused_before_handler;
-#[path = "rlfe_ac03_every_value_filters_exactly_its_rows.rs"]
-mod rlfe_ac03_every_value_filters_exactly_its_rows;
-#[path = "rlfe_ac04_descriptor_enums_and_prose_set_drift.rs"]
-mod rlfe_ac04_descriptor_enums_and_prose_set_drift;
