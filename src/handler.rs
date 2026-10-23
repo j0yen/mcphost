@@ -6628,7 +6628,7 @@ pub(crate) struct CellResourceSink(
 /// `_meta.resources_used`, so a tool's own returned JSON (a bridge call's
 /// host-verb JSON, `host.tool_run`'s `payload`) stays byte-for-byte what it
 /// returned -- the same marker-key pattern as `paged::LIMIT_CLAMPED_KEY`.
-pub(crate) const RESOURCES_USED_KEY: &str = "__resources_used";
+pub(crate) use crate::envelope::RESOURCES_USED_KEY;
 
 impl CellResourceSink {
     pub(crate) fn new() -> Self {
@@ -7068,15 +7068,10 @@ impl crate::kinds::HostDispatch for TenantHostStepBridge {
                 args,
             )
             .await
-            .map(|mut value| {
-                // A nested python tool call's in-flight `resources_used`
-                // marker is wire-only (`_meta`): a bridge call's returned JSON
-                // stays exactly what the callee produced.
-                if let Some(obj) = value.as_object_mut() {
-                    obj.remove(RESOURCES_USED_KEY);
-                }
-                value
-            })
+            // A nested python tool call's in-flight `resources_used` marker is
+            // wire-only (`_meta`): a bridge call's returned JSON stays exactly
+            // what the callee produced.
+            .map(crate::envelope::strip_bridge_resources_used)
             .map_err(app_error_to_kind_error)
     }
 }
@@ -7633,7 +7628,7 @@ impl McpHostHandler {
             "host.estimate" => {
                 let mut args = args;
                 if let Some(obj) = args.as_object_mut() {
-                    obj.insert("dry_run".to_string(), json!(true));
+                    crate::envelope::force_dry_run_arg(obj);
                 }
                 self.host_tool_call(tenant, args, calls_auth_method, end_user).await
             }
@@ -8917,7 +8912,7 @@ impl McpHostHandler {
                     && let Some(used) = resources.resources_used(duration_ms)
                     && let Some(obj) = value.as_object_mut()
                 {
-                    obj.insert(RESOURCES_USED_KEY.to_string(), used);
+                    crate::envelope::stamp_resources_used(obj, used);
                 }
                 if version.is_none()
                     && let Some(caller) = caller
@@ -9381,14 +9376,9 @@ impl McpHostHandler {
                     if let Some(ex) = &generated {
                         add_example_fields(map, ex);
                     }
-                    map.insert("state".to_string(), state_backend.snapshot().to_json());
                     // PRD-mcphost-sandbox-resource-limits-from-plan R5: a
                     // dry run measures before publishing too.
-                    if kind.name() == "python"
-                        && let Some(used) = resources.resources_used(duration_ms)
-                    {
-                        map.insert(RESOURCES_USED_KEY.to_string(), used);
-                    }
+                    let used = if kind.name() == "python" { resources.resources_used(duration_ms) } else { None };
                     // PRD-mcphost-dry-run-side-effects requirement 3: `.entry`
                     // (not a plain `insert`) so `chain`'s own pre-existing
                     // top-level `dry_run: true` boolean (its requirement 3 /
@@ -9396,7 +9386,7 @@ impl McpHostHandler {
                     // all) is left alone -- `chain` targeting a host step is
                     // PRD-mcphost-chain-host-steps' own, not-yet-landed,
                     // scope.
-                    map.entry("dry_run".to_string()).or_insert_with(|| {
+                    crate::envelope::stamp_tool_test(map, state_backend.snapshot().to_json(), used, || {
                         json!({"writes": dry_run.writes(), "delivered": false, "rolled_back": true})
                     });
                     // PRD-mcphost-tool-test-truth P0 requirement 1 (AC5):
@@ -10690,20 +10680,17 @@ impl McpHostHandler {
         let result = match outcome {
             Ok(Ok(mut value)) => {
                 if let Some(obj) = value.as_object_mut() {
-                    obj.insert("duration_ms".to_string(), json!(duration_ms));
                     // PRD-mcphost-sandbox-resource-limits-from-plan R5.
-                    if kind.name() == "python"
-                        && let Some(used) = resources.resources_used(duration_ms)
-                    {
-                        obj.insert(RESOURCES_USED_KEY.to_string(), used);
-                    }
-                    obj.insert("state".to_string(), state_backend.snapshot().to_json());
-                    if let Some(dry_run) = &dry_run {
-                        obj.insert(
-                            "dry_run".to_string(),
-                            json!({"writes": dry_run.writes(), "delivered": false, "rolled_back": true}),
-                        );
-                    }
+                    let used = if kind.name() == "python" { resources.resources_used(duration_ms) } else { None };
+                    crate::envelope::stamp_tool_run(
+                        obj,
+                        duration_ms,
+                        used,
+                        state_backend.snapshot().to_json(),
+                        dry_run
+                            .as_ref()
+                            .map(|d| json!({"writes": d.writes(), "delivered": false, "rolled_back": true})),
+                    );
                 }
                 if let Some(cap) = &capture {
                     // `tool_run` answers with the full raw output; the trace
@@ -11270,7 +11257,7 @@ impl McpHostHandler {
         let mut value = outcome?;
         if let Some(obj) = value.as_object_mut() {
             obj.insert("forwarded_to".to_string(), json!(canonical));
-            obj.entry("dry_run".to_string()).or_insert_with(|| {
+            crate::envelope::default_dry_run(obj, || {
                 json!({"writes": dry_run.writes(), "delivered": false, "rolled_back": true})
             });
         }
@@ -13260,7 +13247,7 @@ impl McpHostHandler {
                 if !deprecation_notices.is_empty()
                     && let Some(obj) = value.as_object_mut()
                 {
-                    obj.insert("deprecations".to_string(), json!(deprecation_notices));
+                    crate::envelope::stamp_deprecations(obj, json!(deprecation_notices));
                 }
                 // PRD-mcphost-one-next-tool requirement 4 (AC4, AC5),
                 // requirement 5 (AC6, AC7): `maybe_attach_next_hint` itself

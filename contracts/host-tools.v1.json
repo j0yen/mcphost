@@ -309,7 +309,12 @@
     }
   },
   "output_envelope_fields": [
-    "deprecations"
+    "__resources_used",
+    "call_id",
+    "deprecations",
+    "dry_run",
+    "duration_ms",
+    "state"
   ],
   "tools": [
     {
