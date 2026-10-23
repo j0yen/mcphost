@@ -2345,5 +2345,145 @@
     "sunset": "2026-12-15",
     "replacement": "PRD-mcphost-publish-visibility-and-tags: visibility now carries an enum rendered from Visibility::SHAREABLE (unlisted, group, public, url); the server always enforced this set, the schema just did not say so",
     "narrowing_only": true
+  },
+  {
+    "path": "host.audit.export.limit",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-bound-agreement: the schema now states the maximum the handler always enforced with args_invalid; no call the handler accepted is refused",
+    "narrowing_only": true
+  },
+  {
+    "path": "host_audit_export.limit",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-bound-agreement: the schema now states the maximum the handler always enforced with args_invalid; no call the handler accepted is refused",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.blob.put.ttl_s",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-bound-agreement: the schema now states the maximum the handler always enforced with args_invalid; no call the handler accepted is refused",
+    "narrowing_only": true
+  },
+  {
+    "path": "host_blob_put.ttl_s",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-bound-agreement: the schema now states the maximum the handler always enforced with args_invalid; no call the handler accepted is refused",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.blob.touch.ttl_s",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-bound-agreement: the schema now states the maximum the handler always enforced with args_invalid; no call the handler accepted is refused",
+    "narrowing_only": true
+  },
+  {
+    "path": "host_blob_touch.ttl_s",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-bound-agreement: the schema now states the maximum the handler always enforced with args_invalid; no call the handler accepted is refused",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.blob.url.ttl_s",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-bound-agreement: the schema now states the maximum the handler always enforced with args_invalid; no call the handler accepted is refused",
+    "narrowing_only": true
+  },
+  {
+    "path": "host_blob_url.ttl_s",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-bound-agreement: the schema now states the maximum the handler always enforced with args_invalid; no call the handler accepted is refused",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.email.sends.limit",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-bound-agreement: the schema now states the maximum the handler always enforced with args_invalid; no call the handler accepted is refused",
+    "narrowing_only": true
+  },
+  {
+    "path": "host_email_sends.limit",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-bound-agreement: the schema now states the maximum the handler always enforced with args_invalid; no call the handler accepted is refused",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.index.query.k",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-bound-agreement: the schema now states the maximum the handler always enforced with args_invalid; no call the handler accepted is refused",
+    "narrowing_only": true
+  },
+  {
+    "path": "host_index_query.k",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-bound-agreement: the schema now states the maximum the handler always enforced with args_invalid; no call the handler accepted is refused",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.oauth.policy_set.access_ttl_s",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-bound-agreement: the schema now states the maximum the handler always enforced with args_invalid; no call the handler accepted is refused",
+    "narrowing_only": true
+  },
+  {
+    "path": "host_oauth_policy_set.access_ttl_s",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-bound-agreement: the schema now states the maximum the handler always enforced with args_invalid; no call the handler accepted is refused",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.oauth.policy_set.refresh_ttl_s",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-bound-agreement: the schema now states the maximum the handler always enforced with args_invalid; no call the handler accepted is refused",
+    "narrowing_only": true
+  },
+  {
+    "path": "host_oauth_policy_set.refresh_ttl_s",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-bound-agreement: the schema now states the maximum the handler always enforced with args_invalid; no call the handler accepted is refused",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool.share.rate_per_hour_per_caller",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-bound-agreement: the schema now states the maximum the handler always enforced with args_invalid; no call the handler accepted is refused",
+    "narrowing_only": true
+  },
+  {
+    "path": "host_tool_share.rate_per_hour_per_caller",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-bound-agreement: the schema now states the maximum the handler always enforced with args_invalid; no call the handler accepted is refused",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.tool_share.rate_per_hour_per_caller",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-bound-agreement: the schema now states the maximum the handler always enforced with args_invalid; no call the handler accepted is refused",
+    "narrowing_only": true
+  },
+  {
+    "path": "host_tool_share.rate_per_hour_per_caller",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-bound-agreement: the schema now states the maximum the handler always enforced with args_invalid; no call the handler accepted is refused",
+    "narrowing_only": true
   }
 ]

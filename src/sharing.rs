@@ -253,12 +253,15 @@ fn parse_scopes(args: &Value, visibility: &str, expose_spec: bool) -> Result<Vec
         .collect())
 }
 
-/// R2: `rate_per_hour_per_caller`, 1..=10000, optional.
+/// The top of `rate_per_hour_per_caller`'s range (the descriptor's `maximum`).
+pub const RATE_PER_HOUR_MAX: i64 = 10_000;
+
+/// R2: `rate_per_hour_per_caller`, 1..=[`RATE_PER_HOUR_MAX`], optional.
 fn parse_rate(args: &Value) -> Result<Option<i64>, AppError> {
     match args.get("rate_per_hour_per_caller") {
         None | Some(Value::Null) => Ok(None),
         Some(v) => match v.as_i64() {
-            Some(n) if (1..=10_000).contains(&n) => Ok(Some(n)),
+            Some(n) if (1..=RATE_PER_HOUR_MAX).contains(&n) => Ok(Some(n)),
             _ => Err(AppError::InvalidArgs("rate_per_hour_per_caller must be an integer 1..10000".into())),
         },
     }
