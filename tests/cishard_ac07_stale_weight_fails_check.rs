@@ -299,3 +299,20 @@ fn every_required_suite_has_a_measured_entry_in_the_committed_file() {
     let missing: Vec<String> = required_suites().into_iter().filter(|k| measured.get(k).is_none()).collect();
     assert!(missing.is_empty(), "committed measured file lacks: {missing:?}");
 }
+
+#[test]
+fn a_suite_made_only_of_new_files_is_seeded_provisional_and_the_refresh_clears_it() {
+    // scripts/ci-suite-seed-selftest.sh builds its scratch repos under `mktemp -d` and proves: (a) a created suite
+    // of only new files gets a measured entry + `_provisional` mark and `check` passes with a WARNING, (b) the
+    // refresh clears the mark (and exits 1 naming a provisional suite its log omits), (c) the committed tree has
+    // no generator drift, (d) a resized suite is not marked.
+    let o = Command::new("bash")
+        .arg(root().join("scripts/ci-suite-seed-selftest.sh"))
+        .env_remove("SEED_SELFTEST_SCRIPTS")
+        .current_dir(root())
+        .output()
+        .unwrap();
+    let out = String::from_utf8_lossy(&o.stdout).into_owned();
+    assert!(o.status.success(), "{out}\n{}", String::from_utf8_lossy(&o.stderr));
+    assert!(out.contains("4 passed, 0 failed"), "{out}");
+}

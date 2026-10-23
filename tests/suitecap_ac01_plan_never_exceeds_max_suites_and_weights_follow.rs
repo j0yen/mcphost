@@ -181,10 +181,19 @@ fn an_overflowing_core_plan_is_packed_into_max_suites_with_weights() {
 
     let c = run(&dir, "gen-test-suites.sh", &["--check"]);
     assert!(c.status.success(), "{}", text(&c));
-    // A fresh plan has no measurements yet: `check` names every suite nobody measured...
+    // A fresh plan has no CI measurement yet: every created suite is seeded (provisional) at its recorded weight
+    // x 1.0 (no old suite to scale from), so `check` passes, WARNING about each provisional seed...
+    let seeded = run(&dir, "ci-test-partition.sh", &["check"]);
+    assert!(seeded.status.success(), "a fresh plan's provisional seeds must pass check\n{}", text(&seeded));
+    assert!(String::from_utf8_lossy(&seeded.stderr).contains("WARNING provisional measured entry: "), "{}", text(&seeded));
+    // ...and a measured file with NO entry for a suite still fails the completeness guard, naming it.
+    let mpath = dir.join("scripts/ci-suite-measured.json");
+    let seeded_json = fs::read_to_string(&mpath).unwrap();
+    fs::write(&mpath, "{}\n").unwrap();
     let unmeasured = run(&dir, "ci-test-partition.sh", &["check"]);
     assert!(!unmeasured.status.success(), "a plan with no measured entries must fail check\n{}", text(&unmeasured));
     assert!(String::from_utf8_lossy(&unmeasured.stderr).contains("unmeasured suite: "), "{}", text(&unmeasured));
+    fs::write(&mpath, seeded_json).unwrap();
     // ...and passes once a CI refresh has measured each required suite (the emitter's keys) at its recorded weight.
     let req = run(&dir, "ci-test-partition.sh", &["list", "measured-required"]);
     assert!(req.status.success(), "{}", text(&req));
@@ -277,11 +286,11 @@ fn a_resized_suite_scales_its_measured_seconds_with_its_weight() {
     let measured: serde_json::Map<String, serde_json::Value> =
         serde_json::from_str(&fs::read_to_string(&mpath).unwrap()).unwrap();
     assert!(
-        measured.values().any(|v| v.as_f64().unwrap() < 90.0),
+        measured.iter().filter(|(k, _)| *k != "_provisional").any(|(_, v)| v.as_f64().unwrap() < 90.0),
         "the shrunk suite's measured seconds must scale down with its weight: {measured:?}"
     );
     let suites = all_suites(&dir);
-    for k in measured.keys() {
+    for k in measured.keys().filter(|k| *k != "_provisional") {
         assert!(suites.contains(k), "measured entry {k} names no generated suite");
     }
     let p = run(&dir, "ci-test-partition.sh", &["check"]);

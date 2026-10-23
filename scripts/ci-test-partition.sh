@@ -557,6 +557,17 @@ check() {
     fi
   fi
 
+  # Provisional seeds: gen-test-suites.sh gives a suite created from only new test files a measured
+  # entry at its recorded weight x the partition's measured/recorded ratio and lists it under the
+  # reserved `_provisional` key ({suite: seed date}) until scripts/ci-refresh-weights.sh measures it.
+  # A WARNING, never a failure: main must not go red on a date.
+  if [ -f "$MEASURED_FILE" ]; then
+    jq -r '(._provisional // {}) | if type == "object" then to_entries[] | "\(.key) \(.value)" else empty end' "$MEASURED_FILE" 2>/dev/null \
+      | while read -r pname pdate; do
+          echo "ci-test-partition: WARNING provisional measured entry: $pname was seeded on $pdate from its recorded weight, not measured -- run scripts/ci-refresh-weights.sh <CI run id> to replace it" >&2
+        done
+  fi
+
   [ "$rc" -eq 0 ] && echo "ci-test-partition: ok ($(printf '%s\n' "$sandbox_files" | wc -l) sandbox suites across $SANDBOX_SHARDS shards, predicted heaviest shard ${heaviest}s, $(printf '%s\n' "$core_files" | wc -l) core suites across $CORE_SHARDS shards, predicted heaviest core shard ${core_heaviest}s)"
   return "$rc"
 }

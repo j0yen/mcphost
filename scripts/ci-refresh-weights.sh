@@ -7,7 +7,10 @@
 # level: a sandbox shard under its warn line used to print none, so a suite recorded
 # at 152 s that really ran ~300 s alarmed nothing), takes the MAX measured seconds per
 # suite over every input, then:
-#   1. writes scripts/ci-suite-measured.json   (suite -> max measured seconds)
+#   1. writes scripts/ci-suite-measured.json   (suite -> max measured seconds; the reserved
+#      `_provisional` key {suite: seed date}, a seed gen-test-suites.sh wrote for a suite made of only new
+#      test files, loses every suite this input measures and vanishes when empty; a provisional suite the
+#      input does NOT measure exits 1 naming it, nothing written)
 #   2. sets each suite's recorded weight to ceil(measured) in
 #      scripts/ci-suite-weights.json, except a SOLO suite (its weight is declared
 #      by its test file's `//! solo-suite: <seconds>` line: edit that line instead;
@@ -33,7 +36,7 @@
 set -uo pipefail
 SELF_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${CI_REFRESH_ROOT:-$SELF_ROOT}" || exit 2
-[ "$#" -ge 1 ] || { sed -n '2,32p' "$0" >&2; exit 2; }
+[ "$#" -ge 1 ] || { sed -n '2,36p' "$0" >&2; exit 2; }
 if [ "${CI_REFRESH_ALLOW_LOCAL:-}" != 1 ]; then
   for arg in "$@"; do
     [ -f "$arg" ] && { echo "ci-refresh-weights: $arg is a local log file; only a CI run id is a measurement (set CI_REFRESH_ALLOW_LOCAL=1 to override); nothing written" >&2; exit 2; }
@@ -73,6 +76,17 @@ if not measured:
 W, M = "scripts/ci-suite-weights.json", "scripts/ci-suite-measured.json"
 weights = json.load(open(W))
 
+old_m = json.load(open(M)) if os.path.exists(M) else {}
+# `_provisional` ({suite: seed date}, written by gen-test-suites.sh for a suite created from only new test
+# files) is bookkeeping, not a suite: a real measurement of the suite clears its mark; a provisional suite
+# the input does not measure is an error (it would stay a guess).
+provisional = old_m.pop("_provisional", None)
+provisional = provisional if isinstance(provisional, dict) else {}
+unmeasured_prov = sorted(k for k in provisional if k in weights and k not in measured)
+if unmeasured_prov:
+    sys.exit("ci-refresh-weights: provisional suite(s) still unmeasured after this refresh: "
+             + ", ".join(unmeasured_prov) + " (the input has no `suite=<name> measured=` line for them; nothing written)")
+
 # COMPLETENESS (the one emitter `ci-test-partition.sh list measured-required`, never a hand list):
 # every required suite, core and sandbox, must be measured in the input, else a truncated log (or a
 # shard that printed nothing) silently drops suites from the measured file.
@@ -81,8 +95,6 @@ missing = sorted(k for k in required if k not in measured)
 if missing:
     sys.exit("ci-refresh-weights: input lacks a `suite=<name> measured=` line for suite(s): "
              + ", ".join(missing) + " (truncated log? nothing written)")
-old_m = json.load(open(M)) if os.path.exists(M) else {}
-
 # suites whose ONE member file declares a solo-suite weight
 solo = set()
 for suite in glob.glob("tests/suite_*_[0-9]*.rs"):
@@ -105,6 +117,10 @@ for name, secs in sorted(new_m.items()):
     elif name in measured and weights.get(name) != int(-(-secs // 1)):
         print(f"ci-refresh-weights: {name} recorded {weights.get(name)} -> {int(-(-secs // 1))}")
         weights[name] = max(1, int(-(-secs // 1)))
+# every provisional suite is measured here (else the exit above), so the key is dropped whole
+for name in sorted(provisional):
+    if name in measured and name in weights:
+        print(f"ci-refresh-weights: {name} measured; provisional mark cleared")
 json.dump(dict(sorted(weights.items())), open(W, "w"), indent=2); open(W, "a").write("\n")
 json.dump(dict(sorted(new_m.items())), open(M, "w"), indent=2); open(M, "a").write("\n")
 print(f"ci-refresh-weights: wrote {M} ({len(new_m)} suites) and {W}")

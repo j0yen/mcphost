@@ -62,6 +62,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 
 python3 - "${1:-}" <<'PY'
+import datetime
 import glob
 import json
 import os
@@ -1378,6 +1379,7 @@ def plan_weights(suite_files):
 
 
 MEASURED_REL = "scripts/ci-suite-measured.json"
+PROVISIONAL_KEY = "_provisional"  # {suite: seed date}: seeded by plan_measured, cleared by ci-refresh-weights.sh
 
 
 def plan_measured(suite_files, new_weights):
@@ -1395,6 +1397,16 @@ def plan_measured(suite_files, new_weights):
     a created suite had no entry until the next refresh, and a `check` that requires
     an entry for every suite would fail every shard before its tests print the lines
     the refresh reads (a deadlock after any future split).
+    A created suite whose members are ALL new files (den == 0: no member came from an
+    old suite) is seeded at its recorded weight x R, where R = sum(measured) / sum(recorded)
+    over the old normal buckets of the same partition (not solo, not themselves provisional;
+    floored at 1.0, and 1.0 when none qualifies), and is marked in the reserved
+    `"_provisional": {"<suite>": "<seed date>"}` key: the flat suite -> seconds map stays
+    unchanged for every reader, and ci-refresh-weights.sh clears the mark when a CI run
+    measures the suite (PR 495, run 39913385513: suite_core_12 held only new files, got no
+    entry, and `check` failed every core, sandbox and regen job so no shard log could ever
+    be produced to measure it). A suite seeded from old members and a resized suite are
+    NOT marked (a resized suite that already was keeps its mark).
     Otherwise ci-test-partition.sh check compares the OLD set's seconds with the
     NEW set's weight (ryzen7 run 404, 10-18: core_08 re-packed to recorded 223 s
     against measured 398 s, and the land precheck refused)."""
@@ -1405,6 +1417,9 @@ def plan_measured(suite_files, new_weights):
         return None
     if not isinstance(old, dict):
         return None
+    prov_old = old.pop(PROVISIONAL_KEY, None)  # reserved bookkeeping key, not a suite
+    if not isinstance(prov_old, dict):
+        prov_old = {}
     old_counts = {}
     old_members = {}
     for path in glob.glob("tests/suite_*.rs"):
@@ -1417,6 +1432,7 @@ def plan_measured(suite_files, new_weights):
     new_counts = {os.path.basename(p)[:-3]: suite_member_count(c) for p, c in suite_files.items()}
     old_weights = read_weights() or {}
     out = {}
+    prov = {}
     for name, secs in old.items():
         if not GENERATED_SUITE_RE.match(name + ".rs"):
             out[name] = secs  # not a generated suite (lib, bin:*): the plan says nothing about it
@@ -1426,18 +1442,36 @@ def plan_measured(suite_files, new_weights):
             continue
         if n == o:
             out[name] = secs
+            if name in prov_old:
+                prov[name] = prov_old[name]
             continue
         w_old, w_new = old_weights.get(name), new_weights.get(name)
         if isinstance(w_old, (int, float)) and w_old > 0 and isinstance(w_new, (int, float)):
             out[name] = round(secs * w_new / w_old, 2)
+            if name in prov_old:
+                prov[name] = prov_old[name]
     # created suites: seeded from the old suites their member files came from
     ratio_of_file = {}  # member file -> (share of its source's recorded seconds, source measured / recorded)
     for name, secs in old.items():
         w_old = old_weights.get(name)
         if name in old_members and old_counts.get(name) and isinstance(secs, (int, float)) \
-                and isinstance(w_old, (int, float)) and w_old > 0:
+                and name not in prov_old and isinstance(w_old, (int, float)) and w_old > 0:
             for m in old_members[name]:
                 ratio_of_file[m] = (w_old / old_counts[name], secs / w_old)
+    # R per partition: how much longer CI really ran the old normal buckets than their recorded
+    # weights said. Only normal buckets (n > 1, suite_<core|sandbox>_NN) that CI measured (not
+    # provisional): solo suites and env/contract suites say nothing about a normal bucket.
+    meas_sum = {"core": 0.0, "sandbox": 0.0}
+    rec_sum = {"core": 0.0, "sandbox": 0.0}
+    for name, secs in old.items():
+        w_old = old_weights.get(name)
+        if old_counts.get(name, 0) > 1 and re.match(r"suite_(core|sandbox)_\d+$", name) \
+                and name not in prov_old and isinstance(secs, (int, float)) \
+                and isinstance(w_old, (int, float)) and w_old > 0:
+            meas_sum[suite_partition(name)] += secs
+            rec_sum[suite_partition(name)] += w_old
+    ratio = {p: (max(1.0, meas_sum[p] / rec_sum[p]) if rec_sum[p] > 0 else 1.0) for p in meas_sum}
+    seed_date = os.environ.get("GEN_TEST_SUITES_TODAY") or datetime.date.today().isoformat()
     for path, content in suite_files.items():
         name = os.path.basename(path)[:-3]
         w_new = new_weights.get(name)
@@ -1448,6 +1482,11 @@ def plan_measured(suite_files, new_weights):
         if den > 0:
             num = sum(ratio_of_file[m][0] * ratio_of_file[m][1] for m in members if m in ratio_of_file)
             out[name] = round(w_new * num / den, 2)
+        else:
+            out[name] = round(w_new * ratio[suite_partition(name)], 2)
+            prov[name] = seed_date
+    if prov:
+        out[PROVISIONAL_KEY] = dict(sorted(prov.items()))
     return dict(sorted(out.items()))
 
 
