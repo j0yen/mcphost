@@ -35,6 +35,18 @@ pub enum ResourceKind {
     Tool,
 }
 
+impl ResourceKind {
+    /// The key this kind carries in the generated contract's `resources`.
+    pub fn contract_key(self) -> &'static str {
+        match self {
+            ResourceKind::Table => "table",
+            ResourceKind::Doc => "doc",
+            ResourceKind::Run => "run",
+            ResourceKind::Tool => "tool",
+        }
+    }
+}
+
 /// One row of [`RESOURCE_TEMPLATES`].
 #[derive(Debug)]
 pub struct ResourceTemplate {
@@ -42,6 +54,8 @@ pub struct ResourceTemplate {
     /// RFC 6570 template, e.g. `mcphost://table/{name}`.
     pub uri_template: &'static str,
     pub name: &'static str,
+    /// Whether a listed entry carries the human name in `title`.
+    pub has_title: bool,
     pub mime_type: &'static str,
     /// The `host.*` tool whose read path the reader reuses.
     pub reader: &'static str,
@@ -55,6 +69,7 @@ pub const RESOURCE_TEMPLATES: &[ResourceTemplate] = &[
         kind: ResourceKind::Table,
         uri_template: "mcphost://table/{name}",
         name: "table",
+        has_title: false,
         mime_type: "application/json",
         reader: "host.table.query",
         scope: "tables:read",
@@ -63,6 +78,7 @@ pub const RESOURCE_TEMPLATES: &[ResourceTemplate] = &[
         kind: ResourceKind::Doc,
         uri_template: "mcphost://doc/{id}",
         name: "doc",
+        has_title: true,
         mime_type: "text/markdown",
         reader: "host.docs.get",
         scope: "docs:read",
@@ -71,6 +87,7 @@ pub const RESOURCE_TEMPLATES: &[ResourceTemplate] = &[
         kind: ResourceKind::Run,
         uri_template: "mcphost://run/{id}/log",
         name: "run_log",
+        has_title: true,
         mime_type: "text/plain",
         reader: "host.runs.get",
         scope: "runs:read",
@@ -79,6 +96,7 @@ pub const RESOURCE_TEMPLATES: &[ResourceTemplate] = &[
         kind: ResourceKind::Tool,
         uri_template: "mcphost://tool/{name}/spec",
         name: "tool_spec",
+        has_title: false,
         mime_type: "application/json",
         reader: "host.tool.list",
         scope: "tools:read",
@@ -324,11 +342,44 @@ fn run_log_text(run: &Value) -> String {
     out
 }
 
+/// The `name` of a `resources/list` entry for `key`: `<template name>:<key>`.
+fn listed_name(template: &ResourceTemplate, key: &str) -> String {
+    format!("{}:{key}", template.name)
+}
+
+/// The placeholder a template's URI names its key by: `name` or `id`.
+fn key_placeholder(template: &ResourceTemplate) -> &'static str {
+    let open = template.uri_template.find('{').expect("every template has a placeholder");
+    let close = template.uri_template.find('}').expect("every template has a placeholder");
+    &template.uri_template[open..=close]
+}
+
+/// The `resources` section of the generated host contract: for every
+/// [`RESOURCE_TEMPLATES`] row, its URI template (`uri_scheme`) and the
+/// `name` format `list_entry` gives it (`name_field`), keyed by kind, plus
+/// `title_field` for the kinds whose entry carries a `title`.
+/// Rendered through the same formatter `list_entry` uses, with the
+/// template's own placeholder as the key.
+pub fn contract_section() -> Value {
+    let mut uri_scheme = serde_json::Map::new();
+    let mut name_field = serde_json::Map::new();
+    let mut title_field = serde_json::Map::new();
+    for t in RESOURCE_TEMPLATES {
+        let placeholder = key_placeholder(t);
+        uri_scheme.insert(t.kind.contract_key().into(), json!(t.uri_template));
+        name_field.insert(t.kind.contract_key().into(), json!(listed_name(t, placeholder)));
+        if t.has_title {
+            title_field.insert(t.kind.contract_key().into(), json!("title"));
+        }
+    }
+    json!({ "uri_scheme": uri_scheme, "name_field": name_field, "title_field": title_field })
+}
+
 /// A `resources/list` entry.
 pub fn list_entry(kind: ResourceKind, key: &str, title: Option<&str>) -> Resource {
     let template = template_for(kind);
-    let mut r = Resource::new(uri_for(kind, key), format!("{}:{key}", template.name)).with_mime_type(template.mime_type);
-    if let Some(t) = title {
+    let mut r = Resource::new(uri_for(kind, key), listed_name(template, key)).with_mime_type(template.mime_type);
+    if let Some(t) = title.filter(|_| template.has_title) {
         r = r.with_title(t);
     }
     r
