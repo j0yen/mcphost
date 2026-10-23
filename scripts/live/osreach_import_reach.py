@@ -132,21 +132,72 @@ def leaks(text, secrets):
     return any(s and s in text for s in secrets)
 
 
+BODY_READ = 2048
+MESSAGE_CAP = 200
+RAW_CAP = 120
+REDACTED = "[redacted]"
+MIN_PREFIX = 6
+
+
+def env_secrets():
+    """Values of KEY/TOKEN/SECRET-named env vars: the driver may hold any of them."""
+    return [v for k, v in os.environ.items()
+            if len(v) >= 8 and re.search(r"KEY|TOKEN|SECRET", k, re.I)]
+
+
+def scrub(text, secrets):
+    """Redact before any truncation: every literal secret, a secret's cut-off prefix at the
+    end of the text, and the bearer / claim-URL shapes `leaks` greps for."""
+    secrets = sorted({s for s in secrets if s and len(s) >= MIN_PREFIX}, key=len, reverse=True)
+    for s in secrets:
+        text = text.replace(s, REDACTED)
+    for s in secrets:  # a secret that straddles the read cut leaves only its head behind
+        for n in range(len(s) - 1, MIN_PREFIX - 1, -1):
+            if text.endswith(s[:n]):
+                text = text[:-n] + REDACTED
+                break
+    text = re.sub(r"(?i)bearer\s+\S+", REDACTED, text)
+    return re.sub(r"/claim[/?]\S*", REDACTED, text)
+
+
+def http_cause(body, secrets):
+    """`<rpc_code> <message[:200]>` from a JSON-RPC error body, else the first 120 chars of
+    the scrubbed body. The body is already capped at BODY_READ bytes by the caller."""
+    try:
+        err = json.loads(body).get("error")
+    except (ValueError, AttributeError):
+        err = None
+    if isinstance(err, dict) and ("code" in err or "message" in err):
+        parts = []
+        if "code" in err:
+            parts.append(scrub(str(err["code"]), secrets))
+        if "message" in err:
+            parts.append(scrub(str(err["message"]), secrets)[:MESSAGE_CAP])
+        return " ".join(parts)
+    return scrub(body, secrets)[:RAW_CAP]
+
+
 class Refused(Exception):
     pass
 
 
 class Rpc:
-    def __init__(self, base):
+    def __init__(self, base, secrets=None):
         self.url = base.rstrip("/") + "/mcp"
+        self.secrets = secrets if secrets is not None else []  # shared with run_live's list
 
     def call(self, tool, args, key=None, synthetic=None, timeout=30):
-        body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+        method = "tools/call"
+        body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": {
             "name": tool, "arguments": args, "_meta": {
                 "io.modelcontextprotocol/protocolVersion": PROTOCOL,
                 "io.modelcontextprotocol/clientCapabilities": {},
                 "io.modelcontextprotocol/clientInfo": {"name": "osreach-import-reach", "version": "1"}}}}).encode()
-        headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+        # Same headers as src/client.rs:88-96: the version always, the method, the name only
+        # for tools/call (this driver sends nothing else). rmcp 3.3.0 answers HTTP 400 / -32020
+        # to a body _meta protocolVersion with no MCP-Protocol-Version header.
+        headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream",
+                   "MCP-Protocol-Version": PROTOCOL, "Mcp-Method": method, "Mcp-Name": tool}
         if key:
             headers["Authorization"] = "Bearer " + key
         if synthetic:
@@ -156,7 +207,13 @@ class Rpc:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 raw = resp.read().decode()
         except urllib.error.HTTPError as e:
-            raise Refused("%s HTTP %d" % (tool, e.code))
+            try:
+                raw_body = e.read(BODY_READ).decode("utf-8", "replace")
+            except OSError:
+                raw_body = ""
+            known = self.secrets + env_secrets() + [key or "", synthetic or ""]
+            cause = http_cause(raw_body, known)
+            raise Refused(("%s HTTP %d %s" % (tool, e.code, cause)).rstrip())
         except (urllib.error.URLError, OSError) as e:
             raise Refused("%s %s" % (tool, type(e).__name__))
         msgs = []
@@ -203,9 +260,9 @@ def run_live(args):
            "result": "stop", "reason": ""}
     root = tempfile.mkdtemp(prefix="osreach-import-reach-")
     os.chmod(root, 0o700)
-    rpc = Rpc(args.base_url)
-    tenants = []  # (key) in creation order
     secrets = []
+    rpc = Rpc(args.base_url, secrets)
+    tenants = []  # (key) in creation order
     try:
         ver = claude_version()
         if ver is None:
