@@ -849,12 +849,13 @@ The core suites are sharded too (PRD-mcphost-ci-core-suites-sharded): the
 required check "static analysis + core suites" was one serial job whose core
 step alone ran 13 to 16 minutes, so main's runs sat at 20 to 30 minutes against
 a 30-minute cap. `core-static` now holds the static steps (check, clippy,
-contract suites, doctests, deny, audit), `core` is a matrix of weight-balanced
+doctests, deny, audit), `core-contract` (named "contract suites", 40-minute
+cap) runs the contract suites on their own, `core` is a matrix of weight-balanced
 shards (`ci-test-partition.sh core-shard <n> <of>`, the same
 `scripts/ci-suite-weights.json` and heaviest-first placement as the sandbox
 shards), and the job `gate` keeps the old name as a small aggregator that fails
-unless both succeeded, so branch protection and
-`.github/required-checks.toml` did not change (the static and shard jobs carry
+unless all three succeeded, so branch protection and
+`.github/required-checks.toml` did not change (the static, contract and shard jobs carry
 the `# required-checks: exclude` marker). The core count is defined once
 (`CORE_SHARDS`, printed by `ci-test-partition.sh shards core`); `check` fails
 naming a core suite with no weight or a predicted heaviest core shard above
