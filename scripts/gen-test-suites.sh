@@ -642,6 +642,11 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # sandbox cap 220 -> 110 splits it into three normal buckets (~119/114/91 files, ~109/107/87 s
 # scaled from the refreshed 302 s) and SANDBOX_SHARDS 3 -> 4 gives each its own shard.
 # 7 singletons + 4 normal core + 1 singleton + 3 normal sandbox = 15 = MAX_SUITES.
+# 2026-10-23 (the refreshed weights put suite_sandbox_02 at 180 s, over the 160 s heaviest-shard
+# bound of cishard_ac01): the cap above never held, because suite_core_12 (an eighth core suite)
+# took the 15th slot and the MAX_SUITES loop below grew the sandbox cap back to 170 files, i.e.
+# two buckets at ~1.06 s/file (180 s / 170 files). MAX_SUITES 15 -> 16 lets the sandbox cap 110
+# stand: three normal buckets of ~109 files (~115 s at that rate) plus the sandbox singleton.
 MAX_PER_SUITE = {"core": 505, "sandbox": 110}
 
 # The P0 ceiling on core+sandbox test binaries (tests/suite_ac1_ten_binaries_
@@ -667,7 +672,7 @@ MAX_PER_SUITE = {"core": 505, "sandbox": 110}
 # 12 -> 13 on 2026-10-18 for the fourth normal core bucket (see MAX_PER_SUITE above):
 # 7 exclusive singletons + 4 normal core buckets + 2 sandbox suites.
 # 13 -> 15 on 2026-10-20 for the second and third normal sandbox buckets (see MAX_PER_SUITE above).
-MAX_SUITES = 15
+MAX_SUITES = 16
 
 # scripts/ci-suite-weights.json is generated with the suites: its keys are
 # EXACTLY the generated suite names (plus `lib`, the --lib run), so a new suite
