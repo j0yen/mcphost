@@ -565,6 +565,11 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
     if let Some(obj) = body.as_object_mut() {
         obj.insert("oauth".to_string(), crate::oauth_stats::healthz_json(state).await);
     }
+    // PRD-mcphost-tools-call-progress-notifications P0: do clients ask for
+    // progress? Admin body only; never in the anonymous `/healthz`.
+    if let Some(obj) = body.as_object_mut() {
+        obj.insert("progress_7d".to_string(), crate::progress::healthz_json(state).await);
+    }
     if let Some(obj) = body.as_object_mut() {
         obj.insert(
             "plans".to_string(),

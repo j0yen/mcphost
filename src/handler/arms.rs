@@ -384,6 +384,34 @@ impl McpHostHandler {
         })
     }
 
+    pub(crate) fn arm_host_probe_progress<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
+        box_arm(async move {
+            let ArmCtx { tenant, args, .. } = c;
+            let started = std::time::Instant::now();
+            let out = crate::progress::probe(&args, crate::progress::current_sink().as_ref()).await;
+            // Host verbs write no `calls` row of their own; the probe does, so
+            // the progress counters see the call they exist to measure.
+            let ok = out.is_ok();
+            let _ = self
+                .state
+                .db
+                .record_call(
+                    tenant.id,
+                    "host.probe.progress".to_string(),
+                    started.elapsed().as_millis() as i64,
+                    ok,
+                    (!ok).then(|| "args_invalid".to_string()),
+                    None,
+                    None,
+                    if ok { "ok" } else { "error" },
+                    tenant.origin.clone(),
+                    tenant.origin_detail.clone(),
+                )
+                .await;
+            out
+        })
+    }
+
     pub(crate) fn arm_host_usage<'a>(&'a self, c: ArmCtx<'a>) -> ArmFut<'a> {
         box_arm(async move {
             let ArmCtx { tenant, args, .. } = c;

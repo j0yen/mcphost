@@ -166,6 +166,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `src/perf.rs` (<1k) PRD-mcphost-performance-guarantees-measured: per-plan p95 targets ([`crate::plans::Plan`]'s `perf_*_p95_ms`...
 - `src/plans.rs` (~1k) The plan catalog (`plans.toml`): per-plan price and quotas.
 - `src/preflight.rs` (<1k) PRD-mcphost-call-cost-estimate: the one list of admission checks a call passes before it dispatches.
+- `src/progress.rs` (<1k) PRD-mcphost-tools-call-progress-notifications: per-call progress bookkeeping (the `calls.progress_token` /...
 - `src/prompts.rs` (<1k) PRD-mcphost-prompts-from-published-tools: `prompts/list` and `prompts/get`.
 - `src/protocol/frames.rs` (<1k) PRD-mcphost-sse-frame-contract-generated: the frames the host may emit per request type, as one table.
 - `src/protocol/mod.rs` (<1k) Wire-protocol contracts the host publishes about itself.

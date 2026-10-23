@@ -1042,6 +1042,10 @@ async fn main() -> anyhow::Result<()> {
                 if let Some(obj) = body.as_object_mut() {
                     obj.insert("by_surface".to_string(), by_surface);
                     obj.insert("probe".to_string(), probe);
+                    obj.insert(
+                        "progress_7d".to_string(),
+                        mcphost::progress::compute(&db, mcphost::state::now_unix()).await?,
+                    );
                 }
                 println!("{}", serde_json::to_string(&body)?);
             } else {
@@ -2202,6 +2206,7 @@ async fn main() -> anyhow::Result<()> {
                 fleet_ips,
                 end_user_activity: Default::default(),
                 oauth_healthz_cache: Default::default(),
+                progress_healthz_cache: Default::default(),
                 verified_client_ids,
                 session_bindings,
                 invite_hints: mcphost::invites::InviteHintTracker::new(),

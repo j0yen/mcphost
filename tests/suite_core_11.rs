@@ -21,6 +21,8 @@ mod oauthclient;
 mod serve;
 #[path = "support/sjrc.rs"]
 mod sjrc;
+#[path = "support/tcpn.rs"]
+mod tcpn;
 #[path = "support/timp.rs"]
 mod timp;
 #[path = "support/tssdk.rs"]
@@ -29,10 +31,6 @@ mod tssdk;
 mod uprg;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
-#[path = "support/xlinks.rs"]
-mod xlinks;
-#[path = "support/xlinks_cli.rs"]
-mod xlinks_cli;
 
 #[path = "rowpol_ac01_sql_predicate_scopes_to_end_user_attribute.rs"]
 mod rowpol_ac01_sql_predicate_scopes_to_end_user_attribute;
@@ -574,6 +572,18 @@ mod tablemodel_ac09_drop_removes_model_and_annotations;
 mod tablemodel_ac10_empty_table_reports_unknown_types_no_error;
 #[path = "tables_ac07_tenant_delete_cascade.rs"]
 mod tables_ac07_tenant_delete_cascade;
+#[path = "tcpn_ac01_progress_counters.rs"]
+mod tcpn_ac01_progress_counters;
+#[path = "tcpn_ac02_frame_contract.rs"]
+mod tcpn_ac02_frame_contract;
+#[path = "tcpn_ac03_probe_tool.rs"]
+mod tcpn_ac03_probe_tool;
+#[path = "tcpn_ac04_progress_frames.rs"]
+mod tcpn_ac04_progress_frames;
+#[path = "tcpn_ac05_no_token_unchanged.rs"]
+mod tcpn_ac05_no_token_unchanged;
+#[path = "tcpn_ac06_throttle_and_disconnect.rs"]
+mod tcpn_ac06_throttle_and_disconnect;
 #[path = "tdf_ac01_round_trip_every_kind.rs"]
 mod tdf_ac01_round_trip_every_kind;
 #[path = "tdf_ac02_lint_names_unknown_field.rs"]
@@ -1028,19 +1038,3 @@ mod xaa_ac07_revoke_and_unrevoke_end_user;
 mod xaa_ac08_trusted_issuer_quota;
 #[path = "xaa_ac09_hosted_and_key_paths_unchanged.rs"]
 mod xaa_ac09_hosted_and_key_paths_unchanged;
-#[path = "xlinks_ac01_fail_line_for_404_cursor_ignored.rs"]
-mod xlinks_ac01_fail_line_for_404_cursor_ignored;
-#[path = "xlinks_ac02_allowlist_skip_and_empty_set.rs"]
-mod xlinks_ac02_allowlist_skip_and_empty_set;
-#[path = "xlinks_ac03_head_405_falls_back_and_timeout_fails.rs"]
-mod xlinks_ac03_head_405_falls_back_and_timeout_fails;
-#[path = "xlinks_ac04_clients_toml_renders_into_both_files.rs"]
-mod xlinks_ac04_clients_toml_renders_into_both_files;
-#[path = "xlinks_ac05_check_names_the_edited_file.rs"]
-mod xlinks_ac05_check_names_the_edited_file;
-#[path = "xlinks_ac06_default_set_resolves_and_dead_urls_replaced.rs"]
-mod xlinks_ac06_default_set_resolves_and_dead_urls_replaced;
-#[path = "xlinks_ac07_ci_docs_job_fails_on_a_404_and_stays_fast.rs"]
-mod xlinks_ac07_ci_docs_job_fails_on_a_404_and_stays_fast;
-#[path = "xlinks_r07_report_json.rs"]
-mod xlinks_r07_report_json;

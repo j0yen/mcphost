@@ -21,6 +21,8 @@ mod lanecov;
 mod oauth;
 #[path = "support/serve.rs"]
 mod serve;
+#[path = "support/tcpn.rs"]
+mod tcpn;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
@@ -776,3 +778,5 @@ mod minimal_ac1_anonymous_ok_only;
 mod minimal_ac4_liveness_failure_returns_5xx;
 #[path = "minimal_ac5_tenant_bearer_gets_anonymous_body.rs"]
 mod minimal_ac5_tenant_bearer_gets_anonymous_body;
+#[path = "tcpn_ac08_surface_parity.rs"]
+mod tcpn_ac08_surface_parity;

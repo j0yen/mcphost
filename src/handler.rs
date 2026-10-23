@@ -442,7 +442,7 @@ async fn bind_session_to_created_tenant(
         maybe_stamp_second_session(state, &tenant, Some(session_id)).await;
     }
     tracing::info!(tenant = %tenant.namespace, "session bound to tenant after signup");
-    if let Err(e) = crate::protocol::frames::emit(peer, crate::protocol::frames::FrameKind::ListChanged, crate::protocol::frames::REQ_KEYLESS_SIGNUP).await {
+    if let Err(e) = crate::protocol::frames::emit(peer, crate::protocol::frames::Frame::ToolListChanged, crate::protocol::frames::REQ_KEYLESS_SIGNUP).await {
         tracing::warn!(tenant = %tenant.namespace, error = %e, "notify_tool_list_changed failed");
     }
     if let Some(obj) = value.as_object_mut() {
@@ -495,7 +495,7 @@ async fn record_implicit_signup_memory(
     if let Err(e) = state.db.set_created_session_id(tenant.id, session_id.to_string()).await {
         tracing::warn!(error = %e, tenant = %tenant.namespace, "failed to record created_session_id");
     }
-    if let Err(e) = crate::protocol::frames::emit(peer, crate::protocol::frames::FrameKind::ListChanged, crate::protocol::frames::REQ_KEYLESS_SIGNUP).await {
+    if let Err(e) = crate::protocol::frames::emit(peer, crate::protocol::frames::Frame::ToolListChanged, crate::protocol::frames::REQ_KEYLESS_SIGNUP).await {
         tracing::warn!(tenant = %tenant.namespace, error = %e, "notify_tool_list_changed failed");
     }
 }
@@ -5191,6 +5191,27 @@ fn host_tools_part_14() -> Vec<Tool> {
     ]
 }
 
+/// PRD-mcphost-tools-call-progress-notifications P0: the progress probe.
+#[inline(never)]
+fn host_tools_part_15() -> Vec<Tool> {
+    vec![Tool::new(
+        "host.probe.progress",
+        "Report progress on a schedule, so a client can see notifications/progress frames arrive \
+         before the result. Sleeps step_ms, then reports, steps times; with _meta.progressToken \
+         each report is one notifications/progress frame (progress = pct, total = 100, or with \
+         mode=count progress = the step number and no total). Returns {steps, elapsed_ms}. Never \
+         runs longer than 25 s.",
+        host_schema_checked(
+            json!({
+                "steps": {"type": "integer", "minimum": 1, "maximum": 5, "description": "How many reports to make, 1-5."},
+                "step_ms": {"type": "integer", "minimum": 1000, "maximum": 5000, "description": "Milliseconds to sleep before each report, 1000-5000."},
+                "mode": {"type": "string", "enum": crate::progress::ProbeMode::NAMES, "description": "pct (default): progress is the percentage done with total 100; count: progress is the step number, no total."},
+            }),
+            &["steps", "step_ms"],
+        ),
+    )]
+}
+
 #[inline(never)]
 fn host_tools_part_13() -> Vec<Tool> {
     vec![
@@ -5564,6 +5585,7 @@ fn host_tools_part_13() -> Vec<Tool> {
     tools.extend(host_tools_part_12());
     tools.extend(host_tools_part_13());
     tools.extend(host_tools_part_14());
+    tools.extend(host_tools_part_15());
     tools.extend(crate::verify::tools());
     if authenticated {
         tools.push(Tool::new(
@@ -7199,21 +7221,21 @@ impl StateBackend for CountingStateBackend {
 /// The stack, in bytes, every forwarded dotted host verb must complete its real
 /// `host.tool_call` / `host.tool_test` call in on a debug build (profile and
 /// test thread as CI's `cargo test`). GENERATED MEASUREMENT: the measured
-/// maximum over all 230 forwardable ids is 983,040 B (every id measures it:
+/// maximum over all 230 forwardable ids is 995,328 B (every id measures it:
 /// `test:host.trigger.set`, `call:host.whoami`,
 /// `call:host.webhook_inbox.create`, `call:host.vault.status`, ...,
-/// `scripts/fwd-stack-measure.sh all`, 2026-10-18 (re-measured 2026-10-20 with the sub-key `acting_for` lineage on the call path), after the dispatch table
+/// `scripts/fwd-stack-measure.sh all`, 2026-10-18 (re-measured 2026-10-20 with the sub-key `acting_for` lineage on the call path, and 2026-10-22 with the progress-token sink on the call path), after the dispatch table
 /// (`src/dispatch_table.rs`) and the boxed `call_tool_inner` helpers; the shared
 /// level rose from 823,296 B on 10-17 with main's own frames, chiefly rmcp's
 /// `handle_request` poll frame, 48 -> 137 KiB, while `host.doctor` stopped
 /// compiling its error-envelope report on the caller's stack) and the
-/// budget is that + 25 % = 1,228,800 B, so CI's 2 MiB test thread keeps
+/// budget is that + 25 % = 1,244,160 B, so CI's 2 MiB test thread keeps
 /// 40 % of it free and the next fat frame fails
 /// `tests/verbfwd_ac08_forward_stack_budget.rs`, naming the verb, instead of SIGABRTing a shard (run 326 `verbfwd_ac01`, run
 /// 953; both 10-17, both `has overflowed its stack`). The boundary is
 /// `dispatch_tenant_tool` / `forward_host_verb`, where a dotted verb re-enters
 /// the dispatcher. Re-measure and tighten as the dispatch frames shrink.
-pub const FORWARD_STACK_BUDGET: usize = 1_228_800;
+pub const FORWARD_STACK_BUDGET: usize = 1_244_160;
 
 /// The validator's registration for what `host.spec.test` owns (R3): more
 /// than `MAX_TEST_INVOCATIONS` invocations is refused `too_many_invocations`
@@ -8659,7 +8681,7 @@ impl McpHostHandler {
             // never a job -- no run id to report progress against, no pid
             // slot `host.runs.cancel` would ever look up.
             run_id: None,
-            progress: Arc::new(crate::kinds::NullProgress),
+            progress: crate::progress::current_sink(),
             cancel_pid: Arc::new(crate::runs::CancelSlot::default()),
             end_user: end_user.cloned(),
             vault_token,
@@ -9282,7 +9304,7 @@ impl McpHostHandler {
             // never a job -- no run id to report progress against, no pid
             // slot `host.runs.cancel` would ever look up.
             run_id: None,
-            progress: Arc::new(crate::kinds::NullProgress),
+            progress: crate::progress::current_sink(),
             cancel_pid: Arc::new(crate::runs::CancelSlot::default()),
             // PRD-mcphost-end-user-identity: `host.tool_test` is a dry run
             // against the real upstream, not a metered call -- no end user
@@ -9800,7 +9822,7 @@ impl McpHostHandler {
             // never a job -- no run id to report progress against, no pid
             // slot `host.runs.cancel` would ever look up.
             run_id: None,
-            progress: Arc::new(crate::kinds::NullProgress),
+            progress: crate::progress::current_sink(),
             cancel_pid: Arc::new(crate::runs::CancelSlot::default()),
             // PRD-mcphost-end-user-identity: `host.bridge_test` is a dry
             // run, not a metered call -- no end user to thread through.
@@ -10179,7 +10201,7 @@ impl McpHostHandler {
             concurrent_calls_per_tenant,
             chain_fanout_max: usize::MAX,
             run_id: None,
-            progress: Arc::new(crate::kinds::NullProgress),
+            progress: crate::progress::current_sink(),
             cancel_pid: Arc::new(crate::runs::CancelSlot::default()),
             egress_allowed: tenant.plan == "pro",
             sandbox_ceilings: self.state.plans.sandbox_ceilings(&tenant.plan),
@@ -10627,7 +10649,7 @@ impl McpHostHandler {
             // never a job -- no run id to report progress against, no pid
             // slot `host.runs.cancel` would ever look up.
             run_id: None,
-            progress: Arc::new(crate::kinds::NullProgress),
+            progress: crate::progress::current_sink(),
             cancel_pid: Arc::new(crate::runs::CancelSlot::default()),
             // PRD-mcphost-end-user-identity: `host.tool_run`'s own
             // `record_call` (below) carries no end-user columns either --
@@ -11595,7 +11617,7 @@ impl McpHostHandler {
 async fn notify_prompt_list_changed(peer: &Peer<RoleServer>, namespace: &str) {
     if let Err(e) = crate::protocol::frames::emit(
         peer,
-        crate::protocol::frames::FrameKind::PromptsListChanged,
+        crate::protocol::frames::Frame::PromptListChanged,
         crate::protocol::frames::request_type_of("tools/call", true),
     )
     .await
@@ -12085,6 +12107,11 @@ impl ServerHandler for McpHostHandler {
             shape: gate.shape,
         });
         let sampling_peer = gate.sampling.then(|| ctx.peer.clone());
+        let progress = Arc::new(crate::progress::CallProgress::new(ctx.meta.get_progress_token().is_some()));
+        if let Some(token) = ctx.meta.get_progress_token() {
+            progress.start_forwarding(ctx.peer.clone(), token);
+        }
+        let finish = Arc::clone(&progress);
         // PRD-mcphost-key-scoped-to-tools R3: the cell `call_tool_inner`
         // fills once a sub-key resolves, read by the `calls` insert.
         let inner = crate::leakguard::UNBOUND_SENT.scope(
@@ -12095,10 +12122,14 @@ impl ServerHandler for McpHostHandler {
         let inner = crate::sampling::SAMPLING_CLIENT
             .scope(crate::sampling::SamplingClient { peer: sampling_peer, session_id: gate.session_id.clone() }, inner);
         let inner = crate::inband::CALL_GATE.scope(gate, inner);
+        // PRD-mcphost-tools-call-progress-notifications P0: the slot every
+        // `calls` row of this request reads `progress_token` / `progress_frames` from.
+        let inner = crate::progress::scope(progress, inner);
         let result = match channel {
             Some(channel) => crate::elicit::CLIENT_CHANNEL.scope(channel, inner).await,
             None => inner.await,
         };
+        finish.finish().await;
         // PRD-mcphost-incident-banner-for-agents R3: every result feeds the
         // 5-minute error-rate window.
         let code = result.as_ref().err().and_then(|e| crate::incident_banner::error_code_of(&e.data));
@@ -13104,7 +13135,7 @@ impl McpHostHandler {
                     && crate::notes::changes_tool_list(dispatch_name, value)
                     && let Err(e) = crate::protocol::frames::emit(
                         &ctx.peer,
-                        crate::protocol::frames::FrameKind::ListChanged,
+                        crate::protocol::frames::Frame::ToolListChanged,
                         crate::protocol::frames::request_type_of("tools/call", true),
                     )
                     .await

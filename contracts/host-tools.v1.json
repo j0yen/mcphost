@@ -20485,6 +20485,96 @@
       "since": "0.87.0"
     },
     {
+      "description": "Report progress on a schedule, so a client can see notifications/progress frames arrive before the result. Sleeps step_ms, then reports, steps times; with _meta.progressToken each report is one notifications/progress frame (progress = pct, total = 100, or with mode=count progress = the step number and no total). Returns {steps, elapsed_ms}. Never runs longer than 25 s.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "description": "pct (default): progress is the percentage done with total 100; count: progress is the step number, no total.",
+            "enum": [
+              "pct",
+              "count"
+            ],
+            "type": "string"
+          },
+          "step_ms": {
+            "description": "Milliseconds to sleep before each report, 1000-5000.",
+            "maximum": 5000,
+            "minimum": 1000,
+            "type": "integer"
+          },
+          "steps": {
+            "description": "How many reports to make, 1-5.",
+            "maximum": 5,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "steps",
+          "step_ms"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.probe.progress",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "elapsed_ms": {
+            "type": "integer"
+          },
+          "steps": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "elapsed_ms",
+          "steps"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.112.42"
+    },
+    {
       "description": "Report (or merge in) counters and/or pct/msg on a run, by id. Each named counter (items_processed, items_total, bytes_out, custom.<k>) is monotonic on its own -- a lower value than what's already stored fails validation with nothing written. Read back via host.runs.get/wait/list's counters field.",
       "input_schema": {
         "additionalProperties": false,
@@ -46074,6 +46164,47 @@
       },
       "name": "host_policy_set",
       "since": "0.103.1"
+    },
+    {
+      "alias_of": "host.probe.progress",
+      "description": "Report progress on a schedule, so a client can see notifications/progress frames arrive before the result. Sleeps step_ms, then reports, steps times; with _meta.progressToken each report is one notifications/progress frame (progress = pct, total = 100, or with mode=count progress = the step number and no total). Returns {steps, elapsed_ms}. Never runs longer than 25 s.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "description": "pct (default): progress is the percentage done with total 100; count: progress is the step number, no total.",
+            "enum": [
+              "pct",
+              "count"
+            ],
+            "type": "string"
+          },
+          "step_ms": {
+            "description": "Milliseconds to sleep before each report, 1000-5000.",
+            "maximum": 5000,
+            "minimum": 1000,
+            "type": "integer"
+          },
+          "steps": {
+            "description": "How many reports to make, 1-5.",
+            "maximum": 5,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "steps",
+          "step_ms"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_probe_progress",
+      "since": "0.112.42"
     },
     {
       "alias_of": "host.progress",

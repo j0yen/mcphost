@@ -353,6 +353,8 @@ const MIGRATION_0129: &str = include_str!("../migrations/0129_logs_key_id.sql");
 const MIGRATION_0130: &str = include_str!("../migrations/0130_syncs.sql");
 /// PRD-mcphost-sync-pull-with-change-detection R1/R3: `sync_runs.provider_calls` and `sync_cursors`.
 const MIGRATION_0131: &str = include_str!("../migrations/0131_sync_pull.sql");
+/// PRD-mcphost-tools-call-progress-notifications P0: `calls.progress_token` / `progress_frames`.
+const MIGRATION_0132: &str = include_str!("../migrations/0132_calls_progress.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
@@ -2517,6 +2519,15 @@ pub const ALL_ROLES: [DbRole; 3] = [ROLE_SERVER, ROLE_PRUNE, ROLE_TENANT_TABLE];
 
 const DEFAULT_BUSY_TIMEOUT_MS: u64 = 5000;
 
+/// One origin's row of [`Db::progress_counts_by_origin`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OriginProgress {
+    pub origin: String,
+    pub calls: i64,
+    pub with_token: i64,
+    pub frames: i64,
+}
+
 /// `$MCPHOST_DB_BUSY_TIMEOUT_MS` (default 5000) -- the one env-configurable
 /// pragma; `journal_mode=WAL`, `synchronous=NORMAL`, and `foreign_keys=ON`
 /// are fixed (requirement 1).
@@ -3295,6 +3306,7 @@ impl Db {
         // Wholly new tables, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0130)?;
         Self::migrate_0131_sync_pull(&conn)?;
+        Self::migrate_0132_calls_progress(&conn)?;
         Ok(())
     }
 
@@ -3306,6 +3318,18 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0131)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-tools-call-progress-notifications P0: gated on the first
+    /// new column (the batch is `ALTER`s, so a rerun must skip it).
+    fn migrate_0132_calls_progress(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('calls') WHERE name = 'progress_token'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0132)?;
         }
         Ok(())
     }
@@ -7432,6 +7456,38 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-tools-call-progress-notifications P0: per tenant origin
+    /// (`unknown` for a NULL), `(origin, tools/call rows, rows carrying a
+    /// progressToken, progress frames sent)` for rows started at or after
+    /// `since_unix`.
+    pub async fn progress_counts_by_origin(&self, since_unix: i64) -> Result<Vec<OriginProgress>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT COALESCE(t.origin, 'unknown'), COUNT(*), COALESCE(SUM(c.progress_token), 0), COALESCE(SUM(c.progress_frames), 0) \
+                 FROM calls c LEFT JOIN tenants t ON t.id = c.tenant_id \
+                 WHERE c.started_unix >= ?1 GROUP BY 1 ORDER BY 1",
+            )?;
+            let rows = stmt
+                .query_map([since_unix], |r| {
+                    Ok(OriginProgress { origin: r.get(0)?, calls: r.get(1)?, with_token: r.get(2)?, frames: r.get(3)? })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-tools-call-progress-notifications P0: the unix time migration
+    /// 0132 ran (`progress_7d.since`); `0` only on a database that skipped it.
+    pub async fn progress_epoch(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            let since: Option<i64> =
+                conn.query_row("SELECT MIN(since_unix) FROM progress_epoch", [], |r| r.get(0))?;
+            Ok(since.unwrap_or(0))
+        })
+        .await
+    }
+
     /// PRD-mcphost-tenant-attribution requirement 3: `tenants_by_source_class`
     /// -- every distinct `source_class` value present, counted, most
     /// common first. A `NULL` (a tenant somehow missed by both live
@@ -11347,6 +11403,8 @@ impl Db {
         // PRD-mcphost-call-audit-export R1: the credential kind, resolved on
         // the request's own task for the same reason.
         let credential = crate::calllog::resolve(Some(auth_method.as_str()), key_id, caller_tenant_id).as_str();
+        // PRD-mcphost-tools-call-progress-notifications P0: same reason.
+        let (progress_token, progress_frames) = crate::progress::call_columns().await;
         let started_at = now_rfc3339();
         let started_unix = now_unix();
         let outcome = outcome.to_string();
@@ -11379,9 +11437,9 @@ impl Db {
         self.with_conn(move |conn| {
             crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
                 tx.execute(
-                    "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id, auth_method, step_tool, error_summary, key_id, credential) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
-                    params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone(), auth_method, step_tool, error_summary, key_id, credential],
+                    "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id, auth_method, step_tool, error_summary, key_id, credential, progress_token, progress_frames) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
+                    params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone(), auth_method, step_tool, error_summary, key_id, credential, progress_token, progress_frames],
                 )?;
                 let call_id = tx.last_insert_rowid();
                 tx.execute(

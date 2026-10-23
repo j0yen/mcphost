@@ -40,7 +40,7 @@ fn a_new_row_without_write_exits_one_naming_both_files_and_write_fixes_it() {
     let source = std::fs::read_to_string(&frames_rs).unwrap();
     let marker = "pub const FRAME_SEQUENCES: &[FrameRow] = &[\n";
     assert!(source.contains(marker), "table opener moved; update this test");
-    let row = "    FrameRow {\n        request_type: \"tools/call:with_progress_token\",\n        frames: &[(FrameKind::Progress, Card::ZeroOrMore), (FrameKind::Result, Card::ExactlyOne)],\n        content_type_rule: ContentTypeRule::JsonWhenSingleFrame,\n    },\n";
+    let row = "    FrameRow {\n        request_type: \"tools/call:with_progress_token\",\n        frames: &[(FrameKind::Progress, Card::ZeroOrMore), (FrameKind::Result, Card::ExactlyOne)],\n        content_type_rule: ContentTypeRule::JsonWhenSingleFrame,\n        when: None,\n    },\n";
     std::fs::write(&frames_rs, source.replacen(marker, &format!("{marker}{row}"), 1)).unwrap();
 
     let drifted = script(&scratch, "--check");

@@ -404,6 +404,9 @@ pub struct AppState {
     /// In-memory only, same `Arc`-sharing rationale as
     /// [`AppState::checkout_sessions`].
     pub oauth_healthz_cache: crate::oauth_stats::HealthzCache,
+    /// PRD-mcphost-tools-call-progress-notifications P0: admin healthz's
+    /// cached `progress_7d` object, same contract as the `oauth` cache.
+    pub progress_healthz_cache: crate::oauth_stats::HealthzCache,
     /// PRD-mcphost-oauth-unverified-client-consent-warning requirement (P1):
     /// `$MCPHOST_VERIFIED_CLIENT_IDS`, parsed once at startup -- see
     /// [`VerifiedClientIds`]. A DCR client's `client_id` on this list
