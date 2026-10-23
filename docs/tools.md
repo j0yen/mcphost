@@ -3112,7 +3112,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Returns**
 
 - `already_offboarded`: boolean | null
-- `billing_canceled`: array<string> (always)
+- `billing_canceled`: array<string> | null
 - `disabled`: boolean (always)
 - `disabled_reason`: string (always)
 - `next`: object | null
@@ -3658,7 +3658,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `expires_unix`: integer | null
 - `handle`: string | null
 - `row_count`: integer | null
-- `rows`: array<object> | null
+- `rows`: array | null
 - `sample`: array<object> | null
 - `sample_cap`: integer | null
 - `stats`: object | null
@@ -3835,7 +3835,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `forwarded_to`: string | null
 - `headers`: object | null
 - `https_proxy`: string | null
-- `id`: string | null
+- `id`: any
 - `kind`: string | null
 - `last_fired_unix`: any
 - `last_run_id`: any
@@ -3849,7 +3849,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `payload`: object | null
 - `preset`: any
 - `result`: any
-- `rows`: array<object> | null
+- `rows`: any
 - `run_id`: string | null
 - `schedule`: string | null
 - `status`: string | integer | null

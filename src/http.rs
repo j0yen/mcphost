@@ -1128,6 +1128,43 @@ pub async fn protocol_version_and_log(req: Request<Body>, next: Next) -> Respons
     response
 }
 
+/// Which `/mcp` route a response came from, for [`upgrade_for`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PathClass {
+    /// Bare `/mcp`.
+    Bare,
+    /// `/login/mcp`, the OAuth entry.
+    Login,
+    /// `/t/{ns}/mcp`, a URL-bound tenant.
+    Tenant,
+}
+
+/// What `oauth_401_upgrade` does to the HTTP status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Upgrade {
+    To401,
+    To403,
+    None,
+}
+
+/// PRD-mcphost-named-key-refusal-not-http-401 R1: the one pure decision over
+/// (path class, `data.error_code`, [`Reason`]). Only a `tenant_key_missing`
+/// raised for a connection or peer that already holds a tenant, on bare
+/// `/mcp`, stays HTTP 200: there OAuth is not the remedy and clients that
+/// show every 401 as "token expired" would hide the readable refusal.
+pub fn upgrade_for(path: PathClass, error_code: &str, reason: &crate::errors::Reason) -> Upgrade {
+    use crate::errors::Reason;
+    match error_code {
+        "tenant_key_missing" => match (path, reason) {
+            (PathClass::Bare, Reason::ConnectionBound(_) | Reason::PeerRecent) => Upgrade::None,
+            _ => Upgrade::To401,
+        },
+        "invalid_token" | "wrong_tenant" => Upgrade::To401,
+        crate::scopes::INSUFFICIENT_SCOPE => Upgrade::To403,
+        _ => Upgrade::None,
+    }
+}
+
 /// PRD-mcphost-oauth-resource-server requirement 2 / AC3-4: re-surfaces
 /// `/mcp`'s JSON-RPC-level auth rejections that mean "no usable credential
 /// was presented" (`tenant_key_missing` -- the code an already-anonymous
@@ -1151,6 +1188,13 @@ pub async fn protocol_version_and_log(req: Request<Body>, next: Next) -> Respons
 /// own match-arm ordering -- so this never fires for them).
 async fn oauth_401_upgrade(State(state): State<Arc<AppState>>, req: Request<Body>, next: Next) -> Response {
     let path = req.uri().path();
+    let path_class = if path == "/mcp" {
+        PathClass::Bare
+    } else if path == crate::oauth::OAUTH_ENTRY_PATH {
+        PathClass::Login
+    } else {
+        PathClass::Tenant
+    };
     let metadata_url = if path == "/mcp" {
         format!("{}/.well-known/oauth-protected-resource", state.public_url)
     } else if path == crate::oauth::OAUTH_ENTRY_PATH {
@@ -1192,9 +1236,14 @@ async fn oauth_401_upgrade(State(state): State<Arc<AppState>>, req: Request<Body
         .and_then(Value::as_str)
         .map(str::to_string)
         .unwrap_or_else(|| "mcp".to_string());
+    let reason = crate::errors::Reason::from_wire(
+        data.as_ref().and_then(|d| d.get("reason")).and_then(Value::as_str),
+        data.as_ref().and_then(|d| d.get("tenant")).and_then(Value::as_str),
+    );
+    let upgrade = error_code.as_deref().map_or(Upgrade::None, |c| upgrade_for(path_class, c, &reason));
     let mut response = Response::from_parts(parts, Body::from(bytes));
-    match error_code.as_deref() {
-        Some("tenant_key_missing") | Some("invalid_token") | Some("wrong_tenant") => {
+    match upgrade {
+        Upgrade::To401 => {
             *response.status_mut() = StatusCode::UNAUTHORIZED;
             if let Ok(value) =
                 HeaderValue::from_str(&format!("Bearer resource_metadata=\"{metadata_url}\", scope=\"mcp\""))
@@ -1204,7 +1253,7 @@ async fn oauth_401_upgrade(State(state): State<Arc<AppState>>, req: Request<Body
                     .insert(axum::http::header::WWW_AUTHENTICATE, value);
             }
         }
-        Some(crate::scopes::INSUFFICIENT_SCOPE) => {
+        Upgrade::To403 => {
             *response.status_mut() = StatusCode::FORBIDDEN;
             if let Ok(value) = HeaderValue::from_str(&format!(
                 "Bearer error=\"{code}\", scope=\"{scope}\", resource_metadata=\"{metadata_url}\"",
@@ -1215,7 +1264,7 @@ async fn oauth_401_upgrade(State(state): State<Arc<AppState>>, req: Request<Body
                     .insert(axum::http::header::WWW_AUTHENTICATE, value);
             }
         }
-        _ => {}
+        Upgrade::None => {}
     }
     response
 }
