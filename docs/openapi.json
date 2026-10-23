@@ -552,7 +552,7 @@
   "info": {
     "description": "Every non-MCP HTTP route mcphost serves, generated from the router's own route table.",
     "title": "mcphost HTTP API",
-    "version": "0.114.3",
+    "version": "0.114.4",
     "x-contract-version": "1.75cf0478981c"
   },
   "openapi": "3.1.0",
