@@ -378,7 +378,7 @@ required_commands = [
 [[lane]]
 id = "live-scripts"
 description = "PRD-mcphost-task-handoff-live-script: scripts/task-handoff-live.sh, the bash+curl+python3 live handoff proof run against prod from the build host; scripts/live/publish-visibility.sh (PRD-mcphost-publish-visibility-and-tags AC8) is the same shape, its behavior covered by the pubvis_ac integration tests; scripts/share-scope-live.sh (PRD-mcphost-scoped-tool-share AC8) is the same shape, proven by its own prod run (no offline suite spawns it). Behavior is proven offline by the thlive_ac0N integration tests (the script run against a locally spawned server), so the required command is a name-filtered cargo test over those. Added project-locally: the scaffold has no lane for a live-proof script."
-globs = ["scripts/task-handoff-live.sh", "scripts/live/publish-visibility.sh", "scripts/live/empty-call.sh", "scripts/share-scope-live.sh"]
+globs = ["scripts/task-handoff-live.sh", "scripts/live/publish-visibility.sh", "scripts/live/empty-call.sh", "scripts/share-scope-live.sh", "scripts/ops/recipe-counter-live.sh"]
 required_commands = [
   "cargo test --workspace thlive_ac",
   "cargo test --workspace pubvis_ac",

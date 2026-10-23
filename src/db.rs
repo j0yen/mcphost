@@ -353,6 +353,7 @@ const MIGRATION_0129: &str = include_str!("../migrations/0129_logs_key_id.sql");
 const MIGRATION_0130: &str = include_str!("../migrations/0130_syncs.sql");
 /// PRD-mcphost-sync-pull-with-change-detection R1/R3: `sync_runs.provider_calls` and `sync_cursors`.
 const MIGRATION_0131: &str = include_str!("../migrations/0131_sync_pull.sql");
+const MIGRATION_0132: &str = include_str!("../migrations/0132_recipe_uses.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
@@ -756,10 +757,23 @@ pub struct SurfaceFunnelTenant {
     pub namespace: String,
     pub client_name: Option<String>,
     pub funnel_origin: String,
+    pub source_class: Option<String>,
+    pub origin: Option<String>,
     pub created_unix: i64,
     pub claimed_unix: Option<i64>,
     pub first_publish_unix: Option<i64>,
     pub has_tool: bool,
+}
+
+/// One `recipe_uses` row with its tenant's classification columns
+/// ([`Db::recipe_uses_since`]); no tenant identifier.
+#[derive(Debug, Clone)]
+pub struct RecipeUseRow {
+    pub recipe: String,
+    pub client_name: Option<String>,
+    pub source_class: Option<String>,
+    pub origin: Option<String>,
+    pub funnel_origin: String,
 }
 
 /// PRD-mcphost-activation-funnel requirement 3: one tenant's window-scoped
@@ -3295,6 +3309,8 @@ impl Db {
         // Wholly new tables, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0130)?;
         Self::migrate_0131_sync_pull(&conn)?;
+        // Wholly new table, `IF NOT EXISTS`: idempotent as-is.
+        conn.execute_batch(MIGRATION_0132)?;
         Ok(())
     }
 
@@ -7649,7 +7665,8 @@ impl Db {
         self.with_conn(move |conn| {
             let mut stmt = conn.prepare(
                 "SELECT id, namespace, client_name, funnel_origin, created_unix, claimed_unix, \
-                        first_publish_unix, EXISTS(SELECT 1 FROM tools WHERE tools.tenant_id = tenants.id) \
+                        first_publish_unix, EXISTS(SELECT 1 FROM tools WHERE tools.tenant_id = tenants.id), \
+                        source_class, origin \
                  FROM tenants WHERE created_unix IS NOT NULL AND created_unix >= ?1",
             )?;
             let rows = stmt
@@ -7663,6 +7680,8 @@ impl Db {
                         claimed_unix: r.get(5)?,
                         first_publish_unix: r.get(6)?,
                         has_tool: r.get::<_, i64>(7)? != 0,
+                        source_class: r.get(8)?,
+                        origin: r.get(9)?,
                     })
                 })?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -11922,6 +11941,78 @@ impl Db {
                 })?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-admin-funnel-real-surface-recipe-counter P0: one
+    /// `recipe_uses` row for an alias-resolved response. `via` is
+    /// `quickstart` or `publish`.
+    pub async fn insert_recipe_use(
+        &self,
+        tenant_id: i64,
+        recipe: String,
+        via: &'static str,
+        created_unix: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO recipe_uses (tenant_id, recipe, via, created_unix) VALUES (?1, ?2, ?3, ?4)",
+                params![tenant_id, recipe, via, created_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// The `recipe_uses` rows at or after `since_unix`, each with the
+    /// classification columns of its tenant (`client_name`, `source_class`,
+    /// `origin`, `funnel_origin`) -- one indexed range read, joined to
+    /// `tenants` at read time so a later reclassification corrects the
+    /// counts retroactively.
+    pub async fn recipe_uses_since(&self, since_unix: i64) -> Result<Vec<RecipeUseRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT u.recipe, t.client_name, t.source_class, t.origin, t.funnel_origin \
+                 FROM recipe_uses u JOIN tenants t ON t.id = u.tenant_id \
+                 WHERE u.created_unix >= ?1",
+            )?;
+            let rows = stmt
+                .query_map(params![since_unix], |r| {
+                    Ok(RecipeUseRow {
+                        recipe: r.get(0)?,
+                        client_name: r.get(1)?,
+                        source_class: r.get(2)?,
+                        origin: r.get(3)?,
+                        funnel_origin: r.get(4)?,
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// Test seam: every `recipe_uses` row as `(tenant_id, recipe, via,
+    /// created_unix)`, oldest first.
+    pub async fn recipe_uses_for_test(&self) -> Result<Vec<(i64, String, String, i64)>, AppError> {
+        self.with_conn(|conn| {
+            let mut stmt =
+                conn.prepare("SELECT tenant_id, recipe, via, created_unix FROM recipe_uses ORDER BY id")?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// Test seam: drops `recipe_uses`, so every later insert fails (the
+    /// injected failure of the best-effort recording).
+    pub async fn drop_recipe_uses_for_test(&self) -> Result<(), AppError> {
+        self.with_conn(|conn| {
+            conn.execute_batch("DROP TABLE recipe_uses")?;
+            Ok(())
         })
         .await
     }

@@ -244,6 +244,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `CONTACT_POLICIES` in `src/agents.rs`
 - `SEVERITIES` in `src/alerts.rs`
 - `OUTPUT_ENVELOPE_FIELDS` in `src/api_contract.rs`
+- `SURFACE_STAGE_KEYS` in `src/api_contract.rs`
 - `NEVER_SIGNS_UP` in `src/asks.rs`
 - `STATUSES` in `src/asks.rs`
 - `EXPORT_FORMATS` in `src/audit_export.rs`

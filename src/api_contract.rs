@@ -38,6 +38,24 @@ pub const DEFAULT_DEPRECATIONS_PATH: &str = "contracts/deprecations.json";
 /// the top level of the dump rather than repeated per tool.
 pub const OUTPUT_ENVELOPE_FIELDS: &[&str] = &["deprecations"];
 
+/// PRD-mcphost-admin-funnel-real-surface-recipe-counter P0: the keys of one
+/// `admin.funnel` / `mcphost funnel --json` `by_surface` row, in stage
+/// order. [`crate::funnel::SurfaceStage`]'s serializer, the `admin.funnel`
+/// tool description and the contract's `admin_funnel` section all read this
+/// one const, and a test asserts the serialized row equals it.
+pub const SURFACE_STAGE_KEYS: &[&str] =
+    &["signed_up", "claimed", "published", "first_own_call", "first_external_call", "day7_active"];
+
+/// The `admin_funnel` section of the dump: the two key sets a client of
+/// `admin.funnel` reads, generated from [`SURFACE_STAGE_KEYS`] and
+/// [`crate::kinds::aliases::recipe_names`], never typed here.
+pub fn admin_funnel_contract() -> Value {
+    json!({
+        "recipe_attempts_7d_keys": crate::kinds::aliases::recipe_names(),
+        "surface_stage_keys": SURFACE_STAGE_KEYS,
+    })
+}
+
 /// A `contracts/deprecations.json` entry (requirement 2): `path` is a
 /// dotted `<tool>` (whole-tool deprecation) or `<tool>.<field>`
 /// (single-level field deprecation, e.g. `"host.tool_publish.kind"`).
@@ -412,6 +430,7 @@ pub fn dump_contract(kinds: &KindRegistry) -> Value {
         .map(|k| (k.name().to_string(), json!({"contract": k.contract().contract_json()})))
         .collect();
     let mut contract = json!({
+        "admin_funnel": admin_funnel_contract(),
         "contract_version": CONTRACT_VERSION,
         "kinds": kind_contracts,
         "output_envelope_fields": OUTPUT_ENVELOPE_FIELDS,

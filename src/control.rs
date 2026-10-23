@@ -975,6 +975,24 @@ fn http_starter_tool() -> Value {
     })
 }
 
+/// PRD-mcphost-admin-funnel-real-surface-recipe-counter P0: records that
+/// `tenant_id` was routed to `recipe` by an alias, `via` `quickstart` or
+/// `publish`. Best effort: a failed insert is logged and never changes the
+/// response, and a direct kind (no alias) never reaches here.
+pub async fn record_recipe_use(state: &AppState, tenant_id: i64, recipe: &str, via: &'static str) {
+    if let Err(e) = state.db.insert_recipe_use(tenant_id, recipe.to_string(), via, crate::state::now_unix()).await {
+        tracing::warn!(error = %e, tenant_id, recipe, via, "failed to record recipe use");
+    }
+}
+
+/// The recipe name a `host.quickstart` response resolved an alias to:
+/// present only when the response carries both `resolved_from` and
+/// `recipe.name` (an outcome-word answer has no `recipe.name`).
+pub fn quickstart_alias_recipe(response: &Value) -> Option<&str> {
+    response.get("resolved_from")?;
+    response.get("recipe")?.get("name")?.as_str()
+}
+
 /// `host.quickstart(kind)` (requirement 4, AC3/AC4): the ordered sequence
 /// to a working tool of `kind`, with the tenant's own namespace and a
 /// filled-in [`crate::kinds::KindExample`] substituted in, plus the current
@@ -2373,8 +2391,9 @@ pub async fn tool_publish(
     // present when `kind` was given as an alias -- names the job-word the
     // caller actually asked for, alongside `kind`'s own now-resolved
     // runtime name above.
-    if let (Some(_), Value::Object(map)) = (alias, &mut response) {
+    if let (Some(alias), Value::Object(map)) = (alias, &mut response) {
         map.insert("resolved_from".to_string(), json!(kind_name_requested));
+        record_recipe_use(state, tenant.id, alias.recipe, "publish").await;
     }
     // PRD-mcphost-kind-ask-routing requirement 6 (AC7): a hand-rolled http
     // query tool over a fixture database points at the shipped recipe.
