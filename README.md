@@ -845,6 +845,13 @@ it naming the suite and the file. Each shard reports `build wall` and `run
 wall` in the step summary; only the run wall is budgeted (warn at 240 s, fail
 above 300 s).
 
+`check` also ages a pending (derived) measured entry, counted in first-parent
+commits from the land that seeded it: the fleet alarm `pending-entry-age` fires at
+2; at 4-5 a main push prints a `WARN pending-entry-age: ` line and stays green
+(`check --main` already fails past 3); at 6 (`PENDING_HARD_MAX_AGE`) the main push
+goes red too. Refresh it with `scripts/ci-refresh-weights.sh <CI run id>`.
+`scripts/ci-partition-pending-age-selftest.sh` proves the rungs.
+
 The core suites are sharded too (PRD-mcphost-ci-core-suites-sharded): the
 required check "static analysis + core suites" was one serial job whose core
 step alone ran 13 to 16 minutes, so main's runs sat at 20 to 30 minutes against

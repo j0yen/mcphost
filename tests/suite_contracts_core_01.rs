@@ -65,6 +65,8 @@ mod cishard_ac05_core_timeouts_and_cache_key;
 mod cishard_ac06_core_predicted_shard_under_limit;
 #[path = "cishard_ac07_stale_weight_fails_check.rs"]
 mod cishard_ac07_stale_weight_fails_check;
+#[path = "cishard_pending_age_rungs.rs"]
+mod cishard_pending_age_rungs;
 #[path = "cnfm_ac05_tools_list_marks_destructive_verbs.rs"]
 mod cnfm_ac05_tools_list_marks_destructive_verbs;
 #[path = "compat_ac04_ac05_admin_and_tenant_cache_fields.rs"]

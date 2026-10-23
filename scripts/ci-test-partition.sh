@@ -113,6 +113,9 @@ WEIGHTS_REL="scripts/ci-suite-weights.json"
 MEASURED_FILE="${CI_SUITE_MEASURED_FILE:-$REPO_ROOT/scripts/ci-suite-measured.json}"
 MEASURED_REL="scripts/ci-suite-measured.json"
 PENDING_MAX_AGE=3  # first-parent commits a pending (derived) measured entry may trail HEAD on the default branch
+# Rungs: age > PENDING_MAX_AGE (4-5) is a `WARN pending-entry-age: ` line with rc 0 on a default-branch PUSH (main stays green while
+# the refresh PR lands) and rc 1 under `check --main`; age >= PENDING_HARD_MAX_AGE is rc 1 on the push too (the hard stop if the refresh is dead).
+PENDING_HARD_MAX_AGE=6
 # A recorded weight is STALE when the measured seconds reach this multiple of it.
 # 2026-10-18: suite_core_07/08 were recorded at 341/375 s while CI measured
 # 586-735/427-711 s, and `check` kept predicting 375 s from the old numbers.
@@ -564,13 +567,15 @@ check() {
   # branch>} until scripts/ci-refresh-weights.sh replaces it with a measurement. The entry is accepted only
   # while (1) the suite's measured value still equals derived_s (to 2 decimals, numerically), so a hand-edited
   # or stale value cannot hide under the mark, and (2) `since` is an ancestor of HEAD, fetched on demand when the
-  # checkout is shallow. Its AGE (first-parent commits from `since` to merge-base(HEAD, default branch): 0 on any branch, real once merged) is bounded by PENDING_MAX_AGE, but
+  # checkout is shallow. Its AGE (first-parent commits from `since` to merge-base(HEAD, default branch): 0 on any branch, real once merged) is bounded by PENDING_MAX_AGE (`check --main`) and
+  # PENDING_HARD_MAX_AGE (a default-branch push; 4-5 only WARNs there), but
   # only on the default branch (GITHUB_REF_NAME == CI_DEFAULT_BRANCH or `check --main`): on a PR ref the count
   # is info, so an open PR never goes red because main moved. That bound is the only thing that turns main red
   # with time.
   if [ -f "$MEASURED_FILE" ] && jq -e . "$MEASURED_FILE" >/dev/null 2>&1; then
-    local enforce=0 deepened=0 pname pval psince pshort pderived pmeasured pok page pend
+    local enforce=0 strict=0 deepened=0 pname pval psince pshort pderived pmeasured pok page pend
     { [ "${1:-}" = "--main" ] || [ "${GITHUB_REF_NAME:-}" = "${CI_DEFAULT_BRANCH:-main}" ]; } && enforce=1
+    [ "${1:-}" = "--main" ] && strict=1
     while IFS=$'\t' read -r pname pval; do
       [ -n "$pname" ] || continue
       psince="$(jq -r 'if type == "object" and .pending == true and (.since | type) == "string" and (.since | length) > 0 and (.derived_s | type) == "number" then .since else empty end' <<<"$pval")"
@@ -606,8 +611,14 @@ check() {
       if ! git -C "$REPO_ROOT" merge-base --is-ancestor "$psince" "$pend" 2>/dev/null; then pend=HEAD; fi
       page="$(git -C "$REPO_ROOT" rev-list --first-parent --count "${psince}..${pend}")"
       if [ "$page" -gt "$PENDING_MAX_AGE" ] && [ "$enforce" -eq 1 ]; then
-        echo "ci-test-partition: pending entry $pname since $pshort is $page first-parent commits behind HEAD (max $PENDING_MAX_AGE) and was never measured -- run scripts/ci-refresh-weights.sh <CI run id> from a green run's shard logs" >&2
-        rc=1; continue
+        pmsg="ci-test-partition: pending entry $pname since $pshort is $page first-parent commits behind HEAD (max $PENDING_MAX_AGE) and was never measured -- run scripts/ci-refresh-weights.sh <CI run id> from a green run's shard logs"
+        if [ "$strict" -eq 1 ] || [ "$page" -ge "$PENDING_HARD_MAX_AGE" ]; then
+          echo "$pmsg" >&2
+          rc=1
+        else
+          echo "WARN pending-entry-age: $pmsg" >&2
+        fi
+        continue
       fi
       echo "ci-test-partition: pending (derived) $pname since $pshort ($page first-parent commits behind HEAD, max $PENDING_MAX_AGE, $([ "$enforce" -eq 1 ] && echo enforced || echo "info only: not the default branch")); derived_s $pderived is a seed, not a measurement" >&2
     done < <(jq -r '(._provisional // {}) | if type == "object" then to_entries[] | [.key, (.value | tojson)] | @tsv else empty end' "$MEASURED_FILE")
