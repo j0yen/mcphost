@@ -197,6 +197,12 @@ mod osreach_ac03_unreached_cap;
 mod osreach_ac04_import_own_dry_run;
 #[path = "osreach_ac05_validator_control_and_doctor.rs"]
 mod osreach_ac05_validator_control_and_doctor;
+#[path = "osrx_ac01_real_export_previews.rs"]
+mod osrx_ac01_real_export_previews;
+#[path = "osrx_ac02_plan_mode_offline.rs"]
+mod osrx_ac02_plan_mode_offline;
+#[path = "osrx_ac03_stream_parser_pairs_results.rs"]
+mod osrx_ac03_stream_parser_pairs_results;
 #[path = "outsch_ac02_every_canonical_declares_an_object_output_schema.rs"]
 mod outsch_ac02_every_canonical_declares_an_object_output_schema;
 #[path = "ptbatch_ac01_classify_files_agrees_with_classify.rs"]
