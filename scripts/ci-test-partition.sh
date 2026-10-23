@@ -552,7 +552,7 @@ check() {
     unmeasured="$(measured_required | jq -R -r --slurpfile m "$MEASURED_FILE" '. as $k | select(($m[0] | has($k)) | not)')"
     if [ -n "$unmeasured" ]; then
       while IFS= read -r line; do
-        echo "ci-test-partition: unmeasured suite: $line has a recorded weight in $WEIGHTS_REL but no entry in $MEASURED_REL -- run scripts/ci-refresh-weights.sh <CI run id> (every shard reports every suite)" >&2
+        echo "ci-test-partition: unmeasured suite: $line has a recorded weight in $WEIGHTS_REL but no entry in $MEASURED_REL -- seed a pending entry with: scripts/gen-test-suites.sh && git add $MEASURED_REL (a branch cut before the seed existed, or a rebase that took main's $MEASURED_REL); or measure it: scripts/ci-refresh-weights.sh <CI run id> (every shard reports every suite)" >&2
       done <<<"$unmeasured"
       rc=1
     fi
@@ -564,12 +564,12 @@ check() {
   # branch>} until scripts/ci-refresh-weights.sh replaces it with a measurement. The entry is accepted only
   # while (1) the suite's measured value still equals derived_s (to 2 decimals, numerically), so a hand-edited
   # or stale value cannot hide under the mark, and (2) `since` is an ancestor of HEAD, fetched on demand when the
-  # checkout is shallow. Its AGE (first-parent commits from `since` to HEAD) is bounded by PENDING_MAX_AGE, but
+  # checkout is shallow. Its AGE (first-parent commits from `since` to merge-base(HEAD, default branch): 0 on any branch, real once merged) is bounded by PENDING_MAX_AGE, but
   # only on the default branch (GITHUB_REF_NAME == CI_DEFAULT_BRANCH or `check --main`): on a PR ref the count
   # is info, so an open PR never goes red because main moved. That bound is the only thing that turns main red
   # with time.
   if [ -f "$MEASURED_FILE" ] && jq -e . "$MEASURED_FILE" >/dev/null 2>&1; then
-    local enforce=0 deepened=0 pname pval psince pshort pderived pmeasured pok page
+    local enforce=0 deepened=0 pname pval psince pshort pderived pmeasured pok page pend
     { [ "${1:-}" = "--main" ] || [ "${GITHUB_REF_NAME:-}" = "${CI_DEFAULT_BRANCH:-main}" ]; } && enforce=1
     while IFS=$'\t' read -r pname pval; do
       [ -n "$pname" ] || continue
@@ -598,7 +598,13 @@ check() {
         echo "ci-test-partition: pending entry $pname: since $pshort is not an ancestor of HEAD -- run scripts/ci-refresh-weights.sh <CI run id> from a green run's shard logs" >&2
         rc=1; continue
       fi
-      page="$(git -C "$REPO_ROOT" rev-list --first-parent --count "${psince}..HEAD")"
+      # the age ends at merge-base(HEAD, default branch), never at the default branch's tip: on a branch (fresh or
+      # stale) that is the commit the branch was cut from -- `since` itself, age 0 -- so main moving on, or the
+      # branch's own commits, never age a seed that cannot land yet; on the default branch it is HEAD, the real age.
+      pend="$(git -C "$REPO_ROOT" merge-base HEAD "${GEN_TEST_SUITES_BASE_REF:-origin/main}" 2>/dev/null)" || pend=HEAD
+      [ -n "$pend" ] || pend=HEAD
+      if ! git -C "$REPO_ROOT" merge-base --is-ancestor "$psince" "$pend" 2>/dev/null; then pend=HEAD; fi
+      page="$(git -C "$REPO_ROOT" rev-list --first-parent --count "${psince}..${pend}")"
       if [ "$page" -gt "$PENDING_MAX_AGE" ] && [ "$enforce" -eq 1 ]; then
         echo "ci-test-partition: pending entry $pname since $pshort is $page first-parent commits behind HEAD (max $PENDING_MAX_AGE) and was never measured -- run scripts/ci-refresh-weights.sh <CI run id> from a green run's shard logs" >&2
         rc=1; continue
