@@ -1,4 +1,11 @@
 {
+  "_provisional": {
+    "suite_core_12": {
+      "pending": true,
+      "derived_s": 9.0,
+      "since": "f67cd4a1045951f151e04db57d70540e0cb9ac35"
+    }
+  },
   "lib": 5.8,
   "suite_cargo_core_01": 0.66,
   "suite_contracts_core_01": 345.44,
@@ -12,12 +19,12 @@
   "suite_core_07": 1.05,
   "suite_core_08": 246.03,
   "suite_core_09": 268.75,
-  "suite_core_10": 263.42,
-  "suite_core_11": 219.54,
-  "suite_core_12": 6.99,
+  "suite_core_10": 271.4,
+  "suite_core_11": 218.54,
+  "suite_core_12": 9.0,
   "suite_env_core_01": 43.89,
   "suite_env_sandbox_01": 10.44,
   "suite_sandbox_01": 1.02,
-  "suite_sandbox_02": 153.66,
-  "suite_sandbox_03": 126.68
+  "suite_sandbox_02": 107.76,
+  "suite_sandbox_03": 87.09
 }
