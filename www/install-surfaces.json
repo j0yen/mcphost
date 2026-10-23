@@ -1,0 +1,19 @@
+{
+  "surfaces": [
+    "claude_code",
+    "cursor",
+    "vscode",
+    "copilot_vscode",
+    "claude_ai",
+    "chatgpt",
+    "codex_cli",
+    "gemini_cli",
+    "opencode",
+    "amp",
+    "goose",
+    "warp",
+    "windsurf",
+    "cline",
+    "sdk"
+  ]
+}

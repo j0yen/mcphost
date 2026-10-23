@@ -752,8 +752,16 @@ pub fn is_valid_synthetic_label(label: &str) -> bool {
     len_ok && first_ok && rest_ok
 }
 
+/// The one pattern string for `signup`'s `source` argument: what
+/// [`is_valid_signup_source`] enforces, what `signup`'s rejection message
+/// names, and the `pattern` the `signup` descriptor advertises (so a
+/// schema-aware client rejects a bad `source` before the call). Written in
+/// the subset where Rust `regex` and ECMA-262 agree; a test compares it to
+/// [`is_valid_signup_source`] over a corpus so the two cannot drift.
+pub const SOURCE_PATTERN: &str = "^[a-z0-9][a-z0-9._-]{0,63}$";
+
 /// PRD-mcphost-signup-kill-switch-and-source requirement 1:
-/// `^[a-z0-9][a-z0-9._-]*$`, 1-64 chars -- `signup`'s optional `source`
+/// [`SOURCE_PATTERN`] (`^[a-z0-9][a-z0-9._-]*$`, 1-64 chars) -- `signup`'s optional `source`
 /// argument. Same hand-rolled-byte-check shape as
 /// [`is_valid_synthetic_label`] just above (this crate has no regex
 /// dependency), with `.` added to the allowed body characters (a caller
@@ -880,6 +888,29 @@ pub fn is_known_fleet_display_name(display_name: &str) -> bool {
 /// either.
 pub fn is_known_synthorg_client(client_name: &str) -> bool {
     client_name.to_ascii_lowercase().starts_with("synthorg")
+}
+
+/// `tenants.origin`'s synthetic verdict, as [`derive_origin`] writes it.
+pub const ORIGIN_SYNTHETIC: &str = "synthetic";
+
+/// PRD-mcphost-admin-funnel-real-surface-recipe-counter P0: the one
+/// "known synthetic tenant" predicate the per-surface funnel and the
+/// recipe-use read share, so the two cannot disagree. A tenant is known
+/// synthetic when its client name is a `synthorg` one, its `source_class`
+/// is any non-`external` class, its `origin` is synthetic, or its
+/// `funnel_origin` is `fleet`/`probe`. It never claims more: a tenant that
+/// none of those marks catches is "not known synthetic", not "confirmed
+/// real".
+pub fn is_synthetic_tenant(
+    client_name: Option<&str>,
+    source_class: Option<&str>,
+    origin: Option<&str>,
+    funnel_origin: &str,
+) -> bool {
+    client_name.is_some_and(is_known_synthorg_client)
+        || source_class.is_some_and(|c| c == SourceClass::Loopback.as_str() || c == SourceClass::Fleet.as_str())
+        || origin == Some(ORIGIN_SYNTHETIC)
+        || matches!(funnel_origin, "fleet" | "probe")
 }
 
 /// loop/mcphost-fleet-ips: one parsed entry of `$MCPHOST_FLEET_IPS` -- a

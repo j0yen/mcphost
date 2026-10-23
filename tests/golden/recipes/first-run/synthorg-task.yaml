@@ -1,0 +1,18 @@
+# Consumer task for the synthorg mcphost corpus (see corpora/mcphost/consumer-tasks.yaml
+# there for the id/segments/task/gold schema and the call_check mini-grammar).
+# Generated from recipes/first-run.toml -- the recipe's first-run walk-through:
+# publish a real python tool, test it, schedule it.
+tasks:
+  - id: first-run-publish-real-tool
+    segments: [solo_builder]
+    task: >
+      You have just signed up. Publish a `python` tool named `table_note`
+      that appends its `note` argument to a `quickstart_notes` table through
+      `mcphost.table`, test it with `{"note": "hello"}`, and report the
+      result -- it should show `appended: 1`.
+    gold:
+      tool_name: table_note
+      call_check: "result.appended == 1"
+      kind: python
+    recipe: first-run
+    wall_budget_s: 90

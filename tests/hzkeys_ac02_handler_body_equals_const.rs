@@ -65,6 +65,18 @@ fn anon_body_readers(tests_dir: &std::path::Path) -> Vec<String> {
     stems
 }
 
+/// The module name a suite declares for a test file: the daemon's PRD-slug
+/// files have dashed stems and are declared as `#[path = "<stem>.rs"]` +
+/// `mod <stem with '-' as '_'>;`, and libtest names their tests by that module.
+fn suite_mod_name(stem: &str) -> String {
+    stem.replace('-', "_")
+}
+
+/// Whether `suite` (the text of the suite file) declares `stem` as a module.
+fn suite_declares(suite: &str, stem: &str) -> bool {
+    suite.contains(&format!("mod {};", suite_mod_name(stem)))
+}
+
 #[test]
 fn an_extra_key_in_the_handler_fails_exactly_hzkeys_ac02() {
     if std::env::var_os(EXTRA_KEY_ENV).is_some() {
@@ -77,14 +89,14 @@ fn an_extra_key_in_the_handler_fails_exactly_hzkeys_ac02() {
     assert!(readers.len() >= 8, "expected the healthz key-set readers, found {readers:?}");
     for stem in &readers {
         assert!(
-            suite.contains(&format!("mod {stem};")),
+            suite_declares(&suite, stem),
             "{stem} reads the anonymous key set but is not in {}; the child run would not cover it",
             env!("CARGO_CRATE_NAME")
         );
     }
 
     let out = std::process::Command::new(crate::common::self_exe())
-        .args(&readers)
+        .args(readers.iter().map(|s| suite_mod_name(s)))
         .args(["--skip", META_TEST])
         .env(EXTRA_KEY_ENV, "uptime_s")
         .output()
@@ -103,8 +115,17 @@ fn an_extra_key_in_the_handler_fails_exactly_hzkeys_ac02() {
     assert!(stdout.contains("uptime_s"), "the failure must name the stray key:\n{stdout}");
     for stem in readers.iter().filter(|s| s.as_str() != THIS_MODULE) {
         assert!(
-            passed.iter().any(|t| t.starts_with(&format!("{stem}::"))),
+            passed.iter().any(|t| t.starts_with(&format!("{}::", suite_mod_name(stem)))),
             "{stem} must run and pass in the child:\n{stdout}"
         );
     }
+}
+
+#[test]
+fn suite_membership_matches_dashed_stems_by_their_mod_name() {
+    let suite = "#[path = \"a-b_ac06_x.rs\"]\nmod a_b_ac06_x;\n";
+    assert!(suite_declares(suite, "a-b_ac06_x"), "dashed stem is declared by its underscored mod");
+    assert!(suite_declares(suite, "a_b_ac06_x"), "an undashed stem still matches");
+    assert!(!suite_declares(suite, "a-b_ac07_y"), "an undeclared dashed stem is not a member");
+    assert_eq!(suite_mod_name("a-b_ac06_x"), "a_b_ac06_x");
 }

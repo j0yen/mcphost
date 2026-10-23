@@ -29,14 +29,41 @@ pub const DEFAULT_CONTRACT_PATH: &str = "contracts/host-tools.v1.json";
 /// [`DEFAULT_CONTRACT_PATH`].
 pub const DEFAULT_DEPRECATIONS_PATH: &str = "contracts/deprecations.json";
 
-/// requirement 1's "output envelope fields": the field every `host.*`/
-/// `billing.*` result MAY carry, added by requirement 3 (AC4) when the
-/// call used a deprecated field -- see
-/// [`deprecation_notices`]/`handler::call_tool`. Not per-tool (every
-/// result is an otherwise-unstructured JSON object; this is the one
-/// cross-cutting envelope field this PRD adds), so it's recorded once at
-/// the top level of the dump rather than repeated per tool.
-pub const OUTPUT_ENVELOPE_FIELDS: &[&str] = &["deprecations"];
+/// requirement 1's "output envelope fields": every top-level key a
+/// cross-tool wrapper MAY add to a result ("may carry", not "always
+/// carries"). Generated from the consts in [`crate::envelope`], the module
+/// every wrapper insert site goes through; recorded once at the top level of
+/// the dump rather than repeated per tool.
+pub use crate::envelope::OUTPUT_ENVELOPE_FIELDS;
+
+/// The [`OUTPUT_ENVELOPE_FIELDS`] members a committed contract's
+/// `output_envelope_fields` lacks, for `contract dump --check` to name.
+pub fn missing_envelope_fields(committed: &Value) -> Vec<&'static str> {
+    let have: Vec<&str> = committed
+        .get("output_envelope_fields")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    OUTPUT_ENVELOPE_FIELDS.iter().copied().filter(|m| !have.contains(m)).collect()
+}
+
+/// PRD-mcphost-admin-funnel-real-surface-recipe-counter P0: the keys of one
+/// `admin.funnel` / `mcphost funnel --json` `by_surface` row, in stage
+/// order. [`crate::funnel::SurfaceStage`]'s serializer, the `admin.funnel`
+/// tool description and the contract's `admin_funnel` section all read this
+/// one const, and a test asserts the serialized row equals it.
+pub const SURFACE_STAGE_KEYS: &[&str] =
+    &["signed_up", "claimed", "published", "first_own_call", "first_external_call", "day7_active"];
+
+/// The `admin_funnel` section of the dump: the two key sets a client of
+/// `admin.funnel` reads, generated from [`SURFACE_STAGE_KEYS`] and
+/// [`crate::kinds::aliases::recipe_names`], never typed here.
+pub fn admin_funnel_contract() -> Value {
+    json!({
+        "recipe_attempts_7d_keys": crate::kinds::aliases::recipe_names(),
+        "surface_stage_keys": SURFACE_STAGE_KEYS,
+    })
+}
 
 /// A `contracts/deprecations.json` entry (requirement 2): `path` is a
 /// dotted `<tool>` (whole-tool deprecation) or `<tool>.<field>`
@@ -412,6 +439,7 @@ pub fn dump_contract(kinds: &KindRegistry) -> Value {
         .map(|k| (k.name().to_string(), json!({"contract": k.contract().contract_json()})))
         .collect();
     let mut contract = json!({
+        "admin_funnel": admin_funnel_contract(),
         "contract_version": CONTRACT_VERSION,
         "kinds": kind_contracts,
         "output_envelope_fields": OUTPUT_ENVELOPE_FIELDS,
@@ -752,7 +780,8 @@ fn diff_properties(
 /// PRD-mcphost-contract-output-schemas R5: the output-side twin of
 /// [`diff_properties`]. `old_schema`/`new_schema` are a tool's
 /// `output_schema`s; findings are pathed `<tool>.output.<field>`. A property
-/// that vanished is a removal, a changed `type` is a narrowing (a typed
+/// that vanished is a removal, a changed `type` is a narrowing unless the new
+/// type accepts every old one (a type that gained `null` widens; a typed
 /// client built on the old type breaks), and a property that was `required`
 /// and no longer is breaks the "always present" promise. A property that
 /// became required is a stronger promise, never a violation.
@@ -771,17 +800,31 @@ fn diff_output_properties(
     let new_props = new_schema.get("properties").and_then(Value::as_object);
     let required = |schema: &Value, field: &str| {
         schema
-            .get("required")
+            .as_object()
+            .is_some_and(|s| crate::output_schemas::live_required(s).contains(&field))
+    };
+    // A property that moved from the live root into a variant branch (the
+    // dry-run preview's `would`) is still declared, so it is neither a removal
+    // nor a narrowing: it is no longer part of the live result.
+    let in_branch = |field: &str| {
+        new_schema
+            .get("anyOf")
             .and_then(Value::as_array)
-            .is_some_and(|r| r.iter().any(|v| v.as_str() == Some(field)))
+            .into_iter()
+            .flatten()
+            .any(|b| b.get("properties").is_some_and(|p| p.get(field).is_some()))
     };
     for (field, old_field) in old_props {
         let path = format!("{tool_name}.output.{field}");
         match new_props.and_then(|p| p.get(field)) {
+            None if in_branch(field) => {}
             None => check_removed(&path, deprecations, today_unix, violations),
             Some(new_field) => {
+                // A type that gained `null` (or any other member) accepts
+                // everything it did and is not a narrowing.
                 if let (Some(old_type), Some(new_type)) = (schema_type(old_field), schema_type(new_field))
                     && old_type != new_type
+                    && !type_accepts_all(old_type, new_type)
                 {
                     check_narrowed(
                         &path,

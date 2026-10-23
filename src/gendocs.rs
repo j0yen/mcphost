@@ -60,6 +60,7 @@ pub fn output_paths() -> Vec<&'static str> {
         RETRIEVAL_DOC_PATH,
         INSTALL_DOC_PATH,
         INSTALL_DOC_WWW_PATH,
+        crate::install_links::SURFACES_JSON_PATH,
         SKILL_MD_PATH,
     ]
 }
@@ -804,11 +805,7 @@ fn render_returns_block(schema: &serde_json::Map<String, serde_json::Value>) -> 
             _ => "any".to_string(),
         }
     }
-    let required: HashSet<&str> = schema
-        .get("required")
-        .and_then(|r| r.as_array())
-        .map(|r| r.iter().filter_map(|v| v.as_str()).collect())
-        .unwrap_or_default();
+    let required: HashSet<&str> = crate::output_schemas::live_required(schema).into_iter().collect();
     let mut out = String::new();
     if let Some(props) = schema.get("properties").and_then(|p| p.as_object()) {
         for (name, prop) in props {
@@ -925,6 +922,7 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
             Path::new(INSTALL_DOC_WWW_PATH),
             crate::install_links::render_install_doc(crate::install_links::CANONICAL_PUBLIC_URL),
         ),
+        (Path::new(crate::install_links::SURFACES_JSON_PATH), crate::install_links::render_surfaces_json()),
         (Path::new(SKILL_MD_PATH), PLUGIN_SKILL_MD.to_string()),
     ] {
         if check {

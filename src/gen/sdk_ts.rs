@@ -260,7 +260,7 @@ pub fn render(contract_bytes: &[u8]) -> Result<BTreeMap<String, String>, String>
         let base = camel(&name);
         let args = zod_object(&t["input_schema"], true);
         let result = match t.get("output_schema") {
-            Some(o) => zod_object(o, false),
+            Some(o) => zod_object(&crate::output_schemas::live_view(o), false),
             None => "z.object({}).passthrough()".to_string(),
         };
         schemas.push_str(&format!(

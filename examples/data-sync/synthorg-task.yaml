@@ -1,0 +1,19 @@
+# Consumer task for the synthorg mcphost corpus (see corpora/mcphost/consumer-tasks.yaml
+# there for the id/segments/task/gold schema and the call_check mini-grammar).
+# Generated from recipes/data-sync.toml -- the "Data sync" recipe (www/llms.txt):
+# register a CSV source, read the sync back, list it, delete it.
+tasks:
+  - id: data-sync-mirror-csv
+    segments: [solo_builder]
+    task: >
+      Your user keeps orders in a CSV published at a public URL and wants it
+      mirrored into a host table on a schedule. Sign up, register the source
+      with `host.sync.create` (`source` `{"kind": "csv_url", "ref": <url>}`,
+      `table` `orders`, `mode` `pull`), and report the result -- it should
+      show `table: orders` and a `sync_id`.
+    gold:
+      tool_name: host.sync.create
+      call_check: "result.table == orders"
+      kind: http
+    recipe: data-sync
+    wall_budget_s: 95

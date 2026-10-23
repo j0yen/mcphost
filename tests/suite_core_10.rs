@@ -23,11 +23,19 @@ mod oauthclient;
 mod promptkind;
 #[path = "support/pysdk.rs"]
 mod pysdk;
-#[path = "support/rgpt.rs"]
-mod rgpt;
 #[path = "support/serve.rs"]
 mod serve;
 
+#[path = "mcphost-admin-funnel-real-surface-recipe-counter_ac01_synthetic_excluded_from_surface.rs"]
+mod mcphost_admin_funnel_real_surface_recipe_counter_ac01_synthetic_excluded_from_surface;
+#[path = "mcphost-admin-funnel-real-surface-recipe-counter_ac02_first_own_call_cell.rs"]
+mod mcphost_admin_funnel_real_surface_recipe_counter_ac02_first_own_call_cell;
+#[path = "mcphost-admin-funnel-real-surface-recipe-counter_ac03_stage_and_recipe_keys_generated.rs"]
+mod mcphost_admin_funnel_real_surface_recipe_counter_ac03_stage_and_recipe_keys_generated;
+#[path = "mcphost-admin-funnel-real-surface-recipe-counter_ac04_recipe_uses_recorded.rs"]
+mod mcphost_admin_funnel_real_surface_recipe_counter_ac04_recipe_uses_recorded;
+#[path = "mcphost-admin-funnel-real-surface-recipe-counter_ac05_recipe_attempts_7d.rs"]
+mod mcphost_admin_funnel_real_surface_recipe_counter_ac05_recipe_attempts_7d;
 #[path = "mcphost-chatgpt-submission-pack_ac01_pack_validates_against_schema.rs"]
 mod mcphost_chatgpt_submission_pack_ac01_pack_validates_against_schema;
 #[path = "mcphost-chatgpt-submission-pack_ac02_check_detects_drift.rs"]
@@ -56,6 +64,8 @@ mod mcphost_install_links_more_clients_ac06_docs_block_regenerates_from_table;
 mod mcphost_install_links_more_clients_ac07_prior_prd_tests_still_apply;
 #[path = "mcphost-llms-install-doc_ac01_generator_sections.rs"]
 mod mcphost_llms_install_doc_ac01_generator_sections;
+#[path = "mcphost-llms-install-doc_ac02_sections_machine_readable.rs"]
+mod mcphost_llms_install_doc_ac02_sections_machine_readable;
 #[path = "mcphost-llms-install-doc_ac02_served_unauthenticated.rs"]
 mod mcphost_llms_install_doc_ac02_served_unauthenticated;
 #[path = "mcphost-llms-install-doc_ac03_committed_copy_drift.rs"]
@@ -64,6 +74,22 @@ mod mcphost_llms_install_doc_ac03_committed_copy_drift;
 mod mcphost_llms_install_doc_ac04_linked_from_every_entry_point;
 #[path = "mcphost-llms-install-doc_ac06_install_doc_funnel_event.rs"]
 mod mcphost_llms_install_doc_ac06_install_doc_funnel_event;
+#[path = "mcphost-llms-install-doc_ac07_install_surfaces_json.rs"]
+mod mcphost_llms_install_doc_ac07_install_surfaces_json;
+#[path = "mcphost-output-envelope-fields-generated_ac01_wrapper_keys_equal_set.rs"]
+mod mcphost_output_envelope_fields_generated_ac01_wrapper_keys_equal_set;
+#[path = "mcphost-output-envelope-fields-generated_ac02_no_literal_envelope_inserts.rs"]
+mod mcphost_output_envelope_fields_generated_ac02_no_literal_envelope_inserts;
+#[path = "mcphost-output-envelope-fields-generated_ac03_committed_contract_carries_set.rs"]
+mod mcphost_output_envelope_fields_generated_ac03_committed_contract_carries_set;
+#[path = "mcphost-output-envelope-fields-generated_ac04_extra_key_fixture_fails.rs"]
+mod mcphost_output_envelope_fields_generated_ac04_extra_key_fixture_fails;
+#[path = "mcphost-output-envelope-fields-generated_ac05_check_names_missing_member.rs"]
+mod mcphost_output_envelope_fields_generated_ac05_check_names_missing_member;
+#[path = "mcphost-output-envelope-fields-generated_ac06_bridge_strip_named_function.rs"]
+mod mcphost_output_envelope_fields_generated_ac06_bridge_strip_named_function;
+#[path = "mcphost-output-envelope-fields-generated_ac07_served_contract_carries_set.rs"]
+mod mcphost_output_envelope_fields_generated_ac07_served_contract_carries_set;
 #[path = "mcphost_admin_schema_contract_ac01_tenants_schema_version.rs"]
 mod mcphost_admin_schema_contract_ac01_tenants_schema_version;
 #[path = "mcphost_admin_schema_contract_ac02_listings_validate_v1_schema.rs"]
@@ -512,6 +538,18 @@ mod nfsb_ac01_first_contact_note_in_list_and_welcome_back;
 mod nfsb_ac02_shared_tool_and_tenants_isolated;
 #[path = "nfsb_ac03_quickstart_notes_max_drift.rs"]
 mod nfsb_ac03_quickstart_notes_max_drift;
+#[path = "nk401_ac01_upgrade_decision_table.rs"]
+mod nk401_ac01_upgrade_decision_table;
+#[path = "nk401_ac02_peer_recent_refusal_is_http_200.rs"]
+mod nk401_ac02_peer_recent_refusal_is_http_200;
+#[path = "nk401_ac03_connection_bound_refusal_names_tenant.rs"]
+mod nk401_ac03_connection_bound_refusal_names_tenant;
+#[path = "nk401_ac04_oauth_paths_and_anonymous_keep_401.rs"]
+mod nk401_ac04_oauth_paths_and_anonymous_keep_401;
+#[path = "nk401_ac05_every_raise_site_has_a_reason_row.rs"]
+mod nk401_ac05_every_raise_site_has_a_reason_row;
+#[path = "nk401_ac06_request_log_records_wire_status.rs"]
+mod nk401_ac06_request_log_records_wire_status;
 #[path = "ntfy_ac03_webhook_send_receipt.rs"]
 mod ntfy_ac03_webhook_send_receipt;
 #[path = "ntfy_ac04_email_channel_owner_only.rs"]
@@ -962,6 +1000,10 @@ mod refrow_ac04_insufficient_scope_row_has_token_auth_method;
 mod refrow_ac05_host_usage_reports_refused;
 #[path = "refrow_ac06_unwritable_db_refusal_still_returned.rs"]
 mod refrow_ac06_unwritable_db_refusal_still_returned;
+#[path = "refst_ac01_unimplemented_method_status_by_revision.rs"]
+mod refst_ac01_unimplemented_method_status_by_revision;
+#[path = "refst_ac03_refusal_status_rule_and_batch.rs"]
+mod refst_ac03_refusal_status_rule_and_batch;
 #[path = "reglist_ac01_manifest_fields_match_cargo_and_endpoint.rs"]
 mod reglist_ac01_manifest_fields_match_cargo_and_endpoint;
 #[path = "reglist_ac02_check_detects_drift.rs"]
@@ -986,51 +1028,3 @@ mod regone_ac05_no_publish_without_ok_makes_no_write;
 mod regone_ac06_one_search_url_in_docs;
 #[path = "regone_ac07_live_json.rs"]
 mod regone_ac07_live_json;
-#[path = "rgpt_ac01_recipes_generator_idempotent.rs"]
-mod rgpt_ac01_recipes_generator_idempotent;
-#[path = "rgpt_ac02_drift_names_file_recipe_and_line.rs"]
-mod rgpt_ac02_drift_names_file_recipe_and_line;
-#[path = "rgpt_ac03_unknown_tool_or_arg_exits_2.rs"]
-mod rgpt_ac03_unknown_tool_or_arg_exits_2;
-#[path = "rgpt_ac05_every_golden_test_runs_its_calls_in_order.rs"]
-mod rgpt_ac05_every_golden_test_runs_its_calls_in_order;
-#[path = "rgpt_ac06_task_sync_check_flags_wall_budget_drift.rs"]
-mod rgpt_ac06_task_sync_check_flags_wall_budget_drift;
-#[path = "rgpt_ac07_ci_job_fails_on_the_broken_recipe_only.rs"]
-mod rgpt_ac07_ci_job_fails_on_the_broken_recipe_only;
-#[path = "rgpt_chart_in_a_minute_golden_path.rs"]
-mod rgpt_chart_in_a_minute_golden_path;
-#[path = "rgpt_database_in_a_minute_golden_path.rs"]
-mod rgpt_database_in_a_minute_golden_path;
-#[path = "rgpt_share_a_tool_golden_path.rs"]
-mod rgpt_share_a_tool_golden_path;
-#[path = "rgpt_uptime_probes_golden_path.rs"]
-mod rgpt_uptime_probes_golden_path;
-#[path = "rlfe_ac01_unknown_status_refused_with_set.rs"]
-mod rlfe_ac01_unknown_status_refused_with_set;
-#[path = "rlfe_ac02_trigger_and_verdict_refused_before_handler.rs"]
-mod rlfe_ac02_trigger_and_verdict_refused_before_handler;
-#[path = "rlfe_ac03_every_value_filters_exactly_its_rows.rs"]
-mod rlfe_ac03_every_value_filters_exactly_its_rows;
-#[path = "rlfe_ac04_descriptor_enums_and_prose_set_drift.rs"]
-mod rlfe_ac04_descriptor_enums_and_prose_set_drift;
-#[path = "rowpol_ac01_sql_predicate_scopes_to_end_user_attribute.rs"]
-mod rowpol_ac01_sql_predicate_scopes_to_end_user_attribute;
-#[path = "rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0.rs"]
-mod rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0;
-#[path = "rowpol_ac03_unpolicied_table_zero_rows_for_end_user_all_for_tenant_key.rs"]
-mod rowpol_ac03_unpolicied_table_zero_rows_for_end_user_all_for_tenant_key;
-#[path = "rowpol_ac04_cte_and_subquery_both_rewritten_via_ast.rs"]
-mod rowpol_ac04_cte_and_subquery_both_rewritten_via_ast;
-#[path = "rowpol_ac05_docs_prefix_policy_zero_hits_lexical_and_embeddings.rs"]
-mod rowpol_ac05_docs_prefix_policy_zero_hits_lexical_and_embeddings;
-#[path = "rowpol_ac06_empty_allowed_set_1_equals_0_and_denies_docs.rs"]
-mod rowpol_ac06_empty_allowed_set_1_equals_0_and_denies_docs;
-#[path = "rowpol_ac07_audit_verify_intact_then_tampered.rs"]
-mod rowpol_ac07_audit_verify_intact_then_tampered;
-#[path = "rowpol_ac08_audit_chain_pages_and_refuses_end_users.rs"]
-mod rowpol_ac08_audit_chain_pages_and_refuses_end_users;
-#[path = "rowpol_ac09_filtered_vs_unfiltered_p95_within_3ms.rs"]
-mod rowpol_ac09_filtered_vs_unfiltered_p95_within_3ms;
-#[path = "rowpol_ac10_policy_set_refuses_a_widening_rule.rs"]
-mod rowpol_ac10_policy_set_refuses_a_widening_rule;

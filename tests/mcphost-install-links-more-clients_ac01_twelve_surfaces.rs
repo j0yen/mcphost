@@ -6,10 +6,11 @@
 
 use mcphost::install_links;
 
-const EXPECTED_IDS: [&str; 13] = [
+const EXPECTED_IDS: [&str; 15] = [
     "claude_code",
     "cursor",
     "vscode",
+    "copilot_vscode",
     "claude_ai",
     "chatgpt",
     "codex_cli",
@@ -20,6 +21,7 @@ const EXPECTED_IDS: [&str; 13] = [
     "warp",
     "windsurf",
     "cline",
+    "sdk",
 ];
 
 #[test]
@@ -27,7 +29,7 @@ fn for_url_returns_the_twelve_surfaces_with_complete_rows() {
     let surfaces = install_links::for_url("https://mcphost.dev");
     let ids: Vec<&str> = surfaces.iter().map(|s| s.id).collect();
     assert_eq!(ids, EXPECTED_IDS, "{surfaces:?}");
-    assert_eq!(surfaces.len(), 13); // PRD-mcphost-chatgpt-submission-pack added `chatgpt`
+    assert_eq!(surfaces.len(), 15); // chatgpt (PRD-mcphost-chatgpt-submission-pack), copilot_vscode and sdk (install-doc hotfix)
 
     for s in &surfaces {
         assert!(!s.artefact.trim().is_empty(), "{} has an empty artefact", s.id);

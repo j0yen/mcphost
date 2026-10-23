@@ -240,6 +240,61 @@ pub const INCIDENT_FIELD: &str = "incident";
 pub const HOST_FAULT_CODES: &[&str] =
     &["storage", "internal", "exec_unavailable", "timeout", "rate_limited_host", "transaction_nested"];
 
+/// PRD-mcphost-named-key-refusal-not-http-401 R1: why a keyless call was
+/// refused with `tenant_key_missing`. The HTTP-status decision
+/// (`http::upgrade_for`) keys on this, never on whether `data.tenant` exists.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Reason {
+    /// No tenant is known for the caller (the original refusal).
+    Anonymous,
+    /// This connection already named the tenant in the payload.
+    ConnectionBound(String),
+    /// This peer (IP + User-Agent) redeemed a key in the last 10 minutes.
+    /// Carries no namespace: a different agent at the same address must
+    /// not learn another tenant's name.
+    PeerRecent,
+}
+
+impl Reason {
+    pub const ALL_WIRE: &'static [&'static str] = &["missing_key", "connection_bound", "peer_recent"];
+
+    /// The `data.reason` string this variant serializes to.
+    pub fn wire(&self) -> &'static str {
+        match self {
+            Reason::Anonymous => "missing_key",
+            Reason::ConnectionBound(_) => "connection_bound",
+            Reason::PeerRecent => "peer_recent",
+        }
+    }
+
+    /// Inverse of [`Reason::wire`] for the HTTP middleware, which sees only
+    /// the serialized body. Anything unrecognized (including an absent
+    /// field) is `Anonymous`, which keeps the 401.
+    pub fn from_wire(reason: Option<&str>, tenant: Option<&str>) -> Reason {
+        match reason {
+            Some("connection_bound") => Reason::ConnectionBound(tenant.unwrap_or_default().to_string()),
+            Some("peer_recent") => Reason::PeerRecent,
+            _ => Reason::Anonymous,
+        }
+    }
+}
+
+/// `data` key on a named refusal that points at the ways to get a key.
+pub const GET_A_KEY: &str = "get_a_key";
+pub const GET_A_KEY_TEXT: &str = "call signup for your own key (host.quickstart explains the flow)";
+pub const PEER_RECENT_HINT: &str = "a tenant_key was redeemed from your address in the last 10 minutes; if that was you, pass it on every host.* call; if you are a different agent, call signup with handoff:true";
+
+/// The ConnectionBound hint (R3).
+pub fn connection_hint(namespace: &str) -> String {
+    format!("this connection authenticated as {namespace}; pass its tenant_key on every host.* call")
+}
+
+/// Every key a serialized `tenant_key_missing` refusal's `data` may carry.
+pub const REFUSAL_FIELDS: &[&str] = &[
+    "error_code", "reason", "tenant", "hint", GET_A_KEY, "anchor", "field", "expected", "docs", "example", "request_id",
+    "next_call", "class", "family", "feedback_hint", "help_url", "remedy", "retry",
+];
+
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum AppError {
     #[error("missing or invalid Authorization: Bearer key")]
@@ -270,7 +325,7 @@ pub enum AppError {
     /// `host.*`/`billing.*` call with neither header nor argument on a
     /// connection with no memory at all.
     #[error("tenant_key is required: pass the key that signup returned as the tenant_key argument")]
-    TenantKeyMissing(Option<String>),
+    TenantKeyMissing(Reason),
     /// PRD-mcphost-auth-error-names-argument requirement 2 / AC2-3: a
     /// `tenant_key` argument present but matching no tenant (or a disabled
     /// one, which stays [`AppError::TenantDisabled`] -- unchanged, see
@@ -527,7 +582,7 @@ pub fn all_variants_for_test() -> Vec<AppError> {
     let s = || "x".to_string();
     let mut all = vec![
         AppError::Unauthorized,
-        AppError::TenantKeyMissing(None),
+        AppError::TenantKeyMissing(Reason::Anonymous),
         AppError::TenantKeyInvalid,
         AppError::Forbidden,
         AppError::TenantDisabled { disabled_reason: None },
@@ -1428,26 +1483,24 @@ impl AppError {
         // PRD-mcphost-error-envelope-schema-contract AC6: the machine-readable
         // reason a tenant-key rejection carries, so a client branches on
         // `data.reason` rather than the message, on every verb alike.
-        match &self {
-            AppError::TenantKeyInvalid => {
-                obj.insert("reason".to_string(), json!("unknown_key"));
-            }
-            AppError::TenantKeyMissing(_) => {
-                obj.insert("reason".to_string(), json!("missing_key"));
-            }
-            _ => {}
+        if matches!(self, AppError::TenantKeyInvalid) {
+            obj.insert("reason".to_string(), json!("unknown_key"));
         }
-        if let AppError::TenantKeyMissing(Some(namespace)) = &self {
-            obj.insert("tenant".to_string(), json!(namespace));
-            obj.insert(
-                "hint".to_string(),
-                json!(format!(
-                    "this connection authenticated as {namespace}; pass its tenant_key, reconnect \
-                     on the url in your first response's onboarding, send the {SESSION_HEADER} \
-                     header the server issued, or call signup for a separate tenant"
-                )),
-            );
-            obj.insert("session_header".to_string(), json!(SESSION_HEADER));
+        if let AppError::TenantKeyMissing(reason) = &self {
+            obj.insert("reason".to_string(), json!(reason.wire()));
+            match reason {
+                Reason::Anonymous => {}
+                Reason::ConnectionBound(namespace) => {
+                    obj.insert("tenant".to_string(), json!(namespace));
+                    obj.insert("hint".to_string(), json!(connection_hint(namespace)));
+                    obj.insert(GET_A_KEY.to_string(), json!(GET_A_KEY_TEXT));
+                }
+                Reason::PeerRecent => {
+                    obj.insert("hint".to_string(), json!(PEER_RECENT_HINT));
+                    obj.insert("session_header".to_string(), json!(SESSION_HEADER));
+                    obj.insert(GET_A_KEY.to_string(), json!(GET_A_KEY_TEXT));
+                }
+            }
         }
         // R6 (PRD-mcphost-self-offboard-success-envelope): a disabled tenant
         // error carries its reason so callers can distinguish self_offboard

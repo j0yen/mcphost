@@ -4,43 +4,21 @@
 //!
 //! Drives the real request-log middleware (`http::protocol_version_and_log`)
 //! over a one-route router whose handler builds the same host-fault HTTP
-//! error `public_tool` serves. Thread-local subscriber, same pattern and
-//! caveats as `sessbind_ac10_request_log_records_the_upgraded_status.rs`.
+//! error `public_tool` serves. Captured through `common::tracecap` (thread-keyed
+//! capture on the one global subscriber), same as
+//! `sessbind_ac10_request_log_records_the_upgraded_status.rs`.
 
 use crate::common;
 use axum::{Router, middleware, routing::get};
 use common::TestServer;
+use common::tracecap::Capture;
 use mcphost::errors::AppError;
 use serde_json::{Value, json};
-use std::sync::{Arc, Mutex};
-use tracing_subscriber::fmt::MakeWriter;
-
-#[derive(Clone, Default)]
-struct BufWriter(Arc<Mutex<Vec<u8>>>);
-
-impl std::io::Write for BufWriter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().expect("lock buf").extend_from_slice(buf);
-        Ok(buf.len())
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-impl<'a> MakeWriter<'a> for BufWriter {
-    type Writer = BufWriter;
-    fn make_writer(&'a self) -> Self::Writer {
-        self.clone()
-    }
-}
 
 /// `fields` of the last "http request" line for `path`.
-fn last_line(buf: &BufWriter, path: &str) -> Option<Value> {
-    let captured = String::from_utf8(buf.0.lock().expect("lock buf").clone()).expect("utf-8 log");
-    captured
-        .lines()
-        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+fn last_line(buf: &Capture, path: &str) -> Option<Value> {
+    buf.json_lines()
+        .into_iter()
         .filter(|v| v["fields"]["path"] == path)
         .map(|v| v["fields"].clone())
         .next_back()
@@ -81,13 +59,7 @@ async fn incbanb_ac03() {
     let server = TestServer::start().await;
     let base = serve(&server).await;
     let http = reqwest::Client::new();
-    // Register the call site before the subscriber asks for interest.
-    let _ = http.get(format!("{base}/boom")).send().await;
-
-    let buf = BufWriter::default();
-    let subscriber = tracing_subscriber::fmt().json().with_writer(buf.clone()).with_target(false).finish();
-    let _guard = tracing::subscriber::set_default(subscriber);
-    tracing::callsite::rebuild_interest_cache();
+    let buf = common::tracecap::capture_json();
 
     // No incident open: the line has no incident field.
     let r = http.get(format!("{base}/boom")).send().await.expect("get");

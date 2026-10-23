@@ -28,6 +28,7 @@ use serde_json::{Value, json};
 pub mod routes;
 
 use crate::handler::McpHostHandler;
+use crate::protocol::frames::{SERVER_TIMING_HEADER, SERVER_TIMING_METRIC};
 use crate::state::{AppState, MAX_REQUEST_BODY_BYTES};
 
 /// The `MCP-Protocol-Version` value this server advertises, derived from
@@ -1127,6 +1128,43 @@ pub async fn protocol_version_and_log(req: Request<Body>, next: Next) -> Respons
     response
 }
 
+/// Which `/mcp` route a response came from, for [`upgrade_for`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PathClass {
+    /// Bare `/mcp`.
+    Bare,
+    /// `/login/mcp`, the OAuth entry.
+    Login,
+    /// `/t/{ns}/mcp`, a URL-bound tenant.
+    Tenant,
+}
+
+/// What `oauth_401_upgrade` does to the HTTP status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Upgrade {
+    To401,
+    To403,
+    None,
+}
+
+/// PRD-mcphost-named-key-refusal-not-http-401 R1: the one pure decision over
+/// (path class, `data.error_code`, [`Reason`]). Only a `tenant_key_missing`
+/// raised for a connection or peer that already holds a tenant, on bare
+/// `/mcp`, stays HTTP 200: there OAuth is not the remedy and clients that
+/// show every 401 as "token expired" would hide the readable refusal.
+pub fn upgrade_for(path: PathClass, error_code: &str, reason: &crate::errors::Reason) -> Upgrade {
+    use crate::errors::Reason;
+    match error_code {
+        "tenant_key_missing" => match (path, reason) {
+            (PathClass::Bare, Reason::ConnectionBound(_) | Reason::PeerRecent) => Upgrade::None,
+            _ => Upgrade::To401,
+        },
+        "invalid_token" | "wrong_tenant" => Upgrade::To401,
+        crate::scopes::INSUFFICIENT_SCOPE => Upgrade::To403,
+        _ => Upgrade::None,
+    }
+}
+
 /// PRD-mcphost-oauth-resource-server requirement 2 / AC3-4: re-surfaces
 /// `/mcp`'s JSON-RPC-level auth rejections that mean "no usable credential
 /// was presented" (`tenant_key_missing` -- the code an already-anonymous
@@ -1150,6 +1188,13 @@ pub async fn protocol_version_and_log(req: Request<Body>, next: Next) -> Respons
 /// own match-arm ordering -- so this never fires for them).
 async fn oauth_401_upgrade(State(state): State<Arc<AppState>>, req: Request<Body>, next: Next) -> Response {
     let path = req.uri().path();
+    let path_class = if path == "/mcp" {
+        PathClass::Bare
+    } else if path == crate::oauth::OAUTH_ENTRY_PATH {
+        PathClass::Login
+    } else {
+        PathClass::Tenant
+    };
     let metadata_url = if path == "/mcp" {
         format!("{}/.well-known/oauth-protected-resource", state.public_url)
     } else if path == crate::oauth::OAUTH_ENTRY_PATH {
@@ -1191,9 +1236,14 @@ async fn oauth_401_upgrade(State(state): State<Arc<AppState>>, req: Request<Body
         .and_then(Value::as_str)
         .map(str::to_string)
         .unwrap_or_else(|| "mcp".to_string());
+    let reason = crate::errors::Reason::from_wire(
+        data.as_ref().and_then(|d| d.get("reason")).and_then(Value::as_str),
+        data.as_ref().and_then(|d| d.get("tenant")).and_then(Value::as_str),
+    );
+    let upgrade = error_code.as_deref().map_or(Upgrade::None, |c| upgrade_for(path_class, c, &reason));
     let mut response = Response::from_parts(parts, Body::from(bytes));
-    match error_code.as_deref() {
-        Some("tenant_key_missing") | Some("invalid_token") | Some("wrong_tenant") => {
+    match upgrade {
+        Upgrade::To401 => {
             *response.status_mut() = StatusCode::UNAUTHORIZED;
             if let Ok(value) =
                 HeaderValue::from_str(&format!("Bearer resource_metadata=\"{metadata_url}\", scope=\"mcp\""))
@@ -1203,7 +1253,7 @@ async fn oauth_401_upgrade(State(state): State<Arc<AppState>>, req: Request<Body
                     .insert(axum::http::header::WWW_AUTHENTICATE, value);
             }
         }
-        Some(crate::scopes::INSUFFICIENT_SCOPE) => {
+        Upgrade::To403 => {
             *response.status_mut() = StatusCode::FORBIDDEN;
             if let Ok(value) = HeaderValue::from_str(&format!(
                 "Bearer error=\"{code}\", scope=\"{scope}\", resource_metadata=\"{metadata_url}\"",
@@ -1214,7 +1264,7 @@ async fn oauth_401_upgrade(State(state): State<Arc<AppState>>, req: Request<Body
                     .insert(axum::http::header::WWW_AUTHENTICATE, value);
             }
         }
-        _ => {}
+        Upgrade::None => {}
     }
     response
 }
@@ -1467,7 +1517,7 @@ fn render_connect_page(links: &crate::install_links::Links) -> String {
 /// new funnel event kind") with [`crate::state::classify_funnel_origin`]'s
 /// verdict for this request's own source IP -- then 302s to the client's
 /// deep link (`deeplink` kind) or renders the surface's instruction page
-/// (every other kind). Any `client` outside the install table's twelve ids
+/// (every other kind). Any `client` outside the install table's ids
 /// is 404 and records nothing.
 #[derive(serde::Deserialize)]
 struct ConnectGoQuery {
@@ -1765,6 +1815,12 @@ fn entry_unauthorized(state: &AppState, invalid: Option<&'static str>) -> Respon
     response
 }
 
+/// The protocol revision a message speaks: the `MCP-Protocol-Version` header,
+/// else the request's `_meta` protocol version, else `None`.
+fn message_version<'a>(msg: &'a Value, header: Option<&'a str>) -> Option<&'a str> {
+    header.or_else(|| msg.pointer("/params/_meta")?.get(crate::capabilities::META_PROTOCOL_VERSION_KEY)?.as_str())
+}
+
 /// PRD-mcphost-capabilities-generated-from-dispatch R1: the one pre-dispatch
 /// refusal site. Reads the JSON-RPC `method` of a POST body (each element of a
 /// batch) and, when [`crate::capabilities::refusal`] names a refusal for it,
@@ -1785,10 +1841,15 @@ async fn refuse_unimplemented_methods(
         return StatusCode::PAYLOAD_TOO_LARGE.into_response();
     };
     if let Ok(doc) = serde_json::from_slice::<Value>(&bytes) {
+        let header_version = parts
+            .headers
+            .get("mcp-protocol-version")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string);
         let refuse = |msg: &Value| -> Option<Value> {
             let method = msg.get("method")?.as_str()?;
             let id = msg.get("id")?.clone();
-            let err = crate::capabilities::refusal(method, Some(&state.public_url))?;
+            let err = crate::capabilities::gate_error(method, message_version(msg, header_version.as_deref()), Some(&state.public_url))?;
             Some(json!({"jsonrpc": "2.0", "id": id, "error": err}))
         };
         let reply = match &doc {
@@ -1798,7 +1859,8 @@ async fn refuse_unimplemented_methods(
             single => refuse(single),
         };
         if let Some(reply) = reply {
-            return (StatusCode::OK, Json(reply)).into_response();
+            let first = doc.as_array().and_then(|a| a.first()).unwrap_or(&doc);
+            return (crate::capabilities::refusal_status(message_version(first, header_version.as_deref())), Json(reply)).into_response();
         }
     }
     next.run(Request::from_parts(parts, Body::from(bytes))).await
@@ -1905,6 +1967,29 @@ async fn deliver_client_response(State(state): State<Arc<AppState>>, req: Reques
 /// over TLS. `max-age=15552000` (180 days) meets the AC's `>= 15552000`
 /// floor.
 const HSTS_HEADER_VALUE: &str = "max-age=15552000; includeSubDomains";
+
+/// Time to response head on `/mcp`, as `Server-Timing: app;dur=<ms>`
+/// (names: [`SERVER_TIMING_HEADER`], [`SERVER_TIMING_METRIC`]). The `/mcp`
+/// router adds it as its LAST `route_layer`, so it is the outermost route
+/// layer: the pre-dispatch method gate, session issue, auth and rate-limit
+/// work all fall inside the measured span. `next.run` returns once the
+/// response head is ready, so a streaming (SSE) body is not waited for; the
+/// `oauth_401_upgrade` rewrite of an auth refusal to 401 runs outside this
+/// layer and keeps the header. Caddy/TLS time is not included. The other
+/// MCP route families (`/t/..`, `/u/..`, `/i/..`, `/o/..`, `/j/..`, the OAuth
+/// entry path) and every non-MCP route are untouched.
+async fn server_timing(req: Request<Body>, next: Next) -> Response {
+    let start = Instant::now();
+    let mut response = next.run(req).await;
+    let dur_ms = start.elapsed().as_secs_f64() * 1000.0;
+    if let (Ok(name), Ok(value)) = (
+        http::HeaderName::from_bytes(SERVER_TIMING_HEADER.as_bytes()),
+        HeaderValue::from_str(&format!("{SERVER_TIMING_METRIC};dur={dur_ms:.3}")),
+    ) {
+        response.headers_mut().append(name, value);
+    }
+    response
+}
 
 async fn hsts(State(state): State<Arc<AppState>>, req: Request<Body>, next: Next) -> Response {
     let mut response = next.run(req).await;
@@ -2059,7 +2144,9 @@ fn build_router_inner(state: Arc<AppState>, legacy_session_mode: bool, method_ga
         .route_service("/mcp", service.clone())
         .route_layer(middleware::from_fn_with_state((state.clone(), method_gate), refuse_unimplemented_methods))
         .route_layer(middleware::from_fn_with_state(state.clone(), deliver_client_response))
-        .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id));
+        .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id))
+        // Added last: the outermost route layer (see `server_timing`).
+        .route_layer(middleware::from_fn(server_timing));
 
     // PRD-mcphost-oauth-first-entry-url requirement 2: `OAUTH_ENTRY_PATH`
     // serves the identical streamable-HTTP service as `/mcp`, behind a gate
@@ -2128,6 +2215,9 @@ fn build_router_inner(state: Arc<AppState>, legacy_session_mode: bool, method_ga
         // here, the same gap status.html/aup.html's own hotfix closed).
         .route("/skill.md", get(|| async { static_markdown_page(include_str!("../www/skill.md")) }))
         .route("/llms-install.md", get(llms_install_doc))
+        // The install-doc surface ids as JSON, generated from `SURFACE_IDS`
+        // (`mcphost gen-docs`); the install-walk reads its section list here.
+        .route("/install-surfaces.json", get(|| async { static_json_page(include_str!("../www/install-surfaces.json")) }))
         // PRD-mcphost-llms-install-doc requirement 5: the sitemap lists
         // `/llms-install.md`; served here so the file is not only a deploy
         // artefact.

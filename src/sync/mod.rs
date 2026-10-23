@@ -3,8 +3,9 @@
 //! external dataset into a host table and returns at once;
 //! `host.sync.list/get/delete/run_now` complete the surface. This PRD stores
 //! the sync, validates the source, schedules it and enforces `syncs_max`;
-//! the pull itself (change detection, rows) is the next PRD, so
-//! [`run`] only writes a `not_implemented` receipt into `sync_runs`.
+//! the pull itself (change detection, rows, receipts) is
+//! [`pull`] (PRD-mcphost-sync-pull-with-change-detection) and [`run`] stores
+//! its [`pull::Outcome`] as the `sync_runs` receipt.
 //!
 //! [`SourceKind`] is the only list of source kinds: the tool schema's
 //! `source.kind` enum ([`source_schema`]), the `args_invalid` message
@@ -16,6 +17,9 @@
 //! The `syncs` and `sync_runs` tables live in the main database (migration
 //! 0130) rather than a per-tenant file, so the trigger tick's sync pass is one
 //! indexed query across tenants instead of opening every tenant database.
+
+pub mod pull;
+pub mod sources;
 
 use rusqlite::{OptionalExtension, params};
 use serde_json::{Value, json};
@@ -39,6 +43,8 @@ const REF_MAX_BYTES: usize = 2048;
 const TICK_BATCH: i64 = 100;
 /// `status` of a pull sync.
 pub const STATUS_ACTIVE: &str = "active";
+/// `status` of a sync whose provider connection expired: not scheduled until `host.sync.run_now`.
+pub const STATUS_PAUSED: &str = "paused";
 /// `status` of a `push`/`two_way` sync: accepted, inert until the two-way PRD.
 pub const STATUS_PENDING_MODE: &str = "pending_mode";
 
@@ -130,9 +136,9 @@ impl SourceKind {
     }
 }
 
-/// The puller each kind dispatches to. The pull PRD replaces the bodies the
-/// names point at; the `match` is exhaustive, so a kind added to
-/// [`SourceKind::ALL`] without an arm here does not compile.
+/// The puller each kind dispatches to (named in docs); the `match` is
+/// exhaustive, so a kind added to [`SourceKind::ALL`] without an arm here does
+/// not compile (and [`pull::fetch`] repeats the rule for the sources).
 pub const fn puller_for(kind: SourceKind) -> &'static str {
     match kind {
         SourceKind::CsvUrl => "csv",
@@ -392,6 +398,7 @@ async fn check_connection(state: &AppState, tenant: &Tenant, kind: SourceKind) -
 
 struct SyncRow {
     id: String,
+    tenant_id: i64,
     kind: String,
     reference: String,
     secret_name: Option<String>,
@@ -406,7 +413,7 @@ struct SyncRow {
 
 impl SyncRow {
     const COLUMNS: &'static str =
-        "id, kind, ref, secret_name, table_name, mode, schedule, primary_key, status, created_unix, next_run_unix";
+        "id, kind, ref, secret_name, table_name, mode, schedule, primary_key, status, created_unix, next_run_unix, tenant_id";
 
     fn from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<SyncRow> {
         Ok(SyncRow {
@@ -421,6 +428,7 @@ impl SyncRow {
             status: r.get(8)?,
             created_unix: r.get(9)?,
             next_run_unix: r.get(10)?,
+            tenant_id: r.get(11)?,
         })
     }
 
@@ -530,6 +538,7 @@ pub async fn create(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
     let status = if req.mode == Mode::Pull { STATUS_ACTIVE } else { STATUS_PENDING_MODE };
     let row = SyncRow {
         id: new_ulid(),
+        tenant_id: tenant.id,
         kind: req.kind.as_str().to_string(),
         reference: req.reference.clone(),
         secret_name: req.secret_name.clone(),
@@ -623,39 +632,70 @@ pub async fn list(state: &AppState, tenant: &Tenant) -> Result<Value, AppError> 
     Ok(json!({"syncs": rows.iter().map(SyncRow::to_json).collect::<Vec<_>>()}))
 }
 
-/// `host.sync.get {sync_id}`: the row plus its newest `sync_runs` receipt.
+/// Columns of a `sync_runs` receipt, in [`receipt_json`] order.
+const RECEIPT_COLUMNS: &str = "id, started_unix, duration_ms, status, rows_added, rows_updated, rows_deleted, bytes, \
+     change_detected, error, provider_calls";
+
+fn receipt_json(r: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
+    Ok(json!({
+        "run_id": r.get::<_, String>(0)?,
+        "started_unix": r.get::<_, i64>(1)?,
+        "duration_ms": r.get::<_, i64>(2)?,
+        "status": r.get::<_, String>(3)?,
+        "rows_added": r.get::<_, i64>(4)?,
+        "rows_updated": r.get::<_, i64>(5)?,
+        "rows_deleted": r.get::<_, i64>(6)?,
+        "bytes": r.get::<_, i64>(7)?,
+        "change_detected": r.get::<_, i64>(8)? != 0,
+        "error": r.get::<_, Option<String>>(9)?,
+        "provider_calls": r.get::<_, i64>(10)?,
+    }))
+}
+
+/// How many receipts `host.sync.get` embeds unless `limit` says otherwise.
+const RUNS_DEFAULT: i64 = 20;
+const RUNS_MAX: i64 = 100;
+
+/// `host.sync.get {sync_id, limit?}`: the row, its newest receipt as
+/// `last_run`, the last `limit` (default 20) receipts as `runs` newest first,
+/// and `rows_in_table` / `last_snapshot_rows` / `drift` so an agent can see an
+/// external truncation (R7).
 pub async fn get(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let sync_id = sync_id_arg(args)?;
+    let limit = match args.get("limit") {
+        None | Some(Value::Null) => RUNS_DEFAULT,
+        Some(v) => v.as_i64().filter(|n| (1..=RUNS_MAX).contains(n)).ok_or_else(|| invalid(format!("limit must be an integer from 1 to {RUNS_MAX}")))?,
+    };
     let row = load(state, tenant.id, sync_id).await?;
     let id = row.id.clone();
-    let last_run = state
+    let (runs, last_snapshot_rows) = state
         .db
         .with_conn(move |conn| {
-            conn.query_row(
-                "SELECT id, started_unix, duration_ms, status, rows_added, rows_updated, rows_deleted, bytes, \
-                 change_detected, error FROM sync_runs WHERE sync_id = ?1 ORDER BY started_unix DESC, id DESC LIMIT 1",
-                params![id],
-                |r| {
-                    Ok(json!({
-                        "run_id": r.get::<_, String>(0)?,
-                        "started_unix": r.get::<_, i64>(1)?,
-                        "duration_ms": r.get::<_, i64>(2)?,
-                        "status": r.get::<_, String>(3)?,
-                        "rows_added": r.get::<_, i64>(4)?,
-                        "rows_updated": r.get::<_, i64>(5)?,
-                        "rows_deleted": r.get::<_, i64>(6)?,
-                        "bytes": r.get::<_, i64>(7)?,
-                        "change_detected": r.get::<_, i64>(8)? != 0,
-                        "error": r.get::<_, Option<String>>(9)?,
-                    }))
-                },
-            )
-            .optional()
-            .map_err(AppError::from)
+            let mut stmt = conn.prepare(&format!(
+                "SELECT {RECEIPT_COLUMNS} FROM sync_runs WHERE sync_id = ?1 ORDER BY started_unix DESC, id DESC LIMIT ?2"
+            ))?;
+            let runs = stmt.query_map(params![id, limit], receipt_json)?.collect::<rusqlite::Result<Vec<_>>>()?;
+            let snapshot_rows: Option<i64> = conn
+                .query_row("SELECT last_rows FROM sync_cursors WHERE sync_id = ?1", params![id], |r| r.get(0))
+                .optional()?;
+            Ok((runs, snapshot_rows))
         })
         .await?;
+    let table = row.table.clone();
+    let path = crate::tables::tenant_db_path(state, tenant.id);
+    let rows_in_table = crate::tables::with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+        Ok(crate::tables::row_count_sync(conn, &table).ok())
+    })
+    .await?;
     let mut out = row.to_json();
-    out["last_run"] = last_run.unwrap_or(Value::Null);
+    out["last_run"] = runs.first().cloned().unwrap_or(Value::Null);
+    out["runs"] = Value::Array(runs);
+    out["rows_in_table"] = json!(rows_in_table);
+    out["last_snapshot_rows"] = json!(last_snapshot_rows);
+    out["drift"] = json!(match (rows_in_table, last_snapshot_rows) {
+        (Some(n), Some(m)) => Some(n != m),
+        _ => None,
+    });
     Ok(out)
 }
 
@@ -669,6 +709,7 @@ pub async fn delete(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
         .db
         .with_conn(move |conn| {
             conn.execute("DELETE FROM sync_runs WHERE sync_id = ?1", params![id])?;
+            conn.execute("DELETE FROM sync_cursors WHERE sync_id = ?1", params![id])?;
             conn.execute("DELETE FROM syncs WHERE tenant_id = ?1 AND id = ?2", params![tenant_id, id])?;
             Ok(())
         })
@@ -681,7 +722,7 @@ pub async fn delete(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
 pub async fn run_now(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let sync_id = sync_id_arg(args)?;
     let row = load(state, tenant.id, sync_id).await?;
-    if row.status != STATUS_ACTIVE {
+    if row.status != STATUS_ACTIVE && row.status != STATUS_PAUSED {
         return Err(invalid(format!(
             "sync '{}' has status {}: mode {} runs once the two-way sync lands",
             row.id, row.status, row.mode
@@ -692,7 +733,11 @@ pub async fn run_now(state: &AppState, tenant: &Tenant, args: &Value) -> Result<
     state
         .db
         .with_conn(move |conn| {
-            conn.execute("UPDATE syncs SET next_run_unix = ?3 WHERE tenant_id = ?1 AND id = ?2", params![tenant_id, id, now])?;
+            // A paused sync (`auth_expired`) resumes here; its next run says whether the new connection works.
+            conn.execute(
+                "UPDATE syncs SET next_run_unix = ?3, status = 'active' WHERE tenant_id = ?1 AND id = ?2",
+                params![tenant_id, id, now],
+            )?;
             Ok(())
         })
         .await?;
@@ -703,25 +748,50 @@ pub async fn run_now(state: &AppState, tenant: &Tenant, args: &Value) -> Result<
 
 /// R6: starts every active sync whose `next_run_unix` has passed. Each one is
 /// claimed first (its `next_run_unix` moves to the next cron slot in the same
-/// statement), so a second pass in the same slot finds nothing due.
+/// statement), so a second pass in the same slot finds nothing due. R5: a
+/// tenant's runs in one pass stop at its plan's `sync_provider_calls_per_tick`
+/// provider calls; the rest get a `deferred` receipt, are not claimed, and are
+/// due again on the next pass. R3: a receipt still `running` after
+/// [`STALE_RUN_S`] belongs to a crashed tick and is swept to `error: stale`.
 pub async fn tick(state: &AppState, now: i64) -> Result<(), AppError> {
     let stale_before = now - STALE_RUN_S;
-    let due: Vec<(String, i64, String)> = state
+    let due: Vec<(String, i64, i64, String)> = state
         .db
         .with_conn(move |conn| {
+            conn.execute(
+                "UPDATE sync_runs SET status = 'error', error = 'stale' WHERE status = 'running' AND started_unix <= ?1",
+                params![stale_before],
+            )?;
             let mut stmt = conn.prepare(
-                "SELECT id, next_run_unix, schedule FROM syncs \
+                "SELECT id, tenant_id, next_run_unix, schedule FROM syncs \
                  WHERE status = 'active' AND next_run_unix <= ?1 \
                  AND (running_since_unix IS NULL OR running_since_unix <= ?2) \
                  ORDER BY next_run_unix LIMIT ?3",
             )?;
             let rows = stmt
-                .query_map(params![now, stale_before, TICK_BATCH], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+                .query_map(params![now, stale_before, TICK_BATCH], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             Ok(rows)
         })
         .await?;
-    for (id, old_next, schedule) in due {
+    let mut calls_used: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
+    let mut budgets: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
+    for (id, tenant_id, old_next, schedule) in due {
+        let budget = match budgets.get(&tenant_id) {
+            Some(b) => *b,
+            None => {
+                let b = match state.db.find_tenant_by_id(tenant_id).await? {
+                    Some(t) => plan_sync_calls_per_tick(state, &t)?,
+                    None => continue,
+                };
+                budgets.insert(tenant_id, b);
+                b
+            }
+        };
+        if calls_used.get(&tenant_id).copied().unwrap_or(0) >= budget {
+            write_deferred_receipt(state, &id, now).await?;
+            continue;
+        }
         let next = CronSchedule::parse(&schedule)
             .ok()
             .and_then(|s| s.next_after(now))
@@ -739,32 +809,176 @@ pub async fn tick(state: &AppState, now: i64) -> Result<(), AppError> {
                 Ok(n == 1)
             })
             .await?;
-        if claimed && let Err(e) = run(state, &id, now).await {
-            tracing::warn!(error = %e, sync_id = %id, "sync run failed");
+        if !claimed {
+            continue;
+        }
+        match run_with(state, &id, now, pull::RunOptions::default()).await {
+            Ok(outcome) => *calls_used.entry(tenant_id).or_insert(0) += outcome.provider_calls,
+            Err(e) => tracing::warn!(error = %e, sync_id = %id, "sync run failed"),
         }
     }
     Ok(())
 }
 
-/// The pull of one sync. Until the pull PRD replaces the body the dispatched
-/// puller is only named: the receipt says `not_implemented`.
-pub async fn run(state: &AppState, sync_id: &str, started_unix: i64) -> Result<(), AppError> {
+fn plan_sync_calls_per_tick(state: &AppState, tenant: &Tenant) -> Result<i64, AppError> {
+    state
+        .plans
+        .get(&tenant.plan)
+        .map(|p| p.sync_provider_calls_per_tick)
+        .ok_or_else(|| AppError::Internal(format!("tenant's plan '{}' is not in the loaded plan catalog", tenant.plan)))
+}
+
+async fn write_deferred_receipt(state: &AppState, sync_id: &str, now: i64) -> Result<(), AppError> {
     let id = sync_id.to_string();
     state
         .db
         .with_conn(move |conn| {
-            let kind: Option<String> =
-                conn.query_row("SELECT kind FROM syncs WHERE id = ?1", params![id], |r| r.get(0)).optional()?;
-            let puller = kind.as_deref().and_then(SourceKind::parse).map(puller_for).unwrap_or("unknown");
             conn.execute(
                 "INSERT INTO sync_runs (id, sync_id, started_unix, duration_ms, status, error) \
-                 VALUES (?1, ?2, ?3, 0, 'not_implemented', ?4)",
-                params![new_ulid(), id, started_unix, format!("the {puller} puller lands with the pull PRD")],
+                 VALUES (?1, ?2, ?3, 0, 'deferred', 'tenant provider-call budget for this tick is spent; runs on the next tick')",
+                params![new_ulid(), id, now],
             )?;
-            conn.execute("UPDATE syncs SET running_since_unix = NULL WHERE id = ?1", params![id])?;
             Ok(())
         })
         .await
+}
+
+/// The pull of one sync (see [`run_with`]), with change detection on.
+pub async fn run(state: &AppState, sync_id: &str, started_unix: i64) -> Result<(), AppError> {
+    run_with(state, sync_id, started_unix, pull::RunOptions::default()).await.map(|_| ())
+}
+
+/// R3: the pull of one sync. The receipt row is INSERTED `running` before the
+/// fetch and UPDATED once at the end, so a reader polling `host.sync.get`
+/// sees the run as soon as it starts. R4: a 429 moves `next_run_unix` to now +
+/// `Retry-After`; a 401/403 from an OAuth kind pauses the sync and sends one
+/// inbox notice (the next `ok` run re-arms it).
+pub async fn run_with(
+    state: &AppState,
+    sync_id: &str,
+    started_unix: i64,
+    opts: pull::RunOptions,
+) -> Result<pull::Outcome, AppError> {
+    let row = load_any(state, sync_id).await?;
+    let receipt_id = new_ulid();
+    let (rid, sid) = (receipt_id.clone(), row.id.clone());
+    state
+        .db
+        .with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO sync_runs (id, sync_id, started_unix, duration_ms, status) VALUES (?1, ?2, ?3, 0, 'running')",
+                params![rid, sid, started_unix],
+            )?;
+            Ok(())
+        })
+        .await?;
+    let clock = std::time::Instant::now();
+    let outcome = pull::execute(state, &row, opts).await;
+    let duration_ms = clock.elapsed().as_millis() as i64;
+
+    let finished = now_unix();
+    let next_override = outcome.retry_after_s.map(|s| finished + s);
+    let notify = outcome.status == pull::STATUS_AUTH_EXPIRED && claim_notice(state, &row.id).await?;
+    let (o, rid, sid) = (outcome.clone(), receipt_id, row.id.clone());
+    state
+        .db
+        .with_conn(move |conn| {
+            conn.execute(
+                "UPDATE sync_runs SET duration_ms = ?2, status = ?3, rows_added = ?4, rows_updated = ?5, rows_deleted = ?6, \
+                 bytes = ?7, change_detected = ?8, error = ?9, provider_calls = ?10 WHERE id = ?1",
+                params![
+                    rid,
+                    duration_ms,
+                    o.status,
+                    o.rows_added,
+                    o.rows_updated,
+                    o.rows_deleted,
+                    o.bytes,
+                    i64::from(o.change_detected),
+                    o.error,
+                    o.provider_calls
+                ],
+            )?;
+            if let Some(next) = next_override {
+                conn.execute("UPDATE syncs SET next_run_unix = ?2 WHERE id = ?1", params![sid, next])?;
+            }
+            if o.pause {
+                conn.execute("UPDATE syncs SET status = 'paused' WHERE id = ?1", params![sid])?;
+            }
+            if let Some((cursor, rows)) = &o.cursor {
+                conn.execute(
+                    "INSERT INTO sync_cursors (sync_id, etag, modified, body_hash, last_rows, notified_unix) \
+                     VALUES (?1, ?2, ?3, ?4, MAX(?5, 0), NULL) \
+                     ON CONFLICT(sync_id) DO UPDATE SET etag = ?2, modified = ?3, body_hash = ?4, \
+                         last_rows = CASE WHEN ?5 < 0 THEN last_rows ELSE ?5 END, notified_unix = NULL",
+                    params![sid, cursor.etag, cursor.modified, cursor.body_hash, rows],
+                )?;
+            }
+            conn.execute("UPDATE syncs SET running_since_unix = NULL WHERE id = ?1", params![sid])?;
+            Ok(())
+        })
+        .await?;
+    if notify {
+        send_auth_notice(state, &row).await;
+    }
+    Ok(outcome)
+}
+
+async fn load_any(state: &AppState, sync_id: &str) -> Result<SyncRow, AppError> {
+    let id = sync_id.to_string();
+    state
+        .db
+        .with_conn(move |conn| {
+            conn.query_row(
+                &format!("SELECT {} FROM syncs WHERE id = ?1", SyncRow::COLUMNS),
+                params![id],
+                SyncRow::from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await?
+        .ok_or_else(|| not_found(sync_id))
+}
+
+/// R4: true exactly once per sync until an `ok` run clears it -- the caller
+/// that gets `true` sends the inbox notice.
+async fn claim_notice(state: &AppState, sync_id: &str) -> Result<bool, AppError> {
+    let (id, now) = (sync_id.to_string(), now_unix());
+    state
+        .db
+        .with_conn(move |conn| {
+            conn.execute("INSERT OR IGNORE INTO sync_cursors (sync_id) VALUES (?1)", params![id])?;
+            let n = conn.execute(
+                "UPDATE sync_cursors SET notified_unix = ?2 WHERE sync_id = ?1 AND notified_unix IS NULL",
+                params![id, now],
+            )?;
+            Ok(n == 1)
+        })
+        .await
+}
+
+/// R4: the one inbox message an expired connection earns, sent to the tenant
+/// itself. Best-effort: a send failure is logged, the pause already holds.
+async fn send_auth_notice(state: &AppState, row: &SyncRow) {
+    let Some(provider) = SourceKind::parse(&row.kind).and_then(SourceKind::needs_connection) else { return };
+    let tenant = match state.db.find_tenant_by_id(row.tenant_id).await {
+        Ok(Some(t)) => t,
+        _ => return,
+    };
+    let args = json!({
+        "to": [tenant.namespace.clone()],
+        "body": format!(
+            "Sync {} ({} into table '{}') is paused: the {provider} connection expired. \
+             Reconnect with host.connect.start(provider=\"{provider}\"), then call host.sync.run_now.",
+            row.id, row.kind, row.table
+        ),
+        "data": {"sync_id": row.id, "provider": provider, "hint": format!("host.connect.start(provider=\"{provider}\")")},
+        "dedupe_key": format!("sync-auth-expired-{}", row.id),
+    });
+    if let Err(e) = crate::messaging::send(state, &tenant, &args).await {
+        tracing::warn!(error = %e, sync_id = %row.id, "sync auth_expired notice failed");
+    }
 }
 
 /// Test support: moves a sync's `next_run_unix`.

@@ -295,6 +295,21 @@ Docs: <https://docs.cursor.com/en/tools/mcp> (checked 2026-10-09)
 
 Docs: <https://code.visualstudio.com/api/extension-guides/ai/mcp> (checked 2026-10-09)
 
+**GitHub Copilot in VS Code**
+
+```json
+{
+  "servers": {
+    "mcphost": {
+      "type": "http",
+      "url": "https://mcphost.dev/mcp"
+    }
+  }
+}
+```
+
+Docs: <https://code.visualstudio.com/docs/agent-customization/mcp-servers> (checked 2026-10-21)
+
 **Claude.ai**
 
 1. Open Settings, then Connectors, then Add custom connector.
@@ -391,6 +406,18 @@ Docs: <https://docs.windsurf.com/windsurf/cascade/mcp> (checked 2026-10-09)
 ```
 
 Docs: <https://docs.cline.bot/mcp/configuring-mcp-servers> (checked 2026-10-09)
+
+**SDKs**
+
+```json
+{
+  "name": "mcphost",
+  "type": "url",
+  "url": "https://mcphost.dev/mcp"
+}
+```
+
+Docs: <https://platform.claude.com/docs/en/agents-and-tools/mcp-connector> (checked 2026-10-21)
 <!-- install-links:end -->
 <!-- clients:end -->
 
@@ -991,6 +1018,7 @@ Every numeric ceiling in the plan table, as `host.quickstart` `limits.plan` repo
 | `state_ops_per_call_max` | 200 | 200 |
 | `state_rows_max` | 10000 | 100000 |
 | `sub_keys_max` | 5 | 100 |
+| `sync_provider_calls_per_tick` | 20 | 200 |
 | `syncs_max` | 5 | 50 |
 | `table_bytes_max` | 10485760 | 524288000 |
 | `table_handle_bytes_max` | 67108864 | 536870912 |

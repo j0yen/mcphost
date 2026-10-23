@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use rmcp::ErrorData as McpError;
 use rmcp::model::{
-    CacheScope, CallToolRequestParams, CallToolResponse, CallToolResult, Implementation,
+    CacheScope, CallToolRequestParams, CallToolResponse, Implementation,
     ListToolsResult, PaginatedRequestParams, ServerInfo, Tool,
 };
 use rmcp::service::{NotificationContext, Peer, RequestContext};
@@ -1108,18 +1108,28 @@ pub(crate) fn signup_tool() -> Tool {
          single-use handoff_token instead of the raw key -- redeem it once with host.redeem \
          to get the key, so a transcript of this call and the redeem call, if it leaks, \
          carries a dead credential. The raw-key path (handoff omitted) stays fully supported.",
-        schema(
-            json!({
-                "name": {"type": "string", "description": "display name"},
-                "handoff": {
-                    "type": "boolean",
-                    "description": "Recommended: true to receive a handoff_token (redeem via \
-                        host.redeem) instead of the raw key. Default false (raw key, unchanged).",
-                },
-            }),
-            &["name"],
-        ),
+        schema(signup_arg_properties(), &signup_required_args()),
     )
+}
+
+/// `signup`'s `properties`, one per [`control::SIGNUP_ARGS`] row.
+fn signup_arg_properties() -> Value {
+    let mut props = Map::new();
+    for a in control::SIGNUP_ARGS {
+        let mut prop = Map::new();
+        prop.insert("type".to_string(), json!(a.ty));
+        if let Some(pattern) = a.pattern {
+            prop.insert("pattern".to_string(), json!(pattern));
+        }
+        prop.insert("description".to_string(), json!(a.description));
+        props.insert(a.name.to_string(), Value::Object(prop));
+    }
+    Value::Object(props)
+}
+
+/// `signup`'s `required`, from [`control::SIGNUP_ARGS`].
+fn signup_required_args() -> Vec<&'static str> {
+    control::SIGNUP_ARGS.iter().filter(|a| a.required).map(|a| a.name).collect()
 }
 
 /// PRD-mcphost-publish-first-try requirement 1 (AC1) named `host.tool_test`
@@ -5005,7 +5015,7 @@ fn host_tools_part_12() -> Vec<Tool> {
         Tool::new(
             "host.oauth.provider",
             "This tenant's registered OIDC identity provider (issuer, client_id, endpoints, \
-             scopes, flags) -- null if none is set. Never carries the client secret.",
+             scopes, flags) -- {\"value\": null} if none is set. Never carries the client secret.",
             host_schema(json!({}), &[]),
         ),
         Tool::new(
@@ -5065,7 +5075,7 @@ fn host_tools_part_12() -> Vec<Tool> {
             "host.enduser.whoami",
             "The end user (if any) this call itself carries: {subject, issuer, method, \
              verified_at} from the OAuth bearer's sub/iss or a verified end_user_assertion; \
-             null when the call carries no verified end-user identity.",
+             {\"value\": null} when the call carries no verified end-user identity.",
             host_schema(json!({}), &[]),
         ),
         // requirement 2 (AC11): rotates this tenant's HS256 end_user_assertion \
@@ -5149,9 +5159,14 @@ fn host_tools_part_14() -> Vec<Tool> {
             "host.sync.get",
             "One sync by id: its row plus last_run, the newest receipt {run_id, started_unix, \
              duration_ms, status, rows_added, rows_updated, rows_deleted, bytes, change_detected, \
-             error}, or null before the first run.",
+             provider_calls, error} (null before the first run), runs (the last `limit` receipts, \
+             newest first), and rows_in_table / last_snapshot_rows / drift. A receipt status is \
+             running, ok, error, rate_limited, auth_expired, suspicious_empty or deferred.",
             host_schema(
-                json!({"sync_id": {"type": "string", "description": "The sync_id host.sync.create returned."}}),
+                json!({
+                    "sync_id": {"type": "string", "description": "The sync_id host.sync.create returned."},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 100, "description": "How many receipts runs carries (default 20)."},
+                }),
                 &["sync_id"],
             ),
         ),
@@ -5999,11 +6014,18 @@ fn admin_tools_raw() -> Vec<Tool> {
         // are the four `admin::funnel` reads.
         Tool::new(
             "admin.funnel",
-            "Activation funnel for every tenant that signed up in the trailing days (default 7): \
-             per-stage counts, shares and medians, signups and signups_human, the breakdown by \
-             source and by origin, upgrades by trigger, install-link clicks and the by-surface \
-             probe report. Narrow it by source_class or signup_source, or split organic from \
-             invite-born tenants with invited, which also adds the invite k-factor.",
+            format!(
+                "Activation funnel for every tenant that signed up in the trailing days (default 7): \
+                 per-stage counts, shares and medians, signups and signups_human, the breakdown by \
+                 source and by origin, upgrades by trigger, install-link clicks and the by-surface \
+                 probe report (known-synthetic tenants excluded and counted in synthetic_excluded; \
+                 each by_surface row has the keys {}), plus recipe_attempts_7d (keys {}; uses by \
+                 non-synthetic tenants) and recipe_attempts_synthetic_7d. Narrow it by source_class \
+                 or signup_source, or split organic from invite-born tenants with invited, which \
+                 also adds the invite k-factor.",
+                crate::api_contract::SURFACE_STAGE_KEYS.join(", "),
+                crate::kinds::aliases::recipe_names().join(", "),
+            ),
             schema(
                 json!({
                     "days": {"type": "integer", "description": "Trailing signup window in days; default 7, clamped to 1..365."},
@@ -6620,7 +6642,7 @@ pub(crate) struct CellResourceSink(
 /// `_meta.resources_used`, so a tool's own returned JSON (a bridge call's
 /// host-verb JSON, `host.tool_run`'s `payload`) stays byte-for-byte what it
 /// returned -- the same marker-key pattern as `paged::LIMIT_CLAMPED_KEY`.
-pub(crate) const RESOURCES_USED_KEY: &str = "__resources_used";
+pub(crate) use crate::envelope::RESOURCES_USED_KEY;
 
 impl CellResourceSink {
     pub(crate) fn new() -> Self {
@@ -7060,15 +7082,10 @@ impl crate::kinds::HostDispatch for TenantHostStepBridge {
                 args,
             )
             .await
-            .map(|mut value| {
-                // A nested python tool call's in-flight `resources_used`
-                // marker is wire-only (`_meta`): a bridge call's returned JSON
-                // stays exactly what the callee produced.
-                if let Some(obj) = value.as_object_mut() {
-                    obj.remove(RESOURCES_USED_KEY);
-                }
-                value
-            })
+            // A nested python tool call's in-flight `resources_used` marker is
+            // wire-only (`_meta`): a bridge call's returned JSON stays exactly
+            // what the callee produced.
+            .map(crate::envelope::strip_bridge_resources_used)
             .map_err(app_error_to_kind_error)
     }
 }
@@ -7623,7 +7640,7 @@ impl McpHostHandler {
             "host.estimate" => {
                 let mut args = args;
                 if let Some(obj) = args.as_object_mut() {
-                    obj.insert("dry_run".to_string(), json!(true));
+                    crate::envelope::force_dry_run_arg(obj);
                 }
                 self.host_tool_call(tenant, args, calls_auth_method, end_user).await
             }
@@ -8993,7 +9010,7 @@ impl McpHostHandler {
                     && let Some(used) = resources.resources_used(duration_ms)
                     && let Some(obj) = value.as_object_mut()
                 {
-                    obj.insert(RESOURCES_USED_KEY.to_string(), used);
+                    crate::envelope::stamp_resources_used(obj, used);
                 }
                 if version.is_none()
                     && let Some(caller) = caller
@@ -9457,14 +9474,9 @@ impl McpHostHandler {
                     if let Some(ex) = &generated {
                         add_example_fields(map, ex);
                     }
-                    map.insert("state".to_string(), state_backend.snapshot().to_json());
                     // PRD-mcphost-sandbox-resource-limits-from-plan R5: a
                     // dry run measures before publishing too.
-                    if kind.name() == "python"
-                        && let Some(used) = resources.resources_used(duration_ms)
-                    {
-                        map.insert(RESOURCES_USED_KEY.to_string(), used);
-                    }
+                    let used = if kind.name() == "python" { resources.resources_used(duration_ms) } else { None };
                     // PRD-mcphost-dry-run-side-effects requirement 3: `.entry`
                     // (not a plain `insert`) so `chain`'s own pre-existing
                     // top-level `dry_run: true` boolean (its requirement 3 /
@@ -9472,7 +9484,7 @@ impl McpHostHandler {
                     // all) is left alone -- `chain` targeting a host step is
                     // PRD-mcphost-chain-host-steps' own, not-yet-landed,
                     // scope.
-                    map.entry("dry_run".to_string()).or_insert_with(|| {
+                    crate::envelope::stamp_tool_test(map, state_backend.snapshot().to_json(), used, || {
                         json!({"writes": dry_run.writes(), "delivered": false, "rolled_back": true})
                     });
                     // PRD-mcphost-tool-test-truth P0 requirement 1 (AC5):
@@ -9646,6 +9658,10 @@ impl McpHostHandler {
             "error_envelope": {
                 "validated": envelope.validated,
                 "skipped": envelope.skipped,
+            },
+            "output_reach": {
+                "unreached": crate::output_schemas::reach_report().unreached,
+                "unreached_cap": crate::output_schemas::reach_report().unreached_cap,
             },
             "oauth_issuers": crate::oauth::doctor_report(&self.state, tenant.map(|t| t.id)).await?,
         });
@@ -10766,20 +10782,17 @@ impl McpHostHandler {
         let result = match outcome {
             Ok(Ok(mut value)) => {
                 if let Some(obj) = value.as_object_mut() {
-                    obj.insert("duration_ms".to_string(), json!(duration_ms));
                     // PRD-mcphost-sandbox-resource-limits-from-plan R5.
-                    if kind.name() == "python"
-                        && let Some(used) = resources.resources_used(duration_ms)
-                    {
-                        obj.insert(RESOURCES_USED_KEY.to_string(), used);
-                    }
-                    obj.insert("state".to_string(), state_backend.snapshot().to_json());
-                    if let Some(dry_run) = &dry_run {
-                        obj.insert(
-                            "dry_run".to_string(),
-                            json!({"writes": dry_run.writes(), "delivered": false, "rolled_back": true}),
-                        );
-                    }
+                    let used = if kind.name() == "python" { resources.resources_used(duration_ms) } else { None };
+                    crate::envelope::stamp_tool_run(
+                        obj,
+                        duration_ms,
+                        used,
+                        state_backend.snapshot().to_json(),
+                        dry_run
+                            .as_ref()
+                            .map(|d| json!({"writes": d.writes(), "delivered": false, "rolled_back": true})),
+                    );
                 }
                 if let Some(cap) = &capture {
                     // `tool_run` answers with the full raw output; the trace
@@ -11346,7 +11359,7 @@ impl McpHostHandler {
         let mut value = outcome?;
         if let Some(obj) = value.as_object_mut() {
             obj.insert("forwarded_to".to_string(), json!(canonical));
-            obj.entry("dry_run".to_string()).or_insert_with(|| {
+            crate::envelope::default_dry_run(obj, || {
                 json!({"writes": dry_run.writes(), "delivered": false, "rolled_back": true})
             });
         }
@@ -12428,7 +12441,8 @@ impl McpHostHandler {
                             "host.* call refused: connection already named a tenant, tenant_key missing"
                         );
                         return Err(
-                            AppError::TenantKeyMissing(Some(t.namespace)).into_error_data_at(Some(&self.state.public_url))
+                            AppError::TenantKeyMissing(crate::errors::Reason::ConnectionBound(t.namespace))
+                                .into_error_data_at(Some(&self.state.public_url))
                         );
                     }
                     // The remembered tenant was deleted since: drop the
@@ -12467,7 +12481,7 @@ impl McpHostHandler {
                             "host.* call refused: peer just redeemed, tenant_key missing"
                         );
                         Box::pin(self.note_implicit_peer_refused(parts)).await;
-                        return Err(AppError::TenantKeyMissing(Some(t.namespace))
+                        return Err(AppError::TenantKeyMissing(crate::errors::Reason::PeerRecent)
                             .into_error_data_at(Some(&self.state.public_url)));
                     }
                     // A self-offboarded tenant no longer blocks a fresh start.
@@ -13103,7 +13117,7 @@ impl McpHostHandler {
             // for a `host.*`/`billing.*` name on `/mcp` (the arm above wins
             // first) -- still the refusal for every other anonymous call.
             (Auth::Anonymous, _) if via_tenant_key_arg => {
-                let err = AppError::TenantKeyMissing(None);
+                let err = AppError::TenantKeyMissing(crate::errors::Reason::Anonymous);
                 tracing::warn!(code = err.code(), tool = %body_name, "host.* call refused: tenant_key missing");
                 Err(err)
             }
@@ -13337,7 +13351,7 @@ impl McpHostHandler {
                 if !deprecation_notices.is_empty()
                     && let Some(obj) = value.as_object_mut()
                 {
-                    obj.insert("deprecations".to_string(), json!(deprecation_notices));
+                    crate::envelope::stamp_deprecations(obj, json!(deprecation_notices));
                 }
                 // PRD-mcphost-one-next-tool requirement 4 (AC4, AC5),
                 // requirement 5 (AC6, AC7): `maybe_attach_next_hint` itself
@@ -13428,7 +13442,7 @@ impl McpHostHandler {
                 let limit_clamped = crate::paged::take_clamp(&mut value);
                 let deprecated_arg = crate::paged::take_deprecated_arg(&mut value);
                 let resources_used = value.as_object_mut().and_then(|obj| obj.remove(RESOURCES_USED_KEY));
-                let result = CallToolResult::structured(value);
+                let result = crate::output_schemas::success_result(value);
                 // requirement 2: an alias call's response carries the
                 // deprecation hint in `_meta.deprecated` (the MCP field
                 // this protocol gives a tool result for exactly this,

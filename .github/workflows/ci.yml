@@ -87,18 +87,21 @@ jobs:
   # core suite binary in one serial test step (13 to 16 minutes), so main's
   # runs took 20 to 30 minutes and a branch that added tests was cancelled at
   # the cap. It is now three kinds of job, none of which names a shard count:
-  #   core-static  the static steps (check, clippy, deny, audit, contract suites,
-  #                doctests, partition check, required-checks compare);
+  #   core-static  the static steps (check, clippy, deny, audit, doctests,
+  #                partition check, required-checks compare);
+  #   core-contract  the contract suites (`scripts/pin-tests.sh`), their own job
+  #                so their compile-and-run wall (10 to 17 minutes) does not
+  #                eat core-static's 20-minute cap (#495: cancelled at the cap);
   #   core         a matrix whose width comes from the `plan` job
   #                (`ci-test-partition.sh shards core`); shard N runs
   #                `ci-test-partition.sh core-shard N <total>`, a weight-balanced
   #                slice of the core suites;
   #   gate         the aggregator. It keeps the job id and the NAME of the old
   #                job, so branch protection and wm-build's ci lookups are
-  #                untouched, and it fails unless both of the above succeeded.
-  # `core-static` and `core` carry the required-checks exclude marker: the
-  # contexts a PR must pass stay exactly the committed
-  # .github/required-checks.toml (the aggregator covers both), so no admin
+  #                untouched, and it fails unless all three above succeeded.
+  # `core-static`, `core-contract` and `core` carry the required-checks exclude
+  # marker: the contexts a PR must pass stay exactly the committed
+  # .github/required-checks.toml (the aggregator covers all three), so no admin
   # --apply is needed.
   core-static:
     # required-checks: exclude -- covered by the `gate` aggregator below, whose
@@ -139,12 +142,6 @@ jobs:
       - name: verify test partition is total and disjoint
         run: ./scripts/ci-test-partition.sh check
 
-      # PRD-mcphost-contract-suite-generated: the `//! contract:` suites first, so a
-      # drifted tree-derived set (CHANGELOG, migrations, tools/list shape, weights)
-      # fails in minutes with a short log. The list is derived from Cargo.toml.
-      - name: contract suites
-        run: ./scripts/pin-tests.sh
-
       # `--doc` cannot be combined with any other target selector, so doctests
       # are their own invocation rather than part of any shard.
       - name: cargo test --doc
@@ -170,6 +167,38 @@ jobs:
             2) echo "required-checks: skipped (no permission)" ;;
             *) echo "::warning::branch protection differs from .github/required-checks.toml (see above); an admin runs scripts/required-checks.sh --apply" ;;
           esac
+
+  core-contract:
+    # required-checks: exclude -- covered by the `gate` aggregator below.
+    name: contract suites
+    runs-on: ubuntu-latest
+    # Compiles the contract test binaries cold, then runs them. Measured on
+    # main: 10 to 15 minutes, 16 on #495. The first green duration is in the
+    # PR body that added this job, so the cap can be lowered from a number.
+    timeout-minutes: 40
+    steps:
+      - name: checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: install rust toolchain (pinned by rust-toolchain.toml)
+        uses: actions-rust-lang/setup-rust-toolchain@9d7e65c320fdb52dcd45ffaa68deb6c02c8754d9 # v1.10.1
+
+      # Same environment the other test jobs run the suites in.
+      - name: install bubblewrap and uv
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # PRD-mcphost-contract-suite-generated: the `//! contract:` suites, so a
+      # drifted tree-derived set (CHANGELOG, migrations, tools/list shape, weights)
+      # fails with a short log. The list is derived from Cargo.toml and needs no
+      # output of an earlier step (the partition check is a read-only check).
+      - name: contract suites
+        run: ./scripts/pin-tests.sh
 
   core:
     # required-checks: exclude -- covered by the `gate` aggregator below.
@@ -276,7 +305,7 @@ jobs:
   # `core` matrix succeeded.
   gate:
     name: static analysis + core suites
-    needs: [core-static, core]
+    needs: [core-static, core, core-contract]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -289,15 +318,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}/jobs" --paginate \
-            --jq '.jobs[] | select((.name | startswith("core suites")) or .name == "static analysis") | "\(.name): \(.conclusion // .status)"' \
+            --jq '.jobs[] | select((.name | startswith("core suites")) or .name == "static analysis" or .name == "contract suites") | "\(.name): \(.conclusion // .status)"' \
             || echo "(job list unavailable: no actions:read)"
 
-      - name: fail unless static analysis and every core shard succeeded
+      - name: fail unless static analysis, the contract suites and every core shard succeeded
         run: |
           echo "static analysis result: ${{ needs.core-static.result }}"
+          echo "contract suites result: ${{ needs.core-contract.result }}"
           echo "core matrix result: ${{ needs.core.result }}"
-          if [ "${{ needs.core-static.result }}" != "success" ] || [ "${{ needs.core.result }}" != "success" ]; then
-            echo "::error::static analysis (${{ needs.core-static.result }}) or the core suites matrix (${{ needs.core.result }}) did not succeed -- see the failed job above; a shard names its failing test in a 'core shard N/M FAILED <test>' line."
+          # Any result but success fails: a wall-cancelled or skipped job is not a pass.
+          if [ "${{ needs.core-static.result }}" != "success" ] || [ "${{ needs.core-contract.result }}" != "success" ] || [ "${{ needs.core.result }}" != "success" ]; then
+            echo "::error::static analysis (${{ needs.core-static.result }}), the contract suites (${{ needs.core-contract.result }}) or the core suites matrix (${{ needs.core.result }}) did not succeed -- see the failed job above; a shard names its failing test in a 'core shard N/M FAILED <test>' line."
             exit 1
           fi
 
@@ -441,6 +472,9 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # ci-test-partition.sh check measures a pending measured entry's age with git rev-list
+          fetch-depth: 0
 
       - name: install rust toolchain (pinned by rust-toolchain.toml)
         uses: actions-rust-lang/setup-rust-toolchain@9d7e65c320fdb52dcd45ffaa68deb6c02c8754d9 # v1.10.1
@@ -709,6 +743,9 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # ci-test-partition.sh check measures a pending measured entry's age with git rev-list
+          fetch-depth: 0
 
       - name: install rust toolchain (pinned by rust-toolchain.toml)
         uses: actions-rust-lang/setup-rust-toolchain@9d7e65c320fdb52dcd45ffaa68deb6c02c8754d9 # v1.10.1

@@ -26,7 +26,7 @@ strip = true
 [package]
 autotests = false  # gen-test-suites.sh: explicit [[test]] suites below
 name = "mcphost"
-version = "0.112.38"
+version = "0.114.5"
 edition = "2024"
 rust-version = "1.95"
 description = "Hosted MCP runtime where your agent publishes its own tools by tool call and keeps working."
@@ -199,6 +199,9 @@ test-counters = []
 
 [dev-dependencies]
 semver = "1"
+# tests/ssd_ac01_signup_descriptor_matches_signup_args.rs evaluates state::SOURCE_PATTERN
+# with the real engine (already in the tree transitively; no new crate in Cargo.lock).
+regex = "1"
 tokio = { version = "1", features = ["full", "test-util"] }
 proptest = "1"
 # AC19: mocks the registry API in tests/ac19_registry_publish.rs (the
@@ -292,6 +295,10 @@ name = "suite_core_11"
 path = "tests/suite_core_11.rs"
 
 [[test]]
+name = "suite_core_12"
+path = "tests/suite_core_12.rs"
+
+[[test]]
 name = "suite_env_core_01"
 path = "tests/suite_env_core_01.rs"
 
@@ -310,9 +317,5 @@ path = "tests/suite_sandbox_02.rs"
 [[test]]
 name = "suite_sandbox_03"
 path = "tests/suite_sandbox_03.rs"
-
-[[test]]
-name = "suite_sandbox_04"
-path = "tests/suite_sandbox_04.rs"
 
 # END gen-test-suites.sh generated suites

@@ -1,6 +1,12 @@
 {
   "generated_from": "src/protocol/frames.rs::FRAME_SEQUENCES",
   "protocol_version": "2026-07-28",
+  "server_timing": {
+    "header": "Server-Timing",
+    "metric": "app",
+    "unit": "ms",
+    "semantics": "Every `/mcp` response carries `Server-Timing: app;dur=<ms>`: the host's wall time from the request reaching the route (auth and rate-limit time included) to the response head being ready, so a `text/event-stream` response reports time to response head, not to its last frame. Caddy, TLS and network time are not included."
+  },
   "rows": [
     {
       "request_type": "initialize",

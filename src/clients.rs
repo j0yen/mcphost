@@ -115,8 +115,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn embedded_toml_parses_with_thirteen_clients() {
-        assert_eq!(builtin().client.len(), 13);
+    fn embedded_toml_parses_with_fifteen_clients() {
+        assert_eq!(builtin().client.len(), 15);
         assert!(builtin().registry.search_url.starts_with("https://"));
     }
 

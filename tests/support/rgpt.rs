@@ -15,8 +15,17 @@ use std::time::{Duration, Instant};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-/// No single recipe may take longer (PRD AC5).
-pub const MAX_RECIPE_WALL: Duration = Duration::from_secs(60);
+/// No single recipe may take longer (PRD AC5). Derived from the scheduler
+/// tick, not typed (sync-pull live-proof R3): two polls of (tick + fetch
+/// allowance + poll overshoot) plus the non-polling steps and the margin.
+pub const MAX_RECIPE_WALL: Duration = Duration::from_secs(
+    mcphost::recipes::MAX_POLLED_STEPS as u64
+        * (mcphost::triggers::SCHEDULER_TICK.as_secs()
+            + mcphost::triggers::SYNC_FETCH_ALLOWANCE_S
+            + mcphost::recipes::RETRY_UNTIL_EXPECT_POLL_S)
+        + mcphost::recipes::RECIPE_NON_POLL_STEP_S
+        + mcphost::recipes::RECIPE_WALL_MARGIN_S,
+);
 
 #[derive(Debug)]
 pub struct Trace {
@@ -206,6 +215,13 @@ async fn run_steps(spec: &Value) -> Trace {
         let args = subst(&step["args"], &ctx);
         let deadline = Instant::now() + Duration::from_secs(step["retry_s"].as_u64().unwrap_or(0));
         let expects = expects_of(step);
+        // retry_until_expect steps poll at the recipe's interval (the same
+        // RETRY_UNTIL_EXPECT_POLL_S the generated proof sleeps on); the loop
+        // below already re-issues on an expect failure and panics with the last one.
+        let poll = match step["poll_s"].as_u64() {
+            Some(s) if step["retry_until_expect"] == json!(true) => Duration::from_secs(s),
+            _ => Duration::from_millis(200),
+        };
         issued += 1;
         let structured = loop {
             let outcome = client.tools_call(&tool, args.clone()).await;
@@ -228,7 +244,7 @@ async fn run_steps(spec: &Value) -> Trace {
                 Some(why) if Instant::now() >= deadline => {
                     panic!("{name} step {n} `{tool}` (as {who}) failed: {why}\nargs: {args}");
                 }
-                Some(_) => tokio::time::sleep(Duration::from_millis(200)).await,
+                Some(_) => tokio::time::sleep(poll).await,
             }
         };
         calls.push(tool);

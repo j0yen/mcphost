@@ -1,7 +1,7 @@
 //! GENERATED from recipes/webhook-inbox.toml by `cargo xtask recipes` -- do not hand-edit.
 //! PRD-mcphost-recipe-golden-path-tests R4: the `webhook-inbox` recipe's exact calls, in
 //! order, against an in-process `TestServer` with the recipe's fixture routes
-//! mounted; every `expect` must hold and the run must finish under 60 s.
+//! mounted; every `expect` must hold and the run must finish under 90 s.
 
 use crate::rgpt;
 

@@ -1110,6 +1110,178 @@ fn insert_rows_sync(
     })
 }
 
+/// PRD-mcphost-sync-pull-with-change-detection R2: one snapshot row ready to
+/// upsert -- `key` is its `_sync_key`, `hash` its `_sync_hash`, `cells` the
+/// values in the order of the `columns` passed beside it (`None` is null).
+pub struct KeyedRow {
+    pub key: String,
+    pub hash: String,
+    pub cells: Vec<Option<String>>,
+}
+
+/// How [`upsert_rows_sync`] treats rows it does not need to change.
+pub struct UpsertMode<'a> {
+    /// Rows the sync wrote earlier but the snapshot no longer holds are deleted.
+    pub delete_missing: bool,
+    /// Every snapshot row is rewritten and counted as updated (the naive pull).
+    pub force_rewrite: bool,
+    /// The plan's `table_rows_max`.
+    pub rows_max: i64,
+    /// The error for a table that would pass `rows_max` (given its current rows).
+    pub over_quota: &'a dyn Fn(i64) -> AppError,
+}
+
+/// What [`upsert_rows_sync`] wrote.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct UpsertCounts {
+    pub added: i64,
+    pub updated: i64,
+    pub deleted: i64,
+}
+
+/// Names of the two hidden columns a synced table gains; `host.table.schema`
+/// omits them because `schema_json` never lists them.
+const SYNC_KEY_COL: &str = "_sync_key";
+const SYNC_HASH_COL: &str = "_sync_hash";
+
+/// PRD-mcphost-sync-pull-with-change-detection R2: writes only what changed.
+/// Adds the missing text `columns` and the hidden `_sync_key`/`_sync_hash`
+/// columns, then diffs `rows` against the table's rows that carry a
+/// `_sync_key`: unseen keys are inserted, keys whose hash moved are updated in
+/// place, and (with `delete_missing`) keys absent from `rows` are deleted.
+/// Rows a sync did not write (no `_sync_key`) are never touched. One
+/// transaction; a table that would pass `rows_max` fails with `over_quota`.
+pub(crate) fn upsert_rows_sync(
+    conn: &Connection,
+    table: &str,
+    columns: &[String],
+    rows: &[KeyedRow],
+    mode: UpsertMode<'_>,
+) -> Result<UpsertCounts, AppError> {
+    crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
+        let schema = load_schema_sync(conn, table)?;
+        let physical: Vec<String> = {
+            let mut stmt = conn.prepare(&format!("PRAGMA table_info({})", quote_ident(table)))?;
+            stmt.query_map([], |r| r.get::<_, String>(1))?.collect::<rusqlite::Result<_>>()?
+        };
+        for hidden in [SYNC_KEY_COL, SYNC_HASH_COL] {
+            if !physical.iter().any(|c| c == hidden) {
+                conn.execute(&format!("ALTER TABLE {} ADD COLUMN {} TEXT", quote_ident(table), quote_ident(hidden)), [])?;
+            }
+        }
+        conn.execute(
+            &format!(
+                "CREATE INDEX IF NOT EXISTS {} ON {} ({})",
+                quote_ident(&format!("sync_key_{table}")),
+                quote_ident(table),
+                quote_ident(SYNC_KEY_COL)
+            ),
+            [],
+        )?;
+        let mut declared = schema.columns.clone();
+        for col in columns {
+            if declared.contains_key(col) {
+                continue;
+            }
+            if physical.iter().any(|c| c == col) {
+                return Err(AppError::InvalidArgs(format!("column '{col}' clashes with a reserved column")));
+            }
+            conn.execute(&format!("ALTER TABLE {} ADD COLUMN {} TEXT", quote_ident(table), quote_ident(col)), [])?;
+            declared.insert(col.clone(), ColumnType::Text);
+        }
+        if declared.len() != schema.columns.len() {
+            let schema_json = serde_json::to_string(&Value::Object(
+                declared.iter().map(|(c, t)| (c.clone(), json!(t.as_str()))).collect(),
+            ))
+            .map_err(|e| AppError::Internal(format!("schema serialize: {e}")))?;
+            conn.execute(
+                &format!("UPDATE {META_TABLE} SET schema_json = ?2 WHERE name = ?1"),
+                params![table, schema_json],
+            )?;
+        }
+
+        let mut existing: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        {
+            let mut stmt = conn.prepare(&format!(
+                "SELECT {k}, {h} FROM {t} WHERE {k} IS NOT NULL",
+                k = quote_ident(SYNC_KEY_COL),
+                h = quote_ident(SYNC_HASH_COL),
+                t = quote_ident(table)
+            ))?;
+            for row in stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?)))? {
+                let (k, h) = row?;
+                existing.insert(k, h.unwrap_or_default());
+            }
+        }
+        // A key that repeats inside one snapshot keeps its last row.
+        let mut latest: std::collections::HashMap<&str, &KeyedRow> = std::collections::HashMap::new();
+        for row in rows {
+            latest.insert(row.key.as_str(), row);
+        }
+        let added = latest.keys().filter(|k| !existing.contains_key(**k)).count() as i64;
+        let deleted = if mode.delete_missing { existing.keys().filter(|k| !latest.contains_key(k.as_str())).count() as i64 } else { 0 };
+        let total = row_count_sync(conn, table)?;
+        if total + added - deleted > mode.rows_max {
+            return Err((mode.over_quota)(total));
+        }
+
+        let col_list: Vec<String> = columns.iter().map(|c| quote_ident(c)).collect();
+        let insert_sql = format!(
+            "INSERT INTO {} ({}, {}, {}) VALUES ({})",
+            quote_ident(table),
+            col_list.join(", "),
+            quote_ident(SYNC_KEY_COL),
+            quote_ident(SYNC_HASH_COL),
+            (1..=columns.len() + 2).map(|i| format!("?{i}")).collect::<Vec<_>>().join(", ")
+        );
+        let set_list: Vec<String> = col_list.iter().enumerate().map(|(i, c)| format!("{c} = ?{}", i + 1)).collect();
+        let update_sql = format!(
+            "UPDATE {} SET {}, {} = ?{} WHERE {} = ?{}",
+            quote_ident(table),
+            set_list.join(", "),
+            quote_ident(SYNC_HASH_COL),
+            columns.len() + 1,
+            quote_ident(SYNC_KEY_COL),
+            columns.len() + 2
+        );
+        let mut counts = UpsertCounts { deleted, ..UpsertCounts::default() };
+        let mut insert = conn.prepare(&insert_sql)?;
+        let mut update = conn.prepare(&update_sql)?;
+        for row in rows {
+            if latest.get(row.key.as_str()).is_none_or(|l| !std::ptr::eq(*l, row)) {
+                continue;
+            }
+            let mut values: Vec<&dyn rusqlite::ToSql> = row.cells.iter().map(|c| c as &dyn rusqlite::ToSql).collect();
+            match existing.get(&row.key) {
+                None => {
+                    values.push(&row.key);
+                    values.push(&row.hash);
+                    insert.execute(values.as_slice())?;
+                    counts.added += 1;
+                }
+                Some(old) if mode.force_rewrite || *old != row.hash => {
+                    values.push(&row.hash);
+                    values.push(&row.key);
+                    update.execute(values.as_slice())?;
+                    counts.updated += 1;
+                }
+                Some(_) => {}
+            }
+        }
+        if mode.delete_missing {
+            let mut delete = conn.prepare(&format!(
+                "DELETE FROM {} WHERE {} = ?1",
+                quote_ident(table),
+                quote_ident(SYNC_KEY_COL)
+            ))?;
+            for key in existing.keys().filter(|k| !latest.contains_key(k.as_str())) {
+                delete.execute(params![key])?;
+            }
+        }
+        Ok(counts)
+    })
+}
+
 /// requirement 1/3: appends one row (an object) or several (an array of
 /// objects) to a declared table. requirement 4: refuses past the plan's
 /// `table_rows_max` (this table) or `table_bytes_max` (the tenant's whole
@@ -1662,7 +1834,7 @@ pub async fn table_query_diagnose(state: &AppState, tenant: &Tenant, args: &Valu
     };
 
     if !row["diagnosis"].is_null() || !row["hint"].is_null() {
-        return Ok(json!({"log_id": log_id, "diagnosis": row["diagnosis"], "hint": row["hint"]}));
+        return Ok(diagnose_result(log_id, row["diagnosis"].clone().into(), row["hint"].as_str().map(str::to_string)));
     }
 
     // requirement 5: "recomputing them against the current schema if the
@@ -1713,7 +1885,15 @@ pub async fn table_query_diagnose(state: &AppState, tenant: &Tenant, args: &Valu
     })
     .await?;
 
-    Ok(json!({"log_id": log_id, "diagnosis": diagnosis, "hint": hint}))
+    Ok(diagnose_result(log_id, diagnosis, hint))
+}
+
+/// The `host.table.query_diagnose` answer. `diagnosis` and `hint` are required
+/// by the advertised `outputSchema` (an object, a string), so "nothing to
+/// diagnose" is an empty `identifiers` list and an empty hint, never `null`.
+fn diagnose_result(log_id: i64, diagnosis: Option<Value>, hint: Option<String>) -> Value {
+    let diagnosis = diagnosis.filter(|d| !d.is_null()).unwrap_or_else(|| json!({"identifiers": []}));
+    json!({"log_id": log_id, "diagnosis": diagnosis, "hint": hint.unwrap_or_default()})
 }
 
 /// PRD-mcphost-query-diagnosis P0 requirement 6/AC6: `host.table.query_stats(window_s?)`

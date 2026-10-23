@@ -227,6 +227,12 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // PRD-mcphost-dev-emulator added its own "dev-parity-live" lane (routes
     // scripts/dev-parity-prod.sh to the demu_ac proof tests) -- an intended
     // addition since the baseline.
+    // hotfix signup-source-descriptor added its own "signup-args-doc-check"
+    // lane (routes scripts/signup-args-doc-check.sh to its check mode) -- an
+    // intended addition since the baseline.
+    // PRD-mcphost-import-dry-run-live-real-export added its own
+    // "osrx-live-script" lane (routes scripts/live/osreach_import_reach.py to
+    // the osrx_ac proof tests) -- an intended addition since the baseline.
     assert_eq!(
         added,
         vec![
@@ -255,6 +261,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "loop-config",
             "oauthconf-data",
             "openapi-doc",
+            "osrx-live-script",
             "output-schemas",
             "plugin",
             "recipes",
@@ -263,6 +270,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "sandbox-api-docs",
             "sdk-python",
             "sharing-docs",
+            "signup-args-doc-check",
             "spec-fields-doc-check",
             "tool-naming",
             "vendor",
@@ -270,7 +278,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
         ],
         "only admin-schemas, blobguard-fixtures, capabilities-wire-check, checkcompat-race-soak, child-proc-lint, contracts, docs-links, docsearch-fixtures, \
          event-trigger-self-test-fixtures, example-manifest, examples, flake-lint, heal-config, heal-docs, host-pressure-doc-check, launch-docs, \
-         loop-config, oauthconf-data, output-schemas, plugin, registry-manifest, required-checks, sandbox-api-docs, sdk-python, sharing-docs, \
+         loop-config, oauthconf-data, osrx-live-script, output-schemas, plugin, registry-manifest, required-checks, sandbox-api-docs, sdk-python, sharing-docs, \
          spec-fields-doc-check, tool-naming, vendor, and wasm-fixtures may have been added since \
          {BASELINE_REV}"
     );

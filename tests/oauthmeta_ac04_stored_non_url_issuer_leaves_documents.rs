@@ -7,28 +7,6 @@
 use crate::common;
 use common::{TestServer, signup};
 use serde_json::{Value, json};
-use std::sync::{Arc, Mutex};
-use tracing_subscriber::fmt::MakeWriter;
-
-#[derive(Clone, Default)]
-struct BufWriter(Arc<Mutex<Vec<u8>>>);
-
-impl std::io::Write for BufWriter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().expect("lock buf").extend_from_slice(buf);
-        Ok(buf.len())
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-impl<'a> MakeWriter<'a> for BufWriter {
-    type Writer = BufWriter;
-    fn make_writer(&'a self) -> Self::Writer {
-        self.clone()
-    }
-}
 
 async fn servers(url: String) -> Value {
     let body: Value = reqwest::get(url).await.expect("GET well-known").json().await.expect("parse JSON");
@@ -55,9 +33,7 @@ async fn stored_non_url_issuer_leaves_both_documents_and_is_warned_about_once() 
         .await
         .expect("insert legacy issuer row");
 
-    let buf = BufWriter::default();
-    let subscriber = tracing_subscriber::fmt().json().with_writer(buf.clone()).with_target(false).finish();
-    let _guard = tracing::subscriber::set_default(subscriber);
+    let buf = common::tracecap::capture_json();
 
     // What server startup does, once per process.
     let rejected = mcphost::oauth::warn_invalid_stored_issuers(&server.state).await.expect("startup scan");
@@ -69,10 +45,10 @@ async fn stored_non_url_issuer_leaves_both_documents_and_is_warned_about_once() 
     assert_eq!(root, json!([server.base_url]), "root document must not list the stored non-URL issuer");
     assert_eq!(tenant_doc, json!([server.base_url]), "tenant document must not list it either");
 
-    let captured = String::from_utf8(buf.0.lock().expect("lock buf").clone()).expect("captured log is UTF-8");
-    let warnings: Vec<Value> = captured
-        .lines()
-        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+    let captured = buf.text();
+    let warnings: Vec<Value> = buf
+        .json_lines()
+        .into_iter()
         .filter(|v| v["fields"]["code"] == json!("issuer_url_invalid"))
         .collect();
     assert_eq!(warnings.len(), 1, "exactly one issuer_url_invalid warning expected: {captured}");

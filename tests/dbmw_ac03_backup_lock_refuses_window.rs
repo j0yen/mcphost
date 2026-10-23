@@ -59,9 +59,8 @@ async fn fresh_lock_refuses_both_actions_and_retries_in_an_hour() {
 
 #[test]
 fn stale_lock_is_ignored_and_the_actions_run() {
-    // A sync test with its own runtime, so `capture_tracing` (which serializes
-    // its interest-cache rebuild against the other tracing tests in this
-    // binary) can wrap the whole window.
+    // A sync test with its own runtime, so `capture_tracing` (a thread-keyed
+    // capture) can wrap the whole window.
     let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("runtime");
     let (state, dir) = rt.block_on(common::bare_app_state());
     make_lock(&dir.0, Duration::from_secs(3 * 3600));

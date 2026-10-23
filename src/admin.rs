@@ -2130,11 +2130,17 @@ pub async fn funnel(state: &AppState, args: &Value) -> Result<Value, AppError> {
         .collect();
     // PRD-mcphost-funnel-by-surface-nightly-probe R3: same shape as
     // `mcphost funnel --json`'s `by_surface` / `probe`.
-    let (by_surface, probe) = crate::funnel::surface_report(&state.db, crate::state::now_unix(), days).await?;
+    let (by_surface, probe, synthetic_excluded) =
+        crate::funnel::surface_report(&state.db, crate::state::now_unix(), days).await?;
     let obj = response.as_object_mut().expect("response is always an object");
     obj.insert("install_link_clicks".to_string(), Value::Object(install_link_clicks));
     obj.insert("by_surface".to_string(), by_surface);
     obj.insert("probe".to_string(), probe);
+    obj.insert("synthetic_excluded".to_string(), json!(synthetic_excluded));
+    let (recipe_attempts, recipe_synthetic) =
+        crate::funnel::recipe_attempts_7d(&state.db, crate::state::now_unix()).await?;
+    obj.insert("recipe_attempts_7d".to_string(), recipe_attempts);
+    obj.insert("recipe_attempts_synthetic_7d".to_string(), json!(recipe_synthetic));
     if let Some(sc) = &source_class {
         obj.insert("source_class".to_string(), json!(sc));
     }
