@@ -53,7 +53,7 @@ fn the_toml_lists_the_aggregator_one_context_per_sandbox_shard_and_no_core_shard
 #[test]
 fn the_static_and_shard_jobs_carry_the_exclude_marker() {
     let jobs = support::jobs(&support::workflow());
-    for name in ["core-static", "core"] {
+    for name in ["core-static", "core-contract", "core"] {
         let (_, body) = jobs
             .iter()
             .find(|(n, _)| n == name)
