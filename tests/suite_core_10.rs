@@ -23,8 +23,6 @@ mod oauthclient;
 mod promptkind;
 #[path = "support/pysdk.rs"]
 mod pysdk;
-#[path = "support/rgpt.rs"]
-mod rgpt;
 #[path = "support/serve.rs"]
 mod serve;
 
@@ -68,6 +66,20 @@ mod mcphost_llms_install_doc_ac04_linked_from_every_entry_point;
 mod mcphost_llms_install_doc_ac06_install_doc_funnel_event;
 #[path = "mcphost-llms-install-doc_ac07_install_surfaces_json.rs"]
 mod mcphost_llms_install_doc_ac07_install_surfaces_json;
+#[path = "mcphost-output-envelope-fields-generated_ac01_wrapper_keys_equal_set.rs"]
+mod mcphost_output_envelope_fields_generated_ac01_wrapper_keys_equal_set;
+#[path = "mcphost-output-envelope-fields-generated_ac02_no_literal_envelope_inserts.rs"]
+mod mcphost_output_envelope_fields_generated_ac02_no_literal_envelope_inserts;
+#[path = "mcphost-output-envelope-fields-generated_ac03_committed_contract_carries_set.rs"]
+mod mcphost_output_envelope_fields_generated_ac03_committed_contract_carries_set;
+#[path = "mcphost-output-envelope-fields-generated_ac04_extra_key_fixture_fails.rs"]
+mod mcphost_output_envelope_fields_generated_ac04_extra_key_fixture_fails;
+#[path = "mcphost-output-envelope-fields-generated_ac05_check_names_missing_member.rs"]
+mod mcphost_output_envelope_fields_generated_ac05_check_names_missing_member;
+#[path = "mcphost-output-envelope-fields-generated_ac06_bridge_strip_named_function.rs"]
+mod mcphost_output_envelope_fields_generated_ac06_bridge_strip_named_function;
+#[path = "mcphost-output-envelope-fields-generated_ac07_served_contract_carries_set.rs"]
+mod mcphost_output_envelope_fields_generated_ac07_served_contract_carries_set;
 #[path = "mcphost_admin_schema_contract_ac01_tenants_schema_version.rs"]
 mod mcphost_admin_schema_contract_ac01_tenants_schema_version;
 #[path = "mcphost_admin_schema_contract_ac02_listings_validate_v1_schema.rs"]
@@ -1008,33 +1020,3 @@ mod regone_ac05_no_publish_without_ok_makes_no_write;
 mod regone_ac06_one_search_url_in_docs;
 #[path = "regone_ac07_live_json.rs"]
 mod regone_ac07_live_json;
-#[path = "rgpt_ac01_recipes_generator_idempotent.rs"]
-mod rgpt_ac01_recipes_generator_idempotent;
-#[path = "rgpt_ac02_drift_names_file_recipe_and_line.rs"]
-mod rgpt_ac02_drift_names_file_recipe_and_line;
-#[path = "rgpt_ac03_unknown_tool_or_arg_exits_2.rs"]
-mod rgpt_ac03_unknown_tool_or_arg_exits_2;
-#[path = "rgpt_ac05_every_golden_test_runs_its_calls_in_order.rs"]
-mod rgpt_ac05_every_golden_test_runs_its_calls_in_order;
-#[path = "rgpt_ac06_task_sync_check_flags_wall_budget_drift.rs"]
-mod rgpt_ac06_task_sync_check_flags_wall_budget_drift;
-#[path = "rgpt_ac07_ci_job_fails_on_the_broken_recipe_only.rs"]
-mod rgpt_ac07_ci_job_fails_on_the_broken_recipe_only;
-#[path = "rgpt_chart_in_a_minute_golden_path.rs"]
-mod rgpt_chart_in_a_minute_golden_path;
-#[path = "rgpt_data_sync_golden_path.rs"]
-mod rgpt_data_sync_golden_path;
-#[path = "rgpt_database_in_a_minute_golden_path.rs"]
-mod rgpt_database_in_a_minute_golden_path;
-#[path = "rgpt_share_a_tool_golden_path.rs"]
-mod rgpt_share_a_tool_golden_path;
-#[path = "rgpt_uptime_probes_golden_path.rs"]
-mod rgpt_uptime_probes_golden_path;
-#[path = "rlfe_ac01_unknown_status_refused_with_set.rs"]
-mod rlfe_ac01_unknown_status_refused_with_set;
-#[path = "rlfe_ac02_trigger_and_verdict_refused_before_handler.rs"]
-mod rlfe_ac02_trigger_and_verdict_refused_before_handler;
-#[path = "rlfe_ac03_every_value_filters_exactly_its_rows.rs"]
-mod rlfe_ac03_every_value_filters_exactly_its_rows;
-#[path = "rlfe_ac04_descriptor_enums_and_prose_set_drift.rs"]
-mod rlfe_ac04_descriptor_enums_and_prose_set_drift;

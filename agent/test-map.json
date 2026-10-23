@@ -2402,6 +2402,17 @@
       "AC6": "deferred: Live (prod: python mcp client on a disposable synthorg tenant; evidence ~/.local/state/mcphost-live/osmatch-ac06.json)",
       "AC7": "deferred: Live (prod: claude -p stream-json on orch; evidence ~/.local/state/mcphost-live/osmatch-ac07-results.jsonl)",
       "AC8": "tests/osmatch_ac08_sample_rows.rs"
+    },
+    "mcphost-output-envelope-fields-generated": {
+      "_prd": "PRD-mcphost-output-envelope-fields-generated.md (test_prefix: mcphost-output-envelope-fields-generated)",
+      "AC1": "tests/mcphost-output-envelope-fields-generated_ac01_wrapper_keys_equal_set.rs",
+      "AC2": "tests/mcphost-output-envelope-fields-generated_ac02_no_literal_envelope_inserts.rs",
+      "AC3": "tests/mcphost-output-envelope-fields-generated_ac03_committed_contract_carries_set.rs",
+      "AC4": "tests/mcphost-output-envelope-fields-generated_ac04_extra_key_fixture_fails.rs",
+      "AC5": "tests/mcphost-output-envelope-fields-generated_ac05_check_names_missing_member.rs",
+      "AC6": "tests/mcphost-output-envelope-fields-generated_ac06_bridge_strip_named_function.rs",
+      "AC7": "tests/mcphost-output-envelope-fields-generated_ac07_served_contract_carries_set.rs",
+      "AC8": "deferred: Live (prod curl after deploy; evidence: curl -sS https://mcphost.dev/contract.json | jq -e ...)"
     }
   }
 }

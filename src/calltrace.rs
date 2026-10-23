@@ -228,16 +228,20 @@ pub fn attach_call_id(result: Result<Value, crate::errors::AppError>, id: i64) -
     use crate::errors::AppError;
     match result {
         Ok(Value::Object(mut map)) => {
-            map.insert("call_id".to_string(), json!(id.to_string()));
+            map.insert(crate::envelope::CALL_ID_KEY.to_string(), json!(id.to_string()));
             Ok(Value::Object(map))
         }
         Err(AppError::Structured { code, message, data }) => {
             let data = match data {
                 Value::Object(mut map) => {
-                    map.insert("call_id".to_string(), json!(id.to_string()));
+                    map.insert(crate::envelope::CALL_ID_KEY.to_string(), json!(id.to_string()));
                     Value::Object(map)
                 }
-                Value::Null => json!({"call_id": id.to_string()}),
+                Value::Null => {
+                    let mut map = serde_json::Map::new();
+                    map.insert(crate::envelope::CALL_ID_KEY.to_string(), json!(id.to_string()));
+                    Value::Object(map)
+                }
                 other => other,
             };
             Err(AppError::Structured { code, message, data })
