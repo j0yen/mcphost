@@ -3248,6 +3248,21 @@
         ],
         "type": "object"
       },
+      "output_reach": {
+        "properties": {
+          "unreached": {
+            "type": "integer"
+          },
+          "unreached_cap": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "unreached",
+          "unreached_cap"
+        ],
+        "type": "object"
+      },
       "window": {
         "properties": {
           "calls": {

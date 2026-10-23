@@ -1289,6 +1289,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `hint`: string | null
 - `next`: string | null
 - `oauth_issuers`: object | null
+- `output_reach`: object | null
 - `window`: object (always)
 
 **Arguments**

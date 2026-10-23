@@ -131,7 +131,10 @@ fn live_required_is_the_root_required_of_the_cited_tree_for_every_tool() {
 
 #[test]
 fn a_tool_without_variant_or_entry_is_byte_identical_and_a_variant_tool_keeps_its_root() {
-    let edited: BTreeSet<&str> = observational_edits().entries.iter().map(|e| e.tool.as_str()).collect();
+    let mut edited: BTreeSet<&str> = observational_edits().entries.iter().map(|e| e.tool.as_str()).collect();
+    // PRD-mcphost-output-schema-reach-sweep-live R5: `host.doctor` gained the
+    // optional `output_reach` block after the cited tree.
+    edited.insert("host.doctor");
     let (mut untouched, mut varianted) = (0, 0);
     let mut problems = Vec::new();
     for (tool, old) in cited() {
