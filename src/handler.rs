@@ -7204,21 +7204,21 @@ impl StateBackend for CountingStateBackend {
 /// The stack, in bytes, every forwarded dotted host verb must complete its real
 /// `host.tool_call` / `host.tool_test` call in on a debug build (profile and
 /// test thread as CI's `cargo test`). GENERATED MEASUREMENT: the measured
-/// maximum over all 230 forwardable ids is 983,040 B (every id measures it:
+/// maximum over all 230 forwardable ids is 987,136 B (every id measures it:
 /// `test:host.trigger.set`, `call:host.whoami`,
 /// `call:host.webhook_inbox.create`, `call:host.vault.status`, ...,
-/// `scripts/fwd-stack-measure.sh all`, 2026-10-18 (re-measured 2026-10-20 with the sub-key `acting_for` lineage on the call path), after the dispatch table
+/// `scripts/fwd-stack-measure.sh all`, 2026-10-18 (re-measured 2026-10-20 with the sub-key `acting_for` lineage on the call path, 2026-10-21 with the origin classification on it), after the dispatch table
 /// (`src/dispatch_table.rs`) and the boxed `call_tool_inner` helpers; the shared
 /// level rose from 823,296 B on 10-17 with main's own frames, chiefly rmcp's
 /// `handle_request` poll frame, 48 -> 137 KiB, while `host.doctor` stopped
 /// compiling its error-envelope report on the caller's stack) and the
-/// budget is that + 25 % = 1,228,800 B, so CI's 2 MiB test thread keeps
+/// budget is that + 25 % = 1,233,920 B, so CI's 2 MiB test thread keeps
 /// 40 % of it free and the next fat frame fails
 /// `tests/verbfwd_ac08_forward_stack_budget.rs`, naming the verb, instead of SIGABRTing a shard (run 326 `verbfwd_ac01`, run
 /// 953; both 10-17, both `has overflowed its stack`). The boundary is
 /// `dispatch_tenant_tool` / `forward_host_verb`, where a dotted verb re-enters
 /// the dispatcher. Re-measure and tighten as the dispatch frames shrink.
-pub const FORWARD_STACK_BUDGET: usize = 1_228_800;
+pub const FORWARD_STACK_BUDGET: usize = 1_233_920;
 
 /// The validator's registration for what `host.spec.test` owns (R3): more
 /// than `MAX_TEST_INVOCATIONS` invocations is refused `too_many_invocations`
@@ -12602,6 +12602,33 @@ impl McpHostHandler {
             tracing::warn!(code = err.code(), tenant = %tenant.namespace, tool = %body_name, "call refused: tenant banned");
             return Err(err.into_error_data_at(Some(&self.state.public_url)));
         }
+        // PRD-mcphost-external-class-positive-evidence: an authenticated call
+        // is where a return (or fleet/stamped history) is observed. Best
+        // effort, and a no-op for any tenant that is neither `unattributed`
+        // (promotable) nor `synthetic` (refusals are counted).
+        if let Auth::Tenant(tenant, _) = &auth
+            && matches!(tenant.origin.as_str(), "unattributed" | "synthetic")
+            && let Some(created_unix) = tenant.created_unix
+        {
+            let fleet_or_stamped = crate::state::classify_source_class(
+                &source,
+                synthetic_header(parts).is_some(),
+                "",
+                None,
+                &self.state.fleet_ips,
+            )
+            .is_synthetic();
+            let ip_hash =
+                if fleet_or_stamped { String::new() } else { crate::oauth_policy::ip_hash(&self.state, &source) };
+            if let Err(e) = self
+                .state
+                .db
+                .observe_call_origin(tenant.id, &tenant.origin, created_unix, now_unix(), fleet_or_stamped, ip_hash)
+                .await
+            {
+                tracing::warn!(error = %e, tenant = %tenant.namespace, "failed to observe call origin");
+            }
+        }
         // PRD-mcphost-end-user-identity requirement 1/2: resolved once,
         // before dispatch, from either the OAuth bearer this call's `auth`
         // already carries (requirement 1) or a verified `end_user_assertion`
@@ -13310,7 +13337,7 @@ impl McpHostHandler {
                     // "exactly once ever", not just "once per call".
                     if (body_name == "host.tool_publish" || body_name == "host.tool.publish")
                         && tenant.owner_verified_at.is_none()
-                        && tenant.origin == "external"
+                        && matches!(tenant.origin.as_str(), "external" | "unattributed")
                         && self
                             .state
                             .db
