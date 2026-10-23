@@ -29,14 +29,23 @@ pub const DEFAULT_CONTRACT_PATH: &str = "contracts/host-tools.v1.json";
 /// [`DEFAULT_CONTRACT_PATH`].
 pub const DEFAULT_DEPRECATIONS_PATH: &str = "contracts/deprecations.json";
 
-/// requirement 1's "output envelope fields": the field every `host.*`/
-/// `billing.*` result MAY carry, added by requirement 3 (AC4) when the
-/// call used a deprecated field -- see
-/// [`deprecation_notices`]/`handler::call_tool`. Not per-tool (every
-/// result is an otherwise-unstructured JSON object; this is the one
-/// cross-cutting envelope field this PRD adds), so it's recorded once at
-/// the top level of the dump rather than repeated per tool.
-pub const OUTPUT_ENVELOPE_FIELDS: &[&str] = &["deprecations"];
+/// requirement 1's "output envelope fields": every top-level key a
+/// cross-tool wrapper MAY add to a result ("may carry", not "always
+/// carries"). Generated from the consts in [`crate::envelope`], the module
+/// every wrapper insert site goes through; recorded once at the top level of
+/// the dump rather than repeated per tool.
+pub use crate::envelope::OUTPUT_ENVELOPE_FIELDS;
+
+/// The [`OUTPUT_ENVELOPE_FIELDS`] members a committed contract's
+/// `output_envelope_fields` lacks, for `contract dump --check` to name.
+pub fn missing_envelope_fields(committed: &Value) -> Vec<&'static str> {
+    let have: Vec<&str> = committed
+        .get("output_envelope_fields")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    OUTPUT_ENVELOPE_FIELDS.iter().copied().filter(|m| !have.contains(m)).collect()
+}
 
 /// A `contracts/deprecations.json` entry (requirement 2): `path` is a
 /// dotted `<tool>` (whole-tool deprecation) or `<tool>.<field>`
