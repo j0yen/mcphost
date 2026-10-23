@@ -2396,6 +2396,16 @@
       "AC1": "tests/actforlive_ac01_control_verbs_uncounted.rs",
       "AC2": "deferred: Live (prod receipt; evidence path ~/.cache/mcphost-live/actfor-live-proof.json)"
     },
+    "imos": {
+      "AC1": "tests/imos_ac01_precheck_before_mint.rs",
+      "AC7": "deferred: Live (orch raw mcp client vs prod; evidence: ~/.local/state/mcphost-live/imos-ac07.json)",
+      "AC8": "deferred: Live (orch keyless client vs prod; evidence: ~/.local/state/mcphost-live/imos-ac08.json)",
+      "AC2": "tests/imos_ac02_precheck_is_the_only_door.rs",
+      "AC3": "tests/imos_ac03_rollback_on_failure.rs",
+      "AC4": "tests/imos_ac04_one_tenant_per_peer.rs",
+      "AC5": "tests/imos_ac05_peer_rule_exemptions.rs",
+      "AC6": "tests/imos_ac06_funnel_counts.rs"
+    },
     "txnhelp": {
       "_prd": "PRD-mcphost-transactions-only-via-helper.md (test_prefix: txnhelp)",
       "AC1": "tests/txnhelp_ac01_lint_zero.rs",

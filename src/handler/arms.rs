@@ -46,6 +46,8 @@ impl McpHostHandler {
     /// Verbs `dispatch_tenant_tool_inner` serves that are not host descriptors in
     /// the registry's canonical dotted set: `billing.*` and the conditionally
     /// listed `host.tool_from_description`.
+    ///
+    /// The names it serves are [`UNADVERTISED_ARMS`], which `precheck` reads.
     pub(crate) fn arm_unadvertised<'a>(&'a self, c: ArmCtx<'a>) -> Option<ArmFut<'a>> {
         let name = c.name;
         match name {
