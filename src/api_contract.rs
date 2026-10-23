@@ -424,6 +424,7 @@ pub fn dump_contract(kinds: &KindRegistry) -> Value {
         "contract_version": CONTRACT_VERSION,
         "kinds": kind_contracts,
         "output_envelope_fields": OUTPUT_ENVELOPE_FIELDS,
+        "resources": crate::resources::contract_section(),
         "tools": entries,
     });
     // A `test-support` build compiles the test-only `testprov` provider into
@@ -459,6 +460,17 @@ pub fn dump_contract_bytes(kinds: &KindRegistry) -> Vec<u8> {
 /// [`dump_contract_bytes`].
 pub fn contract_sha(kinds: &KindRegistry) -> String {
     sha_hex(&dump_contract_bytes(kinds))
+}
+
+/// The top-level keys whose value differs between `committed` and `live`
+/// (sorted), so `contract dump --check` can name a drifted section such as
+/// `resources` instead of only reporting two shas.
+pub fn drifted_top_level_keys(committed: &Value, live: &Value) -> Vec<String> {
+    let (Some(old), Some(new)) = (committed.as_object(), live.as_object()) else {
+        return Vec::new();
+    };
+    let keys: std::collections::BTreeSet<&String> = old.keys().chain(new.keys()).collect();
+    keys.into_iter().filter(|k| old.get(*k) != new.get(*k)).cloned().collect()
 }
 
 pub fn sha_hex(bytes: &[u8]) -> String {

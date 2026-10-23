@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.114.0 — 2026-10-23
+
+Released by wm-build land: loop: mcphost-resource-listing-shape-in-contract.
+
 ## v0.113.0 — 2026-10-23
 
 Released by wm-build land: loop: mcphost-output-envelope-fields-generated.
