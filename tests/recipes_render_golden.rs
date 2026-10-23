@@ -109,14 +109,19 @@ fn deadline_of(r: &recipes::Recipe) -> u64 {
 #[test]
 fn recipes_worst_case_fits_the_rgpt_cap() {
     let rgpt = std::fs::read_to_string(repo().join("tests/support/rgpt.rs")).expect("read rgpt.rs");
-    let secs: u64 = rgpt
-        .lines()
-        .find(|l| l.contains("pub const MAX_RECIPE_WALL"))
-        .and_then(|l| l.split("from_secs(").nth(1))
-        .and_then(|t| t.split(')').next())
-        .and_then(|t| t.trim().parse().ok())
-        .expect("MAX_RECIPE_WALL = Duration::from_secs(N) in tests/support/rgpt.rs");
-    assert_eq!(secs, recipes::RGPT_MAX_RECIPE_WALL_S, "RGPT_MAX_RECIPE_WALL_S drifted from tests/support/rgpt.rs");
+    let decl_at = rgpt.find("pub const MAX_RECIPE_WALL").expect("MAX_RECIPE_WALL in tests/support/rgpt.rs");
+    let decl = &rgpt[decl_at..decl_at + rgpt[decl_at..].find(");").expect("end of MAX_RECIPE_WALL")];
+    for name in [
+        "MAX_POLLED_STEPS",
+        "SCHEDULER_TICK",
+        "SYNC_FETCH_ALLOWANCE_S",
+        "RETRY_UNTIL_EXPECT_POLL_S",
+        "RECIPE_NON_POLL_STEP_S",
+        "RECIPE_WALL_MARGIN_S",
+    ] {
+        assert!(decl.contains(name), "MAX_RECIPE_WALL must be derived from {name}, not a literal: {decl}");
+    }
+    let secs = recipes::RGPT_MAX_RECIPE_WALL_S;
 
     let all = recipes::load_all(repo()).expect("load recipes");
     let polled: Vec<_> = all.iter().filter(|r| r.steps.iter().any(|s| s.retry_until_expect)).collect();
@@ -124,7 +129,8 @@ fn recipes_worst_case_fits_the_rgpt_cap() {
     for r in polled {
         let worst = recipes::retry_until_expect_worst_case_s(r);
         let retry_s = deadline_of(r);
-        assert_eq!(worst, retry_s + recipes::RETRY_UNTIL_EXPECT_POLL_S + recipes::RECIPE_NON_POLL_STEP_S, "{}", r.name);
+        let polls = r.steps.iter().filter(|s| s.retry_until_expect).count() as u64;
+        assert_eq!(worst, polls * (retry_s + recipes::RETRY_UNTIL_EXPECT_POLL_S) + recipes::RECIPE_NON_POLL_STEP_S, "{}", r.name);
         assert!(
             worst + recipes::RECIPE_WALL_MARGIN_S <= secs,
             "recipe {}: worst case {worst} s (retry_s {retry_s} + poll {} + other steps {}) is within {} s of the {secs} s rgpt cap",

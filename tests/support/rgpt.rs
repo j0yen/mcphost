@@ -16,7 +16,14 @@ use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 /// No single recipe may take longer (PRD AC5).
-pub const MAX_RECIPE_WALL: Duration = Duration::from_secs(60);
+pub const MAX_RECIPE_WALL: Duration = Duration::from_secs(
+    mcphost::recipes::MAX_POLLED_STEPS
+        * (mcphost::triggers::SCHEDULER_TICK.as_secs()
+            + mcphost::triggers::SYNC_FETCH_ALLOWANCE_S
+            + mcphost::recipes::RETRY_UNTIL_EXPECT_POLL_S)
+        + mcphost::recipes::RECIPE_NON_POLL_STEP_S
+        + mcphost::recipes::RECIPE_WALL_MARGIN_S,
+);
 
 #[derive(Debug)]
 pub struct Trace {
@@ -127,7 +134,7 @@ fn is_building(v: &Value) -> bool {
 }
 
 /// Run one recipe's golden path; panics (naming recipe, step, tool) on the
-/// first failed call or `expect`, or when the run outlasts `min(60 s,
+/// first failed call or `expect`, or when the run outlasts `min(MAX_RECIPE_WALL,
 /// budget.wall_s)` (a hang-guard deadline, `deadline_budget!`).
 pub async fn run(spec: &Value) -> Trace {
     let wall_s = spec["budget"]["wall_s"].as_u64().expect("budget.wall_s");

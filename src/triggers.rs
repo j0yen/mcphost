@@ -31,7 +31,13 @@ use crate::state::{AppState, new_ulid, now_unix};
 /// 30s comfortably keeps firing lateness under the success metric's p95
 /// 45s bound without polling any faster than the thing it's polling for
 /// can even change.
-const SCHEDULER_TICK: Duration = Duration::from_secs(30);
+pub const SCHEDULER_TICK: Duration = Duration::from_secs(30);
+
+/// Seconds a tick-claimed sync fetch may take after the tick that claims it
+/// (run 484's receipt started 24 s after `run_now`: one tick plus the fetch).
+/// A recipe step that `awaits_tick` must poll for at least
+/// `SCHEDULER_TICK + SYNC_FETCH_ALLOWANCE_S`.
+pub const SYNC_FETCH_ALLOWANCE_S: u64 = 10;
 
 /// P0 requirement 5: `/healthz`'s `scheduler_last_tick_unix` -- the
 /// scheduler's own liveness, read the same way [`crate::runs::RunsRegistry`]

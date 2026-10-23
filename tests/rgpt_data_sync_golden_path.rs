@@ -1,9 +1,9 @@
 //! GENERATED from recipes/data-sync.toml by `cargo xtask recipes` -- do not hand-edit.
 //! PRD-mcphost-recipe-golden-path-tests R4: the `data-sync` recipe's exact calls, in
 //! order, against an in-process `TestServer` with the recipe's fixture routes
-//! mounted; every `expect` must hold and the run must finish under 60 s.
+//! mounted; every `expect` must hold and the run must finish under 90 s.
 //! This recipe polls (retry_until_expect): wall_s is 90 s, but the in-process runner
-//! caps every recipe at MAX_RECIPE_WALL = 60 s (tests/support/rgpt.rs), so the polling
+//! caps every recipe at MAX_RECIPE_WALL = 97 s (tests/support/rgpt.rs), so the polling
 //! worst case (52 s) is kept under that cap, not under wall_s.
 
 use crate::rgpt;

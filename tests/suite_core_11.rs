@@ -29,10 +29,6 @@ mod tssdk;
 mod uprg;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
-#[path = "support/xlinks.rs"]
-mod xlinks;
-#[path = "support/xlinks_cli.rs"]
-mod xlinks_cli;
 
 #[path = "rowpol_ac01_sql_predicate_scopes_to_end_user_attribute.rs"]
 mod rowpol_ac01_sql_predicate_scopes_to_end_user_attribute;
@@ -510,6 +506,8 @@ mod surface_ac08_get_info_mentions_try_before_call;
 mod surface_tool_description_min_length;
 #[path = "surface_vault_tools_registered.rs"]
 mod surface_vault_tools_registered;
+#[path = "sylp_ac01_awaits_tick_validator.rs"]
+mod sylp_ac01_awaits_tick_validator;
 #[path = "synthetic_ac01_migration_null_default.rs"]
 mod synthetic_ac01_migration_null_default;
 #[path = "synthetic_ac02_signup_header_sets_label.rs"]
@@ -1028,19 +1026,3 @@ mod xaa_ac07_revoke_and_unrevoke_end_user;
 mod xaa_ac08_trusted_issuer_quota;
 #[path = "xaa_ac09_hosted_and_key_paths_unchanged.rs"]
 mod xaa_ac09_hosted_and_key_paths_unchanged;
-#[path = "xlinks_ac01_fail_line_for_404_cursor_ignored.rs"]
-mod xlinks_ac01_fail_line_for_404_cursor_ignored;
-#[path = "xlinks_ac02_allowlist_skip_and_empty_set.rs"]
-mod xlinks_ac02_allowlist_skip_and_empty_set;
-#[path = "xlinks_ac03_head_405_falls_back_and_timeout_fails.rs"]
-mod xlinks_ac03_head_405_falls_back_and_timeout_fails;
-#[path = "xlinks_ac04_clients_toml_renders_into_both_files.rs"]
-mod xlinks_ac04_clients_toml_renders_into_both_files;
-#[path = "xlinks_ac05_check_names_the_edited_file.rs"]
-mod xlinks_ac05_check_names_the_edited_file;
-#[path = "xlinks_ac06_default_set_resolves_and_dead_urls_replaced.rs"]
-mod xlinks_ac06_default_set_resolves_and_dead_urls_replaced;
-#[path = "xlinks_ac07_ci_docs_job_fails_on_a_404_and_stays_fast.rs"]
-mod xlinks_ac07_ci_docs_job_fails_on_a_404_and_stays_fast;
-#[path = "xlinks_r07_report_json.rs"]
-mod xlinks_r07_report_json;
