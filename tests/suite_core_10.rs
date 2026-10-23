@@ -28,6 +28,16 @@ mod rgpt;
 #[path = "support/serve.rs"]
 mod serve;
 
+#[path = "mcphost-admin-funnel-real-surface-recipe-counter_ac01_synthetic_excluded_from_surface.rs"]
+mod mcphost_admin_funnel_real_surface_recipe_counter_ac01_synthetic_excluded_from_surface;
+#[path = "mcphost-admin-funnel-real-surface-recipe-counter_ac02_first_own_call_cell.rs"]
+mod mcphost_admin_funnel_real_surface_recipe_counter_ac02_first_own_call_cell;
+#[path = "mcphost-admin-funnel-real-surface-recipe-counter_ac03_stage_and_recipe_keys_generated.rs"]
+mod mcphost_admin_funnel_real_surface_recipe_counter_ac03_stage_and_recipe_keys_generated;
+#[path = "mcphost-admin-funnel-real-surface-recipe-counter_ac04_recipe_uses_recorded.rs"]
+mod mcphost_admin_funnel_real_surface_recipe_counter_ac04_recipe_uses_recorded;
+#[path = "mcphost-admin-funnel-real-surface-recipe-counter_ac05_recipe_attempts_7d.rs"]
+mod mcphost_admin_funnel_real_surface_recipe_counter_ac05_recipe_attempts_7d;
 #[path = "mcphost-chatgpt-submission-pack_ac01_pack_validates_against_schema.rs"]
 mod mcphost_chatgpt_submission_pack_ac01_pack_validates_against_schema;
 #[path = "mcphost-chatgpt-submission-pack_ac02_check_detects_drift.rs"]

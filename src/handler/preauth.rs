@@ -28,6 +28,9 @@ impl McpHostHandler {
                 let path_url_secret = url_path_secret(parts);
                 match control::quickstart(&self.state, Some(tenant), args, path_url_secret) {
                     Ok(mut result) => {
+                        if let Some(recipe) = control::quickstart_alias_recipe(&result) {
+                            control::record_recipe_use(&self.state, tenant.id, recipe, "quickstart").await;
+                        }
                         // PRD-mcphost-quickstart-by-client R3/R6: the
                         // `client` block for the surface asking, rendered
                         // for the caller's own personal URL when this call

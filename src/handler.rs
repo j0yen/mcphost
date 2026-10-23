@@ -6007,11 +6007,18 @@ fn admin_tools_raw() -> Vec<Tool> {
         // are the four `admin::funnel` reads.
         Tool::new(
             "admin.funnel",
-            "Activation funnel for every tenant that signed up in the trailing days (default 7): \
-             per-stage counts, shares and medians, signups and signups_human, the breakdown by \
-             source and by origin, upgrades by trigger, install-link clicks and the by-surface \
-             probe report. Narrow it by source_class or signup_source, or split organic from \
-             invite-born tenants with invited, which also adds the invite k-factor.",
+            format!(
+                "Activation funnel for every tenant that signed up in the trailing days (default 7): \
+                 per-stage counts, shares and medians, signups and signups_human, the breakdown by \
+                 source and by origin, upgrades by trigger, install-link clicks and the by-surface \
+                 probe report (known-synthetic tenants excluded and counted in synthetic_excluded; \
+                 each by_surface row has the keys {}), plus recipe_attempts_7d (keys {}; uses by \
+                 non-synthetic tenants) and recipe_attempts_synthetic_7d. Narrow it by source_class \
+                 or signup_source, or split organic from invite-born tenants with invited, which \
+                 also adds the invite k-factor.",
+                crate::api_contract::SURFACE_STAGE_KEYS.join(", "),
+                crate::kinds::aliases::recipe_names().join(", "),
+            ),
             schema(
                 json!({
                     "days": {"type": "integer", "description": "Trailing signup window in days; default 7, clamped to 1..365."},

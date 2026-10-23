@@ -77,7 +77,6 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `src/email_send.rs` (<1k) PRD-mcphost-send-email-from-tool: `host.email.send` / `host.email.sends` and the `mcphost.email.send` sandb...
 - `src/enduser.rs` (<1k) PRD-mcphost-end-user-identity: the end-user identity a call carries (from an OAuth bearer's `sub`/`iss`, or...
 - `src/enduserctl.rs` (<1k) PRD-mcphost-end-user-audit-and-revoke: the tenant-facing control plane for the end users its tools serve --...
-- `src/envelope.rs` (<1k) The host's result envelope: every top-level key a cross-tool wrapper adds to a tool's result, as consts, pl...
 - `src/error_registry.rs` (<1k) PRD-mcphost-errors-json-contract: the one table of every error code the host can return.
 - `src/error_scan.rs` (<1k) PRD-mcphost-error-codes-generated-registry: the scanner behind the `cargo test --lib` gate.
 - `src/errors.rs` (~2k) `mcphost`'s own error taxonomy, and its mapping onto MCP JSON-RPC errors.
@@ -244,6 +243,8 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `SYNTHETIC_FILTERS` in `src/admin.rs`
 - `CONTACT_POLICIES` in `src/agents.rs`
 - `SEVERITIES` in `src/alerts.rs`
+- `OUTPUT_ENVELOPE_FIELDS` in `src/api_contract.rs`
+- `SURFACE_STAGE_KEYS` in `src/api_contract.rs`
 - `NEVER_SIGNS_UP` in `src/asks.rs`
 - `STATUSES` in `src/asks.rs`
 - `EXPORT_FORMATS` in `src/audit_export.rs`
@@ -268,7 +269,6 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `DRAFT_KINDS` in `src/drafter.rs`
 - `ELICIT_ERROR_CODES` in `src/elicit.rs`
 - `ELICIT_RMCP_VARIANTS` in `src/elicit.rs`
-- `OUTPUT_ENVELOPE_FIELDS` in `src/envelope.rs`
 - `ARG_OWNERS` in `src/errors.rs`
 - `HOST_FAULT_CODES` in `src/errors.rs`
 - `CLIENT_TAGS` in `src/examples.rs`
