@@ -125,6 +125,48 @@ fn fixtures() -> Vec<Fx> {
     ]
 }
 
+/// Output keys the read tools compute from the current time on every call
+/// (`now - <stored timestamp>`): two reads straddling a second boundary differ
+/// in them with no state change, so the read-back compare masks them. Stored
+/// timestamps (`created_at`, `updated_at`, ...) are stable between reads and
+/// stay compared. Each key's defining file is in `CLOCK_DERIVED_KEY_SRC`.
+const CLOCK_DERIVED_READ_KEYS: &[&str] = &["lag_seconds"];
+
+/// key -> the `src/` file whose code emits it. `clock_derived_keys_are_current`
+/// reads each file, so a renamed or removed key fails here instead of leaving
+/// a dead entry in the mask.
+// lag_seconds: src/index.rs:579 (`host.index.list`, `now - created_at` while a source is pending)
+const CLOCK_DERIVED_KEY_SRC: &[(&str, &str)] = &[("lag_seconds", "src/index.rs")];
+
+const CLOCK_MARKER: &str = "<clock>";
+
+/// `v` with the value of every clock-derived key, at any depth, replaced by a
+/// fixed marker.
+fn mask_clock(v: &Value) -> Value {
+    match v {
+        Value::Object(o) => Value::Object(
+            o.iter()
+                .map(|(k, x)| {
+                    let x = if CLOCK_DERIVED_READ_KEYS.contains(&k.as_str()) { json!(CLOCK_MARKER) } else { mask_clock(x) };
+                    (k.clone(), x)
+                })
+                .collect(),
+        ),
+        Value::Array(a) => Value::Array(a.iter().map(mask_clock).collect()),
+        o => o.clone(),
+    }
+}
+
+/// The one read-back compare path: equal once clock-derived fields are masked.
+fn same_readback(before: &Result<Value, String>, after: &Result<Value, String>) -> bool {
+    let mask = |r: &Result<Value, String>| r.as_ref().map(mask_clock).map_err(String::clone);
+    mask(before) == mask(after)
+}
+
+fn same_snapshot(before: &[Value], after: &[Value]) -> bool {
+    before.len() == after.len() && before.iter().zip(after).all(|(b, a)| same_readback(&Ok(b.clone()), &Ok(a.clone())))
+}
+
 fn short(v: &Value) -> String {
     let s = v.to_string();
     s.chars().take(300).collect()
@@ -232,7 +274,7 @@ async fn dryspt_ac05() {
         }
         for (i, (tool, args)) in f.reads.iter().enumerate() {
             let after = client.tools_call(tool, subst(args, &ns, &last)).await.map(|r| extract_structured(&r)).map_err(|e| format!("{} {}", e.code, e.message));
-            if before[i] != after {
+            if !same_readback(&before[i], &after) {
                 failures.push(format!("{}: read-back {tool} changed: before {} after {}", f.verb, short(&json!(format!("{:?}", before[i]))), short(&json!(format!("{:?}", after)))));
             }
         }
@@ -271,7 +313,8 @@ async fn tool_test_forwarded_verb() {
         .await
         .unwrap_or_else(|e| panic!("forwarded host.tool_test errored: {} {} {:?}", e.code, e.message, e.error_code));
     println!("dryspt-sweep verb=host.tool_test(host.state.table_drop) outcome=ok result={}", short(&extract_structured(&r)));
-    assert_eq!(snapshot(&client).await, before, "the table and its rows remain");
+    let after = snapshot(&client).await;
+    assert!(same_snapshot(&before, &after), "the table and its rows remain: before {before:?} after {after:?}");
 }
 
 /// Row 2 (`src/handler.rs` published-tool path): a python tool whose body
@@ -298,5 +341,25 @@ async fn tool_test_python_bridge() {
         .await
         .unwrap_or_else(|e| panic!("python host.tool_test errored: {} {} {:?}", e.code, e.message, e.error_code));
     println!("dryspt-sweep verb=host.tool_test(python table_drop) outcome=ok result={}", short(&extract_structured(&r)));
-    assert_eq!(snapshot(&client).await, before, "the table and its rows remain");
+    let after = snapshot(&client).await;
+    assert!(same_snapshot(&before, &after), "the table and its rows remain: before {before:?} after {after:?}");
+}
+
+/// No server: every masked key is still emitted by the `src/` file its pair
+/// names, the pairs cover exactly the mask list, and stored timestamps are
+/// never masked.
+#[test]
+fn clock_derived_keys_are_current() {
+    let listed: BTreeSet<&str> = CLOCK_DERIVED_READ_KEYS.iter().copied().collect();
+    let paired: BTreeSet<&str> = CLOCK_DERIVED_KEY_SRC.iter().map(|(k, _)| *k).collect();
+    assert_eq!(listed, paired, "CLOCK_DERIVED_READ_KEYS and CLOCK_DERIVED_KEY_SRC name different keys");
+    for forbidden in ["created_at", "updated_at"] {
+        assert!(!listed.contains(forbidden), "{forbidden} is a stored timestamp, stable between reads: it must stay compared");
+    }
+    for (key, file) in CLOCK_DERIVED_KEY_SRC {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(file);
+        let src = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        assert!(src.contains(&format!("\"{key}\"")), "{file} no longer emits \"{key}\": drop it from CLOCK_DERIVED_READ_KEYS or fix the pair");
+    }
+    assert_eq!(mask_clock(&json!({"a": [{"lag_seconds": 3, "created_at": 1}]})), json!({"a": [{"lag_seconds": CLOCK_MARKER, "created_at": 1}]}));
 }
