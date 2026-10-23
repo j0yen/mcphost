@@ -216,6 +216,29 @@ async fn existing_contents(state: &AppState, tenant: &Tenant) -> Result<Value, A
     Ok(json!({"tools": tools, "state_keys": state_keys, "tables": tables, "docs": docs}))
 }
 
+/// R7's preview: what a real run would write.
+fn dry_run_preview(manifest_version: i64, entries: &BTreeMap<String, i64>, bytes: i64) -> Value {
+    json!({"dry_run": true, "manifest_version": manifest_version, "entries": entries, "bytes": bytes})
+}
+
+/// PRD-mcphost-output-schema-reach-sweep-live R4: the schema of what
+/// [`dry_run_preview`] emits (plus the optional `_meta.scratch`
+/// `handler::mark_scratch` adds), attached to `host.import` as its
+/// `own_dry_run` branch by `output_schemas::OWN_DRY_RUN`.
+pub fn dry_run_output_branch() -> Value {
+    json!({
+        "type": "object",
+        "required": ["dry_run", "manifest_version", "entries", "bytes"],
+        "properties": {
+            "dry_run": {"const": true},
+            "manifest_version": {"type": "integer"},
+            "entries": {"type": "object", "additionalProperties": {"type": "integer"}},
+            "bytes": {"type": "integer"},
+            "_meta": {"type": "object", "properties": {"scratch": {"type": "boolean"}}},
+        },
+    })
+}
+
 /// `host.import {run_id? | url?, dry_run?}`.
 pub async fn import(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let path = resolve_archive(state, tenant, args).await?;
@@ -264,7 +287,7 @@ pub async fn import(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
             };
             *counts.entry(key).or_default() += 1;
         }
-        return Ok(json!({"dry_run": true, "manifest_version": info.version, "entries": counts, "bytes": total}));
+        return Ok(dry_run_preview(info.version, &counts, total));
     }
 
     let run_id = crate::state::new_ulid();

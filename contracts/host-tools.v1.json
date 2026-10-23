@@ -8596,6 +8596,24 @@
               "null"
             ]
           },
+          "output_reach": {
+            "properties": {
+              "unreached": {
+                "type": "integer"
+              },
+              "unreached_cap": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "unreached",
+              "unreached_cap"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
           "window": {
             "properties": {
               "calls": {
@@ -12466,6 +12484,49 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "run_id",
+              "status"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              },
+              "bytes": {
+                "type": "integer"
+              },
+              "dry_run": {
+                "const": true
+              },
+              "entries": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "manifest_version": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "dry_run",
+              "manifest_version",
+              "entries",
+              "bytes"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "run_id": {
             "type": "string"
@@ -12474,10 +12535,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "run_id",
-          "status"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
