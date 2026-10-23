@@ -1779,6 +1779,12 @@ async fn main() -> anyhow::Result<()> {
                             mcphost::api_contract::sha_hex(&existing),
                             mcphost::api_contract::contract_sha(&kinds)
                         );
+                        if let Ok(committed) = serde_json::from_slice::<serde_json::Value>(&existing) {
+                            let live = mcphost::api_contract::dump_contract(&kinds);
+                            for key in mcphost::api_contract::drifted_top_level_keys(&committed, &live) {
+                                eprintln!("  - drifted key: {key}");
+                            }
+                        }
                         std::process::exit(1);
                     }
                 } else {
