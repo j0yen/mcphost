@@ -171,6 +171,18 @@ mod ntfy_ac01_no_tenant_settable_alert_sink;
 mod ntfy_ac02_enums_generated_into_every_surface;
 #[path = "oauthentry_ac06_path_contract_docs_router_quickstart.rs"]
 mod oauthentry_ac06_path_contract_docs_router_quickstart;
+#[path = "osmatch_ac01_dry_run_branch.rs"]
+mod osmatch_ac01_dry_run_branch;
+#[path = "osmatch_ac02_success_constructor.rs"]
+mod osmatch_ac02_success_constructor;
+#[path = "osmatch_ac03_required_readers_agree.rs"]
+mod osmatch_ac03_required_readers_agree;
+#[path = "osmatch_ac04_observational_edits.rs"]
+mod osmatch_ac04_observational_edits;
+#[path = "osmatch_ac05_contract_diff.rs"]
+mod osmatch_ac05_contract_diff;
+#[path = "osmatch_ac08_sample_rows.rs"]
+mod osmatch_ac08_sample_rows;
 #[path = "outsch_ac02_every_canonical_declares_an_object_output_schema.rs"]
 mod outsch_ac02_every_canonical_declares_an_object_output_schema;
 #[path = "ptbatch_ac01_classify_files_agrees_with_classify.rs"]

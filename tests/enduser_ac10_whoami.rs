@@ -21,7 +21,7 @@ async fn oauth_caller_gets_identity_no_identity_gets_null() {
         .tools_call("host.enduser.whoami", json!({}))
         .await
         .expect("whoami must succeed with no identity");
-    assert_eq!(extract_structured(&result), serde_json::Value::Null, "{result:?}");
+    assert_eq!(extract_structured(&result), json!({"value": null}), "{result:?}");
 
     let jwks = jwks_server(jwk_1()).await;
     let issuer = "https://issuer.example.com";

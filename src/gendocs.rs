@@ -805,11 +805,7 @@ fn render_returns_block(schema: &serde_json::Map<String, serde_json::Value>) -> 
             _ => "any".to_string(),
         }
     }
-    let required: HashSet<&str> = schema
-        .get("required")
-        .and_then(|r| r.as_array())
-        .map(|r| r.iter().filter_map(|v| v.as_str()).collect())
-        .unwrap_or_default();
+    let required: HashSet<&str> = crate::output_schemas::live_required(schema).into_iter().collect();
     let mut out = String::new();
     if let Some(props) = schema.get("properties").and_then(|p| p.as_object()) {
         for (name, prop) in props {

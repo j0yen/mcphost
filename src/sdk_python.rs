@@ -380,7 +380,10 @@ pub fn render(contract_bytes: &[u8]) -> Result<BTreeMap<String, String>, String>
         let base = camel(&name);
         let in_schema = &t["input_schema"];
         let (args_class, params) = render_model(&mut models, in_schema, &format!("{base}Args"), true);
-        let out_schema = t.get("output_schema").cloned().unwrap_or_else(|| serde_json::json!({"type": "object"}));
+        let out_schema = t
+            .get("output_schema")
+            .map(crate::output_schemas::live_view)
+            .unwrap_or_else(|| serde_json::json!({"type": "object"}));
         let (result_class, _) = render_model(&mut models, &out_schema, &format!("{base}Result"), false);
         tools.push(ToolOut {
             name,

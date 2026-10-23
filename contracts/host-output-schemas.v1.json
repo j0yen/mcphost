@@ -4756,32 +4756,6 @@
           }
         },
         "type": "object"
-      },
-      "would": {
-        "properties": {
-          "state": {
-            "type": "array",
-            "items": {
-              "properties": {
-                "action": {
-                  "type": "string"
-                },
-                "key": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "action",
-                "key"
-              ],
-              "type": "object"
-            }
-          }
-        },
-        "required": [
-          "state"
-        ],
-        "type": "object"
       }
     },
     "required": [],
@@ -6310,32 +6284,6 @@
       },
       "refresh_ttl_s": {
         "type": "integer"
-      },
-      "would": {
-        "properties": {
-          "state": {
-            "type": "array",
-            "items": {
-              "properties": {
-                "action": {
-                  "type": "string"
-                },
-                "key": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "action",
-                "key"
-              ],
-              "type": "object"
-            }
-          }
-        },
-        "required": [
-          "state"
-        ],
-        "type": "object"
       }
     },
     "required": [],
@@ -9189,51 +9137,6 @@
       },
       "table": {
         "type": "string"
-      },
-      "would": {
-        "properties": {
-          "rows": {
-            "items": {
-              "properties": {
-                "delete": {
-                  "type": "integer"
-                },
-                "sample": {
-                  "items": {
-                    "properties": {
-                      "n": {
-                        "type": "integer"
-                      },
-                      "status": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "n",
-                      "status"
-                    ],
-                    "type": "object"
-                  },
-                  "type": "array"
-                },
-                "table": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "delete",
-                "sample",
-                "table"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "rows"
-        ],
-        "type": "object"
       }
     },
     "required": [],
@@ -10385,32 +10288,6 @@
       },
       "name": {
         "type": "string"
-      },
-      "would": {
-        "properties": {
-          "state": {
-            "type": "array",
-            "items": {
-              "properties": {
-                "action": {
-                  "type": "string"
-                },
-                "key": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "action",
-                "key"
-              ],
-              "type": "object"
-            }
-          }
-        },
-        "required": [
-          "state"
-        ],
-        "type": "object"
       }
     },
     "required": [],
@@ -11248,40 +11125,6 @@
       },
       "name": {
         "type": "string"
-      },
-      "would": {
-        "properties": {
-          "tables": {
-            "type": "array",
-            "items": {
-              "properties": {
-                "action": {
-                  "type": "string"
-                },
-                "bytes": {
-                  "type": "integer"
-                },
-                "name": {
-                  "type": "string"
-                },
-                "rows": {
-                  "type": "integer"
-                }
-              },
-              "required": [
-                "action",
-                "bytes",
-                "name",
-                "rows"
-              ],
-              "type": "object"
-            }
-          }
-        },
-        "required": [
-          "tables"
-        ],
-        "type": "object"
       }
     },
     "required": [],

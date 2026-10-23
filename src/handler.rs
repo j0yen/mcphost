@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use rmcp::ErrorData as McpError;
 use rmcp::model::{
-    CacheScope, CallToolRequestParams, CallToolResponse, CallToolResult, Implementation,
+    CacheScope, CallToolRequestParams, CallToolResponse, Implementation,
     ListToolsResult, PaginatedRequestParams, ServerInfo, Tool,
 };
 use rmcp::service::{NotificationContext, Peer, RequestContext};
@@ -5015,7 +5015,7 @@ fn host_tools_part_12() -> Vec<Tool> {
         Tool::new(
             "host.oauth.provider",
             "This tenant's registered OIDC identity provider (issuer, client_id, endpoints, \
-             scopes, flags) -- null if none is set. Never carries the client secret.",
+             scopes, flags) -- {\"value\": null} if none is set. Never carries the client secret.",
             host_schema(json!({}), &[]),
         ),
         Tool::new(
@@ -5075,7 +5075,7 @@ fn host_tools_part_12() -> Vec<Tool> {
             "host.enduser.whoami",
             "The end user (if any) this call itself carries: {subject, issuer, method, \
              verified_at} from the OAuth bearer's sub/iss or a verified end_user_assertion; \
-             null when the call carries no verified end-user identity.",
+             {\"value\": null} when the call carries no verified end-user identity.",
             host_schema(json!({}), &[]),
         ),
         // requirement 2 (AC11): rotates this tenant's HS256 end_user_assertion \
@@ -13351,7 +13351,7 @@ impl McpHostHandler {
                 let limit_clamped = crate::paged::take_clamp(&mut value);
                 let deprecated_arg = crate::paged::take_deprecated_arg(&mut value);
                 let resources_used = value.as_object_mut().and_then(|obj| obj.remove(RESOURCES_USED_KEY));
-                let result = CallToolResult::structured(value);
+                let result = crate::output_schemas::success_result(value);
                 // requirement 2: an alias call's response carries the
                 // deprecation hint in `_meta.deprecated` (the MCP field
                 // this protocol gives a tool result for exactly this,
