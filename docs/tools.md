@@ -394,6 +394,8 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `addresses`: array, required
+  - `addresses` minItems: 1
+  - `addresses` maxItems: 50
 - `tenant_key`: string
 
 ### `host.agent.lookup`
@@ -451,6 +453,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `handle`: string | null
 - `hints`: boolean
 - `tags`: array
+  - `tags` maxItems: 16
 - `tenant_key`: string
 - `welcome_back`: boolean
 
@@ -516,6 +519,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
   - `options` minItems: 2
   - `options` maxItems: 6
 - `question`: string, required
+  - `question` minLength: 1
 - `tenant_key`: string
 - `ttl_s`: integer
 
@@ -602,6 +606,8 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `format`: string
   - `format` enum: `jsonl`, `csv`
 - `limit`: integer
+  - `limit` minimum: 1
+  - `limit` maximum: 50000
 - `since`: integer | string
 - `tenant_key`: string
 - `until`: integer | string
@@ -732,8 +738,11 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `content_base64`: string
 - `mime`: string
 - `name`: string, required
+  - `name` minLength: 1
 - `tenant_key`: string
 - `ttl_s`: integer
+  - `ttl_s` minimum: 1
+  - `ttl_s` maximum: 31536000
 - `url`: string
 
 ### `host.blob.touch`
@@ -750,6 +759,8 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `id`: string, required
 - `tenant_key`: string
 - `ttl_s`: integer, required
+  - `ttl_s` minimum: 1
+  - `ttl_s` maximum: 31536000
 
 ### `host.blob.url`
 
@@ -766,6 +777,8 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `id`: string, required
 - `tenant_key`: string
 - `ttl_s`: integer
+  - `ttl_s` minimum: 1
+  - `ttl_s` maximum: 604800
 
 ### `host.bridge.test`
 
@@ -942,6 +955,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - one of (anyOf): `name` | `group`
 - `group`: string
 - `name`: string
+  - `name` minLength: 1
 - `tenant_key`: string
 
 ### `host.channel.post`
@@ -957,6 +971,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `body`: string, required
+  - `body` minLength: 1
 - `channel`: string, required
 - `data`: object
 - `tenant_key`: string
@@ -1237,6 +1252,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `metadata`: any
 - `mime`: string
 - `name`: string, required
+  - `name` minLength: 1
 - `tenant_key`: string
 
 ### `host.docs.reindex`
@@ -1378,9 +1394,12 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `html`: string
 - `reply_to_message_id`: string
 - `subject`: string, required
+  - `subject` minLength: 1
 - `tenant_key`: string
 - `text`: string, required
 - `to`: any, required
+  - `to<oneOf 1>` minItems: 1
+  - `to<oneOf 1>` maxItems: 10
 
 ### `host.email.sends`
 
@@ -1391,6 +1410,8 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `limit`: integer
+  - `limit` minimum: 1
+  - `limit` maximum: 100
 - `tenant_key`: string
 
 ### `host.enduser.assertion_secret_rotate`
@@ -1645,7 +1666,9 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `summary`: string
 - `tenant_key`: string
 - `title`: string, required
+  - `title` minLength: 1
 - `tool`: string, required
+  - `tool` minLength: 1
 - `use_case`: array, required
   - `use_case` minItems: 1
   - `use_case[]` enum: `uptime`, `database`, `docs-qa`, `webhook`, `chart`, `memory`, `share`, `first-run`
@@ -1679,6 +1702,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `feedback_id`: string, required
+  - `feedback_id` minLength: 1
 - `tenant_key`: string
 
 ### `host.feedback.list`
@@ -1708,6 +1732,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
   - `kind` enum: `missing_tool`, `wrong_error`, `docs_gap`, `bug`, `praise`
 - `tenant_key`: string
 - `text`: string, required
+  - `text` minLength: 1
 
 ### `host.group.add`
 
@@ -1868,6 +1893,8 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `k`: integer
+  - `k` minimum: 1
+  - `k` maximum: 50
 - `name`: string, required
 - `query`: string, required
 - `tenant_key`: string
@@ -2166,6 +2193,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `body`: string, required
+  - `body` minLength: 1
 - `data`: object
 - `dedupe_key`: string
 - `in_reply_to`: string
@@ -2185,11 +2213,13 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `body`: string, required
+  - `body` minLength: 1
 - `data`: object
 - `dedupe_key`: string
 - `tenant_key`: string
 - `thread_id`: string
 - `to`: array, required
+  - `to` minItems: 1
 - `urgent`: boolean
 
 ### `host.msg.thread`
@@ -2281,6 +2311,8 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `attach_to`: object
 - `tenant_key`: string
 - `text`: string, required
+  - `text` minLength: 1
+  - `text` maxLength: 4096
 - `ttl_s`: integer
   - `ttl_s` minimum: 60
   - `ttl_s` maximum: 7776000
@@ -2298,6 +2330,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `kind`: string, required
   - `kind` enum: `email`, `webhook`, `slack`
 - `target`: string, required
+  - `target` minLength: 1
 - `tenant_key`: string
 
 ### `host.notify.channel_list`
@@ -2348,6 +2381,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `link`: string
 - `tenant_key`: string
 - `text`: string, required
+  - `text` minLength: 1
 
 ### `host.oauth.audit`
 
@@ -2516,6 +2550,8 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `access_ttl_s`: integer
+  - `access_ttl_s` minimum: 300
+  - `access_ttl_s` maximum: 3600
 - `allowlist`: array
 - `clients`: string
   - `clients` enum: `any`, `allowlist`, `approve`
@@ -2523,6 +2559,8 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `max_grant_age_s`: integer
 - `reconsent_after_s`: integer
 - `refresh_ttl_s`: integer
+  - `refresh_ttl_s` minimum: 3600
+  - `refresh_ttl_s` maximum: 2592000
 - `tenant_key`: string
 
 ### `host.oauth.provider`
@@ -3134,6 +3172,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 - `caller_tenant`: string, required
 - `calls_per_day`: integer, required
+  - `calls_per_day` minimum: 1
 - `tenant_key`: string
 - `tool`: string, required
 
@@ -3346,6 +3385,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `primary_key`: string
 - `source`: object, required
   - `source.kind` enum: `csv_url`, `google_sheet`, `airtable`, `notion_db`, `http_json`
+  - `source.ref` maxLength: 2048
 - `table`: string, required
 - `tenant_key`: string
 
@@ -3361,6 +3401,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `sync_id`: string, required
+  - `sync_id` minLength: 1
 - `tenant_key`: string
 
 ### `host.sync.get`
@@ -3386,6 +3427,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
   - `limit` minimum: 1
   - `limit` maximum: 100
 - `sync_id`: string, required
+  - `sync_id` minLength: 1
 - `tenant_key`: string
 
 ### `host.sync.list`
@@ -3408,6 +3450,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `sync_id`: string, required
+  - `sync_id` minLength: 1
 - `tenant_key`: string
 
 ### `host.table.append`
@@ -4077,7 +4120,10 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `group`: string
 - `name`: string, required
 - `rate_per_hour_per_caller`: integer
+  - `rate_per_hour_per_caller` minimum: 1
+  - `rate_per_hour_per_caller` maximum: 10000
 - `scopes`: array
+  - `scopes` minItems: 1
   - `scopes[]` enum: `call`, `read_source`, `fork`
 - `tags`: array
 - `tenant_key`: string
@@ -4391,6 +4437,8 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `name`: string, required
 - `tenant_key`: string
 - `urls`: array, required
+  - `urls` minItems: 1
+  - `urls` maxItems: 20
 
 ### `host.usage`
 

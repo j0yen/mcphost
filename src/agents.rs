@@ -18,10 +18,10 @@ use crate::state::AppState;
 /// drafted as reserved per the PRD's own resolution.
 const RESERVED_HANDLES: &[&str] = &["admin", "host", "mcphost", "system"];
 /// Requirement 3: description ≤ 512 bytes.
-const MAX_DESCRIPTION_BYTES: usize = 512;
+pub const MAX_DESCRIPTION_BYTES: usize = 512;
 /// Requirement 3: ≤ 16 tags of ≤ 32 bytes each.
-const MAX_TAGS: usize = 16;
-const MAX_TAG_BYTES: usize = 32;
+pub const MAX_TAGS: usize = 16;
+pub const MAX_TAG_BYTES: usize = 32;
 
 fn arg_str_opt<'a>(args: &'a Value, name: &str) -> Option<&'a str> {
     args.get(name).and_then(Value::as_str)
