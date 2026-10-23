@@ -83,6 +83,51 @@ pub struct S {
 }
 EOF2
 
+run_case "case5 token: bool on a derive(Debug) struct is not a secret (run 1038 CallProgress)" 0 <<'EOF2'
+#[derive(Debug, Default)]
+pub struct CallProgress {
+    token: bool,
+    pub other: u32,
+}
+EOF2
+
+run_case "case6 REGRESSION GUARD: token: String still flagged" 1 <<'EOF2'
+#[derive(Debug)]
+pub struct S {
+    token: String,
+}
+EOF2
+
+run_case "case7 REGRESSION GUARD: api_key: Option<String> still flagged" 1 <<'EOF2'
+#[derive(Debug)]
+pub struct S {
+    pub api_key: Option<String>,
+}
+EOF2
+
+run_case "case8 secret: u64 is not a secret" 0 <<'EOF2'
+#[derive(Debug)]
+pub struct S {
+    pub secret: u64,
+}
+EOF2
+
+run_case "case9 REGRESSION GUARD: key bytes (Vec<u8>, Option<Vec<u8>>) still flagged" 2 <<'EOF2'
+#[derive(Debug)]
+pub struct S {
+    pub secret: Vec<u8>,
+    pub token: Option<Vec<u8>>,
+}
+EOF2
+
+run_case "case10 Option<bool> / Vec<u32> with trailing comment are not secrets" 0 <<'EOF2'
+#[derive(Debug)]
+pub struct S {
+    pub token: Option<bool>, // set once seen
+    pub secret: Vec<u32>,
+}
+EOF2
+
 if [ "$fails" -gt 0 ]; then
   echo "rules/tests/run.sh: $fails of $n case(s) FAILED"
   exit 1
