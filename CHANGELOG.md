@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.114.0 — 2026-10-23
+
+Released by wm-build land: loop: mcphost-resource-listing-shape-in-contract.
+
 ## v0.112.10 — 2026-10-20
 
 `providers.toml` is the single source for upstream OAuth providers (PRD-mcphost-connection-provider-registry): the new `host.connect.providers` tool, its `provider` enum, `docs/connections.md`, `www/llms.txt` and the callback routes derive from it. Initial rows: github, google, slack, notion.
