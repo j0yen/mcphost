@@ -2421,6 +2421,13 @@
       "AC5": "tests/nk401_ac05_every_raise_site_has_a_reason_row.rs",
       "AC6": "tests/nk401_ac06_request_log_records_wire_status.rs",
       "AC7": "deferred: Live (prod: raw httpx client, scripts/live/nk401_ac07.py; operator-provisioned)"
+    },
+    "osrx": {
+      "_prd": "PRD-mcphost-import-dry-run-live-real-export.md (test_prefix: osrx)",
+      "AC1": "tests/osrx_ac01_real_export_previews.rs",
+      "AC4": "deferred: Live (prod: Claude Code on the build host; evidence ~/.local/state/mcphost-live/osreach-ac06b-results.jsonl)",
+      "AC2": "tests/osrx_ac02_plan_mode_offline.rs",
+      "AC3": "tests/osrx_ac03_stream_parser_pairs_results.rs"
     }
   }
 }
