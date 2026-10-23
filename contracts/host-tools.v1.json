@@ -25026,7 +25026,10 @@
             "items": {
               "type": "string"
             },
-            "type": "array"
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "disabled": {
             "type": "boolean"
@@ -25059,7 +25062,6 @@
           }
         },
         "required": [
-          "billing_canceled",
           "disabled",
           "disabled_reason",
           "tenant"
@@ -31302,115 +31304,7 @@
             ]
           },
           "rows": {
-            "items": {
-              "properties": {
-                "amount": {
-                  "type": [
-                    "number",
-                    "null"
-                  ]
-                },
-                "category": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "count": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                },
-                "d": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                },
-                "day": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "id": {
-                  "type": [
-                    "string",
-                    "integer",
-                    "null"
-                  ]
-                },
-                "kind": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "marker": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                },
-                "n": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                },
-                "note": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "period": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "qty": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                },
-                "s": {
-                  "type": [
-                    "number",
-                    "null"
-                  ]
-                },
-                "total": {
-                  "type": [
-                    "number",
-                    "null"
-                  ]
-                },
-                "v": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "val": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "x": {
-                  "type": [
-                    "string",
-                    "integer",
-                    "null"
-                  ]
-                }
-              },
-              "type": "object"
-            },
+            "items": {},
             "type": [
               "array",
               "null"
@@ -32999,12 +32893,7 @@
               "null"
             ]
           },
-          "id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
+          "id": {},
           "kind": {
             "type": [
               "string",
@@ -33121,74 +33010,7 @@
           },
           "preset": {},
           "result": {},
-          "rows": {
-            "items": {
-              "properties": {
-                "body": {
-                  "properties": {
-                    "id": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    }
-                  },
-                  "type": [
-                    "object",
-                    "null"
-                  ]
-                },
-                "checked_at": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                },
-                "delivery_id": {},
-                "id": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "latency_ms": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                },
-                "ok": {
-                  "type": [
-                    "boolean",
-                    "null"
-                  ]
-                },
-                "received_at": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                },
-                "status": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "url": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                }
-              },
-              "type": "object"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
+          "rows": {},
           "run_id": {
             "type": [
               "string",
