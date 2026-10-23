@@ -633,14 +633,14 @@
       "AC9": "tests/ac09_signup_rate_limit.rs",
       "AC10": "tests/ac10_publish_validation_errors.rs",
       "AC11": "tests/ac11_load_smoke.rs (#[ignore]d hardware-relative load test)",
-      "AC12": "no unit test file; live smoke — mcphost serve + synthorg consume --preflight <url>, recorded as target/autobuilder/ac12-preflight-smoke.json",
+      "AC12": "no unit test file; live smoke \u2014 mcphost serve + synthorg consume --preflight <url>, recorded as target/autobuilder/ac12-preflight-smoke.json",
       "AC13": "tests/ac13_mcp_name_mismatch_metering.rs",
       "AC14": "tests/ac14_storage_unwritable.rs",
       "AC15": "tests/ac15_call_timeout.rs",
       "AC16": "tests/ac16_request_body_too_large.rs",
       "AC17": "tests/ac17_kind_conformance.rs",
       "AC18": "tests/ac18_tools_list_ttl.rs",
-      "AC19": "deferred — no test; see agent/intent-card.json acceptance_criteria AC19.test and PRD Open Questions (registry namespace verification not yet resolved)"
+      "AC19": "deferred \u2014 no test; see agent/intent-card.json acceptance_criteria AC19.test and PRD Open Questions (registry namespace verification not yet resolved)"
     },
     "adminschemacontract": {
       "_prd": "PRD-mcphost-admin-schema-contract.md -- superseded by mcphost-abuse-guard-ban-list at HEAD; real test_prefix is mcphost_admin_schema_contract (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind/tenantdataexport/checkcompatrace/teammemory/databaseinaminute/uptimeprobes/toolversions/agentchannels/webhookinbox/signupkillswitchandsource/sandboxegressallowlist/humanclaimmagiclink/claudecodepluginandsnippets above)",
@@ -866,7 +866,7 @@
       "AC13": "tests/mcphost_human_claim_magic_link_ac13_bearer_key_never_in_claim_pages.rs"
     },
     "lanecov": {
-      "_prd": "PRD-mcphost-proof-lane-loop-config.md — same as ac_test_map above while this PRD is the one at HEAD",
+      "_prd": "PRD-mcphost-proof-lane-loop-config.md \u2014 same as ac_test_map above while this PRD is the one at HEAD",
       "AC1": "tests/lanecov_ac01_every_tracked_path_routes.rs",
       "AC2": "tests/lanecov_ac02_coverage_test_is_actually_run.rs",
       "AC3": "tests/lanecov_ac03_unrouted_path_is_named.rs",
@@ -884,7 +884,7 @@
       "AC6": "tests/mcphost_host_tool_deprecation_ac06_changelog_lists_additions.rs",
       "AC7": "tests/mcphost_host_tool_deprecation_ac07_whoami_contract_version.rs",
       "AC8": "tests/mcphost_host_tool_deprecation_ac08_llms_txt_links_contract.rs",
-      "_prd": "PRD-mcphost-host-tool-deprecation.md — superseded by mcphost-data-retention at HEAD"
+      "_prd": "PRD-mcphost-host-tool-deprecation.md \u2014 superseded by mcphost-data-retention at HEAD"
     },
     "oauthrs": {
       "_prd": "PRD-mcphost-oauth-resource-server.md -- superseded by mcphost-end-user-identity at HEAD; real test_prefix is oauthrs (this dict key is a short alias, matching the convention of banlist, ac, adminschemacontract, agentchannels, checkcompatrace, claudecodepluginandsnippets, databaseinaminute, humanclaimmagiclink, lanecov, mcphost_host_tool_deprecation, retention, runenvelope, sandboxegressallowlist, sharetool, signupkillswitch, signupkillswitchandsource, stdlibpseudo, suite, teammemory, tenantdataexport, toolversions, uptimeprobes, wasmkind, webhookinbox above)",
@@ -911,7 +911,7 @@
       "AC8": "tests/mcphost_data_retention_ac08_host_usage_lists_retention_windows.rs",
       "AC9": "tests/mcphost_data_retention_ac09_prune_error_sets_last_prune_ok_false.rs",
       "AC10": "tests/mcphost_data_retention_ac10_admin_prune_now_runs_one_cycle.rs",
-      "_prd": "PRD-mcphost-data-retention.md — superseded by mcphost-tenant-data-export at HEAD; real test_prefix is mcphost_data_retention (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool above)"
+      "_prd": "PRD-mcphost-data-retention.md \u2014 superseded by mcphost-tenant-data-export at HEAD; real test_prefix is mcphost_data_retention (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool above)"
     },
     "runenvelope": {
       "_prd": "PRD-mcphost-tool-run-envelope.md -- same as ac_test_map above while this PRD is the one at HEAD",
@@ -968,7 +968,7 @@
       "AC7": "tests/mcphost_share_a_tool_not_a_key_ac07_synthorg_task_five_completions.rs",
       "AC8": "tests/mcphost_share_a_tool_not_a_key_ac08_live_test_skipped_without_env.rs",
       "AC9": "tests/mcphost_share_a_tool_not_a_key_ac09_public_variant_states_default_reason.rs",
-      "_prd": "PRD-mcphost-share-a-tool-not-a-key.md — same as ac_test_map above while this PRD is the one at HEAD; real test_prefix is mcphost_share_a_tool_not_a_key (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo above)"
+      "_prd": "PRD-mcphost-share-a-tool-not-a-key.md \u2014 same as ac_test_map above while this PRD is the one at HEAD; real test_prefix is mcphost_share_a_tool_not_a_key (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo above)"
     },
     "signupkillswitch": {
       "_prd": "PRD-mcphost-signup-kill-switch-and-source.md -- superseded by mcphost-human-claim-magic-link at HEAD; real test_prefix is mcphost_signup_kill_switch_and_source (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind/tenantdataexport/checkcompatrace/teammemory/databaseinaminute/uptimeprobes/toolversions/agentchannels/webhookinbox above)",
@@ -1027,7 +1027,7 @@
       "AC7": "tests/suite_ac7_junit_per_test_timing.rs",
       "AC8": "deferred -- see PRD deferred_acs/mock_justifications (cross-host parity script needs a second box; casper deleted); AC1's nextest list diff proves the name-matching change single-host",
       "AC9": "tests/suite_ac9_selftest_named_and_green.rs",
-      "_prd": "PRD-mcphost-test-suite-consolidation.md — superseded by mcphost-share-a-tool-not-a-key at HEAD"
+      "_prd": "PRD-mcphost-test-suite-consolidation.md \u2014 superseded by mcphost-share-a-tool-not-a-key at HEAD"
     },
     "tablemodel": {
       "_prd": "PRD-mcphost-table-semantic-model.md -- superseded by mcphost-end-user-identity at HEAD; real test_prefix is tablemodel (this dict key matches it directly, same convention as every other archived entry below)",
@@ -1063,7 +1063,7 @@
       "AC5": "tests/mcphost_tenant_data_export_ac05_manifest_validates_publish_schema.rs",
       "AC6": "tests/mcphost_tenant_data_export_ac06_tools_subset.rs",
       "AC7": "tests/mcphost_tenant_data_export_ac07_admin_usage_exports_today.rs",
-      "_prd": "PRD-mcphost-tenant-data-export.md — superseded by mcphost-checkcompat-port-race at HEAD; real test_prefix is mcphost_tenant_data_export (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind above)"
+      "_prd": "PRD-mcphost-tenant-data-export.md \u2014 superseded by mcphost-checkcompat-port-race at HEAD; real test_prefix is mcphost_tenant_data_export (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind above)"
     },
     "toolversions": {
       "_prd": "PRD-mcphost-tool-versions.md -- superseded by mcphost-agent-channels at HEAD; real test_prefix is mcphost_tool_versions (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind/tenantdataexport/checkcompatrace/teammemory/databaseinaminute above)",
@@ -1115,7 +1115,7 @@
       "AC8": "tests/wasmkind_ac08_cache_reuses_compiled_artifact.rs",
       "AC9": "tests/wasmkind_ac09_healthz_reports_wasm_runtime.rs",
       "AC10": "tests/wasmkind_ac10_declared_output_promotion_matches_python.rs",
-      "_prd": "PRD-mcphost-wasm-kind.md — superseded by mcphost-host-tool-deprecation at HEAD"
+      "_prd": "PRD-mcphost-wasm-kind.md \u2014 superseded by mcphost-host-tool-deprecation at HEAD"
     },
     "webhookinbox": {
       "_prd": "PRD-mcphost-webhook-inbox.md -- superseded by mcphost-signup-kill-switch-and-source at HEAD; real test_prefix is mcphost_webhook_inbox (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind/tenantdataexport/checkcompatrace/teammemory/databaseinaminute/uptimeprobes/toolversions/agentchannels above)",
@@ -2413,6 +2413,16 @@
       "AC6": "tests/mcphost-output-envelope-fields-generated_ac06_bridge_strip_named_function.rs",
       "AC7": "tests/mcphost-output-envelope-fields-generated_ac07_served_contract_carries_set.rs",
       "AC8": "deferred: Live (prod curl after deploy; evidence: curl -sS https://mcphost.dev/contract.json | jq -e ...)"
+    },
+    "nk401": {
+      "_prd": "PRD-mcphost-named-key-refusal-not-http-401.md (test_prefix: nk401)",
+      "AC1": "tests/nk401_ac01_upgrade_decision_table.rs",
+      "AC2": "tests/nk401_ac02_peer_recent_refusal_is_http_200.rs",
+      "AC3": "tests/nk401_ac03_connection_bound_refusal_names_tenant.rs",
+      "AC4": "tests/nk401_ac04_oauth_paths_and_anonymous_keep_401.rs",
+      "AC5": "tests/nk401_ac05_every_raise_site_has_a_reason_row.rs",
+      "AC6": "tests/nk401_ac06_request_log_records_wire_status.rs",
+      "AC7": "deferred: Live (prod: raw httpx client, scripts/live/nk401_ac07.py; operator-provisioned)"
     }
   }
 }

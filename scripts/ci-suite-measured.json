@@ -12,12 +12,12 @@
   "suite_core_07": 1.05,
   "suite_core_08": 246.03,
   "suite_core_09": 268.75,
-  "suite_core_10": 271.4,
-  "suite_core_11": 218.54,
+  "suite_core_10": 266.41,
+  "suite_core_11": 219.54,
+  "suite_core_12": 6.99,
   "suite_env_core_01": 43.89,
   "suite_env_sandbox_01": 10.44,
   "suite_sandbox_01": 1.02,
-  "suite_sandbox_02": 107.76,
-  "suite_sandbox_03": 87.09,
-  "suite_sandbox_04": 85.87
+  "suite_sandbox_02": 153.66,
+  "suite_sandbox_03": 126.68
 }
