@@ -4734,29 +4734,7 @@
                 ],
                 "type": "object"
               },
-              "result": {
-                "properties": {
-                  "call_id": {
-                    "type": "string"
-                  },
-                  "error_code": {
-                    "type": "string"
-                  },
-                  "message": {
-                    "type": "string"
-                  },
-                  "tail": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "call_id",
-                  "error_code",
-                  "message",
-                  "tail"
-                ],
-                "type": "object"
-              },
+              "result": {},
               "verdict": {
                 "type": "string"
               }
