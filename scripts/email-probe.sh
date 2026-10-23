@@ -63,6 +63,9 @@ rpc() {
     local step="$1" auth="$2" tool="$3" args="$4" body resp
     local -a hdr=()
     [[ "$auth" == admin ]] && hdr=(-H "Authorization: Bearer ${MCPHOST_ADMIN_KEY:-}")
+    # The hub stamps a tenant synthetic only from this header on the keyless
+    # signup request; read at creation, ignored on every later call.
+    [[ "$auth" == - ]] && hdr=(-H "x-mcphost-synthetic: script:email-probe")
     body=$(python3 -c '
 import json, sys
 tool, args, auth = sys.argv[1], json.loads(sys.argv[2]), sys.argv[3]
