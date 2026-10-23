@@ -318,6 +318,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `ROLES` in `src/org.rs`
 - `TOOLS` in `src/org.rs`
 - `OPAQUE_FIELDS` in `src/output_schemas.rs`
+- `OWN_DRY_RUN` in `src/output_schemas.rs`
 - `ARG_OWNERS` in `src/paged.rs`
 - `PROJECTED_WINDOWS` in `src/paged.rs`
 - `TOOL_LIST_FIELDS` in `src/paged.rs`

@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-success-result-matches-output-schema.md (test_prefix: osmatch)",
+  "ac_test_map_prd": "PRD-mcphost-output-schema-reach-sweep-live.md (test_prefix: osreach)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,16 +28,25 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/osmatch_ac01_dry_run_branch.rs",
-    "AC2": "tests/osmatch_ac02_success_constructor.rs",
-    "AC3": "tests/osmatch_ac03_required_readers_agree.rs",
-    "AC4": "tests/osmatch_ac04_observational_edits.rs",
-    "AC5": "tests/osmatch_ac05_contract_diff.rs",
-    "AC6": "deferred: Live (prod: python mcp client on a disposable synthorg tenant; evidence ~/.local/state/mcphost-live/osmatch-ac06.json)",
-    "AC7": "deferred: Live (prod: claude -p stream-json on orch; evidence ~/.local/state/mcphost-live/osmatch-ac07-results.jsonl)",
-    "AC8": "tests/osmatch_ac08_sample_rows.rs"
+    "AC1": "tests/osreach_ac01_sweep_validates_every_served_name.rs",
+    "AC2": "tests/osreach_ac02_variants_record.rs",
+    "AC3": "tests/osreach_ac03_unreached_cap.rs",
+    "AC4": "tests/osreach_ac04_import_own_dry_run.rs",
+    "AC5": "tests/osreach_ac05_validator_control_and_doctor.rs",
+    "AC6": "deferred: Live (prod: Claude Code on orch, synthorg tenant; evidence ~/.local/state/mcphost-live/osreach-ac06-results.jsonl)"
   },
   "ac_test_map_by_prefix": {
+    "osmatch": {
+      "_prd": "PRD-mcphost-success-result-matches-output-schema.md (test_prefix: osmatch)",
+      "AC1": "tests/osmatch_ac01_dry_run_branch.rs",
+      "AC2": "tests/osmatch_ac02_success_constructor.rs",
+      "AC3": "tests/osmatch_ac03_required_readers_agree.rs",
+      "AC4": "tests/osmatch_ac04_observational_edits.rs",
+      "AC5": "tests/osmatch_ac05_contract_diff.rs",
+      "AC6": "deferred: Live (prod: python mcp client on a disposable synthorg tenant; evidence ~/.local/state/mcphost-live/osmatch-ac06.json)",
+      "AC7": "deferred: Live (prod: claude -p stream-json on orch; evidence ~/.local/state/mcphost-live/osmatch-ac07-results.jsonl)",
+      "AC8": "tests/osmatch_ac08_sample_rows.rs"
+    },
     "syreg": {
       "_prd": "PRD-mcphost-sync-source-registry-and-create.md (test_prefix: syreg)",
       "AC1": "deferred: Live (operator premise check recorded in the PRD under Premise check result)",
@@ -2391,17 +2400,6 @@
       "AC1": "tests/refst_ac01_unimplemented_method_status_by_revision.rs",
       "AC2": "deferred: Live (prod conformance unknown_method_parity cell; evidence ~/.local/state/mcphost-live/refst-ac02.txt)",
       "AC3": "tests/refst_ac03_refusal_status_rule_and_batch.rs"
-    },
-    "osmatch": {
-      "_prd": "PRD-mcphost-success-result-matches-output-schema.md (test_prefix: osmatch)",
-      "AC1": "tests/osmatch_ac01_dry_run_branch.rs",
-      "AC2": "tests/osmatch_ac02_success_constructor.rs",
-      "AC3": "tests/osmatch_ac03_required_readers_agree.rs",
-      "AC4": "tests/osmatch_ac04_observational_edits.rs",
-      "AC5": "tests/osmatch_ac05_contract_diff.rs",
-      "AC6": "deferred: Live (prod: python mcp client on a disposable synthorg tenant; evidence ~/.local/state/mcphost-live/osmatch-ac06.json)",
-      "AC7": "deferred: Live (prod: claude -p stream-json on orch; evidence ~/.local/state/mcphost-live/osmatch-ac07-results.jsonl)",
-      "AC8": "tests/osmatch_ac08_sample_rows.rs"
     },
     "mcphost-output-envelope-fields-generated": {
       "_prd": "PRD-mcphost-output-envelope-fields-generated.md (test_prefix: mcphost-output-envelope-fields-generated)",

@@ -9568,6 +9568,10 @@ impl McpHostHandler {
                 "validated": envelope.validated,
                 "skipped": envelope.skipped,
             },
+            "output_reach": {
+                "unreached": crate::output_schemas::reach_report().unreached,
+                "unreached_cap": crate::output_schemas::reach_report().unreached_cap,
+            },
             "oauth_issuers": crate::oauth::doctor_report(&self.state, tenant.map(|t| t.id)).await?,
         });
         if rows.is_empty() {

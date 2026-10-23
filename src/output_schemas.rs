@@ -109,6 +109,9 @@ fn variants_for(tool: &str) -> Vec<Value> {
     if crate::write_verbs::has_generic_dry_run(tool) {
         variants.push(crate::write_verbs::dry_run_output_branch());
     }
+    if let Some((_, branch)) = OWN_DRY_RUN.iter().find(|(t, _)| *t == tool) {
+        variants.push(branch());
+    }
     if observational_edits()
         .entries
         .iter()
@@ -117,6 +120,20 @@ fn variants_for(tool: &str) -> Vec<Value> {
         variants.push(empty_output_branch());
     }
     variants
+}
+
+/// A fn returning the schema of one builder's dry-run result.
+pub type OwnDryRunBranch = fn() -> Value;
+
+/// PRD-mcphost-output-schema-reach-sweep-live R4: a tool outside
+/// `WRITE_VERBS` that declares `dry_run` and builds its own preview, with the
+/// fn beside that builder returning the schema of what it emits. The sweep
+/// fails any other such name.
+pub const OWN_DRY_RUN: &[(&str, OwnDryRunBranch)] = &[(crate::import::IMPORT_TOOL_NAME, crate::import::dry_run_output_branch)];
+
+/// Whether `tool` has a generated `own_dry_run` branch.
+pub fn has_own_dry_run(tool: &str) -> bool {
+    OWN_DRY_RUN.iter().any(|(t, _)| *t == tool)
 }
 
 /// The key a non-object success result is wrapped under.
@@ -568,6 +585,29 @@ pub fn envelope_probes() -> Vec<(&'static str, EnvelopeProbe)> {
             (tool, EnvelopeProbe::Drive(attempts))
         })
         .collect()
+}
+
+const VARIANTS_RAW: &str = include_str!("../contracts/host-output-variants.v1.json");
+
+/// What `host.doctor` reports as `output_reach`, read from
+/// `contracts/host-output-variants.v1.json` (PRD-mcphost-output-schema-reach-sweep-live R5).
+pub struct ReachReport {
+    pub unreached: u64,
+    pub unreached_cap: u64,
+}
+
+/// The unreached `(tool, state)` count and the committed `unreached_cap` of the
+/// variants file the osreach sweep writes. Computed once.
+pub fn reach_report() -> &'static ReachReport {
+    static REPORT: OnceLock<ReachReport> = OnceLock::new();
+    REPORT.get_or_init(|| {
+        let parsed: Value = serde_json::from_str(VARIANTS_RAW).unwrap_or(Value::Null);
+        let unreached = parsed["tools"]
+            .as_object()
+            .map(|tools| tools.values().filter_map(|t| t["unreached"].as_array()).map(|u| u.len() as u64).sum())
+            .unwrap_or(0);
+        ReachReport { unreached, unreached_cap: parsed["unreached_cap"].as_u64().unwrap_or(0) }
+    })
 }
 
 /// What `host.doctor` reports as `error_envelope`.
