@@ -135,6 +135,12 @@ fn a_tool_without_variant_or_entry_is_byte_identical_and_a_variant_tool_keeps_it
     // PRD-mcphost-output-schema-reach-sweep-live R5: `host.doctor` gained the
     // optional `output_reach` block after the cited tree.
     edited.insert("host.doctor");
+    // A tenant-defined value the corpus can only sample is declared free-form
+    // (`output_schemas::OPAQUE_FIELDS`): `host.table.query` rows are the
+    // tenant's columns, and `host.tool.call` merges a tenant tool's payload
+    // (its `id`, `rows`) into the root.
+    edited.insert("host.table.query");
+    edited.insert("host.tool.call");
     let (mut untouched, mut varianted) = (0, 0);
     let mut problems = Vec::new();
     for (tool, old) in cited() {
