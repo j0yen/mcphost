@@ -79,11 +79,7 @@ fn the_corpus_covers_at_least_eighty_percent_of_registered_tools() {
 
 fn walk(tool: &str, schema: &Value, pointer: &str, errors: &mut Vec<String>) {
     let Some(obj) = schema.as_object() else { return };
-    let required: Vec<&str> = obj
-        .get("required")
-        .and_then(Value::as_array)
-        .map(|r| r.iter().filter_map(Value::as_str).collect())
-        .unwrap_or_default();
+    let required: Vec<&str> = mcphost::output_schemas::live_required(obj);
     for key in required.iter().filter(|k| k.ends_with("cursor")) {
         errors.push(format!("{tool} {pointer}/{key}: a cursor is omitted on the last page and must not be required"));
     }

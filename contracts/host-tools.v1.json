@@ -1662,6 +1662,52 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "address",
+              "contact_policy",
+              "description",
+              "handle",
+              "hints",
+              "tags",
+              "welcome_back"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "address": {
             "type": "string"
@@ -1714,15 +1760,6 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "address",
-          "contact_policy",
-          "description",
-          "handle",
-          "hints",
-          "tags",
-          "welcome_back"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -2134,6 +2171,51 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "ask_id",
+              "expires_unix",
+              "next_args",
+              "next_call",
+              "notified",
+              "url"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "ask_id": {
             "type": "string"
@@ -2162,14 +2244,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "ask_id",
-          "expires_unix",
-          "next_args",
-          "next_call",
-          "notified",
-          "url"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -2233,7 +2307,10 @@
         },
         "properties": {
           "answered_unix": {
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "ask_id": {
             "type": "string"
@@ -2242,7 +2319,10 @@
             "type": "string"
           },
           "choice": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "created_unix": {
             "type": "integer"
@@ -2376,7 +2456,10 @@
             "items": {
               "properties": {
                 "answered_unix": {
-                  "type": "integer"
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
                 },
                 "ask_id": {
                   "type": "string"
@@ -2385,7 +2468,10 @@
                   "type": "string"
                 },
                 "choice": {
-                  "type": "string"
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "created_unix": {
                   "type": "integer"
@@ -2497,13 +2583,19 @@
         },
         "properties": {
           "answered_unix": {
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "ask_id": {
             "type": "string"
           },
           "choice": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "status": {
             "type": "string"
@@ -2513,9 +2605,7 @@
           }
         },
         "required": [
-          "answered_unix",
           "ask_id",
-          "choice",
           "status",
           "waited_ms"
         ],
@@ -4619,7 +4709,10 @@
                 "properties": {
                   "error_code": {
                     "items": {
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     },
                     "type": "array"
                   },
@@ -7187,6 +7280,48 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "deleted",
+              "id",
+              "seq"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "deleted": {
             "type": "boolean"
@@ -7198,11 +7333,6 @@
             "type": "integer"
           }
         },
-        "required": [
-          "deleted",
-          "id",
-          "seq"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -7313,7 +7443,10 @@
             "type": "integer"
           },
           "text": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "text_bytes": {
             "type": "integer"
@@ -7334,7 +7467,6 @@
           "mime",
           "name",
           "seq",
-          "text",
           "text_bytes",
           "updated_at",
           "version"
@@ -7728,6 +7860,48 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "id",
+              "kept_from_version",
+              "purged_versions"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "id": {
             "type": "string"
@@ -7739,11 +7913,6 @@
             "type": "integer"
           }
         },
-        "required": [
-          "id",
-          "kept_from_version",
-          "purged_versions"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -7836,6 +8005,50 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "bytes",
+              "id",
+              "seq",
+              "text_bytes",
+              "version"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "bytes": {
             "type": "integer"
@@ -7853,13 +8066,6 @@
             "type": "integer"
           }
         },
-        "required": [
-          "bytes",
-          "id",
-          "seq",
-          "text_bytes",
-          "version"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -9768,6 +9974,48 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "state_rows",
+              "subject",
+              "vault_tokens"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "state_rows": {
             "type": "integer"
@@ -9779,11 +10027,6 @@
             "type": "integer"
           }
         },
-        "required": [
-          "state_rows",
-          "subject",
-          "vault_tokens"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -9859,6 +10102,47 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "revoked",
+              "subject"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "revoked": {
             "type": "boolean"
@@ -9867,10 +10151,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "revoked",
-          "subject"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -9943,6 +10223,47 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "revoked",
+              "subject"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "revoked": {
             "type": "boolean"
@@ -9951,10 +10272,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "revoked",
-          "subject"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -9963,7 +10280,7 @@
       "since": "0.60.24"
     },
     {
-      "description": "The end user (if any) this call itself carries: {subject, issuer, method, verified_at} from the OAuth bearer's sub/iss or a verified end_user_assertion; null when the call carries no verified end-user identity.",
+      "description": "The end user (if any) this call itself carries: {subject, issuer, method, verified_at} from the OAuth bearer's sub/iss or a verified end_user_assertion; {\"value\": null} when the call carries no verified end-user identity.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -10010,6 +10327,29 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "email",
+              "issuer",
+              "method",
+              "name",
+              "subject",
+              "verified_at"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "value": {}
+            },
+            "required": [
+              "value"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "email": {
             "type": [
@@ -10036,14 +10376,6 @@
             "type": "integer"
           }
         },
-        "required": [
-          "email",
-          "issuer",
-          "method",
-          "name",
-          "subject",
-          "verified_at"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -10387,7 +10719,10 @@
               "data",
               "message"
             ],
-            "type": "object"
+            "type": [
+              "object",
+              "null"
+            ]
           },
           "remaining": {
             "properties": {
@@ -11502,6 +11837,47 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "created",
+              "name"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "created": {
             "type": "boolean"
@@ -11510,10 +11886,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "created",
-          "name"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -11699,6 +12071,48 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "name",
+              "namespace",
+              "removed"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "name": {
             "type": "string"
@@ -11710,11 +12124,6 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "name",
-          "namespace",
-          "removed"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -12188,6 +12597,48 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "name",
+              "sources",
+              "status"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "name": {
             "type": "string"
@@ -12199,11 +12650,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "name",
-          "sources",
-          "status"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -12276,6 +12722,48 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "chunks_removed",
+              "deleted",
+              "name"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "chunks_removed": {
             "type": "integer"
@@ -12287,11 +12775,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "chunks_removed",
-          "deleted",
-          "name"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -12880,6 +13363,44 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "_meta": {
             "properties": {
@@ -12986,38 +13507,8 @@
               "object",
               "null"
             ]
-          },
-          "would": {
-            "properties": {
-              "state": {
-                "items": {
-                  "properties": {
-                    "action": {
-                      "type": "string"
-                    },
-                    "key": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "action",
-                    "key"
-                  ],
-                  "type": "object"
-                },
-                "type": "array"
-              }
-            },
-            "required": [
-              "state"
-            ],
-            "type": [
-              "object",
-              "null"
-            ]
           }
         },
-        "required": [],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -13208,6 +13699,47 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "code",
+              "revoked"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "code": {
             "type": "string"
@@ -13222,10 +13754,6 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "code",
-          "revoked"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -17060,6 +17588,47 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "id",
+              "revoked"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "id": {
             "type": "integer"
@@ -17068,10 +17637,6 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "id",
-          "revoked"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -17261,6 +17826,47 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "issuer",
+              "removed"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "issuer": {
             "type": "string"
@@ -17269,10 +17875,6 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "issuer",
-          "removed"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -17347,6 +17949,48 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "audience",
+              "issuer",
+              "jwks_url"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "audience": {
             "type": "string"
@@ -17358,11 +18002,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "audience",
-          "issuer",
-          "jwks_url"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -17680,6 +18319,44 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "_meta": {
             "properties": {
@@ -17733,38 +18410,8 @@
               "integer",
               "null"
             ]
-          },
-          "would": {
-            "properties": {
-              "state": {
-                "items": {
-                  "properties": {
-                    "action": {
-                      "type": "string"
-                    },
-                    "key": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "action",
-                    "key"
-                  ],
-                  "type": "object"
-                },
-                "type": "array"
-              }
-            },
-            "required": [
-              "state"
-            ],
-            "type": [
-              "object",
-              "null"
-            ]
           }
         },
-        "required": [],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -17774,7 +18421,7 @@
       "unpaged_reason": "not a list verb: the array is a field of a single-record or mutation response"
     },
     {
-      "description": "This tenant's registered OIDC identity provider (issuer, client_id, endpoints, scopes, flags) -- null if none is set. Never carries the client secret.",
+      "description": "This tenant's registered OIDC identity provider (issuer, client_id, endpoints, scopes, flags) -- {\"value\": null} if none is set. Never carries the client secret.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -17821,6 +18468,33 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "authorization_endpoint",
+              "claims_map",
+              "client_id",
+              "created_at",
+              "issuer",
+              "jwks_uri",
+              "owner_login",
+              "require_verified_email",
+              "scopes",
+              "token_endpoint"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "value": {}
+            },
+            "required": [
+              "value"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "authorization_endpoint": {
             "type": "string"
@@ -17854,18 +18528,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "authorization_endpoint",
-          "claims_map",
-          "client_id",
-          "created_at",
-          "issuer",
-          "jwks_uri",
-          "owner_login",
-          "require_verified_email",
-          "scopes",
-          "token_endpoint"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -18130,6 +18792,47 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "revoked_grants",
+              "revoked_pending"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "revoked_grants": {
             "type": "integer"
@@ -18138,10 +18841,6 @@
             "type": "integer"
           }
         },
-        "required": [
-          "revoked_grants",
-          "revoked_pending"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -18212,6 +18911,47 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "description",
+              "name"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "description": {
             "type": "string"
@@ -18220,10 +18960,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "description",
-          "name"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -18360,6 +19096,47 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "issuer",
+              "removed"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "issuer": {
             "type": "string"
@@ -18368,10 +19145,6 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "issuer",
-          "removed"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -18451,6 +19224,49 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "audience",
+              "client_id",
+              "issuer",
+              "jwks_url"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "audience": {},
           "client_id": {
@@ -18463,12 +19279,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "audience",
-          "client_id",
-          "issuer",
-          "jwks_url"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -18742,6 +19552,47 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "org",
+              "digest_enabled"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "digest_enabled": {
             "type": "boolean"
@@ -18750,10 +19601,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "org",
-          "digest_enabled"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -19322,6 +20169,47 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "attrs",
+              "subject"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "attrs": {
             "properties": {
@@ -19338,10 +20226,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "attrs",
-          "subject"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -19490,6 +20374,48 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "rule",
+              "target",
+              "version"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "rule": {
             "items": {
@@ -19546,11 +20472,6 @@
             "type": "integer"
           }
         },
-        "required": [
-          "rule",
-          "target",
-          "version"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -22943,14 +23864,51 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "purged"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "purged": {
             "type": "integer"
           }
         },
-        "required": [
-          "purged"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -23831,6 +24789,47 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "name",
+              "set"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "bound": {
             "type": [
@@ -23854,10 +24853,6 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "name",
-          "set"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -24215,6 +25210,47 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "removed",
+              "tool"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "caller_tenant": {
             "type": [
@@ -24230,10 +25266,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "removed",
-          "tool"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -24736,6 +25768,48 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "bytes_delta",
+              "deleted",
+              "key"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "bytes_delta": {
             "type": "integer"
@@ -24747,11 +25821,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "bytes_delta",
-          "deleted",
-          "key"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -24838,6 +25907,44 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "_meta": {
             "properties": {
@@ -24944,57 +26051,8 @@
               "string",
               "null"
             ]
-          },
-          "would": {
-            "properties": {
-              "rows": {
-                "items": {
-                  "properties": {
-                    "delete": {
-                      "type": "integer"
-                    },
-                    "sample": {
-                      "items": {
-                        "properties": {
-                          "n": {
-                            "type": "integer"
-                          },
-                          "status": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "n",
-                          "status"
-                        ],
-                        "type": "object"
-                      },
-                      "type": "array"
-                    },
-                    "table": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "delete",
-                    "sample",
-                    "table"
-                  ],
-                  "type": "object"
-                },
-                "type": "array"
-              }
-            },
-            "required": [
-              "rows"
-            ],
-            "type": [
-              "object",
-              "null"
-            ]
           }
         },
-        "required": [],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -25169,6 +26227,49 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "bytes_delta",
+              "ids",
+              "inserted",
+              "table"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "bytes_delta": {
             "type": "integer"
@@ -25206,12 +26307,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "bytes_delta",
-          "ids",
-          "inserted",
-          "table"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -25554,6 +26649,48 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "bytes_delta",
+              "key",
+              "set"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "bytes_delta": {
             "type": "integer"
@@ -25571,11 +26708,6 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "bytes_delta",
-          "key",
-          "set"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -25650,6 +26782,48 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "bytes_delta",
+              "created",
+              "name"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "bytes_delta": {
             "type": "integer"
@@ -25725,11 +26899,6 @@
             ]
           }
         },
-        "required": [
-          "bytes_delta",
-          "created",
-          "name"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -25802,6 +26971,47 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "dropped",
+              "name"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "bytes_delta": {
             "type": [
@@ -25816,10 +27026,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "dropped",
-          "name"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -26522,6 +27728,48 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "appended",
+              "ids",
+              "table"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "appended": {
             "type": "integer"
@@ -26536,11 +27784,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "appended",
-          "ids",
-          "table"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -27220,6 +28463,44 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "_meta": {
             "properties": {
@@ -27344,38 +28625,8 @@
               "string",
               "null"
             ]
-          },
-          "would": {
-            "properties": {
-              "state": {
-                "items": {
-                  "properties": {
-                    "action": {
-                      "type": "string"
-                    },
-                    "key": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "action",
-                    "key"
-                  ],
-                  "type": "object"
-                },
-                "type": "array"
-              }
-            },
-            "required": [
-              "state"
-            ],
-            "type": [
-              "object",
-              "null"
-            ]
           }
         },
-        "required": [],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -28610,6 +29861,44 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "_meta": {
             "properties": {
@@ -28734,46 +30023,8 @@
               "string",
               "null"
             ]
-          },
-          "would": {
-            "properties": {
-              "tables": {
-                "items": {
-                  "properties": {
-                    "action": {
-                      "type": "string"
-                    },
-                    "bytes": {
-                      "type": "integer"
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "rows": {
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "action",
-                    "bytes",
-                    "name",
-                    "rows"
-                  ],
-                  "type": "object"
-                },
-                "type": "array"
-              }
-            },
-            "required": [
-              "tables"
-            ],
-            "type": [
-              "object",
-              "null"
-            ]
           }
         },
-        "required": [],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -29022,6 +30273,47 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "dropped",
+              "handle"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "dropped": {
             "type": "boolean"
@@ -29030,10 +30322,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "dropped",
-          "handle"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -29529,6 +30817,47 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "set",
+              "table"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "lineage_notes": {
             "items": {
@@ -29578,10 +30907,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "set",
-          "table"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -33537,6 +34862,47 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "removed",
+              "triggers_disabled"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "removed": {
             "type": "string"
@@ -33545,10 +34911,6 @@
             "type": "integer"
           }
         },
-        "required": [
-          "removed",
-          "triggers_disabled"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -36625,6 +37987,48 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "enabled",
+              "id",
+              "name"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "enabled": {
             "type": "boolean"
@@ -36636,11 +38040,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "enabled",
-          "id",
-          "name"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -36727,6 +38126,47 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "name",
+              "removed"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "name": {
             "type": "string"
@@ -36735,10 +38175,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "name",
-          "removed"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -36934,6 +38370,48 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "enabled",
+              "id",
+              "name"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "enabled": {
             "type": "boolean"
@@ -36945,11 +38423,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "enabled",
-          "id",
-          "name"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -37073,6 +38546,56 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "changed",
+              "created",
+              "created_unix",
+              "enabled",
+              "id",
+              "kind",
+              "last_fired_unix",
+              "last_run_id",
+              "last_status",
+              "name",
+              "tool"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "dry_run": {
+                    "const": true
+                  },
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "dry_run"
+                ],
+                "type": "object"
+              },
+              "confirm": {
+                "type": "string"
+              },
+              "would": {
+                "additionalProperties": {
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "would",
+              "_meta"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "args": {
             "properties": {},
@@ -37265,19 +38788,6 @@
             ]
           }
         },
-        "required": [
-          "changed",
-          "created",
-          "created_unix",
-          "enabled",
-          "id",
-          "kind",
-          "last_fired_unix",
-          "last_run_id",
-          "last_status",
-          "name",
-          "tool"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -41853,7 +43363,7 @@
     },
     {
       "alias_of": "host.enduser.whoami",
-      "description": "The end user (if any) this call itself carries: {subject, issuer, method, verified_at} from the OAuth bearer's sub/iss or a verified end_user_assertion; null when the call carries no verified end-user identity.",
+      "description": "The end user (if any) this call itself carries: {subject, issuer, method, verified_at} from the OAuth bearer's sub/iss or a verified end_user_assertion; {\"value\": null} when the call carries no verified end-user identity.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -44016,7 +45526,7 @@
     },
     {
       "alias_of": "host.oauth.provider",
-      "description": "This tenant's registered OIDC identity provider (issuer, client_id, endpoints, scopes, flags) -- null if none is set. Never carries the client secret.",
+      "description": "This tenant's registered OIDC identity provider (issuer, client_id, endpoints, scopes, flags) -- {\"value\": null} if none is set. Never carries the client secret.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {

@@ -263,3 +263,36 @@ pub fn build_would(verb: &WriteVerb, args: &Value, notes: &[(&'static str, Value
     }
     json!({"would": Value::Object(would), "_meta": {"dry_run": true}})
 }
+
+/// PRD-mcphost-success-result-matches-output-schema R1: the schema of what
+/// [`build_would`] and its decorations emit, so the dry-run preview is a
+/// generated `outputSchema` branch rather than a hand-widened property. It
+/// covers the `would` classes (each an array), `_meta.dry_run` (always `true`
+/// on a preview), the optional `_meta.scratch` (`handler::mark_scratch`) and
+/// the optional `confirm` token (`handler::confirm_decorate_dry_run`).
+pub fn dry_run_output_branch() -> Value {
+    json!({
+        "type": "object",
+        "required": ["would", "_meta"],
+        "properties": {
+            "would": {"type": "object", "additionalProperties": {"type": "array"}},
+            "_meta": {
+                "type": "object",
+                "required": ["dry_run"],
+                "properties": {
+                    "dry_run": {"const": true},
+                    "scratch": {"type": "boolean"},
+                },
+            },
+            "confirm": {"type": "string"},
+        },
+    })
+}
+
+/// Whether `name`'s dry-run preview is the generic [`build_would`] shape:
+/// `Supported` and not a `Publish` verb (its own gate report passes through).
+pub fn has_generic_dry_run(name: &str) -> bool {
+    WRITE_VERBS
+        .iter()
+        .any(|v| v.name == name && matches!(v.dry_run, DryRun::Supported) && v.kind != Kind::Publish)
+}

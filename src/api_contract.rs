@@ -752,7 +752,8 @@ fn diff_properties(
 /// PRD-mcphost-contract-output-schemas R5: the output-side twin of
 /// [`diff_properties`]. `old_schema`/`new_schema` are a tool's
 /// `output_schema`s; findings are pathed `<tool>.output.<field>`. A property
-/// that vanished is a removal, a changed `type` is a narrowing (a typed
+/// that vanished is a removal, a changed `type` is a narrowing unless the new
+/// type accepts every old one (a type that gained `null` widens; a typed
 /// client built on the old type breaks), and a property that was `required`
 /// and no longer is breaks the "always present" promise. A property that
 /// became required is a stronger promise, never a violation.
@@ -771,17 +772,31 @@ fn diff_output_properties(
     let new_props = new_schema.get("properties").and_then(Value::as_object);
     let required = |schema: &Value, field: &str| {
         schema
-            .get("required")
+            .as_object()
+            .is_some_and(|s| crate::output_schemas::live_required(s).contains(&field))
+    };
+    // A property that moved from the live root into a variant branch (the
+    // dry-run preview's `would`) is still declared, so it is neither a removal
+    // nor a narrowing: it is no longer part of the live result.
+    let in_branch = |field: &str| {
+        new_schema
+            .get("anyOf")
             .and_then(Value::as_array)
-            .is_some_and(|r| r.iter().any(|v| v.as_str() == Some(field)))
+            .into_iter()
+            .flatten()
+            .any(|b| b.get("properties").is_some_and(|p| p.get(field).is_some()))
     };
     for (field, old_field) in old_props {
         let path = format!("{tool_name}.output.{field}");
         match new_props.and_then(|p| p.get(field)) {
+            None if in_branch(field) => {}
             None => check_removed(&path, deprecations, today_unix, violations),
             Some(new_field) => {
+                // A type that gained `null` (or any other member) accepts
+                // everything it did and is not a narrowing.
                 if let (Some(old_type), Some(new_type)) = (schema_type(old_field), schema_type(new_field))
                     && old_type != new_type
+                    && !type_accepts_all(old_type, new_type)
                 {
                     check_narrowed(
                         &path,
