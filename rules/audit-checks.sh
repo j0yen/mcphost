@@ -183,6 +183,19 @@ grep_secret_in_debug_impl() {
       pending && /^[[:space:]]*(pub(\([^)]*\))? )?struct / {struct=1; next}
       struct && /^[[:space:]]*\}/ {struct=0; pending=0; next}
       struct && /^[[:space:]]*(pub(\([^)]*\))? )?(secret|password|passwd|token|api_key|private_key|bearer)[[:space:]]*:/ {
+        # Skip fields whose type cannot hold a secret: bool / integer / float / char,
+        # bare or inside Option<..> / Vec<..>. Vec<u8> (raw key bytes) still flags.
+        t = $0
+        sub(/^[^:]*:[[:space:]]*/, "", t)
+        sub(/[[:space:]]*,?[[:space:]]*(\/\/.*)?$/, "", t)
+        gsub(/[[:space:]]/, "", t)
+        sawvec = 0
+        while (t ~ /^(Option|Vec)<.*>$/) {
+          if (t ~ /^Vec</) sawvec = 1
+          sub(/^(Option|Vec)</, "", t)
+          sub(/>$/, "", t)
+        }
+        if (t ~ /^(bool|[iu](8|16|32|64|128|size)|f32|f64|char)$/ && !(sawvec && t == "u8")) next
         print FILENAME ":" NR ":" $0
       }
     ' "$file"
