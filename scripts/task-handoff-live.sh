@@ -56,6 +56,7 @@ print(json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
     -H 'MCP-Protocol-Version: 2026-07-28' \
     -H 'Mcp-Method: tools/call' \
     -H "Mcp-Name: $tool" \
+    -H 'x-mcphost-synthetic: script:task-handoff-live' \
     --data-binary "$body" 2>/dev/null) || { echo "$step unreachable"; return 1; }
   printf '%s' "$resp" | python3 -c '
 import json, sys
