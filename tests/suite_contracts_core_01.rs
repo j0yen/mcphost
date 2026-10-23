@@ -8,6 +8,10 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 mod ci_sandbox_support;
+#[path = "support/osreach.rs"]
+mod osreach;
+#[path = "support/timp.rs"]
+mod timp;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
@@ -183,6 +187,16 @@ mod osmatch_ac04_observational_edits;
 mod osmatch_ac05_contract_diff;
 #[path = "osmatch_ac08_sample_rows.rs"]
 mod osmatch_ac08_sample_rows;
+#[path = "osreach_ac01_sweep_validates_every_served_name.rs"]
+mod osreach_ac01_sweep_validates_every_served_name;
+#[path = "osreach_ac02_variants_record.rs"]
+mod osreach_ac02_variants_record;
+#[path = "osreach_ac03_unreached_cap.rs"]
+mod osreach_ac03_unreached_cap;
+#[path = "osreach_ac04_import_own_dry_run.rs"]
+mod osreach_ac04_import_own_dry_run;
+#[path = "osreach_ac05_validator_control_and_doctor.rs"]
+mod osreach_ac05_validator_control_and_doctor;
 #[path = "outsch_ac02_every_canonical_declares_an_object_output_schema.rs"]
 mod outsch_ac02_every_canonical_declares_an_object_output_schema;
 #[path = "ptbatch_ac01_classify_files_agrees_with_classify.rs"]
