@@ -551,6 +551,12 @@ pub enum Violation {
     Removed { path: String },
     RemovedBeforeSunset { path: String, sunset: String },
     Narrowed { path: String, detail: String },
+    /// PRD-mcphost-tool-call-output-root-opaque R5: `path` (`<tool>.output`)
+    /// is an opaque root ([`crate::output_schemas::FORWARDING_ROOTS`]) and
+    /// `removed` are the typed root properties it no longer declares. The
+    /// root now accepts those keys as any JSON, so this is a report, not a
+    /// breaking change; it needs no deprecation entry.
+    OpaqueRoot { path: String, removed: Vec<String> },
 }
 
 impl Violation {
@@ -558,7 +564,8 @@ impl Violation {
         match self {
             Violation::Removed { path }
             | Violation::RemovedBeforeSunset { path, .. }
-            | Violation::Narrowed { path, .. } => path,
+            | Violation::Narrowed { path, .. }
+            | Violation::OpaqueRoot { path, .. } => path,
         }
     }
 
@@ -573,6 +580,10 @@ impl Violation {
             ),
             Violation::Narrowed { path, detail } => format!(
                 "{path} was narrowed ({detail}) with no valid contracts/deprecations.json entry"
+            ),
+            Violation::OpaqueRoot { path, removed } => format!(
+                "{path} is an opaque root and no longer types {}: they are accepted as any JSON",
+                removed.join(", ")
             ),
         }
     }
@@ -814,10 +825,13 @@ fn diff_output_properties(
             .flatten()
             .any(|b| b.get("properties").is_some_and(|p| p.get(field).is_some()))
     };
+    let opaque_root = crate::output_schemas::FORWARDING_ROOTS.contains(&tool_name);
+    let mut opaque_removed = Vec::new();
     for (field, old_field) in old_props {
         let path = format!("{tool_name}.output.{field}");
         match new_props.and_then(|p| p.get(field)) {
             None if in_branch(field) => {}
+            None if opaque_root => opaque_removed.push(field.clone()),
             None => check_removed(&path, deprecations, today_unix, violations),
             Some(new_field) => {
                 // A type that gained `null` (or any other member) accepts
@@ -837,6 +851,9 @@ fn diff_output_properties(
                 }
             }
         }
+    }
+    if !opaque_removed.is_empty() {
+        violations.push(Violation::OpaqueRoot { path: format!("{tool_name}.output"), removed: opaque_removed });
     }
 }
 

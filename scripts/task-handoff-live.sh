@@ -50,14 +50,24 @@ print(json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
         "io.modelcontextprotocol/clientCapabilities": {},
         "io.modelcontextprotocol/clientInfo": {"name": "task-handoff-live", "version": "1"}}}}))
 ' "$tool" "$args" "$key") || { echo "$step bad_request"; return 1; }
-  resp=$(curl -sS --max-time 15 -X POST "$BASE/mcp" \
-    -H 'Content-Type: application/json' \
-    -H 'Accept: application/json, text/event-stream' \
-    -H 'MCP-Protocol-Version: 2026-07-28' \
-    -H 'Mcp-Method: tools/call' \
-    -H "Mcp-Name: $tool" \
-    -H 'x-mcphost-synthetic: script:task-handoff-live' \
-    --data-binary "$body" 2>/dev/null) || { echo "$step unreachable"; return 1; }
+  # Retry only when the TCP connect itself failed (curl exit 7): nothing was
+  # sent, so a retry cannot duplicate a signup or a post. A loaded host can
+  # refuse or drop a connect for a moment.
+  local attempt rc=0
+  for attempt in 1 2 3 4 5; do
+    rc=0
+    resp=$(curl -sS --max-time 30 -X POST "$BASE/mcp" \
+      -H 'Content-Type: application/json' \
+      -H 'Accept: application/json, text/event-stream' \
+      -H 'MCP-Protocol-Version: 2026-07-28' \
+      -H 'Mcp-Method: tools/call' \
+      -H "Mcp-Name: $tool" \
+      -H 'x-mcphost-synthetic: script:task-handoff-live' \
+      --data-binary "$body" 2>/dev/null) || rc=$?
+    [ "$rc" -eq 7 ] || break
+    python3 -c 'import time; time.sleep(1)'
+  done
+  [ "$rc" -eq 0 ] || { echo "$step unreachable"; return 1; }
   printf '%s' "$resp" | python3 -c '
 import json, sys
 step = sys.argv[1]

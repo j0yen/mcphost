@@ -391,6 +391,8 @@ pub async fn wait(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         None => Ok(json!({
             "ask_id": ask_id,
             "status": "pending",
+            "answered_unix": Value::Null,
+            "choice": Value::Null,
             "waited_ms": waited_ms,
             "next_call": "host.ask.wait",
             "next_args": {"ask_id": ask_id},

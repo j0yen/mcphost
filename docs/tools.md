@@ -3016,7 +3016,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 - `attempt`: integer (always)
 - `counters`: object (always)
-- `deadline_s`: integer (always)
+- `deadline_s`: integer | null (always)
 - `duration_ms`: integer | null (always)
 - `end_user`: any (always)
 - `error`: object | null (always)
@@ -3030,7 +3030,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `result`: any (always)
 - `result_ref`: object | null (always)
 - `run_id`: string (always)
-- `started_unix`: integer (always)
+- `started_unix`: integer | null (always)
 - `status`: string (always)
 - `step_no`: any (always)
 - `test`: boolean (always)
@@ -3819,49 +3819,16 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Returns**
 
-- `args`: object | null
-- `body`: object | null
-- `changed`: array | null
-- `checked_at`: integer | null
+- `call_id`: string | null
 - `client_tool`: string | null
-- `columns`: array<string> | null
-- `count`: integer | null
-- `created`: boolean | null
-- `created_unix`: integer | null
-- `dedupe_header`: any
-- `doubled`: integer | null
-- `enabled`: boolean | null
-- `failed_steps`: array | null
+- `data`: any
+- `dry_run`: any
 - `forwarded_to`: string | null
-- `headers`: object | null
-- `https_proxy`: string | null
-- `id`: any
-- `kind`: string | null
-- `last_fired_unix`: any
-- `last_run_id`: any
-- `last_status`: any
-- `msg`: string | null
-- `name`: string | null
-- `next`: object | null
-- `next_unix`: integer | null
-- `ok`: boolean | null
-- `onboarding`: object | null
-- `payload`: object | null
-- `preset`: any
 - `result`: any
-- `rows`: any
-- `run_id`: string | null
-- `schedule`: string | null
-- `status`: string | integer | null
-- `steps`: array<object> | null
-- `text`: string | null
-- `tool`: string | null
-- `tz`: any
-- `unverified`: boolean | null
-- `url`: string | null
-- `v1`: string | null
-- `verify`: object | null
-- `welcome_back`: object | null
+- `stale_test`: any
+- `state`: any
+- `tested_version`: any
+- `verdict`: any
 
 **Arguments**
 
@@ -4102,49 +4069,16 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 **Returns**
 
-- `args`: object | null
-- `chain_dry_run`: boolean | null
-- `changed`: array | null
-- `created`: boolean | null
-- `created_unix`: integer | null
-- `detail`: string | null
-- `dry_run`: object (always)
-- `enabled`: boolean | null
-- `envelope`: object | null
-- `environment`: array<object> | null
-- `error`: string | null
-- `evidence`: array<object> | null
-- `exception_class`: string | null
-- `failures`: array<object> | null
+- `call_id`: string | null
+- `client_tool`: string | null
+- `data`: any
+- `dry_run`: any (always)
 - `forwarded_to`: string | null
-- `id`: string | null
-- `inputs_required`: array<string> | null
-- `kind`: string | null
-- `last_fired_unix`: any
-- `last_run_id`: any
-- `last_status`: any
-- `line`: integer | null
-- `msg`: string | null
-- `name`: string | null
-- `next`: object | null
-- `next_unix`: integer | null
-- `ok`: boolean | null
-- `outer`: object | null
-- `payload`: object | null
-- `reason`: string | null
-- `request`: object | null
-- `response`: object | null
 - `result`: any
-- `schedule`: string | null
-- `schema`: object | null
-- `source_line`: string | null
-- `state`: object | null
-- `steps`: array<object> | null
-- `tool`: string | null
-- `tz`: any
-- `verdict`: string | null
-- `warnings`: array<string> | null
-- `welcome_back`: object | null
+- `stale_test`: any
+- `state`: any
+- `tested_version`: any
+- `verdict`: any
 
 **Arguments**
 

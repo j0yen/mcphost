@@ -304,7 +304,7 @@ pub fn live_view(schema: &Value) -> Value {
 /// tenant-defined output field is one line here; `oschv_ac03` fails if one is
 /// forgotten.
 pub const OPAQUE_FIELDS: &[(&str, &str)] = &[
-    ("host.tool.call", "/properties/steps/items/properties/result"),
+    ("host.tool.call", "/properties/data"),
     ("host.tool.call", "/properties/result"),
     ("host.runs.get", "/properties/result"),
     ("host.runs.get", "/properties/children/items/properties/result"),
@@ -315,13 +315,28 @@ pub const OPAQUE_FIELDS: &[(&str, &str)] = &[
     ("host.state.list", "/properties/keys/items/properties/value"),
     ("host.state.query", "/properties/rows/items"),
     ("host.table.query", "/properties/rows/items"),
-    ("host.tool.call", "/properties/id"),
-    ("host.tool.call", "/properties/rows"),
     ("host.tool.run", "/properties/payload"),
+    ("host.tool.test", "/properties/data"),
     ("host.tool.test", "/properties/result"),
-    ("host.tool.test", "/properties/steps/items/properties/result"),
     ("host.call_trace", "/properties/replay/properties/result"),
 ];
+
+/// PRD-mcphost-tool-call-output-root-opaque R1: the two tools whose result
+/// root mixes the called tool's (or forwarded verb's) own output with keys the
+/// host inserts.
+pub const FORWARDING_ROOTS: &[&str] = &["host.tool.call", "host.tool.test"];
+
+/// PRD-mcphost-tool-call-output-root-opaque R1: the one list of keys at a
+/// [`FORWARDING_ROOTS`] root that the host writes (`call_id` on both tools; a
+/// test also stamps `dry_run`, `state`, `stale_test`, `tested_version` and
+/// `verdict`) or that carry the called tool's own output (`data`, `result`),
+/// besides `forwarded_to` and `client_tool`, which only the verb-forward path
+/// inserts. `call_id` is the only one typed; every other name is `{}` because
+/// a tenant tool or a forwarded verb may return the same name with another
+/// type. Every key outside this list is untyped. `osroot_ac03` drives the
+/// emitters and fails on a name no branch emits or an emitted name not here.
+pub const ROOT_ENVELOPE: &[&str] =
+    &["call_id", "data", "dry_run", "result", "stale_test", "state", "tested_version", "verdict"];
 
 /// Replace the node each `(tool, pointer)` names with `{}`. `Err` names the
 /// first pointer that resolves to nothing.
