@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.114.2 — 2026-10-23
+
+Released by wm-build land: loop: mcphost-admin-funnel-real-surface-recipe-counter.
+
 ## v0.113.0 — 2026-10-23
 
 Released by wm-build land: loop: mcphost-output-envelope-fields-generated.

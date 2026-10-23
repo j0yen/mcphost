@@ -1,4 +1,18 @@
 {
+  "admin_funnel": {
+    "recipe_attempts_7d_keys": [
+      "webhook-inbox",
+      "schedules"
+    ],
+    "surface_stage_keys": [
+      "signed_up",
+      "claimed",
+      "published",
+      "first_own_call",
+      "first_external_call",
+      "day7_active"
+    ]
+  },
   "contract_version": 1,
   "kinds": {
     "chain": {
