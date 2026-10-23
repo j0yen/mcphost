@@ -1,7 +1,7 @@
 {
   "lib": 6,
   "suite_cargo_core_01": 1,
-  "suite_contracts_core_01": 346,
+  "suite_contracts_core_01": 364,
   "suite_contracts_sandbox_01": 5,
   "suite_core_01": 1,
   "suite_core_02": 1,
@@ -19,5 +19,5 @@
   "suite_sandbox_01": 2,
   "suite_sandbox_02": 108,
   "suite_sandbox_03": 88,
-  "suite_sandbox_04": 86
+  "suite_sandbox_04": 91
 }
