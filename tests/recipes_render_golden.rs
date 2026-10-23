@@ -109,13 +109,23 @@ fn deadline_of(r: &recipes::Recipe) -> u64 {
 #[test]
 fn recipes_worst_case_fits_the_rgpt_cap() {
     let rgpt = std::fs::read_to_string(repo().join("tests/support/rgpt.rs")).expect("read rgpt.rs");
-    let secs: u64 = rgpt
-        .lines()
-        .find(|l| l.contains("pub const MAX_RECIPE_WALL"))
-        .and_then(|l| l.split("from_secs(").nth(1))
-        .and_then(|t| t.split(')').next())
-        .and_then(|t| t.trim().parse().ok())
-        .expect("MAX_RECIPE_WALL = Duration::from_secs(N) in tests/support/rgpt.rs");
+    // The cap is derived in rgpt.rs (not a literal): it must spell the same
+    // formula, from the same real constants, that the validator uses.
+    let flat: String = rgpt.split("pub const MAX_RECIPE_WALL").nth(1).expect("MAX_RECIPE_WALL in tests/support/rgpt.rs").split(';').next().unwrap_or("").split_whitespace().collect();
+    for term in [
+        "mcphost::recipes::MAX_POLLED_STEPS",
+        "mcphost::triggers::SCHEDULER_TICK.as_secs()",
+        "mcphost::triggers::SYNC_FETCH_ALLOWANCE_S",
+        "mcphost::recipes::RETRY_UNTIL_EXPECT_POLL_S",
+        "mcphost::recipes::RECIPE_NON_POLL_STEP_S",
+        "mcphost::recipes::RECIPE_WALL_MARGIN_S",
+    ] {
+        assert!(flat.contains(term), "MAX_RECIPE_WALL in tests/support/rgpt.rs must be derived from {term}: {flat}");
+    }
+    let secs = recipes::MAX_POLLED_STEPS as u64
+        * (mcphost::triggers::SCHEDULER_TICK.as_secs() + mcphost::triggers::SYNC_FETCH_ALLOWANCE_S + recipes::RETRY_UNTIL_EXPECT_POLL_S)
+        + recipes::RECIPE_NON_POLL_STEP_S
+        + recipes::RECIPE_WALL_MARGIN_S;
     assert_eq!(secs, recipes::RGPT_MAX_RECIPE_WALL_S, "RGPT_MAX_RECIPE_WALL_S drifted from tests/support/rgpt.rs");
 
     let all = recipes::load_all(repo()).expect("load recipes");
@@ -124,7 +134,8 @@ fn recipes_worst_case_fits_the_rgpt_cap() {
     for r in polled {
         let worst = recipes::retry_until_expect_worst_case_s(r);
         let retry_s = deadline_of(r);
-        assert_eq!(worst, retry_s + recipes::RETRY_UNTIL_EXPECT_POLL_S + recipes::RECIPE_NON_POLL_STEP_S, "{}", r.name);
+        let polls = r.steps.iter().filter(|s| s.retry_until_expect).count() as u64;
+        assert_eq!(worst, polls * (retry_s + recipes::RETRY_UNTIL_EXPECT_POLL_S) + recipes::RECIPE_NON_POLL_STEP_S, "{}", r.name);
         assert!(
             worst + recipes::RECIPE_WALL_MARGIN_S <= secs,
             "recipe {}: worst case {worst} s (retry_s {retry_s} + poll {} + other steps {}) is within {} s of the {secs} s rgpt cap",
