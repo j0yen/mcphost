@@ -103,6 +103,23 @@ fn scratch(max_suites: u32) -> PathBuf {
             .unwrap();
         }
     }
+    // A pending measured entry records `git merge-base HEAD origin/main`, so the scratch tree is a repo whose
+    // origin/main is a local ref at its only commit (no remote, no network).
+    let git = |args: &[&str]| {
+        let o = Command::new("git")
+            .args(["-c", "core.hooksPath=/dev/null", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"])
+            .args(args)
+            .current_dir(&dir)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .unwrap_or_else(|e| panic!("git {args:?}: {e}"));
+        assert!(o.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&o.stderr));
+    };
+    git(&["init", "-q"]);
+    git(&["add", "-A"]);
+    git(&["commit", "-q", "-m", "base"]);
+    git(&["update-ref", "refs/remotes/origin/main", "HEAD"]);
     dir
 }
 
@@ -181,11 +198,11 @@ fn an_overflowing_core_plan_is_packed_into_max_suites_with_weights() {
 
     let c = run(&dir, "gen-test-suites.sh", &["--check"]);
     assert!(c.status.success(), "{}", text(&c));
-    // A fresh plan has no CI measurement yet: every created suite is seeded (provisional) at its recorded weight
-    // x 1.0 (no old suite to scale from), so `check` passes, WARNING about each provisional seed...
+    // A fresh plan has no CI measurement yet: every created suite is seeded (pending) at its recorded weight
+    // x 1.0 (no old suite to scale from), so `check` passes, naming each pending (derived) seed...
     let seeded = run(&dir, "ci-test-partition.sh", &["check"]);
     assert!(seeded.status.success(), "a fresh plan's provisional seeds must pass check\n{}", text(&seeded));
-    assert!(String::from_utf8_lossy(&seeded.stderr).contains("WARNING provisional measured entry: "), "{}", text(&seeded));
+    assert!(String::from_utf8_lossy(&seeded.stderr).contains("pending (derived) "), "{}", text(&seeded));
     // ...and a measured file with NO entry for a suite still fails the completeness guard, naming it.
     let mpath = dir.join("scripts/ci-suite-measured.json");
     let seeded_json = fs::read_to_string(&mpath).unwrap();

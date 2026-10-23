@@ -36,7 +36,7 @@
 set -uo pipefail
 SELF_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${CI_REFRESH_ROOT:-$SELF_ROOT}" || exit 2
-[ "$#" -ge 1 ] || { sed -n '2,36p' "$0" >&2; exit 2; }
+[ "$#" -ge 1 ] || { sed -n '2,35p' "$0" >&2; exit 2; }
 if [ "${CI_REFRESH_ALLOW_LOCAL:-}" != 1 ]; then
   for arg in "$@"; do
     [ -f "$arg" ] && { echo "ci-refresh-weights: $arg is a local log file; only a CI run id is a measurement (set CI_REFRESH_ALLOW_LOCAL=1 to override); nothing written" >&2; exit 2; }
@@ -77,8 +77,8 @@ W, M = "scripts/ci-suite-weights.json", "scripts/ci-suite-measured.json"
 weights = json.load(open(W))
 
 old_m = json.load(open(M)) if os.path.exists(M) else {}
-# `_provisional` ({suite: seed date}, written by gen-test-suites.sh for a suite created from only new test
-# files) is bookkeeping, not a suite: a real measurement of the suite clears its mark; a provisional suite
+# `_provisional` ({suite: {pending, derived_s, since}}, written by gen-test-suites.sh for a suite created from
+# only new test files; an older date-valued mark is read the same way, only its keys matter) is bookkeeping, not a suite: a real measurement of the suite clears its mark; a provisional suite
 # the input does not measure is an error (it would stay a guess).
 provisional = old_m.pop("_provisional", None)
 provisional = provisional if isinstance(provisional, dict) else {}
@@ -120,7 +120,7 @@ for name, secs in sorted(new_m.items()):
 # every provisional suite is measured here (else the exit above), so the key is dropped whole
 for name in sorted(provisional):
     if name in measured and name in weights:
-        print(f"ci-refresh-weights: {name} measured; provisional mark cleared")
+        print(f"ci-refresh-weights: {name} measured; pending entry replaced by the measurement")
 json.dump(dict(sorted(weights.items())), open(W, "w"), indent=2); open(W, "a").write("\n")
 json.dump(dict(sorted(new_m.items())), open(M, "w"), indent=2); open(M, "a").write("\n")
 print(f"ci-refresh-weights: wrote {M} ({len(new_m)} suites) and {W}")

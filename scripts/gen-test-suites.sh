@@ -62,7 +62,6 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 
 python3 - "${1:-}" <<'PY'
-import datetime
 import glob
 import json
 import os
@@ -1379,7 +1378,29 @@ def plan_weights(suite_files):
 
 
 MEASURED_REL = "scripts/ci-suite-measured.json"
-PROVISIONAL_KEY = "_provisional"  # {suite: seed date}: seeded by plan_measured, cleared by ci-refresh-weights.sh
+PROVISIONAL_KEY = "_provisional"  # {suite: {pending, derived_s, since}}: seeded by plan_measured, cleared by ci-refresh-weights.sh
+_SEED_BASE = []
+
+
+def seed_base():
+    """The default-branch commit this tree was cut from (`git merge-base HEAD origin/main`; ref overridable with
+    GEN_TEST_SUITES_BASE_REF). A land SQUASHES the branch, so the branch's HEAD never reaches main: only the
+    base does, and `ci-test-partition.sh check` measures a pending entry's age from it. Resolved lazily (a run
+    that seeds nothing needs no git) and only once."""
+    if not _SEED_BASE:
+        ref = os.environ.get("GEN_TEST_SUITES_BASE_REF", "origin/main")
+        r = subprocess.run(["git", "merge-base", "HEAD", ref], capture_output=True, text=True)
+        base = r.stdout.strip()
+        if r.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40}", base):
+            sys.exit(f"gen-test-suites: a suite made only of new test files needs a pending measured entry, which records "
+                     f"`git merge-base HEAD {ref}`; that did not resolve ({r.stderr.strip() or 'no output'}). "
+                     f"Fetch the default branch (git fetch origin main) and rerun.")
+        _SEED_BASE.append(base)
+    return _SEED_BASE[0]
+
+
+def pending_entry(derived_s, since):
+    return {"pending": True, "derived_s": derived_s, "since": since}
 
 
 def plan_measured(suite_files, new_weights):
@@ -1401,12 +1422,17 @@ def plan_measured(suite_files, new_weights):
     old suite) is seeded at its recorded weight x R, where R = sum(measured) / sum(recorded)
     over the old normal buckets of the same partition (not solo, not themselves provisional;
     floored at 1.0, and 1.0 when none qualifies), and is marked in the reserved
-    `"_provisional": {"<suite>": "<seed date>"}` key: the flat suite -> seconds map stays
-    unchanged for every reader, and ci-refresh-weights.sh clears the mark when a CI run
-    measures the suite (PR 495, run 39913385513: suite_core_12 held only new files, got no
+    `"_provisional": {"<suite>": {"pending": true, "derived_s": <the seeded seconds>, "since":
+    "<git merge-base HEAD origin/main>"}}` key: the flat suite -> seconds map stays unchanged for
+    every reader, `ci-test-partition.sh check` accepts the entry only while the suite's measured value
+    still equals derived_s and `since` is at most 3 first-parent commits behind main, and
+    ci-refresh-weights.sh removes the entry when a CI run measures the suite (PR 495, run 39913385513: suite_core_12 held only new files, got no
     entry, and `check` failed every core, sandbox and regen job so no shard log could ever
     be produced to measure it). A suite seeded from old members and a resized suite are
-    NOT marked (a resized suite that already was keeps its mark).
+    NOT marked. A resized pending suite keeps its `since` and takes its new scaled value as
+    derived_s; an unchanged one keeps its entry byte for byte (so --check never drifts as main moves).
+    A legacy date-valued entry is kept as it is when unchanged (check fails it: no commit) and is
+    rewritten with `since: null` when resized.
     Otherwise ci-test-partition.sh check compares the OLD set's seconds with the
     NEW set's weight (ryzen7 run 404, 10-18: core_08 re-packed to recorded 223 s
     against measured 398 s, and the land precheck refused)."""
@@ -1449,7 +1475,8 @@ def plan_measured(suite_files, new_weights):
         if isinstance(w_old, (int, float)) and w_old > 0 and isinstance(w_new, (int, float)):
             out[name] = round(secs * w_new / w_old, 2)
             if name in prov_old:
-                prov[name] = prov_old[name]
+                po = prov_old[name]
+                prov[name] = pending_entry(out[name], po.get("since") if isinstance(po, dict) else None)
     # created suites: seeded from the old suites their member files came from
     ratio_of_file = {}  # member file -> (share of its source's recorded seconds, source measured / recorded)
     for name, secs in old.items():
@@ -1471,7 +1498,6 @@ def plan_measured(suite_files, new_weights):
             meas_sum[suite_partition(name)] += secs
             rec_sum[suite_partition(name)] += w_old
     ratio = {p: (max(1.0, meas_sum[p] / rec_sum[p]) if rec_sum[p] > 0 else 1.0) for p in meas_sum}
-    seed_date = os.environ.get("GEN_TEST_SUITES_TODAY") or datetime.date.today().isoformat()
     for path, content in suite_files.items():
         name = os.path.basename(path)[:-3]
         w_new = new_weights.get(name)
@@ -1484,7 +1510,7 @@ def plan_measured(suite_files, new_weights):
             out[name] = round(w_new * num / den, 2)
         else:
             out[name] = round(w_new * ratio[suite_partition(name)], 2)
-            prov[name] = seed_date
+            prov[name] = pending_entry(out[name], seed_base())
     if prov:
         out[PROVISIONAL_KEY] = dict(sorted(prov.items()))
     return dict(sorted(out.items()))
