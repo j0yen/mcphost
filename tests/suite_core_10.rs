@@ -68,6 +68,20 @@ mod mcphost_llms_install_doc_ac04_linked_from_every_entry_point;
 mod mcphost_llms_install_doc_ac06_install_doc_funnel_event;
 #[path = "mcphost-llms-install-doc_ac07_install_surfaces_json.rs"]
 mod mcphost_llms_install_doc_ac07_install_surfaces_json;
+#[path = "mcphost-output-envelope-fields-generated_ac01_wrapper_keys_equal_set.rs"]
+mod mcphost_output_envelope_fields_generated_ac01_wrapper_keys_equal_set;
+#[path = "mcphost-output-envelope-fields-generated_ac02_no_literal_envelope_inserts.rs"]
+mod mcphost_output_envelope_fields_generated_ac02_no_literal_envelope_inserts;
+#[path = "mcphost-output-envelope-fields-generated_ac03_committed_contract_carries_set.rs"]
+mod mcphost_output_envelope_fields_generated_ac03_committed_contract_carries_set;
+#[path = "mcphost-output-envelope-fields-generated_ac04_extra_key_fixture_fails.rs"]
+mod mcphost_output_envelope_fields_generated_ac04_extra_key_fixture_fails;
+#[path = "mcphost-output-envelope-fields-generated_ac05_check_names_missing_member.rs"]
+mod mcphost_output_envelope_fields_generated_ac05_check_names_missing_member;
+#[path = "mcphost-output-envelope-fields-generated_ac06_bridge_strip_named_function.rs"]
+mod mcphost_output_envelope_fields_generated_ac06_bridge_strip_named_function;
+#[path = "mcphost-output-envelope-fields-generated_ac07_served_contract_carries_set.rs"]
+mod mcphost_output_envelope_fields_generated_ac07_served_contract_carries_set;
 #[path = "mcphost_admin_schema_contract_ac01_tenants_schema_version.rs"]
 mod mcphost_admin_schema_contract_ac01_tenants_schema_version;
 #[path = "mcphost_admin_schema_contract_ac02_listings_validate_v1_schema.rs"]

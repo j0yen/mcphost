@@ -1779,6 +1779,11 @@ async fn main() -> anyhow::Result<()> {
                             mcphost::api_contract::sha_hex(&existing),
                             mcphost::api_contract::contract_sha(&kinds)
                         );
+                        if let Ok(committed) = serde_json::from_slice::<serde_json::Value>(&existing) {
+                            for member in mcphost::api_contract::missing_envelope_fields(&committed) {
+                                eprintln!("  - output_envelope_fields is missing `{member}`");
+                            }
+                        }
                         std::process::exit(1);
                     }
                 } else {
