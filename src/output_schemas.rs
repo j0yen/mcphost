@@ -314,9 +314,13 @@ pub const OPAQUE_FIELDS: &[(&str, &str)] = &[
     ("host.state.get", "/properties/value"),
     ("host.state.list", "/properties/keys/items/properties/value"),
     ("host.state.query", "/properties/rows/items"),
+    ("host.table.query", "/properties/rows/items"),
+    ("host.tool.call", "/properties/id"),
+    ("host.tool.call", "/properties/rows"),
     ("host.tool.run", "/properties/payload"),
     ("host.tool.test", "/properties/result"),
     ("host.tool.test", "/properties/steps/items/properties/result"),
+    ("host.call_trace", "/properties/replay/properties/result"),
 ];
 
 /// Replace the node each `(tool, pointer)` names with `{}`. `Err` names the

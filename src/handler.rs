@@ -12350,7 +12350,8 @@ impl McpHostHandler {
                             "host.* call refused: connection already named a tenant, tenant_key missing"
                         );
                         return Err(
-                            AppError::TenantKeyMissing(Some(t.namespace)).into_error_data_at(Some(&self.state.public_url))
+                            AppError::TenantKeyMissing(crate::errors::Reason::ConnectionBound(t.namespace))
+                                .into_error_data_at(Some(&self.state.public_url))
                         );
                     }
                     // The remembered tenant was deleted since: drop the
@@ -12388,7 +12389,7 @@ impl McpHostHandler {
                             tool = %body_name,
                             "host.* call refused: peer just redeemed, tenant_key missing"
                         );
-                        return Err(AppError::TenantKeyMissing(Some(t.namespace))
+                        return Err(AppError::TenantKeyMissing(crate::errors::Reason::PeerRecent)
                             .into_error_data_at(Some(&self.state.public_url)));
                     }
                     // A self-offboarded tenant no longer blocks a fresh start.
@@ -13024,7 +13025,7 @@ impl McpHostHandler {
             // for a `host.*`/`billing.*` name on `/mcp` (the arm above wins
             // first) -- still the refusal for every other anonymous call.
             (Auth::Anonymous, _) if via_tenant_key_arg => {
-                let err = AppError::TenantKeyMissing(None);
+                let err = AppError::TenantKeyMissing(crate::errors::Reason::Anonymous);
                 tracing::warn!(code = err.code(), tool = %body_name, "host.* call refused: tenant_key missing");
                 Err(err)
             }

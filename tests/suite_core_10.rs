@@ -538,6 +538,18 @@ mod nfsb_ac01_first_contact_note_in_list_and_welcome_back;
 mod nfsb_ac02_shared_tool_and_tenants_isolated;
 #[path = "nfsb_ac03_quickstart_notes_max_drift.rs"]
 mod nfsb_ac03_quickstart_notes_max_drift;
+#[path = "nk401_ac01_upgrade_decision_table.rs"]
+mod nk401_ac01_upgrade_decision_table;
+#[path = "nk401_ac02_peer_recent_refusal_is_http_200.rs"]
+mod nk401_ac02_peer_recent_refusal_is_http_200;
+#[path = "nk401_ac03_connection_bound_refusal_names_tenant.rs"]
+mod nk401_ac03_connection_bound_refusal_names_tenant;
+#[path = "nk401_ac04_oauth_paths_and_anonymous_keep_401.rs"]
+mod nk401_ac04_oauth_paths_and_anonymous_keep_401;
+#[path = "nk401_ac05_every_raise_site_has_a_reason_row.rs"]
+mod nk401_ac05_every_raise_site_has_a_reason_row;
+#[path = "nk401_ac06_request_log_records_wire_status.rs"]
+mod nk401_ac06_request_log_records_wire_status;
 #[path = "ntfy_ac03_webhook_send_receipt.rs"]
 mod ntfy_ac03_webhook_send_receipt;
 #[path = "ntfy_ac04_email_channel_owner_only.rs"]
