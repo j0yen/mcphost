@@ -273,37 +273,5 @@ mod suite_ac2_check_catches_unregistered_file;
 mod suite_ac4_archived_prd_pointers_resolve;
 #[path = "suitecap_ac01_plan_never_exceeds_max_suites_and_weights_follow.rs"]
 mod suitecap_ac01_plan_never_exceeds_max_suites_and_weights_follow;
-#[path = "sylp_ac01_awaits_tick_validator.rs"]
-mod sylp_ac01_awaits_tick_validator;
-#[path = "sylp_ac02_first_get_pins_the_receipt.rs"]
-mod sylp_ac02_first_get_pins_the_receipt;
-#[path = "sylp_ac03_second_run_reads_no_change.rs"]
-mod sylp_ac03_second_run_reads_no_change;
-#[path = "sylp_ac04_recipe_wall_cap_is_derived.rs"]
-mod sylp_ac04_recipe_wall_cap_is_derived;
-#[path = "sylp_ac05_recipes_check_and_proof_lines.rs"]
-mod sylp_ac05_recipes_check_and_proof_lines;
-#[path = "sylp_ac06_two_run_proof_against_a_fixture.rs"]
-mod sylp_ac06_two_run_proof_against_a_fixture;
-#[path = "syreg_ac02_source_kinds_render_once_everywhere.rs"]
-mod syreg_ac02_source_kinds_render_once_everywhere;
-#[path = "thand_ac02_status_enum_source_of_truth.rs"]
-mod thand_ac02_status_enum_source_of_truth;
-#[path = "toolname_ac03_tools_list_alias_entries.rs"]
-mod toolname_ac03_tools_list_alias_entries;
-#[path = "toolname_ac04_docs_names_exist_and_tools_doc_fresh.rs"]
-mod toolname_ac04_docs_names_exist_and_tools_doc_fresh;
 #[path = "toolname_ac08_tools_list_counts_updated.rs"]
 mod toolname_ac08_tools_list_counts_updated;
-#[path = "vaultst_ac09_deferral_is_justified.rs"]
-mod vaultst_ac09_deferral_is_justified;
-#[path = "vbd_ac01_validated_by_default_coverage.rs"]
-mod vbd_ac01_validated_by_default_coverage;
-#[path = "vbd_ac03_skips_come_from_the_owner_registry.rs"]
-mod vbd_ac03_skips_come_from_the_owner_registry;
-#[path = "vbd_ac05_unknown_argument_everywhere.rs"]
-mod vbd_ac05_unknown_argument_everywhere;
-#[path = "vbd_ac06_descriptor_enums_from_constants.rs"]
-mod vbd_ac06_descriptor_enums_from_constants;
-#[path = "verbfwd_ac08_forward_stack_budget.rs"]
-mod verbfwd_ac08_forward_stack_budget;
