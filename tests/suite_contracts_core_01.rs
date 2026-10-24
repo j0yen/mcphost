@@ -287,6 +287,8 @@ mod sylp_ac05_recipes_check_and_proof_lines;
 mod sylp_ac06_two_run_proof_against_a_fixture;
 #[path = "syreg_ac02_source_kinds_render_once_everywhere.rs"]
 mod syreg_ac02_source_kinds_render_once_everywhere;
+#[path = "tcse_ac07_registry_is_the_only_spelling.rs"]
+mod tcse_ac07_registry_is_the_only_spelling;
 #[path = "thand_ac02_status_enum_source_of_truth.rs"]
 mod thand_ac02_status_enum_source_of_truth;
 #[path = "toolname_ac03_tools_list_alias_entries.rs"]
