@@ -86,16 +86,7 @@
       "variants": []
     },
     "host.agent.contacts_import": {
-      "unreached": [
-        {
-          "code": "args_invalid",
-          "state": "after_create"
-        },
-        {
-          "code": "args_invalid",
-          "state": "fresh"
-        }
-      ],
+      "unreached": [],
       "variants": []
     },
     "host.agent.lookup": {
@@ -1064,16 +1055,7 @@
       "variants": []
     },
     "host.msg.send": {
-      "unreached": [
-        {
-          "code": "args_invalid",
-          "state": "after_create"
-        },
-        {
-          "code": "args_invalid",
-          "state": "fresh"
-        }
-      ],
+      "unreached": [],
       "variants": []
     },
     "host.msg.thread": {
@@ -2644,11 +2626,11 @@
     "host.uptime.create": {
       "unreached": [
         {
-          "code": "args_invalid",
+          "code": "invalid_tool_name",
           "state": "after_create"
         },
         {
-          "code": "args_invalid",
+          "code": "invalid_tool_name",
           "state": "fresh"
         }
       ],
@@ -2761,16 +2743,7 @@
       "variants": []
     },
     "host_agent_contacts_import": {
-      "unreached": [
-        {
-          "code": "args_invalid",
-          "state": "after_create"
-        },
-        {
-          "code": "args_invalid",
-          "state": "fresh"
-        }
-      ],
+      "unreached": [],
       "variants": []
     },
     "host_agent_lookup": {
@@ -3709,16 +3682,7 @@
       "variants": []
     },
     "host_msg_send": {
-      "unreached": [
-        {
-          "code": "args_invalid",
-          "state": "after_create"
-        },
-        {
-          "code": "args_invalid",
-          "state": "fresh"
-        }
-      ],
+      "unreached": [],
       "variants": []
     },
     "host_msg_thread": {
@@ -5062,11 +5026,11 @@
     "host_uptime_create": {
       "unreached": [
         {
-          "code": "args_invalid",
+          "code": "invalid_tool_name",
           "state": "after_create"
         },
         {
-          "code": "args_invalid",
+          "code": "invalid_tool_name",
           "state": "fresh"
         }
       ],
@@ -5136,5 +5100,5 @@
       "variants": []
     }
   },
-  "unreached_cap": 654
+  "unreached_cap": 646
 }

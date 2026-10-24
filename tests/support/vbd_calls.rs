@@ -98,3 +98,71 @@ pub fn all_descriptors() -> Vec<Tool> {
 pub fn is_admin(tool: &Tool) -> bool {
     tool.name.starts_with("admin.")
 }
+
+/// A cap on a generated array/string so a huge declared bound stays a cheap call.
+const BOUNDARY_CAP: u64 = 4096;
+
+/// PRD-mcphost-schema-bound-agreement R2: the valid edges of one property's
+/// subschema -- the empty array or string, `0`, each declared
+/// `minItems`/`minLength`/`minimum`, each declared `maxItems`/`maxLength`/
+/// `maximum`, and a max-length multibyte string. Invalid edges (max + 1) are
+/// validator refusals by construction and are not generated.
+pub fn edge_values(schema: &Value) -> Vec<(String, Value)> {
+    let mut out: Vec<(String, Value)> = Vec::new();
+    let ty = match schema.get("type") {
+        Some(Value::String(t)) => t.as_str(),
+        _ => "",
+    };
+    let item = schema.get("items").map(placeholder).unwrap_or_else(|| json!("x"));
+    match ty {
+        "array" => {
+            out.push(("empty array".into(), json!([])));
+            if let Some(n) = schema.get("minItems").and_then(Value::as_u64) {
+                out.push(("minItems".into(), Value::Array(vec![item.clone(); n.min(BOUNDARY_CAP) as usize])));
+            }
+            if let Some(n) = schema.get("maxItems").and_then(Value::as_u64) {
+                out.push(("maxItems".into(), Value::Array(vec![item; n.min(BOUNDARY_CAP) as usize])));
+            }
+        }
+        "string" if schema.get("enum").is_none() => {
+            out.push(("empty string".into(), json!("")));
+            if let Some(n) = schema.get("minLength").and_then(Value::as_u64) {
+                out.push(("minLength".into(), json!("a".repeat(n.min(BOUNDARY_CAP) as usize))));
+            }
+            if let Some(n) = schema.get("maxLength").and_then(Value::as_u64) {
+                out.push(("maxLength".into(), json!("a".repeat(n.min(BOUNDARY_CAP) as usize))));
+                out.push(("maxLength multibyte".into(), json!("\u{e9}".repeat(n.min(BOUNDARY_CAP) as usize))));
+            }
+        }
+        "integer" | "number" => {
+            out.push(("zero".into(), json!(0)));
+            for key in ["minimum", "maximum"] {
+                if let Some(n) = schema.get(key).and_then(Value::as_i64) {
+                    out.push((key.into(), json!(n)));
+                }
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
+/// Every schema-derived boundary call for a tool: the placeholder call with one
+/// top-level property replaced by one of its [`edge_values`]. Returns
+/// `(JSON pointer, edge label, args)`; the caller asks the validator whether it accepts each.
+pub fn boundary_calls(schema: &Map<String, Value>) -> Vec<(String, String, Value)> {
+    let base = call_for(schema);
+    let Some(props) = schema.get("properties").and_then(Value::as_object) else { return Vec::new() };
+    let mut out = Vec::new();
+    for (name, sub) in props {
+        if name == "tenant_key" {
+            continue;
+        }
+        for (label, value) in edge_values(sub) {
+            let mut args = base.clone();
+            args[name.as_str()] = value;
+            out.push((format!("/{name}"), label, args));
+        }
+    }
+    out
+}

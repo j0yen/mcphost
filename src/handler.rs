@@ -2044,14 +2044,14 @@ fn host_tools_part_02() -> Vec<Tool> {
                             with may call host.tool_spec_shared to read its (redacted) spec.",
                     },
                     "scopes": {
-                        "type": "array",
+                        "type": "array", "minItems": 1,
                         "items": {"type": "string", "enum": crate::sharing::ShareScope::names()},
                         "description": "What the grantee may do: call, read_source, fork. Default \
                             [\"call\"] ([\"call\",\"read_source\"] with expose_spec: true). url \
                             shares allow only call.",
                     },
                     "rate_per_hour_per_caller": {
-                        "type": "integer",
+                        "type": "integer", "minimum": 1, "maximum": crate::sharing::RATE_PER_HOUR_MAX,
                         "description": "Optional cap (1..10000) on calls per hour from any one grantee.",
                     },
                 }),
@@ -2129,7 +2129,7 @@ fn host_tools_part_02() -> Vec<Tool> {
                         "description": "The caller's namespace to cap.",
                     },
                     "calls_per_day": {
-                        "type": "integer",
+                        "type": "integer", "minimum": 1,
                         "description": "Max successful calls per UTC day for this caller.",
                     },
                 }),
@@ -2495,7 +2495,7 @@ fn host_tools_part_03() -> Vec<Tool> {
              fails quota_exceeded {limit, used}; an unknown tool or run fails not_found.",
             host_schema(
                 json!({
-                    "text": {"type": "string", "maxLength": 4096, "description": "The note (at most 4096 bytes)."},
+                    "text": {"type": "string", "minLength": 1, "maxLength": 4096, "description": "The note (at most 4096 bytes)."},
                     "attach_to": {
                         "type": "object",
                         "description": "What the note is about: {tool: <your tool's local name>} or {run: <run id>}.",
@@ -2989,7 +2989,7 @@ fn host_tools_part_05() -> Vec<Tool> {
              the current version.",
             host_schema_any(
                 json!({
-                    "name": {"type": "string", "description": "Document name; same name on a later put creates a new version of the same id."},
+                    "name": {"type": "string", "minLength": 1, "description": "Document name; same name on a later put creates a new version of the same id."},
                     "content": {"type": "string", "description": "Document content as text; use content_base64 instead for arbitrary bytes."},
                     "content_base64": {"type": "string", "description": "Document content, base64-encoded; use content instead for plain text."},
                     "mime": {"type": "string", "description": "One of text/plain, text/markdown, application/json, text/csv; detected from name/content when omitted."},
@@ -3014,11 +3014,11 @@ fn host_tools_part_05() -> Vec<Tool> {
              blobs_max files -- see host.quickstart limits.plan.",
             host_schema_any(
                 json!({
-                    "name": {"type": "string", "description": "File name; the same name on a later put creates a new version of the same id."},
+                    "name": {"type": "string", "minLength": 1, "description": "File name; the same name on a later put creates a new version of the same id."},
                     "content_base64": {"type": "string", "description": "The file's bytes, base64-encoded; use url instead to have the host fetch them."},
                     "url": {"type": "string", "description": "http(s) URL the host fetches (10 s, at most blob_max_bytes, no redirects); refused for private, loopback, link-local and internal hosts. Use content_base64 instead for bytes you hold."},
                     "mime": {"type": "string", "description": "Content type; sniffed from name and content when omitted."},
-                    "ttl_s": {"type": "integer", "description": "Seconds until the file expires, 1-31536000 (365 days); omitted = never. After it host.blob.get answers blob_expired and the url answers 410."},
+                    "ttl_s": {"type": "integer", "minimum": 1, "maximum": crate::blobs::TTL_MAX_SECS, "description": "Seconds until the file expires, 1-31536000 (365 days); omitted = never. After it host.blob.get answers blob_expired and the url answers 410."},
                 }),
                 &["name"],
                 &["content_base64", "url"],
@@ -3030,7 +3030,7 @@ fn host_tools_part_05() -> Vec<Tool> {
             host_schema(
                 json!({
                     "id": {"type": "string", "description": "Blob id."},
-                    "ttl_s": {"type": "integer", "description": "Seconds from now until the file expires, 1-31536000 (365 days)."},
+                    "ttl_s": {"type": "integer", "minimum": 1, "maximum": crate::blobs::TTL_MAX_SECS, "description": "Seconds from now until the file expires, 1-31536000 (365 days)."},
                 }),
                 &["id", "ttl_s"],
             ),
@@ -3106,7 +3106,7 @@ fn host_tools_part_05() -> Vec<Tool> {
             host_schema(
                 json!({
                     "id": {"type": "string", "description": "Blob id."},
-                    "ttl_s": {"type": "integer", "description": "Seconds the url stays valid, 1-604800; default 86400."},
+                    "ttl_s": {"type": "integer", "minimum": 1, "maximum": crate::blobs::URL_TTL_MAX_SECS, "description": "Seconds the url stays valid, 1-604800; default 86400."},
                 }),
                 &["id"],
             ),
@@ -3232,7 +3232,7 @@ fn host_tools_part_06() -> Vec<Tool> {
                 json!({
                     "name": {"type": "string", "description": "The index name."},
                     "query": {"type": "string", "description": "Words to look for."},
-                    "k": {"type": "integer", "description": "Hits to return, 1-50, default 5."},
+                    "k": {"type": "integer", "minimum": 1, "maximum": crate::index::QUERY_K_MAX, "description": "Hits to return, 1-50, default 5."},
                 }),
                 &["name", "query"],
             ),
@@ -3489,7 +3489,7 @@ fn host_tools_part_07() -> Vec<Tool> {
             host_schema(
                 json!({
                     "name": {"type": "string", "description": "Name of the status tool to create; also names the <name>_targets table and the <name>_probe tool."},
-                    "urls": {"type": "array", "items": {"type": "string"}, "description": "1-20 URLs to probe with GET; a 2xx/3xx answer is up."},
+                    "urls": {"type": "array", "minItems": 1, "maxItems": crate::uptime::TARGETS_MAX, "items": {"type": "string"}, "description": "1-20 URLs to probe with GET; a 2xx/3xx answer is up."},
                     "every_s": {"type": "integer", "description": "Probe interval in seconds; default 300, raised to the plan's floor (pro: 60)."},
                 }),
                 &["name", "urls"],
@@ -4076,6 +4076,7 @@ fn host_tools_part_09() -> Vec<Tool> {
                     },
                     "tags": {
                         "type": "array",
+                        "maxItems": crate::agents::MAX_TAGS,
                         "items": {"type": "string"},
                         "description": "Up to 16 tags of up to 32 bytes each, for host.agent.search.",
                     },
@@ -4149,6 +4150,7 @@ fn host_tools_part_09() -> Vec<Tool> {
                     },
                     "text": {
                         "type": "string",
+                        "minLength": 1,
                         "description": "What you needed or saw; 1 to 2048 bytes after trim.",
                     },
                     "context": {
@@ -4176,7 +4178,7 @@ fn host_tools_part_09() -> Vec<Tool> {
             crate::example_propose::PROPOSE_DESCRIPTION,
             host_schema(
                 json!({
-                    "tool": {"type": "string", "description": "Name of one of your published tools; the example takes its name."},
+                    "tool": {"type": "string", "minLength": 1, "description": "Name of one of your published tools; the example takes its name."},
                     "proof_call": {
                         "type": "object",
                         "description": "The call that proves the tool works: args for the tool and expect, `result.<path> <op> <value>` with op one of ==, !=, contains.",
@@ -4186,7 +4188,7 @@ fn host_tools_part_09() -> Vec<Tool> {
                         },
                         "required": ["expect"],
                     },
-                    "title": {"type": "string", "description": "Example title, 1 to 60 characters."},
+                    "title": {"type": "string", "minLength": 1, "description": "Example title, 1 to 60 characters."},
                     "summary": {"type": "string", "description": "One-line summary, up to 200 characters; defaults to the tool's description."},
                     "use_case": {
                         "type": "array",
@@ -4241,7 +4243,7 @@ fn host_tools_part_09() -> Vec<Tool> {
             crate::feedback::tool_descriptors()[2].1,
             host_schema(
                 json!({
-                    "feedback_id": {"type": "string", "description": "An id host.feedback.send returned."},
+                    "feedback_id": {"type": "string", "minLength": 1, "description": "An id host.feedback.send returned."},
                 }),
                 &["feedback_id"],
             ),
@@ -4258,12 +4260,12 @@ fn host_tools_part_09() -> Vec<Tool> {
             host_schema(
                 json!({
                     "to": {
-                        "type": "array",
+                        "type": "array", "minItems": 1,
                         "items": {"type": "string"},
                         "description": "1 to recipients_per_msg_max addresses (@handle or t_... \
                             namespace).",
                     },
-                    "body": {"type": "string", "description": "Message text; non-empty after trim."},
+                    "body": {"type": "string", "minLength": 1, "description": "Message text; non-empty after trim."},
                     "data": {"type": "object", "description": "Optional structured payload."},
                     "dedupe_key": {
                         "type": "string",
@@ -4296,7 +4298,7 @@ fn host_tools_part_09() -> Vec<Tool> {
             host_schema(
                 json!({
                     "thread_id": {"type": "string", "description": "The thread to reply in."},
-                    "body": {"type": "string", "description": "Message text; non-empty after trim."},
+                    "body": {"type": "string", "minLength": 1, "description": "Message text; non-empty after trim."},
                     "data": {"type": "object", "description": "Optional structured payload."},
                     "in_reply_to": {"type": "string", "description": "The message_id this replies to."},
                     "dedupe_key": {
@@ -4479,7 +4481,7 @@ fn host_tools_part_10() -> Vec<Tool> {
              missing answer. Refused with asks_limit at the plan's asks_open_max.",
             host_schema_checked(
                 json!({
-                    "question": {"type": "string", "description": "What to ask, at most 500 characters."},
+                    "question": {"type": "string", "minLength": 1, "description": "What to ask, at most 500 characters."},
                     "options": {
                         "type": "array",
                         "items": {"type": "string"},
@@ -4549,7 +4551,7 @@ fn host_tools_part_10() -> Vec<Tool> {
             host_schema(
                 json!({
                     "kind": {"type": "string", "enum": crate::notify::ChannelKind::names(), "description": "Where this channel delivers."},
-                    "target": {"type": "string", "description": "email: the verified owner address; webhook/slack: an https URL."},
+                    "target": {"type": "string", "minLength": 1, "description": "email: the verified owner address; webhook/slack: an https URL."},
                 }),
                 &["kind", "target"],
             ),
@@ -4580,7 +4582,7 @@ fn host_tools_part_10() -> Vec<Tool> {
             ),
             host_schema_checked(
                 json!({
-                    "text": {"type": "string", "description": format!("The message, at most {} bytes.", crate::notify::TEXT_MAX_BYTES)},
+                    "text": {"type": "string", "minLength": 1, "description": format!("The message, at most {} bytes.", crate::notify::TEXT_MAX_BYTES)},
                     "level": {"type": "string", "enum": crate::notify::Level::names(), "description": "How urgent."},
                     "link": {"type": "string", "description": "Optional https URL appended to the message."},
                 }),
@@ -4604,9 +4606,9 @@ fn host_tools_part_10() -> Vec<Tool> {
                 json!({
                     "to": {"description": format!("One address, or an array of at most {}.", crate::email_send::TO_MAX), "oneOf": [
                         {"type": "string", "format": "email"},
-                        {"type": "array", "items": {"type": "string", "format": "email"}},
+                        {"type": "array", "minItems": 1, "maxItems": crate::email_send::TO_MAX, "items": {"type": "string", "format": "email"}},
                     ]},
-                    "subject": {"type": "string", "description": format!("One line, at most {} bytes.", crate::email_send::SUBJECT_MAX_BYTES)},
+                    "subject": {"type": "string", "minLength": 1, "description": format!("One line, at most {} bytes.", crate::email_send::SUBJECT_MAX_BYTES)},
                     "text": {"type": "string", "description": format!("Plain-text body, at most {} bytes.", crate::email_send::TEXT_MAX_BYTES)},
                     "html": {"type": "string", "description": format!("Optional HTML body, at most {} bytes.", crate::email_send::HTML_MAX_BYTES)},
                     "reply_to_message_id": {"type": "string", "description": "Optional Message-ID this answers; copied into In-Reply-To."},
@@ -4622,7 +4624,7 @@ fn host_tools_part_10() -> Vec<Tool> {
                 crate::email_send::SendStatus::names().join(", ")
             ),
             host_schema(
-                json!({"limit": {"type": "integer", "description": format!("1 to {}; default 20.", crate::email_send::SENDS_MAX)}}),
+                json!({"limit": {"type": "integer", "minimum": 1, "maximum": crate::email_send::SENDS_MAX, "description": format!("1 to {}; default 20.", crate::email_send::SENDS_MAX)}}),
                 &[],
             ),
         ),
@@ -4720,7 +4722,7 @@ fn host_tools_part_10() -> Vec<Tool> {
             host_schema(
                 json!({
                     "addresses": {
-                        "type": "array",
+                        "type": "array", "minItems": 1, "maxItems": crate::consent::MAX_IMPORT_ADDRESSES,
                         "items": {"type": "string"},
                         "description": "1 to 50 @handle or t_... addresses.",
                     },
@@ -4751,7 +4753,7 @@ fn host_tools_part_11() -> Vec<Tool> {
              name) the same way. Refuses channels_max (quota_exceeded) past the plan's cap.",
             host_schema_any(
                 json!({
-                    "name": {"type": "string", "description": "Channel name to create or look up."},
+                    "name": {"type": "string", "minLength": 1, "description": "Channel name to create or look up."},
                     "group": {"type": "string", "description": "A group you own (host.group.create); open its one channel instead."},
                 }),
                 &[],
@@ -4767,7 +4769,7 @@ fn host_tools_part_11() -> Vec<Tool> {
             host_schema(
                 json!({
                     "channel": {"type": "string", "description": "Channel name or channel_id."},
-                    "body": {"type": "string", "description": "Post text; non-empty after trim."},
+                    "body": {"type": "string", "minLength": 1, "description": "Post text; non-empty after trim."},
                     "data": {"type": "object", "description": "Optional structured payload."},
                 }),
                 &["channel", "body"],
@@ -4909,8 +4911,8 @@ fn host_tools_part_11() -> Vec<Tool> {
                 json!({
                     "clients": {"type": "string", "enum": crate::oauth_policy::CLIENTS_MODES},
                     "allowlist": {"type": "array", "items": {"type": "string"}},
-                    "access_ttl_s": {"type": "integer"},
-                    "refresh_ttl_s": {"type": "integer"},
+                    "access_ttl_s": {"type": "integer", "minimum": crate::oauth_policy::ACCESS_TTL_MIN, "maximum": crate::oauth_policy::ACCESS_TTL_MAX},
+                    "refresh_ttl_s": {"type": "integer", "minimum": crate::oauth_policy::REFRESH_TTL_MIN, "maximum": crate::oauth_policy::REFRESH_TTL_MAX},
                     "max_grant_age_s": {"type": "integer"},
                     "reconsent_after_s": {"type": "integer"},
                 }),
@@ -5164,7 +5166,7 @@ fn host_tools_part_14() -> Vec<Tool> {
              running, ok, error, rate_limited, auth_expired, suspicious_empty or deferred.",
             host_schema(
                 json!({
-                    "sync_id": {"type": "string", "description": "The sync_id host.sync.create returned."},
+                    "sync_id": {"type": "string", "minLength": 1, "description": "The sync_id host.sync.create returned."},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 100, "description": "How many receipts runs carries (default 20)."},
                 }),
                 &["sync_id"],
@@ -5175,7 +5177,7 @@ fn host_tools_part_14() -> Vec<Tool> {
             "Delete a sync and its receipts. The mirrored table and its rows stay and keep \
              answering host.table.query.",
             host_schema(
-                json!({"sync_id": {"type": "string", "description": "The sync_id host.sync.create returned."}}),
+                json!({"sync_id": {"type": "string", "minLength": 1, "description": "The sync_id host.sync.create returned."}}),
                 &["sync_id"],
             ),
         ),
@@ -5184,7 +5186,7 @@ fn host_tools_part_14() -> Vec<Tool> {
             "Make a sync due now: next_run_unix becomes the current time and the scheduler picks \
              it up on its next pass. Returns {sync_id, next_run_unix}.",
             host_schema(
-                json!({"sync_id": {"type": "string", "description": "The sync_id host.sync.create returned."}}),
+                json!({"sync_id": {"type": "string", "minLength": 1, "description": "The sync_id host.sync.create returned."}}),
                 &["sync_id"],
             ),
         ),
@@ -5232,7 +5234,7 @@ fn host_tools_part_13() -> Vec<Tool> {
                 json!({
                     "since": {"type": ["integer", "string"], "description": "Start of the window (inclusive): unix seconds, YYYY-MM-DD, RFC 3339 or -24h."},
                     "until": {"type": ["integer", "string"], "description": "End of the window (exclusive), same forms as since."},
-                    "limit": {"type": "integer", "description": "Refuse export_too_large past this many rows, 1-50000; default 50000."},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": crate::audit_export::EXPORT_ROWS_MAX, "description": "Refuse export_too_large past this many rows, 1-50000; default 50000."},
                     "format": {"type": "string", "enum": crate::audit_export::EXPORT_FORMATS, "description": "Default jsonl."},
                 }),
                 &[],
@@ -6258,7 +6260,7 @@ fn admin_tools_raw() -> Vec<Tool> {
              (default true) only reports counts.",
             schema(
                 json!({
-                    "older_than_days": {"type": "integer"},
+                    "older_than_days": {"type": "integer", "minimum": 1},
                     "dry_run": {"type": "boolean"},
                 }),
                 &["older_than_days"],
@@ -6323,7 +6325,7 @@ fn admin_tools_raw() -> Vec<Tool> {
                 json!({
                     "tenant_id": {"type": "integer", "description": "The owning tenant's id (host.doctor's oauth_issuers.invalid[].tenant_id)."},
                     "issuer": {"type": "string"},
-                    "reason": {"type": "string", "description": "Why; stored in the tenant's audit row."},
+                    "reason": {"type": "string", "minLength": 1, "description": "Why; stored in the tenant's audit row."},
                 }),
                 &["tenant_id", "issuer", "reason"],
             ),
