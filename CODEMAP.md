@@ -292,6 +292,8 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `PUBLIC_KEY_STEMS` in `src/heal.rs`
 - `HELP_CODES` in `src/help.rs`
 - `HELP_ENTRIES` in `src/help.rs`
+- `INVALID_ARGS_CTORS` in `src/host_args.rs`
+- `SCHEMA_VALID_REFUSALS` in `src/host_args.rs`
 - `UNVALIDATED` in `src/host_args.rs`
 - `ROUTES` in `src/http/routes.rs`
 - `UNSPECCED` in `src/http/routes.rs`

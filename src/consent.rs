@@ -211,7 +211,7 @@ pub fn check(
 // ---- contact_deny / mute / unmute / contacts_import ---------------------
 
 const MAX_NOTE_BYTES: usize = 512;
-const MAX_IMPORT_ADDRESSES: usize = 50;
+pub const MAX_IMPORT_ADDRESSES: usize = 50;
 
 fn arg_str(args: &Value, name: &str) -> Result<String, AppError> {
     args.get(name)

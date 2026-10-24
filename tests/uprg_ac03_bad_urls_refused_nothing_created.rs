@@ -1,7 +1,8 @@
 //! PRD-mcphost-uptime-probe-recipe-green
 //! AC3 -- Given 21 URLs, an empty list, or a URL whose host fails
 //! `is_disallowed_literal_host`, When `host.uptime.create` is called, Then the
-//! error is `args_invalid` (naming `max 20` or `empty`) or `host_not_allowed`
+//! error is `args_invalid` (schema-bound: `data.argument` `urls`, `data.constraint`
+//! `maxItems` or `minItems`) or `host_not_allowed`
 //! naming the URL, and nothing was created.
 
 use crate::uprg;
@@ -16,21 +17,23 @@ async fn assert_nothing_created(fx: &uprg::Fixture) {
 }
 
 #[tokio::test]
-async fn twenty_one_urls_is_args_invalid_naming_max_20() {
+async fn twenty_one_urls_is_args_invalid_naming_max_items() {
     let fx = uprg::start().await;
     let urls: Vec<String> = (0..21).map(|i| format!("{}?n={i}", fx.urls[0])).collect();
     let err = fx.create(json!({"name": "status", "urls": urls})).await.expect_err("21 urls");
     assert_eq!(err.error_code.as_deref(), Some("args_invalid"), "{err:?}");
-    assert!(err.message.contains("max 20"), "{err:?}");
+    assert_eq!(err.data["argument"], json!("urls"), "{err:?}");
+    assert_eq!(err.data["constraint"], json!("maxItems"), "{err:?}");
     assert_nothing_created(&fx).await;
 }
 
 #[tokio::test]
-async fn empty_list_is_args_invalid_naming_empty() {
+async fn empty_list_is_args_invalid_naming_min_items() {
     let fx = uprg::start().await;
     let err = fx.create(json!({"name": "status", "urls": []})).await.expect_err("no urls");
     assert_eq!(err.error_code.as_deref(), Some("args_invalid"), "{err:?}");
-    assert!(err.message.contains("empty"), "{err:?}");
+    assert_eq!(err.data["argument"], json!("urls"), "{err:?}");
+    assert_eq!(err.data["constraint"], json!("minItems"), "{err:?}");
     assert_nothing_created(&fx).await;
 }
 
