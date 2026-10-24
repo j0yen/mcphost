@@ -913,6 +913,8 @@ mod dryv_ac03_table_drop_dry_run_would;
 mod dryv_ac04_state_delete_rows_dry_run_would;
 #[path = "dryv_ac05_real_errors_pass_through.rs"]
 mod dryv_ac05_real_errors_pass_through;
+#[path = "dsproof_data_sync_proof.rs"]
+mod dsproof_data_sync_proof;
 #[path = "dtf_ac02_search_then_failure_row_joined_once.rs"]
 mod dtf_ac02_search_then_failure_row_joined_once;
 #[path = "dtf_ac03_anonymous_and_stale_never_joined.rs"]

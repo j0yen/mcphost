@@ -7,8 +7,6 @@
 // original name, path, and test names (nextest's test list, with this
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
-#[path = "support/assertion.rs"]
-mod assertion;
 #[path = "support/busyaudit.rs"]
 mod busyaudit;
 #[path = "support/dryspt_lint.rs"]
@@ -19,6 +17,8 @@ mod oauth;
 mod oauthclient;
 #[path = "support/promptkind.rs"]
 mod promptkind;
+#[path = "support/rgpt.rs"]
+mod rgpt;
 #[path = "support/serve.rs"]
 mod serve;
 #[path = "support/sjrc.rs"]
@@ -31,11 +31,57 @@ mod tssdk;
 mod uprg;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
-#[path = "support/xlinks.rs"]
-mod xlinks;
-#[path = "support/xlinks_cli.rs"]
-mod xlinks_cli;
 
+#[path = "rgpt_ac01_recipes_generator_idempotent.rs"]
+mod rgpt_ac01_recipes_generator_idempotent;
+#[path = "rgpt_ac02_drift_names_file_recipe_and_line.rs"]
+mod rgpt_ac02_drift_names_file_recipe_and_line;
+#[path = "rgpt_ac03_unknown_tool_or_arg_exits_2.rs"]
+mod rgpt_ac03_unknown_tool_or_arg_exits_2;
+#[path = "rgpt_ac05_every_golden_test_runs_its_calls_in_order.rs"]
+mod rgpt_ac05_every_golden_test_runs_its_calls_in_order;
+#[path = "rgpt_ac06_task_sync_check_flags_wall_budget_drift.rs"]
+mod rgpt_ac06_task_sync_check_flags_wall_budget_drift;
+#[path = "rgpt_ac07_ci_job_fails_on_the_broken_recipe_only.rs"]
+mod rgpt_ac07_ci_job_fails_on_the_broken_recipe_only;
+#[path = "rgpt_chart_in_a_minute_golden_path.rs"]
+mod rgpt_chart_in_a_minute_golden_path;
+#[path = "rgpt_data_sync_golden_path.rs"]
+mod rgpt_data_sync_golden_path;
+#[path = "rgpt_database_in_a_minute_golden_path.rs"]
+mod rgpt_database_in_a_minute_golden_path;
+#[path = "rgpt_share_a_tool_golden_path.rs"]
+mod rgpt_share_a_tool_golden_path;
+#[path = "rgpt_uptime_probes_golden_path.rs"]
+mod rgpt_uptime_probes_golden_path;
+#[path = "rlfe_ac01_unknown_status_refused_with_set.rs"]
+mod rlfe_ac01_unknown_status_refused_with_set;
+#[path = "rlfe_ac02_trigger_and_verdict_refused_before_handler.rs"]
+mod rlfe_ac02_trigger_and_verdict_refused_before_handler;
+#[path = "rlfe_ac03_every_value_filters_exactly_its_rows.rs"]
+mod rlfe_ac03_every_value_filters_exactly_its_rows;
+#[path = "rlfe_ac04_descriptor_enums_and_prose_set_drift.rs"]
+mod rlfe_ac04_descriptor_enums_and_prose_set_drift;
+#[path = "rowpol_ac01_sql_predicate_scopes_to_end_user_attribute.rs"]
+mod rowpol_ac01_sql_predicate_scopes_to_end_user_attribute;
+#[path = "rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0.rs"]
+mod rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0;
+#[path = "rowpol_ac03_unpolicied_table_zero_rows_for_end_user_all_for_tenant_key.rs"]
+mod rowpol_ac03_unpolicied_table_zero_rows_for_end_user_all_for_tenant_key;
+#[path = "rowpol_ac04_cte_and_subquery_both_rewritten_via_ast.rs"]
+mod rowpol_ac04_cte_and_subquery_both_rewritten_via_ast;
+#[path = "rowpol_ac05_docs_prefix_policy_zero_hits_lexical_and_embeddings.rs"]
+mod rowpol_ac05_docs_prefix_policy_zero_hits_lexical_and_embeddings;
+#[path = "rowpol_ac06_empty_allowed_set_1_equals_0_and_denies_docs.rs"]
+mod rowpol_ac06_empty_allowed_set_1_equals_0_and_denies_docs;
+#[path = "rowpol_ac07_audit_verify_intact_then_tampered.rs"]
+mod rowpol_ac07_audit_verify_intact_then_tampered;
+#[path = "rowpol_ac08_audit_chain_pages_and_refuses_end_users.rs"]
+mod rowpol_ac08_audit_chain_pages_and_refuses_end_users;
+#[path = "rowpol_ac09_filtered_vs_unfiltered_p95_within_3ms.rs"]
+mod rowpol_ac09_filtered_vs_unfiltered_p95_within_3ms;
+#[path = "rowpol_ac10_policy_set_refuses_a_widening_rule.rs"]
+mod rowpol_ac10_policy_set_refuses_a_widening_rule;
 #[path = "rpol_ac01_non_retryable_stops_resends.rs"]
 mod rpol_ac01_non_retryable_stops_resends;
 #[path = "rpol_ac02_every_code_has_exactly_one_row.rs"]
@@ -96,6 +142,8 @@ mod runsubject_ac06_migration_0048_under_1s_at_100k_rows;
 mod runsubject_ac07_llms_txt_names_end_user_and_filter;
 #[path = "sandboxready_ac7_conformance_suite.rs"]
 mod sandboxready_ac7_conformance_suite;
+#[path = "sba_ac03_schema_valid_refusals_still_fire.rs"]
+mod sba_ac03_schema_valid_refusals_still_fire;
 #[path = "sblibs_ac02_drift_toml_lock_docs.rs"]
 mod sblibs_ac02_drift_toml_lock_docs;
 #[path = "sched_ac10_trigger_fire_manual.rs"]
@@ -406,6 +454,8 @@ mod sreg_ac06_oauth_scopes_registry_first;
 mod sreg_ac07_unknown_scope_word_not_effective;
 #[path = "srlp_ac02_plan_ceilings_published.rs"]
 mod srlp_ac02_plan_ceilings_published;
+#[path = "ssd_ac01_signup_descriptor_matches_signup_args.rs"]
+mod ssd_ac01_signup_descriptor_matches_signup_args;
 #[path = "state_ac01_kv_roundtrip.rs"]
 mod state_ac01_kv_roundtrip;
 #[path = "state_ac04_table_query.rs"]
@@ -520,6 +570,20 @@ mod synthetic_ac08_admin_tenants_field;
 mod synthetic_ac09_metering_filter;
 #[path = "synthetic_ac10_healthz_paying_real.rs"]
 mod synthetic_ac10_healthz_paying_real;
+#[path = "sypul_ac01_unchanged_pull_writes_nothing.rs"]
+mod sypul_ac01_unchanged_pull_writes_nothing;
+#[path = "sypul_ac02_second_fetch_304_writes_nothing.rs"]
+mod sypul_ac02_second_fetch_304_writes_nothing;
+#[path = "sypul_ac03_row_diff_updates_in_place.rs"]
+mod sypul_ac03_row_diff_updates_in_place;
+#[path = "sypul_ac04_auth_expired_pauses_and_429_waits.rs"]
+mod sypul_ac04_auth_expired_pauses_and_429_waits;
+#[path = "sypul_ac05_per_tick_provider_budget_defers_the_rest.rs"]
+mod sypul_ac05_per_tick_provider_budget_defers_the_rest;
+#[path = "sypul_ac06_empty_body_over_a_full_table_is_suspicious.rs"]
+mod sypul_ac06_empty_body_over_a_full_table_is_suspicious;
+#[path = "sypul_ac07_every_source_kind_fetches_its_fixture.rs"]
+mod sypul_ac07_every_source_kind_fetches_its_fixture;
 #[path = "syreg_ac03_create_returns_sync_id_and_next_run.rs"]
 mod syreg_ac03_create_returns_sync_id_and_next_run;
 #[path = "syreg_ac04_create_validation_errors.rs"]
@@ -736,6 +800,8 @@ mod tooltest_ac6_quota_and_metering;
 mod tooltest_ac7_too_many_invocations;
 #[path = "tooltest_ac9_ac10_listing_and_auth.rs"]
 mod tooltest_ac9_ac10_listing_and_auth;
+#[path = "tracecap_ac01_no_bare_tracing_default_in_tests.rs"]
+mod tracecap_ac01_no_bare_tracing_default_in_tests;
 #[path = "trigidem_ac01_webhook_set_twice_idempotent.rs"]
 mod trigidem_ac01_webhook_set_twice_idempotent;
 #[path = "trigidem_ac02_webhook_update_tool_keeps_id_and_url.rs"]
@@ -814,6 +880,8 @@ mod unkfield_ac05_tools_list_additional_properties_false;
 mod unkfield_ac07_spec_fields_doc_check_script;
 #[path = "upfam_ac01_auth_family_401_403.rs"]
 mod upfam_ac01_auth_family_401_403;
+#[path = "upfam_ac02_403_error_surface_names_secret_set.rs"]
+mod upfam_ac02_403_error_surface_names_secret_set;
 #[path = "upfam_ac02_rate_limited_retry_after.rs"]
 mod upfam_ac02_rate_limited_retry_after;
 #[path = "upfam_ac03_client_and_server_error_families.rs"]
@@ -964,57 +1032,3 @@ mod wake_ac6_msg_wait;
 mod wake_ac7_trigger_test_synthetic_envelope;
 #[path = "wake_ac8_replay.rs"]
 mod wake_ac8_replay;
-#[path = "wasmkind_ac01_echo_component_calls_and_meters.rs"]
-mod wasmkind_ac01_echo_component_calls_and_meters;
-#[path = "wasmkind_ac02_publish_validation_errors.rs"]
-mod wasmkind_ac02_publish_validation_errors;
-#[path = "wasmkind_ac03_timeout_and_oom_recover.rs"]
-mod wasmkind_ac03_timeout_and_oom_recover;
-#[path = "wasmkind_ac05_tool_test_dry_run.rs"]
-mod wasmkind_ac05_tool_test_dry_run;
-#[path = "wasmkind_ac06_trap_is_structured_and_logged.rs"]
-mod wasmkind_ac06_trap_is_structured_and_logged;
-#[path = "wasmkind_ac07_docs_llms_and_quickstart_document_wasm.rs"]
-mod wasmkind_ac07_docs_llms_and_quickstart_document_wasm;
-#[path = "wasmkind_ac08_cache_reuses_compiled_artifact.rs"]
-mod wasmkind_ac08_cache_reuses_compiled_artifact;
-#[path = "wasmkind_ac09_healthz_reports_wasm_runtime.rs"]
-mod wasmkind_ac09_healthz_reports_wasm_runtime;
-#[path = "wasmkind_ac10_declared_output_promotion_matches_python.rs"]
-mod wasmkind_ac10_declared_output_promotion_matches_python;
-#[path = "whin_ac04_keyless_call_after_redeem_is_refused_and_named.rs"]
-mod whin_ac04_keyless_call_after_redeem_is_refused_and_named;
-#[path = "whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule.rs"]
-mod whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule;
-#[path = "xaa_ac01_valid_assertion_no_consent.rs"]
-mod xaa_ac01_valid_assertion_no_consent;
-#[path = "xaa_ac03_invalid_grant_reasons_are_distinct_and_audited.rs"]
-mod xaa_ac03_invalid_grant_reasons_are_distinct_and_audited;
-#[path = "xaa_ac04_invalid_client_scope_target.rs"]
-mod xaa_ac04_invalid_client_scope_target;
-#[path = "xaa_ac05_metadata_grant_types_and_trusted_issuer.rs"]
-mod xaa_ac05_metadata_grant_types_and_trusted_issuer;
-#[path = "xaa_ac06_offline_access_gates_refresh_token.rs"]
-mod xaa_ac06_offline_access_gates_refresh_token;
-#[path = "xaa_ac07_revoke_and_unrevoke_end_user.rs"]
-mod xaa_ac07_revoke_and_unrevoke_end_user;
-#[path = "xaa_ac08_trusted_issuer_quota.rs"]
-mod xaa_ac08_trusted_issuer_quota;
-#[path = "xaa_ac09_hosted_and_key_paths_unchanged.rs"]
-mod xaa_ac09_hosted_and_key_paths_unchanged;
-#[path = "xlinks_ac01_fail_line_for_404_cursor_ignored.rs"]
-mod xlinks_ac01_fail_line_for_404_cursor_ignored;
-#[path = "xlinks_ac02_allowlist_skip_and_empty_set.rs"]
-mod xlinks_ac02_allowlist_skip_and_empty_set;
-#[path = "xlinks_ac03_head_405_falls_back_and_timeout_fails.rs"]
-mod xlinks_ac03_head_405_falls_back_and_timeout_fails;
-#[path = "xlinks_ac04_clients_toml_renders_into_both_files.rs"]
-mod xlinks_ac04_clients_toml_renders_into_both_files;
-#[path = "xlinks_ac05_check_names_the_edited_file.rs"]
-mod xlinks_ac05_check_names_the_edited_file;
-#[path = "xlinks_ac06_default_set_resolves_and_dead_urls_replaced.rs"]
-mod xlinks_ac06_default_set_resolves_and_dead_urls_replaced;
-#[path = "xlinks_ac07_ci_docs_job_fails_on_a_404_and_stays_fast.rs"]
-mod xlinks_ac07_ci_docs_job_fails_on_a_404_and_stays_fast;
-#[path = "xlinks_r07_report_json.rs"]
-mod xlinks_r07_report_json;
