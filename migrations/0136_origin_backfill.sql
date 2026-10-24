@@ -1,7 +1,7 @@
 -- compat: previous -- row UPDATEs of `tenants.origin`/`origin_detail` and
 -- `signup_events.origin`/`origin_detail` only; no column added, dropped or
 -- renamed, so an old release keeps reading every row.
--- mcphost 0135_origin_backfill: PRD-mcphost-external-class-positive-evidence.
+-- mcphost 0136_origin_backfill: PRD-mcphost-external-class-positive-evidence.
 --
 -- `external` must be earned. The two UPDATEs on `external` rows are disjoint
 -- (verified vs unverified), so statement order cannot matter. A historical

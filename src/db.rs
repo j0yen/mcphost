@@ -356,10 +356,10 @@ const MIGRATION_0131: &str = include_str!("../migrations/0131_sync_pull.sql");
 const MIGRATION_0132: &str = include_str!("../migrations/0132_recipe_uses.sql");
 const MIGRATION_0133: &str = include_str!("../migrations/0133_retention_floor.sql");
 /// PRD-mcphost-external-class-positive-evidence: `tenants.origin_taint_unix` + `origin_counters`.
-const MIGRATION_0134: &str = include_str!("../migrations/0134_origin_tristate.sql");
+const MIGRATION_0135: &str = include_str!("../migrations/0135_origin_tristate.sql");
 /// PRD-mcphost-external-class-positive-evidence: the one-shot origin backfill (static SQL).
-const MIGRATION_0135: &str = include_str!("../migrations/0135_origin_backfill.sql");
-/// `origin_counters.name` marking that [`MIGRATION_0135`] has run.
+const MIGRATION_0136: &str = include_str!("../migrations/0136_origin_backfill.sql");
+/// `origin_counters.name` marking that [`MIGRATION_0136`] has run.
 const ORIGIN_BACKFILL_MARKER: &str = "origin_backfill_0135";
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
@@ -3330,17 +3330,17 @@ impl Db {
         // Wholly new table, `IF NOT EXISTS`: idempotent as-is.
         conn.execute_batch(MIGRATION_0132)?;
         Self::migrate_0133_retention_floor(&conn)?;
-        Self::migrate_0134_origin_tristate(&conn)?;
-        Self::migrate_0135_origin_backfill(&conn)?;
+        Self::migrate_0135_origin_tristate(&conn)?;
+        Self::migrate_0136_origin_backfill(&conn)?;
         Ok(())
     }
 
-    /// PRD-mcphost-external-class-positive-evidence: runs [`MIGRATION_0135`]
+    /// PRD-mcphost-external-class-positive-evidence: runs [`MIGRATION_0136`]
     /// exactly once (a rerun would demote earned `external` rows), gated on
     /// the `origin_counters` marker, in one transaction with the marker. The
     /// before/after `tenants` counts by origin are journaled to the log and,
     /// when any tenant existed, to `admin_audit` (`origin_backfill`).
-    fn migrate_0135_origin_backfill(conn: &Connection) -> Result<(), AppError> {
+    fn migrate_0136_origin_backfill(conn: &Connection) -> Result<(), AppError> {
         let done: bool = conn
             .prepare("SELECT 1 FROM origin_counters WHERE name = ?1")?
             .exists(params![ORIGIN_BACKFILL_MARKER])?;
@@ -3349,7 +3349,7 @@ impl Db {
         }
         crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |tx| {
             let before = tenant_origin_counts(tx)?;
-            tx.execute_batch(MIGRATION_0135)?;
+            tx.execute_batch(MIGRATION_0136)?;
             let after = tenant_origin_counts(tx)?;
             let (total_before, total_after): (i64, i64) = (before.values().sum(), after.values().sum());
             let journal = json!({"before": before, "after": after, "total_before": total_before, "total_after": total_after});
@@ -3372,12 +3372,12 @@ impl Db {
     /// PRD-mcphost-external-class-positive-evidence: gated on
     /// `tenants.origin_taint_unix` (the batch is an `ALTER`, so a rerun must
     /// skip it).
-    fn migrate_0134_origin_tristate(conn: &Connection) -> Result<(), AppError> {
+    fn migrate_0135_origin_tristate(conn: &Connection) -> Result<(), AppError> {
         let has_column: bool = conn
             .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'origin_taint_unix'")?
             .exists([])?;
         if !has_column {
-            conn.execute_batch(MIGRATION_0134)?;
+            conn.execute_batch(MIGRATION_0135)?;
         }
         Ok(())
     }

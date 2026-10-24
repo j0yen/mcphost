@@ -30,6 +30,20 @@ mod uprg;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
+#[path = "regone_ac01_live_compares_registry_to_endpoint.rs"]
+mod regone_ac01_live_compares_registry_to_endpoint;
+#[path = "regone_ac02_live_registry_timeout_is_unknown.rs"]
+mod regone_ac02_live_registry_timeout_is_unknown;
+#[path = "regone_ac03_one_server_json.rs"]
+mod regone_ac03_one_server_json;
+#[path = "regone_ac04_dry_run_prints_lines_and_no_secret.rs"]
+mod regone_ac04_dry_run_prints_lines_and_no_secret;
+#[path = "regone_ac05_no_publish_without_ok_makes_no_write.rs"]
+mod regone_ac05_no_publish_without_ok_makes_no_write;
+#[path = "regone_ac06_one_search_url_in_docs.rs"]
+mod regone_ac06_one_search_url_in_docs;
+#[path = "regone_ac07_live_json.rs"]
+mod regone_ac07_live_json;
 #[path = "rgpt_ac01_recipes_generator_idempotent.rs"]
 mod rgpt_ac01_recipes_generator_idempotent;
 #[path = "rgpt_ac02_drift_names_file_recipe_and_line.rs"]
@@ -1016,25 +1030,3 @@ mod wake_ac6_msg_wait;
 mod wake_ac7_trigger_test_synthetic_envelope;
 #[path = "wake_ac8_replay.rs"]
 mod wake_ac8_replay;
-#[path = "wasmkind_ac01_echo_component_calls_and_meters.rs"]
-mod wasmkind_ac01_echo_component_calls_and_meters;
-#[path = "wasmkind_ac02_publish_validation_errors.rs"]
-mod wasmkind_ac02_publish_validation_errors;
-#[path = "wasmkind_ac03_timeout_and_oom_recover.rs"]
-mod wasmkind_ac03_timeout_and_oom_recover;
-#[path = "wasmkind_ac05_tool_test_dry_run.rs"]
-mod wasmkind_ac05_tool_test_dry_run;
-#[path = "wasmkind_ac06_trap_is_structured_and_logged.rs"]
-mod wasmkind_ac06_trap_is_structured_and_logged;
-#[path = "wasmkind_ac07_docs_llms_and_quickstart_document_wasm.rs"]
-mod wasmkind_ac07_docs_llms_and_quickstart_document_wasm;
-#[path = "wasmkind_ac08_cache_reuses_compiled_artifact.rs"]
-mod wasmkind_ac08_cache_reuses_compiled_artifact;
-#[path = "wasmkind_ac09_healthz_reports_wasm_runtime.rs"]
-mod wasmkind_ac09_healthz_reports_wasm_runtime;
-#[path = "wasmkind_ac10_declared_output_promotion_matches_python.rs"]
-mod wasmkind_ac10_declared_output_promotion_matches_python;
-#[path = "whin_ac04_keyless_call_after_redeem_is_refused_and_named.rs"]
-mod whin_ac04_keyless_call_after_redeem_is_refused_and_named;
-#[path = "whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule.rs"]
-mod whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule;

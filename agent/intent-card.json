@@ -62,7 +62,7 @@
   ],
   "scope": [
     "src/state.rs: the Origin enum (one macro-generated list), derive_origin -> unattributed, return_promotion_days.",
-    "src/db.rs: promote_origin_row (single-row UPDATE + audit), observe_call_origin, origin_report, migrations 0134 (taint column + origin_counters) and 0135 (one-shot journaled backfill).",
+    "src/db.rs: promote_origin_row (single-row UPDATE + audit), observe_call_origin, origin_report, migrations 0135 (taint column + origin_counters) and 0136 (one-shot journaled backfill).",
     "src/handler.rs, src/http.rs, src/admin.rs, src/main.rs: call-path observation and the shared origin keys; scripts/ops/origin-counts.py."
   ],
   "non_goals": [
