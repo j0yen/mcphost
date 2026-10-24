@@ -48,7 +48,7 @@ fn ctrx_ac06_budget_constants_and_check_are_unchanged() {
     let ctrs = read("tests/ctrs_ac06_contract_suites_finish_within_budget.rs");
     let at = ctrs.find("const TARGET_SECS").unwrap();
     let comment: Vec<&str> = ctrs[..at].lines().rev().take(3).collect();
-    assert!(comment.iter().any(|l| l.contains("measured 611 s on CI run 39200390250")), "{comment:?}");
+    assert!(comment.iter().any(|l| l.contains("measured 1016 s on CI run 40115329593 = 615 s × 0.98 runner + 411 s new tests")), "{comment:?}");
     let toml = read("wm-build-ci.toml");
     let check = toml.split("[[check]]").find(|c| c.contains("name = \"contract-suite\"")).expect("contract-suite check");
     assert!(check.contains("cmd = \"./scripts/pin-tests.sh\""), "{check}");
