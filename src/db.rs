@@ -3021,6 +3021,12 @@ impl Db {
             tenant_teardown: Arc::new(std::sync::RwLock::new(None)),
         };
         db.migrate_sync()?;
+        // PRD-mcphost-subscriptions-listen R5: debug builds check every tool-list write.
+        #[cfg(debug_assertions)]
+        {
+            let conn = db.conn.lock().map_err(|_| AppError::Storage("db lock poisoned".into()))?;
+            crate::listen::install_write_check(&conn).map_err(AppError::from)?;
+        }
         Ok(db)
     }
 
@@ -5044,16 +5050,37 @@ impl Db {
             }
             None => {
                 let conn = self.conn.clone();
-                tokio::task::spawn_blocking(move || {
-                    instrument_stmt(&counters, ROLE_SERVER, move || {
+                // PRD-mcphost-subscriptions-listen R5: the verb running this write.
+                #[cfg(debug_assertions)]
+                let verb = crate::listen::current_verb();
+                let joined = tokio::task::spawn_blocking(move || {
+                    #[cfg(debug_assertions)]
+                    let scope = crate::listen::WriteScope::enter(verb);
+                    let out = instrument_stmt(&counters, ROLE_SERVER, move || {
                         let guard = conn
                             .lock()
                             .map_err(|_| AppError::Storage("db lock poisoned".into()))?;
                         f(&guard)
-                    })
+                    });
+                    #[cfg(debug_assertions)]
+                    return (out, scope.take_violation());
+                    #[cfg(not(debug_assertions))]
+                    out
                 })
                 .await
-                .map_err(|e| AppError::Internal(e.to_string()))?
+                .map_err(|e| AppError::Internal(e.to_string()))?;
+                // Raised here, not in the blocking closure: a panic there would poison the
+                // connection mutex.
+                #[cfg(debug_assertions)]
+                {
+                    let (out, violation) = joined;
+                    if let Some(message) = violation {
+                        panic!("{message}");
+                    }
+                    out
+                }
+                #[cfg(not(debug_assertions))]
+                joined
             }
         }
     }

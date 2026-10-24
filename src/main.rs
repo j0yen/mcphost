@@ -2227,6 +2227,7 @@ async fn main() -> anyhow::Result<()> {
                 confirm_clock_offset_secs: Default::default(),
                 onboarding_cache: Default::default(),
                 resource_subs: Default::default(),
+                listen_hub: Default::default(),
             });
             // PRD-mcphost-abuse-guard-ban-list requirement 6: load the ban
             // cache once before this process ever serves a request, so the

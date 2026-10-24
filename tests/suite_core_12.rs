@@ -9,13 +9,983 @@
 mod common;
 #[path = "support/assertion.rs"]
 mod assertion;
+#[path = "support/busyaudit.rs"]
+mod busyaudit;
+#[path = "support/dryspt_lint.rs"]
+mod dryspt_lint;
 #[path = "support/oauth.rs"]
 mod oauth;
+#[path = "support/oauthclient.rs"]
+mod oauthclient;
+#[path = "support/promptkind.rs"]
+mod promptkind;
+#[path = "support/serve.rs"]
+mod serve;
+#[path = "support/sjrc.rs"]
+mod sjrc;
+#[path = "support/timp.rs"]
+mod timp;
+#[path = "support/tssdk.rs"]
+mod tssdk;
+#[path = "support/uprg.rs"]
+mod uprg;
+#[path = "support/vbd_calls.rs"]
+mod vbd_calls;
 #[path = "support/xlinks.rs"]
 mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "rpol_ac01_non_retryable_stops_resends.rs"]
+mod rpol_ac01_non_retryable_stops_resends;
+#[path = "rpol_ac02_every_code_has_exactly_one_row.rs"]
+mod rpol_ac02_every_code_has_exactly_one_row;
+#[path = "rpol_ac03_retry_after_wins_over_backoff.rs"]
+mod rpol_ac03_retry_after_wins_over_backoff;
+#[path = "rpol_ac04_attempts_exhausted_flips_retryable.rs"]
+mod rpol_ac04_attempts_exhausted_flips_retryable;
+#[path = "rpol_ac05_chain_retry_on_validated_against_table.rs"]
+mod rpol_ac05_chain_retry_on_validated_against_table;
+#[path = "rpol_ac06_retry_policy_check_names_the_edited_file.rs"]
+mod rpol_ac06_retry_policy_check_names_the_edited_file;
+#[path = "rsm_ac01_resume_fits_the_free_plan_ceilings.rs"]
+mod rsm_ac01_resume_fits_the_free_plan_ceilings;
+#[path = "rsm_ac02_tools_carry_their_newest_call.rs"]
+mod rsm_ac02_tools_carry_their_newest_call;
+#[path = "rsm_ac03_changes_since_the_last_call_version.rs"]
+mod rsm_ac03_changes_since_the_last_call_version;
+#[path = "rsm_ac05_anonymous_resume_creates_no_tenant.rs"]
+mod rsm_ac05_anonymous_resume_creates_no_tenant;
+#[path = "rsm_ac06_welcome_back_points_at_resume.rs"]
+mod rsm_ac06_welcome_back_points_at_resume;
+#[path = "rsm_ac07_usage_reports_the_resume_first_call_rate.rs"]
+mod rsm_ac07_usage_reports_the_resume_first_call_rate;
+#[path = "run_metrics_handoff_glob_regression.rs"]
+mod run_metrics_handoff_glob_regression;
+#[path = "runoverflow_ac03_progress_counter_monotonic_validation.rs"]
+mod runoverflow_ac03_progress_counter_monotonic_validation;
+#[path = "runoverflow_ac04_inline_part_zero_and_out_of_range_not_found.rs"]
+mod runoverflow_ac04_inline_part_zero_and_out_of_range_not_found;
+#[path = "runoverflow_ac05_http_async_2mib_overflows_to_parts.rs"]
+mod runoverflow_ac05_http_async_2mib_overflows_to_parts;
+#[path = "runs_ac05_sync_call_writes_run_row.rs"]
+mod runs_ac05_sync_call_writes_run_row;
+#[path = "runs_ac07_purge_clears_result.rs"]
+mod runs_ac07_purge_clears_result;
+#[path = "runs_ac08_tenant_delete_cascades_runs.rs"]
+mod runs_ac08_tenant_delete_cascades_runs;
+#[path = "runs_ac09_quickstart_and_llms_txt_name_job_limits.rs"]
+mod runs_ac09_quickstart_and_llms_txt_name_job_limits;
+#[path = "runs_ac10_wait_long_polls.rs"]
+mod runs_ac10_wait_long_polls;
+#[path = "runs_ac11_admin_runs_reap.rs"]
+mod runs_ac11_admin_runs_reap;
+#[path = "runsubject_ac01_async_assertion_end_user_on_run.rs"]
+mod runsubject_ac01_async_assertion_end_user_on_run;
+#[path = "runsubject_ac02_list_filters_by_end_user_subject.rs"]
+mod runsubject_ac02_list_filters_by_end_user_subject;
+#[path = "runsubject_ac03_oauth_run_carries_issuer_and_method.rs"]
+mod runsubject_ac03_oauth_run_carries_issuer_and_method;
+#[path = "runsubject_ac04_schedule_fired_run_end_user_null.rs"]
+mod runsubject_ac04_schedule_fired_run_end_user_null;
+#[path = "runsubject_ac05_list_output_unchanged_but_for_end_user.rs"]
+mod runsubject_ac05_list_output_unchanged_but_for_end_user;
+#[path = "runsubject_ac06_migration_0048_under_1s_at_100k_rows.rs"]
+mod runsubject_ac06_migration_0048_under_1s_at_100k_rows;
+#[path = "runsubject_ac07_llms_txt_names_end_user_and_filter.rs"]
+mod runsubject_ac07_llms_txt_names_end_user_and_filter;
+#[path = "sandboxready_ac7_conformance_suite.rs"]
+mod sandboxready_ac7_conformance_suite;
+#[path = "sblibs_ac02_drift_toml_lock_docs.rs"]
+mod sblibs_ac02_drift_toml_lock_docs;
+#[path = "sched_ac10_trigger_fire_manual.rs"]
+mod sched_ac10_trigger_fire_manual;
+#[path = "sched_ac1_two_firings_visible_in_ledger.rs"]
+mod sched_ac1_two_firings_visible_in_ledger;
+#[path = "sched_ac2_invalid_cron_names_minute.rs"]
+mod sched_ac2_invalid_cron_names_minute;
+#[path = "sched_ac3_free_plan_quota_exceeded.rs"]
+mod sched_ac3_free_plan_quota_exceeded;
+#[path = "sched_ac4_free_plan_interval_too_short.rs"]
+mod sched_ac4_free_plan_interval_too_short;
+#[path = "sched_ac5_overlap_skips_and_records.rs"]
+mod sched_ac5_overlap_skips_and_records;
+#[path = "sched_ac6_pause_blocks_resume_allows.rs"]
+mod sched_ac6_pause_blocks_resume_allows;
+#[path = "sched_ac7_tool_remove_disables_triggers.rs"]
+mod sched_ac7_tool_remove_disables_triggers;
+#[path = "sched_ac8_healthz_scheduler_fields.rs"]
+mod sched_ac8_healthz_scheduler_fields;
+#[path = "sched_quickstart_and_usage_report_schedules.rs"]
+mod sched_quickstart_and_usage_report_schedules;
+#[path = "self_offboard_ac1_disables_tenant_and_returns_success.rs"]
+mod self_offboard_ac1_disables_tenant_and_returns_success;
+#[path = "self_offboard_ac2_idempotent_second_call.rs"]
+mod self_offboard_ac2_idempotent_second_call;
+#[path = "self_offboard_ac3_offboarded_key_same_shape_as_unissued.rs"]
+mod self_offboard_ac3_offboarded_key_same_shape_as_unissued;
+#[path = "self_offboard_ac4_pro_tenant_cancels_stripe_subscription.rs"]
+mod self_offboard_ac4_pro_tenant_cancels_stripe_subscription;
+#[path = "self_offboard_ac5_admin_tenants_distinguishes_reason.rs"]
+mod self_offboard_ac5_admin_tenants_distinguishes_reason;
+#[path = "sessbind_ac01_keyless_call_after_signup_runs_as_the_bound_tenant.rs"]
+mod sessbind_ac01_keyless_call_after_signup_runs_as_the_bound_tenant;
+#[path = "sessbind_ac02_five_tools_run_as_the_bound_tenant.rs"]
+mod sessbind_ac02_five_tools_run_as_the_bound_tenant;
+#[path = "sessbind_ac03_anonymous_session_unchanged.rs"]
+mod sessbind_ac03_anonymous_session_unchanged;
+#[path = "sessbind_ac04_explicit_key_wins_over_the_binding.rs"]
+mod sessbind_ac04_explicit_key_wins_over_the_binding;
+#[path = "sessbind_ac05_bearer_wins_and_the_binding_survives.rs"]
+mod sessbind_ac05_bearer_wins_and_the_binding_survives;
+#[path = "sessbind_ac06_second_signup_rebinds_and_reports_session_bound.rs"]
+mod sessbind_ac06_second_signup_rebinds_and_reports_session_bound;
+#[path = "sessbind_ac07_concurrent_sessions_no_cross_session_leak.rs"]
+mod sessbind_ac07_concurrent_sessions_no_cross_session_leak;
+#[path = "sessbind_ac08_binding_map_is_bounded_under_a_session_flood.rs"]
+mod sessbind_ac08_binding_map_is_bounded_under_a_session_flood;
+#[path = "sessbind_ac09_disabled_bound_tenant_drops_the_binding.rs"]
+mod sessbind_ac09_disabled_bound_tenant_drops_the_binding;
+#[path = "sessbind_ac10_request_log_records_the_upgraded_status.rs"]
+mod sessbind_ac10_request_log_records_the_upgraded_status;
+#[path = "sessbind_ac11_session_bound_calls_are_metered_and_counted.rs"]
+mod sessbind_ac11_session_bound_calls_are_metered_and_counted;
+#[path = "sessbind_ac12_tenant_key_description_states_signup_optionality.rs"]
+mod sessbind_ac12_tenant_key_description_states_signup_optionality;
+#[path = "sessbind_ac13_regression_gate.rs"]
+mod sessbind_ac13_regression_gate;
+#[path = "sessbind_ac14_fresh_connection_implicit_signup_unchanged.rs"]
+mod sessbind_ac14_fresh_connection_implicit_signup_unchanged;
+#[path = "sessbind_ac15_second_bare_call_is_refused_and_named.rs"]
+mod sessbind_ac15_second_bare_call_is_refused_and_named;
+#[path = "sessbind_ac16_tenant_key_arg_then_omit_refused_or_reused.rs"]
+mod sessbind_ac16_tenant_key_arg_then_omit_refused_or_reused;
+#[path = "sessbind_ac17_concurrent_connections_isolated_memory.rs"]
+mod sessbind_ac17_concurrent_connections_isolated_memory;
+#[path = "sessbind_ac18_reconnect_without_key_is_a_fresh_client.rs"]
+mod sessbind_ac18_reconnect_without_key_is_a_fresh_client;
+#[path = "sessbind_ac19_funnel_blocked_count_and_whoami_session_tenant.rs"]
+mod sessbind_ac19_funnel_blocked_count_and_whoami_session_tenant;
+#[path = "sessbind_ac20_docs_and_help_name_the_reconnect_rule.rs"]
+mod sessbind_ac20_docs_and_help_name_the_reconnect_rule;
+#[path = "sessionkey_ac02_ac03_discovery_shape.rs"]
+mod sessionkey_ac02_ac03_discovery_shape;
+#[path = "sessionkey_ac04_signup_usage_field.rs"]
+mod sessionkey_ac04_signup_usage_field;
+#[path = "sessionkey_ac05_ac07_ac08_ac09_tenant_key_auth.rs"]
+mod sessionkey_ac05_ac07_ac08_ac09_tenant_key_auth;
+#[path = "sessionkey_ac06_publish_via_tenant_key.rs"]
+mod sessionkey_ac06_publish_via_tenant_key;
+#[path = "sessionkey_ac10_tenant_key_to_admin_forbidden.rs"]
+mod sessionkey_ac10_tenant_key_to_admin_forbidden;
+#[path = "sessionkey_ac11_ac12_ac13_ac14_ac15_tool_call.rs"]
+mod sessionkey_ac11_ac12_ac13_ac14_ac15_tool_call;
+#[path = "sessionkey_ac16_full_session_no_header.rs"]
+mod sessionkey_ac16_full_session_no_header;
+#[path = "sessionkey_ac18_tool_logs_no_key.rs"]
+mod sessionkey_ac18_tool_logs_no_key;
+#[path = "sessionkey_ac19_nested_tenant_key_redacted.rs"]
+mod sessionkey_ac19_nested_tenant_key_redacted;
+#[path = "sessionkey_ac20_error_message_no_key.rs"]
+mod sessionkey_ac20_error_message_no_key;
+#[path = "sfc_ac01_keyless_call_frames_are_stable.rs"]
+mod sfc_ac01_keyless_call_frames_are_stable;
+#[path = "sfc_ac02_wire_frames_match_table.rs"]
+mod sfc_ac02_wire_frames_match_table;
+#[path = "sfc_ac03_keyed_call_is_one_json_frame.rs"]
+mod sfc_ac03_keyed_call_is_one_json_frame;
+#[path = "sfc_ac05_frames_check_script_names_drift.rs"]
+mod sfc_ac05_frames_check_script_names_drift;
+#[path = "sfc_ac06_select_result_rejects_wrong_order.rs"]
+mod sfc_ac06_select_result_rejects_wrong_order;
+#[path = "sfc_ac07_llms_txt_transport_section_matches_script.rs"]
+mod sfc_ac07_llms_txt_transport_section_matches_script;
+#[path = "share_ac01_public_tool_cross_tenant_call.rs"]
+mod share_ac01_public_tool_cross_tenant_call;
+#[path = "share_ac02_private_tool_still_not_found.rs"]
+mod share_ac02_private_tool_still_not_found;
+#[path = "share_ac03_group_visibility_members_only.rs"]
+mod share_ac03_group_visibility_members_only;
+#[path = "share_ac04_secret_never_reaches_caller.rs"]
+mod share_ac04_secret_never_reaches_caller;
+#[path = "share_ac05_usage_and_quota_attribution.rs"]
+mod share_ac05_usage_and_quota_attribution;
+#[path = "share_ac06_share_quota_exceeded.rs"]
+mod share_ac06_share_quota_exceeded;
+#[path = "share_ac07_catalog_search_and_well_known.rs"]
+mod share_ac07_catalog_search_and_well_known;
+#[path = "share_ac08_unshare_revokes_access.rs"]
+mod share_ac08_unshare_revokes_access;
+#[path = "share_ac09_admin_tool_unshare.rs"]
+mod share_ac09_admin_tool_unshare;
+#[path = "sharedcall_ac01_host_tool_call_public_cross_tenant.rs"]
+mod sharedcall_ac01_host_tool_call_public_cross_tenant;
+#[path = "sharedcall_ac02_group_share_non_member_gets_hint.rs"]
+mod sharedcall_ac02_group_share_non_member_gets_hint;
+#[path = "sharedcall_ac03_not_found_reasons_indistinguishable.rs"]
+mod sharedcall_ac03_not_found_reasons_indistinguishable;
+#[path = "sharedcall_ac04_async_qualified_call_scoped_to_caller.rs"]
+mod sharedcall_ac04_async_qualified_call_scoped_to_caller;
+#[path = "sharedcall_ac05_gen_docs_sharing_check.rs"]
+mod sharedcall_ac05_gen_docs_sharing_check;
+#[path = "sharedcall_ac06_proof_script_qualified_host_tool_call.rs"]
+mod sharedcall_ac06_proof_script_qualified_host_tool_call;
+#[path = "sharedcall_ac07_own_unqualified_call_unchanged.rs"]
+mod sharedcall_ac07_own_unqualified_call_unchanged;
+#[path = "sharedcall_ac08_get_info_lists_shared_tools_with_via.rs"]
+mod sharedcall_ac08_get_info_lists_shared_tools_with_via;
+#[path = "sharedcall_ac09_quota_exhausted_qualified_call_refused.rs"]
+mod sharedcall_ac09_quota_exhausted_qualified_call_refused;
+#[path = "sharedrunscope_ac01_caller_sees_sync_shared_run.rs"]
+mod sharedrunscope_ac01_caller_sees_sync_shared_run;
+#[path = "sharedrunscope_ac02_owner_cannot_see_callers_run.rs"]
+mod sharedrunscope_ac02_owner_cannot_see_callers_run;
+#[path = "sharedrunscope_ac03_owner_meter_and_usage_unchanged.rs"]
+mod sharedrunscope_ac03_owner_meter_and_usage_unchanged;
+#[path = "sharedrunscope_ac04_own_call_run_row_unchanged.rs"]
+mod sharedrunscope_ac04_own_call_run_row_unchanged;
+#[path = "sharedrunscope_ac05_async_and_sync_share_scoping.rs"]
+mod sharedrunscope_ac05_async_and_sync_share_scoping;
+#[path = "sharedrunscope_ac06_raw_tools_call_shares_the_path.rs"]
+mod sharedrunscope_ac06_raw_tools_call_shares_the_path;
+#[path = "sharedrunscope_ac07_migration_backfills_legacy_rows.rs"]
+mod sharedrunscope_ac07_migration_backfills_legacy_rows;
+#[path = "sharedrunscope_ac08_proof_script_owner_ledger_check.rs"]
+mod sharedrunscope_ac08_proof_script_owner_ledger_check;
+#[path = "shsc_ac01_scope_enum_source_of_truth.rs"]
+mod shsc_ac01_scope_enum_source_of_truth;
+#[path = "shsc_ac02_meta_and_catalog_show_scopes.rs"]
+mod shsc_ac02_meta_and_catalog_show_scopes;
+#[path = "shsc_ac03_rate_per_hour_per_caller.rs"]
+mod shsc_ac03_rate_per_hour_per_caller;
+#[path = "shsc_ac04_unshare_is_share_revoked_for_past_callers.rs"]
+mod shsc_ac04_unshare_is_share_revoked_for_past_callers;
+#[path = "shsc_ac05_fork_copies_a_fork_scoped_tool.rs"]
+mod shsc_ac05_fork_copies_a_fork_scoped_tool;
+#[path = "shsc_ac06_url_shares_allow_only_call.rs"]
+mod shsc_ac06_url_shares_allow_only_call;
+#[path = "shsc_ac07_migration_backfills_shared_rows.rs"]
+mod shsc_ac07_migration_backfills_shared_rows;
+#[path = "sibl_ac01_second_connection_joins_same_namespace.rs"]
+mod sibl_ac01_second_connection_joins_same_namespace;
+#[path = "sibl_ac02_used_up_join_code_is_refused.rs"]
+mod sibl_ac02_used_up_join_code_is_refused;
+#[path = "sibl_ac03_rotate_is_scoped_to_the_calling_client.rs"]
+mod sibl_ac03_rotate_is_scoped_to_the_calling_client;
+#[path = "sibl_ac04_revoke_removes_one_client.rs"]
+mod sibl_ac04_revoke_removes_one_client;
+#[path = "sibl_ac05_labels_derive_from_client_info_names.rs"]
+mod sibl_ac05_labels_derive_from_client_info_names;
+#[path = "sibl_ac06_returning_browser_is_offered_join.rs"]
+mod sibl_ac06_returning_browser_is_offered_join;
+#[path = "sibl_ac07_concurrent_joins_land_exactly_max_uses.rs"]
+mod sibl_ac07_concurrent_joins_land_exactly_max_uses;
+#[path = "signupfleet_ac01_fleet_ips_bypass_signup_rate_limit.rs"]
+mod signupfleet_ac01_fleet_ips_bypass_signup_rate_limit;
+#[path = "sjrc_ac01_one_call_summarizes_five_fires.rs"]
+mod sjrc_ac01_one_call_summarizes_five_fires;
+#[path = "sjrc_ac02_third_consecutive_failure_alerts_once.rs"]
+mod sjrc_ac02_third_consecutive_failure_alerts_once;
+#[path = "sjrc_ac03_excerpt_is_cut_and_redacted.rs"]
+mod sjrc_ac03_excerpt_is_cut_and_redacted;
+#[path = "sjrc_ac04_pause_produces_nothing_resume_restarts_streak.rs"]
+mod sjrc_ac04_pause_produces_nothing_resume_restarts_streak;
+#[path = "sjrc_ac05_sweeper_drops_receipts_past_plan_retention.rs"]
+mod sjrc_ac05_sweeper_drops_receipts_past_plan_retention;
+#[path = "sjrc_ac06_manual_schedule_and_event_fires_all_leave_receipts.rs"]
+mod sjrc_ac06_manual_schedule_and_event_fires_all_leave_receipts;
+#[path = "sjrc_ac07_limit_ceiling_and_empty_tool.rs"]
+mod sjrc_ac07_limit_ceiling_and_empty_tool;
+#[path = "skillsrc_ac01_gen_docs_writes_skill_md_byte_equal.rs"]
+mod skillsrc_ac01_gen_docs_writes_skill_md_byte_equal;
+#[path = "skillsrc_ac02_gen_docs_check_names_stale_skill_md.rs"]
+mod skillsrc_ac02_gen_docs_check_names_stale_skill_md;
+#[path = "skillsrc_ac03_missing_skill_md_is_stale_and_recreated.rs"]
+mod skillsrc_ac03_missing_skill_md_is_stale_and_recreated;
+#[path = "skillsrc_ac04_gen_docs_idempotent.rs"]
+mod skillsrc_ac04_gen_docs_idempotent;
+#[path = "skillsrc_ac05_output_list_and_drift_test_kept.rs"]
+mod skillsrc_ac05_output_list_and_drift_test_kept;
+#[path = "snp_ac01_url_to_unbound_host_is_blocked.rs"]
+mod snp_ac01_url_to_unbound_host_is_blocked;
+#[path = "snp_ac02_echoed_secret_in_result_is_blocked.rs"]
+mod snp_ac02_echoed_secret_in_result_is_blocked;
+#[path = "snp_ac03_unbound_secret_is_sent_and_reported.rs"]
+mod snp_ac03_unbound_secret_is_sent_and_reported;
+#[path = "snp_ac04_leak_test_proves_both_legs_blocked.rs"]
+mod snp_ac04_leak_test_proves_both_legs_blocked;
+#[path = "snp_ac05_leak_test_cannot_pass_by_accident.rs"]
+mod snp_ac05_leak_test_cannot_pass_by_accident;
+#[path = "snp_ac06_short_secret_blocks_whole_tokens_only.rs"]
+mod snp_ac06_short_secret_blocks_whole_tokens_only;
+#[path = "snp_ac07_blocks_reach_audit_log_and_healthz.rs"]
+mod snp_ac07_blocks_reach_audit_log_and_healthz;
+#[path = "soff_ac01_header_and_arg_returns_success_envelope.rs"]
+mod soff_ac01_header_and_arg_returns_success_envelope;
+#[path = "soff_ac02_header_only_returns_success_and_whoami_disabled.rs"]
+mod soff_ac02_header_only_returns_success_and_whoami_disabled;
+#[path = "soff_ac03_arg_only_returns_success_envelope.rs"]
+mod soff_ac03_arg_only_returns_success_envelope;
+#[path = "soff_ac04_already_offboarded_idempotent_all_shapes.rs"]
+mod soff_ac04_already_offboarded_idempotent_all_shapes;
+#[path = "soff_ac05_matrix_exhaustive_auth_shapes.rs"]
+mod soff_ac05_matrix_exhaustive_auth_shapes;
+#[path = "soff_ac06_non_lifecycle_verb_still_refused.rs"]
+mod soff_ac06_non_lifecycle_verb_still_refused;
+#[path = "soff_ac07_docs_document_already_offboarded.rs"]
+mod soff_ac07_docs_document_already_offboarded;
+#[path = "sorel_ac01_offboard_releases_session_fresh_signup.rs"]
+mod sorel_ac01_offboard_releases_session_fresh_signup;
+#[path = "sorel_ac02_self_offboard_remedy_and_idempotent.rs"]
+mod sorel_ac02_self_offboard_remedy_and_idempotent;
+#[path = "sorel_ac03_admin_disable_remedy_unchanged.rs"]
+mod sorel_ac03_admin_disable_remedy_unchanged;
+#[path = "specpath_ac01_map_form_normalizes_and_publishes.rs"]
+mod specpath_ac01_map_form_normalizes_and_publishes;
+#[path = "specpath_ac02_outputs_map_value_type_error.rs"]
+mod specpath_ac02_outputs_map_value_type_error;
+#[path = "specpath_ac03_headers_array_type_error.rs"]
+mod specpath_ac03_headers_array_type_error;
+#[path = "specpath_ac04_path_reads_declared_field.rs"]
+mod specpath_ac04_path_reads_declared_field;
+#[path = "specpath_ac05_missing_path_reports_tried_path.rs"]
+mod specpath_ac05_missing_path_reports_tried_path;
+#[path = "specpath_ac06_list_form_seen_at_hint.rs"]
+mod specpath_ac06_list_form_seen_at_hint;
+#[path = "specpath_ac07_replay_recorded_sessions_map_form.rs"]
+mod specpath_ac07_replay_recorded_sessions_map_form;
+#[path = "specpath_ac08_wildcard_path_rejected.rs"]
+mod specpath_ac08_wildcard_path_rejected;
+#[path = "spkind_ac01_http_missing_method.rs"]
+mod spkind_ac01_http_missing_method;
+#[path = "spkind_ac02_every_kind_every_field.rs"]
+mod spkind_ac02_every_kind_every_field;
+#[path = "spkind_ac03_same_data_across_verbs.rs"]
+mod spkind_ac03_same_data_across_verbs;
+#[path = "spkind_ac04_payload_size_cap.rs"]
+mod spkind_ac04_payload_size_cap;
+#[path = "spkind_ac05_registry_carries_data_keys.rs"]
+mod spkind_ac05_registry_carries_data_keys;
+#[path = "spkind_ac06_unknown_secret_names_the_fix.rs"]
+mod spkind_ac06_unknown_secret_names_the_fix;
+#[path = "sqlpass_ac01_table_level_description_in_schema.rs"]
+mod sqlpass_ac01_table_level_description_in_schema;
+#[path = "sqlpass_ac02_column_description_in_schema.rs"]
+mod sqlpass_ac02_column_description_in_schema;
+#[path = "sqlpass_ac03_no_annotations_shape_unchanged.rs"]
+mod sqlpass_ac03_no_annotations_shape_unchanged;
+#[path = "sqlpass_ac04_group_by_logs_row_count_and_duration.rs"]
+mod sqlpass_ac04_group_by_logs_row_count_and_duration;
+#[path = "sqlpass_ac05_update_refused_logs_error_code.rs"]
+mod sqlpass_ac05_update_refused_logs_error_code;
+#[path = "sqlpass_ac06_query_log_tenant_isolated_and_limit_capped.rs"]
+mod sqlpass_ac06_query_log_tenant_isolated_and_limit_capped;
+#[path = "sqlpass_ac07_query_log_capped_at_1000_bytes_used_includes_log.rs"]
+mod sqlpass_ac07_query_log_capped_at_1000_bytes_used_includes_log;
+#[path = "sqlpass_ac08_proof_sh_sql_questions_no_publish.rs"]
+mod sqlpass_ac08_proof_sh_sql_questions_no_publish;
+#[path = "sqlpass_ac09_llms_txt_sql_path_under_70_lines.rs"]
+mod sqlpass_ac09_llms_txt_sql_path_under_70_lines;
+#[path = "sqlpass_ac11_concurrent_queries_produce_ten_log_rows.rs"]
+mod sqlpass_ac11_concurrent_queries_produce_ten_log_rows;
+#[path = "sqlpass_ac12_empty_table_zero_rows_null_error_code.rs"]
+mod sqlpass_ac12_empty_table_zero_rows_null_error_code;
+#[path = "sqlpass_ac13_long_sql_truncated_in_log_not_refused.rs"]
+mod sqlpass_ac13_long_sql_truncated_in_log_not_refused;
+#[path = "sreg_ac02_every_host_tool_declares_a_scope.rs"]
+mod sreg_ac02_every_host_tool_declares_a_scope;
+#[path = "sreg_ac03_implied_scopes_gate_tool_calls.rs"]
+mod sreg_ac03_implied_scopes_gate_tool_calls;
+#[path = "sreg_ac04_llms_txt_scopes_table_generated.rs"]
+mod sreg_ac04_llms_txt_scopes_table_generated;
+#[path = "sreg_ac05_whoami_scopes_all_and_effective.rs"]
+mod sreg_ac05_whoami_scopes_all_and_effective;
+#[path = "sreg_ac06_oauth_scopes_registry_first.rs"]
+mod sreg_ac06_oauth_scopes_registry_first;
+#[path = "sreg_ac07_unknown_scope_word_not_effective.rs"]
+mod sreg_ac07_unknown_scope_word_not_effective;
+#[path = "srlp_ac02_plan_ceilings_published.rs"]
+mod srlp_ac02_plan_ceilings_published;
+#[path = "state_ac01_kv_roundtrip.rs"]
+mod state_ac01_kv_roundtrip;
+#[path = "state_ac04_table_query.rs"]
+mod state_ac04_table_query;
+#[path = "state_ac05_schema_violation.rs"]
+mod state_ac05_schema_violation;
+#[path = "state_ac06_quota_exceeded.rs"]
+mod state_ac06_quota_exceeded;
+#[path = "state_ac08_tenant_isolation.rs"]
+mod state_ac08_tenant_isolation;
+#[path = "state_ac09_cascade_delete.rs"]
+mod state_ac09_cascade_delete;
+#[path = "statusfeed_ac02_exec_disabled_degrades.rs"]
+mod statusfeed_ac02_exec_disabled_degrades;
+#[path = "statusfeed_ac03_major_incident_outage.rs"]
+mod statusfeed_ac03_major_incident_outage;
+#[path = "statusfeed_ac04_incident_timeline_and_close.rs"]
+mod statusfeed_ac04_incident_timeline_and_close;
+#[path = "statusfeed_ac05_daily_rollup_uptime.rs"]
+mod statusfeed_ac05_daily_rollup_uptime;
+#[path = "statusfeed_ac06_external_sample_source_preserved.rs"]
+mod statusfeed_ac06_external_sample_source_preserved;
+#[path = "statusfeed_ac07_prune_keeps_rollup.rs"]
+mod statusfeed_ac07_prune_keeps_rollup;
+#[path = "statusfeed_ac08_status_html_renders.rs"]
+mod statusfeed_ac08_status_html_renders;
+#[path = "statusfeed_ac10_component_days_query.rs"]
+mod statusfeed_ac10_component_days_query;
+#[path = "stgl_ac01_grantee_list_names_group_share.rs"]
+mod stgl_ac01_grantee_list_names_group_share;
+#[path = "stgl_ac02_one_accessor_for_list_and_call.rs"]
+mod stgl_ac02_one_accessor_for_list_and_call;
+#[path = "stgl_ac03_public_share_not_in_tools_list.rs"]
+mod stgl_ac03_public_share_not_in_tools_list;
+#[path = "stgl_ac04_no_shares_list_unchanged.rs"]
+mod stgl_ac04_no_shares_list_unchanged;
+#[path = "stgl_ac05_unshare_removes_entry.rs"]
+mod stgl_ac05_unshare_removes_entry;
+#[path = "stgl_ac06_subkey_hides_shared_entries.rs"]
+mod stgl_ac06_subkey_hides_shared_entries;
+#[path = "stgl_ac07_share_reports_grantees_notified.rs"]
+mod stgl_ac07_share_reports_grantees_notified;
+#[path = "sublis_ac01_listen_ack_and_keepalive.rs"]
+mod sublis_ac01_listen_ack_and_keepalive;
+#[path = "sublis_ac02_publish_notifies_the_tenants_streams.rs"]
+mod sublis_ac02_publish_notifies_the_tenants_streams;
+#[path = "sublis_ac03_drift.rs"]
+mod sublis_ac03_drift;
+#[path = "sublis_ac04_keyless_and_unknown_key_listens.rs"]
+mod sublis_ac04_keyless_and_unknown_key_listens;
+#[path = "sublis_ac05_listen_streams_max.rs"]
+mod sublis_ac05_listen_streams_max;
+#[path = "sublis_ac08_initialize_advertises_list_changes_with_proof.rs"]
+mod sublis_ac08_initialize_advertises_list_changes_with_proof;
+#[path = "suite_ac1_ten_binaries_and_names_preserved.rs"]
+mod suite_ac1_ten_binaries_and_names_preserved;
+#[path = "suite_ac3_mod_common_declared_once.rs"]
+mod suite_ac3_mod_common_declared_once;
+#[path = "suite_ac5_disk_size_budget.rs"]
+mod suite_ac5_disk_size_budget;
+#[path = "suite_ac6_wall_time_budget.rs"]
+mod suite_ac6_wall_time_budget;
+#[path = "suite_ac7_junit_per_test_timing.rs"]
+mod suite_ac7_junit_per_test_timing;
+#[path = "suite_ac9_selftest_named_and_green.rs"]
+mod suite_ac9_selftest_named_and_green;
+#[path = "support_ac01_bearer_invalid_help_url.rs"]
+mod support_ac01_bearer_invalid_help_url;
+#[path = "support_ac02_internal_error_generic_and_logged.rs"]
+mod support_ac02_internal_error_generic_and_logged;
+#[path = "support_ac03_disk_floor_and_5xx_messages_generic.rs"]
+mod support_ac03_disk_floor_and_5xx_messages_generic;
+#[path = "support_ac04_plans_doc_and_json_consistent.rs"]
+mod support_ac04_plans_doc_and_json_consistent;
+#[path = "support_ac06_served_pages_from_docs_and_readme.rs"]
+mod support_ac06_served_pages_from_docs_and_readme;
+#[path = "support_ac07_whoami_links_resolve.rs"]
+mod support_ac07_whoami_links_resolve;
+#[path = "support_ac08_release_artifact_includes_www.rs"]
+mod support_ac08_release_artifact_includes_www;
+#[path = "surface_ac02_dry_run_descriptions.rs"]
+mod surface_ac02_dry_run_descriptions;
+#[path = "surface_ac03_args_invalid_unified.rs"]
+mod surface_ac03_args_invalid_unified;
+#[path = "surface_ac04_required_field_descriptions.rs"]
+mod surface_ac04_required_field_descriptions;
+#[path = "surface_ac05_llms_txt_tool_parity.rs"]
+mod surface_ac05_llms_txt_tool_parity;
+#[path = "surface_ac07_tool_publish_description_length.rs"]
+mod surface_ac07_tool_publish_description_length;
+#[path = "surface_ac08_get_info_mentions_try_before_call.rs"]
+mod surface_ac08_get_info_mentions_try_before_call;
+#[path = "surface_tool_description_min_length.rs"]
+mod surface_tool_description_min_length;
+#[path = "surface_vault_tools_registered.rs"]
+mod surface_vault_tools_registered;
+#[path = "synthetic_ac01_migration_null_default.rs"]
+mod synthetic_ac01_migration_null_default;
+#[path = "synthetic_ac02_signup_header_sets_label.rs"]
+mod synthetic_ac02_signup_header_sets_label;
+#[path = "synthetic_ac04_tenant_facing_byte_identical.rs"]
+mod synthetic_ac04_tenant_facing_byte_identical;
+#[path = "synthetic_ac05_admin_tenant_set_synthetic.rs"]
+mod synthetic_ac05_admin_tenant_set_synthetic;
+#[path = "synthetic_ac06_bulk_retro_tag.rs"]
+mod synthetic_ac06_bulk_retro_tag;
+#[path = "synthetic_ac07_healthz_counts.rs"]
+mod synthetic_ac07_healthz_counts;
+#[path = "synthetic_ac08_admin_tenants_field.rs"]
+mod synthetic_ac08_admin_tenants_field;
+#[path = "synthetic_ac09_metering_filter.rs"]
+mod synthetic_ac09_metering_filter;
+#[path = "synthetic_ac10_healthz_paying_real.rs"]
+mod synthetic_ac10_healthz_paying_real;
+#[path = "syreg_ac03_create_returns_sync_id_and_next_run.rs"]
+mod syreg_ac03_create_returns_sync_id_and_next_run;
+#[path = "syreg_ac04_create_validation_errors.rs"]
+mod syreg_ac04_create_validation_errors;
+#[path = "syreg_ac05_sixth_sync_hits_syncs_max.rs"]
+mod syreg_ac05_sixth_sync_hits_syncs_max;
+#[path = "syreg_ac06_tick_writes_one_receipt_per_slot.rs"]
+mod syreg_ac06_tick_writes_one_receipt_per_slot;
+#[path = "syreg_ac07_delete_keeps_the_table.rs"]
+mod syreg_ac07_delete_keeps_the_table;
+#[path = "tablemodel_ac01_key_id_measure_category_date_roles.rs"]
+mod tablemodel_ac01_key_id_measure_category_date_roles;
+#[path = "tablemodel_ac02_foreign_key_detected_against_customers_id.rs"]
+mod tablemodel_ac02_foreign_key_detected_against_customers_id;
+#[path = "tablemodel_ac03_measures_and_dimensions_suggested.rs"]
+mod tablemodel_ac03_measures_and_dimensions_suggested;
+#[path = "tablemodel_ac04_null_share_with_category_role_preserved.rs"]
+mod tablemodel_ac04_null_share_with_category_role_preserved;
+#[path = "tablemodel_ac05_stale_after_append_recomputes_on_tick.rs"]
+mod tablemodel_ac05_stale_after_append_recomputes_on_tick;
+#[path = "tablemodel_ac06_large_table_samples_10000_under_500ms.rs"]
+mod tablemodel_ac06_large_table_samples_10000_under_500ms;
+#[path = "tablemodel_ac07_model_set_unit_annotation_survives_refresh.rs"]
+mod tablemodel_ac07_model_set_unit_annotation_survives_refresh;
+#[path = "tablemodel_ac08_model_set_role_override_keeps_inferred_role.rs"]
+mod tablemodel_ac08_model_set_role_override_keeps_inferred_role;
+#[path = "tablemodel_ac09_drop_removes_model_and_annotations.rs"]
+mod tablemodel_ac09_drop_removes_model_and_annotations;
+#[path = "tablemodel_ac10_empty_table_reports_unknown_types_no_error.rs"]
+mod tablemodel_ac10_empty_table_reports_unknown_types_no_error;
+#[path = "tables_ac07_tenant_delete_cascade.rs"]
+mod tables_ac07_tenant_delete_cascade;
+#[path = "tdf_ac01_round_trip_every_kind.rs"]
+mod tdf_ac01_round_trip_every_kind;
+#[path = "tdf_ac02_lint_names_unknown_field.rs"]
+mod tdf_ac02_lint_names_unknown_field;
+#[path = "tdf_ac03_doc_drift.rs"]
+mod tdf_ac03_doc_drift;
+#[path = "tdf_ac04_pack_rejects_empty.rs"]
+mod tdf_ac04_pack_rejects_empty;
+#[path = "tdf_ac05_example_hello_py_packs.rs"]
+mod tdf_ac05_example_hello_py_packs;
+#[path = "tdf_ac07_unpack_unknown_kind.rs"]
+mod tdf_ac07_unpack_unknown_kind;
+#[path = "tenant_delete_ac01_cascade_delete.rs"]
+mod tenant_delete_ac01_cascade_delete;
+#[path = "tenant_delete_ac02_forbidden.rs"]
+mod tenant_delete_ac02_forbidden;
+#[path = "tenant_delete_ac03_dry_run_prefix.rs"]
+mod tenant_delete_ac03_dry_run_prefix;
+#[path = "tenant_delete_ac04_prefix_delete.rs"]
+mod tenant_delete_ac04_prefix_delete;
+#[path = "tenant_delete_ac05_prefix_too_short.rs"]
+mod tenant_delete_ac05_prefix_too_short;
+#[path = "tenant_delete_ac06_migration_cascade.rs"]
+mod tenant_delete_ac06_migration_cascade;
+#[path = "tenant_delete_ac07_tenant_not_found.rs"]
+mod tenant_delete_ac07_tenant_not_found;
+#[path = "tenant_delete_ac09_healthz_probe_split.rs"]
+mod tenant_delete_ac09_healthz_probe_split;
+#[path = "tenant_delete_ac10_tenants_prefix_filter.rs"]
+mod tenant_delete_ac10_tenants_prefix_filter;
+#[path = "tenantprm_ac01_tenant_metadata_document.rs"]
+mod tenantprm_ac01_tenant_metadata_document;
+#[path = "tenantprm_ac02_bearer_jwt_tenant_and_audience_scoping.rs"]
+mod tenantprm_ac02_bearer_jwt_tenant_and_audience_scoping;
+#[path = "tenantprm_ac03_key_based_tenant_scoping_and_unknown_ns_404.rs"]
+mod tenantprm_ac03_key_based_tenant_scoping_and_unknown_ns_404;
+#[path = "tenantprm_ac04_401_challenge_names_tenant_or_root_metadata.rs"]
+mod tenantprm_ac04_401_challenge_names_tenant_or_root_metadata;
+#[path = "tenantprm_ac05_scope_gates_tool_calls.rs"]
+mod tenantprm_ac05_scope_gates_tool_calls;
+#[path = "tenantprm_ac06_whoami_carries_resource_and_metadata_url.rs"]
+mod tenantprm_ac06_whoami_carries_resource_and_metadata_url;
+#[path = "tenantprm_ac07_key_and_oauth_suites_unchanged.rs"]
+mod tenantprm_ac07_key_and_oauth_suites_unchanged;
+#[path = "tenantprm_ac09_llms_txt_documents_tenant_oauth.rs"]
+mod tenantprm_ac09_llms_txt_documents_tenant_oauth;
+#[path = "testtruth_ac01_chain_prev_will_fail.rs"]
+mod testtruth_ac01_chain_prev_will_fail;
+#[path = "testtruth_ac02_chain_prev_result_pass.rs"]
+mod testtruth_ac02_chain_prev_result_pass;
+#[path = "testtruth_ac03_chain_prev_no_output_schema_unverifiable.rs"]
+mod testtruth_ac03_chain_prev_no_output_schema_unverifiable;
+#[path = "testtruth_ac06_publish_gate_verdict.rs"]
+mod testtruth_ac06_publish_gate_verdict;
+#[path = "testtruth_ac07_quickstart_chain_verdict_blurb.rs"]
+mod testtruth_ac07_quickstart_chain_verdict_blurb;
+#[path = "tgraph_ac01_foreign_key_edge_and_graph_includes_both_tables.rs"]
+mod tgraph_ac01_foreign_key_edge_and_graph_includes_both_tables;
+#[path = "tgraph_ac02_join_paths_one_step_foreign_key.rs"]
+mod tgraph_ac02_join_paths_one_step_foreign_key;
+#[path = "tgraph_ac03_two_step_same_name_path.rs"]
+mod tgraph_ac03_two_step_same_name_path;
+#[path = "tgraph_ac04_no_shared_columns_returns_no_path_with_candidates.rs"]
+mod tgraph_ac04_no_shared_columns_returns_no_path_with_candidates;
+#[path = "tgraph_ac05_next_questions_five_entries_all_runnable.rs"]
+mod tgraph_ac05_next_questions_five_entries_all_runnable;
+#[path = "tgraph_ac06_stale_after_append_tick_clears.rs"]
+mod tgraph_ac06_stale_after_append_tick_clears;
+#[path = "tgraph_ac07_tenant_isolation_identically_named_tables.rs"]
+mod tgraph_ac07_tenant_isolation_identically_named_tables;
+#[path = "tgraph_ac08_description_annotation_node_attribute_and_question_text.rs"]
+mod tgraph_ac08_description_annotation_node_attribute_and_question_text;
+#[path = "tgraph_ac10_fifty_tables_twenty_columns_under_500ms.rs"]
+mod tgraph_ac10_fifty_tables_twenty_columns_under_500ms;
+#[path = "thand_ac01_poster_wait_returns_completion.rs"]
+mod thand_ac01_poster_wait_returns_completion;
+#[path = "thand_ac03_claim_is_recipient_only_and_once.rs"]
+mod thand_ac03_claim_is_recipient_only_and_once;
+#[path = "thand_ac04_deadline_sweep_dead_letters.rs"]
+mod thand_ac04_deadline_sweep_dead_letters;
+#[path = "thand_ac05_complete_is_idempotent.rs"]
+mod thand_ac05_complete_is_idempotent;
+#[path = "thand_ac06_open_task_quota_and_refusals.rs"]
+mod thand_ac06_open_task_quota_and_refusals;
+#[path = "thand_ac07_tenant_delete_cascade.rs"]
+mod thand_ac07_tenant_delete_cascade;
+#[path = "thlive_ac01_script_usage_and_dependencies.rs"]
+mod thlive_ac01_script_usage_and_dependencies;
+#[path = "thlive_ac02_local_server_handoff_done.rs"]
+mod thlive_ac02_local_server_handoff_done;
+#[path = "thlive_ac04_closed_port_exits_1.rs"]
+mod thlive_ac04_closed_port_exits_1;
+#[path = "thlive_ac05_exit_trap_offboards_both_tenants.rs"]
+mod thlive_ac05_exit_trap_offboards_both_tenants;
+#[path = "thlive_ac06_json_flag_output.rs"]
+mod thlive_ac06_json_flag_output;
+#[path = "timp_ac01_export_lacks_tables_and_docs_baseline.rs"]
+mod timp_ac01_export_lacks_tables_and_docs_baseline;
+#[path = "timp_ac02_export_carries_tables_models_docs_manifest_v2.rs"]
+mod timp_ac02_export_carries_tables_models_docs_manifest_v2;
+#[path = "timp_ac03_import_restores_an_empty_tenant.rs"]
+mod timp_ac03_import_restores_an_empty_tenant;
+#[path = "timp_ac04_import_refuses_non_empty_and_foreign_runs.rs"]
+mod timp_ac04_import_refuses_non_empty_and_foreign_runs;
+#[path = "timp_ac05_round_trip_sha256_equal.rs"]
+mod timp_ac05_round_trip_sha256_equal;
+#[path = "timp_ac06_import_enforces_export_bytes_max_and_reports_progress.rs"]
+mod timp_ac06_import_enforces_export_bytes_max_and_reports_progress;
+#[path = "timp_ac07_archive_layout_one_enum.rs"]
+mod timp_ac07_archive_layout_one_enum;
+#[path = "tkparam_ac01_tenant_key_missing_is_invalid_params.rs"]
+mod tkparam_ac01_tenant_key_missing_is_invalid_params;
+#[path = "tkparam_ac02_non_string_tenant_key_is_invalid_params.rs"]
+mod tkparam_ac02_non_string_tenant_key_is_invalid_params;
+#[path = "tkparam_ac03_five_tools_missing_tenant_key.rs"]
+mod tkparam_ac03_five_tools_missing_tenant_key;
+#[path = "tkparam_ac04_header_auth_unaffected.rs"]
+mod tkparam_ac04_header_auth_unaffected;
+#[path = "tkparam_ac05_tenant_key_invalid_unchanged.rs"]
+mod tkparam_ac05_tenant_key_invalid_unchanged;
+#[path = "tkparam_ac06_tenant_key_missing_payload_fields.rs"]
+mod tkparam_ac06_tenant_key_missing_payload_fields;
+#[path = "tkparam_ac07_example_is_placeholder_not_live.rs"]
+mod tkparam_ac07_example_is_placeholder_not_live;
+#[path = "tkparam_ac08_secretmissing_and_invalidparams_shape_unchanged.rs"]
+mod tkparam_ac08_secretmissing_and_invalidparams_shape_unchanged;
+#[path = "tkparam_ac09_schema_tenant_key_not_required_and_discoverable.rs"]
+mod tkparam_ac09_schema_tenant_key_not_required_and_discoverable;
+#[path = "tkparam_ac11_full_suite_green_at_landing.rs"]
+mod tkparam_ac11_full_suite_green_at_landing;
+#[path = "tlint_ac01_hand_skip_then_bare_assert_fails.rs"]
+mod tlint_ac01_hand_skip_then_bare_assert_fails;
+#[path = "tlint_ac02_bare_assert_after_budget_block_is_named.rs"]
+mod tlint_ac02_bare_assert_after_budget_block_is_named;
+#[path = "tlint_ac03_allow_set_comes_from_the_harness_file.rs"]
+mod tlint_ac03_allow_set_comes_from_the_harness_file;
+#[path = "tlint_ac05_landed_tree_has_zero_offenders.rs"]
+mod tlint_ac05_landed_tree_has_zero_offenders;
+#[path = "tlint_ac06_converted_files_keep_their_budget_numbers.rs"]
+mod tlint_ac06_converted_files_keep_their_budget_numbers;
+#[path = "tlint_ac07_json_field_names_are_not_wall_clock_tokens.rs"]
+mod tlint_ac07_json_field_names_are_not_wall_clock_tokens;
+#[path = "tmapdup_ac01_test_map_has_no_duplicate_keys.rs"]
+mod tmapdup_ac01_test_map_has_no_duplicate_keys;
+#[path = "toolname_ac01_lint_reports_violations.rs"]
+mod toolname_ac01_lint_reports_violations;
+#[path = "toolname_ac02_alias_dispatch_hint_and_log.rs"]
+mod toolname_ac02_alias_dispatch_hint_and_log;
+#[path = "toolname_ac05_alias_metrics_counter.rs"]
+mod toolname_ac05_alias_metrics_counter;
+#[path = "toolname_ac06_did_you_mean_suggests_canonical.rs"]
+mod toolname_ac06_did_you_mean_suggests_canonical;
+#[path = "toolname_ac07_whoami_naming_rule_url_once_per_session.rs"]
+mod toolname_ac07_whoami_naming_rule_url_once_per_session;
+#[path = "toolscope_ac01_scoped_consent_and_token.rs"]
+mod toolscope_ac01_scoped_consent_and_token;
+#[path = "toolscope_ac02_scoped_token_list_and_call.rs"]
+mod toolscope_ac02_scoped_token_list_and_call;
+#[path = "toolscope_ac03_step_up_reauthorize_union_scope.rs"]
+mod toolscope_ac03_step_up_reauthorize_union_scope;
+#[path = "toolscope_ac04_mcp_key_and_pre_prd_token_unaffected.rs"]
+mod toolscope_ac04_mcp_key_and_pre_prd_token_unaffected;
+#[path = "toolscope_ac05_publish_scope_validation.rs"]
+mod toolscope_ac05_publish_scope_validation;
+#[path = "toolscope_ac06_scope_change_takes_effect_next_call.rs"]
+mod toolscope_ac06_scope_change_takes_effect_next_call;
+#[path = "toolscope_ac07_metadata_scopes_supported.rs"]
+mod toolscope_ac07_metadata_scopes_supported;
+#[path = "toolscope_ac08_admin_stats_consents_by_scope.rs"]
+mod toolscope_ac08_admin_stats_consents_by_scope;
+#[path = "tooltest_ac12_log_marking.rs"]
+mod tooltest_ac12_log_marking;
+#[path = "tooltest_ac3_http_dry_run.rs"]
+mod tooltest_ac3_http_dry_run;
+#[path = "tooltest_ac4_echo_verbatim.rs"]
+mod tooltest_ac4_echo_verbatim;
+#[path = "tooltest_ac5_validation_error_taxonomy.rs"]
+mod tooltest_ac5_validation_error_taxonomy;
+#[path = "tooltest_ac6_quota_and_metering.rs"]
+mod tooltest_ac6_quota_and_metering;
+#[path = "tooltest_ac7_too_many_invocations.rs"]
+mod tooltest_ac7_too_many_invocations;
+#[path = "tooltest_ac9_ac10_listing_and_auth.rs"]
+mod tooltest_ac9_ac10_listing_and_auth;
+#[path = "trigidem_ac01_webhook_set_twice_idempotent.rs"]
+mod trigidem_ac01_webhook_set_twice_idempotent;
+#[path = "trigidem_ac02_webhook_update_tool_keeps_id_and_url.rs"]
+mod trigidem_ac02_webhook_update_tool_keeps_id_and_url;
+#[path = "trigidem_ac03_schedule_update_cron_changes_next_unix.rs"]
+mod trigidem_ac03_schedule_update_cron_changes_next_unix;
+#[path = "trigidem_ac04_kind_mismatch_refused.rs"]
+mod trigidem_ac04_kind_mismatch_refused;
+#[path = "trigidem_ac05_verbs_accept_name.rs"]
+mod trigidem_ac05_verbs_accept_name;
+#[path = "trigidem_ac06_migration_backfills_duplicate_names.rs"]
+mod trigidem_ac06_migration_backfills_duplicate_names;
+#[path = "trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent.rs"]
+mod trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent;
+#[path = "tssdk_ac01_no_override_table.rs"]
+mod tssdk_ac01_no_override_table;
+#[path = "tssdk_ac02_build_test_tsc_and_header.rs"]
+mod tssdk_ac02_build_test_tsc_and_header;
+#[path = "tssdk_ac03_invalid_args_rejected_before_fetch.rs"]
+mod tssdk_ac03_invalid_args_rejected_before_fetch;
+#[path = "tssdk_ac04_error_codes_are_typed_errors.rs"]
+mod tssdk_ac04_error_codes_are_typed_errors;
+#[path = "tssdk_ac05_contract_skew_warns_once_or_throws.rs"]
+mod tssdk_ac05_contract_skew_warns_once_or_throws;
+#[path = "tssdk_ac06_ir_parity_with_python_generator.rs"]
+mod tssdk_ac06_ir_parity_with_python_generator;
+#[path = "tssdk_ac07_ci_diff_fails_on_stale_sdk.rs"]
+mod tssdk_ac07_ci_diff_fails_on_stale_sdk;
+#[path = "tssdk_ac08_tool_that_is_a_family_prefix.rs"]
+mod tssdk_ac08_tool_that_is_a_family_prefix;
+#[path = "tsvr_ac01_unknown_column_names_declared.rs"]
+mod tsvr_ac01_unknown_column_names_declared;
+#[path = "tsvr_ac02_type_mismatch_names_accepted_shape.rs"]
+mod tsvr_ac02_type_mismatch_names_accepted_shape;
+#[path = "ttfs_ac01_onboarding_7d_reads_external_stamps.rs"]
+mod ttfs_ac01_onboarding_7d_reads_external_stamps;
+#[path = "ttfs_ac02_whoami_activation_first_call_only.rs"]
+mod ttfs_ac02_whoami_activation_first_call_only;
+#[path = "ttfs_ac03_milestone_table_is_the_one_key_set.rs"]
+mod ttfs_ac03_milestone_table_is_the_one_key_set;
+#[path = "ttfs_ac04_onboarding_block_carries_no_identifiers.rs"]
+mod ttfs_ac04_onboarding_block_carries_no_identifiers;
+#[path = "ttfs_ac05_under_five_tenants_shows_n_and_nulls.rs"]
+mod ttfs_ac05_under_five_tenants_shows_n_and_nulls;
+#[path = "ttfs_ac06_admin_has_no_activation_and_unclassified_excluded.rs"]
+mod ttfs_ac06_admin_has_no_activation_and_unclassified_excluded;
+#[path = "ttfs_ac07_by_client_only_for_groups_of_five.rs"]
+mod ttfs_ac07_by_client_only_for_groups_of_five;
+#[path = "txnhelp_ac01_lint_zero.rs"]
+mod txnhelp_ac01_lint_zero;
+#[path = "txnhelp_ac02_lock_parity.rs"]
+mod txnhelp_ac02_lock_parity;
+#[path = "txnhelp_ac03_is_writable_probe.rs"]
+mod txnhelp_ac03_is_writable_probe;
+#[path = "txnhelp_ac04_migration_0116_atomic.rs"]
+mod txnhelp_ac04_migration_0116_atomic;
+#[path = "txnhelp_ac05_append_real_then_dry_run.rs"]
+mod txnhelp_ac05_append_real_then_dry_run;
+#[path = "umeta_ac01_meta_usage_matches_refusal_and_status.rs"]
+mod umeta_ac01_meta_usage_matches_refusal_and_status;
+#[path = "umeta_ac02_golden_echo_result_unchanged.rs"]
+mod umeta_ac02_golden_echo_result_unchanged;
+#[path = "umeta_ac03_host_usage_plan_block.rs"]
+mod umeta_ac03_host_usage_plan_block;
+#[path = "umeta_ac04_unlimited_plan_renders_null_limit.rs"]
+mod umeta_ac04_unlimited_plan_renders_null_limit;
+#[path = "umeta_ac05_no_extra_select_on_hot_path.rs"]
+mod umeta_ac05_no_extra_select_on_hot_path;
+#[path = "umeta_ac06_caller_limit_in_meta_usage.rs"]
+mod umeta_ac06_caller_limit_in_meta_usage;
+#[path = "unkfield_ac04_trigger_set_unknown_argument.rs"]
+mod unkfield_ac04_trigger_set_unknown_argument;
+#[path = "unkfield_ac05_tools_list_additional_properties_false.rs"]
+mod unkfield_ac05_tools_list_additional_properties_false;
+#[path = "unkfield_ac07_spec_fields_doc_check_script.rs"]
+mod unkfield_ac07_spec_fields_doc_check_script;
+#[path = "upfam_ac01_auth_family_401_403.rs"]
+mod upfam_ac01_auth_family_401_403;
+#[path = "upfam_ac02_rate_limited_retry_after.rs"]
+mod upfam_ac02_rate_limited_retry_after;
+#[path = "upfam_ac03_client_and_server_error_families.rs"]
+mod upfam_ac03_client_and_server_error_families;
+#[path = "upfam_ac04_remedy_table_total_and_single_source.rs"]
+mod upfam_ac04_remedy_table_total_and_single_source;
+#[path = "upfam_ac05_hints_name_real_tools.rs"]
+mod upfam_ac05_hints_name_real_tools;
+#[path = "upfam_ac06_host_not_allowed_names_tool_call.rs"]
+mod upfam_ac06_host_not_allowed_names_tool_call;
+#[path = "upfam_ac07_tool_test_matches_real_call.rs"]
+mod upfam_ac07_tool_test_matches_real_call;
+#[path = "upgrade_ac01_calls_per_day_next_checkout.rs"]
+mod upgrade_ac01_calls_per_day_next_checkout;
+#[path = "upgrade_ac02_billing_off_refusal_text.rs"]
+mod upgrade_ac02_billing_off_refusal_text;
+#[path = "upgrade_ac03_checkout_source_metadata.rs"]
+mod upgrade_ac03_checkout_source_metadata;
+#[path = "upgrade_ac04_webhook_stamps_paid_unix.rs"]
+mod upgrade_ac04_webhook_stamps_paid_unix;
+#[path = "upgrade_ac05_billing_status_receipt.rs"]
+mod upgrade_ac05_billing_status_receipt;
+#[path = "upgrade_ac06_admin_funnel_upgrades_by_trigger.rs"]
+mod upgrade_ac06_admin_funnel_upgrades_by_trigger;
+#[path = "upgrade_ac07_admin_upgrades_listing.rs"]
+mod upgrade_ac07_admin_upgrades_listing;
+#[path = "uprg_ac01_one_call_creates_probe_status_schedule.rs"]
+mod uprg_ac01_one_call_creates_probe_status_schedule;
+#[path = "uprg_ac02_status_tool_returns_readable_table.rs"]
+mod uprg_ac02_status_tool_returns_readable_table;
+#[path = "uprg_ac03_bad_urls_refused_nothing_created.rs"]
+mod uprg_ac03_bad_urls_refused_nothing_created;
+#[path = "uprg_ac04_free_interval_clamped_pro_keeps_60.rs"]
+mod uprg_ac04_free_interval_clamped_pro_keeps_60;
+#[path = "uprg_ac06_llms_txt_plan_numbers_generated.rs"]
+mod uprg_ac06_llms_txt_plan_numbers_generated;
+#[path = "uprg_ac07_slow_target_is_a_timeout_row.rs"]
+mod uprg_ac07_slow_target_is_a_timeout_row;
+#[path = "urltenant_ac01_path_secret_whoami_auth_method_url.rs"]
+mod urltenant_ac01_path_secret_whoami_auth_method_url;
+#[path = "urltenant_ac02_wrong_or_rotated_secret_404.rs"]
+mod urltenant_ac02_wrong_or_rotated_secret_404;
+#[path = "urltenant_ac03_key_rotate_rotates_key_and_url.rs"]
+mod urltenant_ac03_key_rotate_rotates_key_and_url;
+#[path = "urltenant_ac04_new_url_page_and_signup_limiter.rs"]
+mod urltenant_ac04_new_url_page_and_signup_limiter;
+#[path = "urltenant_ac05_browser_get_shows_explainer_page.rs"]
+mod urltenant_ac05_browser_get_shows_explainer_page;
+#[path = "urltenant_ac06_quickstart_url_bound_no_signup_step.rs"]
+mod urltenant_ac06_quickstart_url_bound_no_signup_step;
+#[path = "urltenant_ac07_header_conflict_is_auth_conflict.rs"]
+mod urltenant_ac07_header_conflict_is_auth_conflict;
+#[path = "vault_ac01_connect_link_redirects_to_auth_url.rs"]
+mod vault_ac01_connect_link_redirects_to_auth_url;
+#[path = "vault_ac02_callback_exchanges_code_and_stores_tokens.rs"]
+mod vault_ac02_callback_exchanges_code_and_stores_tokens;
+#[path = "vault_ac03_injects_bearer_overriding_tool_header.rs"]
+mod vault_ac03_injects_bearer_overriding_tool_header;
+#[path = "vault_ac04_call_log_never_contains_token.rs"]
+mod vault_ac04_call_log_never_contains_token;
+#[path = "vault_ac05_refresh_before_expiry_used_once.rs"]
+mod vault_ac05_refresh_before_expiry_used_once;
+#[path = "vault_ac06_unconnected_end_user_gets_connect_link.rs"]
+mod vault_ac06_unconnected_end_user_gets_connect_link;
+#[path = "vault_ac07_used_handoff_token_returns_410.rs"]
+mod vault_ac07_used_handoff_token_returns_410;
+#[path = "vault_ac08_disconnect_revokes_and_blocks_calls.rs"]
+mod vault_ac08_disconnect_revokes_and_blocks_calls;
+#[path = "vault_ac09_providers_hides_client_secret.rs"]
+mod vault_ac09_providers_hides_client_secret;
+#[path = "vault_ac10_refresh_401_revokes_no_retry_storm.rs"]
+mod vault_ac10_refresh_401_revokes_no_retry_storm;
+#[path = "vault_ac11_quota_vault_providers.rs"]
+mod vault_ac11_quota_vault_providers;
+#[path = "vaultst_ac01_status_lists_connected_and_unconnected_providers.rs"]
+mod vaultst_ac01_status_lists_connected_and_unconnected_providers;
+#[path = "vaultst_ac02_status_end_user_resolution_matches_connect_link.rs"]
+mod vaultst_ac02_status_end_user_resolution_matches_connect_link;
+#[path = "vaultst_ac03_status_shows_revoked_after_refresh_401.rs"]
+mod vaultst_ac03_status_shows_revoked_after_refresh_401;
+#[path = "vaultst_ac04_admin_vault_stats_per_tenant_per_provider.rs"]
+mod vaultst_ac04_admin_vault_stats_per_tenant_per_provider;
+#[path = "vaultst_ac05_admin_vault_stats_rejects_tenant_key.rs"]
+mod vaultst_ac05_admin_vault_stats_rejects_tenant_key;
+#[path = "vaultst_ac06_provider_remove_revokes_all_tokens.rs"]
+mod vaultst_ac06_provider_remove_revokes_all_tokens;
+#[path = "vaultst_ac07_provider_set_presets_fill_urls.rs"]
+mod vaultst_ac07_provider_set_presets_fill_urls;
+#[path = "vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green.rs"]
+mod vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green;
+#[path = "vaultst_ac09_live_vault_status_trailer.rs"]
+mod vaultst_ac09_live_vault_status_trailer;
+#[path = "vbd_ac02_three_unvalidated_verbs_now_refuse.rs"]
+mod vbd_ac02_three_unvalidated_verbs_now_refuse;
+#[path = "vbd_ac04_owner_registry_cross_contract.rs"]
+mod vbd_ac04_owner_registry_cross_contract;
+#[path = "vbd_ac07_every_schema_valid_call_reaches_its_handler.rs"]
+mod vbd_ac07_every_schema_valid_call_reaches_its_handler;
+#[path = "verbfwd_ac01_trigger_set_dotted_forwards.rs"]
+mod verbfwd_ac01_trigger_set_dotted_forwards;
+#[path = "verbfwd_ac02_every_spelling_forwards_identically.rs"]
+mod verbfwd_ac02_every_spelling_forwards_identically;
+#[path = "verbfwd_ac03_tenant_tool_name_wins_over_verb.rs"]
+mod verbfwd_ac03_tenant_tool_name_wins_over_verb;
+#[path = "verbfwd_ac04_admin_verb_refused_never_forwarded.rs"]
+mod verbfwd_ac04_admin_verb_refused_never_forwarded;
+#[path = "verbfwd_ac05_tool_test_forwards_dry_run_or_unverifiable.rs"]
+mod verbfwd_ac05_tool_test_forwards_dry_run_or_unverifiable;
+#[path = "verbfwd_ac06_hint_parity_underscore_form_resolves.rs"]
+mod verbfwd_ac06_hint_parity_underscore_form_resolves;
+#[path = "verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota.rs"]
+mod verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota;
+#[path = "vfxenv_ac01_build_env_inputs_are_not_outputs.rs"]
+mod vfxenv_ac01_build_env_inputs_are_not_outputs;
+#[path = "vord_ac01_falsifier.rs"]
+mod vord_ac01_falsifier;
+#[path = "vord_ac02_contract_order_enum.rs"]
+mod vord_ac02_contract_order_enum;
+#[path = "vord_ac03_cursor_bound_to_order.rs"]
+mod vord_ac03_cursor_bound_to_order;
+#[path = "vord_ac04_order_by_from_enum.rs"]
+mod vord_ac04_order_by_from_enum;
+#[path = "vord_ac05_runs_list_filters_in_sql.rs"]
+mod vord_ac05_runs_list_filters_in_sql;
+#[path = "vord_ac06_concurrent_inserts_every_paged_verb.rs"]
+mod vord_ac06_concurrent_inserts_every_paged_verb;
+#[path = "vord_ac07_removed_order_variant_is_breaking.rs"]
+mod vord_ac07_removed_order_variant_is_breaking;
+#[path = "vordb_ac01_runs_verdict_filter_pages_in_sql.rs"]
+mod vordb_ac01_runs_verdict_filter_pages_in_sql;
+#[path = "vordb_ac02_every_paged_verb_walks_clean.rs"]
+mod vordb_ac02_every_paged_verb_walks_clean;
+#[path = "vordb_ac03_removed_order_variant_breaks_contract_check.rs"]
+mod vordb_ac03_removed_order_variant_breaks_contract_check;
+#[path = "wake_ac1_message_trigger_fires_run.rs"]
+mod wake_ac1_message_trigger_fires_run;
+#[path = "wake_ac2_from_filter.rs"]
+mod wake_ac2_from_filter;
+#[path = "wake_ac3_dedupe.rs"]
+mod wake_ac3_dedupe;
+#[path = "wake_ac4_jobs_concurrent_rejects.rs"]
+mod wake_ac4_jobs_concurrent_rejects;
+#[path = "wake_ac5_pause_resume.rs"]
+mod wake_ac5_pause_resume;
+#[path = "wake_ac6_msg_wait.rs"]
+mod wake_ac6_msg_wait;
+#[path = "wake_ac7_trigger_test_synthetic_envelope.rs"]
+mod wake_ac7_trigger_test_synthetic_envelope;
+#[path = "wake_ac8_replay.rs"]
+mod wake_ac8_replay;
+#[path = "wasmkind_ac01_echo_component_calls_and_meters.rs"]
+mod wasmkind_ac01_echo_component_calls_and_meters;
+#[path = "wasmkind_ac02_publish_validation_errors.rs"]
+mod wasmkind_ac02_publish_validation_errors;
+#[path = "wasmkind_ac03_timeout_and_oom_recover.rs"]
+mod wasmkind_ac03_timeout_and_oom_recover;
+#[path = "wasmkind_ac05_tool_test_dry_run.rs"]
+mod wasmkind_ac05_tool_test_dry_run;
+#[path = "wasmkind_ac06_trap_is_structured_and_logged.rs"]
+mod wasmkind_ac06_trap_is_structured_and_logged;
+#[path = "wasmkind_ac07_docs_llms_and_quickstart_document_wasm.rs"]
+mod wasmkind_ac07_docs_llms_and_quickstart_document_wasm;
+#[path = "wasmkind_ac08_cache_reuses_compiled_artifact.rs"]
+mod wasmkind_ac08_cache_reuses_compiled_artifact;
+#[path = "wasmkind_ac09_healthz_reports_wasm_runtime.rs"]
+mod wasmkind_ac09_healthz_reports_wasm_runtime;
+#[path = "wasmkind_ac10_declared_output_promotion_matches_python.rs"]
+mod wasmkind_ac10_declared_output_promotion_matches_python;
+#[path = "whin_ac04_keyless_call_after_redeem_is_refused_and_named.rs"]
+mod whin_ac04_keyless_call_after_redeem_is_refused_and_named;
+#[path = "whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule.rs"]
+mod whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule;
 #[path = "xaa_ac01_valid_assertion_no_consent.rs"]
 mod xaa_ac01_valid_assertion_no_consent;
 #[path = "xaa_ac03_invalid_grant_reasons_are_distinct_and_audited.rs"]

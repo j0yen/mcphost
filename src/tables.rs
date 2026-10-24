@@ -3323,6 +3323,7 @@ mod tests {
             confirm_clock_offset_secs: Default::default(),
             onboarding_cache: Default::default(),
             resource_subs: Default::default(),
+            listen_hub: Default::default(),
         }
     }
 

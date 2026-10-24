@@ -17,6 +17,7 @@ fn row(name: &'static str, probe: &'static str) -> Capability {
         probe,
         alternative: None,
         help_code: "capability_unsupported",
+        proving_cell: None,
     }
 }
 

@@ -619,10 +619,30 @@ pub fn write_hint(tool: &str, args: &Value) -> Option<WriteHint> {
         "host.docs.put" | "host.docs.delete" => {
             WriteHint { updated: Some((ResourceKind::Doc, String::new())), list_changed: true, key_from_result_id: true }
         }
-        "host.tool.publish" | "host.tool.remove" => {
-            WriteHint { updated: arg("name").map(|n| (ResourceKind::Tool, n)), list_changed: true, ..Default::default() }
-        }
-        _ => return None,
+        _ => return tool_write_hint(tool, &arg),
+    })
+}
+
+/// The `Tool`-resource hint of a verb in [`crate::listen::TOOLS_LIST_OPS`] that
+/// carries the `Resource` effect; `None` for any other verb. The table decides
+/// which verbs; only the shape of the hint is written here.
+fn tool_write_hint(verb: &str, arg: &dyn Fn(&str) -> Option<String>) -> Option<WriteHint> {
+    let op = crate::listen::op_for(verb)?;
+    if !op.effects.contains(&crate::listen::Effect::Resource) {
+        return None;
+    }
+    let (name_arg, list_changed) = match op.verb {
+        // Rewrites a tool in place: its content changed, the list did not.
+        "host.tool.rollback" => (Some("name"), false),
+        "host.tool.fork" => (Some("as"), true),
+        "host.tool.publish" | "host.tool.remove" => (Some("name"), true),
+        // Adds tools whose names are only in the result.
+        _ => (None, true),
+    };
+    Some(WriteHint {
+        updated: name_arg.and_then(arg).map(|n| (ResourceKind::Tool, n)),
+        list_changed,
+        ..Default::default()
     })
 }
 

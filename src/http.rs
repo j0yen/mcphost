@@ -2316,6 +2316,7 @@ pub async fn serve_on_listener_until(
     }
     crate::control::install_tenant_teardown(&state);
     let db = state.db.clone();
+    let listen_hub = state.listen_hub.clone();
     let app = build_router(state);
     tracing::info!(addr = ?listener.local_addr().ok(), "mcphost listening");
     let drain = crate::drain::global();
@@ -2323,6 +2324,10 @@ pub async fn serve_on_listener_until(
     tokio::spawn(async move {
         signal.await;
         let info = drain.begin(bound_s);
+        // PRD-mcphost-subscriptions-listen R10: an open listen stream is an
+        // in-flight request that never finishes on its own; ask each to end
+        // with the completion result so the drain does not wait out its bound.
+        listen_hub.shutdown();
         tracing::info!(restart_id = %info.restart_id, in_flight = info.in_flight_at_signal, bound_s, "drain: signal received");
     });
     let serve = axum::serve(
