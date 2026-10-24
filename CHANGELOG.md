@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.116.0 — 2026-10-24
+
+Released by wm-build land: loop: mcphost-external-unclaimed-tenant-expiry.
+
 ## v0.115.0 — 2026-10-24
 
 Released by wm-build land: loop: mcphost-synthetic-implicit-tenant-expiry.
