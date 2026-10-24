@@ -8098,7 +8098,7 @@ impl Db {
             };
             let counts = Self::count_tenant_child_rows(conn, tenant.id)?;
             crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
-                Self::delete_tenant_rows(conn, &tenant, &counts, "tenant_delete")
+                Self::delete_tenant_rows(conn, &tenant, &counts, action)
             })?;
             Ok(Some((tenant, counts)))
         })
