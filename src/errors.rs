@@ -335,7 +335,7 @@ pub enum AppError {
     #[error("forbidden")]
     Forbidden,
     #[error("tenant is disabled")]
-    TenantDisabled { disabled_reason: Option<String> },
+    TenantDisabled { disabled_reason: Option<String>, claim_url: Option<String> },
     #[error("signup rate limit exceeded for this source; try again later")]
     RateLimited,
     #[error("tool not found: {0}")]
@@ -585,7 +585,7 @@ pub fn all_variants_for_test() -> Vec<AppError> {
         AppError::TenantKeyMissing(Reason::Anonymous),
         AppError::TenantKeyInvalid,
         AppError::Forbidden,
-        AppError::TenantDisabled { disabled_reason: None },
+        AppError::TenantDisabled { disabled_reason: None, claim_url: None },
         AppError::RateLimited,
         AppError::ToolNotFound("t.no_such".into()),
         AppError::TenantNotFound(s()),
@@ -1505,8 +1505,13 @@ impl AppError {
         // R6 (PRD-mcphost-self-offboard-success-envelope): a disabled tenant
         // error carries its reason so callers can distinguish self_offboard
         // from admin_disable.
-        if let AppError::TenantDisabled { disabled_reason: Some(reason) } = &self {
+        if let AppError::TenantDisabled { disabled_reason: Some(reason), claim_url } = &self {
             obj.insert("disabled_reason".to_string(), json!(reason));
+            // PRD-mcphost-external-unclaimed-tenant-expiry: the claim link of
+            // a tenant invalidated as unclaimed, for its credential's holder.
+            if let Some(claim_url) = claim_url {
+                obj.insert("claim_url".to_string(), json!(claim_url));
+            }
         }
         // PRD-mcphost-unknown-kind-routes-to-recipe requirement 4 (AC4):
         // `registered`/`aliases` ride straight through from the variant;
