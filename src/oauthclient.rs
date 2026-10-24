@@ -126,8 +126,12 @@ async fn probe_call(http: &reqwest::Client, mcp_url: &str, bearer: Option<&str>)
         .header("Mcp-Method", "tools/call")
         .header("Mcp-Name", PROBE_TOOL)
         .json(&body);
-    if let Some(token) = bearer {
-        req = req.header("Authorization", format!("Bearer {token}"));
+    match bearer {
+        Some(token) => req = req.header("Authorization", format!("Bearer {token}")),
+        // A keyless probe is its own peer (IP + User-Agent): a repeat from one peer is
+        // refused `tenant_key_missing`, not implicitly signed up (PRD-mcphost-implicit-
+        // signup-mints-only-on-success R3), which would read as a 401 challenge here.
+        None => req = req.header("User-Agent", format!("mcphost-oauth-probe/{}", random_url_safe(8))),
     }
     req.send().await
 }

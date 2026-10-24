@@ -553,8 +553,8 @@ pub async fn signup(
     if fleet_ip_bypass {
         tracing::debug!("signup rate limit bypassed for fleet ip");
     }
-    let admitted = if fleet_ip_bypass {
-        true
+    let admit_row: Option<i64> = if fleet_ip_bypass {
+        None
     } else {
         let since = crate::state::now_unix() - crate::state::SIGNUP_RATE_LIMIT_WINDOW_SECS;
         state
@@ -567,14 +567,15 @@ pub async fn signup(
                 attribution.user_agent.map(str::to_string),
                 origin.to_string(),
                 origin_detail.clone(),
-                ip_class,
+                ip_class.clone(),
             )
             .await?
     };
-    if !admitted {
+    if !fleet_ip_bypass && admit_row.is_none() {
         return Err(AppError::RateLimited);
     }
 
+    let is_implicit = signup_source.as_deref() == Some("implicit");
     let key = generate_key();
     let namespace = generate_namespace();
     let key_hash = hash_key(&key);
@@ -594,6 +595,26 @@ pub async fn signup(
             funnel_origin,
         )
         .await?;
+
+    // PRD-mcphost-implicit-signup-mints-only-on-success R4: an implicit signup's
+    // `signup_events` row carries the tenant it created (new rows only, no
+    // backfill); a fleet-bypassed one has no admit row, so it writes one.
+    if is_implicit {
+        match admit_row {
+            Some(event_id) => state.db.set_signup_event_tenant(event_id, tenant.id).await?,
+            None => {
+                state
+                    .db
+                    .record_implicit_signup_bypassed(
+                        source_ip.to_string(),
+                        attribution.user_agent.map(str::to_string),
+                        ip_class,
+                        tenant.id,
+                    )
+                    .await?;
+            }
+        }
+    }
 
     // PRD-mcphost-human-claim-magic-link requirement 1 / AC1: minted once,
     // right after the tenant row exists, for both branches below -- the

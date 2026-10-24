@@ -630,6 +630,14 @@ pub fn all_variants_for_test() -> Vec<AppError> {
     all
 }
 
+/// The header a client echoes to be recognised across calls (`data.session_header`).
+pub const SESSION_HEADER: &str = "Mcp-Session-Id";
+/// `data.get_a_key.signup`: the explicit way to a key (R2 of
+/// PRD-mcphost-implicit-signup-mints-only-on-success).
+pub const GET_A_KEY_SIGNUP: &str = "signup";
+/// `data.get_a_key.quickstart`: the verb that explains onboarding.
+pub const GET_A_KEY_QUICKSTART: &str = "host.quickstart";
+
 impl AppError {
     /// PRD-mcphost-error-responses-invite-feedback R4: a kind-level error
     /// that does not know which tool it ran for (`tool_exception`,
@@ -651,6 +659,33 @@ impl AppError {
             }
             other => other,
         }
+    }
+
+    /// PRD-mcphost-implicit-signup-mints-only-on-success R2: this error with
+    /// `data.get_a_key` -- the two ways to get a key (`signup`,
+    /// `host.quickstart`) -- for a keyless first call whose tenant was rolled
+    /// back. A non-`Structured` variant is carried as a `Structured` with its own
+    /// code, message and data.
+    pub fn with_get_a_key(self, base_url: &str) -> Self {
+        let get_a_key = json!({
+            "signup": GET_A_KEY_SIGNUP,
+            "quickstart": GET_A_KEY_QUICKSTART,
+        });
+        let (code, message, mut data) = match self {
+            AppError::Structured { code, message, data } => (code, message, data),
+            other => {
+                let code = other.code();
+                let e = other.into_error_data_at(Some(base_url));
+                (code, e.message.to_string(), e.data.unwrap_or(Value::Null))
+            }
+        };
+        let mut obj = match data.take() {
+            Value::Object(m) => m,
+            Value::Null => Map::new(),
+            other => Map::from_iter([("detail".to_string(), other)]),
+        };
+        obj.insert("get_a_key".to_string(), get_a_key);
+        AppError::Structured { code, message, data: Value::Object(obj) }
     }
 
     /// The machine-readable code every AC-facing test matches on.
@@ -1462,6 +1497,7 @@ impl AppError {
                 }
                 Reason::PeerRecent => {
                     obj.insert("hint".to_string(), json!(PEER_RECENT_HINT));
+                    obj.insert("session_header".to_string(), json!(SESSION_HEADER));
                     obj.insert(GET_A_KEY.to_string(), json!(GET_A_KEY_TEXT));
                 }
             }

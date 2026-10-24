@@ -191,7 +191,7 @@ impl McpHostHandler {
     /// Admin `host.call_trace`: any tenant's trace.
     pub(super) fn call_trace_admin_boxed<'a>(&'a self, args: Value) -> Boxed<'a, Result<Value, AppError>> {
         Box::pin(async move {
-            crate::host_args::validate_host_args(&self.state.kinds, "host.call_trace", &args)?;
+            crate::precheck::precheck_args(&self.state.kinds, "host.call_trace", &args)?;
             self.call_trace(None, args).await
         })
     }
@@ -199,7 +199,7 @@ impl McpHostHandler {
     /// Admin `host.doctor`.
     pub(super) fn doctor_admin_boxed<'a>(&'a self, args: Value) -> Boxed<'a, Result<Value, AppError>> {
         Box::pin(async move {
-            crate::host_args::validate_host_args(&self.state.kinds, "host.doctor", &args)?;
+            crate::precheck::precheck_args(&self.state.kinds, "host.doctor", &args)?;
             self.doctor(None, args).await
         })
     }
