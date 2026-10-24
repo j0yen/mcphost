@@ -1511,18 +1511,32 @@ fn amount_and_currency(object: &Value) -> (Option<i64>, Option<String>) {
     (amount, currency)
 }
 
-/// `POST /billing/webhook`'s whole business logic: verify the signature
-/// (AC7), parse the event, ledger it exactly once (idempotent on
-/// `event_id`, AC6's second-POST-changes-nothing), and apply whatever plan
-/// change it implies. `Ok` always means "respond 200"; `Err` (only ever
-/// [`invalid_webhook`]'s `invalid_webhook_signature`) means "respond 400,
-/// nothing was written" (AC7) -- `http.rs` maps the two outcomes onto
-/// status codes, this function never touches one directly.
-pub async fn process_webhook(
+/// Which arm of [`process_webhook`]'s dispatch an accepted event selects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WebhookArm {
+    CheckoutCompleted,
+    InvoicePaid,
+    Downgrade,
+    /// Every event type this crate has no opinion about.
+    Unknown,
+}
+
+/// The shared front half's verdict on a signed webhook delivery.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WebhookClass {
+    Duplicate,
+    ModeMismatch,
+    Dispatch(WebhookArm),
+}
+
+/// Shared front half of [`process_webhook`] and [`self_check_webhook`]:
+/// verify the signature, parse, run the dedupe read (AC6: idempotent on
+/// `event_id`) and classify. Performs no write.
+async fn classify_webhook(
     state: &AppState,
     raw_body: &[u8],
     signature_header: &str,
-) -> Result<Value, AppError> {
+) -> Result<(StripeEvent, String, WebhookClass), AppError> {
     let webhook_secret = state
         .billing_config
         .webhook_secret
@@ -1541,36 +1555,75 @@ pub async fn process_webhook(
     let event = StripeEvent::parse(&parsed)?;
     let payload_sha256 = sha256_hex(raw_body);
 
-    // AC6: idempotent on event_id -- a second delivery of the same event
-    // changes nothing (and does not re-ledger it as a duplicate row).
-    if state.db.billing_event_exists(event.id.clone()).await? {
-        return Ok(json!({"received": true, "duplicate": true}));
-    }
-
+    let exists = state.db.billing_event_exists(event.id.clone()).await?;
     let host_mode = state.billing_config.billing_mode();
-    let ev_mode = event_mode(event.livemode);
+    let class = if exists {
+        WebhookClass::Duplicate
+    } else if host_mode != "off" && host_mode != event_mode(event.livemode) {
+        WebhookClass::ModeMismatch
+    } else {
+        WebhookClass::Dispatch(match event.event_type.as_str() {
+            "checkout.session.completed" => WebhookArm::CheckoutCompleted,
+            "invoice.paid" => WebhookArm::InvoicePaid,
+            "customer.subscription.deleted" | "invoice.payment_failed" => WebhookArm::Downgrade,
+            _ => WebhookArm::Unknown,
+        })
+    };
+    Ok((event, payload_sha256, class))
+}
 
-    // AC10: a mismatch between the host's configured key and the event's
-    // own livemode flag is ledgered under a `.mode_mismatch`-suffixed
-    // event_type and NOT applied -- checked before any event-type
-    // dispatch, so every handler below can assume the two already agree.
-    if host_mode != "off" && host_mode != ev_mode {
-        state
-            .db
-            .insert_billing_event(BillingEventInsert {
-                event_id: event.id.clone(),
-                event_type: format!("{}.mode_mismatch", event.event_type),
-                tenant_id: None,
-                plan: None,
-                amount_cents: None,
-                currency: None,
-                mode: ev_mode.to_string(),
-                payload_sha256,
-                source: None,
-                session_id: None,
-            })
-            .await?;
-        return Ok(json!({"received": true, "mode_mismatch": true}));
+/// Verify-only entry for the status feed's billing self-check: runs the
+/// shared front half and stops before any INSERT or UPDATE. Reachable only
+/// in process; no HTTP field selects it.
+pub async fn self_check_webhook(
+    state: &AppState,
+    raw_body: &[u8],
+    signature_header: &str,
+) -> Result<WebhookClass, AppError> {
+    classify_webhook(state, raw_body, signature_header)
+        .await
+        .map(|(_, _, class)| class)
+}
+
+/// `POST /billing/webhook`'s whole business logic: verify the signature
+/// (AC7), parse the event, ledger it exactly once (idempotent on
+/// `event_id`, AC6's second-POST-changes-nothing), and apply whatever plan
+/// change it implies. `Ok` always means "respond 200"; `Err` (only ever
+/// [`invalid_webhook`]'s `invalid_webhook_signature`) means "respond 400,
+/// nothing was written" (AC7) -- `http.rs` maps the two outcomes onto
+/// status codes, this function never touches one directly.
+pub async fn process_webhook(
+    state: &AppState,
+    raw_body: &[u8],
+    signature_header: &str,
+) -> Result<Value, AppError> {
+    let (event, payload_sha256, class) = classify_webhook(state, raw_body, signature_header).await?;
+    let ev_mode = event_mode(event.livemode);
+    match class {
+        WebhookClass::Duplicate => return Ok(json!({"received": true, "duplicate": true})),
+        // AC10: a mismatch between the host's configured key and the event's
+        // own livemode flag is ledgered under a `.mode_mismatch`-suffixed
+        // event_type and NOT applied -- classified before any event-type
+        // dispatch, so every handler below can assume the two already agree.
+        WebhookClass::ModeMismatch => {
+            state
+                .db
+                .insert_billing_event(BillingEventInsert {
+                    event_id: event.id.clone(),
+                    event_type: format!("{}.mode_mismatch", event.event_type),
+                    tenant_id: None,
+                    plan: None,
+                    amount_cents: None,
+                    currency: None,
+                    mode: ev_mode.to_string(),
+                    payload_sha256,
+                    source: None,
+                    session_id: None,
+                })
+                .await?;
+            return Ok(json!({"received": true, "mode_mismatch": true}));
+        }
+        WebhookClass::Dispatch(_) => {}
     }
 
     match event.event_type.as_str() {

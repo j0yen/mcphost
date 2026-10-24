@@ -49,6 +49,15 @@
       "AC7": "deferred: Live (prod /mcp, a real Claude Code session on orch with only mcphost tools allowed; evidence ~/.local/state/mcphost-live/tblurl-ac07.jsonl)",
       "AC8": "tests/tblurl_ac08_import_id_replays_the_first_result.rs"
     },
+    "bsc": {
+      "_prd": "PRD-mcphost-billing-selfcheck-no-ledger-row.md (test_prefix: bsc)",
+      "AC1": "tests/bsc_ac01_selfprobe_writes_only_status_feed_tables.rs",
+      "AC2": "tests/bsc_ac02_selfcheck_ok_without_ledger_row.rs",
+      "AC3": "tests/bsc_ac03_selfcheck_fails_when_dedupe_read_errors.rs",
+      "AC4": "tests/bsc_ac04_webhook_has_no_verify_only_path.rs",
+      "AC5": "tests/bsc_ac05_ledger_script_exit_codes.rs",
+      "AC6": "deferred: Live (prod; evidence: bash scripts/live/billing-selfcheck-ledger.sh https://mcphost.dev exits 0)"
+    },
     "texp": {
       "_prd": "PRD-mcphost-external-unclaimed-tenant-expiry.md (test_prefix: texp)",
       "AC1": "tests/texp_ac01_lifecycle_visible_on_doctor_and_admin.rs",
@@ -2503,6 +2512,15 @@
       "AC6": "tests/tenx_ac06_doctor_reports_tenant_lifecycle.rs",
       "AC7": "tests/tenx_ac07_admin_lists_expiry_and_funnel_counts_it.rs",
       "AC8": "deferred: Live (prod; evidence: curl -sS https://mcphost.dev/contract.json | jq -e '.tenant_lifecycle.disabled_reason == \"idle_expired\"')"
+    },
+    "bsc": {
+      "_prd": "PRD-mcphost-billing-selfcheck-no-ledger-row.md (test_prefix: bsc)",
+      "AC1": "tests/bsc_ac01_selfprobe_writes_only_status_feed_tables.rs",
+      "AC2": "tests/bsc_ac02_selfcheck_ok_without_ledger_row.rs",
+      "AC3": "tests/bsc_ac03_selfcheck_fails_when_dedupe_read_errors.rs",
+      "AC4": "tests/bsc_ac04_webhook_has_no_verify_only_path.rs",
+      "AC5": "tests/bsc_ac05_ledger_script_exit_codes.rs",
+      "AC6": "deferred: Live (prod; evidence: bash scripts/live/billing-selfcheck-ledger.sh https://mcphost.dev exits 0)"
     }
   }
 }
