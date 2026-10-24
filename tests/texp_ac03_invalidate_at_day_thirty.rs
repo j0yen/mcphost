@@ -72,7 +72,7 @@ async fn texp_ac03_only_the_warned_tenant_is_invalidated_and_the_front_door_stay
     assert!(key_err.data.get("claim_url").is_none(), "the key path never carries the link");
 
     // The front door stays open.
-    let fresh = extract_structured(&McpClient::new(&server.base_url).tools_call("host.whoami", json!({})).await.expect("keyless mint"));
+    let fresh = extract_structured(&texp::new_peer_client(&server).tools_call("host.whoami", json!({})).await.expect("keyless mint"));
     assert_ne!(fresh["tenant"].as_str(), Some(a_mint.ns.as_str()));
     assert!(fresh["onboarding"]["url"].is_string(), "a new tenant was minted: {fresh}");
 }

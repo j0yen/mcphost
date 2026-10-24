@@ -160,10 +160,20 @@ pub struct Minted {
     pub path: String,
 }
 
-/// Keyless mint, then one rotation to learn the key and current URL.
+static MINT_N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// A client that is its own peer (unique User-Agent): since #471 a second keyless
+/// `host.*` call from one peer within 600 s is refused (`peer_recent`).
+pub fn new_peer_client(server: &TestServer) -> McpClient {
+    let n = MINT_N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    McpClient::new(&server.base_url).with_user_agent(&format!("texp-peer/{n}"))
+}
+
+/// Keyless mint (one fresh peer per mint, `peer_recent` since #471), then one
+/// rotation to learn the key and current URL.
 pub async fn mint(server: &TestServer) -> Minted {
     let first = extract_structured(
-        &McpClient::new(&server.base_url).tools_call("host.whoami", json!({})).await.expect("implicit mint"),
+        &new_peer_client(server).tools_call("host.whoami", json!({})).await.expect("implicit mint"),
     );
     let ns = first["tenant"].as_str().expect("tenant").to_string();
     let url = first["onboarding"]["url"].as_str().expect("onboarding.url").to_string();
