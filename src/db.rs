@@ -356,7 +356,7 @@ const MIGRATION_0131: &str = include_str!("../migrations/0131_sync_pull.sql");
 const MIGRATION_0132: &str = include_str!("../migrations/0132_recipe_uses.sql");
 const MIGRATION_0133: &str = include_str!("../migrations/0133_retention_floor.sql");
 /// PRD-mcphost-implicit-signup-mints-only-on-success R4: `signup_events.tenant_id`.
-const MIGRATION_0134: &str = include_str!("../migrations/0133_signup_events_tenant_id.sql");
+const MIGRATION_0134: &str = include_str!("../migrations/0134_signup_events_tenant_id.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
@@ -3530,8 +3530,8 @@ impl Db {
         Ok(())
     }
 
-    /// PRD-mcphost-acting-for-in-ledger-and-audit R5: gated on the column
-    /// (the batch is a single `ALTER`, so a rerun must skip it).
+    /// PRD-mcphost-implicit-signup-mints-only-on-success R4: gated on
+    /// `signup_events.tenant_id` (the batch is a single `ALTER`, so a rerun must skip it).
     fn migrate_0134_signup_events_tenant_id(conn: &Connection) -> Result<(), AppError> {
         let has_column: bool = conn
             .prepare("SELECT 1 FROM pragma_table_info('signup_events') WHERE name = 'tenant_id'")?
@@ -3542,6 +3542,8 @@ impl Db {
         Ok(())
     }
 
+    /// PRD-mcphost-acting-for-in-ledger-and-audit R5: gated on the column
+    /// (the batch is a single `ALTER`, so a rerun must skip it).
     fn migrate_0129_logs_key_id(conn: &Connection) -> Result<(), AppError> {
         let has_column: bool = conn
             .prepare("SELECT 1 FROM pragma_table_info('logs') WHERE name = 'key_id'")?
