@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-sync-source-registry-and-create.md",
-  "intent_slug": "mcphost-sync-source-registry-and-create",
-  "root_motivation": "Who: an agent whose user says 'the truth is this Google Sheet'. What: one host.sync.create call that makes a host table mirror an external dataset on a schedule. Why not today: host.table.create makes an empty table, host.table.append cannot update a row, and host.trigger.set can only call a published tool, so the agent owns a sync loop forever.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-synthetic-implicit-tenant-expiry.md",
+  "intent_slug": "mcphost-synthetic-implicit-tenant-expiry",
+  "root_motivation": "Who: the operator of prod mcphost, and every reader of the tenant table (the funnel, the PMF count, `admin.tenants`). What: synthetic tenants minted by implicit signup accumulate forever. Why they cannot fix it: the host offers no lifecycle for a tenant row. The only disable paths are a tenant's own `host.self_offboard` (`src/db.rs:6740-6748`, needs the tenant's credential) and `admin.tenant_disable` (`src/db.rs:6703-6716`, a hand action on prod data). The harness never captured the credential (`onboarding.url` is the only one returned, `src/handler.rs:8141-8150`), and an admin sweep of prod rows needs Joe's word each time. Cost: 177 dead rows per full chain run, 2,990 live synthetic tenants on 10-22, every one counted by any query that forgets to filter `synthetic`, and a tenant table whose growth is driven by the test harness rather than by users.",
   "user_persona": "An agent that calls host.sync.create with a source ref and gets a scheduled mirror in one call; Operator Joe who reads docs/tools.md and llms.txt and knows both were rendered from the SourceKind enum.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,50 +14,50 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given this PRD has landed, When the operator runs the premise check recorded under 'Premise check (operator)', Then its result is written into the PRD (Live; deferred, operator-provisioned).",
-      "test": "deferred -- operator-provisioned: premise check over the last three truth-tier runs, recorded in the PRD."
+      "description": "Given subject fixture A (both synthetic markers, implicit, unclaimed, unpaid, after the floor, idle 2 days) and seven variants: claimed, origin external, idle 1 hour, paid, `synthetic` NULL, billing_ref set, before the floor, When `prune_once` runs with the default window, Then only A ends `disabled = 1, disabled_reason = 'idle_expired'`, its session released, every kind's `on_tenant_removed` run; the variants are unchanged.",
+      "test": "tests/tenx_ac01_idle_synthetic_implicit_tenant_expires.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given SourceKind::ALL, When a test renders the tool schema, docs/tools.md, www/llms.txt and reads the puller dispatch arms, Then every kind appears in each exactly once and gen-docs --check exits 1 naming the file after any one copy is hand-edited.",
-      "test": "tests/syreg_ac02_source_kinds_render_once_everywhere.rs"
+      "description": "Given the env var unset, set to `3`, and set to `0`, When the policy table is seeded at start twice and `prune_once` runs on fixture A (idle 2 days), Then the stored window is 1, 3 and 0 days, `floor_unix` is set by the first seed and unchanged by the second, A is expired only in the unset case, and `retention_policy` lists `synthetic_implicit_tenants` beside the existing rows.",
+      "test": "tests/tenx_ac02_window_env_seed_and_floor.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a keyed free tenant, When host.sync.create {source: {kind: csv_url, ref}, table: orders} is called, Then the response carries sync_id and next_run_unix within 15 minutes, host.sync.list shows one active row, and the call took < 100 ms.",
-      "test": "tests/syreg_ac03_create_returns_sync_id_and_next_run.rs"
+      "description": "Given an expired tenant, When a call arrives on its `/u/{url_secret}/mcp` URL and another with its key as `tenant_key`, Then both are refused with the error a self-offboarded tenant gets and the reason field reads `idle_expired`, while a keyless call from a different peer still mints a new tenant, so expiry never blocks the front door.",
+      "test": "tests/tenx_ac03_expired_tenant_refused_front_door_open.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given kind excel_online, a csv_url ref of http://10.0.0.1/x.csv, and google_sheet on a tenant with no Google connection, When each is created, Then the errors are args_invalid (lists the five kinds), host_not_allowed and connection_missing {provider: google}, and no syncs row exists.",
-      "test": "tests/syreg_ac04_create_validation_errors.rs"
+      "description": "Given `mcphost contract dump` in a clean checkout and a server of that build, When both are read, Then `contracts/host-tools.v1.json` carries a top-level `tenant_lifecycle` (selector, env var, default, reason) built by `api_contract` from the policy constants, `contract_version` follows the file's rule, `GET /contract.json` returns the binary's bytes, and `contract --check` fails when a test-only override moves the default.",
+      "test": "tests/tenx_ac04_contract_carries_tenant_lifecycle.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a free tenant with 5 syncs, When a sixth is created, Then quota_syncs_max {limit: 5, used: 5} is returned and host.quickstart limits.plan.syncs_max reads 5 from the same Plan field.",
-      "test": "tests/syreg_ac05_sixth_sync_hits_syncs_max.rs"
+      "description": "Given 6,000 subjects and 10 non-subjects, When `prune_once` runs twice concurrently and once more on an empty set, Then every subject is expired exactly once over more than one batch, a subject touched by `touch_last_seen` between batches is skipped, non-subjects are unchanged, each run writes one `prune_log` row with `expired`, `skipped_billing`, `would_expire` (0 and no error for the empty run), and no teardown ran twice.",
+      "test": "tests/tenx_ac05_batched_concurrent_sweep_exactly_once.rs"
     },
     {
       "id": "AC6",
-      "level": "MUST",
-      "description": "Given an active sync whose next_run_unix is in the past, When tick_once runs, Then one sync_runs receipt exists, next_run_unix moved to the next cron slot, and a second tick_once in the same slot writes no second receipt.",
-      "test": "tests/syreg_ac06_tick_writes_one_receipt_per_slot.rs"
+      "level": "SHOULD",
+      "description": "Given `host.doctor` called by a subject tenant, a claimed tenant, an external tenant, and the subject again with the window set to 0, When each reads the response, Then `tenant_lifecycle` is `{subject: true, idle_days, expires_at_unix}` with `expires_at_unix` equal to the call's `now + window` for the subject, and `{subject: false, expires_at_unix: null}` for the other three, computed from the `CLASS` and `FLOOR` terms.",
+      "test": "tests/tenx_ac06_doctor_reports_tenant_lifecycle.rs"
     },
     {
       "id": "AC7",
-      "level": "MUST",
-      "description": "Given a sync, When host.sync.delete runs, Then host.sync.list is empty, the table still answers host.table.query, and a second host.sync.create with the same (kind, ref, table) returns a new sync_id.",
-      "test": "tests/syreg_ac07_delete_keeps_the_table.rs"
+      "level": "SHOULD",
+      "description": "Given one tenant expired by the sweep, one self-offboarded, and 3 backlog rows older than the floor, When `admin.tenants` runs filtered by `disabled_reason: \"idle_expired\"` then unfiltered, and `admin.funnel` is read, Then the filter returns only the expired one, every unfiltered row carries `expires_at_unix` (null for a non-subject), `tenants_idle_expired` is a `COUNT` of 1 after a restart, and the latest `would_expire` is 3.",
+      "test": "tests/tenx_ac07_admin_lists_expiry_and_funnel_counts_it.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod after deploy, When the joe-test tenant calls host.sync.create for the public fixture CSV and then host.sync.get, Then the response carries sync_id and next_run_unix (Live; deferred, operator-provisioned).",
-      "test": "deferred -- operator-provisioned: examples/data-sync/proof.sh --create-only against prod after deploy."
+      "description": "Given prod after this change deploys, When the contract is fetched anonymously, Then `tenant_lifecycle.disabled_reason` reads `idle_expired` and the selector names `origin` `synthetic` (Live; evidence: `curl -sS https://mcphost.dev/contract.json | jq -e '.tenant_lifecycle.disabled_reason == \"idle_expired\" and .tenant_lifecycle.selector.origin == \"synthetic\" and .tenant_lifecycle.selector.signup_source == \"implicit\"'`)",
+      "test": "deferred: Live (prod; evidence: curl -sS https://mcphost.dev/contract.json | jq -e '.tenant_lifecycle.disabled_reason == \"idle_expired\"')"
     }
   ],
   "scope": [
