@@ -4223,12 +4223,15 @@ fn map_envelope_error_untagged(envelope: &Value, stderr_tail: &str, own_domain: 
             // `mcphost.table` refusal keeps its registry code (`McphostTableError`
             // renders `"<code>: <message>"`), so a duplicate key is
             // `table_row_conflict`, not an anonymous `tool_exception`.
+            // (`code` in the branches above and below is the ELICIT / SAMPLING
+            // computed row's name in `tests/rpol_ac02_*.rs`, so this one is
+            // `table_code`.)
             if error == "McphostTableError"
-                && let Some((code, rest)) = message.split_once(": ")
-                && let Some(entry) = crate::error_registry::lookup(code)
+                && let Some((prefix, rest)) = message.split_once(": ")
+                && let Some(table_code) = crate::tables::TABLE_ERROR_CODES.iter().find(|k| **k == prefix)
             {
                 return KindError::structured_with(
-                    entry.code,
+                    table_code,
                     rest.to_string(),
                     json!({"phase": key::PHASE_TOOL_CODE, "exception_class": error}),
                 );

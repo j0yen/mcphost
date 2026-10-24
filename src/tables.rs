@@ -3269,6 +3269,23 @@ crate::err_code! {
     remedy: "Fix the query; data.reason says why it was rejected.",
 }
 
+/// Every `err_code!`-declared code the `mcphost.table` bridge
+/// (`kinds::python::TableSidecarBridge`) can return in `resp.code`, sorted. An
+/// uncaught `McphostTableError` with one of these keeps it as the tool call's
+/// own error code (`kinds::python::map_envelope_error`).
+pub const TABLE_ERROR_CODES: &[&str] = &[
+    "chart_invalid_mark",
+    "handle_not_found",
+    "handle_quota_exceeded",
+    "lineage_blocked",
+    "table_already_exists",
+    "table_bound_exceeded",
+    "table_not_found",
+    "table_query_rejected",
+    "table_row_conflict",
+    "table_unavailable",
+];
+
 
 #[cfg(test)]
 mod tests {
