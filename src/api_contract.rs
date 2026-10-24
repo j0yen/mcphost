@@ -36,6 +36,30 @@ pub const DEFAULT_DEPRECATIONS_PATH: &str = "contracts/deprecations.json";
 /// the dump rather than repeated per tool.
 pub use crate::envelope::OUTPUT_ENVELOPE_FIELDS;
 
+/// PRD-mcphost-synthetic-implicit-tenant-expiry: the tenant lifecycle rule,
+/// built from the retention constants (never typed here) so a changed default,
+/// env var or reason fails `contract dump --check`. Additive top-level key:
+/// [`CONTRACT_VERSION`] stays, and the reported `contract_version` string
+/// changes with the sha as for any other contract edit.
+pub fn tenant_lifecycle() -> Value {
+    json!({
+        "policy": crate::retention::SYNTHETIC_IMPLICIT_POLICY,
+        "selector": {
+            "signup_source": crate::retention::SELECTOR_SIGNUP_SOURCE,
+            "origin": crate::retention::SELECTOR_ORIGIN,
+            "synthetic": "not_null",
+            "claimed": false,
+            "paid": false,
+            "billing_ref": null,
+            "minted_at_or_after_policy_floor": true,
+        },
+        "env_var": crate::retention::SYNTHETIC_IMPLICIT_ENV,
+        "default_days": crate::retention::contract_default_days(),
+        "zero_disables": true,
+        "disabled_reason": crate::auth_shape::IDLE_EXPIRED_REASON,
+    })
+}
+
 /// The [`OUTPUT_ENVELOPE_FIELDS`] members a committed contract's
 /// `output_envelope_fields` lacks, for `contract dump --check` to name.
 pub fn missing_envelope_fields(committed: &Value) -> Vec<&'static str> {
@@ -443,6 +467,7 @@ pub fn dump_contract(kinds: &KindRegistry) -> Value {
         "contract_version": CONTRACT_VERSION,
         "kinds": kind_contracts,
         "output_envelope_fields": OUTPUT_ENVELOPE_FIELDS,
+        "tenant_lifecycle": tenant_lifecycle(),
         "tools": entries,
     });
     // A `test-support` build compiles the test-only `testprov` provider into

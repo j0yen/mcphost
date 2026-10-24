@@ -3263,6 +3263,27 @@
         ],
         "type": "object"
       },
+      "tenant_lifecycle": {
+        "properties": {
+          "expires_at_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "idle_days": {
+            "type": "integer"
+          },
+          "subject": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "expires_at_unix",
+          "subject"
+        ],
+        "type": "object"
+      },
       "window": {
         "properties": {
           "calls": {

@@ -901,6 +901,43 @@ pub async fn self_offboard(state: &AppState, tenant: &Tenant, session_id: Option
     }))
 }
 
+/// PRD-mcphost-synthetic-implicit-tenant-expiry: the teardown the idle
+/// sweep runs on a tenant it has already claimed (`disabled = 1`,
+/// `idle_expired`), in `self_offboard`'s order after the mark: release
+/// every session bound to it, every kind's `on_tenant_removed`, then a
+/// billing cancel (a no-op for a subject, which carries no `billing_ref`).
+/// Idempotent, so a crash between claim and teardown is safe to replay.
+pub async fn teardown_expired_tenant(state: &AppState, tenant_id: i64) {
+    state.session_bindings.drop_tenant(tenant_id);
+    state.implicit_signup_memory.drop_tenant(tenant_id);
+    state.tenant_key_arg_memory.drop_tenant(tenant_id);
+    for k in state.kinds.all() {
+        k.on_tenant_removed(tenant_id).await;
+    }
+    match state.db.find_tenant_by_id(tenant_id).await {
+        Ok(Some(tenant)) if tenant.plan == "pro" => {
+            if let Some(customer) = tenant.stripe_customer_id.as_deref()
+                && let Err(e) = state.billing_client.cancel_active_subscriptions(customer).await
+            {
+                tracing::warn!(tenant = %tenant.namespace, error = %e, "idle-expired tenant: billing cancel failed");
+            }
+        }
+        Ok(_) => {}
+        Err(e) => tracing::warn!(tenant_id, error = %e, "idle-expired tenant: lookup failed"),
+    }
+    tracing::info!(tenant_id, "tenant expired: synthetic implicit, idle");
+}
+
+/// Hands the sweep (`Db::prune_once`) the teardown above; called once when
+/// the server starts, since the DB layer holds no `AppState`.
+pub fn install_tenant_teardown(state: &AppState) {
+    let state = state.clone();
+    state.db.clone().set_tenant_teardown(std::sync::Arc::new(move |id| {
+        let state = state.clone();
+        Box::pin(async move { teardown_expired_tenant(&state, id).await })
+    }));
+}
+
 /// PRD-mcphost-self-offboard-releases-session R1: drop the caller session's
 /// three tenant memories in the offboard call itself, so the next key-less
 /// call signs up fresh instead of being refused `tenant_disabled`.
