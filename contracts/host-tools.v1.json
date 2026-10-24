@@ -28026,13 +28026,56 @@
       "since": "0.112.33"
     },
     {
-      "description": "Append one row (an object) or several (an array of objects) to a declared table. Each row is validated against the table's schema first -- a type mismatch fails the whole call with table_schema_violation and writes nothing.",
+      "description": "Append one row (an object) or several (an array of objects) to a declared table. Each row is validated against the table's schema first -- a type mismatch fails the whole call with table_schema_violation and writes nothing. Instead of rows, give source_url (an https CSV or JSON Lines file, fetched by the host) or csv_text (the CSV itself, at most 1 MB, header row first): each row is coerced to the table's schema, a row that does not fit is skipped, and the result reports rows_imported, rows_skipped and the first three skip reasons (line and column). Exactly one of rows, source_url and csv_text.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "rows"
+            ]
+          },
+          {
+            "required": [
+              "source_url"
+            ]
+          },
+          {
+            "required": [
+              "csv_text"
+            ]
+          }
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "rows"
+            ]
+          },
+          {
+            "required": [
+              "source_url"
+            ]
+          },
+          {
+            "required": [
+              "csv_text"
+            ]
+          }
+        ],
         "properties": {
+          "csv_text": {
+            "description": "The CSV itself (header row first, at most 1 MB), for a client that holds the data but has no file tool.",
+            "type": "string"
+          },
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
             "type": "boolean"
+          },
+          "import_id": {
+            "description": "Optional retry key for a source_url / csv_text import: the same id within 24 hours returns the first result and writes nothing.",
+            "maxLength": 128,
+            "type": "string"
           },
           "rows": {
             "description": "One row (an object) or several (an array of objects), each validated against the table's schema.",
@@ -28040,6 +28083,10 @@
               "object",
               "array"
             ]
+          },
+          "source_url": {
+            "description": "An https URL of a CSV (RFC 4180, header row first) or JSON Lines file to load. Public hosts only; at most 3 redirects, 30 s, and the plan's import byte cap.",
+            "type": "string"
           },
           "table": {
             "description": "Name of the declared table to append to.",
@@ -28051,8 +28098,7 @@
           }
         },
         "required": [
-          "table",
-          "rows"
+          "table"
         ],
         "type": "object",
         "x-mcphost-validated": true
@@ -28137,11 +28183,72 @@
           "appended": {
             "type": "integer"
           },
+          "bytes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "columns": {
+            "items": {
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "type"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "ids": {
             "items": {
               "type": "integer"
             },
             "type": "array"
+          },
+          "rows_imported": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "rows_skipped": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "skip_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "source": {
+            "enum": [
+              "url",
+              "inline"
+            ],
+            "type": "string"
+          },
+          "source_host": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "table": {
             "type": "string"
@@ -28759,17 +28866,60 @@
       "since": "0.108.6"
     },
     {
-      "description": "Declare a table in this tenant's SQL table store -- a different store from host.state.*'s key-value namespace and its own tables: use host.state.* for a handful of small values, host.table.* when you want real SQL (joins, aggregates, read-only queries) over rows. columns is {\"column\": \"text\"|\"integer\"|\"real\"| \"timestamp\"|\"boolean\"|\"json\"}; primary_key, if given, must name one of columns's own entries.",
+      "description": "Declare a table in this tenant's SQL table store -- a different store from host.state.*'s key-value namespace and its own tables: use host.state.* for a handful of small values, host.table.* when you want real SQL (joins, aggregates, read-only queries) over rows. columns is {\"column\": \"text\"|\"integer\"|\"real\"| \"timestamp\"|\"boolean\"|\"json\"}; primary_key, if given, must name one of columns's own entries. Give exactly one of columns (declare an empty table), source_url (an https CSV or JSON Lines file, fetched by the host) or csv_text (the CSV itself, at most 1 MB): the import infers the column types from the first 1,000 rows, loads every row and reports rows_imported, rows_skipped, columns and source -- the way to load data when you have no file tool.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "columns"
+            ]
+          },
+          {
+            "required": [
+              "source_url"
+            ]
+          },
+          {
+            "required": [
+              "csv_text"
+            ]
+          }
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "columns"
+            ]
+          },
+          {
+            "required": [
+              "source_url"
+            ]
+          },
+          {
+            "required": [
+              "csv_text"
+            ]
+          }
+        ],
         "properties": {
           "columns": {
             "description": "Column name to type map, each type one of text|integer|real|timestamp|boolean|json, e.g. {\"id\": \"integer\"}.",
             "type": "object"
           },
+          "csv_text": {
+            "description": "The CSV itself (header row first, at most 1 MB), for a client that holds the data but has no file tool.",
+            "type": "string"
+          },
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
             "type": "boolean"
+          },
+          "import_id": {
+            "description": "Optional retry key for a source_url / csv_text import: the same id within 24 hours returns the first result and writes nothing.",
+            "maxLength": 128,
+            "type": "string"
           },
           "name": {
             "description": "Table name to declare.",
@@ -28780,14 +28930,17 @@
             "description": "Column name (must be in columns); optional.",
             "type": "string"
           },
+          "source_url": {
+            "description": "An https URL of a CSV (RFC 4180, header row first) or JSON Lines file to load. Public hosts only; at most 3 redirects, 30 s, and the plan's import byte cap.",
+            "type": "string"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
           }
         },
         "required": [
-          "name",
-          "columns"
+          "name"
         ],
         "type": "object",
         "x-mcphost-validated": true
@@ -28876,6 +29029,33 @@
             ],
             "type": [
               "object",
+              "null"
+            ]
+          },
+          "bytes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "columns": {
+            "items": {
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "type"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "array",
               "null"
             ]
           },
@@ -28984,6 +29164,40 @@
             ]
           },
           "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rows_imported": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "rows_skipped": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "skip_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "source": {
+            "enum": [
+              "url",
+              "inline"
+            ],
+            "type": "string"
+          },
+          "source_host": {
             "type": [
               "string",
               "null"
@@ -46464,13 +46678,56 @@
     },
     {
       "alias_of": "host.table.append",
-      "description": "Append one row (an object) or several (an array of objects) to a declared table. Each row is validated against the table's schema first -- a type mismatch fails the whole call with table_schema_violation and writes nothing.",
+      "description": "Append one row (an object) or several (an array of objects) to a declared table. Each row is validated against the table's schema first -- a type mismatch fails the whole call with table_schema_violation and writes nothing. Instead of rows, give source_url (an https CSV or JSON Lines file, fetched by the host) or csv_text (the CSV itself, at most 1 MB, header row first): each row is coerced to the table's schema, a row that does not fit is skipped, and the result reports rows_imported, rows_skipped and the first three skip reasons (line and column). Exactly one of rows, source_url and csv_text.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "rows"
+            ]
+          },
+          {
+            "required": [
+              "source_url"
+            ]
+          },
+          {
+            "required": [
+              "csv_text"
+            ]
+          }
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "rows"
+            ]
+          },
+          {
+            "required": [
+              "source_url"
+            ]
+          },
+          {
+            "required": [
+              "csv_text"
+            ]
+          }
+        ],
         "properties": {
+          "csv_text": {
+            "description": "The CSV itself (header row first, at most 1 MB), for a client that holds the data but has no file tool.",
+            "type": "string"
+          },
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
             "type": "boolean"
+          },
+          "import_id": {
+            "description": "Optional retry key for a source_url / csv_text import: the same id within 24 hours returns the first result and writes nothing.",
+            "maxLength": 128,
+            "type": "string"
           },
           "rows": {
             "description": "One row (an object) or several (an array of objects), each validated against the table's schema.",
@@ -46478,6 +46735,10 @@
               "object",
               "array"
             ]
+          },
+          "source_url": {
+            "description": "An https URL of a CSV (RFC 4180, header row first) or JSON Lines file to load. Public hosts only; at most 3 redirects, 30 s, and the plan's import byte cap.",
+            "type": "string"
           },
           "table": {
             "description": "Name of the declared table to append to.",
@@ -46489,8 +46750,7 @@
           }
         },
         "required": [
-          "table",
-          "rows"
+          "table"
         ],
         "type": "object",
         "x-mcphost-validated": true
@@ -46582,17 +46842,60 @@
     },
     {
       "alias_of": "host.table.create",
-      "description": "Declare a table in this tenant's SQL table store -- a different store from host.state.*'s key-value namespace and its own tables: use host.state.* for a handful of small values, host.table.* when you want real SQL (joins, aggregates, read-only queries) over rows. columns is {\"column\": \"text\"|\"integer\"|\"real\"| \"timestamp\"|\"boolean\"|\"json\"}; primary_key, if given, must name one of columns's own entries.",
+      "description": "Declare a table in this tenant's SQL table store -- a different store from host.state.*'s key-value namespace and its own tables: use host.state.* for a handful of small values, host.table.* when you want real SQL (joins, aggregates, read-only queries) over rows. columns is {\"column\": \"text\"|\"integer\"|\"real\"| \"timestamp\"|\"boolean\"|\"json\"}; primary_key, if given, must name one of columns's own entries. Give exactly one of columns (declare an empty table), source_url (an https CSV or JSON Lines file, fetched by the host) or csv_text (the CSV itself, at most 1 MB): the import infers the column types from the first 1,000 rows, loads every row and reports rows_imported, rows_skipped, columns and source -- the way to load data when you have no file tool.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "columns"
+            ]
+          },
+          {
+            "required": [
+              "source_url"
+            ]
+          },
+          {
+            "required": [
+              "csv_text"
+            ]
+          }
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "columns"
+            ]
+          },
+          {
+            "required": [
+              "source_url"
+            ]
+          },
+          {
+            "required": [
+              "csv_text"
+            ]
+          }
+        ],
         "properties": {
           "columns": {
             "description": "Column name to type map, each type one of text|integer|real|timestamp|boolean|json, e.g. {\"id\": \"integer\"}.",
             "type": "object"
           },
+          "csv_text": {
+            "description": "The CSV itself (header row first, at most 1 MB), for a client that holds the data but has no file tool.",
+            "type": "string"
+          },
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
             "type": "boolean"
+          },
+          "import_id": {
+            "description": "Optional retry key for a source_url / csv_text import: the same id within 24 hours returns the first result and writes nothing.",
+            "maxLength": 128,
+            "type": "string"
           },
           "name": {
             "description": "Table name to declare.",
@@ -46603,14 +46906,17 @@
             "description": "Column name (must be in columns); optional.",
             "type": "string"
           },
+          "source_url": {
+            "description": "An https URL of a CSV (RFC 4180, header row first) or JSON Lines file to load. Public hosts only; at most 3 redirects, 30 s, and the plan's import byte cap.",
+            "type": "string"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
           }
         },
         "required": [
-          "name",
-          "columns"
+          "name"
         ],
         "type": "object",
         "x-mcphost-validated": true

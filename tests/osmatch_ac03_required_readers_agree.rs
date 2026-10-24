@@ -165,7 +165,11 @@ fn a_tool_without_variant_or_entry_is_byte_identical_and_a_variant_tool_keeps_it
             };
             let (old_keys, new_keys) = (keys(&old), keys(&new));
             let lost: Vec<_> = old_keys.difference(&new_keys).filter(|k| k.as_str() != "would").collect();
-            if !lost.is_empty() || !new_keys.is_subset(&old_keys) {
+            // PRD-mcphost-table-import-from-url R4: the import tools gained the
+            // optional `rows_imported`/`rows_skipped`/`columns`/`source` keys
+            // after the cited tree.
+            let gained = ["host.table.create", "host.table.append"].contains(&tool.as_str());
+            if !lost.is_empty() || (!gained && !new_keys.is_subset(&old_keys)) {
                 problems.push(format!("{tool}: live properties changed: lost {lost:?}"));
             }
             let first = new["anyOf"][0].get("type");
