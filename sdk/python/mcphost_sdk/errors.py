@@ -1305,6 +1305,11 @@ class TableQueryRejected(MCPHostError):
         super().__init__("table_query_rejected", message, data)
 
 
+class TableRowConflict(MCPHostError):
+    def __init__(self, message: str, data: Optional[ErrorData] = None) -> None:
+        super().__init__("table_row_conflict", message, data)
+
+
 class TableUnavailable(MCPHostError):
     def __init__(self, message: str, data: Optional[ErrorData] = None) -> None:
         super().__init__("table_unavailable", message, data)
@@ -1860,6 +1865,7 @@ ERRORS_BY_CODE: dict[str, type[MCPHostError]] = {
     "table_bound_exceeded": TableBoundExceeded,
     "table_not_found": TableNotFound,
     "table_query_rejected": TableQueryRejected,
+    "table_row_conflict": TableRowConflict,
     "table_unavailable": TableUnavailable,
     "task_already_claimed": TaskAlreadyClaimed,
     "task_closed": TaskClosed,

@@ -1548,6 +1548,12 @@ export class TableQueryRejected extends MCPHostError {
   }
 }
 
+export class TableRowConflict extends MCPHostError {
+  constructor(message: string, data: ErrorData = {}) {
+    super("table_row_conflict", message, data);
+  }
+}
+
 export class TableUnavailable extends MCPHostError {
   constructor(message: string, data: ErrorData = {}) {
     super("table_unavailable", message, data);
@@ -2165,6 +2171,7 @@ export const ERRORS_BY_CODE: Record<string, new (message: string, data?: ErrorDa
   table_bound_exceeded: TableBoundExceeded,
   table_not_found: TableNotFound,
   table_query_rejected: TableQueryRejected,
+  table_row_conflict: TableRowConflict,
   table_unavailable: TableUnavailable,
   task_already_claimed: TaskAlreadyClaimed,
   task_closed: TaskClosed,
