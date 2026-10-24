@@ -244,7 +244,7 @@ pub(crate) fn arg_str_opt(args: &Value, name: &str) -> Option<String> {
     args.get(name).and_then(Value::as_str).map(str::to_string)
 }
 
-fn plan_of<'a>(state: &'a AppState, plan_name: &str) -> Result<&'a Plan, AppError> {
+pub(crate) fn plan_of<'a>(state: &'a AppState, plan_name: &str) -> Result<&'a Plan, AppError> {
     state.plans.get(plan_name).ok_or_else(|| {
         AppError::Internal(format!(
             "tenant's plan '{plan_name}' is not in the loaded plan catalog"
@@ -627,6 +627,15 @@ pub(crate) fn list_table_names_sync(conn: &Connection) -> Result<Vec<String>, Ap
 /// `table_tables_max`, naming `billing.checkout` (the same upgrade-path
 /// shape every other plan quota in this crate already uses).
 pub async fn table_create(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    if let Some(source) = crate::table::import::source_arg(args)? {
+        return crate::table::import::create_from_source(state, tenant, args, source).await;
+    }
+    table_create_declared(state, tenant, args).await
+}
+
+/// `table_create` for a table that declares its own `columns`: the path an
+/// import takes once it has inferred them.
+pub(crate) async fn table_create_declared(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let name = arg_str(args, "name")?;
     if !is_valid_ident(&name) {
         return Err(AppError::InvalidArgs(format!(
@@ -1075,7 +1084,7 @@ fn validate_rows(
     Ok(coerced)
 }
 
-fn insert_rows_sync(
+pub(crate) fn insert_rows_sync(
     conn: &Connection,
     table: &str,
     schema: &LoadedSchema,
@@ -1291,6 +1300,9 @@ pub(crate) fn upsert_rows_sync(
 /// inside the same connection/transaction as the insert so the check and
 /// the write can never race against a second call to this same tenant.
 pub async fn table_append(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    if let Some(source) = crate::table::import::source_arg(args)? {
+        return crate::table::import::append_from_source(state, tenant, args, source).await;
+    }
     let table = arg_str(args, "table")?;
     let mut rows = parse_rows_arg(args)?;
 
