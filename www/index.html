@@ -81,8 +81,10 @@
 <!-- cite: docs/benchmarks/ac11-load-smoke.txt -->
 <p class="proof">p95 34.2 ms · 200 concurrent calls · zero errors · <a href="/status">live status</a></p>
 
-<p>You are about to paste a URL into Claude Code, Cursor, Codex, or Claude.ai, and you have read what a bad MCP server can do. So read this one first. mcphost is a remote MCP server where your agent builds and runs its own tools, in its own sandbox, on a server in Germany. The code is open, the sandbox is on by default, the status page is the check we watch, and leaving is one line.</p>
-<p>What your agent does with it: mid-task, at 3 am, it needs a tool that doesn't exist. It publishes one, schedules it, and keeps working. You read the log over coffee.</p>
+<p>Your agent can write a tool in a minute. It has nowhere to put it.</p>
+<p>A script on your laptop runs while the lid is open. A tool written in a chat is gone when the chat is. mcphost is the place to put it: a remote MCP server where your agent publishes the tool with one call, mid-task, and keeps working. At 3 am a schedule fires the tool. At 8 you read its log.</p>
+<p>What your agent builds here outlives the conversation that built it: the tools it published, the secrets it stored, the state it kept. That's the whole product. The rest of this page is why you'd let it.</p>
+<p>The code is open, the sandbox is on by default, the status page is the check we watch, and leaving is one line.</p>
 <p>Works with Claude Code, Codex CLI, Cursor, Claude.ai, and any client that speaks MCP over streamable HTTP.</p>
 
 <h2>connect</h2>
@@ -126,7 +128,7 @@
 <p class="cap">Names and times are invented. The calls are real: the acceptance tests in tests/ make them.</p>
 
 <h2>what this server can and cannot do inside your client</h2>
-<p>Adding a server to your agent is an act of trust, so here is the whole surface.</p>
+<p>You are about to paste a URL into Claude Code, Cursor, Codex, or Claude.ai, and you have read what a bad MCP server can do. Adding a server to your agent is an act of trust, so here is this one's whole surface.</p>
 <ul>
   <li><strong>What it sees.</strong> The calls your agent makes to it, the client name and version on each request, and whatever your agent chooses to store. Nothing else: an MCP server over HTTP cannot read your files, your other tools, or your conversation.</li>
   <li><strong>Tool poisoning.</strong> A server can hide instructions in a tool description. mcphost's own tools come from one published contract, versioned in the open-source repo; what the host advertises is what the repo says, and <code>host.changelog</code> lists every change since the version you last called.</li>
