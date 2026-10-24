@@ -168,6 +168,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `src/plans.rs` (~1k) The plan catalog (`plans.toml`): per-plan price and quotas.
 - `src/precheck.rs` (<1k) PRD-mcphost-implicit-signup-mints-only-on-success R1: the one module that checks a call before it dispatches.
 - `src/preflight.rs` (<1k) PRD-mcphost-call-cost-estimate: the one list of admission checks a call passes before it dispatches.
+- `src/progress.rs` (<1k) PRD-mcphost-tools-call-progress-notifications: per-call progress bookkeeping (the `calls.progress_token` /...
 - `src/prompts.rs` (<1k) PRD-mcphost-prompts-from-published-tools: `prompts/list` and `prompts/get`.
 - `src/protocol/frames.rs` (<1k) PRD-mcphost-sse-frame-contract-generated: the frames the host may emit per request type, as one table.
 - `src/protocol/mod.rs` (<1k) Wire-protocol contracts the host publishes about itself.

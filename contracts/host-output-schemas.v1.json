@@ -14307,6 +14307,21 @@
     ],
     "type": "object"
   },
+  "host.probe.progress": {
+    "properties": {
+      "elapsed_ms": {
+        "type": "integer"
+      },
+      "steps": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "elapsed_ms",
+      "steps"
+    ],
+    "type": "object"
+  },
   "host.whoami": {
     "properties": {
       "activation": {

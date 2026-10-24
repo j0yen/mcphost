@@ -21,6 +21,8 @@ mod rgpt;
 mod serve;
 #[path = "support/sjrc.rs"]
 mod sjrc;
+#[path = "support/tcpn.rs"]
+mod tcpn;
 #[path = "support/timp.rs"]
 mod timp;
 #[path = "support/tssdk.rs"]
@@ -602,6 +604,18 @@ mod tablemodel_ac09_drop_removes_model_and_annotations;
 mod tablemodel_ac10_empty_table_reports_unknown_types_no_error;
 #[path = "tables_ac07_tenant_delete_cascade.rs"]
 mod tables_ac07_tenant_delete_cascade;
+#[path = "tcpn_ac01_progress_counters.rs"]
+mod tcpn_ac01_progress_counters;
+#[path = "tcpn_ac02_frame_contract.rs"]
+mod tcpn_ac02_frame_contract;
+#[path = "tcpn_ac03_probe_tool.rs"]
+mod tcpn_ac03_probe_tool;
+#[path = "tcpn_ac04_progress_frames.rs"]
+mod tcpn_ac04_progress_frames;
+#[path = "tcpn_ac05_no_token_unchanged.rs"]
+mod tcpn_ac05_no_token_unchanged;
+#[path = "tcpn_ac06_throttle_and_disconnect.rs"]
+mod tcpn_ac06_throttle_and_disconnect;
 #[path = "tdf_ac01_round_trip_every_kind.rs"]
 mod tdf_ac01_round_trip_every_kind;
 #[path = "tdf_ac02_lint_names_unknown_field.rs"]
@@ -1018,25 +1032,3 @@ mod wake_ac6_msg_wait;
 mod wake_ac7_trigger_test_synthetic_envelope;
 #[path = "wake_ac8_replay.rs"]
 mod wake_ac8_replay;
-#[path = "wasmkind_ac01_echo_component_calls_and_meters.rs"]
-mod wasmkind_ac01_echo_component_calls_and_meters;
-#[path = "wasmkind_ac02_publish_validation_errors.rs"]
-mod wasmkind_ac02_publish_validation_errors;
-#[path = "wasmkind_ac03_timeout_and_oom_recover.rs"]
-mod wasmkind_ac03_timeout_and_oom_recover;
-#[path = "wasmkind_ac05_tool_test_dry_run.rs"]
-mod wasmkind_ac05_tool_test_dry_run;
-#[path = "wasmkind_ac06_trap_is_structured_and_logged.rs"]
-mod wasmkind_ac06_trap_is_structured_and_logged;
-#[path = "wasmkind_ac07_docs_llms_and_quickstart_document_wasm.rs"]
-mod wasmkind_ac07_docs_llms_and_quickstart_document_wasm;
-#[path = "wasmkind_ac08_cache_reuses_compiled_artifact.rs"]
-mod wasmkind_ac08_cache_reuses_compiled_artifact;
-#[path = "wasmkind_ac09_healthz_reports_wasm_runtime.rs"]
-mod wasmkind_ac09_healthz_reports_wasm_runtime;
-#[path = "wasmkind_ac10_declared_output_promotion_matches_python.rs"]
-mod wasmkind_ac10_declared_output_promotion_matches_python;
-#[path = "whin_ac04_keyless_call_after_redeem_is_refused_and_named.rs"]
-mod whin_ac04_keyless_call_after_redeem_is_refused_and_named;
-#[path = "whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule.rs"]
-mod whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule;

@@ -128,6 +128,7 @@ pub mod r#gen;
 pub mod sdk_python;
 pub mod oauth_policy;
 pub mod oauth_stats;
+pub mod progress;
 pub mod oauthclient;
 pub mod output_schemas;
 pub mod plans;

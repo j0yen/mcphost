@@ -11,6 +11,8 @@
 //! deferred; the job carries a 5 minute hard timeout and the checker's
 //! per-URL timeout is 10 s, 8 in parallel.
 
+#[allow(unused_imports)]
+use crate::common;
 use crate::xlinks;
 
 /// Body of job `name` in ci.yml (two-space-indented keys under `jobs:`).
