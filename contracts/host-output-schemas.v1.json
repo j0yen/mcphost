@@ -9947,6 +9947,49 @@
   },
   "host.table.append": {
     "properties": {
+      "bytes": {
+        "type": "integer"
+      },
+      "columns": {
+        "items": {
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "type"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "rows_imported": {
+        "type": "integer"
+      },
+      "rows_skipped": {
+        "type": "integer"
+      },
+      "skip_reasons": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "source": {
+        "enum": [
+          "url",
+          "inline"
+        ],
+        "type": "string"
+      },
+      "source_host": {
+        "type": "string"
+      },
       "appended": {
         "type": "integer"
       },
@@ -10240,6 +10283,49 @@
   },
   "host.table.create": {
     "properties": {
+      "bytes": {
+        "type": "integer"
+      },
+      "columns": {
+        "items": {
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "type"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "rows_imported": {
+        "type": "integer"
+      },
+      "rows_skipped": {
+        "type": "integer"
+      },
+      "skip_reasons": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "source": {
+        "enum": [
+          "url",
+          "inline"
+        ],
+        "type": "string"
+      },
+      "source_host": {
+        "type": "string"
+      },
       "_meta": {
         "properties": {
           "dry_run": {
