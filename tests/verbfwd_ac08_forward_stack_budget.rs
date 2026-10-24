@@ -167,6 +167,12 @@ fn args_for(tool: &rmcp::model::Tool) -> Value {
     if tool.name == "host.trigger.set" {
         return json!({"tool": PLACEHOLDER, "kind": "schedule", "schedule": "*/5 * * * *"});
     }
+    // `host.table.append` states "exactly one of rows, source_url, csv_text" as an
+    // `anyOf`/`oneOf`, not as `required` (PRD-mcphost-table-import-from-url R1):
+    // these are the arguments it took when `rows` was required.
+    if tool.name == "host.table.append" {
+        return json!({"table": PLACEHOLDER, "rows": {}});
+    }
     required_args(&Value::Object((*tool.input_schema).clone()))
 }
 
