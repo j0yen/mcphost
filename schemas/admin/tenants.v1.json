@@ -38,7 +38,7 @@
         "disabled": { "type": "boolean" },
         "disabled_reason": {
           "type": ["string", "null"],
-          "description": "\"self_offboard\" | \"admin_disable\" | \"idle_expired\" | null (enabled, or disabled before this column existed)"
+          "description": "\"self_offboard\" | \"admin_disable\" | \"idle_expired\" | \"unclaimed_expiring\" | \"unclaimed_expired\" | null (enabled, or disabled before this column existed)"
         },
         "synthetic": {
           "type": ["string", "null"],
@@ -55,6 +55,22 @@
         "expires_at_unix": {
           "type": ["integer", "null"],
           "description": "when the idle sweep ends this tenant (synthetic implicit unclaimed, after the policy floor), else null"
+        },
+        "idle_since_unix": {
+          "type": ["integer", "null"],
+          "description": "start of the idle run: MAX(COALESCE(last_seen_unix, created_unix), floor_unix) for an external unclaimed tenant, else null"
+        },
+        "idle_days": {
+          "type": ["integer", "null"],
+          "description": "whole days since idle_since_unix for an external unclaimed tenant, else null"
+        },
+        "lifecycle": {
+          "type": "object",
+          "description": "the tenant's lifecycle policy: {subject, policy, ...}; policy is external_unclaimed or null"
+        },
+        "tenant_lifecycle": {
+          "type": "object",
+          "description": "same object as lifecycle"
         }
       }
     }

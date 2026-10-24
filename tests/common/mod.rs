@@ -10,6 +10,7 @@
 
 pub mod sypul;
 pub mod tenx;
+pub mod texp;
 pub mod testoauth;
 pub mod tracecap;
 
