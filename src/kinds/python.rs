@@ -4227,8 +4227,11 @@ fn map_envelope_error_untagged(envelope: &Value, stderr_tail: &str, own_domain: 
                 && let Some((code, rest)) = message.split_once(": ")
                 && let Some(entry) = crate::error_registry::lookup(code)
             {
+                // Bound as `code` so the rpol_ac02 scanner resolves the argument
+                // (the registry row is the code's only spelling).
+                let code: &'static str = entry.code;
                 return KindError::structured_with(
-                    entry.code,
+                    code,
                     rest.to_string(),
                     json!({"phase": key::PHASE_TOOL_CODE, "exception_class": error}),
                 );
