@@ -62,7 +62,6 @@ const SHALLOW: &[&str] = &[
     "call:host.connect.start",
     "call:host.docs.delete",
     "call:host.docs.get",
-    "call:host.docs.index_config",
     "call:host.docs.purge",
     "call:host.docs.put",
     "call:host.example.propose",
@@ -70,7 +69,6 @@ const SHALLOW: &[&str] = &[
     "call:host.index.create",
     "call:host.key.delegate",
     "call:host.key.mint",
-    "call:host.lineage.blast_radius",
     "call:host.msg.send",
     "call:host.note.delete",
     "call:host.org.create",
@@ -89,7 +87,7 @@ const SHALLOW: &[&str] = &[
     "call:host.uptime.create",
     "call:host.vault.provider_set",
 ];
-const SHALLOW_CEILING: usize = 36;
+const SHALLOW_CEILING: usize = 34;
 
 /// The test fn's name as libtest lists it: a suite binary nests this file under
 /// its module (`verbfwd_ac08_forward_stack_budget::<fn>`), a standalone one does not.

@@ -38,7 +38,7 @@ fn max_doc_bytes() -> i64 {
 
 /// requirement 2: the only mimes `host.docs.put` accepts, explicit or
 /// inferred.
-const ALLOWED_MIMES: &[&str] = &["text/plain", "text/markdown", "application/json", "text/csv"];
+pub const ALLOWED_MIMES: &[&str] = &["text/plain", "text/markdown", "application/json", "text/csv"];
 
 fn arg_str(args: &Value, name: &str) -> Result<String, AppError> {
     args.get(name)
@@ -682,6 +682,12 @@ pub(crate) async fn rerun_search(
     Ok(results)
 }
 
+/// The `mode` values `host.docs.search` accepts; the descriptor's `mode.enum`.
+pub const SEARCH_MODES: &[&str] = &["auto", "lexical", "embeddings", "hybrid"];
+
+/// The `provider` values `host.docs.index_config` accepts; the descriptor's `provider.enum`.
+pub const INDEX_PROVIDERS: &[&str] = &["none", "openai-compatible"];
+
 #[allow(clippy::too_many_arguments)]
 async fn search_core(
     state: &AppState,
@@ -693,7 +699,7 @@ async fn search_core(
     name: &Option<String>,
     requested_mode: &str,
 ) -> Result<(Vec<Value>, String, crate::db::DocIndexStateRow), AppError> {
-    if !matches!(requested_mode, "auto" | "lexical" | "embeddings" | "hybrid") {
+    if !SEARCH_MODES.contains(&requested_mode) {
         return Err(AppError::InvalidArgs(format!(
             "mode must be one of 'auto', 'lexical', 'embeddings', 'hybrid', got '{requested_mode}'"
         )));
@@ -1025,7 +1031,7 @@ async fn hybrid_search_results(
 /// rebuild (`rebuilding: true`, watermark reset to 0).
 pub async fn doc_index_config(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let provider = arg_str(args, "provider")?;
-    if provider != "none" && provider != "openai-compatible" {
+    if !INDEX_PROVIDERS.contains(&provider.as_str()) {
         return Err(AppError::InvalidArgs(format!(
             "provider must be 'none' or 'openai-compatible', got '{provider}'"
         )));

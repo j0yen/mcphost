@@ -10,6 +10,8 @@ mod common;
 mod ci_sandbox_support;
 #[path = "support/osreach.rs"]
 mod osreach;
+#[path = "support/shape_probe.rs"]
+mod shape_probe;
 #[path = "support/timp.rs"]
 mod timp;
 #[path = "support/vbd_calls.rs"]
@@ -247,6 +249,20 @@ mod sba_ac06_contract_carries_new_bounds;
 mod sba_ac07_bound_call_script_selftest;
 #[path = "sfc_ac04_stray_notify_panics_in_debug.rs"]
 mod sfc_ac04_stray_notify_panics_in_debug;
+#[path = "shp_ac01_shape_probes_router_and_validator_agree.rs"]
+mod shp_ac01_shape_probes_router_and_validator_agree;
+#[path = "shp_ac02_every_property_carries_a_type.rs"]
+mod shp_ac02_every_property_carries_a_type;
+#[path = "shp_ac03_policy_set_rule_is_a_typed_list.rs"]
+mod shp_ac03_policy_set_rule_is_a_typed_list;
+#[path = "shp_ac04_patterns_and_handler_checks_agree.rs"]
+mod shp_ac04_patterns_and_handler_checks_agree;
+#[path = "shp_ac05_blast_radius_change_kind_is_an_enum.rs"]
+mod shp_ac05_blast_radius_change_kind_is_an_enum;
+#[path = "shp_ac06_ask_options_are_unique_and_untrimmed.rs"]
+mod shp_ac06_ask_options_are_unique_and_untrimmed;
+#[path = "shp_ac07_contract_carries_new_shape_keywords.rs"]
+mod shp_ac07_contract_carries_new_shape_keywords;
 #[path = "sreg_ac01_registry_single_source.rs"]
 mod sreg_ac01_registry_single_source;
 #[path = "statusfeed_ac11_deferral_is_justified.rs"]

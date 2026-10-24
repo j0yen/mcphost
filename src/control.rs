@@ -2899,8 +2899,11 @@ pub async fn tool_logs(state: &AppState, tenant: &Tenant, args: &Value) -> Resul
 /// the legacy per-tenant `usage`'s `"24h"`) since every acceptance
 /// criterion names day-granular windows and this is a wholly new response
 /// shape with no pre-existing default to preserve.
+/// The `by` values `host.usage` accepts; the descriptor's `by.enum`.
+pub const USAGE_BY: &[&str] = &["tool", "caller", "end_user", "key"];
+
 async fn usage_breakdown(state: &AppState, tenant: &Tenant, args: &Value, by: String) -> Result<Value, AppError> {
-    if !matches!(by.as_str(), "tool" | "caller" | "end_user" | "key") {
+    if !USAGE_BY.contains(&by.as_str()) {
         return Err(AppError::InvalidArgs(format!(
             "by must be 'tool', 'caller', 'end_user', or 'key', got '{by}'"
         )));

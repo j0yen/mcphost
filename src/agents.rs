@@ -27,17 +27,26 @@ fn arg_str_opt<'a>(args: &'a Value, name: &str) -> Option<&'a str> {
     args.get(name).and_then(Value::as_str)
 }
 
+/// The handle shape [`validate_handle`] accepts before lower-casing (the handler
+/// stores it lower-case, so upper-case letters are accepted and normalised).
+/// `host.agent.profile_set`'s `handle.pattern`.
+pub const HANDLE_PATTERN: &str = "^[A-Za-z][A-Za-z0-9_]{2,31}$";
+
+/// Whether `raw` matches [`HANDLE_PATTERN`] (after lower-casing, the handler's own rule).
+pub fn is_handle_shape(raw: &str) -> bool {
+    let lower = raw.to_lowercase();
+    let mut chars = lower.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_lowercase())
+        && (3..=32).contains(&lower.len())
+        && lower.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+}
+
 /// Requirement 3: `^[a-z][a-z0-9_]{2,31}$`, stored lower-case -- so
 /// `profile_set(handle: "Indexer")` collides with an existing `@indexer`
 /// even though the caller's casing differs (AC3).
 fn validate_handle(raw: &str) -> Result<String, AppError> {
     let lower = raw.to_lowercase();
-    let mut chars = lower.chars();
-    let starts_lower_alpha = matches!(chars.next(), Some(c) if c.is_ascii_lowercase());
-    let valid_shape = starts_lower_alpha
-        && (3..=32).contains(&lower.len())
-        && lower.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
-    if !valid_shape {
+    if !is_handle_shape(raw) {
         return Err(AppError::InvalidArgs(format!(
             "handle: must match ^[a-z][a-z0-9_]{{2,31}}$; got '{raw}'"
         )));

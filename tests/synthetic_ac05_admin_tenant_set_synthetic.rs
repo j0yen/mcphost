@@ -92,7 +92,7 @@ async fn invalid_label_is_rejected_and_unknown_tenant_errors() {
         )
         .await
         .expect_err("invalid label must be rejected");
-    assert_eq!(err.error_code.as_deref(), Some("invalid_params"));
+    assert_eq!(err.error_code.as_deref(), Some("args_invalid"));
 
     let err2 = admin
         .tools_call(
