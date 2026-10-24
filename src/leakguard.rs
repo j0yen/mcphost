@@ -25,6 +25,15 @@ pub const LEAK_ECHO_HOST: &str = "leak-echo.invalid";
 /// so a `LEAKED` verdict can only mean the outbound block was missing.
 pub const LEAK_CANARY_HOST: &str = "leak-canary.invalid";
 
+/// The secret-name pattern `host.secret.leak_test` enforces on `name` (a name
+/// referenced as `secret.<name>`); the descriptor's `name.pattern` is this string.
+pub const SECRET_NAME_PATTERN: &str = "^[a-zA-Z0-9_]+$";
+
+/// Whether `s` matches [`SECRET_NAME_PATTERN`].
+pub fn is_secret_name(s: &str) -> bool {
+    !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
 /// Prefix of the transient fixture tools `host.secret.leak_test` publishes.
 pub const FIXTURE_PREFIX: &str = "__leak_test_";
 
@@ -113,6 +122,15 @@ pub fn host_allowed(bound: &[String], host: &str) -> bool {
 
 /// Normalise a `hosts` entry from `host.secret.set`: a bare lower-case
 /// hostname (or `*.suffix`), no scheme, port or path.
+/// The bare-hostname shape [`normalize_host`] accepts (optionally `*.`-prefixed),
+/// before trimming and lower-casing. `host.secret.set`'s `hosts.items.pattern`.
+pub const HOST_PATTERN: &str = "^(?:\\*\\.)?[A-Za-z0-9._-]+$";
+
+/// Whether `raw` matches [`HOST_PATTERN`] (what [`normalize_host`] accepts untrimmed).
+pub fn is_host_shape(raw: &str) -> bool {
+    raw == raw.trim() && normalize_host(raw).is_some()
+}
+
 pub fn normalize_host(raw: &str) -> Option<String> {
     let h = raw.trim().to_ascii_lowercase();
     let bare = h.strip_prefix("*.").unwrap_or(&h);

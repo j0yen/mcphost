@@ -2485,5 +2485,117 @@
     "sunset": "2026-12-22",
     "replacement": "PRD-mcphost-schema-bound-agreement: the schema now states the maximum the handler always enforced with args_invalid; no call the handler accepted is refused",
     "narrowing_only": true
+  },
+  {
+    "path": "billing.checkout.source",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-shape-agreement: the schema now states the value set (enum) or bound the handler always enforced with args_invalid; no call the handler accepted is refused, except a mixed-case spelling the parser lower-cased",
+    "narrowing_only": true
+  },
+  {
+    "path": "billing_checkout.source",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-shape-agreement: the schema now states the value set (enum) or bound the handler always enforced with args_invalid; no call the handler accepted is refused, except a mixed-case spelling the parser lower-cased",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.ask.create.ttl_s",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-shape-agreement: the schema now states the value set (enum) or bound the handler always enforced with args_invalid; no call the handler accepted is refused, except a mixed-case spelling the parser lower-cased",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.calls.list.credential",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-shape-agreement: the schema now states the value set (enum) or bound the handler always enforced with args_invalid; no call the handler accepted is refused, except a mixed-case spelling the parser lower-cased",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.docs.index_config.provider",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-shape-agreement: the schema now states the value set (enum) or bound the handler always enforced with args_invalid; no call the handler accepted is refused, except a mixed-case spelling the parser lower-cased",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.docs.put.mime",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-shape-agreement: the schema now states the value set (enum) or bound the handler always enforced with args_invalid; no call the handler accepted is refused, except a mixed-case spelling the parser lower-cased",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.docs.search.mode",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-shape-agreement: the schema now states the value set (enum) or bound the handler always enforced with args_invalid; no call the handler accepted is refused, except a mixed-case spelling the parser lower-cased",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.lineage.blast_radius.change_kind",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-shape-agreement: the schema now states the value set (enum) or bound the handler always enforced with args_invalid; no call the handler accepted is refused, except a mixed-case spelling the parser lower-cased",
+    "narrowing_only": true
+  },
+  {
+    "path": "host.usage.by",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-shape-agreement: the schema now states the value set (enum) or bound the handler always enforced with args_invalid; no call the handler accepted is refused, except a mixed-case spelling the parser lower-cased",
+    "narrowing_only": true
+  },
+  {
+    "path": "host_ask_create.ttl_s",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-shape-agreement: the schema now states the value set (enum) or bound the handler always enforced with args_invalid; no call the handler accepted is refused, except a mixed-case spelling the parser lower-cased",
+    "narrowing_only": true
+  },
+  {
+    "path": "host_calls_list.credential",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-shape-agreement: the schema now states the value set (enum) or bound the handler always enforced with args_invalid; no call the handler accepted is refused, except a mixed-case spelling the parser lower-cased",
+    "narrowing_only": true
+  },
+  {
+    "path": "host_docs_index_config.provider",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-shape-agreement: the schema now states the value set (enum) or bound the handler always enforced with args_invalid; no call the handler accepted is refused, except a mixed-case spelling the parser lower-cased",
+    "narrowing_only": true
+  },
+  {
+    "path": "host_docs_put.mime",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-shape-agreement: the schema now states the value set (enum) or bound the handler always enforced with args_invalid; no call the handler accepted is refused, except a mixed-case spelling the parser lower-cased",
+    "narrowing_only": true
+  },
+  {
+    "path": "host_docs_search.mode",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-shape-agreement: the schema now states the value set (enum) or bound the handler always enforced with args_invalid; no call the handler accepted is refused, except a mixed-case spelling the parser lower-cased",
+    "narrowing_only": true
+  },
+  {
+    "path": "host_lineage_blast_radius.change_kind",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-shape-agreement: the schema now states the value set (enum) or bound the handler always enforced with args_invalid; no call the handler accepted is refused, except a mixed-case spelling the parser lower-cased",
+    "narrowing_only": true
+  },
+  {
+    "path": "host_usage.by",
+    "since": "2026-10-23",
+    "sunset": "2026-12-22",
+    "replacement": "PRD-mcphost-schema-shape-agreement: the schema now states the value set (enum) or bound the handler always enforced with args_invalid; no call the handler accepted is refused, except a mixed-case spelling the parser lower-cased",
+    "narrowing_only": true
   }
 ]
