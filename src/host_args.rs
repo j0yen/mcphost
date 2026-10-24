@@ -170,7 +170,7 @@ pub fn owned_by(owners: &[ArgOwner], tool: &str, at: &str, keyword: &str) -> boo
 /// Validates `args` against `tool`'s descriptor. `Ok` when the tool has no
 /// descriptor here (not a `host.*` tool) or the args satisfy it. A violation an
 /// [`ArgOwner`] owns is left to that owner.
-pub fn validate_host_args(kinds: &KindRegistry, tool: &str, args: &Value) -> Result<(), AppError> {
+pub(crate) fn validate_host_args(kinds: &KindRegistry, tool: &str, args: &Value) -> Result<(), AppError> {
     let table = table_for(kinds);
     let Some(compiled) = table.get(tool) else { return Ok(()) };
     if let Some(refusal) = schema_refusal(compiled, tool, args) {

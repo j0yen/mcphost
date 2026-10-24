@@ -19,7 +19,9 @@ async fn hundred_keyless_calls_all_answer_list_changed_then_result_on_an_event_s
     let mut offenders = Vec::new();
 
     for run in 0..RUNS {
-        let client = McpClient::new(&server.base_url);
+        // A distinct User-Agent per run: one peer per client (R3 of
+        // PRD-mcphost-implicit-signup-mints-only-on-success).
+        let client = McpClient::new(&server.base_url).with_user_agent(&format!("sfc-ac01-{run}"));
         let body = json!({
             "jsonrpc": "2.0",
             "id": run + 1,
