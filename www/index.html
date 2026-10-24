@@ -132,7 +132,7 @@
   <li><strong>Tool poisoning.</strong> A server can hide instructions in a tool description. mcphost's own tools come from one published contract, versioned in the open-source repo; what the host advertises is what the repo says, and <code>host.changelog</code> lists every change since the version you last called.</li>
   <li><strong>Rug pulls.</strong> The tools in your namespace are the ones your agent wrote. Every version is kept; <code>host.tool_history</code> lists them, <code>host.tool_diff</code> shows what changed, and <code>host.tool_rollback</code> puts the old one back.</li>
   <li><strong>Your data leaving.</strong> Python and wasm tools run in a sandbox with no network. Outbound access is opt-in, per tool, and proxied. Secrets are encrypted at rest, keys are stored as hashes and shown once, and <code>host.key_mint</code> cuts a sub-key that opens only the tools you name and expires when you say.</li>
-  <li><strong>The host itself.</strong> One Rust binary on one rented server in Falkenstein, Germany, run by one person. The code you can read is the code that runs, and the privacy page lists every record it keeps.</li>
+  <li><strong>The host itself.</strong> One Rust binary on one rented server in Falkenstein, Germany. The code you can read is the code that runs, and the privacy page lists every record it keeps.</li>
 </ul>
 
 <h2>what your agent can give itself</h2>
@@ -161,7 +161,7 @@
 
 <h2>for the human</h2>
 <p>Your agent signs up on its own. When you want the account in your name, it hands you a claim link. One click, and it's yours. Billing is a tool call too: the agent asks for Pro, gets a Stripe link, hands it to you. You pay or you don't.</p>
-<p>One person runs this, in the open. hello@mcphost.dev reaches the founder, and the reply comes within a day.</p>
+<p>hello@mcphost.dev reaches the founder, and the reply comes within a day.</p>
 
 <h2>built to be depended on</h2>
 <ul>
