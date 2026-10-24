@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-external-unclaimed-tenant-expiry.md (test_prefix: texp)",
+  "ac_test_map_prd": "PRD-mcphost-schema-shape-agreement.md (test_prefix: shp)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,14 +28,14 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/texp_ac01_lifecycle_visible_on_doctor_and_admin.rs",
-    "AC2": "tests/texp_ac02_warn_at_day_twenty_once_a_day.rs",
-    "AC3": "tests/texp_ac03_invalidate_at_day_thirty.rs",
-    "AC4": "tests/texp_ac04_claim_restores_and_binds.rs",
-    "AC5": "tests/texp_ac05_purge_at_day_forty_four.rs",
-    "AC6": "tests/texp_ac06_exclusions_pre_floor_and_off_switch.rs",
-    "AC7": "tests/texp_ac07_provider_failure_retry_and_prune_log.rs",
-    "AC8": "deferred: Live (prod; evidence: curl -sS https://mcphost.dev/contract.json | jq -e '.tenant_lifecycle.external_unclaimed | .idle_days == 30 and .warn_lead_days == 10 and .purge_grace_days == 14 and .disabled_reason == \"unclaimed_expired\" and .selector.origin == \"external\"')"
+    "AC1": "tests/shp_ac01_shape_probes_router_and_validator_agree.rs",
+    "AC2": "tests/shp_ac02_every_property_carries_a_type.rs",
+    "AC3": "tests/shp_ac03_policy_set_rule_is_a_typed_list.rs",
+    "AC4": "tests/shp_ac04_patterns_and_handler_checks_agree.rs",
+    "AC5": "tests/shp_ac05_blast_radius_change_kind_is_an_enum.rs",
+    "AC6": "tests/shp_ac06_ask_options_are_unique_and_untrimmed.rs",
+    "AC7": "tests/shp_ac07_contract_carries_new_shape_keywords.rs",
+    "AC8": "deferred: Live (prod; evidence: curl -s https://mcphost.dev/contract.json | jq -e on host.policy.set rule type and host.sync.create table pattern)"
   },
   "ac_test_map_by_prefix": {
     "texp": {
@@ -48,6 +48,17 @@
       "AC6": "tests/texp_ac06_exclusions_pre_floor_and_off_switch.rs",
       "AC7": "tests/texp_ac07_provider_failure_retry_and_prune_log.rs",
       "AC8": "deferred: Live (prod; evidence: curl -sS https://mcphost.dev/contract.json | jq -e '.tenant_lifecycle.external_unclaimed | .idle_days == 30 and .warn_lead_days == 10 and .purge_grace_days == 14 and .disabled_reason == \"unclaimed_expired\" and .selector.origin == \"external\"')"
+    },
+    "shp": {
+      "_prd": "PRD-mcphost-schema-shape-agreement.md (test_prefix: shp)",
+      "AC1": "tests/shp_ac01_shape_probes_router_and_validator_agree.rs",
+      "AC2": "tests/shp_ac02_every_property_carries_a_type.rs",
+      "AC3": "tests/shp_ac03_policy_set_rule_is_a_typed_list.rs",
+      "AC4": "tests/shp_ac04_patterns_and_handler_checks_agree.rs",
+      "AC5": "tests/shp_ac05_blast_radius_change_kind_is_an_enum.rs",
+      "AC6": "tests/shp_ac06_ask_options_are_unique_and_untrimmed.rs",
+      "AC7": "tests/shp_ac07_contract_carries_new_shape_keywords.rs",
+      "AC8": "deferred: Live (prod; evidence: curl -s https://mcphost.dev/contract.json | jq -e on host.policy.set rule type and host.sync.create table pattern)"
     },
     "osroot": {
       "_prd": "PRD-mcphost-tool-call-output-root-opaque.md (test_prefix: osroot)",

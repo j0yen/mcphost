@@ -1338,7 +1338,7 @@ pub type AcceptedUsageCache = std::sync::Arc<std::sync::Mutex<std::collections::
 /// each of the five `next`-carrying refusal sites names in its own `why`
 /// (see [`next_upgrade`]), plus `"manual"` (the default: a checkout
 /// started with no refusal behind it).
-const KNOWN_CHECKOUT_SOURCES: &[&str] = &[
+pub const KNOWN_CHECKOUT_SOURCES: &[&str] = &[
     "calls_per_day",
     "tools_max",
     "secrets_max",

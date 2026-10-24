@@ -60,20 +60,15 @@ pub struct SchemaValidRefusal {
 /// and `sba_ac02` accept a handler `args`/`spec` refusal or an unmapped bound
 /// const only through an entry here; `sba_ac03` pins each entry.
 pub const SCHEMA_VALID_REFUSALS: &[SchemaValidRefusal] = &[
-    SchemaValidRefusal { tool: "admin.usage.top", pointer: "/by", konst: "", reason: "enum: `by` is one of tool|tenant; the handler names the set", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "admin.plan_set", pointer: "/plan", konst: "", reason: "enum: plan names come from the plan table at call time", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "admin.tenants_set_synthetic", pointer: "/label", konst: "", reason: "format: the synthetic label is validated by the handler's own charset rule", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "admin.mesh.thread", pointer: "/cursor", konst: "", reason: "format: an opaque cursor the pager decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "admin.ban.add", pointer: "/ttl", konst: "", reason: "format: a duration string (30m, 24h, 7d) parsed by the handler", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "admin.oauth.client_block", pointer: "/cimd_host", konst: "", reason: "relational: exactly one of client_id or cimd_host is required", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "admin.oauth.client_unblock", pointer: "/cimd_host", konst: "", reason: "relational: exactly one of client_id or cimd_host is required", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "admin.feedback.themes", pointer: "/since", konst: "", reason: "format: a duration string (24h, 7d) parsed by the handler", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.calls.list", pointer: "/credential", konst: "", reason: "enum: the credential set is the handler's own list", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.calls.list", pointer: "/cursor", konst: "", reason: "format: an opaque cursor the pager decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.help.get", pointer: "/anchor", konst: "", reason: "format: a `<path>#<slug>` anchor resolved against the docs index", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.usage", pointer: "/by", konst: "", reason: "enum: `by` is one of tool|caller|end_user|key; the handler names the set", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.changelog", pointer: "/since", konst: "", reason: "format: a semver or `last_seen` parsed by the handler", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.secret.leak_test", pointer: "/name", konst: "", reason: "format: a secret name matching ^[a-zA-Z0-9_]+$", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "admin.plan_set", pointer: "/plan", konst: "", reason: "referential: plan names come from the plan table at call time", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "admin.mesh.thread", pointer: "/cursor", konst: "", reason: "referential: an opaque cursor the pager issued and decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "admin.ban.add", pointer: "/ttl", konst: "", reason: "referential: a duration string (30m, 24h, 7d) parsed by the handler", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "admin.oauth.client_block", pointer: "/cimd_host", konst: "", reason: "referential: exactly one of client_id or cimd_host is required (depends on the sibling argument)", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "admin.oauth.client_unblock", pointer: "/cimd_host", konst: "", reason: "referential: exactly one of client_id or cimd_host is required (depends on the sibling argument)", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "admin.feedback.themes", pointer: "/since", konst: "", reason: "referential: a duration string (24h, 7d) parsed by the handler", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.calls.list", pointer: "/cursor", konst: "", reason: "referential: an opaque cursor the pager issued and decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.help.get", pointer: "/anchor", konst: "", reason: "referential: a `<path>#<slug>` anchor resolved against the docs index", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.changelog", pointer: "/since", konst: "", reason: "referential: a semver or `last_seen` resolved against the release list", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
     SchemaValidRefusal { tool: "host.agent.profile_set", pointer: "/description", konst: "MAX_DESCRIPTION_BYTES", reason: "byte-bound", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
     SchemaValidRefusal { tool: "host.agent.profile_set", pointer: "/tags", konst: "MAX_TAG_BYTES", reason: "byte-bound", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
     SchemaValidRefusal { tool: "host.agent.contact_request", pointer: "/note", konst: "MAX_NOTE_BYTES", reason: "byte-bound", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
@@ -81,41 +76,73 @@ pub const SCHEMA_VALID_REFUSALS: &[SchemaValidRefusal] = &[
     SchemaValidRefusal { tool: "host.email.send", pointer: "/text", konst: "TEXT_MAX_BYTES", reason: "byte-bound", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
     SchemaValidRefusal { tool: "host.notify.send", pointer: "/text", konst: "TEXT_MAX_BYTES", reason: "byte-bound", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
     SchemaValidRefusal { tool: "host.note.put", pointer: "/text", konst: "TEXT_MAX_BYTES", reason: "byte-bound", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.table.count", pointer: "/where", konst: "", reason: "format: a boolean SQL expression parsed by the handler", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.lineage.blast_radius", pointer: "/change_kind", konst: "", reason: "enum: the change kinds are the handler's own list", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.docs.put", pointer: "/mime", konst: "", reason: "enum: the allowed mimes are the handler's own list", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.blob.put", pointer: "/url", konst: "", reason: "relational: exactly one of content_base64 or url is required", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.docs.search", pointer: "/mode", konst: "", reason: "enum: the search modes are the handler's own list", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.docs.index_config", pointer: "/provider", konst: "", reason: "enum: the provider set is the handler's own list", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.uptime.create", pointer: "/name", konst: "", reason: "format: an identifier matching ^[A-Za-z_][A-Za-z0-9_]{0,39}$", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.webhook_inbox.create", pointer: "/name", konst: "", reason: "format: a tool name matching ^[a-z][a-z0-9_]{1,40}$", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.runs.list", pointer: "/cursor", konst: "", reason: "format: an opaque cursor the pager decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "billing.checkout", pointer: "/source", konst: "", reason: "enum: the checkout sources are the handler's own list", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.msg.inbox", pointer: "/cursor", konst: "", reason: "format: an opaque cursor the pager decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.msg.thread", pointer: "/cursor", konst: "", reason: "format: an opaque cursor the pager decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.msg.wait", pointer: "/cursor", konst: "", reason: "format: an opaque cursor the pager decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.ask.create", pointer: "/options", konst: "", reason: "uniqueness: options must be distinct; the placeholder repeats one entry", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.notify.send", pointer: "/link", konst: "", reason: "format: an absolute http(s) URL parsed by the handler", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.channel.read", pointer: "/cursor", konst: "", reason: "format: an opaque cursor the pager decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.oauth.scope_set", pointer: "/name", konst: "", reason: "format: a scope name matching ^[a-z][a-z0-9_:.-]{0,40}$", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.oauth.audit", pointer: "/cursor", konst: "", reason: "format: an opaque cursor the pager decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.table.count", pointer: "/where", konst: "", reason: "referential: a boolean SQL expression parsed against the table", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.blob.put", pointer: "/url", konst: "", reason: "referential: exactly one of content_base64 or url is required (depends on the sibling argument)", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.runs.list", pointer: "/cursor", konst: "", reason: "referential: an opaque cursor the pager issued and decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.msg.inbox", pointer: "/cursor", konst: "", reason: "referential: an opaque cursor the pager issued and decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.msg.thread", pointer: "/cursor", konst: "", reason: "referential: an opaque cursor the pager issued and decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.msg.wait", pointer: "/cursor", konst: "", reason: "referential: an opaque cursor the pager issued and decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.channel.read", pointer: "/cursor", konst: "", reason: "referential: an opaque cursor the pager issued and decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.oauth.audit", pointer: "/cursor", konst: "", reason: "referential: an opaque cursor the pager issued and decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
     SchemaValidRefusal { tool: "host.oauth.audit_export", pointer: "/until", konst: "", reason: "relational: `until` must not be before `since`", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.enduser.list", pointer: "/cursor", konst: "", reason: "format: an opaque cursor the pager decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.enduser.audit", pointer: "/cursor", konst: "", reason: "format: an opaque cursor the pager decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.connect.start", pointer: "/provider", konst: "", reason: "enum: the providers are the catalog loaded at start", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.connect.revoke", pointer: "/provider", konst: "", reason: "enum: the providers are the catalog loaded at start", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.vault.provider_set", pointer: "/preset", konst: "", reason: "enum: the presets are the catalog loaded at start", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.enduser.list", pointer: "/cursor", konst: "", reason: "referential: an opaque cursor the pager issued and decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.enduser.audit", pointer: "/cursor", konst: "", reason: "referential: an opaque cursor the pager issued and decodes", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.connect.start", pointer: "/provider", konst: "", reason: "referential: the providers are the catalog loaded at start", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.connect.revoke", pointer: "/provider", konst: "", reason: "referential: the providers are the catalog loaded at start", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.vault.provider_set", pointer: "/preset", konst: "", reason: "referential: the presets are the catalog loaded at start", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
     SchemaValidRefusal { tool: "host.vault.connect_link", pointer: "/end_user", konst: "", reason: "enum: the only accepted value is the literal self", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
     SchemaValidRefusal { tool: "host.vault.disconnect", pointer: "/end_user", konst: "", reason: "enum: the only accepted value is the literal self", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.sync.create", pointer: "/primary_key", konst: "", reason: "format: an identifier matching ^[A-Za-z_][A-Za-z0-9_]{0,63}$", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.sync.create", pointer: "/table", konst: "", reason: "format: an identifier matching ^[A-Za-z_][A-Za-z0-9_]{0,63}$", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.claim.dns.start", pointer: "/domain", konst: "", reason: "format: a DNS name checked by the handler", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
-    SchemaValidRefusal { tool: "host.claim.dns.check", pointer: "/domain", konst: "", reason: "format: a DNS name checked by the handler", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.calls.list", pointer: "/since", konst: "", reason: "referential: a time bound parsed against the clock (-24h, a date or an RFC 3339 instant)", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.calls.list", pointer: "/until", konst: "", reason: "referential: a time bound parsed against the clock (-24h, a date or an RFC 3339 instant)", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.calls.export", pointer: "/since", konst: "", reason: "referential: a time bound parsed against the clock (-24h, a date or an RFC 3339 instant)", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.calls.export", pointer: "/until", konst: "", reason: "referential: a time bound parsed against the clock (-24h, a date or an RFC 3339 instant)", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.audit.export", pointer: "/since", konst: "", reason: "referential: a time bound parsed against the clock (-24h, a date, an RFC 3339 instant or unix seconds)", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.audit.export", pointer: "/until", konst: "", reason: "referential: a time bound parsed against the clock (-24h, a date, an RFC 3339 instant or unix seconds)", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.table.query", pointer: "/sql", konst: "", reason: "referential: a SELECT parsed and planned against the tenant's tables", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.table.chart", pointer: "/sql", konst: "", reason: "referential: a SELECT parsed and planned against the tenant's tables", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
+    SchemaValidRefusal { tool: "host.sync.create", pointer: "/source", konst: "", reason: "referential: `ref` and `secret` are checked against the source kind and the tenant's secrets", test: "sba_ac03_schema_valid_refusals_still_fire.rs" },
 ];
 
 /// The `SCHEMA_VALID_REFUSALS.len()` at merge; adding an entry needs this bump,
 /// which review refuses (the residue only shrinks).
-pub const SCHEMA_VALID_REFUSALS_SNAPSHOT: usize = 51;
+pub const SCHEMA_VALID_REFUSALS_SNAPSHOT: usize = 41;
+
+/// PRD-mcphost-schema-shape-agreement R4: one (descriptor `pattern`, handler
+/// check) pair. `pattern` is the `pub const` the owning module also hands the
+/// descriptor; `check` is the handler's own matcher over the raw value (`None`
+/// for a pattern with no handler twin); `accepts` are strings both must accept.
+/// `shp_ac04` runs the probe corpus and every `accepts` string through both and
+/// requires the same verdict, and every `pattern` a descriptor carries to be some
+/// row's `pattern`. A row no descriptor uses must say `orphan: true`.
+#[derive(Clone, Copy)]
+pub struct ShapeCheck {
+    pub pattern: &'static str,
+    pub check: Option<fn(&str) -> bool>,
+    pub accepts: &'static [&'static str],
+    pub orphan: bool,
+}
+
+/// Every shape pattern a descriptor states, with the handler check it mirrors.
+pub const SHAPE_CHECKS: &[ShapeCheck] = &[
+    ShapeCheck { pattern: crate::tables::IDENT_PATTERN, check: Some(crate::tables::is_valid_ident), accepts: &["orders", "_x", "A1", "a_b_c"], orphan: false },
+    ShapeCheck { pattern: crate::uptime::NAME_PATTERN, check: Some(crate::uptime::is_ident), accepts: &["status", "_x", "A1"], orphan: false },
+    ShapeCheck { pattern: crate::leakguard::SECRET_NAME_PATTERN, check: Some(crate::leakguard::is_secret_name), accepts: &["API_KEY", "k1", "_"], orphan: false },
+    ShapeCheck { pattern: crate::verify::DOMAIN_PATTERN, check: Some(crate::verify::is_domain_shape), accepts: &["example.com", "A.B-c.org", "example.com.", "a.b", "x-y.z"], orphan: false },
+    ShapeCheck { pattern: crate::blobs::BASE64_PATTERN, check: Some(crate::blobs::is_base64_shape), accepts: &["", "AAAA", "QQ==", "QUI=", "SGVsbG8="], orphan: false },
+    ShapeCheck { pattern: crate::sharing::QUALIFIED_NAME_PATTERN, check: Some(crate::sharing::is_qualified_name), accepts: &["acme.tool", "a.b.c"], orphan: false },
+    ShapeCheck { pattern: crate::asks::OPTION_PATTERN, check: Some(crate::asks::is_option_shape), accepts: &["yes", "a b", "ok."], orphan: false },
+    ShapeCheck { pattern: crate::agents::HANDLE_PATTERN, check: Some(crate::agents::is_handle_shape), accepts: &["indexer", "Indexer", "a_b", "abc123"], orphan: false },
+    ShapeCheck { pattern: crate::state::SCOPE_NAME_PATTERN, check: Some(crate::state::is_valid_scope_name), accepts: &["read", "orders:read", "a.b-c_d"], orphan: false },
+    ShapeCheck { pattern: crate::state::SYNTHETIC_LABEL_PATTERN, check: Some(crate::state::is_valid_synthetic_label), accepts: &["conformance", "chain:one-shot_1", "0a"], orphan: false },
+    ShapeCheck { pattern: crate::leakguard::HOST_PATTERN, check: Some(crate::leakguard::is_host_shape), accepts: &["api.example.com", "*.example.com", "localhost"], orphan: false },
+    ShapeCheck { pattern: crate::email_send::ADDRESS_PATTERN, check: Some(crate::email_send::valid_address), accepts: &["a@example.com", "first.last+tag@sub.example.org"], orphan: false },
+    ShapeCheck { pattern: crate::email_send::ONE_LINE_PATTERN, check: Some(crate::email_send::is_one_line), accepts: &["<id@example.com>", "a b"], orphan: false },
+    ShapeCheck { pattern: crate::notify::LINK_PATTERN, check: None, accepts: &["https://example.com/a"], orphan: false },
+    ShapeCheck { pattern: crate::drafter::TOOL_NAME_REGEX, check: Some(crate::state::is_valid_tool_name), accepts: &["ab", "my_tool_2"], orphan: false },
+    ShapeCheck { pattern: crate::index::NAME_PATTERN, check: None, accepts: &["docs", "a-b_c", "0x"], orphan: false },
+    // `signup` is the unauthenticated tool, outside `host_tool_descriptors`/`admin_tool_descriptors`.
+    ShapeCheck { pattern: crate::state::SOURCE_PATTERN, check: Some(crate::state::is_valid_signup_source), accepts: &["docs.quickstart", "a", "x-y_z"], orphan: true },
+];
 
 /// `sba_ac02`: a guard counts when one of these constructors sits within
 /// [`SCAN_WINDOW_LINES`] lines of a `> CONST` / `>= CONST` comparison.
