@@ -38,7 +38,7 @@
         "disabled": { "type": "boolean" },
         "disabled_reason": {
           "type": ["string", "null"],
-          "description": "\"self_offboard\" | \"admin_disable\" | null (enabled, or disabled before this column existed)"
+          "description": "\"self_offboard\" | \"admin_disable\" | \"idle_expired\" | null (enabled, or disabled before this column existed)"
         },
         "synthetic": {
           "type": ["string", "null"],
@@ -51,7 +51,11 @@
         "client_name": { "type": ["string", "null"] },
         "client_version": { "type": ["string", "null"] },
         "owner_verified": { "type": "boolean" },
-        "owner_method": { "type": ["string", "null"] }
+        "owner_method": { "type": ["string", "null"] },
+        "expires_at_unix": {
+          "type": ["integer", "null"],
+          "description": "when the idle sweep ends this tenant (synthetic implicit unclaimed, after the policy floor), else null"
+        }
       }
     }
   }

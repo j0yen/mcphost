@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rusqlite::{Connection, OptionalExtension, Row, params};
+use rusqlite::{Connection, OptionalExtension, Row, named_params, params};
 use serde::Serialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -354,6 +354,9 @@ const MIGRATION_0130: &str = include_str!("../migrations/0130_syncs.sql");
 /// PRD-mcphost-sync-pull-with-change-detection R1/R3: `sync_runs.provider_calls` and `sync_cursors`.
 const MIGRATION_0131: &str = include_str!("../migrations/0131_sync_pull.sql");
 const MIGRATION_0132: &str = include_str!("../migrations/0132_recipe_uses.sql");
+const MIGRATION_0133: &str = include_str!("../migrations/0133_retention_floor.sql");
+/// PRD-mcphost-implicit-signup-mints-only-on-success R4: `signup_events.tenant_id`.
+const MIGRATION_0134: &str = include_str!("../migrations/0134_signup_events_tenant_id.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
@@ -2954,7 +2957,16 @@ pub struct Db {
     /// the prune applies per plan; `None` until [`Db::set_plan_calls_retention`]
     /// runs (the default catalog's numbers apply meanwhile).
     plan_calls_days: Arc<std::sync::RwLock<PlanCallsDays>>,
+    /// PRD-mcphost-synthetic-implicit-tenant-expiry: the control-layer
+    /// teardown the idle sweep runs on each tenant it claims; installed by
+    /// `control::install_tenant_teardown` when the server starts.
+    tenant_teardown: Arc<std::sync::RwLock<Option<TenantTeardown>>>,
 }
+
+/// One claimed tenant's teardown (session release, kind hooks, billing).
+pub type TenantTeardown = Arc<
+    dyn Fn(i64) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync,
+>;
 
 impl Clone for Db {
     fn clone(&self) -> Self {
@@ -2965,6 +2977,7 @@ impl Clone for Db {
             counters: self.counters.clone(),
             last_checkpoint_unix: self.last_checkpoint_unix.clone(),
             plan_calls_days: self.plan_calls_days.clone(),
+            tenant_teardown: self.tenant_teardown.clone(),
         }
     }
 }
@@ -3005,6 +3018,7 @@ impl Db {
             counters: DbCounters::new(),
             last_checkpoint_unix: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             plan_calls_days: Arc::new(std::sync::RwLock::new(None)),
+            tenant_teardown: Arc::new(std::sync::RwLock::new(None)),
         };
         db.migrate_sync()?;
         Ok(db)
@@ -3311,6 +3325,20 @@ impl Db {
         Self::migrate_0131_sync_pull(&conn)?;
         // Wholly new table, `IF NOT EXISTS`: idempotent as-is.
         conn.execute_batch(MIGRATION_0132)?;
+        Self::migrate_0133_retention_floor(&conn)?;
+        Self::migrate_0134_signup_events_tenant_id(&conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-synthetic-implicit-tenant-expiry: gated on
+    /// `retention_policy.floor_unix` (the batch is an `ALTER`).
+    fn migrate_0133_retention_floor(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('retention_policy') WHERE name = 'floor_unix'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0133)?;
+        }
         Ok(())
     }
 
@@ -3504,6 +3532,16 @@ impl Db {
 
     /// PRD-mcphost-acting-for-in-ledger-and-audit R5: gated on the column
     /// (the batch is a single `ALTER`, so a rerun must skip it).
+    fn migrate_0134_signup_events_tenant_id(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('signup_events') WHERE name = 'tenant_id'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0134)?;
+        }
+        Ok(())
+    }
+
     fn migrate_0129_logs_key_id(conn: &Connection) -> Result<(), AppError> {
         let has_column: bool = conn
             .prepare("SELECT 1 FROM pragma_table_info('logs') WHERE name = 'key_id'")?
@@ -7967,13 +8005,17 @@ impl Db {
     /// `admin_events` audit row. `None` if no such tenant exists --
     /// `admin.rs` turns that into `tenant_not_found`.
     ///
-    /// Uses a hand-rolled `BEGIN IMMEDIATE` / `COMMIT` (rather than
+    /// Runs the delete inside [`crate::txn::with_tx`] (rather than
     /// `Connection::transaction`, which needs `&mut Connection`) because
     /// this runs inside `with_conn`'s `&Connection` closure, behind the
     /// single shared connection's mutex.
+    ///
+    /// `action` is the `admin_events.action` it records: an implicit signup's
+    /// rollback is `implicit_signup_rolled_back`, not a delete an operator made.
     pub async fn delete_tenant(
         &self,
         namespace: String,
+        action: &'static str,
     ) -> Result<Option<(Tenant, TenantDeleteCounts)>, AppError> {
         self.with_conn(move |conn| {
             let tenant = match Self::query_tenant_by_namespace(conn, &namespace)? {
@@ -7994,7 +8036,7 @@ impl Db {
                 .to_string();
                 conn.execute(
                     "INSERT INTO admin_events (ts, action, tenant, detail) VALUES (?1, ?2, ?3, ?4)",
-                    params![now_rfc3339(), "tenant_delete", tenant.namespace, detail],
+                    params![now_rfc3339(), action, tenant.namespace, detail],
                 )?;
                 Ok(())
             })?;
@@ -8125,7 +8167,7 @@ impl Db {
         origin: String,
         origin_detail: Option<String>,
         ip_class: String,
-    ) -> Result<bool, AppError> {
+    ) -> Result<Option<i64>, AppError> {
         let ts = now_unix();
         self.with_conn(move |conn| {
             // PRD-mcphost-session-bound-tenant-key requirement 3: same
@@ -8140,7 +8182,7 @@ impl Db {
                         WHERE source_ip = ?1 AND created_unix >= ?5 AND kind = 'signup') < ?6",
                 params![source_ip, ts, synthetic, user_agent, since_unix, limit, origin, origin_detail, ip_class],
             )?;
-            Ok(inserted > 0)
+            Ok((inserted > 0).then(|| conn.last_insert_rowid()))
         })
         .await
     }
@@ -8282,6 +8324,121 @@ impl Db {
                 params![source_ip, ts],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-implicit-signup-mints-only-on-success R4: stamp the tenant an
+    /// implicit signup created onto the `signup_events` row that admitted it.
+    pub async fn set_signup_event_tenant(&self, event_id: i64, tenant_id: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE signup_events SET tenant_id = ?2 WHERE id = ?1",
+                params![event_id, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// R4: a fleet-bypassed implicit signup writes no admit row, so it writes
+    /// this one (kind `implicit_signup_bypassed`, which the limiter never
+    /// counts), already carrying the created tenant.
+    pub async fn record_implicit_signup_bypassed(
+        &self,
+        source_ip: String,
+        user_agent: Option<String>,
+        ip_class: String,
+        tenant_id: i64,
+    ) -> Result<(), AppError> {
+        let ts = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO signup_events (source_ip, created_unix, user_agent, ip_class, kind, tenant_id) \
+                 VALUES (?1, ?2, ?3, ?4, 'implicit_signup_bypassed', ?5)",
+                params![source_ip, ts, user_agent, ip_class, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// R4: an R3 refusal (the peer already holds an implicit tenant), kind
+    /// `implicit_peer_refused` so the limiter, which counts only `signup`, never
+    /// charges it.
+    pub async fn record_implicit_peer_refused(&self, source_ip: String, ip_class: String) -> Result<(), AppError> {
+        let ts = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO signup_events (source_ip, created_unix, ip_class, kind) \
+                 VALUES (?1, ?2, ?3, 'implicit_peer_refused')",
+                params![source_ip, ts, ip_class],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// R4: the source IP of every R3 refusal in the window (`admin.funnel` splits
+    /// them into `fleet` and `external` against the configured fleet IPs).
+    pub async fn implicit_peer_refused_ips(&self, since_unix: i64) -> Result<Vec<String>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT source_ip FROM signup_events WHERE kind = 'implicit_peer_refused' AND created_unix >= ?1",
+            )?;
+            let ips = stmt.query_map(params![since_unix], |r| r.get(0))?.collect::<Result<_, _>>()?;
+            Ok(ips)
+        })
+        .await
+    }
+
+    /// R4: `admin.funnel`'s `implicit_signup_rolled_back`.
+    pub async fn count_implicit_signup_rolled_back(&self, since_unix: i64) -> Result<i64, AppError> {
+        // `admin_events.ts` is `now_rfc3339`'s sortable `unix:<secs>.<nanos>` stamp.
+        let since = format!("unix:{since_unix}.000000000");
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM admin_events WHERE action = 'implicit_signup_rolled_back' AND ts >= ?1",
+                params![since],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// R4: `admin.funnel`'s `implicit_zero_ok_calls`: implicit, not disabled,
+    /// with no `calls` row where `ok = 1` and no `host_tool_usage` row.
+    pub async fn count_implicit_zero_ok_calls(&self) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM tenants t WHERE t.signup_source = 'implicit' AND t.disabled = 0 \
+                 AND NOT EXISTS (SELECT 1 FROM calls c WHERE c.tenant_id = t.id AND c.ok = 1) \
+                 AND NOT EXISTS (SELECT 1 FROM host_tool_usage h WHERE h.tenant_id = t.id)",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// R4: implicit tenants created in the window per `(source_ip, user_agent)`
+    /// peer, as `(max, p50, peers above 1)`. Reads only rows carrying a
+    /// `tenant_id` (post-fix); `(0, 0, 0)` when there are none.
+    pub async fn implicit_tenants_per_peer(&self, since_unix: i64) -> Result<(i64, i64, i64), AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT COUNT(*) FROM signup_events WHERE tenant_id IS NOT NULL AND created_unix >= ?1 \
+                 GROUP BY source_ip, COALESCE(user_agent, '') ORDER BY 1",
+            )?;
+            let counts: Vec<i64> = stmt
+                .query_map(params![since_unix], |r| r.get(0))?
+                .collect::<Result<_, _>>()?;
+            let max = counts.last().copied().unwrap_or(0);
+            let p50 = counts.get(counts.len().saturating_sub(1) / 2).copied().unwrap_or(0);
+            let above_one = counts.iter().filter(|c| **c > 1).count() as i64;
+            Ok((max, p50, above_one))
         })
         .await
     }
@@ -15924,16 +16081,22 @@ impl Db {
         let now = crate::state::now_unix();
         let windows: Vec<(&'static str, i64)> = crate::retention::POLICY_TABLES
             .iter()
-            .map(|t| (t.name, crate::retention::days_from_env(t.env_var, t.default_days)))
+            .map(|t| (t.name, crate::retention::policy_days(t)))
             .collect();
         self.with_conn(move |conn| {
             for (name, days) in &windows {
+                // PRD-mcphost-synthetic-implicit-tenant-expiry: the expiry
+                // row's `floor_unix` is the first seed time and is never
+                // overwritten (`COALESCE` keeps the stored value); every
+                // other row leaves it NULL.
+                let floor = (*name == crate::retention::SYNTHETIC_IMPLICIT_POLICY).then_some(now);
                 conn.execute(
-                    "INSERT INTO retention_policy (table_name, days, updated_unix) \
-                     VALUES (?1, ?2, ?3) \
+                    "INSERT INTO retention_policy (table_name, days, updated_unix, floor_unix) \
+                     VALUES (?1, ?2, ?3, ?4) \
                      ON CONFLICT(table_name) DO UPDATE SET days = excluded.days, \
-                     updated_unix = excluded.updated_unix",
-                    params![name, days, now],
+                     updated_unix = excluded.updated_unix, \
+                     floor_unix = COALESCE(retention_policy.floor_unix, excluded.floor_unix)",
+                    params![name, days, now, floor],
                 )?;
             }
             Ok(())
@@ -16097,6 +16260,168 @@ impl Db {
         catalog.plans.iter().map(|p| (p.name.clone(), p.calls_retention_days)).collect()
     }
 
+    /// Installs the teardown the idle sweep runs on each claimed tenant.
+    pub fn set_tenant_teardown(&self, teardown: TenantTeardown) {
+        *self.tenant_teardown.write().unwrap_or_else(|e| e.into_inner()) = Some(teardown);
+    }
+
+    // ---- synthetic implicit tenant expiry (PRD-mcphost-synthetic-implicit-tenant-expiry) ----
+
+    /// Claims one batch of idle subjects (`UPDATE ... WHERE id IN (SELECT
+    /// ... LIMIT)` -- the bundled SQLite lacks `UPDATE ... LIMIT`) and
+    /// returns the ids this very statement flipped: a tenant is torn down
+    /// only by the sweep whose UPDATE returned it.
+    pub(crate) async fn claim_idle_synthetic_tenants(
+        &self,
+        now_unix: i64,
+        window_days: i64,
+        batch: i64,
+    ) -> Result<Vec<i64>, AppError> {
+        let cutoff = now_unix - window_days.saturating_mul(86_400);
+        self.with_conn(move |conn| {
+            let sql = format!(
+                "UPDATE tenants SET disabled = 1, disabled_reason = '{reason}' WHERE id IN \
+                 (SELECT id FROM tenants WHERE {pred} LIMIT :batch) RETURNING id",
+                reason = crate::auth_shape::IDLE_EXPIRED_REASON,
+                pred = synthetic_expiry_predicate(ExpiryTerms::SWEEP),
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let ids = stmt
+                .query_map(named_params! {":cutoff": cutoff, ":batch": batch}, |r| r.get::<_, i64>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(ids)
+        })
+        .await
+    }
+
+    /// The tenant-expiry idle window in days; `0` when the policy is off or
+    /// not yet seeded (then nothing is a subject, `IDLE` is never composed).
+    pub(crate) async fn synthetic_expiry_window_days(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            let days: Option<i64> = conn
+                .query_row(
+                    "SELECT days FROM retention_policy WHERE table_name = ?1",
+                    params![crate::retention::SYNTHETIC_IMPLICIT_POLICY],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            Ok(days.unwrap_or(0).max(0))
+        })
+        .await
+    }
+
+    /// When `tenant_id` expires if it stays idle: `COALESCE(last_seen_unix,
+    /// created_unix) + window` for a row that is `CLASS AND FLOOR`, `None`
+    /// for any other row or a window of 0 (no idle term: a subject is a
+    /// subject whether or not it is idle yet).
+    pub(crate) async fn tenant_expires_at(&self, tenant_id: i64) -> Result<Option<i64>, AppError> {
+        let days = self.synthetic_expiry_window_days().await?;
+        if days <= 0 {
+            return Ok(None);
+        }
+        self.with_conn(move |conn| {
+            let sql = format!(
+                "SELECT COALESCE(last_seen_unix, created_unix) + :window FROM tenants \
+                 WHERE id = :id AND {}",
+                synthetic_expiry_predicate(ExpiryTerms::SUBJECT)
+            );
+            Ok(conn
+                .query_row(&sql, named_params! {":window": days * 86_400, ":id": tenant_id}, |r| r.get(0))
+                .optional()?)
+        })
+        .await
+    }
+
+    /// `admin.tenants`: every subject's expiry (`CLASS AND FLOOR`) by tenant
+    /// id; empty while the window is 0.
+    pub(crate) async fn subject_expiries(&self) -> Result<std::collections::HashMap<i64, i64>, AppError> {
+        let days = self.synthetic_expiry_window_days().await?;
+        if days <= 0 {
+            return Ok(Default::default());
+        }
+        self.with_conn(move |conn| {
+            let sql = format!(
+                "SELECT id, COALESCE(last_seen_unix, created_unix) + :window FROM tenants WHERE {}",
+                synthetic_expiry_predicate(ExpiryTerms::SUBJECT)
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(named_params! {":window": days * 86_400}, |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<Result<_, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// `admin.funnel`'s `tenants_idle_expired`: a `COUNT` of the rows the
+    /// sweep disabled, so it survives a restart (never an in-memory counter).
+    pub async fn count_tenants_idle_expired(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM tenants WHERE disabled_reason = ?1",
+                params![crate::auth_shape::IDLE_EXPIRED_REASON],
+                |r| r.get(0),
+            )?)
+        })
+        .await
+    }
+
+    /// `(skipped_billing, would_expire)` for one sweep.
+    pub(crate) async fn synthetic_expiry_counts(
+        &self,
+        now_unix: i64,
+        window_days: i64,
+    ) -> Result<(i64, i64), AppError> {
+        let cutoff = now_unix - window_days.saturating_mul(86_400);
+        self.with_conn(move |conn| {
+            let count = |terms: ExpiryTerms| -> Result<i64, AppError> {
+                let sql =
+                    format!("SELECT COUNT(*) FROM tenants WHERE {}", synthetic_expiry_predicate(terms));
+                Ok(conn.query_row(&sql, named_params! {":cutoff": cutoff}, |r| r.get(0))?)
+            };
+            Ok((count(ExpiryTerms::SKIPPED_BILLING)?, count(ExpiryTerms::WOULD_EXPIRE)?))
+        })
+        .await
+    }
+
+    /// The expiry pass of one `prune_once`: no-op for window 0 (stated once
+    /// here: `IDLE` with a zero window would match every subject, so `0`
+    /// short-circuits before any SQL). Returns the journal entries.
+    async fn expire_synthetic_implicit_tenants(
+        &self,
+        windows: &[(String, i64)],
+        now_unix: i64,
+        deleted: &mut std::collections::BTreeMap<String, i64>,
+    ) -> Result<(), AppError> {
+        let policy = crate::retention::SYNTHETIC_IMPLICIT_POLICY;
+        let Some(&(_, days)) = windows.iter().find(|(n, _)| n == policy) else {
+            return Ok(());
+        };
+        if days <= 0 {
+            return Ok(());
+        }
+        let teardown = self.tenant_teardown.read().unwrap_or_else(|e| e.into_inner()).clone();
+        let batch = crate::retention::EXPIRE_BATCH_SIZE;
+        let mut expired = 0i64;
+        loop {
+            let ids = self.claim_idle_synthetic_tenants(now_unix, days, batch).await?;
+            for id in &ids {
+                if let Some(teardown) = &teardown {
+                    teardown(*id).await;
+                }
+            }
+            expired += ids.len() as i64;
+            if (ids.len() as i64) < batch {
+                break;
+            }
+        }
+        let (skipped_billing, would_expire) = self.synthetic_expiry_counts(now_unix, days).await?;
+        deleted.insert(format!("{policy}.expired"), expired);
+        deleted.insert(format!("{policy}.skipped_billing"), skipped_billing);
+        deleted.insert(format!("{policy}.would_expire"), would_expire);
+        Ok(())
+    }
+
     /// Runs one full prune cycle -- the nightly scheduler and every AC1-4
     /// test funnel through this one method (a later admin-triggered
     /// on-demand cycle and `/healthz`/`admin.usage` reads of its outcome
@@ -16108,6 +16433,7 @@ impl Db {
     /// shared connection.
     pub async fn prune_once(&self) -> Result<PruneReport, AppError> {
         let windows = self.retention_windows().await?;
+        let windows_for_expiry = windows.clone();
         let plan_calls_days = self.plan_calls_retention();
         let path = self.path.clone();
         let cfg = self.cfg;
@@ -16118,6 +16444,14 @@ impl Db {
         })
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
+        let mut outcome = outcome;
+        if outcome.error.is_none()
+            && let Err(e) = self
+                .expire_synthetic_implicit_tenants(&windows_for_expiry, started, &mut outcome.deleted)
+                .await
+        {
+            outcome.error = Some(format!("{}: {e}", crate::retention::SYNTHETIC_IMPLICIT_POLICY));
+        }
         let finished = crate::state::now_unix();
         let ok = outcome.error.is_none();
         let deleted_json = serde_json::to_string(&outcome.deleted)
@@ -23022,6 +23356,67 @@ pub struct ChunkVecRow {
     pub len: i64,
     pub text: String,
     pub vector: Vec<u8>,
+}
+
+/// PRD-mcphost-synthetic-implicit-tenant-expiry: the subject predicate as
+/// three named terms written once. `CLASS` is what a tenant IS (two
+/// independent synthetic markers so one mislabeled column never selects a
+/// real user); `FLOOR` is "minted at or after the policy was first seeded";
+/// `IDLE` is "unseen since `:cutoff`" (`now - window`). Callers
+/// compose them with [`synthetic_expiry_predicate`].
+fn expiry_class(billed: bool) -> String {
+    format!(
+        "disabled = 0 AND signup_source = '{}' AND origin = '{}' \
+         AND synthetic IS NOT NULL AND claimed_unix IS NULL AND owner_verified_at IS NULL \
+         AND paid_unix IS NULL AND billing_ref IS {}NULL",
+        crate::retention::SELECTOR_SIGNUP_SOURCE,
+        crate::retention::SELECTOR_ORIGIN,
+        if billed { "NOT " } else { "" },
+    )
+}
+const EXPIRY_FLOOR: &str = "created_unix >= (SELECT floor_unix FROM retention_policy \
+    WHERE table_name = 'synthetic_implicit_tenants')";
+const EXPIRY_BEFORE_FLOOR: &str = "created_unix < (SELECT floor_unix FROM retention_policy \
+    WHERE table_name = 'synthetic_implicit_tenants')";
+const EXPIRY_IDLE: &str = "COALESCE(last_seen_unix, created_unix) < :cutoff";
+
+/// Which terms one caller composes.
+#[derive(Clone, Copy)]
+pub(crate) struct ExpiryTerms {
+    billed: bool,
+    floor: Floor,
+    idle: bool,
+}
+
+#[derive(Clone, Copy)]
+enum Floor {
+    After,
+    Before,
+}
+
+impl ExpiryTerms {
+    /// The sweep's claim: `CLASS AND FLOOR AND IDLE`.
+    pub(crate) const SWEEP: Self = Self { billed: false, floor: Floor::After, idle: true };
+    /// What `host.doctor` / `admin.tenants` read: `CLASS AND FLOOR`.
+    pub(crate) const SUBJECT: Self = Self { billed: false, floor: Floor::After, idle: false };
+    /// `CLASS` minus `billing_ref`, with `billing_ref IS NOT NULL`, `AND FLOOR AND IDLE`.
+    pub(crate) const SKIPPED_BILLING: Self = Self { billed: true, floor: Floor::After, idle: true };
+    /// The backlog: `CLASS AND IDLE AND NOT FLOOR`.
+    pub(crate) const WOULD_EXPIRE: Self = Self { billed: false, floor: Floor::Before, idle: true };
+}
+
+/// Composes `CLASS`, `FLOOR` and `IDLE` per caller. The idle term binds
+/// `:cutoff` when present.
+pub(crate) fn synthetic_expiry_predicate(terms: ExpiryTerms) -> String {
+    let mut parts = vec![expiry_class(terms.billed)];
+    match terms.floor {
+        Floor::After => parts.push(EXPIRY_FLOOR.to_string()),
+        Floor::Before => parts.push(EXPIRY_BEFORE_FLOOR.to_string()),
+    }
+    if terms.idle {
+        parts.push(EXPIRY_IDLE.to_string());
+    }
+    parts.join(" AND ")
 }
 
 /// [`Db::prune_once`]'s return shape: one cycle's per-physical-table

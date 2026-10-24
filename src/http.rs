@@ -2314,6 +2314,7 @@ pub async fn serve_on_listener_until(
     if let Err(e) = crate::oauth::warn_invalid_stored_issuers(&state).await {
         tracing::warn!(error = %e, "could not scan stored OAuth issuers at startup");
     }
+    crate::control::install_tenant_teardown(&state);
     let db = state.db.clone();
     let app = build_router(state);
     tracing::info!(addr = ?listener.local_addr().ok(), "mcphost listening");

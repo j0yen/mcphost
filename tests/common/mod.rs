@@ -9,6 +9,7 @@
 #![allow(dead_code)]
 
 pub mod sypul;
+pub mod tenx;
 pub mod testoauth;
 pub mod tracecap;
 
@@ -470,9 +471,28 @@ impl TempDataDir {
             .unwrap_or(0);
         let dir =
             std::env::temp_dir().join(format!("mcphost-test-{}-{}-{}", process::id(), n, nanos));
+        raise_nofile_soft_limit();
         std::fs::create_dir_all(&dir).expect("create temp data dir");
         Self(dir)
     }
+}
+
+/// A consolidated suite binary runs hundreds of servers in one process and each
+/// finished test leaves a few db fds behind, so the default 1024 soft
+/// RLIMIT_NOFILE is exhausted mid-run ("unable to open database file", "Too
+/// many open files"). Lift the soft limit to the hard one, once per process.
+fn raise_nofile_soft_limit() {
+    static RAISED: std::sync::Once = std::sync::Once::new();
+    RAISED.call_once(|| {
+        let mut lim = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        // SAFETY: getrlimit/setrlimit only read and write this local struct.
+        unsafe {
+            if libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) == 0 && lim.rlim_cur < lim.rlim_max {
+                lim.rlim_cur = lim.rlim_max.min(1 << 20);
+                libc::setrlimit(libc::RLIMIT_NOFILE, &lim);
+            }
+        }
+    });
 }
 
 impl Drop for TempDataDir {
@@ -1524,6 +1544,9 @@ pub struct McpClient {
     /// call, which is the behaviour those tests were written against.
     session_id: Arc<std::sync::Mutex<Option<String>>>,
     session_continuity: bool,
+    /// PRD-mcphost-implicit-signup-mints-only-on-success: the `User-Agent`
+    /// this client sends (a peer is IP + User-Agent), `None` = reqwest's default (none).
+    user_agent: Option<String>,
 }
 
 #[derive(Debug)]
@@ -1550,7 +1573,15 @@ impl McpClient {
             client_version: "0.1.0".to_string(),
             session_id: Arc::new(std::sync::Mutex::new(None)),
             session_continuity: false,
+            user_agent: None,
         }
+    }
+
+    /// PRD-mcphost-implicit-signup-mints-only-on-success: send `User-Agent: ua`
+    /// on every request, so this client is its own peer (`request_peer_key`).
+    pub fn with_user_agent(mut self, ua: &str) -> Self {
+        self.user_agent = Some(ua.to_string());
+        self
     }
 
     /// PRD-mcphost-session-bound-tenant-after-signup: make this client
@@ -1661,6 +1692,9 @@ impl McpClient {
         }
         if let Some(key) = &self.bearer {
             req = req.header("Authorization", format!("Bearer {key}"));
+        }
+        if let Some(ua) = &self.user_agent {
+            req = req.header("User-Agent", ua.as_str());
         }
         for (name, value) in extra_headers {
             req = req.header(*name, *value);

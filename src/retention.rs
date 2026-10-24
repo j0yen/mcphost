@@ -96,7 +96,64 @@ pub const POLICY_TABLES: &[PolicyTable] = &[
         env_var: "MCPHOST_RETENTION_BLOBS_GRACE_DAYS",
         default_days: 1,
     },
+    // PRD-mcphost-synthetic-implicit-tenant-expiry: an idle window, not a
+    // row-DELETE; executed by `Db::prune_once` through
+    // `control::expire_idle_synthetic_tenants`. `0` switches it off.
+    PolicyTable {
+        name: SYNTHETIC_IMPLICIT_POLICY,
+        env_var: SYNTHETIC_IMPLICIT_ENV,
+        default_days: SYNTHETIC_IMPLICIT_DEFAULT_DAYS,
+    },
 ];
+
+/// The `retention_policy` row of the synthetic-implicit-tenant expiry.
+pub const SYNTHETIC_IMPLICIT_POLICY: &str = "synthetic_implicit_tenants";
+pub const SYNTHETIC_IMPLICIT_ENV: &str = "MCPHOST_RETENTION_SYNTHETIC_IMPLICIT_TENANT_IDLE_DAYS";
+pub const SYNTHETIC_IMPLICIT_DEFAULT_DAYS: i64 = 1;
+/// The two `tenants` values the selector names, shared by the predicate
+/// (`db.rs`) and the exported contract so neither can drift.
+pub const SELECTOR_SIGNUP_SOURCE: &str = "implicit";
+pub const SELECTOR_ORIGIN: &str = "synthetic";
+
+/// The default idle window the contract advertises. A `test-support` build
+/// reads `MCPHOST_TEST_ONLY_TENANT_LIFECYCLE_DEFAULT_DAYS` so a test can move
+/// it and watch `contract dump --check` fail; a release build never does.
+pub fn contract_default_days() -> i64 {
+    if cfg!(feature = "test-support")
+        && let Some(days) = std::env::var("MCPHOST_TEST_ONLY_TENANT_LIFECYCLE_DEFAULT_DAYS")
+            .ok()
+            .and_then(|raw| raw.parse::<i64>().ok())
+    {
+        return days;
+    }
+    SYNTHETIC_IMPLICIT_DEFAULT_DAYS
+}
+
+/// `host.doctor`'s `tenant_lifecycle` for one tenant: `expires_at` is
+/// [`crate::db::Db::tenant_expires_at`] (`None` = not a subject).
+pub fn lifecycle_view(idle_days: i64, expires_at: Option<i64>) -> serde_json::Value {
+    match expires_at {
+        Some(at) => serde_json::json!({"subject": true, "idle_days": idle_days, "expires_at_unix": at}),
+        None => serde_json::json!({"subject": false, "expires_at_unix": null}),
+    }
+}
+
+/// Tenants claimed and torn down per batch (measured on 6,000 subjects).
+pub const EXPIRE_BATCH_SIZE: i64 = 500;
+
+/// A policy table's window as the seed stores it. Every row ignores `0`
+/// (falls back to its default) except the tenant-expiry row, where `0` is
+/// the off switch.
+pub fn policy_days(t: &PolicyTable) -> i64 {
+    if t.name == SYNTHETIC_IMPLICIT_POLICY {
+        return std::env::var(t.env_var)
+            .ok()
+            .and_then(|raw| raw.parse::<i64>().ok())
+            .filter(|d| *d >= 0)
+            .unwrap_or(t.default_days);
+    }
+    days_from_env(t.env_var, t.default_days)
+}
 
 /// Reads one policy table's window from its env var, falling back to
 /// `default_days` when unset, empty, non-numeric, or non-positive.

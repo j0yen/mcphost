@@ -3521,7 +3521,7 @@ fn host_tools_part_07() -> Vec<Tool> {
              family, each group with the next concrete step. Returns {window: {calls, failed, \
              first_ts, last_ts}, groups: [{code, family, class, count, tools, last_ts, \
              first_source_line?, line?, next}]} biggest group first; tool_exception groups carry \
-             the tool-source line of the newest failure; oauth_issuers: {rows, invalid: [{id, tenant_id, reason}]} reports stored OAuth issuer rows the discovery documents omit (the admin key sees every tenant's rows). No failed calls: groups: [] and a next \
+             the tool-source line of the newest failure; oauth_issuers: {rows, invalid: [{id, tenant_id, reason}]} reports stored OAuth issuer rows the discovery documents omit (the admin key sees every tenant's rows); tenant_lifecycle: {subject, idle_days?, expires_at_unix} says whether idle expiry applies to this tenant (synthetic implicit unclaimed) and when. No failed calls: groups: [] and a next \
              saying so (hint: host.quickstart when the tenant has no tools yet). The admin key \
              may pass tenant: <namespace>; a tenant key naming another tenant is forbidden.",
             host_schema(
@@ -5796,7 +5796,14 @@ fn set_alias_of(tool: &mut Tool, canonical: &str) {
 /// PRD-mcphost-tools-list-alias-truth requirement 3: the one
 /// `unknown_tool` error for a `host.*`/`billing.*` name nothing dispatches,
 /// with `nearest` drawn from exactly what `tools/list` advertises.
-fn unknown_host_tool(kinds: &KindRegistry, requested: &str) -> AppError {
+/// The names `McpHostHandler::arm_unadvertised` (handler/arms.rs) serves -- read
+/// by `precheck::precheck_tenant_call`'s name-exists check.
+/// `admin_events.action` of a rolled-back implicit signup (R2).
+pub(crate) const ROLLED_BACK_ACTION: &str = "implicit_signup_rolled_back";
+
+pub(crate) const UNADVERTISED_ARMS: &[&str] = &["host.tool_from_description", "billing.status", "billing.checkout"];
+
+pub(crate) fn unknown_host_tool(kinds: &KindRegistry, requested: &str) -> AppError {
     let advertised: Vec<String> = host_tools(kinds, true).into_iter().map(|t| t.name.to_string()).collect();
     let canonical = canonical_control_plane_names(kinds);
     AppError::host_tool_not_found(requested, &canonical, &advertised)
@@ -5846,12 +5853,15 @@ fn admin_tools_raw() -> Vec<Tool> {
             "admin.tenants",
             "List every tenant, optionally filtered to display names starting with `prefix` \
              and/or by `synthetic` (`true`: only labeled tenants, `false`: only unlabeled, \
-             `all`: no filter -- the default). Every row carries a `synthetic` field, null \
-             for unlabeled.",
+             `all`: no filter -- the default) and/or by `disabled_reason` (e.g. `idle_expired`). \
+             Every row carries a `synthetic` field, null for unlabeled, and `expires_at_unix`, \
+             when the idle sweep ends the tenant (null unless it is a synthetic implicit \
+             unclaimed tenant).",
             schema(
                 json!({
                     "prefix": {"type": "string"},
                     "synthetic": {"type": "string", "enum": crate::admin::SYNTHETIC_FILTERS},
+                    "disabled_reason": {"type": "string", "description": "Only tenants disabled for this reason (self_offboard, admin_disable, idle_expired)."},
                 }),
                 &[],
             ),
@@ -7208,21 +7218,21 @@ impl StateBackend for CountingStateBackend {
 /// The stack, in bytes, every forwarded dotted host verb must complete its real
 /// `host.tool_call` / `host.tool_test` call in on a debug build (profile and
 /// test thread as CI's `cargo test`). GENERATED MEASUREMENT: the measured
-/// maximum over all 230 forwardable ids is 983,040 B (every id measures it:
+/// maximum over all 230 forwardable ids is 991,232 B (every id measures it:
 /// `test:host.trigger.set`, `call:host.whoami`,
 /// `call:host.webhook_inbox.create`, `call:host.vault.status`, ...,
-/// `scripts/fwd-stack-measure.sh all`, 2026-10-18 (re-measured 2026-10-20 with the sub-key `acting_for` lineage on the call path), after the dispatch table
+/// `scripts/fwd-stack-measure.sh all`, 2026-10-18 (re-measured 2026-10-20 with the sub-key `acting_for` lineage on the call path, and 2026-10-21 with the implicit-signup rollback guard on the first-call path: 983,040 -> 991,232 B), after the dispatch table
 /// (`src/dispatch_table.rs`) and the boxed `call_tool_inner` helpers; the shared
 /// level rose from 823,296 B on 10-17 with main's own frames, chiefly rmcp's
 /// `handle_request` poll frame, 48 -> 137 KiB, while `host.doctor` stopped
 /// compiling its error-envelope report on the caller's stack) and the
-/// budget is that + 25 % = 1,228,800 B, so CI's 2 MiB test thread keeps
+/// budget is that + 25 % = 1,239,040 B, so CI's 2 MiB test thread keeps
 /// 40 % of it free and the next fat frame fails
 /// `tests/verbfwd_ac08_forward_stack_budget.rs`, naming the verb, instead of SIGABRTing a shard (run 326 `verbfwd_ac01`, run
 /// 953; both 10-17, both `has overflowed its stack`). The boundary is
 /// `dispatch_tenant_tool` / `forward_host_verb`, where a dotted verb re-enters
 /// the dispatcher. Re-measure and tighten as the dispatch frames shrink.
-pub const FORWARD_STACK_BUDGET: usize = 1_228_800;
+pub const FORWARD_STACK_BUDGET: usize = 1_239_040;
 
 /// The validator's registration for what `host.spec.test` owns (R3): more
 /// than `MAX_TEST_INVOCATIONS` invocations is refused `too_many_invocations`
@@ -7586,9 +7596,7 @@ impl McpHostHandler {
         let result = if FORWARDING_WRAPPERS.contains(&name) {
             // The same two checks `dispatch_tenant_tool_inner` makes first: the
             // wrapper's descriptor validates its own call like every other verb.
-            match crate::paged::refuse_fields_on_unprojected(name, &args)
-                .and_then(|()| crate::host_args::validate_host_args(&self.state.kinds, name, &args))
-            {
+            match crate::precheck::precheck_tenant_call(&self.state.kinds, name, &args) {
                 Ok(()) => {
                     crate::host_args::note_handler_run(&tenant.namespace, name);
                     self.forwarding_wrapper(tenant, calls_auth_method, end_user, name, args).await
@@ -8031,10 +8039,9 @@ impl McpHostHandler {
     ) -> Result<Value, AppError> {
         // PRD-mcphost-fields-projection-on-list-verbs R4: `fields` on an
         // excused (`unpaged_reason`) verb is refused, never silently ignored.
-        crate::paged::refuse_fields_on_unprojected(name, &args)?;
         // PRD-mcphost-input-schema-is-the-validator R3: the descriptor is the
         // validator -- a structural violation is refused before any handler.
-        crate::host_args::validate_host_args(&self.state.kinds, name, &args)?;
+        crate::precheck::precheck_tenant_call(&self.state.kinds, name, &args)?;
         crate::host_args::note_handler_run(&tenant.namespace, name);
         let ctx = ArmCtx { tenant, subject, auth_method, calls_auth_method, end_user, session_id, name, args };
         // The verb table is generated from the descriptor registry
@@ -8080,6 +8087,10 @@ impl McpHostHandler {
         name: &str,
         args: Value,
     ) -> Result<Value, AppError> {
+        // PRD-mcphost-implicit-signup-mints-only-on-success R1: the SAME check
+        // `dispatch_tenant_tool_inner` runs, before `control::signup` charges the
+        // limiter or writes a row -- a call that cannot work mints nothing.
+        crate::precheck::precheck_tenant_call(&self.state.kinds, name, &args)?;
         let (client_name, client_version) = match peer_client_info(ctx) {
             Some((name, version)) => (Some(name), Some(version)),
             None => (None, None),
@@ -8129,6 +8140,74 @@ impl McpHostHandler {
             .await?
             .ok_or_else(|| AppError::Internal("implicit signup's tenant vanished".to_string()))?;
 
+        // PRD-mcphost-implicit-signup-mints-only-on-success R2: everything after the
+        // mint runs under the per-call deadline and `catch_unwind`; an error, a
+        // timeout or a panic deletes the tenant it created and tells the caller how
+        // to get a key.
+        use futures_util::FutureExt as _;
+        let guarded = std::panic::AssertUnwindSafe(tokio::time::timeout(
+            self.state.call_timeout,
+            self.implicit_after_mint(ctx, &tenant, session_id, name, args),
+        ))
+        .catch_unwind()
+        .await;
+        let err = match guarded {
+            Ok(Ok(Ok(value))) => {
+                // R3: a client that presented no server-issued session id has no way
+                // to be recognised on its next call but its peer (IP + User-Agent);
+                // `redeemed_peers` is the memory the refusal block reads.
+                let presented = parts
+                    .extensions
+                    .get::<crate::session_bind::SessionPresented>()
+                    .is_some_and(|p| p.0);
+                if !presented {
+                    self.state.redeemed_peers.record_at(&request_peer_key(parts), &tenant.namespace, now_unix());
+                }
+                return Ok(value);
+            }
+            Ok(Ok(Err(e))) => e,
+            Ok(Err(_elapsed)) => AppError::CallTimeout(self.state.call_timeout.as_secs().max(1)),
+            Err(_panic) => AppError::Internal("implicit signup dispatch panicked".to_string()),
+        };
+        self.rollback_implicit_signup(&tenant, session_id).await;
+        Err(err.with_get_a_key(&self.state.public_url))
+    }
+
+    /// R4: one `signup_events` row (kind `implicit_peer_refused`) per R3 refusal,
+    /// with the source IP and its `ip_class`; the limiter counts only `signup`.
+    async fn note_implicit_peer_refused(&self, parts: &http::request::Parts) {
+        let ip = source_ip(parts);
+        let ip_class = crate::state::classify_ip_class(&ip).to_string();
+        if let Err(e) = self.state.db.record_implicit_peer_refused(ip, ip_class).await {
+            tracing::warn!(error = %e, "failed to record implicit_peer_refused");
+        }
+    }
+
+    /// R2: delete the tenant an implicit signup minted for a call that then failed,
+    /// through the path `admin.tenant_delete` uses, recorded as
+    /// `implicit_signup_rolled_back`; the `signup_events` row stays (the attempt
+    /// still counts toward the limiter).
+    async fn rollback_implicit_signup(&self, tenant: &Tenant, session_id: Option<&str>) {
+        if let Some(sid) = session_id {
+            self.state.implicit_signup_memory.drop_binding(sid);
+        }
+        if let Err(e) = admin::delete_tenant_cascade(&self.state, &tenant.namespace, ROLLED_BACK_ACTION).await {
+            tracing::error!(error = %e, tenant = %tenant.namespace, "implicit signup rollback failed; orphan left");
+        }
+    }
+
+    /// Everything an implicit signup does once the tenant exists (R2's guarded
+    /// span): the session memory, the personal URL, the dispatch of the call that
+    /// triggered the mint, and the `onboarding` envelope.
+    #[allow(clippy::too_many_arguments)]
+    async fn implicit_after_mint(
+        &self,
+        ctx: &RequestContext<RoleServer>,
+        tenant: &Tenant,
+        session_id: Option<&str>,
+        name: &str,
+        args: Value,
+    ) -> Result<Value, AppError> {
         // PRD-mcphost-session-bound-tenant-key requirement 1/3: records this
         // connection's own implicit signup into `implicit_signup_memory`,
         // NOT `state.session_bindings` the way this call site used to
@@ -8136,7 +8215,7 @@ impl McpHostHandler {
         // signup attempt on this same connection must be refused and named
         // by default (requirement 2), never silently served the way an
         // explicit `signup`/`host.redeem` binding still is.
-        record_implicit_signup_memory(&self.state, session_id, &ctx.peer, &tenant).await;
+        record_implicit_signup_memory(&self.state, session_id, &ctx.peer, tenant).await;
 
         // Requirement 2's own dependency on PRD-mcphost-url-bound-tenants:
         // mints this tenant's personal URL right away -- the onboarding
@@ -8162,12 +8241,27 @@ impl McpHostHandler {
         // PRD-mcphost-msg-wait-long-poll-contract R5: a just-created tenant's
         // inbox cannot hold anything, so its `host.msg.wait` times out at
         // once instead of sleeping out the full default wait.
+        let injected = crate::implicit_fault::take(&tenant.display_name);
+        if let Some(fault) = injected {
+            return Err(crate::implicit_fault::fire(fault).await);
+        }
         let mut value = if name == "host.msg.wait" {
             crate::longpoll::wait_response(json!({"messages": []}), true, Instant::now(), crate::longpoll::clamp_timeout_s(args.get("timeout_s").and_then(Value::as_i64)))
         } else {
-            self.dispatch_tenant_tool(&tenant, None, "key", "session", None, session_id, name, args)
+            self.dispatch_tenant_tool(tenant, None, "key", "session", None, session_id, name, args)
                 .await?
         };
+        // R4: a successful first call is a used tool, so the tenant is not one of
+        // `admin.funnel`'s `implicit_zero_ok_calls`.
+        if name.starts_with("host.")
+            && let Err(e) = self
+                .state
+                .db
+                .record_host_tool_use(tenant.id, name.to_string(), "direct".to_string(), now_unix())
+                .await
+        {
+            tracing::warn!(tenant = %tenant.namespace, error = %e, "record_host_tool_use failed");
+        }
         // Requirement 2 (AC1): the first response's result envelope gains
         // `onboarding`; requirement 2's second half (AC2) holds by
         // construction -- this function only ever runs on the call that
@@ -8207,7 +8301,7 @@ impl McpHostHandler {
                     // PRD-mcphost-ownership-moment requirement 1 (AC1): the
                     // same stable claim link `host.whoami` will keep
                     // reporting until this tenant is claimed.
-                    "claim_url": crate::claim::claim_url_for_tenant(&self.state.public_url, &tenant),
+                    "claim_url": crate::claim::claim_url_for_tenant(&self.state.public_url, tenant),
                 }),
             );
         }
@@ -8252,7 +8346,7 @@ impl McpHostHandler {
         // descriptor is the validator, through the SAME `validate_host_args`
         // `call_tool_inner` runs for `host.*` -- one validator, one more
         // call site.
-        crate::host_args::validate_host_args(&self.state.kinds, name, &args)?;
+        crate::precheck::precheck_args(&self.state.kinds, name, &args)?;
         // Counted after the validator passed, keyed by the `tenant` (else
         // `prefix`) argument -- empty for "every tenant" -- so concurrent
         // tests cannot disturb each other's count.
@@ -9575,6 +9669,10 @@ impl McpHostHandler {
                 "unreached_cap": crate::output_schemas::reach_report().unreached_cap,
             },
             "oauth_issuers": crate::oauth::doctor_report(&self.state, tenant.map(|t| t.id)).await?,
+            "tenant_lifecycle": crate::retention::lifecycle_view(
+                self.state.db.synthetic_expiry_window_days().await?,
+                self.state.db.tenant_expires_at(target_id).await?,
+            ),
         });
         if rows.is_empty() {
             out["next"] = json!(crate::doctor::empty_next(limit));
@@ -12391,11 +12489,12 @@ impl McpHostHandler {
                             tool = %body_name,
                             "host.* call refused: peer just redeemed, tenant_key missing"
                         );
+                        Box::pin(self.note_implicit_peer_refused(parts)).await;
                         return Err(AppError::TenantKeyMissing(crate::errors::Reason::PeerRecent)
                             .into_error_data_at(Some(&self.state.public_url)));
                     }
-                    // A self-offboarded tenant no longer blocks a fresh start.
-                    Ok(Some(t)) if t.disabled_reason.as_deref() == Some(crate::auth_shape::SELF_OFFBOARD_REASON) => {
+                    // A self-offboarded or idle-expired tenant no longer blocks a fresh start.
+                    Ok(Some(t)) if crate::auth_shape::frees_peer(t.disabled_reason.as_deref()) => {
                         self.state.redeemed_peers.forget(&peer);
                     }
                     Ok(Some(t)) => {
@@ -12831,7 +12930,7 @@ impl McpHostHandler {
                 Auth::Tenant(tenant, _) => tenant.namespace.as_str(),
                 _ => "",
             };
-            crate::host_args::validate_host_args(&self.state.kinds, &body_name, &args)
+            crate::precheck::precheck_args(&self.state.kinds, &body_name, &args)
                 .inspect(|()| crate::host_args::note_handler_run(namespace, &body_name))
         } else {
             Ok(())

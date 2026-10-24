@@ -553,8 +553,8 @@ pub async fn signup(
     if fleet_ip_bypass {
         tracing::debug!("signup rate limit bypassed for fleet ip");
     }
-    let admitted = if fleet_ip_bypass {
-        true
+    let admit_row: Option<i64> = if fleet_ip_bypass {
+        None
     } else {
         let since = crate::state::now_unix() - crate::state::SIGNUP_RATE_LIMIT_WINDOW_SECS;
         state
@@ -567,14 +567,15 @@ pub async fn signup(
                 attribution.user_agent.map(str::to_string),
                 origin.to_string(),
                 origin_detail.clone(),
-                ip_class,
+                ip_class.clone(),
             )
             .await?
     };
-    if !admitted {
+    if !fleet_ip_bypass && admit_row.is_none() {
         return Err(AppError::RateLimited);
     }
 
+    let is_implicit = signup_source.as_deref() == Some("implicit");
     let key = generate_key();
     let namespace = generate_namespace();
     let key_hash = hash_key(&key);
@@ -594,6 +595,26 @@ pub async fn signup(
             funnel_origin,
         )
         .await?;
+
+    // PRD-mcphost-implicit-signup-mints-only-on-success R4: an implicit signup's
+    // `signup_events` row carries the tenant it created (new rows only, no
+    // backfill); a fleet-bypassed one has no admit row, so it writes one.
+    if is_implicit {
+        match admit_row {
+            Some(event_id) => state.db.set_signup_event_tenant(event_id, tenant.id).await?,
+            None => {
+                state
+                    .db
+                    .record_implicit_signup_bypassed(
+                        source_ip.to_string(),
+                        attribution.user_agent.map(str::to_string),
+                        ip_class,
+                        tenant.id,
+                    )
+                    .await?;
+            }
+        }
+    }
 
     // PRD-mcphost-human-claim-magic-link requirement 1 / AC1: minted once,
     // right after the tenant row exists, for both branches below -- the
@@ -899,6 +920,43 @@ pub async fn self_offboard(state: &AppState, tenant: &Tenant, session_id: Option
         "disabled_reason": "self_offboard",
         "billing_canceled": billing_canceled,
     }))
+}
+
+/// PRD-mcphost-synthetic-implicit-tenant-expiry: the teardown the idle
+/// sweep runs on a tenant it has already claimed (`disabled = 1`,
+/// `idle_expired`), in `self_offboard`'s order after the mark: release
+/// every session bound to it, every kind's `on_tenant_removed`, then a
+/// billing cancel (a no-op for a subject, which carries no `billing_ref`).
+/// Idempotent, so a crash between claim and teardown is safe to replay.
+pub async fn teardown_expired_tenant(state: &AppState, tenant_id: i64) {
+    state.session_bindings.drop_tenant(tenant_id);
+    state.implicit_signup_memory.drop_tenant(tenant_id);
+    state.tenant_key_arg_memory.drop_tenant(tenant_id);
+    for k in state.kinds.all() {
+        k.on_tenant_removed(tenant_id).await;
+    }
+    match state.db.find_tenant_by_id(tenant_id).await {
+        Ok(Some(tenant)) if tenant.plan == "pro" => {
+            if let Some(customer) = tenant.stripe_customer_id.as_deref()
+                && let Err(e) = state.billing_client.cancel_active_subscriptions(customer).await
+            {
+                tracing::warn!(tenant = %tenant.namespace, error = %e, "idle-expired tenant: billing cancel failed");
+            }
+        }
+        Ok(_) => {}
+        Err(e) => tracing::warn!(tenant_id, error = %e, "idle-expired tenant: lookup failed"),
+    }
+    tracing::info!(tenant_id, "tenant expired: synthetic implicit, idle");
+}
+
+/// Hands the sweep (`Db::prune_once`) the teardown above; called once when
+/// the server starts, since the DB layer holds no `AppState`.
+pub fn install_tenant_teardown(state: &AppState) {
+    let state = state.clone();
+    state.db.clone().set_tenant_teardown(std::sync::Arc::new(move |id| {
+        let state = state.clone();
+        Box::pin(async move { teardown_expired_tenant(&state, id).await })
+    }));
 }
 
 /// PRD-mcphost-self-offboard-releases-session R1: drop the caller session's
