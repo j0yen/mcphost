@@ -9,6 +9,7 @@
 #![allow(dead_code)]
 
 pub mod sypul;
+pub mod tenx;
 pub mod testoauth;
 pub mod tracecap;
 
@@ -470,9 +471,28 @@ impl TempDataDir {
             .unwrap_or(0);
         let dir =
             std::env::temp_dir().join(format!("mcphost-test-{}-{}-{}", process::id(), n, nanos));
+        raise_nofile_soft_limit();
         std::fs::create_dir_all(&dir).expect("create temp data dir");
         Self(dir)
     }
+}
+
+/// A consolidated suite binary runs hundreds of servers in one process and each
+/// finished test leaves a few db fds behind, so the default 1024 soft
+/// RLIMIT_NOFILE is exhausted mid-run ("unable to open database file", "Too
+/// many open files"). Lift the soft limit to the hard one, once per process.
+fn raise_nofile_soft_limit() {
+    static RAISED: std::sync::Once = std::sync::Once::new();
+    RAISED.call_once(|| {
+        let mut lim = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        // SAFETY: getrlimit/setrlimit only read and write this local struct.
+        unsafe {
+            if libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) == 0 && lim.rlim_cur < lim.rlim_max {
+                lim.rlim_cur = lim.rlim_max.min(1 << 20);
+                libc::setrlimit(libc::RLIMIT_NOFILE, &lim);
+            }
+        }
+    });
 }
 
 impl Drop for TempDataDir {

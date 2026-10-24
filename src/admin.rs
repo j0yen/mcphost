@@ -106,6 +106,10 @@ pub async fn tenants(state: &AppState, args: &Value) -> Result<Value, AppError> 
         None => state.db.list_tenants().await?,
     };
     let owner_methods = state.db.owner_methods().await?;
+    // PRD-mcphost-synthetic-implicit-tenant-expiry P1: `disabled_reason`
+    // filters rows by the exact reason; every row carries `expires_at_unix`.
+    let reason_filter = arg_str_opt(args, "disabled_reason");
+    let expiries = state.db.subject_expiries().await?;
     let tenants: Vec<Value> = rows
         .into_iter()
         .filter(|t| match synthetic_filter.as_str() {
@@ -113,6 +117,7 @@ pub async fn tenants(state: &AppState, args: &Value) -> Result<Value, AppError> 
             "false" => t.synthetic.is_none(),
             _ => true,
         })
+        .filter(|t| reason_filter.as_deref().is_none_or(|want| t.disabled_reason.as_deref() == Some(want)))
         .map(|t| {
             json!({
                 "tenant": t.namespace,
@@ -143,6 +148,9 @@ pub async fn tenants(state: &AppState, args: &Value) -> Result<Value, AppError> 
                 // PRD-mcphost-owner-verification-paths R5: how it was proved
                 // (`email`, `github`, `dns`), null while unverified.
                 "owner_method": owner_methods.get(&t.id),
+                // When the idle sweep will end this tenant (`CLASS AND
+                // FLOOR`, no idle term); null for a non-subject.
+                "expires_at_unix": expiries.get(&t.id),
             })
         })
         .collect();
@@ -2113,6 +2121,7 @@ pub async fn funnel(state: &AppState, args: &Value) -> Result<Value, AppError> {
             "p50": per_peer_p50,
             "peers_above_1": per_peer_above_one,
         },
+        "tenants_idle_expired": state.db.count_tenants_idle_expired().await?,
         "stages": funnel_stage_stats(&filtered, signups),
         "by_source": funnel_by_source(&by_source_rows),
         "by_origin": funnel_by_origin(&by_source_rows),
