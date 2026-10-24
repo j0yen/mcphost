@@ -43,6 +43,16 @@ pub const LIFECYCLE_TERMINAL_VERBS: &[&str] = &["host.self.offboard"];
 /// `disabled_reason` that `Db::self_offboard_tenant` records.
 pub const SELF_OFFBOARD_REASON: &str = "self_offboard";
 
+/// PRD-mcphost-synthetic-implicit-tenant-expiry: `disabled_reason` the idle
+/// sweep records; refused exactly like [`SELF_OFFBOARD_REASON`].
+pub const IDLE_EXPIRED_REASON: &str = "idle_expired";
+
+/// `true` iff a tenant disabled for `reason` ended itself (offboard or idle
+/// expiry), so its peer is free to start a fresh tenant.
+pub fn frees_peer(reason: Option<&str>) -> bool {
+    matches!(reason, Some(SELF_OFFBOARD_REASON | IDLE_EXPIRED_REASON))
+}
+
 /// `true` iff a disabled tenant (`disabled_reason`) may still authenticate
 /// for `verb` (the name as sent -- an alias resolves to its canonical).
 pub fn lets_through_disabled(verb: &str, disabled_reason: Option<&str>) -> bool {

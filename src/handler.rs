@@ -3521,7 +3521,7 @@ fn host_tools_part_07() -> Vec<Tool> {
              family, each group with the next concrete step. Returns {window: {calls, failed, \
              first_ts, last_ts}, groups: [{code, family, class, count, tools, last_ts, \
              first_source_line?, line?, next}]} biggest group first; tool_exception groups carry \
-             the tool-source line of the newest failure; oauth_issuers: {rows, invalid: [{id, tenant_id, reason}]} reports stored OAuth issuer rows the discovery documents omit (the admin key sees every tenant's rows). No failed calls: groups: [] and a next \
+             the tool-source line of the newest failure; oauth_issuers: {rows, invalid: [{id, tenant_id, reason}]} reports stored OAuth issuer rows the discovery documents omit (the admin key sees every tenant's rows); tenant_lifecycle: {subject, idle_days?, expires_at_unix} says whether idle expiry applies to this tenant (synthetic implicit unclaimed) and when. No failed calls: groups: [] and a next \
              saying so (hint: host.quickstart when the tenant has no tools yet). The admin key \
              may pass tenant: <namespace>; a tenant key naming another tenant is forbidden.",
             host_schema(
@@ -5844,12 +5844,15 @@ fn admin_tools_raw() -> Vec<Tool> {
             "admin.tenants",
             "List every tenant, optionally filtered to display names starting with `prefix` \
              and/or by `synthetic` (`true`: only labeled tenants, `false`: only unlabeled, \
-             `all`: no filter -- the default). Every row carries a `synthetic` field, null \
-             for unlabeled.",
+             `all`: no filter -- the default) and/or by `disabled_reason` (e.g. `idle_expired`). \
+             Every row carries a `synthetic` field, null for unlabeled, and `expires_at_unix`, \
+             when the idle sweep ends the tenant (null unless it is a synthetic implicit \
+             unclaimed tenant).",
             schema(
                 json!({
                     "prefix": {"type": "string"},
                     "synthetic": {"type": "string", "enum": crate::admin::SYNTHETIC_FILTERS},
+                    "disabled_reason": {"type": "string", "description": "Only tenants disabled for this reason (self_offboard, admin_disable, idle_expired)."},
                 }),
                 &[],
             ),
@@ -9573,6 +9576,10 @@ impl McpHostHandler {
                 "unreached_cap": crate::output_schemas::reach_report().unreached_cap,
             },
             "oauth_issuers": crate::oauth::doctor_report(&self.state, tenant.map(|t| t.id)).await?,
+            "tenant_lifecycle": crate::retention::lifecycle_view(
+                self.state.db.synthetic_expiry_window_days().await?,
+                self.state.db.tenant_expires_at(target_id).await?,
+            ),
         });
         if rows.is_empty() {
             out["next"] = json!(crate::doctor::empty_next(limit));
@@ -12392,8 +12399,8 @@ impl McpHostHandler {
                         return Err(AppError::TenantKeyMissing(crate::errors::Reason::PeerRecent)
                             .into_error_data_at(Some(&self.state.public_url)));
                     }
-                    // A self-offboarded tenant no longer blocks a fresh start.
-                    Ok(Some(t)) if t.disabled_reason.as_deref() == Some(crate::auth_shape::SELF_OFFBOARD_REASON) => {
+                    // A self-offboarded or idle-expired tenant no longer blocks a fresh start.
+                    Ok(Some(t)) if crate::auth_shape::frees_peer(t.disabled_reason.as_deref()) => {
                         self.state.redeemed_peers.forget(&peer);
                     }
                     Ok(Some(t)) => {
