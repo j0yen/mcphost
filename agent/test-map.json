@@ -28,14 +28,12 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/texp_ac01_lifecycle_visible_on_doctor_and_admin.rs",
-    "AC2": "tests/texp_ac02_warn_at_day_twenty_once_a_day.rs",
-    "AC3": "tests/texp_ac03_invalidate_at_day_thirty.rs",
-    "AC4": "tests/texp_ac04_claim_restores_and_binds.rs",
-    "AC5": "tests/texp_ac05_purge_at_day_forty_four.rs",
-    "AC6": "tests/texp_ac06_exclusions_pre_floor_and_off_switch.rs",
-    "AC7": "tests/texp_ac07_provider_failure_retry_and_prune_log.rs",
-    "AC8": "deferred: Live (prod; evidence: curl -sS https://mcphost.dev/contract.json | jq -e '.tenant_lifecycle.external_unclaimed | .idle_days == 30 and .warn_lead_days == 10 and .purge_grace_days == 14 and .disabled_reason == \"unclaimed_expired\" and .selector.origin == \"external\"')"
+    "AC1": "tests/bsc_ac01_selfprobe_writes_only_status_feed_tables.rs",
+    "AC2": "tests/bsc_ac02_selfcheck_ok_without_ledger_row.rs",
+    "AC3": "tests/bsc_ac03_selfcheck_fails_when_dedupe_read_errors.rs",
+    "AC4": "tests/bsc_ac04_webhook_has_no_verify_only_path.rs",
+    "AC5": "tests/bsc_ac05_ledger_script_exit_codes.rs",
+    "AC6": "deferred: Live (prod; evidence: bash scripts/live/billing-selfcheck-ledger.sh https://mcphost.dev exits 0)"
   },
   "ac_test_map_by_prefix": {
     "texp": {
@@ -2481,6 +2479,15 @@
       "AC6": "tests/tenx_ac06_doctor_reports_tenant_lifecycle.rs",
       "AC7": "tests/tenx_ac07_admin_lists_expiry_and_funnel_counts_it.rs",
       "AC8": "deferred: Live (prod; evidence: curl -sS https://mcphost.dev/contract.json | jq -e '.tenant_lifecycle.disabled_reason == \"idle_expired\"')"
+    },
+    "bsc": {
+      "_prd": "PRD-mcphost-billing-selfcheck-no-ledger-row.md (test_prefix: bsc)",
+      "AC1": "tests/bsc_ac01_selfprobe_writes_only_status_feed_tables.rs",
+      "AC2": "tests/bsc_ac02_selfcheck_ok_without_ledger_row.rs",
+      "AC3": "tests/bsc_ac03_selfcheck_fails_when_dedupe_read_errors.rs",
+      "AC4": "tests/bsc_ac04_webhook_has_no_verify_only_path.rs",
+      "AC5": "tests/bsc_ac05_ledger_script_exit_codes.rs",
+      "AC6": "deferred: Live (prod; evidence: bash scripts/live/billing-selfcheck-ledger.sh https://mcphost.dev exits 0)"
     }
   }
 }
