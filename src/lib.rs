@@ -76,6 +76,8 @@ pub mod funnel;
 pub mod gendocs;
 pub mod sandbox_libs;
 pub mod dispatch_table;
+pub mod implicit_fault;
+pub mod precheck;
 pub mod handler;
 pub mod doctor;
 pub mod heal;

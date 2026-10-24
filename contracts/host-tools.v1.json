@@ -1,4 +1,18 @@
 {
+  "admin_funnel": {
+    "recipe_attempts_7d_keys": [
+      "webhook-inbox",
+      "schedules"
+    ],
+    "surface_stage_keys": [
+      "signed_up",
+      "claimed",
+      "published",
+      "first_own_call",
+      "first_external_call",
+      "day7_active"
+    ]
+  },
   "contract_version": 1,
   "kinds": {
     "chain": {
@@ -316,6 +330,48 @@
     "duration_ms",
     "state"
   ],
+  "tenant_lifecycle": {
+    "default_days": 1,
+    "disabled_reason": "idle_expired",
+    "env_var": "MCPHOST_RETENTION_SYNTHETIC_IMPLICIT_TENANT_IDLE_DAYS",
+    "external_unclaimed": {
+      "disabled_reason": "unclaimed_expired",
+      "idle_days": 30,
+      "idle_days_env": "MCPHOST_RETENTION_EXTERNAL_UNCLAIMED_TENANT_IDLE_DAYS",
+      "purge_grace_days": 14,
+      "selector": {
+        "billing_ref": null,
+        "claimed": false,
+        "idle_clock_starts_no_earlier_than_policy_floor": true,
+        "origin": "external",
+        "paid": false,
+        "plan": "free",
+        "stripe_customer_id": null,
+        "synthetic": null
+      },
+      "stages": [
+        "warned",
+        "warn_no_address",
+        "warn_failed",
+        "invalidated",
+        "notice_failed",
+        "restored",
+        "purged"
+      ],
+      "warn_lead_days": 10
+    },
+    "policy": "synthetic_implicit_tenants",
+    "selector": {
+      "billing_ref": null,
+      "claimed": false,
+      "minted_at_or_after_policy_floor": true,
+      "origin": "synthetic",
+      "paid": false,
+      "signup_source": "implicit",
+      "synthetic": "not_null"
+    },
+    "zero_disables": true
+  },
   "tools": [
     {
       "description": "Create (or reuse an open one for the same plan) a Stripe Checkout URL to upgrade this tenant, defaulting to the pro plan. Returns billing_unavailable if this host has no Stripe key configured -- call billing.plans first to check.",
@@ -1305,6 +1361,8 @@
             "items": {
               "type": "string"
             },
+            "maxItems": 50,
+            "minItems": 1,
             "type": "array"
           },
           "tenant_key": {
@@ -1618,6 +1676,7 @@
             "items": {
               "type": "string"
             },
+            "maxItems": 16,
             "type": "array"
           },
           "tenant_key": {
@@ -2124,6 +2183,7 @@
           },
           "question": {
             "description": "What to ask, at most 500 characters.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -2779,6 +2839,8 @@
           },
           "limit": {
             "description": "Refuse export_too_large past this many rows, 1-50000; default 50000.",
+            "maximum": 50000,
+            "minimum": 1,
             "type": "integer"
           },
           "since": {
@@ -3926,6 +3988,7 @@
           },
           "name": {
             "description": "File name; the same name on a later put creates a new version of the same id.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -3934,6 +3997,8 @@
           },
           "ttl_s": {
             "description": "Seconds until the file expires, 1-31536000 (365 days); omitted = never. After it host.blob.get answers blob_expired and the url answers 410.",
+            "maximum": 31536000,
+            "minimum": 1,
             "type": "integer"
           },
           "url": {
@@ -4118,6 +4183,8 @@
           },
           "ttl_s": {
             "description": "Seconds from now until the file expires, 1-31536000 (365 days).",
+            "maximum": 31536000,
+            "minimum": 1,
             "type": "integer"
           }
         },
@@ -4272,6 +4339,8 @@
           },
           "ttl_s": {
             "description": "Seconds the url stays valid, 1-604800; default 86400.",
+            "maximum": 604800,
+            "minimum": 1,
             "type": "integer"
           }
         },
@@ -4734,29 +4803,7 @@
                 ],
                 "type": "object"
               },
-              "result": {
-                "properties": {
-                  "call_id": {
-                    "type": "string"
-                  },
-                  "error_code": {
-                    "type": "string"
-                  },
-                  "message": {
-                    "type": "string"
-                  },
-                  "tail": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "call_id",
-                  "error_code",
-                  "message",
-                  "tail"
-                ],
-                "type": "object"
-              },
+              "result": {},
               "verdict": {
                 "type": "string"
               }
@@ -5927,6 +5974,7 @@
           },
           "name": {
             "description": "Channel name to create or look up.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -6010,6 +6058,7 @@
         "properties": {
           "body": {
             "description": "Post text; non-empty after trim.",
+            "minLength": 1,
             "type": "string"
           },
           "channel": {
@@ -7963,6 +8012,7 @@
           },
           "name": {
             "description": "Document name; same name on a later put creates a new version of the same id.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -8403,7 +8453,7 @@
       "since": "0.60.10"
     },
     {
-      "description": "What has been going wrong: this tenant's newest failed calls grouped by error family, each group with the next concrete step. Returns {window: {calls, failed, first_ts, last_ts}, groups: [{code, family, class, count, tools, last_ts, first_source_line?, line?, next}]} biggest group first; tool_exception groups carry the tool-source line of the newest failure; oauth_issuers: {rows, invalid: [{id, tenant_id, reason}]} reports stored OAuth issuer rows the discovery documents omit (the admin key sees every tenant's rows). No failed calls: groups: [] and a next saying so (hint: host.quickstart when the tenant has no tools yet). The admin key may pass tenant: <namespace>; a tenant key naming another tenant is forbidden.",
+      "description": "What has been going wrong: this tenant's newest failed calls grouped by error family, each group with the next concrete step. Returns {window: {calls, failed, first_ts, last_ts}, groups: [{code, family, class, count, tools, last_ts, first_source_line?, line?, next}]} biggest group first; tool_exception groups carry the tool-source line of the newest failure; oauth_issuers: {rows, invalid: [{id, tenant_id, reason}]} reports stored OAuth issuer rows the discovery documents omit (the admin key sees every tenant's rows); tenant_lifecycle: {subject, policy, idle_days?, expires_at_unix} says whether idle expiry applies to this tenant (synthetic implicit unclaimed, or external unclaimed: policy external_unclaimed with idle_since_unix, warn_at_unix, expires_at_unix, purge_at_unix, warned_unix, warn_address_masked) and when. No failed calls: groups: [] and a next saying so (hint: host.quickstart when the tenant has no tools yet). The admin key may pass tenant: <namespace>; a tenant key naming another tenant is forbidden.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -8590,6 +8640,87 @@
             "required": [
               "invalid",
               "rows"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "output_reach": {
+            "properties": {
+              "unreached": {
+                "type": "integer"
+              },
+              "unreached_cap": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "unreached",
+              "unreached_cap"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "tenant_lifecycle": {
+            "properties": {
+              "expires_at_unix": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "idle_days": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "idle_since_unix": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "policy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "purge_at_unix": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "subject": {
+                "type": "boolean"
+              },
+              "warn_address_masked": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "warn_at_unix": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "warned_unix": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "expires_at_unix",
+              "subject"
             ],
             "type": [
               "object",
@@ -9150,6 +9281,7 @@
           },
           "subject": {
             "description": "One line, at most 998 bytes.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -9172,6 +9304,8 @@
                   "format": "email",
                   "type": "string"
                 },
+                "maxItems": 10,
+                "minItems": 1,
                 "type": "array"
               }
             ]
@@ -9284,6 +9418,8 @@
         "properties": {
           "limit": {
             "description": "1 to 100; default 20.",
+            "maximum": 100,
+            "minimum": 1,
             "type": "integer"
           },
           "tenant_key": {
@@ -11154,10 +11290,12 @@
           },
           "title": {
             "description": "Example title, 1 to 60 characters.",
+            "minLength": 1,
             "type": "string"
           },
           "tool": {
             "description": "Name of one of your published tools; the example takes its name.",
+            "minLength": 1,
             "type": "string"
           },
           "use_case": {
@@ -11400,6 +11538,7 @@
         "properties": {
           "feedback_id": {
             "description": "An id host.feedback.send returned.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -11639,6 +11778,7 @@
           },
           "text": {
             "description": "What you needed or saw; 1 to 2048 bytes after trim.",
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -12466,6 +12606,49 @@
             "type": "object"
           }
         },
+        "anyOf": [
+          {
+            "required": [
+              "run_id",
+              "status"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "_meta": {
+                "properties": {
+                  "scratch": {
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              },
+              "bytes": {
+                "type": "integer"
+              },
+              "dry_run": {
+                "const": true
+              },
+              "entries": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "manifest_version": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "dry_run",
+              "manifest_version",
+              "entries",
+              "bytes"
+            ],
+            "type": "object"
+          }
+        ],
         "properties": {
           "run_id": {
             "type": "string"
@@ -12474,10 +12657,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "run_id",
-          "status"
-        ],
         "type": "object",
         "x-error-envelope": {
           "$ref": "#/$defs/ErrorEnvelope"
@@ -12885,6 +13064,8 @@
         "properties": {
           "k": {
             "description": "Hits to return, 1-50, default 5.",
+            "maximum": 50,
+            "minimum": 1,
             "type": "integer"
           },
           "name": {
@@ -15553,6 +15734,7 @@
         "properties": {
           "body": {
             "description": "Message text; non-empty after trim.",
+            "minLength": 1,
             "type": "string"
           },
           "data": {
@@ -15658,6 +15840,7 @@
         "properties": {
           "body": {
             "description": "Message text; non-empty after trim.",
+            "minLength": 1,
             "type": "string"
           },
           "data": {
@@ -15681,6 +15864,7 @@
             "items": {
               "type": "string"
             },
+            "minItems": 1,
             "type": "array"
           },
           "urgent": {
@@ -16491,6 +16675,7 @@
           "text": {
             "description": "The note (at most 4096 bytes).",
             "maxLength": 4096,
+            "minLength": 1,
             "type": "string"
           },
           "ttl_s": {
@@ -16602,6 +16787,7 @@
           },
           "target": {
             "description": "email: the verified owner address; webhook/slack: an https URL.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -16972,6 +17158,7 @@
           },
           "text": {
             "description": "The message, at most 1024 bytes.",
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -18252,6 +18439,8 @@
         "additionalProperties": false,
         "properties": {
           "access_ttl_s": {
+            "maximum": 3600,
+            "minimum": 300,
             "type": "integer"
           },
           "allowlist": {
@@ -18279,6 +18468,8 @@
             "type": "integer"
           },
           "refresh_ttl_s": {
+            "maximum": 2592000,
+            "minimum": 3600,
             "type": "integer"
           },
           "tenant_key": {
@@ -24135,7 +24326,10 @@
             "type": "object"
           },
           "deadline_s": {
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "duration_ms": {
             "type": [
@@ -24327,7 +24521,10 @@
             "type": "string"
           },
           "started_unix": {
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "status": {
             "type": "string"
@@ -25081,7 +25278,10 @@
             "items": {
               "type": "string"
             },
-            "type": "array"
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "disabled": {
             "type": "boolean"
@@ -25114,7 +25314,6 @@
           }
         },
         "required": [
-          "billing_canceled",
           "disabled",
           "disabled_reason",
           "tenant"
@@ -25159,6 +25358,7 @@
           },
           "calls_per_day": {
             "description": "Max successful calls per UTC day for this caller.",
+            "minimum": 1,
             "type": "integer"
           },
           "tenant_key": {
@@ -27303,6 +27503,7 @@
         "properties": {
           "sync_id": {
             "description": "The sync_id host.sync.create returned.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -27390,6 +27591,7 @@
           },
           "sync_id": {
             "description": "The sync_id host.sync.create returned.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -27691,6 +27893,7 @@
         "properties": {
           "sync_id": {
             "description": "The sync_id host.sync.create returned.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -31357,115 +31560,7 @@
             ]
           },
           "rows": {
-            "items": {
-              "properties": {
-                "amount": {
-                  "type": [
-                    "number",
-                    "null"
-                  ]
-                },
-                "category": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "count": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                },
-                "d": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                },
-                "day": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "id": {
-                  "type": [
-                    "string",
-                    "integer",
-                    "null"
-                  ]
-                },
-                "kind": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "marker": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                },
-                "n": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                },
-                "note": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "period": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "qty": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                },
-                "s": {
-                  "type": [
-                    "number",
-                    "null"
-                  ]
-                },
-                "total": {
-                  "type": [
-                    "number",
-                    "null"
-                  ]
-                },
-                "v": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "val": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "x": {
-                  "type": [
-                    "string",
-                    "integer",
-                    "null"
-                  ]
-                }
-              },
-              "type": "object"
-            },
+            "items": {},
             "type": [
               "array",
               "null"
@@ -32937,42 +33032,9 @@
           }
         },
         "properties": {
-          "args": {
-            "properties": {},
+          "call_id": {
             "type": [
-              "object",
-              "null"
-            ]
-          },
-          "body": {
-            "properties": {
-              "ok": {
-                "type": [
-                  "boolean",
-                  "null"
-                ]
-              },
-              "pong": {
-                "type": [
-                  "boolean",
-                  "null"
-                ]
-              }
-            },
-            "type": [
-              "object",
-              "null"
-            ]
-          },
-          "changed": {
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "checked_at": {
-            "type": [
-              "integer",
+              "string",
               "null"
             ]
           },
@@ -32982,421 +33044,19 @@
               "null"
             ]
           },
-          "columns": {
-            "items": {
-              "type": "string"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "count": {
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "created": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "created_unix": {
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "dedupe_header": {},
-          "doubled": {
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "enabled": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "failed_steps": {
-            "type": [
-              "array",
-              "null"
-            ]
-          },
+          "data": {},
+          "dry_run": {},
           "forwarded_to": {
             "type": [
               "string",
               "null"
             ]
           },
-          "headers": {
-            "properties": {
-              "content-type": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            },
-            "type": [
-              "object",
-              "null"
-            ]
-          },
-          "https_proxy": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "kind": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "last_fired_unix": {},
-          "last_run_id": {},
-          "last_status": {},
-          "msg": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "name": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "next": {
-            "properties": {
-              "tool": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "why": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            },
-            "type": [
-              "object",
-              "null"
-            ]
-          },
-          "next_unix": {
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "ok": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "onboarding": {
-            "properties": {
-              "claim_url": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "invited_by": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "shared_tools": {
-                "items": {
-                  "type": "string"
-                },
-                "type": [
-                  "array",
-                  "null"
-                ]
-              },
-              "tenant": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "url": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            },
-            "type": [
-              "object",
-              "null"
-            ]
-          },
-          "payload": {
-            "properties": {
-              "ok": {
-                "type": [
-                  "boolean",
-                  "null"
-                ]
-              },
-              "pong": {
-                "type": [
-                  "boolean",
-                  "null"
-                ]
-              }
-            },
-            "type": [
-              "object",
-              "null"
-            ]
-          },
-          "preset": {},
           "result": {},
-          "rows": {
-            "items": {
-              "properties": {
-                "body": {
-                  "properties": {
-                    "id": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    }
-                  },
-                  "type": [
-                    "object",
-                    "null"
-                  ]
-                },
-                "checked_at": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                },
-                "delivery_id": {},
-                "id": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "latency_ms": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                },
-                "ok": {
-                  "type": [
-                    "boolean",
-                    "null"
-                  ]
-                },
-                "received_at": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                },
-                "status": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "url": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                }
-              },
-              "type": "object"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "run_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "schedule": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "status": {
-            "type": [
-              "string",
-              "integer",
-              "null"
-            ]
-          },
-          "steps": {
-            "items": {
-              "properties": {
-                "result": {},
-                "status": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "step": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                },
-                "tool": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                }
-              },
-              "type": "object"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "text": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "tool": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "tz": {},
-          "unverified": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "url": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "v1": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "verify": {
-            "properties": {
-              "allow_unverified": {
-                "type": [
-                  "boolean",
-                  "null"
-                ]
-              },
-              "scheme": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            },
-            "type": [
-              "object",
-              "null"
-            ]
-          },
-          "welcome_back": {
-            "properties": {
-              "last_note": {},
-              "last_seen": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "notes": {
-                "type": [
-                  "integer",
-                  "null"
-                ]
-              },
-              "since_you_left": {
-                "properties": {
-                  "calls": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ]
-                  },
-                  "days": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ]
-                  },
-                  "inbox": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ]
-                  },
-                  "runs": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ]
-                  }
-                },
-                "type": [
-                  "object",
-                  "null"
-                ]
-              }
-            },
-            "type": [
-              "object",
-              "null"
-            ]
-          }
+          "stale_test": {},
+          "state": {},
+          "tested_version": {},
+          "verdict": {}
         },
         "type": "object",
         "x-error-envelope": {
@@ -35310,6 +34970,8 @@
           },
           "rate_per_hour_per_caller": {
             "description": "Optional cap (1..10000) on calls per hour from any one grantee.",
+            "maximum": 10000,
+            "minimum": 1,
             "type": "integer"
           },
           "scopes": {
@@ -35322,6 +34984,7 @@
               ],
               "type": "string"
             },
+            "minItems": 1,
             "type": "array"
           },
           "tags": {
@@ -35687,854 +35350,31 @@
           }
         },
         "properties": {
-          "args": {
-            "properties": {},
-            "type": [
-              "object",
-              "null"
-            ]
-          },
-          "chain_dry_run": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "changed": {
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "created": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "created_unix": {
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "detail": {
+          "call_id": {
             "type": [
               "string",
               "null"
             ]
           },
-          "dry_run": {
-            "properties": {
-              "delivered": {
-                "type": [
-                  "boolean",
-                  "null"
-                ]
-              },
-              "rolled_back": {
-                "type": [
-                  "boolean",
-                  "null"
-                ]
-              },
-              "writes": {
-                "items": {
-                  "properties": {
-                    "channel": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "key": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "op": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "rows": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ]
-                    },
-                    "store": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "table": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    }
-                  },
-                  "type": "object"
-                },
-                "type": [
-                  "array",
-                  "null"
-                ]
-              }
-            },
-            "type": "object"
-          },
-          "enabled": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "envelope": {
-            "properties": {
-              "declared": {
-                "items": {
-                  "type": "string"
-                },
-                "type": [
-                  "array",
-                  "null"
-                ]
-              },
-              "found_at_contract_path": {
-                "items": {
-                  "type": "string"
-                },
-                "type": [
-                  "array",
-                  "null"
-                ]
-              },
-              "green": {
-                "type": [
-                  "boolean",
-                  "null"
-                ]
-              },
-              "missing": {
-                "items": {
-                  "type": "string"
-                },
-                "type": [
-                  "array",
-                  "null"
-                ]
-              },
-              "missing_detail": {
-                "items": {
-                  "properties": {
-                    "name": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "path": {
-                      "type": [
-                        "string",
-                        "null"
-                      ]
-                    },
-                    "seen_at": {
-                      "type": [
-                        "array",
-                        "null"
-                      ]
-                    }
-                  },
-                  "type": "object"
-                },
-                "type": [
-                  "array",
-                  "null"
-                ]
-              }
-            },
-            "type": [
-              "object",
-              "null"
-            ]
-          },
-          "environment": {
-            "items": {
-              "properties": {
-                "kind": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "name": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "value": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                }
-              },
-              "type": "object"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "error": {
+          "client_tool": {
             "type": [
               "string",
               "null"
             ]
           },
-          "evidence": {
-            "items": {
-              "properties": {
-                "available": {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": [
-                    "array",
-                    "null"
-                  ]
-                },
-                "did_you_mean": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "path": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "predecessor_keys": {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": [
-                    "array",
-                    "null"
-                  ]
-                },
-                "step": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                }
-              },
-              "type": "object"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "exception_class": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "failures": {
-            "items": {
-              "properties": {
-                "available": {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": [
-                    "array",
-                    "null"
-                  ]
-                },
-                "did_you_mean": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "path": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "predecessor_keys": {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": [
-                    "array",
-                    "null"
-                  ]
-                },
-                "step": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                }
-              },
-              "type": "object"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
+          "data": {},
+          "dry_run": {},
           "forwarded_to": {
             "type": [
               "string",
               "null"
             ]
           },
-          "id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "inputs_required": {
-            "items": {
-              "type": "string"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "kind": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "last_fired_unix": {},
-          "last_run_id": {},
-          "last_status": {},
-          "line": {
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "msg": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "name": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "next": {
-            "properties": {
-              "tool": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            },
-            "type": [
-              "object",
-              "null"
-            ]
-          },
-          "next_unix": {
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "ok": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "outer": {
-            "properties": {
-              "tenant_key": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            },
-            "type": [
-              "object",
-              "null"
-            ]
-          },
-          "payload": {
-            "properties": {
-              "msg": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            },
-            "type": [
-              "object",
-              "null"
-            ]
-          },
-          "reason": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "request": {
-            "properties": {
-              "body": {},
-              "headers": {
-                "properties": {
-                  "x-api-key": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  }
-                },
-                "type": [
-                  "object",
-                  "null"
-                ]
-              },
-              "method": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "query": {
-                "properties": {},
-                "type": [
-                  "object",
-                  "null"
-                ]
-              },
-              "url": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            },
-            "type": [
-              "object",
-              "null"
-            ]
-          },
-          "response": {
-            "properties": {
-              "body": {
-                "properties": {
-                  "blocking_tool": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "fact": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "json": {
-                    "properties": {
-                      "bridge_status": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "ingestion_status": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      }
-                    },
-                    "type": [
-                      "object",
-                      "null"
-                    ]
-                  },
-                  "length": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ]
-                  },
-                  "ok": {
-                    "type": [
-                      "boolean",
-                      "null"
-                    ]
-                  }
-                },
-                "type": [
-                  "object",
-                  "null"
-                ]
-              },
-              "headers": {
-                "properties": {
-                  "content-type": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  }
-                },
-                "type": [
-                  "object",
-                  "null"
-                ]
-              },
-              "payload": {
-                "properties": {
-                  "blocking_tool": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "fact": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "json": {
-                    "properties": {
-                      "bridge_status": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "ingestion_status": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      }
-                    },
-                    "type": [
-                      "object",
-                      "null"
-                    ]
-                  },
-                  "length": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ]
-                  },
-                  "ok": {
-                    "type": [
-                      "boolean",
-                      "null"
-                    ]
-                  }
-                },
-                "type": [
-                  "object",
-                  "null"
-                ]
-              },
-              "status": {
-                "type": [
-                  "integer",
-                  "null"
-                ]
-              }
-            },
-            "type": [
-              "object",
-              "null"
-            ]
-          },
           "result": {},
-          "schedule": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "schema": {
-            "properties": {
-              "properties": {
-                "properties": {
-                  "cid": {
-                    "properties": {},
-                    "type": [
-                      "object",
-                      "null"
-                    ]
-                  },
-                  "city": {
-                    "properties": {},
-                    "type": [
-                      "object",
-                      "null"
-                    ]
-                  },
-                  "note": {
-                    "properties": {
-                      "default": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "type": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      }
-                    },
-                    "type": [
-                      "object",
-                      "null"
-                    ]
-                  }
-                },
-                "type": [
-                  "object",
-                  "null"
-                ]
-              },
-              "required": {
-                "items": {
-                  "type": "string"
-                },
-                "type": [
-                  "array",
-                  "null"
-                ]
-              },
-              "type": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            },
-            "type": [
-              "object",
-              "null"
-            ]
-          },
-          "source_line": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "state": {
-            "properties": {
-              "keys": {
-                "items": {
-                  "type": "string"
-                },
-                "type": [
-                  "array",
-                  "null"
-                ]
-              },
-              "reads": {
-                "type": [
-                  "integer",
-                  "null"
-                ]
-              },
-              "tables": {
-                "items": {
-                  "type": "string"
-                },
-                "type": [
-                  "array",
-                  "null"
-                ]
-              },
-              "writes": {
-                "type": [
-                  "integer",
-                  "null"
-                ]
-              }
-            },
-            "type": [
-              "object",
-              "null"
-            ]
-          },
-          "steps": {
-            "items": {
-              "properties": {
-                "dispatched": {
-                  "type": [
-                    "boolean",
-                    "null"
-                  ]
-                },
-                "error": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "prev_fields": {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": [
-                    "array",
-                    "null"
-                  ]
-                },
-                "resolved": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "resolved_args": {
-                  "type": [
-                    "object",
-                    "null"
-                  ]
-                },
-                "result": {},
-                "side_effects": {
-                  "type": [
-                    "boolean",
-                    "null"
-                  ]
-                },
-                "step": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                },
-                "tool": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                }
-              },
-              "type": "object"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "tool": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "tz": {},
-          "verdict": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "warnings": {
-            "items": {
-              "type": "string"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "welcome_back": {
-            "properties": {
-              "last_note": {},
-              "last_seen": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "notes": {
-                "type": [
-                  "integer",
-                  "null"
-                ]
-              },
-              "since_you_left": {
-                "properties": {
-                  "calls": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ]
-                  },
-                  "days": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ]
-                  },
-                  "inbox": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ]
-                  },
-                  "runs": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ]
-                  }
-                },
-                "type": [
-                  "object",
-                  "null"
-                ]
-              }
-            },
-            "type": [
-              "object",
-              "null"
-            ]
-          }
+          "stale_test": {},
+          "state": {},
+          "tested_version": {},
+          "verdict": {}
         },
         "required": [
           "dry_run"
@@ -37225,6 +36065,8 @@
           },
           "rate_per_hour_per_caller": {
             "description": "Optional cap (1..10000) on calls per hour from any one grantee.",
+            "maximum": 10000,
+            "minimum": 1,
             "type": "integer"
           },
           "scopes": {
@@ -37237,6 +36079,7 @@
               ],
               "type": "string"
             },
+            "minItems": 1,
             "type": "array"
           },
           "tags": {
@@ -39065,6 +37908,8 @@
             "items": {
               "type": "string"
             },
+            "maxItems": 20,
+            "minItems": 1,
             "type": "array"
           }
         },
@@ -41173,6 +40018,8 @@
             "items": {
               "type": "string"
             },
+            "maxItems": 50,
+            "minItems": 1,
             "type": "array"
           },
           "tenant_key": {
@@ -41279,6 +40126,7 @@
             "items": {
               "type": "string"
             },
+            "maxItems": 16,
             "type": "array"
           },
           "tenant_key": {
@@ -41402,6 +40250,7 @@
           },
           "question": {
             "description": "What to ask, at most 500 characters.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -41552,6 +40401,8 @@
           },
           "limit": {
             "description": "Refuse export_too_large past this many rows, 1-50000; default 50000.",
+            "maximum": 50000,
+            "minimum": 1,
             "type": "integer"
           },
           "since": {
@@ -41796,6 +40647,7 @@
           },
           "name": {
             "description": "File name; the same name on a later put creates a new version of the same id.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -41804,6 +40656,8 @@
           },
           "ttl_s": {
             "description": "Seconds until the file expires, 1-31536000 (365 days); omitted = never. After it host.blob.get answers blob_expired and the url answers 410.",
+            "maximum": 31536000,
+            "minimum": 1,
             "type": "integer"
           },
           "url": {
@@ -41836,6 +40690,8 @@
           },
           "ttl_s": {
             "description": "Seconds from now until the file expires, 1-31536000 (365 days).",
+            "maximum": 31536000,
+            "minimum": 1,
             "type": "integer"
           }
         },
@@ -41865,6 +40721,8 @@
           },
           "ttl_s": {
             "description": "Seconds the url stays valid, 1-604800; default 86400.",
+            "maximum": 604800,
+            "minimum": 1,
             "type": "integer"
           }
         },
@@ -42205,6 +41063,7 @@
           },
           "name": {
             "description": "Channel name to create or look up.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -42227,6 +41086,7 @@
         "properties": {
           "body": {
             "description": "Post text; non-empty after trim.",
+            "minLength": 1,
             "type": "string"
           },
           "channel": {
@@ -42894,6 +41754,7 @@
           },
           "name": {
             "description": "Document name; same name on a later put creates a new version of the same id.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -42998,7 +41859,7 @@
     },
     {
       "alias_of": "host.doctor",
-      "description": "What has been going wrong: this tenant's newest failed calls grouped by error family, each group with the next concrete step. Returns {window: {calls, failed, first_ts, last_ts}, groups: [{code, family, class, count, tools, last_ts, first_source_line?, line?, next}]} biggest group first; tool_exception groups carry the tool-source line of the newest failure; oauth_issuers: {rows, invalid: [{id, tenant_id, reason}]} reports stored OAuth issuer rows the discovery documents omit (the admin key sees every tenant's rows). No failed calls: groups: [] and a next saying so (hint: host.quickstart when the tenant has no tools yet). The admin key may pass tenant: <namespace>; a tenant key naming another tenant is forbidden.",
+      "description": "What has been going wrong: this tenant's newest failed calls grouped by error family, each group with the next concrete step. Returns {window: {calls, failed, first_ts, last_ts}, groups: [{code, family, class, count, tools, last_ts, first_source_line?, line?, next}]} biggest group first; tool_exception groups carry the tool-source line of the newest failure; oauth_issuers: {rows, invalid: [{id, tenant_id, reason}]} reports stored OAuth issuer rows the discovery documents omit (the admin key sees every tenant's rows); tenant_lifecycle: {subject, policy, idle_days?, expires_at_unix} says whether idle expiry applies to this tenant (synthetic implicit unclaimed, or external unclaimed: policy external_unclaimed with idle_since_unix, warn_at_unix, expires_at_unix, purge_at_unix, warned_unix, warn_address_masked) and when. No failed calls: groups: [] and a next saying so (hint: host.quickstart when the tenant has no tools yet). The admin key may pass tenant: <namespace>; a tenant key naming another tenant is forbidden.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -43152,6 +42013,7 @@
           },
           "subject": {
             "description": "One line, at most 998 bytes.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -43174,6 +42036,8 @@
                   "format": "email",
                   "type": "string"
                 },
+                "maxItems": 10,
+                "minItems": 1,
                 "type": "array"
               }
             ]
@@ -43198,6 +42062,8 @@
         "properties": {
           "limit": {
             "description": "1 to 100; default 20.",
+            "maximum": 100,
+            "minimum": 1,
             "type": "integer"
           },
           "tenant_key": {
@@ -43702,10 +42568,12 @@
           },
           "title": {
             "description": "Example title, 1 to 60 characters.",
+            "minLength": 1,
             "type": "string"
           },
           "tool": {
             "description": "Name of one of your published tools; the example takes its name.",
+            "minLength": 1,
             "type": "string"
           },
           "use_case": {
@@ -43772,6 +42640,7 @@
         "properties": {
           "feedback_id": {
             "description": "An id host.feedback.send returned.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -43837,6 +42706,7 @@
           },
           "text": {
             "description": "What you needed or saw; 1 to 2048 bytes after trim.",
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -44217,6 +43087,8 @@
         "properties": {
           "k": {
             "description": "Hits to return, 1-50, default 5.",
+            "maximum": 50,
+            "minimum": 1,
             "type": "integer"
           },
           "name": {
@@ -44816,6 +43688,7 @@
         "properties": {
           "body": {
             "description": "Message text; non-empty after trim.",
+            "minLength": 1,
             "type": "string"
           },
           "data": {
@@ -44857,6 +43730,7 @@
         "properties": {
           "body": {
             "description": "Message text; non-empty after trim.",
+            "minLength": 1,
             "type": "string"
           },
           "data": {
@@ -44880,6 +43754,7 @@
             "items": {
               "type": "string"
             },
+            "minItems": 1,
             "type": "array"
           },
           "urgent": {
@@ -45106,6 +43981,7 @@
           "text": {
             "description": "The note (at most 4096 bytes).",
             "maxLength": 4096,
+            "minLength": 1,
             "type": "string"
           },
           "ttl_s": {
@@ -45141,6 +44017,7 @@
           },
           "target": {
             "description": "email: the verified owner address; webhook/slack: an https URL.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -45251,6 +44128,7 @@
           },
           "text": {
             "description": "The message, at most 1024 bytes.",
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -45578,6 +44456,8 @@
         "additionalProperties": false,
         "properties": {
           "access_ttl_s": {
+            "maximum": 3600,
+            "minimum": 300,
             "type": "integer"
           },
           "allowlist": {
@@ -45605,6 +44485,8 @@
             "type": "integer"
           },
           "refresh_ttl_s": {
+            "maximum": 2592000,
+            "minimum": 3600,
             "type": "integer"
           },
           "tenant_key": {
@@ -46763,6 +45645,7 @@
           },
           "calls_per_day": {
             "description": "Max successful calls per UTC day for this caller.",
+            "minimum": 1,
             "type": "integer"
           },
           "tenant_key": {
@@ -47297,6 +46180,7 @@
         "properties": {
           "sync_id": {
             "description": "The sync_id host.sync.create returned.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -47327,6 +46211,7 @@
           },
           "sync_id": {
             "description": "The sync_id host.sync.create returned.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -47369,6 +46254,7 @@
         "properties": {
           "sync_id": {
             "description": "The sync_id host.sync.create returned.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -48649,6 +47535,8 @@
           },
           "rate_per_hour_per_caller": {
             "description": "Optional cap (1..10000) on calls per hour from any one grantee.",
+            "maximum": 10000,
+            "minimum": 1,
             "type": "integer"
           },
           "scopes": {
@@ -48661,6 +47549,7 @@
               ],
               "type": "string"
             },
+            "minItems": 1,
             "type": "array"
           },
           "tags": {
@@ -49254,6 +48143,8 @@
             "items": {
               "type": "string"
             },
+            "maxItems": 20,
+            "minItems": 1,
             "type": "array"
           }
         },

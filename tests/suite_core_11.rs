@@ -7,8 +7,6 @@
 // original name, path, and test names (nextest's test list, with this
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
-#[path = "support/assertion.rs"]
-mod assertion;
 #[path = "support/busyaudit.rs"]
 mod busyaudit;
 #[path = "support/dryspt_lint.rs"]
@@ -17,12 +15,12 @@ mod dryspt_lint;
 mod oauth;
 #[path = "support/oauthclient.rs"]
 mod oauthclient;
+#[path = "support/rgpt.rs"]
+mod rgpt;
 #[path = "support/serve.rs"]
 mod serve;
 #[path = "support/sjrc.rs"]
 mod sjrc;
-#[path = "support/tcpn.rs"]
-mod tcpn;
 #[path = "support/timp.rs"]
 mod timp;
 #[path = "support/tssdk.rs"]
@@ -32,6 +30,36 @@ mod uprg;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
+#[path = "rgpt_ac01_recipes_generator_idempotent.rs"]
+mod rgpt_ac01_recipes_generator_idempotent;
+#[path = "rgpt_ac02_drift_names_file_recipe_and_line.rs"]
+mod rgpt_ac02_drift_names_file_recipe_and_line;
+#[path = "rgpt_ac03_unknown_tool_or_arg_exits_2.rs"]
+mod rgpt_ac03_unknown_tool_or_arg_exits_2;
+#[path = "rgpt_ac05_every_golden_test_runs_its_calls_in_order.rs"]
+mod rgpt_ac05_every_golden_test_runs_its_calls_in_order;
+#[path = "rgpt_ac06_task_sync_check_flags_wall_budget_drift.rs"]
+mod rgpt_ac06_task_sync_check_flags_wall_budget_drift;
+#[path = "rgpt_ac07_ci_job_fails_on_the_broken_recipe_only.rs"]
+mod rgpt_ac07_ci_job_fails_on_the_broken_recipe_only;
+#[path = "rgpt_chart_in_a_minute_golden_path.rs"]
+mod rgpt_chart_in_a_minute_golden_path;
+#[path = "rgpt_data_sync_golden_path.rs"]
+mod rgpt_data_sync_golden_path;
+#[path = "rgpt_database_in_a_minute_golden_path.rs"]
+mod rgpt_database_in_a_minute_golden_path;
+#[path = "rgpt_share_a_tool_golden_path.rs"]
+mod rgpt_share_a_tool_golden_path;
+#[path = "rgpt_uptime_probes_golden_path.rs"]
+mod rgpt_uptime_probes_golden_path;
+#[path = "rlfe_ac01_unknown_status_refused_with_set.rs"]
+mod rlfe_ac01_unknown_status_refused_with_set;
+#[path = "rlfe_ac02_trigger_and_verdict_refused_before_handler.rs"]
+mod rlfe_ac02_trigger_and_verdict_refused_before_handler;
+#[path = "rlfe_ac03_every_value_filters_exactly_its_rows.rs"]
+mod rlfe_ac03_every_value_filters_exactly_its_rows;
+#[path = "rlfe_ac04_descriptor_enums_and_prose_set_drift.rs"]
+mod rlfe_ac04_descriptor_enums_and_prose_set_drift;
 #[path = "rowpol_ac01_sql_predicate_scopes_to_end_user_attribute.rs"]
 mod rowpol_ac01_sql_predicate_scopes_to_end_user_attribute;
 #[path = "rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0.rs"]
@@ -112,6 +140,8 @@ mod runsubject_ac06_migration_0048_under_1s_at_100k_rows;
 mod runsubject_ac07_llms_txt_names_end_user_and_filter;
 #[path = "sandboxready_ac7_conformance_suite.rs"]
 mod sandboxready_ac7_conformance_suite;
+#[path = "sba_ac03_schema_valid_refusals_still_fire.rs"]
+mod sba_ac03_schema_valid_refusals_still_fire;
 #[path = "sblibs_ac02_drift_toml_lock_docs.rs"]
 mod sblibs_ac02_drift_toml_lock_docs;
 #[path = "sched_ac10_trigger_fire_manual.rs"]
@@ -572,18 +602,6 @@ mod tablemodel_ac09_drop_removes_model_and_annotations;
 mod tablemodel_ac10_empty_table_reports_unknown_types_no_error;
 #[path = "tables_ac07_tenant_delete_cascade.rs"]
 mod tables_ac07_tenant_delete_cascade;
-#[path = "tcpn_ac01_progress_counters.rs"]
-mod tcpn_ac01_progress_counters;
-#[path = "tcpn_ac02_frame_contract.rs"]
-mod tcpn_ac02_frame_contract;
-#[path = "tcpn_ac03_probe_tool.rs"]
-mod tcpn_ac03_probe_tool;
-#[path = "tcpn_ac04_progress_frames.rs"]
-mod tcpn_ac04_progress_frames;
-#[path = "tcpn_ac05_no_token_unchanged.rs"]
-mod tcpn_ac05_no_token_unchanged;
-#[path = "tcpn_ac06_throttle_and_disconnect.rs"]
-mod tcpn_ac06_throttle_and_disconnect;
 #[path = "tdf_ac01_round_trip_every_kind.rs"]
 mod tdf_ac01_round_trip_every_kind;
 #[path = "tdf_ac02_lint_names_unknown_field.rs"]
@@ -1022,19 +1040,3 @@ mod wasmkind_ac10_declared_output_promotion_matches_python;
 mod whin_ac04_keyless_call_after_redeem_is_refused_and_named;
 #[path = "whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule.rs"]
 mod whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule;
-#[path = "xaa_ac01_valid_assertion_no_consent.rs"]
-mod xaa_ac01_valid_assertion_no_consent;
-#[path = "xaa_ac03_invalid_grant_reasons_are_distinct_and_audited.rs"]
-mod xaa_ac03_invalid_grant_reasons_are_distinct_and_audited;
-#[path = "xaa_ac04_invalid_client_scope_target.rs"]
-mod xaa_ac04_invalid_client_scope_target;
-#[path = "xaa_ac05_metadata_grant_types_and_trusted_issuer.rs"]
-mod xaa_ac05_metadata_grant_types_and_trusted_issuer;
-#[path = "xaa_ac06_offline_access_gates_refresh_token.rs"]
-mod xaa_ac06_offline_access_gates_refresh_token;
-#[path = "xaa_ac07_revoke_and_unrevoke_end_user.rs"]
-mod xaa_ac07_revoke_and_unrevoke_end_user;
-#[path = "xaa_ac08_trusted_issuer_quota.rs"]
-mod xaa_ac08_trusted_issuer_quota;
-#[path = "xaa_ac09_hosted_and_key_paths_unchanged.rs"]
-mod xaa_ac09_hosted_and_key_paths_unchanged;

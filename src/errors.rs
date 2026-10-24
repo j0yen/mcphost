@@ -240,6 +240,61 @@ pub const INCIDENT_FIELD: &str = "incident";
 pub const HOST_FAULT_CODES: &[&str] =
     &["storage", "internal", "exec_unavailable", "timeout", "rate_limited_host", "transaction_nested"];
 
+/// PRD-mcphost-named-key-refusal-not-http-401 R1: why a keyless call was
+/// refused with `tenant_key_missing`. The HTTP-status decision
+/// (`http::upgrade_for`) keys on this, never on whether `data.tenant` exists.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Reason {
+    /// No tenant is known for the caller (the original refusal).
+    Anonymous,
+    /// This connection already named the tenant in the payload.
+    ConnectionBound(String),
+    /// This peer (IP + User-Agent) redeemed a key in the last 10 minutes.
+    /// Carries no namespace: a different agent at the same address must
+    /// not learn another tenant's name.
+    PeerRecent,
+}
+
+impl Reason {
+    pub const ALL_WIRE: &'static [&'static str] = &["missing_key", "connection_bound", "peer_recent"];
+
+    /// The `data.reason` string this variant serializes to.
+    pub fn wire(&self) -> &'static str {
+        match self {
+            Reason::Anonymous => "missing_key",
+            Reason::ConnectionBound(_) => "connection_bound",
+            Reason::PeerRecent => "peer_recent",
+        }
+    }
+
+    /// Inverse of [`Reason::wire`] for the HTTP middleware, which sees only
+    /// the serialized body. Anything unrecognized (including an absent
+    /// field) is `Anonymous`, which keeps the 401.
+    pub fn from_wire(reason: Option<&str>, tenant: Option<&str>) -> Reason {
+        match reason {
+            Some("connection_bound") => Reason::ConnectionBound(tenant.unwrap_or_default().to_string()),
+            Some("peer_recent") => Reason::PeerRecent,
+            _ => Reason::Anonymous,
+        }
+    }
+}
+
+/// `data` key on a named refusal that points at the ways to get a key.
+pub const GET_A_KEY: &str = "get_a_key";
+pub const GET_A_KEY_TEXT: &str = "call signup for your own key (host.quickstart explains the flow)";
+pub const PEER_RECENT_HINT: &str = "a tenant_key was redeemed from your address in the last 10 minutes; if that was you, pass it on every host.* call; if you are a different agent, call signup with handoff:true";
+
+/// The ConnectionBound hint (R3).
+pub fn connection_hint(namespace: &str) -> String {
+    format!("this connection authenticated as {namespace}; pass its tenant_key on every host.* call")
+}
+
+/// Every key a serialized `tenant_key_missing` refusal's `data` may carry.
+pub const REFUSAL_FIELDS: &[&str] = &[
+    "error_code", "reason", "tenant", "hint", GET_A_KEY, "anchor", "field", "expected", "docs", "example", "request_id",
+    "next_call", "class", "family", "feedback_hint", "help_url", "remedy", "retry",
+];
+
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum AppError {
     #[error("missing or invalid Authorization: Bearer key")]
@@ -270,7 +325,7 @@ pub enum AppError {
     /// `host.*`/`billing.*` call with neither header nor argument on a
     /// connection with no memory at all.
     #[error("tenant_key is required: pass the key that signup returned as the tenant_key argument")]
-    TenantKeyMissing(Option<String>),
+    TenantKeyMissing(Reason),
     /// PRD-mcphost-auth-error-names-argument requirement 2 / AC2-3: a
     /// `tenant_key` argument present but matching no tenant (or a disabled
     /// one, which stays [`AppError::TenantDisabled`] -- unchanged, see
@@ -280,7 +335,7 @@ pub enum AppError {
     #[error("forbidden")]
     Forbidden,
     #[error("tenant is disabled")]
-    TenantDisabled { disabled_reason: Option<String> },
+    TenantDisabled { disabled_reason: Option<String>, claim_url: Option<String> },
     #[error("signup rate limit exceeded for this source; try again later")]
     RateLimited,
     #[error("tool not found: {0}")]
@@ -527,10 +582,10 @@ pub fn all_variants_for_test() -> Vec<AppError> {
     let s = || "x".to_string();
     let mut all = vec![
         AppError::Unauthorized,
-        AppError::TenantKeyMissing(None),
+        AppError::TenantKeyMissing(Reason::Anonymous),
         AppError::TenantKeyInvalid,
         AppError::Forbidden,
-        AppError::TenantDisabled { disabled_reason: None },
+        AppError::TenantDisabled { disabled_reason: None, claim_url: None },
         AppError::RateLimited,
         AppError::ToolNotFound("t.no_such".into()),
         AppError::TenantNotFound(s()),
@@ -575,6 +630,14 @@ pub fn all_variants_for_test() -> Vec<AppError> {
     all
 }
 
+/// The header a client echoes to be recognised across calls (`data.session_header`).
+pub const SESSION_HEADER: &str = "Mcp-Session-Id";
+/// `data.get_a_key.signup`: the explicit way to a key (R2 of
+/// PRD-mcphost-implicit-signup-mints-only-on-success).
+pub const GET_A_KEY_SIGNUP: &str = "signup";
+/// `data.get_a_key.quickstart`: the verb that explains onboarding.
+pub const GET_A_KEY_QUICKSTART: &str = "host.quickstart";
+
 impl AppError {
     /// PRD-mcphost-error-responses-invite-feedback R4: a kind-level error
     /// that does not know which tool it ran for (`tool_exception`,
@@ -596,6 +659,33 @@ impl AppError {
             }
             other => other,
         }
+    }
+
+    /// PRD-mcphost-implicit-signup-mints-only-on-success R2: this error with
+    /// `data.get_a_key` -- the two ways to get a key (`signup`,
+    /// `host.quickstart`) -- for a keyless first call whose tenant was rolled
+    /// back. A non-`Structured` variant is carried as a `Structured` with its own
+    /// code, message and data.
+    pub fn with_get_a_key(self, base_url: &str) -> Self {
+        let get_a_key = json!({
+            "signup": GET_A_KEY_SIGNUP,
+            "quickstart": GET_A_KEY_QUICKSTART,
+        });
+        let (code, message, mut data) = match self {
+            AppError::Structured { code, message, data } => (code, message, data),
+            other => {
+                let code = other.code();
+                let e = other.into_error_data_at(Some(base_url));
+                (code, e.message.to_string(), e.data.unwrap_or(Value::Null))
+            }
+        };
+        let mut obj = match data.take() {
+            Value::Object(m) => m,
+            Value::Null => Map::new(),
+            other => Map::from_iter([("detail".to_string(), other)]),
+        };
+        obj.insert("get_a_key".to_string(), get_a_key);
+        AppError::Structured { code, message, data: Value::Object(obj) }
     }
 
     /// The machine-readable code every AC-facing test matches on.
@@ -1393,29 +1483,35 @@ impl AppError {
         // PRD-mcphost-error-envelope-schema-contract AC6: the machine-readable
         // reason a tenant-key rejection carries, so a client branches on
         // `data.reason` rather than the message, on every verb alike.
-        match &self {
-            AppError::TenantKeyInvalid => {
-                obj.insert("reason".to_string(), json!("unknown_key"));
-            }
-            AppError::TenantKeyMissing(_) => {
-                obj.insert("reason".to_string(), json!("missing_key"));
-            }
-            _ => {}
+        if matches!(self, AppError::TenantKeyInvalid) {
+            obj.insert("reason".to_string(), json!("unknown_key"));
         }
-        if let AppError::TenantKeyMissing(Some(namespace)) = &self {
-            obj.insert("tenant".to_string(), json!(namespace));
-            obj.insert(
-                "hint".to_string(),
-                json!(format!(
-                    "this connection authenticated as {namespace}; pass its tenant_key"
-                )),
-            );
+        if let AppError::TenantKeyMissing(reason) = &self {
+            obj.insert("reason".to_string(), json!(reason.wire()));
+            match reason {
+                Reason::Anonymous => {}
+                Reason::ConnectionBound(namespace) => {
+                    obj.insert("tenant".to_string(), json!(namespace));
+                    obj.insert("hint".to_string(), json!(connection_hint(namespace)));
+                    obj.insert(GET_A_KEY.to_string(), json!(GET_A_KEY_TEXT));
+                }
+                Reason::PeerRecent => {
+                    obj.insert("hint".to_string(), json!(PEER_RECENT_HINT));
+                    obj.insert("session_header".to_string(), json!(SESSION_HEADER));
+                    obj.insert(GET_A_KEY.to_string(), json!(GET_A_KEY_TEXT));
+                }
+            }
         }
         // R6 (PRD-mcphost-self-offboard-success-envelope): a disabled tenant
         // error carries its reason so callers can distinguish self_offboard
         // from admin_disable.
-        if let AppError::TenantDisabled { disabled_reason: Some(reason) } = &self {
+        if let AppError::TenantDisabled { disabled_reason: Some(reason), claim_url } = &self {
             obj.insert("disabled_reason".to_string(), json!(reason));
+            // PRD-mcphost-external-unclaimed-tenant-expiry: the claim link of
+            // a tenant invalidated as unclaimed, for its credential's holder.
+            if let Some(claim_url) = claim_url {
+                obj.insert("claim_url".to_string(), json!(claim_url));
+            }
         }
         // PRD-mcphost-unknown-kind-routes-to-recipe requirement 4 (AC4):
         // `registered`/`aliases` ride straight through from the variant;

@@ -28,6 +28,9 @@ impl McpHostHandler {
                 let path_url_secret = url_path_secret(parts);
                 match control::quickstart(&self.state, Some(tenant), args, path_url_secret) {
                     Ok(mut result) => {
+                        if let Some(recipe) = control::quickstart_alias_recipe(&result) {
+                            control::record_recipe_use(&self.state, tenant.id, recipe, "quickstart").await;
+                        }
                         // PRD-mcphost-quickstart-by-client R3/R6: the
                         // `client` block for the surface asking, rendered
                         // for the caller's own personal URL when this call
@@ -188,7 +191,7 @@ impl McpHostHandler {
     /// Admin `host.call_trace`: any tenant's trace.
     pub(super) fn call_trace_admin_boxed<'a>(&'a self, args: Value) -> Boxed<'a, Result<Value, AppError>> {
         Box::pin(async move {
-            crate::host_args::validate_host_args(&self.state.kinds, "host.call_trace", &args)?;
+            crate::precheck::precheck_args(&self.state.kinds, "host.call_trace", &args)?;
             self.call_trace(None, args).await
         })
     }
@@ -196,7 +199,7 @@ impl McpHostHandler {
     /// Admin `host.doctor`.
     pub(super) fn doctor_admin_boxed<'a>(&'a self, args: Value) -> Boxed<'a, Result<Value, AppError>> {
         Box::pin(async move {
-            crate::host_args::validate_host_args(&self.state.kinds, "host.doctor", &args)?;
+            crate::precheck::precheck_args(&self.state.kinds, "host.doctor", &args)?;
             self.doctor(None, args).await
         })
     }

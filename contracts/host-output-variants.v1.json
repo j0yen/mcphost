@@ -1,0 +1,5104 @@
+{
+  "tools": {
+    "billing.checkout": {
+      "unreached": [
+        {
+          "code": "billing_unavailable",
+          "state": "after_create"
+        },
+        {
+          "code": "billing_unavailable",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "billing.plans": {
+      "unreached": [],
+      "variants": []
+    },
+    "billing.status": {
+      "unreached": [],
+      "variants": []
+    },
+    "billing_checkout": {
+      "unreached": [
+        {
+          "code": "billing_unavailable",
+          "state": "after_create"
+        },
+        {
+          "code": "billing_unavailable",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "billing_plans": {
+      "unreached": [],
+      "variants": []
+    },
+    "billing_status": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.agent.contact_accept": {
+      "unreached": [
+        {
+          "code": "contact_request_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "contact_request_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.agent.contact_deny": {
+      "unreached": [
+        {
+          "code": "contact_request_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "contact_request_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.agent.contact_request": {
+      "unreached": [
+        {
+          "code": "not_needed",
+          "state": "after_create"
+        },
+        {
+          "code": "agent_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.agent.contacts": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.agent.contacts_import": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.agent.lookup": {
+      "unreached": [
+        {
+          "code": "agent_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.agent.mute": {
+      "unreached": [
+        {
+          "code": "agent_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.agent.profile_set": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host.agent.search": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.agent.unmute": {
+      "unreached": [
+        {
+          "code": "agent_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.agent.whoami": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.ask.create": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "dry_run"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.ask.get": {
+      "unreached": [
+        {
+          "code": "ask_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "ask_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.ask.list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.ask.wait": {
+      "unreached": [
+        {
+          "code": "ask_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "ask_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.audit.chain": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.audit.export": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.audit.verify": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.blob.delete": {
+      "unreached": [
+        {
+          "code": "blob_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "blob_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.blob.gc": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.blob.get": {
+      "unreached": [
+        {
+          "code": "blob_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "blob_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.blob.list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.blob.policy": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.blob.put": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.blob.touch": {
+      "unreached": [
+        {
+          "code": "blob_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "blob_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.blob.url": {
+      "unreached": [
+        {
+          "code": "blob_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "blob_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.bridge.test": {
+      "unreached": [
+        {
+          "code": "internal",
+          "state": "after_create"
+        },
+        {
+          "code": "internal",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.bridge_test": {
+      "unreached": [
+        {
+          "code": "internal",
+          "state": "after_create"
+        },
+        {
+          "code": "internal",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.call_trace": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.calls.export": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.calls.list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.catalog.get": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.catalog.search": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.changelog": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.channel.close": {
+      "unreached": [
+        {
+          "code": "channel_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "channel_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.channel.freeze": {
+      "unreached": [
+        {
+          "code": "channel_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "channel_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.channel.open": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.channel.post": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.channel.read": {
+      "unreached": [
+        {
+          "code": "channel_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "channel_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.channel.unfreeze": {
+      "unreached": [
+        {
+          "code": "channel_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "channel_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.claim.dns.check": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.claim.dns.start": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.claim.github": {
+      "unreached": [
+        {
+          "code": "method_unavailable",
+          "state": "after_create"
+        },
+        {
+          "code": "method_unavailable",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.claim.start": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.client.revoke": {
+      "unreached": [
+        {
+          "code": "client_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "client_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.connect.list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.connect.providers": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.connect.revoke": {
+      "unreached": [
+        {
+          "code": "invalid_params",
+          "state": "after_create"
+        },
+        {
+          "code": "invalid_params",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.connect.start": {
+      "unreached": [
+        {
+          "code": "invalid_params",
+          "state": "after_create"
+        },
+        {
+          "code": "invalid_params",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.docs.delete": {
+      "unreached": [
+        {
+          "code": "docs_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "docs_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.docs.get": {
+      "unreached": [
+        {
+          "code": "docs_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.docs.index_config": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.docs.list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.docs.purge": {
+      "unreached": [
+        {
+          "code": "docs_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "docs_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.docs.put": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host.docs.reindex": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.docs.search": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.docs.status": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.doctor": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.drift.check": {
+      "unreached": [
+        {
+          "code": "drift_target_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.drift.resolve": {
+      "unreached": [
+        {
+          "code": "drift_review_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "drift_review_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.drift.review": {
+      "unreached": [
+        {
+          "code": "drift_review_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "drift_review_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.drift.reviews": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.email.send": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.email.sends": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.enduser.assertion_secret_rotate": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.enduser.audit": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.enduser.export": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.enduser.get": {
+      "unreached": [
+        {
+          "code": "end_user_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "end_user_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.enduser.list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.enduser.purge": {
+      "unreached": [
+        {
+          "code": "end_user_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "end_user_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "end_user_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.enduser.revoke": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host.enduser.unrevoke": {
+      "unreached": [
+        {
+          "code": "end_user_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "end_user_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "end_user_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.enduser.whoami": {
+      "unreached": [],
+      "variants": [
+        "empty"
+      ]
+    },
+    "host.errors": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.estimate": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.example.fork": {
+      "unreached": [
+        {
+          "code": "example_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "example_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.example.list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.example.proposal_status": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.example.propose": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.export": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.feedback.get": {
+      "unreached": [
+        {
+          "code": "feedback_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "feedback_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.feedback.list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.feedback.send": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.group.add": {
+      "unreached": [
+        {
+          "code": "tenant_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tenant_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.group.create": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host.group.list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.group.remove": {
+      "unreached": [
+        {
+          "code": "tenant_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tenant_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "tenant_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.help.get": {
+      "unreached": [
+        {
+          "code": "anchor_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "anchor_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.help.search": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.import": {
+      "unreached": [
+        {
+          "code": "not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.index.create": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        }
+      ],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host.index.delete": {
+      "unreached": [
+        {
+          "code": "index_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "index_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.index.list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.index.query": {
+      "unreached": [
+        {
+          "code": "index_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.index.refresh": {
+      "unreached": [
+        {
+          "code": "index_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.index.status": {
+      "unreached": [
+        {
+          "code": "index_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.invite.create": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host.invite.list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.invite.revoke": {
+      "unreached": [
+        {
+          "code": "invite_invalid",
+          "state": "dry_run"
+        },
+        {
+          "code": "invite_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.job.timeline": {
+      "unreached": [
+        {
+          "code": "run_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "run_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.job_timeline": {
+      "unreached": [
+        {
+          "code": "run_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "run_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.key.delegate": {
+      "unreached": [
+        {
+          "code": "invalid_params",
+          "state": "after_create"
+        },
+        {
+          "code": "invalid_params",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.key.list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.key.mint": {
+      "unreached": [
+        {
+          "code": "not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.key.revoke": {
+      "unreached": [
+        {
+          "code": "not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.key.rotate": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.key_rotate": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.lineage.blast_radius": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.lineage.trace": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.lineage.trace_page": {
+      "unreached": [
+        {
+          "code": "lineage_handle_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "lineage_handle_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.msg.ack": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.msg.block": {
+      "unreached": [
+        {
+          "code": "agent_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.msg.inbox": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.msg.reply": {
+      "unreached": [
+        {
+          "code": "thread_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "thread_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.msg.send": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.msg.thread": {
+      "unreached": [
+        {
+          "code": "thread_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "thread_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.msg.unblock": {
+      "unreached": [
+        {
+          "code": "agent_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.msg.wait": {
+      "unreached": [
+        {
+          "code": "timeout",
+          "state": "after_create"
+        },
+        {
+          "code": "timeout",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.note.delete": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.note.list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.note.put": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.notify.channel_add": {
+      "unreached": [
+        {
+          "code": "owner_unverified",
+          "state": "after_create"
+        },
+        {
+          "code": "owner_unverified",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.notify.channel_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.notify.channel_remove": {
+      "unreached": [
+        {
+          "code": "notify_channel_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "notify_channel_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.notify.receipts": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.notify.send": {
+      "unreached": [
+        {
+          "code": "no_channel",
+          "state": "after_create"
+        },
+        {
+          "code": "no_channel",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.oauth.audit": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.oauth.audit_export": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.oauth.client_approve": {
+      "unreached": [
+        {
+          "code": "client_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "client_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.oauth.client_deny": {
+      "unreached": [
+        {
+          "code": "client_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "client_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.oauth.doctor": {
+      "unreached": [
+        {
+          "code": "provider_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "provider_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.oauth.grant_revoke": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "grant_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "grant_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.oauth.grants": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.oauth.issuer_remove": {
+      "unreached": [
+        {
+          "code": "issuer_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "issuer_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "issuer_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.oauth.issuer_set": {
+      "unreached": [
+        {
+          "code": "issuer_url_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "issuer_url_invalid",
+          "state": "dry_run"
+        },
+        {
+          "code": "issuer_url_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.oauth.issuers": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.oauth.pending": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.oauth.policy": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.oauth.policy_set": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host.oauth.provider": {
+      "unreached": [],
+      "variants": [
+        "empty"
+      ]
+    },
+    "host.oauth.provider_remove": {
+      "unreached": [
+        {
+          "code": "provider_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "provider_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.oauth.provider_set": {
+      "unreached": [
+        {
+          "code": "issuer_url_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "issuer_url_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.oauth.revoke_all": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host.oauth.scope_set": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host.oauth.scopes": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.oauth.trusted_issuer_remove": {
+      "unreached": [
+        {
+          "code": "issuer_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "issuer_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "issuer_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.oauth.trusted_issuer_set": {
+      "unreached": [
+        {
+          "code": "issuer_url_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "issuer_url_invalid",
+          "state": "dry_run"
+        },
+        {
+          "code": "issuer_url_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.oauth.trusted_issuers": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.org.create": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.org.digest.send": {
+      "unreached": [
+        {
+          "code": "not_in_org",
+          "state": "after_create"
+        },
+        {
+          "code": "not_in_org",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.org.digest.set": {
+      "unreached": [
+        {
+          "code": "not_in_org",
+          "state": "after_create"
+        },
+        {
+          "code": "not_in_org",
+          "state": "dry_run"
+        },
+        {
+          "code": "not_in_org",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.org.join": {
+      "unreached": [
+        {
+          "code": "invite_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "invite_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.org.leave": {
+      "unreached": [
+        {
+          "code": "not_in_org",
+          "state": "after_create"
+        },
+        {
+          "code": "not_in_org",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.org.members": {
+      "unreached": [
+        {
+          "code": "not_in_org",
+          "state": "after_create"
+        },
+        {
+          "code": "not_in_org",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.org.remove": {
+      "unreached": [
+        {
+          "code": "not_owner",
+          "state": "after_create"
+        },
+        {
+          "code": "not_owner",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.org.usage": {
+      "unreached": [
+        {
+          "code": "org_required",
+          "state": "after_create"
+        },
+        {
+          "code": "org_required",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.policy.attrs_set": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host.policy.list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.policy.set": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "dry_run"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.progress": {
+      "unreached": [
+        {
+          "code": "run_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "run_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.quickstart": {
+      "unreached": [
+        {
+          "code": "unknown_kind",
+          "state": "after_create"
+        },
+        {
+          "code": "unknown_kind",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.redeem": {
+      "unreached": [
+        {
+          "code": "handoff_token_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "handoff_token_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.registry.publish": {
+      "unreached": [
+        {
+          "code": "registry_disabled",
+          "state": "after_create"
+        },
+        {
+          "code": "registry_disabled",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.registry_publish": {
+      "unreached": [
+        {
+          "code": "registry_disabled",
+          "state": "after_create"
+        },
+        {
+          "code": "registry_disabled",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.resume": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.runs.cancel": {
+      "unreached": [
+        {
+          "code": "run_not_cancellable",
+          "state": "after_create"
+        },
+        {
+          "code": "run_not_cancellable",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.runs.get": {
+      "unreached": [
+        {
+          "code": "run_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "run_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.runs.list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.runs.part": {
+      "unreached": [
+        {
+          "code": "run_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "run_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.runs.purge": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host.runs.wait": {
+      "unreached": [
+        {
+          "code": "run_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "run_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.schedule_receipts": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.secret.leak_test": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.secret.list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.secret.set": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host.secret_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.secret_set": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host.self.offboard": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.self_offboard": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.share.caller_limit": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.share.caller_limit_remove": {
+      "unreached": [
+        {
+          "code": "tenant_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tenant_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "tenant_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.spec.test": {
+      "unreached": [
+        {
+          "code": "unknown_kind",
+          "state": "after_create"
+        },
+        {
+          "code": "unknown_kind",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.spec_test": {
+      "unreached": [
+        {
+          "code": "unknown_kind",
+          "state": "after_create"
+        },
+        {
+          "code": "unknown_kind",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.state.delete": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host.state.delete_rows": {
+      "unreached": [
+        {
+          "code": "state_table_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "state_table_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "state_table_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.state.get": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.state.insert": {
+      "unreached": [
+        {
+          "code": "state_table_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "state_table_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "state_table_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.state.list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.state.query": {
+      "unreached": [
+        {
+          "code": "state_table_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "state_table_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.state.set": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host.state.table_create": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "dry_run"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.state.table_drop": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host.sync.create": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.sync.delete": {
+      "unreached": [
+        {
+          "code": "not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.sync.get": {
+      "unreached": [
+        {
+          "code": "not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.sync.list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.sync.run_now": {
+      "unreached": [
+        {
+          "code": "not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.table.append": {
+      "unreached": [
+        {
+          "code": "table_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "table_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "table_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.table.chart": {
+      "unreached": [
+        {
+          "code": "table_query_rejected",
+          "state": "after_create"
+        },
+        {
+          "code": "table_query_rejected",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.table.charts": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.table.count": {
+      "unreached": [
+        {
+          "code": "table_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "table_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.table.create": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "dry_run"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.table.describe": {
+      "unreached": [
+        {
+          "code": "table_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "table_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.table.drop": {
+      "unreached": [
+        {
+          "code": "table_not_found",
+          "state": "dry_run"
+        }
+      ],
+      "variants": []
+    },
+    "host.table.graph": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.table.handle_drop": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host.table.handle_export": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.table.handles": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.table.join_paths": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.table.list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.table.model_set": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "table_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "table_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.table.models": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.table.next_questions": {
+      "unreached": [
+        {
+          "code": "table_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "table_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.table.query": {
+      "unreached": [
+        {
+          "code": "table_query_rejected",
+          "state": "after_create"
+        },
+        {
+          "code": "table_query_rejected",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.table.query_diagnose": {
+      "unreached": [
+        {
+          "code": "not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.table.query_log": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.table.query_stats": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.table.schema": {
+      "unreached": [
+        {
+          "code": "table_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "table_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.task.claim": {
+      "unreached": [
+        {
+          "code": "task_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "task_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.task.complete": {
+      "unreached": [
+        {
+          "code": "task_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "task_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.task.dead_letters": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.task.get": {
+      "unreached": [
+        {
+          "code": "task_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "task_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.task.post": {
+      "unreached": [
+        {
+          "code": "agent_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "agent_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool.call": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": [
+        "own_dry_run"
+      ]
+    },
+    "host.tool.diff": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool.fork": {
+      "unreached": [
+        {
+          "code": "invalid_tool_name",
+          "state": "after_create"
+        },
+        {
+          "code": "invalid_tool_name",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool.history": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool.list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.tool.list_shared": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.tool.logs": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool.publish": {
+      "unreached": [
+        {
+          "code": "invalid_tool_name",
+          "state": "after_create"
+        },
+        {
+          "code": "invalid_spec",
+          "state": "dry_run"
+        },
+        {
+          "code": "invalid_spec",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool.remove": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool.rollback": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool.run": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool.share": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool.spec_shared": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool.test": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool.unshare": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool_call": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": [
+        "own_dry_run"
+      ]
+    },
+    "host.tool_diff": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool_fork": {
+      "unreached": [
+        {
+          "code": "invalid_tool_name",
+          "state": "after_create"
+        },
+        {
+          "code": "invalid_tool_name",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool_history": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.tool_list_shared": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.tool_logs": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool_publish": {
+      "unreached": [
+        {
+          "code": "invalid_tool_name",
+          "state": "after_create"
+        },
+        {
+          "code": "invalid_spec",
+          "state": "dry_run"
+        },
+        {
+          "code": "invalid_spec",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool_remove": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool_rollback": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool_run": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool_share": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool_spec_shared": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool_test": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.tool_unshare": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.trigger.dead_letters": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.trigger.fire": {
+      "unreached": [
+        {
+          "code": "trigger_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "trigger_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.trigger.get": {
+      "unreached": [
+        {
+          "code": "trigger_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "trigger_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.trigger.list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.trigger.pause": {
+      "unreached": [
+        {
+          "code": "trigger_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "trigger_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "trigger_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.trigger.remove": {
+      "unreached": [
+        {
+          "code": "trigger_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "trigger_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "trigger_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.trigger.replay": {
+      "unreached": [
+        {
+          "code": "run_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "run_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.trigger.resume": {
+      "unreached": [
+        {
+          "code": "trigger_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "trigger_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "trigger_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.trigger.set": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.trigger.test": {
+      "unreached": [
+        {
+          "code": "trigger_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "trigger_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.uptime.create": {
+      "unreached": [
+        {
+          "code": "invalid_tool_name",
+          "state": "after_create"
+        },
+        {
+          "code": "invalid_tool_name",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.usage": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.vault.connect_link": {
+      "unreached": [
+        {
+          "code": "vault_provider_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "vault_provider_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.vault.disconnect": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.vault.provider_remove": {
+      "unreached": [
+        {
+          "code": "not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.vault.provider_set": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.vault.providers": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.vault.status": {
+      "unreached": [],
+      "variants": []
+    },
+    "host.webhook_inbox.create": {
+      "unreached": [
+        {
+          "code": "invalid_tool_name",
+          "state": "after_create"
+        },
+        {
+          "code": "invalid_tool_name",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host.whoami": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_agent_contact_accept": {
+      "unreached": [
+        {
+          "code": "contact_request_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "contact_request_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_agent_contact_deny": {
+      "unreached": [
+        {
+          "code": "contact_request_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "contact_request_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_agent_contact_request": {
+      "unreached": [
+        {
+          "code": "not_needed",
+          "state": "after_create"
+        },
+        {
+          "code": "agent_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_agent_contacts": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_agent_contacts_import": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_agent_lookup": {
+      "unreached": [
+        {
+          "code": "agent_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_agent_mute": {
+      "unreached": [
+        {
+          "code": "agent_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_agent_profile_set": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host_agent_search": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_agent_unmute": {
+      "unreached": [
+        {
+          "code": "agent_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_agent_whoami": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_ask_create": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "dry_run"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_ask_get": {
+      "unreached": [
+        {
+          "code": "ask_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "ask_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_ask_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_ask_wait": {
+      "unreached": [
+        {
+          "code": "ask_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "ask_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_audit_chain": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_audit_export": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_audit_verify": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_blob_delete": {
+      "unreached": [
+        {
+          "code": "blob_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "blob_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_blob_gc": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_blob_get": {
+      "unreached": [
+        {
+          "code": "blob_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "blob_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_blob_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_blob_policy": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_blob_put": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_blob_touch": {
+      "unreached": [
+        {
+          "code": "blob_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "blob_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_blob_url": {
+      "unreached": [
+        {
+          "code": "blob_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "blob_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_bridge_test": {
+      "unreached": [
+        {
+          "code": "internal",
+          "state": "after_create"
+        },
+        {
+          "code": "internal",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_call_trace": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_calls_export": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_calls_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_catalog_get": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_catalog_search": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_changelog": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_channel_close": {
+      "unreached": [
+        {
+          "code": "channel_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "channel_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_channel_freeze": {
+      "unreached": [
+        {
+          "code": "channel_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "channel_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_channel_open": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_channel_post": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_channel_read": {
+      "unreached": [
+        {
+          "code": "channel_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "channel_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_channel_unfreeze": {
+      "unreached": [
+        {
+          "code": "channel_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "channel_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_claim_dns_check": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_claim_dns_start": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_claim_github": {
+      "unreached": [
+        {
+          "code": "method_unavailable",
+          "state": "after_create"
+        },
+        {
+          "code": "method_unavailable",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_claim_start": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_client_revoke": {
+      "unreached": [
+        {
+          "code": "client_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "client_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_connect_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_connect_providers": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_connect_revoke": {
+      "unreached": [
+        {
+          "code": "invalid_params",
+          "state": "after_create"
+        },
+        {
+          "code": "invalid_params",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_connect_start": {
+      "unreached": [
+        {
+          "code": "invalid_params",
+          "state": "after_create"
+        },
+        {
+          "code": "invalid_params",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_docs_delete": {
+      "unreached": [
+        {
+          "code": "docs_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "docs_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_docs_get": {
+      "unreached": [
+        {
+          "code": "docs_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_docs_index_config": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_docs_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_docs_purge": {
+      "unreached": [
+        {
+          "code": "docs_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "docs_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_docs_put": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host_docs_reindex": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_docs_search": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_docs_status": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_doctor": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_drift_check": {
+      "unreached": [
+        {
+          "code": "drift_target_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_drift_resolve": {
+      "unreached": [
+        {
+          "code": "drift_review_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "drift_review_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_drift_review": {
+      "unreached": [
+        {
+          "code": "drift_review_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "drift_review_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_drift_reviews": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_email_send": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_email_sends": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_enduser_assertion_secret_rotate": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_enduser_audit": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_enduser_export": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_enduser_get": {
+      "unreached": [
+        {
+          "code": "end_user_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "end_user_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_enduser_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_enduser_purge": {
+      "unreached": [
+        {
+          "code": "end_user_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "end_user_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "end_user_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_enduser_revoke": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host_enduser_unrevoke": {
+      "unreached": [
+        {
+          "code": "end_user_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "end_user_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "end_user_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_enduser_whoami": {
+      "unreached": [],
+      "variants": [
+        "empty"
+      ]
+    },
+    "host_errors": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_estimate": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_example_fork": {
+      "unreached": [
+        {
+          "code": "example_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "example_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_example_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_example_proposal_status": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_example_propose": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_export": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_feedback_get": {
+      "unreached": [
+        {
+          "code": "feedback_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "feedback_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_feedback_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_feedback_send": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_group_add": {
+      "unreached": [
+        {
+          "code": "tenant_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tenant_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_group_create": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host_group_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_group_remove": {
+      "unreached": [
+        {
+          "code": "tenant_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tenant_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "tenant_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_help_get": {
+      "unreached": [
+        {
+          "code": "anchor_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "anchor_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_help_search": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_import": {
+      "unreached": [
+        {
+          "code": "not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_index_create": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        }
+      ],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host_index_delete": {
+      "unreached": [
+        {
+          "code": "index_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "index_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_index_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_index_query": {
+      "unreached": [
+        {
+          "code": "index_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_index_refresh": {
+      "unreached": [
+        {
+          "code": "index_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_index_status": {
+      "unreached": [
+        {
+          "code": "index_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_invite_create": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host_invite_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_invite_revoke": {
+      "unreached": [
+        {
+          "code": "invite_invalid",
+          "state": "dry_run"
+        },
+        {
+          "code": "invite_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_job_timeline": {
+      "unreached": [
+        {
+          "code": "run_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "run_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_key_delegate": {
+      "unreached": [
+        {
+          "code": "invalid_params",
+          "state": "after_create"
+        },
+        {
+          "code": "invalid_params",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_key_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_key_mint": {
+      "unreached": [
+        {
+          "code": "not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_key_revoke": {
+      "unreached": [
+        {
+          "code": "not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_key_rotate": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_lineage_blast_radius": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_lineage_trace": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_lineage_trace_page": {
+      "unreached": [
+        {
+          "code": "lineage_handle_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "lineage_handle_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_msg_ack": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_msg_block": {
+      "unreached": [
+        {
+          "code": "agent_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_msg_inbox": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_msg_reply": {
+      "unreached": [
+        {
+          "code": "thread_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "thread_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_msg_send": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_msg_thread": {
+      "unreached": [
+        {
+          "code": "thread_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "thread_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_msg_unblock": {
+      "unreached": [
+        {
+          "code": "agent_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_msg_wait": {
+      "unreached": [
+        {
+          "code": "timeout",
+          "state": "after_create"
+        },
+        {
+          "code": "timeout",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_note_delete": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_note_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_note_put": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_notify_channel_add": {
+      "unreached": [
+        {
+          "code": "owner_unverified",
+          "state": "after_create"
+        },
+        {
+          "code": "owner_unverified",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_notify_channel_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_notify_channel_remove": {
+      "unreached": [
+        {
+          "code": "notify_channel_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "notify_channel_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_notify_receipts": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_notify_send": {
+      "unreached": [
+        {
+          "code": "no_channel",
+          "state": "after_create"
+        },
+        {
+          "code": "no_channel",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_oauth_audit": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_oauth_audit_export": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_oauth_client_approve": {
+      "unreached": [
+        {
+          "code": "client_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "client_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_oauth_client_deny": {
+      "unreached": [
+        {
+          "code": "client_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "client_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_oauth_doctor": {
+      "unreached": [
+        {
+          "code": "provider_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "provider_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_oauth_grant_revoke": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "grant_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "grant_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_oauth_grants": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_oauth_issuer_remove": {
+      "unreached": [
+        {
+          "code": "issuer_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "issuer_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "issuer_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_oauth_issuer_set": {
+      "unreached": [
+        {
+          "code": "issuer_url_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "issuer_url_invalid",
+          "state": "dry_run"
+        },
+        {
+          "code": "issuer_url_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_oauth_issuers": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_oauth_pending": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_oauth_policy": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_oauth_policy_set": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host_oauth_provider": {
+      "unreached": [],
+      "variants": [
+        "empty"
+      ]
+    },
+    "host_oauth_provider_remove": {
+      "unreached": [
+        {
+          "code": "provider_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "provider_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_oauth_provider_set": {
+      "unreached": [
+        {
+          "code": "issuer_url_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "issuer_url_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_oauth_revoke_all": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host_oauth_scope_set": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host_oauth_scopes": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_oauth_trusted_issuer_remove": {
+      "unreached": [
+        {
+          "code": "issuer_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "issuer_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "issuer_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_oauth_trusted_issuer_set": {
+      "unreached": [
+        {
+          "code": "issuer_url_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "issuer_url_invalid",
+          "state": "dry_run"
+        },
+        {
+          "code": "issuer_url_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_oauth_trusted_issuers": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_org_create": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_org_digest_send": {
+      "unreached": [
+        {
+          "code": "not_in_org",
+          "state": "after_create"
+        },
+        {
+          "code": "not_in_org",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_org_digest_set": {
+      "unreached": [
+        {
+          "code": "not_in_org",
+          "state": "after_create"
+        },
+        {
+          "code": "not_in_org",
+          "state": "dry_run"
+        },
+        {
+          "code": "not_in_org",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_org_join": {
+      "unreached": [
+        {
+          "code": "invite_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "invite_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_org_leave": {
+      "unreached": [
+        {
+          "code": "not_in_org",
+          "state": "after_create"
+        },
+        {
+          "code": "not_in_org",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_org_members": {
+      "unreached": [
+        {
+          "code": "not_in_org",
+          "state": "after_create"
+        },
+        {
+          "code": "not_in_org",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_org_remove": {
+      "unreached": [
+        {
+          "code": "not_owner",
+          "state": "after_create"
+        },
+        {
+          "code": "not_owner",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_org_usage": {
+      "unreached": [
+        {
+          "code": "org_required",
+          "state": "after_create"
+        },
+        {
+          "code": "org_required",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_policy_attrs_set": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host_policy_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_policy_set": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "dry_run"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_progress": {
+      "unreached": [
+        {
+          "code": "run_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "run_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_quickstart": {
+      "unreached": [
+        {
+          "code": "unknown_kind",
+          "state": "after_create"
+        },
+        {
+          "code": "unknown_kind",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_redeem": {
+      "unreached": [
+        {
+          "code": "handoff_token_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "handoff_token_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_registry_publish": {
+      "unreached": [
+        {
+          "code": "registry_disabled",
+          "state": "after_create"
+        },
+        {
+          "code": "registry_disabled",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_resume": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_runs_cancel": {
+      "unreached": [
+        {
+          "code": "run_not_cancellable",
+          "state": "after_create"
+        },
+        {
+          "code": "run_not_cancellable",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_runs_get": {
+      "unreached": [
+        {
+          "code": "run_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "run_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_runs_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_runs_part": {
+      "unreached": [
+        {
+          "code": "run_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "run_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_runs_purge": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host_runs_wait": {
+      "unreached": [
+        {
+          "code": "run_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "run_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_schedule_receipts": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_secret_leak_test": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_secret_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_secret_set": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host_self_offboard": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_share_caller_limit": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_share_caller_limit_remove": {
+      "unreached": [
+        {
+          "code": "tenant_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tenant_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "tenant_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_spec_test": {
+      "unreached": [
+        {
+          "code": "unknown_kind",
+          "state": "after_create"
+        },
+        {
+          "code": "unknown_kind",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_state_delete": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host_state_delete_rows": {
+      "unreached": [
+        {
+          "code": "state_table_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "state_table_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "state_table_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_state_get": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_state_insert": {
+      "unreached": [
+        {
+          "code": "state_table_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "state_table_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "state_table_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_state_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_state_query": {
+      "unreached": [
+        {
+          "code": "state_table_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "state_table_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_state_set": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host_state_table_create": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "dry_run"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_state_table_drop": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host_sync_create": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_sync_delete": {
+      "unreached": [
+        {
+          "code": "not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_sync_get": {
+      "unreached": [
+        {
+          "code": "not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_sync_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_sync_run_now": {
+      "unreached": [
+        {
+          "code": "not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_table_append": {
+      "unreached": [
+        {
+          "code": "table_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "table_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "table_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_table_chart": {
+      "unreached": [
+        {
+          "code": "table_query_rejected",
+          "state": "after_create"
+        },
+        {
+          "code": "table_query_rejected",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_table_charts": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_table_count": {
+      "unreached": [
+        {
+          "code": "table_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "table_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_table_create": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "dry_run"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_table_describe": {
+      "unreached": [
+        {
+          "code": "table_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "table_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_table_drop": {
+      "unreached": [
+        {
+          "code": "table_not_found",
+          "state": "dry_run"
+        }
+      ],
+      "variants": []
+    },
+    "host_table_graph": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_table_handle_drop": {
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host_table_handle_export": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_table_handles": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_table_join_paths": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_table_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_table_model_set": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "table_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "table_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_table_models": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_table_next_questions": {
+      "unreached": [
+        {
+          "code": "table_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "table_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_table_query": {
+      "unreached": [
+        {
+          "code": "table_query_rejected",
+          "state": "after_create"
+        },
+        {
+          "code": "table_query_rejected",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_table_query_diagnose": {
+      "unreached": [
+        {
+          "code": "not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_table_query_log": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_table_query_stats": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_table_schema": {
+      "unreached": [
+        {
+          "code": "table_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "table_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_task_claim": {
+      "unreached": [
+        {
+          "code": "task_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "task_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_task_complete": {
+      "unreached": [
+        {
+          "code": "task_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "task_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_task_dead_letters": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_task_get": {
+      "unreached": [
+        {
+          "code": "task_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "task_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_task_post": {
+      "unreached": [
+        {
+          "code": "agent_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "agent_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_tool_call": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": [
+        "own_dry_run"
+      ]
+    },
+    "host_tool_diff": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_tool_fork": {
+      "unreached": [
+        {
+          "code": "invalid_tool_name",
+          "state": "after_create"
+        },
+        {
+          "code": "invalid_tool_name",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_tool_history": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_tool_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_tool_list_shared": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_tool_logs": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_tool_publish": {
+      "unreached": [
+        {
+          "code": "invalid_tool_name",
+          "state": "after_create"
+        },
+        {
+          "code": "invalid_spec",
+          "state": "dry_run"
+        },
+        {
+          "code": "invalid_spec",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_tool_remove": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_tool_rollback": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_tool_run": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_tool_share": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_tool_spec_shared": {
+      "unreached": [
+        {
+          "code": "args_invalid",
+          "state": "after_create"
+        },
+        {
+          "code": "args_invalid",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_tool_test": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_tool_unshare": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_trigger_dead_letters": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_trigger_fire": {
+      "unreached": [
+        {
+          "code": "trigger_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "trigger_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_trigger_get": {
+      "unreached": [
+        {
+          "code": "trigger_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "trigger_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_trigger_list": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_trigger_pause": {
+      "unreached": [
+        {
+          "code": "trigger_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "trigger_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "trigger_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_trigger_remove": {
+      "unreached": [
+        {
+          "code": "trigger_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "trigger_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "trigger_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_trigger_replay": {
+      "unreached": [
+        {
+          "code": "run_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "run_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_trigger_resume": {
+      "unreached": [
+        {
+          "code": "trigger_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "trigger_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "trigger_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_trigger_set": {
+      "unreached": [
+        {
+          "code": "tool_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "dry_run"
+        },
+        {
+          "code": "tool_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_trigger_test": {
+      "unreached": [
+        {
+          "code": "trigger_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "trigger_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_uptime_create": {
+      "unreached": [
+        {
+          "code": "invalid_tool_name",
+          "state": "after_create"
+        },
+        {
+          "code": "invalid_tool_name",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_usage": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_vault_connect_link": {
+      "unreached": [
+        {
+          "code": "vault_provider_not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "vault_provider_not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_vault_disconnect": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_vault_provider_remove": {
+      "unreached": [
+        {
+          "code": "not_found",
+          "state": "after_create"
+        },
+        {
+          "code": "not_found",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_vault_provider_set": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_vault_providers": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_vault_status": {
+      "unreached": [],
+      "variants": []
+    },
+    "host_webhook_inbox_create": {
+      "unreached": [
+        {
+          "code": "invalid_tool_name",
+          "state": "after_create"
+        },
+        {
+          "code": "invalid_tool_name",
+          "state": "fresh"
+        }
+      ],
+      "variants": []
+    },
+    "host_whoami": {
+      "unreached": [],
+      "variants": []
+    }
+  },
+  "unreached_cap": 646
+}

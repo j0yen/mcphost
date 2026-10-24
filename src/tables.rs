@@ -1834,7 +1834,7 @@ pub async fn table_query_diagnose(state: &AppState, tenant: &Tenant, args: &Valu
     };
 
     if !row["diagnosis"].is_null() || !row["hint"].is_null() {
-        return Ok(json!({"log_id": log_id, "diagnosis": row["diagnosis"], "hint": row["hint"]}));
+        return Ok(diagnose_result(log_id, row["diagnosis"].clone().into(), row["hint"].as_str().map(str::to_string)));
     }
 
     // requirement 5: "recomputing them against the current schema if the
@@ -1885,7 +1885,15 @@ pub async fn table_query_diagnose(state: &AppState, tenant: &Tenant, args: &Valu
     })
     .await?;
 
-    Ok(json!({"log_id": log_id, "diagnosis": diagnosis, "hint": hint}))
+    Ok(diagnose_result(log_id, diagnosis, hint))
+}
+
+/// The `host.table.query_diagnose` answer. `diagnosis` and `hint` are required
+/// by the advertised `outputSchema` (an object, a string), so "nothing to
+/// diagnose" is an empty `identifiers` list and an empty hint, never `null`.
+fn diagnose_result(log_id: i64, diagnosis: Option<Value>, hint: Option<String>) -> Value {
+    let diagnosis = diagnosis.filter(|d| !d.is_null()).unwrap_or_else(|| json!({"identifiers": []}));
+    json!({"log_id": log_id, "diagnosis": diagnosis, "hint": hint.unwrap_or_default()})
 }
 
 /// PRD-mcphost-query-diagnosis P0 requirement 6/AC6: `host.table.query_stats(window_s?)`

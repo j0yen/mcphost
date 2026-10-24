@@ -642,6 +642,11 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # sandbox cap 220 -> 110 splits it into three normal buckets (~119/114/91 files, ~109/107/87 s
 # scaled from the refreshed 302 s) and SANDBOX_SHARDS 3 -> 4 gives each its own shard.
 # 7 singletons + 4 normal core + 1 singleton + 3 normal sandbox = 15 = MAX_SUITES.
+# 2026-10-23 (the refreshed weights put suite_sandbox_02 at 180 s, over the 160 s heaviest-shard
+# bound of cishard_ac01): the cap above never held, because suite_core_12 (an eighth core suite)
+# took the 15th slot and the MAX_SUITES loop below grew the sandbox cap back to 170 files, i.e.
+# two buckets at ~1.06 s/file (180 s / 170 files). MAX_SUITES 15 -> 16 lets the sandbox cap 110
+# stand: three normal buckets of ~109 files (~115 s at that rate) plus the sandbox singleton.
 MAX_PER_SUITE = {"core": 505, "sandbox": 110}
 
 # The P0 ceiling on core+sandbox test binaries (tests/suite_ac1_ten_binaries_
@@ -667,7 +672,7 @@ MAX_PER_SUITE = {"core": 505, "sandbox": 110}
 # 12 -> 13 on 2026-10-18 for the fourth normal core bucket (see MAX_PER_SUITE above):
 # 7 exclusive singletons + 4 normal core buckets + 2 sandbox suites.
 # 13 -> 15 on 2026-10-20 for the second and third normal sandbox buckets (see MAX_PER_SUITE above).
-MAX_SUITES = 15
+MAX_SUITES = 16
 
 # scripts/ci-suite-weights.json is generated with the suites: its keys are
 # EXACTLY the generated suite names (plus `lib`, the --lib run), so a new suite
@@ -1433,6 +1438,13 @@ def plan_measured(suite_files, new_weights):
     derived_s; an unchanged one keeps its entry byte for byte (so --check never drifts as main moves).
     A legacy date-valued entry is kept as it is when unchanged (check fails it: no commit) and is
     rewritten with `since: null` when resized.
+    The same single path seeds a suite that ALREADY EXISTS as tests/suite_*.rs with a recorded weight but has NO
+    measured entry (PR 495 branches cut before #497 merged; a land rebase that resolved the measured file to main's
+    side and dropped the branch's own entry): the guard is `name in out`, not `name in old_counts`, so `check`'s
+    completeness guard is never left failing on a plan gen reports "already up to date". A stale `_provisional`
+    mark for a suite with no measured entry is ignored: the seed is fresh and `since` is the merge-base. A
+    pre-existing suite whose members sat only in itself at base has den == 0 and takes recorded weight x R
+    (pending); one with a member moved in from a measured suite takes the ratio path.
     Otherwise ci-test-partition.sh check compares the OLD set's seconds with the
     NEW set's weight (ryzen7 run 404, 10-18: core_08 re-packed to recorded 223 s
     against measured 398 s, and the land precheck refused)."""
@@ -1477,7 +1489,9 @@ def plan_measured(suite_files, new_weights):
             if name in prov_old:
                 po = prov_old[name]
                 prov[name] = pending_entry(out[name], po.get("since") if isinstance(po, dict) else None)
-    # created suites: seeded from the old suites their member files came from
+    # suites with no measured entry (created by this plan, or already on disk and weighted but never measured --
+    # a branch cut before the seed existed, or a rebase that resolved the measured file to main's side): seeded
+    # from the old suites their member files came from
     ratio_of_file = {}  # member file -> (share of its source's recorded seconds, source measured / recorded)
     for name, secs in old.items():
         w_old = old_weights.get(name)
@@ -1501,8 +1515,8 @@ def plan_measured(suite_files, new_weights):
     for path, content in suite_files.items():
         name = os.path.basename(path)[:-3]
         w_new = new_weights.get(name)
-        if name in old_counts or name in out or not isinstance(w_new, (int, float)):
-            continue
+        if name in out or not isinstance(w_new, (int, float)):
+            continue  # `out` holds every generated suite that already has a measured entry
         members = [m for m in re.findall(r'#\[path\s*=\s*"([^"]+\.rs)"\]', content) if "/" not in m]
         den = sum(ratio_of_file[m][0] for m in members if m in ratio_of_file)
         if den > 0:

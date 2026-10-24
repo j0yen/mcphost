@@ -14,6 +14,10 @@ async fn two_concurrent_bare_connections_each_get_their_own_tenant_and_no_third(
 
     let a = McpClient::new(&server.base_url).with_session_continuity();
     let b = McpClient::new(&server.base_url).with_session_continuity();
+    // Each runs `initialize` and echoes the id it gets back, so each presents a
+    // session on its first `tools/call` (R3 of PRD-mcphost-implicit-signup-mints-only-on-success).
+    a.initialize().await;
+    b.initialize().await;
 
     let (a_result, b_result) = tokio::join!(
         a.tools_call("host.whoami", json!({})),

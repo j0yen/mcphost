@@ -46,7 +46,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `src/control.rs` (~3k) Business logic for `signup` and the `host.*` control plane.
   - sections: next-hint (PRD-mcphost-one-next-tool requirement 4)
 - `src/cron.rs` (<1k) PRD-mcphost-schedules P0 requirement 2: a hand-rolled five-field cron parser and its `next_after` occurrenc...
-- `src/db.rs` (~25k) SQLite storage.
+- `src/db.rs` (~26k) SQLite storage.
   - sections: consent (PRD-mcphost-agent-consent) | messaging (PRD-mcphost-agent-inbox) | connection factory and startup pragma audit | contention counters | PRD-mcphost-drift-review row types | PRD-mcphost-hosted-authorization-server row types | PRD-mcphost-federated-end-user-login row types | invites (PRD-mcphost-invite-links) | row policy (PRD-mcphost-row-policy)
 - `src/deadletters.rs` (<1k) PRD-mcphost-event-trigger-from-webhook: every refused `POST /hooks/...` delivery and every event-fired run...
 - `src/delegation.rs` (<1k) PRD-mcphost-key-delegate-child-keys R2: the subset rule.
@@ -108,6 +108,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `src/http.rs` (~2k) The axum app: `GET /healthz` (unauthenticated) and `POST /mcp` (the `rmcp` stateless streamable-HTTP servic...
 - `src/http/routes.rs` (<1k) PRD-mcphost-openapi-for-rest-facade R1: the one table of public HTTP routes.
 - `src/idempotency.rs` (<1k) PRD-mcphost-idempotency-key-on-call: a `tools/call` may carry an idempotency key; a repeat with the same ke...
+- `src/implicit_fault.rs` (<1k) PRD-mcphost-implicit-signup-mints-only-on-success R2: test fault hooks for the rollback of an implicit signup.
 - `src/import.rs` (<1k) PRD-mcphost-export-tables-and-import-restore: `host.import` -- the read half of `host.export`.
 - `src/inband.rs` (<1k) PRD-mcphost-elicitation-in-band-on-stateless-transport: server→client requests (`elicitation/create`, `samp...
 - `src/incident_banner.rs` (<1k) PRD-mcphost-incident-banner-for-agents: while an incident is open, every host-fault error ([`crate::errors:...
@@ -165,6 +166,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `src/peer_recent.rs` (<1k) PRD-mcphost-webhook-inbox-one-call R3: a short in-memory "this peer just redeemed" map.
 - `src/perf.rs` (<1k) PRD-mcphost-performance-guarantees-measured: per-plan p95 targets ([`crate::plans::Plan`]'s `perf_*_p95_ms`...
 - `src/plans.rs` (~1k) The plan catalog (`plans.toml`): per-plan price and quotas.
+- `src/precheck.rs` (<1k) PRD-mcphost-implicit-signup-mints-only-on-success R1: the one module that checks a call before it dispatches.
 - `src/preflight.rs` (<1k) PRD-mcphost-call-cost-estimate: the one list of admission checks a call passes before it dispatches.
 - `src/progress.rs` (<1k) PRD-mcphost-tools-call-progress-notifications: per-call progress bookkeeping (the `calls.progress_token` /...
 - `src/prompts.rs` (<1k) PRD-mcphost-prompts-from-published-tools: `prompts/list` and `prompts/get`.
@@ -245,6 +247,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `SYNTHETIC_FILTERS` in `src/admin.rs`
 - `CONTACT_POLICIES` in `src/agents.rs`
 - `SEVERITIES` in `src/alerts.rs`
+- `SURFACE_STAGE_KEYS` in `src/api_contract.rs`
 - `NEVER_SIGNS_UP` in `src/asks.rs`
 - `STATUSES` in `src/asks.rs`
 - `EXPORT_FORMATS` in `src/audit_export.rs`
@@ -272,6 +275,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `OUTPUT_ENVELOPE_FIELDS` in `src/envelope.rs`
 - `ARG_OWNERS` in `src/errors.rs`
 - `HOST_FAULT_CODES` in `src/errors.rs`
+- `REFUSAL_FIELDS` in `src/errors.rs`
 - `CLIENT_TAGS` in `src/examples.rs`
 - `EXAMPLE_USE_CASES` in `src/examples.rs`
 - `NON_RECIPE_DIRS` in `src/examples.rs`
@@ -289,6 +293,8 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `PUBLIC_KEY_STEMS` in `src/heal.rs`
 - `HELP_CODES` in `src/help.rs`
 - `HELP_ENTRIES` in `src/help.rs`
+- `INVALID_ARGS_CTORS` in `src/host_args.rs`
+- `SCHEMA_VALID_REFUSALS` in `src/host_args.rs`
 - `UNVALIDATED` in `src/host_args.rs`
 - `ROUTES` in `src/http/routes.rs`
 - `UNSPECCED` in `src/http/routes.rs`
@@ -317,7 +323,10 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `CLIENTS_MODES` in `src/oauth_policy.rs`
 - `ROLES` in `src/org.rs`
 - `TOOLS` in `src/org.rs`
+- `FORWARDING_ROOTS` in `src/output_schemas.rs`
 - `OPAQUE_FIELDS` in `src/output_schemas.rs`
+- `OWN_DRY_RUN` in `src/output_schemas.rs`
+- `ROOT_ENVELOPE` in `src/output_schemas.rs`
 - `ARG_OWNERS` in `src/paged.rs`
 - `PROJECTED_WINDOWS` in `src/paged.rs`
 - `TOOL_LIST_FIELDS` in `src/paged.rs`
@@ -331,6 +340,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `RESOURCE_TEMPLATES` in `src/resources.rs`
 - `ANON_SAFE_TOOLS` in `src/resume.rs`
 - `RESUME_NEXT` in `src/resume.rs`
+- `LIFECYCLE_STAGES` in `src/retention.rs`
 - `POLICY_TABLES` in `src/retention.rs`
 - `RETRY_POLICY` in `src/retry_policy.rs`
 - `SAMPLING_ERROR_CODES` in `src/sampling.rs`

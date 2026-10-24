@@ -7,11 +7,31 @@
 // original name, path, and test names (nextest's test list, with this
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
+#[path = "support/assertion.rs"]
+mod assertion;
+#[path = "support/oauth.rs"]
+mod oauth;
 #[path = "support/xlinks.rs"]
 mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "xaa_ac01_valid_assertion_no_consent.rs"]
+mod xaa_ac01_valid_assertion_no_consent;
+#[path = "xaa_ac03_invalid_grant_reasons_are_distinct_and_audited.rs"]
+mod xaa_ac03_invalid_grant_reasons_are_distinct_and_audited;
+#[path = "xaa_ac04_invalid_client_scope_target.rs"]
+mod xaa_ac04_invalid_client_scope_target;
+#[path = "xaa_ac05_metadata_grant_types_and_trusted_issuer.rs"]
+mod xaa_ac05_metadata_grant_types_and_trusted_issuer;
+#[path = "xaa_ac06_offline_access_gates_refresh_token.rs"]
+mod xaa_ac06_offline_access_gates_refresh_token;
+#[path = "xaa_ac07_revoke_and_unrevoke_end_user.rs"]
+mod xaa_ac07_revoke_and_unrevoke_end_user;
+#[path = "xaa_ac08_trusted_issuer_quota.rs"]
+mod xaa_ac08_trusted_issuer_quota;
+#[path = "xaa_ac09_hosted_and_key_paths_unchanged.rs"]
+mod xaa_ac09_hosted_and_key_paths_unchanged;
 #[path = "xlinks_ac01_fail_line_for_404_cursor_ignored.rs"]
 mod xlinks_ac01_fail_line_for_404_cursor_ignored;
 #[path = "xlinks_ac02_allowlist_skip_and_empty_set.rs"]

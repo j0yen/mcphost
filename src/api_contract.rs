@@ -36,6 +36,55 @@ pub const DEFAULT_DEPRECATIONS_PATH: &str = "contracts/deprecations.json";
 /// the dump rather than repeated per tool.
 pub use crate::envelope::OUTPUT_ENVELOPE_FIELDS;
 
+/// PRD-mcphost-synthetic-implicit-tenant-expiry: the tenant lifecycle rule,
+/// built from the retention constants (never typed here) so a changed default,
+/// env var or reason fails `contract dump --check`. Additive top-level key:
+/// [`CONTRACT_VERSION`] stays, and the reported `contract_version` string
+/// changes with the sha as for any other contract edit.
+pub fn tenant_lifecycle() -> Value {
+    json!({
+        "policy": crate::retention::SYNTHETIC_IMPLICIT_POLICY,
+        "selector": {
+            "signup_source": crate::retention::SELECTOR_SIGNUP_SOURCE,
+            "origin": crate::retention::SELECTOR_ORIGIN,
+            "synthetic": "not_null",
+            "claimed": false,
+            "paid": false,
+            "billing_ref": null,
+            "minted_at_or_after_policy_floor": true,
+        },
+        "env_var": crate::retention::SYNTHETIC_IMPLICIT_ENV,
+        "default_days": crate::retention::contract_default_days(),
+        "zero_disables": true,
+        "disabled_reason": crate::auth_shape::IDLE_EXPIRED_REASON,
+        "external_unclaimed": external_unclaimed(),
+    })
+}
+
+/// PRD-mcphost-external-unclaimed-tenant-expiry: the external policy nested
+/// under [`tenant_lifecycle`], built from the same constants the sweep reads
+/// (the sibling's top-level fields are unchanged).
+pub fn external_unclaimed() -> Value {
+    json!({
+        "selector": {
+            "origin": "external",
+            "synthetic": null,
+            "claimed": false,
+            "paid": false,
+            "billing_ref": null,
+            "stripe_customer_id": null,
+            "plan": "free",
+            "idle_clock_starts_no_earlier_than_policy_floor": true,
+        },
+        "idle_days_env": crate::retention::EXTERNAL_UNCLAIMED_ENV,
+        "idle_days": crate::retention::EXTERNAL_UNCLAIMED_DEFAULT_DAYS,
+        "warn_lead_days": crate::retention::WARN_LEAD_DEFAULT_DAYS,
+        "purge_grace_days": crate::retention::PURGE_GRACE_DEFAULT_DAYS,
+        "disabled_reason": crate::auth_shape::UNCLAIMED_EXPIRED_REASON,
+        "stages": crate::retention::LIFECYCLE_STAGES,
+    })
+}
+
 /// The [`OUTPUT_ENVELOPE_FIELDS`] members a committed contract's
 /// `output_envelope_fields` lacks, for `contract dump --check` to name.
 pub fn missing_envelope_fields(committed: &Value) -> Vec<&'static str> {
@@ -45,6 +94,24 @@ pub fn missing_envelope_fields(committed: &Value) -> Vec<&'static str> {
         .map(|a| a.iter().filter_map(Value::as_str).collect())
         .unwrap_or_default();
     OUTPUT_ENVELOPE_FIELDS.iter().copied().filter(|m| !have.contains(m)).collect()
+}
+
+/// PRD-mcphost-admin-funnel-real-surface-recipe-counter P0: the keys of one
+/// `admin.funnel` / `mcphost funnel --json` `by_surface` row, in stage
+/// order. [`crate::funnel::SurfaceStage`]'s serializer, the `admin.funnel`
+/// tool description and the contract's `admin_funnel` section all read this
+/// one const, and a test asserts the serialized row equals it.
+pub const SURFACE_STAGE_KEYS: &[&str] =
+    &["signed_up", "claimed", "published", "first_own_call", "first_external_call", "day7_active"];
+
+/// The `admin_funnel` section of the dump: the two key sets a client of
+/// `admin.funnel` reads, generated from [`SURFACE_STAGE_KEYS`] and
+/// [`crate::kinds::aliases::recipe_names`], never typed here.
+pub fn admin_funnel_contract() -> Value {
+    json!({
+        "recipe_attempts_7d_keys": crate::kinds::aliases::recipe_names(),
+        "surface_stage_keys": SURFACE_STAGE_KEYS,
+    })
 }
 
 /// A `contracts/deprecations.json` entry (requirement 2): `path` is a
@@ -421,9 +488,11 @@ pub fn dump_contract(kinds: &KindRegistry) -> Value {
         .map(|k| (k.name().to_string(), json!({"contract": k.contract().contract_json()})))
         .collect();
     let mut contract = json!({
+        "admin_funnel": admin_funnel_contract(),
         "contract_version": CONTRACT_VERSION,
         "kinds": kind_contracts,
         "output_envelope_fields": OUTPUT_ENVELOPE_FIELDS,
+        "tenant_lifecycle": tenant_lifecycle(),
         "tools": entries,
     });
     // A `test-support` build compiles the test-only `testprov` provider into
@@ -532,6 +601,12 @@ pub enum Violation {
     Removed { path: String },
     RemovedBeforeSunset { path: String, sunset: String },
     Narrowed { path: String, detail: String },
+    /// PRD-mcphost-tool-call-output-root-opaque R5: `path` (`<tool>.output`)
+    /// is an opaque root ([`crate::output_schemas::FORWARDING_ROOTS`]) and
+    /// `removed` are the typed root properties it no longer declares. The
+    /// root now accepts those keys as any JSON, so this is a report, not a
+    /// breaking change; it needs no deprecation entry.
+    OpaqueRoot { path: String, removed: Vec<String> },
 }
 
 impl Violation {
@@ -539,7 +614,8 @@ impl Violation {
         match self {
             Violation::Removed { path }
             | Violation::RemovedBeforeSunset { path, .. }
-            | Violation::Narrowed { path, .. } => path,
+            | Violation::Narrowed { path, .. }
+            | Violation::OpaqueRoot { path, .. } => path,
         }
     }
 
@@ -554,6 +630,10 @@ impl Violation {
             ),
             Violation::Narrowed { path, detail } => format!(
                 "{path} was narrowed ({detail}) with no valid contracts/deprecations.json entry"
+            ),
+            Violation::OpaqueRoot { path, removed } => format!(
+                "{path} is an opaque root and no longer types {}: they are accepted as any JSON",
+                removed.join(", ")
             ),
         }
     }
@@ -795,10 +875,13 @@ fn diff_output_properties(
             .flatten()
             .any(|b| b.get("properties").is_some_and(|p| p.get(field).is_some()))
     };
+    let opaque_root = crate::output_schemas::FORWARDING_ROOTS.contains(&tool_name);
+    let mut opaque_removed = Vec::new();
     for (field, old_field) in old_props {
         let path = format!("{tool_name}.output.{field}");
         match new_props.and_then(|p| p.get(field)) {
             None if in_branch(field) => {}
+            None if opaque_root => opaque_removed.push(field.clone()),
             None => check_removed(&path, deprecations, today_unix, violations),
             Some(new_field) => {
                 // A type that gained `null` (or any other member) accepts
@@ -818,6 +901,9 @@ fn diff_output_properties(
                 }
             }
         }
+    }
+    if !opaque_removed.is_empty() {
+        violations.push(Violation::OpaqueRoot { path: format!("{tool_name}.output"), removed: opaque_removed });
     }
 }
 

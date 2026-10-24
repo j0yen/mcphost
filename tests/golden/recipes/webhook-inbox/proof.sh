@@ -45,8 +45,8 @@ check() {
 # ---- MCP JSON-RPC helpers (curl + python3) ---------------------------------
 
 mcp_call() {
-  # mcp_call <tool> <args_json> [bearer_key]
-  local tool="$1" args="$2" key="${3:-}"
+  # mcp_call <tool> <args_json> [bearer_key] [extra_header_name] [extra_header_value]
+  local tool="$1" args="$2" key="${3:-}" hname="${4:-}" hval="${5:-}"
   local body
   body=$(python3 - "$tool" "$args" <<'PY'
 import json, sys
@@ -77,6 +77,7 @@ PY
     -H "Mcp-Name: ${tool}"
   )
   [[ -n "$key" ]] && hdrs+=(-H "Authorization: Bearer ${key}")
+  [[ -n "$hname" ]] && hdrs+=(-H "${hname}: ${hval}")
   local raw
   raw=$(curl -sS --connect-timeout 5 --max-time 30 -X POST "$MCPHOST_URL" "${hdrs[@]}" -d "$body")
   # A call that binds the connection (signup) may answer as a
@@ -138,8 +139,12 @@ PY
 
 # ---- the recipe -------------------------------------------------------------
 
-# 1. One fresh tenant.
-signup_resp=$(mcp_call "signup" '{"name": "webhook-inbox-proof"}')
+SYNTHETIC_HEADER="recipe:webhook-inbox"
+
+# 1. One fresh tenant, tagged so this proof's own signup is distinguishable
+#    from real recipe traffic (the hub stamps a tenant synthetic at creation
+#    only from this header; the `source` arg does not classify).
+signup_resp=$(mcp_call "signup" '{"name": "webhook-inbox-proof"}' "" "x-mcphost-synthetic" "$SYNTHETIC_HEADER")
 signup_struct=$(structured_of "$signup_resp")
 NS=$(json_get "$signup_struct" "tenant")
 KEY=$(json_get "$signup_struct" "key")

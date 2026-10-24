@@ -1016,7 +1016,7 @@ async fn main() -> anyhow::Result<()> {
             let plans = mcphost::plans::PlanCatalog::load_or_init(&plans_path)?;
             let report = mcphost::funnel::compute(&db, &plans, since_unix).await?;
             let days = days.unwrap_or(7).clamp(1, 365);
-            let (by_surface, probe) =
+            let (by_surface, probe, synthetic_excluded) =
                 mcphost::funnel::surface_report(&db, mcphost::state::now_unix(), days).await?;
             if let (Some(want), false) = (surface.as_deref(), json) {
                 let row = &by_surface[want];
@@ -1046,6 +1046,11 @@ async fn main() -> anyhow::Result<()> {
                         "progress_7d".to_string(),
                         mcphost::progress::compute(&db, mcphost::state::now_unix()).await?,
                     );
+                    obj.insert("synthetic_excluded".to_string(), serde_json::json!(synthetic_excluded));
+                    let (recipes, recipes_synthetic) =
+                        mcphost::funnel::recipe_attempts_7d(&db, mcphost::state::now_unix()).await?;
+                    obj.insert("recipe_attempts_7d".to_string(), recipes);
+                    obj.insert("recipe_attempts_synthetic_7d".to_string(), serde_json::json!(recipes_synthetic));
                 }
                 println!("{}", serde_json::to_string(&body)?);
             } else {

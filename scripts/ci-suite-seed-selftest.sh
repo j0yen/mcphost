@@ -25,8 +25,18 @@
 #       `since unreachable: fetch-depth too shallow or since not on main`
 #   (h) a resized suite is not marked; a resized pending suite keeps its `since` and re-derives derived_s;
 #       a no-op regen is "already up to date"
+#   (i) a suite that ALREADY EXISTS (tests/suite_*.rs + recorded weight) with NO measured entry -- a branch cut before
+#       #497 merged -- is seeded pending by gen (recorded weight x R, since = merge-base with origin/main) and `check`
+#       passes; (i-moved) the same when one member came from a measured suite: ratio path, not marked
+#   (ii) the rebase path: the measured file resolved to main's side lost the branch's own entry (main moved 5
+#       commits) -> same outcome; then the branch gets 4 own commits and main 5 more: `check --main` still passes at
+#       age 0, because the age ends at merge-base(HEAD, origin/main), never at main's tip and never at HEAD
+#   (iii) a pre-existing suite WITH an entry is untouched (value and `_provisional` object byte-identical, no new
+#       `_provisional` key); (iii-stale) a stale `_provisional` mark for a suite with no entry is ignored (fresh seed)
+#   (iv) idempotency: a second gen run prints "already up to date" and writes nothing
 # Env: SEED_SELFTEST_SCRIPTS=<dir> runs the three scripts from <dir> instead of this checkout's scripts/
-#   (red-at-base (f): point it at origin/main's scripts and (a), (b), (c) must FAIL).
+#   (red-at-base (f): point it at origin/main's scripts and (a), (b), (c) must FAIL; for the pre-existing-suite
+#   cases, (i), (i-moved), (ii) and (iii-stale) must FAIL there too).
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SRC="${SEED_SELFTEST_SCRIPTS:-$HERE/scripts}"
@@ -106,6 +116,20 @@ pending() {
   echo "$d"
 }
 newest_core() { (cd "$1" && ls tests/suite_core_*.rs | sed 's#tests/##; s#\.rs$##' | tail -1); }
+# branch_commit <dir>: a commit on the branch only (origin/main stays where it is)
+branch_commit() { g "$1" add -A && g "$1" commit -q --allow-empty -m "${2:-branch}"; }
+# advance_main <dir> <n>: n more commits on origin/main that the checked-out branch does NOT have (main moved on)
+advance_main() {
+  local d="$1" tip tree i
+  tip="$(g "$d" rev-parse refs/remotes/origin/main)"; tree="$(g "$d" rev-parse "${tip}^{tree}")"
+  for ((i = 0; i < $2; i++)); do tip="$(g "$d" commit-tree -p "$tip" -m "main $i" "$tree")"; done
+  g "$d" update-ref refs/remotes/origin/main "$tip"
+}
+# drop_measured <dir> <suite>: the measured file as a branch has it before the seed exists (or after a rebase took main's side)
+drop_measured() {
+  local m="$1/scripts/ci-suite-measured.json"
+  jq --arg s "$2" 'del(.[$s]) | if (._provisional // {}) | has($s) then del(._provisional[$s]) else . end | if ._provisional == {} then del(._provisional) else . end' "$m" > "$m.tmp" && mv "$m.tmp" "$m"
+}
 
 # ---- (a) the run-39913385513 fixture: suite_core_12 made of only new files
 FIXTURE_LINE='ci-test-partition: unmeasured suite: suite_core_12 has a recorded weight in scripts/ci-suite-weights.json but no entry in scripts/ci-suite-measured.json'
@@ -256,6 +280,121 @@ if [ -n "$d" ]; then
     ok "(h) resized suite_core_01 -> 3.75 s unmarked; no-op regen 'already up to date'; resized pending suite_core_02 keeps since and derived_s == its new value; check rc=0"
   else
     bad "(h) resize/no-op" "r_prov=$r_prov r_val=$r_val p_after=$p_after keeps=$keeps rc_chk=$rc_chk :: $(grep -m1 pending "$WORK/h.check")"
+  fi
+fi
+
+# ---- (i) a suite that already exists with a weight but NO measured entry (a branch cut before #497 merged) is seeded pending
+d="$(scratch i)" || { bad "(i) setup" "$d"; d=""; }
+if [ -n "$d" ]; then
+  add_new_area "$d"; (cd "$d" && scripts/gen-test-suites.sh >/dev/null 2>&1)   # suite_core_02: file + weight + entry
+  drop_measured "$d" suite_core_02; branch_commit "$d"                          # the branch before the seed existed: file + weight, no entry
+  m="$d/scripts/ci-suite-measured.json"; base="$(g "$d" rev-parse refs/remotes/origin/main)"
+  (cd "$d" && scripts/ci-test-partition.sh check >"$WORK/i.pre" 2>&1); rc_pre=$?
+  (cd "$d" && scripts/gen-test-suites.sh >"$WORK/i.gen" 2>&1)
+  (cd "$d" && scripts/ci-test-partition.sh check >"$WORK/i.check" 2>&1); rc=$?
+  w="$(jget "$d/scripts/ci-suite-weights.json" "d['suite_core_02']")"; want="$(python3 -I -c "print(round($w * 1.25, 2))")"
+  shape="$(jq -c --arg s "$base" --argjson w "$want" '._provisional.suite_core_02 == {pending: true, derived_s: $w, since: $s} and .suite_core_02 == $w' "$m")"
+  if [ "$rc_pre" != 0 ] && grep -q 'unmeasured suite: suite_core_02 has a recorded weight' "$WORK/i.pre" \
+     && ! grep -q 'already up to date' "$WORK/i.gen" && [ "$shape" = true ] && [ "$rc" = 0 ] \
+     && grep -qF "pending (derived) suite_core_02 since ${base:0:10}" "$WORK/i.check"; then
+    ok "(i) pre-existing suite_core_02 (file + weight $w, no entry): check fails 'unmeasured suite: suite_core_02'; gen seeds {pending, derived_s $want = w x 1.25, since = merge-base}; check rc=0"
+  else
+    bad "(i) pre-existing unmeasured suite" "rc_pre=$rc_pre shape=$shape want=$want check_rc=$rc :: gen: $(tail -1 "$WORK/i.gen") :: pre: $(grep -m1 -E 'unmeasured' "$WORK/i.pre") :: now: $(grep -m2 -E 'unmeasured|pending|FAILED' "$WORK/i.check" | tr '\n' ' ')"
+  fi
+fi
+
+# ---- (i-moved) a pre-existing unmeasured suite with a member that came from a MEASURED suite takes the ratio path (not marked)
+d="$(scratch imoved)" || { bad "(i-moved) setup" "$d"; d=""; }
+if [ -n "$d" ]; then
+  # ca_t3 (suite_core_01, measured 5.0 = 1.25 x 4) becomes sandbox-classified: it joins suite_sandbox_01, whose entry the branch lacks
+  printf '// Python%s marks this file sandbox-classified\n#[test]\nfn t() {}\n' "Kind" > "$d/tests/ca_t3.rs"
+  rm -f "$d/tests/sa_t3.rs"
+  # the old plan, as the branch has it: suite_sandbox_01 = {sa_t1..3} unmeasured; suite_core_01 = {ca_t1..3} measured
+  drop_measured "$d" suite_sandbox_01
+  branch_commit "$d"
+  m="$d/scripts/ci-suite-measured.json"
+  (cd "$d" && scripts/gen-test-suites.sh >"$WORK/imoved.gen" 2>&1)
+  (cd "$d" && scripts/ci-test-partition.sh check >"$WORK/imoved.check" 2>&1); rc=$?
+  sb="$(grep -l 'ca_t3' "$d"/tests/suite_sandbox_*.rs | head -1 | sed 's#.*/##; s#\.rs$##')"
+  w="$(jget "$d/scripts/ci-suite-weights.json" "d.get('$sb')")"; val="$(jget "$m" "d.get('$sb')")"
+  mark="$(jget "$m" "'$sb' in d.get('_provisional', {})")"
+  if [ "$sb" = suite_sandbox_01 ] && [ "$val" = "$(python3 -I -c "print(round($w * 1.25, 2))")" ] && [ "$mark" = false ] && [ "$rc" = 0 ] \
+     && ! grep -q 'already up to date' "$WORK/imoved.gen"; then
+    ok "(i-moved) pre-existing $sb (no entry; ca_t3 moved in from measured suite_core_01) seeded $val = w $w x 1.25 by the ratio path, unmarked; check rc=0"
+  else
+    bad "(i-moved) ratio path" "sb=$sb w=$w val=$val mark=$mark check_rc=$rc :: gen: $(tail -2 "$WORK/imoved.gen" | tr '\n' ' ') :: $(grep -m2 -E 'unmeasured|FAILED' "$WORK/imoved.check" | tr '\n' ' ')"
+  fi
+fi
+
+# ---- (ii) the rebase path: main's side of the measured file lost the branch's entry; the age never runs to main's tip
+d="$(scratch ii)" || { bad "(ii) setup" "$d"; d=""; }
+if [ -n "$d" ]; then
+  add_new_area "$d"; (cd "$d" && scripts/gen-test-suites.sh >/dev/null 2>&1); branch_commit "$d"   # the branch: suite_core_02 + weight + entry
+  advance_main "$d" 5                                                                              # main moves on without it
+  g "$d" rebase -q refs/remotes/origin/main >/dev/null 2>&1 || bad "(ii) rebase" "failed"
+  g "$d" checkout -q refs/remotes/origin/main -- scripts/ci-suite-measured.json                       # the land rebase resolves the measured file to main's side
+  branch_commit "$d" "resolve measured to main's side"
+  m="$d/scripts/ci-suite-measured.json"; tip="$(g "$d" rev-parse refs/remotes/origin/main)"
+  (cd "$d" && scripts/ci-test-partition.sh check >"$WORK/ii.pre" 2>&1); rc_pre=$?
+  (cd "$d" && scripts/gen-test-suites.sh >"$WORK/ii.gen" 2>&1)
+  (cd "$d" && scripts/ci-test-partition.sh check >"$WORK/ii.check" 2>&1); rc=$?
+  w="$(jget "$d/scripts/ci-suite-weights.json" "d['suite_core_02']")"; want="$(python3 -I -c "print(round($w * 1.25, 2))")"
+  shape="$(jq -c --arg s "$tip" --argjson w "$want" '._provisional.suite_core_02 == {pending: true, derived_s: $w, since: $s} and .suite_core_02 == $w' "$m")"
+  # then: 4 own commits on the branch and main 5 further on; HEAD..tip is nowhere near the seed's age
+  for i in 1 2 3 4; do g "$d" commit -q --allow-empty -m "own $i"; done; advance_main "$d" 5
+  (cd "$d" && scripts/ci-test-partition.sh check --main >"$WORK/ii.age" 2>&1); rc_age=$?
+  if [ "$rc_pre" != 0 ] && grep -q 'unmeasured suite: suite_core_02 has a recorded weight' "$WORK/ii.pre" \
+     && ! grep -q 'already up to date' "$WORK/ii.gen" && [ "$shape" = true ] && [ "$rc" = 0 ] \
+     && [ "$rc_age" = 0 ] && grep -q 'pending (derived) suite_core_02 since .* (0 first-parent commits behind HEAD' "$WORK/ii.age"; then
+    ok "(ii) rebase path: main's measured file lacked suite_core_02 (check fails unmeasured); gen seeds {pending, derived_s $want, since = merge-base}; after 4 own commits + main 5 further 'check --main' rc=0 at age 0"
+  else
+    bad "(ii) rebase path" "rc_pre=$rc_pre shape=$shape check_rc=$rc age_rc=$rc_age :: gen: $(tail -1 "$WORK/ii.gen") :: pre: $(grep -m1 unmeasured "$WORK/ii.pre") :: age: $(grep -m2 -E 'pending|FAILED' "$WORK/ii.age" | tr '\n' ' ')"
+  fi
+fi
+
+# ---- (iii) a pre-existing suite WITH an entry is untouched; (iii-stale) a stale _provisional mark for a suite with no entry is ignored
+d="$(scratch iii)" || { bad "(iii) setup" "$d"; d=""; }
+if [ -n "$d" ]; then
+  add_new_area "$d" cz; (cd "$d" && scripts/gen-test-suites.sh >/dev/null 2>&1); settle "$d" "land cz"    # suite_core_02 pending, since = the measured commit
+  old_since="$(jq -r '._provisional.suite_core_02.since' "$d/scripts/ci-suite-measured.json")"
+  add_new_area "$d" cz2; (cd "$d" && scripts/gen-test-suites.sh >/dev/null 2>&1)                        # suite_core_03
+  m="$d/scripts/ci-suite-measured.json"
+  drop_measured "$d" suite_core_03
+  jq --arg s "$old_since" '._provisional.suite_core_03 = {pending: true, derived_s: 99, since: $s}' "$m" > "$m.tmp" && mv "$m.tmp" "$m"   # a stale mark, no value
+  branch_commit "$d"
+  cur="$(g "$d" rev-parse refs/remotes/origin/main)"
+  before="$(jq -c '[.suite_core_01, .suite_sandbox_01, .suite_core_02, ._provisional.suite_core_02]' "$m")"
+  (cd "$d" && scripts/gen-test-suites.sh >"$WORK/iii.gen" 2>&1)
+  after="$(jq -c '[.suite_core_01, .suite_sandbox_01, .suite_core_02, ._provisional.suite_core_02]' "$m")"
+  keys="$(jq -c '._provisional | keys' "$m")"
+  (cd "$d" && scripts/ci-test-partition.sh check >"$WORK/iii.check" 2>&1); rc=$?
+  stale="$(jq -c --arg s "$cur" '._provisional.suite_core_03 as $p | $p.since == $s and $p.derived_s == .suite_core_03 and $p.derived_s != 99' "$m")"
+  if [ "$before" = "$after" ] && [ "$keys" = '["suite_core_02","suite_core_03"]' ] && [ "$old_since" != "$cur" ] && [ "$rc" = 0 ]; then
+    ok "(iii) suite_core_01, suite_sandbox_01 and pending suite_core_02 byte-identical across the regen ($after); _provisional keys $keys (no new key for them); check rc=0"
+  else
+    bad "(iii) untouched" "before=$before after=$after keys=$keys old_since=${old_since:0:10} cur=${cur:0:10} check_rc=$rc :: $(tail -1 "$WORK/iii.gen")"
+  fi
+  if [ "$stale" = true ]; then
+    ok "(iii-stale) stale _provisional.suite_core_03 {derived_s 99, since ${old_since:0:10}} with no measured entry ignored: fresh seed, since = merge-base ${cur:0:10}"
+  else
+    bad "(iii-stale) stale mark" "stale=$stale :: $(jq -c '._provisional.suite_core_03, .suite_core_03' "$m")"
+  fi
+fi
+
+# ---- (iv) idempotency: a second gen run after the seed prints "already up to date" and writes nothing
+d="$(scratch iv)" || { bad "(iv) setup" "$d"; d=""; }
+if [ -n "$d" ]; then
+  add_new_area "$d"; (cd "$d" && scripts/gen-test-suites.sh >/dev/null 2>&1); drop_measured "$d" suite_core_02; branch_commit "$d"
+  (cd "$d" && scripts/gen-test-suites.sh >"$WORK/iv.first" 2>&1)
+  (cd "$d" && find . -path ./.git -prune -o -type f -print0 | sort -z | xargs -0 sha256sum > "$WORK/iv.before")
+  (cd "$d" && scripts/gen-test-suites.sh >"$WORK/iv.second" 2>&1); rc2=$?
+  (cd "$d" && find . -path ./.git -prune -o -type f -print0 | sort -z | xargs -0 sha256sum > "$WORK/iv.after")
+  (cd "$d" && scripts/gen-test-suites.sh --check >"$WORK/iv.chk" 2>&1); rc_c=$?
+  if ! grep -q 'already up to date' "$WORK/iv.first" && [ "$rc2" = 0 ] && grep -q 'already up to date' "$WORK/iv.second" \
+     && cmp -s "$WORK/iv.before" "$WORK/iv.after" && [ "$rc_c" = 0 ]; then
+    ok "(iv) first gen seeds, the second prints 'already up to date' with 0 files changed, gen --check ok"
+  else
+    bad "(iv) idempotency" "rc2=$rc2 check_rc=$rc_c :: first: $(tail -1 "$WORK/iv.first") :: second: $(tail -1 "$WORK/iv.second") :: $(diff "$WORK/iv.before" "$WORK/iv.after" | head -3 | tr '\n' ' ')"
   fi
 fi
 

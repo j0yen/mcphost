@@ -65,7 +65,7 @@ fn arg_i64(args: &Value, name: &str) -> Result<i64, AppError> {
 /// module doc settles on. Best-effort: a tenant that never created a table
 /// has no file to remove, and a removal failure here must never fail (or
 /// roll back) the tenant delete that already committed in `Db::delete_tenant`.
-fn remove_tenant_tables(state: &AppState, tenant_id: i64) {
+pub(crate) fn remove_tenant_tables(state: &AppState, tenant_id: i64) {
     let base = state.db.data_dir().join("tables").join(format!("{tenant_id}.db"));
     for suffix in ["", "-wal", "-shm"] {
         let path = if suffix.is_empty() {
@@ -106,6 +106,16 @@ pub async fn tenants(state: &AppState, args: &Value) -> Result<Value, AppError> 
         None => state.db.list_tenants().await?,
     };
     let owner_methods = state.db.owner_methods().await?;
+    // PRD-mcphost-synthetic-implicit-tenant-expiry P1: `disabled_reason`
+    // filters rows by the exact reason; every row carries `expires_at_unix`.
+    let reason_filter = arg_str_opt(args, "disabled_reason");
+    let expiries = state.db.subject_expiries().await?;
+    // PRD-mcphost-external-unclaimed-tenant-expiry P1: the external policy's
+    // per-tenant clock.
+    let external = state.db.external_subjects(None).await?;
+    let external_window = state.db.external_expiry_window_days().await?;
+    let synthetic_window = state.db.synthetic_expiry_window_days().await?;
+    let now = crate::state::now_unix();
     let tenants: Vec<Value> = rows
         .into_iter()
         .filter(|t| match synthetic_filter.as_str() {
@@ -113,8 +123,18 @@ pub async fn tenants(state: &AppState, args: &Value) -> Result<Value, AppError> 
             "false" => t.synthetic.is_none(),
             _ => true,
         })
+        .filter(|t| reason_filter.as_deref().is_none_or(|want| t.disabled_reason.as_deref() == Some(want)))
         .map(|t| {
+            let ext = external.get(&t.id);
+            let lifecycle = match (ext, expiries.get(&t.id)) {
+                (Some(subject), _) => crate::retention::external_lifecycle_view(subject, external_window, now),
+                (None, expiry) => crate::retention::lifecycle_view(synthetic_window, expiry.copied()),
+            };
             json!({
+                "idle_since_unix": ext.map(|s| s.idle_since_unix),
+                "idle_days": ext.map(|s| ((now - s.idle_since_unix) / 86_400).max(0)),
+                "lifecycle": lifecycle,
+                "tenant_lifecycle": lifecycle,
                 "tenant": t.namespace,
                 "display_name": t.display_name,
                 "created_at": t.created_at,
@@ -143,6 +163,9 @@ pub async fn tenants(state: &AppState, args: &Value) -> Result<Value, AppError> 
                 // PRD-mcphost-owner-verification-paths R5: how it was proved
                 // (`email`, `github`, `dns`), null while unverified.
                 "owner_method": owner_methods.get(&t.id),
+                // When the idle sweep will end this tenant (`CLASS AND
+                // FLOOR`, no idle term); null for a non-subject.
+                "expires_at_unix": expiries.get(&t.id),
             })
         })
         .collect();
@@ -158,18 +181,18 @@ fn counts_json(counts: &TenantDeleteCounts) -> Value {
     })
 }
 
-/// P0 requirement 1 (AC1/AC2/AC7): delete one tenant and cascade every row
-/// that references it, atomically, in `Db::delete_tenant`. Structured log
-/// line + `admin_events` row (requirement 4 / AC8) happen here and in
-/// `Db::delete_tenant` respectively -- the log is process-observability,
-/// the DB row is the durable audit trail.
-pub async fn tenant_delete(state: &AppState, args: &Value) -> Result<Value, AppError> {
-    let tenant = arg_str(args, "tenant")?;
-    let (deleted, counts) = state
-        .db
-        .delete_tenant(tenant.clone())
-        .await?
-        .ok_or_else(|| AppError::TenantNotFound(tenant.clone()))?;
+/// The one delete path (`tenant_delete` and an implicit signup's rollback):
+/// `Db::delete_tenant` records `action` in `admin_events`, then every kind's
+/// `on_tenant_removed` and the tenant's table store go. `None` when the tenant
+/// is already gone.
+pub(crate) async fn delete_tenant_cascade(
+    state: &AppState,
+    namespace: &str,
+    action: &'static str,
+) -> Result<Option<(crate::db::Tenant, TenantDeleteCounts)>, AppError> {
+    let Some((deleted, counts)) = state.db.delete_tenant(namespace.to_string(), action).await? else {
+        return Ok(None);
+    };
     // PRD-mcphost-code-tools-warm-pool requirement 2 / AC3: same guarantee
     // as `tenant_disable`, for an outright delete.
     for k in state.kinds.all() {
@@ -179,6 +202,19 @@ pub async fn tenant_delete(state: &AppState, args: &Value) -> Result<Value, AppE
     // `tenants` table's own foreign keys can't reach -- a tenant's table
     // store is a file, not a row.
     remove_tenant_tables(state, deleted.id);
+    Ok(Some((deleted, counts)))
+}
+
+/// P0 requirement 1 (AC1/AC2/AC7): delete one tenant and cascade every row
+/// that references it, atomically, in `Db::delete_tenant`. Structured log
+/// line + `admin_events` row (requirement 4 / AC8) happen here and in
+/// `Db::delete_tenant` respectively -- the log is process-observability,
+/// the DB row is the durable audit trail.
+pub async fn tenant_delete(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let tenant = arg_str(args, "tenant")?;
+    let (deleted, counts) = delete_tenant_cascade(state, &tenant, "tenant_delete")
+        .await?
+        .ok_or_else(|| AppError::TenantNotFound(tenant.clone()))?;
     tracing::info!(
         tenant = %deleted.namespace,
         action = "tenant_delete",
@@ -259,7 +295,7 @@ pub async fn tenant_delete_by_prefix(state: &AppState, args: &Value) -> Result<V
     let mut total = TenantDeleteCounts::default();
     let mut deleted = Vec::with_capacity(matches.len());
     for t in &matches {
-        if let Some((deleted_tenant, counts)) = state.db.delete_tenant(t.namespace.clone()).await? {
+        if let Some((deleted_tenant, counts)) = state.db.delete_tenant(t.namespace.clone(), "tenant_delete").await? {
             for k in state.kinds.all() {
                 k.on_tenant_removed(deleted_tenant.id).await;
             }
@@ -332,6 +368,11 @@ pub async fn calls_export(state: &AppState, args: &Value) -> Result<Value, AppEr
 
 pub async fn tenant_enable(state: &AppState, args: &Value) -> Result<Value, AppError> {
     let tenant = arg_str(args, "tenant")?;
+    // PRD-mcphost-external-unclaimed-tenant-expiry: a tenant the unclaimed
+    // policy invalidated starts a fresh idle run when it is enabled.
+    if state.db.enable_unclaimed_expired(tenant.clone(), crate::state::now_unix()).await? {
+        return Ok(json!({ "tenant": tenant, "disabled": false }));
+    }
     let changed = state.db.set_tenant_disabled(tenant.clone(), false).await?;
     if !changed {
         return Err(AppError::ToolNotFound(format!("tenant {tenant}")));
@@ -2073,11 +2114,36 @@ pub async fn funnel(state: &AppState, args: &Value) -> Result<Value, AppError> {
     let implicit_second_signup_blocked =
         state.db.count_implicit_second_signup_blocked(since_unix).await?;
 
+    // PRD-mcphost-implicit-signup-mints-only-on-success R4. `implicit_zero_ok_calls`
+    // is a point-in-time count over live tenants; the rest read the window.
+    let implicit_zero_ok_calls = state.db.count_implicit_zero_ok_calls().await?;
+    let implicit_signup_rolled_back = state.db.count_implicit_signup_rolled_back(since_unix).await?;
+    let (mut refused_fleet, mut refused_external) = (0_i64, 0_i64);
+    for ip in state.db.implicit_peer_refused_ips(since_unix).await? {
+        if state.fleet_ips.contains(&ip) {
+            refused_fleet += 1;
+        } else {
+            refused_external += 1;
+        }
+    }
+    let (per_peer_max, per_peer_p50, per_peer_above_one) = state.db.implicit_tenants_per_peer(since_unix).await?;
+
     let mut response = json!({
         "window": {"days": days, "since_unix": since_unix},
         "signups": signups,
         "signups_human": signups_human,
         "implicit_second_signup_blocked": implicit_second_signup_blocked,
+        "tenants_idle_expired": state.db.count_tenants_idle_expired().await?,
+        "implicit_zero_ok_calls": implicit_zero_ok_calls,
+        "implicit_signup_rolled_back": implicit_signup_rolled_back,
+        "implicit_peer_refused": {"fleet": refused_fleet, "external": refused_external},
+        "implicit_tenants_per_peer": {
+            "max": per_peer_max,
+            "p50": per_peer_p50,
+            "peers_above_1": per_peer_above_one,
+        },
+        "tenants_unclaimed_expired": state.db.count_tenants_unclaimed_expired().await?,
+        "tenants_unclaimed_purged": state.db.count_tenants_unclaimed_purged().await?,
         "stages": funnel_stage_stats(&filtered, signups),
         "by_source": funnel_by_source(&by_source_rows),
         "by_origin": funnel_by_origin(&by_source_rows),
@@ -2095,11 +2161,17 @@ pub async fn funnel(state: &AppState, args: &Value) -> Result<Value, AppError> {
         .collect();
     // PRD-mcphost-funnel-by-surface-nightly-probe R3: same shape as
     // `mcphost funnel --json`'s `by_surface` / `probe`.
-    let (by_surface, probe) = crate::funnel::surface_report(&state.db, crate::state::now_unix(), days).await?;
+    let (by_surface, probe, synthetic_excluded) =
+        crate::funnel::surface_report(&state.db, crate::state::now_unix(), days).await?;
     let obj = response.as_object_mut().expect("response is always an object");
     obj.insert("install_link_clicks".to_string(), Value::Object(install_link_clicks));
     obj.insert("by_surface".to_string(), by_surface);
     obj.insert("probe".to_string(), probe);
+    obj.insert("synthetic_excluded".to_string(), json!(synthetic_excluded));
+    let (recipe_attempts, recipe_synthetic) =
+        crate::funnel::recipe_attempts_7d(&state.db, crate::state::now_unix()).await?;
+    obj.insert("recipe_attempts_7d".to_string(), recipe_attempts);
+    obj.insert("recipe_attempts_synthetic_7d".to_string(), json!(recipe_synthetic));
     if let Some(sc) = &source_class {
         obj.insert("source_class".to_string(), json!(sc));
     }

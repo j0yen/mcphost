@@ -88,7 +88,7 @@ required_commands = [
 [[lane]]
 id = "ci-scripts"
 description = "Shell scripts that drive .github/workflows/ci.yml but live outside it (PRD-mcphost-ci-sandbox-coverage AC6: scripts/ci-test-partition.sh; scripts/gen-test-suites.sh folded in 2026-09-12, PRD-mcphost-test-suite-consolidation -- it drives the same CI test-discovery surface as ci-test-partition.sh, generating the tests/suite_*.rs files ci-test-partition.sh's own partition reads). Added project-locally: same gap class as the ci lane's own workflow-file globs, which never covered scripts/ that ci.yml merely invokes."
-globs = ["scripts/ci-test-partition.sh", "scripts/gen-test-suites.sh", "scripts/ci-suite-weights.json", "scripts/ci-suite-measured.json", "scripts/ci-refresh-weights.sh", "scripts/ci-suite-seed-selftest.sh", "scripts/ci-shard-report.sh", "scripts/pin-tests.sh", "scripts/gen-dispatch-table.sh", "scripts/fwd-stack-measure.sh", "scripts/audit-marker-check.sh"]
+globs = ["scripts/ci-test-partition.sh", "scripts/gen-test-suites.sh", "scripts/ci-suite-weights.json", "scripts/ci-suite-measured.json", "scripts/ci-refresh-weights.sh", "scripts/ci-suite-seed-selftest.sh", "scripts/ci-shard-report.sh", "scripts/pin-tests.sh", "scripts/gen-dispatch-table.sh", "scripts/fwd-stack-measure.sh", "scripts/audit-marker-check.sh", "scripts/check-example-synthetic-header.sh"]
 required_commands = [
   "scripts/audit.sh",
 ]
@@ -378,7 +378,7 @@ required_commands = [
 [[lane]]
 id = "live-scripts"
 description = "PRD-mcphost-task-handoff-live-script: scripts/task-handoff-live.sh, the bash+curl+python3 live handoff proof run against prod from the build host; scripts/live/publish-visibility.sh (PRD-mcphost-publish-visibility-and-tags AC8) is the same shape, its behavior covered by the pubvis_ac integration tests; scripts/share-scope-live.sh (PRD-mcphost-scoped-tool-share AC8) is the same shape, proven by its own prod run (no offline suite spawns it). Behavior is proven offline by the thlive_ac0N integration tests (the script run against a locally spawned server), so the required command is a name-filtered cargo test over those. Added project-locally: the scaffold has no lane for a live-proof script."
-globs = ["scripts/task-handoff-live.sh", "scripts/live/publish-visibility.sh", "scripts/live/empty-call.sh", "scripts/share-scope-live.sh"]
+globs = ["scripts/task-handoff-live.sh", "scripts/live/publish-visibility.sh", "scripts/live/empty-call.sh", "scripts/live/bound-call.sh", "scripts/share-scope-live.sh", "scripts/ops/recipe-counter-live.sh"]
 required_commands = [
   "cargo test --workspace thlive_ac",
   "cargo test --workspace pubvis_ac",
@@ -440,4 +440,12 @@ description = "hotfix signup-source-descriptor: scripts/signup-args-doc-check.sh
 globs = ["scripts/signup-args-doc-check.sh"]
 required_commands = [
   "scripts/signup-args-doc-check.sh",
+]
+
+[[lane]]
+id = "osrx-live-script"
+description = "PRD-mcphost-import-dry-run-live-real-export: scripts/live/osreach_import_reach.py, the live driver that previews a real export through host_import dry run from the build host. Its --plan and --parse modes are offline and proven by the osrx_ac tests. Given its own lane since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane's required_commands as an immutable baseline (same reasoning as the live-scripts lane)."
+globs = ["scripts/live/osreach_import_reach.py"]
+required_commands = [
+  "cargo test --workspace osrx_ac",
 ]

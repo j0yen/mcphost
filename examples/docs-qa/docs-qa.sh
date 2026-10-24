@@ -99,11 +99,14 @@ os.makedirs(receipt_dir, exist_ok=True)
 GOLD_PATH = os.path.join(corpus_dir, "gold.json")
 ASK_DOCS_SOURCE_PATH = "ask_docs.py"
 SYNTHETIC_SOURCE = "recipe-docs-qa"
+# The hub stamps a tenant synthetic at creation only from this header on the
+# signup request; the `source` arg above attributes but does not classify.
+SYNTHETIC_HEADER = "recipe:docs-qa"
 
 call_log = []
 
 
-def mcp_call(tool, arguments, key=None):
+def mcp_call(tool, arguments, key=None, extra_headers=None):
     call_log.append(tool)
     body = json.dumps(
         {
@@ -136,6 +139,8 @@ def mcp_call(tool, arguments, key=None):
     }
     if key:
         headers["Authorization"] = f"Bearer {key}"
+    if extra_headers:
+        headers.update(extra_headers)
     req = urllib.request.Request(endpoint, data=body, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
@@ -275,7 +280,9 @@ def main():
     is_fresh = not (reuse_state and os.path.exists(reuse_state))
     if is_fresh:
         resp = mcp_call(
-            "signup", {"name": "docs-qa-owner", "source": SYNTHETIC_SOURCE}
+            "signup",
+            {"name": "docs-qa-owner", "source": SYNTHETIC_SOURCE},
+            extra_headers={"x-mcphost-synthetic": SYNTHETIC_HEADER},
         )
         if is_error(resp):
             fail(f"signup failed: {resp['error']}")

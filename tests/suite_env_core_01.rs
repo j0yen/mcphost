@@ -38,5 +38,33 @@ mod heal_ac02_dry_run_writes_would_run;
 mod ntfyb_ac03_webhook_retries_to_delivered_or_failed;
 #[path = "support_ac05_support_url_rendered_or_not_configured.rs"]
 mod support_ac05_support_url_rendered_or_not_configured;
+#[path = "tenx_ac01_idle_synthetic_implicit_tenant_expires.rs"]
+mod tenx_ac01_idle_synthetic_implicit_tenant_expires;
+#[path = "tenx_ac02_window_env_seed_and_floor.rs"]
+mod tenx_ac02_window_env_seed_and_floor;
+#[path = "tenx_ac03_expired_tenant_refused_front_door_open.rs"]
+mod tenx_ac03_expired_tenant_refused_front_door_open;
+#[path = "tenx_ac04_contract_carries_tenant_lifecycle.rs"]
+mod tenx_ac04_contract_carries_tenant_lifecycle;
+#[path = "tenx_ac05_batched_concurrent_sweep_exactly_once.rs"]
+mod tenx_ac05_batched_concurrent_sweep_exactly_once;
+#[path = "tenx_ac06_doctor_reports_tenant_lifecycle.rs"]
+mod tenx_ac06_doctor_reports_tenant_lifecycle;
+#[path = "tenx_ac07_admin_lists_expiry_and_funnel_counts_it.rs"]
+mod tenx_ac07_admin_lists_expiry_and_funnel_counts_it;
+#[path = "texp_ac01_lifecycle_visible_on_doctor_and_admin.rs"]
+mod texp_ac01_lifecycle_visible_on_doctor_and_admin;
+#[path = "texp_ac02_warn_at_day_twenty_once_a_day.rs"]
+mod texp_ac02_warn_at_day_twenty_once_a_day;
+#[path = "texp_ac03_invalidate_at_day_thirty.rs"]
+mod texp_ac03_invalidate_at_day_thirty;
+#[path = "texp_ac04_claim_restores_and_binds.rs"]
+mod texp_ac04_claim_restores_and_binds;
+#[path = "texp_ac05_purge_at_day_forty_four.rs"]
+mod texp_ac05_purge_at_day_forty_four;
+#[path = "texp_ac06_exclusions_pre_floor_and_off_switch.rs"]
+mod texp_ac06_exclusions_pre_floor_and_off_switch;
+#[path = "texp_ac07_provider_failure_retry_and_prune_log.rs"]
+mod texp_ac07_provider_failure_retry_and_prune_log;
 #[path = "tlint_ac04_deadline_budget_fires_and_scales.rs"]
 mod tlint_ac04_deadline_budget_fires_and_scales;
