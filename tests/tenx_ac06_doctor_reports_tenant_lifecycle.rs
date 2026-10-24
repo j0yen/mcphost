@@ -54,10 +54,10 @@ async fn tenx_ac06_doctor_says_whether_and_when_a_tenant_expires() {
 
     for key in &keys[1..] {
         let (view, ..) = lifecycle(&server, key).await;
-        assert_eq!(view, json!({"subject": false, "expires_at_unix": null}));
+        assert_eq!(view, json!({"subject": false, "policy": null, "expires_at_unix": null}));
     }
 
     server.state.db.set_retention_days_for_test(tenx::POLICY.to_string(), 0).await.expect("window 0");
     let (off, ..) = lifecycle(&server, &keys[0]).await;
-    assert_eq!(off, json!({"subject": false, "expires_at_unix": null}), "window 0 reports subject: false");
+    assert_eq!(off, json!({"subject": false, "policy": null, "expires_at_unix": null}), "window 0 reports subject: false");
 }
