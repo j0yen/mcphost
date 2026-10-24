@@ -12,6 +12,15 @@ use crate::db::{Tenant, ToolRow};
 use crate::errors::AppError;
 use crate::state::AppState;
 
+/// The shape `host.tool.spec_shared` reads in `tool`: `<owner_namespace>.<name>`,
+/// split at the first dot. `tool.pattern` is this string.
+pub const QUALIFIED_NAME_PATTERN: &str = "\\.";
+
+/// Whether `s` has the dot [`QUALIFIED_NAME_PATTERN`] states.
+pub fn is_qualified_name(s: &str) -> bool {
+    s.contains('.')
+}
+
 /// PRD-mcphost-scoped-tool-share R1: what a share lets its grantee do. The
 /// ONE source of the scope set: `host.tool_share`'s `scopes.items.enum`,
 /// `_meta.share_scopes`, the `host.catalog.get` `scopes` field and the

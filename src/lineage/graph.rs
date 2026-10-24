@@ -88,15 +88,22 @@ impl ChangeKind {
         }
     }
 
+    /// Every lowercase spelling [`ChangeKind::parse`] accepts, with the kind it
+    /// reads. `host.lineage.blast_radius`'s `change_kind` `enum` is generated
+    /// from this const, so the descriptor and the parser cannot drift.
+    pub const SPELLINGS: &'static [(&'static str, ChangeKind)] = &[
+        ("drop", ChangeKind::Drop),
+        ("rename", ChangeKind::Rename),
+        ("type_change", ChangeKind::TypeChange),
+        ("typechange", ChangeKind::TypeChange),
+        ("type-change", ChangeKind::TypeChange),
+        ("remove", ChangeKind::Remove),
+        ("add", ChangeKind::Add),
+    ];
+
     pub fn parse(s: &str) -> Option<Self> {
-        Some(match s.to_ascii_lowercase().as_str() {
-            "drop" => ChangeKind::Drop,
-            "rename" => ChangeKind::Rename,
-            "type_change" | "typechange" | "type-change" => ChangeKind::TypeChange,
-            "remove" => ChangeKind::Remove,
-            "add" => ChangeKind::Add,
-            _ => return None,
-        })
+        let lower = s.to_ascii_lowercase();
+        Self::SPELLINGS.iter().find(|(spelling, _)| *spelling == lower).map(|(_, kind)| *kind)
     }
 
     /// AC5: every change kind, for an exhaustive effect-table test.
