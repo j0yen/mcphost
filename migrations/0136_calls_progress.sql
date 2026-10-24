@@ -1,7 +1,7 @@
 -- compat: previous -- two additive `NOT NULL DEFAULT 0` columns on `calls`, one
 -- index, one tiny new table; an old release never selects the columns and
 -- ignores the index and the table (PRD-mcphost-migration-safety requirement 4).
--- mcphost 0132_calls_progress: PRD-mcphost-tools-call-progress-notifications P0.
+-- mcphost 0136_calls_progress: PRD-mcphost-tools-call-progress-notifications P0.
 --
 -- `progress_token` is 1 when the `tools/call` carried `_meta.progressToken`;
 -- `progress_frames` is how many `notifications/progress` frames the host sent

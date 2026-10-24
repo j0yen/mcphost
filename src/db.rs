@@ -354,7 +354,7 @@ const MIGRATION_0130: &str = include_str!("../migrations/0130_syncs.sql");
 /// PRD-mcphost-sync-pull-with-change-detection R1/R3: `sync_runs.provider_calls` and `sync_cursors`.
 const MIGRATION_0131: &str = include_str!("../migrations/0131_sync_pull.sql");
 /// PRD-mcphost-tools-call-progress-notifications P0: `calls.progress_token` / `progress_frames`.
-const MIGRATION_0132: &str = include_str!("../migrations/0132_calls_progress.sql");
+const MIGRATION_0136: &str = include_str!("../migrations/0136_calls_progress.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
@@ -3306,7 +3306,7 @@ impl Db {
         // Wholly new tables, `IF NOT EXISTS` throughout: idempotent as-is.
         conn.execute_batch(MIGRATION_0130)?;
         Self::migrate_0131_sync_pull(&conn)?;
-        Self::migrate_0132_calls_progress(&conn)?;
+        Self::migrate_0136_calls_progress(&conn)?;
         Ok(())
     }
 
@@ -3324,12 +3324,12 @@ impl Db {
 
     /// PRD-mcphost-tools-call-progress-notifications P0: gated on the first
     /// new column (the batch is `ALTER`s, so a rerun must skip it).
-    fn migrate_0132_calls_progress(conn: &Connection) -> Result<(), AppError> {
+    fn migrate_0136_calls_progress(conn: &Connection) -> Result<(), AppError> {
         let has_column: bool = conn
             .prepare("SELECT 1 FROM pragma_table_info('calls') WHERE name = 'progress_token'")?
             .exists([])?;
         if !has_column {
-            conn.execute_batch(MIGRATION_0132)?;
+            conn.execute_batch(MIGRATION_0136)?;
         }
         Ok(())
     }
@@ -7478,7 +7478,7 @@ impl Db {
     }
 
     /// PRD-mcphost-tools-call-progress-notifications P0: the unix time migration
-    /// 0132 ran (`progress_7d.since`); `0` only on a database that skipped it.
+    /// 0136 ran (`progress_7d.since`); `0` only on a database that skipped it.
     pub async fn progress_epoch(&self) -> Result<i64, AppError> {
         self.with_conn(|conn| {
             let since: Option<i64> =
