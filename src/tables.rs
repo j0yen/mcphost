@@ -3270,14 +3270,18 @@ crate::err_code! {
 }
 
 /// Every `err_code!`-declared code the `mcphost.table` bridge
-/// (`kinds::python::TableSidecarBridge`) can return in `resp.code`, sorted. An
-/// uncaught `McphostTableError` with one of these keeps it as the tool call's
-/// own error code (`kinds::python::map_envelope_error`).
+/// (`kinds::python::TableSidecarBridge`) can return in `resp.code`, sorted,
+/// including the shared `not_found` / `quota_exceeded` the table functions pass
+/// through (the pre-#517 `lookup()` branch kept these; tests/dryrun_ac07 pins
+/// `quota_exceeded`). An uncaught `McphostTableError` with one of these keeps
+/// it as the tool call's own error code (`kinds::python::map_envelope_error`).
 pub const TABLE_ERROR_CODES: &[&str] = &[
     "chart_invalid_mark",
     "handle_not_found",
     "handle_quota_exceeded",
     "lineage_blocked",
+    "not_found",
+    "quota_exceeded",
     "table_already_exists",
     "table_bound_exceeded",
     "table_not_found",
@@ -3666,5 +3670,41 @@ mod tests {
         assert_eq!(result["columns"]["value"], "real");
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// PRD-mcphost-table-conflict-structured-error: `TABLE_ERROR_CODES` is a
+    /// hand-listed subset of the error registry (the bridge set spans several
+    /// `err_code!` families, so no field of `REGISTERED` yields it); this pins
+    /// it to the registry in both directions, so a renamed or newly declared
+    /// `table_*` code cannot drift out of the bridge docs or the code mapping.
+    #[test]
+    fn table_error_codes_match_registry() {
+        let registered: Vec<&str> = crate::error_registry::REGISTERED.iter().map(|e| e.code).collect();
+        for code in TABLE_ERROR_CODES {
+            assert!(
+                registered.contains(code),
+                "TABLE_ERROR_CODES member {code:?} is not err_code!-declared"
+            );
+        }
+        for code in registered.iter().filter(|c| c.starts_with("table_")) {
+            assert!(
+                TABLE_ERROR_CODES.contains(code),
+                "registry code {code:?} is not in TABLE_ERROR_CODES; add it to TABLE_ERROR_CODES; \
+                 kinds::python::render_bridge_docs_block lists it as a bridge code"
+            );
+        }
+        assert!(
+            TABLE_ERROR_CODES.windows(2).all(|w| w[0] < w[1]),
+            "TABLE_ERROR_CODES must be strictly sorted (sorted and unique): {TABLE_ERROR_CODES:?}"
+        );
+        // A regression pin, not a second source of truth: the shared codes the
+        // table functions pass through, which the pre-#517 `lookup()` branch kept.
+        for shared in ["not_found", "quota_exceeded"] {
+            assert!(
+                TABLE_ERROR_CODES.contains(&shared),
+                "TABLE_ERROR_CODES must contain {shared:?}: tests/dryrun_ac07 pins quota_exceeded and the \
+                 pre-#517 lookup() branch kept every registry code"
+            );
+        }
     }
 }
