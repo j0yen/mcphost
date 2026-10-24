@@ -38,11 +38,35 @@
     "AC8": "deferred: Live (prod; evidence: scripts/ops/origin-counts.py run on mcphost-1 pasted into the run note)"
   },
   "ac_test_map_by_prefix": {
-    "refst": {
-      "_prd": "PRD-mcphost-unimplemented-method-status.md (test_prefix: refst)",
-      "AC1": "tests/refst_ac01_unimplemented_method_status_by_revision.rs",
-      "AC2": "deferred: Live (prod conformance unknown_method_parity cell; evidence ~/.local/state/mcphost-live/refst-ac02.txt)",
-      "AC3": "tests/refst_ac03_refusal_status_rule_and_batch.rs"
+    "osroot": {
+      "_prd": "PRD-mcphost-tool-call-output-root-opaque.md (test_prefix: osroot)",
+      "AC1": "tests/osroot_ac01_roots_type_only_host_keys.rs",
+      "AC2": "tests/osroot_ac02_forwarded_verb_results_validate.rs",
+      "AC3": "tests/osroot_ac03_tenant_keys_validate_at_both_roots.rs",
+      "AC4": "tests/osroot_ac04_ask_wait_pending_carries_keys.rs",
+      "AC5": "tests/osroot_ac05_run_row_nulls_validate.rs",
+      "AC6": "tests/osroot_ac06_opaque_root_diff_category.rs",
+      "AC7": "deferred: Live (prod /mcp, synthorg tenant; evidence ~/.local/state/mcphost-live/osroot-ac07.json)"
+    },
+    "osreach": {
+      "_prd": "PRD-mcphost-output-schema-reach-sweep-live.md (test_prefix: osreach)",
+      "AC1": "tests/osreach_ac01_sweep_validates_every_served_name.rs",
+      "AC2": "tests/osreach_ac02_variants_record.rs",
+      "AC3": "tests/osreach_ac03_unreached_cap.rs",
+      "AC4": "tests/osreach_ac04_import_own_dry_run.rs",
+      "AC5": "tests/osreach_ac05_validator_control_and_doctor.rs",
+      "AC6": "deferred: Live (prod: Claude Code on orch, synthorg tenant; evidence ~/.local/state/mcphost-live/osreach-ac06-results.jsonl)"
+    },
+    "osmatch": {
+      "_prd": "PRD-mcphost-success-result-matches-output-schema.md (test_prefix: osmatch)",
+      "AC1": "tests/osmatch_ac01_dry_run_branch.rs",
+      "AC2": "tests/osmatch_ac02_success_constructor.rs",
+      "AC3": "tests/osmatch_ac03_required_readers_agree.rs",
+      "AC4": "tests/osmatch_ac04_observational_edits.rs",
+      "AC5": "tests/osmatch_ac05_contract_diff.rs",
+      "AC6": "deferred: Live (prod: python mcp client on a disposable synthorg tenant; evidence ~/.local/state/mcphost-live/osmatch-ac06.json)",
+      "AC7": "deferred: Live (prod: claude -p stream-json on orch; evidence ~/.local/state/mcphost-live/osmatch-ac07-results.jsonl)",
+      "AC8": "tests/osmatch_ac08_sample_rows.rs"
     },
     "syreg": {
       "_prd": "PRD-mcphost-sync-source-registry-and-create.md (test_prefix: syreg)",
@@ -2398,16 +2422,54 @@
       "AC2": "deferred: Live (prod conformance unknown_method_parity cell; evidence ~/.local/state/mcphost-live/refst-ac02.txt)",
       "AC3": "tests/refst_ac03_refusal_status_rule_and_batch.rs"
     },
-    "osmatch": {
-      "_prd": "PRD-mcphost-success-result-matches-output-schema.md (test_prefix: osmatch)",
-      "AC1": "tests/osmatch_ac01_dry_run_branch.rs",
-      "AC2": "tests/osmatch_ac02_success_constructor.rs",
-      "AC3": "tests/osmatch_ac03_required_readers_agree.rs",
-      "AC4": "tests/osmatch_ac04_observational_edits.rs",
-      "AC5": "tests/osmatch_ac05_contract_diff.rs",
-      "AC6": "deferred: Live (prod: python mcp client on a disposable synthorg tenant; evidence ~/.local/state/mcphost-live/osmatch-ac06.json)",
-      "AC7": "deferred: Live (prod: claude -p stream-json on orch; evidence ~/.local/state/mcphost-live/osmatch-ac07-results.jsonl)",
-      "AC8": "tests/osmatch_ac08_sample_rows.rs"
+    "mcphost-output-envelope-fields-generated": {
+      "_prd": "PRD-mcphost-output-envelope-fields-generated.md (test_prefix: mcphost-output-envelope-fields-generated)",
+      "AC1": "tests/mcphost-output-envelope-fields-generated_ac01_wrapper_keys_equal_set.rs",
+      "AC2": "tests/mcphost-output-envelope-fields-generated_ac02_no_literal_envelope_inserts.rs",
+      "AC3": "tests/mcphost-output-envelope-fields-generated_ac03_committed_contract_carries_set.rs",
+      "AC4": "tests/mcphost-output-envelope-fields-generated_ac04_extra_key_fixture_fails.rs",
+      "AC5": "tests/mcphost-output-envelope-fields-generated_ac05_check_names_missing_member.rs",
+      "AC6": "tests/mcphost-output-envelope-fields-generated_ac06_bridge_strip_named_function.rs",
+      "AC7": "tests/mcphost-output-envelope-fields-generated_ac07_served_contract_carries_set.rs",
+      "AC8": "deferred: Live (prod curl after deploy; evidence: curl -sS https://mcphost.dev/contract.json | jq -e ...)"
+    },
+    "nk401": {
+      "_prd": "PRD-mcphost-named-key-refusal-not-http-401.md (test_prefix: nk401)",
+      "AC1": "tests/nk401_ac01_upgrade_decision_table.rs",
+      "AC2": "tests/nk401_ac02_peer_recent_refusal_is_http_200.rs",
+      "AC3": "tests/nk401_ac03_connection_bound_refusal_names_tenant.rs",
+      "AC4": "tests/nk401_ac04_oauth_paths_and_anonymous_keep_401.rs",
+      "AC5": "tests/nk401_ac05_every_raise_site_has_a_reason_row.rs",
+      "AC6": "tests/nk401_ac06_request_log_records_wire_status.rs",
+      "AC7": "deferred: Live (prod: raw httpx client, scripts/live/nk401_ac07.py; operator-provisioned)"
+    },
+    "osrx": {
+      "_prd": "PRD-mcphost-import-dry-run-live-real-export.md (test_prefix: osrx)",
+      "AC1": "tests/osrx_ac01_real_export_previews.rs",
+      "AC4": "deferred: Live (prod: Claude Code on the build host; evidence ~/.local/state/mcphost-live/osreach-ac06b-results.jsonl)",
+      "AC2": "tests/osrx_ac02_plan_mode_offline.rs",
+      "AC3": "tests/osrx_ac03_stream_parser_pairs_results.rs"
+    },
+    "tenx": {
+      "_prd": "PRD-mcphost-synthetic-implicit-tenant-expiry.md (test_prefix: tenx)",
+      "AC1": "tests/tenx_ac01_idle_synthetic_implicit_tenant_expires.rs",
+      "AC2": "tests/tenx_ac02_window_env_seed_and_floor.rs",
+      "AC3": "tests/tenx_ac03_expired_tenant_refused_front_door_open.rs",
+      "AC4": "tests/tenx_ac04_contract_carries_tenant_lifecycle.rs",
+      "AC5": "tests/tenx_ac05_batched_concurrent_sweep_exactly_once.rs",
+      "AC6": "tests/tenx_ac06_doctor_reports_tenant_lifecycle.rs",
+      "AC7": "tests/tenx_ac07_admin_lists_expiry_and_funnel_counts_it.rs",
+      "AC8": "deferred: Live (prod; evidence: curl -sS https://mcphost.dev/contract.json | jq -e '.tenant_lifecycle.disabled_reason == \"idle_expired\"')"
+    },
+    "mcphost-external-class-positive-evidence": {
+      "AC1": "tests/mcphost-external-class-positive-evidence_ac01_unattributed_default.rs",
+      "AC2": "tests/mcphost-external-class-positive-evidence_ac02_claim_promotes_once.rs",
+      "AC3": "tests/mcphost-external-class-positive-evidence_ac03_later_day_return_promotes.rs",
+      "AC4": "tests/mcphost-external-class-positive-evidence_ac04_synthetic_never_promoted.rs",
+      "AC5": "tests/mcphost-external-class-positive-evidence_ac05_migration_backfill.rs",
+      "AC6": "tests/mcphost-external-class-positive-evidence_ac06_surfaces_agree.rs",
+      "AC7": "tests/mcphost-external-class-positive-evidence_ac07_generated_origin_contract.rs",
+      "AC8": "deferred: Live (prod; evidence: scripts/ops/origin-counts.py run on mcphost-1 pasted into the run note)"
     }
   }
 }

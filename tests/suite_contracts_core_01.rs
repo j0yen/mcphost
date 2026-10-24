@@ -8,6 +8,10 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 mod ci_sandbox_support;
+#[path = "support/osreach.rs"]
+mod osreach;
+#[path = "support/timp.rs"]
+mod timp;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
@@ -183,6 +187,34 @@ mod osmatch_ac04_observational_edits;
 mod osmatch_ac05_contract_diff;
 #[path = "osmatch_ac08_sample_rows.rs"]
 mod osmatch_ac08_sample_rows;
+#[path = "osreach_ac01_sweep_validates_every_served_name.rs"]
+mod osreach_ac01_sweep_validates_every_served_name;
+#[path = "osreach_ac02_variants_record.rs"]
+mod osreach_ac02_variants_record;
+#[path = "osreach_ac03_unreached_cap.rs"]
+mod osreach_ac03_unreached_cap;
+#[path = "osreach_ac04_import_own_dry_run.rs"]
+mod osreach_ac04_import_own_dry_run;
+#[path = "osreach_ac05_validator_control_and_doctor.rs"]
+mod osreach_ac05_validator_control_and_doctor;
+#[path = "osroot_ac01_roots_type_only_host_keys.rs"]
+mod osroot_ac01_roots_type_only_host_keys;
+#[path = "osroot_ac02_forwarded_verb_results_validate.rs"]
+mod osroot_ac02_forwarded_verb_results_validate;
+#[path = "osroot_ac03_tenant_keys_validate_at_both_roots.rs"]
+mod osroot_ac03_tenant_keys_validate_at_both_roots;
+#[path = "osroot_ac04_ask_wait_pending_carries_keys.rs"]
+mod osroot_ac04_ask_wait_pending_carries_keys;
+#[path = "osroot_ac05_run_row_nulls_validate.rs"]
+mod osroot_ac05_run_row_nulls_validate;
+#[path = "osroot_ac06_opaque_root_diff_category.rs"]
+mod osroot_ac06_opaque_root_diff_category;
+#[path = "osrx_ac01_real_export_previews.rs"]
+mod osrx_ac01_real_export_previews;
+#[path = "osrx_ac02_plan_mode_offline.rs"]
+mod osrx_ac02_plan_mode_offline;
+#[path = "osrx_ac03_stream_parser_pairs_results.rs"]
+mod osrx_ac03_stream_parser_pairs_results;
 #[path = "outsch_ac02_every_canonical_declares_an_object_output_schema.rs"]
 mod outsch_ac02_every_canonical_declares_an_object_output_schema;
 #[path = "ptbatch_ac01_classify_files_agrees_with_classify.rs"]
@@ -213,6 +245,18 @@ mod suite_ac2_check_catches_unregistered_file;
 mod suite_ac4_archived_prd_pointers_resolve;
 #[path = "suitecap_ac01_plan_never_exceeds_max_suites_and_weights_follow.rs"]
 mod suitecap_ac01_plan_never_exceeds_max_suites_and_weights_follow;
+#[path = "sylp_ac01_awaits_tick_validator.rs"]
+mod sylp_ac01_awaits_tick_validator;
+#[path = "sylp_ac02_first_get_pins_the_receipt.rs"]
+mod sylp_ac02_first_get_pins_the_receipt;
+#[path = "sylp_ac03_second_run_reads_no_change.rs"]
+mod sylp_ac03_second_run_reads_no_change;
+#[path = "sylp_ac04_recipe_wall_cap_is_derived.rs"]
+mod sylp_ac04_recipe_wall_cap_is_derived;
+#[path = "sylp_ac05_recipes_check_and_proof_lines.rs"]
+mod sylp_ac05_recipes_check_and_proof_lines;
+#[path = "sylp_ac06_two_run_proof_against_a_fixture.rs"]
+mod sylp_ac06_two_run_proof_against_a_fixture;
 #[path = "syreg_ac02_source_kinds_render_once_everywhere.rs"]
 mod syreg_ac02_source_kinds_render_once_everywhere;
 #[path = "thand_ac02_status_enum_source_of_truth.rs"]

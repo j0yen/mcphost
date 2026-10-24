@@ -1,18 +1,21 @@
 {
-  "max_entries": 13,
+  "max_entries": 16,
   "entries": [
     {"tool": "host.docs.get", "pointer": "/properties/text", "edit": "drop_required", "emitter": "src/docs.rs:429"},
     {"tool": "host.oauth.provider", "pointer": "", "edit": "empty", "emitter": "src/federation.rs:233"},
     {"tool": "host.enduser.whoami", "pointer": "", "edit": "empty", "emitter": "src/enduser.rs:181"},
-    {"tool": "host.ask.wait", "pointer": "/properties/answered_unix", "edit": "add_null", "emitter": "src/asks.rs:436"},
-    {"tool": "host.ask.wait", "pointer": "/properties/choice", "edit": "add_null", "emitter": "src/asks.rs:435"},
+    {"tool": "host.ask.wait", "pointer": "/properties/answered_unix", "edit": "add_null", "emitter": "src/asks.rs:438"},
+    {"tool": "host.ask.wait", "pointer": "/properties/choice", "edit": "add_null", "emitter": "src/asks.rs:437"},
     {"tool": "host.ask.wait", "pointer": "/properties/answered_unix", "edit": "drop_required", "emitter": "src/asks.rs:391"},
     {"tool": "host.ask.wait", "pointer": "/properties/choice", "edit": "drop_required", "emitter": "src/asks.rs:391"},
-    {"tool": "host.ask.get", "pointer": "/properties/answered_unix", "edit": "add_null", "emitter": "src/asks.rs:486"},
-    {"tool": "host.ask.get", "pointer": "/properties/choice", "edit": "add_null", "emitter": "src/asks.rs:484"},
-    {"tool": "host.ask.list", "pointer": "/properties/asks/items/properties/answered_unix", "edit": "add_null", "emitter": "src/asks.rs:486"},
-    {"tool": "host.ask.list", "pointer": "/properties/asks/items/properties/choice", "edit": "add_null", "emitter": "src/asks.rs:484"},
+    {"tool": "host.ask.get", "pointer": "/properties/answered_unix", "edit": "add_null", "emitter": "src/asks.rs:488"},
+    {"tool": "host.ask.get", "pointer": "/properties/choice", "edit": "add_null", "emitter": "src/asks.rs:486"},
+    {"tool": "host.ask.list", "pointer": "/properties/asks/items/properties/answered_unix", "edit": "add_null", "emitter": "src/asks.rs:488"},
+    {"tool": "host.ask.list", "pointer": "/properties/asks/items/properties/choice", "edit": "add_null", "emitter": "src/asks.rs:486"},
     {"tool": "host.estimate", "pointer": "/properties/refusal", "edit": "add_null", "emitter": "src/handler.rs:11143"},
-    {"tool": "host.call_trace", "pointer": "/properties/replay/properties/diff/properties/error_code/items", "edit": "add_null", "emitter": "src/handler.rs:9701"}
+    {"tool": "host.call_trace", "pointer": "/properties/replay/properties/diff/properties/error_code/items", "edit": "add_null", "emitter": "src/handler.rs:9701"},
+    {"tool": "host.self.offboard", "pointer": "/properties/billing_canceled", "edit": "drop_required", "emitter": "src/control.rs:860"},
+    {"tool": "host.runs.wait", "pointer": "/properties/deadline_s", "edit": "add_null", "emitter": "src/runs.rs:382"},
+    {"tool": "host.runs.wait", "pointer": "/properties/started_unix", "edit": "add_null", "emitter": "src/runs.rs:379"}
   ]
 }

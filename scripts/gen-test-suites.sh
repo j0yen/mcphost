@@ -642,6 +642,11 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # sandbox cap 220 -> 110 splits it into three normal buckets (~119/114/91 files, ~109/107/87 s
 # scaled from the refreshed 302 s) and SANDBOX_SHARDS 3 -> 4 gives each its own shard.
 # 7 singletons + 4 normal core + 1 singleton + 3 normal sandbox = 15 = MAX_SUITES.
+# 2026-10-23 (the refreshed weights put suite_sandbox_02 at 180 s, over the 160 s heaviest-shard
+# bound of cishard_ac01): the cap above never held, because suite_core_12 (an eighth core suite)
+# took the 15th slot and the MAX_SUITES loop below grew the sandbox cap back to 170 files, i.e.
+# two buckets at ~1.06 s/file (180 s / 170 files). MAX_SUITES 15 -> 16 lets the sandbox cap 110
+# stand: three normal buckets of ~109 files (~115 s at that rate) plus the sandbox singleton.
 MAX_PER_SUITE = {"core": 505, "sandbox": 110}
 
 # The P0 ceiling on core+sandbox test binaries (tests/suite_ac1_ten_binaries_
@@ -667,7 +672,7 @@ MAX_PER_SUITE = {"core": 505, "sandbox": 110}
 # 12 -> 13 on 2026-10-18 for the fourth normal core bucket (see MAX_PER_SUITE above):
 # 7 exclusive singletons + 4 normal core buckets + 2 sandbox suites.
 # 13 -> 15 on 2026-10-20 for the second and third normal sandbox buckets (see MAX_PER_SUITE above).
-MAX_SUITES = 15
+MAX_SUITES = 16
 
 # scripts/ci-suite-weights.json is generated with the suites: its keys are
 # EXACTLY the generated suite names (plus `lib`, the --lib run), so a new suite
@@ -1378,6 +1383,29 @@ def plan_weights(suite_files):
 
 
 MEASURED_REL = "scripts/ci-suite-measured.json"
+PROVISIONAL_KEY = "_provisional"  # {suite: {pending, derived_s, since}}: seeded by plan_measured, cleared by ci-refresh-weights.sh
+_SEED_BASE = []
+
+
+def seed_base():
+    """The default-branch commit this tree was cut from (`git merge-base HEAD origin/main`; ref overridable with
+    GEN_TEST_SUITES_BASE_REF). A land SQUASHES the branch, so the branch's HEAD never reaches main: only the
+    base does, and `ci-test-partition.sh check` measures a pending entry's age from it. Resolved lazily (a run
+    that seeds nothing needs no git) and only once."""
+    if not _SEED_BASE:
+        ref = os.environ.get("GEN_TEST_SUITES_BASE_REF", "origin/main")
+        r = subprocess.run(["git", "merge-base", "HEAD", ref], capture_output=True, text=True)
+        base = r.stdout.strip()
+        if r.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40}", base):
+            sys.exit(f"gen-test-suites: a suite made only of new test files needs a pending measured entry, which records "
+                     f"`git merge-base HEAD {ref}`; that did not resolve ({r.stderr.strip() or 'no output'}). "
+                     f"Fetch the default branch (git fetch origin main) and rerun.")
+        _SEED_BASE.append(base)
+    return _SEED_BASE[0]
+
+
+def pending_entry(derived_s, since):
+    return {"pending": True, "derived_s": derived_s, "since": since}
 
 
 def plan_measured(suite_files, new_weights):
@@ -1395,6 +1423,28 @@ def plan_measured(suite_files, new_weights):
     a created suite had no entry until the next refresh, and a `check` that requires
     an entry for every suite would fail every shard before its tests print the lines
     the refresh reads (a deadlock after any future split).
+    A created suite whose members are ALL new files (den == 0: no member came from an
+    old suite) is seeded at its recorded weight x R, where R = sum(measured) / sum(recorded)
+    over the old normal buckets of the same partition (not solo, not themselves provisional;
+    floored at 1.0, and 1.0 when none qualifies), and is marked in the reserved
+    `"_provisional": {"<suite>": {"pending": true, "derived_s": <the seeded seconds>, "since":
+    "<git merge-base HEAD origin/main>"}}` key: the flat suite -> seconds map stays unchanged for
+    every reader, `ci-test-partition.sh check` accepts the entry only while the suite's measured value
+    still equals derived_s and `since` is at most 3 first-parent commits behind main, and
+    ci-refresh-weights.sh removes the entry when a CI run measures the suite (PR 495, run 39913385513: suite_core_12 held only new files, got no
+    entry, and `check` failed every core, sandbox and regen job so no shard log could ever
+    be produced to measure it). A suite seeded from old members and a resized suite are
+    NOT marked. A resized pending suite keeps its `since` and takes its new scaled value as
+    derived_s; an unchanged one keeps its entry byte for byte (so --check never drifts as main moves).
+    A legacy date-valued entry is kept as it is when unchanged (check fails it: no commit) and is
+    rewritten with `since: null` when resized.
+    The same single path seeds a suite that ALREADY EXISTS as tests/suite_*.rs with a recorded weight but has NO
+    measured entry (PR 495 branches cut before #497 merged; a land rebase that resolved the measured file to main's
+    side and dropped the branch's own entry): the guard is `name in out`, not `name in old_counts`, so `check`'s
+    completeness guard is never left failing on a plan gen reports "already up to date". A stale `_provisional`
+    mark for a suite with no measured entry is ignored: the seed is fresh and `since` is the merge-base. A
+    pre-existing suite whose members sat only in itself at base has den == 0 and takes recorded weight x R
+    (pending); one with a member moved in from a measured suite takes the ratio path.
     Otherwise ci-test-partition.sh check compares the OLD set's seconds with the
     NEW set's weight (ryzen7 run 404, 10-18: core_08 re-packed to recorded 223 s
     against measured 398 s, and the land precheck refused)."""
@@ -1405,6 +1455,9 @@ def plan_measured(suite_files, new_weights):
         return None
     if not isinstance(old, dict):
         return None
+    prov_old = old.pop(PROVISIONAL_KEY, None)  # reserved bookkeeping key, not a suite
+    if not isinstance(prov_old, dict):
+        prov_old = {}
     old_counts = {}
     old_members = {}
     for path in glob.glob("tests/suite_*.rs"):
@@ -1417,6 +1470,7 @@ def plan_measured(suite_files, new_weights):
     new_counts = {os.path.basename(p)[:-3]: suite_member_count(c) for p, c in suite_files.items()}
     old_weights = read_weights() or {}
     out = {}
+    prov = {}
     for name, secs in old.items():
         if not GENERATED_SUITE_RE.match(name + ".rs"):
             out[name] = secs  # not a generated suite (lib, bin:*): the plan says nothing about it
@@ -1426,28 +1480,53 @@ def plan_measured(suite_files, new_weights):
             continue
         if n == o:
             out[name] = secs
+            if name in prov_old:
+                prov[name] = prov_old[name]
             continue
         w_old, w_new = old_weights.get(name), new_weights.get(name)
         if isinstance(w_old, (int, float)) and w_old > 0 and isinstance(w_new, (int, float)):
             out[name] = round(secs * w_new / w_old, 2)
-    # created suites: seeded from the old suites their member files came from
+            if name in prov_old:
+                po = prov_old[name]
+                prov[name] = pending_entry(out[name], po.get("since") if isinstance(po, dict) else None)
+    # suites with no measured entry (created by this plan, or already on disk and weighted but never measured --
+    # a branch cut before the seed existed, or a rebase that resolved the measured file to main's side): seeded
+    # from the old suites their member files came from
     ratio_of_file = {}  # member file -> (share of its source's recorded seconds, source measured / recorded)
     for name, secs in old.items():
         w_old = old_weights.get(name)
         if name in old_members and old_counts.get(name) and isinstance(secs, (int, float)) \
-                and isinstance(w_old, (int, float)) and w_old > 0:
+                and name not in prov_old and isinstance(w_old, (int, float)) and w_old > 0:
             for m in old_members[name]:
                 ratio_of_file[m] = (w_old / old_counts[name], secs / w_old)
+    # R per partition: how much longer CI really ran the old normal buckets than their recorded
+    # weights said. Only normal buckets (n > 1, suite_<core|sandbox>_NN) that CI measured (not
+    # provisional): solo suites and env/contract suites say nothing about a normal bucket.
+    meas_sum = {"core": 0.0, "sandbox": 0.0}
+    rec_sum = {"core": 0.0, "sandbox": 0.0}
+    for name, secs in old.items():
+        w_old = old_weights.get(name)
+        if old_counts.get(name, 0) > 1 and re.match(r"suite_(core|sandbox)_\d+$", name) \
+                and name not in prov_old and isinstance(secs, (int, float)) \
+                and isinstance(w_old, (int, float)) and w_old > 0:
+            meas_sum[suite_partition(name)] += secs
+            rec_sum[suite_partition(name)] += w_old
+    ratio = {p: (max(1.0, meas_sum[p] / rec_sum[p]) if rec_sum[p] > 0 else 1.0) for p in meas_sum}
     for path, content in suite_files.items():
         name = os.path.basename(path)[:-3]
         w_new = new_weights.get(name)
-        if name in old_counts or name in out or not isinstance(w_new, (int, float)):
-            continue
+        if name in out or not isinstance(w_new, (int, float)):
+            continue  # `out` holds every generated suite that already has a measured entry
         members = [m for m in re.findall(r'#\[path\s*=\s*"([^"]+\.rs)"\]', content) if "/" not in m]
         den = sum(ratio_of_file[m][0] for m in members if m in ratio_of_file)
         if den > 0:
             num = sum(ratio_of_file[m][0] * ratio_of_file[m][1] for m in members if m in ratio_of_file)
             out[name] = round(w_new * num / den, 2)
+        else:
+            out[name] = round(w_new * ratio[suite_partition(name)], 2)
+            prov[name] = pending_entry(out[name], seed_base())
+    if prov:
+        out[PROVISIONAL_KEY] = dict(sorted(prov.items()))
     return dict(sorted(out.items()))
 
 

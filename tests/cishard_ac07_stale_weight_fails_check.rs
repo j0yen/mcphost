@@ -299,3 +299,25 @@ fn every_required_suite_has_a_measured_entry_in_the_committed_file() {
     let missing: Vec<String> = required_suites().into_iter().filter(|k| measured.get(k).is_none()).collect();
     assert!(missing.is_empty(), "committed measured file lacks: {missing:?}");
 }
+
+#[test]
+fn a_suite_made_only_of_new_files_is_seeded_provisional_and_the_refresh_clears_it() {
+    // scripts/ci-suite-seed-selftest.sh builds its scratch repos under `mktemp -d` and proves: (a) a created suite
+    // of only new files gets a measured entry + a `{pending, derived_s, since}` mark and `check` passes naming it,
+    // (b) a measured value edited away from derived_s fails `check`, (c) a pending entry more than 3 first-parent
+    // commits behind the default branch fails there, (d) the refresh removes the object (and exits 1 naming a
+    // pending suite its log omits), (e) the committed tree has no generator drift, (g) a shallow clone is deepened,
+    // (h) a resized suite is not marked, (i) a pre-existing suite with no measured entry is seeded pending,
+    // (i-moved) the same via the ratio path (not marked), (ii) the rebase path, (iii) a pre-existing suite with an
+    // entry is untouched, (iii-stale) a stale `_provisional` mark with no entry is ignored, (iv) a second gen run is
+    // a no-op. 13 cases in all.
+    let o = Command::new("bash")
+        .arg(root().join("scripts/ci-suite-seed-selftest.sh"))
+        .env_remove("SEED_SELFTEST_SCRIPTS")
+        .current_dir(root())
+        .output()
+        .unwrap();
+    let out = String::from_utf8_lossy(&o.stdout).into_owned();
+    assert!(o.status.success(), "{out}\n{}", String::from_utf8_lossy(&o.stderr));
+    assert!(out.contains("13 passed, 0 failed"), "{out}");
+}

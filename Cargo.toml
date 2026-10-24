@@ -26,7 +26,7 @@ strip = true
 [package]
 autotests = false  # gen-test-suites.sh: explicit [[test]] suites below
 name = "mcphost"
-version = "0.112.45"
+version = "0.115.0"
 edition = "2024"
 rust-version = "1.95"
 description = "Hosted MCP runtime where your agent publishes its own tools by tool call and keeps working."
@@ -293,6 +293,10 @@ path = "tests/suite_core_10.rs"
 [[test]]
 name = "suite_core_11"
 path = "tests/suite_core_11.rs"
+
+[[test]]
+name = "suite_core_12"
+path = "tests/suite_core_12.rs"
 
 [[test]]
 name = "suite_env_core_01"

@@ -52,11 +52,20 @@ async fn dsproof_ac01_dry_run_prints_the_plan_and_exits_zero() {
 #[tokio::test]
 async fn dsproof_ac02_full_run_creates_then_deletes_the_sync_on_a_synthetic_tenant() {
     let server = TestServer::start().await;
+    // The tick fetches the CSV, so serve the committed one locally: the proof
+    // now pins the receipt (12 rows added, then no change).
+    let csv = std::fs::read_to_string(repo().join("examples/data-sync/orders.csv")).expect("read orders.csv");
+    let fixture = crate::common::sypul::Fixture::start(&csv, true).await;
     // Async `Command`: a blocking `output()` would starve the in-process
     // server's own axum task.
-    // The get step polls for the tick's receipt (up to the recipe retry_s, tick every 30 s).
-    let out = crate::deadline_budget!(100_000, {
-        proof().env("MCPHOST_URL", format!("{}/mcp", server.base_url)).output().await.expect("run proof.sh")
+    // Each get polls for the tick's receipt (up to the recipe retry_s, tick every 30 s); two runs.
+    let out = crate::deadline_budget!(150_000, {
+        proof()
+            .env("MCPHOST_URL", format!("{}/mcp", server.base_url))
+            .env("DATA_SYNC_CSV_URL", fixture.csv_url())
+            .output()
+            .await
+            .expect("run proof.sh")
     });
     let t = transcript(&out);
     assert!(out.status.success(), "proof.sh exited non-zero:\n{t}");
@@ -67,7 +76,7 @@ async fn dsproof_ac02_full_run_creates_then_deletes_the_sync_on_a_synthetic_tena
     assert!(stdout.contains("host.sync.run_now: next_run_unix="), "{t}");
     // The tick wrote a receipt for this sync: both ids are non-empty.
     let get = stdout.lines().find(|l| l.starts_with("host.sync.get: ")).unwrap_or_else(|| panic!("no get line:\n{t}"));
-    assert!(get.contains("table=orders ") && !get.contains("last_run.run_id= ") && !get.ends_with("last_run.started_unix="), "{get}");
+    assert!(get.contains("table=orders ") && !get.contains("last_run.run_id= ") && !get.contains("last_run.started_unix= "), "{get}");
     assert!(stdout.contains("host.sync.delete: deleted=true"), "{t}");
 
     // The proof's tenant carries the explicit synthetic stamp (a loopback

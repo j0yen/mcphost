@@ -63,15 +63,15 @@ fn mcphost_external_class_positive_evidence_ac07_checker_fails_on_extra_and_miss
 fn mcphost_external_class_positive_evidence_ac07_migrations_are_static_and_name_only_enum_values() {
     let db_rs = read("src/db.rs");
     for (konst, file) in [
-        ("MIGRATION_0132", "0132_origin_tristate.sql"),
-        ("MIGRATION_0133", "0133_origin_backfill.sql"),
+        ("MIGRATION_0134", "0134_origin_tristate.sql"),
+        ("MIGRATION_0135", "0135_origin_backfill.sql"),
     ] {
         let decl = format!("const {konst}: &str = include_str!(\"../migrations/{file}\");");
         assert!(db_rs.contains(&decl), "{konst} must stay a static include_str!");
     }
     // Every origin value the backfill assigns is an enum member; the only
     // other value it may name is the legacy one it migrates away from.
-    let sql = read("migrations/0133_origin_backfill.sql");
+    let sql = read("migrations/0135_origin_backfill.sql");
     let mut assigned = BTreeSet::new();
     let mut matched = BTreeSet::new();
     for line in sql.lines().filter(|l| !l.trim_start().starts_with("--")) {

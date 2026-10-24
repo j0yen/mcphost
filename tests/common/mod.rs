@@ -9,6 +9,7 @@
 #![allow(dead_code)]
 
 pub mod sypul;
+pub mod tenx;
 pub mod testoauth;
 pub mod tracecap;
 
@@ -470,9 +471,28 @@ impl TempDataDir {
             .unwrap_or(0);
         let dir =
             std::env::temp_dir().join(format!("mcphost-test-{}-{}-{}", process::id(), n, nanos));
+        raise_nofile_soft_limit();
         std::fs::create_dir_all(&dir).expect("create temp data dir");
         Self(dir)
     }
+}
+
+/// A consolidated suite binary runs hundreds of servers in one process and each
+/// finished test leaves a few db fds behind, so the default 1024 soft
+/// RLIMIT_NOFILE is exhausted mid-run ("unable to open database file", "Too
+/// many open files"). Lift the soft limit to the hard one, once per process.
+fn raise_nofile_soft_limit() {
+    static RAISED: std::sync::Once = std::sync::Once::new();
+    RAISED.call_once(|| {
+        let mut lim = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        // SAFETY: getrlimit/setrlimit only read and write this local struct.
+        unsafe {
+            if libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) == 0 && lim.rlim_cur < lim.rlim_max {
+                lim.rlim_cur = lim.rlim_max.min(1 << 20);
+                libc::setrlimit(libc::RLIMIT_NOFILE, &lim);
+            }
+        }
+    });
 }
 
 impl Drop for TempDataDir {
@@ -1477,6 +1497,23 @@ impl TestServer {
     }
 }
 
+/// True when `base_url`'s host is loopback (`localhost`, `127.0.0.0/8`,
+/// `[::1]`) -- or does not parse at all, in which case [`McpClient`] does not
+/// stamp its defensive synthetic header.
+fn is_loopback_base_url(base_url: &str) -> bool {
+    let Some(host) = reqwest::Url::parse(base_url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_string))
+    else {
+        return true;
+    };
+    host.eq_ignore_ascii_case("localhost")
+        || host == "[::1]"
+        || host
+            .parse::<std::net::Ipv4Addr>()
+            .is_ok_and(|ip| ip.is_loopback())
+}
+
 /// A minimal streamable-HTTP JSON-RPC client. Every call is a fresh POST
 /// (the server is stateless per 2026-07-28), so this holds no session
 /// state beyond the base URL and an optional bearer key.
@@ -1647,6 +1684,18 @@ impl McpClient {
         }
         for (name, value) in extra_headers {
             req = req.header(*name, *value);
+        }
+        // DEFENSIVE: the hub stamps a tenant synthetic at creation only from
+        // this header on the signup request (control.rs). Every suite in this
+        // repo targets a loopback test server, so this never fires today; if
+        // the harness is ever pointed at a non-loopback (prod) URL, its
+        // signups still arrive stamped. A test's own explicit label wins.
+        if !extra_headers
+            .iter()
+            .any(|(name, _)| name.eq_ignore_ascii_case("x-mcphost-synthetic"))
+            && !is_loopback_base_url(&self.base_url)
+        {
+            req = req.header("x-mcphost-synthetic", "harness:mcphost-test");
         }
         if self.session_continuity
             && let Some(id) = self.session_id()

@@ -1016,7 +1016,7 @@ async fn main() -> anyhow::Result<()> {
             let plans = mcphost::plans::PlanCatalog::load_or_init(&plans_path)?;
             let report = mcphost::funnel::compute(&db, &plans, since_unix).await?;
             let days = days.unwrap_or(7).clamp(1, 365);
-            let (by_surface, probe) =
+            let (by_surface, probe, synthetic_excluded) =
                 mcphost::funnel::surface_report(&db, mcphost::state::now_unix(), days).await?;
             if let (Some(want), false) = (surface.as_deref(), json) {
                 let row = &by_surface[want];
@@ -1047,6 +1047,11 @@ async fn main() -> anyhow::Result<()> {
                     if let Some(origin_fields) = db.origin_report().await?.to_json().as_object() {
                         obj.extend(origin_fields.clone());
                     }
+                    obj.insert("synthetic_excluded".to_string(), serde_json::json!(synthetic_excluded));
+                    let (recipes, recipes_synthetic) =
+                        mcphost::funnel::recipe_attempts_7d(&db, mcphost::state::now_unix()).await?;
+                    obj.insert("recipe_attempts_7d".to_string(), recipes);
+                    obj.insert("recipe_attempts_synthetic_7d".to_string(), serde_json::json!(recipes_synthetic));
                 }
                 println!("{}", serde_json::to_string(&body)?);
             } else {
@@ -1784,6 +1789,11 @@ async fn main() -> anyhow::Result<()> {
                             mcphost::api_contract::sha_hex(&existing),
                             mcphost::api_contract::contract_sha(&kinds)
                         );
+                        if let Ok(committed) = serde_json::from_slice::<serde_json::Value>(&existing) {
+                            for member in mcphost::api_contract::missing_envelope_fields(&committed) {
+                                eprintln!("  - output_envelope_fields is missing `{member}`");
+                            }
+                        }
                         std::process::exit(1);
                     }
                 } else {

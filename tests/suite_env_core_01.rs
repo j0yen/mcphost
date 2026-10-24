@@ -38,5 +38,19 @@ mod heal_ac02_dry_run_writes_would_run;
 mod ntfyb_ac03_webhook_retries_to_delivered_or_failed;
 #[path = "support_ac05_support_url_rendered_or_not_configured.rs"]
 mod support_ac05_support_url_rendered_or_not_configured;
+#[path = "tenx_ac01_idle_synthetic_implicit_tenant_expires.rs"]
+mod tenx_ac01_idle_synthetic_implicit_tenant_expires;
+#[path = "tenx_ac02_window_env_seed_and_floor.rs"]
+mod tenx_ac02_window_env_seed_and_floor;
+#[path = "tenx_ac03_expired_tenant_refused_front_door_open.rs"]
+mod tenx_ac03_expired_tenant_refused_front_door_open;
+#[path = "tenx_ac04_contract_carries_tenant_lifecycle.rs"]
+mod tenx_ac04_contract_carries_tenant_lifecycle;
+#[path = "tenx_ac05_batched_concurrent_sweep_exactly_once.rs"]
+mod tenx_ac05_batched_concurrent_sweep_exactly_once;
+#[path = "tenx_ac06_doctor_reports_tenant_lifecycle.rs"]
+mod tenx_ac06_doctor_reports_tenant_lifecycle;
+#[path = "tenx_ac07_admin_lists_expiry_and_funnel_counts_it.rs"]
+mod tenx_ac07_admin_lists_expiry_and_funnel_counts_it;
 #[path = "tlint_ac04_deadline_budget_fires_and_scales.rs"]
 mod tlint_ac04_deadline_budget_fires_and_scales;

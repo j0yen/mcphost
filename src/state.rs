@@ -890,6 +890,29 @@ pub fn is_known_synthorg_client(client_name: &str) -> bool {
     client_name.to_ascii_lowercase().starts_with("synthorg")
 }
 
+/// `tenants.origin`'s synthetic verdict, as [`derive_origin`] writes it.
+pub const ORIGIN_SYNTHETIC: &str = "synthetic";
+
+/// PRD-mcphost-admin-funnel-real-surface-recipe-counter P0: the one
+/// "known synthetic tenant" predicate the per-surface funnel and the
+/// recipe-use read share, so the two cannot disagree. A tenant is known
+/// synthetic when its client name is a `synthorg` one, its `source_class`
+/// is any non-`external` class, its `origin` is synthetic, or its
+/// `funnel_origin` is `fleet`/`probe`. It never claims more: a tenant that
+/// none of those marks catches is "not known synthetic", not "confirmed
+/// real".
+pub fn is_synthetic_tenant(
+    client_name: Option<&str>,
+    source_class: Option<&str>,
+    origin: Option<&str>,
+    funnel_origin: &str,
+) -> bool {
+    client_name.is_some_and(is_known_synthorg_client)
+        || source_class.is_some_and(|c| c == SourceClass::Loopback.as_str() || c == SourceClass::Fleet.as_str())
+        || origin == Some(ORIGIN_SYNTHETIC)
+        || matches!(funnel_origin, "fleet" | "probe")
+}
+
 /// loop/mcphost-fleet-ips: one parsed entry of `$MCPHOST_FLEET_IPS` -- a
 /// single address (an implicit /32 or /128) or an explicit CIDR block.
 /// Hand-rolled rather than pulling in a CIDR-parsing crate (`ipnet` sits in

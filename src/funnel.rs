@@ -165,16 +165,43 @@ pub async fn compute(
 
 /// PRD-mcphost-funnel-by-surface-nightly-probe R2: one install surface's
 /// launch stages over humans only.
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default)]
 pub struct SurfaceStage {
     pub signed_up: i64,
     pub claimed: i64,
     pub published: i64,
+    /// Tenants with a successful call as themselves at or after signup
+    /// (`caller_tenant_id` NULL or the tenant, no end user): the exact
+    /// complement of `first_external_call`, so every successful call lands
+    /// in exactly one of the two cells.
+    pub first_own_call: i64,
     pub first_external_call: i64,
     /// Tenants with a successful call on days 7-14 after signup, counted
     /// over tenants at least 14 days old only; `None` (JSON `null`) while
     /// the row has no such tenant -- not yet measurable, never `0` (R6).
     pub day7_active: Option<i64>,
+}
+
+/// The row serializes through [`crate::api_contract::SURFACE_STAGE_KEYS`], so
+/// its keys are the const and a key without a value here panics in the
+/// drift test rather than shipping.
+impl Serialize for SurfaceStage {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(Some(crate::api_contract::SURFACE_STAGE_KEYS.len()))?;
+        for key in crate::api_contract::SURFACE_STAGE_KEYS {
+            match *key {
+                "signed_up" => map.serialize_entry(key, &self.signed_up)?,
+                "claimed" => map.serialize_entry(key, &self.claimed)?,
+                "published" => map.serialize_entry(key, &self.published)?,
+                "first_own_call" => map.serialize_entry(key, &self.first_own_call)?,
+                "first_external_call" => map.serialize_entry(key, &self.first_external_call)?,
+                "day7_active" => map.serialize_entry(key, &self.day7_active)?,
+                other => unreachable!("SURFACE_STAGE_KEYS names {other}, which SurfaceStage does not carry"),
+            }
+        }
+        map.end()
+    }
 }
 
 const DAY: i64 = 86_400;
@@ -189,8 +216,10 @@ const PROBE_WINDOW_SECS: i64 = DAY;
 /// `by_surface` counts `funnel_origin = human` tenants under every
 /// [`crate::install_links::SURFACES`] id plus `other`; `probe` lists the
 /// `fleet`/`probe` tenants born in the last 24 h with the furthest stage
-/// each reached.
-pub async fn surface_report(db: &Db, now: i64, days: i64) -> Result<(Value, Value), AppError> {
+/// each reached. The third element is `synthetic_excluded`: the tenants that
+/// would have been `human` rows but are known synthetic
+/// ([`crate::state::is_synthetic_tenant`]) and so sit in no surface row.
+pub async fn surface_report(db: &Db, now: i64, days: i64) -> Result<(Value, Value, i64), AppError> {
     let since = (now - days * DAY).div_euclid(DAY) * DAY;
     let tenants = db.surface_funnel_tenants(since).await?;
     let mut calls: HashMap<i64, Vec<(i64, bool)>> = HashMap::new();
@@ -205,17 +234,29 @@ pub async fn surface_report(db: &Db, now: i64, days: i64) -> Result<(Value, Valu
         .map(|id| (id, SurfaceStage::default()))
         .collect();
     let mut probe: Vec<(i64, Value)> = Vec::new();
+    let mut synthetic_excluded = 0i64;
 
     for t in &tenants {
         let tenant_calls = calls.get(&t.id).map(Vec::as_slice).unwrap_or(&[]);
         let first_external = tenant_calls.iter().find(|(at, ext)| *ext && *at >= t.created_unix).map(|(at, _)| *at);
+        let first_own = tenant_calls.iter().any(|(at, ext)| !*ext && *at >= t.created_unix);
         let published = t.has_tool || t.first_publish_unix.is_some();
         match t.funnel_origin.as_str() {
             "human" => {
+                if crate::state::is_synthetic_tenant(
+                    t.client_name.as_deref(),
+                    t.source_class.as_deref(),
+                    t.origin.as_deref(),
+                    &t.funnel_origin,
+                ) {
+                    synthetic_excluded += 1;
+                    continue;
+                }
                 let row = rows.entry(crate::install_links::surface_id(t.client_name.as_deref())).or_default();
                 row.signed_up += 1;
                 row.claimed += i64::from(t.claimed_unix.is_some());
                 row.published += i64::from(published);
+                row.first_own_call += i64::from(first_own);
                 row.first_external_call += i64::from(first_external.is_some());
                 if now >= t.created_unix + DAY7_MATURITY_SECS {
                     let active = tenant_calls.iter().any(|(at, _)| {
@@ -249,7 +290,30 @@ pub async fn surface_report(db: &Db, now: i64, days: i64) -> Result<(Value, Valu
         }
     }
     probe.sort_by_key(|(created, _)| std::cmp::Reverse(*created));
-    Ok((json!(rows), Value::Array(probe.into_iter().map(|(_, v)| v).collect())))
+    Ok((json!(rows), Value::Array(probe.into_iter().map(|(_, v)| v).collect()), synthetic_excluded))
+}
+
+/// `(recipe_attempts_7d, recipe_attempts_synthetic_7d)`: `{recipe: count}`
+/// with every [`crate::kinds::aliases::recipe_names`] name present
+/// (zero-filled), and one integer for the synthetic tenants' uses. Counts
+/// and recipe names only -- no tenant id, namespace or client name.
+pub async fn recipe_attempts_7d(db: &Db, now: i64) -> Result<(Value, i64), AppError> {
+    let mut attempts: std::collections::BTreeMap<String, i64> =
+        crate::kinds::aliases::recipe_names().into_iter().map(|name| (name.to_string(), 0)).collect();
+    let mut synthetic = 0i64;
+    for row in db.recipe_uses_since(now - 7 * DAY).await? {
+        if crate::state::is_synthetic_tenant(
+            row.client_name.as_deref(),
+            row.source_class.as_deref(),
+            row.origin.as_deref(),
+            &row.funnel_origin,
+        ) {
+            synthetic += 1;
+        } else if let Some(count) = attempts.get_mut(&row.recipe) {
+            *count += 1;
+        }
+    }
+    Ok((json!(attempts), synthetic))
 }
 
 // ---- activation milestones (PRD-mcphost-time-to-first-success-public) ----

@@ -112,6 +112,7 @@ WEIGHTS_REL="scripts/ci-suite-weights.json"
 # it needs no network and runs on every PR.
 MEASURED_FILE="${CI_SUITE_MEASURED_FILE:-$REPO_ROOT/scripts/ci-suite-measured.json}"
 MEASURED_REL="scripts/ci-suite-measured.json"
+PENDING_MAX_AGE=3  # first-parent commits a pending (derived) measured entry may trail HEAD on the default branch
 # A recorded weight is STALE when the measured seconds reach this multiple of it.
 # 2026-10-18: suite_core_07/08 were recorded at 341/375 s while CI measured
 # 586-735/427-711 s, and `check` kept predicting 375 s from the old numbers.
@@ -551,10 +552,65 @@ check() {
     unmeasured="$(measured_required | jq -R -r --slurpfile m "$MEASURED_FILE" '. as $k | select(($m[0] | has($k)) | not)')"
     if [ -n "$unmeasured" ]; then
       while IFS= read -r line; do
-        echo "ci-test-partition: unmeasured suite: $line has a recorded weight in $WEIGHTS_REL but no entry in $MEASURED_REL -- run scripts/ci-refresh-weights.sh <CI run id> (every shard reports every suite)" >&2
+        echo "ci-test-partition: unmeasured suite: $line has a recorded weight in $WEIGHTS_REL but no entry in $MEASURED_REL -- seed a pending entry with: scripts/gen-test-suites.sh && git add $MEASURED_REL (a branch cut before the seed existed, or a rebase that took main's $MEASURED_REL); or measure it: scripts/ci-refresh-weights.sh <CI run id> (every shard reports every suite)" >&2
       done <<<"$unmeasured"
       rc=1
     fi
+  fi
+
+  # Pending (derived) entries: gen-test-suites.sh gives a suite created from only new test files a measured
+  # entry at its recorded weight x the partition's measured/recorded ratio and lists it under the reserved
+  # `_provisional` key as {"pending": true, "derived_s": <that seed>, "since": <merge-base with the default
+  # branch>} until scripts/ci-refresh-weights.sh replaces it with a measurement. The entry is accepted only
+  # while (1) the suite's measured value still equals derived_s (to 2 decimals, numerically), so a hand-edited
+  # or stale value cannot hide under the mark, and (2) `since` is an ancestor of HEAD, fetched on demand when the
+  # checkout is shallow. Its AGE (first-parent commits from `since` to merge-base(HEAD, default branch): 0 on any branch, real once merged) is bounded by PENDING_MAX_AGE, but
+  # only on the default branch (GITHUB_REF_NAME == CI_DEFAULT_BRANCH or `check --main`): on a PR ref the count
+  # is info, so an open PR never goes red because main moved. That bound is the only thing that turns main red
+  # with time.
+  if [ -f "$MEASURED_FILE" ] && jq -e . "$MEASURED_FILE" >/dev/null 2>&1; then
+    local enforce=0 deepened=0 pname pval psince pshort pderived pmeasured pok page pend
+    { [ "${1:-}" = "--main" ] || [ "${GITHUB_REF_NAME:-}" = "${CI_DEFAULT_BRANCH:-main}" ]; } && enforce=1
+    while IFS=$'\t' read -r pname pval; do
+      [ -n "$pname" ] || continue
+      psince="$(jq -r 'if type == "object" and .pending == true and (.since | type) == "string" and (.since | length) > 0 and (.derived_s | type) == "number" then .since else empty end' <<<"$pval")"
+      if [ -z "$psince" ]; then
+        echo "ci-test-partition: provisional entry for $pname is not {pending, derived_s, since} with a commit ($pval): a date-valued or hand-written mark ties the seed to nothing -- run scripts/ci-refresh-weights.sh <CI run id> from a green run's shard logs to replace it with a measurement" >&2
+        rc=1; continue
+      fi
+      pderived="$(jq -r '.derived_s' <<<"$pval")"
+      pmeasured="$(jq -c --arg k "$pname" '.[$k] // null' "$MEASURED_FILE")"
+      pok="$(jq -n --argjson a "$pderived" --argjson b "$pmeasured" '($b | type) == "number" and ((($a * 100) + 0.5 | floor) == (($b * 100) + 0.5 | floor))')"
+      if [ "$pok" != true ]; then
+        echo "ci-test-partition: pending entry $pname: measured value $pmeasured != derived_s $pderived -- a pending entry stands for exactly the seed gen-test-suites.sh derived; replace it with a measurement: scripts/ci-refresh-weights.sh <CI run id> from a green run's shard logs" >&2
+        rc=1; continue
+      fi
+      pshort="${psince:0:10}"
+      if ! git -C "$REPO_ROOT" cat-file -e "${psince}^{commit}" 2>/dev/null && [ "$deepened" -eq 0 ]; then
+        deepened=1
+        git -C "$REPO_ROOT" fetch --deepen=8 origin >/dev/null 2>&1 || true
+      fi
+      if ! git -C "$REPO_ROOT" cat-file -e "${psince}^{commit}" 2>/dev/null; then
+        echo "ci-test-partition: pending entry $pname: since unreachable: fetch-depth too shallow or since not on main ($pshort)" >&2
+        rc=1; continue
+      fi
+      if ! git -C "$REPO_ROOT" merge-base --is-ancestor "$psince" HEAD 2>/dev/null; then
+        echo "ci-test-partition: pending entry $pname: since $pshort is not an ancestor of HEAD -- run scripts/ci-refresh-weights.sh <CI run id> from a green run's shard logs" >&2
+        rc=1; continue
+      fi
+      # the age ends at merge-base(HEAD, default branch), never at the default branch's tip: on a branch (fresh or
+      # stale) that is the commit the branch was cut from -- `since` itself, age 0 -- so main moving on, or the
+      # branch's own commits, never age a seed that cannot land yet; on the default branch it is HEAD, the real age.
+      pend="$(git -C "$REPO_ROOT" merge-base HEAD "${GEN_TEST_SUITES_BASE_REF:-origin/main}" 2>/dev/null)" || pend=HEAD
+      [ -n "$pend" ] || pend=HEAD
+      if ! git -C "$REPO_ROOT" merge-base --is-ancestor "$psince" "$pend" 2>/dev/null; then pend=HEAD; fi
+      page="$(git -C "$REPO_ROOT" rev-list --first-parent --count "${psince}..${pend}")"
+      if [ "$page" -gt "$PENDING_MAX_AGE" ] && [ "$enforce" -eq 1 ]; then
+        echo "ci-test-partition: pending entry $pname since $pshort is $page first-parent commits behind HEAD (max $PENDING_MAX_AGE) and was never measured -- run scripts/ci-refresh-weights.sh <CI run id> from a green run's shard logs" >&2
+        rc=1; continue
+      fi
+      echo "ci-test-partition: pending (derived) $pname since $pshort ($page first-parent commits behind HEAD, max $PENDING_MAX_AGE, $([ "$enforce" -eq 1 ] && echo enforced || echo "info only: not the default branch")); derived_s $pderived is a seed, not a measurement" >&2
+    done < <(jq -r '(._provisional // {}) | if type == "object" then to_entries[] | [.key, (.value | tojson)] | @tsv else empty end' "$MEASURED_FILE")
   fi
 
   [ "$rc" -eq 0 ] && echo "ci-test-partition: ok ($(printf '%s\n' "$sandbox_files" | wc -l) sandbox suites across $SANDBOX_SHARDS shards, predicted heaviest shard ${heaviest}s, $(printf '%s\n' "$core_files" | wc -l) core suites across $CORE_SHARDS shards, predicted heaviest core shard ${core_heaviest}s)"
@@ -582,6 +638,6 @@ case "${1:-}" in
                    core)    echo "$CORE_WARN_AT $CORE_FAIL_ABOVE" ;;
                    *) echo "usage: ci-test-partition.sh limits <sandbox|core>" >&2; exit 2 ;;
                  esac ;;
-  check)         check ;;
-  *) echo "usage: $(basename "$0") <sandbox|core|shards [sandbox|core]|sandbox-shard <n> <of>|core-shard <n> <of>|list <p|measured-required>|limits <p>|classify-file <path>|classify-files <path>...|classify-agree|check>" >&2; exit 2 ;;
+  check)         check "${2:-}" ;;
+  *) echo "usage: $(basename "$0") <sandbox|core|shards [sandbox|core]|sandbox-shard <n> <of>|core-shard <n> <of>|list <p|measured-required>|limits <p>|classify-file <path>|classify-files <path>...|classify-agree|check [--main]>" >&2; exit 2 ;;
 esac

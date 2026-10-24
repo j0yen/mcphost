@@ -106,6 +106,10 @@ pub async fn tenants(state: &AppState, args: &Value) -> Result<Value, AppError> 
         None => state.db.list_tenants().await?,
     };
     let owner_methods = state.db.owner_methods().await?;
+    // PRD-mcphost-synthetic-implicit-tenant-expiry P1: `disabled_reason`
+    // filters rows by the exact reason; every row carries `expires_at_unix`.
+    let reason_filter = arg_str_opt(args, "disabled_reason");
+    let expiries = state.db.subject_expiries().await?;
     let tenants: Vec<Value> = rows
         .into_iter()
         .filter(|t| match synthetic_filter.as_str() {
@@ -113,6 +117,7 @@ pub async fn tenants(state: &AppState, args: &Value) -> Result<Value, AppError> 
             "false" => t.synthetic.is_none(),
             _ => true,
         })
+        .filter(|t| reason_filter.as_deref().is_none_or(|want| t.disabled_reason.as_deref() == Some(want)))
         .map(|t| {
             json!({
                 "tenant": t.namespace,
@@ -143,6 +148,9 @@ pub async fn tenants(state: &AppState, args: &Value) -> Result<Value, AppError> 
                 // PRD-mcphost-owner-verification-paths R5: how it was proved
                 // (`email`, `github`, `dns`), null while unverified.
                 "owner_method": owner_methods.get(&t.id),
+                // When the idle sweep will end this tenant (`CLASS AND
+                // FLOOR`, no idle term); null for a non-subject.
+                "expires_at_unix": expiries.get(&t.id),
             })
         })
         .collect();
@@ -2078,6 +2086,7 @@ pub async fn funnel(state: &AppState, args: &Value) -> Result<Value, AppError> {
         "signups": signups,
         "signups_human": signups_human,
         "implicit_second_signup_blocked": implicit_second_signup_blocked,
+        "tenants_idle_expired": state.db.count_tenants_idle_expired().await?,
         "stages": funnel_stage_stats(&filtered, signups),
         "by_source": funnel_by_source(&by_source_rows),
         "by_origin": funnel_by_origin(&by_source_rows),
@@ -2095,7 +2104,8 @@ pub async fn funnel(state: &AppState, args: &Value) -> Result<Value, AppError> {
         .collect();
     // PRD-mcphost-funnel-by-surface-nightly-probe R3: same shape as
     // `mcphost funnel --json`'s `by_surface` / `probe`.
-    let (by_surface, probe) = crate::funnel::surface_report(&state.db, crate::state::now_unix(), days).await?;
+    let (by_surface, probe, synthetic_excluded) =
+        crate::funnel::surface_report(&state.db, crate::state::now_unix(), days).await?;
     let obj = response.as_object_mut().expect("response is always an object");
     obj.insert("install_link_clicks".to_string(), Value::Object(install_link_clicks));
     obj.insert("by_surface".to_string(), by_surface);
@@ -2107,6 +2117,11 @@ pub async fn funnel(state: &AppState, args: &Value) -> Result<Value, AppError> {
     if let Some(origin_fields) = state.db.origin_report().await?.to_json().as_object() {
         obj.extend(origin_fields.clone());
     }
+    obj.insert("synthetic_excluded".to_string(), json!(synthetic_excluded));
+    let (recipe_attempts, recipe_synthetic) =
+        crate::funnel::recipe_attempts_7d(&state.db, crate::state::now_unix()).await?;
+    obj.insert("recipe_attempts_7d".to_string(), recipe_attempts);
+    obj.insert("recipe_attempts_synthetic_7d".to_string(), json!(recipe_synthetic));
     if let Some(sc) = &source_class {
         obj.insert("source_class".to_string(), json!(sc));
     }

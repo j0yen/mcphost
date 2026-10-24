@@ -60,7 +60,7 @@ fn the_diff_against_the_pre_prd_contract_reports_widened_and_never_removed() {
     let report = widened(&old, &live);
     for expected in [
         "host.state.get.output.value",
-        "host.tool.call.output.steps[].result",
+        "host.tool.call.output.data",
         "host.runs.get.output.result",
     ] {
         assert!(report.iter().any(|p| p == expected), "{expected} not reported widened: {report:?}");
