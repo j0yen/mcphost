@@ -116,3 +116,21 @@ The table is generated from `HostPressure`'s field list in
 `cpu_steal_pct_since_boot` is a ratio of cumulative jiffies; a per-run
 steal percentage is the difference of two samples taken at run start and
 end.
+
+## `progress_7d`
+
+PRD-mcphost-tools-call-progress-notifications P0: do clients ask for
+`notifications/progress`? Admin healthz (never the anonymous body) and
+`mcphost funnel --json` carry the same object:
+
+    progress_7d = {calls_total, calls_with_token, frames_sent: {<origin>: n, total: n}, since}
+
+`calls_total` is every completed `tools/call` row in the trailing 7 days
+whatever its `ok` (the traffic floor), `calls_with_token` the rows whose
+request carried `_meta.progressToken` (`calls.progress_token`), and
+`frames_sent` the `notifications/progress` frames the host sent for them
+(`calls.progress_frames`). Rows are keyed by the calling tenant's stored
+`tenants.origin` verbatim (`unknown` for a NULL), so fleet traffic
+(`synthetic`) cannot move the `external` key; all three objects share one key
+set. `since` is the unix time of the migration that added the columns: read
+before day 7 it is visibly partial. The object is cached for 60 s like `oauth`.

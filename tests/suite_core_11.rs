@@ -21,6 +21,8 @@ mod rgpt;
 mod serve;
 #[path = "support/sjrc.rs"]
 mod sjrc;
+#[path = "support/tcpn.rs"]
+mod tcpn;
 #[path = "support/timp.rs"]
 mod timp;
 #[path = "support/tssdk.rs"]
@@ -616,6 +618,18 @@ mod tblurl_ac05_two_sources_refused_by_the_input_schema;
 mod tblurl_ac06_import_codes_flow_from_the_registry;
 #[path = "tblurl_ac08_import_id_replays_the_first_result.rs"]
 mod tblurl_ac08_import_id_replays_the_first_result;
+#[path = "tcpn_ac01_progress_counters.rs"]
+mod tcpn_ac01_progress_counters;
+#[path = "tcpn_ac02_frame_contract.rs"]
+mod tcpn_ac02_frame_contract;
+#[path = "tcpn_ac03_probe_tool.rs"]
+mod tcpn_ac03_probe_tool;
+#[path = "tcpn_ac04_progress_frames.rs"]
+mod tcpn_ac04_progress_frames;
+#[path = "tcpn_ac05_no_token_unchanged.rs"]
+mod tcpn_ac05_no_token_unchanged;
+#[path = "tcpn_ac06_throttle_and_disconnect.rs"]
+mod tcpn_ac06_throttle_and_disconnect;
 #[path = "tdf_ac01_round_trip_every_kind.rs"]
 mod tdf_ac01_round_trip_every_kind;
 #[path = "tdf_ac02_lint_names_unknown_field.rs"]
