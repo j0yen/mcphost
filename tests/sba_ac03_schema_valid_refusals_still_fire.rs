@@ -29,6 +29,10 @@ fn explicit_probe(tool: &str, pointer: &str) -> Option<Value> {
         ("host.email.send", "/subject") => json!({"to": "a@example.com", "subject": multibyte(mcphost::email_send::SUBJECT_MAX_BYTES), "text": "x"}),
         ("host.email.send", "/text") => json!({"to": "a@example.com", "subject": "x", "text": "x".repeat(mcphost::email_send::TEXT_MAX_BYTES + 1)}),
         ("host.notify.send", "/text") => json!({"level": "info", "text": "x".repeat(mcphost::notify::TEXT_MAX_BYTES + 1)}),
+        ("host.calls.list" | "host.calls.export" | "host.audit.export", "/since" | "/until") | ("host.table.query" | "host.table.chart", "/sql") => {
+            json!({pointer.trim_start_matches('/'): "toolconf-probe"})
+        }
+        ("host.sync.create", "/source") => json!({"source": {"kind": "csv_url", "ref": "toolconf-probe"}, "table": "t"}),
         _ => return None,
     })
 }

@@ -402,6 +402,10 @@ struct LiveChannel {
     target_nonce: Vec<u8>,
 }
 
+/// What every `link` must start with (the handler also parses it as a URL and refuses
+/// a non-https scheme); `host.notify.send`'s `link.pattern`.
+pub const LINK_PATTERN: &str = "^https://.";
+
 /// `host.notify.send {text, level, link?}`: validates, enforces the daily
 /// limit, writes the notify and one queued receipt per live channel, spawns
 /// delivery, and returns -- nothing on this path waits on the network.

@@ -699,6 +699,23 @@ pub fn utc_month_start_unix(now_unix: i64) -> i64 {
     days_from_civil(y, m, 1) * 86_400
 }
 
+/// Whether `name` passes [`validate_tool_name`] (`drafter::TOOL_NAME_REGEX`).
+pub fn is_valid_tool_name(name: &str) -> bool {
+    validate_tool_name(name).is_ok()
+}
+
+/// The scope-name pattern [`validate_scope_name`] enforces; `host.oauth.scope_set`'s `name.pattern`.
+pub const SCOPE_NAME_PATTERN: &str = "^[a-z][a-z0-9_:.-]{0,40}$";
+
+/// Whether `name` passes [`validate_scope_name`].
+pub fn is_valid_scope_name(name: &str) -> bool {
+    validate_scope_name(name).is_ok()
+}
+
+/// The synthetic-label pattern [`is_valid_synthetic_label`] enforces; the `label.pattern`
+/// of `admin.tenant_set_synthetic` and `admin.tenants_set_synthetic`.
+pub const SYNTHETIC_LABEL_PATTERN: &str = "^[a-z0-9][a-z0-9:_-]{0,63}$";
+
 /// `^[a-z][a-z0-9_]{1,40}$` — a lowercase-leading identifier, 2-41 chars.
 pub fn validate_tool_name(name: &str) -> Result<(), AppError> {
     let bytes = name.as_bytes();
@@ -1244,7 +1261,8 @@ pub fn parse_date_ymd_unix(s: &str) -> Option<i64> {
 /// Unparseable input defaults to 24h (the PRD's only documented value).
 pub fn parse_window_secs(window: &str) -> i64 {
     let window = window.trim();
-    let (num_part, unit) = window.split_at(window.len().saturating_sub(1));
+    // The last character, not the last byte: a multibyte unit ("caf\u{e9}") must not split mid-char.
+    let (num_part, unit) = window.split_at(window.char_indices().next_back().map_or(0, |(i, _)| i));
     let n: i64 = num_part.parse().unwrap_or(24);
     match unit {
         "s" => n,

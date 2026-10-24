@@ -299,6 +299,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 - `plan`: string
 - `source`: string
+  - `source` enum: `calls_per_day`, `tools_max`, `secrets_max`, `max_child_calls`, `max_est_tokens`, `max_tool_latency_ms`, `max_wall_ms`, `child_calls`, `est_tokens`, `tool_latency_ms`, `wall_ms`, `manual`
 - `tenant_key`: string
 
 ### `billing.plans`
@@ -451,6 +452,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `description`: string | null
 - `dry_run`: boolean
 - `handle`: string | null
+  - `handle` pattern: `^[A-Za-z][A-Za-z0-9_]{2,31}$`
 - `hints`: boolean
 - `tags`: array
   - `tags` maxItems: 16
@@ -518,10 +520,13 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `options`: array, required
   - `options` minItems: 2
   - `options` maxItems: 6
+  - `options[]` pattern: `^\S(?:[\s\S]*\S)?$`
 - `question`: string, required
   - `question` minLength: 1
 - `tenant_key`: string
 - `ttl_s`: integer
+  - `ttl_s` minimum: 1
+  - `ttl_s` maximum: 604800
 
 ### `host.ask.get`
 
@@ -736,6 +741,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 - one of (anyOf): `content_base64` | `url`
 - `content_base64`: string
+  - `content_base64` pattern: `^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$`
 - `mime`: string
 - `name`: string, required
   - `name` minLength: 1
@@ -846,6 +852,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `credential`: string
+  - `credential` enum: `primary`, `sub_key`, `oauth`, `trigger`, `cron`, `webhook`, `shared_caller`, `anonymous`
 - `cursor`: string
 - `fields`: array
   - `fields` minItems: 1
@@ -1021,6 +1028,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `domain`: string, required
+  - `domain` pattern: `^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.*$`
 - `method`: string
   - `method` enum: `email`, `github`, `dns`, `admin`
 - `tenant_key`: string
@@ -1038,6 +1046,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `domain`: string, required
+  - `domain` pattern: `^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.*$`
 - `method`: string
   - `method` enum: `email`, `github`, `dns`, `admin`
 - `tenant_key`: string
@@ -1190,6 +1199,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `endpoint`: string
 - `model`: string
 - `provider`: string, required
+  - `provider` enum: `none`, `openai-compatible`
 - `secret`: string
 - `tenant_key`: string
 
@@ -1249,8 +1259,9 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `content`: string
 - `content_base64`: string
 - `dry_run`: boolean
-- `metadata`: any
+- `metadata`: string | number | integer | boolean | array | object | null
 - `mime`: string
+  - `mime` enum: `text/plain`, `text/markdown`, `application/json`, `text/csv`
 - `name`: string, required
   - `name` minLength: 1
 - `tenant_key`: string
@@ -1278,6 +1289,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `filter`: object
 - `k`: integer
 - `mode`: string
+  - `mode` enum: `auto`, `lexical`, `embeddings`, `hybrid`
 - `query`: string, required
 - `tenant_key`: string
 
@@ -1394,13 +1406,16 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 - `html`: string
 - `reply_to_message_id`: string
+  - `reply_to_message_id` pattern: `^[^\r\n]+$`
 - `subject`: string, required
   - `subject` minLength: 1
 - `tenant_key`: string
 - `text`: string, required
 - `to`: any, required
+  - `to<oneOf 0>` pattern: `^[A-Za-z0-9._%+'-]{1,64}@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$`
   - `to<oneOf 1>` minItems: 1
   - `to<oneOf 1>` maxItems: 10
+  - `to<oneOf 1>[]` pattern: `^[A-Za-z0-9._%+'-]{1,64}@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$`
 
 ### `host.email.sends`
 
@@ -2098,6 +2113,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `change_kind`: string, required
+  - `change_kind` enum: `drop`, `rename`, `type_change`, `typechange`, `type-change`, `remove`, `add`
 - `id`: string, required
 - `max_depth`: integer
 - `tenant_key`: string
@@ -2380,6 +2396,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `level`: string, required
   - `level` enum: `info`, `warn`, `action`
 - `link`: string
+  - `link` pattern: `^https://.`
 - `tenant_key`: string
 - `text`: string, required
   - `text` minLength: 1
@@ -2644,6 +2661,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `description`: string, required
 - `dry_run`: boolean
 - `name`: string, required
+  - `name` pattern: `^[a-z][a-z0-9_:.-]{0,40}$`
 - `tenant_key`: string
 
 ### `host.oauth.scopes`
@@ -2834,7 +2852,8 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 - `dry_run`: boolean
 - `replace`: boolean
-- `rule`: any, required
+- `rule`: array, required
+  - `rule[].op` enum: `eq`, `in`
 - `target`: object, required
   - `target.<propertyNames>` enum: `table`, `doc_prefix`
 - `tenant_key`: string
@@ -3114,6 +3133,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 - `echo_url`: string
 - `name`: string, required
+  - `name` pattern: `^[a-zA-Z0-9_]+$`
 - `tenant_key`: string
 
 ### `host.secret.list`
@@ -3142,6 +3162,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 - `dry_run`: boolean
 - `hosts`: array
+  - `hosts[]` pattern: `^(?:\*\.)?[A-Za-z0-9._-]+$`
 - `name`: string, required
 - `tenant_key`: string
 - `value`: string, required
@@ -3326,7 +3347,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `end_user`: string | null
 - `key`: string, required
 - `tenant_key`: string
-- `value`: any, required
+- `value`: string | number | integer | boolean | array | object | null, required
 
 ### `host.state.table_create`
 
@@ -3384,10 +3405,12 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `mode`: string
   - `mode` enum: `pull`, `push`, `two_way`
 - `primary_key`: string
+  - `primary_key` pattern: `^[A-Za-z_][A-Za-z0-9_]{0,63}$`
 - `source`: object, required
   - `source.kind` enum: `csv_url`, `google_sheet`, `airtable`, `notion_db`, `http_json`
   - `source.ref` maxLength: 2048
 - `table`: string, required
+  - `table` pattern: `^[A-Za-z_][A-Za-z0-9_]{0,63}$`
 - `tenant_key`: string
 
 ### `host.sync.delete`
@@ -3667,7 +3690,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
   - `key` enum: `role`, `unit`, `description`, `hidden`
 - `table`: string, required
 - `tenant_key`: string
-- `value`: any, required
+- `value`: string | number | integer | boolean | array | object | null, required
 
 ### `host.table.models`
 
@@ -4111,6 +4134,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 - `tenant_key`: string
 - `tool`: string, required
+  - `tool` pattern: `\.`
 
 ### `host.tool.test`
 
@@ -4330,7 +4354,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 - `tenant_key`: string
 - `tool`: string, required
 - `tz`: string
-- `verify`: any
+- `verify`: string | object
 
 ### `host.trigger.test`
 
@@ -4345,8 +4369,8 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - one of (anyOf): `id` | `name`
-- `body`: any
-- `data`: any
+- `body`: string | number | integer | boolean | array | object | null
+- `data`: string | number | integer | boolean | array | object | null
 - `from`: string
 - `headers`: object
 - `id`: string
@@ -4370,6 +4394,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 
 - `every_s`: integer
 - `name`: string, required
+  - `name` pattern: `^[A-Za-z_][A-Za-z0-9_]{0,39}$`
 - `tenant_key`: string
 - `urls`: array, required
   - `urls` minItems: 1
@@ -4406,6 +4431,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `by`: string
+  - `by` enum: `tool`, `caller`, `end_user`, `key`
 - `cursor`: string
 - `limit`: integer
 - `tenant_key`: string
@@ -4506,6 +4532,7 @@ Top-level fields of each tool's `structuredContent`, from its `output_schema` (`
 **Arguments**
 
 - `name`: string, required
+  - `name` pattern: `^[a-z][a-z0-9_]{1,40}$`
 - `rotate`: boolean
 - `tenant_key`: string
 - `verify`: string

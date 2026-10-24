@@ -244,6 +244,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `PROPOSAL_ACTIONS` in `src/admin.rs`
 - `PROPOSAL_STATUSES` in `src/admin.rs`
 - `SYNTHETIC_FILTERS` in `src/admin.rs`
+- `USAGE_TOP_BY` in `src/admin.rs`
 - `CONTACT_POLICIES` in `src/agents.rs`
 - `SEVERITIES` in `src/alerts.rs`
 - `SURFACE_STAGE_KEYS` in `src/api_contract.rs`
@@ -251,6 +252,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `STATUSES` in `src/asks.rs`
 - `EXPORT_FORMATS` in `src/audit_export.rs`
 - `LIFECYCLE_TERMINAL_VERBS` in `src/auth_shape.rs`
+- `KNOWN_CHECKOUT_SOURCES` in `src/billing.rs`
 - `BLOB_TYPES` in `src/blobs.rs`
 - `GET_AS` in `src/blobs.rs`
 - `ANON_HEALTHZ_KEYS` in `src/build_info.rs`
@@ -264,8 +266,12 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `REFUSAL_TABLE` in `src/compat_report.rs`
 - `STATUSES` in `src/consent.rs`
 - `SIGNUP_ARGS` in `src/control.rs`
+- `USAGE_BY` in `src/control.rs`
 - `DEAD_LETTER_REASONS` in `src/deadletters.rs`
 - `DISPATCH_TABLE` in `src/dispatch_table.rs`
+- `ALLOWED_MIMES` in `src/docs.rs`
+- `INDEX_PROVIDERS` in `src/docs.rs`
+- `SEARCH_MODES` in `src/docs.rs`
 - `DOCTOR_FIXTURES` in `src/doctor.rs`
 - `DOCTOR_NEXT` in `src/doctor.rs`
 - `DRAFT_KINDS` in `src/drafter.rs`
@@ -294,6 +300,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `HELP_ENTRIES` in `src/help.rs`
 - `INVALID_ARGS_CTORS` in `src/host_args.rs`
 - `SCHEMA_VALID_REFUSALS` in `src/host_args.rs`
+- `SHAPE_CHECKS` in `src/host_args.rs`
 - `UNVALIDATED` in `src/host_args.rs`
 - `ROUTES` in `src/http/routes.rs`
 - `UNSPECCED` in `src/http/routes.rs`

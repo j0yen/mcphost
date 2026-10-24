@@ -518,10 +518,13 @@ pub async fn usage(state: &AppState, args: &Value) -> Result<Value, AppError> {
 /// `admin_audit` the same way as every other admin.* mutation, via
 /// `admin_audit_entry` below (unlike `admin.usage`, which isn't audited --
 /// this PRD's own AC names auditing for `.top` specifically).
+/// The `by` values `admin.usage.top` accepts; the descriptor's `by.enum`.
+pub const USAGE_TOP_BY: &[&str] = &["tool", "tenant"];
+
 pub async fn usage_top(state: &AppState, args: &Value) -> Result<Value, AppError> {
     let window = arg_str_opt(args, "window").unwrap_or_else(|| "1d".to_string());
     let by = arg_str_opt(args, "by").unwrap_or_else(|| "tool".to_string());
-    if !matches!(by.as_str(), "tool" | "tenant") {
+    if !USAGE_TOP_BY.contains(&by.as_str()) {
         return Err(AppError::InvalidArgs(format!(
             "by must be 'tool' or 'tenant', got '{by}'"
         )));
