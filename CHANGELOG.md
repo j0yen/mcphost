@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.116.2 — 2026-10-24
+
+Released by wm-build land: loop: mcphost-billing-selfcheck-no-ledger-row.
+
 ## v0.115.0 — 2026-10-24
 
 Released by wm-build land: loop: mcphost-synthetic-implicit-tenant-expiry.
