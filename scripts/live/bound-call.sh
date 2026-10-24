@@ -89,6 +89,7 @@ post() {
       -H "mcp-protocol-version: $PROTOCOL" \
       -H 'mcp-method: tools/call' \
       -H "mcp-name: $tool" \
+      -H 'x-mcphost-synthetic: script:bound-call' \
       --data-binary "$body"
   else
     printf 'header = "Authorization: Bearer %s"\n' "$key" | curl -sS --max-time 20 -X POST "$BASE/mcp" \
@@ -98,6 +99,7 @@ post() {
       -H "mcp-protocol-version: $PROTOCOL" \
       -H 'mcp-method: tools/call' \
       -H "mcp-name: $tool" \
+      -H 'x-mcphost-synthetic: script:bound-call' \
       --data-binary "$body"
   fi
 }
