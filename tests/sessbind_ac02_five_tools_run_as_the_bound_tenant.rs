@@ -109,7 +109,7 @@ async fn five_tools_run_as_the_bound_tenant_with_no_tenant_key() {
     // state.table_create) -- some cases therefore still fail, just never
     // for the auth reason this test used to pin.
     for (name, arguments) in &cases {
-        let anonymous = McpClient::new(&server.base_url);
+        let anonymous = McpClient::new(&server.base_url).with_user_agent(&format!("sessbind-ac02-{name}"));
         if let Err(err) = anonymous.tools_call(name, arguments.clone()).await {
             assert_ne!(
                 err.error_code.as_deref(),

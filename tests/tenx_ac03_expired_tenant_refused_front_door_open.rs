@@ -17,9 +17,14 @@ struct Minted {
 
 /// Implicit-signs-up a tenant keyless, then rotates once to learn its key and
 /// current URL (the mint itself only returns `onboarding.url`).
-async fn mint(server: &TestServer) -> Minted {
+/// Each mint comes from its own User-Agent: the peer-recent guard refuses a second keyless call from a peer that just obtained a tenant.
+async fn mint(server: &TestServer, agent: &str) -> Minted {
     let first = extract_structured(
-        &McpClient::new(&server.base_url).tools_call("host.whoami", json!({})).await.expect("implicit mint"),
+        &McpClient::new(&server.base_url)
+            .with_user_agent(agent)
+            .tools_call("host.whoami", json!({}))
+            .await
+            .expect("implicit mint"),
     );
     let ns = first["tenant"].as_str().expect("tenant").to_string();
     let url = first["onboarding"]["url"].as_str().expect("onboarding.url").to_string();
@@ -54,8 +59,8 @@ async fn tenx_ac03_expired_tenant_is_refused_like_an_offboarded_one_and_the_fron
     let now = mcphost::state::now_unix();
     tenx::set_floor(&conn, now - 10 * DAY);
 
-    let expired = mint(&server).await;
-    let offboarded = mint(&server).await;
+    let expired = mint(&server, "tenx-ac03-expired").await;
+    let offboarded = mint(&server, "tenx-ac03-offboarded").await;
     conn.execute(
         "UPDATE tenants SET signup_source = 'implicit', origin = 'synthetic', synthetic = 'synthorg:test', \
          claimed_unix = NULL, owner_verified_at = NULL, paid_unix = NULL, billing_ref = NULL, \
@@ -84,7 +89,11 @@ async fn tenx_ac03_expired_tenant_is_refused_like_an_offboarded_one_and_the_fron
 
     // The front door: a keyless call from a peer the expired tenant never saw mints a new tenant.
     let fresh = extract_structured(
-        &McpClient::new(&server.base_url).tools_call("host.whoami", json!({})).await.expect("keyless mint"),
+        &McpClient::new(&server.base_url)
+            .with_user_agent("tenx-ac03-fresh-peer")
+            .tools_call("host.whoami", json!({}))
+            .await
+            .expect("keyless mint"),
     );
     assert_ne!(fresh["tenant"].as_str(), Some(expired.ns.as_str()));
     assert!(fresh["onboarding"]["url"].is_string(), "a new tenant was minted: {fresh}");
