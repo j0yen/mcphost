@@ -225,7 +225,7 @@ fn render_claim_form(display_name: &str, token: &str, error: Option<&str>) -> St
 
 /// requirement 3: "first char, three stars, domain" (technical
 /// considerations) -- `j***@gmail.com` for `jsmith@gmail.com`.
-fn mask_email(email: &str) -> String {
+pub(crate) fn mask_email(email: &str) -> String {
     match email.split_once('@') {
         Some((local, domain)) => {
             let first = local.chars().next().unwrap_or('*');
@@ -375,7 +375,7 @@ async fn render_summary(state: &AppState, tenant: &Tenant, owner_email: &str) ->
 /// function returns, so `post_claim`'s response reflects the outcome
 /// rather than optimistically claiming success before the provider has
 /// even been asked.
-async fn send_with_retry(state: &AppState, message: EmailMessage) -> Result<(), AppError> {
+pub(crate) async fn send_with_retry(state: &AppState, message: EmailMessage) -> Result<(), AppError> {
     let client = state.email_client.clone();
     let first = {
         let client = client.clone();
@@ -391,6 +391,62 @@ async fn send_with_retry(state: &AppState, message: EmailMessage) -> Result<(), 
     match retry.await {
         Ok(result) => result,
         Err(_) => Err(AppError::Internal("claim email retry task panicked".to_string())),
+    }
+}
+
+/// What the day-20 email says: no credential, only names, dates and the link.
+#[derive(Clone, Copy)]
+pub(crate) struct ExternalWarnMail<'a> {
+    pub to: &'a str,
+    pub display_name: &'a str,
+    pub days_left: i64,
+    pub invalidates_on: &'a str,
+    pub claim_url: &'a str,
+}
+
+/// PRD-mcphost-external-unclaimed-tenant-expiry P0 warn: the day-20 email.
+/// Built from the display name, the dates and the claim URL only -- never the
+/// tenant key, the `/u/{secret}` URL or any hash.
+pub(crate) fn external_warn_message(state: &AppState, mail: &ExternalWarnMail<'_>) -> EmailMessage {
+    let ExternalWarnMail { to, display_name, days_left, invalidates_on, claim_url } = *mail;
+    let from = state.email_config.from.clone().unwrap_or_default();
+    let reply_to = crate::email::reply_to_address(&from);
+    EmailMessage {
+        to: to.to_string(),
+        from,
+        reply_to,
+        subject: format!("{display_name} on mcphost: {days_left} days left before its key stops working"),
+        text_body: format!(
+            "Hi,\n\nAn AI agent set up a small backend on mcphost.dev called \"{display_name}\", and nobody has used it for a while. Unclaimed backends lose their key after a quiet period.\n\nIn {days_left} days (on {invalidates_on}) the key stops working. Claim it before then and it stays yours:\n\n{claim_url}\n\nClaiming takes one email confirmation and keeps everything the agent built. If this isn't yours, do nothing.\n\n— mcphost\nmcphost.dev · a home for things your agent builds"
+        ),
+        ..Default::default()
+    }
+}
+
+/// What the invalidation notice says.
+#[derive(Clone, Copy)]
+pub(crate) struct ExternalNoticeMail<'a> {
+    pub to: &'a str,
+    pub display_name: &'a str,
+    pub purge_on: &'a str,
+    pub claim_url: &'a str,
+}
+
+/// The one email sent when the key is invalidated: the claim link stays good
+/// until the purge. Names, dates and the link only.
+pub(crate) fn external_notice_message(state: &AppState, mail: &ExternalNoticeMail<'_>) -> EmailMessage {
+    let ExternalNoticeMail { to, display_name, purge_on, claim_url } = *mail;
+    let from = state.email_config.from.clone().unwrap_or_default();
+    let reply_to = crate::email::reply_to_address(&from);
+    EmailMessage {
+        to: to.to_string(),
+        from,
+        reply_to,
+        subject: format!("{display_name} on mcphost: its key no longer works"),
+        text_body: format!(
+            "Hi,\n\nThe small backend an AI agent set up on mcphost.dev called \"{display_name}\" was never claimed, so its key has been switched off.\n\nNothing is deleted yet. Claim it by {purge_on} and it comes back with everything the agent built:\n\n{claim_url}\n\nAfter {purge_on} it is deleted. If this isn't yours, do nothing.\n\n— mcphost\nmcphost.dev · a home for things your agent builds"
+        ),
+        ..Default::default()
     }
 }
 
@@ -584,6 +640,20 @@ pub async fn post_claim(
             render_claim_form(&tenant.display_name, &token, Some("Enter a valid email address.")),
         );
     }
+    // PRD-mcphost-external-unclaimed-tenant-expiry: a link the expiry warning
+    // mailed to one address starts a claim only for that address.
+    if let Ok(Some(bound)) = state.db.claim_bound_email(tenant.id).await
+        && !bound.eq_ignore_ascii_case(email)
+    {
+        return html_response(
+            StatusCode::BAD_REQUEST,
+            render_claim_form(
+                &tenant.display_name,
+                &token,
+                Some("Enter the address this link was sent to."),
+            ),
+        );
+    }
     // PRD-mcphost-abuse-guard-ban-list requirement 2: the claim flow's own
     // email_domain enforcement point -- checked once the address has
     // passed the shape check above, before a verify email is ever sent.
@@ -622,6 +692,7 @@ pub async fn get_verify(
             }
         }
         Ok(ClaimVerifyOutcome::Conflict) => html_response(StatusCode::CONFLICT, render_conflict()),
+        Ok(ClaimVerifyOutcome::TryAgain) => html_response(StatusCode::SERVICE_UNAVAILABLE, render_storage_error()),
         Ok(ClaimVerifyOutcome::NotFound | ClaimVerifyOutcome::Expired) => {
             html_response(StatusCode::GONE, render_expired())
         }

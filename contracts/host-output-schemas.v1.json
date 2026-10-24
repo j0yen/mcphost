@@ -3265,6 +3265,9 @@
       },
       "tenant_lifecycle": {
         "properties": {
+          "idle_since_unix": {
+            "type": "integer"
+          },
           "expires_at_unix": {
             "type": [
               "integer",
@@ -3274,8 +3277,32 @@
           "idle_days": {
             "type": "integer"
           },
+          "policy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "purge_at_unix": {
+            "type": "integer"
+          },
           "subject": {
             "type": "boolean"
+          },
+          "warn_address_masked": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "warn_at_unix": {
+            "type": "integer"
+          },
+          "warned_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "required": [

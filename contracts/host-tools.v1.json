@@ -334,6 +334,32 @@
     "default_days": 1,
     "disabled_reason": "idle_expired",
     "env_var": "MCPHOST_RETENTION_SYNTHETIC_IMPLICIT_TENANT_IDLE_DAYS",
+    "external_unclaimed": {
+      "disabled_reason": "unclaimed_expired",
+      "idle_days": 30,
+      "idle_days_env": "MCPHOST_RETENTION_EXTERNAL_UNCLAIMED_TENANT_IDLE_DAYS",
+      "purge_grace_days": 14,
+      "selector": {
+        "billing_ref": null,
+        "claimed": false,
+        "idle_clock_starts_no_earlier_than_policy_floor": true,
+        "origin": "external",
+        "paid": false,
+        "plan": "free",
+        "stripe_customer_id": null,
+        "synthetic": null
+      },
+      "stages": [
+        "warned",
+        "warn_no_address",
+        "warn_failed",
+        "invalidated",
+        "notice_failed",
+        "restored",
+        "purged"
+      ],
+      "warn_lead_days": 10
+    },
     "policy": "synthetic_implicit_tenants",
     "selector": {
       "billing_ref": null,
@@ -8411,7 +8437,7 @@
       "since": "0.60.10"
     },
     {
-      "description": "What has been going wrong: this tenant's newest failed calls grouped by error family, each group with the next concrete step. Returns {window: {calls, failed, first_ts, last_ts}, groups: [{code, family, class, count, tools, last_ts, first_source_line?, line?, next}]} biggest group first; tool_exception groups carry the tool-source line of the newest failure; oauth_issuers: {rows, invalid: [{id, tenant_id, reason}]} reports stored OAuth issuer rows the discovery documents omit (the admin key sees every tenant's rows); tenant_lifecycle: {subject, idle_days?, expires_at_unix} says whether idle expiry applies to this tenant (synthetic implicit unclaimed) and when. No failed calls: groups: [] and a next saying so (hint: host.quickstart when the tenant has no tools yet). The admin key may pass tenant: <namespace>; a tenant key naming another tenant is forbidden.",
+      "description": "What has been going wrong: this tenant's newest failed calls grouped by error family, each group with the next concrete step. Returns {window: {calls, failed, first_ts, last_ts}, groups: [{code, family, class, count, tools, last_ts, first_source_line?, line?, next}]} biggest group first; tool_exception groups carry the tool-source line of the newest failure; oauth_issuers: {rows, invalid: [{id, tenant_id, reason}]} reports stored OAuth issuer rows the discovery documents omit (the admin key sees every tenant's rows); tenant_lifecycle: {subject, policy, idle_days?, expires_at_unix} says whether idle expiry applies to this tenant (synthetic implicit unclaimed, or external unclaimed: policy external_unclaimed with idle_since_unix, warn_at_unix, expires_at_unix, purge_at_unix, warned_unix, warn_address_masked) and when. No failed calls: groups: [] and a next saying so (hint: host.quickstart when the tenant has no tools yet). The admin key may pass tenant: <namespace>; a tenant key naming another tenant is forbidden.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -8636,8 +8662,44 @@
                   "null"
                 ]
               },
+              "idle_since_unix": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "policy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "purge_at_unix": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "subject": {
                 "type": "boolean"
+              },
+              "warn_address_masked": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "warn_at_unix": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "warned_unix": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
               }
             },
             "required": [
@@ -41642,7 +41704,7 @@
     },
     {
       "alias_of": "host.doctor",
-      "description": "What has been going wrong: this tenant's newest failed calls grouped by error family, each group with the next concrete step. Returns {window: {calls, failed, first_ts, last_ts}, groups: [{code, family, class, count, tools, last_ts, first_source_line?, line?, next}]} biggest group first; tool_exception groups carry the tool-source line of the newest failure; oauth_issuers: {rows, invalid: [{id, tenant_id, reason}]} reports stored OAuth issuer rows the discovery documents omit (the admin key sees every tenant's rows); tenant_lifecycle: {subject, idle_days?, expires_at_unix} says whether idle expiry applies to this tenant (synthetic implicit unclaimed) and when. No failed calls: groups: [] and a next saying so (hint: host.quickstart when the tenant has no tools yet). The admin key may pass tenant: <namespace>; a tenant key naming another tenant is forbidden.",
+      "description": "What has been going wrong: this tenant's newest failed calls grouped by error family, each group with the next concrete step. Returns {window: {calls, failed, first_ts, last_ts}, groups: [{code, family, class, count, tools, last_ts, first_source_line?, line?, next}]} biggest group first; tool_exception groups carry the tool-source line of the newest failure; oauth_issuers: {rows, invalid: [{id, tenant_id, reason}]} reports stored OAuth issuer rows the discovery documents omit (the admin key sees every tenant's rows); tenant_lifecycle: {subject, policy, idle_days?, expires_at_unix} says whether idle expiry applies to this tenant (synthetic implicit unclaimed, or external unclaimed: policy external_unclaimed with idle_since_unix, warn_at_unix, expires_at_unix, purge_at_unix, warned_unix, warn_address_masked) and when. No failed calls: groups: [] and a next saying so (hint: host.quickstart when the tenant has no tools yet). The admin key may pass tenant: <namespace>; a tenant key naming another tenant is forbidden.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {

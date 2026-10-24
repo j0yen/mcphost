@@ -155,6 +155,16 @@ async fn resolve_sub_key_tenant(
 /// self-offboarded tenant may still reach its own lifecycle-terminal verb
 /// (`auth_shape::LIFECYCLE_TERMINAL_VERBS`) so that verb can answer
 /// idempotently instead of the auth layer turning success into an error.
+/// The refusal a disabled tenant's own credential (URL secret or header)
+/// gets: `TenantDisabled`, plus `claim_url` once the unclaimed policy has
+/// invalidated it, so the holder can still claim during the grace.
+fn tenant_disabled_error(state: &AppState, t: &Tenant) -> AppError {
+    let claim_url = (t.disabled_reason.as_deref() == Some(crate::auth_shape::UNCLAIMED_EXPIRED_REASON))
+        .then(|| crate::claim::claim_url_for_tenant(&state.public_url, t))
+        .flatten();
+    AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone(), claim_url }
+}
+
 fn is_refused_disabled(t: &Tenant, verb: &str) -> bool {
     t.disabled && !crate::auth_shape::lets_through_disabled(verb, t.disabled_reason.as_deref())
 }
@@ -176,7 +186,7 @@ async fn resolve_auth(
     let hash = hash_key(&key);
     if let Some(t) = resolve_sub_key_tenant(state, &key, sub).await? {
         if is_refused_disabled(&t, verb) {
-            return Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() });
+            return Err(tenant_disabled_error(state, &t));
         }
         if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
             tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
@@ -184,7 +194,7 @@ async fn resolve_auth(
         return Ok(Auth::Tenant(Box::new(t), None));
     }
     match state.db.find_tenant_by_key_hash(hash).await? {
-        Some(t) if is_refused_disabled(&t, verb) => Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() }),
+        Some(t) if is_refused_disabled(&t, verb) => Err(tenant_disabled_error(state, &t)),
         Some(t) => {
             // PRD-mcphost-agent-directory requirement 6: `last_seen` is the
             // tenant's most recent authenticated request -- bumped here,
@@ -207,7 +217,7 @@ async fn resolve_auth(
             let result = crate::oauth::validate_bearer(state, &key).await?;
             crate::oauth::check_entry_audience(&state.public_url, parts.uri.path(), &result)?;
             match state.db.find_tenant_by_id(result.tenant_id).await? {
-                Some(t) if is_refused_disabled(&t, verb) => Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() }),
+                Some(t) if is_refused_disabled(&t, verb) => Err(tenant_disabled_error(state, &t)),
                 Some(t) => {
                     if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
                         tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
@@ -300,7 +310,7 @@ async fn resolve_path_secret_auth(
     };
     let hash = hash_key(secret);
     match state.db.find_tenant_by_url_secret_hash(hash.clone()).await? {
-        Some(t) if is_refused_disabled(&t, verb) => Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() }),
+        Some(t) if is_refused_disabled(&t, verb) => Err(tenant_disabled_error(state, &t)),
         Some(t) => {
             // See the mirrored comment in `resolve_auth` above.
             if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
@@ -325,7 +335,7 @@ async fn resolve_path_secret_auth(
                     return Ok(None);
                 };
                 if is_refused_disabled(&t, verb) {
-                    return Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() });
+                    return Err(tenant_disabled_error(state, &t));
                 }
                 if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
                     tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
@@ -526,7 +536,7 @@ async fn resolve_session_binding(
     match state.db.find_tenant_by_id(tenant_id).await? {
         Some(t) if is_refused_disabled(&t, verb) => {
             state.session_bindings.drop_binding(session_id);
-            Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() })
+            Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone(), claim_url: None })
         }
         Some(t) => {
             // PRD-mcphost-same-user-second-agent R4: a session that joined
@@ -3521,7 +3531,7 @@ fn host_tools_part_07() -> Vec<Tool> {
              family, each group with the next concrete step. Returns {window: {calls, failed, \
              first_ts, last_ts}, groups: [{code, family, class, count, tools, last_ts, \
              first_source_line?, line?, next}]} biggest group first; tool_exception groups carry \
-             the tool-source line of the newest failure; oauth_issuers: {rows, invalid: [{id, tenant_id, reason}]} reports stored OAuth issuer rows the discovery documents omit (the admin key sees every tenant's rows); tenant_lifecycle: {subject, idle_days?, expires_at_unix} says whether idle expiry applies to this tenant (synthetic implicit unclaimed) and when. No failed calls: groups: [] and a next \
+             the tool-source line of the newest failure; oauth_issuers: {rows, invalid: [{id, tenant_id, reason}]} reports stored OAuth issuer rows the discovery documents omit (the admin key sees every tenant's rows); tenant_lifecycle: {subject, policy, idle_days?, expires_at_unix} says whether idle expiry applies to this tenant (synthetic implicit unclaimed, or external unclaimed: policy external_unclaimed with idle_since_unix, warn_at_unix, expires_at_unix, purge_at_unix, warned_unix, warn_address_masked) and when. No failed calls: groups: [] and a next \
              saying so (hint: host.quickstart when the tenant has no tools yet). The admin key \
              may pass tenant: <namespace>; a tenant key naming another tenant is forbidden.",
             host_schema(
@@ -9667,10 +9677,7 @@ impl McpHostHandler {
                 "unreached_cap": crate::output_schemas::reach_report().unreached_cap,
             },
             "oauth_issuers": crate::oauth::doctor_report(&self.state, tenant.map(|t| t.id)).await?,
-            "tenant_lifecycle": crate::retention::lifecycle_view(
-                self.state.db.synthetic_expiry_window_days().await?,
-                self.state.db.tenant_expires_at(target_id).await?,
-            ),
+            "tenant_lifecycle": self.tenant_lifecycle_view(target_id).await?,
         });
         if rows.is_empty() {
             out["next"] = json!(crate::doctor::empty_next(limit));
@@ -9679,6 +9686,20 @@ impl McpHostHandler {
             }
         }
         Ok(out)
+    }
+
+    /// `host.doctor`'s `tenant_lifecycle`: the external unclaimed policy when
+    /// the tenant is one of its subjects, else the synthetic implicit one.
+    async fn tenant_lifecycle_view(&self, tenant_id: i64) -> Result<Value, AppError> {
+        let external = self.state.db.external_subjects(Some(tenant_id)).await?;
+        if let Some(subject) = external.get(&tenant_id) {
+            let window = self.state.db.external_expiry_window_days().await?;
+            return Ok(crate::retention::external_lifecycle_view(subject, window, now_unix()));
+        }
+        Ok(crate::retention::lifecycle_view(
+            self.state.db.synthetic_expiry_window_days().await?,
+            self.state.db.tenant_expires_at(tenant_id).await?,
+        ))
     }
 
     /// PRD-mcphost-call-trace-replay R5/R6: `host.call_trace`. `tenant` is
@@ -12408,7 +12429,7 @@ impl McpHostHandler {
                     Some(t) if is_refused_disabled(&t, &body_name) => {
                         self.state.implicit_signup_memory.drop_binding(sid);
                         self.state.tenant_key_arg_memory.drop_binding(sid);
-                        return Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() }.into_error_data_at(Some(&self.state.public_url)));
+                        return Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone(), claim_url: None }.into_error_data_at(Some(&self.state.public_url)));
                     }
                     // A self-offboarded tenant calling its own lifecycle verb
                     // again (`auth_shape`): served, so the verb answers
@@ -12497,7 +12518,7 @@ impl McpHostHandler {
                     }
                     Ok(Some(t)) => {
                         self.state.redeemed_peers.forget(&peer);
-                        return Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone() }.into_error_data_at(Some(&self.state.public_url)));
+                        return Err(AppError::TenantDisabled { disabled_reason: t.disabled_reason.clone(), claim_url: None }.into_error_data_at(Some(&self.state.public_url)));
                     }
                     Ok(None) => self.state.redeemed_peers.forget(&peer),
                     Err(e) => return Err(e.into_error_data_at(Some(&self.state.public_url))),
