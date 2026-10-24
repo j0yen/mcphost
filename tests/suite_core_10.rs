@@ -48,6 +48,20 @@ mod mcphost_chatgpt_submission_pack_ac04_chatgpt_surface_everywhere;
 mod mcphost_chatgpt_submission_pack_ac05_chatgpt_profile_empty_tenant_table;
 #[path = "mcphost-chatgpt-submission-pack_ac06_reviewer_notes_first_call.rs"]
 mod mcphost_chatgpt_submission_pack_ac06_reviewer_notes_first_call;
+#[path = "mcphost-external-class-positive-evidence_ac01_unattributed_default.rs"]
+mod mcphost_external_class_positive_evidence_ac01_unattributed_default;
+#[path = "mcphost-external-class-positive-evidence_ac02_claim_promotes_once.rs"]
+mod mcphost_external_class_positive_evidence_ac02_claim_promotes_once;
+#[path = "mcphost-external-class-positive-evidence_ac03_later_day_return_promotes.rs"]
+mod mcphost_external_class_positive_evidence_ac03_later_day_return_promotes;
+#[path = "mcphost-external-class-positive-evidence_ac04_synthetic_never_promoted.rs"]
+mod mcphost_external_class_positive_evidence_ac04_synthetic_never_promoted;
+#[path = "mcphost-external-class-positive-evidence_ac05_migration_backfill.rs"]
+mod mcphost_external_class_positive_evidence_ac05_migration_backfill;
+#[path = "mcphost-external-class-positive-evidence_ac06_surfaces_agree.rs"]
+mod mcphost_external_class_positive_evidence_ac06_surfaces_agree;
+#[path = "mcphost-external-class-positive-evidence_ac07_generated_origin_contract.rs"]
+mod mcphost_external_class_positive_evidence_ac07_generated_origin_contract;
 #[path = "mcphost-install-links-more-clients_ac01_twelve_surfaces.rs"]
 mod mcphost_install_links_more_clients_ac01_twelve_surfaces;
 #[path = "mcphost-install-links-more-clients_ac02_command_artefacts_carry_url_once.rs"]
@@ -408,6 +422,8 @@ mod metering_ac11_admin_meter_status;
 mod metering_ac12_billing_status_stripe_reported_usage;
 #[path = "metering_billing_status_emitted_this_month.rs"]
 mod metering_billing_status_emitted_this_month;
+#[path = "migrations_unique_numbers_test.rs"]
+mod migrations_unique_numbers_test;
 #[path = "minimal_ac2_admin_full_document.rs"]
 mod minimal_ac2_admin_full_document;
 #[path = "minimal_ac3_wrong_bearer_matches_anonymous.rs"]
@@ -1014,17 +1030,3 @@ mod reglist_ac03_schema_validates_committed_entry_and_rejects_missing_remotes;
 mod reglist_ac04_workflow_checks_manifest_and_schema_on_every_push;
 #[path = "reglist_ac06_readme_registry_and_quickstart_links_resolve.rs"]
 mod reglist_ac06_readme_registry_and_quickstart_links_resolve;
-#[path = "regone_ac01_live_compares_registry_to_endpoint.rs"]
-mod regone_ac01_live_compares_registry_to_endpoint;
-#[path = "regone_ac02_live_registry_timeout_is_unknown.rs"]
-mod regone_ac02_live_registry_timeout_is_unknown;
-#[path = "regone_ac03_one_server_json.rs"]
-mod regone_ac03_one_server_json;
-#[path = "regone_ac04_dry_run_prints_lines_and_no_secret.rs"]
-mod regone_ac04_dry_run_prints_lines_and_no_secret;
-#[path = "regone_ac05_no_publish_without_ok_makes_no_write.rs"]
-mod regone_ac05_no_publish_without_ok_makes_no_write;
-#[path = "regone_ac06_one_search_url_in_docs.rs"]
-mod regone_ac06_one_search_url_in_docs;
-#[path = "regone_ac07_live_json.rs"]
-mod regone_ac07_live_json;

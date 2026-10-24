@@ -8,7 +8,7 @@
 [[lane]]
 id = "rust-source"
 description = "Behavior changes in src/"
-globs = ["src/**/*.rs", "src/**/*.html", "build.rs", "providers.toml", "providers_test_support.toml", "docs/connections.md", "scripts/connections-doc-check.sh"]
+globs = ["src/**/*.rs", "src/**/*.html", "build.rs", "providers.toml", "providers_test_support.toml", "docs/connections.md", "scripts/connections-doc-check.sh", "scripts/ops/origin-counts.py"]
 required_commands = [
   "cargo check --workspace",
   "cargo clippy --workspace -- -D warnings",

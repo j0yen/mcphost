@@ -1042,6 +1042,11 @@ async fn main() -> anyhow::Result<()> {
                 if let Some(obj) = body.as_object_mut() {
                     obj.insert("by_surface".to_string(), by_surface);
                     obj.insert("probe".to_string(), probe);
+                    // PRD-mcphost-external-class-positive-evidence: same
+                    // keys as /healthz and admin.funnel.
+                    if let Some(origin_fields) = db.origin_report().await?.to_json().as_object() {
+                        obj.extend(origin_fields.clone());
+                    }
                     obj.insert("synthetic_excluded".to_string(), serde_json::json!(synthetic_excluded));
                     let (recipes, recipes_synthetic) =
                         mcphost::funnel::recipe_attempts_7d(&db, mcphost::state::now_unix()).await?;

@@ -7230,6 +7230,7 @@ impl StateBackend for CountingStateBackend {
 /// 953; both 10-17, both `has overflowed its stack`). The boundary is
 /// `dispatch_tenant_tool` / `forward_host_verb`, where a dotted verb re-enters
 /// the dispatcher. Re-measure and tighten as the dispatch frames shrink.
+/// Merged with the origin-classification frame (branch measured 987,136 B on 10-21); the combined tree is re-checked by tests/verbfwd_ac08_forward_stack_budget.rs at the gate.
 pub const FORWARD_STACK_BUDGET: usize = 1_239_040;
 
 /// The validator's registration for what `host.spec.test` owns (R3): more
@@ -12700,6 +12701,33 @@ impl McpHostHandler {
             tracing::warn!(code = err.code(), tenant = %tenant.namespace, tool = %body_name, "call refused: tenant banned");
             return Err(err.into_error_data_at(Some(&self.state.public_url)));
         }
+        // PRD-mcphost-external-class-positive-evidence: an authenticated call
+        // is where a return (or fleet/stamped history) is observed. Best
+        // effort, and a no-op for any tenant that is neither `unattributed`
+        // (promotable) nor `synthetic` (refusals are counted).
+        if let Auth::Tenant(tenant, _) = &auth
+            && matches!(tenant.origin.as_str(), "unattributed" | "synthetic")
+            && let Some(created_unix) = tenant.created_unix
+        {
+            let fleet_or_stamped = crate::state::classify_source_class(
+                &source,
+                synthetic_header(parts).is_some(),
+                "",
+                None,
+                &self.state.fleet_ips,
+            )
+            .is_synthetic();
+            let ip_hash =
+                if fleet_or_stamped { String::new() } else { crate::oauth_policy::ip_hash(&self.state, &source) };
+            if let Err(e) = self
+                .state
+                .db
+                .observe_call_origin(tenant.id, &tenant.origin, created_unix, now_unix(), fleet_or_stamped, ip_hash)
+                .await
+            {
+                tracing::warn!(error = %e, tenant = %tenant.namespace, "failed to observe call origin");
+            }
+        }
         // PRD-mcphost-end-user-identity requirement 1/2: resolved once,
         // before dispatch, from either the OAuth bearer this call's `auth`
         // already carries (requirement 1) or a verified `end_user_assertion`
@@ -13408,7 +13436,7 @@ impl McpHostHandler {
                     // "exactly once ever", not just "once per call".
                     if (body_name == "host.tool_publish" || body_name == "host.tool.publish")
                         && tenant.owner_verified_at.is_none()
-                        && tenant.origin == "external"
+                        && matches!(tenant.origin.as_str(), "external" | "unattributed")
                         && self
                             .state
                             .db

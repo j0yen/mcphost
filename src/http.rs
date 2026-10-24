@@ -483,6 +483,18 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
             json!(state.email_config.is_configured()),
         );
     }
+    // PRD-mcphost-external-class-positive-evidence: the tri-state origin
+    // keys, rendered by the one `OriginReport::to_json` every surface shares.
+    if let Some(obj) = body.as_object_mut()
+        && let Ok(report) = state.db.origin_report().await
+        && let Some(extra) = report.to_json().as_object()
+    {
+        obj.extend(extra.clone());
+    }
+    if let Some(obj) = body.as_object_mut() {
+        let refused = state.db.origin_counter(crate::db::SYNTHETIC_PROMOTION_REFUSED).await.unwrap_or(0);
+        obj.insert(crate::db::SYNTHETIC_PROMOTION_REFUSED.to_string(), json!(refused));
+    }
     // requirement 6 / AC9: same `{external, synthetic}` shape as
     // `tenants`/`signups`/`calls` above, restricted to claimed tenants.
     if let Some(obj) = body.as_object_mut() {

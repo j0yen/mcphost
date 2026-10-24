@@ -2145,6 +2145,13 @@ pub async fn funnel(state: &AppState, args: &Value) -> Result<Value, AppError> {
     obj.insert("install_link_clicks".to_string(), Value::Object(install_link_clicks));
     obj.insert("by_surface".to_string(), by_surface);
     obj.insert("probe".to_string(), probe);
+    // PRD-mcphost-external-class-positive-evidence: the tri-state origin
+    // keys, from the one `OriginReport::to_json` healthz and `mcphost
+    // funnel --json` render too. (`by_origin` above is the unrelated
+    // human/fleet/probe `funnel_origin` breakdown.)
+    if let Some(origin_fields) = state.db.origin_report().await?.to_json().as_object() {
+        obj.extend(origin_fields.clone());
+    }
     obj.insert("synthetic_excluded".to_string(), json!(synthetic_excluded));
     let (recipe_attempts, recipe_synthetic) =
         crate::funnel::recipe_attempts_7d(&state.db, crate::state::now_unix()).await?;

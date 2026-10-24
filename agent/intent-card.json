@@ -1,72 +1,72 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-synthetic-implicit-tenant-expiry.md",
-  "intent_slug": "mcphost-synthetic-implicit-tenant-expiry",
-  "root_motivation": "Who: the operator of prod mcphost, and every reader of the tenant table (the funnel, the PMF count, `admin.tenants`). What: synthetic tenants minted by implicit signup accumulate forever. Why they cannot fix it: the host offers no lifecycle for a tenant row. The only disable paths are a tenant's own `host.self_offboard` (`src/db.rs:6740-6748`, needs the tenant's credential) and `admin.tenant_disable` (`src/db.rs:6703-6716`, a hand action on prod data). The harness never captured the credential (`onboarding.url` is the only one returned, `src/handler.rs:8141-8150`), and an admin sweep of prod rows needs Joe's word each time. Cost: 177 dead rows per full chain run, 2,990 live synthetic tenants on 10-22, every one counted by any query that forgets to filter `synthetic`, and a tenant table whose growth is driven by the test harness rather than by users.",
-  "user_persona": "An agent that calls host.sync.create with a source ref and gets a scheduled mirror in one call; Operator Joe who reads docs/tools.md and llms.txt and knows both were rendered from the SourceKind enum.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-external-class-positive-evidence.md",
+  "intent_slug": "mcphost-external-class-positive-evidence",
+  "root_motivation": "Who: Joe and the controller reading the PMF line. What: a count of real external users they can act on. Why not today: classify_source_class returns External by elimination, so 16 prod signups from carbon's unstamped refresh scripts on 2026-10-20 read as external and the line is untrustworthy. Fix: external must be earned by positive evidence (verified claim e-mail or a later-UTC-day return); the default becomes unattributed.",
+  "user_persona": "The PM reading status sees external N (claimed a, returned r), unattributed u, synthetic s and knows which number is a user; the controller reads tenants_confirmed from healthz; an operator who forgets the synthetic header lands in unattributed, not in the user count.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 6
+    "target": 7
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given subject fixture A (both synthetic markers, implicit, unclaimed, unpaid, after the floor, idle 2 days) and seven variants: claimed, origin external, idle 1 hour, paid, `synthetic` NULL, billing_ref set, before the floor, When `prune_once` runs with the default window, Then only A ends `disabled = 1, disabled_reason = 'idle_expired'`, its session released, every kind's `on_tenant_removed` run; the variants are unchanged.",
-      "test": "tests/tenx_ac01_idle_synthetic_implicit_tenant_expires.rs"
+      "description": "Given a signup from a non-loopback, non-fleet IP with no X-Mcphost-Synthetic header, When the tenant row is written, Then origin='unattributed', origin_detail='no-positive-evidence' and healthz tenants_by_origin.unattributed rises by one.",
+      "test": "tests/mcphost-external-class-positive-evidence_ac01_unattributed_default.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the env var unset, set to `3`, and set to `0`, When the policy table is seeded at start twice and `prune_once` runs on fixture A (idle 2 days), Then the stored window is 1, 3 and 0 days, `floor_unix` is set by the first seed and unchanged by the second, A is expired only in the unset case, and `retention_policy` lists `synthetic_implicit_tenants` beside the existing rows.",
-      "test": "tests/tenx_ac02_window_env_seed_and_floor.rs"
+      "description": "Given an unattributed tenant, When its claim e-mail is verified, Then origin='external', origin_detail='claimed-email' and exactly one admin_audit origin_promoted row exists even when two verifications race (single-row UPDATE ... WHERE origin='unattributed').",
+      "test": "tests/mcphost-external-class-positive-evidence_ac02_claim_promotes_once.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given an expired tenant, When a call arrives on its `/u/{url_secret}/mcp` URL and another with its key as `tenant_key`, Then both are refused with the error a self-offboarded tenant gets and the reason field reads `idle_expired`, while a keyless call from a different peer still mints a new tenant, so expiry never blocks the front door.",
-      "test": "tests/tenx_ac03_expired_tenant_refused_front_door_open.rs"
+      "description": "Given an unattributed tenant with no fleet-IP or header-stamped call in its history, When it makes a clean authenticated call on a later UTC date and >= 21,600 s after creation, Then origin='external' with detail returned:<n>d and the audit row carries the IP hash; midnight-crossing, fleet, stamped or tainted histories never promote.",
+      "test": "tests/mcphost-external-class-positive-evidence_ac03_later_day_return_promotes.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given `mcphost contract dump` in a clean checkout and a server of that build, When both are read, Then `contracts/host-tools.v1.json` carries a top-level `tenant_lifecycle` (selector, env var, default, reason) built by `api_contract` from the policy constants, `contract_version` follows the file's rule, `GET /contract.json` returns the binary's bytes, and `contract --check` fails when a test-only override moves the default.",
-      "test": "tests/tenx_ac04_contract_carries_tenant_lifecycle.rs"
+      "description": "Given a synthetic tenant, When a claim is verified or a qualifying later-day call arrives, Then origin stays synthetic, no origin_promoted audit row is written and synthetic_promotion_refused increments and is readable in healthz.",
+      "test": "tests/mcphost-external-class-positive-evidence_ac04_synthetic_never_promoted.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given 6,000 subjects and 10 non-subjects, When `prune_once` runs twice concurrently and once more on an empty set, Then every subject is expired exactly once over more than one batch, a subject touched by `touch_last_seen` between batches is skipped, non-subjects are unchanged, each run writes one `prune_log` row with `expired`, `skipped_billing`, `would_expire` (0 and no error for the empty run), and no teardown ran twice.",
-      "test": "tests/tenx_ac05_batched_concurrent_sweep_exactly_once.rs"
+      "description": "Given one seeded tenant per case, When the migration runs, Then verified external becomes external/claimed-email, unverified external rows become unattributed/legacy-external-unverified, unclassified becomes unattributed/legacy-unclassified, synthetic is unchanged, no row is NULL and the journaled before/after counts sum equally.",
+      "test": "tests/mcphost-external-class-positive-evidence_ac05_migration_backfill.rs"
     },
     {
       "id": "AC6",
-      "level": "SHOULD",
-      "description": "Given `host.doctor` called by a subject tenant, a claimed tenant, an external tenant, and the subject again with the window set to 0, When each reads the response, Then `tenant_lifecycle` is `{subject: true, idle_days, expires_at_unix}` with `expires_at_unix` equal to the call's `now + window` for the subject, and `{subject: false, expires_at_unix: null}` for the other three, computed from the `CLASS` and `FLOOR` terms.",
-      "test": "tests/tenx_ac06_doctor_reports_tenant_lifecycle.rs"
+      "level": "MUST",
+      "description": "Given an empty DB and a seeded DB, When healthz, mcphost funnel --json, admin funnel and scripts/ops/origin-counts.py are read, Then they report identical tenants_by_origin, external_by_evidence, tenants_real, tenants_confirmed and origin_unknown keys with the stated identities, and the script equals healthz.",
+      "test": "tests/mcphost-external-class-positive-evidence_ac06_surfaces_agree.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given one tenant expired by the sweep, one self-offboarded, and 3 backlog rows older than the floor, When `admin.tenants` runs filtered by `disabled_reason: \"idle_expired\"` then unfiltered, and `admin.funnel` is read, Then the filter returns only the expired one, every unfiltered row carries `expires_at_unix` (null for a non-subject), `tenants_idle_expired` is a `COUNT` of 1 after a restart, and the latest `would_expire` is 3.",
-      "test": "tests/tenx_ac07_admin_lists_expiry_and_funnel_counts_it.rs"
+      "level": "MUST",
+      "description": "Given the single Origin enum, When the generated-contract test runs, Then backfill, healthz and funnel value lists derive from Origin::as_str at compile time, the test fails on any extra or missing value, and each migration's SQL stays a static string.",
+      "test": "tests/mcphost-external-class-positive-evidence_ac07_generated_origin_contract.rs"
     },
     {
       "id": "AC8",
-      "level": "MUST",
-      "description": "Given prod after this change deploys, When the contract is fetched anonymously, Then `tenant_lifecycle.disabled_reason` reads `idle_expired` and the selector names `origin` `synthetic` (Live; evidence: `curl -sS https://mcphost.dev/contract.json | jq -e '.tenant_lifecycle.disabled_reason == \"idle_expired\" and .tenant_lifecycle.selector.origin == \"synthetic\" and .tenant_lifecycle.selector.signup_source == \"implicit\"'`)",
-      "test": "deferred: Live (prod; evidence: curl -sS https://mcphost.dev/contract.json | jq -e '.tenant_lifecycle.disabled_reason == \"idle_expired\"')"
+      "level": "SHOULD",
+      "description": "Given prod after deploy, When the operator runs scripts/ops/origin-counts.py on mcphost-1 as a counts-only ro read, Then it prints the counts line with n == a + b and the totals equal the pre-deploy tenant count (Live; deferred, operator-provisioned).",
+      "test": "deferred -- operator-provisioned: the script run on mcphost-1 sourcing /etc/mcphost/env, pasted into the run note."
     }
   ],
   "scope": [
-    "src/sync/mod.rs: the SourceKind registry, host.sync.create/list/get/delete/run_now, and the trigger tick's sync pass writing a not_implemented sync_runs receipt.",
-    "migrations/0130_syncs.sql: syncs and sync_runs tables; Plan.syncs_max (free 5, pro 50) and the quota_syncs_max, connection_missing and schedule_too_frequent error codes.",
-    "www/llms.txt gains a generated Data sync section and docs/tools.md the source.kind enum, both rendered from SourceKind."
+    "src/state.rs: the Origin enum (one macro-generated list), derive_origin -> unattributed, return_promotion_days.",
+    "src/db.rs: promote_origin_row (single-row UPDATE + audit), observe_call_origin, origin_report, migrations 0135 (taint column + origin_counters) and 0136 (one-shot journaled backfill).",
+    "src/handler.rs, src/http.rs, src/admin.rs, src/main.rs: call-path observation and the shared origin keys; scripts/ops/origin-counts.py."
   ],
   "non_goals": [
-    "Fetching rows (the pull PRD); push or conflict handling (the two-way PRD); type inference beyond text columns; any new OAuth flow."
+    "Offboarding or deleting any tenant; changing what counts as synthetic; a UI; rotating keys; changing signup rate limits; deciding whether returned counts toward PMF."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -75,35 +75,35 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "main_database_tables": "syncs and sync_runs live in the main database (migration 0130), not a per-tenant file, so the tick's sync pass is one indexed query across tenants."
+      "no_table_rebuild": "No CHECK constraint and no DEFAULT change on origin (a rebuild of tenants, signup_events and calls); new code always writes origin explicitly."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can an agent not keep a host table equal to a sheet?",
-      "a": "No verb registers an external source; the agent would own a puller, a token and a diff loop."
+      "q": "Why did 16 fleet signups read as external?",
+      "a": "Scripts called prod raw, no header, from a hotspot IP outside MCPHOST_FLEET_IPS."
     },
     {
       "why": 2,
-      "q": "Why is there no verb?",
-      "a": "host.table.append cannot update a row and host.trigger.set only calls a published tool."
+      "q": "Why was that external?",
+      "a": "classify_source_class returns External when nothing matches, and derive_origin wrote external for every non-synthetic row."
     },
     {
       "why": 3,
-      "q": "Why start with a registry?",
-      "a": "One SourceKind enum generates the schema, docs and dispatch, so the five kinds cannot drift."
+      "q": "Why fix the default?",
+      "a": "An allowlist of what is ours can never be complete; external must require positive evidence."
     }
   ],
   "created_at": "2026-10-21T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "What is source.secret?",
-      "resolution": "The NAME of a host.secret (stored as secret_name), never a value, so no secret-named field exists on a Debug struct."
+      "question": "Does returned count toward the PMF line?",
+      "resolution": "No: tenants_confirmed is claimed-email only; returned is exposed separately."
     },
     {
-      "question": "Do push and two_way modes run?",
-      "resolution": "They are accepted at create with status pending_mode (the PRD default) and the tick skips them."
+      "question": "Where is fleet/stamped call history kept, since calls has no ip_class?",
+      "resolution": "tenants.origin_taint_unix, stamped on the authenticated call path while the tenant is unattributed."
     }
   ]
 }
