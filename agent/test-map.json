@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-output-schema-reach-sweep-live.md (test_prefix: osreach)",
+  "ac_test_map_prd": "PRD-mcphost-synthetic-implicit-tenant-expiry.md (test_prefix: tenx)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,14 +28,35 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/osreach_ac01_sweep_validates_every_served_name.rs",
-    "AC2": "tests/osreach_ac02_variants_record.rs",
-    "AC3": "tests/osreach_ac03_unreached_cap.rs",
-    "AC4": "tests/osreach_ac04_import_own_dry_run.rs",
-    "AC5": "tests/osreach_ac05_validator_control_and_doctor.rs",
-    "AC6": "deferred: Live (prod: Claude Code on orch, synthorg tenant; evidence ~/.local/state/mcphost-live/osreach-ac06-results.jsonl)"
+    "AC1": "tests/tenx_ac01_idle_synthetic_implicit_tenant_expires.rs",
+    "AC2": "tests/tenx_ac02_window_env_seed_and_floor.rs",
+    "AC3": "tests/tenx_ac03_expired_tenant_refused_front_door_open.rs",
+    "AC4": "tests/tenx_ac04_contract_carries_tenant_lifecycle.rs",
+    "AC5": "tests/tenx_ac05_batched_concurrent_sweep_exactly_once.rs",
+    "AC6": "tests/tenx_ac06_doctor_reports_tenant_lifecycle.rs",
+    "AC7": "tests/tenx_ac07_admin_lists_expiry_and_funnel_counts_it.rs",
+    "AC8": "deferred: Live (prod; evidence: curl -sS https://mcphost.dev/contract.json | jq -e '.tenant_lifecycle.disabled_reason == \"idle_expired\"')"
   },
   "ac_test_map_by_prefix": {
+    "osroot": {
+      "_prd": "PRD-mcphost-tool-call-output-root-opaque.md (test_prefix: osroot)",
+      "AC1": "tests/osroot_ac01_roots_type_only_host_keys.rs",
+      "AC2": "tests/osroot_ac02_forwarded_verb_results_validate.rs",
+      "AC3": "tests/osroot_ac03_tenant_keys_validate_at_both_roots.rs",
+      "AC4": "tests/osroot_ac04_ask_wait_pending_carries_keys.rs",
+      "AC5": "tests/osroot_ac05_run_row_nulls_validate.rs",
+      "AC6": "tests/osroot_ac06_opaque_root_diff_category.rs",
+      "AC7": "deferred: Live (prod /mcp, synthorg tenant; evidence ~/.local/state/mcphost-live/osroot-ac07.json)"
+    },
+    "osreach": {
+      "_prd": "PRD-mcphost-output-schema-reach-sweep-live.md (test_prefix: osreach)",
+      "AC1": "tests/osreach_ac01_sweep_validates_every_served_name.rs",
+      "AC2": "tests/osreach_ac02_variants_record.rs",
+      "AC3": "tests/osreach_ac03_unreached_cap.rs",
+      "AC4": "tests/osreach_ac04_import_own_dry_run.rs",
+      "AC5": "tests/osreach_ac05_validator_control_and_doctor.rs",
+      "AC6": "deferred: Live (prod: Claude Code on orch, synthorg tenant; evidence ~/.local/state/mcphost-live/osreach-ac06-results.jsonl)"
+    },
     "osmatch": {
       "_prd": "PRD-mcphost-success-result-matches-output-schema.md (test_prefix: osmatch)",
       "AC1": "tests/osmatch_ac01_dry_run_branch.rs",
@@ -2386,6 +2407,16 @@
       "AC1": "tests/actforlive_ac01_control_verbs_uncounted.rs",
       "AC2": "deferred: Live (prod receipt; evidence path ~/.cache/mcphost-live/actfor-live-proof.json)"
     },
+    "imos": {
+      "AC1": "tests/imos_ac01_precheck_before_mint.rs",
+      "AC7": "deferred: Live (orch raw mcp client vs prod; evidence: ~/.local/state/mcphost-live/imos-ac07.json)",
+      "AC8": "deferred: Live (orch keyless client vs prod; evidence: ~/.local/state/mcphost-live/imos-ac08.json)",
+      "AC2": "tests/imos_ac02_precheck_is_the_only_door.rs",
+      "AC3": "tests/imos_ac03_rollback_on_failure.rs",
+      "AC4": "tests/imos_ac04_one_tenant_per_peer.rs",
+      "AC5": "tests/imos_ac05_peer_rule_exemptions.rs",
+      "AC6": "tests/imos_ac06_funnel_counts.rs"
+    },
     "txnhelp": {
       "_prd": "PRD-mcphost-transactions-only-via-helper.md (test_prefix: txnhelp)",
       "AC1": "tests/txnhelp_ac01_lint_zero.rs",
@@ -2428,6 +2459,17 @@
       "AC4": "deferred: Live (prod: Claude Code on the build host; evidence ~/.local/state/mcphost-live/osreach-ac06b-results.jsonl)",
       "AC2": "tests/osrx_ac02_plan_mode_offline.rs",
       "AC3": "tests/osrx_ac03_stream_parser_pairs_results.rs"
+    },
+    "tenx": {
+      "_prd": "PRD-mcphost-synthetic-implicit-tenant-expiry.md (test_prefix: tenx)",
+      "AC1": "tests/tenx_ac01_idle_synthetic_implicit_tenant_expires.rs",
+      "AC2": "tests/tenx_ac02_window_env_seed_and_floor.rs",
+      "AC3": "tests/tenx_ac03_expired_tenant_refused_front_door_open.rs",
+      "AC4": "tests/tenx_ac04_contract_carries_tenant_lifecycle.rs",
+      "AC5": "tests/tenx_ac05_batched_concurrent_sweep_exactly_once.rs",
+      "AC6": "tests/tenx_ac06_doctor_reports_tenant_lifecycle.rs",
+      "AC7": "tests/tenx_ac07_admin_lists_expiry_and_funnel_counts_it.rs",
+      "AC8": "deferred: Live (prod; evidence: curl -sS https://mcphost.dev/contract.json | jq -e '.tenant_lifecycle.disabled_reason == \"idle_expired\"')"
     }
   }
 }

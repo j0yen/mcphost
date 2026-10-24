@@ -33,7 +33,9 @@ async fn over_the_limit_anonymous_call_is_signup_rate_limited() {
 
     // A second, independent session (same loopback source IP, no prior
     // binding) tries a bare host.* call and must be refused.
-    let second_session = McpClient::new(&server.base_url).with_session_continuity();
+    // A distinct User-Agent: the limiter is reached, not the same-peer block
+    // (PRD-mcphost-implicit-signup-mints-only-on-success R3).
+    let second_session = McpClient::new(&server.base_url).with_session_continuity().with_user_agent("implsign-ac03-second");
     let err = second_session
         .tools_call(
             "host.tool_publish",

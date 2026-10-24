@@ -34,7 +34,7 @@ async fn tenants_listing_carries_schema_version_one_rows_unchanged() {
         .iter()
         .find(|t| t["tenant"] == json!(ns))
         .unwrap_or_else(|| panic!("tenant {ns} not found in admin.tenants listing"));
-    // Row shape is exactly the pre-existing fields (requirement 1: "rows
+    // Row shape is the pre-existing fields plus `expires_at_unix` (PRD-mcphost-synthetic-implicit-tenant-expiry AC7) (requirement 1: "rows
     // unchanged otherwise") -- schema_version is additive at the top level
     // only, never injected into a row.
     let mut fields: Vec<&str> = row.as_object().expect("row object").keys().map(String::as_str).collect();
@@ -48,6 +48,7 @@ async fn tenants_listing_carries_schema_version_one_rows_unchanged() {
             "disabled",
             "disabled_reason",
             "display_name",
+            "expires_at_unix",
             "owner_method",
             "owner_verified",
             "source_class",

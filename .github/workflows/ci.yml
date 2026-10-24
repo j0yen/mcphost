@@ -153,6 +153,11 @@ jobs:
       - name: bad-rust audit
         run: ./scripts/audit.sh
 
+      # Example and recipe scripts that sign up on a (possibly prod) hub must
+      # send x-mcphost-synthetic, or their tenants count as real users.
+      - name: example scripts stamp their tenants synthetic
+        run: ./scripts/check-example-synthetic-header.sh
+
       # Informational: live branch protection vs .github/required-checks.toml.
       # The default GITHUB_TOKEN usually cannot read protection (needs admin);
       # a permission error prints a skip line and never fails the job.
