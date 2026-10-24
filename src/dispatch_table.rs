@@ -171,6 +171,7 @@ pub const DISPATCH_TABLE: &[(&str, Arm)] = &[
     ("host.policy.attrs_set", McpHostHandler::arm_host_policy_attrs_set),
     ("host.policy.list", McpHostHandler::arm_host_policy_list),
     ("host.policy.set", McpHostHandler::arm_host_policy_set),
+    ("host.probe.progress", McpHostHandler::arm_host_probe_progress),
     ("host.progress", McpHostHandler::arm_host_progress),
     ("host.quickstart", McpHostHandler::arm_host_quickstart),
     ("host.redeem", McpHostHandler::arm_host_redeem),
