@@ -1335,6 +1335,8 @@
             "items": {
               "type": "string"
             },
+            "maxItems": 50,
+            "minItems": 1,
             "type": "array"
           },
           "tenant_key": {
@@ -1648,6 +1650,7 @@
             "items": {
               "type": "string"
             },
+            "maxItems": 16,
             "type": "array"
           },
           "tenant_key": {
@@ -2154,6 +2157,7 @@
           },
           "question": {
             "description": "What to ask, at most 500 characters.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -2809,6 +2813,8 @@
           },
           "limit": {
             "description": "Refuse export_too_large past this many rows, 1-50000; default 50000.",
+            "maximum": 50000,
+            "minimum": 1,
             "type": "integer"
           },
           "since": {
@@ -3956,6 +3962,7 @@
           },
           "name": {
             "description": "File name; the same name on a later put creates a new version of the same id.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -3964,6 +3971,8 @@
           },
           "ttl_s": {
             "description": "Seconds until the file expires, 1-31536000 (365 days); omitted = never. After it host.blob.get answers blob_expired and the url answers 410.",
+            "maximum": 31536000,
+            "minimum": 1,
             "type": "integer"
           },
           "url": {
@@ -4148,6 +4157,8 @@
           },
           "ttl_s": {
             "description": "Seconds from now until the file expires, 1-31536000 (365 days).",
+            "maximum": 31536000,
+            "minimum": 1,
             "type": "integer"
           }
         },
@@ -4302,6 +4313,8 @@
           },
           "ttl_s": {
             "description": "Seconds the url stays valid, 1-604800; default 86400.",
+            "maximum": 604800,
+            "minimum": 1,
             "type": "integer"
           }
         },
@@ -5935,6 +5948,7 @@
           },
           "name": {
             "description": "Channel name to create or look up.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -6018,6 +6032,7 @@
         "properties": {
           "body": {
             "description": "Post text; non-empty after trim.",
+            "minLength": 1,
             "type": "string"
           },
           "channel": {
@@ -7971,6 +7986,7 @@
           },
           "name": {
             "description": "Document name; same name on a later put creates a new version of the same id.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -9203,6 +9219,7 @@
           },
           "subject": {
             "description": "One line, at most 998 bytes.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -9225,6 +9242,8 @@
                   "format": "email",
                   "type": "string"
                 },
+                "maxItems": 10,
+                "minItems": 1,
                 "type": "array"
               }
             ]
@@ -9337,6 +9356,8 @@
         "properties": {
           "limit": {
             "description": "1 to 100; default 20.",
+            "maximum": 100,
+            "minimum": 1,
             "type": "integer"
           },
           "tenant_key": {
@@ -11207,10 +11228,12 @@
           },
           "title": {
             "description": "Example title, 1 to 60 characters.",
+            "minLength": 1,
             "type": "string"
           },
           "tool": {
             "description": "Name of one of your published tools; the example takes its name.",
+            "minLength": 1,
             "type": "string"
           },
           "use_case": {
@@ -11453,6 +11476,7 @@
         "properties": {
           "feedback_id": {
             "description": "An id host.feedback.send returned.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -11692,6 +11716,7 @@
           },
           "text": {
             "description": "What you needed or saw; 1 to 2048 bytes after trim.",
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -12977,6 +13002,8 @@
         "properties": {
           "k": {
             "description": "Hits to return, 1-50, default 5.",
+            "maximum": 50,
+            "minimum": 1,
             "type": "integer"
           },
           "name": {
@@ -15645,6 +15672,7 @@
         "properties": {
           "body": {
             "description": "Message text; non-empty after trim.",
+            "minLength": 1,
             "type": "string"
           },
           "data": {
@@ -15750,6 +15778,7 @@
         "properties": {
           "body": {
             "description": "Message text; non-empty after trim.",
+            "minLength": 1,
             "type": "string"
           },
           "data": {
@@ -15773,6 +15802,7 @@
             "items": {
               "type": "string"
             },
+            "minItems": 1,
             "type": "array"
           },
           "urgent": {
@@ -16583,6 +16613,7 @@
           "text": {
             "description": "The note (at most 4096 bytes).",
             "maxLength": 4096,
+            "minLength": 1,
             "type": "string"
           },
           "ttl_s": {
@@ -16694,6 +16725,7 @@
           },
           "target": {
             "description": "email: the verified owner address; webhook/slack: an https URL.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -17064,6 +17096,7 @@
           },
           "text": {
             "description": "The message, at most 1024 bytes.",
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -18344,6 +18377,8 @@
         "additionalProperties": false,
         "properties": {
           "access_ttl_s": {
+            "maximum": 3600,
+            "minimum": 300,
             "type": "integer"
           },
           "allowlist": {
@@ -18371,6 +18406,8 @@
             "type": "integer"
           },
           "refresh_ttl_s": {
+            "maximum": 2592000,
+            "minimum": 3600,
             "type": "integer"
           },
           "tenant_key": {
@@ -25169,6 +25206,7 @@
           },
           "calls_per_day": {
             "description": "Max successful calls per UTC day for this caller.",
+            "minimum": 1,
             "type": "integer"
           },
           "tenant_key": {
@@ -27313,6 +27351,7 @@
         "properties": {
           "sync_id": {
             "description": "The sync_id host.sync.create returned.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -27400,6 +27439,7 @@
           },
           "sync_id": {
             "description": "The sync_id host.sync.create returned.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -27701,6 +27741,7 @@
         "properties": {
           "sync_id": {
             "description": "The sync_id host.sync.create returned.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -34777,6 +34818,8 @@
           },
           "rate_per_hour_per_caller": {
             "description": "Optional cap (1..10000) on calls per hour from any one grantee.",
+            "maximum": 10000,
+            "minimum": 1,
             "type": "integer"
           },
           "scopes": {
@@ -34789,6 +34832,7 @@
               ],
               "type": "string"
             },
+            "minItems": 1,
             "type": "array"
           },
           "tags": {
@@ -35869,6 +35913,8 @@
           },
           "rate_per_hour_per_caller": {
             "description": "Optional cap (1..10000) on calls per hour from any one grantee.",
+            "maximum": 10000,
+            "minimum": 1,
             "type": "integer"
           },
           "scopes": {
@@ -35881,6 +35927,7 @@
               ],
               "type": "string"
             },
+            "minItems": 1,
             "type": "array"
           },
           "tags": {
@@ -37709,6 +37756,8 @@
             "items": {
               "type": "string"
             },
+            "maxItems": 20,
+            "minItems": 1,
             "type": "array"
           }
         },
@@ -39817,6 +39866,8 @@
             "items": {
               "type": "string"
             },
+            "maxItems": 50,
+            "minItems": 1,
             "type": "array"
           },
           "tenant_key": {
@@ -39923,6 +39974,7 @@
             "items": {
               "type": "string"
             },
+            "maxItems": 16,
             "type": "array"
           },
           "tenant_key": {
@@ -40046,6 +40098,7 @@
           },
           "question": {
             "description": "What to ask, at most 500 characters.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -40196,6 +40249,8 @@
           },
           "limit": {
             "description": "Refuse export_too_large past this many rows, 1-50000; default 50000.",
+            "maximum": 50000,
+            "minimum": 1,
             "type": "integer"
           },
           "since": {
@@ -40440,6 +40495,7 @@
           },
           "name": {
             "description": "File name; the same name on a later put creates a new version of the same id.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -40448,6 +40504,8 @@
           },
           "ttl_s": {
             "description": "Seconds until the file expires, 1-31536000 (365 days); omitted = never. After it host.blob.get answers blob_expired and the url answers 410.",
+            "maximum": 31536000,
+            "minimum": 1,
             "type": "integer"
           },
           "url": {
@@ -40480,6 +40538,8 @@
           },
           "ttl_s": {
             "description": "Seconds from now until the file expires, 1-31536000 (365 days).",
+            "maximum": 31536000,
+            "minimum": 1,
             "type": "integer"
           }
         },
@@ -40509,6 +40569,8 @@
           },
           "ttl_s": {
             "description": "Seconds the url stays valid, 1-604800; default 86400.",
+            "maximum": 604800,
+            "minimum": 1,
             "type": "integer"
           }
         },
@@ -40849,6 +40911,7 @@
           },
           "name": {
             "description": "Channel name to create or look up.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -40871,6 +40934,7 @@
         "properties": {
           "body": {
             "description": "Post text; non-empty after trim.",
+            "minLength": 1,
             "type": "string"
           },
           "channel": {
@@ -41538,6 +41602,7 @@
           },
           "name": {
             "description": "Document name; same name on a later put creates a new version of the same id.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -41796,6 +41861,7 @@
           },
           "subject": {
             "description": "One line, at most 998 bytes.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -41818,6 +41884,8 @@
                   "format": "email",
                   "type": "string"
                 },
+                "maxItems": 10,
+                "minItems": 1,
                 "type": "array"
               }
             ]
@@ -41842,6 +41910,8 @@
         "properties": {
           "limit": {
             "description": "1 to 100; default 20.",
+            "maximum": 100,
+            "minimum": 1,
             "type": "integer"
           },
           "tenant_key": {
@@ -42346,10 +42416,12 @@
           },
           "title": {
             "description": "Example title, 1 to 60 characters.",
+            "minLength": 1,
             "type": "string"
           },
           "tool": {
             "description": "Name of one of your published tools; the example takes its name.",
+            "minLength": 1,
             "type": "string"
           },
           "use_case": {
@@ -42416,6 +42488,7 @@
         "properties": {
           "feedback_id": {
             "description": "An id host.feedback.send returned.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -42481,6 +42554,7 @@
           },
           "text": {
             "description": "What you needed or saw; 1 to 2048 bytes after trim.",
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -42861,6 +42935,8 @@
         "properties": {
           "k": {
             "description": "Hits to return, 1-50, default 5.",
+            "maximum": 50,
+            "minimum": 1,
             "type": "integer"
           },
           "name": {
@@ -43460,6 +43536,7 @@
         "properties": {
           "body": {
             "description": "Message text; non-empty after trim.",
+            "minLength": 1,
             "type": "string"
           },
           "data": {
@@ -43501,6 +43578,7 @@
         "properties": {
           "body": {
             "description": "Message text; non-empty after trim.",
+            "minLength": 1,
             "type": "string"
           },
           "data": {
@@ -43524,6 +43602,7 @@
             "items": {
               "type": "string"
             },
+            "minItems": 1,
             "type": "array"
           },
           "urgent": {
@@ -43750,6 +43829,7 @@
           "text": {
             "description": "The note (at most 4096 bytes).",
             "maxLength": 4096,
+            "minLength": 1,
             "type": "string"
           },
           "ttl_s": {
@@ -43785,6 +43865,7 @@
           },
           "target": {
             "description": "email: the verified owner address; webhook/slack: an https URL.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -43895,6 +43976,7 @@
           },
           "text": {
             "description": "The message, at most 1024 bytes.",
+            "minLength": 1,
             "type": "string"
           }
         },
@@ -44222,6 +44304,8 @@
         "additionalProperties": false,
         "properties": {
           "access_ttl_s": {
+            "maximum": 3600,
+            "minimum": 300,
             "type": "integer"
           },
           "allowlist": {
@@ -44249,6 +44333,8 @@
             "type": "integer"
           },
           "refresh_ttl_s": {
+            "maximum": 2592000,
+            "minimum": 3600,
             "type": "integer"
           },
           "tenant_key": {
@@ -45366,6 +45452,7 @@
           },
           "calls_per_day": {
             "description": "Max successful calls per UTC day for this caller.",
+            "minimum": 1,
             "type": "integer"
           },
           "tenant_key": {
@@ -45900,6 +45987,7 @@
         "properties": {
           "sync_id": {
             "description": "The sync_id host.sync.create returned.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -45930,6 +46018,7 @@
           },
           "sync_id": {
             "description": "The sync_id host.sync.create returned.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -45972,6 +46061,7 @@
         "properties": {
           "sync_id": {
             "description": "The sync_id host.sync.create returned.",
+            "minLength": 1,
             "type": "string"
           },
           "tenant_key": {
@@ -47252,6 +47342,8 @@
           },
           "rate_per_hour_per_caller": {
             "description": "Optional cap (1..10000) on calls per hour from any one grantee.",
+            "maximum": 10000,
+            "minimum": 1,
             "type": "integer"
           },
           "scopes": {
@@ -47264,6 +47356,7 @@
               ],
               "type": "string"
             },
+            "minItems": 1,
             "type": "array"
           },
           "tags": {
@@ -47857,6 +47950,8 @@
             "items": {
               "type": "string"
             },
+            "maxItems": 20,
+            "minItems": 1,
             "type": "array"
           }
         },

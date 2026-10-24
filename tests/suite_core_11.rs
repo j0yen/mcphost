@@ -140,6 +140,8 @@ mod runsubject_ac06_migration_0048_under_1s_at_100k_rows;
 mod runsubject_ac07_llms_txt_names_end_user_and_filter;
 #[path = "sandboxready_ac7_conformance_suite.rs"]
 mod sandboxready_ac7_conformance_suite;
+#[path = "sba_ac03_schema_valid_refusals_still_fire.rs"]
+mod sba_ac03_schema_valid_refusals_still_fire;
 #[path = "sblibs_ac02_drift_toml_lock_docs.rs"]
 mod sblibs_ac02_drift_toml_lock_docs;
 #[path = "sched_ac10_trigger_fire_manual.rs"]

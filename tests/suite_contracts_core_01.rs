@@ -233,6 +233,18 @@ mod rlfe_ac06_limit_clamp_and_children_preserved;
 mod rlfe_ac07_admin_runs_refused_through_the_shared_validator;
 #[path = "rsm_ac04_next_call_follows_the_state_table.rs"]
 mod rsm_ac04_next_call_follows_the_state_table;
+#[path = "sba_ac01_boundary_calls_router_and_validator_agree.rs"]
+mod sba_ac01_boundary_calls_router_and_validator_agree;
+#[path = "sba_ac02_upper_bound_guards_have_schema_keywords.rs"]
+mod sba_ac02_upper_bound_guards_have_schema_keywords;
+#[path = "sba_ac04_contacts_import_bounds_refused_by_validator.rs"]
+mod sba_ac04_contacts_import_bounds_refused_by_validator;
+#[path = "sba_ac05_contacts_import_in_range_reaches_handler.rs"]
+mod sba_ac05_contacts_import_in_range_reaches_handler;
+#[path = "sba_ac06_contract_carries_new_bounds.rs"]
+mod sba_ac06_contract_carries_new_bounds;
+#[path = "sba_ac07_bound_call_script_selftest.rs"]
+mod sba_ac07_bound_call_script_selftest;
 #[path = "sfc_ac04_stray_notify_panics_in_debug.rs"]
 mod sfc_ac04_stray_notify_panics_in_debug;
 #[path = "sreg_ac01_registry_single_source.rs"]
