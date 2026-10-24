@@ -55,6 +55,10 @@ pub enum RuleOp {
 }
 
 impl RuleOp {
+    /// The `op` spellings `host.policy.set` accepts; the descriptor's `op.enum`
+    /// is this, and a test deserialises each.
+    pub const NAMES: [&'static str; 2] = ["eq", "in"];
+
     pub fn as_str(self) -> &'static str {
         match self {
             RuleOp::Eq => "eq",

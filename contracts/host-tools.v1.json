@@ -384,6 +384,20 @@
           },
           "source": {
             "description": "Which refusal started this checkout (e.g. calls_per_day, tools_max, secrets_max), or manual; default: manual. Echoed back in the response and recorded on the eventual payment's ledger row.",
+            "enum": [
+              "calls_per_day",
+              "tools_max",
+              "secrets_max",
+              "max_child_calls",
+              "max_est_tokens",
+              "max_tool_latency_ms",
+              "max_wall_ms",
+              "child_calls",
+              "est_tokens",
+              "tool_latency_ms",
+              "wall_ms",
+              "manual"
+            ],
             "type": "string"
           },
           "tenant_key": {
@@ -849,6 +863,20 @@
           },
           "source": {
             "description": "Which refusal started this checkout (e.g. calls_per_day, tools_max, secrets_max), or manual; default: manual. Echoed back in the response and recorded on the eventual payment's ledger row.",
+            "enum": [
+              "calls_per_day",
+              "tools_max",
+              "secrets_max",
+              "max_child_calls",
+              "max_est_tokens",
+              "max_tool_latency_ms",
+              "max_wall_ms",
+              "child_calls",
+              "est_tokens",
+              "tool_latency_ms",
+              "wall_ms",
+              "manual"
+            ],
             "type": "string"
           },
           "tenant_key": {
@@ -1662,6 +1690,7 @@
           },
           "handle": {
             "description": "Unique handle to claim, e.g. \"indexer\" (without the @); null clears it.",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{2,31}$",
             "type": [
               "string",
               "null"
@@ -2175,11 +2204,13 @@
           "options": {
             "description": "2 to 6 distinct button labels, each at most 40 characters.",
             "items": {
+              "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
               "type": "string"
             },
             "maxItems": 6,
             "minItems": 2,
-            "type": "array"
+            "type": "array",
+            "uniqueItems": true
           },
           "question": {
             "description": "What to ask, at most 500 characters.",
@@ -2192,6 +2223,8 @@
           },
           "ttl_s": {
             "description": "Seconds the link stays answerable; default 3600, at most 604800.",
+            "maximum": 604800,
+            "minimum": 1,
             "type": "integer"
           }
         },
@@ -3980,6 +4013,7 @@
         "properties": {
           "content_base64": {
             "description": "The file's bytes, base64-encoded; use url instead to have the host fetch them.",
+            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$",
             "type": "string"
           },
           "mime": {
@@ -4996,6 +5030,16 @@
         "properties": {
           "credential": {
             "description": "Only calls made with this credential kind.",
+            "enum": [
+              "primary",
+              "sub_key",
+              "oauth",
+              "trigger",
+              "cron",
+              "webhook",
+              "shared_caller",
+              "anonymous"
+            ],
             "type": "string"
           },
           "cursor": {
@@ -6412,6 +6456,7 @@
             "examples": [
               "example.com"
             ],
+            "pattern": "^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.*$",
             "type": "string"
           },
           "method": {
@@ -6502,6 +6547,7 @@
             "examples": [
               "example.com"
             ],
+            "pattern": "^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.*$",
             "type": "string"
           },
           "method": {
@@ -7551,6 +7597,10 @@
           },
           "provider": {
             "description": "\"none\" or \"openai-compatible\".",
+            "enum": [
+              "none",
+              "openai-compatible"
+            ],
             "type": "string"
           },
           "secret": {
@@ -8004,10 +8054,25 @@
             "type": "boolean"
           },
           "metadata": {
-            "description": "Arbitrary caller metadata stored alongside the document; any JSON value."
+            "description": "Arbitrary caller metadata stored alongside the document; any JSON value.",
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "array",
+              "object",
+              "null"
+            ]
           },
           "mime": {
             "description": "One of text/plain, text/markdown, application/json, text/csv; detected from name/content when omitted.",
+            "enum": [
+              "text/plain",
+              "text/markdown",
+              "application/json",
+              "text/csv"
+            ],
             "type": "string"
           },
           "name": {
@@ -8220,6 +8285,12 @@
           },
           "mode": {
             "description": "\"auto\" (default), \"lexical\", \"embeddings\", or \"hybrid\". \"embeddings\"/\"hybrid\" without a configured provider is a validation error.",
+            "enum": [
+              "auto",
+              "lexical",
+              "embeddings",
+              "hybrid"
+            ],
             "type": "string"
           },
           "query": {
@@ -9277,6 +9348,7 @@
           },
           "reply_to_message_id": {
             "description": "Optional Message-ID this answers; copied into In-Reply-To.",
+            "pattern": "^[^\\r\\n]+$",
             "type": "string"
           },
           "subject": {
@@ -9297,11 +9369,13 @@
             "oneOf": [
               {
                 "format": "email",
+                "pattern": "^[A-Za-z0-9._%+'-]{1,64}@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$",
                 "type": "string"
               },
               {
                 "items": {
                   "format": "email",
+                  "pattern": "^[A-Za-z0-9._%+'-]{1,64}@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$",
                   "type": "string"
                 },
                 "maxItems": 10,
@@ -14937,7 +15011,16 @@
         "additionalProperties": false,
         "properties": {
           "change_kind": {
-            "description": "One of drop, rename, type_change, remove, add.",
+            "description": "One of drop, rename, type_change, remove, add (lowercase; typechange and type-change are accepted spellings of type_change).",
+            "enum": [
+              "drop",
+              "rename",
+              "type_change",
+              "typechange",
+              "type-change",
+              "remove",
+              "add"
+            ],
             "type": "string"
           },
           "id": {
@@ -17150,6 +17233,7 @@
           },
           "link": {
             "description": "Optional https URL appended to the message.",
+            "pattern": "^https://.",
             "type": "string"
           },
           "tenant_key": {
@@ -19059,6 +19143,7 @@
           },
           "name": {
             "description": "^[a-z][a-z0-9_:.-]{0,40}$",
+            "pattern": "^[a-z][a-z0-9_:.-]{0,40}$",
             "type": "string"
           },
           "tenant_key": {
@@ -20507,7 +20592,63 @@
             "type": "boolean"
           },
           "rule": {
-            "description": "A list of {column_or_attr, op, value} rules, ANDed together."
+            "description": "A list of {column_or_attr, op, value} rules, ANDed together.",
+            "items": {
+              "properties": {
+                "column_or_attr": {
+                  "type": "string"
+                },
+                "op": {
+                  "enum": [
+                    "eq",
+                    "in"
+                  ],
+                  "type": "string"
+                },
+                "value": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "literal": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean",
+                            "array",
+                            "object",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "literal"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "attr": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "attr"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "column_or_attr",
+                "op",
+                "value"
+              ],
+              "type": "object"
+            },
+            "type": "array"
           },
           "target": {
             "additionalProperties": {
@@ -24767,6 +24908,7 @@
           },
           "name": {
             "description": "The secret to test (host.secret.set).",
+            "pattern": "^[a-zA-Z0-9_]+$",
             "type": "string"
           },
           "tenant_key": {
@@ -25023,6 +25165,7 @@
           "hosts": {
             "description": "Hostnames this secret may be sent to (api.example.com, or *.example.com). A call that would send the value to any other host fails secret_leak_blocked. Omit to keep an existing binding; [] clears it.",
             "items": {
+              "pattern": "^(?:\\*\\.)?[A-Za-z0-9._-]+$",
               "type": "string"
             },
             "type": "array"
@@ -25188,6 +25331,7 @@
           "hosts": {
             "description": "Hostnames this secret may be sent to (api.example.com, or *.example.com). A call that would send the value to any other host fails secret_leak_blocked. Omit to keep an existing binding; [] clears it.",
             "items": {
+              "pattern": "^(?:\\*\\.)?[A-Za-z0-9._-]+$",
               "type": "string"
             },
             "type": "array"
@@ -26900,7 +27044,16 @@
             "type": "string"
           },
           "value": {
-            "description": "Any JSON value to store under key."
+            "description": "Any JSON value to store under key.",
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "array",
+              "object",
+              "null"
+            ]
           }
         },
         "required": [
@@ -27348,6 +27501,7 @@
           },
           "primary_key": {
             "description": "Column that identifies a row across pulls.",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
             "type": "string"
           },
           "source": {
@@ -27385,6 +27539,7 @@
           },
           "table": {
             "description": "The host table that mirrors the source; created if it does not exist.",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
             "type": "string"
           },
           "tenant_key": {
@@ -31070,7 +31225,16 @@
             "type": "string"
           },
           "value": {
-            "description": "The annotation's value."
+            "description": "The annotation's value.",
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "array",
+              "object",
+              "null"
+            ]
           }
         },
         "required": [
@@ -35177,6 +35341,7 @@
           },
           "tool": {
             "description": "\"<owner_namespace>.<name>\", the same qualified name host.tool_call uses for a shared tool.",
+            "pattern": "\\.",
             "type": "string"
           }
         },
@@ -36130,6 +36295,7 @@
           },
           "tool": {
             "description": "\"<owner_namespace>.<name>\", the same qualified name host.tool_call uses for a shared tool.",
+            "pattern": "\\.",
             "type": "string"
           }
         },
@@ -37441,7 +37607,11 @@
             "type": "string"
           },
           "verify": {
-            "description": "kind=\"event\": either {scheme: \"hmac-sha256\"|\"hmac-sha1\"|\"token\"|\"none\", header, secret (a host.secret_set name), prefix?, timestamp_header?, tolerance_s?, allow_unverified? (required true for scheme \"none\")}, or a preset string -- \"github\" (hmac-sha256 over X-Hub-Signature-256, prefix sha256=, dedupe_header defaulting to X-GitHub-Delivery) or \"stripe\" (hmac-sha256 t=,v1= over Stripe-Signature) -- paired with the top-level secret argument below. kind=\"webhook\": a plain string, one of \"hmac\" (default; checks X-Mcphost-Signature: sha256=<hex>), \"none\", or \"stripe\" (checks Stripe-Signature the way Stripe itself signs, using the same generated secret)."
+            "description": "kind=\"event\": either {scheme: \"hmac-sha256\"|\"hmac-sha1\"|\"token\"|\"none\", header, secret (a host.secret_set name), prefix?, timestamp_header?, tolerance_s?, allow_unverified? (required true for scheme \"none\")}, or a preset string -- \"github\" (hmac-sha256 over X-Hub-Signature-256, prefix sha256=, dedupe_header defaulting to X-GitHub-Delivery) or \"stripe\" (hmac-sha256 t=,v1= over Stripe-Signature) -- paired with the top-level secret argument below. kind=\"webhook\": a plain string, one of \"hmac\" (default; checks X-Mcphost-Signature: sha256=<hex>), \"none\", or \"stripe\" (checks Stripe-Signature the way Stripe itself signs, using the same generated secret).",
+            "type": [
+              "string",
+              "object"
+            ]
           }
         },
         "required": [
@@ -37751,10 +37921,28 @@
         ],
         "properties": {
           "body": {
-            "description": "kind=\"event\"/\"webhook\": the payload to verify and run with -- any JSON value. kind=\"message\": the synthetic envelope's body text."
+            "description": "kind=\"event\"/\"webhook\": the payload to verify and run with -- any JSON value. kind=\"message\": the synthetic envelope's body text.",
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "array",
+              "object",
+              "null"
+            ]
           },
           "data": {
-            "description": "kind=\"message\": the synthetic envelope's data payload."
+            "description": "kind=\"message\": the synthetic envelope's data payload.",
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "array",
+              "object",
+              "null"
+            ]
           },
           "from": {
             "description": "kind=\"message\": the synthetic envelope's from address; default \"@test\".",
@@ -37897,6 +38085,7 @@
           },
           "name": {
             "description": "Name of the status tool to create; also names the <name>_targets table and the <name>_probe tool.",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,39}$",
             "type": "string"
           },
           "tenant_key": {
@@ -38080,6 +38269,12 @@
         "properties": {
           "by": {
             "description": "\"tool\", \"caller\", or \"end_user\" -- omit for the plain per-tenant summary.",
+            "enum": [
+              "tool",
+              "caller",
+              "end_user",
+              "key"
+            ],
             "type": "string"
           },
           "cursor": {
@@ -39169,6 +39364,7 @@
         "properties": {
           "name": {
             "description": "Inbox name; also the reader tool's name (^[a-z][a-z0-9_]{1,40}$).",
+            "pattern": "^[a-z][a-z0-9_]{1,40}$",
             "type": "string"
           },
           "rotate": {
@@ -40112,6 +40308,7 @@
           },
           "handle": {
             "description": "Unique handle to claim, e.g. \"indexer\" (without the @); null clears it.",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{2,31}$",
             "type": [
               "string",
               "null"
@@ -40242,11 +40439,13 @@
           "options": {
             "description": "2 to 6 distinct button labels, each at most 40 characters.",
             "items": {
+              "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
               "type": "string"
             },
             "maxItems": 6,
             "minItems": 2,
-            "type": "array"
+            "type": "array",
+            "uniqueItems": true
           },
           "question": {
             "description": "What to ask, at most 500 characters.",
@@ -40259,6 +40458,8 @@
           },
           "ttl_s": {
             "description": "Seconds the link stays answerable; default 3600, at most 604800.",
+            "maximum": 604800,
+            "minimum": 1,
             "type": "integer"
           }
         },
@@ -40639,6 +40840,7 @@
         "properties": {
           "content_base64": {
             "description": "The file's bytes, base64-encoded; use url instead to have the host fetch them.",
+            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$",
             "type": "string"
           },
           "mime": {
@@ -40838,6 +41040,16 @@
         "properties": {
           "credential": {
             "description": "Only calls made with this credential kind.",
+            "enum": [
+              "primary",
+              "sub_key",
+              "oauth",
+              "trigger",
+              "cron",
+              "webhook",
+              "shared_caller",
+              "anonymous"
+            ],
             "type": "string"
           },
           "cursor": {
@@ -41212,6 +41424,7 @@
             "examples": [
               "example.com"
             ],
+            "pattern": "^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.*$",
             "type": "string"
           },
           "method": {
@@ -41249,6 +41462,7 @@
             "examples": [
               "example.com"
             ],
+            "pattern": "^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.*$",
             "type": "string"
           },
           "method": {
@@ -41571,6 +41785,10 @@
           },
           "provider": {
             "description": "\"none\" or \"openai-compatible\".",
+            "enum": [
+              "none",
+              "openai-compatible"
+            ],
             "type": "string"
           },
           "secret": {
@@ -41746,10 +41964,25 @@
             "type": "boolean"
           },
           "metadata": {
-            "description": "Arbitrary caller metadata stored alongside the document; any JSON value."
+            "description": "Arbitrary caller metadata stored alongside the document; any JSON value.",
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "array",
+              "object",
+              "null"
+            ]
           },
           "mime": {
             "description": "One of text/plain, text/markdown, application/json, text/csv; detected from name/content when omitted.",
+            "enum": [
+              "text/plain",
+              "text/markdown",
+              "application/json",
+              "text/csv"
+            ],
             "type": "string"
           },
           "name": {
@@ -41819,6 +42052,12 @@
           },
           "mode": {
             "description": "\"auto\" (default), \"lexical\", \"embeddings\", or \"hybrid\". \"embeddings\"/\"hybrid\" without a configured provider is a validation error.",
+            "enum": [
+              "auto",
+              "lexical",
+              "embeddings",
+              "hybrid"
+            ],
             "type": "string"
           },
           "query": {
@@ -42009,6 +42248,7 @@
           },
           "reply_to_message_id": {
             "description": "Optional Message-ID this answers; copied into In-Reply-To.",
+            "pattern": "^[^\\r\\n]+$",
             "type": "string"
           },
           "subject": {
@@ -42029,11 +42269,13 @@
             "oneOf": [
               {
                 "format": "email",
+                "pattern": "^[A-Za-z0-9._%+'-]{1,64}@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$",
                 "type": "string"
               },
               {
                 "items": {
                   "format": "email",
+                  "pattern": "^[A-Za-z0-9._%+'-]{1,64}@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$",
                   "type": "string"
                 },
                 "maxItems": 10,
@@ -43483,7 +43725,16 @@
         "additionalProperties": false,
         "properties": {
           "change_kind": {
-            "description": "One of drop, rename, type_change, remove, add.",
+            "description": "One of drop, rename, type_change, remove, add (lowercase; typechange and type-change are accepted spellings of type_change).",
+            "enum": [
+              "drop",
+              "rename",
+              "type_change",
+              "typechange",
+              "type-change",
+              "remove",
+              "add"
+            ],
             "type": "string"
           },
           "id": {
@@ -44120,6 +44371,7 @@
           },
           "link": {
             "description": "Optional https URL appended to the message.",
+            "pattern": "^https://.",
             "type": "string"
           },
           "tenant_key": {
@@ -44635,6 +44887,7 @@
           },
           "name": {
             "description": "^[a-z][a-z0-9_:.-]{0,40}$",
+            "pattern": "^[a-z][a-z0-9_:.-]{0,40}$",
             "type": "string"
           },
           "tenant_key": {
@@ -45015,7 +45268,63 @@
             "type": "boolean"
           },
           "rule": {
-            "description": "A list of {column_or_attr, op, value} rules, ANDed together."
+            "description": "A list of {column_or_attr, op, value} rules, ANDed together.",
+            "items": {
+              "properties": {
+                "column_or_attr": {
+                  "type": "string"
+                },
+                "op": {
+                  "enum": [
+                    "eq",
+                    "in"
+                  ],
+                  "type": "string"
+                },
+                "value": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "literal": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean",
+                            "array",
+                            "object",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "literal"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "attr": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "attr"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "column_or_attr",
+                "op",
+                "value"
+              ],
+              "type": "object"
+            },
+            "type": "array"
           },
           "target": {
             "additionalProperties": {
@@ -45541,6 +45850,7 @@
           },
           "name": {
             "description": "The secret to test (host.secret.set).",
+            "pattern": "^[a-zA-Z0-9_]+$",
             "type": "string"
           },
           "tenant_key": {
@@ -45588,6 +45898,7 @@
           "hosts": {
             "description": "Hostnames this secret may be sent to (api.example.com, or *.example.com). A call that would send the value to any other host fails secret_leak_blocked. Omit to keep an existing binding; [] clears it.",
             "items": {
+              "pattern": "^(?:\\*\\.)?[A-Za-z0-9._-]+$",
               "type": "string"
             },
             "type": "array"
@@ -46012,7 +46323,16 @@
             "type": "string"
           },
           "value": {
-            "description": "Any JSON value to store under key."
+            "description": "Any JSON value to store under key.",
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "array",
+              "object",
+              "null"
+            ]
           }
         },
         "required": [
@@ -46118,6 +46438,7 @@
           },
           "primary_key": {
             "description": "Column that identifies a row across pulls.",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
             "type": "string"
           },
           "source": {
@@ -46155,6 +46476,7 @@
           },
           "table": {
             "description": "The host table that mirrors the source; created if it does not exist.",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
             "type": "string"
           },
           "tenant_key": {
@@ -46666,7 +46988,16 @@
             "type": "string"
           },
           "value": {
-            "description": "The annotation's value."
+            "description": "The annotation's value.",
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "array",
+              "object",
+              "null"
+            ]
           }
         },
         "required": [
@@ -47596,6 +47927,7 @@
           },
           "tool": {
             "description": "\"<owner_namespace>.<name>\", the same qualified name host.tool_call uses for a shared tool.",
+            "pattern": "\\.",
             "type": "string"
           }
         },
@@ -48056,7 +48388,11 @@
             "type": "string"
           },
           "verify": {
-            "description": "kind=\"event\": either {scheme: \"hmac-sha256\"|\"hmac-sha1\"|\"token\"|\"none\", header, secret (a host.secret_set name), prefix?, timestamp_header?, tolerance_s?, allow_unverified? (required true for scheme \"none\")}, or a preset string -- \"github\" (hmac-sha256 over X-Hub-Signature-256, prefix sha256=, dedupe_header defaulting to X-GitHub-Delivery) or \"stripe\" (hmac-sha256 t=,v1= over Stripe-Signature) -- paired with the top-level secret argument below. kind=\"webhook\": a plain string, one of \"hmac\" (default; checks X-Mcphost-Signature: sha256=<hex>), \"none\", or \"stripe\" (checks Stripe-Signature the way Stripe itself signs, using the same generated secret)."
+            "description": "kind=\"event\": either {scheme: \"hmac-sha256\"|\"hmac-sha1\"|\"token\"|\"none\", header, secret (a host.secret_set name), prefix?, timestamp_header?, tolerance_s?, allow_unverified? (required true for scheme \"none\")}, or a preset string -- \"github\" (hmac-sha256 over X-Hub-Signature-256, prefix sha256=, dedupe_header defaulting to X-GitHub-Delivery) or \"stripe\" (hmac-sha256 t=,v1= over Stripe-Signature) -- paired with the top-level secret argument below. kind=\"webhook\": a plain string, one of \"hmac\" (default; checks X-Mcphost-Signature: sha256=<hex>), \"none\", or \"stripe\" (checks Stripe-Signature the way Stripe itself signs, using the same generated secret).",
+            "type": [
+              "string",
+              "object"
+            ]
           }
         },
         "required": [
@@ -48087,10 +48423,28 @@
         ],
         "properties": {
           "body": {
-            "description": "kind=\"event\"/\"webhook\": the payload to verify and run with -- any JSON value. kind=\"message\": the synthetic envelope's body text."
+            "description": "kind=\"event\"/\"webhook\": the payload to verify and run with -- any JSON value. kind=\"message\": the synthetic envelope's body text.",
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "array",
+              "object",
+              "null"
+            ]
           },
           "data": {
-            "description": "kind=\"message\": the synthetic envelope's data payload."
+            "description": "kind=\"message\": the synthetic envelope's data payload.",
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "array",
+              "object",
+              "null"
+            ]
           },
           "from": {
             "description": "kind=\"message\": the synthetic envelope's from address; default \"@test\".",
@@ -48132,6 +48486,7 @@
           },
           "name": {
             "description": "Name of the status tool to create; also names the <name>_targets table and the <name>_probe tool.",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,39}$",
             "type": "string"
           },
           "tenant_key": {
@@ -48166,6 +48521,12 @@
         "properties": {
           "by": {
             "description": "\"tool\", \"caller\", or \"end_user\" -- omit for the plain per-tenant summary.",
+            "enum": [
+              "tool",
+              "caller",
+              "end_user",
+              "key"
+            ],
             "type": "string"
           },
           "cursor": {
@@ -48395,6 +48756,7 @@
         "properties": {
           "name": {
             "description": "Inbox name; also the reader tool's name (^[a-z][a-z0-9_]{1,40}$).",
+            "pattern": "^[a-z][a-z0-9_]{1,40}$",
             "type": "string"
           },
           "rotate": {

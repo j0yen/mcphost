@@ -35,6 +35,15 @@ pub const QUESTION_MAX_CHARS: usize = 500;
 pub const OPTIONS_MIN: usize = 2;
 pub const OPTIONS_MAX: usize = 6;
 pub const OPTION_MAX_CHARS: usize = 40;
+/// An option the handler keeps as given: non-empty with no leading or trailing
+/// whitespace (the handler trims, so `" a"` and `"a"` are one option).
+/// `host.ask.create`'s `options.items.pattern`.
+pub const OPTION_PATTERN: &str = "^\\S(?:[\\s\\S]*\\S)?$";
+
+/// Whether `s` matches [`OPTION_PATTERN`].
+pub fn is_option_shape(s: &str) -> bool {
+    !s.is_empty() && s == s.trim()
+}
 pub const CONTEXT_MAX_BYTES: usize = 2048;
 pub const TTL_DEFAULT_S: i64 = 3600;
 pub const TTL_MAX_S: i64 = 7 * 24 * 3600;
