@@ -129,6 +129,11 @@ Generated from the error registry's `data_keys`; do not hand-edit. Keys a code's
 | code | data keys |
 |---|---|
 | `connection_missing` | `provider`, `hint` |
+| `import_fetch_failed` | `host`, `status`, `hint` |
+| `import_parse_failed` | `line`, `column` |
+| `import_schema_mismatch` | `expected`, `unknown_columns`, `rows_skipped`, `skip_reasons` |
+| `import_too_large` | `bytes`, `host` |
+| `import_url_forbidden` | `host`, `reason` |
 | `invalid_spec` | `kind`, `field`, `reason`, `fields`, `minimal_specs`, `docs_url`, `fix`, `known_secret_names` |
 | `quota_syncs_max` | `limit`, `used` |
 | `schedule_too_frequent` | `min_seconds` |

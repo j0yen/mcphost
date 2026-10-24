@@ -1018,6 +1018,42 @@ fn host_schema_checked(props: Value, required: &[&str]) -> Map<String, Value> {
     host_schema_extra(props, required, json!({}))
 }
 
+/// PRD-mcphost-table-import-from-url R1: exactly one of `sources` -- `oneOf`
+/// refuses two at once (naming both fields), `anyOf` is the either-or form the
+/// schema-derived call builders and the `insch_*` readers understand.
+fn import_one_of(sources: &[&str]) -> Value {
+    json!({"anyOf": any_of_required(sources), "oneOf": any_of_required(sources)})
+}
+
+/// PRD-mcphost-table-import-from-url R1: the `source_url` property of
+/// `host.table.create` / `host.table.append`.
+fn import_source_url_schema() -> Value {
+    json!({
+        "type": "string",
+        "description": "An https URL of a CSV (RFC 4180, header row first) or JSON Lines file to \
+            load. Public hosts only; at most 3 redirects, 30 s, and the plan's import byte cap.",
+    })
+}
+
+/// The `csv_text` property of `host.table.create` / `host.table.append`.
+fn import_csv_text_schema() -> Value {
+    json!({
+        "type": "string",
+        "description": "The CSV itself (header row first, at most 1 MB), for a client that \
+            holds the data but has no file tool.",
+    })
+}
+
+/// The `import_id` property of `host.table.create` / `host.table.append`.
+fn import_id_schema() -> Value {
+    json!({
+        "type": "string",
+        "maxLength": 128,
+        "description": "Optional retry key for a source_url / csv_text import: the same id \
+            within 24 hours returns the first result and writes nothing.",
+    })
+}
+
 /// `[{"required": [a]}, {"required": [b]}, ...]`, one branch per alternative.
 pub(crate) fn any_of_required(alternatives: &[&str]) -> Value {
     Value::Array(alternatives.iter().map(|a| json!({"required": [a]})).collect())
@@ -2669,8 +2705,12 @@ fn host_tools_part_04() -> Vec<Tool> {
              handful of small values, host.table.* when you want real SQL (joins, aggregates, \
              read-only queries) over rows. columns is {\"column\": \"text\"|\"integer\"|\"real\"| \
              \"timestamp\"|\"boolean\"|\"json\"}; primary_key, if given, must name one of \
-             columns's own entries.",
-            host_schema_checked(
+             columns's own entries. Give exactly one of columns (declare an empty table), \
+             source_url (an https CSV or JSON Lines file, fetched by the host) or csv_text \
+             (the CSV itself, at most 1 MB): the import infers the column types from the first \
+             1,000 rows, loads every row and reports rows_imported, rows_skipped, columns and \
+             source -- the way to load data when you have no file tool.",
+            host_schema_extra(
                 json!({
                     "name": {
                         "type": "string",
@@ -2686,16 +2726,25 @@ fn host_tools_part_04() -> Vec<Tool> {
                         "type": "string",
                         "description": "Column name (must be in columns); optional.",
                     },
+                    "source_url": import_source_url_schema(),
+                    "csv_text": import_csv_text_schema(),
+                    "import_id": import_id_schema(),
                 }),
-                &["name", "columns"],
+                &["name"],
+                import_one_of(&["columns", "source_url", "csv_text"]),
             ),
         ),
         Tool::new(
             "host.table.append",
             "Append one row (an object) or several (an array of objects) to a declared table. \
              Each row is validated against the table's schema first -- a type mismatch fails \
-             the whole call with table_schema_violation and writes nothing.",
-            host_schema_checked(
+             the whole call with table_schema_violation and writes nothing. Instead of rows, \
+             give source_url (an https CSV or JSON Lines file, fetched by the host) or csv_text \
+             (the CSV itself, at most 1 MB, header row first): each row is coerced to the \
+             table's schema, a row that does not fit is skipped, and the result reports \
+             rows_imported, rows_skipped and the first three skip reasons (line and column). \
+             Exactly one of rows, source_url and csv_text.",
+            host_schema_extra(
                 json!({
                     "table": {"type": "string", "description": "Name of the declared table to append to."},
                     "rows": {
@@ -2703,8 +2752,12 @@ fn host_tools_part_04() -> Vec<Tool> {
                         "description": "One row (an object) or several (an array of objects), each \
                             validated against the table's schema.",
                     },
+                    "source_url": import_source_url_schema(),
+                    "csv_text": import_csv_text_schema(),
+                    "import_id": import_id_schema(),
                 }),
-                &["table", "rows"],
+                &["table"],
+                import_one_of(&["rows", "source_url", "csv_text"]),
             ),
         ),
         Tool::new(

@@ -16,6 +16,28 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "wasmkind_ac01_echo_component_calls_and_meters.rs"]
+mod wasmkind_ac01_echo_component_calls_and_meters;
+#[path = "wasmkind_ac02_publish_validation_errors.rs"]
+mod wasmkind_ac02_publish_validation_errors;
+#[path = "wasmkind_ac03_timeout_and_oom_recover.rs"]
+mod wasmkind_ac03_timeout_and_oom_recover;
+#[path = "wasmkind_ac05_tool_test_dry_run.rs"]
+mod wasmkind_ac05_tool_test_dry_run;
+#[path = "wasmkind_ac06_trap_is_structured_and_logged.rs"]
+mod wasmkind_ac06_trap_is_structured_and_logged;
+#[path = "wasmkind_ac07_docs_llms_and_quickstart_document_wasm.rs"]
+mod wasmkind_ac07_docs_llms_and_quickstart_document_wasm;
+#[path = "wasmkind_ac08_cache_reuses_compiled_artifact.rs"]
+mod wasmkind_ac08_cache_reuses_compiled_artifact;
+#[path = "wasmkind_ac09_healthz_reports_wasm_runtime.rs"]
+mod wasmkind_ac09_healthz_reports_wasm_runtime;
+#[path = "wasmkind_ac10_declared_output_promotion_matches_python.rs"]
+mod wasmkind_ac10_declared_output_promotion_matches_python;
+#[path = "whin_ac04_keyless_call_after_redeem_is_refused_and_named.rs"]
+mod whin_ac04_keyless_call_after_redeem_is_refused_and_named;
+#[path = "whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule.rs"]
+mod whin_ac05_quickstart_inbox_is_one_step_and_states_the_stateless_rule;
 #[path = "xaa_ac01_valid_assertion_no_consent.rs"]
 mod xaa_ac01_valid_assertion_no_consent;
 #[path = "xaa_ac03_invalid_grant_reasons_are_distinct_and_audited.rs"]

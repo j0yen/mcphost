@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-schema-shape-agreement.md",
-  "intent_slug": "mcphost-schema-shape-agreement",
-  "root_motivation": "- **Who:** any MCP client or agent that builds arguments from `tools/list` `inputSchema`, including the synthorg conformance link, the only caller exercising this today. - **What:** a call the schema permits is refused for its shape. The rule is in handler code and sometimes in description prose, which a schema-driven client does not parse. - **Evidence (conformance-20261023T132001Z, re-read by a sonnet verifier at mcphost@83540f8, refusal sites from the same tree):** - Pattern, 6: `host.claim.dns.check` and `.start` `domain` (refused by `normalize_domain`, `src/verify.rs:355-367`; descriptors `src/verify.rs:237-262`); `host.secret.leak_test` `name` (inline `chars().all`, `src/handler.rs:10818`; descriptor `:2400`); `host.sync.create` `table` (`tables::is_valid_ident`, `src/sync/mod.rs:323-325`, although `tables::IDENT_PATTERN` exists at `src/tables.rs:263` and `host.table.create` uses it at `src/handler.rs:2660`; descriptor `:5144`); `host.tool.spec_shared` `tool` (`split_once('.')...",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-table-import-from-url.md",
+  "intent_slug": "mcphost-table-import-from-url",
+  "root_motivation": "truth-tier 10-20: claude_code satisfaction 0.55 (n=9), recipe completion 0.00: \"I have no file-reading tool (no Read/Bash/Glob) and no MCP resource exposes the CSV, so I can't get the 1,000 rows into\" a table. abandon-other 1 with the same text. mcphost-resources-for-tenant-data is built, but resources list tables, docs and runs the tenant already has; an uploaded CSV is not one of them.",
   "user_persona": "An agent that calls host.sync.create with a source ref and gets a scheduled mirror in one call; Operator Joe who reads docs/tools.md and llms.txt and knows both were rendered from the SourceKind enum.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,50 +14,50 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given every validated descriptor, When the generated test sets one string leaf lacking `pattern`/`enum` to each `SHAPE_PROBE_STRINGS` value, or one array lacking `uniqueItems` whose `maxItems` allows two to two equal items, via `build_router`, Then every `args`/`spec` reply has a validator refusal or a `SCHEMA_VALID_REFUSALS` entry with reason `referential` or `normalised`, else it fails naming tool and pointer.",
-      "test": "tests/shp_ac01_shape_probes_router_and_validator_agree.rs"
+      "description": "Given a `host.table.create` call with `source_url` to a served 1,000-row CSV with header, When the call completes, Then the table exists with 1,000 rows, inferred column types, and the result reports `rows_imported 1000, rows_skipped 0, source url`",
+      "test": "tests/tblurl_ac01_create_from_url_imports_all_rows.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given every descriptor's input schema, When the generated scan walks every property (through `properties`, `items`, `anyOf`, `oneOf`), Then each property or each `anyOf`/`oneOf` branch carries `type`, `enum`, `const` or `$ref`, else it fails naming tool and JSON pointer.",
-      "test": "tests/shp_ac02_every_property_carries_a_type.rs"
+      "description": "Given `source_url` values resolving to 127.0.0.1, 10.0.0.1, 169.254.169.254, fd00::1, an http:// URL, and an https URL redirecting to http, When `host.table.append` is called, Then each returns `import_url_forbidden` naming the host and the fetch counter records zero bytes received",
+      "test": "tests/tblurl_ac02_private_and_insecure_urls_refused_before_any_byte.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a `TestServer` over `build_router`, When `host.policy.set` gets `rule: \"toolconf-probe\"` and then a one-element list whose item is valid under the new item schema (an `op` from `RuleOp`), Then the first is refused by the validator at `/rule` with constraint `type` and `handler_runs` stays 0, and the second reaches the handler.",
-      "test": "tests/shp_ac03_policy_set_rule_is_a_typed_list.rs"
+      "description": "Given a served CSV larger than the plan cap, When imported, Then the result is `import_too_large` with `data.bytes` equal to the cap and the table is unchanged",
+      "test": "tests/tblurl_ac03_oversize_source_is_import_too_large.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given every `SHAPE_CHECKS` row (pattern const, handler check fn or `None`, `accepts: &[&str]`), When each `SHAPE_PROBE_STRINGS` value and each row's `accepts` string runs through the pattern and the check fn, Then accept/reject is identical per value, every `accepts` string is accepted, and every descriptor `pattern` value equals some row's const.",
-      "test": "tests/shp_ac04_patterns_and_handler_checks_agree.rs"
+      "description": "Given `csv_text` of 50 lines with one malformed row, When appended to an existing table, Then 49 rows land, `rows_skipped 1`, and the first skip reason names the line number and column",
+      "test": "tests/tblurl_ac04_csv_text_skips_a_malformed_row.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given `host.lineage.blast_radius`, When its schema is read, Then `change_kind` carries an `enum` of the lowercase spellings from the const `ChangeKind::parse` reads, every enum value parses, and `toolconf-probe` and `DROP` sent to it are refused by the validator with constraint `enum`.",
-      "test": "tests/shp_ac05_blast_radius_change_kind_is_an_enum.rs"
+      "description": "Given a call supplying both `rows` and `source_url`, When host-args validation runs, Then it is refused by the inputSchema `oneOf` before the handler runs, with the refusal naming both fields",
+      "test": "tests/tblurl_ac05_two_sources_refused_by_the_input_schema.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given `host.ask.create`, When `options` gets two equal strings and then two strings equal after trimming, Then the first is refused by the validator with constraint `uniqueItems`, and the second is refused by the validator through an `items` `pattern` forbidding leading/trailing whitespace or listed in `SCHEMA_VALID_REFUSALS` with reason `normalised`.",
-      "test": "tests/shp_ac06_ask_options_are_unique_and_untrimmed.rs"
+      "description": "Given the error-codes registry, When the import codes are added, Then the generated contract and both SDKs carry them and the registry drift test passes with no hand edit to the contract",
+      "test": "tests/tblurl_ac06_import_codes_flow_from_the_registry.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given the PR head, When `mcphost contract dump --check` and the `docs/tools.md` drift check run, Then `contracts/host-tools.v1.json` carries every new keyword, both pass with no diff, and `planlim_ac07_contract_drift_with_deprecation_entry` passes, with one deprecation entry per narrowed descriptor if it requires one.",
-      "test": "tests/shp_ac07_contract_carries_new_shape_keywords.rs"
+      "description": "Given prod /mcp in a real Claude Code session on orch with only mcphost tools allowed, When the prompt is the recipe text \"create a table named tblurl_ac07 from https://mcphost.dev/examples/sample-1000.csv and tell me the row count\", Then the transcript shows a successful `host_table_create` result and a `host_table_count` result of 1000 (Live; evidence: `~/.local/state/mcphost-live/tblurl-ac07.jsonl` from the AC 7 command in \u00a7 Live evidence commands)",
+      "test": "deferred: Live (prod /mcp, a real Claude Code session on orch with only mcphost tools allowed; evidence ~/.local/state/mcphost-live/tblurl-ac07.jsonl)"
     },
     {
       "id": "AC8",
-      "level": "MUST",
-      "description": "Given prod after deploy, When the public contract is fetched, Then `host.policy.set` `rule` is typed `array` and `host.sync.create` `table` carries a `pattern` (Live; evidence: `curl -s https://mcphost.dev/contract.json | jq -e '[.tools[]|select(.name==\"host.policy.set\")][0].input_schema.properties.rule.type==\"array\" and ([.tools[]|select(.name==\"host.sync.create\")][0].input_schema.properties.table.pattern|type==\"string\")'`)",
-      "test": "deferred: Live (prod; evidence: curl -s https://mcphost.dev/contract.json | jq -e on host.policy.set rule type and host.sync.create table pattern)"
+      "level": "SHOULD",
+      "description": "Given two `host.table.append` calls with the same `import_id` within 24 h, When the second runs, Then it returns the first result and the row count does not change",
+      "test": "tests/tblurl_ac08_import_id_replays_the_first_result.rs"
     }
   ],
   "scope": [
