@@ -98,7 +98,8 @@ def main(args):
     for (py, (msg, want)) in results.iter().zip(&rust) {
         assert_eq!(py["cls"], json!("McphostTableError"), "{py}");
         assert_eq!(py["code"], json!("table_schema_violation"), "{py}");
-        assert_eq!(&py["msg"], &json!(msg), "{py}");
+        // PRD-mcphost-table-conflict-structured-error: `str(err)` leads with the code.
+        assert_eq!(&py["msg"], &json!(format!("table_schema_violation: {msg}")), "{py}");
         assert_eq!(&payload(&py["data"]), want, "{py}");
     }
 }
