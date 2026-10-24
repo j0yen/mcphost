@@ -307,7 +307,9 @@ fn end_user_to_json(run: &RunRow) -> Value {
     }
 }
 
-fn run_to_json(run: &RunRow) -> Value {
+/// The wire shape of one run row, shared by `host.runs.get/wait/list` (and the
+/// PRD-mcphost-tool-call-output-root-opaque R4 no-drift test).
+pub fn run_to_json(run: &RunRow) -> Value {
     let mut value = run_to_json_base(run);
     // PRD-mcphost-chain-fanout-children-excludes-composition-child R2: only a
     // composed child carries a role; a top-level run's row is unchanged.

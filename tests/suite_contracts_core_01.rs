@@ -197,6 +197,18 @@ mod osreach_ac03_unreached_cap;
 mod osreach_ac04_import_own_dry_run;
 #[path = "osreach_ac05_validator_control_and_doctor.rs"]
 mod osreach_ac05_validator_control_and_doctor;
+#[path = "osroot_ac01_roots_type_only_host_keys.rs"]
+mod osroot_ac01_roots_type_only_host_keys;
+#[path = "osroot_ac02_forwarded_verb_results_validate.rs"]
+mod osroot_ac02_forwarded_verb_results_validate;
+#[path = "osroot_ac03_tenant_keys_validate_at_both_roots.rs"]
+mod osroot_ac03_tenant_keys_validate_at_both_roots;
+#[path = "osroot_ac04_ask_wait_pending_carries_keys.rs"]
+mod osroot_ac04_ask_wait_pending_carries_keys;
+#[path = "osroot_ac05_run_row_nulls_validate.rs"]
+mod osroot_ac05_run_row_nulls_validate;
+#[path = "osroot_ac06_opaque_root_diff_category.rs"]
+mod osroot_ac06_opaque_root_diff_category;
 #[path = "osrx_ac01_real_export_previews.rs"]
 mod osrx_ac01_real_export_previews;
 #[path = "osrx_ac02_plan_mode_offline.rs"]

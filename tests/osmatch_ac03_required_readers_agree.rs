@@ -137,10 +137,12 @@ fn a_tool_without_variant_or_entry_is_byte_identical_and_a_variant_tool_keeps_it
     edited.insert("host.doctor");
     // A tenant-defined value the corpus can only sample is declared free-form
     // (`output_schemas::OPAQUE_FIELDS`): `host.table.query` rows are the
-    // tenant's columns, and `host.tool.call` merges a tenant tool's payload
-    // (its `id`, `rows`) into the root.
+    // tenant's columns.
     edited.insert("host.table.query");
-    edited.insert("host.tool.call");
+    // PRD-mcphost-tool-call-output-root-opaque R1: the two forwarding roots
+    // type only the keys the host writes (this covers `host.tool.call`'s
+    // merged tenant payload, its `id` and `rows`).
+    edited.extend(mcphost::output_schemas::FORWARDING_ROOTS.iter().copied());
     let (mut untouched, mut varianted) = (0, 0);
     let mut problems = Vec::new();
     for (tool, old) in cited() {
