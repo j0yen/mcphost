@@ -1,4 +1,4 @@
-//! solo-suite: 770 one test re-runs every contract suite through pin-tests.sh where timing is measured (585-770 s on a hosted runner, the max of CI runs 39196582126, 39200390250, 39203293144; CI now skips the re-run, the weight is kept until a refresh measures the skip)
+//! solo-suite: 1 one test re-runs every contract suite through pin-tests.sh; CI core shards set MCPHOST_PERF_SKIP=1 so it measured 0.01/0.02 s (run 40115329593 attempts 1-2), floored to 1; the gate/inner wall is the 900 s BUDGET below, not this weight
 //! PRD-mcphost-contract-suite-generated AC6 -- on a warm cargo target
 //! `scripts/pin-tests.sh` finishes every contract suite within the hard budget
 //! (900 s) and prints a per-binary timing line for each.
