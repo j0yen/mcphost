@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.115.0 — 2026-10-24
+
+Released by wm-build land: loop: mcphost-synthetic-implicit-tenant-expiry.
+
 ## v0.114.2 — 2026-10-23
 
 Released by wm-build land: loop: mcphost-admin-funnel-real-surface-recipe-counter.
