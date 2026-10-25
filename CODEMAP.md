@@ -355,6 +355,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `RETRY_POLICY` in `src/retry_policy.rs`
 - `SAMPLING_ERROR_CODES` in `src/sampling.rs`
 - `OVERRIDES` in `src/sdk_python.rs`
+- `STATUS_FEED_TABLES` in `src/statusfeed.rs`
 - `ALWAYS_LISTED` in `src/subkeys.rs`
 - `SOURCE_ARGS` in `src/table/import.rs`
 - `TABLE_WRITE_VERBS` in `src/tables.rs`
