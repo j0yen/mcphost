@@ -200,7 +200,7 @@ enum Command {
     /// `docs/protocol/resources.md`, generated from `RESOURCE_TEMPLATES`.
     ResourcesDoc,
     /// PRD-mcphost-delegation-recipes-and-quickstart requirement 5: print the
-    /// README's `<!-- recipe:sub_agent_key -->` block for
+    /// README's `<!-- quickstart-recipe:sub_agent_key -->` block for
     /// `scripts/sandbox-api-doc-check.sh`.
     RecipeSection,
     /// PRD-mcphost-prompts-from-published-tools requirement 5: print
