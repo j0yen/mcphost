@@ -1060,6 +1060,19 @@ account. Free-plan fit: 1 table, up to 1,000 rows of the 5,000-row
 `table_rows_max` quota, append batches sized to stay under
 `table_bytes_max`.
 
+One call, from a public CSV URL: `host_table_create` (the client-visible
+name of `host.table.create`) with `source_url` reads the CSV, infers the
+column types and imports every row. The 1,000-row sample (header
+`id,category,amount,day`) is served at
+`https://mcphost.dev/examples/sample-1000.csv`:
+```
+host_table_create(name="expenses",
+  source_url="https://mcphost.dev/examples/sample-1000.csv")
+```
+The result reports `rows_imported: 1000`; check it with
+`host_table_count(table="expenses")`. Then skip to step 3. No URL for your
+data, or no file tool? Declare and append it yourself, steps 1 and 2:
+
 1. Declare the table (typed columns: text, integer, real, timestamp, boolean, json):
    ```
    host.table.create(name="expenses", columns={
