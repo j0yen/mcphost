@@ -90,6 +90,20 @@ mod mcphost_output_envelope_fields_generated_ac05_check_names_missing_member;
 mod mcphost_output_envelope_fields_generated_ac06_bridge_strip_named_function;
 #[path = "mcphost-output-envelope-fields-generated_ac07_served_contract_carries_set.rs"]
 mod mcphost_output_envelope_fields_generated_ac07_served_contract_carries_set;
+#[path = "mcphost-resource-listing-shape-in-contract_ac01_dump_carries_resources_section.rs"]
+mod mcphost_resource_listing_shape_in_contract_ac01_dump_carries_resources_section;
+#[path = "mcphost-resource-listing-shape-in-contract_ac02_committed_contract_is_the_dump_byte_for_byte.rs"]
+mod mcphost_resource_listing_shape_in_contract_ac02_committed_contract_is_the_dump_byte_for_byte;
+#[path = "mcphost-resource-listing-shape-in-contract_ac03_check_names_the_drifted_resources_key.rs"]
+mod mcphost_resource_listing_shape_in_contract_ac03_check_names_the_drifted_resources_key;
+#[path = "mcphost-resource-listing-shape-in-contract_ac04_listed_name_and_uri_follow_the_contract.rs"]
+mod mcphost_resource_listing_shape_in_contract_ac04_listed_name_and_uri_follow_the_contract;
+#[path = "mcphost-resource-listing-shape-in-contract_ac05_doc_title_field_is_title.rs"]
+mod mcphost_resource_listing_shape_in_contract_ac05_doc_title_field_is_title;
+#[path = "mcphost-resource-listing-shape-in-contract_ac06_served_contract_carries_resources_with_etag.rs"]
+mod mcphost_resource_listing_shape_in_contract_ac06_served_contract_carries_resources_with_etag;
+#[path = "mcphost-resource-listing-shape-in-contract_ac07_shape_is_readable_before_any_resource_exists.rs"]
+mod mcphost_resource_listing_shape_in_contract_ac07_shape_is_readable_before_any_resource_exists;
 #[path = "mcphost_admin_schema_contract_ac01_tenants_schema_version.rs"]
 mod mcphost_admin_schema_contract_ac01_tenants_schema_version;
 #[path = "mcphost_admin_schema_contract_ac02_listings_validate_v1_schema.rs"]
@@ -1014,17 +1028,3 @@ mod reglist_ac03_schema_validates_committed_entry_and_rejects_missing_remotes;
 mod reglist_ac04_workflow_checks_manifest_and_schema_on_every_push;
 #[path = "reglist_ac06_readme_registry_and_quickstart_links_resolve.rs"]
 mod reglist_ac06_readme_registry_and_quickstart_links_resolve;
-#[path = "regone_ac01_live_compares_registry_to_endpoint.rs"]
-mod regone_ac01_live_compares_registry_to_endpoint;
-#[path = "regone_ac02_live_registry_timeout_is_unknown.rs"]
-mod regone_ac02_live_registry_timeout_is_unknown;
-#[path = "regone_ac03_one_server_json.rs"]
-mod regone_ac03_one_server_json;
-#[path = "regone_ac04_dry_run_prints_lines_and_no_secret.rs"]
-mod regone_ac04_dry_run_prints_lines_and_no_secret;
-#[path = "regone_ac05_no_publish_without_ok_makes_no_write.rs"]
-mod regone_ac05_no_publish_without_ok_makes_no_write;
-#[path = "regone_ac06_one_search_url_in_docs.rs"]
-mod regone_ac06_one_search_url_in_docs;
-#[path = "regone_ac07_live_json.rs"]
-mod regone_ac07_live_json;

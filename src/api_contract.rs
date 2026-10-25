@@ -492,6 +492,7 @@ pub fn dump_contract(kinds: &KindRegistry) -> Value {
         "contract_version": CONTRACT_VERSION,
         "kinds": kind_contracts,
         "output_envelope_fields": OUTPUT_ENVELOPE_FIELDS,
+        "resources": crate::resources::contract_section(crate::resources::RESOURCE_TEMPLATES),
         "tenant_lifecycle": tenant_lifecycle(),
         "tools": entries,
     });
