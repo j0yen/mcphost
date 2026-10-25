@@ -319,6 +319,7 @@ pub const OPAQUE_FIELDS: &[(&str, &str)] = &[
     ("host.tool.test", "/properties/data"),
     ("host.tool.test", "/properties/result"),
     ("host.call_trace", "/properties/replay/properties/result"),
+    ("host.policy.set", "/properties/rule/items/properties/value/properties/literal"),
 ];
 
 /// PRD-mcphost-tool-call-output-root-opaque R1: the two tools whose result

@@ -449,3 +449,11 @@ globs = ["scripts/live/osreach_import_reach.py", "tests/test_osreach_import_reac
 required_commands = [
   "cargo test --workspace osrx_ac",
 ]
+
+[[lane]]
+id = "tblurlp-live-script"
+description = "PRD-mcphost-table-import-url-live-proof: scripts/live/tblurlp_import_live.py, the live driver that signs up a synthorg-marked tenant, imports the fixture from its public URL, counts it and offboards, run against prod from the build host. Its --plan mode and the whole flow against the loopback harness app are proven offline by the tblurlp_ac03 tests. Given its own lane since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane's required_commands as an immutable baseline (same reasoning as the osrx-live-script lane)."
+globs = ["scripts/live/tblurlp_import_live.py"]
+required_commands = [
+  "cargo test --workspace tblurlp_ac03",
+]
