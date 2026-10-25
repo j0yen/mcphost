@@ -30,6 +30,20 @@ mod uprg;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
+#[path = "regone_ac01_live_compares_registry_to_endpoint.rs"]
+mod regone_ac01_live_compares_registry_to_endpoint;
+#[path = "regone_ac02_live_registry_timeout_is_unknown.rs"]
+mod regone_ac02_live_registry_timeout_is_unknown;
+#[path = "regone_ac03_one_server_json.rs"]
+mod regone_ac03_one_server_json;
+#[path = "regone_ac04_dry_run_prints_lines_and_no_secret.rs"]
+mod regone_ac04_dry_run_prints_lines_and_no_secret;
+#[path = "regone_ac05_no_publish_without_ok_makes_no_write.rs"]
+mod regone_ac05_no_publish_without_ok_makes_no_write;
+#[path = "regone_ac06_one_search_url_in_docs.rs"]
+mod regone_ac06_one_search_url_in_docs;
+#[path = "regone_ac07_live_json.rs"]
+mod regone_ac07_live_json;
 #[path = "rgpt_ac01_recipes_generator_idempotent.rs"]
 mod rgpt_ac01_recipes_generator_idempotent;
 #[path = "rgpt_ac02_drift_names_file_recipe_and_line.rs"]
@@ -1016,19 +1030,3 @@ mod vordb_ac01_runs_verdict_filter_pages_in_sql;
 mod vordb_ac02_every_paged_verb_walks_clean;
 #[path = "vordb_ac03_removed_order_variant_breaks_contract_check.rs"]
 mod vordb_ac03_removed_order_variant_breaks_contract_check;
-#[path = "wake_ac1_message_trigger_fires_run.rs"]
-mod wake_ac1_message_trigger_fires_run;
-#[path = "wake_ac2_from_filter.rs"]
-mod wake_ac2_from_filter;
-#[path = "wake_ac3_dedupe.rs"]
-mod wake_ac3_dedupe;
-#[path = "wake_ac4_jobs_concurrent_rejects.rs"]
-mod wake_ac4_jobs_concurrent_rejects;
-#[path = "wake_ac5_pause_resume.rs"]
-mod wake_ac5_pause_resume;
-#[path = "wake_ac6_msg_wait.rs"]
-mod wake_ac6_msg_wait;
-#[path = "wake_ac7_trigger_test_synthetic_envelope.rs"]
-mod wake_ac7_trigger_test_synthetic_envelope;
-#[path = "wake_ac8_replay.rs"]
-mod wake_ac8_replay;

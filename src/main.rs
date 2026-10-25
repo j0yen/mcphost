@@ -1788,6 +1788,9 @@ async fn main() -> anyhow::Result<()> {
                             for member in mcphost::api_contract::missing_envelope_fields(&committed) {
                                 eprintln!("  - output_envelope_fields is missing `{member}`");
                             }
+                            for path in mcphost::resources::contract_drift(&committed, mcphost::resources::RESOURCE_TEMPLATES) {
+                                eprintln!("  - {path} differs from RESOURCE_TEMPLATES");
+                            }
                         }
                         std::process::exit(1);
                     }
