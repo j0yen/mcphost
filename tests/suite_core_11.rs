@@ -616,6 +616,14 @@ mod tblurl_ac05_two_sources_refused_by_the_input_schema;
 mod tblurl_ac06_import_codes_flow_from_the_registry;
 #[path = "tblurl_ac08_import_id_replays_the_first_result.rs"]
 mod tblurl_ac08_import_id_replays_the_first_result;
+#[path = "tcse_ac01_primary_key_conflict_structured.rs"]
+mod tcse_ac01_primary_key_conflict_structured;
+#[path = "tcse_ac02_message_names_row_and_column.rs"]
+mod tcse_ac02_message_names_row_and_column;
+#[path = "tcse_ac03_not_null_conflict.rs"]
+mod tcse_ac03_not_null_conflict;
+#[path = "tcse_ac04_storage_stays_host_fault.rs"]
+mod tcse_ac04_storage_stays_host_fault;
 #[path = "tdf_ac01_round_trip_every_kind.rs"]
 mod tdf_ac01_round_trip_every_kind;
 #[path = "tdf_ac02_lint_names_unknown_field.rs"]
