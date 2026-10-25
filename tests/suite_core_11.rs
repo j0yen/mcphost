@@ -32,6 +32,20 @@ mod uprg;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
+#[path = "regone_ac01_live_compares_registry_to_endpoint.rs"]
+mod regone_ac01_live_compares_registry_to_endpoint;
+#[path = "regone_ac02_live_registry_timeout_is_unknown.rs"]
+mod regone_ac02_live_registry_timeout_is_unknown;
+#[path = "regone_ac03_one_server_json.rs"]
+mod regone_ac03_one_server_json;
+#[path = "regone_ac04_dry_run_prints_lines_and_no_secret.rs"]
+mod regone_ac04_dry_run_prints_lines_and_no_secret;
+#[path = "regone_ac05_no_publish_without_ok_makes_no_write.rs"]
+mod regone_ac05_no_publish_without_ok_makes_no_write;
+#[path = "regone_ac06_one_search_url_in_docs.rs"]
+mod regone_ac06_one_search_url_in_docs;
+#[path = "regone_ac07_live_json.rs"]
+mod regone_ac07_live_json;
 #[path = "rgpt_ac01_recipes_generator_idempotent.rs"]
 mod rgpt_ac01_recipes_generator_idempotent;
 #[path = "rgpt_ac02_drift_names_file_recipe_and_line.rs"]
@@ -1018,23 +1032,3 @@ mod verbfwd_ac06_hint_parity_underscore_form_resolves;
 mod verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota;
 #[path = "vfxenv_ac01_build_env_inputs_are_not_outputs.rs"]
 mod vfxenv_ac01_build_env_inputs_are_not_outputs;
-#[path = "vord_ac01_falsifier.rs"]
-mod vord_ac01_falsifier;
-#[path = "vord_ac02_contract_order_enum.rs"]
-mod vord_ac02_contract_order_enum;
-#[path = "vord_ac03_cursor_bound_to_order.rs"]
-mod vord_ac03_cursor_bound_to_order;
-#[path = "vord_ac04_order_by_from_enum.rs"]
-mod vord_ac04_order_by_from_enum;
-#[path = "vord_ac05_runs_list_filters_in_sql.rs"]
-mod vord_ac05_runs_list_filters_in_sql;
-#[path = "vord_ac06_concurrent_inserts_every_paged_verb.rs"]
-mod vord_ac06_concurrent_inserts_every_paged_verb;
-#[path = "vord_ac07_removed_order_variant_is_breaking.rs"]
-mod vord_ac07_removed_order_variant_is_breaking;
-#[path = "vordb_ac01_runs_verdict_filter_pages_in_sql.rs"]
-mod vordb_ac01_runs_verdict_filter_pages_in_sql;
-#[path = "vordb_ac02_every_paged_verb_walks_clean.rs"]
-mod vordb_ac02_every_paged_verb_walks_clean;
-#[path = "vordb_ac03_removed_order_variant_breaks_contract_check.rs"]
-mod vordb_ac03_removed_order_variant_breaks_contract_check;

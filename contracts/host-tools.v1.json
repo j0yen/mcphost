@@ -330,6 +330,23 @@
     "duration_ms",
     "state"
   ],
+  "resources": {
+    "name_field": {
+      "doc": "doc:{id}",
+      "run": "run_log:{id}",
+      "table": "table:{name}",
+      "tool": "tool_spec:{name}"
+    },
+    "title_field": {
+      "doc": "title"
+    },
+    "uri_scheme": {
+      "doc": "mcphost://doc/{id}",
+      "run": "mcphost://run/{id}/log",
+      "table": "mcphost://table/{name}",
+      "tool": "mcphost://tool/{name}/spec"
+    }
+  },
   "tenant_lifecycle": {
     "default_days": 1,
     "disabled_reason": "idle_expired",
