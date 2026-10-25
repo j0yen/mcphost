@@ -1084,6 +1084,32 @@ fn validate_rows(
     Ok(coerced)
 }
 
+/// PRD-mcphost-table-conflict-structured-error: a constraint violation that
+/// `From<rusqlite::Error>` classified as `table_row_conflict` gets the table
+/// (each tenant has its own DB, so the caller's name beats SQLite's text),
+/// the 0-based `row_index` of the failing row, and the agent-facing message.
+/// Any other error passes through unchanged.
+fn row_conflict_at(err: AppError, table: &str, row_index: usize) -> AppError {
+    match err {
+        AppError::Structured { code, data, .. } if code == TABLE_ROW_CONFLICT => {
+            let column = data.get("column").cloned().unwrap_or(Value::Null);
+            let constraint = data.get("constraint").and_then(Value::as_str).unwrap_or("other").to_string();
+            let on = column.as_str().map(|c| format!(" on {c}")).unwrap_or_default();
+            AppError::Structured {
+                code,
+                message: format!("row {row_index} conflicts{on} ({constraint}) in table {table}"),
+                data: json!({
+                    "table": table,
+                    "column": column,
+                    "constraint": constraint,
+                    "row_index": row_index,
+                }),
+            }
+        }
+        other => other,
+    }
+}
+
 pub(crate) fn insert_rows_sync(
     conn: &Connection,
     table: &str,
@@ -1095,7 +1121,7 @@ pub(crate) fn insert_rows_sync(
     // connection's open `SAVEPOINT test_run`.
     crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
         let mut ids = Vec::with_capacity(rows.len());
-        for row in rows {
+        for (row_index, row) in rows.iter().enumerate() {
             let mut cols = Vec::with_capacity(row.len());
             let mut placeholders = Vec::with_capacity(row.len());
             let mut values: Vec<Box<dyn rusqlite::ToSql>> = Vec::with_capacity(row.len());
@@ -1112,7 +1138,8 @@ pub(crate) fn insert_rows_sync(
                 placeholders.join(", "),
             );
             let params_ref: Vec<&dyn rusqlite::ToSql> = values.iter().map(|b| b.as_ref()).collect();
-            conn.execute(&sql, params_ref.as_slice())?;
+            conn.execute(&sql, params_ref.as_slice())
+                .map_err(|e| row_conflict_at(AppError::from(e), table, row_index))?;
             ids.push(conn.last_insert_rowid());
         }
         Ok(ids)
@@ -3231,6 +3258,12 @@ crate::err_code! {
 }
 
 crate::err_code! {
+    pub TABLE_ROW_CONFLICT,
+    code: "table_row_conflict", family: Storage, class: AgentFault, retryable: false,
+    remedy: "Change the conflicting value in data.column or query the table first; nothing was appended.",
+}
+
+crate::err_code! {
     pub TABLE_BOUND_EXCEEDED,
     code: "table_bound_exceeded", family: Call, class: AgentFault, retryable: false,
     remedy: "Narrow the query so it stays under data.bound's limit.",
@@ -3247,6 +3280,28 @@ crate::err_code! {
     code: "table_query_rejected", family: Args, class: AgentFault, retryable: false,
     remedy: "Fix the query; data.reason says why it was rejected.",
 }
+
+/// Every `err_code!`-declared code the `mcphost.table` bridge
+/// (`kinds::python::TableSidecarBridge`) can return in `resp.code`, sorted,
+/// including the shared `not_found` / `quota_exceeded` the table functions pass
+/// through (the pre-#517 `lookup()` branch kept these; tests/dryrun_ac07 pins
+/// `quota_exceeded`). An uncaught `McphostTableError` with one of these keeps
+/// it as the tool call's own error code (`kinds::python::map_envelope_error`).
+/// Members name the `err_code!` items, so the registry stays the only spelling (tests/tcse_ac07).
+pub const TABLE_ERROR_CODES: &[&str] = &[
+    crate::chart::CHART_INVALID_MARK,
+    HANDLE_NOT_FOUND,
+    HANDLE_QUOTA_EXCEEDED,
+    LINEAGE_BLOCKED,
+    crate::subkeys::NOT_FOUND,
+    crate::errors::QUOTA_EXCEEDED,
+    TABLE_ALREADY_EXISTS,
+    TABLE_BOUND_EXCEEDED,
+    TABLE_NOT_FOUND,
+    TABLE_QUERY_REJECTED,
+    TABLE_ROW_CONFLICT,
+    crate::kinds::TABLE_UNAVAILABLE,
+];
 
 
 #[cfg(test)]
@@ -3629,5 +3684,41 @@ mod tests {
         assert_eq!(result["columns"]["value"], "real");
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// PRD-mcphost-table-conflict-structured-error: `TABLE_ERROR_CODES` is a
+    /// hand-listed subset of the error registry (the bridge set spans several
+    /// `err_code!` families, so no field of `REGISTERED` yields it); this pins
+    /// it to the registry in both directions, so a renamed or newly declared
+    /// `table_*` code cannot drift out of the bridge docs or the code mapping.
+    #[test]
+    fn table_error_codes_match_registry() {
+        let registered: Vec<&str> = crate::error_registry::REGISTERED.iter().map(|e| e.code).collect();
+        for code in TABLE_ERROR_CODES {
+            assert!(
+                registered.contains(code),
+                "TABLE_ERROR_CODES member {code:?} is not err_code!-declared"
+            );
+        }
+        for code in registered.iter().filter(|c| c.starts_with("table_")) {
+            assert!(
+                TABLE_ERROR_CODES.contains(code),
+                "registry code {code:?} is not in TABLE_ERROR_CODES; add it to TABLE_ERROR_CODES; \
+                 kinds::python::render_bridge_docs_block lists it as a bridge code"
+            );
+        }
+        assert!(
+            TABLE_ERROR_CODES.windows(2).all(|w| w[0] < w[1]),
+            "TABLE_ERROR_CODES must be strictly sorted (sorted and unique): {TABLE_ERROR_CODES:?}"
+        );
+        // A regression pin, not a second source of truth: the shared codes the
+        // table functions pass through, which the pre-#517 `lookup()` branch kept.
+        for shared in ["not_found", "quota_exceeded"] {
+            assert!(
+                TABLE_ERROR_CODES.contains(&shared),
+                "TABLE_ERROR_CODES must contain {shared:?}: tests/dryrun_ac07 pins quota_exceeded and the \
+                 pre-#517 lookup() branch kept every registry code"
+            );
+        }
     }
 }

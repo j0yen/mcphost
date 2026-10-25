@@ -630,6 +630,14 @@ mod tcpn_ac04_progress_frames;
 mod tcpn_ac05_no_token_unchanged;
 #[path = "tcpn_ac06_throttle_and_disconnect.rs"]
 mod tcpn_ac06_throttle_and_disconnect;
+#[path = "tcse_ac01_primary_key_conflict_structured.rs"]
+mod tcse_ac01_primary_key_conflict_structured;
+#[path = "tcse_ac02_message_names_row_and_column.rs"]
+mod tcse_ac02_message_names_row_and_column;
+#[path = "tcse_ac03_not_null_conflict.rs"]
+mod tcse_ac03_not_null_conflict;
+#[path = "tcse_ac04_storage_stays_host_fault.rs"]
+mod tcse_ac04_storage_stays_host_fault;
 #[path = "tdf_ac01_round_trip_every_kind.rs"]
 mod tdf_ac01_round_trip_every_kind;
 #[path = "tdf_ac02_lint_names_unknown_field.rs"]
