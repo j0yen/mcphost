@@ -2513,6 +2513,14 @@
       "AC2": "tests/osrx_ac02_plan_mode_offline.rs",
       "AC3": "tests/osrx_ac03_stream_parser_pairs_results.rs"
     },
+    "tblurlp": {
+      "_prd": "PRD-mcphost-table-import-url-live-proof.md (test_prefix: tblurlp)",
+      "AC1": "tests/tblurlp_ac01_fixture_route.rs",
+      "AC2": "tests/tblurlp_ac02_example_url_route_drift.rs",
+      "AC3": "tests/tblurlp_ac03_driver_on_loopback.rs",
+      "AC4": "deferred: Live (prod: scripts/live/tblurlp_import_live.py; evidence ~/.local/state/mcphost-live/tblurlp-ac04-results.jsonl; operator-provisioned)",
+      "AC5": "tests/tblurlp_ac05_recipe_one_call_form.rs"
+    },
     "tenx": {
       "_prd": "PRD-mcphost-synthetic-implicit-tenant-expiry.md (test_prefix: tenx)",
       "AC1": "tests/tenx_ac01_idle_synthetic_implicit_tenant_expires.rs",

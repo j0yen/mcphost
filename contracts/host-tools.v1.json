@@ -20794,12 +20794,7 @@
                         "null"
                       ]
                     },
-                    "literal": {
-                      "type": [
-                        "array",
-                        "null"
-                      ]
-                    }
+                    "literal": {}
                   },
                   "type": [
                     "object",

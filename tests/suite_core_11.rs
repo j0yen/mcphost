@@ -632,6 +632,12 @@ mod tblurl_ac05_two_sources_refused_by_the_input_schema;
 mod tblurl_ac06_import_codes_flow_from_the_registry;
 #[path = "tblurl_ac08_import_id_replays_the_first_result.rs"]
 mod tblurl_ac08_import_id_replays_the_first_result;
+#[path = "tblurlp_ac01_fixture_route.rs"]
+mod tblurlp_ac01_fixture_route;
+#[path = "tblurlp_ac02_example_url_route_drift.rs"]
+mod tblurlp_ac02_example_url_route_drift;
+#[path = "tblurlp_ac05_recipe_one_call_form.rs"]
+mod tblurlp_ac05_recipe_one_call_form;
 #[path = "tcpn_ac01_progress_counters.rs"]
 mod tcpn_ac01_progress_counters;
 #[path = "tcpn_ac02_frame_contract.rs"]
