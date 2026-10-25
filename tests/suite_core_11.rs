@@ -21,6 +21,8 @@ mod rgpt;
 mod serve;
 #[path = "support/sjrc.rs"]
 mod sjrc;
+#[path = "support/tcpn.rs"]
+mod tcpn;
 #[path = "support/timp.rs"]
 mod timp;
 #[path = "support/tssdk.rs"]
@@ -616,6 +618,18 @@ mod tblurl_ac05_two_sources_refused_by_the_input_schema;
 mod tblurl_ac06_import_codes_flow_from_the_registry;
 #[path = "tblurl_ac08_import_id_replays_the_first_result.rs"]
 mod tblurl_ac08_import_id_replays_the_first_result;
+#[path = "tcpn_ac01_progress_counters.rs"]
+mod tcpn_ac01_progress_counters;
+#[path = "tcpn_ac02_frame_contract.rs"]
+mod tcpn_ac02_frame_contract;
+#[path = "tcpn_ac03_probe_tool.rs"]
+mod tcpn_ac03_probe_tool;
+#[path = "tcpn_ac04_progress_frames.rs"]
+mod tcpn_ac04_progress_frames;
+#[path = "tcpn_ac05_no_token_unchanged.rs"]
+mod tcpn_ac05_no_token_unchanged;
+#[path = "tcpn_ac06_throttle_and_disconnect.rs"]
+mod tcpn_ac06_throttle_and_disconnect;
 #[path = "tcse_ac01_primary_key_conflict_structured.rs"]
 mod tcse_ac01_primary_key_conflict_structured;
 #[path = "tcse_ac02_message_names_row_and_column.rs"]
@@ -1024,19 +1038,3 @@ mod vordb_ac01_runs_verdict_filter_pages_in_sql;
 mod vordb_ac02_every_paged_verb_walks_clean;
 #[path = "vordb_ac03_removed_order_variant_breaks_contract_check.rs"]
 mod vordb_ac03_removed_order_variant_breaks_contract_check;
-#[path = "wake_ac1_message_trigger_fires_run.rs"]
-mod wake_ac1_message_trigger_fires_run;
-#[path = "wake_ac2_from_filter.rs"]
-mod wake_ac2_from_filter;
-#[path = "wake_ac3_dedupe.rs"]
-mod wake_ac3_dedupe;
-#[path = "wake_ac4_jobs_concurrent_rejects.rs"]
-mod wake_ac4_jobs_concurrent_rejects;
-#[path = "wake_ac5_pause_resume.rs"]
-mod wake_ac5_pause_resume;
-#[path = "wake_ac6_msg_wait.rs"]
-mod wake_ac6_msg_wait;
-#[path = "wake_ac7_trigger_test_synthetic_envelope.rs"]
-mod wake_ac7_trigger_test_synthetic_envelope;
-#[path = "wake_ac8_replay.rs"]
-mod wake_ac8_replay;
