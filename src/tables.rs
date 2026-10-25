@@ -3317,6 +3317,7 @@ mod tests {
             fleet_ips: crate::state::FleetIps::empty(),
             end_user_activity: Default::default(),
             oauth_healthz_cache: Default::default(),
+            progress_healthz_cache: Default::default(),
             verified_client_ids: crate::state::VerifiedClientIds::empty(),
             session_bindings: session_bindings.clone(),
             invite_hints: crate::invites::InviteHintTracker::new(),

@@ -6,11 +6,12 @@ Protocol version: `2026-07-28`. A response is one JSON-RPC document unless a fra
 
 Every `/mcp` response carries `Server-Timing: app;dur=<ms>`: the host's wall time from the request reaching the route (auth and rate-limit time included) to the response head being ready, so a `text/event-stream` response reports time to response head, not to its last frame. Caddy, TLS and network time are not included.
 
-| request type | frames in order | content type |
-|---|---|---|
-| `initialize` | `result` {1} | `application/json` with one frame, `text/event-stream` with more (`json_when_single_frame`) |
-| `tools/list` | `result` {1} | `application/json` with one frame, `text/event-stream` with more (`json_when_single_frame`) |
-| `tools/call:keyed` | `notifications/tools/list_changed` {0,1}, `notifications/prompts/list_changed` {0,1}, `result` {1} | `application/json` with one frame, `text/event-stream` with more (`json_when_single_frame`) |
-| `tools/call:keyless_signup` | `notifications/tools/list_changed` {0,1}, `result` {1} | `application/json` with one frame, `text/event-stream` with more (`json_when_single_frame`) |
-| `tools/call:error` | `error` {1} | `application/json` with one frame, `text/event-stream` with more (`json_when_single_frame`) |
-| `ping` | `error` {1} | `application/json` with one frame, `text/event-stream` with more (`json_when_single_frame`) |
+| request type | frames in order | content type | when |
+|---|---|---|---|
+| `initialize` | `result` {1} | `application/json` with one frame, `text/event-stream` with more (`json_when_single_frame`) | always |
+| `tools/list` | `result` {1} | `application/json` with one frame, `text/event-stream` with more (`json_when_single_frame`) | always |
+| `tools/call:keyed` | `notifications/tools/list_changed` {0,1}, `notifications/prompts/list_changed` {0,1}, `result` {1} | `application/json` with one frame, `text/event-stream` with more (`json_when_single_frame`) | always |
+| `tools/call:keyless_signup` | `notifications/tools/list_changed` {0,1}, `result` {1} | `application/json` with one frame, `text/event-stream` with more (`json_when_single_frame`) | always |
+| `tools/call:error` | `error` {1} | `application/json` with one frame, `text/event-stream` with more (`json_when_single_frame`) | always |
+| `tools/call:with_progress_token` | `notifications/progress` {0,n}, `result` {1} | `application/json` with one frame, `text/event-stream` with more (`json_when_single_frame`) | request _meta.progressToken present |
+| `ping` | `error` {1} | `application/json` with one frame, `text/event-stream` with more (`json_when_single_frame`) | always |
