@@ -12,6 +12,182 @@ where agents host their own tools · [mcphost.dev](https://mcphost.dev) · [stat
 
 Find it in the registry: [dev.mcphost/mcphost](https://registry.modelcontextprotocol.io/v0.1/servers/dev.mcphost%2Fmcphost/versions/latest) — connect with the one-URL quickstart at [mcphost.dev](https://mcphost.dev).
 
+## What it is
+
+mcphost is a remote MCP server where your agent publishes its own tools. Your agent writes a tool mid-task, publishes it with one call, and keeps working: the tool is live with no restart and no deploy, and it outlives the conversation that built it. A schedule can fire it while you sleep, another agent can share it, and every run lands in a log you can read.
+
+Under the hood, `mcphost serve` is one Rust binary that speaks streamable-HTTP MCP at a single endpoint. Everything is a tool call: publish, run, schedule, log, meter, store secrets, share with another agent, act as one of your end users over OAuth. There is no dashboard; `/status` is the one page, and the operator works through `admin.*` tools on the same endpoint.
+
+<!-- cite: docs/benchmarks/ac11-load-smoke.txt -->
+Measured, not promised: p95 34.2 ms across 200 concurrent calls with zero errors, committed next to the test that produces it. The public site is [mcphost.dev](https://mcphost.dev); the machine-readable summary at [`/llms.txt`](https://mcphost.dev/llms.txt) is generated from the same source as the quickstart below (`docs/agent-quickstart.md`, `scripts/gen-agent-docs.sh`).
+
+## Connect
+
+Paste one line into your client and it has mcphost. Your agent's first call creates its account on that connection: no signup form, no key to paste.
+
+<!-- clients:start -->
+<!-- install-links:start -->
+**Claude Code**
+
+```
+claude mcp add --transport http mcphost https://mcphost.dev/mcp
+```
+
+Docs: <https://code.claude.com/docs/en/mcp> (checked 2026-10-09)
+
+**Cursor**
+
+[Add to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=mcphost&config=eyJ1cmwiOiJodHRwczovL21jcGhvc3QuZGV2L21jcCJ9), or add `https://mcphost.dev/mcp` to your MCP config directly.
+
+Docs: <https://docs.cursor.com/en/tools/mcp> (checked 2026-10-09)
+
+**VS Code**
+
+[Add to VS Code](vscode:mcp/install?%7B%22name%22%3A%22mcphost%22%2C%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fmcphost%2Edev%2Fmcp%22%7D), or add `https://mcphost.dev/mcp` to your MCP config directly.
+
+Docs: <https://code.visualstudio.com/api/extension-guides/ai/mcp> (checked 2026-10-09)
+
+**GitHub Copilot in VS Code**
+
+```json
+{
+  "servers": {
+    "mcphost": {
+      "type": "http",
+      "url": "https://mcphost.dev/mcp"
+    }
+  }
+}
+```
+
+Docs: <https://code.visualstudio.com/docs/agent-customization/mcp-servers> (checked 2026-10-21)
+
+**Claude.ai**
+
+1. Open Settings, then Connectors, then Add custom connector.
+2. Name: mcphost
+3. Remote MCP server URL: https://mcphost.dev/login/mcp
+4. Save, then enable the connector in a chat to connect.
+
+Docs: <https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp> (checked 2026-10-09)
+
+**ChatGPT**
+
+1. Open ChatGPT, then Plugins, then Add.
+2. Choose Create custom MCP server.
+3. Name: mcphost
+4. MCP server URL: https://mcphost.dev/login/mcp
+5. Choose OAuth, then Create. On the consent page press Create a new workspace.
+
+Docs: <https://platform.openai.com/docs/mcp> (checked 2026-10-09)
+
+**Codex CLI**
+
+```
+codex mcp add mcphost --url https://mcphost.dev/mcp
+```
+
+Docs: <https://developers.openai.com/codex/mcp> (checked 2026-10-09)
+
+**Gemini CLI**
+
+```
+gemini mcp add --transport http mcphost https://mcphost.dev/mcp
+```
+
+Docs: <https://geminicli.com/docs/tools/mcp-server/> (checked 2026-10-09)
+
+**OpenCode**
+
+```
+opencode mcp add mcphost --url https://mcphost.dev/mcp
+```
+
+Docs: <https://opencode.ai/docs/mcp-servers/> (checked 2026-10-09)
+
+**Amp**
+
+```
+amp mcp add mcphost https://mcphost.dev/mcp
+```
+
+Docs: <https://ampcode.com/manual#mcp> (checked 2026-10-09)
+
+**Goose**
+
+1. In a Goose session, type /extension.
+2. Choose Add Remote Extension (Streamable HTTP).
+3. Name: mcphost
+4. Endpoint URL: https://mcphost.dev/mcp
+
+Docs: <https://goose-docs.ai/docs/getting-started/using-extensions/> (checked 2026-10-09)
+
+**Warp**
+
+1. In a Warp agent session, type /agent-add-mcp.
+2. Paste this server config: {"mcphost":{"url":"https://mcphost.dev/mcp"}}
+3. Save; Warp starts the server and lists its tools.
+
+Docs: <https://docs.warp.dev/agents/capabilities/mcp/> (checked 2026-10-09)
+
+**Windsurf**
+
+```json
+{
+  "mcpServers": {
+    "mcphost": {
+      "url": "https://mcphost.dev/mcp"
+    }
+  }
+}
+```
+
+Docs: <https://docs.windsurf.com/windsurf/cascade/mcp> (checked 2026-10-09)
+
+**Cline / Roo**
+
+```json
+{
+  "mcpServers": {
+    "mcphost": {
+      "type": "streamableHttp",
+      "url": "https://mcphost.dev/mcp"
+    }
+  }
+}
+```
+
+Docs: <https://docs.cline.bot/mcp/configuring-mcp-servers> (checked 2026-10-09)
+
+**SDKs**
+
+```json
+{
+  "name": "mcphost",
+  "type": "url",
+  "url": "https://mcphost.dev/mcp"
+}
+```
+
+Docs: <https://platform.claude.com/docs/en/agents-and-tools/mcp-connector> (checked 2026-10-21)
+<!-- install-links:end -->
+<!-- clients:end -->
+
+See the live [status page](/status.html) and the
+[Acceptable Use Policy](/aup.html) before you point production traffic at
+it. Plans and limits: [plans](/plans.html) / [`/plans.json`](/plans.json)
+(same numbers `billing.plans` returns, and `docs/plans.md`). Every error
+payload carries a `help_url` pointing at a generated `/help/<code>` page
+explaining it.
+
+<!-- support:start -->
+Support: support channel not configured (MCPHOST_SUPPORT_URL is unset).
+<!-- support:end -->
+
+## Changes
+
+Every release is a git tag, and every change is in [`CHANGELOG.md`](CHANGELOG.md).
+
 <!-- agent-quickstart:start -->
 Ship an MCP tool, not a deployment project.
 
@@ -259,182 +435,6 @@ questions. `docs-qa.sh --embeddings <provider-endpoint> <model>
 <secret-name>` configures an embeddings provider first and reports both
 lexical and embeddings hit rates in one receipt.
 <!-- agent-quickstart:end -->
-
-## What it is
-
-`mcphost serve` is one Rust binary that speaks streamable-HTTP MCP at a single endpoint. An agent signs up with one unauthenticated tool call, gets a namespace, and from then on everything is a tool call: publish, run, schedule, log, meter, store secrets, share with another agent, act as one of your end users over OAuth. There is no dashboard; `/status` is the one page, and the operator works through `admin.*` tools on the same endpoint.
-
-<!-- cite: docs/benchmarks/ac11-load-smoke.txt -->
-Measured, not promised: p95 34.2 ms across 200 concurrent calls with zero errors, committed next to the test that produces it. The public site is [mcphost.dev](https://mcphost.dev); the machine-readable summary at [`/llms.txt`](https://mcphost.dev/llms.txt) is generated from the same source as the quickstart above (`docs/agent-quickstart.md`, `scripts/gen-agent-docs.sh`).
-
-## Connect
-
-Paste one line into your client and it has mcphost. No key needed to sign
-up -- `signup` is the one unauthenticated tool; everything past it takes
-the bearer key `signup` returns.
-
-<!-- clients:start -->
-<!-- install-links:start -->
-**Claude Code**
-
-```
-claude mcp add --transport http mcphost https://mcphost.dev/mcp
-```
-
-Docs: <https://code.claude.com/docs/en/mcp> (checked 2026-10-09)
-
-**Cursor**
-
-[Add to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=mcphost&config=eyJ1cmwiOiJodHRwczovL21jcGhvc3QuZGV2L21jcCJ9), or add `https://mcphost.dev/mcp` to your MCP config directly.
-
-Docs: <https://docs.cursor.com/en/tools/mcp> (checked 2026-10-09)
-
-**VS Code**
-
-[Add to VS Code](vscode:mcp/install?%7B%22name%22%3A%22mcphost%22%2C%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fmcphost%2Edev%2Fmcp%22%7D), or add `https://mcphost.dev/mcp` to your MCP config directly.
-
-Docs: <https://code.visualstudio.com/api/extension-guides/ai/mcp> (checked 2026-10-09)
-
-**GitHub Copilot in VS Code**
-
-```json
-{
-  "servers": {
-    "mcphost": {
-      "type": "http",
-      "url": "https://mcphost.dev/mcp"
-    }
-  }
-}
-```
-
-Docs: <https://code.visualstudio.com/docs/agent-customization/mcp-servers> (checked 2026-10-21)
-
-**Claude.ai**
-
-1. Open Settings, then Connectors, then Add custom connector.
-2. Name: mcphost
-3. Remote MCP server URL: https://mcphost.dev/login/mcp
-4. Save, then enable the connector in a chat to connect.
-
-Docs: <https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp> (checked 2026-10-09)
-
-**ChatGPT**
-
-1. Open ChatGPT, then Plugins, then Add.
-2. Choose Create custom MCP server.
-3. Name: mcphost
-4. MCP server URL: https://mcphost.dev/login/mcp
-5. Choose OAuth, then Create. On the consent page press Create a new workspace.
-
-Docs: <https://platform.openai.com/docs/mcp> (checked 2026-10-09)
-
-**Codex CLI**
-
-```
-codex mcp add mcphost --url https://mcphost.dev/mcp
-```
-
-Docs: <https://developers.openai.com/codex/mcp> (checked 2026-10-09)
-
-**Gemini CLI**
-
-```
-gemini mcp add --transport http mcphost https://mcphost.dev/mcp
-```
-
-Docs: <https://geminicli.com/docs/tools/mcp-server/> (checked 2026-10-09)
-
-**OpenCode**
-
-```
-opencode mcp add mcphost --url https://mcphost.dev/mcp
-```
-
-Docs: <https://opencode.ai/docs/mcp-servers/> (checked 2026-10-09)
-
-**Amp**
-
-```
-amp mcp add mcphost https://mcphost.dev/mcp
-```
-
-Docs: <https://ampcode.com/manual#mcp> (checked 2026-10-09)
-
-**Goose**
-
-1. In a Goose session, type /extension.
-2. Choose Add Remote Extension (Streamable HTTP).
-3. Name: mcphost
-4. Endpoint URL: https://mcphost.dev/mcp
-
-Docs: <https://goose-docs.ai/docs/getting-started/using-extensions/> (checked 2026-10-09)
-
-**Warp**
-
-1. In a Warp agent session, type /agent-add-mcp.
-2. Paste this server config: {"mcphost":{"url":"https://mcphost.dev/mcp"}}
-3. Save; Warp starts the server and lists its tools.
-
-Docs: <https://docs.warp.dev/agents/capabilities/mcp/> (checked 2026-10-09)
-
-**Windsurf**
-
-```json
-{
-  "mcpServers": {
-    "mcphost": {
-      "url": "https://mcphost.dev/mcp"
-    }
-  }
-}
-```
-
-Docs: <https://docs.windsurf.com/windsurf/cascade/mcp> (checked 2026-10-09)
-
-**Cline / Roo**
-
-```json
-{
-  "mcpServers": {
-    "mcphost": {
-      "type": "streamableHttp",
-      "url": "https://mcphost.dev/mcp"
-    }
-  }
-}
-```
-
-Docs: <https://docs.cline.bot/mcp/configuring-mcp-servers> (checked 2026-10-09)
-
-**SDKs**
-
-```json
-{
-  "name": "mcphost",
-  "type": "url",
-  "url": "https://mcphost.dev/mcp"
-}
-```
-
-Docs: <https://platform.claude.com/docs/en/agents-and-tools/mcp-connector> (checked 2026-10-21)
-<!-- install-links:end -->
-<!-- clients:end -->
-
-See the live [status page](/status.html) and the
-[Acceptable Use Policy](/aup.html) before you point production traffic at
-it. Plans and limits: [plans](/plans.html) / [`/plans.json`](/plans.json)
-(same numbers `billing.plans` returns, and `docs/plans.md`). Every error
-payload carries a `help_url` pointing at a generated `/help/<code>` page
-explaining it.
-
-<!-- support:start -->
-Support: support channel not configured (MCPHOST_SUPPORT_URL is unset).
-<!-- support:end -->
-
-## Changes
-
-Current release: v0.64.0 (2026-09-30); `main` is 0.65.0. Every change is in [`CHANGELOG.md`](CHANGELOG.md) and the git tags.
 
 ## Operating and contributing
 
