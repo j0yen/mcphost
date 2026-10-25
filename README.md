@@ -87,6 +87,11 @@ just call it -- they read it with
 `host.tool.spec_shared(tool="<owner_namespace>.<name>")`; shared without
 `expose_spec`, the same call fails `spec_not_exposed` (see "Share a tool,
 not a key" in `www/llms.txt` for the full worked example).
+`host.tool.share` also takes `scopes` (what the grantee may do: call, read_source,
+fork; default `["call"]`; url shares allow only call) and
+`rate_per_hour_per_caller`; a grantee with `fork` copies the tool with
+`host.tool.fork(owner, tool, as)`, and after `host.tool.unshare` a past caller's
+next call fails `share_revoked`.
 
 <!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
 
