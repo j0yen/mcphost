@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.118.0 — 2026-10-25
+
+Released by wm-build land: loop: mcphost-resource-listing-shape-in-contract.
+
 ## v0.117.0 — 2026-10-24
 
 Released by wm-build land: loop: mcphost-external-unclaimed-tenant-expiry.
