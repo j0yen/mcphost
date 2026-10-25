@@ -437,6 +437,15 @@
       "backoff": {
         "kind": "none"
       },
+      "code": "chart_invalid_mark",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
       "code": "compose_children_exceeded",
       "max_attempts": 1,
       "policy": "do-not-retry",
@@ -630,6 +639,24 @@
       "backoff": {
         "kind": "none"
       },
+      "code": "handle_not_found",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "handle_quota_exceeded",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
       "code": "host_not_allowed",
       "max_attempts": 1,
       "policy": "do-not-retry",
@@ -651,6 +678,15 @@
       "code": "leak_test_failed",
       "max_attempts": 1,
       "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "lineage_blocked",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
       "retryable": false
     },
     {
@@ -677,7 +713,25 @@
       "backoff": {
         "kind": "none"
       },
+      "code": "not_found",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
       "code": "plan_required",
+      "max_attempts": 1,
+      "policy": "do-not-retry",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "quota_exceeded",
       "max_attempts": 1,
       "policy": "do-not-retry",
       "retryable": false
@@ -773,6 +827,51 @@
       "max_attempts": 3,
       "policy": "backoff-then-retry",
       "retryable": true
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "table_already_exists",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "table_bound_exceeded",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "table_not_found",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "table_query_rejected",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
+    },
+    {
+      "backoff": {
+        "kind": "none"
+      },
+      "code": "table_row_conflict",
+      "max_attempts": 1,
+      "policy": "fix-and-resend",
+      "retryable": false
     },
     {
       "backoff": {
