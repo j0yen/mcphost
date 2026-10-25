@@ -1038,9 +1038,3 @@ mod vord_ac05_runs_list_filters_in_sql;
 mod vord_ac06_concurrent_inserts_every_paged_verb;
 #[path = "vord_ac07_removed_order_variant_is_breaking.rs"]
 mod vord_ac07_removed_order_variant_is_breaking;
-#[path = "vordb_ac01_runs_verdict_filter_pages_in_sql.rs"]
-mod vordb_ac01_runs_verdict_filter_pages_in_sql;
-#[path = "vordb_ac02_every_paged_verb_walks_clean.rs"]
-mod vordb_ac02_every_paged_verb_walks_clean;
-#[path = "vordb_ac03_removed_order_variant_breaks_contract_check.rs"]
-mod vordb_ac03_removed_order_variant_breaks_contract_check;

@@ -16,6 +16,12 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "vordb_ac01_runs_verdict_filter_pages_in_sql.rs"]
+mod vordb_ac01_runs_verdict_filter_pages_in_sql;
+#[path = "vordb_ac02_every_paged_verb_walks_clean.rs"]
+mod vordb_ac02_every_paged_verb_walks_clean;
+#[path = "vordb_ac03_removed_order_variant_breaks_contract_check.rs"]
+mod vordb_ac03_removed_order_variant_breaks_contract_check;
 #[path = "wake_ac1_message_trigger_fires_run.rs"]
 mod wake_ac1_message_trigger_fires_run;
 #[path = "wake_ac2_from_filter.rs"]
