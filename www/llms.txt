@@ -1060,14 +1060,16 @@ account. Free-plan fit: 1 table, up to 1,000 rows of the 5,000-row
 `table_rows_max` quota, append batches sized to stay under
 `table_bytes_max`.
 
-1. Declare the table (typed columns: text, integer, real, timestamp, boolean, json):
+1. One call, no file tool needed -- the server fetches the 1,000-row fixture itself:
+   ```
+   host.table.create(name="expenses", source_url="https://mcphost.dev/examples/sample-1000.csv")
+   ```
+2. Or declare the table yourself (typed columns: text, integer, real, timestamp,
+   boolean, json) and append your rows in batches of 200 -- five calls covers 1,000 rows:
    ```
    host.table.create(name="expenses", columns={
      "id": "integer", "category": "text", "amount": "real", "day": "integer"
    }, primary_key="id")
-   ```
-2. Append your rows in batches of 200 -- five calls covers 1,000 rows:
-   ```
    host.table.append(table="expenses", rows=[
      {"id": 1, "category": "produce", "amount": 11.10, "day": 1}, ...
    ])
