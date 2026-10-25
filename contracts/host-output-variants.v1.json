@@ -1440,6 +1440,10 @@
         "dry_run"
       ]
     },
+    "host.probe.progress": {
+      "unreached": [],
+      "variants": []
+    },
     "host.progress": {
       "unreached": [
         {
@@ -4004,6 +4008,10 @@
       "variants": [
         "dry_run"
       ]
+    },
+    "host_probe_progress": {
+      "unreached": [],
+      "variants": []
     },
     "host_progress": {
       "unreached": [
