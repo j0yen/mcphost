@@ -1057,8 +1057,7 @@ Expected cost: 7 calls (the 1 signup included), within 60 s.
 A CSV becomes a table your own Claude Desktop can query -- in plain SQL,
 no query grammar to learn, no tool to publish. No server, no Airtable
 account. Free-plan fit: 1 table, up to 1,000 rows of the 5,000-row
-`table_rows_max` quota, append batches sized to stay under
-`table_bytes_max`.
+`table_rows_max` quota, append batches sized to stay under `table_bytes_max`.
 
 One call, from a public CSV URL: `host_table_create` (the client-visible
 name of `host.table.create`) with `source_url` reads the CSV, infers the
@@ -1072,24 +1071,15 @@ host_table_create(name="expenses",
 The result reports `rows_imported: 1000`; check it with
 `host_table_count(table="expenses")`. Then skip to step 3. No URL for your
 data, or no file tool? Declare and append it yourself, steps 1 and 2:
-
 1. Declare the table (typed columns: text, integer, real, timestamp, boolean, json):
-   ```
-   host.table.create(name="expenses", columns={
-     "id": "integer", "category": "text", "amount": "real", "day": "integer"
-   }, primary_key="id")
-   ```
+   `host.table.create(name="expenses", columns={"id": "integer", "category": "text",
+   "amount": "real", "day": "integer"}, primary_key="id")`
 2. Append your rows in batches of 200 -- five calls covers 1,000 rows:
-   ```
-   host.table.append(table="expenses", rows=[
-     {"id": 1, "category": "produce", "amount": 11.10, "day": 1}, ...
-   ])
-   ```
+   `host.table.append(table="expenses", rows=[{"id": 1, "category": "produce",
+   "amount": 11.10, "day": 1}, ...])`
 3. Leave a note so any agent reading the schema knows what a column means:
-   ```
-   host.table.model_set(table="expenses", key="description",
-     value="Household spending, one row per purchase.")
-   ```
+   `host.table.model_set(table="expenses", key="description",
+   value="Household spending, one row per purchase.")`
 4. Ask questions straight in SQL -- CTEs, GROUP BY, LIKE, all of it:
    ```
    host.table.query(sql="SELECT category, SUM(amount) AS total \
