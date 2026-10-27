@@ -19,7 +19,8 @@
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
+use crate::execw;
 
 /// A PATH that is guaranteed to have no `npx` on it, on any host: a scratch
 /// directory holding symlinks to just the coreutils the script needs before
@@ -102,7 +103,7 @@ fn receipt_files(scratch: &Path) -> Vec<PathBuf> {
 fn npx_absent_exits_2_with_a_one_line_reason_and_writes_no_receipt() {
     let scratch = scratch_repo_root("npx-absent");
 
-    let output = Command::new(scratch.join("scripts/oauth-conformance.sh"))
+    let output = execw::script(&scratch.join("scripts/oauth-conformance.sh"))
         .arg("http://127.0.0.1:1/mcp")
         .env("PATH", npx_free_path("absent"))
         .output()
@@ -123,7 +124,7 @@ fn npx_present_and_passing_exits_0_and_writes_the_receipt() {
     write_fake_npx(&scratch, 0);
     let path = format!("{}:{}", scratch.join("bin").display(), npx_free_path("pass").display());
 
-    let output = Command::new(scratch.join("scripts/oauth-conformance.sh"))
+    let output = execw::script(&scratch.join("scripts/oauth-conformance.sh"))
         .arg("http://127.0.0.1:1/mcp")
         .env("PATH", path)
         .output()
@@ -145,7 +146,7 @@ fn npx_present_and_failing_exits_non_zero_and_still_writes_the_receipt() {
     write_fake_npx(&scratch, 1);
     let path = format!("{}:{}", scratch.join("bin").display(), npx_free_path("fail").display());
 
-    let output = Command::new(scratch.join("scripts/oauth-conformance.sh"))
+    let output = execw::script(&scratch.join("scripts/oauth-conformance.sh"))
         .arg("http://127.0.0.1:1/mcp")
         .env("PATH", path)
         .output()

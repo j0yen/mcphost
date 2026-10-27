@@ -7,6 +7,8 @@
 // original name, path, and test names (nextest's test list, with this
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
+#[path = "support/execw.rs"]
+mod execw;
 #[path = "support/exprf.rs"]
 mod exprf;
 #[path = "support/serve.rs"]

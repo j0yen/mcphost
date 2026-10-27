@@ -9,7 +9,8 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
+use crate::execw;
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -115,7 +116,7 @@ fn fixture() -> PathBuf {
 #[test]
 fn ctrx_ac03_check_fails_a_fixture_suite_mixing_one_of_each() {
     let dir = fixture();
-    let out = Command::new(dir.join("scripts/gen-test-suites.sh"))
+    let out = execw::script(&dir.join("scripts/gen-test-suites.sh"))
         .arg("--check")
         .env("SANDBOX_SHARDS", "1")
         .env("CORE_SHARDS", "1")

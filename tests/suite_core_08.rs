@@ -24,6 +24,8 @@ mod ctrace;
 mod docs_qa;
 #[path = "support/dryspt_lint.rs"]
 mod dryspt_lint;
+#[path = "support/execw.rs"]
+mod execw;
 #[path = "support/oauth.rs"]
 mod oauth;
 #[path = "support/serve.rs"]

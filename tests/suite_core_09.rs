@@ -9,6 +9,8 @@
 mod common;
 #[path = "support/chart_fixture.rs"]
 mod chart_fixture;
+#[path = "support/execw.rs"]
+mod execw;
 #[path = "support/exprf.rs"]
 mod exprf;
 #[path = "support/exprp.rs"]
@@ -102,6 +104,8 @@ mod errreg_ac04_scanner_fails_duplicate_and_format_codes;
 mod errreg_ac05_hand_table_empty_and_backstop_passes;
 #[path = "errreg_ac06_five_10_17_codes_declared_at_emit_site.rs"]
 mod errreg_ac06_five_10_17_codes_declared_at_emit_site;
+#[path = "etxtbsy_ac01_written_file_execs_go_through_the_helper.rs"]
+mod etxtbsy_ac01_written_file_execs_go_through_the_helper;
 #[path = "evkr_ac01_no_second_spelling.rs"]
 mod evkr_ac01_no_second_spelling;
 #[path = "evkr_ac02_renderings_equal_enum.rs"]

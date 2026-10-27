@@ -10,6 +10,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
+use crate::execw;
+
 const CITED: &str = "9f0bd02a29b62c2c14263854815bb4898b81ed64";
 const WALKERS: [&str; 3] = [
     "verbfwd_ac08_forward_stack_budget",
@@ -53,7 +55,7 @@ fn cited_tree() -> Option<PathBuf> {
 fn ctrx_ac01_cited_tree_lint_is_clean_while_walkers_are_unmarked() {
     let Some(tree) = cited_tree() else { return };
     let lint = |args: &[&str]| {
-        Command::new(tree.join("scripts/contract-lint.sh")).args(args).current_dir(&tree).output().unwrap()
+        execw::script(&tree.join("scripts/contract-lint.sh")).args(args).current_dir(&tree).output().unwrap()
     };
     for args in [vec!["tests"], vec!["--fix", "tests"]] {
         let out = lint(&args);
