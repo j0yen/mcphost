@@ -20,7 +20,7 @@ async fn healthz(base_url: &str) -> serde_json::Value {
 }
 
 #[tokio::test]
-async fn healthz_splits_tenants_signups_calls_and_drops_legacy_real_fields() {
+async fn healthz_splits_tenants_signups_calls_and_keeps_real_to_earned_external() {
     let server = common::TestServer::start().await;
 
     // One loopback (synthetic) signup via the real HTTP path, plus one
@@ -55,11 +55,14 @@ async fn healthz_splits_tenants_signups_calls_and_drops_legacy_real_fields() {
 
     // Requirement 3: no field named "real" may aggregate both provenance
     // classes -- the old unqualified fields must be gone entirely, not
-    // just renamed alongside the new ones.
-    assert!(
-        health.get("tenants_real").is_none(),
-        "legacy 'tenants_real' must not be present: {health:?}"
+    // just renamed alongside the new ones. PRD-mcphost-external-class-positive-evidence
+    // reintroduces `tenants_real` with a narrower meaning: the `external`
+    // origin count only (earned by evidence), never the both-classes sum.
+    assert_eq!(
+        health["tenants_real"], health["tenants_by_origin"]["external"],
+        "'tenants_real' is the earned-external count only: {health:?}"
     );
+    assert_eq!(health["tenants_real"], json!(0), "{health:?}");
     assert!(
         health.get("tenants_synthetic").is_none(),
         "legacy top-level 'tenants_synthetic' must not be present: {health:?}"

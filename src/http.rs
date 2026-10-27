@@ -150,6 +150,20 @@ pub fn check_anon_healthz_keys(body: &serde_json::Map<String, serde_json::Value>
     }
 }
 
+/// `signups`/`calls` on `/healthz`: the legacy `{external, synthetic}` split
+/// plus `unattributed` (PRD-mcphost-external-class-positive-evidence), read
+/// from the stored `origin` -- `external` is only ever the earned class.
+fn origin_split_json(counts: Vec<(String, i64)>) -> serde_json::Value {
+    let of = |o: crate::state::Origin| {
+        counts.iter().filter(|(k, _)| k == o.as_str()).map(|(_, n)| *n).sum::<i64>()
+    };
+    json!({
+        "external": of(crate::state::Origin::External),
+        "unattributed": of(crate::state::Origin::Unattributed),
+        "synthetic": of(crate::state::Origin::Synthetic),
+    })
+}
+
 async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Response {
     let db_ok = state.db.is_writable().await;
     // PRD-mcphost-data-retention requirement 4 (AC6): the disk-floor guard
@@ -198,10 +212,13 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
     // `origin` column migration 0012 added (independent of the
     // `source_class`-keyed computation above, which
     // `count_external_tenants` still serves for its own narrower purpose).
-    let (signups_external, signups_synthetic) =
-        state.db.count_signup_events_by_origin().await.unwrap_or((0, 0));
-    let (calls_external, calls_synthetic) =
-        state.db.count_calls_by_origin().await.unwrap_or((0, 0));
+    let signups = origin_split_json(state.db.origin_counts(crate::db::OriginCountTable::SignupEvents).await.unwrap_or_default());
+    let calls = origin_split_json(state.db.origin_counts(crate::db::OriginCountTable::Calls).await.unwrap_or_default());
+    // PRD-mcphost-external-class-positive-evidence: the origin block, shared
+    // with `admin.funnel` and `mcphost funnel --json`.
+    let origin_report = crate::funnel::origin_report(&state.db).await.unwrap_or_else(|_| {
+        crate::state::origin_report_json(&[], 0, 0)
+    });
     let mut body = json!({
         "contract_version": state.contract.version,
         "contract_sha": state.contract.sha,
@@ -211,8 +228,13 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
         "tenants_total": tenants_total,
         "tenants_probe": tenants_probe,
         "tenants": {"external": tenants_real, "synthetic": tenants_synthetic},
-        "signups": {"external": signups_external, "synthetic": signups_synthetic},
-        "calls": {"external": calls_external, "synthetic": calls_synthetic},
+        "synthetic_promotion_refused": state
+            .db
+            .origin_counter(crate::db::SYNTHETIC_PROMOTION_REFUSED)
+            .await
+            .unwrap_or(0),
+        "signups": signups,
+        "calls": calls,
         "sandbox_mechanism": state.sandbox_mechanism,
         "wasm_runtime_version": state.wasm_runtime_version,
     });
@@ -221,6 +243,7 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
     // (top 10 `clientInfo.name` values by tenant count) -- both additive,
     // both empty arrays (not absent) on a box with nothing classified yet.
     if let Some(obj) = body.as_object_mut() {
+        obj.extend(origin_report);
         obj.extend(state.build.json());
         // PRD-mcphost-first-tool-from-description R6: whether a draft model
         // is configured, and the last day's drafts with their token cost.

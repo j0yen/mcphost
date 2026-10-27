@@ -2167,6 +2167,7 @@ pub async fn funnel(state: &AppState, args: &Value) -> Result<Value, AppError> {
     let (by_surface, probe, synthetic_excluded) =
         crate::funnel::surface_report(&state.db, crate::state::now_unix(), days).await?;
     let obj = response.as_object_mut().expect("response is always an object");
+    obj.extend(crate::funnel::origin_report(&state.db).await?);
     obj.insert("install_link_clicks".to_string(), Value::Object(install_link_clicks));
     obj.insert("by_surface".to_string(), by_surface);
     obj.insert("probe".to_string(), probe);

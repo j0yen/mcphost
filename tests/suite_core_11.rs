@@ -32,6 +32,16 @@ mod uprg;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
+#[path = "reglist_ac01_manifest_fields_match_cargo_and_endpoint.rs"]
+mod reglist_ac01_manifest_fields_match_cargo_and_endpoint;
+#[path = "reglist_ac02_check_detects_drift.rs"]
+mod reglist_ac02_check_detects_drift;
+#[path = "reglist_ac03_schema_validates_committed_entry_and_rejects_missing_remotes.rs"]
+mod reglist_ac03_schema_validates_committed_entry_and_rejects_missing_remotes;
+#[path = "reglist_ac04_workflow_checks_manifest_and_schema_on_every_push.rs"]
+mod reglist_ac04_workflow_checks_manifest_and_schema_on_every_push;
+#[path = "reglist_ac06_readme_registry_and_quickstart_links_resolve.rs"]
+mod reglist_ac06_readme_registry_and_quickstart_links_resolve;
 #[path = "regone_ac01_live_compares_registry_to_endpoint.rs"]
 mod regone_ac01_live_compares_registry_to_endpoint;
 #[path = "regone_ac02_live_registry_timeout_is_unknown.rs"]
@@ -1022,19 +1032,3 @@ mod vbd_ac02_three_unvalidated_verbs_now_refuse;
 mod vbd_ac04_owner_registry_cross_contract;
 #[path = "vbd_ac07_every_schema_valid_call_reaches_its_handler.rs"]
 mod vbd_ac07_every_schema_valid_call_reaches_its_handler;
-#[path = "verbfwd_ac01_trigger_set_dotted_forwards.rs"]
-mod verbfwd_ac01_trigger_set_dotted_forwards;
-#[path = "verbfwd_ac02_every_spelling_forwards_identically.rs"]
-mod verbfwd_ac02_every_spelling_forwards_identically;
-#[path = "verbfwd_ac03_tenant_tool_name_wins_over_verb.rs"]
-mod verbfwd_ac03_tenant_tool_name_wins_over_verb;
-#[path = "verbfwd_ac04_admin_verb_refused_never_forwarded.rs"]
-mod verbfwd_ac04_admin_verb_refused_never_forwarded;
-#[path = "verbfwd_ac05_tool_test_forwards_dry_run_or_unverifiable.rs"]
-mod verbfwd_ac05_tool_test_forwards_dry_run_or_unverifiable;
-#[path = "verbfwd_ac06_hint_parity_underscore_form_resolves.rs"]
-mod verbfwd_ac06_hint_parity_underscore_form_resolves;
-#[path = "verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota.rs"]
-mod verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota;
-#[path = "vfxenv_ac01_build_env_inputs_are_not_outputs.rs"]
-mod vfxenv_ac01_build_env_inputs_are_not_outputs;

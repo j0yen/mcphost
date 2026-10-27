@@ -16,6 +16,22 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "verbfwd_ac01_trigger_set_dotted_forwards.rs"]
+mod verbfwd_ac01_trigger_set_dotted_forwards;
+#[path = "verbfwd_ac02_every_spelling_forwards_identically.rs"]
+mod verbfwd_ac02_every_spelling_forwards_identically;
+#[path = "verbfwd_ac03_tenant_tool_name_wins_over_verb.rs"]
+mod verbfwd_ac03_tenant_tool_name_wins_over_verb;
+#[path = "verbfwd_ac04_admin_verb_refused_never_forwarded.rs"]
+mod verbfwd_ac04_admin_verb_refused_never_forwarded;
+#[path = "verbfwd_ac05_tool_test_forwards_dry_run_or_unverifiable.rs"]
+mod verbfwd_ac05_tool_test_forwards_dry_run_or_unverifiable;
+#[path = "verbfwd_ac06_hint_parity_underscore_form_resolves.rs"]
+mod verbfwd_ac06_hint_parity_underscore_form_resolves;
+#[path = "verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota.rs"]
+mod verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota;
+#[path = "vfxenv_ac01_build_env_inputs_are_not_outputs.rs"]
+mod vfxenv_ac01_build_env_inputs_are_not_outputs;
 #[path = "vord_ac01_falsifier.rs"]
 mod vord_ac01_falsifier;
 #[path = "vord_ac02_contract_order_enum.rs"]

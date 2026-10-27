@@ -911,7 +911,115 @@ pub fn is_known_synthorg_client(client_name: &str) -> bool {
 }
 
 /// `tenants.origin`'s synthetic verdict, as [`derive_origin`] writes it.
-pub const ORIGIN_SYNTHETIC: &str = "synthetic";
+pub const ORIGIN_SYNTHETIC: &str = Origin::Synthetic.as_str();
+
+/// PRD-mcphost-external-class-positive-evidence: the ONE closed set of
+/// `origin` values. Every surface that lists them (healthz
+/// `tenants_by_origin`, `mcphost funnel --json`, the funnel breakdown, the
+/// `origin-counts.py` script's keys, the drift guard behind `origin_unknown`)
+/// derives its list from [`Origin::as_str`] through [`ORIGIN_NAMES`], never
+/// from a second hand-written list. `unclassified` is deliberately not a
+/// member: it is only the schema DEFAULT a pre-0012 row carried, and the
+/// tri-state migration leaves no row on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Origin {
+    /// Header, fleet IP, loopback, or a known harness name.
+    Synthetic,
+    /// A host-internal tenant (`perf.rs` first-use `perf-*` tenants).
+    Internal,
+    /// No evidence either way: the default for unknown traffic.
+    Unattributed,
+    /// Earned by positive evidence (claimed e-mail, or a later-day return).
+    External,
+}
+
+impl Origin {
+    /// Declaration order is the order every generated surface lists them.
+    pub const ALL: [Origin; 4] =
+        [Origin::Synthetic, Origin::Internal, Origin::Unattributed, Origin::External];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Origin::Synthetic => "synthetic",
+            Origin::Internal => "internal",
+            Origin::Unattributed => "unattributed",
+            Origin::External => "external",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Origin> {
+        Origin::ALL.into_iter().find(|o| o.as_str() == s)
+    }
+}
+
+/// [`Origin::ALL`] as strings, computed at compile time from
+/// [`Origin::as_str`].
+pub const ORIGIN_NAMES: [&str; Origin::ALL.len()] = {
+    let mut names = [""; Origin::ALL.len()];
+    let mut i = 0;
+    while i < names.len() {
+        names[i] = Origin::ALL[i].as_str();
+        i += 1;
+    }
+    names
+};
+
+/// A return only counts at least this long after signup (6 h), on top of the
+/// UTC-date comparison: a call 15 s after creation across UTC midnight is not
+/// a return.
+pub const RETURN_MIN_SECS: i64 = 21_600;
+
+/// `Some(days)` when `now` is on a UTC date strictly after the tenant's
+/// `created_unix` date AND at least [`RETURN_MIN_SECS`] later (server clock
+/// both sides); `days` is the date difference.
+pub fn returned_days(created_unix: i64, now: i64) -> Option<i64> {
+    let days = now.div_euclid(86_400) - created_unix.div_euclid(86_400);
+    (days >= 1 && now - created_unix >= RETURN_MIN_SECS).then_some(days)
+}
+
+/// `origin_detail` of a tenant no positive evidence has promoted.
+pub const ORIGIN_DETAIL_NO_EVIDENCE: &str = "no-positive-evidence";
+
+/// `tenants_by_origin` for `/healthz` and the funnel: every [`ORIGIN_NAMES`]
+/// key present (0 when absent from `counts`), plus the drift guard
+/// `origin_unknown` -- rows whose origin is outside the enum.
+pub fn origin_counts_json(counts: &[(String, i64)]) -> (serde_json::Value, i64) {
+    let mut by_origin = serde_json::Map::new();
+    for name in ORIGIN_NAMES {
+        by_origin.insert(name.to_string(), serde_json::json!(0));
+    }
+    let mut unknown = 0;
+    for (origin, n) in counts {
+        match Origin::parse(origin) {
+            Some(o) => {
+                by_origin.insert(o.as_str().to_string(), serde_json::json!(*n));
+            }
+            None => unknown += n,
+        }
+    }
+    (serde_json::Value::Object(by_origin), unknown)
+}
+
+/// The keys of [`origin_report_json`], the block `/healthz`, `admin.funnel` and
+/// `mcphost funnel --json` all carry unchanged.
+pub const ORIGIN_REPORT_KEYS: [&str; 5] =
+    ["tenants_by_origin", "external_by_evidence", "tenants_real", "tenants_confirmed", "origin_unknown"];
+
+/// PRD-mcphost-external-class-positive-evidence: the one origin block every
+/// surface reports. `tenants_real` is the `external` count (earned only);
+/// `tenants_confirmed` is `external_by_evidence.claimed` -- a `returned`
+/// tenant is real-looking but never confirmed.
+pub fn origin_report_json(counts: &[(String, i64)], claimed: i64, returned: i64) -> serde_json::Map<String, serde_json::Value> {
+    use serde_json::json;
+    let (by_origin, unknown) = origin_counts_json(counts);
+    let mut out = serde_json::Map::new();
+    out.insert(ORIGIN_REPORT_KEYS[0].to_string(), json!(by_origin));
+    out.insert(ORIGIN_REPORT_KEYS[1].to_string(), json!({"claimed": claimed, "returned": returned}));
+    out.insert(ORIGIN_REPORT_KEYS[2].to_string(), by_origin[Origin::External.as_str()].clone());
+    out.insert(ORIGIN_REPORT_KEYS[3].to_string(), json!(claimed));
+    out.insert(ORIGIN_REPORT_KEYS[4].to_string(), json!(unknown));
+    out
+}
 
 /// PRD-mcphost-admin-funnel-real-surface-recipe-counter P0: the one
 /// "known synthetic tenant" predicate the per-surface funnel and the
@@ -1133,8 +1241,10 @@ pub fn classify_source_class(
     SourceClass::External
 }
 
-/// PRD-mcphost-provenance-audit requirement 1/2: the two-way real/synthetic
-/// split every metrics surface now reports, derived from the same
+/// PRD-mcphost-provenance-audit requirement 1/2 (tri-state since
+/// PRD-mcphost-external-class-positive-evidence: `synthetic`, or
+/// `unattributed` -- never `external` by elimination): the origin verdict
+/// every metrics surface reports, derived from the same
 /// `SourceClass`/`synthetic` classification `classify_source_class` already
 /// computes at write time -- one function, reused by the live signup path,
 /// the migration 0012 backfill rule, and (via the tenant's own
@@ -1149,12 +1259,11 @@ pub fn derive_origin(
         let detail = synthetic_label
             .map(str::to_string)
             .unwrap_or_else(|| source_class.as_str().to_string());
-        ("synthetic", Some(detail))
+        (Origin::Synthetic.as_str(), Some(detail))
     } else {
-        let detail = synthetic_label
-            .map(str::to_string)
-            .unwrap_or_else(|| "external-unverified".to_string());
-        ("external", Some(detail))
+        // PRD-mcphost-external-class-positive-evidence: by-elimination is no
+        // evidence. `external` is earned later (`Db::promote_origin`).
+        (Origin::Unattributed.as_str(), Some(ORIGIN_DETAIL_NO_EVIDENCE.to_string()))
     }
 }
 
