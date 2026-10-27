@@ -1,0 +1,93 @@
+# file:line | reason. Non-literal Command::new( in a test file that writes/copies/chmods
+# files, exempt from the execw::script rule (etxtbsy_ac01_*). A stale line fails the check.
+tests/ccli_ac03_publish_round_trip_key_stays_secret.rs:29 | cargo-built mcphost binary under test, not a file the test writes
+tests/ccli_ac07_completions_rendered_from_the_table.rs:17 | cargo-built mcphost binary under test, not a file the test writes
+tests/ccli_ac07_completions_rendered_from_the_table.rs:112 | system zsh from PATH (syntax check of generated text), not a file the test writes
+tests/ccli_ac07_completions_rendered_from_the_table.rs:128 | system zsh from PATH (syntax check of generated text), not a file the test writes
+tests/cclib_ac03_completions_rendered_from_the_table.rs:17 | cargo-built mcphost binary under test, not a file the test writes
+tests/cclib_ac03_completions_rendered_from_the_table.rs:143 | system zsh from PATH (syntax check of generated text), not a file the test writes
+tests/cclib_ac03_completions_rendered_from_the_table.rs:168 | system zsh from PATH (syntax check of generated text), not a file the test writes
+tests/cdump_ac01_unparsable_committed_contract_refused.rs:36 | cargo-built mcphost binary under test, not a file the test writes
+tests/cishard_ac01_balanced_shards_from_recorded_weights.rs:14 | committed repo script run from the checkout, not written by the test
+tests/cishard_ac01_core_partition_total_disjoint_weighted.rs:15 | committed repo script run from the checkout, not written by the test
+tests/cishard_ac03_run_wall_budget_and_readout.rs:35 | committed repo script run from the checkout, not written by the test
+tests/cishard_ac03_run_wall_budget_and_readout.rs:182 | committed repo script run from the checkout, not written by the test
+tests/cishard_ac03_run_wall_budget_and_readout.rs:215 | committed repo script run from the checkout, not written by the test
+tests/cishard_ac04_core_shard_report_names_failed_test.rs:69 | committed repo script run from the checkout, not written by the test
+tests/cishard_ac06_core_predicted_shard_under_limit.rs:20 | committed repo script run from the checkout, not written by the test
+tests/cishard_ac06_core_predicted_shard_under_limit.rs:36 | committed repo script run from the checkout, not written by the test
+tests/cishard_ac06_core_predicted_shard_under_limit.rs:97 | committed repo script run from the checkout, not written by the test
+tests/cishard_ac07_stale_weight_fails_check.rs:34 | committed repo script run from the checkout, not written by the test
+tests/cishard_ac07_stale_weight_fails_check.rs:49 | committed repo script run from the checkout, not written by the test
+tests/cishard_ac07_stale_weight_fails_check.rs:60 | committed repo script run from the checkout, not written by the test
+tests/cishard_ac07_stale_weight_fails_check.rs:136 | committed repo script run from the checkout, not written by the test
+tests/cishard_ac07_stale_weight_fails_check.rs:171 | committed repo script run from the checkout, not written by the test
+tests/cishard_ac07_stale_weight_fails_check.rs:200 | committed repo script run from the checkout, not written by the test
+tests/cishard_ac07_stale_weight_fails_check.rs:235 | committed repo script run from the checkout, not written by the test
+tests/common/mod.rs:3022 | cargo-built mcphost binary under test, not a file the test writes
+tests/ctrm_ac03_unmarked_reader_of_a_marked_artifact_fails.rs:42 | committed repo script run from the checkout, not written by the test
+tests/ctrm_ac04_unmarked_tree_walk_fails_the_lint.rs:35 | committed repo script run from the checkout, not written by the test
+tests/ctrm_ac07_fix_prints_the_marker_line_and_edits_nothing.rs:29 | committed repo script run from the checkout, not written by the test
+tests/ctrs_ac03_pin_tests_derives_list_from_cargo_toml.rs:29 | committed repo script run from the checkout, not written by the test
+tests/ctrs_ac04_contract_lint_names_unmarked_contract_files.rs:40 | committed repo script run from the checkout, not written by the test
+tests/ctrx_ac02_unmarked_registry_walker_is_flagged.rs:44 | committed repo script run from the checkout, not written by the test
+tests/ctrx_ac04_concat_manifest_dir_literal_is_a_read.rs:38 | committed repo script run from the checkout, not written by the test
+tests/dbmw_ac06_maintenance_run_dry_run.rs:61 | cargo-built mcphost binary under test, not a file the test writes
+tests/dlrec_ac03_llms_txt_recipe_section_generated.rs:31 | cargo-built mcphost binary under test, not a file the test writes
+tests/dxn_ac02_extract_corpus_and_drift_check.rs:18 | cargo-built mcphost binary under test, not a file the test writes
+tests/dxn_ac03_run_corpus_against_fixture_host.rs:24 | cargo-built mcphost binary under test, not a file the test writes
+tests/dxn_ac04_anonymous_and_skip_attributes.rs:32 | cargo-built mcphost binary (env!("CARGO_BIN_EXE_mcphost") held in a local)
+tests/dxn_ac04_anonymous_and_skip_attributes.rs:35 | cargo-built mcphost binary (env!("CARGO_BIN_EXE_mcphost") held in a local)
+tests/dxn_ac05_cross_page_dependency_fails_extract.rs:10 | cargo-built mcphost binary under test, not a file the test writes
+tests/dxn_ac06_gen_llms_full_gates_on_corpus_and_annotates.rs:45 | cargo-built mcphost binary under test, not a file the test writes
+tests/dxn_ac07_unreachable_host_exits_two_after_one_retry.rs:20 | cargo-built mcphost binary under test, not a file the test writes
+tests/dxn_ac07_unreachable_host_exits_two_after_one_retry.rs:30 | cargo-built mcphost binary under test, not a file the test writes
+tests/eprc_ac05_list_contract_prints_runner_constants.rs:10 | cargo-built mcphost binary under test, not a file the test writes
+tests/ercp_ac05_runner_key_is_validated_by_examples_check.rs:26 | cargo-built mcphost binary under test, not a file the test writes
+tests/exmf_ac01_seven_manifests_check_green.rs:28 | cargo-built mcphost binary under test, not a file the test writes
+tests/exmf_ac02_bad_manifest_exits_two_index_untouched.rs:29 | cargo-built mcphost binary under test, not a file the test writes
+tests/exmf_ac04_stale_index_fails_the_build.rs:56 | cargo itself, resolved from the toolchain
+tests/exprp_ac05_pull_writes_the_clone_commits_and_merges.rs:19 | git / system tool by name, passed in by the caller
+tests/exprp_ac05_pull_writes_the_clone_commits_and_merges.rs:63 | cargo-built mcphost binary under test, not a file the test writes
+tests/exprp_ac05_pull_writes_the_clone_commits_and_merges.rs:81 | cargo-built mcphost binary under test, not a file the test writes
+tests/exprp_ac05_pull_writes_the_clone_commits_and_merges.rs:121 | cargo-built mcphost binary under test, not a file the test writes
+tests/fwdtab_ac01_generated_dispatch_table.rs:32 | cargo-built mcphost binary under test, not a file the test writes
+tests/heal_ac01_action_set_single_source.rs:77 | committed repo script run from the checkout, not written by the test
+tests/heal_ac01_action_set_single_source.rs:89 | committed repo script run from the checkout, not written by the test
+tests/kconb_ac01_contract_doc_drift_check.rs:47 | cargo-built mcphost binary under test, not a file the test writes
+tests/kdr_ac02_python_page_tables_generated.rs:31 | cargo-built mcphost binary under test, not a file the test writes
+tests/kdr_ac03_check_names_stale_block.rs:10 | cargo-built mcphost binary under test, not a file the test writes
+tests/lchk_ac02_text_run.rs:49 | cargo-built mcphost binary under test, not a file the test writes
+tests/lchk_ac02_text_run.rs:67 | cargo-built mcphost binary under test, not a file the test writes
+tests/lchk_ac03_json_shape.rs:47 | cargo-built mcphost binary under test, not a file the test writes
+tests/lchk_ac04_render_check_drift.rs:28 | cargo-built mcphost binary under test, not a file the test writes
+tests/lchkb_ac02_malformed_toml_exits_two.rs:13 | cargo-built mcphost binary under test, not a file the test writes
+tests/lchkb_ac02_malformed_toml_exits_two.rs:27 | cargo-built mcphost binary under test, not a file the test writes
+tests/lchkb_ac03_out_dir_rotation.rs:14 | cargo-built mcphost binary under test, not a file the test writes
+tests/mcphost-llms-install-doc_ac05_sitemap_lists_the_page.rs:79 | system python from MCPHOST_DEPLOY_PYTHON or PATH
+tests/mcphost-output-envelope-fields-generated_ac03_committed_contract_carries_set.rs:21 | cargo-built mcphost binary under test, not a file the test writes
+tests/mcphost-output-envelope-fields-generated_ac05_check_names_missing_member.rs:23 | cargo-built mcphost binary under test, not a file the test writes
+tests/mcphost-resource-listing-shape-in-contract_ac03_check_names_the_drifted_resources_key.rs:41 | cargo-built mcphost binary under test, not a file the test writes
+tests/msrvlock_ac01_stale_lock_fails.rs:15 | cargo itself, resolved from the toolchain
+tests/oapib_ac02_gen_openapi_matches_committed.rs:15 | cargo-built mcphost binary under test, not a file the test writes
+tests/pysdk_ac07_ci_diff_fails_on_stale_sdk.rs:27 | cargo-built mcphost binary under test, not a file the test writes
+tests/reglist_ac02_check_detects_drift.rs:27 | cargo-built mcphost binary (env!("CARGO_BIN_EXE_mcphost") held in a local)
+tests/reglist_ac02_check_detects_drift.rs:81 | cargo-built mcphost binary (env!("CARGO_BIN_EXE_mcphost") held in a local)
+tests/reglist_ac02_check_detects_drift.rs:144 | cargo-built mcphost binary (env!("CARGO_BIN_EXE_mcphost") held in a local)
+tests/rpol_ac06_retry_policy_check_names_the_edited_file.rs:39 | cargo-built mcphost binary under test, not a file the test writes
+tests/support/blobguard.rs:111 | the running test binary itself (/proc/self/exe)
+tests/support/mrefu.rs:39 | cargo-built mcphost binary under test, not a file the test writes
+tests/support/mrefu.rs:139 | cargo-built mcphost binary under test, not a file the test writes
+tests/support/msrvlock.rs:121 | committed repo script run from the checkout, not written by the test
+tests/support/xlinks.rs:67 | committed repo script run from the checkout, not written by the test
+tests/support/xlinks_cli.rs:43 | cargo-built mcphost binary under test, not a file the test writes
+tests/syreg_ac02_source_kinds_render_once_everywhere.rs:116 | cargo-built mcphost binary under test, not a file the test writes
+tests/tdf_ac02_lint_names_unknown_field.rs:29 | cargo-built mcphost binary under test, not a file the test writes
+tests/tdf_ac04_pack_rejects_empty.rs:20 | cargo-built mcphost binary under test, not a file the test writes
+tests/tdf_ac07_unpack_unknown_kind.rs:21 | cargo-built mcphost binary under test, not a file the test writes
+tests/tlint_ac06_converted_files_keep_their_budget_numbers.rs:235 | cargo itself, resolved from the toolchain
+tests/tssdk_ac07_ci_diff_fails_on_stale_sdk.rs:27 | cargo-built mcphost binary under test, not a file the test writes
+tests/vord_ac07_removed_order_variant_is_breaking.rs:74 | cargo-built mcphost binary under test, not a file the test writes
+tests/vordb_ac03_removed_order_variant_breaks_contract_check.rs:69 | cargo-built mcphost binary under test, not a file the test writes
+tests/xlinks_ac06_default_set_resolves_and_dead_urls_replaced.rs:50 | committed repo script run from the checkout, not written by the test
+tests/xlinks_r07_report_json.rs:16 | committed repo script run from the checkout, not written by the test

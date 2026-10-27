@@ -8,6 +8,8 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 mod ci_sandbox_support;
+#[path = "support/execw.rs"]
+mod execw;
 #[path = "support/osreach.rs"]
 mod osreach;
 #[path = "support/shape_probe.rs"]
