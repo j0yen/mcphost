@@ -110,7 +110,7 @@ sqlparser = { version = "0.62", features = ["visitor"] }
 # specific release (recorded in `/healthz` via `kinds::wasm::WASM_RUNTIME_VERSION`)
 # rather than a floating range, matching this crate's other embedded-runtime
 # dependencies.
-wasmtime = "48.0.4"
+wasmtime = { version = "48.0.4", default-features = false, features = ["anyhow", "async", "backtrace", "gc", "gc-copying", "gc-drc", "gc-null", "wat", "profiling", "parallel-compilation", "cranelift", "pooling-allocator", "demangle", "addr2line", "coredump", "debug-builtins", "runtime", "component-model", "component-model-async", "threads", "stack-switching", "std", "debug", "compile-time-builtins", "wit-parser"] }
 # A conforming component built by the expected guest toolchain
 # (`cargo component build` against `wasm32-wasip1`/`wasip2`) links wasi:cli
 # imports (exit/environment) even for pure-compute code, purely as an
