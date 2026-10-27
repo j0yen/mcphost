@@ -12509,6 +12509,44 @@ impl McpHostHandler {
         )
     }
 
+    /// PRD-mcphost-external-class-positive-evidence requirement (b): classify
+    /// this authenticated call (peer IP against `MCPHOST_FLEET_IPS` and
+    /// loopback, `X-Mcphost-Synthetic` present) and act on it. A fleet,
+    /// loopback or header-stamped call taints an `unattributed` tenant for
+    /// good; a clean call on a later UTC day (>= 6 h after signup) promotes
+    /// it, and is offered to a `synthetic` tenant only so the refusal is
+    /// counted. Best-effort: never fails the call it describes.
+    async fn note_origin_evidence(&self, parts: &http::request::Parts, tenant: &Tenant, source: &str) {
+        use crate::state::Origin;
+        if tenant.origin != Origin::Unattributed.as_str() && tenant.origin != Origin::Synthetic.as_str() {
+            return;
+        }
+        if source.parse::<std::net::IpAddr>().is_err() {
+            return;
+        }
+        let tainted = crate::state::is_loopback_source_ip(source)
+            || self.state.fleet_ips.contains(source)
+            || synthetic_header(parts).is_some();
+        let result = if tainted {
+            if tenant.origin == Origin::Unattributed.as_str() {
+                self.state.db.stamp_origin_taint(tenant.id).await
+            } else {
+                Ok(())
+            }
+        } else if let Some(days) = tenant.created_unix.and_then(|c| crate::state::returned_days(c, now_unix())) {
+            let evidence = crate::db::OriginEvidence::Returned {
+                days,
+                ip_hash: self.state.secrets.salted_hash(source),
+            };
+            self.state.db.promote_origin(tenant.id, evidence).await.map(|_| ())
+        } else {
+            Ok(())
+        };
+        if let Err(e) = result {
+            tracing::warn!(error = %e, tenant = %tenant.namespace, "failed to record origin evidence");
+        }
+    }
+
     /// PRD-mcphost-same-user-second-agent R2: which client of `tenant` is
     /// calling -- the sibling the join just created, else the sibling whose
     /// `/u/` secret is on the path, else the one this session joined as,
@@ -12960,6 +12998,14 @@ impl McpHostHandler {
         {
             tracing::warn!(code = err.code(), tenant = %tenant.namespace, tool = %body_name, "call refused: tenant banned");
             return Err(err.into_error_data_at(Some(&self.state.public_url)));
+        }
+        // PRD-mcphost-external-class-positive-evidence: a later-day return is
+        // the second way an `unattributed` tenant earns `external`; its own
+        // `Box::pin`'d fn keeps this future under the size bound.
+        if let Auth::Tenant(tenant, _) = &auth
+            && body_name != "signup"
+        {
+            Box::pin(self.note_origin_evidence(parts, tenant, &source)).await;
         }
         // PRD-mcphost-end-user-identity requirement 1/2: resolved once,
         // before dispatch, from either the OAuth bearer this call's `auth`
@@ -13662,14 +13708,15 @@ impl McpHostHandler {
                     )
                     .await;
                     // requirement 2 (AC2): "first successful host.tool_publish"
-                    // -- gated on `origin == "external"` (never fleet, never
-                    // synthetic) and `owner_verified_at` still null;
+                    // -- gated on `origin` being `external` or `unattributed`
+                    // (never fleet, never synthetic: a claim link is what turns
+                    // an unattributed tenant into an external one) and `owner_verified_at` still null;
                     // `mark_claim_nudged_if_unset`'s own atomic `UPDATE ...
                     // WHERE claim_nudged_unix IS NULL` is what makes this
                     // "exactly once ever", not just "once per call".
                     if (body_name == "host.tool_publish" || body_name == "host.tool.publish")
                         && tenant.owner_verified_at.is_none()
-                        && tenant.origin == "external"
+                        && matches!(tenant.origin.as_str(), "external" | "unattributed")
                         && self
                             .state
                             .db

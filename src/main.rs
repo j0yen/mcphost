@@ -1040,6 +1040,7 @@ async fn main() -> anyhow::Result<()> {
             } else if json {
                 let mut body = report.to_json();
                 if let Some(obj) = body.as_object_mut() {
+                    obj.extend(mcphost::funnel::origin_report(&db).await?);
                     obj.insert("by_surface".to_string(), by_surface);
                     obj.insert("probe".to_string(), probe);
                     obj.insert(

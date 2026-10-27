@@ -34,6 +34,16 @@ mod uprg;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
+#[path = "reglist_ac01_manifest_fields_match_cargo_and_endpoint.rs"]
+mod reglist_ac01_manifest_fields_match_cargo_and_endpoint;
+#[path = "reglist_ac02_check_detects_drift.rs"]
+mod reglist_ac02_check_detects_drift;
+#[path = "reglist_ac03_schema_validates_committed_entry_and_rejects_missing_remotes.rs"]
+mod reglist_ac03_schema_validates_committed_entry_and_rejects_missing_remotes;
+#[path = "reglist_ac04_workflow_checks_manifest_and_schema_on_every_push.rs"]
+mod reglist_ac04_workflow_checks_manifest_and_schema_on_every_push;
+#[path = "reglist_ac06_readme_registry_and_quickstart_links_resolve.rs"]
+mod reglist_ac06_readme_registry_and_quickstart_links_resolve;
 #[path = "regone_ac01_live_compares_registry_to_endpoint.rs"]
 mod regone_ac01_live_compares_registry_to_endpoint;
 #[path = "regone_ac02_live_registry_timeout_is_unknown.rs"]
@@ -1030,9 +1040,3 @@ mod vaultst_ac07_provider_set_presets_fill_urls;
 mod vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green;
 #[path = "vaultst_ac09_live_vault_status_trailer.rs"]
 mod vaultst_ac09_live_vault_status_trailer;
-#[path = "vbd_ac02_three_unvalidated_verbs_now_refuse.rs"]
-mod vbd_ac02_three_unvalidated_verbs_now_refuse;
-#[path = "vbd_ac04_owner_registry_cross_contract.rs"]
-mod vbd_ac04_owner_registry_cross_contract;
-#[path = "vbd_ac07_every_schema_valid_call_reaches_its_handler.rs"]
-mod vbd_ac07_every_schema_valid_call_reaches_its_handler;

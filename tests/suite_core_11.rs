@@ -48,6 +48,16 @@ mod mcphost_chatgpt_submission_pack_ac04_chatgpt_surface_everywhere;
 mod mcphost_chatgpt_submission_pack_ac05_chatgpt_profile_empty_tenant_table;
 #[path = "mcphost-chatgpt-submission-pack_ac06_reviewer_notes_first_call.rs"]
 mod mcphost_chatgpt_submission_pack_ac06_reviewer_notes_first_call;
+#[path = "mcphost-external-class-positive-evidence_ac01_unattributed_default.rs"]
+mod mcphost_external_class_positive_evidence_ac01_unattributed_default;
+#[path = "mcphost-external-class-positive-evidence_ac02_claim_promotes.rs"]
+mod mcphost_external_class_positive_evidence_ac02_claim_promotes;
+#[path = "mcphost-external-class-positive-evidence_ac03_later_day_return_promotes.rs"]
+mod mcphost_external_class_positive_evidence_ac03_later_day_return_promotes;
+#[path = "mcphost-external-class-positive-evidence_ac04_synthetic_never_promoted.rs"]
+mod mcphost_external_class_positive_evidence_ac04_synthetic_never_promoted;
+#[path = "mcphost-external-class-positive-evidence_ac05_migration_backfill.rs"]
+mod mcphost_external_class_positive_evidence_ac05_migration_backfill;
 #[path = "mcphost-install-links-more-clients_ac01_twelve_surfaces.rs"]
 mod mcphost_install_links_more_clients_ac01_twelve_surfaces;
 #[path = "mcphost-install-links-more-clients_ac02_command_artefacts_carry_url_once.rs"]
@@ -1018,13 +1028,3 @@ mod refrow_ac06_unwritable_db_refusal_still_returned;
 mod refst_ac01_unimplemented_method_status_by_revision;
 #[path = "refst_ac03_refusal_status_rule_and_batch.rs"]
 mod refst_ac03_refusal_status_rule_and_batch;
-#[path = "reglist_ac01_manifest_fields_match_cargo_and_endpoint.rs"]
-mod reglist_ac01_manifest_fields_match_cargo_and_endpoint;
-#[path = "reglist_ac02_check_detects_drift.rs"]
-mod reglist_ac02_check_detects_drift;
-#[path = "reglist_ac03_schema_validates_committed_entry_and_rejects_missing_remotes.rs"]
-mod reglist_ac03_schema_validates_committed_entry_and_rejects_missing_remotes;
-#[path = "reglist_ac04_workflow_checks_manifest_and_schema_on_every_push.rs"]
-mod reglist_ac04_workflow_checks_manifest_and_schema_on_every_push;
-#[path = "reglist_ac06_readme_registry_and_quickstart_links_resolve.rs"]
-mod reglist_ac06_readme_registry_and_quickstart_links_resolve;

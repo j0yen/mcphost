@@ -11,11 +11,19 @@ mod common;
 mod assertion;
 #[path = "support/oauth.rs"]
 mod oauth;
+#[path = "support/vbd_calls.rs"]
+mod vbd_calls;
 #[path = "support/xlinks.rs"]
 mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "vbd_ac02_three_unvalidated_verbs_now_refuse.rs"]
+mod vbd_ac02_three_unvalidated_verbs_now_refuse;
+#[path = "vbd_ac04_owner_registry_cross_contract.rs"]
+mod vbd_ac04_owner_registry_cross_contract;
+#[path = "vbd_ac07_every_schema_valid_call_reaches_its_handler.rs"]
+mod vbd_ac07_every_schema_valid_call_reaches_its_handler;
 #[path = "verbfwd_ac01_trigger_set_dotted_forwards.rs"]
 mod verbfwd_ac01_trigger_set_dotted_forwards;
 #[path = "verbfwd_ac02_every_spelling_forwards_identically.rs"]

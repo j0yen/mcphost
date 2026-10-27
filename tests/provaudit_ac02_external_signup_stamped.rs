@@ -1,6 +1,6 @@
 //! PRD-mcphost-provenance-audit
 //! AC2 — Given a signup from a public IP with no synthetic marker, When it
-//! lands, Then `origin = external` and `/healthz`'s `tenants.external`
+//! lands, Then `origin = unattributed` (was `external` before PRD-mcphost-external-class-positive-evidence) and `/healthz`'s `tenants.external`
 //! count increments by exactly 1.
 
 use crate::common;
@@ -46,7 +46,10 @@ async fn external_signup_stamps_origin_external_and_increments_healthz_external(
         .await
         .expect("query")
         .expect("tenant exists");
-    assert_eq!(tenant.origin, "external");
+    // PRD-mcphost-external-class-positive-evidence: by elimination is no
+    // longer evidence, so a bare public-IP signup lands `unattributed`
+    // (`tenants.external` is the legacy not-ours count and still moves).
+    assert_eq!(tenant.origin, "unattributed");
 
     let after = healthz(&server.base_url).await;
     let external_after = after["tenants"]["external"].as_i64().unwrap();

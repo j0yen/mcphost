@@ -237,6 +237,10 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // "tblurlp-live-script" lane (routes scripts/live/tblurlp_import_live.py
     // to the tblurlp_ac03 proof tests) -- an intended addition since the
     // baseline.
+    // PRD-mcphost-external-class-positive-evidence added its own
+    // "origin-counts-script" lane (routes scripts/ops/origin-counts.py to the
+    // AC6 and AC7 proof tests) -- an intended addition since the baseline, not
+    // drift.
     assert_eq!(
         added,
         vec![
@@ -265,6 +269,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "loop-config",
             "oauthconf-data",
             "openapi-doc",
+            "origin-counts-script",
             "osrx-live-script",
             "output-schemas",
             "plugin",
@@ -283,7 +288,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
         ],
         "only admin-schemas, blobguard-fixtures, capabilities-wire-check, checkcompat-race-soak, child-proc-lint, contracts, docs-links, docsearch-fixtures, \
          event-trigger-self-test-fixtures, example-manifest, examples, flake-lint, heal-config, heal-docs, host-pressure-doc-check, launch-docs, \
-         loop-config, oauthconf-data, osrx-live-script, output-schemas, plugin, registry-manifest, required-checks, sandbox-api-docs, sdk-python, sharing-docs, \
+         loop-config, oauthconf-data, origin-counts-script, osrx-live-script, output-schemas, plugin, registry-manifest, required-checks, sandbox-api-docs, sdk-python, sharing-docs, \
          spec-fields-doc-check, tblurlp-live-script, tool-naming, vendor, and wasm-fixtures may have been added since \
          {BASELINE_REV}"
     );
