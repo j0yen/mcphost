@@ -21,7 +21,7 @@ fn block<'a>(s: &'a str, start: &str, end: &str) -> &'a str {
     &s[a..b]
 }
 
-fn without<'a>(s: &str, blocks: &[(&str, &str)]) -> String {
+fn without(s: &str, blocks: &[(&str, &str)]) -> String {
     let mut out = s.to_string();
     for (start, end) in blocks {
         let a = out.find(start).unwrap();

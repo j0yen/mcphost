@@ -3349,26 +3349,6 @@ crate::err_code! {
 }
 
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn synthetic_header_validation() {
-        assert_eq!(validate_synthetic_header(None), None);
-        assert_eq!(validate_synthetic_header(Some("")), None);
-        assert_eq!(
-            validate_synthetic_header(Some("synthorg:run-a")),
-            Some("synthorg:run-a".to_string())
-        );
-        assert_eq!(validate_synthetic_header(Some("operator")), Some("operator".to_string()));
-        // Invalid input degrades to null (and logs a warning -- see the
-        // integration test AC3 for the warning itself), never an error.
-        assert_eq!(validate_synthetic_header(Some("Bad Label!")), None);
-        assert_eq!(validate_synthetic_header(Some(" ")), None);
-    }
-}
-
 /// The invalidation step: phase 1 marks, the teardown runs, phase 2 makes the
 /// reason terminal and journals it, then one notice goes to the warn address.
 async fn invalidate_external_unclaimed(
@@ -3504,4 +3484,24 @@ async fn pre_floor_block(state: &AppState, windows: crate::retention::ExternalWi
             .collect();
     }
     Ok(block)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn synthetic_header_validation() {
+        assert_eq!(validate_synthetic_header(None), None);
+        assert_eq!(validate_synthetic_header(Some("")), None);
+        assert_eq!(
+            validate_synthetic_header(Some("synthorg:run-a")),
+            Some("synthorg:run-a".to_string())
+        );
+        assert_eq!(validate_synthetic_header(Some("operator")), Some("operator".to_string()));
+        // Invalid input degrades to null (and logs a warning -- see the
+        // integration test AC3 for the warning itself), never an error.
+        assert_eq!(validate_synthetic_header(Some("Bad Label!")), None);
+        assert_eq!(validate_synthetic_header(Some(" ")), None);
+    }
 }

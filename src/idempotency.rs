@@ -245,19 +245,6 @@ crate::err_code! {
 }
 
 
-#[cfg(test)]
-mod intern_tests {
-    use super::intern;
-
-    #[test]
-    fn replayed_codes_round_trip_and_unknown_reads_internal() {
-        assert_eq!(intern("tool_timeout"), "tool_timeout");
-        assert_eq!(intern("invalid_params"), "invalid_params");
-        assert_eq!(intern("idempotency_conflict"), "idempotency_conflict");
-        assert_eq!(intern("no_such_code_ever"), "internal");
-    }
-}
-
 fn error_from_json(v: &Value) -> AppError {
     let code = v["code"].as_str().unwrap_or("internal");
     AppError::Structured {
@@ -399,5 +386,18 @@ impl Drop for ClaimGuard {
                 let _ = db.idem_finish(tenant_id, &tool, &key, &Err(AppError::CallTimeout(0)), None).await;
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod intern_tests {
+    use super::intern;
+
+    #[test]
+    fn replayed_codes_round_trip_and_unknown_reads_internal() {
+        assert_eq!(intern("tool_timeout"), "tool_timeout");
+        assert_eq!(intern("invalid_params"), "invalid_params");
+        assert_eq!(intern("idempotency_conflict"), "idempotency_conflict");
+        assert_eq!(intern("no_such_code_ever"), "internal");
     }
 }

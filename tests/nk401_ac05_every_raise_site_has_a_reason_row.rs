@@ -101,7 +101,7 @@ fn nk401_ac05() {
 
     // Each table row is actually used by a site (no stale rows).
     for (file, variant, _) in SITES {
-        let needle = format!("TenantKeyMissing(");
+        let needle = "TenantKeyMissing(".to_string();
         let used = files.iter().filter(|(p, _)| p.ends_with(file)).any(|(_, t)| {
             t.lines().any(|l| l.contains(&needle) && l.contains(&format!("Reason::{variant}")))
         });

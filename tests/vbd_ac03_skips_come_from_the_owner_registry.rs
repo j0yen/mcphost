@@ -17,7 +17,8 @@ use serde_json::{Value, json};
 #[test]
 fn vbd_ac03_the_registry_holds_what_paged_and_errors_export() {
     let owners = arg_owners();
-    let triples: Vec<(&str, &[&str], &[&str])> = owners.iter().map(|o| (o.path, o.keywords, o.codes)).collect();
+    type OwnerTriple<'a> = (&'a str, &'a [&'a str], &'a [&'a str]);
+    let triples: Vec<OwnerTriple> = owners.iter().map(|o| (o.path, o.keywords, o.codes)).collect();
     // Every owner a module exports is in the registry (paged and errors, then the
     // plan-ceiling and spec-test owners), in that order and nothing else.
     let exported = mcphost::paged::ARG_OWNERS.len()

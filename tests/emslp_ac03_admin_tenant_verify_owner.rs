@@ -17,7 +17,9 @@ use serde_json::json;
 const OWNER: &str = "owner+probe@mcphost.dev";
 
 /// `(owner_email, owner_verified_at, owner_method, [(subject, action)])` straight from SQLite.
-fn snapshot(server: &TestServer, ns: &str) -> (Option<String>, Option<i64>, Option<String>, Vec<(String, String)>) {
+type Snapshot = (Option<String>, Option<i64>, Option<String>, Vec<(String, String)>);
+
+fn snapshot(server: &TestServer, ns: &str) -> Snapshot {
     let conn = rusqlite::Connection::open(server.data_dir.0.join("mcphost.db")).expect("open raw db");
     let (id, email, at, method): (i64, Option<String>, Option<i64>, Option<String>) = conn
         .query_row(

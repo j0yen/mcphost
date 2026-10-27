@@ -28,7 +28,7 @@ fn defining_marked_sources() -> Vec<String> {
     let mut out = Vec::new();
     for entry in fs::read_dir(root().join("tests")).unwrap() {
         let p = entry.unwrap().path();
-        if p.extension().map_or(true, |e| e != "rs") {
+        if p.extension().is_none_or(|e| e != "rs") {
             continue;
         }
         let src = fs::read_to_string(&p).unwrap();

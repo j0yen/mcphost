@@ -42,7 +42,7 @@ async fn three_of_ten_sessions_opening_with_resume_is_a_rate_of_point_three() {
     }
     // A call older than the window is outside the 7 days.
     insert_call(&conn, tenant_id, "host.resume", now_unix() - 8 * 24 * 3600);
-    assert!(12 * 3600 > SESSION_GAP_S);
+    const { assert!(12 * 3600 > SESSION_GAP_S) };
 
     let out = extract_structured(&client.tools_call("host.usage", json!({})).await.expect("host.usage"));
     assert_eq!(out["resume"]["first_call_rate_7d"], json!(0.3), "{}", out["resume"]);

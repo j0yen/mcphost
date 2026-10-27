@@ -83,7 +83,7 @@ async fn soff_matrix() {
             shape.name()
         );
         assert!(
-            first.get("already_offboarded").map_or(true, |v| v == &json!(false)),
+            first.get("already_offboarded").is_none_or(|v| v == &json!(false)),
             "shape={} first call must not have already_offboarded=true: {first}",
             shape.name()
         );

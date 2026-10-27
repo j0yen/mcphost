@@ -51,7 +51,7 @@ fn ctrm_ac02_gen_check_passes_and_each_file_is_in_exactly_one_listed_contract_su
         for entry in fs::read_dir(root().join("tests")).unwrap() {
             let p = entry.unwrap().path();
             let stem = p.file_stem().unwrap().to_string_lossy().into_owned();
-            if !stem.starts_with("suite_") || p.extension().map_or(true, |e| e != "rs") {
+            if !stem.starts_with("suite_") || p.extension().is_none_or(|e| e != "rs") {
                 continue;
             }
             if fs::read_to_string(&p).unwrap().contains(&needle) {
