@@ -12,6 +12,9 @@ ignore = [
   # RUSTSEC-2026-0316/-0314 (wasmtime/wasmtime-wasi 46.0.3 gate-debt from
   # run 300) removed here: PR fix/wasmtime-rustsec-2026-0321 (2026-10-02)
   # bumps both crates to 48.0.4, which is >=48.0.3 and resolves them too.
+  { id = "RUSTSEC-2026-0391", reason = "no patched version reachable as of 2026-10-27; zstd 0.13.3 (needs >=0.14.3) via wasmtime-internal-cache 48.0.7 -> wasmtime; recheck by 2026-11-10" },
+  { id = "RUSTSEC-2026-0398", reason = "no patched version reachable as of 2026-10-27; zstd-safe 7.3.0 (needs >=8.2.0) via wasmtime-internal-cache 48.0.7 -> wasmtime; recheck by 2026-11-10" },
+  { id = "RUSTSEC-2026-0403", reason = "no patched version reachable as of 2026-10-27; zstd-safe 7.3.0 (needs >=8.2.0) via wasmtime-internal-cache 48.0.7 -> wasmtime; recheck by 2026-11-10" },
 ]
 
 [licenses]
