@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-table-import-url-live-proof.md (test_prefix: tblurlp)",
+  "ac_test_map_prd": "PRD-mcphost-external-class-positive-evidence.md (test_prefix: mcphost-external-class-positive-evidence)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,11 +28,14 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/tblurlp_ac01_sample_csv_route.rs",
-    "AC2": "tests/tblurlp_ac02_example_urls_have_routes.rs",
-    "AC3": "tests/tblurlp_ac03_driver_on_loopback.rs",
-    "AC4": "deferred: Live (prod; evidence: ~/.local/state/mcphost-live/tblurlp-ac04-results.jsonl last row summary fixture_http=200 rows_imported=1000 count=1000 is_error=0 offboarded=1)",
-    "AC5": "tests/tblurlp_ac05_recipe_one_call_form.rs"
+    "AC1": "tests/mcphost-external-class-positive-evidence_ac01_unattributed_default.rs",
+    "AC2": "tests/mcphost-external-class-positive-evidence_ac02_claim_promotes.rs",
+    "AC3": "tests/mcphost-external-class-positive-evidence_ac03_later_day_return_promotes.rs",
+    "AC4": "tests/mcphost-external-class-positive-evidence_ac04_synthetic_never_promoted.rs",
+    "AC5": "tests/mcphost-external-class-positive-evidence_ac05_migration_backfill.rs",
+    "AC6": "tests/mcphost-external-class-positive-evidence_ac06_four_surfaces_agree.rs",
+    "AC7": "tests/mcphost-external-class-positive-evidence_ac07_origin_set_generated.rs",
+    "AC8": "deferred: Live (prod; evidence: the script run on mcphost-1 sourcing /etc/mcphost/env prints the six counts, pasted into the run note)"
   },
   "ac_test_map_by_prefix": {
     "mcphost-resource-listing-shape-in-contract": {
@@ -2520,6 +2523,14 @@
       "AC6": "tests/tenx_ac06_doctor_reports_tenant_lifecycle.rs",
       "AC7": "tests/tenx_ac07_admin_lists_expiry_and_funnel_counts_it.rs",
       "AC8": "deferred: Live (prod; evidence: curl -sS https://mcphost.dev/contract.json | jq -e '.tenant_lifecycle.disabled_reason == \"idle_expired\"')"
+    },
+    "tblurlp": {
+      "_prd": "PRD-mcphost-table-import-url-live-proof.md (test_prefix: tblurlp)",
+      "AC1": "tests/tblurlp_ac01_sample_csv_route.rs",
+      "AC2": "tests/tblurlp_ac02_example_urls_have_routes.rs",
+      "AC3": "tests/tblurlp_ac03_driver_on_loopback.rs",
+      "AC4": "deferred: Live (prod; evidence: ~/.local/state/mcphost-live/tblurlp-ac04-results.jsonl last row summary fixture_http=200 rows_imported=1000 count=1000 is_error=0 offboarded=1)",
+      "AC5": "tests/tblurlp_ac05_recipe_one_call_form.rs"
     }
   }
 }

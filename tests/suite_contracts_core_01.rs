@@ -153,6 +153,10 @@ mod kdr_ac02_python_page_tables_generated;
 mod kdr_ac03_check_names_stale_block;
 #[path = "lanecov_ac07_docs_document_adding_a_lane.rs"]
 mod lanecov_ac07_docs_document_adding_a_lane;
+#[path = "mcphost-external-class-positive-evidence_ac06_four_surfaces_agree.rs"]
+mod mcphost_external_class_positive_evidence_ac06_four_surfaces_agree;
+#[path = "mcphost-external-class-positive-evidence_ac07_origin_set_generated.rs"]
+mod mcphost_external_class_positive_evidence_ac07_origin_set_generated;
 #[path = "mcphost-llms-install-doc_ac05_sitemap_lists_the_page.rs"]
 mod mcphost_llms_install_doc_ac05_sitemap_lists_the_page;
 #[path = "mcphost_chain_run_lineage_ac13_deferral_is_justified.rs"]
