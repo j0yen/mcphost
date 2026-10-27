@@ -1,6 +1,7 @@
 //! AC7 (P0) -- PRD-mcphost-resources-for-tenant-data. Given `capabilities.rs`,
 //! When `initialize` is answered, Then `capabilities.resources` is
-//! `{listChanged: true, subscribe: true}` and `/capabilities.json` shows
+//! `{subscribe: true}` (PRD-mcphost-subscriptions-listen R11b turned
+//! `listChanged` off: no listen path carries resource list changes) and `/capabilities.json` shows
 //! `resources.implemented == true`, `probe == "resources"`.
 
 use crate::common::{McpClient, TestServer};
@@ -12,7 +13,7 @@ async fn mres_ac07_initialize_and_capabilities_json_say_resources_is_implemented
     let init = McpClient::new(&server.base_url).initialize().await;
     assert_eq!(
         init["result"]["capabilities"]["resources"],
-        json!({"listChanged": true, "subscribe": true}),
+        json!({"subscribe": true}),
         "{init}"
     );
 
@@ -25,7 +26,7 @@ async fn mres_ac07_initialize_and_capabilities_json_say_resources_is_implemented
     let row = &doc["primitives"]["resources"];
     assert_eq!(row["implemented"], true, "{doc}");
     assert_eq!(row["probe"], "resources", "{doc}");
-    assert_eq!(row["list_changed"], true, "{doc}");
+    assert_eq!(row["list_changed"], false, "{doc}");
     assert_eq!(row["subscribe"], true, "{doc}");
     assert_eq!(row["ceiling"], "resources_max", "{doc}");
 }

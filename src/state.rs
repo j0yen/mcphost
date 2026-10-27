@@ -511,6 +511,10 @@ pub struct AppState {
     /// `resources/subscribe` entries, bounded per tenant by
     /// `Plan::resources_max`.
     pub resource_subs: crate::resources::Subscriptions,
+    /// PRD-mcphost-subscriptions-listen R3: the open `subscriptions/listen`
+    /// streams, per tenant. In shared state because rmcp builds a new handler
+    /// for every POST.
+    pub listen_hub: crate::listen::ListenHub,
 }
 
 /// requirement 6's own default: 60 calls per client IP per minute.

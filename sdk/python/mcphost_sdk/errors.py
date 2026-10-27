@@ -871,6 +871,11 @@ class LineageUnavailable(MCPHostError):
         super().__init__("lineage_unavailable", message, data)
 
 
+class ListenStreamsMax(MCPHostError):
+    def __init__(self, message: str, data: Optional[ErrorData] = None) -> None:
+        super().__init__("listen_streams_max", message, data)
+
+
 class MeshFrozen(MCPHostError):
     def __init__(self, message: str, data: Optional[ErrorData] = None) -> None:
         super().__init__("mesh_frozen", message, data)
@@ -1812,6 +1817,7 @@ ERRORS_BY_CODE: dict[str, type[MCPHostError]] = {
     "lineage_blocked": LineageBlocked,
     "lineage_handle_not_found": LineageHandleNotFound,
     "lineage_unavailable": LineageUnavailable,
+    "listen_streams_max": ListenStreamsMax,
     "mesh_frozen": MeshFrozen,
     "meter_emit_locked": MeterEmitLocked,
     "method_server_to_client": MethodServerToClient,
