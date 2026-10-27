@@ -335,7 +335,7 @@ pub enum AppError {
     #[error("forbidden")]
     Forbidden,
     #[error("tenant is disabled")]
-    TenantDisabled { disabled_reason: Option<String> },
+    TenantDisabled { disabled_reason: Option<String>, claim_url: Option<String> },
     #[error("signup rate limit exceeded for this source; try again later")]
     RateLimited,
     #[error("tool not found: {0}")]
@@ -585,7 +585,7 @@ pub fn all_variants_for_test() -> Vec<AppError> {
         AppError::TenantKeyMissing(Reason::Anonymous),
         AppError::TenantKeyInvalid,
         AppError::Forbidden,
-        AppError::TenantDisabled { disabled_reason: None },
+        AppError::TenantDisabled { disabled_reason: None, claim_url: None },
         AppError::RateLimited,
         AppError::ToolNotFound("t.no_such".into()),
         AppError::TenantNotFound(s()),
@@ -1163,6 +1163,7 @@ impl AppError {
                 // already uses for the analogous KV-store rejections.
                 "table_schema_violation" | "table_not_found" | "table_query_rejected"
                 | "table_bound_exceeded" | "table_already_exists" => ErrorCode::INVALID_PARAMS,
+                c if c == crate::tables::TABLE_ROW_CONFLICT => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-document-store P0 requirements 2-5: a too-large
                 // put, an unsupported mime, or either quota overrun are all
                 // caller-input problems, same INVALID_PARAMS bucket as the
@@ -1505,8 +1506,13 @@ impl AppError {
         // R6 (PRD-mcphost-self-offboard-success-envelope): a disabled tenant
         // error carries its reason so callers can distinguish self_offboard
         // from admin_disable.
-        if let AppError::TenantDisabled { disabled_reason: Some(reason) } = &self {
+        if let AppError::TenantDisabled { disabled_reason: Some(reason), claim_url } = &self {
             obj.insert("disabled_reason".to_string(), json!(reason));
+            // PRD-mcphost-external-unclaimed-tenant-expiry: the claim link of
+            // a tenant invalidated as unclaimed, for its credential's holder.
+            if let Some(claim_url) = claim_url {
+                obj.insert("claim_url".to_string(), json!(claim_url));
+            }
         }
         // PRD-mcphost-unknown-kind-routes-to-recipe requirement 4 (AC4):
         // `registered`/`aliases` ride straight through from the variant;
@@ -2332,6 +2338,11 @@ impl From<rusqlite::Error> for AppError {
         // error stays exactly what it was (AC5: "the caller receives the
         // existing structured error").
         crate::db::note_rusqlite_error(&e);
+        if let rusqlite::Error::SqliteFailure(f, msg) = &e
+            && f.code == rusqlite::ffi::ErrorCode::ConstraintViolation
+        {
+            return constraint_conflict(f.extended_code, msg.as_deref().unwrap_or(""));
+        }
         // PRD-mcphost-dry-run-inside-savepoint-for-transactional-verbs R5:
         // the one refusal SQLite gives a raw `BEGIN` inside an open
         // transaction. rusqlite 0.32 has no `ErrorCode` for SQLITE_ERROR
@@ -2350,6 +2361,34 @@ impl From<rusqlite::Error> for AppError {
             };
         }
         AppError::Storage(e.to_string())
+    }
+}
+
+/// PRD-mcphost-table-conflict-structured-error: a SQLite constraint violation
+/// is the caller's data, never a host fault. The extended result code names
+/// the constraint; SQLite's stable `<KIND> constraint failed: <table>.<column>`
+/// text supplies table and column (either may be absent, e.g. a CHECK).
+fn constraint_conflict(extended_code: i32, sqlite_msg: &str) -> AppError {
+    let constraint = match extended_code {
+        2067 => "unique",
+        1555 => "primary_key",
+        1299 => "not_null",
+        275 => "check",
+        _ => "other",
+    };
+    let target = sqlite_msg
+        .split_once("constraint failed: ")
+        .map(|(_, t)| t.split(',').next().unwrap_or(t).trim())
+        .unwrap_or("");
+    let (table, column) = match target.rsplit_once('.') {
+        Some((t, c)) => (Some(t), Some(c)),
+        None => (None, None),
+    };
+    let on = column.map(|c| format!(" on {c}")).unwrap_or_default();
+    AppError::Structured {
+        code: crate::tables::TABLE_ROW_CONFLICT,
+        message: format!("row conflicts{on} ({constraint})"),
+        data: serde_json::json!({"constraint": constraint, "table": table, "column": column}),
     }
 }
 

@@ -16,6 +16,58 @@ mod xlinks;
 #[path = "support/xlinks_cli.rs"]
 mod xlinks_cli;
 
+#[path = "verbfwd_ac01_trigger_set_dotted_forwards.rs"]
+mod verbfwd_ac01_trigger_set_dotted_forwards;
+#[path = "verbfwd_ac02_every_spelling_forwards_identically.rs"]
+mod verbfwd_ac02_every_spelling_forwards_identically;
+#[path = "verbfwd_ac03_tenant_tool_name_wins_over_verb.rs"]
+mod verbfwd_ac03_tenant_tool_name_wins_over_verb;
+#[path = "verbfwd_ac04_admin_verb_refused_never_forwarded.rs"]
+mod verbfwd_ac04_admin_verb_refused_never_forwarded;
+#[path = "verbfwd_ac05_tool_test_forwards_dry_run_or_unverifiable.rs"]
+mod verbfwd_ac05_tool_test_forwards_dry_run_or_unverifiable;
+#[path = "verbfwd_ac06_hint_parity_underscore_form_resolves.rs"]
+mod verbfwd_ac06_hint_parity_underscore_form_resolves;
+#[path = "verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota.rs"]
+mod verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota;
+#[path = "vfxenv_ac01_build_env_inputs_are_not_outputs.rs"]
+mod vfxenv_ac01_build_env_inputs_are_not_outputs;
+#[path = "vord_ac01_falsifier.rs"]
+mod vord_ac01_falsifier;
+#[path = "vord_ac02_contract_order_enum.rs"]
+mod vord_ac02_contract_order_enum;
+#[path = "vord_ac03_cursor_bound_to_order.rs"]
+mod vord_ac03_cursor_bound_to_order;
+#[path = "vord_ac04_order_by_from_enum.rs"]
+mod vord_ac04_order_by_from_enum;
+#[path = "vord_ac05_runs_list_filters_in_sql.rs"]
+mod vord_ac05_runs_list_filters_in_sql;
+#[path = "vord_ac06_concurrent_inserts_every_paged_verb.rs"]
+mod vord_ac06_concurrent_inserts_every_paged_verb;
+#[path = "vord_ac07_removed_order_variant_is_breaking.rs"]
+mod vord_ac07_removed_order_variant_is_breaking;
+#[path = "vordb_ac01_runs_verdict_filter_pages_in_sql.rs"]
+mod vordb_ac01_runs_verdict_filter_pages_in_sql;
+#[path = "vordb_ac02_every_paged_verb_walks_clean.rs"]
+mod vordb_ac02_every_paged_verb_walks_clean;
+#[path = "vordb_ac03_removed_order_variant_breaks_contract_check.rs"]
+mod vordb_ac03_removed_order_variant_breaks_contract_check;
+#[path = "wake_ac1_message_trigger_fires_run.rs"]
+mod wake_ac1_message_trigger_fires_run;
+#[path = "wake_ac2_from_filter.rs"]
+mod wake_ac2_from_filter;
+#[path = "wake_ac3_dedupe.rs"]
+mod wake_ac3_dedupe;
+#[path = "wake_ac4_jobs_concurrent_rejects.rs"]
+mod wake_ac4_jobs_concurrent_rejects;
+#[path = "wake_ac5_pause_resume.rs"]
+mod wake_ac5_pause_resume;
+#[path = "wake_ac6_msg_wait.rs"]
+mod wake_ac6_msg_wait;
+#[path = "wake_ac7_trigger_test_synthetic_envelope.rs"]
+mod wake_ac7_trigger_test_synthetic_envelope;
+#[path = "wake_ac8_replay.rs"]
+mod wake_ac8_replay;
 #[path = "wasmkind_ac01_echo_component_calls_and_meters.rs"]
 mod wasmkind_ac01_echo_component_calls_and_meters;
 #[path = "wasmkind_ac02_publish_validation_errors.rs"]

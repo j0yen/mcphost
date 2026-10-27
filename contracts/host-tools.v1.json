@@ -330,10 +330,53 @@
     "duration_ms",
     "state"
   ],
+  "resources": {
+    "name_field": {
+      "doc": "doc:{id}",
+      "run": "run_log:{id}",
+      "table": "table:{name}",
+      "tool": "tool_spec:{name}"
+    },
+    "title_field": {
+      "doc": "title"
+    },
+    "uri_scheme": {
+      "doc": "mcphost://doc/{id}",
+      "run": "mcphost://run/{id}/log",
+      "table": "mcphost://table/{name}",
+      "tool": "mcphost://tool/{name}/spec"
+    }
+  },
   "tenant_lifecycle": {
     "default_days": 1,
     "disabled_reason": "idle_expired",
     "env_var": "MCPHOST_RETENTION_SYNTHETIC_IMPLICIT_TENANT_IDLE_DAYS",
+    "external_unclaimed": {
+      "disabled_reason": "unclaimed_expired",
+      "idle_days": 30,
+      "idle_days_env": "MCPHOST_RETENTION_EXTERNAL_UNCLAIMED_TENANT_IDLE_DAYS",
+      "purge_grace_days": 14,
+      "selector": {
+        "billing_ref": null,
+        "claimed": false,
+        "idle_clock_starts_no_earlier_than_policy_floor": true,
+        "origin": "external",
+        "paid": false,
+        "plan": "free",
+        "stripe_customer_id": null,
+        "synthetic": null
+      },
+      "stages": [
+        "warned",
+        "warn_no_address",
+        "warn_failed",
+        "invalidated",
+        "notice_failed",
+        "restored",
+        "purged"
+      ],
+      "warn_lead_days": 10
+    },
     "policy": "synthetic_implicit_tenants",
     "selector": {
       "billing_ref": null,
@@ -358,6 +401,20 @@
           },
           "source": {
             "description": "Which refusal started this checkout (e.g. calls_per_day, tools_max, secrets_max), or manual; default: manual. Echoed back in the response and recorded on the eventual payment's ledger row.",
+            "enum": [
+              "calls_per_day",
+              "tools_max",
+              "secrets_max",
+              "max_child_calls",
+              "max_est_tokens",
+              "max_tool_latency_ms",
+              "max_wall_ms",
+              "child_calls",
+              "est_tokens",
+              "tool_latency_ms",
+              "wall_ms",
+              "manual"
+            ],
             "type": "string"
           },
           "tenant_key": {
@@ -823,6 +880,20 @@
           },
           "source": {
             "description": "Which refusal started this checkout (e.g. calls_per_day, tools_max, secrets_max), or manual; default: manual. Echoed back in the response and recorded on the eventual payment's ledger row.",
+            "enum": [
+              "calls_per_day",
+              "tools_max",
+              "secrets_max",
+              "max_child_calls",
+              "max_est_tokens",
+              "max_tool_latency_ms",
+              "max_wall_ms",
+              "child_calls",
+              "est_tokens",
+              "tool_latency_ms",
+              "wall_ms",
+              "manual"
+            ],
             "type": "string"
           },
           "tenant_key": {
@@ -1636,6 +1707,7 @@
           },
           "handle": {
             "description": "Unique handle to claim, e.g. \"indexer\" (without the @); null clears it.",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{2,31}$",
             "type": [
               "string",
               "null"
@@ -2149,11 +2221,13 @@
           "options": {
             "description": "2 to 6 distinct button labels, each at most 40 characters.",
             "items": {
+              "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
               "type": "string"
             },
             "maxItems": 6,
             "minItems": 2,
-            "type": "array"
+            "type": "array",
+            "uniqueItems": true
           },
           "question": {
             "description": "What to ask, at most 500 characters.",
@@ -2166,6 +2240,8 @@
           },
           "ttl_s": {
             "description": "Seconds the link stays answerable; default 3600, at most 604800.",
+            "maximum": 604800,
+            "minimum": 1,
             "type": "integer"
           }
         },
@@ -3954,6 +4030,7 @@
         "properties": {
           "content_base64": {
             "description": "The file's bytes, base64-encoded; use url instead to have the host fetch them.",
+            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$",
             "type": "string"
           },
           "mime": {
@@ -4970,6 +5047,16 @@
         "properties": {
           "credential": {
             "description": "Only calls made with this credential kind.",
+            "enum": [
+              "primary",
+              "sub_key",
+              "oauth",
+              "trigger",
+              "cron",
+              "webhook",
+              "shared_caller",
+              "anonymous"
+            ],
             "type": "string"
           },
           "cursor": {
@@ -6386,6 +6473,7 @@
             "examples": [
               "example.com"
             ],
+            "pattern": "^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.*$",
             "type": "string"
           },
           "method": {
@@ -6476,6 +6564,7 @@
             "examples": [
               "example.com"
             ],
+            "pattern": "^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.*$",
             "type": "string"
           },
           "method": {
@@ -7525,6 +7614,10 @@
           },
           "provider": {
             "description": "\"none\" or \"openai-compatible\".",
+            "enum": [
+              "none",
+              "openai-compatible"
+            ],
             "type": "string"
           },
           "secret": {
@@ -7978,10 +8071,25 @@
             "type": "boolean"
           },
           "metadata": {
-            "description": "Arbitrary caller metadata stored alongside the document; any JSON value."
+            "description": "Arbitrary caller metadata stored alongside the document; any JSON value.",
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "array",
+              "object",
+              "null"
+            ]
           },
           "mime": {
             "description": "One of text/plain, text/markdown, application/json, text/csv; detected from name/content when omitted.",
+            "enum": [
+              "text/plain",
+              "text/markdown",
+              "application/json",
+              "text/csv"
+            ],
             "type": "string"
           },
           "name": {
@@ -8194,6 +8302,12 @@
           },
           "mode": {
             "description": "\"auto\" (default), \"lexical\", \"embeddings\", or \"hybrid\". \"embeddings\"/\"hybrid\" without a configured provider is a validation error.",
+            "enum": [
+              "auto",
+              "lexical",
+              "embeddings",
+              "hybrid"
+            ],
             "type": "string"
           },
           "query": {
@@ -8427,7 +8541,7 @@
       "since": "0.60.10"
     },
     {
-      "description": "What has been going wrong: this tenant's newest failed calls grouped by error family, each group with the next concrete step. Returns {window: {calls, failed, first_ts, last_ts}, groups: [{code, family, class, count, tools, last_ts, first_source_line?, line?, next}]} biggest group first; tool_exception groups carry the tool-source line of the newest failure; oauth_issuers: {rows, invalid: [{id, tenant_id, reason}]} reports stored OAuth issuer rows the discovery documents omit (the admin key sees every tenant's rows); tenant_lifecycle: {subject, idle_days?, expires_at_unix} says whether idle expiry applies to this tenant (synthetic implicit unclaimed) and when. No failed calls: groups: [] and a next saying so (hint: host.quickstart when the tenant has no tools yet). The admin key may pass tenant: <namespace>; a tenant key naming another tenant is forbidden.",
+      "description": "What has been going wrong: this tenant's newest failed calls grouped by error family, each group with the next concrete step. Returns {window: {calls, failed, first_ts, last_ts}, groups: [{code, family, class, count, tools, last_ts, first_source_line?, line?, next}]} biggest group first; tool_exception groups carry the tool-source line of the newest failure; oauth_issuers: {rows, invalid: [{id, tenant_id, reason}]} reports stored OAuth issuer rows the discovery documents omit (the admin key sees every tenant's rows); tenant_lifecycle: {subject, policy, idle_days?, expires_at_unix} says whether idle expiry applies to this tenant (synthetic implicit unclaimed, or external unclaimed: policy external_unclaimed with idle_since_unix, warn_at_unix, expires_at_unix, purge_at_unix, warned_unix, warn_address_masked) and when. No failed calls: groups: [] and a next saying so (hint: host.quickstart when the tenant has no tools yet). The admin key may pass tenant: <namespace>; a tenant key naming another tenant is forbidden.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -8652,8 +8766,44 @@
                   "null"
                 ]
               },
+              "idle_since_unix": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "policy": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "purge_at_unix": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
               "subject": {
                 "type": "boolean"
+              },
+              "warn_address_masked": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "warn_at_unix": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "warned_unix": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
               }
             },
             "required": [
@@ -9215,6 +9365,7 @@
           },
           "reply_to_message_id": {
             "description": "Optional Message-ID this answers; copied into In-Reply-To.",
+            "pattern": "^[^\\r\\n]+$",
             "type": "string"
           },
           "subject": {
@@ -9235,11 +9386,13 @@
             "oneOf": [
               {
                 "format": "email",
+                "pattern": "^[A-Za-z0-9._%+'-]{1,64}@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$",
                 "type": "string"
               },
               {
                 "items": {
                   "format": "email",
+                  "pattern": "^[A-Za-z0-9._%+'-]{1,64}@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$",
                   "type": "string"
                 },
                 "maxItems": 10,
@@ -14875,7 +15028,16 @@
         "additionalProperties": false,
         "properties": {
           "change_kind": {
-            "description": "One of drop, rename, type_change, remove, add.",
+            "description": "One of drop, rename, type_change, remove, add (lowercase; typechange and type-change are accepted spellings of type_change).",
+            "enum": [
+              "drop",
+              "rename",
+              "type_change",
+              "typechange",
+              "type-change",
+              "remove",
+              "add"
+            ],
             "type": "string"
           },
           "id": {
@@ -17088,6 +17250,7 @@
           },
           "link": {
             "description": "Optional https URL appended to the message.",
+            "pattern": "^https://.",
             "type": "string"
           },
           "tenant_key": {
@@ -18997,6 +19160,7 @@
           },
           "name": {
             "description": "^[a-z][a-z0-9_:.-]{0,40}$",
+            "pattern": "^[a-z][a-z0-9_:.-]{0,40}$",
             "type": "string"
           },
           "tenant_key": {
@@ -20445,7 +20609,63 @@
             "type": "boolean"
           },
           "rule": {
-            "description": "A list of {column_or_attr, op, value} rules, ANDed together."
+            "description": "A list of {column_or_attr, op, value} rules, ANDed together.",
+            "items": {
+              "properties": {
+                "column_or_attr": {
+                  "type": "string"
+                },
+                "op": {
+                  "enum": [
+                    "eq",
+                    "in"
+                  ],
+                  "type": "string"
+                },
+                "value": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "literal": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean",
+                            "array",
+                            "object",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "literal"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "attr": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "attr"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "column_or_attr",
+                "op",
+                "value"
+              ],
+              "type": "object"
+            },
+            "type": "array"
           },
           "target": {
             "additionalProperties": {
@@ -20574,12 +20794,7 @@
                         "null"
                       ]
                     },
-                    "literal": {
-                      "type": [
-                        "array",
-                        "null"
-                      ]
-                    }
+                    "literal": {}
                   },
                   "type": [
                     "object",
@@ -20612,6 +20827,96 @@
         }
       },
       "since": "0.87.0"
+    },
+    {
+      "description": "Report progress on a schedule, so a client can see notifications/progress frames arrive before the result. Sleeps step_ms, then reports, steps times; with _meta.progressToken each report is one notifications/progress frame (progress = pct, total = 100, or with mode=count progress = the step number and no total). Returns {steps, elapsed_ms}. Never runs longer than 25 s.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "description": "pct (default): progress is the percentage done with total 100; count: progress is the step number, no total.",
+            "enum": [
+              "pct",
+              "count"
+            ],
+            "type": "string"
+          },
+          "step_ms": {
+            "description": "Milliseconds to sleep before each report, 1000-5000.",
+            "maximum": 5000,
+            "minimum": 1000,
+            "type": "integer"
+          },
+          "steps": {
+            "description": "How many reports to make, 1-5.",
+            "maximum": 5,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "steps",
+          "step_ms"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host.probe.progress",
+      "output_schema": {
+        "$defs": {
+          "ErrorEnvelope": {
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "data": {
+                "properties": {
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "error_code"
+                ],
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "data"
+            ],
+            "type": "object"
+          }
+        },
+        "properties": {
+          "elapsed_ms": {
+            "type": "integer"
+          },
+          "steps": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "elapsed_ms",
+          "steps"
+        ],
+        "type": "object",
+        "x-error-envelope": {
+          "$ref": "#/$defs/ErrorEnvelope"
+        }
+      },
+      "since": "0.112.42"
     },
     {
       "description": "Report (or merge in) counters and/or pct/msg on a run, by id. Each named counter (items_processed, items_total, bytes_out, custom.<k>) is monotonic on its own -- a lower value than what's already stored fails validation with nothing written. Read back via host.runs.get/wait/list's counters field.",
@@ -24615,6 +24920,7 @@
           },
           "name": {
             "description": "The secret to test (host.secret.set).",
+            "pattern": "^[a-zA-Z0-9_]+$",
             "type": "string"
           },
           "tenant_key": {
@@ -24871,6 +25177,7 @@
           "hosts": {
             "description": "Hostnames this secret may be sent to (api.example.com, or *.example.com). A call that would send the value to any other host fails secret_leak_blocked. Omit to keep an existing binding; [] clears it.",
             "items": {
+              "pattern": "^(?:\\*\\.)?[A-Za-z0-9._-]+$",
               "type": "string"
             },
             "type": "array"
@@ -25036,6 +25343,7 @@
           "hosts": {
             "description": "Hostnames this secret may be sent to (api.example.com, or *.example.com). A call that would send the value to any other host fails secret_leak_blocked. Omit to keep an existing binding; [] clears it.",
             "items": {
+              "pattern": "^(?:\\*\\.)?[A-Za-z0-9._-]+$",
               "type": "string"
             },
             "type": "array"
@@ -26748,7 +27056,16 @@
             "type": "string"
           },
           "value": {
-            "description": "Any JSON value to store under key."
+            "description": "Any JSON value to store under key.",
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "array",
+              "object",
+              "null"
+            ]
           }
         },
         "required": [
@@ -27196,6 +27513,7 @@
           },
           "primary_key": {
             "description": "Column that identifies a row across pulls.",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
             "type": "string"
           },
           "source": {
@@ -27233,6 +27551,7 @@
           },
           "table": {
             "description": "The host table that mirrors the source; created if it does not exist.",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
             "type": "string"
           },
           "tenant_key": {
@@ -27809,13 +28128,56 @@
       "since": "0.112.33"
     },
     {
-      "description": "Append one row (an object) or several (an array of objects) to a declared table. Each row is validated against the table's schema first -- a type mismatch fails the whole call with table_schema_violation and writes nothing.",
+      "description": "Append one row (an object) or several (an array of objects) to a declared table. Each row is validated against the table's schema first -- a type mismatch fails the whole call with table_schema_violation and writes nothing. Instead of rows, give source_url (an https CSV or JSON Lines file, fetched by the host) or csv_text (the CSV itself, at most 1 MB, header row first): each row is coerced to the table's schema, a row that does not fit is skipped, and the result reports rows_imported, rows_skipped and the first three skip reasons (line and column). Exactly one of rows, source_url and csv_text.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "rows"
+            ]
+          },
+          {
+            "required": [
+              "source_url"
+            ]
+          },
+          {
+            "required": [
+              "csv_text"
+            ]
+          }
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "rows"
+            ]
+          },
+          {
+            "required": [
+              "source_url"
+            ]
+          },
+          {
+            "required": [
+              "csv_text"
+            ]
+          }
+        ],
         "properties": {
+          "csv_text": {
+            "description": "The CSV itself (header row first, at most 1 MB), for a client that holds the data but has no file tool.",
+            "type": "string"
+          },
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
             "type": "boolean"
+          },
+          "import_id": {
+            "description": "Optional retry key for a source_url / csv_text import: the same id within 24 hours returns the first result and writes nothing.",
+            "maxLength": 128,
+            "type": "string"
           },
           "rows": {
             "description": "One row (an object) or several (an array of objects), each validated against the table's schema.",
@@ -27823,6 +28185,10 @@
               "object",
               "array"
             ]
+          },
+          "source_url": {
+            "description": "An https URL of a CSV (RFC 4180, header row first) or JSON Lines file to load. Public hosts only; at most 3 redirects, 30 s, and the plan's import byte cap.",
+            "type": "string"
           },
           "table": {
             "description": "Name of the declared table to append to.",
@@ -27834,8 +28200,7 @@
           }
         },
         "required": [
-          "table",
-          "rows"
+          "table"
         ],
         "type": "object",
         "x-mcphost-validated": true
@@ -27920,11 +28285,72 @@
           "appended": {
             "type": "integer"
           },
+          "bytes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "columns": {
+            "items": {
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "type"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "ids": {
             "items": {
               "type": "integer"
             },
             "type": "array"
+          },
+          "rows_imported": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "rows_skipped": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "skip_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "source": {
+            "enum": [
+              "url",
+              "inline"
+            ],
+            "type": "string"
+          },
+          "source_host": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "table": {
             "type": "string"
@@ -28542,17 +28968,60 @@
       "since": "0.108.6"
     },
     {
-      "description": "Declare a table in this tenant's SQL table store -- a different store from host.state.*'s key-value namespace and its own tables: use host.state.* for a handful of small values, host.table.* when you want real SQL (joins, aggregates, read-only queries) over rows. columns is {\"column\": \"text\"|\"integer\"|\"real\"| \"timestamp\"|\"boolean\"|\"json\"}; primary_key, if given, must name one of columns's own entries.",
+      "description": "Declare a table in this tenant's SQL table store -- a different store from host.state.*'s key-value namespace and its own tables: use host.state.* for a handful of small values, host.table.* when you want real SQL (joins, aggregates, read-only queries) over rows. columns is {\"column\": \"text\"|\"integer\"|\"real\"| \"timestamp\"|\"boolean\"|\"json\"}; primary_key, if given, must name one of columns's own entries. Give exactly one of columns (declare an empty table), source_url (an https CSV or JSON Lines file, fetched by the host) or csv_text (the CSV itself, at most 1 MB): the import infers the column types from the first 1,000 rows, loads every row and reports rows_imported, rows_skipped, columns and source -- the way to load data when you have no file tool.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "columns"
+            ]
+          },
+          {
+            "required": [
+              "source_url"
+            ]
+          },
+          {
+            "required": [
+              "csv_text"
+            ]
+          }
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "columns"
+            ]
+          },
+          {
+            "required": [
+              "source_url"
+            ]
+          },
+          {
+            "required": [
+              "csv_text"
+            ]
+          }
+        ],
         "properties": {
           "columns": {
             "description": "Column name to type map, each type one of text|integer|real|timestamp|boolean|json, e.g. {\"id\": \"integer\"}.",
             "type": "object"
           },
+          "csv_text": {
+            "description": "The CSV itself (header row first, at most 1 MB), for a client that holds the data but has no file tool.",
+            "type": "string"
+          },
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
             "type": "boolean"
+          },
+          "import_id": {
+            "description": "Optional retry key for a source_url / csv_text import: the same id within 24 hours returns the first result and writes nothing.",
+            "maxLength": 128,
+            "type": "string"
           },
           "name": {
             "description": "Table name to declare.",
@@ -28563,14 +29032,17 @@
             "description": "Column name (must be in columns); optional.",
             "type": "string"
           },
+          "source_url": {
+            "description": "An https URL of a CSV (RFC 4180, header row first) or JSON Lines file to load. Public hosts only; at most 3 redirects, 30 s, and the plan's import byte cap.",
+            "type": "string"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
           }
         },
         "required": [
-          "name",
-          "columns"
+          "name"
         ],
         "type": "object",
         "x-mcphost-validated": true
@@ -28659,6 +29131,33 @@
             ],
             "type": [
               "object",
+              "null"
+            ]
+          },
+          "bytes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "columns": {
+            "items": {
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "type"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "array",
               "null"
             ]
           },
@@ -28767,6 +29266,40 @@
             ]
           },
           "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rows_imported": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "rows_skipped": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "skip_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "source": {
+            "enum": [
+              "url",
+              "inline"
+            ],
+            "type": "string"
+          },
+          "source_host": {
             "type": [
               "string",
               "null"
@@ -30918,7 +31451,16 @@
             "type": "string"
           },
           "value": {
-            "description": "The annotation's value."
+            "description": "The annotation's value.",
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "array",
+              "object",
+              "null"
+            ]
           }
         },
         "required": [
@@ -35025,6 +35567,7 @@
           },
           "tool": {
             "description": "\"<owner_namespace>.<name>\", the same qualified name host.tool_call uses for a shared tool.",
+            "pattern": "\\.",
             "type": "string"
           }
         },
@@ -35978,6 +36521,7 @@
           },
           "tool": {
             "description": "\"<owner_namespace>.<name>\", the same qualified name host.tool_call uses for a shared tool.",
+            "pattern": "\\.",
             "type": "string"
           }
         },
@@ -37289,7 +37833,11 @@
             "type": "string"
           },
           "verify": {
-            "description": "kind=\"event\": either {scheme: \"hmac-sha256\"|\"hmac-sha1\"|\"token\"|\"none\", header, secret (a host.secret_set name), prefix?, timestamp_header?, tolerance_s?, allow_unverified? (required true for scheme \"none\")}, or a preset string -- \"github\" (hmac-sha256 over X-Hub-Signature-256, prefix sha256=, dedupe_header defaulting to X-GitHub-Delivery) or \"stripe\" (hmac-sha256 t=,v1= over Stripe-Signature) -- paired with the top-level secret argument below. kind=\"webhook\": a plain string, one of \"hmac\" (default; checks X-Mcphost-Signature: sha256=<hex>), \"none\", or \"stripe\" (checks Stripe-Signature the way Stripe itself signs, using the same generated secret)."
+            "description": "kind=\"event\": either {scheme: \"hmac-sha256\"|\"hmac-sha1\"|\"token\"|\"none\", header, secret (a host.secret_set name), prefix?, timestamp_header?, tolerance_s?, allow_unverified? (required true for scheme \"none\")}, or a preset string -- \"github\" (hmac-sha256 over X-Hub-Signature-256, prefix sha256=, dedupe_header defaulting to X-GitHub-Delivery) or \"stripe\" (hmac-sha256 t=,v1= over Stripe-Signature) -- paired with the top-level secret argument below. kind=\"webhook\": a plain string, one of \"hmac\" (default; checks X-Mcphost-Signature: sha256=<hex>), \"none\", or \"stripe\" (checks Stripe-Signature the way Stripe itself signs, using the same generated secret).",
+            "type": [
+              "string",
+              "object"
+            ]
           }
         },
         "required": [
@@ -37599,10 +38147,28 @@
         ],
         "properties": {
           "body": {
-            "description": "kind=\"event\"/\"webhook\": the payload to verify and run with -- any JSON value. kind=\"message\": the synthetic envelope's body text."
+            "description": "kind=\"event\"/\"webhook\": the payload to verify and run with -- any JSON value. kind=\"message\": the synthetic envelope's body text.",
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "array",
+              "object",
+              "null"
+            ]
           },
           "data": {
-            "description": "kind=\"message\": the synthetic envelope's data payload."
+            "description": "kind=\"message\": the synthetic envelope's data payload.",
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "array",
+              "object",
+              "null"
+            ]
           },
           "from": {
             "description": "kind=\"message\": the synthetic envelope's from address; default \"@test\".",
@@ -37745,6 +38311,7 @@
           },
           "name": {
             "description": "Name of the status tool to create; also names the <name>_targets table and the <name>_probe tool.",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,39}$",
             "type": "string"
           },
           "tenant_key": {
@@ -37928,6 +38495,12 @@
         "properties": {
           "by": {
             "description": "\"tool\", \"caller\", or \"end_user\" -- omit for the plain per-tenant summary.",
+            "enum": [
+              "tool",
+              "caller",
+              "end_user",
+              "key"
+            ],
             "type": "string"
           },
           "cursor": {
@@ -39017,6 +39590,7 @@
         "properties": {
           "name": {
             "description": "Inbox name; also the reader tool's name (^[a-z][a-z0-9_]{1,40}$).",
+            "pattern": "^[a-z][a-z0-9_]{1,40}$",
             "type": "string"
           },
           "rotate": {
@@ -39960,6 +40534,7 @@
           },
           "handle": {
             "description": "Unique handle to claim, e.g. \"indexer\" (without the @); null clears it.",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]{2,31}$",
             "type": [
               "string",
               "null"
@@ -40090,11 +40665,13 @@
           "options": {
             "description": "2 to 6 distinct button labels, each at most 40 characters.",
             "items": {
+              "pattern": "^\\S(?:[\\s\\S]*\\S)?$",
               "type": "string"
             },
             "maxItems": 6,
             "minItems": 2,
-            "type": "array"
+            "type": "array",
+            "uniqueItems": true
           },
           "question": {
             "description": "What to ask, at most 500 characters.",
@@ -40107,6 +40684,8 @@
           },
           "ttl_s": {
             "description": "Seconds the link stays answerable; default 3600, at most 604800.",
+            "maximum": 604800,
+            "minimum": 1,
             "type": "integer"
           }
         },
@@ -40487,6 +41066,7 @@
         "properties": {
           "content_base64": {
             "description": "The file's bytes, base64-encoded; use url instead to have the host fetch them.",
+            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$",
             "type": "string"
           },
           "mime": {
@@ -40686,6 +41266,16 @@
         "properties": {
           "credential": {
             "description": "Only calls made with this credential kind.",
+            "enum": [
+              "primary",
+              "sub_key",
+              "oauth",
+              "trigger",
+              "cron",
+              "webhook",
+              "shared_caller",
+              "anonymous"
+            ],
             "type": "string"
           },
           "cursor": {
@@ -41060,6 +41650,7 @@
             "examples": [
               "example.com"
             ],
+            "pattern": "^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.*$",
             "type": "string"
           },
           "method": {
@@ -41097,6 +41688,7 @@
             "examples": [
               "example.com"
             ],
+            "pattern": "^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.*$",
             "type": "string"
           },
           "method": {
@@ -41419,6 +42011,10 @@
           },
           "provider": {
             "description": "\"none\" or \"openai-compatible\".",
+            "enum": [
+              "none",
+              "openai-compatible"
+            ],
             "type": "string"
           },
           "secret": {
@@ -41594,10 +42190,25 @@
             "type": "boolean"
           },
           "metadata": {
-            "description": "Arbitrary caller metadata stored alongside the document; any JSON value."
+            "description": "Arbitrary caller metadata stored alongside the document; any JSON value.",
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "array",
+              "object",
+              "null"
+            ]
           },
           "mime": {
             "description": "One of text/plain, text/markdown, application/json, text/csv; detected from name/content when omitted.",
+            "enum": [
+              "text/plain",
+              "text/markdown",
+              "application/json",
+              "text/csv"
+            ],
             "type": "string"
           },
           "name": {
@@ -41667,6 +42278,12 @@
           },
           "mode": {
             "description": "\"auto\" (default), \"lexical\", \"embeddings\", or \"hybrid\". \"embeddings\"/\"hybrid\" without a configured provider is a validation error.",
+            "enum": [
+              "auto",
+              "lexical",
+              "embeddings",
+              "hybrid"
+            ],
             "type": "string"
           },
           "query": {
@@ -41707,7 +42324,7 @@
     },
     {
       "alias_of": "host.doctor",
-      "description": "What has been going wrong: this tenant's newest failed calls grouped by error family, each group with the next concrete step. Returns {window: {calls, failed, first_ts, last_ts}, groups: [{code, family, class, count, tools, last_ts, first_source_line?, line?, next}]} biggest group first; tool_exception groups carry the tool-source line of the newest failure; oauth_issuers: {rows, invalid: [{id, tenant_id, reason}]} reports stored OAuth issuer rows the discovery documents omit (the admin key sees every tenant's rows); tenant_lifecycle: {subject, idle_days?, expires_at_unix} says whether idle expiry applies to this tenant (synthetic implicit unclaimed) and when. No failed calls: groups: [] and a next saying so (hint: host.quickstart when the tenant has no tools yet). The admin key may pass tenant: <namespace>; a tenant key naming another tenant is forbidden.",
+      "description": "What has been going wrong: this tenant's newest failed calls grouped by error family, each group with the next concrete step. Returns {window: {calls, failed, first_ts, last_ts}, groups: [{code, family, class, count, tools, last_ts, first_source_line?, line?, next}]} biggest group first; tool_exception groups carry the tool-source line of the newest failure; oauth_issuers: {rows, invalid: [{id, tenant_id, reason}]} reports stored OAuth issuer rows the discovery documents omit (the admin key sees every tenant's rows); tenant_lifecycle: {subject, policy, idle_days?, expires_at_unix} says whether idle expiry applies to this tenant (synthetic implicit unclaimed, or external unclaimed: policy external_unclaimed with idle_since_unix, warn_at_unix, expires_at_unix, purge_at_unix, warned_unix, warn_address_masked) and when. No failed calls: groups: [] and a next saying so (hint: host.quickstart when the tenant has no tools yet). The admin key may pass tenant: <namespace>; a tenant key naming another tenant is forbidden.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -41857,6 +42474,7 @@
           },
           "reply_to_message_id": {
             "description": "Optional Message-ID this answers; copied into In-Reply-To.",
+            "pattern": "^[^\\r\\n]+$",
             "type": "string"
           },
           "subject": {
@@ -41877,11 +42495,13 @@
             "oneOf": [
               {
                 "format": "email",
+                "pattern": "^[A-Za-z0-9._%+'-]{1,64}@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$",
                 "type": "string"
               },
               {
                 "items": {
                   "format": "email",
+                  "pattern": "^[A-Za-z0-9._%+'-]{1,64}@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$",
                   "type": "string"
                 },
                 "maxItems": 10,
@@ -43331,7 +43951,16 @@
         "additionalProperties": false,
         "properties": {
           "change_kind": {
-            "description": "One of drop, rename, type_change, remove, add.",
+            "description": "One of drop, rename, type_change, remove, add (lowercase; typechange and type-change are accepted spellings of type_change).",
+            "enum": [
+              "drop",
+              "rename",
+              "type_change",
+              "typechange",
+              "type-change",
+              "remove",
+              "add"
+            ],
             "type": "string"
           },
           "id": {
@@ -43968,6 +44597,7 @@
           },
           "link": {
             "description": "Optional https URL appended to the message.",
+            "pattern": "^https://.",
             "type": "string"
           },
           "tenant_key": {
@@ -44483,6 +45113,7 @@
           },
           "name": {
             "description": "^[a-z][a-z0-9_:.-]{0,40}$",
+            "pattern": "^[a-z][a-z0-9_:.-]{0,40}$",
             "type": "string"
           },
           "tenant_key": {
@@ -44863,7 +45494,63 @@
             "type": "boolean"
           },
           "rule": {
-            "description": "A list of {column_or_attr, op, value} rules, ANDed together."
+            "description": "A list of {column_or_attr, op, value} rules, ANDed together.",
+            "items": {
+              "properties": {
+                "column_or_attr": {
+                  "type": "string"
+                },
+                "op": {
+                  "enum": [
+                    "eq",
+                    "in"
+                  ],
+                  "type": "string"
+                },
+                "value": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "literal": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean",
+                            "array",
+                            "object",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "literal"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "attr": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "attr"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "column_or_attr",
+                "op",
+                "value"
+              ],
+              "type": "object"
+            },
+            "type": "array"
           },
           "target": {
             "additionalProperties": {
@@ -44894,6 +45581,47 @@
       },
       "name": "host_policy_set",
       "since": "0.103.1"
+    },
+    {
+      "alias_of": "host.probe.progress",
+      "description": "Report progress on a schedule, so a client can see notifications/progress frames arrive before the result. Sleeps step_ms, then reports, steps times; with _meta.progressToken each report is one notifications/progress frame (progress = pct, total = 100, or with mode=count progress = the step number and no total). Returns {steps, elapsed_ms}. Never runs longer than 25 s.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "description": "pct (default): progress is the percentage done with total 100; count: progress is the step number, no total.",
+            "enum": [
+              "pct",
+              "count"
+            ],
+            "type": "string"
+          },
+          "step_ms": {
+            "description": "Milliseconds to sleep before each report, 1000-5000.",
+            "maximum": 5000,
+            "minimum": 1000,
+            "type": "integer"
+          },
+          "steps": {
+            "description": "How many reports to make, 1-5.",
+            "maximum": 5,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "steps",
+          "step_ms"
+        ],
+        "type": "object",
+        "x-mcphost-validated": true
+      },
+      "name": "host_probe_progress",
+      "since": "0.112.42"
     },
     {
       "alias_of": "host.progress",
@@ -45348,6 +46076,7 @@
           },
           "name": {
             "description": "The secret to test (host.secret.set).",
+            "pattern": "^[a-zA-Z0-9_]+$",
             "type": "string"
           },
           "tenant_key": {
@@ -45395,6 +46124,7 @@
           "hosts": {
             "description": "Hostnames this secret may be sent to (api.example.com, or *.example.com). A call that would send the value to any other host fails secret_leak_blocked. Omit to keep an existing binding; [] clears it.",
             "items": {
+              "pattern": "^(?:\\*\\.)?[A-Za-z0-9._-]+$",
               "type": "string"
             },
             "type": "array"
@@ -45819,7 +46549,16 @@
             "type": "string"
           },
           "value": {
-            "description": "Any JSON value to store under key."
+            "description": "Any JSON value to store under key.",
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "array",
+              "object",
+              "null"
+            ]
           }
         },
         "required": [
@@ -45925,6 +46664,7 @@
           },
           "primary_key": {
             "description": "Column that identifies a row across pulls.",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
             "type": "string"
           },
           "source": {
@@ -45962,6 +46702,7 @@
           },
           "table": {
             "description": "The host table that mirrors the source; created if it does not exist.",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
             "type": "string"
           },
           "tenant_key": {
@@ -46080,13 +46821,56 @@
     },
     {
       "alias_of": "host.table.append",
-      "description": "Append one row (an object) or several (an array of objects) to a declared table. Each row is validated against the table's schema first -- a type mismatch fails the whole call with table_schema_violation and writes nothing.",
+      "description": "Append one row (an object) or several (an array of objects) to a declared table. Each row is validated against the table's schema first -- a type mismatch fails the whole call with table_schema_violation and writes nothing. Instead of rows, give source_url (an https CSV or JSON Lines file, fetched by the host) or csv_text (the CSV itself, at most 1 MB, header row first): each row is coerced to the table's schema, a row that does not fit is skipped, and the result reports rows_imported, rows_skipped and the first three skip reasons (line and column). Exactly one of rows, source_url and csv_text.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "rows"
+            ]
+          },
+          {
+            "required": [
+              "source_url"
+            ]
+          },
+          {
+            "required": [
+              "csv_text"
+            ]
+          }
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "rows"
+            ]
+          },
+          {
+            "required": [
+              "source_url"
+            ]
+          },
+          {
+            "required": [
+              "csv_text"
+            ]
+          }
+        ],
         "properties": {
+          "csv_text": {
+            "description": "The CSV itself (header row first, at most 1 MB), for a client that holds the data but has no file tool.",
+            "type": "string"
+          },
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
             "type": "boolean"
+          },
+          "import_id": {
+            "description": "Optional retry key for a source_url / csv_text import: the same id within 24 hours returns the first result and writes nothing.",
+            "maxLength": 128,
+            "type": "string"
           },
           "rows": {
             "description": "One row (an object) or several (an array of objects), each validated against the table's schema.",
@@ -46094,6 +46878,10 @@
               "object",
               "array"
             ]
+          },
+          "source_url": {
+            "description": "An https URL of a CSV (RFC 4180, header row first) or JSON Lines file to load. Public hosts only; at most 3 redirects, 30 s, and the plan's import byte cap.",
+            "type": "string"
           },
           "table": {
             "description": "Name of the declared table to append to.",
@@ -46105,8 +46893,7 @@
           }
         },
         "required": [
-          "table",
-          "rows"
+          "table"
         ],
         "type": "object",
         "x-mcphost-validated": true
@@ -46198,17 +46985,60 @@
     },
     {
       "alias_of": "host.table.create",
-      "description": "Declare a table in this tenant's SQL table store -- a different store from host.state.*'s key-value namespace and its own tables: use host.state.* for a handful of small values, host.table.* when you want real SQL (joins, aggregates, read-only queries) over rows. columns is {\"column\": \"text\"|\"integer\"|\"real\"| \"timestamp\"|\"boolean\"|\"json\"}; primary_key, if given, must name one of columns's own entries.",
+      "description": "Declare a table in this tenant's SQL table store -- a different store from host.state.*'s key-value namespace and its own tables: use host.state.* for a handful of small values, host.table.* when you want real SQL (joins, aggregates, read-only queries) over rows. columns is {\"column\": \"text\"|\"integer\"|\"real\"| \"timestamp\"|\"boolean\"|\"json\"}; primary_key, if given, must name one of columns's own entries. Give exactly one of columns (declare an empty table), source_url (an https CSV or JSON Lines file, fetched by the host) or csv_text (the CSV itself, at most 1 MB): the import infers the column types from the first 1,000 rows, loads every row and reports rows_imported, rows_skipped, columns and source -- the way to load data when you have no file tool.",
       "input_schema": {
         "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "columns"
+            ]
+          },
+          {
+            "required": [
+              "source_url"
+            ]
+          },
+          {
+            "required": [
+              "csv_text"
+            ]
+          }
+        ],
+        "oneOf": [
+          {
+            "required": [
+              "columns"
+            ]
+          },
+          {
+            "required": [
+              "source_url"
+            ]
+          },
+          {
+            "required": [
+              "csv_text"
+            ]
+          }
+        ],
         "properties": {
           "columns": {
             "description": "Column name to type map, each type one of text|integer|real|timestamp|boolean|json, e.g. {\"id\": \"integer\"}.",
             "type": "object"
           },
+          "csv_text": {
+            "description": "The CSV itself (header row first, at most 1 MB), for a client that holds the data but has no file tool.",
+            "type": "string"
+          },
           "dry_run": {
             "description": "return the diff this call would make and commit nothing",
             "type": "boolean"
+          },
+          "import_id": {
+            "description": "Optional retry key for a source_url / csv_text import: the same id within 24 hours returns the first result and writes nothing.",
+            "maxLength": 128,
+            "type": "string"
           },
           "name": {
             "description": "Table name to declare.",
@@ -46219,14 +47049,17 @@
             "description": "Column name (must be in columns); optional.",
             "type": "string"
           },
+          "source_url": {
+            "description": "An https URL of a CSV (RFC 4180, header row first) or JSON Lines file to load. Public hosts only; at most 3 redirects, 30 s, and the plan's import byte cap.",
+            "type": "string"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
           }
         },
         "required": [
-          "name",
-          "columns"
+          "name"
         ],
         "type": "object",
         "x-mcphost-validated": true
@@ -46473,7 +47306,16 @@
             "type": "string"
           },
           "value": {
-            "description": "The annotation's value."
+            "description": "The annotation's value.",
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "array",
+              "object",
+              "null"
+            ]
           }
         },
         "required": [
@@ -47403,6 +48245,7 @@
           },
           "tool": {
             "description": "\"<owner_namespace>.<name>\", the same qualified name host.tool_call uses for a shared tool.",
+            "pattern": "\\.",
             "type": "string"
           }
         },
@@ -47863,7 +48706,11 @@
             "type": "string"
           },
           "verify": {
-            "description": "kind=\"event\": either {scheme: \"hmac-sha256\"|\"hmac-sha1\"|\"token\"|\"none\", header, secret (a host.secret_set name), prefix?, timestamp_header?, tolerance_s?, allow_unverified? (required true for scheme \"none\")}, or a preset string -- \"github\" (hmac-sha256 over X-Hub-Signature-256, prefix sha256=, dedupe_header defaulting to X-GitHub-Delivery) or \"stripe\" (hmac-sha256 t=,v1= over Stripe-Signature) -- paired with the top-level secret argument below. kind=\"webhook\": a plain string, one of \"hmac\" (default; checks X-Mcphost-Signature: sha256=<hex>), \"none\", or \"stripe\" (checks Stripe-Signature the way Stripe itself signs, using the same generated secret)."
+            "description": "kind=\"event\": either {scheme: \"hmac-sha256\"|\"hmac-sha1\"|\"token\"|\"none\", header, secret (a host.secret_set name), prefix?, timestamp_header?, tolerance_s?, allow_unverified? (required true for scheme \"none\")}, or a preset string -- \"github\" (hmac-sha256 over X-Hub-Signature-256, prefix sha256=, dedupe_header defaulting to X-GitHub-Delivery) or \"stripe\" (hmac-sha256 t=,v1= over Stripe-Signature) -- paired with the top-level secret argument below. kind=\"webhook\": a plain string, one of \"hmac\" (default; checks X-Mcphost-Signature: sha256=<hex>), \"none\", or \"stripe\" (checks Stripe-Signature the way Stripe itself signs, using the same generated secret).",
+            "type": [
+              "string",
+              "object"
+            ]
           }
         },
         "required": [
@@ -47894,10 +48741,28 @@
         ],
         "properties": {
           "body": {
-            "description": "kind=\"event\"/\"webhook\": the payload to verify and run with -- any JSON value. kind=\"message\": the synthetic envelope's body text."
+            "description": "kind=\"event\"/\"webhook\": the payload to verify and run with -- any JSON value. kind=\"message\": the synthetic envelope's body text.",
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "array",
+              "object",
+              "null"
+            ]
           },
           "data": {
-            "description": "kind=\"message\": the synthetic envelope's data payload."
+            "description": "kind=\"message\": the synthetic envelope's data payload.",
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "array",
+              "object",
+              "null"
+            ]
           },
           "from": {
             "description": "kind=\"message\": the synthetic envelope's from address; default \"@test\".",
@@ -47939,6 +48804,7 @@
           },
           "name": {
             "description": "Name of the status tool to create; also names the <name>_targets table and the <name>_probe tool.",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,39}$",
             "type": "string"
           },
           "tenant_key": {
@@ -47973,6 +48839,12 @@
         "properties": {
           "by": {
             "description": "\"tool\", \"caller\", or \"end_user\" -- omit for the plain per-tenant summary.",
+            "enum": [
+              "tool",
+              "caller",
+              "end_user",
+              "key"
+            ],
             "type": "string"
           },
           "cursor": {
@@ -48202,6 +49074,7 @@
         "properties": {
           "name": {
             "description": "Inbox name; also the reader tool's name (^[a-z][a-z0-9_]{1,40}$).",
+            "pattern": "^[a-z][a-z0-9_]{1,40}$",
             "type": "string"
           },
           "rotate": {

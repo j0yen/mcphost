@@ -9,7 +9,7 @@
 //! runs in a spawned task so its panic comes back as a `JoinError` the
 //! handler reports over a channel.
 
-use mcphost::protocol::frames::{FrameKind, emit};
+use mcphost::protocol::frames::{Frame, emit};
 use rmcp::model::{ListToolsResult, PaginatedRequestParams, ServerInfo};
 use rmcp::service::RequestContext;
 use rmcp::transport::streamable_http_server::{
@@ -36,7 +36,7 @@ impl ServerHandler for StrayNotifier {
         ctx: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
         let peer = ctx.peer.clone();
-        let outcome = tokio::spawn(async move { emit(&peer, FrameKind::ListChanged, "tools/list").await }).await;
+        let outcome = tokio::spawn(async move { emit(&peer, Frame::ToolListChanged, "tools/list").await }).await;
         let message = match outcome {
             Err(join) if join.is_panic() => {
                 let payload = join.into_panic();

@@ -131,28 +131,13 @@
       "variants": []
     },
     "host.ask.create": {
-      "unreached": [
-        {
-          "code": "args_invalid",
-          "state": "after_create"
-        },
-        {
-          "code": "args_invalid",
-          "state": "dry_run"
-        },
-        {
-          "code": "args_invalid",
-          "state": "fresh"
-        }
-      ],
-      "variants": []
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
     },
     "host.ask.get": {
       "unreached": [
-        {
-          "code": "ask_not_found",
-          "state": "after_create"
-        },
         {
           "code": "ask_not_found",
           "state": "fresh"
@@ -167,7 +152,7 @@
     "host.ask.wait": {
       "unreached": [
         {
-          "code": "ask_not_found",
+          "code": "timeout",
           "state": "after_create"
         },
         {
@@ -228,16 +213,7 @@
       "variants": []
     },
     "host.blob.put": {
-      "unreached": [
-        {
-          "code": "args_invalid",
-          "state": "after_create"
-        },
-        {
-          "code": "args_invalid",
-          "state": "fresh"
-        }
-      ],
+      "unreached": [],
       "variants": []
     },
     "host.blob.touch": {
@@ -397,27 +373,18 @@
     "host.claim.dns.check": {
       "unreached": [
         {
-          "code": "args_invalid",
+          "code": "dns_record_not_found",
           "state": "after_create"
         },
         {
-          "code": "args_invalid",
+          "code": "dns_record_not_found",
           "state": "fresh"
         }
       ],
       "variants": []
     },
     "host.claim.dns.start": {
-      "unreached": [
-        {
-          "code": "args_invalid",
-          "state": "after_create"
-        },
-        {
-          "code": "args_invalid",
-          "state": "fresh"
-        }
-      ],
+      "unreached": [],
       "variants": []
     },
     "host.claim.github": {
@@ -507,16 +474,7 @@
       "variants": []
     },
     "host.docs.index_config": {
-      "unreached": [
-        {
-          "code": "args_invalid",
-          "state": "after_create"
-        },
-        {
-          "code": "args_invalid",
-          "state": "fresh"
-        }
-      ],
+      "unreached": [],
       "variants": []
     },
     "host.docs.list": {
@@ -600,11 +558,11 @@
     "host.email.send": {
       "unreached": [
         {
-          "code": "args_invalid",
+          "code": "email_owner_unverified",
           "state": "after_create"
         },
         {
-          "code": "args_invalid",
+          "code": "email_owner_unverified",
           "state": "fresh"
         }
       ],
@@ -995,16 +953,7 @@
       "variants": []
     },
     "host.lineage.blast_radius": {
-      "unreached": [
-        {
-          "code": "args_invalid",
-          "state": "after_create"
-        },
-        {
-          "code": "args_invalid",
-          "state": "fresh"
-        }
-      ],
+      "unreached": [],
       "variants": []
     },
     "host.lineage.trace": {
@@ -1486,20 +1435,13 @@
       "variants": []
     },
     "host.policy.set": {
-      "unreached": [
-        {
-          "code": "args_invalid",
-          "state": "after_create"
-        },
-        {
-          "code": "args_invalid",
-          "state": "dry_run"
-        },
-        {
-          "code": "args_invalid",
-          "state": "fresh"
-        }
-      ],
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host.probe.progress": {
+      "unreached": [],
       "variants": []
     },
     "host.progress": {
@@ -2272,11 +2214,11 @@
     "host.tool.spec_shared": {
       "unreached": [
         {
-          "code": "args_invalid",
+          "code": "tool_not_found",
           "state": "after_create"
         },
         {
-          "code": "args_invalid",
+          "code": "tool_not_found",
           "state": "fresh"
         }
       ],
@@ -2459,11 +2401,11 @@
     "host.tool_spec_shared": {
       "unreached": [
         {
-          "code": "args_invalid",
+          "code": "tool_not_found",
           "state": "after_create"
         },
         {
-          "code": "args_invalid",
+          "code": "tool_not_found",
           "state": "fresh"
         }
       ],
@@ -2685,11 +2627,11 @@
     "host.webhook_inbox.create": {
       "unreached": [
         {
-          "code": "invalid_tool_name",
+          "code": "args_invalid",
           "state": "after_create"
         },
         {
-          "code": "invalid_tool_name",
+          "code": "unknown_kind",
           "state": "fresh"
         }
       ],
@@ -2788,28 +2730,13 @@
       "variants": []
     },
     "host_ask_create": {
-      "unreached": [
-        {
-          "code": "args_invalid",
-          "state": "after_create"
-        },
-        {
-          "code": "args_invalid",
-          "state": "dry_run"
-        },
-        {
-          "code": "args_invalid",
-          "state": "fresh"
-        }
-      ],
-      "variants": []
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
     },
     "host_ask_get": {
       "unreached": [
-        {
-          "code": "ask_not_found",
-          "state": "after_create"
-        },
         {
           "code": "ask_not_found",
           "state": "fresh"
@@ -2824,7 +2751,7 @@
     "host_ask_wait": {
       "unreached": [
         {
-          "code": "ask_not_found",
+          "code": "timeout",
           "state": "after_create"
         },
         {
@@ -2885,16 +2812,7 @@
       "variants": []
     },
     "host_blob_put": {
-      "unreached": [
-        {
-          "code": "args_invalid",
-          "state": "after_create"
-        },
-        {
-          "code": "args_invalid",
-          "state": "fresh"
-        }
-      ],
+      "unreached": [],
       "variants": []
     },
     "host_blob_touch": {
@@ -3041,27 +2959,18 @@
     "host_claim_dns_check": {
       "unreached": [
         {
-          "code": "args_invalid",
+          "code": "dns_record_not_found",
           "state": "after_create"
         },
         {
-          "code": "args_invalid",
+          "code": "dns_record_not_found",
           "state": "fresh"
         }
       ],
       "variants": []
     },
     "host_claim_dns_start": {
-      "unreached": [
-        {
-          "code": "args_invalid",
-          "state": "after_create"
-        },
-        {
-          "code": "args_invalid",
-          "state": "fresh"
-        }
-      ],
+      "unreached": [],
       "variants": []
     },
     "host_claim_github": {
@@ -3151,16 +3060,7 @@
       "variants": []
     },
     "host_docs_index_config": {
-      "unreached": [
-        {
-          "code": "args_invalid",
-          "state": "after_create"
-        },
-        {
-          "code": "args_invalid",
-          "state": "fresh"
-        }
-      ],
+      "unreached": [],
       "variants": []
     },
     "host_docs_list": {
@@ -3244,11 +3144,11 @@
     "host_email_send": {
       "unreached": [
         {
-          "code": "args_invalid",
+          "code": "email_owner_unverified",
           "state": "after_create"
         },
         {
-          "code": "args_invalid",
+          "code": "email_owner_unverified",
           "state": "fresh"
         }
       ],
@@ -3622,16 +3522,7 @@
       "variants": []
     },
     "host_lineage_blast_radius": {
-      "unreached": [
-        {
-          "code": "args_invalid",
-          "state": "after_create"
-        },
-        {
-          "code": "args_invalid",
-          "state": "fresh"
-        }
-      ],
+      "unreached": [],
       "variants": []
     },
     "host_lineage_trace": {
@@ -4113,20 +4004,13 @@
       "variants": []
     },
     "host_policy_set": {
-      "unreached": [
-        {
-          "code": "args_invalid",
-          "state": "after_create"
-        },
-        {
-          "code": "args_invalid",
-          "state": "dry_run"
-        },
-        {
-          "code": "args_invalid",
-          "state": "fresh"
-        }
-      ],
+      "unreached": [],
+      "variants": [
+        "dry_run"
+      ]
+    },
+    "host_probe_progress": {
+      "unreached": [],
       "variants": []
     },
     "host_progress": {
@@ -4859,11 +4743,11 @@
     "host_tool_spec_shared": {
       "unreached": [
         {
-          "code": "args_invalid",
+          "code": "tool_not_found",
           "state": "after_create"
         },
         {
-          "code": "args_invalid",
+          "code": "tool_not_found",
           "state": "fresh"
         }
       ],
@@ -5085,11 +4969,11 @@
     "host_webhook_inbox_create": {
       "unreached": [
         {
-          "code": "invalid_tool_name",
+          "code": "args_invalid",
           "state": "after_create"
         },
         {
-          "code": "invalid_tool_name",
+          "code": "unknown_kind",
           "state": "fresh"
         }
       ],
@@ -5100,5 +4984,5 @@
       "variants": []
     }
   },
-  "unreached_cap": 646
+  "unreached_cap": 616
 }

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 
 use crate::auth::{generate_handoff_token, generate_key, generate_namespace, hash_key};
-use crate::db::{HandoffRedeemOutcome, Tenant};
+use crate::db::{HandoffRedeemOutcome, LifecycleEvent, Tenant, WarnClaimToken};
 use crate::errors::AppError;
 use crate::kinds::{Kind, KindRegistry};
 use crate::state::{
@@ -953,10 +953,150 @@ pub async fn teardown_expired_tenant(state: &AppState, tenant_id: i64) {
 /// the server starts, since the DB layer holds no `AppState`.
 pub fn install_tenant_teardown(state: &AppState) {
     let state = state.clone();
-    state.db.clone().set_tenant_teardown(std::sync::Arc::new(move |id| {
+    state.db.clone().set_tenant_teardown(std::sync::Arc::new({
         let state = state.clone();
-        Box::pin(async move { teardown_expired_tenant(&state, id).await })
+        move |id| {
+            let state = state.clone();
+            Box::pin(async move { teardown_expired_tenant(&state, id).await })
+        }
     }));
+    state.db.clone().set_external_sweep(std::sync::Arc::new({
+        let state = state.clone();
+        move |now| {
+            let state = state.clone();
+            Box::pin(async move { sweep_external_unclaimed(&state, now).await })
+        }
+    }));
+}
+
+/// One process runs one external-unclaimed sweep at a time, so a second
+/// `prune_once` cannot send the same warning twice.
+static EXTERNAL_SWEEP_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// PRD-mcphost-external-unclaimed-tenant-expiry: one sweep of the external
+/// unclaimed policy at `now`. Returns the `prune_log.deleted_json` block
+/// (`Null` while the policy is off). `pub` so a test can run it on a
+/// simulated day.
+pub async fn sweep_external_unclaimed(state: &AppState, now: i64) -> Result<Value, AppError> {
+    let _one_at_a_time = EXTERNAL_SWEEP_LOCK.lock().await;
+    let window = state.db.external_expiry_window_days().await?;
+    if window <= 0 {
+        return Ok(Value::Null);
+    }
+    let windows = crate::retention::ExternalWindows::read(window);
+    let mut counts: std::collections::BTreeMap<&'static str, i64> =
+        ["warned", "warn_no_address", "warn_failed", "invalidated", "notice_failed", "purged"]
+            .into_iter()
+            .map(|k| (k, 0))
+            .collect();
+    let previous_sweep = state.db.previous_sweep_started_unix().await?;
+    purge_external_unclaimed(state, windows, now, &mut counts).await?;
+    warn_external_unclaimed(state, now, windows, &mut counts).await?;
+    invalidate_external_unclaimed(state, now, windows, &mut counts).await?;
+    counts.insert("restored_since_last", state.db.count_restored_since(previous_sweep).await?);
+    let mut block = json!(counts);
+    block["pre_floor"] = pre_floor_block(state, windows).await?;
+    Ok(block)
+}
+
+/// The warn step: for every `EXT` tenant idle `window - lead` days, at most
+/// one email a day until one is sent.
+async fn warn_external_unclaimed(
+    state: &AppState,
+    now: i64,
+    windows: crate::retention::ExternalWindows,
+    counts: &mut std::collections::BTreeMap<&'static str, i64>,
+) -> Result<(), AppError> {
+    let crate::retention::ExternalWindows { window, lead, grace } = windows;
+    let (warn_day, ..) = windows.stage_days();
+    let candidates = state.db.external_warn_candidates(now, warn_day, crate::retention::WARN_BATCH_SIZE).await?;
+    for c in candidates {
+        // The link must resolve through the purge.
+        let purge_at = c.idle_since_unix + (window + grace) * 86_400;
+        let Some(address) = c.address.clone() else {
+            if !state.db.extend_claim_token(c.id, purge_at).await? {
+                let token = crate::claim::generate_claim_token();
+                state
+                    .db
+                    .set_warn_claim_token(WarnClaimToken {
+                        tenant_id: c.id,
+                        token_hash: hash_key(&token),
+                        token_plain: token,
+                        expires_unix: purge_at,
+                        bound_email: None,
+                    })
+                    .await?;
+            }
+            state
+                    .db
+                    .record_lifecycle_event(LifecycleEvent {
+                        tenant_id: c.id,
+                        stage: "warn_no_address",
+                        idle_since_unix: c.idle_since_unix,
+                        status_code: None,
+                        created_unix: now,
+                    })
+                    .await?;
+            *counts.entry("warn_no_address").or_default() += 1;
+            continue;
+        };
+        let token = crate::claim::generate_claim_token();
+        let bound = WarnClaimToken {
+            tenant_id: c.id,
+            token_hash: hash_key(&token),
+            token_plain: token.clone(),
+            expires_unix: purge_at,
+            bound_email: Some(address.clone()),
+        };
+        if !state.db.set_warn_claim_token(bound).await? {
+            continue;
+        }
+        let url = crate::claim::claim_url(&state.public_url, &token);
+        let invalidates_at = (c.idle_since_unix + window * 86_400).max(c.first_attempt_unix.unwrap_or(now) + lead * 86_400);
+        let days_left = ((invalidates_at - now + 86_399) / 86_400).max(0);
+        let date = &crate::state::rfc3339_from_unix(invalidates_at)[..10];
+        let mail = crate::claim::ExternalWarnMail {
+            to: &address,
+            display_name: &c.display_name,
+            days_left,
+            invalidates_on: date,
+            claim_url: &url,
+        };
+        let message = crate::claim::external_warn_message(state, &mail);
+        match crate::claim::send_with_retry(state, message).await {
+            Ok(()) => {
+                state
+                    .db
+                    .record_lifecycle_event(LifecycleEvent {
+                        tenant_id: c.id,
+                        stage: "warned",
+                        idle_since_unix: c.idle_since_unix,
+                        status_code: None,
+                        created_unix: now,
+                    })
+                    .await?;
+                *counts.entry("warned").or_default() += 1;
+            }
+            Err(e) => {
+                let status = e.claim_email_status();
+                if let Err(journal_err) = state.db.record_claim_email_failure(c.id, status).await {
+                    tracing::warn!(tenant = %c.namespace, error = %journal_err, "claim email failure journal write failed");
+                }
+                state
+                    .db
+                    .record_lifecycle_event(LifecycleEvent {
+                        tenant_id: c.id,
+                        stage: "warn_failed",
+                        idle_since_unix: c.idle_since_unix,
+                        status_code: status,
+                        created_unix: now,
+                    })
+                    .await?;
+                *counts.entry("warn_failed").or_default() += 1;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// PRD-mcphost-self-offboard-releases-session R1: drop the caller session's
@@ -2759,8 +2899,11 @@ pub async fn tool_logs(state: &AppState, tenant: &Tenant, args: &Value) -> Resul
 /// the legacy per-tenant `usage`'s `"24h"`) since every acceptance
 /// criterion names day-granular windows and this is a wholly new response
 /// shape with no pre-existing default to preserve.
+/// The `by` values `host.usage` accepts; the descriptor's `by.enum`.
+pub const USAGE_BY: &[&str] = &["tool", "caller", "end_user", "key"];
+
 async fn usage_breakdown(state: &AppState, tenant: &Tenant, args: &Value, by: String) -> Result<Value, AppError> {
-    if !matches!(by.as_str(), "tool" | "caller" | "end_user" | "key") {
+    if !USAGE_BY.contains(&by.as_str()) {
         return Err(AppError::InvalidArgs(format!(
             "by must be 'tool', 'caller', 'end_user', or 'key', got '{by}'"
         )));
@@ -3224,4 +3367,141 @@ mod tests {
         assert_eq!(validate_synthetic_header(Some("Bad Label!")), None);
         assert_eq!(validate_synthetic_header(Some(" ")), None);
     }
+}
+
+/// The invalidation step: phase 1 marks, the teardown runs, phase 2 makes the
+/// reason terminal and journals it, then one notice goes to the warn address.
+async fn invalidate_external_unclaimed(
+    state: &AppState,
+    now: i64,
+    windows: crate::retention::ExternalWindows,
+    counts: &mut std::collections::BTreeMap<&'static str, i64>,
+) -> Result<(), AppError> {
+    let ids = state.db.mark_external_expiring(now, windows, crate::retention::EXPIRE_BATCH_SIZE).await?;
+    state.db.run_external_phase_hook(&ids).await;
+    for id in ids {
+        teardown_expired_tenant(state, id).await;
+        match state.db.finish_external_invalidation(id, now).await? {
+            crate::db::InvalidationOutcome::Expired { idle_since_unix } => {
+                *counts.entry("invalidated").or_default() += 1;
+                send_invalidation_notice(state, (id, idle_since_unix), now, windows, counts).await?;
+            }
+            crate::db::InvalidationOutcome::ClaimedMeanwhile => {
+                *counts.entry("claimed_during_invalidation").or_default() += 1;
+            }
+            crate::db::InvalidationOutcome::Gone => {}
+        }
+    }
+    Ok(())
+}
+
+/// The notice: same address rule as the warn, the claim link kept valid
+/// through the purge, never a credential. A double failure is journaled and
+/// never blocks the invalidation.
+async fn send_invalidation_notice(
+    state: &AppState,
+    (tenant_id, idle_since): (i64, i64),
+    now: i64,
+    windows: crate::retention::ExternalWindows,
+    counts: &mut std::collections::BTreeMap<&'static str, i64>,
+) -> Result<(), AppError> {
+    let Some(address) = state.db.external_notice_address(tenant_id).await? else {
+        return Ok(());
+    };
+    let purge_at = idle_since + (windows.window + windows.grace) * 86_400;
+    if !state.db.extend_claim_token(tenant_id, purge_at).await? {
+        let token = crate::claim::generate_claim_token();
+        let fresh = WarnClaimToken {
+            tenant_id,
+            token_hash: hash_key(&token),
+            token_plain: token,
+            expires_unix: purge_at,
+            bound_email: Some(address.clone()),
+        };
+        state.db.set_warn_claim_token(fresh).await?;
+    }
+    let Some(tenant) = state.db.find_tenant_by_id(tenant_id).await? else {
+        return Ok(());
+    };
+    let Some(claim_url) = crate::claim::claim_url_for_tenant(&state.public_url, &tenant) else {
+        return Ok(());
+    };
+    let purge_on = &crate::state::rfc3339_from_unix(purge_at)[..10];
+    let mail = crate::claim::ExternalNoticeMail {
+        to: &address,
+        display_name: &tenant.display_name,
+        purge_on,
+        claim_url: &claim_url,
+    };
+    let message = crate::claim::external_notice_message(state, &mail);
+    if let Err(e) = crate::claim::send_with_retry(state, message).await {
+        let status = e.claim_email_status();
+        if let Err(journal_err) = state.db.record_claim_email_failure(tenant_id, status).await {
+            tracing::warn!(tenant = %tenant.namespace, error = %journal_err, "claim email failure journal write failed");
+        }
+        let event = LifecycleEvent {
+            tenant_id,
+            stage: "notice_failed",
+            idle_since_unix: idle_since,
+            status_code: status,
+            created_unix: now,
+        };
+        state.db.record_lifecycle_event(event).await?;
+        *counts.entry("notice_failed").or_default() += 1;
+    }
+    Ok(())
+}
+
+/// The purge step: tenants invalidated at least `grace` days ago and still
+/// disabled go through `delete_tenant`'s body, journaled as
+/// `tenant_purge_expired` in `admin_events` (which survives the cascade).
+async fn purge_external_unclaimed(
+    state: &AppState,
+    windows: crate::retention::ExternalWindows,
+    now: i64,
+    counts: &mut std::collections::BTreeMap<&'static str, i64>,
+) -> Result<(), AppError> {
+    let due = state.db.external_purge_candidates(now, windows.grace, crate::retention::EXPIRE_BATCH_SIZE).await?;
+    for namespace in due {
+        let Some((deleted, _)) = state.db.delete_tenant_as(namespace, crate::retention::PURGE_ACTION).await? else {
+            continue;
+        };
+        for k in state.kinds.all() {
+            k.on_tenant_removed(deleted.id).await;
+        }
+        crate::admin::remove_tenant_tables(state, deleted.id);
+        *counts.entry("purged").or_default() += 1;
+    }
+    Ok(())
+}
+
+/// The pre-floor backlog block: `count` and the three due stamps on every
+/// sweep, plus the `dry_run` list (first 200 rows, never a key, secret or
+/// address) on the first sweep that logs this policy.
+async fn pre_floor_block(state: &AppState, windows: crate::retention::ExternalWindows) -> Result<Value, AppError> {
+    let first = !state.db.external_block_logged().await?;
+    let limit = if first { crate::retention::PRE_FLOOR_DRY_RUN_LIMIT as i64 } else { 0 };
+    let pre = state.db.external_pre_floor(limit).await?;
+    let (warn_day, expire_day, purge_day) = windows.stage_days();
+    let mut block = json!({
+        "count": pre.count,
+        "warn_due_unix": pre.floor_unix + warn_day * 86_400,
+        "invalidate_due_unix": pre.floor_unix + expire_day * 86_400,
+        "purge_due_unix": pre.floor_unix + purge_day * 86_400,
+    });
+    if first {
+        block["dry_run"] = pre
+            .rows
+            .iter()
+            .map(|r| {
+                json!({
+                    "tenant_id": r.tenant_id,
+                    "display_name": r.display_name,
+                    "created_unix": r.created_unix,
+                    "last_seen_unix": r.last_seen_unix,
+                })
+            })
+            .collect();
+    }
+    Ok(block)
 }

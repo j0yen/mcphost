@@ -23,6 +23,8 @@ mod rgpt;
 mod serve;
 #[path = "support/sjrc.rs"]
 mod sjrc;
+#[path = "support/tcpn.rs"]
+mod tcpn;
 #[path = "support/timp.rs"]
 mod timp;
 #[path = "support/tssdk.rs"]
@@ -32,6 +34,20 @@ mod uprg;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
+#[path = "regone_ac01_live_compares_registry_to_endpoint.rs"]
+mod regone_ac01_live_compares_registry_to_endpoint;
+#[path = "regone_ac02_live_registry_timeout_is_unknown.rs"]
+mod regone_ac02_live_registry_timeout_is_unknown;
+#[path = "regone_ac03_one_server_json.rs"]
+mod regone_ac03_one_server_json;
+#[path = "regone_ac04_dry_run_prints_lines_and_no_secret.rs"]
+mod regone_ac04_dry_run_prints_lines_and_no_secret;
+#[path = "regone_ac05_no_publish_without_ok_makes_no_write.rs"]
+mod regone_ac05_no_publish_without_ok_makes_no_write;
+#[path = "regone_ac06_one_search_url_in_docs.rs"]
+mod regone_ac06_one_search_url_in_docs;
+#[path = "regone_ac07_live_json.rs"]
+mod regone_ac07_live_json;
 #[path = "rgpt_ac01_recipes_generator_idempotent.rs"]
 mod rgpt_ac01_recipes_generator_idempotent;
 #[path = "rgpt_ac02_drift_names_file_recipe_and_line.rs"]
@@ -616,6 +632,46 @@ mod tablemodel_ac09_drop_removes_model_and_annotations;
 mod tablemodel_ac10_empty_table_reports_unknown_types_no_error;
 #[path = "tables_ac07_tenant_delete_cascade.rs"]
 mod tables_ac07_tenant_delete_cascade;
+#[path = "tblurl_ac01_create_from_url_imports_all_rows.rs"]
+mod tblurl_ac01_create_from_url_imports_all_rows;
+#[path = "tblurl_ac02_private_and_insecure_urls_refused_before_any_byte.rs"]
+mod tblurl_ac02_private_and_insecure_urls_refused_before_any_byte;
+#[path = "tblurl_ac03_oversize_source_is_import_too_large.rs"]
+mod tblurl_ac03_oversize_source_is_import_too_large;
+#[path = "tblurl_ac04_csv_text_skips_a_malformed_row.rs"]
+mod tblurl_ac04_csv_text_skips_a_malformed_row;
+#[path = "tblurl_ac05_two_sources_refused_by_the_input_schema.rs"]
+mod tblurl_ac05_two_sources_refused_by_the_input_schema;
+#[path = "tblurl_ac06_import_codes_flow_from_the_registry.rs"]
+mod tblurl_ac06_import_codes_flow_from_the_registry;
+#[path = "tblurl_ac08_import_id_replays_the_first_result.rs"]
+mod tblurl_ac08_import_id_replays_the_first_result;
+#[path = "tblurlp_ac01_sample_csv_route.rs"]
+mod tblurlp_ac01_sample_csv_route;
+#[path = "tblurlp_ac02_example_urls_have_routes.rs"]
+mod tblurlp_ac02_example_urls_have_routes;
+#[path = "tblurlp_ac05_recipe_one_call_form.rs"]
+mod tblurlp_ac05_recipe_one_call_form;
+#[path = "tcpn_ac01_progress_counters.rs"]
+mod tcpn_ac01_progress_counters;
+#[path = "tcpn_ac02_frame_contract.rs"]
+mod tcpn_ac02_frame_contract;
+#[path = "tcpn_ac03_probe_tool.rs"]
+mod tcpn_ac03_probe_tool;
+#[path = "tcpn_ac04_progress_frames.rs"]
+mod tcpn_ac04_progress_frames;
+#[path = "tcpn_ac05_no_token_unchanged.rs"]
+mod tcpn_ac05_no_token_unchanged;
+#[path = "tcpn_ac06_throttle_and_disconnect.rs"]
+mod tcpn_ac06_throttle_and_disconnect;
+#[path = "tcse_ac01_primary_key_conflict_structured.rs"]
+mod tcse_ac01_primary_key_conflict_structured;
+#[path = "tcse_ac02_message_names_row_and_column.rs"]
+mod tcse_ac02_message_names_row_and_column;
+#[path = "tcse_ac03_not_null_conflict.rs"]
+mod tcse_ac03_not_null_conflict;
+#[path = "tcse_ac04_storage_stays_host_fault.rs"]
+mod tcse_ac04_storage_stays_host_fault;
 #[path = "tdf_ac01_round_trip_every_kind.rs"]
 mod tdf_ac01_round_trip_every_kind;
 #[path = "tdf_ac02_lint_names_unknown_field.rs"]
@@ -980,55 +1036,3 @@ mod vbd_ac02_three_unvalidated_verbs_now_refuse;
 mod vbd_ac04_owner_registry_cross_contract;
 #[path = "vbd_ac07_every_schema_valid_call_reaches_its_handler.rs"]
 mod vbd_ac07_every_schema_valid_call_reaches_its_handler;
-#[path = "verbfwd_ac01_trigger_set_dotted_forwards.rs"]
-mod verbfwd_ac01_trigger_set_dotted_forwards;
-#[path = "verbfwd_ac02_every_spelling_forwards_identically.rs"]
-mod verbfwd_ac02_every_spelling_forwards_identically;
-#[path = "verbfwd_ac03_tenant_tool_name_wins_over_verb.rs"]
-mod verbfwd_ac03_tenant_tool_name_wins_over_verb;
-#[path = "verbfwd_ac04_admin_verb_refused_never_forwarded.rs"]
-mod verbfwd_ac04_admin_verb_refused_never_forwarded;
-#[path = "verbfwd_ac05_tool_test_forwards_dry_run_or_unverifiable.rs"]
-mod verbfwd_ac05_tool_test_forwards_dry_run_or_unverifiable;
-#[path = "verbfwd_ac06_hint_parity_underscore_form_resolves.rs"]
-mod verbfwd_ac06_hint_parity_underscore_form_resolves;
-#[path = "verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota.rs"]
-mod verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota;
-#[path = "vfxenv_ac01_build_env_inputs_are_not_outputs.rs"]
-mod vfxenv_ac01_build_env_inputs_are_not_outputs;
-#[path = "vord_ac01_falsifier.rs"]
-mod vord_ac01_falsifier;
-#[path = "vord_ac02_contract_order_enum.rs"]
-mod vord_ac02_contract_order_enum;
-#[path = "vord_ac03_cursor_bound_to_order.rs"]
-mod vord_ac03_cursor_bound_to_order;
-#[path = "vord_ac04_order_by_from_enum.rs"]
-mod vord_ac04_order_by_from_enum;
-#[path = "vord_ac05_runs_list_filters_in_sql.rs"]
-mod vord_ac05_runs_list_filters_in_sql;
-#[path = "vord_ac06_concurrent_inserts_every_paged_verb.rs"]
-mod vord_ac06_concurrent_inserts_every_paged_verb;
-#[path = "vord_ac07_removed_order_variant_is_breaking.rs"]
-mod vord_ac07_removed_order_variant_is_breaking;
-#[path = "vordb_ac01_runs_verdict_filter_pages_in_sql.rs"]
-mod vordb_ac01_runs_verdict_filter_pages_in_sql;
-#[path = "vordb_ac02_every_paged_verb_walks_clean.rs"]
-mod vordb_ac02_every_paged_verb_walks_clean;
-#[path = "vordb_ac03_removed_order_variant_breaks_contract_check.rs"]
-mod vordb_ac03_removed_order_variant_breaks_contract_check;
-#[path = "wake_ac1_message_trigger_fires_run.rs"]
-mod wake_ac1_message_trigger_fires_run;
-#[path = "wake_ac2_from_filter.rs"]
-mod wake_ac2_from_filter;
-#[path = "wake_ac3_dedupe.rs"]
-mod wake_ac3_dedupe;
-#[path = "wake_ac4_jobs_concurrent_rejects.rs"]
-mod wake_ac4_jobs_concurrent_rejects;
-#[path = "wake_ac5_pause_resume.rs"]
-mod wake_ac5_pause_resume;
-#[path = "wake_ac6_msg_wait.rs"]
-mod wake_ac6_msg_wait;
-#[path = "wake_ac7_trigger_test_synthetic_envelope.rs"]
-mod wake_ac7_trigger_test_synthetic_envelope;
-#[path = "wake_ac8_replay.rs"]
-mod wake_ac8_replay;

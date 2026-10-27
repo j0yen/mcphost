@@ -3265,6 +3265,9 @@
       },
       "tenant_lifecycle": {
         "properties": {
+          "idle_since_unix": {
+            "type": "integer"
+          },
           "expires_at_unix": {
             "type": [
               "integer",
@@ -3274,8 +3277,32 @@
           "idle_days": {
             "type": "integer"
           },
+          "policy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "purge_at_unix": {
+            "type": "integer"
+          },
           "subject": {
             "type": "boolean"
+          },
+          "warn_address_masked": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "warn_at_unix": {
+            "type": "integer"
+          },
+          "warned_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "required": [
@@ -9920,6 +9947,49 @@
   },
   "host.table.append": {
     "properties": {
+      "bytes": {
+        "type": "integer"
+      },
+      "columns": {
+        "items": {
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "type"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "rows_imported": {
+        "type": "integer"
+      },
+      "rows_skipped": {
+        "type": "integer"
+      },
+      "skip_reasons": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "source": {
+        "enum": [
+          "url",
+          "inline"
+        ],
+        "type": "string"
+      },
+      "source_host": {
+        "type": "string"
+      },
       "appended": {
         "type": "integer"
       },
@@ -10213,6 +10283,49 @@
   },
   "host.table.create": {
     "properties": {
+      "bytes": {
+        "type": "integer"
+      },
+      "columns": {
+        "items": {
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "type"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "rows_imported": {
+        "type": "integer"
+      },
+      "rows_skipped": {
+        "type": "integer"
+      },
+      "skip_reasons": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "source": {
+        "enum": [
+          "url",
+          "inline"
+        ],
+        "type": "string"
+      },
+      "source_host": {
+        "type": "string"
+      },
       "_meta": {
         "properties": {
           "dry_run": {
@@ -14277,6 +14390,21 @@
       "url",
       "verify",
       "wait"
+    ],
+    "type": "object"
+  },
+  "host.probe.progress": {
+    "properties": {
+      "elapsed_ms": {
+        "type": "integer"
+      },
+      "steps": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "elapsed_ms",
+      "steps"
     ],
     "type": "object"
   },

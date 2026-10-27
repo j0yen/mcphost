@@ -46,7 +46,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `src/control.rs` (~3k) Business logic for `signup` and the `host.*` control plane.
   - sections: next-hint (PRD-mcphost-one-next-tool requirement 4)
 - `src/cron.rs` (<1k) PRD-mcphost-schedules P0 requirement 2: a hand-rolled five-field cron parser and its `next_after` occurrenc...
-- `src/db.rs` (~25k) SQLite storage.
+- `src/db.rs` (~26k) SQLite storage.
   - sections: consent (PRD-mcphost-agent-consent) | messaging (PRD-mcphost-agent-inbox) | connection factory and startup pragma audit | contention counters | PRD-mcphost-drift-review row types | PRD-mcphost-hosted-authorization-server row types | PRD-mcphost-federated-end-user-login row types | invites (PRD-mcphost-invite-links) | row policy (PRD-mcphost-row-policy)
 - `src/deadletters.rs` (<1k) PRD-mcphost-event-trigger-from-webhook: every refused `POST /hooks/...` delivery and every event-fired run...
 - `src/delegation.rs` (<1k) PRD-mcphost-key-delegate-child-keys R2: the subset rule.
@@ -95,7 +95,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `src/gen/schema_ir.rs` (<1k) PRD-mcphost-typescript-sdk-generated R6: the one JSON-Schema reader both SDK generators (`sdk_python`, `gen...
 - `src/gen/sdk_ts.rs` (<1k) PRD-mcphost-typescript-sdk-generated R1: `mcphost gen sdk ts` renders `sdk/ts/src/` from `contracts/host-to...
 - `src/gendocs.rs` (~1k) `mcphost gen-docs` -- PRD-mcphost-first-hour-support-surface requirement 3: regenerates `docs/plans.md` fro...
-- `src/handler.rs` (~13k) The `rmcp::ServerHandler` implementation: `initialize`, `list_tools` and `call_tool`.
+- `src/handler.rs` (~14k) The `rmcp::ServerHandler` implementation: `initialize`, `list_tools` and `call_tool`.
   - sections: static control-plane / admin tool descriptors | secret resolver / call log, bridging async DB to the sync Kind API | the handler
 - `src/handler/arms.rs` (~1k) One function per dotted host verb: the arm bodies `dispatch_tenant_tool_inner` used to hold in a single `ma...
 - `src/handler/preauth.rs` (<1k) Boxed helpers for the verbs `call_tool_inner` answers in its own `match (auth, name)` (PRD-mcphost-generate...
@@ -150,6 +150,8 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `src/maintenance.rs` (<1k) PRD-mcphost-db-maintenance-window: the host's own daily database and disk hygiene, run through [`crate::hea...
 - `src/messaging.rs` (<1k) Business logic for `host.msg.*` (PRD-mcphost-agent-inbox): directed messages and threads between mcphost te...
 - `src/metering.rs` (<1k) `mcphost billing emit-meter`'s business logic (PRD-mcphost-metered-overage P0): reads pro tenants' unemitte...
+- `src/net/fetch_guard.rs` (<1k) PRD-mcphost-table-import-from-url R2: the SSRF-guarded, size-capped GET a `source_url` import fetches with.
+- `src/net/mod.rs` (<1k) Outbound network helpers shared by tools that fetch a caller-named URL.
 - `src/network_policy.rs` (<1k) PRD-mcphost-sandbox-egress-allowlist: the one place that knows a spec's `network` field needs the `pro` pla...
 - `src/next_call.rs` (<1k) PRD-mcphost-onboarding-dead-ends-zero: `AppError::next_call` -- the one exhaustive table that gives every e...
 - `src/notes.rs` (<1k) PRD-mcphost-notes-to-future-self: `host.note.put` / `host.note.list` / `host.note.delete` over the `notes/`...
@@ -169,6 +171,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `src/plans.rs` (~1k) The plan catalog (`plans.toml`): per-plan price and quotas.
 - `src/precheck.rs` (<1k) PRD-mcphost-implicit-signup-mints-only-on-success R1: the one module that checks a call before it dispatches.
 - `src/preflight.rs` (<1k) PRD-mcphost-call-cost-estimate: the one list of admission checks a call passes before it dispatches.
+- `src/progress.rs` (<1k) PRD-mcphost-tools-call-progress-notifications: per-call progress bookkeeping (the `calls.progress_token` /...
 - `src/prompts.rs` (<1k) PRD-mcphost-prompts-from-published-tools: `prompts/list` and `prompts/get`.
 - `src/protocol/frames.rs` (<1k) PRD-mcphost-sse-frame-contract-generated: the frames the host may emit per request type, as one table.
 - `src/protocol/mod.rs` (<1k) Wire-protocol contracts the host publishes about itself.
@@ -213,6 +216,8 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `src/sync/sources/http_json.rs` (<1k) PRD-mcphost-sync-pull-with-change-detection R6: the `http_json` source -- a conditional GET of a public url...
 - `src/sync/sources/mod.rs` (<1k) PRD-mcphost-sync-pull-with-change-detection R6: one file per [`SourceKind`](super::SourceKind), each exposi...
 - `src/sync/sources/notion_db.rs` (<1k) PRD-mcphost-sync-pull-with-change-detection R6: the `notion_db` source -- `POST /v1/databases/<id>/query` f...
+- `src/table/import.rs` (<1k) PRD-mcphost-table-import-from-url: `source_url` (an https CSV or JSON Lines file) and `csv_text` (inline, a...
+- `src/table/mod.rs` (<1k) Table-store features that sit beside `tables.rs`: today the CSV / JSON Lines import.
 - `src/tables.rs` (~3k) Business logic for `host.table.*` (PRD-mcphost-tenant-tables P0 requirements 1-6, P1 requirement 7): per-te...
   - sections: host.table.create / host.table.drop | host.table.append | host.table.query | host.table.list / host.table.schema | export / import of declared tables
 - `src/tables_graph.rs` (<1k) PRD-mcphost-table-concept-graph: the tenant's own `table_models` (built by `tables_model.rs`) joined up int...
@@ -245,6 +250,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `PROPOSAL_ACTIONS` in `src/admin.rs`
 - `PROPOSAL_STATUSES` in `src/admin.rs`
 - `SYNTHETIC_FILTERS` in `src/admin.rs`
+- `USAGE_TOP_BY` in `src/admin.rs`
 - `CONTACT_POLICIES` in `src/agents.rs`
 - `SEVERITIES` in `src/alerts.rs`
 - `SURFACE_STAGE_KEYS` in `src/api_contract.rs`
@@ -252,6 +258,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `STATUSES` in `src/asks.rs`
 - `EXPORT_FORMATS` in `src/audit_export.rs`
 - `LIFECYCLE_TERMINAL_VERBS` in `src/auth_shape.rs`
+- `KNOWN_CHECKOUT_SOURCES` in `src/billing.rs`
 - `BLOB_TYPES` in `src/blobs.rs`
 - `GET_AS` in `src/blobs.rs`
 - `ANON_HEALTHZ_KEYS` in `src/build_info.rs`
@@ -265,8 +272,12 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `REFUSAL_TABLE` in `src/compat_report.rs`
 - `STATUSES` in `src/consent.rs`
 - `SIGNUP_ARGS` in `src/control.rs`
+- `USAGE_BY` in `src/control.rs`
 - `DEAD_LETTER_REASONS` in `src/deadletters.rs`
 - `DISPATCH_TABLE` in `src/dispatch_table.rs`
+- `ALLOWED_MIMES` in `src/docs.rs`
+- `INDEX_PROVIDERS` in `src/docs.rs`
+- `SEARCH_MODES` in `src/docs.rs`
 - `DOCTOR_FIXTURES` in `src/doctor.rs`
 - `DOCTOR_NEXT` in `src/doctor.rs`
 - `DRAFT_KINDS` in `src/drafter.rs`
@@ -295,6 +306,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `HELP_ENTRIES` in `src/help.rs`
 - `INVALID_ARGS_CTORS` in `src/host_args.rs`
 - `SCHEMA_VALID_REFUSALS` in `src/host_args.rs`
+- `SHAPE_CHECKS` in `src/host_args.rs`
 - `UNVALIDATED` in `src/host_args.rs`
 - `ROUTES` in `src/http/routes.rs`
 - `UNSPECCED` in `src/http/routes.rs`
@@ -341,11 +353,15 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `RESOURCE_TEMPLATES` in `src/resources.rs`
 - `ANON_SAFE_TOOLS` in `src/resume.rs`
 - `RESUME_NEXT` in `src/resume.rs`
+- `LIFECYCLE_STAGES` in `src/retention.rs`
 - `POLICY_TABLES` in `src/retention.rs`
 - `RETRY_POLICY` in `src/retry_policy.rs`
 - `SAMPLING_ERROR_CODES` in `src/sampling.rs`
 - `OVERRIDES` in `src/sdk_python.rs`
+- `STATUS_FEED_TABLES` in `src/statusfeed.rs`
 - `ALWAYS_LISTED` in `src/subkeys.rs`
+- `SOURCE_ARGS` in `src/table/import.rs`
+- `TABLE_ERROR_CODES` in `src/tables.rs`
 - `TABLE_WRITE_VERBS` in `src/tables.rs`
 - `ANNOTATION_KEYS` in `src/tables_model.rs`
 - `STATUS_TOOLS` in `src/tasks.rs`

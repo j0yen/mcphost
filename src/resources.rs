@@ -35,6 +35,18 @@ pub enum ResourceKind {
     Tool,
 }
 
+impl ResourceKind {
+    /// The kind's key in the generated contract's `resources` object.
+    pub fn key(self) -> &'static str {
+        match self {
+            ResourceKind::Table => "table",
+            ResourceKind::Doc => "doc",
+            ResourceKind::Run => "run",
+            ResourceKind::Tool => "tool",
+        }
+    }
+}
+
 /// One row of [`RESOURCE_TEMPLATES`].
 #[derive(Debug)]
 pub struct ResourceTemplate {
@@ -48,6 +60,9 @@ pub struct ResourceTemplate {
     /// The OAuth scope `resources/list` filters by and `resources/read`
     /// checks.
     pub scope: &'static str,
+    /// The `resources/list` field carrying the object's human name, when the
+    /// listing sets one (a doc's `title`); `None` for kinds listed without.
+    pub title_field: Option<&'static str>,
 }
 
 pub const RESOURCE_TEMPLATES: &[ResourceTemplate] = &[
@@ -58,6 +73,7 @@ pub const RESOURCE_TEMPLATES: &[ResourceTemplate] = &[
         mime_type: "application/json",
         reader: "host.table.query",
         scope: "tables:read",
+        title_field: None,
     },
     ResourceTemplate {
         kind: ResourceKind::Doc,
@@ -66,6 +82,7 @@ pub const RESOURCE_TEMPLATES: &[ResourceTemplate] = &[
         mime_type: "text/markdown",
         reader: "host.docs.get",
         scope: "docs:read",
+        title_field: Some("title"),
     },
     ResourceTemplate {
         kind: ResourceKind::Run,
@@ -74,6 +91,7 @@ pub const RESOURCE_TEMPLATES: &[ResourceTemplate] = &[
         mime_type: "text/plain",
         reader: "host.runs.get",
         scope: "runs:read",
+        title_field: None,
     },
     ResourceTemplate {
         kind: ResourceKind::Tool,
@@ -82,8 +100,66 @@ pub const RESOURCE_TEMPLATES: &[ResourceTemplate] = &[
         mime_type: "application/json",
         reader: "host.tool.list",
         scope: "tools:read",
+        title_field: None,
     },
 ];
+
+/// The name of the placeholder in `template`'s URI, e.g. `name` for
+/// `mcphost://table/{name}`.
+fn placeholder(template: &ResourceTemplate) -> &'static str {
+    let rest = template.uri_template.split_once('{').map_or("", |(_, r)| r);
+    rest.split_once('}').map_or("", |(p, _)| p)
+}
+
+/// How `template` formats a listed entry's `name`, placeholder unfilled:
+/// `table:{name}`. [`list_entry`] fills the placeholder with the same key it
+/// passes to [`uri_for`], and the contract's `name_field` renders this.
+pub fn name_format(template: &ResourceTemplate) -> String {
+    format!("{}:{{{}}}", template.name, placeholder(template))
+}
+
+/// The `resources` section of `contracts/host-tools.v1.json`, built by
+/// iterating `templates` (the contract is the registry rendered): per kind,
+/// the full URI template in `uri_scheme` and the `name` format in
+/// `name_field`; `title_field` names the listing field holding the human
+/// name, for the kinds that set one.
+pub fn contract_section(templates: &[ResourceTemplate]) -> Value {
+    let mut uri_scheme = serde_json::Map::new();
+    let mut name_field = serde_json::Map::new();
+    let mut title_field = serde_json::Map::new();
+    for t in templates {
+        uri_scheme.insert(t.kind.key().to_string(), json!(t.uri_template));
+        name_field.insert(t.kind.key().to_string(), json!(name_format(t)));
+        if let Some(title) = t.title_field {
+            title_field.insert(t.kind.key().to_string(), json!(title));
+        }
+    }
+    json!({"name_field": name_field, "title_field": title_field, "uri_scheme": uri_scheme})
+}
+
+/// The `resources.<field>.<kind>` paths where `committed`'s `resources`
+/// section differs from what `templates` render (`resources` alone when the
+/// committed file has no section), for `contract dump --check` to name.
+pub fn contract_drift(committed: &Value, templates: &[ResourceTemplate]) -> Vec<String> {
+    let live = contract_section(templates);
+    let Some(have) = committed.get("resources").and_then(Value::as_object) else {
+        return vec!["resources".to_string()];
+    };
+    let mut out = Vec::new();
+    for (field, want) in live.as_object().into_iter().flatten() {
+        let want = want.as_object().expect("section fields are objects");
+        let got = have.get(field).and_then(Value::as_object);
+        let mut kinds: Vec<&String> = want.keys().chain(got.into_iter().flat_map(|g| g.keys())).collect();
+        kinds.sort();
+        kinds.dedup();
+        for kind in kinds {
+            if want.get(kind) != got.and_then(|g| g.get(kind)) {
+                out.push(format!("resources.{field}.{kind}"));
+            }
+        }
+    }
+    out
+}
 
 /// The template for `kind`.
 pub fn template_for(kind: ResourceKind) -> &'static ResourceTemplate {
@@ -327,8 +403,8 @@ fn run_log_text(run: &Value) -> String {
 /// A `resources/list` entry.
 pub fn list_entry(kind: ResourceKind, key: &str, title: Option<&str>) -> Resource {
     let template = template_for(kind);
-    let mut r = Resource::new(uri_for(kind, key), format!("{}:{key}", template.name)).with_mime_type(template.mime_type);
-    if let Some(t) = title {
+    let mut r = Resource::new(uri_for(kind, key), name_format(template).replace(&format!("{{{}}}", placeholder(template)), key)).with_mime_type(template.mime_type);
+    if let (Some(_), Some(t)) = (template.title_field, title) {
         r = r.with_title(t);
     }
     r
@@ -656,5 +732,34 @@ pub fn after_write(state: &AppState, tenant_id: i64, hint: WriteHint, out: &Valu
     }
     if hint.list_changed {
         state.resource_subs.notify_list_changed(tenant_id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn contract_section_keys_equal_the_template_kinds() {
+        let section = contract_section(RESOURCE_TEMPLATES);
+        let kinds: std::collections::BTreeSet<&str> = RESOURCE_TEMPLATES.iter().map(|t| t.kind.key()).collect();
+        for field in ["uri_scheme", "name_field"] {
+            let keys: std::collections::BTreeSet<&str> =
+                section[field].as_object().expect("object").keys().map(String::as_str).collect();
+            assert_eq!(keys, kinds, "{field} is keyed by every template kind");
+        }
+    }
+
+    #[test]
+    fn contract_templates_are_what_uri_for_and_list_entry_emit() {
+        let section = contract_section(RESOURCE_TEMPLATES);
+        for t in RESOURCE_TEMPLATES {
+            let key = t.kind.key();
+            let ph = format!("{{{}}}", placeholder(t));
+            assert_eq!(uri_for(t.kind, &ph), section["uri_scheme"][key].as_str().unwrap());
+            let entry = list_entry(t.kind, "x1", None);
+            assert_eq!(entry.uri, section["uri_scheme"][key].as_str().unwrap().replace(&ph, "x1"));
+            assert_eq!(entry.name, section["name_field"][key].as_str().unwrap().replace(&ph, "x1"));
+        }
     }
 }

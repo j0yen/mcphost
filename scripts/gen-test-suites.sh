@@ -909,7 +909,67 @@ def check_affinity(suite_files):
             f"(tests/hzkeys_ac02_handler_body_equals_const.rs), but are split: {detail}")
 
 
+# Contract pins: tests/ctrs_ac02_six_files_carry_marker_and_keep_tests.rs
+# lists (`const SIX`) the marked contract files whose tests it expects in
+# `suite_contracts_<kind>_01` (it runs `--list` on that one binary). Which
+# stems those are is that test's property, so the generator parses the list
+# from it at plan time and never spells a stem itself. Bucketing fills
+# contiguously over SORTED area keys, so once CONTRACT_MAX_PER_SUITE["core"]
+# dropped below the member count a pinned file whose prefix sorts late
+# (toolname_ac08) left _01. A pinned stem is filed under PIN_KEY, which sorts
+# before every [a-z0-9] area key, so it fills bucket 1 first at every cap;
+# `check_pins` then refuses a plan that still puts one anywhere else.
+PIN_KEY = "!ctrs_ac02"
+PIN_OWNER = "tests/ctrs_ac02_six_files_carry_marker_and_keep_tests.rs"
+PINS = {}  # stem -> "core" | "sandbox", filled by compute_plan() from PIN_OWNER
+
+
+def load_pins():
+    """Parse `const SIX` out of PIN_OWNER into PINS. A tree without the owner
+    test (the scratch repos of suitecap_ac01 / ci-suite-seed-selftest) has no
+    pins; a present owner that does not parse to six entries, or names a stem
+    with no tests/<stem>.rs, is a hard error."""
+    PINS.clear()
+    if not os.path.exists(PIN_OWNER):
+        return
+    with open(PIN_OWNER, encoding="utf-8") as fh:
+        content = fh.read()
+    block = re.search(r'const\s+SIX\s*:[^=]*=\s*\[(.*?)\]\s*;', content, re.S)
+    if not block:
+        die(f"{PIN_OWNER}: no `const SIX` block found; update load_pins() in this file")
+    entries = re.findall(r'\(\s*"(\w+)"\s*,\s*"(core|sandbox)"\s*\)', block.group(1))
+    if len(entries) != 6:
+        die(f"{PIN_OWNER}: `const SIX` parsed to {len(entries)} entries, expected 6; update load_pins() in this file")
+    for stem, kind in entries:
+        if stem in PINS:
+            die(f"{PIN_OWNER}: `const SIX` lists {stem} twice")
+        if not os.path.exists(f"tests/{stem}.rs"):
+            die(f"{PIN_OWNER}: `const SIX` names {stem}, but tests/{stem}.rs does not exist")
+        PINS[stem] = kind
+
+
+def check_pins(suite_files):
+    """Die unless every pinned (stem, kind) sits in tests/suite_contracts_<kind>_01.rs.
+    Called with the complete suite set; only the contract suites are read."""
+    homes = {}
+    for path, content in suite_files.items():
+        if not os.path.basename(path).startswith("suite_contracts_"):
+            continue
+        for stem in re.findall(r'#\[path\s*=\s*"([^"/]+)\.rs"\]', content):
+            homes[stem] = os.path.basename(path)
+    bad = []
+    for stem, kind in sorted(PINS.items()):
+        want = f"suite_contracts_{kind}_01.rs"
+        if homes.get(stem) != want:
+            bad.append(f"{stem}: in {homes.get(stem) or 'no contract suite'}, expected {want}")
+    if bad:
+        die(f"{PIN_OWNER} expects its SIX files in suite_contracts_<kind>_01 but the plan puts them elsewhere: "
+            + "; ".join(bad))
+
+
 def area_key(stem):
+    if stem in PINS:
+        return PIN_KEY
     if stem in AFFINITY:
         return AFFINITY_KEY
     m = AC_PREFIX_RE.match(stem)
@@ -1091,8 +1151,9 @@ def suite_content(members_meta):
 # each partition's env-guarded files in a single suite_env_<part>_01.rs
 # until that stops being true.
 ENV_MAX_PER_SUITE = {"core": 500, "sandbox": 500}
-# Contract suites are a handful of files; one generous cap, never retuned.
-CONTRACT_MAX_PER_SUITE = {"core": 500, "sandbox": 500}
+# The core contract bucket outgrew the 900 s shard budget (966 s on main 10afe31e, run 40105883921), so it is capped at the
+# largest value that keeps the osreach sweep apart from the sylp/verbfwd/toolname tail (ctrs_ac02 pins stay in _01, PIN_KEY).
+CONTRACT_MAX_PER_SUITE = {"core": 134, "sandbox": 500}
 # Cargo-spawning suites: a couple of files, one generous cap.
 CARGO_MAX_PER_SUITE = {"core": 500, "sandbox": 500}
 
@@ -1147,10 +1208,17 @@ def compute_plan():
     cargo_by_partition = {"core": [], "sandbox": []}
     cargo_exclusive_by_partition = {"core": [], "sandbox": []}
     classify_all(all_files)
+    load_pins()
     for f in all_files:
         with open(f, encoding="utf-8") as fh:
             content = fh.read()
         part = classify(f)
+        pin_stem = os.path.basename(f)[:-3]
+        if pin_stem in PINS:
+            if PINS[pin_stem] != part:
+                die(f"{PIN_OWNER} says {pin_stem} is {PINS[pin_stem]}, generator classifies {part}")
+            if is_affinity(pin_stem, content):
+                die(f"{pin_stem} is both a ctrs_ac02 pin and an AFFINITY stem; one area key cannot serve both")
         new_content, needs_common, needs_ci_sandbox, support_helpers = migrate_content(content)
         migrations[f] = (new_content, needs_common, needs_ci_sandbox, support_helpers)
         stem = os.path.basename(f)[:-3]
@@ -1231,6 +1299,7 @@ def compute_plan():
     )
 
     check_affinity(suite_files)
+    check_pins(suite_files)
 
     all_suite_names = sorted(
         suite_names_by_partition["core"] + suite_names_by_partition["sandbox"]

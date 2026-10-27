@@ -57,6 +57,31 @@ pub fn tenant_lifecycle() -> Value {
         "default_days": crate::retention::contract_default_days(),
         "zero_disables": true,
         "disabled_reason": crate::auth_shape::IDLE_EXPIRED_REASON,
+        "external_unclaimed": external_unclaimed(),
+    })
+}
+
+/// PRD-mcphost-external-unclaimed-tenant-expiry: the external policy nested
+/// under [`tenant_lifecycle`], built from the same constants the sweep reads
+/// (the sibling's top-level fields are unchanged).
+pub fn external_unclaimed() -> Value {
+    json!({
+        "selector": {
+            "origin": "external",
+            "synthetic": null,
+            "claimed": false,
+            "paid": false,
+            "billing_ref": null,
+            "stripe_customer_id": null,
+            "plan": "free",
+            "idle_clock_starts_no_earlier_than_policy_floor": true,
+        },
+        "idle_days_env": crate::retention::EXTERNAL_UNCLAIMED_ENV,
+        "idle_days": crate::retention::EXTERNAL_UNCLAIMED_DEFAULT_DAYS,
+        "warn_lead_days": crate::retention::WARN_LEAD_DEFAULT_DAYS,
+        "purge_grace_days": crate::retention::PURGE_GRACE_DEFAULT_DAYS,
+        "disabled_reason": crate::auth_shape::UNCLAIMED_EXPIRED_REASON,
+        "stages": crate::retention::LIFECYCLE_STAGES,
     })
 }
 
@@ -467,6 +492,7 @@ pub fn dump_contract(kinds: &KindRegistry) -> Value {
         "contract_version": CONTRACT_VERSION,
         "kinds": kind_contracts,
         "output_envelope_fields": OUTPUT_ENVELOPE_FIELDS,
+        "resources": crate::resources::contract_section(crate::resources::RESOURCE_TEMPLATES),
         "tenant_lifecycle": tenant_lifecycle(),
         "tools": entries,
     });

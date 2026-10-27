@@ -357,6 +357,10 @@ const MIGRATION_0132: &str = include_str!("../migrations/0132_recipe_uses.sql");
 const MIGRATION_0133: &str = include_str!("../migrations/0133_retention_floor.sql");
 /// PRD-mcphost-implicit-signup-mints-only-on-success R4: `signup_events.tenant_id`.
 const MIGRATION_0134: &str = include_str!("../migrations/0134_signup_events_tenant_id.sql");
+/// PRD-mcphost-external-unclaimed-tenant-expiry: `tenant_lifecycle_events` and `tenants.claim_bound_email`.
+const MIGRATION_0135: &str = include_str!("../migrations/0135_tenant_lifecycle_events.sql");
+/// PRD-mcphost-tools-call-progress-notifications P0: `calls.progress_token` / `progress_frames`.
+const MIGRATION_0136: &str = include_str!("../migrations/0136_calls_progress.sql");
 /// PRD-mcphost-elicitation-with-ask-fallback R5: `asks.channel`.
 const MIGRATION_0105: &str = include_str!("../migrations/0105_asks_channel.sql");
 /// PRD-mcphost-index-refresh-on-change R1/R2: change markers and counters.
@@ -1964,8 +1968,12 @@ pub enum OwnerVerifyOutcome {
 
 /// [`Db::verify_claim_code`]'s outcome (PRD-mcphost-human-claim-magic-link
 /// requirement 3 / AC3, AC7).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClaimVerifyOutcome {
     Verified { tenant_id: i64, email: String },
+    /// The tenant is mid-invalidation (`unclaimed_expiring`): nothing was
+    /// consumed, the same link works a moment later.
+    TryAgain,
     NotFound,
     Expired,
     AlreadyConsumed,
@@ -2534,6 +2542,15 @@ pub const ALL_ROLES: [DbRole; 3] = [ROLE_SERVER, ROLE_PRUNE, ROLE_TENANT_TABLE];
 
 const DEFAULT_BUSY_TIMEOUT_MS: u64 = 5000;
 
+/// One origin's row of [`Db::progress_counts_by_origin`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OriginProgress {
+    pub origin: String,
+    pub calls: i64,
+    pub with_token: i64,
+    pub frames: i64,
+}
+
 /// `$MCPHOST_DB_BUSY_TIMEOUT_MS` (default 5000) -- the one env-configurable
 /// pragma; `journal_mode=WAL`, `synchronous=NORMAL`, and `foreign_keys=ON`
 /// are fixed (requirement 1).
@@ -2961,7 +2978,27 @@ pub struct Db {
     /// teardown the idle sweep runs on each tenant it claims; installed by
     /// `control::install_tenant_teardown` when the server starts.
     tenant_teardown: Arc<std::sync::RwLock<Option<TenantTeardown>>>,
+    /// PRD-mcphost-external-unclaimed-tenant-expiry: the control-layer sweep
+    /// (warn, invalidate, purge) `prune_once` runs; installed with the
+    /// teardown above.
+    external_sweep: Arc<std::sync::RwLock<Option<ExternalSweep>>>,
+    /// Test-only: awaited between the invalidation's two phases with the ids
+    /// phase 1 marked ([`Db::set_external_phase_hook_for_test`]).
+    external_phase_hook: Arc<std::sync::RwLock<Option<ExternalPhaseHook>>>,
 }
+
+/// See [`Db::set_external_phase_hook_for_test`].
+pub type ExternalPhaseHook = Arc<
+    dyn Fn(Vec<i64>) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + Sync,
+>;
+
+/// The external unclaimed sweep, run with the sweep's clock; returns its
+/// `prune_log` block.
+pub type ExternalSweep = Arc<
+    dyn Fn(i64) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Value, AppError>> + Send>>
+        + Send
+        + Sync,
+>;
 
 /// One claimed tenant's teardown (session release, kind hooks, billing).
 pub type TenantTeardown = Arc<
@@ -2978,6 +3015,8 @@ impl Clone for Db {
             last_checkpoint_unix: self.last_checkpoint_unix.clone(),
             plan_calls_days: self.plan_calls_days.clone(),
             tenant_teardown: self.tenant_teardown.clone(),
+            external_sweep: self.external_sweep.clone(),
+            external_phase_hook: self.external_phase_hook.clone(),
         }
     }
 }
@@ -3019,6 +3058,8 @@ impl Db {
             last_checkpoint_unix: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             plan_calls_days: Arc::new(std::sync::RwLock::new(None)),
             tenant_teardown: Arc::new(std::sync::RwLock::new(None)),
+            external_sweep: Arc::new(std::sync::RwLock::new(None)),
+            external_phase_hook: Arc::new(std::sync::RwLock::new(None)),
         };
         db.migrate_sync()?;
         // PRD-mcphost-subscriptions-listen R5: debug builds check every tool-list write.
@@ -3333,6 +3374,20 @@ impl Db {
         conn.execute_batch(MIGRATION_0132)?;
         Self::migrate_0133_retention_floor(&conn)?;
         Self::migrate_0134_signup_events_tenant_id(&conn)?;
+        Self::migrate_0135_tenant_lifecycle_events(&conn)?;
+        Self::migrate_0136_calls_progress(&conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-external-unclaimed-tenant-expiry: gated on
+    /// `tenants.claim_bound_email` (the batch ends in an `ALTER`).
+    fn migrate_0135_tenant_lifecycle_events(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'claim_bound_email'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0135)?;
+        }
         Ok(())
     }
 
@@ -3356,6 +3411,18 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0131)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-tools-call-progress-notifications P0: gated on the first
+    /// new column (the batch is `ALTER`s, so a rerun must skip it).
+    fn migrate_0136_calls_progress(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('calls') WHERE name = 'progress_token'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0136)?;
         }
         Ok(())
     }
@@ -7137,58 +7204,89 @@ impl Db {
     pub async fn verify_claim_code(&self, code_hash: String) -> Result<ClaimVerifyOutcome, AppError> {
         let now = crate::state::now_unix();
         self.with_conn(move |conn| {
-            struct Row {
-                tenant_id: i64,
-                email: String,
-                expires_unix: i64,
-                consumed_unix: Option<i64>,
-            }
-            let row: Option<Row> = conn
-                .query_row(
-                    "SELECT tenant_id, email, expires_unix, consumed_unix FROM claim_codes \
-                     WHERE code_hash = ?1",
-                    params![code_hash],
-                    |r| {
-                        Ok(Row {
-                            tenant_id: r.get(0)?,
-                            email: r.get(1)?,
-                            expires_unix: r.get(2)?,
-                            consumed_unix: r.get(3)?,
-                        })
-                    },
-                )
-                .optional()?;
-            let Some(Row { tenant_id, email, expires_unix, consumed_unix }) = row else {
-                return Ok(ClaimVerifyOutcome::NotFound);
-            };
-            if consumed_unix.is_some() {
-                return Ok(ClaimVerifyOutcome::AlreadyConsumed);
-            }
-            if now > expires_unix {
-                return Ok(ClaimVerifyOutcome::Expired);
-            }
-            let claimed = conn.execute(
-                "UPDATE claim_codes SET consumed_unix = ?1 WHERE code_hash = ?2 AND consumed_unix IS NULL",
-                params![now, code_hash],
-            )?;
-            if claimed == 0 {
-                return Ok(ClaimVerifyOutcome::AlreadyConsumed);
-            }
-            let set = conn.execute(
-                "UPDATE tenants SET owner_email = ?1, owner_verified_at = ?2, owner_method = 'email', \
-                 claim_token_hash = NULL, claim_expires_at = NULL, claim_token_plain = NULL \
-                 WHERE id = ?3 AND owner_verified_at IS NULL",
-                params![email, now, tenant_id],
-            )?;
-            if set == 0 {
-                return Ok(ClaimVerifyOutcome::Conflict);
-            }
-            conn.execute(
-                "INSERT INTO tenant_audit (tenant_id, subject, action, detail, created_unix) \
-                 VALUES (?1, 'owner', 'claim.email', NULL, ?2)",
-                params![tenant_id, now],
-            )?;
-            Ok(ClaimVerifyOutcome::Verified { tenant_id, email })
+            // PRD-mcphost-external-unclaimed-tenant-expiry: one immediate
+            // transaction, so a verification and the invalidation's second
+            // phase never interleave.
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
+                struct Row {
+                    tenant_id: i64,
+                    email: String,
+                    expires_unix: i64,
+                    consumed_unix: Option<i64>,
+                }
+                let row: Option<Row> = conn
+                    .query_row(
+                        "SELECT tenant_id, email, expires_unix, consumed_unix FROM claim_codes \
+                         WHERE code_hash = ?1",
+                        params![code_hash],
+                        |r| {
+                            Ok(Row {
+                                tenant_id: r.get(0)?,
+                                email: r.get(1)?,
+                                expires_unix: r.get(2)?,
+                                consumed_unix: r.get(3)?,
+                            })
+                        },
+                    )
+                    .optional()?;
+                let Some(Row { tenant_id, email, expires_unix, consumed_unix }) = row else {
+                    return Ok(ClaimVerifyOutcome::NotFound);
+                };
+                if consumed_unix.is_some() {
+                    return Ok(ClaimVerifyOutcome::AlreadyConsumed);
+                }
+                if now > expires_unix {
+                    return Ok(ClaimVerifyOutcome::Expired);
+                }
+                // A tenant mid-invalidation (`unclaimed_expiring`, teardown still
+                // running) is told to retry; the code stays unconsumed.
+                let reason: Option<String> = conn
+                    .query_row("SELECT disabled_reason FROM tenants WHERE id = ?1", params![tenant_id], |r| r.get(0))
+                    .optional()?
+                    .flatten();
+                if reason.as_deref() == Some(crate::auth_shape::UNCLAIMED_EXPIRING_REASON) {
+                    return Ok(ClaimVerifyOutcome::TryAgain);
+                }
+                let claimed = conn.execute(
+                    "UPDATE claim_codes SET consumed_unix = ?1 WHERE code_hash = ?2 AND consumed_unix IS NULL",
+                    params![now, code_hash],
+                )?;
+                if claimed == 0 {
+                    return Ok(ClaimVerifyOutcome::AlreadyConsumed);
+                }
+                // A tenant the unclaimed policy invalidated is enabled in the
+                // same statement that marks the claim; any other disabled tenant
+                // keeps its state.
+                let set = conn.execute(
+                    "UPDATE tenants SET owner_email = ?1, owner_verified_at = ?2, owner_method = 'email', \
+                     claim_token_hash = NULL, claim_expires_at = NULL, claim_token_plain = NULL, \
+                     claim_bound_email = NULL, \
+                     disabled = CASE WHEN disabled_reason = ?4 THEN 0 ELSE disabled END, \
+                     disabled_reason = CASE WHEN disabled_reason = ?4 THEN NULL ELSE disabled_reason END \
+                     WHERE id = ?3 AND owner_verified_at IS NULL",
+                    params![email, now, tenant_id, crate::auth_shape::UNCLAIMED_EXPIRED_REASON],
+                )?;
+                if set == 0 {
+                    return Ok(ClaimVerifyOutcome::Conflict);
+                }
+                if reason.as_deref() == Some(crate::auth_shape::UNCLAIMED_EXPIRED_REASON) {
+                    conn.execute(
+                        &format!(
+                            "INSERT INTO tenant_lifecycle_events \
+                             (tenant_id, policy, stage, idle_since_unix, created_unix) \
+                             SELECT t.id, ?2, 'restored', {}, ?3 FROM tenants t WHERE t.id = ?1",
+                            external_idle_since("t.")
+                        ),
+                        params![tenant_id, crate::retention::EXTERNAL_UNCLAIMED_POLICY, now],
+                    )?;
+                }
+                conn.execute(
+                    "INSERT INTO tenant_audit (tenant_id, subject, action, detail, created_unix) \
+                     VALUES (?1, 'owner', 'claim.email', NULL, ?2)",
+                    params![tenant_id, now],
+                )?;
+                Ok(ClaimVerifyOutcome::Verified { tenant_id, email })
+            })
         })
         .await
     }
@@ -7509,6 +7607,38 @@ impl Db {
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-tools-call-progress-notifications P0: per tenant origin
+    /// (`unknown` for a NULL), `(origin, tools/call rows, rows carrying a
+    /// progressToken, progress frames sent)` for rows started at or after
+    /// `since_unix`.
+    pub async fn progress_counts_by_origin(&self, since_unix: i64) -> Result<Vec<OriginProgress>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT COALESCE(t.origin, 'unknown'), COUNT(*), COALESCE(SUM(c.progress_token), 0), COALESCE(SUM(c.progress_frames), 0) \
+                 FROM calls c LEFT JOIN tenants t ON t.id = c.tenant_id \
+                 WHERE c.started_unix >= ?1 GROUP BY 1 ORDER BY 1",
+            )?;
+            let rows = stmt
+                .query_map([since_unix], |r| {
+                    Ok(OriginProgress { origin: r.get(0)?, calls: r.get(1)?, with_token: r.get(2)?, frames: r.get(3)? })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-tools-call-progress-notifications P0: the unix time migration
+    /// 0136 ran (`progress_7d.since`); `0` only on a database that skipped it.
+    pub async fn progress_epoch(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            let since: Option<i64> =
+                conn.query_row("SELECT MIN(since_unix) FROM progress_epoch", [], |r| r.get(0))?;
+            Ok(since.unwrap_or(0))
         })
         .await
     }
@@ -8050,26 +8180,60 @@ impl Db {
                 None => return Ok(None),
             };
             let counts = Self::count_tenant_child_rows(conn, tenant.id)?;
-
             crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
-                conn.execute("DELETE FROM tenants WHERE id = ?1", params![tenant.id])?;
-                let detail = json!({
-                    "namespace": tenant.namespace,
-                    "tools_removed": counts.tools_removed,
-                    "secrets_removed": counts.secrets_removed,
-                    "calls_removed": counts.calls_removed,
-                    "logs_removed": counts.logs_removed,
-                })
-                .to_string();
-                conn.execute(
-                    "INSERT INTO admin_events (ts, action, tenant, detail) VALUES (?1, ?2, ?3, ?4)",
-                    params![now_rfc3339(), action, tenant.namespace, detail],
-                )?;
-                Ok(())
+                Self::delete_tenant_rows(conn, &tenant, &counts, action)
             })?;
             Ok(Some((tenant, counts)))
         })
         .await
+    }
+
+    /// [`Self::delete_tenant`] with the `admin_events.action` it journals: the
+    /// unclaimed-expiry purge records `tenant_purge_expired`.
+    pub async fn delete_tenant_as(
+        &self,
+        namespace: String,
+        action: &'static str,
+    ) -> Result<Option<(Tenant, TenantDeleteCounts)>, AppError> {
+        self.with_conn(move |conn| {
+            let tenant = match Self::query_tenant_by_namespace(conn, &namespace)? {
+                Some(t) => t,
+                None => return Ok(None),
+            };
+            let counts = Self::count_tenant_child_rows(conn, tenant.id)?;
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
+                Self::delete_tenant_rows(conn, &tenant, &counts, action)
+            })?;
+            Ok(Some((tenant, counts)))
+        })
+        .await
+    }
+
+    /// Row deletes and the `admin_events` journal line, run inside the caller's
+    /// transaction. PRD-mcphost-external-unclaimed-tenant-expiry: the lifecycle
+    /// events go explicitly, so the purge behaves the same with or without
+    /// `foreign_keys`.
+    fn delete_tenant_rows(
+        conn: &rusqlite::Connection,
+        tenant: &Tenant,
+        counts: &TenantDeleteCounts,
+        action: &str,
+    ) -> Result<(), AppError> {
+        conn.execute("DELETE FROM tenant_lifecycle_events WHERE tenant_id = ?1", params![tenant.id])?;
+        conn.execute("DELETE FROM tenants WHERE id = ?1", params![tenant.id])?;
+        let detail = json!({
+            "namespace": tenant.namespace,
+            "tools_removed": counts.tools_removed,
+            "secrets_removed": counts.secrets_removed,
+            "calls_removed": counts.calls_removed,
+            "logs_removed": counts.logs_removed,
+        })
+        .to_string();
+        conn.execute(
+            "INSERT INTO admin_events (ts, action, tenant, detail) VALUES (?1, ?2, ?3, ?4)",
+            params![now_rfc3339(), action, tenant.namespace, detail],
+        )?;
+        Ok(())
     }
 
     /// PRD-mcphost-provenance-audit requirement 4: append a row to
@@ -11550,6 +11714,8 @@ impl Db {
         // PRD-mcphost-call-audit-export R1: the credential kind, resolved on
         // the request's own task for the same reason.
         let credential = crate::calllog::resolve(Some(auth_method.as_str()), key_id, caller_tenant_id).as_str();
+        // PRD-mcphost-tools-call-progress-notifications P0: same reason.
+        let (progress_token, progress_frames) = crate::progress::call_columns().await;
         let started_at = now_rfc3339();
         let started_unix = now_unix();
         let outcome = outcome.to_string();
@@ -11582,9 +11748,9 @@ impl Db {
         self.with_conn(move |conn| {
             crate::txn::with_tx(conn, crate::txn::TxBehavior::Deferred, |tx| {
                 tx.execute(
-                    "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id, auth_method, step_tool, error_summary, key_id, credential) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
-                    params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone(), auth_method, step_tool, error_summary, key_id, credential],
+                    "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id, auth_method, step_tool, error_summary, key_id, credential, progress_token, progress_frames) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
+                    params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone(), auth_method, step_tool, error_summary, key_id, credential, progress_token, progress_frames],
                 )?;
                 let call_id = tx.last_insert_rowid();
                 tx.execute(
@@ -16287,6 +16453,39 @@ impl Db {
         catalog.plans.iter().map(|p| (p.name.clone(), p.calls_retention_days)).collect()
     }
 
+    /// Test-only: SQLite gives no deterministic concurrent schedule, so a
+    /// test installs a hook that runs between the invalidation's phase 1
+    /// (marked `unclaimed_expiring`) and its teardown and phase 2.
+    pub fn set_external_phase_hook_for_test(&self, hook: ExternalPhaseHook) {
+        *self.external_phase_hook.write().unwrap_or_else(|e| e.into_inner()) = Some(hook);
+    }
+
+    /// Runs the test hook, if any, with the ids phase 1 marked.
+    pub(crate) async fn run_external_phase_hook(&self, ids: &[i64]) {
+        let hook = self.external_phase_hook.read().unwrap_or_else(|e| e.into_inner()).clone();
+        if let Some(hook) = hook {
+            hook(ids.to_vec()).await;
+        }
+    }
+
+    /// The address a warn-issued claim token is bound to, if any.
+    pub async fn claim_bound_email(&self, tenant_id: i64) -> Result<Option<String>, AppError> {
+        self.with_conn(move |conn| {
+            Ok(conn
+                .query_row("SELECT claim_bound_email FROM tenants WHERE id = ?1", params![tenant_id], |r| {
+                    r.get::<_, Option<String>>(0)
+                })
+                .optional()?
+                .flatten())
+        })
+        .await
+    }
+
+    /// Installs the external unclaimed sweep `prune_once` runs.
+    pub fn set_external_sweep(&self, sweep: ExternalSweep) {
+        *self.external_sweep.write().unwrap_or_else(|e| e.into_inner()) = Some(sweep);
+    }
+
     /// Installs the teardown the idle sweep runs on each claimed tenant.
     pub fn set_tenant_teardown(&self, teardown: TenantTeardown) {
         *self.tenant_teardown.write().unwrap_or_else(|e| e.into_inner()) = Some(teardown);
@@ -16393,6 +16592,433 @@ impl Db {
         .await
     }
 
+    // ---- external unclaimed tenant expiry (PRD-mcphost-external-unclaimed-tenant-expiry) ----
+
+    /// The external policy's window in days: `0` when the env var reads
+    /// `off`, when the policy is unseeded or when the stored window is not
+    /// positive (then nothing is a subject and no SQL runs).
+    pub(crate) async fn external_expiry_window_days(&self) -> Result<i64, AppError> {
+        if crate::retention::env_is_off(crate::retention::EXTERNAL_UNCLAIMED_ENV) {
+            return Ok(0);
+        }
+        self.with_conn(|conn| {
+            let days: Option<i64> = conn
+                .query_row(
+                    "SELECT days FROM retention_policy WHERE table_name = ?1",
+                    params![crate::retention::EXTERNAL_UNCLAIMED_POLICY],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            Ok(days.unwrap_or(0).max(0))
+        })
+        .await
+    }
+
+    /// Every `EXT` tenant (or just `only`) with the facts its lifecycle view
+    /// needs, keyed by tenant id; empty while the window is 0.
+    pub(crate) async fn external_subjects(
+        &self,
+        only: Option<i64>,
+    ) -> Result<std::collections::HashMap<i64, ExternalSubject>, AppError> {
+        if self.external_expiry_window_days().await? <= 0 {
+            return Ok(Default::default());
+        }
+        self.with_conn(move |conn| {
+            let idle = external_idle_since("t.");
+            let sql = format!(
+                "SELECT t.id, {idle}, \
+                 (SELECT MAX(e.created_unix) FROM tenant_lifecycle_events e \
+                   WHERE e.tenant_id = t.id AND e.stage = 'warned' AND e.created_unix > {idle}), \
+                 COALESCE(t.owner_email, (SELECT c.email FROM claim_codes c WHERE c.tenant_id = t.id \
+                   ORDER BY c.created_unix DESC, c.id DESC LIMIT 1)) \
+                 FROM tenants t WHERE {class} AND (:only IS NULL OR t.id = :only)",
+                class = external_class("t."),
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(named_params! {":only": only}, |r| {
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        ExternalSubject { idle_since_unix: r.get(1)?, warned_unix: r.get(2)?, address: r.get(3)? },
+                    ))
+                })?
+                .collect::<Result<_, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// Writes one `tenant_lifecycle_events` row.
+    pub(crate) async fn record_lifecycle_event(&self, event: LifecycleEvent) -> Result<(), AppError> {
+        let LifecycleEvent { tenant_id, stage, idle_since_unix, status_code, created_unix } = event;
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO tenant_lifecycle_events \
+                 (tenant_id, policy, stage, idle_since_unix, status_code, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    tenant_id,
+                    crate::retention::EXTERNAL_UNCLAIMED_POLICY,
+                    stage,
+                    idle_since_unix,
+                    status_code.map(i64::from),
+                    created_unix
+                ],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `EXT` tenants due a warning at `now` and not warned yet in their
+    /// current idle run: idle since `warn_days` ago, no `warned` event newer
+    /// than `idle_since`, and no warn attempt in the last day.
+    pub(crate) async fn external_warn_candidates(
+        &self,
+        now: i64,
+        warn_days: i64,
+        batch: i64,
+    ) -> Result<Vec<WarnCandidate>, AppError> {
+        self.with_conn(move |conn| {
+            let idle = external_idle_since("t.");
+            let sql = format!(
+                "SELECT t.id, t.namespace, t.display_name, {idle}, \
+                 COALESCE(t.owner_email, (SELECT c.email FROM claim_codes c WHERE c.tenant_id = t.id \
+                   ORDER BY c.created_unix DESC, c.id DESC LIMIT 1)), \
+                 (SELECT MIN(e.created_unix) FROM tenant_lifecycle_events e WHERE e.tenant_id = t.id \
+                   AND e.stage IN ('warned', 'warn_no_address', 'warn_failed') AND e.created_unix > {idle}) \
+                 FROM tenants t WHERE {class} AND {idle} <= :warn_cut \
+                 AND NOT EXISTS (SELECT 1 FROM tenant_lifecycle_events e WHERE e.tenant_id = t.id \
+                   AND e.stage = 'warned' AND e.created_unix > {idle}) \
+                 AND NOT EXISTS (SELECT 1 FROM tenant_lifecycle_events e WHERE e.tenant_id = t.id \
+                   AND e.stage IN ('warned', 'warn_no_address', 'warn_failed') AND e.created_unix > :day_ago) \
+                 ORDER BY t.id LIMIT :batch",
+                class = external_class("t."),
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(
+                    named_params! {
+                        ":warn_cut": now - warn_days.saturating_mul(86_400),
+                        ":day_ago": now - 86_400,
+                        ":batch": batch,
+                    },
+                    |r| {
+                        Ok(WarnCandidate {
+                            id: r.get(0)?,
+                            namespace: r.get(1)?,
+                            display_name: r.get(2)?,
+                            idle_since_unix: r.get(3)?,
+                            address: r.get(4)?,
+                            first_attempt_unix: r.get(5)?,
+                        })
+                    },
+                )?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// The warn step's token write: one UPDATE that replaces the claim token,
+    /// stretches its expiry to `expires_unix` and binds it to `bound_email`
+    /// (`None` = unbound). Refuses a tenant that has been claimed meanwhile.
+    pub(crate) async fn set_warn_claim_token(&self, token: WarnClaimToken) -> Result<bool, AppError> {
+        let WarnClaimToken { tenant_id, token_hash, token_plain, expires_unix, bound_email } = token;
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "UPDATE tenants SET claim_token_hash = ?1, claim_token_plain = ?2, claim_expires_at = ?3, \
+                 claim_bound_email = ?4 WHERE id = ?5 AND owner_verified_at IS NULL",
+                params![token_hash, token_plain, expires_unix, bound_email, tenant_id],
+            )?;
+            Ok(n > 0)
+        })
+        .await
+    }
+
+    /// Keeps an existing claim token alive through `expires_unix` without
+    /// rotating it (the address-less warn: a link already relayed stays good).
+    pub(crate) async fn extend_claim_token(&self, tenant_id: i64, expires_unix: i64) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "UPDATE tenants SET claim_expires_at = MAX(COALESCE(claim_expires_at, 0), ?1) \
+                 WHERE id = ?2 AND owner_verified_at IS NULL AND claim_token_hash IS NOT NULL",
+                params![expires_unix, tenant_id],
+            )?;
+            Ok(n > 0)
+        })
+        .await
+    }
+
+    /// Invalidation phase 1: one statement flips every `EXT` tenant that is
+    /// idle `window_days` and has a warn-stage event of its current run at
+    /// least `lead_days` old to `unclaimed_expiring`, and returns the ids
+    /// this very statement flipped (the only ones this sweep tears down).
+    pub(crate) async fn mark_external_expiring(
+        &self,
+        now: i64,
+        windows: crate::retention::ExternalWindows,
+        batch: i64,
+    ) -> Result<Vec<i64>, AppError> {
+        self.with_conn(move |conn| {
+            let idle = external_idle_since("t.");
+            let sql = format!(
+                "UPDATE tenants SET disabled = 1, disabled_reason = '{expiring}' WHERE id IN \
+                 (SELECT t.id FROM tenants t WHERE {class} AND {idle} <= :cut AND EXISTS \
+                   (SELECT 1 FROM tenant_lifecycle_events e WHERE e.tenant_id = t.id \
+                    AND e.stage IN ('warned', 'warn_no_address', 'warn_failed') \
+                    AND e.created_unix > {idle} AND e.created_unix <= :lead_cut) \
+                  ORDER BY t.id LIMIT :batch) RETURNING id",
+                expiring = crate::auth_shape::UNCLAIMED_EXPIRING_REASON,
+                class = external_class("t."),
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let ids = stmt
+                .query_map(
+                    named_params! {
+                        ":cut": now - windows.window.saturating_mul(86_400),
+                        ":lead_cut": now - windows.lead.saturating_mul(86_400),
+                        ":batch": batch,
+                    },
+                    |r| r.get::<_, i64>(0),
+                )?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(ids)
+        })
+        .await
+    }
+
+    /// Invalidation phase 2, after the teardown: the terminal reason and the
+    /// `invalidated` event in one immediate transaction. A tenant claimed in
+    /// between (any claim path) is enabled again instead, with a `restored`
+    /// event, so it is never claimed and disabled at once.
+    pub(crate) async fn finish_external_invalidation(
+        &self,
+        tenant_id: i64,
+        now: i64,
+    ) -> Result<InvalidationOutcome, AppError> {
+        self.with_conn(move |conn| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
+                let idle = external_idle_since("t.");
+                let n = conn.execute(
+                    "UPDATE tenants SET disabled_reason = ?2 WHERE id = ?1 AND disabled = 1 \
+                     AND disabled_reason = ?3 AND owner_verified_at IS NULL AND claimed_unix IS NULL",
+                    params![
+                        tenant_id,
+                        crate::auth_shape::UNCLAIMED_EXPIRED_REASON,
+                        crate::auth_shape::UNCLAIMED_EXPIRING_REASON
+                    ],
+                )?;
+                let event_sql = |stage: &str| {
+                    format!(
+                        "INSERT INTO tenant_lifecycle_events \
+                         (tenant_id, policy, stage, idle_since_unix, created_unix) \
+                         SELECT t.id, ?2, '{stage}', {idle}, ?3 FROM tenants t WHERE t.id = ?1"
+                    )
+                };
+                if n == 1 {
+                    let idle_since: i64 = conn.query_row(
+                        &format!("SELECT {idle} FROM tenants t WHERE t.id = ?1"),
+                        params![tenant_id],
+                        |r| r.get(0),
+                    )?;
+                    conn.execute(
+                        &event_sql("invalidated"),
+                        params![tenant_id, crate::retention::EXTERNAL_UNCLAIMED_POLICY, now],
+                    )?;
+                    return Ok(InvalidationOutcome::Expired { idle_since_unix: idle_since });
+                }
+                let m = conn.execute(
+                    "UPDATE tenants SET disabled = 0, disabled_reason = NULL, claim_bound_email = NULL \
+                     WHERE id = ?1 AND disabled_reason = ?2",
+                    params![tenant_id, crate::auth_shape::UNCLAIMED_EXPIRING_REASON],
+                )?;
+                if m == 1 {
+                    conn.execute(
+                        &event_sql("restored"),
+                        params![tenant_id, crate::retention::EXTERNAL_UNCLAIMED_POLICY, now],
+                    )?;
+                    return Ok(InvalidationOutcome::ClaimedMeanwhile);
+                }
+                Ok(InvalidationOutcome::Gone)
+            })
+        })
+        .await
+    }
+
+    /// Where the notice goes: `owner_email`, else the newest claim attempt.
+    pub(crate) async fn external_notice_address(&self, tenant_id: i64) -> Result<Option<String>, AppError> {
+        self.with_conn(move |conn| {
+            Ok(conn
+                .query_row(
+                    "SELECT COALESCE(t.owner_email, (SELECT c.email FROM claim_codes c \
+                       WHERE c.tenant_id = t.id ORDER BY c.created_unix DESC, c.id DESC LIMIT 1)) \
+                     FROM tenants t WHERE t.id = ?1",
+                    params![tenant_id],
+                    |r| r.get::<_, Option<String>>(0),
+                )
+                .optional()?
+                .flatten())
+        })
+        .await
+    }
+
+    /// Namespaces of tenants the purge is due for: still disabled with the
+    /// terminal reason, still unclaimed and unpaid, and whose newest
+    /// `invalidated` event is at least `grace_days` old. A row re-enabled by
+    /// an admin is no longer disabled, so it never appears.
+    pub(crate) async fn external_purge_candidates(
+        &self,
+        now: i64,
+        grace_days: i64,
+        batch: i64,
+    ) -> Result<Vec<String>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT t.namespace FROM tenants t WHERE t.disabled = 1 AND t.disabled_reason = ?1 \
+                 AND t.owner_verified_at IS NULL AND t.claimed_unix IS NULL AND t.paid_unix IS NULL \
+                 AND t.billing_ref IS NULL AND t.stripe_customer_id IS NULL \
+                 AND (SELECT MAX(e.created_unix) FROM tenant_lifecycle_events e \
+                       WHERE e.tenant_id = t.id AND e.stage = 'invalidated') <= ?2 \
+                 ORDER BY t.id LIMIT ?3",
+            )?;
+            let rows = stmt
+                .query_map(
+                    params![
+                        crate::auth_shape::UNCLAIMED_EXPIRED_REASON,
+                        now - grace_days.saturating_mul(86_400),
+                        batch
+                    ],
+                    |r| r.get::<_, String>(0),
+                )?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// `admin.tenant_enable` on a tenant the unclaimed policy invalidated:
+    /// clears the reason, starts a fresh idle run (`last_seen_unix = now`, so
+    /// the old `warned` event cannot re-invalidate it) and journals
+    /// `restored`. `false` when the tenant is not in that state.
+    pub(crate) async fn enable_unclaimed_expired(&self, namespace: String, now: i64) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            crate::txn::with_tx(conn, crate::txn::TxBehavior::Immediate, |conn| {
+                let n = conn.execute(
+                    "UPDATE tenants SET disabled = 0, disabled_reason = NULL, last_seen_unix = ?2 \
+                     WHERE namespace = ?1 AND disabled = 1 AND disabled_reason IN (?3, ?4)",
+                    params![
+                        namespace,
+                        now,
+                        crate::auth_shape::UNCLAIMED_EXPIRED_REASON,
+                        crate::auth_shape::UNCLAIMED_EXPIRING_REASON
+                    ],
+                )?;
+                if n == 0 {
+                    return Ok(false);
+                }
+                conn.execute(
+                    "INSERT INTO tenant_lifecycle_events \
+                     (tenant_id, policy, stage, idle_since_unix, created_unix) \
+                     SELECT id, ?2, 'restored', ?3, ?3 FROM tenants WHERE namespace = ?1",
+                    params![namespace, crate::retention::EXTERNAL_UNCLAIMED_POLICY, now],
+                )?;
+                Ok(true)
+            })
+        })
+        .await
+    }
+
+    /// `admin.funnel`'s `tenants_unclaimed_expired`: rows currently disabled
+    /// by the unclaimed policy (shrinks as purges run). A COUNT, so it
+    /// survives a restart.
+    pub async fn count_tenants_unclaimed_expired(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM tenants WHERE disabled_reason = ?1",
+                params![crate::auth_shape::UNCLAIMED_EXPIRED_REASON],
+                |r| r.get(0),
+            )?)
+        })
+        .await
+    }
+
+    /// `admin.funnel`'s `tenants_unclaimed_purged`: cumulative purges, a COUNT
+    /// over `admin_events` (which the tenant delete does not cascade into).
+    pub async fn count_tenants_unclaimed_purged(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM admin_events WHERE action = ?1",
+                params![crate::retention::PURGE_ACTION],
+                |r| r.get(0),
+            )?)
+        })
+        .await
+    }
+
+    /// `restored` events written since `since_unix` (the previous sweep).
+    pub(crate) async fn count_restored_since(&self, since_unix: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM tenant_lifecycle_events WHERE stage = 'restored' AND created_unix > ?1",
+                params![since_unix],
+                |r| r.get(0),
+            )?)
+        })
+        .await
+    }
+
+    /// Start of the newest `prune_log` row, `0` when there is none.
+    pub(crate) async fn previous_sweep_started_unix(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            Ok(conn
+                .query_row("SELECT COALESCE(MAX(started_unix), 0) FROM prune_log", [], |r| r.get(0))?)
+        })
+        .await
+    }
+
+    /// The pre-floor backlog: `EXT` tenants minted before `floor_unix`
+    /// (their clock starts at the floor). Returns the floor, the count and
+    /// the first `limit` rows (`limit` 0 skips the list).
+    pub(crate) async fn external_pre_floor(&self, limit: i64) -> Result<PreFloor, AppError> {
+        self.with_conn(move |conn| {
+            let floor: i64 = conn.query_row(EXTERNAL_FLOOR_SQL_SELECT, [], |r| r.get(0))?;
+            let class = external_class("t.");
+            let count: i64 = conn.query_row(
+                &format!("SELECT COUNT(*) FROM tenants t WHERE {class} AND t.created_unix < ?1"),
+                params![floor],
+                |r| r.get(0),
+            )?;
+            let mut stmt = conn.prepare(&format!(
+                "SELECT t.id, t.display_name, t.created_unix, t.last_seen_unix FROM tenants t \
+                 WHERE {class} AND t.created_unix < ?1 ORDER BY t.id LIMIT ?2"
+            ))?;
+            let rows = stmt
+                .query_map(params![floor, limit], |r| {
+                    Ok(PreFloorRow {
+                        tenant_id: r.get(0)?,
+                        display_name: r.get(1)?,
+                        created_unix: r.get(2)?,
+                        last_seen_unix: r.get(3)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(PreFloor { floor_unix: floor, count, rows })
+        })
+        .await
+    }
+
+    /// `true` once any `prune_log` row carries the external policy's block:
+    /// the first sweep after deploy writes the pre-floor list in full.
+    pub(crate) async fn external_block_logged(&self) -> Result<bool, AppError> {
+        self.with_conn(|conn| {
+            Ok(conn
+                .prepare("SELECT 1 FROM prune_log WHERE deleted_json LIKE ?1 LIMIT 1")?
+                .exists(params![format!("%\"{}\"%", crate::retention::EXTERNAL_UNCLAIMED_POLICY)])?)
+        })
+        .await
+    }
+
     /// `(skipped_billing, would_expire)` for one sweep.
     pub(crate) async fn synthetic_expiry_counts(
         &self,
@@ -16479,10 +17105,29 @@ impl Db {
         {
             outcome.error = Some(format!("{}: {e}", crate::retention::SYNTHETIC_IMPLICIT_POLICY));
         }
+        // PRD-mcphost-external-unclaimed-tenant-expiry: the external policy's
+        // block rides in `deleted_json` under its policy name.
+        let mut external_block = None;
+        if outcome.error.is_none() {
+            let sweep = self.external_sweep.read().unwrap_or_else(|e| e.into_inner()).clone();
+            if let Some(sweep) = sweep {
+                match sweep(started).await {
+                    Ok(block) => external_block = Some(block),
+                    Err(e) => {
+                        outcome.error = Some(format!("{}: {e}", crate::retention::EXTERNAL_UNCLAIMED_POLICY));
+                    }
+                }
+            }
+        }
         let finished = crate::state::now_unix();
         let ok = outcome.error.is_none();
-        let deleted_json = serde_json::to_string(&outcome.deleted)
-            .unwrap_or_else(|_| "{}".to_string());
+        let mut deleted_value = serde_json::to_value(&outcome.deleted).unwrap_or_else(|_| json!({}));
+        if let (Some(block), Some(obj)) = (external_block, deleted_value.as_object_mut())
+            && !block.is_null()
+        {
+            obj.insert(crate::retention::EXTERNAL_UNCLAIMED_POLICY.to_string(), block);
+        }
+        let deleted_json = serde_json::to_string(&deleted_value).unwrap_or_else(|_| "{}".to_string());
         self.with_conn({
             let error = outcome.error.clone();
             move |conn| {
@@ -16560,8 +17205,14 @@ impl Db {
                 )
                 .optional()?
                 .map(|(at_unix, ok, deleted_json)| {
+                    // Only the flat integer counts; the external policy's nested
+                    // block is read from `prune_log.deleted_json` directly.
                     let deleted: std::collections::BTreeMap<String, i64> =
-                        serde_json::from_str(&deleted_json).unwrap_or_default();
+                        serde_json::from_str::<std::collections::BTreeMap<String, Value>>(&deleted_json)
+                            .unwrap_or_default()
+                            .into_iter()
+                            .filter_map(|(k, v)| v.as_i64().map(|n| (k, n)))
+                            .collect();
                     LastPrune {
                         at_unix,
                         ok,
@@ -23444,6 +24095,104 @@ pub(crate) fn synthetic_expiry_predicate(terms: ExpiryTerms) -> String {
         parts.push(EXPIRY_IDLE.to_string());
     }
     parts.join(" AND ")
+}
+
+/// PRD-mcphost-external-unclaimed-tenant-expiry `EXT`: an unclaimed, unpaid,
+/// enabled, non-synthetic external-origin tenant. Written once here; `prefix`
+/// is the table alias (`"t."`) or empty.
+pub(crate) fn external_class(prefix: &str) -> String {
+    let p = prefix;
+    format!(
+        "{p}disabled = 0 AND {p}origin = 'external' AND {p}synthetic IS NULL \
+         AND {p}owner_verified_at IS NULL AND {p}claimed_unix IS NULL AND {p}paid_unix IS NULL \
+         AND {p}billing_ref IS NULL AND {p}stripe_customer_id IS NULL AND {p}plan = 'free'"
+    )
+}
+
+/// The policy floor (the sibling's `floor_unix`; `0` while unseeded, since a
+/// bare `MAX(x, NULL)` is NULL in SQLite).
+const EXTERNAL_FLOOR_SQL: &str = "COALESCE((SELECT floor_unix FROM retention_policy \
+    WHERE table_name = 'synthetic_implicit_tenants'), 0)";
+
+const EXTERNAL_FLOOR_SQL_SELECT: &str = "SELECT COALESCE((SELECT floor_unix FROM retention_policy \
+    WHERE table_name = 'synthetic_implicit_tenants'), 0)";
+
+/// The pre-floor backlog of the external policy.
+#[derive(Debug, Clone)]
+pub struct PreFloor {
+    pub floor_unix: i64,
+    pub count: i64,
+    pub rows: Vec<PreFloorRow>,
+}
+
+/// One pre-floor tenant as the dry-run list names it: never a key, secret or address.
+#[derive(Debug, Clone)]
+pub struct PreFloorRow {
+    pub tenant_id: i64,
+    pub display_name: String,
+    pub created_unix: i64,
+    pub last_seen_unix: Option<i64>,
+}
+
+/// `idle_since` = `MAX(COALESCE(last_seen_unix, created_unix), floor_unix)`:
+/// the start of the idle run, no earlier than the deploy day.
+pub(crate) fn external_idle_since(prefix: &str) -> String {
+    format!("MAX(COALESCE({prefix}last_seen_unix, {prefix}created_unix), {EXTERNAL_FLOOR_SQL})")
+}
+
+/// How [`Db::finish_external_invalidation`] ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InvalidationOutcome {
+    /// Terminal `unclaimed_expired`; the idle run that earned it began here.
+    Expired { idle_since_unix: i64 },
+    /// Claimed between the phases: enabled again.
+    ClaimedMeanwhile,
+    /// No longer in the expiring state (deleted or changed by an admin).
+    Gone,
+}
+
+/// One `tenant_lifecycle_events` row to write.
+#[derive(Debug, Clone)]
+pub struct LifecycleEvent {
+    pub tenant_id: i64,
+    pub stage: &'static str,
+    pub idle_since_unix: i64,
+    pub status_code: Option<u16>,
+    pub created_unix: i64,
+}
+
+/// A replacement claim token for [`Db::set_warn_claim_token`].
+#[derive(Debug, Clone)]
+pub struct WarnClaimToken {
+    pub tenant_id: i64,
+    pub token_hash: String,
+    pub token_plain: String,
+    pub expires_unix: i64,
+    /// `Some` binds the token to one address (case-insensitive).
+    pub bound_email: Option<String>,
+}
+
+/// One `EXT` tenant due a warning (see [`Db::external_warn_candidates`]).
+#[derive(Debug, Clone)]
+pub struct WarnCandidate {
+    pub id: i64,
+    pub namespace: String,
+    pub display_name: String,
+    pub idle_since_unix: i64,
+    /// `owner_email`, else the newest claim attempt's address.
+    pub address: Option<String>,
+    /// Oldest warn-stage event of this idle run, if any.
+    pub first_attempt_unix: Option<i64>,
+}
+
+/// What `host.doctor` / `admin.tenants` read for one `EXT` tenant.
+#[derive(Debug, Clone)]
+pub struct ExternalSubject {
+    pub idle_since_unix: i64,
+    /// Newest `warned` event of the current idle run.
+    pub warned_unix: Option<i64>,
+    /// `owner_email`, else the newest claim attempt's address.
+    pub address: Option<String>,
 }
 
 /// [`Db::prune_once`]'s return shape: one cycle's per-physical-table

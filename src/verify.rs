@@ -236,6 +236,7 @@ pub(crate) fn tools() -> Vec<Tool> {
     // schema (the `verbfwd_ac08` stack-budget guard reads `examples`) reaches the verb body.
     let domain_prop = json!({
         "type": "string",
+        "pattern": DOMAIN_PATTERN,
         "description": format!("The domain you control, e.g. \"{DOMAIN_EXAMPLE}\"."),
         "examples": [DOMAIN_EXAMPLE],
     });
@@ -350,6 +351,19 @@ fn callback_url(public_url: &str) -> String {
 /// The `domain` example the descriptors publish (description and `examples`); a test asserts
 /// `normalize_domain` accepts it, so the schema cannot advertise a domain the verb refuses.
 pub const DOMAIN_EXAMPLE: &str = "example.com";
+
+/// The shape [`normalize_domain`] accepts, as a pattern over the raw value: two or
+/// more dot-separated labels of letters, digits and hyphens (1-63 bytes, no
+/// leading or trailing hyphen), then any trailing dots. Surrounding whitespace is
+/// trimmed by the handler and refused by the pattern (a `normalised` residue).
+/// The `domain` property of `host.claim.dns.start` and `.check` carries this string.
+pub const DOMAIN_PATTERN: &str = "^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.*$";
+
+/// Whether `raw` is a domain [`normalize_domain`] accepts without trimming it first
+/// (what [`DOMAIN_PATTERN`] states).
+pub fn is_domain_shape(raw: &str) -> bool {
+    raw == raw.trim() && normalize_domain(raw).is_ok()
+}
 
 /// A lowercase, dot-separated hostname of letters, digits and hyphens.
 fn normalize_domain(raw: &str) -> Result<String, AppError> {

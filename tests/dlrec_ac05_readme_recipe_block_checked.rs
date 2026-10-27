@@ -2,9 +2,9 @@
 //! PRD-mcphost-delegation-recipes-and-quickstart
 //! AC5 (P1) — Given `README.md`, When `scripts/sandbox-api-doc-check.sh` runs
 //! without `--write`, Then it exits non-zero iff the block between
-//! `<!-- recipe:sub_agent_key -->` markers differs from the rendered recipe.
+//! `<!-- quickstart-recipe:sub_agent_key -->` markers differs from the rendered recipe.
 
-use mcphost::llms_txt::{RECIPE_END, RECIPE_START, render_recipe_block, splice_readme_recipe};
+use mcphost::llms_txt::{README_RECIPE_END, README_RECIPE_START, render_recipe_block, splice_readme_recipe};
 use mcphost::delegation_recipe::sub_agent_key;
 use std::path::Path;
 use std::process::{Command, Output};
@@ -40,20 +40,20 @@ fn dlrec_ac05_committed_block_equals_the_render_and_passes() {
 
 #[test]
 fn dlrec_ac05_a_drifted_block_exits_non_zero_naming_the_recipe() {
-    let start = README.find(RECIPE_START).unwrap();
-    let end = README.find(RECIPE_END).unwrap();
+    let start = README.find(README_RECIPE_START).unwrap();
+    let end = README.find(README_RECIPE_END).unwrap();
     assert!(README[start..end].contains("revoked"));
     let drifted = format!("{}{}{}", &README[..start], README[start..end].replacen("revoked", "revoked-edited", 1), &README[end..]);
     assert_ne!(drifted, README);
     let out = check(&scratch("drift", &drifted));
     assert!(!out.status.success());
-    assert!(String::from_utf8_lossy(&out.stderr).contains("recipe:sub_agent_key"));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("quickstart-recipe:sub_agent_key"));
 }
 
 #[test]
 fn dlrec_ac05_a_missing_block_exits_non_zero() {
-    let start = README.find(RECIPE_START).unwrap();
-    let end = README.find(RECIPE_END).unwrap() + RECIPE_END.len();
+    let start = README.find(README_RECIPE_START).unwrap();
+    let end = README.find(README_RECIPE_END).unwrap() + README_RECIPE_END.len();
     let missing = format!("{}{}", &README[..start], &README[end..]);
     assert!(!check(&scratch("missing", &missing)).status.success());
 }
@@ -71,7 +71,7 @@ fn dlrec_ac05_splice_is_idempotent_and_inserts_under_a_heading() {
     let block = render_recipe_block(&sub_agent_key());
     assert_eq!(splice_readme_recipe(README, &block), README);
     let start = README.find("### Sub-agents").unwrap();
-    let end = README.find(RECIPE_END).unwrap() + RECIPE_END.len();
+    let end = README.find(README_RECIPE_END).unwrap() + README_RECIPE_END.len();
     let without = format!("{}{}", &README[..start], README[end..].trim_start_matches('\n'));
     assert_eq!(splice_readme_recipe(&without, &block), README);
 }

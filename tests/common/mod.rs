@@ -10,6 +10,7 @@
 
 pub mod sypul;
 pub mod tenx;
+pub mod texp;
 pub mod testoauth;
 pub mod tracecap;
 
@@ -638,6 +639,7 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
         fleet_ips: mcphost::state::FleetIps::empty(),
         end_user_activity: Default::default(),
         oauth_healthz_cache: Default::default(),
+        progress_healthz_cache: Default::default(),
         verified_client_ids: mcphost::state::VerifiedClientIds::empty(),
         invite_hints: mcphost::invites::InviteHintTracker::new(),
         feedback_calls: Default::default(),
@@ -1440,6 +1442,7 @@ impl TestServer {
             fleet_ips,
             end_user_activity: Default::default(),
             oauth_healthz_cache: Default::default(),
+            progress_healthz_cache: Default::default(),
             verified_client_ids,
             invite_hints: mcphost::invites::InviteHintTracker::new(),
             feedback_calls: Default::default(),
@@ -2297,6 +2300,7 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
         fleet_ips: mcphost::state::FleetIps::empty(),
         end_user_activity: Default::default(),
         oauth_healthz_cache: Default::default(),
+        progress_healthz_cache: Default::default(),
         verified_client_ids: mcphost::state::VerifiedClientIds::empty(),
         invite_hints: mcphost::invites::InviteHintTracker::new(),
         feedback_calls: Default::default(),

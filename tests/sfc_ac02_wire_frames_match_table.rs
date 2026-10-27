@@ -57,6 +57,12 @@ async fn observe(server: &TestServer, key: &str, row: &FrameRow) -> Option<(Stri
             let args = json!({"name": "sfcac02", "kind": "echo", "spec": {"schema": {"type": "object", "properties": {}, "required": []}}});
             anon.post_raw(request(5, "tools/call", json!({"name": "host.tool_publish", "arguments": args}))).await
         }
+        "tools/call:with_progress_token" => {
+            // A tool that never reports: the row's `progress {0,n}` is zero frames.
+            let mut req = request(7, "tools/call", json!({"name": "host.whoami", "arguments": {}}));
+            req["params"]["_meta"]["progressToken"] = json!("sfc-ac02");
+            keyed.post_raw(req).await
+        }
         "tools/call:error" => {
             keyed.post_raw(request(6, "tools/call", json!({"name": "host.run_snippet", "arguments": {}}))).await
         }

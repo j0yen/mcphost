@@ -38,16 +38,58 @@
     "AC8": "tests/sublis_ac08_initialize_advertises_list_changes_with_proof.rs"
   },
   "ac_test_map_by_prefix": {
-    "tenx": {
-      "_prd": "PRD-mcphost-synthetic-implicit-tenant-expiry.md (test_prefix: tenx)",
-      "AC1": "tests/tenx_ac01_idle_synthetic_implicit_tenant_expires.rs",
-      "AC2": "tests/tenx_ac02_window_env_seed_and_floor.rs",
-      "AC3": "tests/tenx_ac03_expired_tenant_refused_front_door_open.rs",
-      "AC4": "tests/tenx_ac04_contract_carries_tenant_lifecycle.rs",
-      "AC5": "tests/tenx_ac05_batched_concurrent_sweep_exactly_once.rs",
-      "AC6": "tests/tenx_ac06_doctor_reports_tenant_lifecycle.rs",
-      "AC7": "tests/tenx_ac07_admin_lists_expiry_and_funnel_counts_it.rs",
-      "AC8": "deferred: Live (prod; evidence: curl -sS https://mcphost.dev/contract.json | jq -e '.tenant_lifecycle.disabled_reason == \"idle_expired\"')"
+    "mcphost-resource-listing-shape-in-contract": {
+      "_prd": "PRD-mcphost-resource-listing-shape-in-contract.md (test_prefix: mcphost-resource-listing-shape-in-contract)",
+      "AC1": "tests/mcphost-resource-listing-shape-in-contract_ac01_dump_carries_resources_section.rs",
+      "AC2": "tests/mcphost-resource-listing-shape-in-contract_ac02_committed_contract_is_the_dump_byte_for_byte.rs",
+      "AC3": "tests/mcphost-resource-listing-shape-in-contract_ac03_check_names_the_drifted_resources_key.rs",
+      "AC4": "tests/mcphost-resource-listing-shape-in-contract_ac04_listed_name_and_uri_follow_the_contract.rs",
+      "AC5": "tests/mcphost-resource-listing-shape-in-contract_ac05_doc_title_field_is_title.rs",
+      "AC6": "tests/mcphost-resource-listing-shape-in-contract_ac06_served_contract_carries_resources_with_etag.rs",
+      "AC7": "tests/mcphost-resource-listing-shape-in-contract_ac07_shape_is_readable_before_any_resource_exists.rs",
+      "AC8": "deferred: Live (prod; evidence: curl -sS https://mcphost.dev/contract.json | jq -e on resources.uri_scheme.table and resources.name_field.doc)"
+    },
+    "tblurl": {
+      "_prd": "PRD-mcphost-table-import-from-url.md (test_prefix: tblurl)",
+      "AC1": "tests/tblurl_ac01_create_from_url_imports_all_rows.rs",
+      "AC2": "tests/tblurl_ac02_private_and_insecure_urls_refused_before_any_byte.rs",
+      "AC3": "tests/tblurl_ac03_oversize_source_is_import_too_large.rs",
+      "AC4": "tests/tblurl_ac04_csv_text_skips_a_malformed_row.rs",
+      "AC5": "tests/tblurl_ac05_two_sources_refused_by_the_input_schema.rs",
+      "AC6": "tests/tblurl_ac06_import_codes_flow_from_the_registry.rs",
+      "AC7": "deferred: Live (prod /mcp, a real Claude Code session on orch with only mcphost tools allowed; evidence ~/.local/state/mcphost-live/tblurl-ac07.jsonl)",
+      "AC8": "tests/tblurl_ac08_import_id_replays_the_first_result.rs"
+    },
+    "bsc": {
+      "_prd": "PRD-mcphost-billing-selfcheck-no-ledger-row.md (test_prefix: bsc)",
+      "AC1": "tests/bsc_ac01_selfprobe_writes_only_status_feed_tables.rs",
+      "AC2": "tests/bsc_ac02_selfcheck_ok_without_ledger_row.rs",
+      "AC3": "tests/bsc_ac03_selfcheck_fails_when_dedupe_read_errors.rs",
+      "AC4": "tests/bsc_ac04_webhook_has_no_verify_only_path.rs",
+      "AC5": "tests/bsc_ac05_ledger_script_exit_codes.rs",
+      "AC6": "deferred: Live (prod; evidence: bash scripts/live/billing-selfcheck-ledger.sh https://mcphost.dev exits 0)"
+    },
+    "texp": {
+      "_prd": "PRD-mcphost-external-unclaimed-tenant-expiry.md (test_prefix: texp)",
+      "AC1": "tests/texp_ac01_lifecycle_visible_on_doctor_and_admin.rs",
+      "AC2": "tests/texp_ac02_warn_at_day_twenty_once_a_day.rs",
+      "AC3": "tests/texp_ac03_invalidate_at_day_thirty.rs",
+      "AC4": "tests/texp_ac04_claim_restores_and_binds.rs",
+      "AC5": "tests/texp_ac05_purge_at_day_forty_four.rs",
+      "AC6": "tests/texp_ac06_exclusions_pre_floor_and_off_switch.rs",
+      "AC7": "tests/texp_ac07_provider_failure_retry_and_prune_log.rs",
+      "AC8": "deferred: Live (prod; evidence: curl -sS https://mcphost.dev/contract.json | jq -e '.tenant_lifecycle.external_unclaimed | .idle_days == 30 and .warn_lead_days == 10 and .purge_grace_days == 14 and .disabled_reason == \"unclaimed_expired\" and .selector.origin == \"external\"')"
+    },
+    "shp": {
+      "_prd": "PRD-mcphost-schema-shape-agreement.md (test_prefix: shp)",
+      "AC1": "tests/shp_ac01_shape_probes_router_and_validator_agree.rs",
+      "AC2": "tests/shp_ac02_every_property_carries_a_type.rs",
+      "AC3": "tests/shp_ac03_policy_set_rule_is_a_typed_list.rs",
+      "AC4": "tests/shp_ac04_patterns_and_handler_checks_agree.rs",
+      "AC5": "tests/shp_ac05_blast_radius_change_kind_is_an_enum.rs",
+      "AC6": "tests/shp_ac06_ask_options_are_unique_and_untrimmed.rs",
+      "AC7": "tests/shp_ac07_contract_carries_new_shape_keywords.rs",
+      "AC8": "deferred: Live (prod; evidence: curl -s https://mcphost.dev/contract.json | jq -e on host.policy.set rule type and host.sync.create table pattern)"
     },
     "osroot": {
       "_prd": "PRD-mcphost-tool-call-output-root-opaque.md (test_prefix: osroot)",
@@ -674,14 +716,14 @@
       "AC9": "tests/ac09_signup_rate_limit.rs",
       "AC10": "tests/ac10_publish_validation_errors.rs",
       "AC11": "tests/ac11_load_smoke.rs (#[ignore]d hardware-relative load test)",
-      "AC12": "no unit test file; live smoke \u2014 mcphost serve + synthorg consume --preflight <url>, recorded as target/autobuilder/ac12-preflight-smoke.json",
+      "AC12": "no unit test file; live smoke — mcphost serve + synthorg consume --preflight <url>, recorded as target/autobuilder/ac12-preflight-smoke.json",
       "AC13": "tests/ac13_mcp_name_mismatch_metering.rs",
       "AC14": "tests/ac14_storage_unwritable.rs",
       "AC15": "tests/ac15_call_timeout.rs",
       "AC16": "tests/ac16_request_body_too_large.rs",
       "AC17": "tests/ac17_kind_conformance.rs",
       "AC18": "tests/ac18_tools_list_ttl.rs",
-      "AC19": "deferred \u2014 no test; see agent/intent-card.json acceptance_criteria AC19.test and PRD Open Questions (registry namespace verification not yet resolved)"
+      "AC19": "deferred — no test; see agent/intent-card.json acceptance_criteria AC19.test and PRD Open Questions (registry namespace verification not yet resolved)"
     },
     "adminschemacontract": {
       "_prd": "PRD-mcphost-admin-schema-contract.md -- superseded by mcphost-abuse-guard-ban-list at HEAD; real test_prefix is mcphost_admin_schema_contract (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind/tenantdataexport/checkcompatrace/teammemory/databaseinaminute/uptimeprobes/toolversions/agentchannels/webhookinbox/signupkillswitchandsource/sandboxegressallowlist/humanclaimmagiclink/claudecodepluginandsnippets above)",
@@ -907,7 +949,7 @@
       "AC13": "tests/mcphost_human_claim_magic_link_ac13_bearer_key_never_in_claim_pages.rs"
     },
     "lanecov": {
-      "_prd": "PRD-mcphost-proof-lane-loop-config.md \u2014 same as ac_test_map above while this PRD is the one at HEAD",
+      "_prd": "PRD-mcphost-proof-lane-loop-config.md — same as ac_test_map above while this PRD is the one at HEAD",
       "AC1": "tests/lanecov_ac01_every_tracked_path_routes.rs",
       "AC2": "tests/lanecov_ac02_coverage_test_is_actually_run.rs",
       "AC3": "tests/lanecov_ac03_unrouted_path_is_named.rs",
@@ -925,7 +967,7 @@
       "AC6": "tests/mcphost_host_tool_deprecation_ac06_changelog_lists_additions.rs",
       "AC7": "tests/mcphost_host_tool_deprecation_ac07_whoami_contract_version.rs",
       "AC8": "tests/mcphost_host_tool_deprecation_ac08_llms_txt_links_contract.rs",
-      "_prd": "PRD-mcphost-host-tool-deprecation.md \u2014 superseded by mcphost-data-retention at HEAD"
+      "_prd": "PRD-mcphost-host-tool-deprecation.md — superseded by mcphost-data-retention at HEAD"
     },
     "oauthrs": {
       "_prd": "PRD-mcphost-oauth-resource-server.md -- superseded by mcphost-end-user-identity at HEAD; real test_prefix is oauthrs (this dict key is a short alias, matching the convention of banlist, ac, adminschemacontract, agentchannels, checkcompatrace, claudecodepluginandsnippets, databaseinaminute, humanclaimmagiclink, lanecov, mcphost_host_tool_deprecation, retention, runenvelope, sandboxegressallowlist, sharetool, signupkillswitch, signupkillswitchandsource, stdlibpseudo, suite, teammemory, tenantdataexport, toolversions, uptimeprobes, wasmkind, webhookinbox above)",
@@ -952,7 +994,7 @@
       "AC8": "tests/mcphost_data_retention_ac08_host_usage_lists_retention_windows.rs",
       "AC9": "tests/mcphost_data_retention_ac09_prune_error_sets_last_prune_ok_false.rs",
       "AC10": "tests/mcphost_data_retention_ac10_admin_prune_now_runs_one_cycle.rs",
-      "_prd": "PRD-mcphost-data-retention.md \u2014 superseded by mcphost-tenant-data-export at HEAD; real test_prefix is mcphost_data_retention (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool above)"
+      "_prd": "PRD-mcphost-data-retention.md — superseded by mcphost-tenant-data-export at HEAD; real test_prefix is mcphost_data_retention (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool above)"
     },
     "runenvelope": {
       "_prd": "PRD-mcphost-tool-run-envelope.md -- same as ac_test_map above while this PRD is the one at HEAD",
@@ -1009,7 +1051,7 @@
       "AC7": "tests/mcphost_share_a_tool_not_a_key_ac07_synthorg_task_five_completions.rs",
       "AC8": "tests/mcphost_share_a_tool_not_a_key_ac08_live_test_skipped_without_env.rs",
       "AC9": "tests/mcphost_share_a_tool_not_a_key_ac09_public_variant_states_default_reason.rs",
-      "_prd": "PRD-mcphost-share-a-tool-not-a-key.md \u2014 same as ac_test_map above while this PRD is the one at HEAD; real test_prefix is mcphost_share_a_tool_not_a_key (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo above)"
+      "_prd": "PRD-mcphost-share-a-tool-not-a-key.md — same as ac_test_map above while this PRD is the one at HEAD; real test_prefix is mcphost_share_a_tool_not_a_key (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo above)"
     },
     "signupkillswitch": {
       "_prd": "PRD-mcphost-signup-kill-switch-and-source.md -- superseded by mcphost-human-claim-magic-link at HEAD; real test_prefix is mcphost_signup_kill_switch_and_source (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind/tenantdataexport/checkcompatrace/teammemory/databaseinaminute/uptimeprobes/toolversions/agentchannels/webhookinbox above)",
@@ -1068,7 +1110,7 @@
       "AC7": "tests/suite_ac7_junit_per_test_timing.rs",
       "AC8": "deferred -- see PRD deferred_acs/mock_justifications (cross-host parity script needs a second box; casper deleted); AC1's nextest list diff proves the name-matching change single-host",
       "AC9": "tests/suite_ac9_selftest_named_and_green.rs",
-      "_prd": "PRD-mcphost-test-suite-consolidation.md \u2014 superseded by mcphost-share-a-tool-not-a-key at HEAD"
+      "_prd": "PRD-mcphost-test-suite-consolidation.md — superseded by mcphost-share-a-tool-not-a-key at HEAD"
     },
     "tablemodel": {
       "_prd": "PRD-mcphost-table-semantic-model.md -- superseded by mcphost-end-user-identity at HEAD; real test_prefix is tablemodel (this dict key matches it directly, same convention as every other archived entry below)",
@@ -1104,7 +1146,7 @@
       "AC5": "tests/mcphost_tenant_data_export_ac05_manifest_validates_publish_schema.rs",
       "AC6": "tests/mcphost_tenant_data_export_ac06_tools_subset.rs",
       "AC7": "tests/mcphost_tenant_data_export_ac07_admin_usage_exports_today.rs",
-      "_prd": "PRD-mcphost-tenant-data-export.md \u2014 superseded by mcphost-checkcompat-port-race at HEAD; real test_prefix is mcphost_tenant_data_export (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind above)"
+      "_prd": "PRD-mcphost-tenant-data-export.md — superseded by mcphost-checkcompat-port-race at HEAD; real test_prefix is mcphost_tenant_data_export (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind above)"
     },
     "toolversions": {
       "_prd": "PRD-mcphost-tool-versions.md -- superseded by mcphost-agent-channels at HEAD; real test_prefix is mcphost_tool_versions (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind/tenantdataexport/checkcompatrace/teammemory/databaseinaminute above)",
@@ -1156,7 +1198,7 @@
       "AC8": "tests/wasmkind_ac08_cache_reuses_compiled_artifact.rs",
       "AC9": "tests/wasmkind_ac09_healthz_reports_wasm_runtime.rs",
       "AC10": "tests/wasmkind_ac10_declared_output_promotion_matches_python.rs",
-      "_prd": "PRD-mcphost-wasm-kind.md \u2014 superseded by mcphost-host-tool-deprecation at HEAD"
+      "_prd": "PRD-mcphost-wasm-kind.md — superseded by mcphost-host-tool-deprecation at HEAD"
     },
     "webhookinbox": {
       "_prd": "PRD-mcphost-webhook-inbox.md -- superseded by mcphost-signup-kill-switch-and-source at HEAD; real test_prefix is mcphost_webhook_inbox (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind/tenantdataexport/checkcompatrace/teammemory/databaseinaminute/uptimeprobes/toolversions/agentchannels above)",
@@ -2481,6 +2523,14 @@
       "AC6": "tests/tenx_ac06_doctor_reports_tenant_lifecycle.rs",
       "AC7": "tests/tenx_ac07_admin_lists_expiry_and_funnel_counts_it.rs",
       "AC8": "deferred: Live (prod; evidence: curl -sS https://mcphost.dev/contract.json | jq -e '.tenant_lifecycle.disabled_reason == \"idle_expired\"')"
+    },
+    "tblurlp": {
+      "_prd": "PRD-mcphost-table-import-url-live-proof.md (test_prefix: tblurlp)",
+      "AC1": "tests/tblurlp_ac01_sample_csv_route.rs",
+      "AC2": "tests/tblurlp_ac02_example_urls_have_routes.rs",
+      "AC3": "tests/tblurlp_ac03_driver_on_loopback.rs",
+      "AC4": "deferred: Live (prod; evidence: ~/.local/state/mcphost-live/tblurlp-ac04-results.jsonl last row summary fixture_http=200 rows_imported=1000 count=1000 is_error=0 offboarded=1)",
+      "AC5": "tests/tblurlp_ac05_recipe_one_call_form.rs"
     }
   }
 }

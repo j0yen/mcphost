@@ -12,13 +12,38 @@ use mcphost::kinds::KindRegistry;
 use rmcp::model::Tool;
 use serde_json::{Map, Value, json};
 
-const STRING_CANDIDATES: &[&str] = &["x", "ab", "a1", "abc_1", "A", "0a", "https://example.com/a", "@x", "2026-01-01"];
+const STRING_CANDIDATES: &[&str] =
+    &["x", "ab", "a1", "abc_1", "A", "0a", "https://example.com/a", "@x", "2026-01-01", "example.com", "AAAA", "a.b", "a@example.com"];
 
 fn valid(schema: &Value, candidate: &Value) -> bool {
     jsonschema::validator_for(schema).map(|v| v.is_valid(candidate)).unwrap_or(false)
 }
 
-fn placeholder(schema: &Value) -> Value {
+/// `n` items for an array schema; distinct strings when it declares `uniqueItems`.
+fn items_n(schema: &Value, n: usize) -> Vec<Value> {
+    let item_schema = schema.get("items");
+    let item = item_schema.map(placeholder).unwrap_or_else(|| json!("x"));
+    let unique = schema.get("uniqueItems").and_then(Value::as_bool).unwrap_or(false);
+    if !unique || n < 2 {
+        return vec![item; n];
+    }
+    let probe = item_schema.cloned().unwrap_or_else(|| json!({}));
+    let mut out: Vec<Value> = vec![item];
+    for c in STRING_CANDIDATES.iter().map(|c| json!(c)).filter(|c| valid(&probe, c)) {
+        if out.len() == n {
+            break;
+        }
+        if !out.contains(&c) {
+            out.push(c);
+        }
+    }
+    while out.len() < n {
+        out.push(out[0].clone());
+    }
+    out
+}
+
+pub fn placeholder(schema: &Value) -> Value {
     if let Some(first) = schema.get("enum").and_then(Value::as_array).and_then(|e| e.first()) {
         return first.clone();
     }
@@ -36,8 +61,7 @@ fn placeholder(schema: &Value) -> Value {
         "boolean" => json!(true),
         "array" => {
             let n = schema.get("minItems").and_then(Value::as_u64).unwrap_or(0) as usize;
-            let item = schema.get("items").map(placeholder).unwrap_or_else(|| json!("x"));
-            Value::Array(vec![item; n])
+            Value::Array(items_n(schema, n))
         }
         "object" => {
             let mut obj = Map::new();
@@ -113,15 +137,14 @@ pub fn edge_values(schema: &Value) -> Vec<(String, Value)> {
         Some(Value::String(t)) => t.as_str(),
         _ => "",
     };
-    let item = schema.get("items").map(placeholder).unwrap_or_else(|| json!("x"));
     match ty {
         "array" => {
             out.push(("empty array".into(), json!([])));
             if let Some(n) = schema.get("minItems").and_then(Value::as_u64) {
-                out.push(("minItems".into(), Value::Array(vec![item.clone(); n.min(BOUNDARY_CAP) as usize])));
+                out.push(("minItems".into(), Value::Array(items_n(schema, n.min(BOUNDARY_CAP) as usize))));
             }
             if let Some(n) = schema.get("maxItems").and_then(Value::as_u64) {
-                out.push(("maxItems".into(), Value::Array(vec![item; n.min(BOUNDARY_CAP) as usize])));
+                out.push(("maxItems".into(), Value::Array(items_n(schema, n.min(BOUNDARY_CAP) as usize))));
             }
         }
         "string" if schema.get("enum").is_none() => {

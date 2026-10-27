@@ -62,7 +62,6 @@ const SHALLOW: &[&str] = &[
     "call:host.connect.start",
     "call:host.docs.delete",
     "call:host.docs.get",
-    "call:host.docs.index_config",
     "call:host.docs.purge",
     "call:host.docs.put",
     "call:host.example.propose",
@@ -70,7 +69,6 @@ const SHALLOW: &[&str] = &[
     "call:host.index.create",
     "call:host.key.delegate",
     "call:host.key.mint",
-    "call:host.lineage.blast_radius",
     "call:host.msg.send",
     "call:host.note.delete",
     "call:host.org.create",
@@ -89,7 +87,7 @@ const SHALLOW: &[&str] = &[
     "call:host.uptime.create",
     "call:host.vault.provider_set",
 ];
-const SHALLOW_CEILING: usize = 36;
+const SHALLOW_CEILING: usize = 34;
 
 /// The test fn's name as libtest lists it: a suite binary nests this file under
 /// its module (`verbfwd_ac08_forward_stack_budget::<fn>`), a standalone one does not.
@@ -168,6 +166,12 @@ fn args_for(tool: &rmcp::model::Tool) -> Value {
     // arguments `verbfwd_ac02` forwards (its `tool` is the placeholder tool).
     if tool.name == "host.trigger.set" {
         return json!({"tool": PLACEHOLDER, "kind": "schedule", "schedule": "*/5 * * * *"});
+    }
+    // `host.table.append` states "exactly one of rows, source_url, csv_text" as an
+    // `anyOf`/`oneOf`, not as `required` (PRD-mcphost-table-import-from-url R1):
+    // these are the arguments it took when `rows` was required.
+    if tool.name == "host.table.append" {
+        return json!({"table": PLACEHOLDER, "rows": {}});
     }
     required_args(&Value::Object((*tool.input_schema).clone()))
 }

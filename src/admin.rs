@@ -65,7 +65,7 @@ fn arg_i64(args: &Value, name: &str) -> Result<i64, AppError> {
 /// module doc settles on. Best-effort: a tenant that never created a table
 /// has no file to remove, and a removal failure here must never fail (or
 /// roll back) the tenant delete that already committed in `Db::delete_tenant`.
-fn remove_tenant_tables(state: &AppState, tenant_id: i64) {
+pub(crate) fn remove_tenant_tables(state: &AppState, tenant_id: i64) {
     let base = state.db.data_dir().join("tables").join(format!("{tenant_id}.db"));
     for suffix in ["", "-wal", "-shm"] {
         let path = if suffix.is_empty() {
@@ -110,6 +110,12 @@ pub async fn tenants(state: &AppState, args: &Value) -> Result<Value, AppError> 
     // filters rows by the exact reason; every row carries `expires_at_unix`.
     let reason_filter = arg_str_opt(args, "disabled_reason");
     let expiries = state.db.subject_expiries().await?;
+    // PRD-mcphost-external-unclaimed-tenant-expiry P1: the external policy's
+    // per-tenant clock.
+    let external = state.db.external_subjects(None).await?;
+    let external_window = state.db.external_expiry_window_days().await?;
+    let synthetic_window = state.db.synthetic_expiry_window_days().await?;
+    let now = crate::state::now_unix();
     let tenants: Vec<Value> = rows
         .into_iter()
         .filter(|t| match synthetic_filter.as_str() {
@@ -119,7 +125,16 @@ pub async fn tenants(state: &AppState, args: &Value) -> Result<Value, AppError> 
         })
         .filter(|t| reason_filter.as_deref().is_none_or(|want| t.disabled_reason.as_deref() == Some(want)))
         .map(|t| {
+            let ext = external.get(&t.id);
+            let lifecycle = match (ext, expiries.get(&t.id)) {
+                (Some(subject), _) => crate::retention::external_lifecycle_view(subject, external_window, now),
+                (None, expiry) => crate::retention::lifecycle_view(synthetic_window, expiry.copied()),
+            };
             json!({
+                "idle_since_unix": ext.map(|s| s.idle_since_unix),
+                "idle_days": ext.map(|s| ((now - s.idle_since_unix) / 86_400).max(0)),
+                "lifecycle": lifecycle,
+                "tenant_lifecycle": lifecycle,
                 "tenant": t.namespace,
                 "display_name": t.display_name,
                 "created_at": t.created_at,
@@ -353,6 +368,11 @@ pub async fn calls_export(state: &AppState, args: &Value) -> Result<Value, AppEr
 
 pub async fn tenant_enable(state: &AppState, args: &Value) -> Result<Value, AppError> {
     let tenant = arg_str(args, "tenant")?;
+    // PRD-mcphost-external-unclaimed-tenant-expiry: a tenant the unclaimed
+    // policy invalidated starts a fresh idle run when it is enabled.
+    if state.db.enable_unclaimed_expired(tenant.clone(), crate::state::now_unix()).await? {
+        return Ok(json!({ "tenant": tenant, "disabled": false }));
+    }
     let changed = state.db.set_tenant_disabled(tenant.clone(), false).await?;
     if !changed {
         return Err(AppError::ToolNotFound(format!("tenant {tenant}")));
@@ -518,10 +538,13 @@ pub async fn usage(state: &AppState, args: &Value) -> Result<Value, AppError> {
 /// `admin_audit` the same way as every other admin.* mutation, via
 /// `admin_audit_entry` below (unlike `admin.usage`, which isn't audited --
 /// this PRD's own AC names auditing for `.top` specifically).
+/// The `by` values `admin.usage.top` accepts; the descriptor's `by.enum`.
+pub const USAGE_TOP_BY: &[&str] = &["tool", "tenant"];
+
 pub async fn usage_top(state: &AppState, args: &Value) -> Result<Value, AppError> {
     let window = arg_str_opt(args, "window").unwrap_or_else(|| "1d".to_string());
     let by = arg_str_opt(args, "by").unwrap_or_else(|| "tool".to_string());
-    if !matches!(by.as_str(), "tool" | "tenant") {
+    if !USAGE_TOP_BY.contains(&by.as_str()) {
         return Err(AppError::InvalidArgs(format!(
             "by must be 'tool' or 'tenant', got '{by}'"
         )));
@@ -2122,6 +2145,8 @@ pub async fn funnel(state: &AppState, args: &Value) -> Result<Value, AppError> {
             "p50": per_peer_p50,
             "peers_above_1": per_peer_above_one,
         },
+        "tenants_unclaimed_expired": state.db.count_tenants_unclaimed_expired().await?,
+        "tenants_unclaimed_purged": state.db.count_tenants_unclaimed_purged().await?,
         "stages": funnel_stage_stats(&filtered, signups),
         "by_source": funnel_by_source(&by_source_rows),
         "by_origin": funnel_by_origin(&by_source_rows),
