@@ -745,7 +745,7 @@ class InvalidParams(MCPHostError):
 
 
 class InvalidSpec(MCPHostError):
-    DATA_KEYS: tuple[str, ...] = ("kind", "field", "reason", "fields", "minimal_specs", "docs_url", "fix", "known_secret_names",)
+    DATA_KEYS: tuple[str, ...] = ("kind", "field", "reason", "fields", "minimal_specs", "docs_url", "fix", "known_secret_names", "received_type",)
 
     def __init__(self, message: str, data: Optional[ErrorData] = None) -> None:
         super().__init__("invalid_spec", message, data)
@@ -1131,6 +1131,13 @@ class RememberTooLong(MCPHostError):
 class ReplayNeedsSecret(MCPHostError):
     def __init__(self, message: str, data: Optional[ErrorData] = None) -> None:
         super().__init__("replay_needs_secret", message, data)
+
+
+class RequestBodyTooLarge(MCPHostError):
+    DATA_KEYS: tuple[str, ...] = ("limit_bytes", "content_length", "hint",)
+
+    def __init__(self, message: str, data: Optional[ErrorData] = None) -> None:
+        super().__init__("request_body_too_large", message, data)
 
 
 class RequirementNotAllowed(MCPHostError):
@@ -1869,6 +1876,7 @@ ERRORS_BY_CODE: dict[str, type[MCPHostError]] = {
     "registry_rejected": RegistryRejected,
     "remember_too_long": RememberTooLong,
     "replay_needs_secret": ReplayNeedsSecret,
+    "request_body_too_large": RequestBodyTooLarge,
     "requirement_not_allowed": RequirementNotAllowed,
     "requirement_not_inferable": RequirementNotInferable,
     "resources_max": ResourcesMax,

@@ -34,6 +34,18 @@ mod uprg;
 #[path = "support/vbd_calls.rs"]
 mod vbd_calls;
 
+#[path = "refusals_ac01_oversize_body_is_a_413_json_rpc_error.rs"]
+mod refusals_ac01_oversize_body_is_a_413_json_rpc_error;
+#[path = "refusals_ac02_tool_not_found_names_the_implicit_tenant.rs"]
+mod refusals_ac02_tool_not_found_names_the_implicit_tenant;
+#[path = "refusals_ac03_one_builder_for_both_body_limit_sites.rs"]
+mod refusals_ac03_one_builder_for_both_body_limit_sites;
+#[path = "refusals_ac04_request_body_too_large_is_a_registered_error.rs"]
+mod refusals_ac04_request_body_too_large_is_a_registered_error;
+#[path = "refusals_ac05_access_line_names_rpc_tool_and_reply.rs"]
+mod refusals_ac05_access_line_names_rpc_tool_and_reply;
+#[path = "refusals_ac06_non_object_spec_names_the_received_type.rs"]
+mod refusals_ac06_non_object_spec_names_the_received_type;
 #[path = "reglist_ac01_manifest_fields_match_cargo_and_endpoint.rs"]
 mod reglist_ac01_manifest_fields_match_cargo_and_endpoint;
 #[path = "reglist_ac02_check_detects_drift.rs"]
@@ -1022,21 +1034,3 @@ mod vault_ac09_providers_hides_client_secret;
 mod vault_ac10_refresh_401_revokes_no_retry_storm;
 #[path = "vault_ac11_quota_vault_providers.rs"]
 mod vault_ac11_quota_vault_providers;
-#[path = "vaultst_ac01_status_lists_connected_and_unconnected_providers.rs"]
-mod vaultst_ac01_status_lists_connected_and_unconnected_providers;
-#[path = "vaultst_ac02_status_end_user_resolution_matches_connect_link.rs"]
-mod vaultst_ac02_status_end_user_resolution_matches_connect_link;
-#[path = "vaultst_ac03_status_shows_revoked_after_refresh_401.rs"]
-mod vaultst_ac03_status_shows_revoked_after_refresh_401;
-#[path = "vaultst_ac04_admin_vault_stats_per_tenant_per_provider.rs"]
-mod vaultst_ac04_admin_vault_stats_per_tenant_per_provider;
-#[path = "vaultst_ac05_admin_vault_stats_rejects_tenant_key.rs"]
-mod vaultst_ac05_admin_vault_stats_rejects_tenant_key;
-#[path = "vaultst_ac06_provider_remove_revokes_all_tokens.rs"]
-mod vaultst_ac06_provider_remove_revokes_all_tokens;
-#[path = "vaultst_ac07_provider_set_presets_fill_urls.rs"]
-mod vaultst_ac07_provider_set_presets_fill_urls;
-#[path = "vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green.rs"]
-mod vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green;
-#[path = "vaultst_ac09_live_vault_status_trailer.rs"]
-mod vaultst_ac09_live_vault_status_trailer;

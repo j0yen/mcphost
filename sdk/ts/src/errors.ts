@@ -873,7 +873,7 @@ export class InvalidParams extends MCPHostError {
 }
 
 export class InvalidSpec extends MCPHostError {
-  static readonly dataKeys: readonly string[] = ["kind", "field", "reason", "fields", "minimal_specs", "docs_url", "fix", "known_secret_names"];
+  static readonly dataKeys: readonly string[] = ["kind", "field", "reason", "fields", "minimal_specs", "docs_url", "fix", "known_secret_names", "received_type"];
   constructor(message: string, data: ErrorData = {}) {
     super("invalid_spec", message, data);
   }
@@ -1333,6 +1333,13 @@ export class RememberTooLong extends MCPHostError {
 export class ReplayNeedsSecret extends MCPHostError {
   constructor(message: string, data: ErrorData = {}) {
     super("replay_needs_secret", message, data);
+  }
+}
+
+export class RequestBodyTooLarge extends MCPHostError {
+  static readonly dataKeys: readonly string[] = ["limit_bytes", "content_length", "hint"];
+  constructor(message: string, data: ErrorData = {}) {
+    super("request_body_too_large", message, data);
   }
 }
 
@@ -2176,6 +2183,7 @@ export const ERRORS_BY_CODE: Record<string, new (message: string, data?: ErrorDa
   registry_rejected: RegistryRejected,
   remember_too_long: RememberTooLong,
   replay_needs_secret: ReplayNeedsSecret,
+  request_body_too_large: RequestBodyTooLarge,
   requirement_not_allowed: RequirementNotAllowed,
   requirement_not_inferable: RequirementNotInferable,
   resources_max: ResourcesMax,
