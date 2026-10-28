@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 
-use crate::auth::{generate_handoff_token, generate_key, generate_namespace, hash_key};
+use crate::auth::{draw_namespace, generate_handoff_token, generate_key, hash_key};
 use crate::db::{HandoffRedeemOutcome, LifecycleEvent, Tenant, WarnClaimToken};
 use crate::errors::AppError;
 use crate::kinds::{Kind, KindRegistry};
@@ -577,24 +577,37 @@ pub async fn signup(
 
     let is_implicit = signup_source.as_deref() == Some("implicit");
     let key = generate_key();
-    let namespace = generate_namespace();
     let key_hash = hash_key(&key);
-    let tenant = state
-        .db
-        .create_tenant_attributed_with_source(
-            display_name,
-            namespace.clone(),
-            key_hash,
-            synthetic,
-            Some(class.as_str().to_string()),
-            attribution.client_name.map(str::to_string),
-            attribution.client_version.map(str::to_string),
-            origin.to_string(),
-            origin_detail,
-            signup_source,
-            funnel_origin,
-        )
-        .await?;
+    // PRD-mcphost-synthetic-tenant-purge R6: a candidate a deleted tenant held (or a live one
+    // holds) is drawn again, at most NAMESPACE_DRAW_LIMIT times; then `table_row_conflict`.
+    let mut draws = 0;
+    let tenant = loop {
+        draws += 1;
+        let attempt = state
+            .db
+            .create_tenant_attributed_with_source(
+                display_name.clone(),
+                draw_namespace(),
+                key_hash.clone(),
+                synthetic.clone(),
+                Some(class.as_str().to_string()),
+                attribution.client_name.map(str::to_string),
+                attribution.client_version.map(str::to_string),
+                origin.to_string(),
+                origin_detail.clone(),
+                signup_source.clone(),
+                funnel_origin.clone(),
+            )
+            .await;
+        match attempt {
+            Err(e) if crate::errors::is_namespace_conflict(&e) => {
+                if draws >= crate::retention::NAMESPACE_DRAW_LIMIT {
+                    return Err(crate::errors::namespace_draws_exhausted());
+                }
+            }
+            other => break other?,
+        }
+    };
 
     // PRD-mcphost-implicit-signup-mints-only-on-success R4: an implicit signup's
     // `signup_events` row carries the tenant it created (new rows only, no
@@ -711,7 +724,7 @@ pub async fn signup(
     let mut response = json!({
         "tenant": tenant.namespace,
         "key": key,
-        "namespace": namespace,
+        "namespace": tenant.namespace,
         "endpoint": format!("{}/mcp", state.public_url.trim_end_matches('/')),
         "claim_url": claim_url,
         // PRD-mcphost-session-key requirement 3 / AC4: told by the payload
@@ -958,6 +971,20 @@ pub fn install_tenant_teardown(state: &AppState) {
         move |id| {
             let state = state.clone();
             Box::pin(async move { teardown_expired_tenant(&state, id).await })
+        }
+    }));
+    // PRD-mcphost-synthetic-tenant-purge R1: what follows a purged tenant's delete, as
+    // `purge_external_unclaimed` does it: each kind's hook, then the tenant's table file.
+    state.db.clone().set_tenant_removed(std::sync::Arc::new({
+        let state = state.clone();
+        move |id| {
+            let state = state.clone();
+            Box::pin(async move {
+                for k in state.kinds.all() {
+                    k.on_tenant_removed(id).await;
+                }
+                crate::admin::remove_tenant_tables(&state, id);
+            })
         }
     }));
     state.db.clone().set_external_sweep(std::sync::Arc::new({

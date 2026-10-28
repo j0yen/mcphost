@@ -32,8 +32,9 @@ async fn tenx_ac07_admin_filters_by_reason_lists_expiry_and_counts_expired_rows(
     tenx::insert(&conn, &Fx::subject("tenx-expired", now, 3, idle));
     tenx::insert(&conn, &Fx::subject("tenx-live-subject", now, 3, 3600));
     for i in 0..3 {
-        // Older than the floor: counted by `would_expire`, never touched.
-        tenx::insert(&conn, &Fx::subject(&format!("tenx-backlog-{i}"), now, 11, idle));
+        // Older than the floor but seen under the window: the floor starts the clock (R2), so the
+        // row is a subject that has not idled yet, counted by `would_expire`, never touched.
+        tenx::insert(&conn, &Fx::subject(&format!("tenx-backlog-{i}"), now, 11, 3600));
     }
     let (off_ns, off_key) = signup(&server.base_url, "Tenx Offboarded").await;
     McpClient::with_bearer(&server.base_url, &off_key)
@@ -57,7 +58,7 @@ async fn tenx_ac07_admin_filters_by_reason_lists_expiry_and_counts_expired_rows(
     }
     let by_ns = |ns: &str| rows.iter().find(|r| r["tenant"] == ns).unwrap_or_else(|| panic!("row {ns}"));
     assert_eq!(by_ns("tenx-live-subject")["expires_at_unix"].as_i64(), Some(now - 3600 + DAY));
-    for non_subject in ["tenx-expired", "tenx-backlog-0", off_ns.as_str()] {
+    for non_subject in ["tenx-expired", off_ns.as_str()] {
         assert!(by_ns(non_subject)["expires_at_unix"].is_null(), "{non_subject} is not a subject");
     }
     assert_eq!(by_ns(&off_ns)["disabled_reason"], "self_offboard");
@@ -72,6 +73,6 @@ async fn tenx_ac07_admin_filters_by_reason_lists_expiry_and_counts_expired_rows(
         .query_row("SELECT deleted_json FROM prune_log ORDER BY id DESC LIMIT 1", [], |r| r.get(0))
         .expect("prune_log row");
     let latest: Value = serde_json::from_str(&latest).unwrap();
-    assert_eq!(latest["synthetic_implicit_tenants.would_expire"], 3, "{latest}");
+    assert_eq!(latest["synthetic_implicit_tenants.would_expire"], 4, "{latest}");
     assert_eq!(latest["synthetic_implicit_tenants.expired"], 1);
 }

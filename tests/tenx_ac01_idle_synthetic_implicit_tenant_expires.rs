@@ -73,7 +73,17 @@ async fn tenx_ac01_only_the_idle_synthetic_implicit_unclaimed_tenant_expires() {
     add("paid", &|f| f.paid_unix = Some(now - DAY));
     add("synthetic-null", &|f| f.synthetic = None);
     add("billing-ref", &|f| f.billing_ref = Some("cus_test"));
-    add("before-floor", &|f| f.created_unix = now - 11 * DAY);
+    // PRD-mcphost-synthetic-tenant-purge R2: the floor starts the idle clock, it no longer excludes a
+    // row minted before it; a pre-floor row last seen just now is still under the window.
+    add("before-floor-recent", &|f| {
+        f.created_unix = now - 11 * DAY;
+        f.last_seen_unix = Some(now - 3600);
+    });
+    let pre_floor_idle = tenx::insert(&conn, &{
+        let mut fx = Fx::subject("tenx-before-floor-idle", now, 11, idle);
+        fx.created_unix = now - 11 * DAY;
+        fx
+    });
 
     let sid = server.state.session_bindings.issue();
     assert!(server.state.session_bindings.bind(&sid, a, now));
@@ -86,5 +96,6 @@ async fn tenx_ac01_only_the_idle_synthetic_implicit_unclaimed_tenant_expires() {
         assert_eq!(tenx::state(&conn, *id), (false, None), "variant {label} must be unchanged");
     }
     assert_eq!(server.state.session_bindings.lookup(&sid, now), None, "A's session is released");
-    assert_eq!(*removed.lock().unwrap(), vec![a], "on_tenant_removed ran once, for A only");
+    assert_eq!(tenx::state(&conn, pre_floor_idle), (true, Some("idle_expired".to_string())), "a pre-floor idle row is a subject");
+    assert_eq!(*removed.lock().unwrap(), vec![a, pre_floor_idle], "on_tenant_removed ran once each, for the two subjects only");
 }

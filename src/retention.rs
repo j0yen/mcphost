@@ -240,6 +240,74 @@ pub fn external_lifecycle_view(subject: &crate::db::ExternalSubject, window: i64
 /// Tenants claimed and torn down per batch (measured on 6,000 subjects).
 pub const EXPIRE_BATCH_SIZE: i64 = 500;
 
+// PRD-mcphost-synthetic-tenant-purge: the purge stage's constants. The
+// contract (`api_contract::tenant_lifecycle`) publishes these, so a moved
+// number fails `contract dump --check`.
+/// The purge grace env (days after the policy floor / last event; `off` stops the stage).
+pub const SYNTHETIC_PURGE_GRACE_ENV: &str = "MCPHOST_RETENTION_SYNTHETIC_PURGE_GRACE_DAYS";
+pub const SYNTHETIC_PURGE_GRACE_DEFAULT_DAYS: i64 = 14;
+/// Subjects purged per batch.
+pub const PURGE_BATCH: i64 = 500;
+/// Wall budget of the purge stage (and, per stage, of the expire stage).
+pub const PURGE_BUDGET_SECS: u64 = 120;
+pub const EXPIRE_BUDGET_SECS: u64 = PURGE_BUDGET_SECS;
+/// Pages each purge batch (and the sweep) returns to the OS (8 MiB).
+pub const PURGE_VACUUM_PAGES: i64 = 2048;
+/// Most `pre_floor_sample` rows the first armed sweep lists.
+pub const PRE_FLOOR_SAMPLE_LIMIT: usize = 200;
+/// `admin_events.action` of a synthetic purge.
+pub const SYNTHETIC_PURGE_ACTION: &str = "tenant_purge_synthetic";
+/// The `disabled_reason`s the purge class accepts.
+pub const PURGE_DISABLED_REASONS: &[&str] = &["idle_expired", "self_offboard"];
+/// Most random namespace draws before a mint gives up with `table_row_conflict`.
+pub const NAMESPACE_DRAW_LIMIT: usize = 16;
+
+/// The default purge grace the contract advertises. A `test-support` build reads
+/// `MCPHOST_TEST_ONLY_TENANT_LIFECYCLE_PURGE_GRACE_DEFAULT_DAYS` so a test can move it and watch
+/// `contract dump --check` fail; a release build never does.
+pub fn contract_purge_grace_days() -> i64 {
+    if cfg!(feature = "test-support")
+        && let Some(days) = std::env::var("MCPHOST_TEST_ONLY_TENANT_LIFECYCLE_PURGE_GRACE_DEFAULT_DAYS")
+            .ok()
+            .and_then(|raw| raw.parse::<i64>().ok())
+    {
+        return days;
+    }
+    SYNTHETIC_PURGE_GRACE_DEFAULT_DAYS
+}
+
+/// `PRAGMA incremental_vacuum(pages)`: returns up to `pages` freelist pages to the file. The pragma
+/// frees one page per step, so every row is drained (`execute_batch` would stop after the first).
+pub(crate) fn incremental_vacuum(conn: &rusqlite::Connection, pages: i64) -> rusqlite::Result<()> {
+    let mut stmt = conn.prepare(&format!("PRAGMA incremental_vacuum({pages})"))?;
+    let mut rows = stmt.query([])?;
+    while rows.next()?.is_some() {}
+    Ok(())
+}
+
+/// The stage wall budget. A `test-support` build reads
+/// `MCPHOST_TEST_ONLY_TENANT_LIFECYCLE_BUDGET_SECS` (seconds, fractions allowed)
+/// so a test can make one sweep unable to finish; a release build never does.
+pub fn stage_budget() -> std::time::Duration {
+    if cfg!(feature = "test-support")
+        && let Some(secs) = std::env::var("MCPHOST_TEST_ONLY_TENANT_LIFECYCLE_BUDGET_SECS")
+            .ok()
+            .and_then(|raw| raw.parse::<f64>().ok())
+            .filter(|s| s.is_finite() && *s >= 0.0)
+    {
+        return std::time::Duration::from_secs_f64(secs);
+    }
+    std::time::Duration::from_secs(PURGE_BUDGET_SECS)
+}
+
+/// The purge grace in days; `None` when the env reads `off`.
+pub fn synthetic_purge_grace_days() -> Option<i64> {
+    if env_is_off(SYNTHETIC_PURGE_GRACE_ENV) {
+        return None;
+    }
+    Some(days_from_env(SYNTHETIC_PURGE_GRACE_ENV, SYNTHETIC_PURGE_GRACE_DEFAULT_DAYS))
+}
+
 /// A policy table's window as the seed stores it. Every row ignores `0`
 /// (falls back to its default) except the synthetic tenant-expiry row, where
 /// `0` is an off switch; both tenant rows also accept the literal `off`.
@@ -758,7 +826,7 @@ fn prune_sync_inner(
     // database to `auto_vacuum=INCREMENTAL` (always true past that
     // migration) -- harmless (a documented no-op) on the `NONE` mode a
     // brand-new connection would otherwise never see in this crate.
-    let _ = conn.execute_batch("PRAGMA incremental_vacuum;");
+    let _ = incremental_vacuum(&conn, PURGE_VACUUM_PAGES);
     PruneOutcome {
         deleted,
         error: None,
