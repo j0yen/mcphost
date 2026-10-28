@@ -95,7 +95,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `src/gen/schema_ir.rs` (<1k) PRD-mcphost-typescript-sdk-generated R6: the one JSON-Schema reader both SDK generators (`sdk_python`, `gen...
 - `src/gen/sdk_ts.rs` (<1k) PRD-mcphost-typescript-sdk-generated R1: `mcphost gen sdk ts` renders `sdk/ts/src/` from `contracts/host-to...
 - `src/gendocs.rs` (~1k) `mcphost gen-docs` -- PRD-mcphost-first-hour-support-surface requirement 3: regenerates `docs/plans.md` fro...
-- `src/handler.rs` (~13k) The `rmcp::ServerHandler` implementation: `initialize`, `list_tools` and `call_tool`.
+- `src/handler.rs` (~14k) The `rmcp::ServerHandler` implementation: `initialize`, `list_tools` and `call_tool`.
   - sections: static control-plane / admin tool descriptors | secret resolver / call log, bridging async DB to the sync Kind API | the handler
 - `src/handler/arms.rs` (~1k) One function per dotted host verb: the arm bodies `dispatch_tenant_tool_inner` used to hold in a single `ma...
 - `src/handler/preauth.rs` (<1k) Boxed helpers for the verbs `call_tool_inner` answers in its own `match (auth, name)` (PRD-mcphost-generate...
@@ -143,6 +143,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `src/lineage/graph.rs` (<1k) PRD-mcphost-lineage-blast-radius requirement 1: the dependency-graph model, ported from `~/projects/ai-stac...
 - `src/lineage/mod.rs` (<1k) PRD-mcphost-lineage-blast-radius: "what breaks if this table changes, before it changes".
 - `src/lineage/scan.rs` (<1k) PRD-mcphost-lineage-blast-radius requirement 4 / technical considerations ("source scanning"): a scan over...
+- `src/listen.rs` (<1k) PRD-mcphost-subscriptions-listen: the per-tenant hub that feeds open `subscriptions/listen` streams.
 - `src/llms_txt.rs` (<1k) PRD-mcphost-surface-fluidity requirement 4 (P0, AC5): `www/llms.txt`'s tool list is generated from the same...
 - `src/longpoll.rs` (<1k) PRD-mcphost-msg-wait-long-poll-contract The one place the long-poll ceiling lives: `host.msg.wait`, `host.r...
 - `src/main.rs` (~2k) The `mcphost` binary: CLI entry point that wires the database, kinds and servers.
@@ -267,6 +268,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `CORE_METHODS` in `src/capabilities.rs`
 - `CORE_NOT_HANDLED` in `src/capabilities.rs`
 - `LEGACY_ONLY_METHODS` in `src/capabilities.rs`
+- `NEW_ONLY_METHODS` in `src/capabilities.rs`
 - `EXIT_CODE_TABLE` in `src/client.rs`
 - `REFUSAL_TABLE` in `src/compat_report.rs`
 - `STATUSES` in `src/consent.rs`
@@ -328,6 +330,7 @@ section of a big file: grep -n '^// ---- <name>' <file>.
 - `BRIDGE_MODULES` in `src/kinds/python.rs`
 - `BRIDGE_RETURNS` in `src/kinds/python.rs`
 - `LINT_RULES` in `src/kinds/python_lint.rs`
+- `TOOLS_LIST_OPS` in `src/listen.rs`
 - `NETWORK_VALUES` in `src/network_policy.rs`
 - `VERBS` in `src/notify.rs`
 - `ISSUER_REJECTION_CASES` in `src/oauth.rs`

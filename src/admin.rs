@@ -2176,6 +2176,11 @@ pub async fn funnel(state: &AppState, args: &Value) -> Result<Value, AppError> {
         crate::funnel::recipe_attempts_7d(&state.db, crate::state::now_unix()).await?;
     obj.insert("recipe_attempts_7d".to_string(), recipe_attempts);
     obj.insert("recipe_attempts_synthetic_7d".to_string(), json!(recipe_synthetic));
+    // PRD-mcphost-subscriptions-listen R7: listens refused for the plan ceiling
+    // (this process's last 24 h), the trigger for any later change to the limit.
+    let (refused_fleet, refused_external) = state.listen_hub.refused_24h(crate::state::now_unix());
+    obj.insert("listen_refused_cap_24h".to_string(), json!(refused_fleet + refused_external));
+    obj.insert("listen_refused_cap_24h_by_origin".to_string(), json!({"fleet": refused_fleet, "external": refused_external}));
     if let Some(sc) = &source_class {
         obj.insert("source_class".to_string(), json!(sc));
     }

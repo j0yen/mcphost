@@ -1023,6 +1023,12 @@ export class LineageUnavailable extends MCPHostError {
   }
 }
 
+export class ListenStreamsMax extends MCPHostError {
+  constructor(message: string, data: ErrorData = {}) {
+    super("listen_streams_max", message, data);
+  }
+}
+
 export class MeshFrozen extends MCPHostError {
   constructor(message: string, data: ErrorData = {}) {
     super("mesh_frozen", message, data);
@@ -2118,6 +2124,7 @@ export const ERRORS_BY_CODE: Record<string, new (message: string, data?: ErrorDa
   lineage_blocked: LineageBlocked,
   lineage_handle_not_found: LineageHandleNotFound,
   lineage_unavailable: LineageUnavailable,
+  listen_streams_max: ListenStreamsMax,
   mesh_frozen: MeshFrozen,
   meter_emit_locked: MeterEmitLocked,
   method_server_to_client: MethodServerToClient,

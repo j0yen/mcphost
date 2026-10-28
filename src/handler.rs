@@ -7340,21 +7340,21 @@ impl StateBackend for CountingStateBackend {
 /// The stack, in bytes, every forwarded dotted host verb must complete its real
 /// `host.tool_call` / `host.tool_test` call in on a debug build (profile and
 /// test thread as CI's `cargo test`). GENERATED MEASUREMENT: the measured
-/// maximum over all 230 forwardable ids is 1,019,904 B (every id measures it:
+/// maximum over all 230 forwardable ids is 1,024,000 B (every id measures it:
 /// `test:host.trigger.set`, `call:host.whoami`,
 /// `call:host.webhook_inbox.create`, `call:host.vault.status`, ...,
-/// `scripts/fwd-stack-measure.sh all`, 2026-10-18 (re-measured 2026-10-20 with the sub-key `acting_for` lineage on the call path, and 2026-10-21 with the implicit-signup rollback guard on the first-call path: 983,040 -> 991,232 B; and 2026-10-23 with the schema-shape validators on the argument path: 991,232 -> 1,007,616 B; and 2026-10-24 CI's debug build measured `call:host.whoami` at 1,011,712 B (PR #515 run 40094459445; a CI figure, not `scripts/fwd-stack-measure.sh all`, so a script re-run must not lower it); and 2026-10-24 merged with the progress-token sink on the call path: CI figure, run 40114224490 (debug build), `call:host.whoami` minimum stack 1019904 bytes, so a script re-run must not lower it), after the dispatch table
+/// `scripts/fwd-stack-measure.sh all`, 2026-10-18 (re-measured 2026-10-20 with the sub-key `acting_for` lineage on the call path, and 2026-10-21 with the implicit-signup rollback guard on the first-call path: 983,040 -> 991,232 B; and 2026-10-23 with the schema-shape validators on the argument path: 991,232 -> 1,007,616 B; and 2026-10-24 CI's debug build measured `call:host.whoami` at 1,011,712 B (PR #515 run 40094459445; a CI figure, not `scripts/fwd-stack-measure.sh all`, so a script re-run must not lower it); and 2026-10-24 merged with the progress-token sink on the call path: CI figure, run 40114224490 (debug build), `call:host.whoami` minimum stack 1019904 bytes, so a script re-run must not lower it; and 2026-10-27 merged with the subscriptions-listen stream: `scripts/fwd-stack-measure.sh call:host.whoami` (debug build) 1,024,000 B, +4,096 B over main; the branch alone measured 995,328 B), after the dispatch table
 /// (`src/dispatch_table.rs`) and the boxed `call_tool_inner` helpers; the shared
 /// level rose from 823,296 B on 10-17 with main's own frames, chiefly rmcp's
 /// `handle_request` poll frame, 48 -> 137 KiB, while `host.doctor` stopped
 /// compiling its error-envelope report on the caller's stack) and the
-/// budget is that + 25 % = 1,274,880 B, so CI's 2 MiB test thread keeps
+/// budget is that + 25 % = 1,280,000 B, so CI's 2 MiB test thread keeps
 /// 40 % of it free and the next fat frame fails
 /// `tests/verbfwd_ac08_forward_stack_budget.rs`, naming the verb, instead of SIGABRTing a shard (run 326 `verbfwd_ac01`, run
 /// 953; both 10-17, both `has overflowed its stack`). The boundary is
 /// `dispatch_tenant_tool` / `forward_host_verb`, where a dotted verb re-enters
 /// the dispatcher. Re-measure and tighten as the dispatch frames shrink.
-pub const FORWARD_STACK_BUDGET: usize = 1_274_880;
+pub const FORWARD_STACK_BUDGET: usize = 1_280_000;
 
 /// The validator's registration for what `host.spec.test` owns (R3): more
 /// than `MAX_TEST_INVOCATIONS` invocations is refused `too_many_invocations`
@@ -7704,7 +7704,11 @@ impl McpHostHandler {
     ) -> Result<Value, AppError> {
         // PRD-mcphost-resources-for-tenant-data requirements 4 and 6: the
         // one place a committed write tells resource subscribers.
-        let hint = crate::resources::write_hint(name, &args);
+        // Boxed: this frame is re-entered once per forwarding level (FORWARD_STACK_BUDGET).
+        let hint = crate::resources::write_hint(name, &args).map(Box::new);
+        // PRD-mcphost-subscriptions-listen R4: what a tools/list-changing verb
+        // needs remembered from before it ran; boxed so this frame stays small.
+        let listen = Box::pin(crate::listen::Pending::begin(&self.state, tenant, name, &args)).await;
         // The forwarding boundary. A wrapper verb (`FORWARDING_WRAPPERS`) re-enters
         // this dispatcher with the verb it forwards, so it is on the stack UNDER
         // the forwarded verb. Dispatched the usual way it would hold the
@@ -7728,20 +7732,27 @@ impl McpHostHandler {
         } else {
             // `Box::pin`: run 945 verbfwd_ac01 stack overflow (CI 39080964983) -- the hint
             // locals added here grew this frame past the 2 MiB test-thread stack.
-            Box::pin(self.dispatch_tenant_tool_dry_run(
-                tenant,
-                subject,
-                auth_method,
-                calls_auth_method,
-                end_user,
-                session_id,
-                name,
-                args,
+            // The task-local rides inside the same box (PRD-mcphost-subscriptions-listen R5).
+            Box::pin(crate::listen::CURRENT_VERB.scope(
+                crate::listen::canonical_verb(name).to_string(),
+                self.dispatch_tenant_tool_dry_run(
+                    tenant,
+                    subject,
+                    auth_method,
+                    calls_auth_method,
+                    end_user,
+                    session_id,
+                    name,
+                    args,
+                ),
             ))
             .await
         };
         if let (Some(hint), Ok(out)) = (hint, &result) {
-            crate::resources::after_write(&self.state, tenant.id, hint, out);
+            crate::resources::after_write(&self.state, tenant.id, *hint, out);
+        }
+        if let (Some(listen), Ok(out)) = (listen, &result) {
+            Box::pin(listen.finish(&self.state, tenant, out)).await;
         }
         self.attach_data_quota(tenant, name, result).await
     }
@@ -11810,7 +11821,7 @@ impl McpHostHandler {
         name: &str,
         args: Value,
     ) -> (Result<Value, AppError>, bool) {
-        let tracked = matches!(name, "host.tool.publish" | "host.tool.remove");
+        let tracked = crate::listen::tracks_prompts(name);
         let kind_before = match (tracked, args.get("name").and_then(Value::as_str)) {
             (true, Some(tool)) => self
                 .state
@@ -11832,6 +11843,9 @@ impl McpHostHandler {
             }
             _ => false,
         };
+        if changed {
+            self.state.listen_hub.notify(tenant.id, crate::listen::ListChange::Prompts);
+        }
         (result, changed)
     }
 }
@@ -11846,6 +11860,78 @@ async fn notify_prompt_list_changed(peer: &Peer<RoleServer>, namespace: &str) {
     .await
     {
         tracing::warn!(tenant = %namespace, error = %e, "notify_prompt_list_changed failed");
+    }
+}
+
+impl McpHostHandler {
+    /// PRD-mcphost-subscriptions-listen R2/R6: the body of `ServerHandler::listen`.
+    async fn listen_stream(&self, context: rmcp::service::SubscriptionContext) -> Result<(), McpError> {
+        let base = Some(self.state.public_url.as_str());
+        let parts = get_parts(context.request_context())?;
+        let mut sub_key = None;
+        let auth = match resolve_path_secret_auth(&self.state, parts, "")
+            .await
+            .map_err(|e| e.into_error_data_at(base))?
+        {
+            Some(a) => a,
+            None => resolve_auth(&self.state, parts, &mut sub_key, "")
+                .await
+                .map_err(|e| e.into_error_data_at(base))?,
+        };
+        let tenant = match auth {
+            Auth::Tenant(tenant, _) => tenant,
+            Auth::Invalid => return Err(AppError::TenantKeyInvalid.into_error_data_at(base)),
+            // No key: nothing to listen for. The graceful result closes the stream.
+            Auth::Anonymous | Auth::Admin => return Ok(()),
+        };
+        if let Some(ns) = tenant_path_namespace(parts)
+            && tenant.namespace != ns
+        {
+            return Err(AppError::WrongTenant.into_error_data_at(base));
+        }
+        let plan = self
+            .state
+            .plans
+            .get(&tenant.plan)
+            .ok_or_else(|| AppError::Internal(format!("tenant's plan '{}' is not in the loaded plan catalog", tenant.plan)))
+            .map_err(|e| e.into_error_data_at(base))?;
+        let limit = plan.listen_streams_max;
+        let mut guard = match self.state.listen_hub.open_within(tenant.id, limit) {
+            Ok(guard) => guard,
+            Err(used) => {
+                let fleet = self.state.fleet_ips.contains(&source_ip(parts));
+                self.state.listen_hub.record_refusal(crate::state::now_unix(), fleet);
+                return Err(AppError::Structured {
+                    code: crate::listen::LISTEN_STREAMS_MAX,
+                    message: format!("this tenant already has {used} open listen streams, the {} plan maximum", plan.name),
+                    data: json!({"limit": limit, "used": used, "plan": plan.name}),
+                }
+                .into_error_data_at(base));
+            }
+        };
+        let sink = context.sink().clone();
+        let mut pending = Vec::new();
+        loop {
+            let change = tokio::select! {
+                _ = context.cancelled() => return Ok(()),
+                change = guard.next(&mut pending) => match change {
+                    Some(change) => change,
+                    None => return Ok(()),
+                },
+            };
+            let sent = match change {
+                crate::listen::ListChange::Tools => sink.notify_tool_list_changed().await,
+                crate::listen::ListChange::Prompts => sink.notify_prompt_list_changed().await,
+            };
+            match sent {
+                // The client did not ask for this list.
+                Ok(()) | Err(rmcp::service::SubscriptionSendError::NotificationNotAccepted(_)) => {}
+                Err(e) => {
+                    tracing::debug!(tenant = %tenant.namespace, error = %e, "listen stream ended on send");
+                    return Ok(());
+                }
+            }
+        }
     }
 }
 
@@ -11952,6 +12038,36 @@ impl ServerHandler for McpHostHandler {
             ),
         ))
         .with_instructions(instructions)
+    }
+
+    /// PRD-mcphost-subscriptions-listen R1: the list notifications this host
+    /// can deliver on a listen stream. rmcp intersects this with the request and
+    /// with `get_info`'s capabilities. Resource notifications stay out (Non-goals).
+    fn accepted_subscription_filter(
+        &self,
+        requested: &rmcp::model::SubscriptionFilter,
+    ) -> Option<rmcp::model::SubscriptionFilter> {
+        let mut filter = rmcp::model::SubscriptionFilter::builder();
+        if requested.tools_list_changed == Some(true) {
+            filter = filter.tools_list_changed();
+        }
+        if requested.prompts_list_changed == Some(true) {
+            filter = filter.prompts_list_changed();
+        }
+        Some(filter.build())
+    }
+
+    /// PRD-mcphost-subscriptions-listen R2/R6: hold one stream for the tenant
+    /// the Authorization header names, until the client closes it or the server
+    /// shuts down. Resolution is read-only: no tenant is created and no
+    /// session memory is written.
+    fn listen(
+        &self,
+        context: rmcp::service::SubscriptionContext,
+    ) -> impl std::future::Future<Output = Result<(), McpError>> + Send + '_ {
+        // Boxed: rmcp's `handle_request` poll frame holds every arm's future, and
+        // this one is large (FORWARD_STACK_BUDGET's shared level).
+        Box::pin(self.listen_stream(context))
     }
 
     // PRD-mcphost-resources-for-tenant-data requirement 2: one entry per

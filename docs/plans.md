@@ -53,6 +53,7 @@ Every numeric ceiling in the plan table, as `host.quickstart` `limits.plan` repo
 | `invites_max` | 3 | 25 |
 | `job_max_s` | 300 | 900 |
 | `jobs_concurrent` | 1 | 3 |
+| `listen_streams_max` | 16 | 64 |
 | `msg_body_bytes_max` | 16384 | 16384 |
 | `msgs_per_hour` | 60 | 2000 |
 | `notes_max` | 200 | 5000 |

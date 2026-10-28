@@ -7,130 +7,25 @@
 // original name, path, and test names (nextest's test list, with this
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
+#[path = "support/assertion.rs"]
+mod assertion;
+#[path = "support/ctrace.rs"]
+mod ctrace;
 #[path = "support/elicit_session.rs"]
 mod elicit_session;
-#[path = "support/host.rs"]
-#[allow(dead_code)]
-mod host;
+#[path = "support/oauth.rs"]
+mod oauth;
 #[path = "support/promptkind.rs"]
 mod promptkind;
+#[path = "support/rgpt.rs"]
+mod rgpt;
 #[path = "support/sampling_session.rs"]
 mod sampling_session;
 #[path = "support/serve.rs"]
 mod serve;
-#[path = "support/uptime_probes.rs"]
-mod uptime_probes;
+#[path = "support/whin.rs"]
+mod whin;
 
-#[path = "jsk_ac01_cold_start_bench.rs"]
-mod jsk_ac01_cold_start_bench;
-#[path = "jsk_ac02_syntax_error_position.rs"]
-mod jsk_ac02_syntax_error_position;
-#[path = "jsk_ac03_bridge_parity.rs"]
-mod jsk_ac03_bridge_parity;
-#[path = "jsk_ac04_exception_position.rs"]
-mod jsk_ac04_exception_position;
-#[path = "jsk_ac05_timeout_and_oom.rs"]
-mod jsk_ac05_timeout_and_oom;
-#[path = "jsk_ac06_network_none_blocks_fetch.rs"]
-mod jsk_ac06_network_none_blocks_fetch;
-#[path = "jsk_ac07_secret_redaction.rs"]
-mod jsk_ac07_secret_redaction;
-#[path = "kcon_ac02_every_registered_kind_passes.rs"]
-mod kcon_ac02_every_registered_kind_passes;
-#[path = "kcon_ac04_error_families_and_source_line.rs"]
-mod kcon_ac04_error_families_and_source_line;
-#[path = "kcon_live_ac01_prod_error_families.rs"]
-mod kcon_live_ac01_prod_error_families;
-#[path = "kconb_ac03_spec_test_carries_contract.rs"]
-mod kconb_ac03_spec_test_carries_contract;
-#[path = "kindhonor_ac2_kind_mismatch_refused.rs"]
-mod kindhonor_ac2_kind_mismatch_refused;
-#[path = "kindroute_ac04_unknown_kind_carries_recipe_hints.rs"]
-mod kindroute_ac04_unknown_kind_carries_recipe_hints;
-#[path = "kindroute_ac05_sandbox_docs_help_names_write_path.rs"]
-mod kindroute_ac05_sandbox_docs_help_names_write_path;
-#[path = "limits_ac01_declared_timeout_honored.rs"]
-mod limits_ac01_declared_timeout_honored;
-#[path = "limits_ac02_default_timeout_when_undeclared.rs"]
-mod limits_ac02_default_timeout_when_undeclared;
-#[path = "limits_ac03_output_too_large.rs"]
-mod limits_ac03_output_too_large;
-#[path = "limits_ac04_tenant_admission_control.rs"]
-mod limits_ac04_tenant_admission_control;
-#[path = "limits_ac06_quickstart_docs_match_constants.rs"]
-mod limits_ac06_quickstart_docs_match_constants;
-#[path = "limits_ac07_process_fork_storm_capped.rs"]
-mod limits_ac07_process_fork_storm_capped;
-#[path = "limits_ac08_usage_capacity_refusals.rs"]
-mod limits_ac08_usage_capacity_refusals;
-#[path = "lineage_ac01_source_scan_registers_table_edge.rs"]
-mod lineage_ac01_source_scan_registers_table_edge;
-#[path = "lineage_ac12_python_bridge_trace_matches_tool.rs"]
-mod lineage_ac12_python_bridge_trace_matches_tool;
-#[path = "mcphost_database_in_a_minute_ac09_csv_import_batches_internally.rs"]
-mod mcphost_database_in_a_minute_ac09_csv_import_batches_internally;
-#[path = "mcphost_event_trigger_self_test_ac11_truth_tier_persona_reaches_event_run.rs"]
-mod mcphost_event_trigger_self_test_ac11_truth_tier_persona_reaches_event_run;
-#[path = "mcphost_python_dependency_policy_ac01_lock_stored_and_require_hashes.rs"]
-mod mcphost_python_dependency_policy_ac01_lock_stored_and_require_hashes;
-#[path = "mcphost_python_dependency_policy_ac02_rebuild_matches_lock.rs"]
-mod mcphost_python_dependency_policy_ac02_rebuild_matches_lock;
-#[path = "mcphost_python_dependency_policy_ac04_free_tenant_network_none_default.rs"]
-mod mcphost_python_dependency_policy_ac04_free_tenant_network_none_default;
-#[path = "mcphost_python_dependency_policy_ac05_near_name_denied.rs"]
-mod mcphost_python_dependency_policy_ac05_near_name_denied;
-#[path = "mcphost_python_dependency_policy_ac07_supplied_lock_stored_without_reresolving.rs"]
-mod mcphost_python_dependency_policy_ac07_supplied_lock_stored_without_reresolving;
-#[path = "mcphost_sandbox_egress_allowlist_ac01_free_publish_public_refused.rs"]
-mod mcphost_sandbox_egress_allowlist_ac01_free_publish_public_refused;
-#[path = "mcphost_sandbox_egress_allowlist_ac02_free_publish_egress_refused.rs"]
-mod mcphost_sandbox_egress_allowlist_ac02_free_publish_egress_refused;
-#[path = "mcphost_sandbox_egress_allowlist_ac08_concurrent_free_publishes_refused.rs"]
-mod mcphost_sandbox_egress_allowlist_ac08_concurrent_free_publishes_refused;
-#[path = "mcphost_sandbox_egress_allowlist_ac10_uptime_probes_fixture_no_longer_free.rs"]
-mod mcphost_sandbox_egress_allowlist_ac10_uptime_probes_fixture_no_longer_free;
-#[path = "mcphost_shared_tool_spec_readback_ac01_group_member_reads_spec.rs"]
-mod mcphost_shared_tool_spec_readback_ac01_group_member_reads_spec;
-#[path = "mcphost_shared_tool_spec_readback_ac02_tool_list_shows_expose_spec.rs"]
-mod mcphost_shared_tool_spec_readback_ac02_tool_list_shows_expose_spec;
-#[path = "mcphost_shared_tool_spec_readback_ac03_redacts_env_and_secrets.rs"]
-mod mcphost_shared_tool_spec_readback_ac03_redacts_env_and_secrets;
-#[path = "mcphost_shared_tool_spec_readback_ac04_spec_not_exposed_refusal.rs"]
-mod mcphost_shared_tool_spec_readback_ac04_spec_not_exposed_refusal;
-#[path = "mcphost_shared_tool_spec_readback_ac05_not_shared_same_not_found_shape.rs"]
-mod mcphost_shared_tool_spec_readback_ac05_not_shared_same_not_found_shape;
-#[path = "mcphost_shared_tool_spec_readback_ac06_unshare_then_reshare_without_flag.rs"]
-mod mcphost_shared_tool_spec_readback_ac06_unshare_then_reshare_without_flag;
-#[path = "mcphost_shared_tool_spec_readback_ac08_fifty_concurrent_reads_p95.rs"]
-mod mcphost_shared_tool_spec_readback_ac08_fifty_concurrent_reads_p95;
-#[path = "mcphost_shared_tool_spec_readback_ac09_spec_reads_counter.rs"]
-mod mcphost_shared_tool_spec_readback_ac09_spec_reads_counter;
-#[path = "mcphost_shared_tool_spec_readback_ac10_two_tenant_spec_read_and_calls_listing.rs"]
-mod mcphost_shared_tool_spec_readback_ac10_two_tenant_spec_read_and_calls_listing;
-#[path = "mcphost_team_memory_ac02_b_remember_writer.rs"]
-mod mcphost_team_memory_ac02_b_remember_writer;
-#[path = "mcphost_team_memory_ac03_c_recall_shows_writer.rs"]
-mod mcphost_team_memory_ac03_c_recall_shows_writer;
-#[path = "mcphost_team_memory_ac04_group_remove_revokes_c.rs"]
-mod mcphost_team_memory_ac04_group_remove_revokes_c;
-#[path = "mcphost_team_memory_ac05_recall_limit_capped_at_50.rs"]
-mod mcphost_team_memory_ac05_recall_limit_capped_at_50;
-#[path = "mcphost_team_memory_ac07_synthorg_task_five_completions.rs"]
-mod mcphost_team_memory_ac07_synthorg_task_five_completions;
-#[path = "mcphost_team_memory_ac09_forget_refused_for_non_writer_non_owner.rs"]
-mod mcphost_team_memory_ac09_forget_refused_for_non_writer_non_owner;
-#[path = "mcphost_uptime_probes_ac02_checks_two_rows_per_target.rs"]
-mod mcphost_uptime_probes_ac02_checks_two_rows_per_target;
-#[path = "mcphost_uptime_probes_ac03_status_up_pct_and_down_since.rs"]
-mod mcphost_uptime_probes_ac03_status_up_pct_and_down_since;
-#[path = "mcphost_uptime_probes_ac04_retention_deletes_old_rows.rs"]
-mod mcphost_uptime_probes_ac04_retention_deletes_old_rows;
-#[path = "mcphost_uptime_probes_ac05_target_cap_at_20.rs"]
-mod mcphost_uptime_probes_ac05_target_cap_at_20;
-#[path = "mcphost_uptime_probes_ac07_synthorg_task_five_completions.rs"]
-mod mcphost_uptime_probes_ac07_synthorg_task_five_completions;
-#[path = "mcphost_uptime_probes_ac09_down_since_flip_sends_inbox.rs"]
-mod mcphost_uptime_probes_ac09_down_since_flip_sends_inbox;
 #[path = "melc_ac01_typed_elicit_via_client_callback.rs"]
 mod melc_ac01_typed_elicit_via_client_callback;
 #[path = "melc_ac02_link_fallback_for_clients_without_elicitation.rs"]
@@ -233,3 +128,201 @@ mod retshape_ac03_list_access_is_a_named_will_fail;
 mod retshape_ac04_envelope_behaves_as_plain_dict;
 #[path = "retshape_ac05_starter_example_shows_rows_access.rs"]
 mod retshape_ac05_starter_example_shows_rows_access;
+#[path = "rgpt_ac04_webhook_inbox_generated_and_passes.rs"]
+mod rgpt_ac04_webhook_inbox_generated_and_passes;
+#[path = "rgpt_docs_qa_golden_path.rs"]
+mod rgpt_docs_qa_golden_path;
+#[path = "rgpt_first_run_golden_path.rs"]
+mod rgpt_first_run_golden_path;
+#[path = "rgpt_team_memory_golden_path.rs"]
+mod rgpt_team_memory_golden_path;
+#[path = "rgpt_webhook_inbox_golden_path.rs"]
+mod rgpt_webhook_inbox_golden_path;
+#[path = "rowpol_ac12_python_bridge_threads_end_user_through_table_query.rs"]
+mod rowpol_ac12_python_bridge_threads_end_user_through_table_query;
+#[path = "runenvelope_ac1_call_and_tool_run_parity.rs"]
+mod runenvelope_ac1_call_and_tool_run_parity;
+#[path = "runenvelope_ac2_no_declared_outputs_raw_payload.rs"]
+mod runenvelope_ac2_no_declared_outputs_raw_payload;
+#[path = "runenvelope_ac3_descriptor_and_decision_table_name_envelope.rs"]
+mod runenvelope_ac3_descriptor_and_decision_table_name_envelope;
+#[path = "runenvelope_ac4_no_calls_row_with_payload.rs"]
+mod runenvelope_ac4_no_calls_row_with_payload;
+#[path = "runoverflow_ac01_python_async_result_overflows_to_parts.rs"]
+mod runoverflow_ac01_python_async_result_overflows_to_parts;
+#[path = "runoverflow_ac02_state_quota_error_preserves_counters.rs"]
+mod runoverflow_ac02_state_quota_error_preserves_counters;
+#[path = "runoverflow_ac06_purge_drops_run_results_bytes_not_user_state.rs"]
+mod runoverflow_ac06_purge_drops_run_results_bytes_not_user_state;
+#[path = "runoverflow_ac07_llms_txt_long_running_jobs_walkthrough.rs"]
+mod runoverflow_ac07_llms_txt_long_running_jobs_walkthrough;
+#[path = "runoverflow_ac08_wait_until_counter_returns_while_running.rs"]
+mod runoverflow_ac08_wait_until_counter_returns_while_running;
+#[path = "runoverflow_ac09_sync_call_still_tool_output_too_large.rs"]
+mod runoverflow_ac09_sync_call_still_tool_output_too_large;
+#[path = "runs_ac01_async_job_runs_progress_and_result.rs"]
+mod runs_ac01_async_job_runs_progress_and_result;
+#[path = "runs_ac02_job_max_s_timeout.rs"]
+mod runs_ac02_job_max_s_timeout;
+#[path = "runs_ac03_progress_shape.rs"]
+mod runs_ac03_progress_shape;
+#[path = "runs_ac04_cancel_kills_sandbox.rs"]
+mod runs_ac04_cancel_kills_sandbox;
+#[path = "runs_ac06_jobs_concurrent_gate.rs"]
+mod runs_ac06_jobs_concurrent_gate;
+#[path = "runtime_ac1_range_typeerror_fixture.rs"]
+mod runtime_ac1_range_typeerror_fixture;
+#[path = "runtime_ac2_tool_code_phase_and_line.rs"]
+mod runtime_ac2_tool_code_phase_and_line;
+#[path = "runtime_ac3_args_coercion_phase_and_types.rs"]
+mod runtime_ac3_args_coercion_phase_and_types;
+#[path = "runtime_ac4_publish_and_first_call_latency.rs"]
+mod runtime_ac4_publish_and_first_call_latency;
+#[path = "runtime_ac5_assignment_expression_message.rs"]
+mod runtime_ac5_assignment_expression_message;
+#[path = "runtime_ac6_readme_documents_restriction.rs"]
+mod runtime_ac6_readme_documents_restriction;
+#[path = "sandboxready_ac10_sandbox_check_subcommand.rs"]
+mod sandboxready_ac10_sandbox_check_subcommand;
+#[path = "sandboxready_ac1_ac2_healthz_startup.rs"]
+mod sandboxready_ac1_ac2_healthz_startup;
+#[path = "sandboxready_ac3_ac4_publish_rejection.rs"]
+mod sandboxready_ac3_ac4_publish_rejection;
+#[path = "sandboxready_ac5_admin_recheck_recovers.rs"]
+mod sandboxready_ac5_admin_recheck_recovers;
+#[path = "sandboxready_ac6_periodic_recheck_flips_unready.rs"]
+mod sandboxready_ac6_periodic_recheck_flips_unready;
+#[path = "sandboxready_ac8_get_info_and_description_note.rs"]
+mod sandboxready_ac8_get_info_and_description_note;
+#[path = "sandboxready_ac9_failure_classification.rs"]
+mod sandboxready_ac9_failure_classification;
+#[path = "sblibs_ac03_base_env_built_at_start.rs"]
+mod sblibs_ac03_base_env_built_at_start;
+#[path = "sblibs_ac04_pypdf_without_requirements_preinstalled.rs"]
+mod sblibs_ac04_pypdf_without_requirements_preinstalled;
+#[path = "sblibs_ac05_import_hints_name_preinstalled_libs.rs"]
+mod sblibs_ac05_import_hints_name_preinstalled_libs;
+#[path = "sblibs_ac06_requirements_beyond_base_build_own_env.rs"]
+mod sblibs_ac06_requirements_beyond_base_build_own_env;
+#[path = "sblibs_ac07_probe_tool_via_spec_test.rs"]
+mod sblibs_ac07_probe_tool_via_spec_test;
+#[path = "srlp_ac03_publish_over_plan_refused.rs"]
+mod srlp_ac03_publish_over_plan_refused;
+#[path = "srlp_ac04_free_pids_ceiling_and_peak.rs"]
+mod srlp_ac04_free_pids_ceiling_and_peak;
+#[path = "srlp_ac05_python_result_carries_resources_used.rs"]
+mod srlp_ac05_python_result_carries_resources_used;
+#[path = "srlp_ac05b_passthrough_result_equals_host_verb_with_meta.rs"]
+mod srlp_ac05b_passthrough_result_equals_host_verb_with_meta;
+#[path = "srlp_ac06_warm_hit_keeps_plan_pids.rs"]
+mod srlp_ac06_warm_hit_keeps_plan_pids;
+#[path = "srlp_ac07_tool_run_reports_resources_used.rs"]
+mod srlp_ac07_tool_run_reports_resources_used;
+#[path = "state_ac02_ac03_python_sandbox.rs"]
+mod state_ac02_ac03_python_sandbox;
+#[path = "state_ac03_network_none_default.rs"]
+mod state_ac03_network_none_default;
+#[path = "state_ac07_tool_test_observability.rs"]
+mod state_ac07_tool_test_observability;
+#[path = "state_ac10_quickstart_llms_txt.rs"]
+mod state_ac10_quickstart_llms_txt;
+#[path = "statusfeed_ac01_operational_after_three_minutes.rs"]
+mod statusfeed_ac01_operational_after_three_minutes;
+#[path = "statusfeed_ac09_alert_and_auto_incident.rs"]
+mod statusfeed_ac09_alert_and_auto_incident;
+#[path = "statusfeed_ac11_live_status_trailer.rs"]
+mod statusfeed_ac11_live_status_trailer;
+#[path = "stcv_ac01_shipped_r3_pinned.rs"]
+mod stcv_ac01_shipped_r3_pinned;
+#[path = "stcv_ac02_publish_warns_on_clamped_timeout.rs"]
+mod stcv_ac02_publish_warns_on_clamped_timeout;
+#[path = "stcv_ac03_clamp_warning_contract_cannot_drift.rs"]
+mod stcv_ac03_clamp_warning_contract_cannot_drift;
+#[path = "stcv_ac04_call_records_effective_limits.rs"]
+mod stcv_ac04_call_records_effective_limits;
+#[path = "stcv_ac05_no_clamp_no_warning.rs"]
+mod stcv_ac05_no_clamp_no_warning;
+#[path = "stdlibpseudo_ac1_future_import_empty_requirements.rs"]
+mod stdlibpseudo_ac1_future_import_empty_requirements;
+#[path = "stdlibpseudo_ac2_dunder_main_no_requirement.rs"]
+mod stdlibpseudo_ac2_dunder_main_no_requirement;
+#[path = "surface_ac01_quickstart_try_before_call.rs"]
+mod surface_ac01_quickstart_try_before_call;
+#[path = "surface_ac06_python_outputs_by_path.rs"]
+mod surface_ac06_python_outputs_by_path;
+#[path = "tables_ac05_python_sandbox_table_access.rs"]
+mod tables_ac05_python_sandbox_table_access;
+#[path = "tables_ac08_docs_and_kv_vs_table_sentence.rs"]
+mod tables_ac08_docs_and_kv_vs_table_sentence;
+#[path = "tcse_ac05_python_catches_table_error.rs"]
+mod tcse_ac05_python_catches_table_error;
+#[path = "tcse_ac06_uncaught_table_error_keeps_code.rs"]
+mod tcse_ac06_uncaught_table_error_keeps_code;
+#[path = "tdf_ac06_as_mcp_call_publishes.rs"]
+mod tdf_ac06_as_mcp_call_publishes;
+#[path = "testtruth_ac04_python_compose_unverifiable_in_dry_run.rs"]
+mod testtruth_ac04_python_compose_unverifiable_in_dry_run;
+#[path = "testtruth_ac05_verdict_on_every_kind_dry_run.rs"]
+mod testtruth_ac05_verdict_on_every_kind_dry_run;
+#[path = "tfd_ac01_fixture_sentences_pass_first_draft.rs"]
+mod tfd_ac01_fixture_sentences_pass_first_draft;
+#[path = "tfd_ac03_retry_then_publish_and_share.rs"]
+mod tfd_ac03_retry_then_publish_and_share;
+#[path = "tfd_ac04_final_failure_carries_draft_and_next_call.rs"]
+mod tfd_ac04_final_failure_carries_draft_and_next_call;
+#[path = "tfdb_ac01_sixth_draft_refused_plan_limit.rs"]
+mod tfdb_ac01_sixth_draft_refused_plan_limit;
+#[path = "tfdb_ac02_unconfigured_hides_tool_and_healthz_says_so.rs"]
+mod tfdb_ac02_unconfigured_hides_tool_and_healthz_says_so;
+#[path = "tfdb_ac03_anonymous_first_call_implicit_signup.rs"]
+mod tfdb_ac03_anonymous_first_call_implicit_signup;
+#[path = "tgraph_ac09_python_sandbox_join_paths.rs"]
+mod tgraph_ac09_python_sandbox_join_paths;
+#[path = "toollint_ac02_mcphost_not_imported.rs"]
+mod toollint_ac02_mcphost_not_imported;
+#[path = "toollint_ac03_string_arg_subscripted.rs"]
+mod toollint_ac03_string_arg_subscripted;
+#[path = "toollint_ac04_return_not_json.rs"]
+mod toollint_ac04_return_not_json;
+#[path = "toollint_ac05_envelope_subscript_not_flagged.rs"]
+mod toollint_ac05_envelope_subscript_not_flagged;
+#[path = "toollint_ac06_replay_corpus_fast_and_panic_free.rs"]
+mod toollint_ac06_replay_corpus_fast_and_panic_free;
+#[path = "toollint_ac07_lint_rules_table.rs"]
+mod toollint_ac07_lint_rules_table;
+#[path = "tooltest_ac13_publish_error_parity.rs"]
+mod tooltest_ac13_publish_error_parity;
+#[path = "tooltest_ac1_python_two_invocations.rs"]
+mod tooltest_ac1_python_two_invocations;
+#[path = "tooltest_ac2_python_exception_other_still_runs.rs"]
+mod tooltest_ac2_python_exception_other_still_runs;
+#[path = "tsvr_ac03_python_bridge_carries_payload.rs"]
+mod tsvr_ac03_python_bridge_carries_payload;
+#[path = "umeta_ac07_tool_test_and_run_carry_no_usage.rs"]
+mod umeta_ac07_tool_test_and_run_carry_no_usage;
+#[path = "unkfield_ac01_write_table_rejected.rs"]
+mod unkfield_ac01_write_table_rejected;
+#[path = "unkfield_ac02_misplaced_field_valid_for.rs"]
+mod unkfield_ac02_misplaced_field_valid_for;
+#[path = "unkfield_ac03_near_miss_did_you_mean.rs"]
+mod unkfield_ac03_near_miss_did_you_mean;
+#[path = "unkfield_ac06_doc_examples_never_rejected.rs"]
+mod unkfield_ac06_doc_examples_never_rejected;
+#[path = "uprg_ac05_refused_network_public_names_alternative.rs"]
+mod uprg_ac05_refused_network_public_names_alternative;
+#[path = "warmpool_ac06_ac07_tool_run.rs"]
+mod warmpool_ac06_ac07_tool_run;
+#[path = "wasmkind_ac04_independent_of_sandbox_mechanism.rs"]
+mod wasmkind_ac04_independent_of_sandbox_mechanism;
+#[path = "whin_ac01_create_returns_url_secret_wait.rs"]
+mod whin_ac01_create_returns_url_secret_wait;
+#[path = "whin_ac02_signed_post_readable_by_tool_call_and_msg_wait.rs"]
+mod whin_ac02_signed_post_readable_by_tool_call_and_msg_wait;
+#[path = "whin_ac03_unsigned_or_wrong_signature_stores_nothing.rs"]
+mod whin_ac03_unsigned_or_wrong_signature_stores_nothing;
+#[path = "whin_ac06_llms_txt_section_and_proof_sh.rs"]
+mod whin_ac06_llms_txt_section_and_proof_sh;
+#[path = "whin_ac07_plan_limit_creates_nothing_and_repeat_is_idempotent.rs"]
+mod whin_ac07_plan_limit_creates_nothing_and_repeat_is_idempotent;
+#[path = "xaa_ac02_python_env_and_grants_method_xaa.rs"]
+mod xaa_ac02_python_env_and_grants_method_xaa;
